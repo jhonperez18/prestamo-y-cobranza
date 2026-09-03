@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { EditMiniIcon } from "@/components/icons";
-import { ColumnPicker, useColumnVisibility } from "@/components/ColumnPicker";
+import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell, useColumnVisibility } from "@/components/ColumnPicker";
 import type { BankAccount, BankMovement, BankReconciliation } from "@/lib/bank";
 import {
   formatBankAmount,
@@ -112,11 +112,6 @@ export function BankExtractsListView({
             <option>50</option>
           </select>
         </label>
-        <ColumnPicker
-          columns={BANK_EXTRACT_COLUMNS}
-          visibleCols={visibleCols}
-          onToggle={toggleColumn}
-        />
       </div>
 
       <div className="table-wrap">
@@ -127,16 +122,25 @@ export function BankExtractsListView({
               {isVisible("opening") ? <th className="right">Saldo inicial</th> : null}
               {isVisible("closing") ? <th className="right">Saldo final</th> : null}
               {isVisible("actions") ? <th className="bank-actions-head" aria-label="Acciones" /> : null}
+              <ColumnPickerHeadCell>
+                <ColumnPicker
+                  columns={BANK_EXTRACT_COLUMNS}
+                  visibleCols={visibleCols}
+                  onToggle={toggleColumn}
+                />
+              </ColumnPickerHeadCell>
             </tr>
           </thead>
           <tbody>
             {!account ? (
               <tr className="empty-row">
-                <td colSpan={visibleCols.length}>No hay cuentas activas. Cree una cuenta en Nueva cuenta.</td>
+                <td colSpan={visibleCols.length + 1}>No hay cuentas activas. Cree una cuenta en Nueva cuenta.</td>
               </tr>
             ) : rows.length === 0 ? (
               <tr className="empty-row">
-                <td colSpan={visibleCols.length}>No hay extractos para esta cuenta.</td>
+                <td colSpan={visibleCols.length + 1}>
+                  No hay extractos conciliados. El mes en curso aparece aquí cuando se concilie.
+                </td>
               </tr>
             ) : (
               rows.map((row) => {
@@ -196,6 +200,7 @@ export function BankExtractsListView({
                         ) : null}
                       </td>
                     ) : null}
+                    <ColumnPickerBodyCell />
                   </tr>
                 );
               })

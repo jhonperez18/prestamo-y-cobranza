@@ -18,7 +18,7 @@ import {
 } from "@/lib/mock-data";
 import { mobileAccessLabel } from "@/lib/access-preview";
 import { normalizePaymentMethod, paymentMethodLabel } from "@/lib/payment-method";
-import { paymentHasReceipt } from "@/lib/payment-evidence";
+import { paymentHasReceipt, paymentHasSignature } from "@/lib/payment-evidence";
 
 export type CollectorTab = "ficha" | "rutas" | "cobros" | "historial" | "actividad" | "acceso";
 
@@ -152,7 +152,9 @@ export function activityFeed(
         collectorRef: collector?.ref ?? row.collectorRef ?? "",
         collectorName: collector?.name ?? row.collector,
         title: row.type,
-        detail: `${row.client} · ${money(row.amount)} · ${paymentMethodLabel(normalizePaymentMethod(row.method))}${paymentHasReceipt(row.evidence) ? " · comprobante" : ""}`,
+        detail: `${row.client} · ${money(row.amount)} · ${paymentMethodLabel(normalizePaymentMethod(row.method))}${
+          paymentHasReceipt(row.evidence) ? " · comprobante" : paymentHasSignature(row.evidence) ? " · firma" : ""
+        }`,
         kind: row.kind,
         gps: true,
       };

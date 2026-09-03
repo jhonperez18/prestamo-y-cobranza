@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ColumnPicker, useColumnVisibility } from "@/components/ColumnPicker";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell, useColumnVisibility } from "@/components/ColumnPicker";
 import { Kpi, Pill } from "@/components/ui";
+import type { ModuleId } from "@/lib/navigation";
 import {
   buildDailyCollectionList,
   dailyCollectionSummary,
@@ -10,6 +11,7 @@ import {
   formatChargeDate,
   type DailyCollectionAssignment,
 } from "@/lib/daily-collection-plan";
+import { dayCloseSummary } from "@/lib/collector-dispatch-sync";
 import { syncLoan } from "@/lib/loan-preview";
 import {
   dispatchDateHint,
@@ -33,11 +35,26 @@ type Props = {
   assignments: DailyCollectionAssignment[];
   onGenerate: (date: string) => void;
   onDispatch: (date: string) => void;
+  onCloseDay: (date: string) => void;
   onAssignItem: (itemId: string, loanRef: string, collectorRef: string, date: string) => void;
   onOpenClient?: (clientRef: string) => void;
   onOpenLoan?: (loanRef: string) => void;
+  onOpenMobile?: (collectorRef?: string) => void;
   onToast?: (message: string) => void;
+  onGo?: (moduleId: ModuleId, viewId?: string) => void;
 };
+
+type ListFilter = "all" | "pending" | "mora" | "assigned";
+
+function isStillDue(
+  itemId: string,
+  assignments: DailyCollectionAssignment[],
+  selectedDate: string,
+) {
+  const assigned = findAssignment(assignments, itemId, selectedDate);
+  if (!assigned?.dispatched) return true;
+  return assigned.visitStatus !== "cobrado";
+}
 
 const DISPATCH_DATE_KEY = "nexo-dispatch-date";
 
@@ -65,15 +82,20 @@ export function DailyCollectionsView({
   assignments,
   onGenerate,
   onDispatch,
+  onCloseDay,
   onAssignItem,
   onOpenClient,
   onOpenLoan,
+  onOpenMobile,
   onToast,
+  onGo,
 }: Props) {
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [routeFilter, setRouteFilter] = useState("");
+  const [listFilter, setListFilter] = useState<ListFilter>("all");
   const [draftCollectors, setDraftCollectors] = useState<Record<string, string>>({});
   const [listReady, setListReady] = useState(true);
+  const tableRef = useRef<HTMLDivElement>(null);
 
   const { isVisible, visibleCols, toggleColumn } = useColumnVisibility(
     DAILY_COLLECTION_COLUMNS,
@@ -111,6 +133,10 @@ export function DailyCollectionsView({
   }, []);
 
   useEffect(() => {
+    setListFilter("all");
+  }, [selectedDate, routeFilter]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem(DISPATCH_DATE_KEY, selectedDate);
   }, [selectedDate]);
@@ -131,9 +157,14 @@ export function DailyCollectionsView({
     if (!listReady) return [];
     return allItems.filter((item) => {
       if (routeFilter && item.clientRoute !== routeFilter) return false;
+      if (listFilter === "pending") return isStillDue(item.id, assignments, selectedDate);
+      if (listFilter === "mora") return item.kind === "mora";
+      if (listFilter === "assigned") {
+        return Boolean(findAssignment(assignments, item.id, selectedDate));
+      }
       return true;
     });
-  }, [allItems, routeFilter, listReady]);
+  }, [allItems, routeFilter, listReady, listFilter, assignments, selectedDate]);
 
   const summary = useMemo(() => dailyCollectionSummary(activeItems), [activeItems]);
 
@@ -147,6 +178,23 @@ export function DailyCollectionsView({
       ).length,
     [assignments, selectedDate, activeItems],
   );
+
+  const closeSummary = useMemo(
+    () => dayCloseSummary(assignments, selectedDate),
+    [assignments, selectedDate],
+  );
+
+  const firstDispatchedCollector = useMemo(() => {
+    const row = assignments.find((entry) => entry.dispatchDate === selectedDate && entry.dispatched);
+    return row?.collectorRef;
+  }, [assignments, selectedDate]);
+
+  function focusList(filter: ListFilter) {
+    setListFilter(filter);
+    requestAnimationFrame(() => {
+      tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
 
   function generateList() {
     setListReady(true);
@@ -171,6 +219,28 @@ export function DailyCollectionsView({
     onAssignItem(itemId, loanRef, collectorRef, selectedDate);
   }
 
+  function confirmCloseDay() {
+    if (!closeSummary.canClose) {
+      onToast?.(
+        closeSummary.alreadyClosed
+          ? "La jornada de este día ya está cerrada."
+          : "Primero envía cobros a los cobradores.",
+      );
+      return;
+    }
+    const detail =
+      closeSummary.pending > 0
+        ? `${closeSummary.pending} visita(s) pendiente(s) quedarán como no visitadas (mora mañana).`
+        : "Se cerrará la jornada con los cobros ya registrados.";
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`¿Cerrar el día ${dateLabel}?\n\n${detail}`)
+    ) {
+      return;
+    }
+    onCloseDay(selectedDate);
+  }
+
   return (
     <section className="panel daily-collections">
       <div className="head">
@@ -185,11 +255,30 @@ export function DailyCollectionsView({
         <button type="button" className="btn primary" disabled={!canAssign} onClick={() => onDispatch(selectedDate)}>
           Enviar a cobradores
         </button>
-        <ColumnPicker
-          columns={DAILY_COLLECTION_COLUMNS}
-          visibleCols={visibleCols}
-          onToggle={toggleColumn}
-        />
+        <button
+          type="button"
+          className="btn secondary"
+          disabled={!closeSummary.canClose}
+          onClick={confirmCloseDay}
+          title={
+            closeSummary.alreadyClosed
+              ? "Jornada ya cerrada"
+              : "Cierra la jornada: pendientes → no visitados"
+          }
+        >
+          {closeSummary.alreadyClosed ? "Día cerrado" : "Cerrar día"}
+        </button>
+        {onOpenMobile ? (
+          <button
+            type="button"
+            className="btn ghost"
+            disabled={!firstDispatchedCollector}
+            onClick={() => onOpenMobile(firstDispatchedCollector)}
+            title="Ver la misma pantalla del cobrador"
+          >
+            Ver en móvil
+          </button>
+        ) : null}
       </div>
 
       <div className="kpis tone-kpis">
@@ -198,16 +287,58 @@ export function DailyCollectionsView({
           value={String(summary.total)}
           hint={`${summary.cuotas} cuotas · ${summary.mora} mora`}
           tone="teal"
+          onClick={() => focusList("all")}
         />
         <Kpi
           label="Por cobrar"
           value={money(summary.totalDue)}
           hint={`${money(summary.cuotaDue)} cuotas`}
           tone="amber"
+          onClick={() => focusList("pending")}
         />
-        <Kpi label="Mora" value={money(summary.moraDue)} hint={`${summary.mora} clientes`} tone="coral" />
-        <Kpi label="Asignados" value={String(assignedToday)} hint="Listos para enviar" tone="sage" />
+        <Kpi
+          label="Mora"
+          value={money(summary.moraDue)}
+          hint={`${summary.mora} clientes`}
+          tone="coral"
+          onClick={() => onGo?.("cartera", "mora")}
+        />
+        <Kpi
+          label="Asignados"
+          value={String(assignedToday)}
+          hint="Listos para enviar"
+          tone="sage"
+          onClick={() => focusList("assigned")}
+        />
       </div>
+
+      {closeSummary.total > 0 ? (
+        <div className="daily-close-banner">
+          <div>
+            <strong>
+              {closeSummary.alreadyClosed ? "Jornada cerrada" : "Jornada en curso"}
+            </strong>
+            <p>
+              {closeSummary.collected} cobrado{closeSummary.collected === 1 ? "" : "s"}
+              {" · "}
+              {closeSummary.partial} parcial{closeSummary.partial === 1 ? "" : "es"}
+              {" · "}
+              {closeSummary.pending} pendiente{closeSummary.pending === 1 ? "" : "s"}
+              {" · "}
+              {closeSummary.skipped} no visitado{closeSummary.skipped === 1 ? "" : "s"}
+              {" · "}
+              {closeSummary.collectors} cobrador{closeSummary.collectors === 1 ? "" : "es"}
+            </p>
+          </div>
+          {closeSummary.alreadyClosed ? (
+            <Pill label="Cerrada" kind="paid" />
+          ) : closeSummary.pending > 0 ? (
+            <Pill label={`${closeSummary.pending} sin visitar`} kind="overdue" />
+          ) : (
+            <Pill label="Lista para cerrar" kind="ok" />
+          )}
+        </div>
+      ) : null}
 
       <div className="daily-date-bar">
         <label className="daily-date-field">
@@ -238,8 +369,21 @@ export function DailyCollectionsView({
         </div>
       </div>
 
-      <div className="table-wrap daily-collection-table">
-        <table className="data list-grid">
+      <div className="table-wrap daily-collection-table" ref={tableRef}>
+        <table className="data list-grid daily-collection-grid">
+          <colgroup>
+            {isVisible("index") ? <col className="dc-index" /> : null}
+            {isVisible("client") ? <col className="dc-client" /> : null}
+            {isVisible("zone") ? <col className="dc-zone" /> : null}
+            {isVisible("loan") ? <col className="dc-loan" /> : null}
+            {isVisible("concept") ? <col className="dc-concept" /> : null}
+            {isVisible("since") ? <col className="dc-since" /> : null}
+            {isVisible("amount") ? <col className="dc-amount" /> : null}
+            {isVisible("status") ? <col className="dc-status" /> : null}
+            {isVisible("collector") ? <col className="dc-collector" /> : null}
+            {isVisible("action") ? <col className="dc-action" /> : null}
+            <col className="dc-picker" />
+          </colgroup>
           <thead>
             <tr className="col-titles">
               {isVisible("index") ? <th>#</th> : null}
@@ -251,16 +395,29 @@ export function DailyCollectionsView({
               {isVisible("amount") ? <th className="right">A cobrar</th> : null}
               {isVisible("status") ? <th>Estado</th> : null}
               {isVisible("collector") ? <th>Cobrador</th> : null}
-              <th />
+              {isVisible("action") ? <th>Acción</th> : null}
+              <ColumnPickerHeadCell>
+                <ColumnPicker
+                  columns={DAILY_COLLECTION_COLUMNS}
+                  visibleCols={visibleCols}
+                  onToggle={toggleColumn}
+                />
+              </ColumnPickerHeadCell>
             </tr>
           </thead>
           <tbody>
             {activeItems.length === 0 ? (
               <tr className="empty-row">
                 <td colSpan={visibleCols.length + 1}>
-                  {listReady
-                    ? "No hay cobros pendientes para esta fecha."
-                    : "Pulsa Generar lista para cargar los cobros del día."}
+                  {!listReady
+                    ? "Pulsa Generar lista para cargar los cobros del día."
+                    : listFilter === "pending"
+                      ? "No hay cobros pendientes por recaudar en esta fecha."
+                      : listFilter === "mora"
+                        ? "No hay clientes con mora en esta fecha."
+                        : listFilter === "assigned"
+                          ? "No hay cobros asignados para esta fecha."
+                          : "No hay cobros pendientes para esta fecha."}
                 </td>
               </tr>
             ) : (
@@ -305,26 +462,53 @@ export function DailyCollectionsView({
                         )}
                       </td>
                     ) : null}
-                    {isVisible("concept") ? <td>{item.chargeLabel}</td> : null}
-                    {isVisible("since") ? (
-                      <td>
-                        {formatChargeDate(item.chargeDate)}
-                        {item.moraAmount > 0 && item.cuotaAmount > 0 ? (
-                          <em className="route-due-tag block">
-                            Cuota {money(item.cuotaAmount)} + mora {money(item.moraAmount)}
-                          </em>
-                        ) : item.moraAmount > 0 ? (
-                          <em className="route-due-tag block">Mora acumulada</em>
-                        ) : null}
+                    {isVisible("concept") ? (
+                      <td className="daily-col-concept" title={item.chargeLabel}>
+                        {item.chargeLabel}
                       </td>
                     ) : null}
-                    {isVisible("amount") ? <td className="money right">{money(item.amountDue)}</td> : null}
+                    {isVisible("since") ? <td>{formatChargeDate(item.chargeDate)}</td> : null}
+                    {isVisible("amount") ? (
+                      <td
+                        className="money right"
+                        title={
+                          item.moraAmount > 0 && item.cuotaAmount > 0
+                            ? `Cuota ${money(item.cuotaAmount)} + mora ${money(item.moraAmount)}`
+                            : undefined
+                        }
+                      >
+                        {money(item.amountDue)}
+                      </td>
+                    ) : null}
                     {isVisible("status") ? (
                       <td>
-                        <Pill
-                          label={itemStatusLabel(item.kind)}
-                          kind={itemStatusKind(item.kind)}
-                        />
+                        {assigned?.dispatched ? (
+                          <Pill
+                            label={
+                              assigned.visitStatus === "cobrado"
+                                ? "Cobrado"
+                                : assigned.visitStatus === "parcial"
+                                  ? "Parcial"
+                                  : assigned.visitStatus === "omitido"
+                                    ? "No visitado"
+                                    : "En ruta"
+                            }
+                            kind={
+                              assigned.visitStatus === "cobrado"
+                                ? "paid"
+                                : assigned.visitStatus === "parcial"
+                                  ? "partial"
+                                  : assigned.visitStatus === "omitido"
+                                    ? "overdue"
+                                    : "pending"
+                            }
+                          />
+                        ) : (
+                          <Pill
+                            label={itemStatusLabel(item.kind)}
+                            kind={itemStatusKind(item.kind)}
+                          />
+                        )}
                       </td>
                     ) : null}
                     {isVisible("collector") ? (
@@ -349,20 +533,23 @@ export function DailyCollectionsView({
                         </select>
                       </td>
                     ) : null}
-                    <td className="daily-row-action">
-                      {locked ? (
-                        <span className="daily-assign-ok">Asignado a {assigned?.collector}</span>
-                      ) : (
-                        <button
-                          type="button"
-                          className="btn primary compact"
-                          disabled={!draftRef || !canAssign}
-                          onClick={() => assignItem(item.id, item.loanRef)}
-                        >
-                          Asignar
-                        </button>
-                      )}
-                    </td>
+                    {isVisible("action") ? (
+                      <td className="daily-row-action">
+                        {locked ? (
+                          <span className="daily-assign-ok">Asignado</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn primary compact"
+                            disabled={!draftRef || !canAssign}
+                            onClick={() => assignItem(item.id, item.loanRef)}
+                          >
+                            Asignar
+                          </button>
+                        )}
+                      </td>
+                    ) : null}
+                    <ColumnPickerBodyCell />
                   </tr>
                 );
               })

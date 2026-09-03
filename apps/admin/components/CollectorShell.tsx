@@ -25,7 +25,9 @@ import {
 import { COLLECTOR_DAILY_LOGS_SEED, upsertDailyLogPayment } from "@/lib/collector-daily-log";
 import {
   applyPaymentToAssignments,
+  applySkipToRoute,
   rebuildDispatchRoutes,
+  skipAssignmentVisit,
 } from "@/lib/collector-dispatch-sync";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { isoToDispatchLabel, todayIso } from "@/lib/daily-dispatch";
@@ -35,7 +37,7 @@ import { cuotaTarget, loanRowAfterPay } from "@/lib/loan-pay";
 import { validatePaymentEvidence } from "@/lib/payment-evidence";
 import { normalizePaymentMethod } from "@/lib/payment-method";
 import { applyCollectorPaymentResult, type CollectorPaymentDraft } from "@/lib/route-sync";
-import { CollectorMobileApp } from "@/components/CollectorMobileApp";
+import { CollectorMobileApp, type CollectorSkipVisitDraft } from "@/components/CollectorMobileApp";
 import type { AppSession } from "@/lib/auth";
 import { hasPermission } from "@/lib/session-access";
 import {
@@ -212,6 +214,34 @@ export function CollectorShell({ session, onLogout }: Props) {
     showToast(`Cobro ${paymentRef} guardado y sincronizado.`);
   }
 
+  function skipCollectorVisit(draft: CollectorSkipVisitDraft) {
+    if (!session.collectorRef) {
+      showToast("Sin cobrador vinculado.");
+      return;
+    }
+
+    const nextAssignments = skipAssignmentVisit(dailyAssignments, {
+      collectorRef: session.collectorRef,
+      dispatchDate: draft.dispatchDate,
+      loanRef: draft.loanRef,
+      clientRef: draft.clientRef,
+      reason: draft.reason,
+    });
+    setDailyAssignments(nextAssignments);
+    setRoutes((current) =>
+      current.map((row) =>
+        row.ref === draft.routeRef
+          ? applySkipToRoute(row, draft.loanRef, draft.clientRef)
+          : row,
+      ),
+    );
+    showToast(
+      draft.reason
+        ? `Visita omitida · ${draft.reason}. Queda para reprogramar.`
+        : "Visita omitida. Queda para reprogramar.",
+    );
+  }
+
   if (!hydrated) {
     return <div className="login-screen login-loading collector-shell-loading" aria-hidden />;
   }
@@ -247,6 +277,9 @@ export function CollectorShell({ session, onLogout }: Props) {
         canRegister={hasPermission(session, "cobros.registrar")}
         onRegisterPayment={
           hasPermission(session, "cobros.registrar") ? registerCollectorPayment : undefined
+        }
+        onSkipVisit={
+          hasPermission(session, "cobros.registrar") ? skipCollectorVisit : undefined
         }
         onLogout={onLogout}
       />

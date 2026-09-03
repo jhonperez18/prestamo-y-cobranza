@@ -2,7 +2,7 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { cuotaTarget } from "@/lib/loan-pay";
 import { chargeLabel, displayToIso, isoToDisplay } from "@/lib/loan-preview";
 import { normalizePaymentMethod, paymentMethodLabel } from "@/lib/payment-method";
-import { paymentHasReceipt } from "@/lib/payment-evidence";
+import { paymentHasVisualEvidence } from "@/lib/payment-evidence";
 import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
 import type { LoanRow, PaymentRow, StatusKind } from "@/lib/mock-data";
 import { PAYMENTS } from "@/lib/mock-data";
@@ -292,7 +292,7 @@ export function enrichPaymentMovement(
             : "Caja / oficina",
     method: paymentMethodLabel(normalizePaymentMethod(payment.method)),
     evidence: payment.evidence,
-    hasReceipt: paymentHasReceipt(payment.evidence),
+    hasReceipt: paymentHasVisualEvidence(payment.evidence),
     amount: payment.amount,
     kind: settlement.kind,
     gps: payment.gps,

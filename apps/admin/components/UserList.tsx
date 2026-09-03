@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { PlusIcon, PhoneMiniIcon, SearchIcon } from "@/components/icons";
-import { ColumnPicker, useColumnVisibility } from "@/components/ColumnPicker";
+import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell, useColumnVisibility } from "@/components/ColumnPicker";
 import { Pill } from "@/components/ui";
 import { userAccessLabel, usersForView } from "@/lib/access-preview";
 import { ADMIN_ROLE_REF, roleByRef, ROLES, type RoleRow, type UserRow } from "@/lib/mock-data";
@@ -129,7 +129,6 @@ export function UserList({
             <PlusIcon />
           </button>
         ) : null}
-        <ColumnPicker columns={USER_LIST_COLUMNS} visibleCols={visibleCols} onToggle={toggleColumn} />
       </div>
 
       <div className="filters collector-filters">
@@ -169,12 +168,19 @@ export function UserList({
               {USER_LIST_COLUMNS.filter((col) => isVisible(col.id)).map((col) => (
                 <th key={col.id}>{col.label}</th>
               ))}
+              <ColumnPickerHeadCell>
+                <ColumnPicker
+                  columns={USER_LIST_COLUMNS}
+                  visibleCols={visibleCols}
+                  onToggle={toggleColumn}
+                />
+              </ColumnPickerHeadCell>
             </tr>
           </thead>
           <tbody>
             {visible.length === 0 ? (
               <tr className="empty-row">
-                <td colSpan={Math.max(visibleCols.length, 1)}>No hay usuarios con esos filtros</td>
+                <td colSpan={Math.max(visibleCols.length + 1, 1)}>No hay usuarios con esos filtros</td>
               </tr>
             ) : (
               visible.map((row) => (
@@ -186,6 +192,7 @@ export function UserList({
                   {USER_LIST_COLUMNS.filter((col) => isVisible(col.id)).map((col) => (
                     <td key={col.id}>{renderCell(row, col.id)}</td>
                   ))}
+                  <ColumnPickerBodyCell />
                 </tr>
               ))
             )}

@@ -2,19 +2,25 @@
 
 import { useMemo } from "react";
 import type { BankAccount, BankMovement } from "@/lib/bank";
-import { ColumnPicker, useColumnVisibility } from "@/components/ColumnPicker";
+import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell, useColumnVisibility } from "@/components/ColumnPicker";
 import { BankSortTh, useBankMovementSort } from "@/components/BankSortTh";
 import {
+  bankMovementDescriptionText,
+  bankMovementMethodLabel,
   bankMovementsWithDisplayBalance,
   expenseCategoryLabel,
   formatBankAmount,
+  isBankExpenseMovement,
+  isBankIncomeMovement,
   isoToDisplay,
   normalizeBankMovements,
   paymentRefForMovement,
-  movementDisplayRef,
+  bankVisibleRef,
   summarizeMovements,
 } from "@/lib/bank";
 import { BANK_RECORD_COLUMNS, BANK_RECORD_DEFAULT_COLS } from "@/lib/table-columns";
+import { paymentMethodKind } from "@/lib/payment-method";
+import { Pill } from "@/components/ui";
 
 type Props = {
   accounts: BankAccount[];
@@ -34,7 +40,7 @@ export function BankRecordsHistoryView({
   const { isVisible, visibleCols, toggleColumn } = useColumnVisibility(
     BANK_RECORD_COLUMNS,
     BANK_RECORD_DEFAULT_COLS,
-    { storageKey: "nexo.banco.registros.columns" },
+    { storageKey: "nexo.banco.registros.columns.v3" },
   );
 
   const accountMap = useMemo(
@@ -59,11 +65,11 @@ export function BankRecordsHistoryView({
 
   function openRowTarget(row: (typeof history)[number]) {
     const paymentRef = paymentRefForMovement(row);
-    if (paymentRef && row.credit > 0 && onOpenPaymentFicha) {
+    if (paymentRef && isBankIncomeMovement(row) && onOpenPaymentFicha) {
       onOpenPaymentFicha(paymentRef);
       return;
     }
-    if (row.debit > 0 && onOpenExpense) {
+    if (isBankExpenseMovement(row) && onOpenExpense) {
       onOpenExpense(row);
       return;
     }
@@ -83,19 +89,28 @@ export function BankRecordsHistoryView({
             <option>50</option>
           </select>
         </label>
-        <ColumnPicker
-          columns={BANK_RECORD_COLUMNS}
-          visibleCols={visibleCols}
-          onToggle={toggleColumn}
-        />
       </div>
 
       <div className="bank-table-wrap bank-records-table-wrap">
         <table className="bank-table bank-records-table">
+          <colgroup>
+            {isVisible("ref") ? <col className="br-ref" /> : null}
+            {isVisible("description") ? <col className="br-desc" /> : null}
+            {isVisible("method") ? <col className="br-method" /> : null}
+            {isVisible("valueDate") ? <col className="br-date" /> : null}
+            {isVisible("account") ? <col className="br-account" /> : null}
+            {isVisible("thirdParty") ? <col className="br-third" /> : null}
+            {isVisible("debit") ? <col className="br-debit" /> : null}
+            {isVisible("credit") ? <col className="br-credit" /> : null}
+            {isVisible("balance") ? <col className="br-balance" /> : null}
+            {isVisible("extract") ? <col className="br-extract" /> : null}
+            <col className="br-picker" />
+          </colgroup>
           <thead>
             <tr className="col-titles">
               {isVisible("ref") ? <th>Ref.</th> : null}
               {isVisible("description") ? <th>Descripción</th> : null}
+              {isVisible("method") ? <th>Método</th> : null}
               {isVisible("valueDate") ? (
                 <BankSortTh
                   label="Fecha valor"
@@ -128,17 +143,26 @@ export function BankRecordsHistoryView({
                 />
               ) : null}
               {isVisible("balance") ? <th className="bank-num">Saldo</th> : null}
+              {isVisible("extract") ? <th className="center">Extracto</th> : null}
+              <ColumnPickerHeadCell>
+                <ColumnPicker
+                  columns={BANK_RECORD_COLUMNS}
+                  visibleCols={visibleCols}
+                  onToggle={toggleColumn}
+                />
+              </ColumnPickerHeadCell>
             </tr>
           </thead>
           <tbody>
             {history.length === 0 ? (
               <tr className="empty-row">
-                <td colSpan={visibleCols.length}>Aún no hay registros generados.</td>
+                <td colSpan={visibleCols.length + 1}>Aún no hay registros generados.</td>
               </tr>
             ) : (
               history.map((row) => {
-                const isExpense = row.debit > 0;
+                const isExpense = isBankExpenseMovement(row);
                 const paymentRef = paymentRefForMovement(row);
+                const methodLabel = bankMovementMethodLabel(row.description);
                 return (
                   <tr
                     key={row.ref}
@@ -148,7 +172,7 @@ export function BankRecordsHistoryView({
                   >
                     {isVisible("ref") ? (
                       <td className="ref">
-                        {paymentRef && row.credit > 0 && onOpenPaymentFicha ? (
+                        {paymentRef && isBankIncomeMovement(row) && onOpenPaymentFicha ? (
                           <button
                             type="button"
                             className="btn-link bank-extract-ref-link"
@@ -159,7 +183,7 @@ export function BankRecordsHistoryView({
                           >
                             {paymentRef}
                           </button>
-                        ) : row.debit > 0 && onOpenExpense ? (
+                        ) : isExpense && onOpenExpense ? (
                           <button
                             type="button"
                             className="btn-link bank-extract-ref-link"
@@ -168,26 +192,41 @@ export function BankRecordsHistoryView({
                               onOpenExpense(row);
                             }}
                           >
-                            {movementDisplayRef(row)}
+                            {bankVisibleRef(row)}
                           </button>
-                        ) : row.debit > 0 ? (
-                          movementDisplayRef(row)
                         ) : (
-                          paymentRef ?? row.ref.slice(-6)
+                          bankVisibleRef(row)
                         )}
                       </td>
                     ) : null}
                     {isVisible("description") ? (
-                      <td>
-                        {row.description}
+                      <td className="bank-desc">
+                        {bankMovementDescriptionText(row.description)}
                         {row.category ? (
                           <span className="bank-category">{expenseCategoryLabel(row.category)}</span>
                         ) : null}
                       </td>
                     ) : null}
+                    {isVisible("method") ? (
+                      <td>
+                        {methodLabel ? (
+                          <Pill
+                            label={methodLabel}
+                            kind={paymentMethodKind(methodLabel === "Nequi" ? "nequi" : "efectivo")}
+                          />
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    ) : null}
                     {isVisible("valueDate") ? <td>{isoToDisplay(row.valueDate)}</td> : null}
                     {isVisible("account") ? (
-                      <td>{accountMap.get(row.accountRef) ?? row.accountRef}</td>
+                      <td
+                        className="bank-account-cell"
+                        title={accountMap.get(row.accountRef) ?? row.accountRef}
+                      >
+                        {accountMap.get(row.accountRef) ?? row.accountRef}
+                      </td>
                     ) : null}
                     {isVisible("thirdParty") ? <td>{row.thirdParty}</td> : null}
                     {isVisible("debit") ? (
@@ -203,6 +242,26 @@ export function BankRecordsHistoryView({
                     {isVisible("balance") ? (
                       <td className="bank-num bank-balance">{formatBankAmount(row.runningBalance)}</td>
                     ) : null}
+                    {isVisible("extract") ? (
+                      <td className="center">
+                        {row.reconciled ? (
+                          <button
+                            type="button"
+                            className="btn-link bank-extract-ref-link"
+                            title="Ver extracto conciliado"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onOpenPeriod(row.accountRef, row.period);
+                            }}
+                          >
+                            {row.period}
+                          </button>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    ) : null}
+                    <ColumnPickerBodyCell />
                   </tr>
                 );
               })
@@ -211,7 +270,7 @@ export function BankRecordsHistoryView({
           {history.length > 0 ? (
             <tfoot>
               <tr className="bank-total-row">
-                <td colSpan={["ref", "description", "valueDate", "account", "thirdParty"].filter((id) => isVisible(id)).length}>
+                <td colSpan={["ref", "description", "method", "valueDate", "account", "thirdParty"].filter((id) => isVisible(id)).length}>
                   Total
                 </td>
                 {isVisible("debit") ? (
@@ -223,6 +282,8 @@ export function BankRecordsHistoryView({
                 {isVisible("balance") ? (
                   <td className="bank-num">{formatBankAmount(openingTotal + summary.balance)}</td>
                 ) : null}
+                {isVisible("extract") ? <td /> : null}
+                <ColumnPickerBodyCell />
               </tr>
             </tfoot>
           ) : null}

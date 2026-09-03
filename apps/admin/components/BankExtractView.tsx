@@ -1,20 +1,26 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ColumnPicker, useColumnVisibility } from "@/components/ColumnPicker";
 import { EditMiniIcon, TrashMiniIcon } from "@/components/icons";
 import { BankSortTh, useBankMovementSort } from "@/components/BankSortTh";
+import { Pill } from "@/components/ui";
 import type { BankAccount, BankExpenseCategory, BankMovement, BankReconciliation } from "@/lib/bank";
 import {
   addManualExpense,
+  bankMovementDescriptionText,
+  bankMovementMethodLabel,
   bankMovementsWithDisplayBalance,
   currentPeriod,
   expenseCategoryLabel,
   filterMovements,
   formatBankAmount,
+  isBankExpenseMovement,
+  isBankIncomeMovement,
   isPeriodClosed,
   isoToDisplay,
-  movementDisplayRef,
+  bankVisibleRef,
+  normalizeBankMovements,
   openingBalanceForPeriod,
   paymentRefForMovement,
   pendingMovementsForAccount,
@@ -22,6 +28,7 @@ import {
   summarizeMovements,
   syncPaymentsToMovements,
 } from "@/lib/bank";
+import { paymentMethodKind } from "@/lib/payment-method";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement } from "@/lib/misc-payments";
 import type { PaymentRow } from "@/lib/mock-data";
@@ -42,7 +49,6 @@ type Props = {
   onPeriodChange: (period: string) => void;
   onMovementsChange: (rows: BankMovement[]) => void;
   onReconciliationsChange: (rows: BankReconciliation[]) => void;
-  onBack: () => void;
   onOpenMiscPayment: (miscPaymentRef: string) => void;
   onOpenPaymentFicha: (paymentRef: string) => void;
   onOpenExpense?: (row: BankMovement) => void;
@@ -78,7 +84,6 @@ export function BankExtractView({
   onPeriodChange,
   onMovementsChange,
   onReconciliationsChange,
-  onBack: _onBack,
   onOpenMiscPayment,
   onOpenPaymentFicha,
   onOpenExpense,
@@ -92,19 +97,30 @@ export function BankExtractView({
   const { isVisible, visibleCols, toggleColumn } = useColumnVisibility(
     BANK_EXTRACT_MOVEMENT_COLUMNS,
     BANK_EXTRACT_MOVEMENT_DEFAULT_COLS,
-    { storageKey: "nexo.banco.extracto.columns" },
+    { storageKey: "nexo.banco.extracto.columns.v2" },
   );
 
   const account = accounts.find((row) => row.ref === accountRef) ?? accounts[0];
   const closed = account ? isPeriodClosed(reconciliations, account.ref, period) : false;
-  const editingRow = editingRef ? movements.find((row) => row.ref === editingRef) : null;
+  const ledgerMovements = useMemo(() => normalizeBankMovements(movements), [movements]);
+  const editingRow = editingRef ? ledgerMovements.find((row) => row.ref === editingRef) : null;
+
+  useEffect(() => {
+    const changed = ledgerMovements.some((row, index) => {
+      const prev = movements[index];
+      return !prev || prev.ref !== row.ref || prev.debit !== row.debit || prev.credit !== row.credit;
+    });
+    if (changed || ledgerMovements.length !== movements.length) {
+      onMovementsChange(ledgerMovements);
+    }
+  }, [ledgerMovements, movements, onMovementsChange]);
 
   const periodRows = useMemo(() => {
     if (!account) return [];
     const base =
       filterMode === "pending"
-        ? pendingMovementsForAccount(movements, reconciliations, account.ref, period)
-        : filterMovements(movements, account.ref, period, "");
+        ? pendingMovementsForAccount(ledgerMovements, reconciliations, account.ref)
+        : filterMovements(ledgerMovements, account.ref, period, "");
     if (!query.trim()) return base;
     const q = query.trim().toLowerCase();
     return base.filter((row) => {
@@ -119,18 +135,22 @@ export function BankExtractView({
         .toLowerCase();
       return hay.includes(q);
     });
-  }, [account, movements, reconciliations, period, query, filterMode]);
+  }, [account, ledgerMovements, reconciliations, period, query, filterMode]);
 
   const periodOpening = useMemo(() => {
     if (!account) return 0;
+    const openingPeriod =
+      filterMode === "pending" && periodRows.length > 0
+        ? [...periodRows].sort((a, b) => a.period.localeCompare(b.period))[0]?.period ?? period
+        : period;
     return openingBalanceForPeriod(
       account.ref,
-      period,
+      openingPeriod,
       account.openingBalance,
-      movements,
+      ledgerMovements,
       reconciliations,
     );
-  }, [account, period, movements, reconciliations]);
+  }, [account, period, periodRows, ledgerMovements, reconciliations, filterMode]);
 
   const rowsWithBalance = useMemo(
     () => bankMovementsWithDisplayBalance(periodRows, sortKey, sortDir, periodOpening),
@@ -159,15 +179,15 @@ export function BankExtractView({
   };
 
   const syncPayments = () => {
-    const next = syncPaymentsToMovements(payments, movements, account.ref, period);
+    const next = syncPaymentsToMovements(payments, ledgerMovements, account.ref, period);
     onMovementsChange(next);
-    const added = next.length - movements.length;
+    const added = next.length - ledgerMovements.length;
     onToast(added > 0 ? `${added} cobro(s) importados al extracto.` : "No hay cobros nuevos para importar.");
   };
 
   const saveExtract = () => {
     onMovementsChange(
-      movements.map((row) =>
+      ledgerMovements.map((row) =>
         row.accountRef === account.ref && row.period === period ? { ...row, inExtract: true } : row,
       ),
     );
@@ -175,7 +195,7 @@ export function BankExtractView({
   };
 
   const handleReconcile = () => {
-    if (closed) {
+    if (closed && filterMode !== "pending") {
       onToast("Este periodo ya está conciliado.");
       return;
     }
@@ -183,23 +203,39 @@ export function BankExtractView({
       onToast("No hay movimientos para conciliar.");
       return;
     }
-    const { movements: nextMovements, reconciliations: nextReconciliations } = reconcilePeriod(
-      movements,
-      reconciliations,
-      account.ref,
-      period,
-      account.openingBalance,
-    );
+    const periodsToClose = [
+      ...new Set(
+        filterMode === "pending" ? periodRows.map((row) => row.period) : [period],
+      ),
+    ];
+    let nextMovements = ledgerMovements;
+    let nextReconciliations = reconciliations;
+    for (const targetPeriod of periodsToClose) {
+      if (isPeriodClosed(nextReconciliations, account.ref, targetPeriod)) continue;
+      const result = reconcilePeriod(
+        nextMovements,
+        nextReconciliations,
+        account.ref,
+        targetPeriod,
+        account.openingBalance,
+      );
+      nextMovements = result.movements;
+      nextReconciliations = result.reconciliations;
+    }
     onMovementsChange(nextMovements);
     onReconciliationsChange(nextReconciliations);
     resetForm();
-    onToast(`Periodo ${period} conciliado y cerrado.`);
+    onToast(
+      periodsToClose.length === 1
+        ? `Periodo ${periodsToClose[0]} conciliado y cerrado.`
+        : `${periodsToClose.length} periodos conciliados y cerrados.`,
+    );
   };
 
   const toggleExtract = (ref: string) => {
     if (closed) return;
     onMovementsChange(
-      movements.map((row) => (row.ref === ref ? { ...row, inExtract: !row.inExtract } : row)),
+      ledgerMovements.map((row) => (row.ref === ref ? { ...row, inExtract: !row.inExtract } : row)),
     );
   };
 
@@ -207,7 +243,7 @@ export function BankExtractView({
     if (closed || periodRows.length === 0) return;
     const nextValue = !allInExtract;
     onMovementsChange(
-      movements.map((row) =>
+      ledgerMovements.map((row) =>
         visibleRefs.has(row.ref) ? { ...row, inExtract: nextValue } : row,
       ),
     );
@@ -227,15 +263,15 @@ export function BankExtractView({
 
   const openRowTarget = (row: BankMovement) => {
     const paymentRef = paymentRefForMovement(row);
-    if (paymentRef && row.credit > 0) {
+    if (paymentRef && isBankIncomeMovement(row)) {
       onOpenPaymentFicha(paymentRef);
       return;
     }
-    if (row.debit > 0 && onOpenExpense) {
+    if (isBankExpenseMovement(row) && onOpenExpense) {
       onOpenExpense(row);
       return;
     }
-    if (row.debit > 0) {
+    if (isBankExpenseMovement(row)) {
       const linked = findMiscPaymentForMovement(row, miscPayments);
       if (linked) {
         onOpenMiscPayment(linked.ref);
@@ -246,7 +282,7 @@ export function BankExtractView({
 
   const renderRefCell = (row: BankMovement) => {
     const paymentRef = paymentRefForMovement(row);
-    const isExpense = row.debit > 0;
+    const isExpense = isBankExpenseMovement(row);
 
     if (!isExpense && paymentRef) {
       return (
@@ -273,22 +309,22 @@ export function BankExtractView({
             onOpenExpense(row);
           }}
         >
-          {movementDisplayRef(row)}
+          {bankVisibleRef(row)}
         </button>
       );
     }
 
-    return isExpense ? movementDisplayRef(row) : paymentRef ?? row.ref.slice(-6);
+    return bankVisibleRef(row);
   };
 
   const handleEdit = (row: BankMovement) => {
     if (closed) return;
     const paymentRef = paymentRefForMovement(row);
-    if (paymentRef && row.credit > 0) {
+    if (paymentRef && isBankIncomeMovement(row)) {
       onOpenPaymentFicha(paymentRef);
       return;
     }
-    if (row.debit > 0) {
+    if (isBankExpenseMovement(row)) {
       const linked = findMiscPaymentForMovement(row, miscPayments);
       if (linked) {
         onOpenMiscPayment(linked.ref);
@@ -306,9 +342,9 @@ export function BankExtractView({
 
   const removeMovement = (ref: string) => {
     if (closed) return;
-    const target = movements.find((row) => row.ref === ref);
+    const target = ledgerMovements.find((row) => row.ref === ref);
     if (!target) return;
-    onMovementsChange(movements.filter((row) => row.ref !== ref));
+    onMovementsChange(ledgerMovements.filter((row) => row.ref !== ref));
     if (editingRef === ref) resetForm();
     onToast(target.paymentRef ? "Movimiento quitado del extracto." : "Gasto eliminado.");
   };
@@ -327,7 +363,7 @@ export function BankExtractView({
           return;
         }
         onMovementsChange(
-          movements.map((row) =>
+          ledgerMovements.map((row) =>
             row.ref === editingRef
               ? {
                   ...row,
@@ -336,8 +372,8 @@ export function BankExtractView({
                   valueDate: expenseForm.valueDate,
                   opDate: expenseForm.valueDate,
                   category: expenseForm.category,
-                  debit: amount,
-                  credit: 0,
+                  debit: 0,
+                  credit: amount,
                 }
               : row,
           ),
@@ -345,7 +381,7 @@ export function BankExtractView({
         onToast("Gasto actualizado.");
       } else {
         onMovementsChange(
-          movements.map((row) =>
+          ledgerMovements.map((row) =>
             row.ref === editingRef
               ? {
                   ...row,
@@ -378,17 +414,17 @@ export function BankExtractView({
       valueDate: expenseForm.valueDate,
       opDate: expenseForm.valueDate,
     });
-    onMovementsChange([...movements, row]);
+    onMovementsChange([...ledgerMovements, row]);
     resetForm();
     onToast("Gasto registrado.");
   };
 
   const formOpen = Boolean(editingRef) && !closed;
+  const showActions = filterMode === "pending" && !closed;
 
   return (
     <section className="panel bank-extract-panel">
       <div className="head bank-extract-head">
-        {closed ? <span className="bank-closed-badge">Conciliado · solo lectura</span> : null}
         <div className="grow" />
         {filterMode !== "pending" ? (
           <>
@@ -419,16 +455,19 @@ export function BankExtractView({
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
-        <button type="button" className="btn secondary compact" onClick={syncPayments} disabled={closed}>
-          Importar cobros
-        </button>
-        <button type="button" className="btn secondary compact" onClick={saveExtract} disabled={closed}>
-          Guardar extracto
-        </button>
-        <button type="button" className="btn primary compact" onClick={handleReconcile} disabled={closed}>
-          Conciliar
-        </button>
-        <ColumnPicker columns={BANK_EXTRACT_MOVEMENT_COLUMNS} visibleCols={visibleCols} onToggle={toggleColumn} />
+        {filterMode === "pending" ? (
+          <>
+            <button type="button" className="btn secondary compact" onClick={syncPayments} disabled={closed}>
+              Importar cobros
+            </button>
+            <button type="button" className="btn secondary compact" onClick={saveExtract} disabled={closed}>
+              Guardar extracto
+            </button>
+            <button type="button" className="btn primary compact" onClick={handleReconcile} disabled={closed}>
+              Conciliar
+            </button>
+          </>
+        ) : null}
       </div>
 
       {formOpen ? (
@@ -468,7 +507,7 @@ export function BankExtractView({
             </>
           )}
           {editingRow?.paymentRef ? (
-            <span className="bank-form-note">Valor del cobro: {formatBankAmount(editingRow.credit)}</span>
+            <span className="bank-form-note">Valor del cobro: {formatBankAmount(editingRow.debit)}</span>
           ) : null}
           <input
             type="date"
@@ -486,10 +525,24 @@ export function BankExtractView({
 
       <div className="table-wrap">
         <table className="data list-grid bank-extract-table">
+          <colgroup>
+            {isVisible("ref") ? <col className="be-ref" /> : null}
+            {isVisible("description") ? <col className="be-desc" /> : null}
+            {isVisible("method") ? <col className="be-method" /> : null}
+            {isVisible("valueDate") ? <col className="be-date" /> : null}
+            {isVisible("thirdParty") ? <col className="be-third" /> : null}
+            {isVisible("debit") ? <col className="be-debit" /> : null}
+            {isVisible("credit") ? <col className="be-credit" /> : null}
+            {isVisible("balance") ? <col className="be-balance" /> : null}
+            {isVisible("extract") ? <col className="be-extract" /> : null}
+            {showActions ? <col className="be-actions" /> : null}
+            <col className="be-picker" />
+          </colgroup>
           <thead>
             <tr className="col-titles">
               {isVisible("ref") ? <th>Ref.</th> : null}
               {isVisible("description") ? <th>Descripción</th> : null}
+              {isVisible("method") ? <th>Método</th> : null}
               {isVisible("valueDate") ? (
                 <BankSortTh
                   label="Fecha valor"
@@ -539,17 +592,26 @@ export function BankExtractView({
                   </label>
                 </th>
               ) : null}
-              {isVisible("actions") ? <th className="center">Acciones</th> : null}
+              {showActions ? <th className="center">Acciones</th> : null}
+              <th className="col-picker-cell">
+                <ColumnPicker
+                  columns={BANK_EXTRACT_MOVEMENT_COLUMNS}
+                  visibleCols={visibleCols}
+                  onToggle={toggleColumn}
+                />
+              </th>
             </tr>
           </thead>
           <tbody>
             {rowsWithBalance.length === 0 ? (
               <tr className="empty-row">
-                <td colSpan={Math.max(visibleCols.length, 1)}>No hay movimientos en este extracto.</td>
+                <td colSpan={Math.max(visibleCols.length, 1) + 1}>No hay movimientos en este extracto.</td>
               </tr>
             ) : (
               rowsWithBalance.map((row) => {
-                const isExpense = row.debit > 0;
+                const isExpense = isBankExpenseMovement(row);
+                const methodLabel = bankMovementMethodLabel(row.description);
+                const descriptionText = bankMovementDescriptionText(row.description);
                 return (
                   <tr
                     key={row.ref}
@@ -559,11 +621,23 @@ export function BankExtractView({
                   >
                     {isVisible("ref") ? <td className="ref">{renderRefCell(row)}</td> : null}
                     {isVisible("description") ? (
-                      <td>
-                        {row.description}
+                      <td title={descriptionText}>
+                        {descriptionText}
                         {row.category ? (
                           <span className="bank-category">{expenseCategoryLabel(row.category)}</span>
                         ) : null}
+                      </td>
+                    ) : null}
+                    {isVisible("method") ? (
+                      <td>
+                        {methodLabel ? (
+                          <Pill
+                            label={methodLabel}
+                            kind={paymentMethodKind(methodLabel === "Nequi" ? "nequi" : "efectivo")}
+                          />
+                        ) : (
+                          "—"
+                        )}
                       </td>
                     ) : null}
                     {isVisible("valueDate") ? <td>{isoToDisplay(row.valueDate)}</td> : null}
@@ -592,36 +666,29 @@ export function BankExtractView({
                         />
                       </td>
                     ) : null}
-                    {isVisible("actions") ? (
+                    {showActions ? (
                       <td className="center bank-row-actions" onClick={(event) => event.stopPropagation()}>
-                        {!closed ? (
-                          <>
-                            <button
-                              type="button"
-                              className="bank-action-btn"
-                              title="Modificar"
-                              aria-label="Modificar"
-                              onClick={() => handleEdit(row)}
-                            >
-                              <EditMiniIcon />
-                            </button>
-                            <button
-                              type="button"
-                              className="bank-action-btn bank-action-btn-danger"
-                              title="Eliminar"
-                              aria-label="Eliminar"
-                              onClick={() => removeMovement(row.ref)}
-                            >
-                              <TrashMiniIcon />
-                            </button>
-                          </>
-                        ) : (
-                          <span className="bank-action-lock" title="Periodo conciliado">
-                            —
-                          </span>
-                        )}
+                        <button
+                          type="button"
+                          className="bank-action-btn"
+                          title="Modificar"
+                          aria-label="Modificar"
+                          onClick={() => handleEdit(row)}
+                        >
+                          <EditMiniIcon />
+                        </button>
+                        <button
+                          type="button"
+                          className="bank-action-btn bank-action-btn-danger"
+                          title="Eliminar"
+                          aria-label="Eliminar"
+                          onClick={() => removeMovement(row.ref)}
+                        >
+                          <TrashMiniIcon />
+                        </button>
                       </td>
                     ) : null}
+                    <td className="col-picker-cell" aria-hidden />
                   </tr>
                 );
               })
@@ -638,23 +705,20 @@ export function BankExtractView({
                     1,
                   )}
                 >
-                  Total
+                  Totales
                 </td>
-                {isVisible("debit") ? <td className="right">{formatBankAmount(summary.totalDebit)}</td> : null}
-                {isVisible("credit") ? <td className="right">{formatBankAmount(summary.totalCredit)}</td> : null}
+                {isVisible("debit") ? (
+                  <td className="right">{formatBankAmount(summary.totalDebit)}</td>
+                ) : null}
+                {isVisible("credit") ? (
+                  <td className="right">{formatBankAmount(summary.totalCredit)}</td>
+                ) : null}
                 {isVisible("balance") ? (
-                  <td className="right money">{formatBankAmount(periodOpening + summary.balance)}</td>
+                  <td className="right money">{formatBankAmount(summary.balance)}</td>
                 ) : null}
-                {isVisible("extract") ? (
-                  <td>
-                    {!closed ? (
-                      <button type="button" className="bank-reconcile-btn" onClick={handleReconcile}>
-                        Conciliar
-                      </button>
-                    ) : null}
-                  </td>
-                ) : null}
-                {isVisible("actions") ? <td /> : null}
+                {isVisible("extract") ? <td /> : null}
+                {showActions ? <td /> : null}
+                <td className="col-picker-cell" aria-hidden />
               </tr>
             </tfoot>
           ) : null}

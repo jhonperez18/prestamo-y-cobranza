@@ -13,6 +13,7 @@ import type {
 import {
   expenseCategoryLabel,
   formatBankAmount,
+  bankMovementAmount,
   isPeriodClosed,
   isoToDisplay,
   movementDisplayRef,
@@ -60,7 +61,7 @@ export function BankExpenseFicha({
   const [draft, setDraft] = useState<EditDraft>(() => ({
     description: movement.description,
     thirdParty: movement.thirdParty,
-    amount: String(movement.debit),
+    amount: String(bankMovementAmount(movement)),
     valueDate: movement.valueDate,
     category: movement.category ?? "otro",
   }));
@@ -77,7 +78,7 @@ export function BankExpenseFicha({
     setDraft({
       description: movement.description,
       thirdParty: movement.thirdParty,
-      amount: String(movement.debit),
+      amount: String(bankMovementAmount(movement)),
       valueDate: movement.valueDate,
       category: movement.category ?? "otro",
     });
@@ -94,8 +95,8 @@ export function BankExpenseFicha({
       ...movement,
       description: draft.description.trim(),
       thirdParty: draft.thirdParty.trim(),
-      debit: amount,
-      credit: 0,
+      debit: 0,
+      credit: amount,
       valueDate: draft.valueDate,
       opDate: draft.valueDate,
       category: draft.category,
@@ -220,7 +221,7 @@ export function BankExpenseFicha({
               { label: "Tercero", value: movement.thirdParty },
               {
                 label: "Importe",
-                value: `-${formatBankAmount(movement.debit).replace("$", "$ ")}`,
+                value: `-${formatBankAmount(bankMovementAmount(movement)).replace("$", "$ ")}`,
                 money: true,
               },
               {

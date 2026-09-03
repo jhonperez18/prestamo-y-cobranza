@@ -10,7 +10,7 @@ import {
   paymentMethodKind,
   paymentMethodLabel,
 } from "@/lib/payment-method";
-import { paymentHasReceipt } from "@/lib/payment-evidence";
+import { paymentHasReceipt, paymentHasSignature, primaryPaymentEvidence } from "@/lib/payment-evidence";
 import { money, type LoanRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
 
 type Props = {
@@ -34,7 +34,10 @@ export function PaymentFicha({
 }: Props) {
   const method = normalizePaymentMethod(payment.method);
   const evidence = payment.evidence ?? movement.evidence;
+  const item = primaryPaymentEvidence(evidence);
   const hasReceipt = paymentHasReceipt(evidence);
+  const hasSignature = paymentHasSignature(evidence);
+  const evidenceTitle = hasSignature && !hasReceipt ? "Firma del cliente" : "Comprobante de pago";
 
   return (
     <section className="panel payment-ficha">
@@ -50,7 +53,7 @@ export function PaymentFicha({
       <div className="payment-ficha-body">
         <div className="payment-ficha-evidence mini-block">
           <div className="mini-head payment-ficha-evidence-head">
-            <h2>Comprobante de pago</h2>
+            <h2>{evidenceTitle}</h2>
             <div className="payment-ficha-head-actions">
               {loan && onOpenLoan ? (
                 <button type="button" className="btn-bar light" onClick={() => onOpenLoan(loan.ref)}>
@@ -64,10 +67,12 @@ export function PaymentFicha({
               ) : null}
             </div>
           </div>
-          {hasReceipt ? (
+          {item ? (
             <PaymentEvidenceThumb evidence={evidence} variant="panel" emptyLabel="—" />
           ) : (
-            <p className="ficha-empty payment-ficha-no-evidence">No hay comprobante registrado.</p>
+            <p className="ficha-empty payment-ficha-no-evidence">
+              {hasSignature ? "No hay firma registrada." : "No hay comprobante registrado."}
+            </p>
           )}
         </div>
 
@@ -118,8 +123,8 @@ export function PaymentFicha({
                 value: payment.gps ? "Registrado" : "No",
               },
               {
-                label: "Comprobante",
-                value: hasReceipt ? "Adjunto" : "Sin comprobante",
+                label: hasSignature && !hasReceipt ? "Firma" : "Comprobante",
+                value: item ? "Adjunto" : hasSignature ? "Sin firma" : "Sin comprobante",
               },
             ]}
           />

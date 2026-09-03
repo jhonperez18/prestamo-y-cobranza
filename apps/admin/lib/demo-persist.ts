@@ -31,6 +31,7 @@ export const DEMO_LOANS_KEY = "nexo-demo-loans";
 export const DEMO_BANK_ACCOUNTS_KEY = "nexo-demo-banco-accounts";
 export const DEMO_BANK_MOVEMENTS_KEY = "nexo-demo-banco-movements";
 export const DEMO_BANK_RECONCILIATIONS_KEY = "nexo-demo-banco-reconciliations";
+export const DEMO_BANK_SIDES_VERSION_KEY = "nexo-demo-banco-sides-version";
 export const DEMO_MISC_PAYMENTS_KEY = "nexo-demo-pagos-varios";
 
 const SYSTEM_LOGINS = new Set(["truqui", "supervisor"]);

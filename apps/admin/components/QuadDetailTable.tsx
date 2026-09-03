@@ -43,7 +43,11 @@ export function QuadDetailTable({ title, plainTitle, code, badge, fields, footer
     <div className="mini-block loan-detail-compact">
       {title ? (
         plainTitle ? (
-          <h2 className="detail-plain-title">{title}</h2>
+          <div className="detail-plain-head">
+            <h2 className="detail-plain-title">{title}</h2>
+            {code ? <b className="sheet-code">{code}</b> : null}
+            {badge}
+          </div>
         ) : (
           <div className="mini-head loan-detail-head">
             <h2>{title}</h2>

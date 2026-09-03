@@ -384,11 +384,7 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
                 </div>
                 <LoanScheduleTable schedule={preview.schedule} />
               </>
-            ) : (
-              <p className="pick-hint">
-                Indique capital, vencimiento y {usesValor ? "el valor pactado" : "el interés"} para ver fechas y el monto a pagar.
-              </p>
-            )}
+            ) : null}
 
             <div className="form-actions">
               {askingDelete ? (

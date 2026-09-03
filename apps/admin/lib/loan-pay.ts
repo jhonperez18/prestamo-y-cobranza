@@ -45,24 +45,6 @@ export function lineStatus(
   return overdue ? { label: "Mora", kind: "overdue" } : { label: "Pendiente", kind: "pending" };
 }
 
-export function scheduleLineCollector(
-  line: ScheduleEntry,
-  collectorsByDueDate: ReadonlyMap<string, string>,
-  today = todayIso(),
-): string {
-  if (lineStatus(line, today).kind !== "paid") return "—";
-  return collectorsByDueDate.get(line.date) ?? "—";
-}
-
-export function collectorsByDueDateForLoan(loanRef: string, payments: { loanRef?: string; dueDate?: string; collector: string }[]) {
-  const map = new Map<string, string>();
-  for (const payment of payments) {
-    if (payment.loanRef !== loanRef || !payment.dueDate) continue;
-    map.set(payment.dueDate, payment.collector);
-  }
-  return map;
-}
-
 export function nextOpenCuota(schedule?: ScheduleEntry[]): CuotaTarget | null {
   if (!schedule?.length) return null;
   const index = schedule.findIndex((line) => lineRemaining(line) > 0);

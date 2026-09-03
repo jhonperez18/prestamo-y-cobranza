@@ -19,10 +19,8 @@ export function LoanScheduleTable({ schedule, title = "Fechas de cobro", compact
   if (schedule.length === 0) return null;
 
   return (
-    <div className={`mini-block${compact ? " loan-schedule-compact" : ""}`}>
-      <div className="mini-head">
-        <h2>{title}</h2>
-      </div>
+    <div className={`mini-block loan-schedule-block${compact ? " loan-schedule-compact" : ""}`}>
+      <h2 className="detail-plain-title loan-schedule-title">{title}</h2>
       <div className="table-wrap pay-dates">
         <table className="data mini-grid">
           <thead>

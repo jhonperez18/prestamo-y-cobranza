@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import { ReceiptCapture } from "@/components/ReceiptCapture";
+import { SignaturePad } from "@/components/SignaturePad";
 import {
   PAYMENT_METHODS,
   normalizePaymentMethod,
@@ -48,9 +49,9 @@ export function CollectorPayForm({
 }: Props) {
   const [rawAmount, setRawAmount] = useState(String(amountDue > 0 ? amountDue : ""));
   const [method, setMethod] = useState<PaymentMethod>("efectivo");
-  const [receipt, setReceipt] = useState<PaymentEvidenceRef | undefined>();
+  const [evidenceItem, setEvidenceItem] = useState<PaymentEvidenceRef | undefined>();
   const amount = parseAmount(rawAmount);
-  const evidence = useMemo(() => (receipt ? [receipt] : []), [receipt]);
+  const evidence = useMemo(() => (evidenceItem ? [evidenceItem] : []), [evidenceItem]);
   const evidenceError = validatePaymentEvidence(method, evidence);
   const canSubmit = amount > 0 && !evidenceError;
   const inline = variant === "inline";
@@ -120,11 +121,11 @@ export function CollectorPayForm({
                   checked={method === entry.id}
                   onChange={() => {
                     setMethod(entry.id);
-                    if (entry.id === "efectivo") setReceipt(undefined);
+                    setEvidenceItem(undefined);
                   }}
                 />
                 <span>{entry.label}</span>
-                <b>{entry.id === "nequi" ? "Requiere comprobante" : "En mano"}</b>
+                <b>{entry.id === "nequi" ? "Requiere comprobante" : "Requiere firma"}</b>
               </label>
             ))}
           </div>
@@ -156,7 +157,10 @@ export function CollectorPayForm({
                     type="radio"
                     name={methodName}
                     checked={method === entry.id}
-                    onChange={() => setMethod(entry.id)}
+                    onChange={() => {
+                      setMethod(entry.id);
+                      setEvidenceItem(undefined);
+                    }}
                   />
                   <span>{entry.label}</span>
                 </label>
@@ -166,28 +170,33 @@ export function CollectorPayForm({
         </div>
       )}
 
-      <ReceiptCapture
-        id={receiptId}
-        required={method === "nequi"}
-        compact={inline}
-        value={receipt}
-        onChange={setReceipt}
-        label={method === "nequi" ? "Comprobante Nequi" : "Evidencia del cobro"}
-        hint={
-          method === "nequi"
-            ? "Toma foto con la cámara del comprobante Nequi"
-            : "Opcional: foto del recibo o comprobante en efectivo"
-        }
-      />
+      {method === "nequi" ? (
+        <ReceiptCapture
+          id={receiptId}
+          required
+          compact={inline}
+          value={evidenceItem}
+          onChange={setEvidenceItem}
+          label="Comprobante Nequi"
+          hint="Toma foto con la cámara del comprobante Nequi"
+        />
+      ) : (
+        <SignaturePad
+          required
+          compact={inline}
+          value={evidenceItem}
+          onChange={setEvidenceItem}
+        />
+      )}
 
-      {evidenceError ? <p className="receipt-error">{evidenceError}</p> : null}
+      {evidenceError && evidenceItem ? <p className="receipt-error">{evidenceError}</p> : null}
 
       <div className="form-actions collector-pay-actions">
-        <button type="button" className="btn" onClick={onCancel}>
+        <button type="button" className="btn compact" onClick={onCancel}>
           Cancelar
         </button>
-        <button type="submit" className="btn primary" disabled={!canSubmit}>
-          Confirmar cobro
+        <button type="submit" className="btn compact primary" disabled={!canSubmit}>
+          Confirmar
         </button>
       </div>
     </form>

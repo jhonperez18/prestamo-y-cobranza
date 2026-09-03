@@ -64,7 +64,8 @@ export function newEvidenceId(prefix = "EV") {
 }
 
 export function evidenceRequiredForMethod(method?: PaymentMethod | string) {
-  return normalizePaymentMethod(method) === "nequi";
+  const normalized = normalizePaymentMethod(method);
+  return normalized === "nequi" || normalized === "efectivo";
 }
 
 export function paymentEvidenceOfKind(
@@ -80,17 +81,44 @@ export function paymentHasReceipt(evidence?: PaymentEvidenceRef[]) {
   );
 }
 
+export function paymentHasSignature(evidence?: PaymentEvidenceRef[]) {
+  return paymentEvidenceOfKind(evidence, "firma").some(
+    (row) => Boolean(resolvePaymentEvidencePreview(row)),
+  );
+}
+
+/** Comprobante Nequi o firma de efectivo, el que esté disponible. */
+export function primaryPaymentEvidence(evidence?: PaymentEvidenceRef[]) {
+  const receipt = paymentEvidenceOfKind(evidence, "comprobante").find((row) =>
+    Boolean(resolvePaymentEvidencePreview(row)),
+  );
+  if (receipt) return receipt;
+  return paymentEvidenceOfKind(evidence, "firma").find((row) =>
+    Boolean(resolvePaymentEvidencePreview(row)),
+  );
+}
+
+export function paymentHasVisualEvidence(evidence?: PaymentEvidenceRef[]) {
+  return Boolean(primaryPaymentEvidence(evidence));
+}
+
 export function validatePaymentEvidence(
   method: PaymentMethod | undefined,
   evidence: PaymentEvidenceRef[] | undefined,
 ) {
-  if (!evidenceRequiredForMethod(method)) return null;
-  if (!paymentHasReceipt(evidence)) {
-    return "Nequi requiere foto del comprobante de transferencia.";
+  const normalized = normalizePaymentMethod(method);
+  if (normalized === "nequi") {
+    if (!paymentHasReceipt(evidence)) {
+      return "Nequi requiere foto del comprobante de transferencia.";
+    }
+    const receipt = paymentEvidenceOfKind(evidence, "comprobante")[0];
+    if (receipt?.byteSize && receipt.byteSize > RECEIPT_MAX_BYTES) {
+      return "La foto del comprobante supera el tamaño permitido (2 MB).";
+    }
+    return null;
   }
-  const receipt = paymentEvidenceOfKind(evidence, "comprobante")[0];
-  if (receipt?.byteSize && receipt.byteSize > RECEIPT_MAX_BYTES) {
-    return "La foto del comprobante supera el tamaño permitido (2 MB).";
+  if (normalized === "efectivo" && !paymentHasSignature(evidence)) {
+    return "El cliente debe firmar el cobro en efectivo.";
   }
   return null;
 }
@@ -188,6 +216,24 @@ export function buildReceiptEvidence(dataUrl: string, meta: {
   return {
     id: newEvidenceId(),
     kind: "comprobante",
+    previewUrl: dataUrl,
+    mime: meta.mime,
+    byteSize: meta.byteSize,
+    width: meta.width,
+    height: meta.height,
+    capturedAt: new Date().toISOString(),
+  };
+}
+
+export function buildSignatureEvidence(dataUrl: string, meta: {
+  mime: string;
+  byteSize: number;
+  width: number;
+  height: number;
+}): PaymentEvidenceRef {
+  return {
+    id: newEvidenceId("SG"),
+    kind: "firma",
     previewUrl: dataUrl,
     mime: meta.mime,
     byteSize: meta.byteSize,

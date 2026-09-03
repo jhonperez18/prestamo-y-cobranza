@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { ColumnPicker, useColumnVisibility } from "@/components/ColumnPicker";
+import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell, useColumnVisibility } from "@/components/ColumnPicker";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { PaymentRefLink } from "@/components/PaymentRefLink";
 import { PaymentStatusPill } from "@/components/PaymentStatusPill";
@@ -18,7 +18,6 @@ import {
   cobranzaPaymentsReportPdfBlobAsync,
   downloadCobranzaPaymentsReportPdfAsync,
 } from "@/lib/cobranza-payments-report-pdf";
-import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import { money, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 import {
   normalizePaymentMethod,
@@ -43,6 +42,7 @@ type Props = {
   loans: LoanRow[];
   collectors: string[];
   assignments?: DailyCollectionAssignment[];
+  initialRange?: { fromIso: string; toIso: string };
   onOpenPayment: (ref: string) => void;
 };
 
@@ -64,9 +64,10 @@ export function CobranzaPaymentsView({
   loans,
   collectors,
   assignments = [],
+  initialRange,
   onOpenPayment,
 }: Props) {
-  const defaults = defaultCobranzaReportRange();
+  const defaults = initialRange ?? defaultCobranzaReportRange();
   const [fromIso, setFromIso] = useState(defaults.fromIso);
   const [toIso, setToIso] = useState(defaults.toIso);
   const [collectorFilter, setCollectorFilter] = useState("");
@@ -138,6 +139,15 @@ export function CobranzaPaymentsView({
 
   const visibleHeaders = SORT_HEADERS.filter((header) => columnVisibility.isVisible(header.id));
 
+  const periodHint = useMemo(() => {
+    if (fromIso === toIso) return "Un solo día";
+    const start = Date.parse(`${fromIso}T12:00:00`);
+    const end = Date.parse(`${toIso}T12:00:00`);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return "Rango de fechas";
+    const days = Math.round((end - start) / 86_400_000) + 1;
+    return `${days} día${days === 1 ? "" : "s"}`;
+  }, [fromIso, toIso]);
+
   return (
     <>
       <section className="panel cobranza-payments-view">
@@ -148,11 +158,6 @@ export function CobranzaPaymentsView({
           <button type="button" className="btn primary" onClick={() => setPdfPreviewOpen(true)}>
             Vista previa PDF
           </button>
-          <ColumnPicker
-            columns={COBRANZA_PAYMENT_COLUMNS}
-            visibleCols={columnVisibility.visibleCols}
-            onToggle={columnVisibility.toggleColumn}
-          />
         </div>
 
         <div className="filters cobranza-report-filters">
@@ -194,7 +199,7 @@ export function CobranzaPaymentsView({
           <Kpi
             label="Periodo"
             value={report.periodLabel}
-            hint={`${isoToDispatchLabel(fromIso)} → ${isoToDispatchLabel(toIso)}`}
+            hint={periodHint}
             tone="teal"
           />
           <Kpi
@@ -207,9 +212,9 @@ export function CobranzaPaymentsView({
         </div>
 
         <div className="table-wrap">
-          <table className="data">
-            <thead>
-              <tr>
+          <table className="data list-grid">
+          <thead>
+            <tr className="col-titles">
                 {visibleHeaders.map((header) => {
                   const active = "sortKey" in header && header.sortKey === paymentSortKey;
                   const className = [
@@ -219,6 +224,21 @@ export function CobranzaPaymentsView({
                   ]
                     .filter(Boolean)
                     .join(" ");
+                  const label =
+                    "sortKey" in header && header.sortKey ? (
+                      <button
+                        type="button"
+                        className="th-sort"
+                        onClick={() => togglePaymentSort(header.sortKey as PaymentSortKey)}
+                      >
+                        <span className="th-sort-arrow" aria-hidden>
+                          {active ? (paymentSortDir === "asc" ? "▲" : "▼") : "▲"}
+                        </span>
+                        {header.t}
+                      </button>
+                    ) : (
+                      header.t
+                    );
 
                   return (
                     <th
@@ -232,29 +252,23 @@ export function CobranzaPaymentsView({
                           : undefined
                       }
                     >
-                      {"sortKey" in header && header.sortKey ? (
-                        <button
-                          type="button"
-                          className="th-sort"
-                          onClick={() => togglePaymentSort(header.sortKey as PaymentSortKey)}
-                        >
-                          <span className="th-sort-arrow" aria-hidden>
-                            {active ? (paymentSortDir === "asc" ? "▲" : "▼") : "▲"}
-                          </span>
-                          {header.t}
-                        </button>
-                      ) : (
-                        header.t
-                      )}
+                      {label}
                     </th>
                   );
                 })}
+                <ColumnPickerHeadCell>
+                  <ColumnPicker
+                    columns={COBRANZA_PAYMENT_COLUMNS}
+                    visibleCols={columnVisibility.visibleCols}
+                    onToggle={columnVisibility.toggleColumn}
+                  />
+                </ColumnPickerHeadCell>
               </tr>
             </thead>
             <tbody>
               {sorted.length === 0 ? (
                 <tr className="empty-row">
-                  <td colSpan={visibleHeaders.length}>Sin registros en este periodo.</td>
+                  <td colSpan={visibleHeaders.length + 1}>Sin registros en este periodo.</td>
                 </tr>
               ) : (
                 sorted.map((row) => (
@@ -292,6 +306,7 @@ export function CobranzaPaymentsView({
                         />
                       </td>
                     ) : null}
+                    <ColumnPickerBodyCell />
                   </tr>
                 ))
               )}

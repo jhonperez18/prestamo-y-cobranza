@@ -67,7 +67,7 @@ export function HomeDashboard({
           value={money(data.collectedToday)}
           hint={`${data.collectedCount} operacion${data.collectedCount === 1 ? "" : "es"}`}
           tone="amber"
-          onClick={() => onGo("cobranza", "hoy")}
+          onClick={() => onGo("cobranza", "pagos-hoy")}
         />
         <Kpi
           label="Por cobrar hoy"

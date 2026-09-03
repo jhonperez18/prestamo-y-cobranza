@@ -21,6 +21,7 @@ export function DataTable({
   sortDir,
   onSort,
   toolbarEnd,
+  showFilters = true,
 }: {
   title: string;
   count: string | number;
@@ -32,6 +33,7 @@ export function DataTable({
   sortDir?: "asc" | "desc";
   onSort?: (key: string) => void;
   toolbarEnd?: ReactNode;
+  showFilters?: boolean;
 }) {
   return (
     <section className="panel">
@@ -51,8 +53,8 @@ export function DataTable({
             <PlusIcon />
           </button>
         ) : null}
-        {toolbarEnd}
       </div>
+      {showFilters ? (
       <div className="filters">
         <select defaultValue="Todos los cobradores">
           <option>Todos los cobradores</option>
@@ -71,6 +73,7 @@ export function DataTable({
           <SearchIcon size={15} />
         </button>
       </div>
+      ) : null}
       <div className="table-wrap">
         <table className={fixedColumns ? "data cols-fixed" : "data"}>
           {fixedColumns ? (
@@ -78,10 +81,11 @@ export function DataTable({
               {headers.map((header) => (
                 <col key={header.t} style={header.width ? { width: header.width } : undefined} />
               ))}
+              {toolbarEnd ? <col className="col-picker-spacer" /> : null}
             </colgroup>
           ) : null}
           <thead>
-            <tr>
+            <tr className={toolbarEnd ? "col-titles" : undefined}>
               {headers.map((header) => {
                 const active = Boolean(header.sortKey && sortKey === header.sortKey);
                 const ariaSort = active
@@ -97,25 +101,28 @@ export function DataTable({
                   .filter(Boolean)
                   .join(" ");
 
+                const label = header.sortKey && onSort ? (
+                  <button
+                    type="button"
+                    className="th-sort"
+                    onClick={() => onSort(header.sortKey!)}
+                  >
+                    <span className="th-sort-arrow" aria-hidden>
+                      {active ? (sortDir === "asc" ? "▲" : "▼") : "▲"}
+                    </span>
+                    {header.t}
+                  </button>
+                ) : (
+                  header.t
+                );
+
                 return (
                   <th key={header.t} className={className || undefined} aria-sort={ariaSort}>
-                    {header.sortKey && onSort ? (
-                      <button
-                        type="button"
-                        className="th-sort"
-                        onClick={() => onSort(header.sortKey!)}
-                      >
-                        <span className="th-sort-arrow" aria-hidden>
-                          {active ? (sortDir === "asc" ? "▲" : "▼") : "▲"}
-                        </span>
-                        {header.t}
-                      </button>
-                    ) : (
-                      header.t
-                    )}
+                    {label}
                   </th>
                 );
               })}
+              {toolbarEnd ? <th className="col-picker-cell">{toolbarEnd}</th> : null}
             </tr>
           </thead>
           <tbody>{children}</tbody>
@@ -131,12 +138,14 @@ export function Kpi({
   hint,
   tone,
   onClick,
+  active,
 }: {
   label: string;
   value: string;
   hint: string;
   tone?: KpiTone;
   onClick?: () => void;
+  active?: boolean;
 }) {
   const className = tone ? `kpi kpi-${tone}` : "kpi";
   const body = (
@@ -149,7 +158,12 @@ export function Kpi({
 
   if (onClick) {
     return (
-      <button type="button" className={`${className} kpi-clickable`} onClick={onClick}>
+      <button
+        type="button"
+        className={`${className} kpi-clickable${active ? " kpi-active" : ""}`}
+        onClick={onClick}
+        aria-pressed={active}
+      >
         {body}
       </button>
     );

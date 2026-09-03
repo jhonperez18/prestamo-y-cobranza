@@ -31,11 +31,14 @@ import {
 import { buildDailyCollectionList, type DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
   applyPaymentToAssignments,
+  applySkipToRoute,
   assignmentFromItem,
   buildDispatchRoute,
+  closeDispatchDay,
   dispatchRouteRef,
   markAssignmentsDispatched,
   rebuildDispatchRoutes,
+  skipAssignmentVisit,
   upsertDispatchDailyLog,
   upsertDispatchRoute,
 } from "@/lib/collector-dispatch-sync";
@@ -62,6 +65,11 @@ import { PermissionsPanel, RolePanel } from "@/components/RolePanel";
 import { CarteraView } from "@/components/CarteraView";
 import { CobranzaPaymentsView } from "@/components/CobranzaPaymentsView";
 import { ComingSoonPanel } from "@/components/ComingSoonPanel";
+import {
+  CARTERA_POR_COBRADOR_COLUMNS,
+  CARTERA_POR_RUTA_COLUMNS,
+  REPORTES_GENERIC_COLUMNS,
+} from "@/components/ListDataTableShell";
 import { SystemSettingsView } from "@/components/SystemSettingsView";
 import { AdminProfileView } from "@/components/AdminProfileView";
 import { BankExtractView } from "@/components/BankExtractView";
@@ -76,7 +84,8 @@ import { MiscPaymentListView } from "@/components/MiscPaymentListView";
 import { BankExpenseFicha } from "@/components/BankExpenseFicha";
 import { BankRecordsHistoryView } from "@/components/BankRecordsHistoryView";
 import { CollectorMobilePreview } from "@/components/CollectorMobilePreview";
-import { ColumnPicker, useColumnVisibility } from "@/components/ColumnPicker";
+import type { CollectorSkipVisitDraft } from "@/components/CollectorMobileApp";
+import { ColumnPicker, ColumnPickerBodyCell, useColumnVisibility } from "@/components/ColumnPicker";
 import { LoanPaymentsTable } from "@/components/LoanPaymentsTable";
 import {
   PRESTAMO_LIST_COLUMNS,
@@ -100,7 +109,7 @@ import {
 } from "@/lib/payment-method";
 import { validatePaymentEvidence } from "@/lib/payment-evidence";
 import { applyCollectorPaymentResult, buildRouteStop, type CollectorPaymentDraft } from "@/lib/route-sync";
-import { applyPay, collectorsByDueDateForLoan, cuotaTarget, lineStatus, loanRowAfterPay, paymentRowKind, scheduleLineCollector, type PayKind } from "@/lib/loan-pay";
+import { applyPay, cuotaTarget, lineStatus, loanRowAfterPay, paymentRowKind, type PayKind } from "@/lib/loan-pay";
 import {
   COLLECTOR_DAILY_LOGS_SEED,
   upsertDailyLogPayment,
@@ -108,10 +117,12 @@ import {
 } from "@/lib/collector-daily-log";
 import {
   currentPeriod,
+  isBankExpenseMovement,
   normalizeBankAccount,
   normalizeBankMovements,
   repairMiscPaymentLinks,
   seedBankMovements,
+  swapReconciliationDebitCredit,
   syncAllPaymentsToMovements,
   syncMiscPaymentsToMovements,
   syncPaymentsToMovements,
@@ -134,6 +145,7 @@ import {
   DEMO_BANK_ACCOUNTS_KEY,
   DEMO_BANK_MOVEMENTS_KEY,
   DEMO_BANK_RECONCILIATIONS_KEY,
+  DEMO_BANK_SIDES_VERSION_KEY,
   DEMO_MISC_PAYMENTS_KEY,
   loadDemoPaymentsBundle,
   loadDemoUsers,
@@ -210,6 +222,7 @@ export function Workspace({
   const [users, setUsers] = useState<UserRow[]>(USERS);
   const [dailyLogs, setDailyLogs] = useState<CollectorDailyLogRow[]>(COLLECTOR_DAILY_LOGS_SEED);
   const [dailyAssignments, setDailyAssignments] = useState<DailyCollectionAssignment[]>([]);
+  const [cobranzaPagosToday, setCobranzaPagosToday] = useState(false);
   const [activities] = useState(ACTIVITY);
   const [openRef, setOpenRef] = useState(CLIENTS[0]?.ref ?? "");
   const [openUserRef, setOpenUserRef] = useState(USERS[0]?.ref ?? "");
@@ -279,19 +292,30 @@ export function Workspace({
     );
     const storedMovements = readDemoJson<BankMovement[] | null>(DEMO_BANK_MOVEMENTS_KEY, null);
     const storedReconciliations = readDemoJson<BankReconciliation[]>(DEMO_BANK_RECONCILIATIONS_KEY, []);
+    const sidesVersion = readDemoJson<number>(DEMO_BANK_SIDES_VERSION_KEY, 1);
+    const nextReconciliations =
+      sidesVersion < 2 ? swapReconciliationDebitCredit(storedReconciliations) : storedReconciliations;
+    const nextMovements = storedMovements?.length
+      ? normalizeBankMovements(storedMovements)
+      : storedAccounts.length
+        ? seedBankMovements(storedPayments)
+        : [];
     setBankAccounts(storedAccounts);
-    setBankMovements(
-      storedMovements?.length
-        ? normalizeBankMovements(storedMovements)
-        : storedAccounts.length
-          ? seedBankMovements(storedPayments)
-          : [],
-    );
-    setBankReconciliations(storedReconciliations);
+    setBankMovements(nextMovements);
+    setBankReconciliations(nextReconciliations);
+    writeDemoJson(DEMO_BANK_SIDES_VERSION_KEY, 2);
+    writeDemoJson(DEMO_BANK_RECONCILIATIONS_KEY, nextReconciliations);
+    writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, nextMovements);
     setBankAccountRef(storedAccounts[0]?.ref ?? "");
     setMiscPayments(readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []));
     setDemoHydrated(true);
   }, []);
+
+  useEffect(() => {
+    if (moduleId !== "cobranza" || viewId !== "pagos") {
+      setCobranzaPagosToday(false);
+    }
+  }, [moduleId, viewId]);
 
   useEffect(() => {
     if (!demoHydrated) return;
@@ -893,6 +917,32 @@ export function Workspace({
     onToast(`Enviado a cobradores · ${summary}. Visible en la app móvil del cobrador.`);
   }
 
+  function closeDailyCollections(date: string) {
+    const result = closeDispatchDay(
+      dailyAssignments,
+      routes,
+      dailyLogs,
+      date,
+      collectors,
+      loans,
+      clients,
+    );
+    if (!result.collectorsClosed) {
+      onToast("No hay rutas enviadas para cerrar en esta fecha.");
+      return;
+    }
+    setDailyAssignments(result.assignments);
+    setRoutes(result.routes);
+    setDailyLogs(result.logs);
+    const parts = [
+      `${result.collectorsClosed} cobrador${result.collectorsClosed === 1 ? "" : "es"}`,
+      result.skipped
+        ? `${result.skipped} no visitado${result.skipped === 1 ? "" : "s"} → mora mañana`
+        : null,
+    ].filter(Boolean);
+    onToast(`Día cerrado · ${parts.join(" · ")}.`);
+  }
+
   function assignDailyCollectionHandler(
     itemId: string,
     loanRef: string,
@@ -1004,6 +1054,29 @@ export function Workspace({
       }),
     );
     onToast(`Cobro ${paymentRef} sincronizado desde móvil.`);
+  }
+
+  function skipCollectorVisit(draft: CollectorSkipVisitDraft) {
+    const nextAssignments = skipAssignmentVisit(dailyAssignments, {
+      collectorRef: draft.collectorRef,
+      dispatchDate: draft.dispatchDate,
+      loanRef: draft.loanRef,
+      clientRef: draft.clientRef,
+      reason: draft.reason,
+    });
+    setDailyAssignments(nextAssignments);
+    setRoutes((current) =>
+      current.map((row) =>
+        row.ref === draft.routeRef
+          ? applySkipToRoute(row, draft.loanRef, draft.clientRef)
+          : row,
+      ),
+    );
+    onToast(
+      draft.reason
+        ? `Visita omitida · ${draft.reason}. Queda para reprogramar.`
+        : "Visita omitida. Queda para reprogramar.",
+    );
   }
 
   function toggleCollectorActive() {
@@ -1332,6 +1405,15 @@ export function Workspace({
     if (id !== "pagos") setPayMode(null);
   }
 
+  function goFromHome(nextModule: ModuleId, nextView?: string) {
+    if (nextModule === "cobranza" && nextView === "pagos-hoy") {
+      setCobranzaPagosToday(true);
+      onGo("cobranza", "pagos");
+      return;
+    }
+    onGo(nextModule, nextView);
+  }
+
   function startPay(kind: PayKind) {
     setLoanTab("pagos");
     setPayMode(kind);
@@ -1366,7 +1448,7 @@ export function Workspace({
           routes={routes}
           collectors={collectors}
           activities={activities}
-          onGo={onGo}
+          onGo={goFromHome}
         />
       );
     }
@@ -1757,7 +1839,6 @@ export function Workspace({
       const loanPays = openLoan
         ? sortPaymentsNewestFirst(payments.filter((row) => row.loanRef === openLoan.ref))
         : [];
-      const scheduleCollectors = openLoan ? collectorsByDueDateForLoan(openLoan.ref, payments) : new Map();
       const loanFinancials = openLoan ? computeLoanFinancials(openLoan, payments) : null;
       const paySummary = loanFinancials ? loanPaySummaryRows(loanFinancials, money) : [];
       const loanClient = openLoan ? clients.find((row) => row.ref === openLoan.clientRef) : null;
@@ -1803,7 +1884,9 @@ export function Workspace({
             {openLoan && (loanTab === "fechas" || loanTab === "pagos") ? (
               <span className="file-title-ref ref">{openLoan.ref}</span>
             ) : null}
-            {openLoan && loanTab !== "prestamos" ? (
+            {openLoan &&
+            loanTab !== "prestamos" &&
+            (loanTab !== "fechas" || canPay || confirmLoanDelete) ? (
               <div className="file-toolbar-actions">
                 {confirmLoanDelete ? (
                   <>
@@ -1837,9 +1920,11 @@ export function Workspace({
                         Ver informe
                       </button>
                     ) : null}
-                    <button type="button" className="btn-bar" onClick={() => onGo("prestamos", "editar")}>
-                      Modificar
-                    </button>
+                    {loanTab !== "fechas" ? (
+                      <button type="button" className="btn-bar" onClick={() => onGo("prestamos", "editar")}>
+                        Modificar
+                      </button>
+                    ) : null}
                     {loanTab !== "fechas" && loanTab !== "pagos" ? (
                       <button type="button" className="btn-bar" onClick={() => setConfirmLoanDelete(true)}>
                         Borrar
@@ -1916,9 +2001,16 @@ export function Workspace({
 
               {loanTab === "fechas" ? (
                 openLoan?.schedule?.length ? (
-                  <div className="mini-block">
-                    <div className="table-wrap">
-                      <table className="data mini-grid">
+                  <div className="mini-block loan-fechas-block">
+                    <div className="table-wrap pay-dates">
+                      <table className="data mini-grid loan-fechas-table">
+                        <colgroup>
+                          <col className="loan-fechas-col-num" />
+                          <col className="loan-fechas-col-date" />
+                          <col className="loan-fechas-col-concept" />
+                          <col className="loan-fechas-col-amount" />
+                          <col className="loan-fechas-col-status" />
+                        </colgroup>
                         <thead>
                           <tr className="col-titles">
                             <th>N.º</th>
@@ -1926,13 +2018,11 @@ export function Workspace({
                             <th>Concepto</th>
                             <th className="right">A cobrar</th>
                             <th>Estado</th>
-                            <th>Cobrador</th>
                           </tr>
                         </thead>
                         <tbody>
                           {openLoan.schedule.map((line, index) => {
                             const state = lineStatus(line);
-                            const collector = scheduleLineCollector(line, scheduleCollectors);
                             return (
                               <tr key={`${line.kind ?? "pago"}-${line.date}-${index}`}>
                                 <td>{index + 1}</td>
@@ -1942,7 +2032,6 @@ export function Workspace({
                                 <td>
                                   <Pill label={state.label} kind={state.kind} />
                                 </td>
-                                <td>{collector}</td>
                               </tr>
                             );
                           })}
@@ -1990,12 +2079,12 @@ export function Workspace({
             />
           }
           headers={[
-            { t: "Ref", width: "8%" },
-            { t: "Cliente", width: "24%" },
+            { t: "Ref", width: "10%" },
+            { t: "Cliente", width: "28%" },
             { t: "Desembolso", width: "14%" },
-            { t: "Capital", right: true, width: "14%" },
-            { t: "Saldo", right: true, width: "14%" },
-            { t: "Estado", center: true, width: "12%" },
+            { t: "Capital", right: true, width: "16%" },
+            { t: "Saldo", right: true, width: "16%" },
+            { t: "Estado", center: true, width: "16%" },
           ].filter((_, index) => prestamoListColumns.isVisible(PRESTAMO_LIST_COLUMNS[index]!.id))}
           onCreate={() => onGo("prestamos", "nuevo")}
         >
@@ -2019,6 +2108,7 @@ export function Workspace({
                   <Pill label={status.label} kind={status.kind} />
                 </td>
               ) : null}
+              <ColumnPickerBodyCell />
             </tr>
             );
           })}
@@ -2033,6 +2123,8 @@ export function Workspace({
             title="Cartera por cobrador"
             purpose="Vista operativa: saldos y exposición agrupados por cobrador asignado, para supervisar en el día a día."
             later="No es el informe imprimible de Reportes. Aquí se abrirá el detalle vivo; el informe formal con exportación irá en Reportes → Por cobrador."
+            tableColumns={CARTERA_POR_COBRADOR_COLUMNS}
+            tableTitle="Por cobrador"
           />
         );
       }
@@ -2042,6 +2134,8 @@ export function Workspace({
             title="Cartera por ruta"
             purpose="Vista operativa: saldos y clientes pendientes agrupados por ruta o zona."
             later="Se activará cuando las rutas y asignaciones diarias estén conectadas al backend."
+            tableColumns={CARTERA_POR_RUTA_COLUMNS}
+            tableTitle="Por ruta"
           />
         );
       }
@@ -2055,6 +2149,7 @@ export function Workspace({
           clients={clients}
           onOpenClient={openFicha}
           onOpenLoan={openLoanAccount}
+          onGo={onGo}
         />
       );
     }
@@ -2069,10 +2164,16 @@ export function Workspace({
           assignments={dailyAssignments}
           onGenerate={generateDailyCollections}
           onDispatch={dispatchToCollectors}
+          onCloseDay={closeDailyCollections}
           onAssignItem={assignDailyCollectionHandler}
           onOpenClient={openFicha}
           onOpenLoan={openLoanAccount}
+          onOpenMobile={(collectorRef) => {
+            if (collectorRef) setMobilePreviewCollectorRef(collectorRef);
+            onGo("inicio", "vista-movil");
+          }}
           onToast={onToast}
+          onGo={onGo}
         />
       );
     }
@@ -2136,13 +2237,20 @@ export function Workspace({
       const collectorNames = [...new Set(collectors.map((row) => row.name))].sort((a, b) =>
         a.localeCompare(b, "es"),
       );
+      const today = todayIso();
+      const pagosTodayRange =
+        cobranzaPagosToday && viewId === "pagos"
+          ? { fromIso: today, toIso: today }
+          : undefined;
       return (
         <CobranzaPaymentsView
+          key={pagosTodayRange ? `pagos-today-${today}` : `pagos-${viewId}`}
           kind={viewId === "abonos" ? "abonos" : "pagos"}
           payments={payments}
           loans={loans}
           collectors={collectorNames}
           assignments={dailyAssignments}
+          initialRange={pagosTodayRange}
           onOpenPayment={(ref) =>
             openPaymentFicha(ref, viewId === "abonos" ? "abonos" : "pagos")
           }
@@ -2449,7 +2557,6 @@ export function Workspace({
           onPeriodChange={setBankPeriod}
           onMovementsChange={setBankMovements}
           onReconciliationsChange={setBankReconciliations}
-          onBack={() => onGo("banco", pending ? "listado" : "extractos")}
           onOpenMiscPayment={(ref) =>
             openMiscPaymentFromBank(ref, {
               moduleId: "banco",
@@ -2499,7 +2606,6 @@ export function Workspace({
           accounts={bankAccounts}
           movements={bankMovements}
           reconciliations={bankReconciliations}
-          period={bankPeriod}
           onNewAccount={() => onGo("banco", "nueva-cuenta")}
           onOpenPending={(accountRef, period) => {
             setBankAccountRef(accountRef);
@@ -2525,7 +2631,7 @@ export function Workspace({
       );
     }
 
-    if (moduleId === "banco" && (viewId === "informe" || viewId === "informe-resultado")) {
+    if (moduleId === "banco" && viewId === "informe-resultado") {
       return (
         <BankReportView
           reconciliations={bankReconciliations}
@@ -2569,7 +2675,7 @@ export function Workspace({
     if (moduleId === "banco" && viewId === "registro-gasto") {
       const movement =
         bankMovements.find((row) => row.ref === openBankMovementRef) ?? null;
-      if (!movement || movement.debit <= 0) {
+      if (!movement || !isBankExpenseMovement(movement)) {
         return (
           <section className="panel">
             <div className="head">
@@ -2629,6 +2735,8 @@ export function Workspace({
           title={viewLabel}
           purpose={copy.purpose}
           later={copy.later}
+          tableColumns={REPORTES_GENERIC_COLUMNS}
+          tableTitle={viewLabel}
         />
       );
     }
@@ -2681,6 +2789,8 @@ export function Workspace({
           routes={routes}
           loans={loans}
           clients={clients}
+          onRegisterPayment={registerCollectorPayment}
+          onSkipVisit={skipCollectorVisit}
         />
       );
     }
@@ -2691,6 +2801,14 @@ export function Workspace({
           title="Auditoría"
           purpose="Historial oficial de acciones: quién creó, modificó o anuló clientes, préstamos y pagos."
           later="La línea de tiempo demo se reemplazará por el log de auditoría del servidor."
+          tableColumns={[
+            { id: "when", label: "Fecha" },
+            { id: "user", label: "Usuario" },
+            { id: "action", label: "Acción" },
+            { id: "entity", label: "Entidad" },
+            { id: "detail", label: "Detalle" },
+          ]}
+          tableTitle="Auditoría"
         />
       );
     }

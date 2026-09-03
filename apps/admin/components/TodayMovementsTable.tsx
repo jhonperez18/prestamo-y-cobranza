@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { ColumnPicker, useColumnVisibility } from "@/components/ColumnPicker";
+import { ColumnPicker, ColumnPickerBodyCell, useColumnVisibility } from "@/components/ColumnPicker";
 import { PaymentStatusPill } from "@/components/PaymentStatusPill";
 import { DataTable } from "@/components/ui";
 import { money, type LoanRow, type PaymentRow } from "@/lib/mock-data";
@@ -84,6 +84,7 @@ export function TodayMovementsTable({ payments, loans = [], onCreate, onOpenPaym
               />
             </td>
           ) : null}
+          <ColumnPickerBodyCell />
         </tr>
       ))}
     </DataTable>

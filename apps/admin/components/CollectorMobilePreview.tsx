@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo } from "react";
-import { CollectorMobileApp } from "@/components/CollectorMobileApp";
+import { CollectorMobileApp, type CollectorSkipVisitDraft } from "@/components/CollectorMobileApp";
 import { MobilePreviewFrame } from "@/components/MobilePreviewFrame";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { ClientRow, CollectorRow, LoanRow, RouteRow } from "@/lib/mock-data";
+import type { CollectorPaymentDraft } from "@/lib/route-sync";
 
 type Props = {
   collectors: CollectorRow[];
@@ -14,6 +15,8 @@ type Props = {
   routes: RouteRow[];
   loans: LoanRow[];
   clients: ClientRow[];
+  onRegisterPayment?: (draft: CollectorPaymentDraft) => void;
+  onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
 };
 
 export function CollectorMobilePreview({
@@ -24,6 +27,8 @@ export function CollectorMobilePreview({
   routes,
   loans,
   clients,
+  onRegisterPayment,
+  onSkipVisit,
 }: Props) {
   const mobileCollectors = useMemo(
     () => collectors.filter((row) => row.mobileAccess && row.active),
@@ -68,7 +73,9 @@ export function CollectorMobilePreview({
             loans={loans}
             clients={clients}
             preview
-            canRegister={false}
+            canRegister
+            onRegisterPayment={onRegisterPayment}
+            onSkipVisit={onSkipVisit}
           />
         </MobilePreviewFrame>
       )}

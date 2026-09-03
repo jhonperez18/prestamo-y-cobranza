@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { EditMiniIcon, PlusIcon } from "@/components/icons";
-import { ColumnPicker, useColumnVisibility } from "@/components/ColumnPicker";
+import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell, useColumnVisibility } from "@/components/ColumnPicker";
 import { Pill } from "@/components/ui";
 import type { BankAccount, BankMovement, BankReconciliation } from "@/lib/bank";
 import { formatBankAmount, isPeriodClosed, isoToDisplay } from "@/lib/bank";
@@ -103,11 +103,6 @@ export function MiscPaymentListView({
         <button className="plus" title="Nuevo pago varios" type="button" onClick={onCreate}>
           <PlusIcon />
         </button>
-        <ColumnPicker
-          columns={MISC_PAYMENT_COLUMNS}
-          visibleCols={visibleCols}
-          onToggle={toggleColumn}
-        />
       </div>
 
       <div className="table-wrap">
@@ -122,12 +117,19 @@ export function MiscPaymentListView({
               {isVisible("amount") ? <th className="right">Importe</th> : null}
               {isVisible("status") ? <th>Estado</th> : null}
               {showActions ? <th className="center">Acciones</th> : null}
+              <ColumnPickerHeadCell>
+                <ColumnPicker
+                  columns={MISC_PAYMENT_COLUMNS}
+                  visibleCols={visibleCols}
+                  onToggle={toggleColumn}
+                />
+              </ColumnPickerHeadCell>
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 ? (
               <tr className="empty-row">
-                <td colSpan={visibleCols.length}>
+                <td colSpan={visibleCols.length + (showActions ? 1 : 0) + 1}>
                   No hay pagos varios registrados.{" "}
                   <button type="button" className="btn-link" onClick={onCreate}>
                     Registrar nuevo
@@ -193,6 +195,7 @@ export function MiscPaymentListView({
                         </button>
                       </td>
                     ) : null}
+                    <ColumnPickerBodyCell />
                   </tr>
                 );
               })
@@ -215,7 +218,7 @@ export function MiscPaymentListView({
                   <td
                     colSpan={
                       ["status", "actions"].filter((id) => isVisible(id) || (id === "actions" && showActions))
-                        .length
+                        .length + 1
                     }
                   />
                 ) : null}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ColumnsIcon } from "@/components/icons";
 
@@ -175,13 +175,48 @@ export function ColumnPicker({ columns, visibleCols, onToggle, className }: Pick
       <button
         ref={btnRef}
         type="button"
-        className={open ? "plus cols-btn on" : "plus cols-btn"}
+        className={open ? "cols-btn on" : "cols-btn"}
         title="Columnas visibles"
+        aria-label="Columnas visibles"
+        aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
       >
-        <ColumnsIcon size={18} />
+        <ColumnsIcon size={20} />
       </button>
       {mounted && menu ? createPortal(menu, document.body) : null}
     </div>
+  );
+}
+
+/** Id de la última columna visible (para colgar el desplegable). */
+export function lastVisibleColumnId(
+  columns: { id: string }[],
+  isVisible: (id: string) => boolean,
+) {
+  for (let index = columns.length - 1; index >= 0; index -= 1) {
+    const id = columns[index]?.id;
+    if (id && isVisible(id)) return id;
+  }
+  return null;
+}
+
+/** Celda fija al borde derecho del thead para el desplegable de columnas. */
+export function ColumnPickerHeadCell({ children }: { children: ReactNode }) {
+  return <th className="col-picker-cell">{children}</th>;
+}
+
+/** Celda espejo en tbody (mantiene alineación de columnas). */
+export function ColumnPickerBodyCell() {
+  return <td className="col-picker-cell" aria-hidden />;
+}
+
+/** @deprecated Usar ColumnPickerHeadCell al final del thead. */
+export function headerWithColumnPicker(label: ReactNode, picker: ReactNode | null | undefined) {
+  if (!picker) return label;
+  return (
+    <span className="th-label-with-picker">
+      <span className="th-label-text">{label}</span>
+      {picker}
+    </span>
   );
 }

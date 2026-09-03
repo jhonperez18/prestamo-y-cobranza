@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useState } from "react";
 import type { BankMovementSortKey, BankSortDir } from "@/lib/bank";
 
@@ -11,6 +12,7 @@ type Props = {
   onSort: (column: BankMovementSortKey) => void;
   align?: "left" | "right";
   className?: string;
+  endAdornment?: ReactNode;
 };
 
 export function BankSortTh({
@@ -21,6 +23,7 @@ export function BankSortTh({
   onSort,
   align = "left",
   className,
+  endAdornment,
 }: Props) {
   const active = activeColumn === column;
   const classes = [
@@ -32,21 +35,32 @@ export function BankSortTh({
     .filter(Boolean)
     .join(" ");
 
+  const sortButton = (
+    <button
+      type="button"
+      className={align === "right" ? "th-sort th-sort-right" : "th-sort"}
+      onClick={() => onSort(column)}
+    >
+      <span className="th-sort-arrow" aria-hidden>
+        {active ? (sortDir === "asc" ? "▲" : "▼") : "▲"}
+      </span>
+      {label}
+    </button>
+  );
+
   return (
     <th
       className={classes}
       aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : undefined}
     >
-      <button
-        type="button"
-        className={align === "right" ? "th-sort th-sort-right" : "th-sort"}
-        onClick={() => onSort(column)}
-      >
-        <span className="th-sort-arrow" aria-hidden>
-          {active ? (sortDir === "asc" ? "▲" : "▼") : "▲"}
+      {endAdornment ? (
+        <span className="th-label-with-picker">
+          <span className="th-label-text">{sortButton}</span>
+          {endAdornment}
         </span>
-        {label}
-      </button>
+      ) : (
+        sortButton
+      )}
     </th>
   );
 }

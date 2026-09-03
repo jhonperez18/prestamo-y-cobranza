@@ -38,6 +38,7 @@ export function LoanDetailView({ loan }: Props) {
   return (
     <QuadDetailTable
       title="Ficha del préstamo"
+      plainTitle
       code={loan.ref}
       fields={fields}
     />

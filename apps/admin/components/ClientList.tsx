@@ -9,7 +9,7 @@ import {
   PlusIcon,
   SearchIcon,
 } from "@/components/icons";
-import { ColumnPicker } from "@/components/ColumnPicker";
+import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell } from "@/components/ColumnPicker";
 import { money, ROUTES, type ClientRow } from "@/lib/mock-data";
 import { clientStatusKind } from "@/lib/client-review";
 import { Pill } from "@/components/ui";
@@ -285,11 +285,6 @@ export function ClientList({
         <button className="plus" title="Crear" onClick={onCreate}>
           <PlusIcon />
         </button>
-        <ColumnPicker
-          columns={pickerColumns}
-          visibleCols={visibleCols}
-          onToggle={(id) => toggleColumn(id as ColId)}
-        />
       </div>
 
       <div className="table-wrap">
@@ -307,13 +302,15 @@ export function ClientList({
                   <button type="button" className="grid-tool" title="Limpiar" onClick={clear}>
                     <CloseIcon />
                   </button>
-                  <input
-                    className="check"
-                    type="checkbox"
-                    checked={allChecked}
-                    onChange={() => setSelected(allChecked ? [] : visible.map((row) => row.ref))}
-                    title="Seleccionar todos"
-                  />
+                  {isRevision ? (
+                    <input
+                      className="check"
+                      type="checkbox"
+                      checked={allChecked}
+                      onChange={() => setSelected(allChecked ? [] : visible.map((row) => row.ref))}
+                      title="Seleccionar todos"
+                    />
+                  ) : null}
                 </div>
               </th>
             </tr>
@@ -323,7 +320,13 @@ export function ClientList({
                   {col.label}
                 </th>
               ))}
-              <th />
+              <ColumnPickerHeadCell>
+                <ColumnPicker
+                  columns={pickerColumns}
+                  visibleCols={visibleCols}
+                  onToggle={(id) => toggleColumn(id as ColId)}
+                />
+              </ColumnPickerHeadCell>
             </tr>
           </thead>
           <tbody>
@@ -348,19 +351,23 @@ export function ClientList({
                       {renderCell(row, col.id)}
                     </td>
                   ))}
-                  <td>
-                    <input
-                      className="check"
-                      type="checkbox"
-                      checked={selected.includes(row.ref)}
-                      onClick={(event) => event.stopPropagation()}
-                      onChange={() =>
-                        setSelected((current) =>
-                          current.includes(row.ref) ? current.filter((id) => id !== row.ref) : [...current, row.ref],
-                        )
-                      }
-                    />
-                  </td>
+                  {isRevision ? (
+                    <td>
+                      <input
+                        className="check"
+                        type="checkbox"
+                        checked={selected.includes(row.ref)}
+                        onClick={(event) => event.stopPropagation()}
+                        onChange={() =>
+                          setSelected((current) =>
+                            current.includes(row.ref) ? current.filter((id) => id !== row.ref) : [...current, row.ref],
+                          )
+                        }
+                      />
+                    </td>
+                  ) : (
+                    <ColumnPickerBodyCell />
+                  )}
                 </tr>
               ))
             )}

@@ -15,11 +15,11 @@
       --panel-table-bg: #ffffff;
       --row-on-panel-a: #edfafa;
       --row-on-panel-b: #e2f4f4;
-      --row-income: #e8f8f2;
-      --row-income-alt: #dcf4e6;
-      --row-expense: #fdf0f0;
-      --row-expense-alt: #fae4e4;
-      --row-a: #f5fbfb;
+      --row-income: var(--row-a);
+      --row-income-alt: var(--row-b);
+      --row-expense: #f3c4c4;
+      --row-expense-alt: #ebb0b0;
+      --row-a: #c8e4dc;
       --row-b: #ffffff;
       --row-h: #b0ddd0;
       --filter: var(--bar-bg);
@@ -98,8 +98,6 @@
       .payment-ficha-head-actions .btn-bar,
       .bank-form-banner,
       .bank-form-banner h2,
-      .bank-summary-head,
-      .bank-summary-sub,
       .bank-table thead th,
       .bank-report-table thead th,
       .bank-report-year-head,
@@ -640,14 +638,32 @@
     .collector-pay-inline .receipt-upload {
       min-height: 96px;
     }
-    .collector-pay-inline .collector-pay-actions {
-      display: grid;
-      grid-template-columns: 1fr 1.2fr;
-      gap: 8px;
+    .collector-pay-inline .signature-pad {
+      margin-top: 2px;
     }
-    .collector-pay-inline .collector-pay-actions .btn {
-      min-height: 44px;
-      font-size: 15px;
+    .collector-pay-inline .signature-pad-hint {
+      display: none;
+    }
+    .collector-pay-inline .signature-pad-frame {
+      min-height: 120px;
+    }
+    .collector-pay-inline .collector-pay-actions {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 6px;
+      padding-top: 6px;
+      margin-top: 6px;
+    }
+    .collector-pay-inline .collector-pay-actions .btn,
+    .collector-pay-form .collector-pay-actions .btn {
+      min-height: 26px;
+      padding: 3px 10px;
+      font-size: 11px;
+      letter-spacing: 0;
+      white-space: nowrap;
+      flex: 0 0 auto;
+      width: auto;
     }
     .collector-mobile-list.compact {
       gap: 6px;
@@ -688,7 +704,7 @@
       justify-content: space-between;
       align-items: flex-start;
       gap: 12px;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
     .collector-mobile-card-main strong {
       font-size: 17px;
@@ -703,14 +719,60 @@
     }
     .collector-mobile-card-foot {
       display: flex;
-      justify-content: space-between;
+      justify-content: flex-end;
       align-items: center;
+      gap: 8px;
+    }
+    .collector-mobile-card-foot:has(.pill) {
+      justify-content: space-between;
+    }
+    .collector-mobile-card-actions {
+      display: flex;
+      flex-wrap: nowrap;
+      gap: 6px;
+      justify-content: flex-end;
+      margin-left: auto;
+    }
+    .collector-mobile-pay-btn,
+    .collector-mobile-skip-btn {
+      min-height: 26px;
+      padding: 3px 10px;
+      font-size: 11px;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+    .collector-mobile-skip-inline {
+      margin-top: 10px;
+      padding-top: 12px;
+      border-top: 1px dashed #d5e0da;
+      display: grid;
       gap: 10px;
     }
-    .collector-mobile-pay-btn {
-      min-height: 40px;
-      padding: 0 18px;
+    .collector-mobile-skip-inline label {
+      display: grid;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #3d5248;
+    }
+    .collector-mobile-skip-inline select {
+      border: 1px solid #c3d4cc;
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff;
       font-size: 15px;
+    }
+    .collector-mobile-skip-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+    .collector-mobile-skip-actions .btn {
+      min-height: 26px;
+      padding: 3px 10px;
+      font-size: 11px;
+      letter-spacing: 0;
+      white-space: nowrap;
     }
     .collector-mobile-empty,
     .collector-mobile-empty-inline {
@@ -1167,6 +1229,83 @@
       -webkit-font-smoothing: antialiased;
     }
     .plus:hover, .plus.on { background: var(--btn-bg-hover); color: #fff; }
+    .cols-btn {
+      width: auto;
+      height: auto;
+      min-width: 26px;
+      min-height: 26px;
+      border-radius: 0;
+      background: transparent;
+      color: #14201b;
+      border: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px;
+      margin-left: 0;
+      flex-shrink: 0;
+      transition: color .12s, opacity .12s;
+    }
+    .cols-btn svg {
+      width: 20px;
+      height: 20px;
+      display: block;
+    }
+    .cols-btn:hover,
+    .cols-btn.on {
+      background: transparent;
+      color: #0a4a42;
+      opacity: 0.85;
+    }
+    .th-label-with-picker {
+      display: inline-flex;
+      align-items: center;
+      justify-content: inherit;
+      gap: 10px;
+      width: 100%;
+      min-width: 0;
+    }
+    .th-label-with-picker .th-label-text {
+      min-width: 0;
+    }
+    .th.right .th-label-with-picker,
+    th.right .th-label-with-picker {
+      justify-content: flex-end;
+    }
+    .th.center .th-label-with-picker,
+    th.center .th-label-with-picker {
+      justify-content: center;
+    }
+    /* Listas con selector de columnas: ancho completo, picker fijo a la derecha. */
+    table.data:has(.col-picker-cell),
+    table.list-grid:has(.col-picker-cell),
+    table.bank-table:has(.col-picker-cell) {
+      table-layout: fixed;
+      width: 100%;
+    }
+    thead tr.col-titles th:not(.col-picker-cell) {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .col-picker-cell {
+      width: 44px;
+      min-width: 44px;
+      max-width: 44px;
+      padding: 8px 14px 8px 0 !important;
+      text-align: right;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    tbody td.col-picker-cell {
+      padding: 0 !important;
+      border-bottom: 1px solid var(--table-border, #e3ece7);
+    }
+    .col-picker-cell .col-picker-wrap {
+      display: inline-flex;
+      justify-content: flex-end;
+      width: 100%;
+    }
     .col-picker-wrap { position: relative; z-index: 2; flex-shrink: 0; }
     .col-picker {
       width: 280px; max-height: 420px;
@@ -1301,9 +1440,34 @@
       line-height: 1.25;
       border-bottom: 1px solid #dce8e2;
       white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: middle;
     }
-    table.data tbody tr:nth-child(odd) { background: var(--row-a); }
-    table.data tbody tr:nth-child(even) { background: var(--row-b); }
+    table.data tbody td,
+    table.list-grid tbody td {
+      white-space: nowrap !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.25;
+      vertical-align: middle;
+    }
+    table.data .pill,
+    table.list-grid .pill,
+    .bank-table .pill {
+      font-size: 13px;
+      padding: 1px 6px;
+      line-height: 1.2;
+      max-height: 22px;
+    }
+    table.data tbody tr:nth-child(odd),
+    table.list-grid tbody tr:nth-child(odd) {
+      background: var(--row-a);
+    }
+    table.data tbody tr:nth-child(even),
+    table.list-grid tbody tr:nth-child(even) {
+      background: var(--row-b);
+    }
     table.data tbody tr { cursor: pointer; transition: background 0.12s ease, box-shadow 0.12s ease; }
     table.data tbody tr:hover {
       background: var(--row-h);
@@ -1328,6 +1492,9 @@
 
     table.data.cols-fixed {
       table-layout: fixed;
+    }
+    table.data.cols-fixed col.col-picker-spacer {
+      width: 44px;
     }
 
     .pill {
@@ -1668,6 +1835,17 @@
       padding-top: 7px;
       padding-bottom: 7px;
     }
+    .home-table {
+      table-layout: fixed;
+      width: 100%;
+    }
+    .home-table col.home-col-time { width: 10%; }
+    .home-table col.home-col-client { width: 22%; }
+    .home-table col.home-col-collector { width: 16%; }
+    .home-table col.home-col-method { width: 14%; }
+    .home-table col.home-col-evidence { width: 12%; }
+    .home-table col.home-col-amount { width: 12%; }
+    .home-table col.home-col-status { width: 14%; }
     .home-empty {
       margin: 0 12px 12px;
       padding: 16px;
@@ -2187,7 +2365,12 @@
     .loan-payments-note { margin: 0 0 12px; }
     .loan-payments-table th,
     .loan-payments-table td { white-space: nowrap; }
-    .loan-payments-table td:nth-child(6) { white-space: normal; min-width: 140px; }
+    .loan-payments-table td:nth-child(6) {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
     .pay-gps-tag {
       display: inline-block;
       margin-right: 6px;
@@ -2362,10 +2545,56 @@
       padding-top: 12px;
       align-items: center;
     }
+    .cartera-mora-route-filter {
+      min-width: 160px;
+    }
+    .cartera-resumen-hint {
+      padding: 18px 16px;
+    }
+    .cartera-resumen-hint .ficha-empty {
+      margin: 0;
+      text-align: center;
+    }
     .cartera-mora-toolbar-actions {
       margin-left: auto;
       display: flex;
       gap: 8px;
+    }
+    .cartera-mora-balance {
+      color: #b43434;
+      font-weight: 700;
+    }
+    table.cartera-mora-table,
+    table.cartera-resumen-table {
+      width: 100%;
+      table-layout: fixed;
+    }
+    table.cartera-mora-table col.col-mora-client { width: 20%; }
+    table.cartera-mora-table col.col-mora-loan { width: 11%; }
+    table.cartera-mora-table col.col-mora-route { width: 13%; }
+    table.cartera-mora-table col.col-mora-days { width: 9%; }
+    table.cartera-mora-table col.col-mora-cuotas { width: 9%; }
+    table.cartera-mora-table col.col-mora-balance { width: 18%; }
+    table.cartera-mora-table col.col-mora-status { width: 20%; }
+    table.cartera-mora-table col.col-mora-picker { width: 44px; }
+    table.cartera-mora-table .col-mora-days,
+    table.cartera-mora-table .col-mora-cuotas {
+      text-align: center;
+    }
+    table.cartera-mora-table th.col-mora-balance,
+    table.cartera-mora-table td.cartera-mora-balance {
+      padding-right: 36px;
+    }
+    table.cartera-mora-table th.col-mora-status,
+    table.cartera-mora-table td.col-mora-status {
+      padding-left: 20px;
+      padding-right: 12px;
+    }
+    table.cartera-mora-table tbody td,
+    table.cartera-resumen-table tbody td {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .loan-report-pdf-preview {
       position: fixed;
@@ -3217,9 +3446,32 @@
     }
     .daily-preview-btn { margin-left: auto; }
     .daily-collection-table { margin: 0 16px 20px; }
+    .daily-collection-table table.daily-collection-grid {
+      width: 100%;
+      table-layout: fixed;
+    }
+    .daily-collection-grid col.dc-index { width: 40px; }
+    .daily-collection-grid col.dc-client { width: 15%; }
+    .daily-collection-grid col.dc-zone { width: 8%; }
+    .daily-collection-grid col.dc-loan { width: 8%; }
+    .daily-collection-grid col.dc-concept { width: 16%; }
+    .daily-collection-grid col.dc-since { width: 9%; }
+    .daily-collection-grid col.dc-amount { width: 11%; }
+    .daily-collection-grid col.dc-status { width: 10%; }
+    .daily-collection-grid col.dc-collector { width: 12%; }
+    .daily-collection-grid col.dc-action { width: 9%; }
+    .daily-collection-grid col.dc-picker { width: 44px; }
+    .daily-collection-grid th,
+    .daily-collection-grid td {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      vertical-align: middle;
+    }
     .daily-collection-table .daily-row-collector {
-      min-width: 180px;
-      max-width: 220px;
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
       border: 1px solid #c5d4cc;
       border-radius: 6px;
       padding: 6px 8px;
@@ -3284,6 +3536,29 @@
       border: 1px solid rgba(180, 140, 90, 0.15);
       border-radius: 12px;
       box-shadow: 0 2px 12px rgba(28, 43, 36, 0.04);
+    }
+    .daily-close-banner {
+      margin: 0 16px 16px;
+      padding: 12px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px 16px;
+      background: #f4f8f6;
+      border: 1px solid #d5e4dc;
+      border-radius: 12px;
+    }
+    .daily-close-banner strong {
+      display: block;
+      font-size: 15px;
+      color: #14201b;
+    }
+    .daily-close-banner p {
+      margin: 4px 0 0;
+      font-size: 13px;
+      color: #4a5f56;
+      line-height: 1.4;
     }
     .daily-date-field {
       display: grid;
@@ -3354,6 +3629,23 @@
     }
     .loan-file-title h1 {
       font-size: 17px; font-weight: 700; color: #111;
+    }
+    .loan-schedule-block {
+      margin-top: 12px;
+      border: 0;
+      background: transparent;
+      overflow: visible;
+    }
+    .loan-schedule-title {
+      padding: 0 0 8px;
+    }
+    .loan-schedule-block .table-wrap.pay-dates {
+      border: 1px solid #d5e2db;
+      border-radius: 8px;
+      overflow: auto;
+      max-height: min(52vh, 480px);
+      background: #fff;
+      -webkit-overflow-scrolling: touch;
     }
     .loan-spec-table .col-titles th {
       background: var(--bar-bg-alt);
@@ -3429,12 +3721,24 @@
     }
     .loan-detail-compact { margin-top: 0; }
     .loan-detail-compact .table-wrap { max-height: none; }
+    .detail-plain-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      padding: 10px 12px 8px;
+      background: transparent;
+    }
     .detail-plain-title {
-      margin: 0 0 8px;
-      padding: 0 2px;
+      margin: 0;
+      padding: 0;
       font-size: 15px;
       font-weight: 700;
       color: #14201b;
+    }
+    .detail-plain-head .sheet-code {
+      font-size: 14px;
+      color: #0f766e;
     }
     .loan-detail-head {
       display: flex;
@@ -3491,6 +3795,26 @@
     .loan-preview span { display: block; color: #5b7268; margin-bottom: 2px; }
     .loan-preview b { color: #14201b; font-variant-numeric: tabular-nums; }
     .pay-dates { max-height: 240px; overflow: auto; }
+    .loan-fechas-block .pay-dates {
+      max-height: min(62vh, 520px);
+    }
+    .loan-fechas-table {
+      width: 100%;
+      table-layout: fixed;
+    }
+    .loan-fechas-col-num { width: 8%; }
+    .loan-fechas-col-date { width: 18%; }
+    .loan-fechas-col-concept { width: 36%; }
+    .loan-fechas-col-amount { width: 20%; }
+    .loan-fechas-col-status { width: 18%; }
+    .loan-fechas-table th:first-child,
+    .loan-fechas-table td:first-child {
+      text-align: center;
+      color: #5b7268;
+    }
+    .loan-fechas-table td:last-child {
+      white-space: nowrap;
+    }
     .loan-split {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -3545,7 +3869,12 @@
     .daily-log-table th.daily-log-date,
     .daily-log-table .daily-log-date { text-align: left; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .daily-log-table th.daily-log-route,
-    .daily-log-table .daily-log-route { text-align: left; white-space: normal; line-height: 1.35; word-break: break-word; }
+    .daily-log-table .daily-log-route {
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .daily-log-table th.daily-log-status,
     .daily-log-table .daily-log-status { text-align: left; white-space: nowrap; }
     .daily-log-zone { color: #5b7268; }
@@ -3593,7 +3922,12 @@
     .daily-log-payments-table th,
     .daily-log-payments-table td { white-space: nowrap; vertical-align: middle; }
     .daily-log-payments-table .pay-col-time { text-align: left; }
-    .daily-log-payments-table .pay-col-client { text-align: left; white-space: normal; word-break: break-word; }
+    .daily-log-payments-table .pay-col-client {
+      text-align: left;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .daily-log-payments-table .pay-col-value { text-align: right; }
     .daily-log-payments-table .pay-col-type { text-align: left; }
     .daily-log-payments-table tbody tr { cursor: default; }
@@ -3810,6 +4144,11 @@
     .item.soon.on {
       color: var(--text);
     }
+    .coming-soon-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
     .coming-soon-panel .head {
       gap: 10px;
     }
@@ -3842,6 +4181,41 @@
       color: #7a5b00;
       font-size: 13px;
       line-height: 1.45;
+    }
+
+    /* Plantilla estándar de listados (vistas actuales y futuras). */
+    table.list-data-table {
+      width: 100%;
+      table-layout: fixed;
+    }
+    table.list-data-table tbody tr:nth-child(odd) {
+      background: var(--row-a);
+    }
+    table.list-data-table tbody tr:nth-child(even) {
+      background: var(--row-b);
+    }
+    table.list-data-table tbody td {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    table.list-data-table tbody tr.list-data-ghost-row {
+      pointer-events: none;
+    }
+    table.list-data-table tbody tr.list-data-ghost-row td {
+      height: 38px;
+      vertical-align: middle;
+    }
+    .list-data-ghost-bar {
+      display: inline-block;
+      width: min(72%, 160px);
+      height: 10px;
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--row-a) 35%, #c5d4cc);
+      opacity: 0.55;
+    }
+    table.list-data-table tbody tr:nth-child(even) .list-data-ghost-bar {
+      background: color-mix(in srgb, var(--row-b) 20%, #c5d4cc);
     }
 
     .toast {
@@ -4070,7 +4444,18 @@
       color: #5b7268;
       font-size: 12px;
     }
-    .collector-pay-actions { margin-top: 4px; }
+    .collector-pay-actions { margin-top: 4px; padding-top: 8px; }
+    .collector-pay-form .collector-pay-actions .btn.compact,
+    .collector-mobile-card-actions .btn.compact,
+    .collector-mobile-skip-actions .btn.compact {
+      min-height: 26px;
+      padding: 3px 10px;
+      font-size: 11px;
+      letter-spacing: 0;
+      white-space: nowrap;
+      width: auto;
+      flex: 0 0 auto;
+    }
 
     .receipt-capture {
       border: 1px solid #d5e2db;
@@ -4138,6 +4523,57 @@
     }
     .receipt-error { color: #b45309; }
     .btn-link.danger { color: #b45309; }
+
+    .signature-pad {
+      display: grid;
+      gap: 6px;
+    }
+    .signature-pad-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .signature-pad-head .pay-choice-label { margin: 0; }
+    .signature-pad-hint {
+      margin: 0;
+      color: #5b7268;
+      font-size: 12px;
+    }
+    .signature-pad-frame {
+      position: relative;
+      border: 1px dashed #9eb8ad;
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .signature-pad-canvas {
+      display: block;
+      width: 100%;
+      height: 156px;
+      touch-action: none;
+      cursor: crosshair;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .signature-pad.compact .signature-pad-canvas {
+      height: 120px;
+    }
+    .signature-pad-placeholder {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      color: #8aa198;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .payment-evidence-thumb.is-signature img,
+    .payment-evidence-panel-btn.is-signature img {
+      object-fit: contain;
+      background: #fff;
+    }
     .row-actions {
       display: flex;
       flex-wrap: wrap;
@@ -4473,11 +4909,15 @@
     }
     .bank-table th,
     .bank-table td {
-      padding: 8px 10px;
+      padding: 6px 12px;
+      line-height: 1.25;
       border-bottom: 1px solid #b8cfc4;
       text-align: left;
       vertical-align: middle;
       color: #14201b;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .bank-table thead th {
       border-bottom: 2px solid #9bb5ab;
@@ -4486,7 +4926,7 @@
       border-bottom: 1px solid #b8cfc4;
     }
     .bank-table th {
-      background: var(--bar-bg-alt);
+      background: var(--bar-bg);
       color: var(--table-head-text);
       font-family: var(--bar-font);
       font-weight: 600;
@@ -4526,14 +4966,14 @@
     .bank-records-table tbody tr.bank-row-income:hover,
     table.data.list-grid.bank-extract-table tbody tr.bank-row-income:hover,
     table.data.list-grid.misc-payment-list-table tbody tr.bank-row-income:hover {
-      background: #a8e0b8 !important;
-      box-shadow: inset 5px 0 0 #067647;
+      background: var(--row-h) !important;
+      box-shadow: inset 4px 0 0 #0f766e;
     }
     .bank-table tbody tr.bank-row-expense:hover,
     .bank-records-table tbody tr.bank-row-expense:hover,
     table.data.list-grid.bank-extract-table tbody tr.bank-row-expense:hover,
     table.data.list-grid.misc-payment-list-table tbody tr.bank-row-expense:hover {
-      background: #f0b4b4 !important;
+      background: #e89a9a !important;
       box-shadow: inset 5px 0 0 #b42318;
     }
     .bank-table tbody tr.empty-row:hover,
@@ -4544,16 +4984,40 @@
       box-shadow: none !important;
     }
     .bank-debit {
-      color: #b42318;
-      font-weight: 600;
+      color: #111;
+      font-weight: 400;
     }
     .bank-credit {
-      color: #067647;
-      font-weight: 600;
+      color: #111;
+      font-weight: 400;
     }
     .bank-balance {
-      font-weight: 600;
-      color: #1f4d3f;
+      font-weight: 400;
+      color: #111;
+    }
+    .bank-table tbody .bank-debit,
+    .bank-table tbody .bank-credit,
+    .bank-table tbody .bank-balance,
+    .bank-records-table tbody .bank-debit,
+    .bank-records-table tbody .bank-credit,
+    .bank-records-table tbody .bank-balance,
+    table.data.list-grid.bank-extract-table tbody .bank-debit,
+    table.data.list-grid.bank-extract-table tbody .bank-credit,
+    table.data.list-grid.bank-extract-table tbody .bank-balance {
+      color: #111 !important;
+      font-weight: 400 !important;
+    }
+    .bank-table tfoot .bank-debit,
+    .bank-table tfoot .bank-credit,
+    .bank-table tfoot .bank-balance,
+    .bank-table tfoot .bank-num,
+    .bank-records-table tfoot .bank-debit,
+    .bank-records-table tfoot .bank-credit,
+    .bank-records-table tfoot .bank-balance,
+    .bank-records-table tfoot .bank-num,
+    table.data.list-grid.bank-extract-table tfoot td {
+      font-weight: 700 !important;
+      color: #111 !important;
     }
     .bank-category {
       display: inline-block;
@@ -4710,7 +5174,7 @@
     }
     .bank-report-mes {
       text-align: left;
-      font-weight: 600;
+      font-weight: 400;
       font-size: 16px;
       color: #1f3d34;
     }
@@ -4776,111 +5240,6 @@
       min-width: 180px;
     }
 
-    .bank-summary-panel {
-      max-width: 420px;
-    }
-    .bank-summary-list {
-      display: grid;
-      gap: 14px;
-    }
-    .bank-summary-card {
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    .bank-summary-head {
-      padding: 10px 14px;
-      font-family: var(--bar-font);
-      font-weight: 600;
-      font-size: var(--bar-size);
-      color: var(--table-head-text);
-      background: var(--bar-bg);
-      border-bottom: 1px solid var(--bar-border);
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-      text-rendering: geometricPrecision;
-      font-synthesis: none;
-      letter-spacing: 0;
-    }
-    .bank-summary-head-pending {
-      background: var(--bar-bg);
-    }
-    .bank-summary-head-account {
-      background: var(--bar-bg-alt);
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-    }
-    .bank-summary-sub {
-      font-family: var(--bar-font);
-      font-size: 12px;
-      font-weight: var(--bar-weight);
-      color: #2c3d36;
-      opacity: 1;
-      -webkit-font-smoothing: antialiased;
-      -moz-osx-font-smoothing: grayscale;
-    }
-    .bank-summary-body {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      min-height: 72px;
-      padding: 12px;
-    }
-    .bank-summary-body-pending {
-      background: #b8ddd4;
-    }
-    .bank-summary-body-closed {
-      background: #eceff1;
-    }
-    .bank-summary-body:not(.bank-summary-body-pending):not(.bank-summary-body-closed) {
-      background: #eef2f0;
-    }
-    .bank-summary-count {
-      display: inline-grid;
-      place-items: center;
-      min-width: 44px;
-      height: 32px;
-      padding: 0 12px;
-      border: 0;
-      border-radius: 8px;
-      background: #8b93a7;
-      color: #fff;
-      font-size: 15px;
-      font-weight: 700;
-      cursor: pointer;
-      font-variant-numeric: tabular-nums;
-    }
-    .bank-summary-count:hover {
-      background: #6b7280;
-    }
-    .bank-summary-count-static {
-      cursor: default;
-      opacity: 0.85;
-    }
-    .bank-summary-count-empty {
-      background: #a8b0bc;
-    }
-    .bank-summary-closed {
-      font-size: 11px;
-      color: #5b7268;
-      font-weight: 600;
-    }
-    .bank-back-btn {
-      display: inline-flex;
-      align-items: center;
-      margin-bottom: 8px;
-      padding: 0;
-      border: 0;
-      background: transparent;
-      color: #1f6b55;
-      font: inherit;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      text-decoration: underline;
-    }
     .bank-new-account-panel {
       display: grid;
       gap: 18px;
@@ -4957,7 +5316,7 @@
       padding: 0 10px;
       border: 0;
       border-radius: 8px;
-      background: #8b93a7;
+      background: #2f3b4a;
       color: #fff;
       font-family: var(--bar-font);
       font-size: 14px;
@@ -4968,15 +5327,22 @@
       -moz-osx-font-smoothing: grayscale;
     }
     .bank-list-pending-count:hover {
-      background: #6b7280;
+      background: #1f2937;
     }
     .bank-list-pending-count-static {
       cursor: default;
-      background: #c5ccd6;
-      color: #fff;
+      background: #d7dde6;
+      color: #111;
     }
     .bank-list-pending-count-static:hover {
-      background: #c5ccd6;
+      background: #d7dde6;
+    }
+    table.data.list-grid.bank-accounts-table th,
+    table.data.list-grid.bank-accounts-table td {
+      color: #111;
+    }
+    table.data.list-grid.bank-accounts-table td.ref {
+      color: #0f766e;
     }
     .bank-accounts-total-row td {
       background: #fff !important;
@@ -5004,19 +5370,56 @@
       margin: 0 16px 16px;
     }
     .bank-records-table {
+      width: 100%;
+      table-layout: fixed;
       font-size: 16px;
     }
-    .bank-records-table th,
-    .bank-records-table td {
-      padding: 10px 12px;
+    .bank-records-table th:not(.col-picker-cell),
+    .bank-records-table td:not(.col-picker-cell) {
+      padding: 6px 10px;
+      line-height: 1.25;
       font-size: 16px;
+      max-width: 0;
+      white-space: nowrap !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: middle;
+    }
+    .bank-records-table th.col-picker-cell,
+    .bank-records-table td.col-picker-cell {
+      max-width: 44px;
+      overflow: visible;
+    }
+    /* Cuenta operativa en 1 línea; el resto cede un poco de ancho */
+    .bank-records-table col.br-ref { width: 8%; }
+    .bank-records-table col.br-desc { width: 14%; }
+    .bank-records-table col.br-method { width: 8%; }
+    .bank-records-table col.br-date { width: 9%; }
+    .bank-records-table col.br-period { width: 11%; }
+    .bank-records-table col.br-account { width: 15%; }
+    .bank-records-table col.br-third { width: 11%; }
+    .bank-records-table col.br-category { width: 10%; }
+    .bank-records-table col.br-debit { width: 9%; }
+    .bank-records-table col.br-credit { width: 8%; }
+    .bank-records-table col.br-balance { width: 9%; }
+    .bank-records-table col.br-amount { width: 10%; }
+    .bank-records-table col.br-extract { width: 7%; }
+    .bank-records-table col.br-picker { width: 44px; }
+    .bank-records-table td.bank-account-cell,
+    .bank-records-table th.bank-account-cell {
+      max-width: 0;
+      white-space: nowrap !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .bank-records-table thead tr.col-titles th {
-      background: var(--bar-bg-alt);
+      background: var(--bar-bg);
       color: var(--table-head-text);
       font-family: var(--bar-font);
       font-weight: 600;
       font-size: var(--bar-size);
+      line-height: 1.3;
+      padding: 8px 10px;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
       text-rendering: geometricPrecision;
@@ -5030,13 +5433,14 @@
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      padding: 10px 12px;
+      padding: 6px 12px;
       border: 0;
       background: transparent;
       color: inherit;
       font-family: inherit;
       font-size: inherit;
       font-weight: inherit;
+      line-height: 1.25;
       cursor: pointer;
       text-align: left;
     }
@@ -5063,22 +5467,33 @@
       background: #fff !important;
       font-size: 16px;
     }
+    .bank-records-table .bank-desc {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
     .bank-records-table .bank-category {
-      font-size: 13px;
+      font-size: 12px;
+      margin-left: 4px;
+    }
+    .bank-records-table .bank-extract-ref-link {
+      font-weight: 400;
     }
     .bank-extract-panel .head {
       flex-wrap: wrap;
       row-gap: 10px;
+      align-items: center;
+    }
+    .bank-extract-panel .head h1 {
+      color: #111;
+      margin: 0;
+    }
+    .bank-extract-panel .head .btn {
+      flex-shrink: 0;
+      white-space: nowrap;
     }
     .bank-extract-panel .table-wrap {
       background: var(--panel-table-bg);
-    }
-    .bank-extract-back {
-      padding: 4px 10px !important;
-      min-height: 0 !important;
-      text-decoration: none !important;
-      color: #1f6b55 !important;
-      font-weight: 600;
     }
     .bank-extract-select,
     .bank-extract-search {
@@ -5100,17 +5515,46 @@
     .bank-extract-search {
       width: min(240px, 100%);
     }
-    .bank-extract-recent {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-      padding: 0 16px 12px;
-      font-size: 13px;
-      color: #5b7268;
-    }
     .bank-extract-panel .bank-expense-form {
       margin: 0 16px 12px;
+    }
+    table.data.list-grid.bank-extract-table {
+      width: 100%;
+      table-layout: fixed;
+    }
+    table.data.list-grid.bank-extract-table col.be-ref { width: 9%; }
+    table.data.list-grid.bank-extract-table col.be-desc { width: 18%; }
+    table.data.list-grid.bank-extract-table col.be-method { width: 9%; }
+    table.data.list-grid.bank-extract-table col.be-date { width: 11%; }
+    table.data.list-grid.bank-extract-table col.be-third { width: 13%; }
+    table.data.list-grid.bank-extract-table col.be-debit { width: 8%; }
+    table.data.list-grid.bank-extract-table col.be-credit { width: 8%; }
+    table.data.list-grid.bank-extract-table col.be-balance { width: 10%; }
+    table.data.list-grid.bank-extract-table col.be-extract { width: 7%; }
+    table.data.list-grid.bank-extract-table col.be-actions { width: 7%; }
+    table.data.list-grid.bank-extract-table col.be-picker { width: 44px; }
+    table.data.list-grid.bank-extract-table th,
+    table.data.list-grid.bank-extract-table td {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      vertical-align: middle;
+      color: #111;
+      font-weight: 400;
+    }
+    table.data.list-grid.bank-extract-table thead th {
+      color: #111 !important;
+      font-weight: 400;
+    }
+    table.data.list-grid.bank-extract-table tbody td,
+    table.data.list-grid.bank-extract-table tbody td.ref,
+    table.data.list-grid.bank-extract-table tbody td.bank-debit,
+    table.data.list-grid.bank-extract-table tbody td.bank-credit,
+    table.data.list-grid.bank-extract-table tbody td.bank-balance,
+    table.data.list-grid.bank-extract-table tbody td.money,
+    table.data.list-grid.bank-extract-table tbody .bank-extract-ref-link {
+      color: #111 !important;
+      font-weight: 400 !important;
     }
     table.data.list-grid.bank-extract-table tbody tr.bank-row-income {
       background: var(--row-income) !important;
@@ -5119,10 +5563,21 @@
       background: var(--row-expense) !important;
     }
     table.data.list-grid.bank-extract-table tfoot .bank-total-row td {
+      overflow: visible;
+      white-space: normal;
       background: var(--panel-total);
-      color: #111;
-      font-weight: 700;
+      color: #111 !important;
+      font-weight: 700 !important;
       border-top: 2px solid #6a9999;
+    }
+    table.data.list-grid.bank-extract-table tfoot .bank-total-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: #111;
+      line-height: 1.2;
+      margin-bottom: 2px;
     }
     table.data.list-grid.bank-extract-table tbody tr.empty-row td {
       text-align: center;
@@ -5266,12 +5721,19 @@
     .bank-extracts-table {
       font-size: 16px;
     }
+    .bank-extracts-table th,
+    .bank-extracts-table td {
+      padding: 6px 12px;
+      line-height: 1.25;
+    }
     .bank-extracts-table thead tr.col-titles th {
-      background: var(--bar-bg-alt);
+      background: var(--bar-bg);
       color: var(--table-head-text);
       font-family: var(--bar-font);
       font-weight: 600;
       font-size: var(--bar-size);
+      line-height: 1.3;
+      padding: 8px 10px;
       border-bottom: 1px solid var(--table-head-border);
     }
     .bank-extracts-table tbody tr.bank-extract-row-open {
@@ -5286,8 +5748,16 @@
       padding: 18px 12px;
       background: #fff !important;
     }
-    .bank-extract-ref-link {
+    .bank-records-table tbody td,
+    .bank-ledger-panel .bank-records-table tbody td {
+      font-weight: 400;
+    }
+    .bank-records-table tfoot td,
+    .bank-ledger-panel .bank-records-table tfoot td {
       font-weight: 700;
+    }
+    .bank-extract-ref-link {
+      font-weight: 400;
       color: #0f766e !important;
       font-variant-numeric: tabular-nums;
     }

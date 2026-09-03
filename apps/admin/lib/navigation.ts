@@ -241,7 +241,7 @@ export function getViewLabel(moduleId: ModuleId, viewId: string) {
   if (moduleId === "banco" && viewId === "registro-gasto") return "Registro bancario";
   if (moduleId === "cobranza" && viewId === "ficha-pago") return "Ficha de pago";
   if (moduleId === "banco" && viewId === "extracto") return "Extracto bancario";
-  if (moduleId === "banco" && viewId === "extracto-pendiente") return "Registros a conciliar";
+  if (moduleId === "banco" && viewId === "extracto-pendiente") return "Registro bancario";
   if (moduleId === "banco" && viewId === "extractos") return "Extractos";
   if (moduleId === "banco" && viewId === "listado") return "Cuentas bancarias";
   if (moduleId === "banco" && viewId === "informe-resultado") return "Resultado del ejercicio";

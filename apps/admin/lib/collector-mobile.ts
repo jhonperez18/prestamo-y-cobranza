@@ -43,10 +43,22 @@ export function collectorMobileQueue(
   const dayItems = assignmentsForCollectorDate(assignments, collectorRef, date, loans, clients);
   const dispatched = dayItems.filter((row) => row.dispatched);
   const awaitingDispatch = dayItems.filter((row) => !row.dispatched);
-  const pending = dispatched.filter((row) => row.visitStatus !== "cobrado");
-  const done = dispatched.filter((row) => row.visitStatus === "cobrado" || row.visitStatus === "parcial");
+  const pending = dispatched.filter(
+    (row) => row.visitStatus === "pendiente" || row.visitStatus === "parcial" || !row.visitStatus,
+  );
+  const done = dispatched.filter(
+    (row) =>
+      row.visitStatus === "cobrado" ||
+      row.visitStatus === "omitido" ||
+      (row.visitStatus === "parcial" && Boolean(row.paymentRef)),
+  );
   const routeRef = dispatchRouteRef(collectorRef, date);
   const route = routes.find((row) => row.ref === routeRef) ?? null;
+  const dayClosed = Boolean(dispatched.length && dispatched.every((row) => row.dayClosedAt));
+  const closed =
+    dayClosed ||
+    route?.status === "Cerrada" ||
+    (dispatched.length > 0 && pending.length === 0);
 
   return {
     date,
@@ -57,7 +69,7 @@ export function collectorMobileQueue(
     pending,
     done,
     awaitingDispatch,
-    closed: dispatched.length > 0 && pending.length === 0,
+    closed,
   };
 }
 
@@ -104,11 +116,13 @@ export function defaultMobileRouteDate(
 export function visitStatusLabel(status?: DailyCollectionAssignment["visitStatus"]) {
   if (status === "cobrado") return "Cobrado";
   if (status === "parcial") return "Parcial";
+  if (status === "omitido") return "No visitado";
   return "Pendiente";
 }
 
 export function visitStatusKind(status?: DailyCollectionAssignment["visitStatus"]) {
   if (status === "cobrado") return "paid" as const;
   if (status === "parcial") return "partial" as const;
+  if (status === "omitido") return "overdue" as const;
   return "pending" as const;
 }

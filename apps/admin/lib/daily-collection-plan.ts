@@ -41,7 +41,10 @@ export type DailyCollectionAssignment = {
   assignedAt: string;
   dispatched?: boolean;
   dispatchedAt?: string;
-  visitStatus?: "pendiente" | "parcial" | "cobrado";
+  visitStatus?: "pendiente" | "parcial" | "cobrado" | "omitido";
+  skipReason?: string;
+  /** Marca de cierre de jornada (oficina). */
+  dayClosedAt?: string;
   paymentRef?: string;
 };
 

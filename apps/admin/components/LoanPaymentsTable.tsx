@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { ColumnPicker, useColumnVisibility } from "@/components/ColumnPicker";
+import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell, useColumnVisibility } from "@/components/ColumnPicker";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { PaymentRefLink } from "@/components/PaymentRefLink";
 import { Pill } from "@/components/ui";
@@ -67,50 +67,53 @@ export function LoanPaymentsTable({
 
   const paymentByRef = useMemo(() => new Map(payments.map((row) => [row.ref, row])), [payments]);
 
-  const showHead = Boolean(title || showColumnPicker);
+  const picker = showColumnPicker ? (
+    <ColumnPicker
+      columns={LOAN_PAYMENT_COLUMNS}
+      visibleCols={visibleCols}
+      onToggle={toggleColumn}
+    />
+  ) : null;
+
+  function headerCell(id: string, label: string, className?: string) {
+    return (
+      <th key={id} className={className}>
+        {label}
+      </th>
+    );
+  }
 
   return (
     <div className={`mini-block${className ? ` ${className}` : ""}`}>
-      {showHead ? (
-        <div className="mini-head loan-detail-head">
-          {title ? (
-            <>
-              <h2>{title}</h2>
-              <span className="mini-badge">{movements.length}</span>
-            </>
-          ) : null}
-          {showColumnPicker ? (
-            <>
-              <span className="grow" />
-              <ColumnPicker
-                columns={LOAN_PAYMENT_COLUMNS}
-                visibleCols={visibleCols}
-                onToggle={toggleColumn}
-              />
-            </>
-          ) : null}
+      {title ? (
+        <div className="loan-payments-head">
+          <h2>{title}</h2>
+          <span className="mini-badge">{movements.length}</span>
         </div>
       ) : null}
       <div className="table-wrap">
         <table className="data mini-grid loan-payments-table">
           <thead>
             <tr className="col-titles">
-              {isVisible("ref") ? <th>Pago</th> : null}
-              {isVisible("dueDate") ? <th>Fecha cuota</th> : null}
-              {isVisible("paidDate") ? <th>Fecha recaudo</th> : null}
-              {isVisible("paidTime") ? <th>Hora</th> : null}
-              {isVisible("concept") ? <th>Concepto</th> : null}
-              {isVisible("collector") ? <th>Cobrador</th> : null}
-              {isVisible("method") ? <th>Forma de pago</th> : null}
-              {isVisible("evidence") ? <th>Comprobante</th> : null}
-              {isVisible("source") ? <th>Origen</th> : null}
-              {isVisible("amount") ? <th className="right">Importe</th> : null}
+              {isVisible("ref") ? headerCell("ref", "Pago") : null}
+              {isVisible("dueDate") ? headerCell("dueDate", "Fecha cuota") : null}
+              {isVisible("paidDate") ? headerCell("paidDate", "Fecha recaudo") : null}
+              {isVisible("paidTime") ? headerCell("paidTime", "Hora") : null}
+              {isVisible("concept") ? headerCell("concept", "Concepto") : null}
+              {isVisible("collector") ? headerCell("collector", "Cobrador") : null}
+              {isVisible("method") ? headerCell("method", "Forma de pago") : null}
+              {isVisible("evidence") ? headerCell("evidence", "Comprobante") : null}
+              {isVisible("source") ? headerCell("source", "Origen") : null}
+              {isVisible("amount") ? headerCell("amount", "Importe", "right") : null}
+              {showColumnPicker && picker ? (
+                <ColumnPickerHeadCell>{picker}</ColumnPickerHeadCell>
+              ) : null}
             </tr>
           </thead>
           <tbody>
             {movements.length === 0 ? (
               <tr className="empty-row">
-                <td colSpan={activeColumns.length}>{emptyMessage}</td>
+                <td colSpan={Math.max(activeColumns.length + (showColumnPicker ? 1 : 0), 1)}>{emptyMessage}</td>
               </tr>
             ) : (
               movements.map((movement) => {
@@ -154,6 +157,7 @@ export function LoanPaymentsTable({
                     {isVisible("amount") ? (
                       <td className="money right">{money(movement.amount)}</td>
                     ) : null}
+                    {showColumnPicker ? <ColumnPickerBodyCell /> : null}
                   </tr>
                 );
               })

@@ -15,6 +15,15 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { money, type ClientRow, type CollectorRow, type LoanRow, type RouteRow } from "@/lib/mock-data";
 import type { CollectorPaymentDraft } from "@/lib/route-sync";
 
+export type CollectorSkipVisitDraft = {
+  routeRef: string;
+  clientRef: string;
+  loanRef: string;
+  dispatchDate: string;
+  collectorRef: string;
+  reason?: string;
+};
+
 type Props = {
   collector: CollectorRow;
   assignments: DailyCollectionAssignment[];
@@ -25,10 +34,19 @@ type Props = {
   preview?: boolean;
   canRegister?: boolean;
   onRegisterPayment?: (draft: CollectorPaymentDraft) => void;
+  onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
   onLogout?: () => void;
 };
 
 type ListFilter = "pending" | "done";
+type CardMode = "pay" | "skip" | null;
+
+const SKIP_REASONS = [
+  "No localizado",
+  "Enfermo / no atiende",
+  "Dirección incorrecta",
+  "Otro",
+];
 
 function itemKey(item: DailyCollectionAssignment) {
   return `${item.itemId}-${item.dispatchDate}`;
@@ -44,9 +62,12 @@ export function CollectorMobileApp({
   preview = false,
   canRegister = true,
   onRegisterPayment,
+  onSkipVisit,
   onLogout,
 }: Props) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [cardMode, setCardMode] = useState<CardMode>(null);
+  const [skipReason, setSkipReason] = useState(SKIP_REASONS[0]);
   const [listFilter, setListFilter] = useState<ListFilter>("pending");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
@@ -85,21 +106,45 @@ export function CollectorMobileApp({
 
   useEffect(() => {
     setExpandedKey(null);
+    setCardMode(null);
   }, [activeDate, listFilter]);
 
-  function togglePay(item: DailyCollectionAssignment) {
-    if (!canRegister || !onRegisterPayment || queue.closed) return;
+  function openCard(item: DailyCollectionAssignment, mode: Exclude<CardMode, null>) {
+    if (!canRegister || queue.closed) return;
+    if (mode === "pay" && !onRegisterPayment) return;
+    if (mode === "skip" && !onSkipVisit) return;
     const key = itemKey(item);
-    setExpandedKey((current) => (current === key ? null : key));
+    if (expandedKey === key && cardMode === mode) {
+      setExpandedKey(null);
+      setCardMode(null);
+      return;
+    }
+    setExpandedKey(key);
+    setCardMode(mode);
+    if (mode === "skip") setSkipReason(SKIP_REASONS[0]);
   }
 
-  function closePay() {
+  function closeCard() {
     setExpandedKey(null);
+    setCardMode(null);
   }
 
   function selectFilter(next: ListFilter) {
     setListFilter(next);
-    setExpandedKey(null);
+    closeCard();
+  }
+
+  function confirmSkip(item: DailyCollectionAssignment) {
+    if (!onSkipVisit) return;
+    onSkipVisit({
+      routeRef,
+      clientRef: item.clientRef,
+      loanRef: item.loanRef,
+      dispatchDate: item.dispatchDate,
+      collectorRef: collector.ref,
+      reason: skipReason,
+    });
+    closeCard();
   }
 
   return (
@@ -146,7 +191,11 @@ export function CollectorMobileApp({
       {queue.closed ? (
         <div className="collector-mobile-route-closed">
           <Pill label="Ruta cerrada" kind="paid" />
-          <p>Completaste los {queue.dispatched.length} cobros de esta ruta.</p>
+          <p>
+            {queue.dispatched.every((row) => row.dayClosedAt)
+              ? "Oficina cerró la jornada. Lo no cobrado queda para mañana (mora)."
+              : `Completaste los cobros activos de esta ruta (${queue.dispatched.length}).`}
+          </p>
         </div>
       ) : null}
 
@@ -165,7 +214,7 @@ export function CollectorMobileApp({
           onClick={() => selectFilter("done")}
         >
           <b>{queue.done.length}</b>
-          <span>Cobrados</span>
+          <span>Gestionados</span>
         </button>
         <div className="collector-mobile-stat readonly">
           <b>{money(queue.dispatched.reduce((sum, row) => sum + row.amountDue, 0))}</b>
@@ -190,7 +239,7 @@ export function CollectorMobileApp({
             {visibleItems.length === 0 ? (
               <li className="collector-mobile-empty-inline">
                 {listFilter === "done"
-                  ? "Aún no hay cobros en esta ruta."
+                  ? "Aún no hay cobros gestionados en esta ruta."
                   : queue.closed
                     ? "Ruta cerrada. Elige otra ruta si tienes más asignadas."
                     : "¡Listo! No quedan cobros pendientes en esta ruta."}
@@ -200,6 +249,10 @@ export function CollectorMobileApp({
                 const key = itemKey(item);
                 const isOpen = expandedKey === key;
                 const isDoneView = listFilter === "done";
+                const canAct =
+                  item.visitStatus !== "cobrado" &&
+                  item.visitStatus !== "omitido" &&
+                  !queue.closed;
 
                 return (
                   <li
@@ -220,6 +273,9 @@ export function CollectorMobileApp({
                           label={visitStatusLabel(item.visitStatus)}
                           kind={visitStatusKind(item.visitStatus)}
                         />
+                        {item.skipReason ? (
+                          <span className="collector-mobile-ref">{item.skipReason}</span>
+                        ) : null}
                         {item.paymentRef ? (
                           <span className="collector-mobile-ref">{item.paymentRef}</span>
                         ) : null}
@@ -230,35 +286,49 @@ export function CollectorMobileApp({
                           <strong>{item.clientName}</strong>
                           <span className="collector-mobile-amount">{money(item.amountDue)}</span>
                         </div>
-                        <div className="collector-mobile-card-foot">
-                          <Pill
-                            label={visitStatusLabel(item.visitStatus)}
-                            kind={visitStatusKind(item.visitStatus)}
-                          />
-                          {item.visitStatus !== "cobrado" && !queue.closed ? (
-                            <button
-                              type="button"
-                              className={
-                                isOpen
-                                  ? "btn collector-mobile-pay-btn"
-                                  : "btn primary collector-mobile-pay-btn"
-                              }
-                              disabled={!canRegister || !onRegisterPayment}
-                              onClick={() => togglePay(item)}
-                            >
-                              {isOpen ? "Cerrar" : "Cobrar"}
-                            </button>
-                          ) : null}
-                        </div>
+                        {item.visitStatus === "parcial" || canAct ? (
+                          <div className="collector-mobile-card-foot">
+                            {item.visitStatus === "parcial" ? (
+                              <Pill
+                                label={visitStatusLabel(item.visitStatus)}
+                                kind={visitStatusKind(item.visitStatus)}
+                              />
+                            ) : null}
+                            {canAct ? (
+                              <div className="collector-mobile-card-actions">
+                                <button
+                                  type="button"
+                                  className={
+                                    isOpen && cardMode === "pay"
+                                      ? "btn compact collector-mobile-pay-btn"
+                                      : "btn compact primary collector-mobile-pay-btn"
+                                  }
+                                  disabled={!canRegister || !onRegisterPayment}
+                                  onClick={() => openCard(item, "pay")}
+                                >
+                                  {isOpen && cardMode === "pay" ? "Cerrar" : "Cobrar"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="btn compact ghost collector-mobile-skip-btn"
+                                  disabled={!canRegister || !onSkipVisit}
+                                  onClick={() => openCard(item, "skip")}
+                                >
+                                  {isOpen && cardMode === "skip" ? "Cerrar" : "No visitó"}
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
 
-                        {isOpen && onRegisterPayment ? (
+                        {isOpen && cardMode === "pay" && onRegisterPayment ? (
                           <div className="collector-mobile-pay-inline">
                             <CollectorPayForm
                               variant="inline"
                               formId={key}
                               clientName={item.clientName}
                               amountDue={item.amountDue}
-                              onCancel={closePay}
+                              onCancel={closeCard}
                               onSubmit={(payload) => {
                                 onRegisterPayment({
                                   idempotencyKey: payload.idempotencyKey,
@@ -273,9 +343,39 @@ export function CollectorMobileApp({
                                   collectorName: collector.name,
                                   clientName: item.clientName,
                                 });
-                                setExpandedKey(null);
+                                closeCard();
                               }}
                             />
+                          </div>
+                        ) : null}
+
+                        {isOpen && cardMode === "skip" && onSkipVisit ? (
+                          <div className="collector-mobile-skip-inline">
+                            <label>
+                              <span>Motivo</span>
+                              <select
+                                value={skipReason}
+                                onChange={(event) => setSkipReason(event.target.value)}
+                              >
+                                {SKIP_REASONS.map((reason) => (
+                                  <option key={reason} value={reason}>
+                                    {reason}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <div className="collector-mobile-skip-actions">
+                              <button type="button" className="btn compact ghost" onClick={closeCard}>
+                                Cancelar
+                              </button>
+                              <button
+                                type="button"
+                                className="btn compact secondary"
+                                onClick={() => confirmSkip(item)}
+                              >
+                                Confirmar
+                              </button>
+                            </div>
                           </div>
                         ) : null}
                       </>

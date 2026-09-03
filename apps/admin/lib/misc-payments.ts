@@ -66,13 +66,14 @@ export function findMiscPaymentForMovement(row: BankMovement, miscPayments: Misc
   if (row.miscPaymentRef) {
     return miscPayments.find((payment) => payment.ref === row.miscPaymentRef) ?? null;
   }
-  if (row.debit <= 0) return null;
+  const amount = row.credit > 0 ? row.credit : row.debit;
+  if (amount <= 0) return null;
   return (
     miscPayments.find(
       (payment) =>
         payment.bankAccountRef === row.accountRef &&
         payment.paidDate === row.valueDate &&
-        payment.amount === row.debit &&
+        payment.amount === amount &&
         (payment.label === row.thirdParty ||
           row.description.includes(payment.label) ||
           row.description.includes("Pago varios")),

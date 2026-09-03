@@ -3,20 +3,24 @@
 import { useMemo, useState } from "react";
 import { ColumnPicker, useColumnVisibility } from "@/components/ColumnPicker";
 import { BankSortTh, useBankMovementSort } from "@/components/BankSortTh";
+import { Pill } from "@/components/ui";
 import type { BankAccount, BankLedgerKind, BankMovement, BankReconciliation } from "@/lib/bank";
 import {
+  bankMovementDescriptionText,
+  bankMovementMethodLabel,
   expenseCategoryLabel,
   formatBankAmount,
   isoToDisplay,
   listReconciledMovementsByKind,
   listReconciledPeriods,
-  movementDisplayRef,
+  bankVisibleRef,
   normalizeBankMovements,
   paymentRefForMovement,
   periodLabel,
   sortBankMovements,
   summarizeReconciledMovements,
 } from "@/lib/bank";
+import { paymentMethodKind } from "@/lib/payment-method";
 import {
   BANK_LEDGER_EXPENSE_COLUMNS,
   BANK_LEDGER_EXPENSE_DEFAULT_COLS,
@@ -46,8 +50,8 @@ export function BankReconciledLedgerView({
   const isIncome = kind === "income";
   const columns = isIncome ? BANK_LEDGER_INCOME_COLUMNS : BANK_LEDGER_EXPENSE_COLUMNS;
   const defaultCols = isIncome ? BANK_LEDGER_INCOME_DEFAULT_COLS : BANK_LEDGER_EXPENSE_DEFAULT_COLS;
-  const storageKey = isIncome ? "nexo.banco.ingresos.columns" : "nexo.banco.gastos.columns";
-  const amountColId = isIncome ? "credit" : "debit";
+  const storageKey = isIncome ? "nexo.banco.ingresos.columns.v3" : "nexo.banco.gastos.columns.v2";
+  const amountColId = isIncome ? "debit" : "credit";
 
   const { isVisible, visibleCols, toggleColumn } = useColumnVisibility(columns, defaultCols, {
     storageKey,
@@ -70,13 +74,12 @@ export function BankReconciledLedgerView({
 
   const total = useMemo(() => summarizeReconciledMovements(rows, kind), [rows, kind]);
   const title = isIncome ? "Ingresos" : "Gastos";
-  const amountLabel = isIncome ? "Haber" : "Debe";
+  const amountLabel = isIncome ? "Debe" : "Haber";
   const labelColSpan = columns.filter((col) => col.id !== amountColId && isVisible(col.id)).length;
 
   function renderRefCell(row: BankMovement) {
     const paymentRef = paymentRefForMovement(row);
-    const displayRef =
-      kind === "expense" ? movementDisplayRef(row) : paymentRef ?? row.ref.slice(-6);
+    const displayRef = bankVisibleRef(row);
 
     if (isIncome && paymentRef && onOpenPaymentFicha) {
       return (
@@ -109,12 +112,22 @@ export function BankReconciledLedgerView({
   }
 
   function renderCell(row: BankMovement, colId: string) {
-    const amount = isIncome ? row.credit : row.debit;
+    const amount = isIncome ? row.debit : row.credit;
     switch (colId) {
       case "ref":
         return renderRefCell(row);
       case "description":
-        return row.description;
+        return bankMovementDescriptionText(row.description);
+      case "method": {
+        const methodLabel = bankMovementMethodLabel(row.description);
+        if (!methodLabel) return "—";
+        return (
+          <Pill
+            label={methodLabel}
+            kind={paymentMethodKind(methodLabel === "Nequi" ? "nequi" : "efectivo")}
+          />
+        );
+      }
       case "valueDate":
         return isoToDisplay(row.valueDate);
       case "period":
@@ -153,15 +166,27 @@ export function BankReconciledLedgerView({
             ))}
           </select>
         </label>
-        <ColumnPicker columns={columns} visibleCols={visibleCols} onToggle={toggleColumn} />
       </div>
 
       <div className="bank-table-wrap bank-records-table-wrap">
         <table className="bank-table bank-records-table">
+          <colgroup>
+            {isVisible("ref") ? <col className="br-ref" /> : null}
+            {isVisible("description") ? <col className="br-desc" /> : null}
+            {isVisible("method") ? <col className="br-method" /> : null}
+            {isVisible("valueDate") ? <col className="br-date" /> : null}
+            {isVisible("period") ? <col className="br-period" /> : null}
+            {isVisible("account") ? <col className="br-account" /> : null}
+            {isVisible("thirdParty") ? <col className="br-third" /> : null}
+            {isVisible("category") ? <col className="br-category" /> : null}
+            {isVisible(amountColId) ? <col className="br-amount" /> : null}
+            <col className="br-picker" />
+          </colgroup>
           <thead>
             <tr className="col-titles">
               {isVisible("ref") ? <th>Ref.</th> : null}
               {isVisible("description") ? <th>Descripción</th> : null}
+              {isVisible("method") ? <th>Método</th> : null}
               {isVisible("valueDate") ? (
                 <BankSortTh
                   label="Fecha valor"
@@ -185,12 +210,15 @@ export function BankReconciledLedgerView({
                   align="right"
                 />
               ) : null}
+              <th className="col-picker-cell">
+                <ColumnPicker columns={columns} visibleCols={visibleCols} onToggle={toggleColumn} />
+              </th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr className="empty-row">
-                <td colSpan={Math.max(visibleCols.length, 1)}>
+                <td colSpan={Math.max(visibleCols.length, 1) + 1}>
                   {periodFilter
                     ? `No hay ${title.toLowerCase()} conciliados en ${periodLabel(periodFilter)}.`
                     : `Aún no hay ${title.toLowerCase()} conciliados.`}
@@ -210,20 +238,30 @@ export function BankReconciledLedgerView({
                   }}
                   style={{ cursor: "pointer" }}
                 >
-                  {columns.filter((col) => isVisible(col.id)).map((col) => (
-                    <td
-                      key={col.id}
-                      className={
-                        col.id === "ref"
-                          ? "ref"
-                          : col.id === amountColId
-                            ? `bank-num ${isIncome ? "bank-credit" : "bank-debit"}`
-                            : undefined
-                      }
-                    >
-                      {renderCell(row, col.id)}
-                    </td>
-                  ))}
+                  {columns.filter((col) => isVisible(col.id)).map((col) => {
+                    const cellText =
+                      col.id === "account"
+                        ? String(renderCell(row, col.id) ?? "")
+                        : undefined;
+                    return (
+                      <td
+                        key={col.id}
+                        className={
+                          col.id === "ref"
+                            ? "ref"
+                            : col.id === "account"
+                              ? "bank-account-cell"
+                              : col.id === amountColId
+                                ? `bank-num ${isIncome ? "bank-debit" : "bank-credit"}`
+                                : undefined
+                        }
+                        title={col.id === "account" ? cellText : undefined}
+                      >
+                        {col.id === "account" ? cellText : renderCell(row, col.id)}
+                      </td>
+                    );
+                  })}
+                  <td className="col-picker-cell" aria-hidden />
                 </tr>
               ))
             )}
@@ -232,7 +270,7 @@ export function BankReconciledLedgerView({
             <tfoot>
               <tr className="bank-total-row">
                 <td colSpan={Math.max(labelColSpan, 1)}>Total</td>
-                <td className={`bank-num ${isIncome ? "bank-credit" : "bank-debit"}`}>
+                <td className={`bank-num ${isIncome ? "bank-debit" : "bank-credit"}`}>
                   {formatBankAmount(total)}
                 </td>
               </tr>

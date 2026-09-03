@@ -40,12 +40,14 @@ export const PRESTAMO_LIST_DEFAULT_COLS = PRESTAMO_LIST_COLUMNS.map((col) => col
 export const BANK_RECORD_COLUMNS: ColumnOption[] = [
   { id: "ref", label: "Ref." },
   { id: "description", label: "Descripción" },
+  { id: "method", label: "Método" },
   { id: "valueDate", label: "Fecha valor" },
   { id: "account", label: "Cuenta" },
   { id: "thirdParty", label: "Tercero" },
   { id: "debit", label: "Debe" },
   { id: "credit", label: "Haber" },
   { id: "balance", label: "Saldo" },
+  { id: "extract", label: "Extracto" },
 ];
 
 export const BANK_RECORD_DEFAULT_COLS = BANK_RECORD_COLUMNS.map((col) => col.id);
@@ -66,6 +68,7 @@ export const BANK_ACCOUNT_DEFAULT_COLS = BANK_ACCOUNT_COLUMNS.map((col) => col.i
 export const BANK_EXTRACT_MOVEMENT_COLUMNS: ColumnOption[] = [
   { id: "ref", label: "Ref." },
   { id: "description", label: "Descripción" },
+  { id: "method", label: "Método" },
   { id: "valueDate", label: "Fecha valor" },
   { id: "thirdParty", label: "Tercero" },
   { id: "debit", label: "Debe" },
@@ -126,11 +129,12 @@ export const USER_LIST_DEFAULT_COLS = [
 export const BANK_LEDGER_INCOME_COLUMNS: ColumnOption[] = [
   { id: "ref", label: "Ref." },
   { id: "description", label: "Descripción" },
+  { id: "method", label: "Método" },
   { id: "valueDate", label: "Fecha valor" },
   { id: "period", label: "Periodo" },
   { id: "account", label: "Cuenta" },
   { id: "thirdParty", label: "Tercero" },
-  { id: "credit", label: "Haber" },
+  { id: "debit", label: "Debe" },
 ];
 
 export const BANK_LEDGER_INCOME_DEFAULT_COLS = BANK_LEDGER_INCOME_COLUMNS.map((col) => col.id);
@@ -143,7 +147,7 @@ export const BANK_LEDGER_EXPENSE_COLUMNS: ColumnOption[] = [
   { id: "account", label: "Cuenta" },
   { id: "thirdParty", label: "Tercero" },
   { id: "category", label: "Categoría" },
-  { id: "debit", label: "Debe" },
+  { id: "credit", label: "Haber" },
 ];
 
 export const BANK_LEDGER_EXPENSE_DEFAULT_COLS = BANK_LEDGER_EXPENSE_COLUMNS.map((col) => col.id);
@@ -162,3 +166,36 @@ export const DAILY_COLLECTION_COLUMNS: ColumnOption[] = [
 ];
 
 export const DAILY_COLLECTION_DEFAULT_COLS = DAILY_COLLECTION_COLUMNS.map((col) => col.id);
+
+export const CARTERA_MORA_COLUMNS: ColumnOption[] = [
+  { id: "client", label: "Cliente" },
+  { id: "loan", label: "Préstamo" },
+  { id: "route", label: "Ruta" },
+  { id: "days", label: "Días" },
+  { id: "cuotas", label: "Cuotas" },
+  { id: "balance", label: "Saldo" },
+  { id: "status", label: "Estado" },
+];
+
+export const CARTERA_MORA_DEFAULT_COLS = CARTERA_MORA_COLUMNS.map((col) => col.id);
+
+export const CARTERA_RESUMEN_LOAN_COLUMNS: ColumnOption[] = [
+  { id: "client", label: "Cliente" },
+  { id: "loan", label: "Préstamo" },
+  { id: "route", label: "Ruta" },
+  { id: "balance", label: "Saldo" },
+  { id: "status", label: "Estado" },
+];
+
+export const CARTERA_RESUMEN_LOAN_DEFAULT_COLS = CARTERA_RESUMEN_LOAN_COLUMNS.map((col) => col.id);
+
+export const CARTERA_RESUMEN_PAYMENT_COLUMNS: ColumnOption[] = [
+  { id: "ref", label: "Ref." },
+  { id: "fecha", label: "Fecha" },
+  { id: "client", label: "Cliente" },
+  { id: "collector", label: "Cobrador" },
+  { id: "amount", label: "Valor" },
+  { id: "type", label: "Tipo" },
+];
+
+export const CARTERA_RESUMEN_PAYMENT_DEFAULT_COLS = CARTERA_RESUMEN_PAYMENT_COLUMNS.map((col) => col.id);

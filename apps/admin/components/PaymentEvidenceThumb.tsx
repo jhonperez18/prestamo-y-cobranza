@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   formatEvidenceSize,
-  paymentEvidenceOfKind,
+  primaryPaymentEvidence,
   resolvePaymentEvidencePreview,
   type PaymentEvidenceRef,
 } from "@/lib/payment-evidence";
@@ -21,15 +21,17 @@ function EvidenceLightbox({
   openUrl,
   sizeHint,
   isDemoPreview,
+  title,
   onClose,
 }: {
   openUrl: string;
   sizeHint: string;
   isDemoPreview: boolean;
+  title: string;
   onClose: () => void;
 }) {
   return (
-    <div className="evidence-lightbox" role="dialog" aria-modal="true" aria-label="Comprobante">
+    <div className="evidence-lightbox" role="dialog" aria-modal="true" aria-label={title}>
       <button
         type="button"
         className="evidence-lightbox-backdrop"
@@ -38,7 +40,7 @@ function EvidenceLightbox({
       />
       <div className="evidence-lightbox-panel">
         <header>
-          <strong>Comprobante de pago</strong>
+          <strong>{title}</strong>
           {sizeHint !== "—" ? <span>{sizeHint}</span> : null}
           {isDemoPreview ? <span className="evidence-demo-tag">Demo</span> : null}
           <a
@@ -55,7 +57,7 @@ function EvidenceLightbox({
           </button>
         </header>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={openUrl} alt="Comprobante ampliado" />
+        <img src={openUrl} alt={`${title} ampliado`} />
       </div>
     </div>
   );
@@ -68,9 +70,10 @@ export function PaymentEvidenceThumb({
   variant = "thumb",
 }: Props) {
   const [openUrl, setOpenUrl] = useState<string | null>(null);
-  const receipts = paymentEvidenceOfKind(evidence, "comprobante");
-  const receipt = receipts[0];
-  const previewUrl = receipt ? resolvePaymentEvidencePreview(receipt) : null;
+  const item = primaryPaymentEvidence(evidence);
+  const previewUrl = item ? resolvePaymentEvidencePreview(item) : null;
+  const isSignature = item?.kind === "firma";
+  const label = isSignature ? "Firma del cliente" : "Comprobante de pago";
 
   const close = useCallback(() => setOpenUrl(null), []);
 
@@ -83,13 +86,13 @@ export function PaymentEvidenceThumb({
     return () => window.removeEventListener("keydown", onKey);
   }, [close, openUrl]);
 
-  if (!receipt || !previewUrl) {
+  if (!item || !previewUrl) {
     return <span className="payment-evidence-empty">{emptyLabel}</span>;
   }
 
-  const sizeHint = formatEvidenceSize(receipt.byteSize);
-  const isDemoPreview = !receipt.previewUrl?.trim();
-  const title = `Ver comprobante ampliado${sizeHint !== "—" ? ` · ${sizeHint}` : ""}`;
+  const sizeHint = formatEvidenceSize(item.byteSize);
+  const isDemoPreview = !item.previewUrl?.trim();
+  const title = `Ver ${isSignature ? "firma" : "comprobante"} ampliado${sizeHint !== "—" ? ` · ${sizeHint}` : ""}`;
 
   if (variant === "panel") {
     return (
@@ -97,13 +100,17 @@ export function PaymentEvidenceThumb({
         <div className="payment-evidence-panel">
           <button
             type="button"
-            className="payment-evidence-panel-btn"
+            className={
+              isSignature
+                ? "payment-evidence-panel-btn is-signature"
+                : "payment-evidence-panel-btn"
+            }
             title={title}
-            aria-label="Ampliar comprobante"
+            aria-label={`Ampliar ${isSignature ? "firma" : "comprobante"}`}
             onClick={() => setOpenUrl(previewUrl)}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={previewUrl} alt="Comprobante de pago" />
+            <img src={previewUrl} alt={label} />
           </button>
           <p className="payment-evidence-panel-hint">Clic en la imagen para verla a pantalla completa</p>
         </div>
@@ -112,6 +119,7 @@ export function PaymentEvidenceThumb({
             openUrl={openUrl}
             sizeHint={sizeHint}
             isDemoPreview={isDemoPreview}
+            title={label}
             onClose={close}
           />
         ) : null}
@@ -123,9 +131,9 @@ export function PaymentEvidenceThumb({
     <>
       <button
         type="button"
-        className="payment-evidence-thumb"
+        className={isSignature ? "payment-evidence-thumb is-signature" : "payment-evidence-thumb"}
         title={title}
-        aria-label="Ver comprobante ampliado"
+        aria-label={`Ver ${isSignature ? "firma" : "comprobante"} ampliado`}
         onClick={(event) => {
           event.stopPropagation();
           setOpenUrl(previewUrl);
@@ -133,7 +141,7 @@ export function PaymentEvidenceThumb({
         style={{ width: size, height: size }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={previewUrl} alt="Comprobante de pago" />
+        <img src={previewUrl} alt={label} />
       </button>
 
       {openUrl ? (
@@ -141,6 +149,7 @@ export function PaymentEvidenceThumb({
           openUrl={openUrl}
           sizeHint={sizeHint}
           isDemoPreview={isDemoPreview}
+          title={label}
           onClose={close}
         />
       ) : null}
