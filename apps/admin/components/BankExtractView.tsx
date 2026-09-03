@@ -421,6 +421,7 @@ export function BankExtractView({
 
   const formOpen = Boolean(editingRef) && !closed;
   const showActions = filterMode === "pending" && !closed;
+  const showExtractColumn = filterMode === "pending";
 
   return (
     <section className="panel bank-extract-panel">
@@ -524,7 +525,11 @@ export function BankExtractView({
       ) : null}
 
       <div className="table-wrap">
-        <table className="data list-grid bank-extract-table">
+        <table
+          className={`data list-grid bank-extract-table ${
+            showExtractColumn ? "bank-extract-table-pending" : "bank-extract-table-all"
+          }`}
+        >
           <colgroup>
             {isVisible("ref") ? <col className="be-ref" /> : null}
             {isVisible("description") ? <col className="be-desc" /> : null}
@@ -534,7 +539,7 @@ export function BankExtractView({
             {isVisible("debit") ? <col className="be-debit" /> : null}
             {isVisible("credit") ? <col className="be-credit" /> : null}
             {isVisible("balance") ? <col className="be-balance" /> : null}
-            {isVisible("extract") ? <col className="be-extract" /> : null}
+            {showExtractColumn && isVisible("extract") ? <col className="be-extract" /> : null}
             {showActions ? <col className="be-actions" /> : null}
             <col className="be-picker" />
           </colgroup>
@@ -574,7 +579,7 @@ export function BankExtractView({
                 />
               ) : null}
               {isVisible("balance") ? <th className="right">Saldo</th> : null}
-              {isVisible("extract") ? (
+              {showExtractColumn && isVisible("extract") ? (
                 <th className="center">
                   <label className="bank-extract-all" title="Marcar o desmarcar todos">
                     <input
@@ -655,7 +660,7 @@ export function BankExtractView({
                     {isVisible("balance") ? (
                       <td className="right money bank-balance">{formatBankAmount(row.runningBalance)}</td>
                     ) : null}
-                    {isVisible("extract") ? (
+                    {showExtractColumn && isVisible("extract") ? (
                       <td className="center" onClick={(event) => event.stopPropagation()}>
                         <input
                           className="check"
@@ -716,7 +721,7 @@ export function BankExtractView({
                 {isVisible("balance") ? (
                   <td className="right money">{formatBankAmount(summary.balance)}</td>
                 ) : null}
-                {isVisible("extract") ? <td /> : null}
+                {showExtractColumn && isVisible("extract") ? <td /> : null}
                 {showActions ? <td /> : null}
                 <td className="col-picker-cell" aria-hidden />
               </tr>

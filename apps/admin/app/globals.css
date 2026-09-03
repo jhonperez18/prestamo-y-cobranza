@@ -5523,16 +5523,24 @@
       table-layout: fixed;
     }
     table.data.list-grid.bank-extract-table col.be-ref { width: 9%; }
-    table.data.list-grid.bank-extract-table col.be-desc { width: 18%; }
+    table.data.list-grid.bank-extract-table col.be-desc { width: 21%; }
     table.data.list-grid.bank-extract-table col.be-method { width: 9%; }
-    table.data.list-grid.bank-extract-table col.be-date { width: 11%; }
+    table.data.list-grid.bank-extract-table col.be-date { width: 10%; }
     table.data.list-grid.bank-extract-table col.be-third { width: 13%; }
     table.data.list-grid.bank-extract-table col.be-debit { width: 8%; }
     table.data.list-grid.bank-extract-table col.be-credit { width: 8%; }
     table.data.list-grid.bank-extract-table col.be-balance { width: 10%; }
-    table.data.list-grid.bank-extract-table col.be-extract { width: 7%; }
-    table.data.list-grid.bank-extract-table col.be-actions { width: 7%; }
+    table.data.list-grid.bank-extract-table col.be-extract { width: 6%; }
+    table.data.list-grid.bank-extract-table col.be-actions { width: 6%; }
     table.data.list-grid.bank-extract-table col.be-picker { width: 44px; }
+    table.data.list-grid.bank-extract-table.bank-extract-table-all col.be-ref { width: 9%; }
+    table.data.list-grid.bank-extract-table.bank-extract-table-all col.be-desc { width: 28%; }
+    table.data.list-grid.bank-extract-table.bank-extract-table-all col.be-method { width: 8%; }
+    table.data.list-grid.bank-extract-table.bank-extract-table-all col.be-date { width: 10%; }
+    table.data.list-grid.bank-extract-table.bank-extract-table-all col.be-third { width: 17%; }
+    table.data.list-grid.bank-extract-table.bank-extract-table-all col.be-debit { width: 8%; }
+    table.data.list-grid.bank-extract-table.bank-extract-table-all col.be-credit { width: 8%; }
+    table.data.list-grid.bank-extract-table.bank-extract-table-all col.be-balance { width: 12%; }
     table.data.list-grid.bank-extract-table th,
     table.data.list-grid.bank-extract-table td {
       overflow: hidden;

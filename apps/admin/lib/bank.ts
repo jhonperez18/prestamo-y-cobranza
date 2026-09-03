@@ -855,7 +855,7 @@ export function currentFiscalStart(reference = new Date()) {
  * Siempre incluye al menos el año fiscal actual (columna vacía si aún no hay conciliaciones)
  * y agrega columnas nuevas a medida que se concilian periodos de otros años.
  */
-export function buildAccountingReport(reconciliations: BankReconciliation[]): BankReportYear[] {
+export function buildAccountingReport(movements: BankMovement[]): BankReportYear[] {
   const yearMap = new Map<string, BankReportYear>();
 
   const ensureYear = (fiscalStart: number) => {
@@ -866,7 +866,8 @@ export function buildAccountingReport(reconciliations: BankReconciliation[]): Ba
 
   ensureYear(currentFiscalStart());
 
-  for (const row of reconciliations) {
+  for (const row of movements) {
+    if (!row.reconciled) continue;
     const [yearStr, monthStr] = row.period.split("-");
     const year = Number(yearStr);
     const month = Number(monthStr);
@@ -875,10 +876,12 @@ export function buildAccountingReport(reconciliations: BankReconciliation[]): Ba
     const bucket = ensureYear(fiscalStart);
     const monthEntry = bucket.months[month - 1];
     if (!monthEntry) continue;
-    monthEntry.gastos += row.totalCredit;
-    monthEntry.ingresos += row.totalDebit;
-    bucket.totalGastos += row.totalCredit;
-    bucket.totalIngresos += row.totalDebit;
+    // En bancos (activo): ingreso = Debe, gasto = Haber.
+    // Los movimientos ya vienen normalizados (Debe/Haber correctos).
+    monthEntry.gastos += row.credit;
+    monthEntry.ingresos += row.debit;
+    bucket.totalGastos += row.credit;
+    bucket.totalIngresos += row.debit;
   }
 
   return [...yearMap.values()]

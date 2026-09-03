@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { BankLedgerKind, BankReconciliation } from "@/lib/bank";
+import type { BankLedgerKind, BankMovement } from "@/lib/bank";
 import {
   buildAccountingReport,
   formatBankAmount,
@@ -10,7 +10,7 @@ import {
 } from "@/lib/bank";
 
 type Props = {
-  reconciliations: BankReconciliation[];
+  movements: BankMovement[];
   onOpenLedger: (kind: BankLedgerKind, period: string) => void;
 };
 
@@ -59,8 +59,8 @@ function ReportAmountCell({
   );
 }
 
-export function BankReportView({ reconciliations, onOpenLedger }: Props) {
-  const years = useMemo(() => buildAccountingReport(reconciliations), [reconciliations]);
+export function BankReportView({ movements, onOpenLedger }: Props) {
+  const years = useMemo(() => buildAccountingReport(movements), [movements]);
 
   return (
     <section className="panel bank-report-panel">

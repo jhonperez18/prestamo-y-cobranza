@@ -2634,7 +2634,7 @@ export function Workspace({
     if (moduleId === "banco" && viewId === "informe-resultado") {
       return (
         <BankReportView
-          reconciliations={bankReconciliations}
+          movements={bankMovements}
           onOpenLedger={openBankLedgerFromReport}
         />
       );
