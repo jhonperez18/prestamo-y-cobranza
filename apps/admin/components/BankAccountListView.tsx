@@ -18,7 +18,7 @@ type Props = {
   movements: BankMovement[];
   reconciliations: BankReconciliation[];
   onNewAccount: () => void;
-  onOpenPending: (accountRef: string, period: string) => void;
+  onOpenPending: (accountRef?: string, period?: string) => void;
 };
 
 export function BankAccountListView({

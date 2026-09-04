@@ -37,13 +37,20 @@ export function useColumnVisibility(
       if (saved) {
         const parsed = JSON.parse(saved) as string[];
         const valid = parsed.filter((id) => columnOrder.includes(id));
-        if (valid.length) setVisibleCols(valid);
+        // Columnas nuevas del default que aún no estaban en lo guardado.
+        const missingDefaults = defaultVisible.filter(
+          (id) => columnOrder.includes(id) && !parsed.includes(id),
+        );
+        const merged = columnOrder.filter(
+          (id) => valid.includes(id) || missingDefaults.includes(id),
+        );
+        if (merged.length) setVisibleCols(merged);
       }
     } catch {
       /* ignore */
     }
     setReady(true);
-  }, [storageKey, columnOrder]);
+  }, [storageKey, columnOrder, defaultVisible]);
 
   useEffect(() => {
     if (!storageKey || !ready) return;

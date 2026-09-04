@@ -9,17 +9,23 @@ export type StatusKind =
   | "overdue"
   | "ok"
   | "draft"
-  | "warn";
+  | "warn"
+  | "efectivo"
+  | "nequi";
 
 export type ClientRow = {
   ref: string;
   alta: string;
   name: string;
   lastName: string;
+  /** Apodo / alias (opcional). */
+  nickname?: string;
   document: string;
   city: string;
   barrio: string;
   route: string;
+  /** Posición consecutiva dentro de la ruta (1…N). */
+  routeOrder: number;
   email: string;
   phone: string;
   address: string;
@@ -55,6 +61,11 @@ export type LoanRow = {
   total?: number;
   installment?: number;
   schedule?: { date: string; amount: number; kind?: "interes" | "capital" | "cuota"; paid?: number }[];
+  /**
+   * Faltas consecutivas sin pago al cerrar jornada.
+   * 1–4 = alerta; al llegar a 5 = mora.
+   */
+  collectionAlerts?: number;
 };
 
 export type PaymentRow = {
@@ -91,188 +102,38 @@ export type ActivityRow = {
   gps?: boolean;
 };
 
-export const CLIENTS: ClientRow[] = [
-  { ref: "COD-0", alta: "27/08/2026", name: "Carlos", lastName: "Pérez", document: "80.123.456", city: "Soacha", barrio: "San Mateo", route: "Norte", email: "carlos.perez@mail.com", phone: "300 555 0182", address: "Cra 12 # 8-40", notes: "Prefiere visita en la tarde", total: 2570000, pending: 2160000, status: "Activo", kind: "ok" },
-  { ref: "COD-1", alta: "27/08/2026", name: "María", lastName: "Gómez", document: "52.881.102", city: "Bosa", barrio: "El Recreo", route: "Sur", email: "mari.gomez@mail.com", phone: "310 441 2290", address: "Cl 65 sur # 18-22", notes: "", total: 994000, pending: 570000, status: "Activo", kind: "ok" },
-  { ref: "COD-2", alta: "26/08/2026", name: "Pedro", lastName: "Rodríguez", document: "79.440.218", city: "Kennedy", barrio: "Castilla", route: "Centro", email: "", phone: "301 882 1044", address: "Av. 1 de Mayo # 40-10", notes: "Negocio de abarrotes", total: 800000, pending: 0, status: "Cerrado", kind: "paid" },
-  { ref: "COD-3", alta: "26/08/2026", name: "Ana", lastName: "López", document: "41.902.773", city: "Suba", barrio: "Tibabuyes", route: "Norte", email: "ana.lopez@mail.com", phone: "315 220 7781", address: "Cll 147 # 91-15", notes: "", total: 610000, pending: 450000, status: "Activo", kind: "ok" },
-  { ref: "COD-4", alta: "25/08/2026", name: "Julián", lastName: "Castro", document: "1.014.882.331", city: "Engativá", barrio: "Bonanza", route: "Sur", email: "julian.c@mail.com", phone: "320 109 3345", address: "Cra 90 # 75-08", notes: "No contesta en la mañana", total: 800000, pending: 800000, status: "Activo", kind: "ok" },
-  { ref: "COD-5", alta: "25/08/2026", name: "Laura", lastName: "Méndez", document: "53.220.119", city: "Usaquén", barrio: "Santa Bárbara", route: "Norte", email: "", phone: "300 918 2267", address: "Cll 116 # 7-40", notes: "", total: 250000, pending: 0, status: "Cerrado", kind: "paid" },
-  { ref: "COD-6", alta: "24/08/2026", name: "Andrés", lastName: "Gil", document: "80.331.904", city: "Fontibón", barrio: "Modelia", route: "Centro", email: "andres.gil@mail.com", phone: "312 667 0911", address: "Cra 22 # 22-18", notes: "Dejar aviso al portero", total: 1330000, pending: 210000, status: "Activo", kind: "ok" },
-  { ref: "COD-7", alta: "24/08/2026", name: "Diana", lastName: "Ruiz", document: "1.026.441.880", city: "Chapinero", barrio: "Marly", route: "Centro", email: "diana.ruiz@mail.com", phone: "318 450 8822", address: "Cll 53 # 10-12", notes: "", total: 1400000, pending: 1400000, status: "Activo", kind: "ok" },
-  { ref: "COD-8", alta: "28/08/2026", name: "Roberto", lastName: "Vargas", document: "91.220.441", city: "Kennedy", barrio: "Timiza", route: "Sur", email: "", phone: "301 555 9012", address: "Cra 78 # 38-20", notes: "Referido por cobrador", total: 0, pending: 0, status: "Pte. revisión", kind: "warn", createdBy: "Lina Soto" },
-  { ref: "COD-9", alta: "28/08/2026", name: "Sandra", lastName: "Mejía", document: "52.110.902", city: "Suba", barrio: "El Prado", route: "Norte", email: "sandra.m@mail.com", phone: "320 441 2288", address: "Cll 127 # 52-10", notes: "", total: 0, pending: 0, status: "Pte. revisión", kind: "warn", createdBy: "Juan Ríos" },
+export const CLIENT_SEEDS: Omit<ClientRow, "routeOrder">[] = [
+  { ref: "COD-0", alta: "27/08/2026", name: "Carlos", lastName: "Pérez", nickname: "Carlitos", document: "80.123.456", city: "Soacha", barrio: "San Mateo", route: "1", email: "carlos.perez@mail.com", phone: "300 555 0182", address: "Cra 12 # 8-40", notes: "Prefiere visita en la tarde", total: 0, pending: 0, status: "Activo", kind: "ok" },
+  { ref: "COD-1", alta: "27/08/2026", name: "María", lastName: "Gómez", document: "52.881.102", city: "Bosa", barrio: "El Recreo", route: "2", email: "mari.gomez@mail.com", phone: "310 441 2290", address: "Cl 65 sur # 18-22", notes: "", total: 0, pending: 0, status: "Activo", kind: "ok" },
+  { ref: "COD-2", alta: "26/08/2026", name: "Pedro", lastName: "Rodríguez", document: "79.440.218", city: "Kennedy", barrio: "Castilla", route: "3", email: "", phone: "301 882 1044", address: "Av. 1 de Mayo # 40-10", notes: "Negocio de abarrotes", total: 0, pending: 0, status: "Cerrado", kind: "paid" },
+  { ref: "COD-3", alta: "26/08/2026", name: "Ana", lastName: "López", document: "41.902.773", city: "Suba", barrio: "Tibabuyes", route: "1", email: "ana.lopez@mail.com", phone: "315 220 7781", address: "Cll 147 # 91-15", notes: "", total: 0, pending: 0, status: "Activo", kind: "ok" },
+  { ref: "COD-4", alta: "25/08/2026", name: "Julián", lastName: "Castro", document: "1.014.882.331", city: "Engativá", barrio: "Bonanza", route: "2", email: "julian.c@mail.com", phone: "320 109 3345", address: "Cra 90 # 75-08", notes: "No contesta en la mañana", total: 0, pending: 0, status: "Activo", kind: "ok" },
+  { ref: "COD-5", alta: "25/08/2026", name: "Laura", lastName: "Méndez", document: "53.220.119", city: "Usaquén", barrio: "Santa Bárbara", route: "1", email: "", phone: "300 918 2267", address: "Cll 116 # 7-40", notes: "", total: 0, pending: 0, status: "Cerrado", kind: "paid" },
+  { ref: "COD-6", alta: "24/08/2026", name: "Andrés", lastName: "Gil", document: "80.331.904", city: "Fontibón", barrio: "Modelia", route: "3", email: "andres.gil@mail.com", phone: "312 667 0911", address: "Cra 22 # 22-18", notes: "Dejar aviso al portero", total: 0, pending: 0, status: "Activo", kind: "ok" },
+  { ref: "COD-7", alta: "24/08/2026", name: "Diana", lastName: "Ruiz", document: "1.026.441.880", city: "Chapinero", barrio: "Marly", route: "3", email: "diana.ruiz@mail.com", phone: "318 450 8822", address: "Cll 53 # 10-12", notes: "", total: 0, pending: 0, status: "Activo", kind: "ok" },
+  { ref: "COD-8", alta: "28/08/2026", name: "Roberto", lastName: "Vargas", document: "91.220.441", city: "Kennedy", barrio: "Timiza", route: "", email: "", phone: "301 555 9012", address: "Cra 78 # 38-20", notes: "Referido por cobrador", total: 0, pending: 0, status: "Pte. revisión", kind: "warn", createdBy: "Lina Soto" },
+  { ref: "COD-9", alta: "28/08/2026", name: "Sandra", lastName: "Mejía", document: "52.110.902", city: "Suba", barrio: "El Prado", route: "", email: "sandra.m@mail.com", phone: "320 441 2288", address: "Cll 127 # 52-10", notes: "", total: 0, pending: 0, status: "Pte. revisión", kind: "warn", createdBy: "Juan Ríos" },
 ];
+
+function withSeedRouteOrders(rows: Omit<ClientRow, "routeOrder">[]): ClientRow[] {
+  const counters = new Map<string, number>();
+  return rows.map((row) => {
+    if (row.status === "Pte. revisión" || !row.route) {
+      return { ...row, route: row.status === "Pte. revisión" ? "" : row.route, routeOrder: 0 };
+    }
+    const next = (counters.get(row.route) ?? 0) + 1;
+    counters.set(row.route, next);
+    return { ...row, routeOrder: next };
+  });
+}
+
+export const CLIENTS: ClientRow[] = withSeedRouteOrders(CLIENT_SEEDS);
+
 
 import { normalizeLoan, type LoanTermsRow } from "@/lib/loan-preview";
 
-const LOAN_SEEDS: LoanTermsRow[] = [
-  {
-    ref: "P-0",
-    clientRef: "COD-0",
-    client: "Carlos Pérez",
-    date: "27/02/2026",
-    due: "27/08/2026",
-    capital: 500000,
-    paid: 150000,
-    balance: 2160000,
-    status: "Activo",
-    kind: "ok",
-    mode: "interes",
-    pact: "tasa",
-    frequency: "diario",
-    rate: 2,
-    notes: "",
-  },
-  {
-    ref: "P-1",
-    clientRef: "COD-0",
-    client: "Carlos Pérez",
-    date: "10/08/2025",
-    due: "10/02/2026",
-    capital: 200000,
-    paid: 0,
-    status: "Activo",
-    kind: "ok",
-    mode: "interes",
-    pact: "tasa",
-    frequency: "mensual",
-    rate: 5,
-    notes: "",
-  },
-  {
-    ref: "P-2",
-    clientRef: "COD-0",
-    client: "Carlos Pérez",
-    date: "04/03/2025",
-    due: "04/09/2025",
-    capital: 150000,
-    paid: 0,
-    status: "Activo",
-    kind: "ok",
-    mode: "interes",
-    pact: "tasa",
-    frequency: "mensual",
-    rate: 5,
-    notes: "",
-  },
-  {
-    ref: "P-3",
-    clientRef: "COD-1",
-    client: "María Gómez",
-    date: "12/08/2026",
-    due: "12/09/2026",
-    capital: 450000,
-    paid: 190000,
-    balance: 570000,
-    status: "Activo",
-    kind: "pending",
-    mode: "interes",
-    pact: "valor",
-    frequency: "diario",
-    installment: 10000,
-    notes: "",
-  },
-  {
-    ref: "P-4",
-    clientRef: "COD-1",
-    client: "María Gómez",
-    date: "22/06/2025",
-    due: "22/12/2025",
-    capital: 180000,
-    paid: 0,
-    status: "Activo",
-    kind: "ok",
-    mode: "interes",
-    pact: "tasa",
-    frequency: "mensual",
-    rate: 5,
-    notes: "",
-  },
-  {
-    ref: "P-5",
-    clientRef: "COD-2",
-    client: "Pedro Rodríguez",
-    date: "04/01/2026",
-    due: "04/07/2026",
-    capital: 800000,
-    paid: 0,
-    status: "Activo",
-    kind: "ok",
-    mode: "interes",
-    pact: "tasa",
-    frequency: "mensual",
-    rate: 5,
-    notes: "",
-  },
-  {
-    ref: "P-6",
-    clientRef: "COD-3",
-    client: "Ana López",
-    date: "18/08/2026",
-    due: "18/09/2026",
-    capital: 300000,
-    paid: 160000,
-    balance: 450000,
-    status: "Activo",
-    kind: "partial",
-    mode: "interes",
-    pact: "valor",
-    frequency: "diario",
-    installment: 10000,
-    notes: "",
-  },
-  {
-    ref: "P-7",
-    clientRef: "COD-4",
-    client: "Julián Castro",
-    date: "08/08/2026",
-    due: "07/09/2026",
-    capital: 500000,
-    paid: 0,
-    balance: 800000,
-    status: "Mora",
-    kind: "overdue",
-    mode: "interes",
-    pact: "tasa",
-    frequency: "diario",
-    rate: 2,
-    notes: "",
-  },
-  {
-    ref: "P-8",
-    clientRef: "COD-7",
-    client: "Diana Ruiz",
-    date: "27/08/2026",
-    due: "26/09/2026",
-    capital: 1000000,
-    paid: 0,
-    balance: 1400000,
-    status: "Activo",
-    kind: "ok",
-    mode: "interes",
-    pact: "tasa",
-    frequency: "quincenal",
-    rate: 20,
-    notes: "",
-  },
-  {
-    ref: "P-9",
-    clientRef: "COD-6",
-    client: "Andrés Gil",
-    date: "01/08/2026",
-    due: "31/08/2026",
-    capital: 700000,
-    paid: 0,
-    status: "Mora",
-    kind: "overdue",
-    mode: "interes",
-    pact: "tasa",
-    frequency: "diario",
-    rate: 3,
-    notes: "",
-  },
-];
+const LOAN_SEEDS: LoanTermsRow[] = [];
+
 
 export type RouteStop = {
   clientRef: string;
@@ -428,8 +289,12 @@ export const ROLES: RoleRow[] = [
 ];
 
 /** Roles que el administrador puede asignar al crear usuarios (por ahora). */
+export const SUPERVISOR_ROLE_REF = "ROL-2";
 export const ASSIGNABLE_ROLES = ROLES.filter(
-  (entry) => entry.ref === ADMIN_ROLE_REF || entry.ref === COLLECTOR_ROLE_REF,
+  (entry) =>
+    entry.ref === ADMIN_ROLE_REF ||
+    entry.ref === COLLECTOR_ROLE_REF ||
+    entry.ref === SUPERVISOR_ROLE_REF,
 );
 
 export const COLLECTORS: CollectorRow[] = [
@@ -555,39 +420,26 @@ export const USERS: UserRow[] = [
 
 export const ROUTES: RouteRow[] = [
   {
-    ref: "RUT-0",
-    id: "norte",
-    name: "Norte",
-    collectorRef: "",
-    collector: "—",
-    zone: "Norte",
-    frequency: "Lun–Sáb",
-    clients: 3,
-    status: "Activa",
-    kind: "ok",
-    stops: [],
-  },
-  {
     ref: "RUT-1",
-    id: "sur",
-    name: "Sur",
-    collectorRef: "",
-    collector: "—",
-    zone: "Sur",
+    id: "1",
+    name: "1",
+    collectorRef: "COB-0",
+    collector: "Juan Ríos",
+    zone: "",
     frequency: "Lun–Sáb",
-    clients: 2,
+    clients: 4,
     status: "Activa",
     kind: "ok",
     stops: [],
   },
   {
     ref: "RUT-2",
-    id: "centro",
-    name: "Centro",
-    collectorRef: "",
-    collector: "—",
-    zone: "Centro",
-    frequency: "Lun–Vie",
+    id: "2",
+    name: "2",
+    collectorRef: "COB-1",
+    collector: "Lina Soto",
+    zone: "",
+    frequency: "Lun–Sáb",
     clients: 3,
     status: "Activa",
     kind: "ok",
@@ -595,47 +447,43 @@ export const ROUTES: RouteRow[] = [
   },
   {
     ref: "RUT-3",
-    id: "oriente",
-    name: "Oriente",
-    collectorRef: "",
-    collector: "—",
-    zone: "Oriente",
+    id: "3",
+    name: "3",
+    collectorRef: "COB-2",
+    collector: "Diego Mora",
+    zone: "",
     frequency: "Lun–Sáb",
-    clients: 0,
-    status: "Activa",
-    kind: "ok",
-    stops: [],
-  },
-  {
-    ref: "RUT-4",
-    id: "occidente",
-    name: "Occidente",
-    collectorRef: "",
-    collector: "—",
-    zone: "Occidente",
-    frequency: "Lun–Sáb",
-    clients: 0,
-    status: "Activa",
-    kind: "ok",
-    stops: [],
-  },
-  {
-    ref: "RUT-5",
-    id: "playa",
-    name: "Playa",
-    collectorRef: "",
-    collector: "—",
-    zone: "Playa",
-    frequency: "Lun–Sáb",
-    clients: 0,
+    clients: 3,
     status: "Activa",
     kind: "ok",
     stops: [],
   },
 ];
 
+
 export function nextRouteCode(rows: RouteRow[] = ROUTES) {
-  return `RUT-${rows.length}`;
+  const nums = rows
+    .map((row) => Number(row.ref.replace(/^RUT-/i, "")))
+    .filter((value) => Number.isFinite(value));
+  const next = nums.length ? Math.max(...nums) + 1 : 1;
+  return `RUT-${next}`;
+}
+
+/** Nombre de ruta = solo dígitos ("1", "2"). */
+export function normalizeRouteNumber(input: string) {
+  return String(input ?? "").replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+}
+
+/** Siguiente número libre entre rutas de catálogo. */
+export function nextRouteNumber(rows: RouteRow[] = ROUTES) {
+  const used = new Set(
+    rows
+      .map((row) => Number(normalizeRouteNumber(row.name) || row.ref.replace(/\D/g, "")))
+      .filter((value) => Number.isFinite(value) && value > 0),
+  );
+  let n = 1;
+  while (used.has(n)) n += 1;
+  return String(n);
 }
 
 export function nextCollectorCode(rows: CollectorRow[] = COLLECTORS) {
@@ -722,7 +570,7 @@ export function collectorFieldStatus(collector: CollectorRow, routes: RouteRow[]
   return { label: "En campo", kind: "ok" as StatusKind };
 }
 
-export const ZONES = ["Norte", "Sur", "Centro", "Oriente", "Occidente", "Playa"] as const;
+export const ZONES = [] as const; // legacy vacío: la cobertura es por ruta, no por zona geográfica
 
 export function catalogRoutes(rows: RouteRow[] = ROUTES) {
   return rows.filter((row) => !row.ref.startsWith("RUT-D-"));
@@ -746,7 +594,14 @@ export function routeSlug(name: string) {
 }
 
 export function clientsOnRoute(routeName: string, rows: ClientRow[] = CLIENTS) {
-  return rows.filter((row) => row.route === routeName);
+  return rows.filter(
+    (row) => row.route === routeName && row.status !== "Pte. revisión",
+  );
+}
+
+/** Clientes de ruta visibles en listado operativo (sin pendientes de revisión). */
+export function clientsOnRouteListed(routeName: string, rows: ClientRow[] = CLIENTS) {
+  return clientsOnRoute(routeName, rows);
 }
 
 export function nextClientCode(count = CLIENTS.length) {
@@ -765,133 +620,7 @@ export function nextLoanCode(rows: LoanRow[] = LOANS) {
   return `P-${rows.length}`;
 }
 
-function whenLabel(isoDate: string, time: string) {
-  const [year, month, day] = isoDate.split("-");
-  return `${day}/${month}/${year} · ${time}`;
-}
-
-/** Cuotas de interés diario P-0 (12–25 ago) — suman $140.000 junto con PG-9182 = $150.000 */
-function p0PaymentHistory(): PaymentRow[] {
-  return Array.from({ length: 14 }, (_, i) => {
-    const dueDay = 12 + i;
-    const dueDate = `2026-08-${String(dueDay).padStart(2, "0")}`;
-    const paidNextDay = i === 3 || i === 10;
-    const paidDay = paidNextDay ? dueDay + 1 : dueDay;
-    const paidDate = `2026-08-${String(paidDay).padStart(2, "0")}`;
-    const hour = 8 + (i % 4);
-    const minute = String((i * 11) % 60).padStart(2, "0");
-    const paidTime = `${String(hour).padStart(2, "0")}:${minute}`;
-    const fromPwa = i !== 3 && i !== 10;
-    const method = i % 3 === 0 ? ("nequi" as const) : ("efectivo" as const);
-    return {
-      ref: `PG-${9153 + i}`,
-      loanRef: "P-0",
-      when: whenLabel(paidDate, paidTime),
-      paidDate,
-      paidTime,
-      dueDate,
-      chargeLabel: "Interés",
-      client: "Carlos Pérez",
-      collector: fromPwa ? "Juan Ríos" : "Administrador",
-      collectorRef: fromPwa ? "COB-0" : undefined,
-      routeRef: fromPwa ? `RUT-D-COB-0-${paidDate}` : undefined,
-      amount: 10000,
-      type: "Cuota",
-      kind: "paid" as const,
-      method,
-      source: fromPwa ? ("pwa" as const) : ("caja" as const),
-      gps: fromPwa,
-    };
-  });
-}
-
-export const PAYMENTS: PaymentRow[] = [
-  {
-    ref: "PG-9182",
-    loanRef: "P-0",
-    when: "27/08/2026 · 10:35",
-    paidDate: "2026-08-27",
-    paidTime: "10:35",
-    dueDate: "2026-08-26",
-    chargeLabel: "Interés",
-    client: "Carlos Pérez",
-    collector: "Juan Ríos",
-    collectorRef: "COB-0",
-    routeRef: "RUT-D-COB-0-2026-08-27",
-    amount: 10000,
-    type: "Cuota",
-    kind: "paid",
-    method: "efectivo",
-    source: "pwa",
-    gps: true,
-  },
-  ...p0PaymentHistory(),
-  {
-    ref: "PG-9181",
-    loanRef: "P-6",
-    when: "27/08/2026 · 09:12",
-    paidDate: "2026-08-27",
-    paidTime: "09:12",
-    dueDate: "2026-08-26",
-    chargeLabel: "Cuota",
-    client: "Ana López",
-    collector: "Juan Ríos",
-    collectorRef: "COB-0",
-    routeRef: "RUT-D-COB-0-2026-08-27",
-    amount: 5000,
-    type: "Abono",
-    kind: "partial",
-    method: "nequi",
-    source: "pwa",
-    gps: true,
-    evidence: [
-      {
-        id: "EV-PG9181",
-        kind: "comprobante",
-        fileId: "payments/PG-9181/evidence/EV-PG9181",
-        mime: "image/jpeg",
-        byteSize: 86400,
-        capturedAt: "2026-08-27T09:12:00.000Z",
-      },
-    ],
-  },
-  {
-    ref: "PG-9180",
-    loanRef: "P-3",
-    when: "27/08/2026 · 08:40",
-    paidDate: "2026-08-27",
-    paidTime: "08:40",
-    dueDate: "2026-08-27",
-    chargeLabel: "Cuota",
-    client: "María Gómez",
-    collector: "Lina Soto",
-    collectorRef: "COB-1",
-    amount: 10000,
-    type: "Cuota",
-    kind: "paid",
-    method: "nequi",
-    source: "pwa",
-    gps: true,
-  },
-  {
-    ref: "PG-9179",
-    loanRef: "P-9",
-    when: "26/08/2026 · 16:02",
-    paidDate: "2026-08-26",
-    paidTime: "16:02",
-    dueDate: "2026-08-26",
-    chargeLabel: "Interés",
-    client: "Andrés Gil",
-    collector: "Lina Soto",
-    collectorRef: "COB-1",
-    amount: 21000,
-    type: "Cuota",
-    kind: "paid",
-    method: "efectivo",
-    source: "pwa",
-    gps: true,
-  },
-];
+export const PAYMENTS: PaymentRow[] = [];
 
 export const LOANS: LoanRow[] = LOAN_SEEDS.map((loan) => normalizeLoan(loan, PAYMENTS) as LoanRow);
 
@@ -908,10 +637,12 @@ export function nextPaymentCode(rows: PaymentRow[] = PAYMENTS) {
   return `PG-${next}`;
 }
 
-export function money(value: number) {
+export function money(value: number, opts?: { symbol?: boolean }) {
   const digits = Math.trunc(Math.abs(value)).toString();
   const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  return `$ ${grouped}`;
+  const showSymbol = opts?.symbol !== false;
+  if (value < 0) return showSymbol ? `$ -${grouped}` : `-${grouped}`;
+  return showSymbol ? `$ ${grouped}` : grouped;
 }
 
 export function loansForClient(clientRef: string, rows: LoanRow[] = LOANS): LoanRow[] {

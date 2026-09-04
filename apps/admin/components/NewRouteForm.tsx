@@ -1,35 +1,53 @@
 "use client";
 
-import { type FormEvent } from "react";
-import { ZONES, type RouteRow } from "@/lib/mock-data";
+import { type FormEvent, useMemo, useState } from "react";
+import {
+  normalizeRouteNumber,
+  nextRouteNumber,
+  type RouteRow,
+} from "@/lib/mock-data";
 
 export type RouteDraft = {
   name: string;
-  zone: string;
-  frequency: string;
-  notes: string;
 };
 
 type Props = {
   route?: RouteRow;
+  existingRoutes?: RouteRow[];
   onCancel: () => void;
   onSave: (draft: RouteDraft) => void;
 };
 
-const FREQUENCIES = ["Lun–Vie", "Lun–Sáb", "Diario", "Quincenal", "Mensual"];
-
-export function NewRouteForm({ route, onCancel, onSave }: Props) {
+export function NewRouteForm({ route, existingRoutes = [], onCancel, onSave }: Props) {
   const editing = Boolean(route);
+  const suggested = useMemo(
+    () =>
+      editing
+        ? normalizeRouteNumber(route!.name) || nextRouteNumber(existingRoutes)
+        : nextRouteNumber(existingRoutes),
+    [editing, route, existingRoutes],
+  );
+  const [number, setNumber] = useState(suggested);
+  const [error, setError] = useState("");
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    onSave({
-      name: String(form.get("nombre") ?? "").trim(),
-      zone: String(form.get("zona") ?? "").trim(),
-      frequency: String(form.get("frecuencia") ?? FREQUENCIES[1]),
-      notes: String(form.get("notas") ?? "").trim(),
-    });
+    const value = normalizeRouteNumber(number);
+    if (!value) {
+      setError("Indique el número de la ruta (solo dígitos).");
+      return;
+    }
+    const taken = existingRoutes.some(
+      (row) =>
+        row.ref !== route?.ref &&
+        normalizeRouteNumber(row.name) === value,
+    );
+    if (taken) {
+      setError(`Ya existe la ruta ${value}.`);
+      return;
+    }
+    setError("");
+    onSave({ name: value });
   }
 
   return (
@@ -43,49 +61,26 @@ export function NewRouteForm({ route, onCancel, onSave }: Props) {
         <div className="sheet-body">
           <div className="sheet-fields">
             <div className="sheet-row">
-              <label className="sheet-label" htmlFor="route-name">
-                Nombre de la ruta
+              <label className="sheet-label" htmlFor="route-number">
+                Número
               </label>
               <input
-                id="route-name"
-                name="nombre"
+                id="route-number"
+                name="numero"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 required
-                placeholder="Ej. Barrio San Mateo, Playa norte…"
-                defaultValue={route?.name}
+                autoFocus
+                placeholder="Ej. 1"
+                value={number}
+                onChange={(event) => {
+                  setNumber(normalizeRouteNumber(event.target.value));
+                  if (error) setError("");
+                }}
               />
             </div>
-            <div className="sheet-row split">
-              <label className="sheet-label" htmlFor="route-zone">
-                Zona
-              </label>
-              <select id="route-zone" name="zona" required defaultValue={route?.zone ?? ZONES[0]}>
-                {ZONES.map((zone) => (
-                  <option key={zone} value={zone}>
-                    {zone}
-                  </option>
-                ))}
-              </select>
-              <label className="sheet-label" htmlFor="route-frequency">
-                Frecuencia
-              </label>
-              <select
-                id="route-frequency"
-                name="frecuencia"
-                defaultValue={route?.frequency ?? FREQUENCIES[1]}
-              >
-                {FREQUENCIES.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="sheet-row">
-              <label className="sheet-label" htmlFor="route-notes">
-                Notas
-              </label>
-              <input id="route-notes" name="notas" placeholder="Opcional" defaultValue={route?.notes ?? ""} />
-            </div>
+            {error ? <p className="form-error">{error}</p> : null}
+            <p className="form-hint">Solo números: 1, 2, 3…</p>
           </div>
         </div>
 

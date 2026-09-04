@@ -10,6 +10,21 @@ export function Pill({ label, kind }: { label: string; kind: StatusKind }) {
 
 type Header = { t: string; right?: boolean; center?: boolean; width?: string; sortKey?: string };
 
+export type DataTableFilterOptions = {
+  collectors?: { ref: string; name: string }[];
+  routes?: string[];
+  collectorRef?: string;
+  routeName?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  query?: string;
+  onCollectorChange?: (value: string) => void;
+  onRouteChange?: (value: string) => void;
+  onDateFromChange?: (value: string) => void;
+  onDateToChange?: (value: string) => void;
+  onQueryChange?: (value: string) => void;
+};
+
 export function DataTable({
   title,
   count,
@@ -22,6 +37,7 @@ export function DataTable({
   onSort,
   toolbarEnd,
   showFilters = true,
+  filterOptions,
 }: {
   title: string;
   count: string | number;
@@ -34,7 +50,16 @@ export function DataTable({
   onSort?: (key: string) => void;
   toolbarEnd?: ReactNode;
   showFilters?: boolean;
+  filterOptions?: DataTableFilterOptions;
 }) {
+  const collectors = filterOptions?.collectors ?? [];
+  const routes = filterOptions?.routes ?? [];
+  const collectorRef = filterOptions?.collectorRef ?? "";
+  const routeName = filterOptions?.routeName ?? "";
+  const dateFrom = filterOptions?.dateFrom ?? monthStartIso();
+  const dateTo = filterOptions?.dateTo ?? todayIso();
+  const query = filterOptions?.query ?? "";
+
   return (
     <section className="panel">
       <div className="head">
@@ -55,24 +80,53 @@ export function DataTable({
         ) : null}
       </div>
       {showFilters ? (
-      <div className="filters">
-        <select defaultValue="Todos los cobradores">
-          <option>Todos los cobradores</option>
-          <option>Juan Ríos</option>
-          <option>Lina Soto</option>
-        </select>
-        <select defaultValue="Todas las rutas">
-          <option>Todas las rutas</option>
-          <option>Norte</option>
-          <option>Sur</option>
-        </select>
-        <input type="date" defaultValue={monthStartIso()} />
-        <input type="date" defaultValue={todayIso()} />
-        <input placeholder="Buscar…" />
-        <button className="go" type="button">
-          <SearchIcon size={15} />
-        </button>
-      </div>
+        <div className="filters">
+          <select
+            value={collectorRef}
+            onChange={(event) => filterOptions?.onCollectorChange?.(event.target.value)}
+            aria-label="Filtrar por cobrador"
+          >
+            <option value="">Todos los cobradores</option>
+            {collectors.map((row) => (
+              <option key={row.ref} value={row.ref}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={routeName}
+            onChange={(event) => filterOptions?.onRouteChange?.(event.target.value)}
+            aria-label="Filtrar por ruta"
+          >
+            <option value="">Todas las rutas</option>
+            {routes.map((name) => (
+              <option key={name} value={name}>
+                Ruta {name}
+              </option>
+            ))}
+          </select>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(event) => filterOptions?.onDateFromChange?.(event.target.value)}
+            aria-label="Desde"
+          />
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(event) => filterOptions?.onDateToChange?.(event.target.value)}
+            aria-label="Hasta"
+          />
+          <input
+            placeholder="Buscar…"
+            value={query}
+            onChange={(event) => filterOptions?.onQueryChange?.(event.target.value)}
+            aria-label="Buscar"
+          />
+          <button className="go" type="button" aria-label="Buscar">
+            <SearchIcon size={15} />
+          </button>
+        </div>
       ) : null}
       <div className="table-wrap">
         <table className={fixedColumns ? "data cols-fixed" : "data"}>
@@ -101,20 +155,21 @@ export function DataTable({
                   .filter(Boolean)
                   .join(" ");
 
-                const label = header.sortKey && onSort ? (
-                  <button
-                    type="button"
-                    className="th-sort"
-                    onClick={() => onSort(header.sortKey!)}
-                  >
-                    <span className="th-sort-arrow" aria-hidden>
-                      {active ? (sortDir === "asc" ? "▲" : "▼") : "▲"}
-                    </span>
-                    {header.t}
-                  </button>
-                ) : (
-                  header.t
-                );
+                const label =
+                  header.sortKey && onSort ? (
+                    <button
+                      type="button"
+                      className="th-sort"
+                      onClick={() => onSort(header.sortKey!)}
+                    >
+                      <span className="th-sort-arrow" aria-hidden>
+                        {active ? (sortDir === "asc" ? "▲" : "▼") : "▲"}
+                      </span>
+                      {header.t}
+                    </button>
+                  ) : (
+                    header.t
+                  );
 
                 return (
                   <th key={header.t} className={className || undefined} aria-sort={ariaSort}>

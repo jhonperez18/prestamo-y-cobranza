@@ -20,10 +20,21 @@ export function clientStatusKind(status: string): ClientRow["kind"] {
 
 export function normalizeClientLifecycle(client: ClientRow): ClientRow {
   if (client.status === "Prospecto") {
-    return { ...client, status: CLIENT_STATUS_REVIEW, kind: clientStatusKind(CLIENT_STATUS_REVIEW) };
+    return {
+      ...client,
+      status: CLIENT_STATUS_REVIEW,
+      kind: clientStatusKind(CLIENT_STATUS_REVIEW),
+      route: "",
+      routeOrder: 0,
+    };
   }
   if (client.status === CLIENT_STATUS_REVIEW) {
-    return { ...client, kind: clientStatusKind(client.status) };
+    return {
+      ...client,
+      kind: clientStatusKind(client.status),
+      route: "",
+      routeOrder: 0,
+    };
   }
   if (client.status === CLIENT_STATUS_CLOSED) {
     return { ...client, status: CLIENT_STATUS_CLOSED, kind: "paid" };
@@ -63,8 +74,17 @@ export function isPendingReview(client: ClientRow) {
   return client.status === CLIENT_STATUS_REVIEW;
 }
 
+/** Cliente operativo (ya aprobado). Los de revisión aún no cuentan como clientes. */
+export function isOperationalClient(client: ClientRow) {
+  return client.status === CLIENT_STATUS_ACTIVE;
+}
+
 export function pendingReviewClients(rows: ClientRow[]) {
   return rows.filter(isPendingReview);
+}
+
+export function operationalClients(rows: ClientRow[]) {
+  return rows.filter(isOperationalClient);
 }
 
 export function clientsForView(view: string, rows: ClientRow[]): ClientRow[] {

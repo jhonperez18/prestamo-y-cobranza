@@ -213,13 +213,13 @@ function drawInstallmentTable(
 ) {
   const body =
     rows.length > 0
-      ? rows.map((row) => [row.date, row.concept, money(row.amount), money(row.paid), money(row.pending)])
-      : [[emptyMessage, "", "", "", ""]];
+      ? rows.map((row) => [row.concept, money(row.amount), money(row.paid), money(row.pending)])
+      : [[emptyMessage, "", "", ""]];
 
   autoTable(doc, {
     startY,
     margin: { left: PAGE_MARGIN, right: PAGE_MARGIN },
-    head: [["Fecha cuota", "Concepto", "Valor", "Pagado", "Pendiente"]],
+    head: [["Concepto", "Valor", "Pagado", "Pendiente"]],
     body,
     theme: "plain",
     headStyles: {
@@ -237,9 +237,9 @@ function drawInstallmentTable(
       lineWidth: 0.12,
     },
     columnStyles: {
+      1: { halign: "right" },
       2: { halign: "right" },
-      3: { halign: "right" },
-      4: {
+      3: {
         halign: "right",
         fontStyle: "bold",
         textColor: options.pendingHighlight ? [180, 52, 52] : THEME.ink,

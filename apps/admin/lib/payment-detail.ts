@@ -70,8 +70,15 @@ export function normalizeAllPayments(payments: PaymentRow[], loans: LoanRow[]): 
   return payments.map((payment) => normalizePaymentRecord(payment, loans));
 }
 
-/** Combina pagos guardados con el seed del sistema (corrige datos viejos en localStorage). */
-export function mergeStoredPaymentsWithSeed(stored: PaymentRow[]): PaymentRow[] {
+/**
+ * Combina pagos guardados con el seed.
+ * Por defecto NO reinyecta cobros del seed faltantes (eso desalineaba Historial vs Registros).
+ * `addMissingSeed` solo al primer arranque, cuando aún no hay clave en localStorage.
+ */
+export function mergeStoredPaymentsWithSeed(
+  stored: PaymentRow[],
+  options?: { addMissingSeed?: boolean },
+): PaymentRow[] {
   const seedByRef = new Map(PAYMENTS.map((row) => [row.ref, row]));
   const byRef = new Map<string, PaymentRow>();
 
@@ -93,8 +100,10 @@ export function mergeStoredPaymentsWithSeed(stored: PaymentRow[]): PaymentRow[] 
     );
   }
 
-  for (const seed of PAYMENTS) {
-    if (!byRef.has(seed.ref)) byRef.set(seed.ref, { ...seed });
+  if (options?.addMissingSeed) {
+    for (const seed of PAYMENTS) {
+      if (!byRef.has(seed.ref)) byRef.set(seed.ref, { ...seed });
+    }
   }
 
   return [...byRef.values()].sort((a, b) => paymentDateSortKey(b).localeCompare(paymentDateSortKey(a)));

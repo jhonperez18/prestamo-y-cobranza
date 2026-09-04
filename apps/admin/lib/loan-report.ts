@@ -1,5 +1,4 @@
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
-import { todayIso } from "@/lib/daily-dispatch";
 import { computeLoanFinancials, loanPaySummaryRows, type LoanFinancials } from "@/lib/loan-balance";
 import { PAY_FREQUENCIES, rateFieldLabel } from "@/lib/loan-preview";
 import { enrichPaymentMovement, sortPaymentsNewestFirst } from "@/lib/payment-detail";
@@ -37,38 +36,8 @@ export type LoanReportDocument = {
   financials: ReturnType<typeof computeLoanFinancials>;
 };
 
-function scheduleInstallmentRows(
-  financials: LoanFinancials,
-  match: (line: LoanFinancials["schedule"][number], pending: number, today: string) => boolean,
-  today = todayIso(),
-) {
-  return financials.schedule
-    .filter((line) => {
-      const pending = Math.max(0, line.amount - line.paid);
-      return match(line, pending, today);
-    })
-    .map((line) => ({
-      date: line.date,
-      concept: line.concept,
-      amount: line.amount,
-      paid: line.paid,
-      pending: Math.max(0, line.amount - line.paid),
-    }));
-}
-
-function buildOverdueInstallments(financials: LoanFinancials, today = todayIso()) {
-  return scheduleInstallmentRows(
-    financials,
-    (line, pending, day) => pending > 0 && line.dateIso < day,
-    today,
-  );
-}
-
-function buildPendingSummary(financials: LoanFinancials, today = todayIso()): LoanReportPendingSummary {
-  const lines = financials.schedule.filter((line) => {
-    const pending = Math.max(0, line.amount - line.paid);
-    return pending > 0 && line.dateIso >= today;
-  });
+function buildPendingSummary(financials: LoanFinancials): LoanReportPendingSummary {
+  const lines = financials.schedule.filter((line) => Math.max(0, line.amount - line.paid) > 0);
 
   return {
     count: lines.length,
@@ -127,12 +96,11 @@ export function buildLoanReport(
           : String(financials.installmentsPaid),
     },
     { label: "Interés del plazo", value: money(financials.interestTerm) },
-    { label: "Pago del capital", value: financials.capitalDueDate },
-    { label: "Total", value: money(loan.capital + financials.interestTerm) },
+    { label: "Total", value: money(loan.total ?? loan.capital + financials.interestTerm) },
   ];
 
   const footer = loanPaySummaryRows(financials, money);
-  const overdueInstallments = buildOverdueInstallments(financials);
+  const overdueInstallments: LoanReportOverdueRow[] = [];
   const pendingSummary = buildPendingSummary(financials);
 
   return {
@@ -166,7 +134,7 @@ export function formatLoanReportText(report: LoanReportDocument) {
     ...(report.overdueInstallments.length
       ? report.overdueInstallments.map(
           (row) =>
-            `${row.date} · ${row.concept} · ${money(row.amount)} · pagado ${money(row.paid)} · pendiente ${money(row.pending)}`,
+            `${row.concept} · ${money(row.amount)} · pagado ${money(row.paid)} · pendiente ${money(row.pending)}`,
         )
       : ["Sin cuotas en mora."]),
     "",
@@ -177,7 +145,7 @@ export function formatLoanReportText(report: LoanReportDocument) {
     ...(report.movements.length
       ? report.movements.map(
           (row) =>
-            `${row.ref} · cuota ${row.dueDate} · recaudo ${row.paidDate} ${row.paidTime} · ${row.chargeLabel} · ${row.collector} · ${row.method}${row.hasReceipt ? " · comprobante" : ""} · ${row.source} · ${money(row.amount)}`,
+            `${row.ref} · recaudo ${row.paidDate} ${row.paidTime} · ${row.chargeLabel} · ${row.collector} · ${row.method}${row.hasReceipt ? " · comprobante" : ""} · ${row.source} · ${money(row.amount)}`,
         )
       : ["Sin movimientos registrados."]),
     "",

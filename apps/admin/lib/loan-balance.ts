@@ -2,13 +2,11 @@ import { lineStatus } from "@/lib/loan-pay";
 import {
   applyPaymentsToSchedule,
   chargeLabel,
-  displayToIso,
-  effectiveMode,
-  effectivePact,
   isoToDisplay,
+  isFlatLoanTerms,
+  loanPreviewFromRow,
   mergeSchedulePaid,
-  previewLoan,
-  standardizeLoanTerms,
+  type LoanPreview,
   type LoanScheduleEntry,
 } from "@/lib/loan-preview";
 import type { LoanRow, PaymentRow } from "@/lib/mock-data";
@@ -58,29 +56,30 @@ function paidOnDueDate(payments: PaymentRow[], dueIso: string) {
     .reduce((sum, row) => sum + row.amount, 0);
 }
 
-function resolvePreview(loan: LoanRow) {
-  const terms = standardizeLoanTerms(loan);
-  const startIso = displayToIso(terms.date);
-  const dueIso = displayToIso(terms.due);
-  const mode = effectiveMode(terms.mode);
-  const pact = effectivePact(mode, terms.pact);
-  const frequency = terms.frequency ?? "diario";
-  const rate = terms.rate ?? 0;
-  const cuota = terms.installment ?? 0;
-  if (!startIso || !dueIso) return null;
-  return previewLoan({ capital: terms.capital, startIso, dueIso, frequency, mode, pact, rate, cuota });
+function resolvePreview(loan: LoanRow): LoanPreview | null {
+  return loanPreviewFromRow(loan);
 }
 
 function buildScheduleLines(
   loan: LoanRow,
   loanPayments: PaymentRow[],
-  preview: ReturnType<typeof previewLoan>,
+  preview: LoanPreview | null,
 ): LoanScheduleSnapshotLine[] {
-  const scheduleSource: LoanScheduleEntry[] = preview?.schedule?.length
-    ? mergeSchedulePaid(preview.schedule, loan.schedule as LoanScheduleEntry[] | undefined)
-    : ((loan.schedule ?? []) as LoanScheduleEntry[]);
+  const stored = (loan.schedule ?? []) as LoanScheduleEntry[];
+  const template = (
+    stored.length > 0
+      ? stored
+      : (preview?.schedule ?? [])
+  ).map((line) => ({
+    date: line.date,
+    amount: line.amount,
+    kind: (line.kind ?? "cuota") as "interes" | "capital" | "cuota",
+    paid: "paid" in line ? line.paid : undefined,
+  }));
+
+  const scheduleSource = mergeSchedulePaid(template, stored);
   const withPayments =
-    loan.ref && preview?.schedule?.length
+    loan.ref && scheduleSource.length
       ? applyPaymentsToSchedule(scheduleSource, loanPayments, loan.ref)
       : scheduleSource;
 
@@ -106,25 +105,34 @@ export function computeLoanFinancials(loan: LoanRow, payments: PaymentRow[]): Lo
   const paidTotal = loanPayments.reduce((sum, row) => sum + row.amount, 0);
   const preview = resolvePreview(loan);
   const schedule = buildScheduleLines(loan, loanPayments, preview);
+  const flat = isFlatLoanTerms(loan);
 
   const interestLines = schedule.filter((line) => line.concept !== "Capital");
   const capitalLine = schedule.find((line) => line.concept === "Capital");
 
-  const totalAgreement = schedule.reduce((sum, line) => sum + line.amount, 0);
-  const interestTotal = interestLines.reduce((sum, line) => sum + line.amount, 0);
-  const interestPaid = interestLines.reduce((sum, line) => sum + line.paid, 0);
-  const interestPending = interestLines.reduce(
-    (sum, line) => sum + Math.max(0, line.amount - line.paid),
-    0,
-  );
+  const scheduleTotal = schedule.reduce((sum, line) => sum + line.amount, 0);
+  const totalAgreement = flat
+    ? loan.total ?? preview?.total ?? scheduleTotal
+    : scheduleTotal || loan.total || loan.capital;
+  const interestTotal = flat
+    ? loan.interest ?? preview?.interest ?? 0
+    : interestLines.reduce((sum, line) => sum + line.amount, 0);
+  const interestPaid = flat
+    ? Math.min(paidTotal, interestTotal)
+    : interestLines.reduce((sum, line) => sum + line.paid, 0);
+  const interestPending = Math.max(0, interestTotal - interestPaid);
 
-  const capitalTotal = capitalLine?.amount ?? loan.capital;
-  const capitalPaid = capitalLine?.paid ?? 0;
+  const capitalTotal = flat ? loan.capital : (capitalLine?.amount ?? loan.capital);
+  const capitalPaid = flat
+    ? Math.max(0, paidTotal - interestPaid)
+    : (capitalLine?.paid ?? 0);
   const capitalPending = Math.max(0, capitalTotal - capitalPaid);
 
   const balancePending = Math.max(0, totalAgreement - paidTotal);
 
-  const installmentsTotal = interestLines.length;
+  const installmentsTotal = flat
+    ? interestLines.length || preview?.count || 0
+    : interestLines.length;
   const installmentsPaid = interestLines.filter((line) => line.statusKind === "paid").length;
   const installmentsPending = Math.max(0, installmentsTotal - installmentsPaid);
 

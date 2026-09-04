@@ -1,6 +1,8 @@
+import { isDailyCollectionDay } from "@/lib/colombia-holidays";
 import { loanStatusPill } from "@/lib/loan-status";
 
 export type PayFrequency = "diario" | "semanal" | "quincenal" | "mensual";
+export type LoanTermMonths = 1 | 2 | 3;
 
 export type ChargeKind = "interes" | "capital" | "cuota";
 
@@ -53,7 +55,14 @@ export type LoanTermsRow = {
   status?: string;
   kind?: string;
   notes?: string;
+  collectionAlerts?: number;
 };
+
+export const LOAN_TERM_OPTIONS: { id: LoanTermMonths; label: string }[] = [
+  { id: 1, label: "1 mes" },
+  { id: 2, label: "2 meses" },
+  { id: 3, label: "3 meses" },
+];
 
 export const PAY_FREQUENCIES: { id: PayFrequency; label: string }[] = [
   { id: "diario", label: "Diario" },
@@ -108,12 +117,12 @@ export function effectivePact(mode?: ChargeMode, pact?: PactKind): PactKind {
   return pact ?? "tasa";
 }
 
-/** Convierte préstamos antiguos (cuota fija) al formato unificado: interés + capital al vencimiento. */
+/** Convierte préstamos antiguos al formato unificado sin perder el modelo de cuotas planas. */
 export function standardizeLoanTerms<T extends LoanTermsRow>(loan: T): T {
   if (loan.mode === "cuota_fija") {
     return {
       ...loan,
-      mode: "interes",
+      mode: "cuota_fija",
       pact: "valor",
       rate: 0,
     };
@@ -218,6 +227,29 @@ export function buildLoanDetailFields(input: {
   return fields;
 }
 
+export function buildFlatLoanPreviewCards(input: {
+  capital: number;
+  interest: number;
+  total: number;
+  installment: number;
+  installments: number;
+  days: number;
+  dueLabel: string;
+  frequencyLabel: string;
+  formatMoney: (value: number) => string;
+}): { label: string; value: string }[] {
+  return [
+    { label: "Capital", value: input.formatMoney(input.capital) },
+    { label: "Interés", value: input.formatMoney(input.interest) },
+    { label: "Monto a pagar", value: input.formatMoney(input.total) },
+    { label: "Frecuencia", value: input.frequencyLabel },
+    { label: "Cuotas", value: String(input.installments) },
+    { label: "Valor cuota", value: input.formatMoney(input.installment) },
+    { label: "Plazo", value: `${input.days} días` },
+    { label: "Vencimiento", value: input.dueLabel },
+  ];
+}
+
 export function buildLoanPreviewCards(input: {
   capital: number;
   installment: number;
@@ -296,7 +328,10 @@ export function loanFichaRow(
     interes: interest != null ? formatMoney(interest) : "—",
     cuotas,
     recaudado: formatMoney(ledger?.paid ?? loan.paid),
-    pendiente: formatMoney(ledger?.pending ?? loan.balance),
+    pendiente: formatMoney(
+      ledger?.pending ??
+        Math.max(0, (loan.total ?? loan.balance ?? loan.capital) - (loan.paid ?? 0)),
+    ),
     estado: loan.status,
   };
 }
@@ -358,7 +393,7 @@ function addMonths(iso: string, months: number) {
 
 function addPeriod(iso: string, frequency: PayFrequency) {
   if (frequency === "diario") return addDays(iso, 1);
-  if (frequency === "semanal") return addDays(iso, 7);
+  if (frequency === "semanal") return addDays(iso, 8);
   if (frequency === "quincenal") return addDays(iso, 15);
   return addMonths(iso, 1);
 }
@@ -394,7 +429,163 @@ export function interestChargeCount(schedule: { kind?: ChargeKind }[]) {
 }
 
 export function previewPlazoLabel(days: number, interestCount: number) {
-  return `${days} días · ${interestCount} cobros de interés`;
+  return `${days} días · ${interestCount} cuotas`;
+}
+
+/** Fechas de cobro a partir del desembolso: N periodos según frecuencia. */
+export function installmentDates(startIso: string, frequency: PayFrequency, count: number) {
+  if (!startIso || count <= 0) return [];
+  const dates: string[] = [];
+  let current = addPeriod(startIso, frequency);
+  for (let i = 0; i < count; i += 1) {
+    dates.push(current);
+    current = addPeriod(current, frequency);
+  }
+  return dates;
+}
+
+/**
+ * Fechas de cobro según plazo y frecuencia.
+ * Diario: 30 cuotas por mes (1→30, 2→60, 3→90), lun–sáb sin festivos.
+ * Semanal: 4 por mes (cada 8 días). Quincenal: 2 por mes. Mensual: 1 por mes.
+ */
+export function installmentCountForTerm(frequency: PayFrequency, termMonths: LoanTermMonths) {
+  if (frequency === "diario") return termMonths * 30;
+  if (frequency === "semanal") return termMonths * 4;
+  if (frequency === "quincenal") return termMonths * 2;
+  return termMonths;
+}
+
+export function collectionDatesForTerm(
+  startIso: string,
+  frequency: PayFrequency,
+  termMonths: LoanTermMonths,
+): string[] {
+  if (!startIso || termMonths < 1) return [];
+  const target = installmentCountForTerm(frequency, termMonths);
+  const dates: string[] = [];
+  let guard = 0;
+
+  if (frequency === "diario") {
+    let current = addDays(startIso, 1);
+    while (dates.length < target && guard < 600) {
+      if (isDailyCollectionDay(current)) dates.push(current);
+      current = addDays(current, 1);
+      guard += 1;
+    }
+    return dates;
+  }
+
+  if (frequency === "semanal") {
+    let current = addDays(startIso, 8);
+    while (dates.length < target && guard < 120) {
+      dates.push(current);
+      current = addDays(current, 8);
+      guard += 1;
+    }
+    return dates;
+  }
+
+  if (frequency === "quincenal") {
+    let current = addDays(startIso, 15);
+    while (dates.length < target && guard < 80) {
+      dates.push(current);
+      current = addDays(current, 15);
+      guard += 1;
+    }
+    return dates;
+  }
+
+  for (let month = 1; month <= target; month += 1) {
+    dates.push(addMonths(startIso, month));
+  }
+  return dates;
+}
+
+/** Primera fecha de cobro según frecuencia (desde el desembolso). */
+export function firstCollectionIso(startIso: string, frequency: PayFrequency) {
+  if (!startIso) return "";
+  if (frequency === "diario") return "";
+  if (frequency === "semanal") return addDays(startIso, 8);
+  if (frequency === "quincenal") return addDays(startIso, 15);
+  return addMonths(startIso, 1);
+}
+
+/** Etiqueta para la casilla “Día de cobro”. */
+export function firstCollectionLabel(startIso: string, frequency: PayFrequency) {
+  if (!startIso) return "";
+  if (frequency === "diario") return "Lun–sáb";
+  const iso = firstCollectionIso(startIso, frequency);
+  return iso ? isoToDisplay(iso) : "";
+}
+
+export function collectionAnchorHint(startIso: string, frequency: PayFrequency) {
+  if (!startIso) return "";
+  if (frequency === "diario") {
+    return "Diario: 30 cuotas por mes (lun–sáb, sin festivos).";
+  }
+  const first = firstCollectionLabel(startIso, frequency);
+  if (frequency === "semanal") {
+    return `Semanal: 4 cuotas por mes (cada 8 días). Primer cobro: ${first}.`;
+  }
+  if (frequency === "quincenal") {
+    return `Quincenal: 2 cuotas por mes (cada 15 días). Primer cobro: ${first}.`;
+  }
+  return `Mensual: 1 cuota por mes. Primer cobro: ${first}.`;
+}
+
+/** Reparte el monto total en N cuotas (el residuo va a la última). */
+export function splitTotalAcrossDates(total: number, dates: string[]): ScheduleLine[] {
+  if (dates.length === 0 || total <= 0) return [];
+  const n = dates.length;
+  const base = pesos(total / n);
+  const used = base * (n - 1);
+  return dates.map((date, index) => ({
+    date,
+    kind: "cuota" as const,
+    amount: index === n - 1 ? total - used : base,
+  }));
+}
+
+/**
+ * Modelo operativo: capital + interés = monto a pagar,
+ * dividido en cuotas según plazo (meses) y frecuencia de cobro.
+ */
+export function previewLoanFlat(input: {
+  capital: number;
+  interest: number;
+  startIso: string;
+  frequency: PayFrequency;
+  termMonths?: LoanTermMonths;
+  /** @deprecated Preferir termMonths; se mantiene por compatibilidad. */
+  installments?: number;
+}): LoanPreview | null {
+  const { capital, interest, startIso, frequency } = input;
+  if (capital <= 0 || interest < 0 || !startIso) return null;
+  const total = pesos(capital) + pesos(interest);
+  if (total <= 0) return null;
+
+  const termMonths = input.termMonths;
+  const dates =
+    termMonths != null
+      ? collectionDatesForTerm(startIso, frequency, termMonths)
+      : installmentDates(startIso, frequency, Math.trunc(input.installments ?? 0));
+  if (dates.length === 0) return null;
+
+  const schedule = splitTotalAcrossDates(total, dates);
+  const dueIso = dates[dates.length - 1];
+  const days = daysBetween(startIso, dueIso);
+  const installment = schedule[0]?.amount ?? 0;
+  return {
+    days,
+    count: dates.length,
+    interestCount: dates.length,
+    interest: pesos(interest),
+    total,
+    installment,
+    dates,
+    schedule,
+  };
 }
 
 /** Cuota de interés = capital × % por cada cobro según la frecuencia elegida. */
@@ -498,17 +689,79 @@ export function previewLoan(input: {
   };
 }
 
+function installmentCountFromTerms(terms: LoanTermsRow) {
+  const fromSchedule = (terms.schedule ?? []).filter((line) => line.kind !== "capital").length;
+  if (fromSchedule > 0) return fromSchedule;
+  if (terms.installment && terms.installment > 0 && terms.total && terms.total > 0) {
+    return Math.max(1, Math.round(terms.total / terms.installment));
+  }
+  return 0;
+}
+
+export function inferTermMonths(startIso: string, dueIso: string): LoanTermMonths {
+  if (!startIso || !dueIso) return 1;
+  let best: LoanTermMonths = 1;
+  let bestDiff = Number.POSITIVE_INFINITY;
+  for (const months of [1, 2, 3] as const) {
+    const end = addMonths(startIso, months);
+    const diff = Math.abs(utcDay(end) - utcDay(dueIso));
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = months;
+    }
+  }
+  return best;
+}
+
+/** ¿Préstamo con capital + interés fijo repartido en cuotas? */
+export function isFlatLoanTerms(loan: LoanTermsRow) {
+  const terms = standardizeLoanTerms(loan);
+  if (terms.mode === "cuota_fija") return true;
+  const schedule = terms.schedule ?? [];
+  return (
+    schedule.length > 0 &&
+    schedule.every((line) => (line.kind ?? "cuota") === "cuota") &&
+    terms.interest != null
+  );
+}
+
 /** Calcula la maqueta del acuerdo a partir de los términos guardados del préstamo. */
 export function loanPreviewFromRow(loan: LoanTermsRow): LoanPreview | null {
   const terms = standardizeLoanTerms(loan);
   const startIso = displayToIso(terms.date);
+  const frequency = terms.frequency ?? "diario";
+  if (!startIso || terms.capital <= 0) return null;
+
+  if (isFlatLoanTerms(terms)) {
+    const dueIso = displayToIso(terms.due);
+    const interest =
+      terms.interest ?? Math.max(0, (terms.total ?? terms.capital) - terms.capital);
+    const termMonths = dueIso ? inferTermMonths(startIso, dueIso) : 1;
+    const preview = previewLoanFlat({
+      capital: terms.capital,
+      interest,
+      startIso,
+      frequency,
+      termMonths,
+    });
+    if (preview) return preview;
+    const installments = installmentCountFromTerms(terms);
+    if (installments <= 0) return null;
+    return previewLoanFlat({
+      capital: terms.capital,
+      interest,
+      startIso,
+      frequency,
+      installments,
+    });
+  }
+
   const dueIso = displayToIso(terms.due);
   const mode = effectiveMode(terms.mode);
   const pact = effectivePact(mode, terms.pact);
-  const frequency = terms.frequency ?? "diario";
   const rate = terms.rate ?? 0;
   const cuota = terms.installment ?? 0;
-  if (!startIso || !dueIso || terms.capital <= 0) return null;
+  if (!dueIso) return null;
   return previewLoan({
     capital: terms.capital,
     startIso,
@@ -541,7 +794,10 @@ export function mergeSchedulePaid(
   }));
 }
 
-/** Aplica movimientos de caja/campo sobre las fechas de cobro. */
+/** Aplica movimientos de caja/campo sobre las fechas de cobro.
+ * El excedente sobre la cuota del día no se vuelca a otras fechas:
+ * baja el saldo y la cuota diaria pactada se mantiene.
+ */
 export function applyPaymentsToSchedule(
   schedule: LoanScheduleEntry[],
   payments: { loanRef?: string; dueDate?: string; amount: number }[],
@@ -553,7 +809,8 @@ export function applyPaymentsToSchedule(
     const fromPayments = loanPayments
       .filter((row) => row.dueDate === line.date)
       .reduce((sum, row) => sum + row.amount, 0);
-    return { ...line, paid: Math.max(line.paid ?? 0, fromPayments) };
+    const paid = Math.min(line.amount, Math.max(line.paid ?? 0, fromPayments));
+    return { ...line, paid };
   });
 }
 
@@ -599,6 +856,8 @@ export function normalizeLoan<T extends LoanTermsRow>(
     schedule = applyPaymentsToSchedule(schedule, payments, terms.ref);
   }
   const ledger = resolveLoanLedger(terms, preview.total, payments);
+  const flat = isFlatLoanTerms(terms);
+  const dueIso = preview.dates[preview.dates.length - 1];
   const merged = {
     ...terms,
     days: preview.days,
@@ -606,16 +865,27 @@ export function normalizeLoan<T extends LoanTermsRow>(
     total: preview.total,
     installment: preview.installment,
     schedule,
-    mode: "interes" as const,
+    due: dueIso ? isoToDisplay(dueIso) : terms.due,
+    mode: flat ? ("cuota_fija" as const) : ("interes" as const),
     frequency: terms.frequency ?? "diario",
-    pact: effectivePact("interes", terms.pact),
-    rate: effectivePact("interes", terms.pact) === "tasa" ? (terms.rate ?? 0) : 0,
+    pact: flat ? ("valor" as const) : effectivePact("interes", terms.pact),
+    rate: flat ? 0 : effectivePact("interes", terms.pact) === "tasa" ? (terms.rate ?? 0) : 0,
     paid: ledger.paid,
     balance: ledger.balance,
   };
   const pill = loanStatusPill(merged);
+  const alerts = Number((merged as { collectionAlerts?: number }).collectionAlerts) || 0;
+  if (alerts >= 5) {
+    return {
+      ...merged,
+      collectionAlerts: alerts,
+      status: "Mora",
+      kind: "overdue",
+    } as T;
+  }
   return {
     ...merged,
+    collectionAlerts: alerts || undefined,
     status: pill.label,
     kind: pill.kind,
   } as T;

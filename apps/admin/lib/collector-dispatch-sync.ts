@@ -2,12 +2,18 @@ import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import { dailyLogRef, type CollectorDailyLogRow } from "@/lib/collector-daily-log";
 import type { DailyCollectionAssignment, DailyCollectionItem } from "@/lib/daily-collection-plan";
 import {
-  type ClientRow,
-  type CollectorRow,
-  type LoanRow,
-  type PaymentRow,
-  type RouteRow,
-  type RouteStop,
+  collectionAlertLabel,
+  collectionChargeKind,
+  loanCollectionAlerts,
+} from "@/lib/collection-alerts";
+import { isValidPlanillaAssignment } from "@/lib/planilla-eligibility";
+import type {
+  ClientRow,
+  CollectorRow,
+  LoanRow,
+  PaymentRow,
+  RouteRow,
+  RouteStop,
 } from "@/lib/mock-data";
 
 export function dispatchRouteRef(collectorRef: string, date: string) {
@@ -31,6 +37,7 @@ export function assignmentFromItem(
     amountDue: item.amountDue,
     chargeLabel: item.chargeLabel,
     kind: item.kind,
+    alertCount: item.alertCount,
     collectorRef: collector.ref,
     collector: collector.name,
     assignedAt: new Date().toISOString(),
@@ -50,6 +57,10 @@ export function hydrateAssignment(
     (loan?.installment && loan.installment > 0
       ? Math.min(loan.installment, loan.balance)
       : loan?.balance ?? 0);
+  const alertCount = loan
+    ? loanCollectionAlerts(loan)
+    : Number(row.alertCount) || 0;
+  const kind = loan ? collectionChargeKind(alertCount) : row.kind ?? "cuota";
   return {
     ...row,
     clientRef: row.clientRef ?? client?.ref ?? "",
@@ -58,8 +69,9 @@ export function hydrateAssignment(
     clientRoute: row.clientRoute ?? client?.route ?? "—",
     address: row.address ?? client?.address,
     amountDue,
-    chargeLabel: row.chargeLabel ?? (row.kind === "mora" ? "Mora" : "Cuota"),
-    kind: row.kind ?? "cuota",
+    alertCount,
+    kind,
+    chargeLabel: collectionAlertLabel(alertCount) || "Cuota",
     visitStatus: row.visitStatus ?? "pendiente",
   };
 }
@@ -71,9 +83,22 @@ export function assignmentsForCollectorDate(
   loans: LoanRow[],
   clients: ClientRow[],
 ) {
+  const orderOf = (clientRef: string) => {
+    const client = clients.find((row) => row.ref === clientRef);
+    return client?.routeOrder && client.routeOrder > 0
+      ? client.routeOrder
+      : Number.MAX_SAFE_INTEGER;
+  };
   return assignments
     .filter((row) => row.collectorRef === collectorRef && row.dispatchDate === date)
-    .map((row) => hydrateAssignment(row, loans, clients));
+    .filter((row) => isValidPlanillaAssignment(row, clients, loans))
+    .map((row) => hydrateAssignment(row, loans, clients))
+    .sort(
+      (a, b) =>
+        orderOf(a.clientRef) - orderOf(b.clientRef) ||
+        a.clientName.localeCompare(b.clientName, "es") ||
+        a.loanRef.localeCompare(b.loanRef),
+    );
 }
 
 export function assignmentsForCollector(
@@ -84,6 +109,7 @@ export function assignmentsForCollector(
 ) {
   return assignments
     .filter((row) => row.collectorRef === collectorRef)
+    .filter((row) => isValidPlanillaAssignment(row, clients, loans))
     .map((row) => hydrateAssignment(row, loans, clients))
     .sort((a, b) => b.dispatchDate.localeCompare(a.dispatchDate) || a.clientName.localeCompare(b.clientName));
 }
@@ -116,7 +142,8 @@ export function buildDispatchRoute(
   const pending = stops.filter(
     (stop) => stop.visitStatus === "pendiente" || stop.visitStatus === "parcial",
   ).length;
-  const wasClosed = existingRoute?.status === "Cerrada";
+  // Si aún hay pendientes, la ruta sigue abierta (un cobro no la cierra).
+  const closed = pending === 0 && stops.length > 0;
 
   return {
     ref: dispatchRouteRef(collectorRef, date),
@@ -128,8 +155,8 @@ export function buildDispatchRoute(
     frequency: "Diario",
     stops,
     clients: stops.length,
-    status: wasClosed ? "Cerrada" : pending > 0 ? "En curso" : stops.length ? "Cerrada" : "En curso",
-    kind: wasClosed || pending === 0 ? (stops.length ? "paid" : "draft") : "pending",
+    status: closed ? "Cerrada" : "En curso",
+    kind: closed ? ("paid" as const) : "pending",
     scheduledDate: date,
   };
 }
@@ -256,17 +283,25 @@ export function applyPaymentToAssignments(
   assignments: DailyCollectionAssignment[],
   payment: PaymentRow,
   dispatchDate: string,
+  clientRef?: string,
 ) {
-  if (!payment.collectorRef || !payment.loanRef) return assignments;
+  const paymentLoanRef = payment.loanRef;
+  if (!payment.collectorRef || !paymentLoanRef) return assignments;
   return assignments.map((row) => {
     if (row.dispatchDate !== dispatchDate) return row;
     if (row.collectorRef !== payment.collectorRef) return row;
-    if (row.loanRef !== payment.loanRef) return row;
+    const loanMatch = row.loanRef === paymentLoanRef;
+    const clientMatch =
+      Boolean(clientRef) &&
+      row.clientRef === clientRef &&
+      (!row.loanRef || row.loanRef === paymentLoanRef);
+    if (!loanMatch && !clientMatch) return row;
     if (row.visitStatus === "omitido") return row;
     const visitStatus =
       payment.amount >= row.amountDue ? "cobrado" : payment.amount > 0 ? "parcial" : row.visitStatus;
     return {
       ...row,
+      loanRef: row.loanRef || paymentLoanRef,
       visitStatus,
       paymentRef: payment.ref,
     };
@@ -321,13 +356,15 @@ export type CloseDayResult = {
   routes: RouteRow[];
   logs: CollectorDailyLogRow[];
   skipped: number;
+  /** Préstamos sin cobro al cerrar (para sumar alerta 1–4 / mora al 5). */
+  missedLoanRefs: string[];
   collected: number;
   collectorsClosed: number;
 };
 
 /**
  * Cierre de jornada: pendientes → omitido; rutas → Cerrada; log con closedAt.
- * Parciales y cobrados se dejan como están (el saldo sigue en cronograma → mora mañana).
+ * No envía a mora de una: las faltas se contabilizan como alertas (1–4) y mora al 5.º.
  */
 export function closeDispatchDay(
   assignments: DailyCollectionAssignment[],
@@ -353,12 +390,14 @@ export function closeDispatchDay(
   const collectorRefs = [...new Set(dispatched.map((row) => row.collectorRef))];
 
   let skipped = 0;
+  const missedLoanRefs: string[] = [];
   const nextAssignments = assignments.map((row) => {
     if (row.dispatchDate !== date || !row.dispatched) return row;
     if (collectorRef && row.collectorRef !== collectorRef) return row;
     let next = { ...row, dayClosedAt: closedAt };
     if (row.visitStatus === "pendiente" || !row.visitStatus) {
       skipped += 1;
+      if (row.loanRef) missedLoanRefs.push(row.loanRef);
       next = {
         ...next,
         visitStatus: "omitido" as const,
@@ -424,7 +463,7 @@ export function closeDispatchDay(
         visitsDone ? `${visitsDone} cobrado${visitsDone === 1 ? "" : "s"}` : null,
         visitsPartial ? `${visitsPartial} parcial${visitsPartial === 1 ? "" : "es"}` : null,
         visitsSkipped
-          ? `${visitsSkipped} no visitado${visitsSkipped === 1 ? "" : "s"}`
+          ? `${visitsSkipped} sin cobro → alerta`
           : null,
       ]
         .filter(Boolean)
@@ -440,8 +479,110 @@ export function closeDispatchDay(
     routes: nextRoutes,
     logs: nextLogs,
     skipped,
+    missedLoanRefs: [...new Set(missedLoanRefs)],
     collected,
     collectorsClosed: collectorRefs.length,
+  };
+}
+
+export type ReopenDayResult = {
+  assignments: DailyCollectionAssignment[];
+  routes: RouteRow[];
+  logs: CollectorDailyLogRow[];
+  restored: number;
+  collectorsReopened: number;
+};
+
+/**
+ * Reabre la jornada: quita dayClosedAt y recupera omitidos del cierre → pendiente.
+ * Cobros ya registrados (cobrado/parcial) se conservan.
+ */
+export function reopenDispatchDay(
+  assignments: DailyCollectionAssignment[],
+  routes: RouteRow[],
+  logs: CollectorDailyLogRow[],
+  date: string,
+  collectors: CollectorRow[],
+  loans: LoanRow[],
+  clients: ClientRow[],
+  collectorRef?: string,
+): ReopenDayResult {
+  let restored = 0;
+  const nextAssignments = assignments.map((row) => {
+    if (row.dispatchDate !== date || !row.dispatched) return row;
+    if (collectorRef && row.collectorRef !== collectorRef) return row;
+    if (!row.dayClosedAt) return row;
+
+    const closedSkip =
+      row.visitStatus === "omitido" && row.skipReason === "Cierre de jornada";
+
+    if (closedSkip) {
+      restored += 1;
+      return {
+        ...row,
+        dayClosedAt: undefined,
+        visitStatus: "pendiente" as const,
+        skipReason: undefined,
+      };
+    }
+
+    const { dayClosedAt: _removed, ...rest } = row;
+    return { ...rest };
+  });
+
+  let nextRoutes = routes;
+  let nextLogs = logs;
+  const collectorRefs = [
+    ...new Set(
+      nextAssignments
+        .filter(
+          (row) =>
+            row.dispatchDate === date &&
+            row.dispatched &&
+            (!collectorRef || row.collectorRef === collectorRef),
+        )
+        .map((row) => row.collectorRef),
+    ),
+  ];
+
+  for (const ref of collectorRefs) {
+    const collector = collectors.find((row) => row.ref === ref);
+    if (!collector) continue;
+    const existing = nextRoutes.find((row) => row.ref === dispatchRouteRef(ref, date));
+    const rebuilt = buildDispatchRoute(
+      ref,
+      collector.name,
+      date,
+      nextAssignments,
+      loans,
+      clients,
+      existing,
+    );
+    nextRoutes = upsertDispatchRoute(nextRoutes, rebuilt);
+
+    const logRef = dailyLogRef(ref, date);
+    nextLogs = nextLogs.map((row) =>
+      row.ref === logRef
+        ? {
+            ...row,
+            closedAt: undefined,
+            status: rebuilt.status,
+            kind: rebuilt.kind,
+            visitsPending: rebuilt.stops.filter(
+              (stop) => stop.visitStatus === "pendiente" || stop.visitStatus === "parcial",
+            ).length,
+            summary: "Jornada reabierta · sigue cobrando",
+          }
+        : row,
+    );
+  }
+
+  return {
+    assignments: nextAssignments,
+    routes: nextRoutes,
+    logs: nextLogs,
+    restored,
+    collectorsReopened: collectorRefs.length,
   };
 }
 

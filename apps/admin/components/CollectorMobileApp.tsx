@@ -1,19 +1,59 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { CollectorCloseDayConfirm } from "@/components/CollectorCloseDayConfirm";
+import { CollectorCloseDaySheet } from "@/components/CollectorCloseDaySheet";
 import { CollectorPayForm } from "@/components/CollectorPayForm";
 import { Pill } from "@/components/ui";
 import {
   collectorMobileQueue,
   collectorMobileRoutes,
+  collectorRecaudoBreakdown,
   defaultMobileRouteDate,
   visitStatusKind,
   visitStatusLabel,
 } from "@/lib/collector-mobile";
+import { periodLabel } from "@/lib/bank";
 import { todayIso } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
-import { money, type ClientRow, type CollectorRow, type LoanRow, type RouteRow } from "@/lib/mock-data";
+import {
+  money,
+  type ClientRow,
+  type CollectorRow,
+  type LoanRow,
+  type PaymentRow,
+  type RouteRow,
+} from "@/lib/mock-data";
 import type { CollectorPaymentDraft } from "@/lib/route-sync";
+import { canRenewLoan } from "@/lib/loan-renew";
+import { syncLoan } from "@/lib/loan-preview";
+import { primaryLoanForClient } from "@/lib/route-sync";
+import { dispatchRouteRef } from "@/lib/collector-dispatch-sync";
+import { collectionAlertLabel, loanCollectionAlerts } from "@/lib/collection-alerts";
+import type {
+  RouteExpenseLine,
+  CollectorDayCloseRecord,
+  CollectorDayExpenseDraft,
+  CollectorMonthCloseRecord,
+} from "@/lib/collector-day-close";
+import {
+  buildCollectorDayHistory,
+  findDayExpenseDraft,
+  findMonthClose,
+  isLastCalendarDayOfMonth,
+  monthClosingSaldoFromHistory,
+  monthReviewBlock,
+  openingSaldoForPeriod,
+  periodFromDateIso,
+  periodHadCollectorActivity,
+  previousPeriod,
+} from "@/lib/collector-day-close";
+import {
+  normalizePaymentMethod,
+  paymentMethodKind,
+  paymentMethodLabel,
+  paymentMethodToneClass,
+} from "@/lib/payment-method";
 
 export type CollectorSkipVisitDraft = {
   routeRef: string;
@@ -24,32 +64,98 @@ export type CollectorSkipVisitDraft = {
   reason?: string;
 };
 
+export type CollectorCloseDayPayload = {
+  date: string;
+  routeRef: string;
+  collectorRef: string;
+  collectorName: string;
+  collected: number;
+  expenses: RouteExpenseLine[];
+};
+
+export type CollectorSaveExpensesPayload = {
+  date: string;
+  routeRef: string;
+  collectorRef: string;
+  collectorName: string;
+  expenses: RouteExpenseLine[];
+};
+
+export type CollectorCloseMonthPayload = {
+  period: string;
+  collectorRef: string;
+  collectorName: string;
+  closingSaldo: number;
+};
+
 type Props = {
   collector: CollectorRow;
   assignments: DailyCollectionAssignment[];
   routes: RouteRow[];
   loans: LoanRow[];
   clients: ClientRow[];
+  payments?: PaymentRow[];
+  dayCloses?: CollectorDayCloseRecord[];
+  dayExpenseDrafts?: CollectorDayExpenseDraft[];
+  monthCloses?: CollectorMonthCloseRecord[];
   date?: string;
   preview?: boolean;
   canRegister?: boolean;
   onRegisterPayment?: (draft: CollectorPaymentDraft) => void;
+  /** @deprecated Ya no se usa en la lista: sin pago = sigue el saldo. */
   onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
+  onRenewLoan?: (loanRef: string) => void;
+  onSaveExpenses?: (payload: CollectorSaveExpensesPayload) => void;
+  onCloseDay?: (payload: CollectorCloseDayPayload) => void;
+  onCloseMonth?: (payload: CollectorCloseMonthPayload) => void;
   onLogout?: () => void;
 };
 
 type ListFilter = "pending" | "done";
-type CardMode = "pay" | "skip" | null;
-
-const SKIP_REASONS = [
-  "No localizado",
-  "Enfermo / no atiende",
-  "Dirección incorrecta",
-  "Otro",
-];
 
 function itemKey(item: DailyCollectionAssignment) {
   return `${item.itemId}-${item.dispatchDate}`;
+}
+
+/** Vista compacta: #, nombre completo, apodo, saldo, cuota. */
+function visitIdentity(
+  item: DailyCollectionAssignment,
+  clients: ClientRow[],
+  loans: LoanRow[],
+  payments: PaymentRow[],
+) {
+  const client = clients.find((row) => row.ref === item.clientRef);
+  const rawLoan =
+    (item.loanRef ? loans.find((row) => row.ref === item.loanRef) : null) ??
+    primaryLoanForClient(item.clientRef, loans);
+  const loan = rawLoan ? (syncLoan(rawLoan, payments) as LoanRow) : null;
+  const cuota =
+    item.amountDue > 0
+      ? item.amountDue
+      : loan?.installment && loan.installment > 0
+        ? Math.min(loan.installment, loan.balance)
+        : 0;
+  const balance = loan?.balance ?? 0;
+  const first = client?.name?.trim() || "";
+  const last = client?.lastName?.trim() || "";
+  const fullName =
+    [first, last].filter(Boolean).join(" ") ||
+    item.clientName?.trim() ||
+    "Cliente sin nombre";
+  return {
+    order: client?.routeOrder && client.routeOrder > 0 ? client.routeOrder : null,
+    fullName,
+    nickname: client?.nickname?.trim() || "",
+    balance,
+    cuota,
+    loan,
+    loanRef: loan?.ref ?? item.loanRef ?? "",
+    alertCount: loan ? loanCollectionAlerts(loan) : 0,
+    alertLabel:
+      loan && loanCollectionAlerts(loan) > 0
+        ? collectionAlertLabel(loanCollectionAlerts(loan))
+        : "",
+  };
 }
 
 export function CollectorMobileApp({
@@ -58,18 +164,44 @@ export function CollectorMobileApp({
   routes,
   loans,
   clients,
+  payments = [],
+  dayCloses = [],
+  dayExpenseDrafts = [],
+  monthCloses = [],
   date,
   preview = false,
   canRegister = true,
   onRegisterPayment,
-  onSkipVisit,
+  onRenewLoan,
+  onSaveExpenses,
+  onCloseDay,
+  onCloseMonth,
   onLogout,
 }: Props) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
-  const [cardMode, setCardMode] = useState<CardMode>(null);
-  const [skipReason, setSkipReason] = useState(SKIP_REASONS[0]);
   const [listFilter, setListFilter] = useState<ListFilter>("pending");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [editingExpenses, setEditingExpenses] = useState(false);
+  const [confirmingClose, setConfirmingClose] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onPointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target as Node | null;
+      if (menuRef.current && target && !menuRef.current.contains(target)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+    };
+  }, [menuOpen]);
 
   const routeOptions = useMemo(
     () => collectorMobileRoutes(collector.ref, assignments, loans, clients, routes),
@@ -78,11 +210,86 @@ export function CollectorMobileApp({
 
   const activeDate = useMemo(() => {
     const fallback = date ?? todayIso();
-    if (selectedDate && routeOptions.some((row) => row.date === selectedDate)) {
-      return selectedDate;
-    }
+    if (selectedDate) return selectedDate;
     return defaultMobileRouteDate(routeOptions, fallback);
   }, [date, routeOptions, selectedDate]);
+
+  const viewPeriod = periodFromDateIso(activeDate);
+
+  const dayHistory = useMemo(() => {
+    const extraDates = [
+      ...routeOptions.map((row) => row.date),
+      date ?? todayIso(),
+      activeDate,
+    ];
+    return buildCollectorDayHistory(
+      collector.ref,
+      payments,
+      dayCloses,
+      [collector],
+      extraDates,
+      dayExpenseDrafts,
+      monthCloses,
+      viewPeriod,
+    );
+  }, [
+    activeDate,
+    collector,
+    date,
+    dayCloses,
+    dayExpenseDrafts,
+    monthCloses,
+    payments,
+    routeOptions,
+    viewPeriod,
+  ]);
+
+  const activePeriod = viewPeriod;
+  const previousMonth = previousPeriod(activePeriod);
+  const priorMonthHadActivity = periodHadCollectorActivity(
+    collector.ref,
+    previousMonth,
+    payments,
+    dayCloses,
+    dayExpenseDrafts,
+    [collector],
+  );
+  const monthBlock = monthReviewBlock({
+    collectorRef: collector.ref,
+    date: activeDate,
+    monthCloses,
+    priorMonthHadActivity,
+  });
+  const paymentsBlocked = Boolean(monthBlock);
+  const canCollect = canRegister && !paymentsBlocked;
+
+  const monthAlreadyClosed = Boolean(findMonthClose(monthCloses, collector.ref, activePeriod));
+  const showSaveMonth =
+    Boolean(onCloseMonth) &&
+    isLastCalendarDayOfMonth(activeDate) &&
+    !monthAlreadyClosed;
+  const monthSaldoToSave = monthClosingSaldoFromHistory(
+    dayHistory,
+    openingSaldoForPeriod(collector.ref, activePeriod, monthCloses),
+  );
+  const priorMonthClosingSaldo = useMemo(() => {
+    const rows = buildCollectorDayHistory(
+      collector.ref,
+      payments,
+      dayCloses,
+      [collector],
+      [],
+      dayExpenseDrafts,
+      monthCloses,
+      previousMonth,
+    );
+    return monthClosingSaldoFromHistory(
+      rows,
+      openingSaldoForPeriod(collector.ref, previousMonth, monthCloses),
+    );
+  }, [collector, dayCloses, dayExpenseDrafts, monthCloses, payments, previousMonth]);
+
+  const carriedOpening = openingSaldoForPeriod(collector.ref, viewPeriod, monthCloses);
 
   const activeRoute =
     routeOptions.find((row) => row.date === activeDate) ??
@@ -93,59 +300,148 @@ export function CollectorMobileApp({
     () => collectorMobileQueue(collector.ref, activeDate, assignments, loans, clients, routes),
     [activeDate, assignments, clients, collector.ref, loans, routes],
   );
+  const dayWasClosedByCollector = queue.dispatched.some((row) => Boolean(row.dayClosedAt));
+  const dayLocked = dayWasClosedByCollector;
 
-  const routeRef = queue.routeRef ?? `RUT-D-${collector.ref}-${activeDate}`;
+  const routeRef = queue.routeRef ?? dispatchRouteRef(collector.ref, activeDate);
   const visibleItems = listFilter === "done" ? queue.done : queue.pending;
+  const recaudo = useMemo(
+    () => collectorRecaudoBreakdown(collector.ref, activeDate, payments, [collector]),
+    [activeDate, collector, payments],
+  );
+  /** Meta del día: suma de cuotas de los pendientes (lo que debería recaudar). */
+  const pendingMeta = useMemo(() => {
+    return queue.pending.reduce((sum, item) => {
+      if (item.amountDue > 0) return sum + item.amountDue;
+      const loan =
+        (item.loanRef ? loans.find((row) => row.ref === item.loanRef) : null) ??
+        primaryLoanForClient(item.clientRef, loans);
+      if (!loan || loan.balance <= 0) return sum;
+      const cuota =
+        loan.installment && loan.installment > 0
+          ? Math.min(loan.installment, loan.balance)
+          : 0;
+      return sum + cuota;
+    }, 0);
+  }, [loans, queue.pending]);
 
-  const initials = collector.name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((part) => part.charAt(0))
-    .join("")
-    .toUpperCase();
+  const savedExpenses =
+    findDayExpenseDraft(dayExpenseDrafts, collector.ref, activeDate)?.expenses ?? [];
+  const savedExpensesTotal = savedExpenses.reduce((sum, row) => sum + row.amount, 0);
+
+  const dayCuadre = useMemo(() => {
+    const periodOpening = openingSaldoForPeriod(collector.ref, viewPeriod, monthCloses);
+    const ascending = [...dayHistory].sort((a, b) => a.date.localeCompare(b.date));
+    const todayRow = ascending.find((row) => row.date === activeDate);
+    const prior = ascending.filter((row) => row.date < activeDate);
+    const saldoInicial = prior.length ? prior[prior.length - 1].saldo : periodOpening;
+    const cobrado = todayRow?.cobro ?? recaudo.total;
+    const gastos = todayRow?.gasto ?? savedExpensesTotal;
+    const saldo = todayRow?.saldo ?? saldoInicial + cobrado - gastos;
+    return { saldoInicial, cobrado, gastos, saldo };
+  }, [
+    activeDate,
+    collector.ref,
+    dayHistory,
+    monthCloses,
+    recaudo.total,
+    savedExpensesTotal,
+    viewPeriod,
+  ]);
+
+  useEffect(() => {
+    setSelectedDate(null);
+  }, [collector.ref]);
 
   useEffect(() => {
     setExpandedKey(null);
-    setCardMode(null);
+    setEditingExpenses(false);
+    setConfirmingClose(false);
   }, [activeDate, listFilter]);
 
-  function openCard(item: DailyCollectionAssignment, mode: Exclude<CardMode, null>) {
-    if (!canRegister || queue.closed) return;
-    if (mode === "pay" && !onRegisterPayment) return;
-    if (mode === "skip" && !onSkipVisit) return;
+  function togglePay(item: DailyCollectionAssignment) {
+    if (!canCollect || queue.closed || !onRegisterPayment) return;
     const key = itemKey(item);
-    if (expandedKey === key && cardMode === mode) {
-      setExpandedKey(null);
-      setCardMode(null);
-      return;
-    }
-    setExpandedKey(key);
-    setCardMode(mode);
-    if (mode === "skip") setSkipReason(SKIP_REASONS[0]);
+    setExpandedKey((current) => {
+      const next = current === key ? null : key;
+      if (next) {
+        queueMicrotask(() => {
+          document
+            .getElementById(`collector-pay-card-${key}`)
+            ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        });
+      }
+      return next;
+    });
   }
 
   function closeCard() {
     setExpandedKey(null);
-    setCardMode(null);
   }
 
   function selectFilter(next: ListFilter) {
+    setEditingExpenses(false);
+    setConfirmingClose(false);
     setListFilter(next);
     closeCard();
   }
 
-  function confirmSkip(item: DailyCollectionAssignment) {
-    if (!onSkipVisit) return;
-    onSkipVisit({
-      routeRef,
-      clientRef: item.clientRef,
-      loanRef: item.loanRef,
-      dispatchDate: item.dispatchDate,
-      collectorRef: collector.ref,
-      reason: skipReason,
-    });
-    closeCard();
+  function openExpenses() {
+    if (!onSaveExpenses || dayLocked) return;
+    setExpandedKey(null);
+    setConfirmingClose(false);
+    setEditingExpenses(true);
   }
+
+  function saveExpenses(expenses: RouteExpenseLine[]) {
+    if (!onSaveExpenses) return;
+    onSaveExpenses({
+      date: activeDate,
+      routeRef,
+      collectorRef: collector.ref,
+      collectorName: collector.name,
+      expenses,
+    });
+    setEditingExpenses(false);
+  }
+
+  function openCloseConfirm() {
+    if (!onCloseDay || dayLocked) return;
+    setMenuOpen(false);
+    setExpandedKey(null);
+    setEditingExpenses(false);
+    setConfirmingClose(true);
+  }
+
+  function openHistory() {
+    setMenuOpen(false);
+    setHistoryOpen(true);
+  }
+
+  function confirmCloseDay() {
+    if (!onCloseDay || dayLocked) return;
+    onCloseDay({
+      date: activeDate,
+      routeRef,
+      collectorRef: collector.ref,
+      collectorName: collector.name,
+      collected: recaudo.total,
+      expenses: savedExpenses,
+    });
+    setConfirmingClose(false);
+  }
+
+  function confirmCloseMonth() {
+    if (!onCloseMonth || !showSaveMonth) return;
+    onCloseMonth({
+      period: activePeriod,
+      collectorRef: collector.ref,
+      collectorName: collector.name,
+      closingSaldo: monthSaldoToSave,
+    });
+  }
+
+  const reviewingPanel = editingExpenses || confirmingClose;
 
   return (
     <div className={`collector-mobile-app${preview ? " is-preview" : ""}`}>
@@ -161,85 +457,348 @@ export function CollectorMobileApp({
 
       <header className="collector-mobile-header">
         <div className="collector-mobile-brand">
-          <img src="/logo-ca-prestamo.png" alt="CA préstamo" className="brand-logo" />
-          <div>
+          <div className="collector-mobile-logo-col">
+            <img src="/logo-ca-prestamo.png" alt="CA préstamo" className="brand-logo" />
+          </div>
+          <div className="collector-mobile-user-meta">
             <p className="collector-mobile-greet">Hola, {collector.name.split(" ")[0]}</p>
-            <h1>Mis cobros</h1>
             <span className="collector-mobile-date">{queue.dateLabel}</span>
           </div>
         </div>
-        <div className="collector-mobile-avatar">{initials}</div>
+        <div className="collector-mobile-menu" ref={menuRef}>
+          <button
+            type="button"
+            className={
+              menuOpen
+                ? "collector-mobile-menu-trigger is-open"
+                : "collector-mobile-menu-trigger"
+            }
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            aria-label="Menú"
+            title="Menú"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <span className="collector-mobile-menu-bars" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+          </button>
+          {menuOpen ? (
+            <div className="collector-mobile-menu-panel" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                className="collector-mobile-menu-item"
+                onClick={openHistory}
+              >
+                Historial
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="collector-mobile-menu-item"
+                disabled={!onCloseDay || dayLocked || !queue.dispatched.length}
+                title="Revisar y confirmar cierre del día"
+                onClick={openCloseConfirm}
+              >
+                {confirmingClose ? "Revisando…" : "Cerrar día"}
+              </button>
+            </div>
+          ) : null}
+        </div>
       </header>
 
-      {routeOptions.length > 0 ? (
-        <label className="collector-mobile-route-picker">
-          <span>Ruta asignada</span>
-          <select
-            value={activeDate}
-            onChange={(event) => setSelectedDate(event.target.value)}
-          >
-            {routeOptions.map((row) => (
-              <option key={row.date} value={row.date}>
-                {row.routeName}
-                {row.closed ? " · Cerrada" : ` · ${row.pending} pend.`}
-              </option>
-            ))}
-          </select>
-        </label>
+      {historyOpen ? (
+        <div
+          className="collector-mobile-history-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="collector-history-title"
+        >
+          <header className="collector-mobile-history-panel-head">
+            <div>
+              <h2 id="collector-history-title">Historial</h2>
+              <span>{periodLabel(viewPeriod)}</span>
+            </div>
+            <button
+              type="button"
+              className="collector-mobile-pay-link"
+              onClick={() => setHistoryOpen(false)}
+            >
+              volver
+            </button>
+          </header>
+
+          <div className="collector-mobile-day-history is-panel">
+            <div className="collector-mobile-day-history-head">
+              <span>Día</span>
+              <span>Cobro</span>
+              <span>Gasto</span>
+              <span>Saldo</span>
+            </div>
+            <ul className="collector-mobile-day-history-list">
+              {carriedOpening > 0 ? (
+                <li>
+                  <div className="collector-mobile-day-history-row is-opening">
+                    <span className="is-date">Ant.</span>
+                    <span className="is-money">—</span>
+                    <span className="is-money">—</span>
+                    <span className={carriedOpening < 0 ? "is-saldo is-negative" : "is-saldo"}>
+                      {money(carriedOpening)}
+                    </span>
+                  </div>
+                </li>
+              ) : null}
+              {dayHistory.length === 0 ? (
+                <li className="collector-mobile-day-history-empty">Sin movimientos este mes.</li>
+              ) : (
+                dayHistory.map((row) => (
+                  <li key={row.date}>
+                    <button
+                      type="button"
+                      className={
+                        row.date === activeDate
+                          ? "collector-mobile-day-history-row on"
+                          : "collector-mobile-day-history-row"
+                      }
+                      onClick={() => {
+                        setSelectedDate(row.date);
+                        setHistoryOpen(false);
+                      }}
+                    >
+                      <span className="is-date">{row.dateLabel}</span>
+                      <span className="is-money">{money(row.cobro)}</span>
+                      <span className="is-money">{money(row.gasto)}</span>
+                      <span className={row.saldo < 0 ? "is-saldo is-negative" : "is-saldo"}>
+                        {money(row.saldo)}
+                      </span>
+                    </button>
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+
+          {showSaveMonth ? (
+            <div className="collector-mobile-history-panel-foot">
+              <button
+                type="button"
+                className="collector-mobile-history-toggle is-month"
+                onClick={() => {
+                  confirmCloseMonth();
+                  setHistoryOpen(false);
+                }}
+              >
+                guardar mes · empezar nuevo
+              </button>
+              <span>Saldo a arrastrar: {money(monthSaldoToSave)}</span>
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
-      {queue.closed ? (
-        <div className="collector-mobile-route-closed">
-          <Pill label="Ruta cerrada" kind="paid" />
-          <p>
-            {queue.dispatched.every((row) => row.dayClosedAt)
-              ? "Oficina cerró la jornada. Lo no cobrado queda para mañana (mora)."
-              : `Completaste los cobros activos de esta ruta (${queue.dispatched.length}).`}
-          </p>
+      {monthBlock ? (
+        <div className="collector-mobile-month-alert" role="alert">
+          <p>{monthBlock.message}</p>
+          {onCloseMonth ? (
+            <button
+              type="button"
+              className="collector-mobile-pay-link"
+              onClick={() =>
+                onCloseMonth({
+                  period: monthBlock.previousPeriod,
+                  collectorRef: collector.ref,
+                  collectorName: collector.name,
+                  closingSaldo: priorMonthClosingSaldo,
+                })
+              }
+            >
+              guardar mes anterior · arrastrar saldo
+            </button>
+          ) : null}
         </div>
       ) : null}
 
       <div className="collector-mobile-stats">
         <button
           type="button"
-          className={listFilter === "pending" ? "collector-mobile-stat on" : "collector-mobile-stat"}
+          className={
+            !reviewingPanel && listFilter === "pending"
+              ? "collector-mobile-stat is-pending on"
+              : "collector-mobile-stat is-pending"
+          }
           onClick={() => selectFilter("pending")}
         >
-          <b>{queue.pending.length}</b>
           <span>Por cobrar</span>
+          <b>{queue.pending.length}</b>
+          <em className="collector-mobile-stat-meta">
+            {pendingMeta > 0 ? money(pendingMeta) : "—"}
+          </em>
         </button>
         <button
           type="button"
-          className={listFilter === "done" ? "collector-mobile-stat on" : "collector-mobile-stat"}
+          className={
+            !reviewingPanel && listFilter === "done"
+              ? "collector-mobile-stat is-recaudo on"
+              : "collector-mobile-stat is-recaudo"
+          }
           onClick={() => selectFilter("done")}
         >
-          <b>{queue.done.length}</b>
-          <span>Gestionados</span>
+          <span>Recaudo</span>
+          <b>{money(recaudo.total)}</b>
         </button>
-        <div className="collector-mobile-stat readonly">
-          <b>{money(queue.dispatched.reduce((sum, row) => sum + row.amountDue, 0))}</b>
-          <span>Programado</span>
-        </div>
+        <button
+          type="button"
+          className={
+            editingExpenses
+              ? "collector-mobile-stat on collector-mobile-stat-close is-gastos"
+              : "collector-mobile-stat collector-mobile-stat-close is-gastos"
+          }
+          disabled={!onSaveExpenses || dayLocked || !queue.dispatched.length}
+          title="Guardar gastos de la ruta (sin cerrar el día)"
+          onClick={openExpenses}
+        >
+          <span>Gastos</span>
+          <b>{savedExpensesTotal > 0 ? money(savedExpensesTotal) : "—"}</b>
+        </button>
       </div>
+
+      {queue.closed && listFilter === "pending" && !editingExpenses && !confirmingClose ? (
+        <section className="collector-mobile-home-cuadre" aria-label="Cuadre de la jornada">
+          <div className="collector-mobile-home-cuadre-head">
+            <Pill label={dayWasClosedByCollector ? "Jornada cerrada" : "Ruta cerrada"} kind="paid" />
+            <h2>
+              {activeDate === (date ?? todayIso())
+                ? "Tu cuadre de hoy"
+                : `Tu cuadre del ${queue.dateLabel}`}
+            </h2>
+          </div>
+
+          <div className="collector-mobile-home-cuadre-grid">
+            <div className="is-inicial">
+              <span>Lo que inició</span>
+              <b>{money(dayCuadre.saldoInicial)}</b>
+            </div>
+            <div className="is-cobrado">
+              <span>Lo que cobró</span>
+              <b>{money(dayCuadre.cobrado)}</b>
+            </div>
+            <div className="is-gastos">
+              <span>Lo que gastó</span>
+              <b>{money(dayCuadre.gastos)}</b>
+            </div>
+            <div className="is-saldo">
+              <span>Saldo en caja</span>
+              <b>{money(dayCuadre.saldo)}</b>
+              <em>
+                {activeDate === (date ?? todayIso())
+                  ? "Inicial de mañana"
+                  : "Inicial del día siguiente"}
+              </em>
+            </div>
+          </div>
+
+          <div className="collector-mobile-home-cuadre-means">
+            <div>
+              <span>Efectivo</span>
+              <b>{money(recaudo.efectivo)}</b>
+            </div>
+            <div>
+              <span>Nequi</span>
+              <b>{money(recaudo.nequi)}</b>
+            </div>
+          </div>
+
+          {routeOptions.some((row) => !row.closed && row.date !== activeDate) ? (
+            <p className="collector-mobile-home-cuadre-hint">
+              Tienes otra ruta pendiente: elígela arriba para seguir cobrando.
+            </p>
+          ) : (
+            <p className="collector-mobile-home-cuadre-hint is-ok">
+              {activeDate === (date ?? todayIso())
+                ? "Listo por hoy. La caja quedó cuadrada y el saldo arranca mañana."
+                : `Cuadre del ${queue.dateLabel} cerrado. El saldo quedó para el día siguiente.`}
+            </p>
+          )}
+        </section>
+      ) : null}
+
+      {!(queue.closed && listFilter === "pending" && !editingExpenses && !confirmingClose) ? (
+      <>
+      {editingExpenses && onSaveExpenses ? (
+        <CollectorCloseDaySheet
+          key={`${collector.ref}-${activeDate}-${savedExpenses.map((r) => `${r.id}:${r.amount}`).join("|")}`}
+          draft={{
+            collectorRef: collector.ref,
+            collectorName: collector.name,
+            date: activeDate,
+            routeRef,
+            collected: recaudo.total,
+            expenses: savedExpenses,
+          }}
+          onCancel={() => setEditingExpenses(false)}
+          onSave={saveExpenses}
+        />
+      ) : confirmingClose && onCloseDay ? (
+        <CollectorCloseDayConfirm
+          dateLabel={queue.dateLabel}
+          collected={recaudo.total}
+          efectivo={recaudo.efectivo}
+          nequi={recaudo.nequi}
+          expenses={savedExpenses}
+          pendingCount={queue.pending.length}
+          onCancel={() => setConfirmingClose(false)}
+          onConfirm={confirmCloseDay}
+        />
+      ) : (
+        <>
+      {listFilter === "done" ? (
+        <section className="collector-mobile-cuadre" aria-label="Cuadre de recaudo por medio de pago">
+          <h2>Cuadre del día</h2>
+          <div className="collector-mobile-cuadre-grid">
+            <div className="is-pay-efectivo">
+              <em>Efectivo</em>
+              <b>{money(recaudo.efectivo)}</b>
+            </div>
+            <div className="is-pay-nequi">
+              <em>Nequi</em>
+              <b>{money(recaudo.nequi)}</b>
+            </div>
+            <div className="is-total">
+              <em>Total</em>
+              <b>{money(recaudo.total)}</b>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {queue.awaitingDispatch.length > 0 && !queue.dispatched.length ? (
         <p className="collector-mobile-note warn">
-          Tienes {queue.awaitingDispatch.length} cobro(s) asignados. Espera a que oficina envíe la ruta.
+          Tienes {queue.awaitingDispatch.length} cobro(s) asignados. La planilla permanente se envía
+          sola; si ves este aviso, vuelve a abrir la app o pide a oficina revisar la ruta.
         </p>
       ) : null}
 
       {!queue.dispatched.length && !queue.awaitingDispatch.length ? (
         <section className="collector-mobile-empty">
-          <h2>Sin rutas activas</h2>
-          <p>Cuando te envíen cobros desde oficina, elige la ruta arriba y aparecerán aquí.</p>
+          <h2>Sin planilla de hoy</h2>
+          <p>
+            La planilla se genera sola Lun–sáb (sin festivos) al iniciar el día y se envía a tu ruta
+            asignada. Si no ves cobros, revisa que oficina tenga cobrador en tu ruta o vuelve a abrir
+            la app.
+          </p>
         </section>
       ) : (
         <>
-          <ul className={listFilter === "done" ? "collector-mobile-list compact" : "collector-mobile-list"}>
+          <ul className={listFilter === "done" ? "collector-mobile-list compact" : "collector-mobile-list compact"}>
             {visibleItems.length === 0 ? (
               <li className="collector-mobile-empty-inline">
                 {listFilter === "done"
-                  ? "Aún no hay cobros gestionados en esta ruta."
+                  ? recaudo.total > 0
+                    ? "El cuadre arriba es para tus cuentas (efectivo / Nequi). Abajo van las visitas de la ruta."
+                    : "Aún no hay cobros. Al pagar, el cuadre suma efectivo y Nequi por separado."
                   : queue.closed
                     ? "Ruta cerrada. Elige otra ruta si tienes más asignadas."
                     : "¡Listo! No quedan cobros pendientes en esta ruta."}
@@ -249,137 +808,155 @@ export function CollectorMobileApp({
                 const key = itemKey(item);
                 const isOpen = expandedKey === key;
                 const isDoneView = listFilter === "done";
+                const identity = visitIdentity(item, clients, loans, payments);
+                const paidPayment = item.paymentRef
+                  ? payments.find((row) => row.ref === item.paymentRef)
+                  : undefined;
+                const payMethod = paidPayment
+                  ? normalizePaymentMethod(paidPayment.method)
+                  : null;
                 const canAct =
                   item.visitStatus !== "cobrado" &&
                   item.visitStatus !== "omitido" &&
-                  !queue.closed;
+                  !queue.closed &&
+                  canCollect &&
+                  Boolean(identity.loanRef) &&
+                  identity.balance > 0;
+                const cuotaShown = identity.cuota;
+                const loanForRenew = identity.loan;
+                const renewEnabled = Boolean(onRenewLoan && canRenewLoan(loanForRenew));
 
                 return (
                   <li
                     key={key}
-                    className={
+                    id={`collector-pay-card-${key}`}
+                    className={[
                       isDoneView
-                        ? "collector-mobile-card is-done"
+                        ? "collector-mobile-card is-done is-dense"
                         : isOpen
-                          ? "collector-mobile-card is-open"
-                          : "collector-mobile-card"
-                    }
+                          ? "collector-mobile-card is-open is-dense"
+                          : "collector-mobile-card is-dense",
+                      isDoneView && payMethod ? paymentMethodToneClass(payMethod) : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                   >
-                    {isDoneView ? (
-                      <div className="collector-mobile-done-row">
-                        <strong>{item.clientName}</strong>
-                        <span className="collector-mobile-amount">{money(item.amountDue)}</span>
-                        <Pill
-                          label={visitStatusLabel(item.visitStatus)}
-                          kind={visitStatusKind(item.visitStatus)}
-                        />
-                        {item.skipReason ? (
-                          <span className="collector-mobile-ref">{item.skipReason}</span>
-                        ) : null}
-                        {item.paymentRef ? (
+                    <div
+                      className={
+                        isOpen
+                          ? "collector-mobile-dense-row is-paying"
+                          : "collector-mobile-dense-row"
+                      }
+                    >
+                      <span className="collector-mobile-visit-order" aria-label="Orden de visita">
+                        {identity.order ?? "—"}
+                      </span>
+                      <div className="collector-mobile-visit-who">
+                        <strong title={identity.fullName}>{identity.fullName}</strong>
+                        {isDoneView && item.paymentRef ? (
                           <span className="collector-mobile-ref">{item.paymentRef}</span>
                         ) : null}
+                        {isDoneView && item.skipReason ? (
+                          <span className="collector-mobile-ref">{item.skipReason}</span>
+                        ) : null}
                       </div>
-                    ) : (
-                      <>
-                        <div className="collector-mobile-card-main">
-                          <strong>{item.clientName}</strong>
-                          <span className="collector-mobile-amount">{money(item.amountDue)}</span>
+                      {!isDoneView ? (
+                        <div className="collector-mobile-dense-money">
+                          <span>
+                            <b>{money(identity.balance, { symbol: false })}</b>
+                          </span>
+                          <span>
+                            <b>{cuotaShown > 0 ? money(cuotaShown, { symbol: false }) : "—"}</b>
+                          </span>
                         </div>
-                        {item.visitStatus === "parcial" || canAct ? (
-                          <div className="collector-mobile-card-foot">
-                            {item.visitStatus === "parcial" ? (
-                              <Pill
-                                label={visitStatusLabel(item.visitStatus)}
-                                kind={visitStatusKind(item.visitStatus)}
-                              />
-                            ) : null}
-                            {canAct ? (
-                              <div className="collector-mobile-card-actions">
-                                <button
-                                  type="button"
-                                  className={
-                                    isOpen && cardMode === "pay"
-                                      ? "btn compact collector-mobile-pay-btn"
-                                      : "btn compact primary collector-mobile-pay-btn"
-                                  }
-                                  disabled={!canRegister || !onRegisterPayment}
-                                  onClick={() => openCard(item, "pay")}
-                                >
-                                  {isOpen && cardMode === "pay" ? "Cerrar" : "Cobrar"}
-                                </button>
-                                <button
-                                  type="button"
-                                  className="btn compact ghost collector-mobile-skip-btn"
-                                  disabled={!canRegister || !onSkipVisit}
-                                  onClick={() => openCard(item, "skip")}
-                                >
-                                  {isOpen && cardMode === "skip" ? "Cerrar" : "No visitó"}
-                                </button>
-                              </div>
-                            ) : null}
-                          </div>
-                        ) : null}
+                      ) : (
+                        <Pill
+                          label={
+                            payMethod
+                              ? paymentMethodLabel(payMethod)
+                              : visitStatusLabel(item.visitStatus)
+                          }
+                          kind={
+                            payMethod
+                              ? paymentMethodKind(payMethod)
+                              : visitStatusKind(item.visitStatus)
+                          }
+                        />
+                      )}
+                      {!isDoneView && canAct && !isOpen ? (
+                        <>
+                          <span
+                            className={
+                              identity.alertCount > 0
+                                ? identity.alertCount >= 5
+                                  ? "collector-mobile-alert-n is-mora"
+                                  : "collector-mobile-alert-n"
+                                : "collector-mobile-alert-n is-empty"
+                            }
+                            title={
+                              identity.alertCount > 0
+                                ? identity.alertLabel || `${identity.alertCount} día(s) sin pago`
+                                : undefined
+                            }
+                            aria-hidden={identity.alertCount <= 0}
+                          >
+                            {identity.alertCount > 0 ? identity.alertCount : ""}
+                          </span>
+                          <button
+                            type="button"
+                            className="collector-mobile-pay-sticker"
+                            disabled={!canCollect || !onRegisterPayment}
+                            onClick={() => togglePay(item)}
+                            title="Pagar"
+                            aria-label="Pagar"
+                          >
+                            <svg viewBox="0 0 16 12" aria-hidden="true" focusable="false">
+                              <rect x="0.5" y="0.5" width="15" height="11" rx="1.5" fill="#dcfce7" stroke="#15803d" strokeWidth="1" />
+                              <circle cx="8" cy="6" r="2.2" fill="none" stroke="#15803d" strokeWidth="1" />
+                              <path d="M3 3.2h1.2M3 8.8h1.2M11.8 3.2H13M11.8 8.8H13" stroke="#15803d" strokeWidth="1" strokeLinecap="round" />
+                            </svg>
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
 
-                        {isOpen && cardMode === "pay" && onRegisterPayment ? (
-                          <div className="collector-mobile-pay-inline">
-                            <CollectorPayForm
-                              variant="inline"
-                              formId={key}
-                              clientName={item.clientName}
-                              amountDue={item.amountDue}
-                              onCancel={closeCard}
-                              onSubmit={(payload) => {
-                                onRegisterPayment({
-                                  idempotencyKey: payload.idempotencyKey,
-                                  routeRef,
-                                  clientRef: item.clientRef,
-                                  loanRef: item.loanRef,
-                                  amount: payload.amount,
-                                  kind: payload.kind,
-                                  method: payload.method,
-                                  evidence: payload.evidence,
-                                  collectorRef: collector.ref,
-                                  collectorName: collector.name,
-                                  clientName: item.clientName,
-                                });
-                                closeCard();
-                              }}
-                            />
-                          </div>
-                        ) : null}
-
-                        {isOpen && cardMode === "skip" && onSkipVisit ? (
-                          <div className="collector-mobile-skip-inline">
-                            <label>
-                              <span>Motivo</span>
-                              <select
-                                value={skipReason}
-                                onChange={(event) => setSkipReason(event.target.value)}
-                              >
-                                {SKIP_REASONS.map((reason) => (
-                                  <option key={reason} value={reason}>
-                                    {reason}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <div className="collector-mobile-skip-actions">
-                              <button type="button" className="btn compact ghost" onClick={closeCard}>
-                                Cancelar
-                              </button>
-                              <button
-                                type="button"
-                                className="btn compact secondary"
-                                onClick={() => confirmSkip(item)}
-                              >
-                                Confirmar
-                              </button>
-                            </div>
-                          </div>
-                        ) : null}
-                      </>
-                    )}
+                    {isOpen && onRegisterPayment && identity.loan ? (
+                      <div className="collector-mobile-pay-inline">
+                        <CollectorPayForm
+                          variant="inline"
+                          formId={key}
+                          clientName={identity.fullName}
+                          amountDue={cuotaShown}
+                          balance={identity.balance}
+                          canRenew={renewEnabled}
+                          onCancel={closeCard}
+                          onRenew={
+                            onRenewLoan && loanForRenew
+                              ? () => {
+                                  onRenewLoan(loanForRenew.ref);
+                                  closeCard();
+                                }
+                              : undefined
+                          }
+                          onSubmit={(payload) => {
+                            onRegisterPayment({
+                              idempotencyKey: payload.idempotencyKey,
+                              routeRef,
+                              clientRef: item.clientRef,
+                              loanRef: identity.loanRef,
+                              amount: payload.amount,
+                              kind: payload.kind,
+                              method: payload.method,
+                              evidence: payload.evidence,
+                              collectorRef: collector.ref,
+                              collectorName: collector.name,
+                              clientName: identity.fullName,
+                            });
+                            closeCard();
+                          }}
+                        />
+                      </div>
+                    ) : null}
                   </li>
                 );
               })
@@ -396,6 +973,10 @@ export function CollectorMobileApp({
           ) : null}
         </>
       )}
+        </>
+      )}
+      </>
+      ) : null}
 
       {onLogout && !preview ? (
         <footer className="collector-mobile-foot">

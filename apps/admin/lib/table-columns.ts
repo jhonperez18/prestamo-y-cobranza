@@ -31,6 +31,7 @@ export const PRESTAMO_LIST_COLUMNS: ColumnOption[] = [
   { id: "client", label: "Cliente" },
   { id: "date", label: "Desembolso" },
   { id: "capital", label: "Capital" },
+  { id: "installment", label: "Valor cuota" },
   { id: "balance", label: "Saldo" },
   { id: "status", label: "Estado" },
 ];

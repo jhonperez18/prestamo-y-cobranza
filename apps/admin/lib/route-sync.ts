@@ -12,11 +12,12 @@ export function primaryLoanForClient(clientRef: string, loans: LoanRow[]) {
 export function amountDueForClient(clientRef: string, loans: LoanRow[]) {
   const loan = primaryLoanForClient(clientRef, loans);
   if (!loan || loan.balance <= 0) return 0;
-  const target = cuotaTarget(loan);
-  if (target && target.remaining > 0) return target.remaining;
+  // Cuota diaria fija: el excedente solo baja saldo; no adelanta cuotas.
   if (loan.installment && loan.installment > 0) {
     return Math.min(loan.installment, loan.balance);
   }
+  const target = cuotaTarget(loan);
+  if (target && target.remaining > 0) return Math.min(target.remaining, loan.balance);
   return Math.min(10000, loan.balance);
 }
 
@@ -114,24 +115,79 @@ export type CollectorPaymentResult =
       ok: true;
       pay: ApplyPaySuccess;
       updatedStop: RouteStop;
-      updatedRoute: RouteRow;
+      /** null si no hay ruta de despacho: el cobro igual se aplica al préstamo. */
+      updatedRoute: RouteRow | null;
     };
 
+/**
+ * Aplica el pago al préstamo. La ruta/parada se actualiza si existe;
+ * si falta, no se bloquea el cobro (el dinero no se puede perder).
+ */
 export function applyCollectorPaymentResult(
   loan: LoanRow,
   draft: CollectorPaymentDraft,
-  route: RouteRow,
+  route: RouteRow | null | undefined,
 ): CollectorPaymentResult {
   const pay = applyPay(loan, draft.kind, draft.amount);
   if (!pay.ok) return { ok: false, error: pay.error };
-  const stop = findRouteStop(route, draft.clientRef);
-  if (!stop) return { ok: false, error: "Visita no encontrada." };
+
+  const fallbackStop: RouteStop = {
+    clientRef: draft.clientRef,
+    visitOrder: 0,
+    loanRef: loan.ref,
+    amountDue: 0,
+    visitStatus: "cobrado",
+    paymentRef: draft.idempotencyKey,
+  };
+
+  if (!route) {
+    return { ok: true, pay, updatedStop: fallbackStop, updatedRoute: null };
+  }
+
+  const stop =
+    route.stops.find(
+      (entry) =>
+        entry.clientRef === draft.clientRef &&
+        (entry.loanRef === loan.ref || !entry.loanRef || entry.loanRef === draft.loanRef),
+    ) ??
+    findRouteStop(route, draft.clientRef) ??
+    route.stops.find((entry) => entry.loanRef === loan.ref) ??
+    null;
+
+  if (!stop) {
+    const seed: RouteStop = {
+      ...fallbackStop,
+      visitOrder: route.stops.length + 1,
+      amountDue: draft.amount,
+      visitStatus: "pendiente",
+    };
+    const updatedStop = applyPayToRouteStop(seed, draft.amount, draft.idempotencyKey);
+    const updatedStops = [...route.stops, updatedStop];
+    const allDone = updatedStops.every(
+      (entry) => entry.visitStatus === "cobrado" || entry.visitStatus === "omitido",
+    );
+    return {
+      ok: true,
+      pay,
+      updatedStop,
+      updatedRoute: {
+        ...route,
+        stops: updatedStops,
+        clients: updatedStops.length,
+        status: allDone ? "Cerrada" : "En curso",
+        kind: allDone ? ("paid" as const) : "pending",
+      },
+    };
+  }
+
   const updatedStop = applyPayToRouteStop(stop, draft.amount, draft.idempotencyKey);
-  const updatedStops = route.stops.map((entry) =>
-    entry.clientRef === draft.clientRef ? updatedStop : entry,
-  );
+  const updatedStops = route.stops.map((entry) => {
+    if (entry === stop) return updatedStop;
+    if (entry.clientRef === stop.clientRef && entry.loanRef === stop.loanRef) return updatedStop;
+    return entry;
+  });
   const allDone = updatedStops.every(
-    (entry) => entry.visitStatus === "cobrado" || entry.amountDue === 0,
+    (entry) => entry.visitStatus === "cobrado" || entry.visitStatus === "omitido",
   );
   return {
     ok: true,
@@ -140,8 +196,30 @@ export function applyCollectorPaymentResult(
     updatedRoute: {
       ...route,
       stops: updatedStops,
-      status: allDone ? "Cerrada" : route.status,
-      kind: allDone ? ("paid" as const) : route.kind,
+      status: allDone ? "Cerrada" : "En curso",
+      kind: allDone ? ("paid" as const) : "pending",
     },
   };
+}
+
+/** Resuelve préstamo y ruta de despacho antes de registrar un cobro móvil. */
+export function resolveCollectorPaymentContext(
+  draft: CollectorPaymentDraft,
+  loans: LoanRow[],
+  routes: RouteRow[],
+  dispatchDate: string,
+) {
+  const loan =
+    (draft.loanRef
+      ? loans.find((row) => row.ref === draft.loanRef && row.clientRef === draft.clientRef)
+      : null) ??
+    (draft.loanRef ? loans.find((row) => row.ref === draft.loanRef) : null) ??
+    primaryLoanForClient(draft.clientRef, loans);
+
+  const route =
+    routes.find((row) => row.ref === draft.routeRef) ??
+    routes.find((row) => row.ref === `RUT-D-${draft.collectorRef}-${dispatchDate}`) ??
+    null;
+
+  return { loan, route };
 }

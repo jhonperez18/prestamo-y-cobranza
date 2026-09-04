@@ -616,7 +616,10 @@ export function BankExtractView({
               rowsWithBalance.map((row) => {
                 const isExpense = isBankExpenseMovement(row);
                 const methodLabel = bankMovementMethodLabel(row.description);
-                const descriptionText = bankMovementDescriptionText(row.description);
+                const descriptionText =
+                  isExpense && row.category
+                    ? expenseCategoryLabel(row.category)
+                    : bankMovementDescriptionText(row.description);
                 return (
                   <tr
                     key={row.ref}
@@ -626,12 +629,7 @@ export function BankExtractView({
                   >
                     {isVisible("ref") ? <td className="ref">{renderRefCell(row)}</td> : null}
                     {isVisible("description") ? (
-                      <td title={descriptionText}>
-                        {descriptionText}
-                        {row.category ? (
-                          <span className="bank-category">{expenseCategoryLabel(row.category)}</span>
-                        ) : null}
-                      </td>
+                      <td title={descriptionText}>{descriptionText}</td>
                     ) : null}
                     {isVisible("method") ? (
                       <td>

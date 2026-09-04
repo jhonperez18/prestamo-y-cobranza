@@ -7,11 +7,14 @@ import {
   todayDispatchToken,
   todayIso,
 } from "@/lib/daily-dispatch";
+import { displayToIso } from "@/lib/loan-preview";
 import { buildPortfolioStats, moraStats } from "@/lib/portfolio-stats";
 import type { ModuleId } from "@/lib/navigation";
 import {
-  COLLECTOR_UNASSIGNED_ZONE,
+  catalogRoutes,
+  clientsOnRouteListed,
   money,
+  routeIsActive,
   type ActivityRow,
   type ClientRow,
   type CollectorRow,
@@ -53,6 +56,7 @@ export type HomeDashboardData = {
   moraTotal: number;
   moraCount: number;
   activeClients: number;
+  clientsNewThisWeek: number;
   activeLoansCount: number;
   portfolioTotal: number;
   pendingActions: HomePendingAction[];
@@ -60,6 +64,22 @@ export type HomeDashboardData = {
   routes: HomeRouteCard[];
   recentActivity: ReturnType<typeof activityFeed>;
 };
+
+function startOfWeekIso(now = new Date()) {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const day = d.getDay(); // 0 domingo
+  const diff = day === 0 ? 6 : day - 1; // lunes = inicio
+  d.setDate(d.getDate() - diff);
+  return todayIso(d);
+}
+
+function clientsNewSince(clients: ClientRow[], sinceIso: string) {
+  return clients.filter((row) => {
+    if (row.status !== "Activo") return false;
+    const altaIso = displayToIso(row.alta);
+    return Boolean(altaIso && altaIso >= sinceIso);
+  }).length;
+}
 
 export function homeGreeting(now = new Date()) {
   const hour = now.getHours();
@@ -110,17 +130,17 @@ export function buildHomePendingActions(
     });
   }
 
-  const unassigned = collectors.filter(
-    (row) => row.active && row.zone === COLLECTOR_UNASSIGNED_ZONE,
+  const unassignedRoutes = catalogRoutes(routes).filter(
+    (row) => routeIsActive(row) && !row.collectorRef,
   ).length;
-  if (unassigned > 0) {
+  if (unassignedRoutes > 0) {
     items.push({
-      id: "zonas",
-      message: `${unassigned} cobrador${unassigned === 1 ? "" : "es"} sin zona asignada`,
-      pill: "Zonas",
-      kind: "partial",
+      id: "cobertura",
+      message: `${unassignedRoutes} ruta${unassignedRoutes === 1 ? "" : "s"} sin cobrador asignado`,
+      pill: "Asignar",
+      kind: "warn",
       module: "inicio",
-      view: "zonas",
+      view: "asignar-clientes",
     });
   }
 
@@ -150,14 +170,15 @@ export function buildHomePendingActions(
   return items.slice(0, 5);
 }
 
-function routeCard(route: RouteRow): HomeRouteCard {
-  const total = route.stops.length;
+function routeCard(route: RouteRow, clients: ClientRow[]): HomeRouteCard {
+  const catalogCount = clientsOnRouteListed(route.name, clients).length;
+  const total = route.stops.length || catalogCount;
   const visited = route.stops.filter((stop) => stop.visitStatus === "cobrado").length;
-  const pending = routePendingCount(route.stops);
+  const pending = route.stops.length ? routePendingCount(route.stops) : catalogCount;
   return {
     ref: route.ref,
-    zone: route.zone,
-    collector: route.collector,
+    zone: route.name || route.zone,
+    collector: route.collectorRef && route.collector !== "—" ? route.collector : "Sin cobrador",
     clients: total,
     visited,
     pending,
@@ -178,25 +199,31 @@ export function buildHomeDashboard(
 ): HomeDashboardData {
   const todayToken = todayDispatchToken(now);
   const summary = dispatchSummary(routes, payments, todayToken);
-  const todayPayments = paymentsForDay(payments, todayToken).slice(0, 8);
+  const allTodayPayments = paymentsForDay(payments, todayToken);
   const portfolio = buildPortfolioStats(loans, payments, now);
   const activeClientRows = clients.filter((row) => row.status === "Activo");
+  const weekStart = startOfWeekIso(now);
+  const catalog = catalogRoutes(routes)
+    .filter(routeIsActive)
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 
   return {
     greeting: homeGreeting(now),
     dateLabel: `${homeDateLabel(now)} · Operación del ${isoToDispatchLabel(todayIso(now))}`,
-    collectedToday: summary.collectedToday,
-    collectedCount: paymentsForDay(payments, todayToken).length,
+    collectedToday: allTodayPayments.reduce((sum, row) => sum + row.amount, 0),
+    collectedCount: allTodayPayments.length,
     dueToday: summary.totalDue,
     pendingVisits: summary.pendingVisits,
     moraTotal: portfolio.moraBalance,
     moraCount: portfolio.moraCount,
     activeClients: activeClientRows.length,
+    clientsNewThisWeek: clientsNewSince(activeClientRows, weekStart),
     activeLoansCount: portfolio.activeCount,
     portfolioTotal: portfolio.totalBalance,
     pendingActions: buildHomePendingActions(clients, loans, payments, collectors, routes),
-    todayPayments,
-    routes: routes.map(routeCard),
+    todayPayments: allTodayPayments,
+    routes: catalog.map((route) => routeCard(route, clients)),
     recentActivity: activityFeed(activities, payments, collectors).slice(0, 6),
   };
 }

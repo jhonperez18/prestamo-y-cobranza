@@ -1,5 +1,11 @@
+import {
+  collectionAlertLabel,
+  isLoanInCollectionMora,
+  loanCollectionAlerts,
+} from "@/lib/collection-alerts";
 import type { ModuleId } from "@/lib/navigation";
-import type { StatusKind } from "@/lib/mock-data";
+import type { LoanRow, StatusKind } from "@/lib/mock-data";
+import { activeLoans } from "@/lib/mock-data";
 
 export type AlertRow = {
   id: string;
@@ -11,7 +17,10 @@ export type AlertRow = {
   view: string;
 };
 
-export function buildAlerts(pendingReviewCount: number): AlertRow[] {
+export function buildAlerts(
+  pendingReviewCount: number,
+  loans: LoanRow[] = [],
+): AlertRow[] {
   const rows: AlertRow[] = [];
 
   if (pendingReviewCount > 0) {
@@ -26,35 +35,44 @@ export function buildAlerts(pendingReviewCount: number): AlertRow[] {
     });
   }
 
-  rows.push(
-    {
-      id: "mora",
+  const withAlerts = activeLoans(loans).filter(
+    (loan) => loan.balance > 0 && loanCollectionAlerts(loan) > 0,
+  );
+  const inMora = withAlerts.filter((loan) => isLoanInCollectionMora(loan));
+  const warning = withAlerts.filter((loan) => !isLoanInCollectionMora(loan));
+
+  if (warning.length > 0) {
+    const byLevel = [1, 2, 3, 4]
+      .map((level) => ({
+        level,
+        count: warning.filter((loan) => loanCollectionAlerts(loan) === level).length,
+      }))
+      .filter((row) => row.count > 0);
+    const detail = byLevel
+      .map((row) => `${row.count} en ${collectionAlertLabel(row.level)}`)
+      .join(" · ");
+    rows.push({
+      id: "cobro-alertas",
       when: "Hoy",
-      message: "61 cuotas vencidas sin abono en 7 días",
+      message: `${warning.length} préstamo${warning.length === 1 ? "" : "s"} sin pago (${detail})`,
+      pill: "Alerta",
+      kind: "warn",
+      module: "cobranza",
+      view: "hoy",
+    });
+  }
+
+  if (inMora.length > 0) {
+    rows.push({
+      id: "cobro-mora",
+      when: "Hoy",
+      message: `${inMora.length} préstamo${inMora.length === 1 ? "" : "s"} en mora (5 días sin pago)`,
       pill: "Mora",
       kind: "overdue",
       module: "cartera",
       view: "mora",
-    },
-    {
-      id: "anulacion",
-      when: "Ayer",
-      message: "Pago PG-9102 anulado por el administrador",
-      pill: "Auditoría",
-      kind: "draft",
-      module: "inicio",
-      view: "auditoria",
-    },
-    {
-      id: "gps",
-      when: "Ayer",
-      message: "Cobrador sin GPS en 3 cobros",
-      pill: "Campo",
-      kind: "partial",
-      module: "inicio",
-      view: "actividad",
-    },
-  );
+    });
+  }
 
   return rows;
 }

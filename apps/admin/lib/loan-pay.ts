@@ -1,6 +1,7 @@
 import type { LoanRow, StatusKind } from "@/lib/mock-data";
 import { todayIso } from "@/lib/daily-dispatch";
 import { chargeLabel, isoToDisplay, syncLoan, type ChargeKind } from "@/lib/loan-preview";
+import { clearCollectionAlertsOnPay } from "@/lib/collection-alerts";
 
 export type PayKind = "cuota" | "abono";
 
@@ -104,20 +105,16 @@ export function payHint(loan: LoanRow, kind: PayKind, amount: number) {
   if (amount < target.remaining) return "Queda pendiente parcial en esta cuota.";
   if (amount === target.remaining) return "Se registra la cuota completa.";
   if (kind === "abono") return "Un abono no puede ser mayor a lo pendiente de la cuota.";
-  return "Se cubre esta cuota y el resto pasa a las siguientes.";
+  return "El excedente baja el saldo. La cuota diaria sigue igual.";
 }
 
-function applyToSchedule(schedule: ScheduleEntry[], amount: number) {
-  let left = amount;
-  for (const line of schedule) {
-    if (left <= 0) break;
-    const room = lineRemaining(line);
-    if (room <= 0) continue;
-    const take = Math.min(room, left);
-    line.paid = linePaid(line) + take;
-    left -= take;
-  }
-  return left;
+/** Aplica el pago solo a la cuota abierta; el excedente no adelanta cuotas futuras. */
+function applyToOpenCuotaOnly(schedule: ScheduleEntry[], targetIndex: number, amount: number) {
+  const line = schedule[targetIndex];
+  if (!line) return;
+  const take = Math.min(lineRemaining(line), amount);
+  if (take <= 0) return;
+  line.paid = linePaid(line) + take;
 }
 
 export type ApplyPaySuccess = {
@@ -147,7 +144,8 @@ export function applyPay(loan: LoanRow, kind: PayKind, amount: number): ApplyPay
   const partial = Boolean(target && amount < target.remaining);
   if (schedule && target && target.index >= 0) {
     if (kind === "cuota") {
-      applyToSchedule(schedule, amount);
+      // Solo marca la cuota del día; el excedente reduce saldo, no mueve cuotas siguientes.
+      applyToOpenCuotaOnly(schedule, target.index, amount);
     } else {
       const line = schedule[target.index];
       line.paid = linePaid(line) + amount;
@@ -163,7 +161,11 @@ export function applyPay(loan: LoanRow, kind: PayKind, amount: number): ApplyPay
     balance,
     schedule,
     partial,
-    message: partial ? "Pago parcial registrado." : "Pago registrado.",
+    message: partial
+      ? "Pago parcial registrado."
+      : amount > (target?.remaining ?? amount)
+        ? "Pago registrado. Excedente descontado del saldo."
+        : "Pago registrado.",
     status: settled ? "Finalizado" : loan.status,
     kind: settled ? ("paid" as const) : paid > 0 ? ("partial" as const) : loan.kind,
   };
@@ -175,15 +177,13 @@ export function loanRowAfterPay(
   pay: ApplyPaySuccess,
   payments?: { loanRef?: string; dueDate?: string; amount: number }[],
 ): LoanRow {
-  return syncLoan(
-    {
-      ...loan,
-      paid: pay.paid,
-      balance: pay.balance,
-      status: pay.status,
-      kind: pay.kind,
-      schedule: pay.schedule ?? loan.schedule,
-    },
-    payments,
-  ) as LoanRow;
+  const cleared = clearCollectionAlertsOnPay({
+    ...loan,
+    paid: pay.paid,
+    balance: pay.balance,
+    status: pay.status,
+    kind: pay.kind,
+    schedule: pay.schedule ?? loan.schedule,
+  });
+  return syncLoan(cleared, payments) as LoanRow;
 }

@@ -205,6 +205,17 @@ Las pestañas internas de la ficha **no** se duplican como módulos del top bar.
 
 ---
 
+## Cobranza por ruta (modelo operativo)
+
+- El cobrador se asigna a **toda la ruta** (Ruta 1 → cobrador X), no cliente por cliente.
+- Los clientes llevan posición consecutiva dentro de su ruta (`#` / `routeOrder`).
+- En admin: **Rutas → Asignar cobrador** (Guardar deja la asignación fija; Modificar para cambiarla).
+- **Planilla diaria (automática):** Lun–sáb, sin festivos. Al cambiar el día (medianoche / al abrir el sistema) se genera por cada ruta con cobrador y se envía sola a la app (`dispatched`).
+- **Inicio → Resumen** = mismo listado que la app; Cobrado/Hora se actualizan con cada pago registrado.
+- Domingo / festivo: no se genera planilla.
+
+---
+
 ## PWA (no usa este enfoque)
 
 La PWA es otra interfaz, más simple:
@@ -226,3 +237,28 @@ No se replica la barra superior ni el sidebar izquierdo en el teléfono del cobr
 - No copia el producto de referencia; toma su jerarquía y la moderniza.
 
 Cuando la arquitectura se apruebe, este enfoque se convierte en el layout real del admin (`apps/admin`).
+
+---
+
+## Formato de tablas (renglones) — no modificar
+
+Todas las tablas del admin usan el **mismo renglón compacto**:
+
+| Token | Valor | Uso |
+| --- | --- | --- |
+| `--table-row-pad-y` | `3px` | Padding vertical de celdas |
+| `--table-row-pad-x` | `10px` | Padding horizontal |
+| `--table-row-line` | `1.2` | Interlineado |
+| `--table-cell-size` | `13px` | Tamaño de letra en celdas |
+| `--table-head-pad-y` | `6px` | Padding vertical de cabecera |
+| `--table-pill-max-h` | `22px` | Alto máx. de pills en tablas |
+
+**Clases obligatorias en listados nuevos:** `table className="data list-grid"` (y `list-data-table` si se usa `ListDataTableShell`). Banco: `.bank-table` / `.bank-records-table`.
+
+**Reglas:**
+
+- Una línea por celda (`nowrap` + ellipsis).
+- Acciones en horizontal (no apilar enlaces).
+- Evidencia miniatura pequeña; clic abre ampliada.
+- **No** subir padding, line-height ni font-size de renglones en CSS de una vista puntual.
+- Cambios al formato: solo ajustando las variables `--table-row-*` en `globals.css` (afecta a todo el sistema a propósito).

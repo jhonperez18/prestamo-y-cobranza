@@ -56,7 +56,6 @@ function ReportBody({
           <table className="data mini-grid">
             <thead>
               <tr className="col-titles">
-                <th>Fecha cuota</th>
                 <th>Concepto</th>
                 <th className="right">Valor</th>
                 <th className="right">Pagado</th>
@@ -66,12 +65,11 @@ function ReportBody({
             <tbody>
               {report.overdueInstallments.length === 0 ? (
                 <tr className="empty-row">
-                  <td colSpan={5}>Sin cuotas en mora.</td>
+                  <td colSpan={4}>Sin cuotas en mora.</td>
                 </tr>
               ) : (
-                report.overdueInstallments.map((row) => (
-                  <tr key={`${row.date}-${row.concept}`}>
-                    <td>{row.date}</td>
+                report.overdueInstallments.map((row, index) => (
+                  <tr key={`${row.concept}-${index}`}>
                     <td>{row.concept}</td>
                     <td className="money right">{money(row.amount)}</td>
                     <td className="money right">{money(row.paid)}</td>

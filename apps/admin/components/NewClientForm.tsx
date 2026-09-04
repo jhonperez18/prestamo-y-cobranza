@@ -1,14 +1,17 @@
 "use client";
 
-import { useRef, useState, type FormEvent } from "react";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 import { CameraIcon } from "@/components/icons";
 import { nextClientCode, type ClientRow, type RouteRow } from "@/lib/mock-data";
+import { clientsOnRouteSorted, nextRouteOrder } from "@/lib/client-route-order";
 
 export type ClientDraft = {
   name: string;
   lastName: string;
+  nickname: string;
   document: string;
   route: string;
+  routeOrder: number;
   email: string;
   city: string;
   barrio: string;
@@ -21,6 +24,7 @@ type Props = {
   client?: ClientRow;
   code?: string;
   routes: RouteRow[];
+  clients: ClientRow[];
   onCancel: () => void;
   onSave: (draft: ClientDraft) => void;
 };
@@ -29,22 +33,58 @@ export function NewClientForm({
   client,
   code,
   routes,
+  clients,
   onCancel,
   onSave,
 }: Props) {
+  const editing = Boolean(client);
   const clientCode = code ?? client?.ref ?? nextClientCode();
-  const routeId = client ? (routes.find((route) => route.name === client.route)?.id ?? "") : "";
+  const initialRouteId = client
+    ? (routes.find((route) => route.name === client.route)?.id ?? "")
+    : "";
   const [photo, setPhoto] = useState<string | undefined>(client?.photo);
+  const [routeId, setRouteId] = useState(initialRouteId);
+  const selectedRoute = routes.find((route) => route.id === routeId);
+  const routeName = selectedRoute?.name ?? "";
+
+  const positionOptions = useMemo(() => {
+    if (!routeName) return [1];
+    const onRoute = clientsOnRouteSorted(clients, routeName).filter(
+      (row) => row.ref !== client?.ref,
+    );
+    const max = onRoute.length + 1;
+    return Array.from({ length: max }, (_, index) => index + 1);
+  }, [clients, routeName, client?.ref]);
+
+  const defaultPosition = editing
+    ? Math.min(client!.routeOrder || nextRouteOrder(clients, routeName), positionOptions.length)
+    : positionOptions[positionOptions.length - 1] ?? 1;
+  const [routeOrder, setRouteOrder] = useState(defaultPosition);
+
+  function onRouteChange(nextId: string) {
+    setRouteId(nextId);
+    const nextName = routes.find((route) => route.id === nextId)?.name ?? "";
+    const onRoute = clientsOnRouteSorted(clients, nextName).filter(
+      (row) => row.ref !== client?.ref,
+    );
+    const append = onRoute.length + 1;
+    setRouteOrder(append);
+  }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const selectedRoute = routes.find((route) => route.id === String(form.get("ruta") ?? ""));
+    const selected = routes.find((route) => route.id === String(form.get("ruta") ?? ""));
+    if (!selected) return;
+    const maxPos = positionOptions.length;
+    const pos = Math.min(Math.max(1, Number(form.get("posicion")) || maxPos), maxPos);
     onSave({
       name: String(form.get("nombre") ?? "").trim(),
       lastName: String(form.get("apellidos") ?? "").trim(),
+      nickname: String(form.get("apodo") ?? "").trim(),
       document: String(form.get("documento") ?? "").trim(),
-      route: selectedRoute?.name ?? "",
+      route: selected.name,
+      routeOrder: pos,
       email: String(form.get("correo") ?? "").trim(),
       city: String(form.get("ciudad") ?? "").trim(),
       barrio: String(form.get("barrio") ?? "").trim(),
@@ -74,17 +114,25 @@ export function NewClientForm({
             <b className="sheet-code">{clientCode}</b>
           </div>
 
-          <div className="sheet-row">
+          <div className="sheet-row split">
             <label className="sheet-label" htmlFor="cli-apellidos">
               Apellidos
             </label>
             <input
               id="cli-apellidos"
               name="apellidos"
-              required
-              placeholder="Apellidos"
+              placeholder="Opcional"
               autoComplete="family-name"
               defaultValue={client?.lastName}
+            />
+            <label className="sheet-label" htmlFor="cli-apodo">
+              Apodo
+            </label>
+            <input
+              id="cli-apodo"
+              name="apodo"
+              placeholder="Opcional"
+              defaultValue={client?.nickname ?? ""}
             />
           </div>
 
@@ -100,18 +148,55 @@ export function NewClientForm({
               defaultValue={client?.document}
             />
             <label className="sheet-label" htmlFor="cli-ruta">
-              Ruta / barrio
+              Ruta
             </label>
-            <select id="cli-ruta" name="ruta" required defaultValue={routeId}>
+            <select
+              id="cli-ruta"
+              name="ruta"
+              required
+              value={routeId}
+              onChange={(event) => onRouteChange(event.target.value)}
+            >
               <option value="" disabled>
                 Seleccionar ruta
               </option>
               {routes.map((route) => (
                 <option key={route.id} value={route.id}>
-                  {route.name} · {route.zone}
+                  {route.name}
                 </option>
               ))}
             </select>
+          </div>
+
+          <div className="sheet-row split">
+            <label className="sheet-label" htmlFor="cli-posicion">
+              Posición en ruta
+            </label>
+            <select
+              id="cli-posicion"
+              name="posicion"
+              required
+              disabled={!routeId}
+              value={routeOrder}
+              onChange={(event) => setRouteOrder(Number(event.target.value))}
+            >
+              {!routeId ? (
+                <option value="">Elija la ruta primero</option>
+              ) : (
+                positionOptions.map((pos) => (
+                  <option key={pos} value={pos}>
+                    {pos}
+                    {pos === positionOptions.length ? " (al final)" : ""}
+                  </option>
+                ))
+              )}
+            </select>
+            <span className="sheet-label sheet-label-hint">Consecutivo</span>
+            <span className="sheet-hint">
+              {routeId
+                ? `Si elige ${routeOrder}, los que estaban desde ahí se corren +1.`
+                : "Primero seleccione la ruta."}
+            </span>
           </div>
 
           <div className="sheet-row">

@@ -87,7 +87,7 @@ export function SignaturePad({ compact = false, required, value, onChange }: Pro
     if (!parent) return;
     const cssWidth = parent.clientWidth;
     if (cssWidth < 8) return;
-    const cssHeight = compact ? 120 : 156;
+    const cssHeight = compact ? 88 : 156;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const nextW = Math.max(1, Math.round(cssWidth * dpr));
     const nextH = Math.max(1, Math.round(cssHeight * dpr));

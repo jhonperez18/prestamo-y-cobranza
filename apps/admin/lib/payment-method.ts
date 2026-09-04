@@ -13,7 +13,12 @@ export function paymentMethodLabel(method?: PaymentMethod | string) {
 }
 
 export function paymentMethodKind(method?: PaymentMethod | string): StatusKind {
-  return method === "nequi" ? "partial" : "ok";
+  return method === "nequi" ? "nequi" : "efectivo";
+}
+
+/** Clase CSS para tintar filas / celdas según forma de pago. */
+export function paymentMethodToneClass(method?: PaymentMethod | string) {
+  return method === "nequi" ? "is-pay-nequi" : "is-pay-efectivo";
 }
 
 export function normalizePaymentMethod(method?: PaymentMethod | string): PaymentMethod {

@@ -20,10 +20,12 @@ import {
 } from "@/lib/daily-dispatch";
 import {
   money,
+  catalogRoutes,
   type ClientRow,
   type CollectorRow,
   type LoanRow,
   type PaymentRow,
+  type RouteRow,
 } from "@/lib/mock-data";
 import { DAILY_COLLECTION_COLUMNS, DAILY_COLLECTION_DEFAULT_COLS } from "@/lib/table-columns";
 
@@ -32,6 +34,7 @@ type Props = {
   payments: PaymentRow[];
   clients: ClientRow[];
   collectors: CollectorRow[];
+  routes: RouteRow[];
   assignments: DailyCollectionAssignment[];
   onGenerate: (date: string) => void;
   onDispatch: (date: string) => void;
@@ -66,12 +69,19 @@ function readStoredDate() {
   return today;
 }
 
-function itemStatusKind(kind: "cuota" | "mora") {
-  return kind === "mora" ? "overdue" : "pending";
+function itemStatusKind(kind: "cuota" | "alerta" | "mora") {
+  if (kind === "mora") return "overdue";
+  if (kind === "alerta") return "warn";
+  return "pending";
 }
 
-function itemStatusLabel(kind: "cuota" | "mora") {
-  return kind === "mora" ? "Mora" : "Pendiente";
+function itemStatusLabel(kind: "cuota" | "alerta" | "mora", alertCount?: number) {
+  if (kind === "mora") return "Mora";
+  if (kind === "alerta") {
+    const n = Number(alertCount) || 0;
+    return n > 0 ? `Alerta ${n}` : "Alerta";
+  }
+  return "Pendiente";
 }
 
 export function DailyCollectionsView({
@@ -79,11 +89,12 @@ export function DailyCollectionsView({
   payments,
   clients,
   collectors,
+  routes,
   assignments,
   onGenerate,
   onDispatch,
   onCloseDay,
-  onAssignItem,
+  onAssignItem: _onAssignItem,
   onOpenClient,
   onOpenLoan,
   onOpenMobile,
@@ -96,6 +107,7 @@ export function DailyCollectionsView({
   const [draftCollectors, setDraftCollectors] = useState<Record<string, string>>({});
   const [listReady, setListReady] = useState(true);
   const tableRef = useRef<HTMLDivElement>(null);
+  const lastSyncedDate = useRef<string | null>(null);
 
   const { isVisible, visibleCols, toggleColumn } = useColumnVisibility(
     DAILY_COLLECTION_COLUMNS,
@@ -141,17 +153,40 @@ export function DailyCollectionsView({
     window.localStorage.setItem(DISPATCH_DATE_KEY, selectedDate);
   }, [selectedDate]);
 
+  const catalog = useMemo(() => catalogRoutes(routes), [routes]);
+
+  function collectorRefForRoute(routeName: string) {
+    return catalog.find((row) => row.name === routeName)?.collectorRef ?? "";
+  }
+
+  function collectorNameForRef(ref: string) {
+    return collectors.find((row) => row.ref === ref)?.name ?? "";
+  }
+
   useEffect(() => {
     setDraftCollectors((current) => {
       const next = { ...current };
       for (const item of allItems) {
         if (next[item.id] !== undefined) continue;
         const assigned = findAssignment(assignments, item.id, selectedDate);
-        next[item.id] = assigned?.collectorRef ?? activeCollectors[0]?.ref ?? "";
+        next[item.id] =
+          assigned?.collectorRef ||
+          collectorRefForRoute(item.clientRoute) ||
+          activeCollectors[0]?.ref ||
+          "";
       }
       return next;
     });
-  }, [allItems, assignments, selectedDate, activeCollectors]);
+  }, [allItems, assignments, selectedDate, activeCollectors, catalog]);
+
+  // Al entrar / cambiar fecha: sincroniza planilla desde rutas fijas (sin toast).
+  useEffect(() => {
+    if (lastSyncedDate.current === selectedDate) return;
+    lastSyncedDate.current = selectedDate;
+    setListReady(true);
+    onGenerate(selectedDate);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al cambiar fecha
+  }, [selectedDate]);
 
   const activeItems = useMemo(() => {
     if (!listReady) return [];
@@ -160,7 +195,8 @@ export function DailyCollectionsView({
       if (listFilter === "pending") return isStillDue(item.id, assignments, selectedDate);
       if (listFilter === "mora") return item.kind === "mora";
       if (listFilter === "assigned") {
-        return Boolean(findAssignment(assignments, item.id, selectedDate));
+        const assigned = findAssignment(assignments, item.id, selectedDate);
+        return Boolean(assigned?.dispatched);
       }
       return true;
     });
@@ -168,15 +204,25 @@ export function DailyCollectionsView({
 
   const summary = useMemo(() => dailyCollectionSummary(activeItems), [activeItems]);
 
-  const assignedToday = useMemo(
+  const inAppToday = useMemo(
     () =>
       assignments.filter(
         (row) =>
           row.dispatchDate === selectedDate &&
-          !row.dispatched &&
+          row.dispatched &&
           activeItems.some((item) => item.id === row.itemId),
       ).length,
     [assignments, selectedDate, activeItems],
+  );
+
+  const missingRouteCollector = useMemo(
+    () =>
+      activeItems.filter((item) => {
+        const assigned = findAssignment(assignments, item.id, selectedDate);
+        if (assigned?.dispatched) return false;
+        return !collectorRefForRoute(item.clientRoute);
+      }).length,
+    [activeItems, assignments, selectedDate, catalog],
   );
 
   const closeSummary = useMemo(
@@ -198,25 +244,23 @@ export function DailyCollectionsView({
 
   function generateList() {
     setListReady(true);
-    onGenerate(selectedDate);
+    onDispatch(selectedDate);
   }
 
   function assignItem(itemId: string, loanRef: string) {
     const existing = findAssignment(assignments, itemId, selectedDate);
     if (existing) {
-      onToast?.("Este cobro ya está asignado para este día.");
+      onToast?.("Este cobro ya está en la planilla del día.");
       return;
     }
     if (!canAssign) {
       onToast?.("Solo puedes asignar cobros desde hoy en adelante.");
       return;
     }
-    const collectorRef = draftCollectors[itemId];
-    if (!collectorRef) {
-      onToast?.("Elige un cobrador antes de asignar.");
-      return;
-    }
-    onAssignItem(itemId, loanRef, collectorRef, selectedDate);
+    onToast?.(
+      "El cobrador se define por ruta (fijo). Ve a Inicio → Asignar cobrador; al guardar, la planilla se actualiza sola.",
+    );
+    onGo?.("inicio", "asignar-clientes");
   }
 
   function confirmCloseDay() {
@@ -224,13 +268,13 @@ export function DailyCollectionsView({
       onToast?.(
         closeSummary.alreadyClosed
           ? "La jornada de este día ya está cerrada."
-          : "Primero envía cobros a los cobradores.",
+          : "No hay planilla en app para cerrar. Asigna cobrador en rutas y pulsa Actualizar planillas.",
       );
       return;
     }
     const detail =
       closeSummary.pending > 0
-        ? `${closeSummary.pending} visita(s) pendiente(s) quedarán como no visitadas (mora mañana).`
+        ? `${closeSummary.pending} visita(s) pendiente(s) sumarán alerta (mora solo al 5.º sin pago).`
         : "Se cerrará la jornada con los cobros ya registrados.";
     if (
       typeof window !== "undefined" &&
@@ -249,11 +293,8 @@ export function DailyCollectionsView({
           <span className="count">{activeItems.length}</span>
         </div>
         <div className="grow" />
-        <button type="button" className="btn ghost" onClick={generateList}>
-          Generar lista
-        </button>
-        <button type="button" className="btn primary" disabled={!canAssign} onClick={() => onDispatch(selectedDate)}>
-          Enviar a cobradores
+        <button type="button" className="btn primary" disabled={!canAssign} onClick={generateList}>
+          Actualizar planillas
         </button>
         <button
           type="button"
@@ -280,12 +321,19 @@ export function DailyCollectionsView({
           </button>
         ) : null}
       </div>
+      <p className="panel-lead">
+        El cobrador sale de la ruta y <strong>queda fijo</strong> día a día. Cámbialo solo en{" "}
+        <button type="button" className="btn-link" onClick={() => onGo?.("inicio", "asignar-clientes")}>
+          Asignar cobrador
+        </button>
+        ; la planilla de hoy (y futuros) se arma sola para la app.
+      </p>
 
       <div className="kpis tone-kpis">
         <Kpi
           label="Cobros"
           value={String(summary.total)}
-          hint={`${summary.cuotas} cuotas · ${summary.mora} mora`}
+          hint={`${summary.cuotas} cuotas · ${summary.alertas} alertas · ${summary.mora} mora`}
           tone="teal"
           onClick={() => focusList("all")}
         />
@@ -304,9 +352,13 @@ export function DailyCollectionsView({
           onClick={() => onGo?.("cartera", "mora")}
         />
         <Kpi
-          label="Asignados"
-          value={String(assignedToday)}
-          hint="Listos para enviar"
+          label="En app"
+          value={String(inAppToday)}
+          hint={
+            missingRouteCollector
+              ? `${missingRouteCollector} sin cobrador de ruta`
+              : "Planilla enviada al cobrador"
+          }
           tone="sage"
           onClick={() => focusList("assigned")}
         />
@@ -409,22 +461,30 @@ export function DailyCollectionsView({
             {activeItems.length === 0 ? (
               <tr className="empty-row">
                 <td colSpan={visibleCols.length + 1}>
-                  {!listReady
-                    ? "Pulsa Generar lista para cargar los cobros del día."
-                    : listFilter === "pending"
-                      ? "No hay cobros pendientes por recaudar en esta fecha."
-                      : listFilter === "mora"
-                        ? "No hay clientes con mora en esta fecha."
-                        : listFilter === "assigned"
-                          ? "No hay cobros asignados para esta fecha."
-                          : "No hay cobros pendientes para esta fecha."}
+                  {listFilter === "pending"
+                    ? "No hay cobros pendientes por recaudar en esta fecha."
+                    : listFilter === "mora"
+                      ? "No hay clientes con mora en esta fecha."
+                      : listFilter === "assigned"
+                        ? "No hay planilla en app para esta fecha. Asigna cobrador en rutas o pulsa Actualizar planillas."
+                        : "No hay cobros pendientes para esta fecha."}
                 </td>
               </tr>
             ) : (
               activeItems.map((item, index) => {
                 const assigned = findAssignment(assignments, item.id, selectedDate);
-                const draftRef = draftCollectors[item.id] ?? assigned?.collectorRef ?? "";
-                const locked = Boolean(assigned);
+                const routeCollectorRef = collectorRefForRoute(item.clientRoute);
+                const draftRef =
+                  draftCollectors[item.id] ||
+                  assigned?.collectorRef ||
+                  routeCollectorRef ||
+                  "";
+                const inApp = Boolean(assigned?.dispatched);
+                const locked = inApp || Boolean(routeCollectorRef);
+                const displayCollector =
+                  assigned?.collector ||
+                  collectorNameForRef(draftRef) ||
+                  "—";
 
                 return (
                   <tr key={item.id}>
@@ -505,7 +565,7 @@ export function DailyCollectionsView({
                           />
                         ) : (
                           <Pill
-                            label={itemStatusLabel(item.kind)}
+                            label={itemStatusLabel(item.kind, item.alertCount)}
                             kind={itemStatusKind(item.kind)}
                           />
                         )}
@@ -513,38 +573,53 @@ export function DailyCollectionsView({
                     ) : null}
                     {isVisible("collector") ? (
                       <td>
-                        <select
-                          className="daily-row-collector"
-                          value={draftRef}
-                          disabled={locked || !canAssign}
-                          onChange={(event) =>
-                            setDraftCollectors((current) => ({
-                              ...current,
-                              [item.id]: event.target.value,
-                            }))
-                          }
-                        >
-                          <option value="">Elegir…</option>
-                          {activeCollectors.map((row) => (
-                            <option key={row.ref} value={row.ref}>
-                              {row.name}
-                            </option>
-                          ))}
-                        </select>
+                        {locked ? (
+                          <span className="daily-collector-fixed" title="Cobrador de la ruta (fijo)">
+                            {displayCollector}
+                          </span>
+                        ) : (
+                          <select
+                            className="daily-row-collector"
+                            value={draftRef}
+                            disabled={!canAssign}
+                            onChange={(event) =>
+                              setDraftCollectors((current) => ({
+                                ...current,
+                                [item.id]: event.target.value,
+                              }))
+                            }
+                          >
+                            <option value="">Elegir…</option>
+                            {activeCollectors.map((row) => (
+                              <option key={row.ref} value={row.ref}>
+                                {row.name}
+                              </option>
+                            ))}
+                          </select>
+                        )}
                       </td>
                     ) : null}
                     {isVisible("action") ? (
                       <td className="daily-row-action">
-                        {locked ? (
-                          <span className="daily-assign-ok">Asignado</span>
+                        {inApp ? (
+                          <span className="daily-assign-ok">En app</span>
+                        ) : routeCollectorRef ? (
+                          <button
+                            type="button"
+                            className="btn ghost compact"
+                            disabled={!canAssign}
+                            onClick={generateList}
+                            title="Sincroniza la planilla con las rutas"
+                          >
+                            Sync
+                          </button>
                         ) : (
                           <button
                             type="button"
                             className="btn primary compact"
-                            disabled={!draftRef || !canAssign}
                             onClick={() => assignItem(item.id, item.loanRef)}
                           >
-                            Asignar
+                            En rutas
                           </button>
                         )}
                       </td>

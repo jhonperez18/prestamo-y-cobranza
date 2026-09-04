@@ -293,8 +293,8 @@ export function CobranzaPaymentsView({
                       </td>
                     ) : null}
                     {columnVisibility.isVisible("evidence") ? (
-                      <td>
-                        <PaymentEvidenceThumb evidence={row.evidence} />
+                      <td className="pay-evidence-cell">
+                        <PaymentEvidenceThumb evidence={row.evidence} size={22} />
                       </td>
                     ) : null}
                     {columnVisibility.isVisible("tipo") ? <td>{row.type}</td> : null}

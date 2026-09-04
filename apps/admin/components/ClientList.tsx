@@ -17,7 +17,9 @@ import { Pill } from "@/components/ui";
 export const CLIENT_COLUMNS = [
   { id: "ref", label: "Código" },
   { id: "alta", label: "Fecha creación" },
+  { id: "routeOrder", label: "#" },
   { id: "name", label: "Nombre" },
+  { id: "nickname", label: "Apodo" },
   { id: "lastName", label: "Apellidos" },
   { id: "document", label: "Documento" },
   { id: "route", label: "Ruta" },
@@ -35,9 +37,19 @@ type ColId = (typeof CLIENT_COLUMNS)[number]["id"];
 
 type ClientListView = "listado" | "revision" | "activos" | "inactivos";
 
-const DEFAULT_COLS: ColId[] = ["ref", "name", "lastName", "city", "route", "email", "phone", "pending"];
-const REVISION_COLS: ColId[] = ["name", "lastName", "document", "route", "phone", "address"];
-const STORAGE_KEY = "nexo.clientes.columns";
+const DEFAULT_COLS: ColId[] = [
+  "route",
+  "routeOrder",
+  "name",
+  "nickname",
+  "lastName",
+  "document",
+  "city",
+  "phone",
+  "pending",
+];
+const REVISION_COLS: ColId[] = ["name", "nickname", "document", "phone", "address", "city"];
+const STORAGE_KEY = "nexo.clientes.columns.v2";
 
 type Filters = Record<ColId, string>;
 
@@ -62,7 +74,9 @@ function matches(value: string, query: string) {
 
 function fieldOf(row: ClientRow, id: ColId) {
   if (id === "pending") return String(row.pending);
-  return String(row[id] ?? "");
+  if (id === "routeOrder") return String(row.routeOrder || "");
+  if (id === "nickname") return row.nickname ?? "";
+  return String(row[id as keyof ClientRow] ?? "");
 }
 
 export function ClientList({
@@ -100,7 +114,7 @@ export function ClientList({
       if (saved && !isRevision) {
         const parsed = JSON.parse(saved) as string[];
         const valid = parsed
-          .map((id) => (id === "nick" ? "lastName" : id))
+          .map((id) => (id === "nick" ? "nickname" : id))
           .filter((id): id is ColId => CLIENT_COLUMNS.some((col) => col.id === id));
         if (valid.length) setVisibleCols(valid);
       } else if (isRevision) {
@@ -132,7 +146,7 @@ export function ClientList({
   );
 
   const visible = useMemo(() => {
-    return rows.filter((row) =>
+    const filtered = rows.filter((row) =>
       CLIENT_COLUMNS.every((col) => {
         const query = applied[col.id];
         if (!query) return true;
@@ -140,6 +154,11 @@ export function ClientList({
         return matches(fieldOf(row, col.id), query);
       }),
     );
+    return filtered.slice().sort((a, b) => {
+      const routeCmp = a.route.localeCompare(b.route, undefined, { numeric: true });
+      if (routeCmp !== 0) return routeCmp;
+      return (a.routeOrder || 0) - (b.routeOrder || 0);
+    });
   }, [applied, rows]);
 
   const allChecked = visible.length > 0 && visible.every((row) => selected.includes(row.ref));
@@ -225,6 +244,8 @@ export function ClientList({
       );
     }
     if (id === "pending") return money(row.pending);
+    if (id === "routeOrder") return row.routeOrder || "—";
+    if (id === "nickname") return row.nickname?.trim() || "—";
     if (id === "status") return <Pill label={row.status} kind={clientStatusKind(row.status)} />;
     return fieldOf(row, id) || "—";
   }

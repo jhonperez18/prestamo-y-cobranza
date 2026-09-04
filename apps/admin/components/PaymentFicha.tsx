@@ -96,7 +96,6 @@ export function PaymentFicha({
               { label: "Tipo", value: payment.type },
               { label: "Estado", value: movement.kind === "partial" ? "Parcial" : "Pagada" },
               { label: "Concepto", value: movement.chargeLabel },
-              { label: "Fecha cuota", value: movement.dueDate },
               {
                 label: "Préstamo",
                 value: payment.loanRef ?? "—",

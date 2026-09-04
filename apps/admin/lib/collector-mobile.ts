@@ -5,7 +5,9 @@ import {
 } from "@/lib/collector-dispatch-sync";
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
-import type { ClientRow, LoanRow, RouteRow } from "@/lib/mock-data";
+import type { ClientRow, CollectorRow, LoanRow, PaymentRow, RouteRow } from "@/lib/mock-data";
+import { paymentsForCollector } from "@/lib/mock-data";
+import { normalizePaymentMethod } from "@/lib/payment-method";
 
 export type CollectorMobileQueue = {
   date: string;
@@ -55,10 +57,9 @@ export function collectorMobileQueue(
   const routeRef = dispatchRouteRef(collectorRef, date);
   const route = routes.find((row) => row.ref === routeRef) ?? null;
   const dayClosed = Boolean(dispatched.length && dispatched.every((row) => row.dayClosedAt));
-  const closed =
-    dayClosed ||
-    route?.status === "Cerrada" ||
-    (dispatched.length > 0 && pending.length === 0);
+  // Solo cierra si oficina/cobrador cerró el día, o ya no hay pendientes.
+  // No usar solo route.status === "Cerrada": un pago no debe bloquear el resto.
+  const closed = dayClosed || (dispatched.length > 0 && pending.length === 0);
 
   return {
     date,
@@ -111,6 +112,34 @@ export function defaultMobileRouteDate(
   const withPending = options.find((row) => row.pending > 0);
   if (withPending) return withPending.date;
   return options[0].date;
+}
+
+/** Suma de cobros del día por medio (efectivo / Nequi) para que el cobrador cuadre su caja. */
+export function collectorRecaudoBreakdown(
+  collectorRef: string,
+  date: string,
+  payments: PaymentRow[],
+  collectors: CollectorRow[] = [],
+) {
+  let efectivo = 0;
+  let nequi = 0;
+  let count = 0;
+  for (const row of paymentsForCollector(collectorRef, collectors, payments)) {
+    if (row.paidDate !== date) continue;
+    count += 1;
+    if (normalizePaymentMethod(row.method) === "nequi") nequi += row.amount;
+    else efectivo += row.amount;
+  }
+  return { efectivo, nequi, total: efectivo + nequi, count };
+}
+
+export function collectorRecaudoForDate(
+  collectorRef: string,
+  date: string,
+  payments: PaymentRow[],
+  collectors: CollectorRow[] = [],
+) {
+  return collectorRecaudoBreakdown(collectorRef, date, payments, collectors).total;
 }
 
 export function visitStatusLabel(status?: DailyCollectionAssignment["visitStatus"]) {

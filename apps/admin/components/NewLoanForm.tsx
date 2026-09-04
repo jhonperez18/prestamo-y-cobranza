@@ -3,22 +3,21 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { CloseIcon, SearchIcon } from "@/components/icons";
 import { money, nextLoanCode, type ClientRow, type LoanRow } from "@/lib/mock-data";
+import { isOperationalClient } from "@/lib/client-review";
 import {
-  buildLoanPreviewCards,
+  buildFlatLoanPreviewCards,
   displayToIso,
+  firstCollectionLabel,
+  inferTermMonths,
   isoToDisplay,
-  LOAN_FORM_MODES,
-  PACT_KINDS,
+  LOAN_TERM_OPTIONS,
   PAY_FREQUENCIES,
-  previewLoan,
-  rateFieldLabel,
+  previewLoanFlat,
   syncLoan,
-  type ChargeMode,
-  type PactKind,
+  type LoanTermMonths,
   type PayFrequency,
   type ScheduleLine,
 } from "@/lib/loan-preview";
-import { LoanScheduleTable } from "@/components/LoanScheduleTable";
 import { todayIso } from "@/lib/daily-dispatch";
 
 export type LoanDraft = {
@@ -29,8 +28,8 @@ export type LoanDraft = {
   notes: string;
   rate: number;
   frequency: PayFrequency;
-  mode: ChargeMode;
-  pact: PactKind;
+  mode: "cuota_fija";
+  pact: "valor";
   days: number;
   interest: number;
   total: number;
@@ -60,21 +59,44 @@ function matchesClient(client: ClientRow, query: string) {
   const q = fold(query);
   if (!q) return true;
   const hay = fold(
-    [client.ref, client.name, client.lastName, `${client.name} ${client.lastName}`, client.document, client.phone, client.city, client.route].join(
-      " ",
-    ),
+    [
+      client.ref,
+      client.name,
+      client.lastName,
+      `${client.name} ${client.lastName}`,
+      client.document,
+      client.phone,
+      client.city,
+      client.route,
+    ].join(" "),
   );
   return q.split(" ").every((part) => hay.includes(part));
 }
 
-function parseCapital(raw: string) {
+function parseMoney(raw: string) {
   const digits = raw.replace(/[^\d]/g, "");
   return digits ? Number(digits) : 0;
 }
 
-function parseRate(raw: string) {
-  const n = Number(raw.replace(",", "."));
-  return Number.isFinite(n) && n >= 0 ? n : 0;
+const INTEREST_PCT_OPTIONS = [5, 10, 15, 20] as const;
+type InterestPct = (typeof INTEREST_PCT_OPTIONS)[number];
+type InterestInputMode = "pct" | "amount" | null;
+
+function matchInterestPct(capital: number, interest: number): InterestPct | null {
+  if (capital <= 0 || interest <= 0) return null;
+  for (const pct of INTEREST_PCT_OPTIONS) {
+    const expected = Math.trunc((capital * pct) / 100);
+    if (expected === interest) return pct;
+  }
+  return null;
+}
+
+function initialTermMonths(loan?: LoanRow | null): LoanTermMonths {
+  if (!loan) return 1;
+  const start = displayToIso(loan.date);
+  const due = displayToIso(loan.due);
+  if (start && due) return inferTermMonths(start, due);
+  return 1;
 }
 
 export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelete }: Props) {
@@ -86,37 +108,92 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
   const [client, setClient] = useState<ClientRow | null>(
     () => (loan ? (clients.find((row) => row.ref === loan.clientRef) ?? null) : null),
   );
-  const [capitalRaw, setCapitalRaw] = useState(syncedLoan ? String(syncedLoan.capital) : loan ? String(loan.capital) : "");
-  const [rateRaw, setRateRaw] = useState(syncedLoan?.rate != null ? String(syncedLoan.rate) : loan?.rate != null ? String(loan.rate) : "");
-  const [cuotaRaw, setCuotaRaw] = useState(
-    syncedLoan?.installment != null ? String(syncedLoan.installment) : loan?.installment != null ? String(loan.installment) : "",
+  const [capitalRaw, setCapitalRaw] = useState(
+    syncedLoan ? String(syncedLoan.capital) : loan ? String(loan.capital) : "",
   );
+  const seedInterest =
+    syncedLoan?.interest != null
+      ? syncedLoan.interest
+      : loan?.interest != null
+        ? loan.interest
+        : 0;
+  const seedCapital = syncedLoan?.capital ?? loan?.capital ?? 0;
+  const seedPct = matchInterestPct(seedCapital, seedInterest);
+  const [interestMode, setInterestMode] = useState<InterestInputMode>(() => {
+    if (seedInterest <= 0) return null;
+    return seedPct != null ? "pct" : "amount";
+  });
+  const [ratePct, setRatePct] = useState<InterestPct | null>(() => seedPct);
+  const [interestRaw, setInterestRaw] = useState(
+    seedInterest > 0 && seedPct == null ? String(seedInterest) : "",
+  );
+  const [termMonths, setTermMonths] = useState<LoanTermMonths>(() => initialTermMonths(loan ?? null));
   const [startIso, setStartIso] = useState(
-    syncedLoan ? displayToIso(syncedLoan.date) || todayIso() : loan ? displayToIso(loan.date) || todayIso() : todayIso(),
+    syncedLoan
+      ? displayToIso(syncedLoan.date) || todayIso()
+      : loan
+        ? displayToIso(loan.date) || todayIso()
+        : todayIso(),
   );
-  const [dueIso, setDueIso] = useState(syncedLoan ? displayToIso(syncedLoan.due) : loan ? displayToIso(loan.due) : "");
-  const [frequency, setFrequency] = useState<PayFrequency>(syncedLoan?.frequency ?? loan?.frequency ?? "diario");
-  const [pact, setPact] = useState<PactKind>(syncedLoan?.pact ?? loan?.pact ?? "tasa");
+  const [frequency, setFrequency] = useState<PayFrequency>(
+    syncedLoan?.frequency ?? loan?.frequency ?? "diario",
+  );
   const [notes, setNotes] = useState(syncedLoan?.notes ?? loan?.notes ?? "");
   const [askingDelete, setAskingDelete] = useState(false);
 
-  const suggestions = useMemo(() => clients.filter((row) => matchesClient(row, query)), [clients, query]);
+  const suggestions = useMemo(
+    () => clients.filter((row) => isOperationalClient(row) && matchesClient(row, query)),
+    [clients, query],
+  );
   const showList = !client && (focused || query.trim().length > 0);
-  const capital = parseCapital(capitalRaw);
-  const rate = parseRate(rateRaw);
-  const cuota = parseCapital(cuotaRaw);
-  const resolvedPact: PactKind = pact;
-  const usesValor = resolvedPact === "valor";
-  const preview = previewLoan({
+  const capital = parseMoney(capitalRaw);
+  const interestFromPct =
+    interestMode === "pct" && ratePct != null && capital > 0
+      ? Math.trunc((capital * ratePct) / 100)
+      : 0;
+  const interestFromAmount = interestMode === "amount" ? parseMoney(interestRaw) : 0;
+  const interest = interestMode === "pct" ? interestFromPct : interestFromAmount;
+  const totalDue = capital + interest;
+  const preview = previewLoanFlat({
     capital,
+    interest,
     startIso,
-    dueIso,
     frequency,
-    mode: "interes",
-    pact: resolvedPact,
-    rate,
-    cuota,
+    termMonths,
   });
+  const frequencyLabel =
+    PAY_FREQUENCIES.find((item) => item.id === frequency)?.label ?? "Diario";
+  const termLabel = LOAN_TERM_OPTIONS.find((item) => item.id === termMonths)?.label ?? "1 mes";
+  const dueLabel = preview?.dates.length
+    ? isoToDisplay(preview.dates[preview.dates.length - 1])
+    : "—";
+  const cobroDayLabel = firstCollectionLabel(startIso, frequency);
+  const interestSelectValue =
+    interestMode === "amount" ? "amount" : ratePct != null ? String(ratePct) : "";
+
+  function onInterestSelect(value: string) {
+    if (!value) {
+      setInterestMode(null);
+      setRatePct(null);
+      setInterestRaw("");
+      return;
+    }
+    if (value === "amount") {
+      setInterestMode("amount");
+      setRatePct(null);
+      return;
+    }
+    const pct = Number(value) as InterestPct;
+    setInterestMode("pct");
+    setRatePct(pct);
+    setInterestRaw("");
+  }
+
+  function onAmountChange(raw: string) {
+    setInterestMode("amount");
+    setRatePct(null);
+    setInterestRaw(raw);
+  }
 
   function pick(row: ClientRow) {
     setClient(row);
@@ -137,12 +214,12 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
       clientRef: client.ref,
       capital,
       date: isoToDisplay(startIso),
-      due: isoToDisplay(dueIso),
+      due: dueLabel,
       notes: notes.trim(),
-      rate: usesValor ? 0 : rate,
+      rate: interestMode === "pct" ? ratePct ?? 0 : 0,
       frequency,
-      mode: "interes",
-      pact: resolvedPact,
+      mode: "cuota_fija",
+      pact: "valor",
       days: preview.days,
       interest: preview.interest,
       total: preview.total,
@@ -154,7 +231,9 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
   const initials = client
     ? `${client.name.charAt(0)}${client.lastName.charAt(0)}`.toUpperCase()
     : "";
-  const address = client ? [client.address, client.barrio, client.city].filter(Boolean).join(", ") : "";
+  const address = client
+    ? [client.address, client.barrio, client.city].filter(Boolean).join(", ")
+    : "";
 
   return (
     <form className="loan-create" onSubmit={onSubmit}>
@@ -181,7 +260,12 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
                 <p>No hay clientes con ese dato. Créelo primero en Clientes.</p>
               ) : (
                 suggestions.map((row) => (
-                  <button key={row.ref} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => pick(row)}>
+                  <button
+                    key={row.ref}
+                    type="button"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => pick(row)}
+                  >
                     <span className="suggest-photo">
                       {row.photo ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -255,136 +339,210 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
             </div>
 
             <div className="sheet loan-sheet">
-            <div className="sheet-fields">
-              <div className="sheet-row split">
-                <label className="sheet-label" htmlFor="loan-capital">
-                  Capital
-                </label>
-                <input
-                  id="loan-capital"
-                  value={capitalRaw}
-                  onChange={(event) => setCapitalRaw(event.target.value)}
-                  required
-                  inputMode="numeric"
-                  placeholder="Monto a prestar"
-                />
-                <label className="sheet-label" htmlFor="loan-mode">
-                  Modalidad
-                </label>
-                <select id="loan-mode" value="interes" disabled aria-disabled>
-                  {LOAN_FORM_MODES.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="sheet-row split">
-                <label className="sheet-label" htmlFor="loan-date">
-                  Desembolso
-                </label>
-                <input id="loan-date" type="date" required value={startIso} onChange={(event) => setStartIso(event.target.value)} />
-                <label className="sheet-label" htmlFor="loan-due">
-                  Vencimiento
-                </label>
-                <input
-                  id="loan-due"
-                  type="date"
-                  required
-                  min={startIso}
-                  value={dueIso}
-                  onChange={(event) => setDueIso(event.target.value)}
-                />
-              </div>
-              <div className="sheet-row split">
-                <label className="sheet-label" htmlFor="loan-freq">
-                  Frecuencia de cobro
-                </label>
-                <select id="loan-freq" value={frequency} onChange={(event) => setFrequency(event.target.value as PayFrequency)}>
-                  {PAY_FREQUENCIES.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-                <label className="sheet-label" htmlFor="loan-pact">
-                  Cómo se pacta
-                </label>
-                <select id="loan-pact" value={pact} onChange={(event) => setPact(event.target.value as PactKind)}>
-                  {PACT_KINDS.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {usesValor ? (
-                <div className="sheet-row">
-                  <label className="sheet-label" htmlFor="loan-cuota">
-                    Valor de cada cobro
+              <div className="sheet-fields">
+                <div className="sheet-row loan-capital-interest-row">
+                  <label className="sheet-label" htmlFor="loan-capital">
+                    Capital
                   </label>
                   <input
-                    id="loan-cuota"
-                    value={cuotaRaw}
-                    onChange={(event) => setCuotaRaw(event.target.value)}
+                    id="loan-capital"
+                    className="loan-capital-input"
+                    value={capitalRaw}
+                    onChange={(event) => setCapitalRaw(event.target.value)}
                     required
                     inputMode="numeric"
-                    placeholder="Ej. 20000"
+                    placeholder="Monto"
                   />
-                </div>
-              ) : (
-                <div className="sheet-row">
-                  <label className="sheet-label" htmlFor="loan-rate">
-                    {rateFieldLabel(frequency)}
+                  <label className="sheet-label" htmlFor="loan-interest-kind">
+                    Interés
+                  </label>
+                  <select
+                    id="loan-interest-kind"
+                    className="loan-interest-select"
+                    value={interestSelectValue}
+                    onChange={(event) => onInterestSelect(event.target.value)}
+                    required
+                  >
+                    <option value="">Elegir…</option>
+                    {INTEREST_PCT_OPTIONS.map((pct) => (
+                      <option key={pct} value={pct}>
+                        {pct}%
+                      </option>
+                    ))}
+                    <option value="amount">Monto fijo…</option>
+                  </select>
+                  {interestMode === "pct" ? (
+                    <input
+                      className="loan-interest-result"
+                      value={capital > 0 && interestFromPct > 0 ? money(interestFromPct) : ""}
+                      readOnly
+                      tabIndex={-1}
+                      aria-label="Valor del interés calculado"
+                      placeholder="$ interés"
+                    />
+                  ) : interestMode === "amount" ? (
+                    <input
+                      id="loan-interest"
+                      className="loan-interest-amount-input"
+                      value={interestRaw}
+                      onChange={(event) => onAmountChange(event.target.value)}
+                      required
+                      inputMode="numeric"
+                      placeholder="Valor fijo"
+                    />
+                  ) : (
+                    <input
+                      className="loan-interest-result"
+                      value=""
+                      readOnly
+                      tabIndex={-1}
+                      placeholder="—"
+                      aria-hidden
+                    />
+                  )}
+                  <label className="sheet-label" htmlFor="loan-total">
+                    Total
                   </label>
                   <input
-                    id="loan-rate"
-                    value={rateRaw}
-                    onChange={(event) => setRateRaw(event.target.value)}
-                    required
-                    inputMode="decimal"
-                    placeholder="Ej. 20"
+                    id="loan-total"
+                    className="loan-total-input"
+                    value={totalDue > 0 ? money(totalDue) : ""}
+                    readOnly
+                    tabIndex={-1}
+                    title="Monto a pagar (capital + interés)"
+                    placeholder="Capital + interés"
                   />
                 </div>
-              )}
-              <div className="sheet-row sheet-row-top">
-                <label className="sheet-label" htmlFor="loan-notes">
-                  Observaciones
-                </label>
-                <textarea
-                  id="loan-notes"
-                  rows={3}
-                  placeholder="Nota interna, opcional"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                />
+
+                <div className="sheet-row loan-term-row">
+                  <label className="sheet-label" htmlFor="loan-date">
+                    Desembolso
+                  </label>
+                  <input
+                    id="loan-date"
+                    type="date"
+                    required
+                    value={startIso}
+                    onChange={(event) => setStartIso(event.target.value)}
+                  />
+                  <label className="sheet-label" htmlFor="loan-term">
+                    Tiempo
+                  </label>
+                  <select
+                    id="loan-term"
+                    value={termMonths}
+                    onChange={(event) => setTermMonths(Number(event.target.value) as LoanTermMonths)}
+                  >
+                    {LOAN_TERM_OPTIONS.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="sheet-label" htmlFor="loan-freq">
+                    Frecuencia
+                  </label>
+                  <select
+                    id="loan-freq"
+                    value={frequency}
+                    onChange={(event) => setFrequency(event.target.value as PayFrequency)}
+                  >
+                    {PAY_FREQUENCIES.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="sheet-row loan-cuotas-row">
+                  <label className="sheet-label" htmlFor="loan-cuotas">
+                    # de cuotas
+                  </label>
+                  <input
+                    id="loan-cuotas"
+                    value={preview ? String(preview.count) : ""}
+                    readOnly
+                    tabIndex={-1}
+                    placeholder="Según tiempo y frecuencia"
+                  />
+                  <label className="sheet-label" htmlFor="loan-cobro-dia">
+                    Día de cobro
+                  </label>
+                  <input
+                    id="loan-cobro-dia"
+                    value={cobroDayLabel}
+                    readOnly
+                    tabIndex={-1}
+                    title={
+                      frequency === "diario"
+                        ? "Lunes a sábado"
+                        : frequency === "semanal"
+                          ? "Cada 8 días desde el desembolso"
+                          : frequency === "quincenal"
+                            ? "Cada 15 días calendario desde el desembolso"
+                            : "Cada mes desde el desembolso"
+                    }
+                    placeholder="Según frecuencia"
+                  />
+                  <label className="sheet-label" htmlFor="loan-cuota-valor">
+                    Valor cuota
+                  </label>
+                  <input
+                    id="loan-cuota-valor"
+                    value={preview ? money(preview.installment) : ""}
+                    readOnly
+                    tabIndex={-1}
+                    placeholder="Monto ÷ cuotas"
+                  />
+                </div>
+
+                <div className="sheet-row">
+                  <label className="sheet-label" htmlFor="loan-due">
+                    Vencimiento (última cuota)
+                  </label>
+                  <input id="loan-due" value={dueLabel === "—" ? "" : dueLabel} readOnly tabIndex={-1} />
+                </div>
+
+                <div className="sheet-row sheet-row-top">
+                  <label className="sheet-label" htmlFor="loan-notes">
+                    Observaciones
+                  </label>
+                  <textarea
+                    id="loan-notes"
+                    rows={3}
+                    placeholder="Nota interna, opcional"
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                  />
+                </div>
               </div>
-            </div>
             </div>
 
             {preview ? (
-              <>
-                <div className="loan-preview">
-                  {buildLoanPreviewCards({
-                    capital,
-                    installment: preview.installment,
-                    interest: preview.interest,
-                    total: preview.total,
-                    days: preview.days,
-                    interestCount: preview.interestCount,
-                    mode: "interes",
-                    pact: resolvedPact,
-                    formatMoney: money,
-                  }).map((fact) => (
-                    <div key={fact.label}>
-                      <span>{fact.label}</span>
-                      <b>{fact.value}</b>
-                    </div>
-                  ))}
-                </div>
-                <LoanScheduleTable schedule={preview.schedule} />
-              </>
-            ) : null}
+              <div className="loan-preview">
+                {buildFlatLoanPreviewCards({
+                  capital,
+                  interest: preview.interest,
+                  total: preview.total,
+                  installment: preview.installment,
+                  installments: preview.count,
+                  days: preview.days,
+                  dueLabel,
+                  frequencyLabel: `${frequencyLabel} · ${termLabel}`,
+                  formatMoney: money,
+                }).map((fact) => (
+                  <div key={fact.label}>
+                    <span>{fact.label}</span>
+                    <b>{fact.value}</b>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="loan-sim-hint">
+                Complete capital, interés, tiempo y frecuencia para ver el resumen.
+              </p>
+            )}
 
             <div className="form-actions">
               {askingDelete ? (

@@ -8,6 +8,7 @@ import {
   bankMovementDescriptionText,
   bankMovementMethodLabel,
   bankMovementsWithDisplayBalance,
+  bankMovementsForToday,
   expenseCategoryLabel,
   formatBankAmount,
   isBankExpenseMovement,
@@ -53,7 +54,10 @@ export function BankRecordsHistoryView({
     [accounts],
   );
 
-  const allRows = useMemo(() => normalizeBankMovements(movements), [movements]);
+  const allRows = useMemo(
+    () => bankMovementsForToday(normalizeBankMovements(movements)),
+    [movements],
+  );
   const { sortKey, sortDir, toggleSort } = useBankMovementSort("valueDate");
 
   const history = useMemo(
@@ -79,7 +83,7 @@ export function BankRecordsHistoryView({
   return (
     <section className="panel bank-records-panel">
       <div className="head">
-        <h1>Registros</h1>
+        <h1>Registros de hoy</h1>
         <span className="count">{history.length}</span>
         <div className="grow" />
         <label className="page-size">
@@ -201,10 +205,9 @@ export function BankRecordsHistoryView({
                     ) : null}
                     {isVisible("description") ? (
                       <td className="bank-desc">
-                        {bankMovementDescriptionText(row.description)}
-                        {row.category ? (
-                          <span className="bank-category">{expenseCategoryLabel(row.category)}</span>
-                        ) : null}
+                        {isExpense && row.category
+                          ? expenseCategoryLabel(row.category)
+                          : bankMovementDescriptionText(row.description)}
                       </td>
                     ) : null}
                     {isVisible("method") ? (

@@ -22,7 +22,8 @@ type Props = {
 
 /**
  * Plantilla de listado: ancho completo, columnas repartidas y filas intercaladas.
- * Usar en vistas nuevas y en pantallas «próx.» para fijar el formato desde ya.
+ * Usa `table.data list-grid list-data-table` — el renglón compacto es el estándar
+ * del sistema (ver --table-row-* en globals.css). No cambiar padding de filas.
  */
 export function ListDataTableShell({
   title,

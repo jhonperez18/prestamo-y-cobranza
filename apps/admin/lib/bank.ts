@@ -54,7 +54,12 @@ export type BankExpenseCategory =
   | "administracion"
   | "domicilio"
   | "servicios"
-  | "otro";
+  | "otro"
+  | "almuerzo"
+  | "gasolina"
+  | "prestamo_ruta"
+  | "transporte"
+  | "consignacion";
 
 export type BankMovement = {
   ref: string;
@@ -69,6 +74,8 @@ export type BankMovement = {
   category?: BankExpenseCategory;
   paymentRef?: string;
   miscPaymentRef?: string;
+  /** Gasto de ruta del cobrador: GASL-{collector}-{date}-{expenseId} */
+  dayExpenseLineRef?: string;
   inExtract: boolean;
   reconciled: boolean;
   manual: boolean;
@@ -149,6 +156,30 @@ export function nextBankAccountRef(existing: BankAccount[]) {
   return `BCA-${next}`;
 }
 
+/** Cuenta operativa por defecto: sin ella los cobros/gastos no llegan a Registros. */
+export function defaultBankAccount(): BankAccount {
+  return normalizeBankAccount({
+    ref: "BCA-1",
+    name: "Caja operativa",
+    bankName: "Caja",
+    accountNumber: "—",
+    accountType: "caja",
+    currency: "COP",
+    country: "Colombia (CO)",
+    province: "",
+    address: "",
+    active: true,
+    openingBalance: 0,
+  });
+}
+
+/** Si no hay cuentas guardadas, crea la caja operativa. */
+export function ensureBankAccounts(accounts: BankAccount[]): BankAccount[] {
+  const normalized = accounts.map(normalizeBankAccount);
+  if (normalized.length) return normalized;
+  return [defaultBankAccount()];
+}
+
 export function normalizeBankAccountRef(input: string) {
   return input.trim();
 }
@@ -167,7 +198,7 @@ function looksLikeBankIncome(row: BankMovement) {
 
 function looksLikeBankExpense(row: BankMovement) {
   if (looksLikeBankIncome(row)) return false;
-  if (row.miscPaymentRef || row.category) return true;
+  if (row.dayExpenseLineRef || row.miscPaymentRef || row.category) return true;
   if (row.manual && !row.paymentRef) return true;
   const desc = row.description.trim().toLowerCase();
   return (
@@ -225,6 +256,7 @@ export function normalizeBankMovement(
     category: row.category,
     paymentRef: row.paymentRef,
     miscPaymentRef: row.miscPaymentRef,
+    dayExpenseLineRef: row.dayExpenseLineRef,
     inExtract: row.inExtract !== false,
     reconciled: Boolean(row.reconciled),
     manual: Boolean(row.manual),
@@ -458,11 +490,24 @@ export function displayToday() {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
+/** Conserva solo movimientos con fecha valor = hoy. */
+export function bankMovementsForToday(movements: BankMovement[], today = displayToday()) {
+  return movements.filter((row) => {
+    const value = (row.valueDate || row.opDate || "").slice(0, 10);
+    return value === today;
+  });
+}
+
 export function expenseCategoryLabel(category?: BankExpenseCategory) {
   if (category === "nomina") return "Nómina";
   if (category === "administracion") return "Administración";
   if (category === "domicilio") return "Domicilio";
   if (category === "servicios") return "Servicios";
+  if (category === "almuerzo") return "Almuerzo";
+  if (category === "gasolina") return "Gasolina";
+  if (category === "prestamo_ruta") return "Préstamo";
+  if (category === "transporte") return "Transporte";
+  if (category === "consignacion") return "Consignación";
   return "Otro";
 }
 
@@ -484,12 +529,23 @@ export function bankMovementMethodLabel(description: string) {
 }
 
 export function bankMovementDescriptionText(description: string) {
-  return description
-    .replace(/\s·\s(?:Cuota|Abono)\s*(?:·|-)\s*(?:Efectivo|Nequi)\s*$/i, "")
-    .replace(/\s·\s(Efectivo|Nequi)\s*$/i, "")
-    .replace(/\s[-–]\s*(?:Efectivo|Nequi)\s*$/i, "")
-    .replace(/\s·\s(Cuota|Abono)\s*$/i, "")
-    .trim() || description;
+  const raw = description.trim();
+  // Gasto ruta · Almuerzo · … → Almuerzo (el color / Haber ya dicen que es gasto)
+  const gasto = /^Gasto\s+ruta\s*·\s*([^·]+)/i.exec(raw);
+  if (gasto) return gasto[1].trim();
+  // Cobro PG-9001 · Cuota · Efectivo → PG-9001
+  const cobro = /^Cobro\s+(PG-\d+)/i.exec(raw);
+  if (cobro) return cobro[1];
+  if (/^PG-\d+$/i.test(raw)) return raw;
+
+  return (
+    raw
+      .replace(/\s·\s(?:Cuota|Abono)\s*(?:·|-)\s*(?:Efectivo|Nequi)\s*$/i, "")
+      .replace(/\s·\s(Efectivo|Nequi)\s*$/i, "")
+      .replace(/\s[-–]\s*(?:Efectivo|Nequi)\s*$/i, "")
+      .replace(/\s·\s(Cuota|Abono)\s*$/i, "")
+      .trim() || description
+  );
 }
 
 export function paymentRefForMovement(row: BankMovement) {
@@ -918,11 +974,20 @@ export function listReconciledMovementsByKind(
   period?: string,
 ) {
   const normalizedPeriod = period ? normalizeBankPeriod(period) : null;
+  const today = displayToday();
   return movements
     .filter((row) => {
-      if (!row.reconciled) return false;
-      if (kind === "income" ? !isBankIncomeMovement(row) : !isBankExpenseMovement(row)) return false;
-      if (normalizedPeriod && normalizeBankPeriod(row.period) !== normalizedPeriod) return false;
+      if (kind === "income" ? !isBankIncomeMovement(row) : !isBankExpenseMovement(row)) {
+        return false;
+      }
+      // Conciliados del periodo + abiertos de hoy (operación del día).
+      const isOpenToday =
+        !row.reconciled && (row.valueDate === today || row.opDate === today);
+      if (!row.reconciled && !isOpenToday) return false;
+      if (normalizedPeriod && normalizeBankPeriod(row.period) !== normalizedPeriod) {
+        // Abiertos de hoy siempre visibles aunque el filtro de periodo no coincida.
+        if (!isOpenToday) return false;
+      }
       return true;
     })
     .sort(compareBankMovementsChronological);

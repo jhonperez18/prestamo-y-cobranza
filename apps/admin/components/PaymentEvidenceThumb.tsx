@@ -65,7 +65,7 @@ function EvidenceLightbox({
 
 export function PaymentEvidenceThumb({
   evidence,
-  size = 40,
+  size = 22,
   emptyLabel = "—",
   variant = "thumb",
 }: Props) {

@@ -31,6 +31,7 @@ const VIEW_PERMISSIONS: Partial<Record<ModuleId, Record<string, ViewPerm>>> = {
     "vista-movil": "sistema.usuarios",
     "nueva-ruta": "sistema.usuarios",
     lista: "ruta.ver",
+    "ruta-clientes": null,
     "asignar-clientes": "ruta.clientes",
     auditoria: "sistema.usuarios",
     config: "sistema.usuarios",

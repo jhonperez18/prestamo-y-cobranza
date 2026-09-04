@@ -593,8 +593,8 @@ export function CollectorFicha({
                           kind={paymentMethodKind(normalizePaymentMethod(row.method))}
                         />
                       </td>
-                      <td>
-                        <PaymentEvidenceThumb evidence={row.evidence} />
+                      <td className="pay-evidence-cell">
+                        <PaymentEvidenceThumb evidence={row.evidence} size={22} />
                       </td>
                       <td>{row.type}</td>
                     </tr>

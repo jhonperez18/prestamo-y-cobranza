@@ -52,8 +52,10 @@ export const MODULES: AppModule[] = [
         title: "Panel",
         items: [
           { id: "resumen", label: "Resumen" },
-          { id: "alertas", label: "Alertas", badge: "4" },
           { id: "hoy", label: "Operación de hoy" },
+          { id: "zonas", label: "Cobertura" },
+          { id: "alertas", label: "Alertas" },
+          { id: "vista-movil", label: "Vista móvil" },
         ],
       },
       {
@@ -62,11 +64,9 @@ export const MODULES: AppModule[] = [
         items: [
           { id: "nuevo-usuario", label: "Nuevo usuario" },
           { id: "listado", label: "Listado" },
-          { id: "zonas", label: "Zonas" },
           { id: "actividad", label: "Actividad" },
           { id: "roles", label: "Roles" },
           { id: "permisos", label: "Permisos" },
-          { id: "vista-movil", label: "Vista móvil" },
         ],
       },
       {
@@ -75,7 +75,7 @@ export const MODULES: AppModule[] = [
         items: [
           { id: "nueva-ruta", label: "Nueva ruta" },
           { id: "lista", label: "Lista" },
-          { id: "asignar-clientes", label: "Asignar clientes" },
+          { id: "asignar-clientes", label: "Asignar cobrador" },
         ],
       },
       {
@@ -172,7 +172,6 @@ export const MODULES: AppModule[] = [
         items: [
           { id: "nueva-cuenta", label: "Nueva cuenta" },
           { id: "listado", label: "Listado" },
-          { id: "extractos", label: "Extractos" },
           { id: "registros", label: "Registros" },
         ],
       },
@@ -232,7 +231,10 @@ export function getViewLabel(moduleId: ModuleId, viewId: string) {
   if (moduleId === "inicio" && viewId === "editar-usuario") return "Modificar usuario";
   if (moduleId === "inicio" && viewId === "ficha-usuario") return "Ficha";
   if (moduleId === "inicio" && viewId === "nuevo-usuario") return "Nuevo usuario";
+  if (moduleId === "inicio" && viewId === "asignar-clientes") return "Asignar cobrador";
+  if (moduleId === "inicio" && viewId === "zonas") return "Cobertura";
   if (moduleId === "inicio" && viewId === "nueva-ruta") return "Nueva ruta";
+  if (moduleId === "inicio" && viewId === "ruta-clientes") return "Listado de ruta";
   if (moduleId === "inicio" && viewId === "editar-ruta") return "Modificar ruta";
   if (moduleId === "inicio" && viewId === "vista-movil") return "Vista móvil";
   if (moduleId === "inicio" && viewId === "perfil") return "Perfil";

@@ -178,8 +178,8 @@ function DailyLogEntry({
                         <td className="pay-col-value money">{money(payment.amount)}</td>
                         <td className="pay-col-type">{payment.type}</td>
                         <td className="pay-col-method">{paymentMethodLabel(normalizePaymentMethod(payment.method))}</td>
-                        <td className="pay-col-evidence">
-                          <PaymentEvidenceThumb evidence={payment.evidence} size={32} />
+                        <td className="pay-col-evidence pay-evidence-cell">
+                          <PaymentEvidenceThumb evidence={payment.evidence} size={22} />
                         </td>
                       </tr>
                     ))}

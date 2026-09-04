@@ -46,6 +46,7 @@ export function TodayMovementsTable({ payments, loans = [], onCreate, onOpenPaym
 
   return (
     <DataTable
+      showFilters={false}
       title="Movimientos de hoy"
       count={payments.length}
       headers={headers}

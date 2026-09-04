@@ -2,11 +2,10 @@ import type { ColumnOption } from "@/components/ColumnPicker";
 import type { PaymentMovement } from "@/lib/payment-detail";
 import { money } from "@/lib/mock-data";
 
-export const LOAN_PAYMENT_COLUMNS_STORAGE_KEY = "nexo.prestamos.ficha-pagos.columns";
+export const LOAN_PAYMENT_COLUMNS_STORAGE_KEY = "nexo.prestamos.ficha-pagos.columns.v3";
 
 export const LOAN_PAYMENT_COLUMNS: ColumnOption[] = [
   { id: "ref", label: "Pago" },
-  { id: "dueDate", label: "Fecha cuota" },
   { id: "paidDate", label: "Fecha recaudo" },
   { id: "paidTime", label: "Hora" },
   { id: "concept", label: "Concepto" },
@@ -27,8 +26,6 @@ export function loanPaymentMovementCell(columnId: string, movement: PaymentMovem
   switch (columnId) {
     case "ref":
       return movement.ref;
-    case "dueDate":
-      return movement.dueDate;
     case "paidDate":
       return movement.paidDate;
     case "paidTime":

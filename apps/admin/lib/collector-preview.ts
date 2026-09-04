@@ -1,12 +1,14 @@
 import {
   collectedByCollectorRef,
   collectorFieldStatus,
+  catalogRoutes,
+  clientsOnRouteListed,
   money,
   paymentsForCollector,
   roleByRef,
+  routeIsActive,
   routesForCollector,
   userForCollector,
-  ZONES,
   type ActivityRow,
   type ClientRow,
   type CollectorRow,
@@ -16,7 +18,10 @@ import {
   type StatusKind,
   type UserRow,
 } from "@/lib/mock-data";
+import { isOperationalClient } from "@/lib/client-review";
 import { mobileAccessLabel } from "@/lib/access-preview";
+import { paymentsForDay, todayDispatchToken, todayIso } from "@/lib/daily-dispatch";
+import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { normalizePaymentMethod, paymentMethodLabel } from "@/lib/payment-method";
 import { paymentHasReceipt, paymentHasSignature } from "@/lib/payment-evidence";
 
@@ -31,13 +36,26 @@ export type CollectorListItem = CollectorRow & {
   roleName: string;
 };
 
-export type ZoneSummary = {
-  zone: string;
-  collectors: CollectorRow[];
-  routes: RouteRow[];
-  activeRoutes: number;
+export type RouteCoverageSummary = {
+  routeRef: string;
+  routeName: string;
+  active: boolean;
+  collector: CollectorRow | null;
+  collectorName: string;
   clients: number;
-  collected: number;
+  planillaToday: number;
+  collectedToday: number;
+  statusLabel: string;
+  statusKind: StatusKind;
+};
+
+export type RouteCoverageTotals = {
+  routes: number;
+  withCollector: number;
+  withoutCollector: number;
+  clients: number;
+  planillaToday: number;
+  collectedToday: number;
 };
 
 export type ActivityFeedItem = {
@@ -50,6 +68,90 @@ export type ActivityFeedItem = {
   kind: StatusKind;
   gps?: boolean;
 };
+
+/** Cobertura operativa = rutas de catálogo (ya no zonas geográficas fijas). */
+export function routeCoverageSummaries(
+  collectors: CollectorRow[],
+  routes: RouteRow[],
+  payments: PaymentRow[],
+  clients: ClientRow[] = [],
+  assignments: DailyCollectionAssignment[] = [],
+  day = todayIso(),
+): RouteCoverageSummary[] {
+  const todayPayments = paymentsForDay(payments, todayDispatchToken());
+  const collectorMap = new Map(collectors.map((row) => [row.ref, row]));
+
+  return catalogRoutes(routes)
+    .slice()
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+    .map((route) => {
+      const collector = route.collectorRef
+        ? (collectorMap.get(route.collectorRef) ?? null)
+        : null;
+      const clientRows = clientsOnRouteListed(route.name, clients).filter(isOperationalClient);
+      const clientRefs = new Set(clientRows.map((row) => row.ref));
+
+      const planillaToday = assignments.filter((row) => {
+        if (!row.dispatched || row.dispatchDate !== day) return false;
+        if (clientRefs.has(row.clientRef)) return true;
+        return Boolean(route.collectorRef && row.collectorRef === route.collectorRef);
+      }).length;
+
+      const collectedToday = todayPayments
+        .filter((row) => {
+          if (route.collectorRef && row.collectorRef === route.collectorRef) return true;
+          const payClientRef = clients.find(
+            (c) => `${c.name} ${c.lastName}`.trim() === row.client,
+          )?.ref;
+          return payClientRef ? clientRefs.has(payClientRef) : false;
+        })
+        .reduce((sum, row) => sum + row.amount, 0);
+
+      const hasCollector = Boolean(
+        collector || (route.collectorRef && route.collector && route.collector !== "—"),
+      );
+      const statusLabel = !routeIsActive(route)
+        ? "Inactiva"
+        : hasCollector
+          ? planillaToday > 0
+            ? "En app hoy"
+            : "Con cobrador"
+          : "Sin cobrador";
+      const statusKind: StatusKind = !routeIsActive(route)
+        ? "draft"
+        : hasCollector
+          ? planillaToday > 0
+            ? "ok"
+            : "pending"
+          : "warn";
+
+      return {
+        routeRef: route.ref,
+        routeName: route.name,
+        active: routeIsActive(route),
+        collector,
+        collectorName:
+          collector?.name ||
+          (route.collector && route.collector !== "—" ? route.collector : "Sin cobrador"),
+        clients: clientRows.length,
+        planillaToday,
+        collectedToday,
+        statusLabel,
+        statusKind,
+      };
+    });
+}
+
+export function routeCoverageTotals(rows: RouteCoverageSummary[]): RouteCoverageTotals {
+  return {
+    routes: rows.length,
+    withCollector: rows.filter((row) => row.collectorName !== "Sin cobrador").length,
+    withoutCollector: rows.filter((row) => row.collectorName === "Sin cobrador").length,
+    clients: rows.reduce((sum, row) => sum + row.clients, 0),
+    planillaToday: rows.reduce((sum, row) => sum + row.planillaToday, 0),
+    collectedToday: rows.reduce((sum, row) => sum + row.collectedToday, 0),
+  };
+}
 
 export function enrichCollector(
   collector: CollectorRow,
@@ -88,34 +190,6 @@ export function collectorsForView(viewId: string, rows: CollectorRow[]): Collect
   if (viewId === "activos") return rows.filter((row) => row.active);
   if (viewId === "inactivos") return rows.filter((row) => !row.active);
   return rows;
-}
-
-export function zoneSummaries(
-  collectors: CollectorRow[],
-  routes: RouteRow[],
-  payments: PaymentRow[],
-  clients: ClientRow[] = [],
-): ZoneSummary[] {
-  return ZONES.map((zone) => {
-    const zoneRoutes = routes.filter((row) => row.zone === zone);
-    const zoneCollectors = collectors.filter((row) =>
-      zoneRoutes.some((route) => route.collectorRef === row.ref),
-    );
-    const activeRoutes = zoneRoutes.filter((row) => row.status !== "Cerrada").length;
-    const clientCount = clients.filter((row) => row.route === zone).length;
-    const collected = zoneCollectors.reduce(
-      (sum, row) => sum + collectedByCollectorRef(row.ref, collectors, payments),
-      0,
-    );
-    return {
-      zone,
-      collectors: zoneCollectors,
-      routes: zoneRoutes,
-      activeRoutes,
-      clients: clientCount || zoneRoutes.reduce((sum, row) => sum + row.clients, 0),
-      collected,
-    };
-  });
 }
 
 export function activityFeed(

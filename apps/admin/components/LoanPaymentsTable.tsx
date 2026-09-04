@@ -96,7 +96,6 @@ export function LoanPaymentsTable({
           <thead>
             <tr className="col-titles">
               {isVisible("ref") ? headerCell("ref", "Pago") : null}
-              {isVisible("dueDate") ? headerCell("dueDate", "Fecha cuota") : null}
               {isVisible("paidDate") ? headerCell("paidDate", "Fecha recaudo") : null}
               {isVisible("paidTime") ? headerCell("paidTime", "Hora") : null}
               {isVisible("concept") ? headerCell("concept", "Concepto") : null}
@@ -129,7 +128,6 @@ export function LoanPaymentsTable({
                         )}
                       </td>
                     ) : null}
-                    {isVisible("dueDate") ? <td>{movement.dueDate}</td> : null}
                     {isVisible("paidDate") ? <td>{movement.paidDate}</td> : null}
                     {isVisible("paidTime") ? <td>{movement.paidTime}</td> : null}
                     {isVisible("concept") ? <td>{movement.chargeLabel}</td> : null}
@@ -149,8 +147,8 @@ export function LoanPaymentsTable({
                       </td>
                     ) : null}
                     {isVisible("evidence") ? (
-                      <td>
-                        <PaymentEvidenceThumb evidence={movement.evidence} />
+                      <td className="pay-evidence-cell">
+                        <PaymentEvidenceThumb evidence={movement.evidence} size={22} />
                       </td>
                     ) : null}
                     {isVisible("source") ? <td>{movement.source}</td> : null}

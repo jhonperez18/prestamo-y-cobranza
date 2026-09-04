@@ -1,6 +1,13 @@
 import { isoToDisplay } from "@/lib/loan-preview";
 import { lineRemaining, type ScheduleEntry } from "@/lib/loan-pay";
 import {
+  collectionAlertLabel,
+  collectionChargeKind,
+  isLoanInCollectionMora,
+  loanCollectionAlerts,
+} from "@/lib/collection-alerts";
+import { isPendingReview } from "@/lib/client-review";
+import {
   activeLoans,
   type ClientRow,
   type LoanRow,
@@ -20,7 +27,8 @@ export type DailyCollectionItem = {
   amountDue: number;
   cuotaAmount: number;
   moraAmount: number;
-  kind: "cuota" | "mora";
+  alertCount: number;
+  kind: "cuota" | "alerta" | "mora";
   statusKind: StatusKind;
 };
 
@@ -35,7 +43,7 @@ export type DailyCollectionAssignment = {
   chargeDate?: string;
   amountDue: number;
   chargeLabel: string;
-  kind: "cuota" | "mora";
+  kind: "cuota" | "alerta" | "mora";
   collectorRef: string;
   collector: string;
   assignedAt: string;
@@ -46,6 +54,7 @@ export type DailyCollectionAssignment = {
   /** Marca de cierre de jornada (oficina). */
   dayClosedAt?: string;
   paymentRef?: string;
+  alertCount?: number;
 };
 
 export function assignmentKey(itemId: string, dispatchDate: string) {
@@ -88,31 +97,84 @@ function fallbackDueAmount(loan: LoanRow) {
   return loan.balance;
 }
 
-function accumulationLabel(cuotaAmount: number, moraAmount: number) {
-  if (cuotaAmount > 0 && moraAmount > 0) return "Cuota + mora acumulada";
-  if (moraAmount > 0) return "Mora acumulada";
+function accumulationLabel(cuotaAmount: number, moraAmount: number, alertCount: number) {
+  if (alertCount >= 5 || moraAmount > 0) {
+    if (cuotaAmount > 0 && moraAmount > 0) return "Cuota + mora";
+    if (moraAmount > 0) return "Mora acumulada";
+  }
+  if (alertCount > 0) return collectionAlertLabel(alertCount);
   return "Cuota";
 }
 
-/** Monto acumulado hasta la fecha: cuota del día + mora de días anteriores sin pagar. */
+/** Monto acumulado hasta la fecha. Mora solo con 5 alertas; antes es atraso con alerta. */
 export function accumulatedDueForLoan(loan: LoanRow, selectedDate: string) {
+  const alertCount = loanCollectionAlerts(loan);
+  const inMora = isLoanInCollectionMora(loan);
+
   if ((loan.schedule?.length ?? 0) > 0) {
-    return dueFromSchedule(loan, selectedDate);
+    const fromSchedule = dueFromSchedule(loan, selectedDate);
+    if (fromSchedule.amountDue > 0) {
+      const past = fromSchedule.moraAmount;
+      const today = fromSchedule.cuotaAmount;
+      if (inMora) {
+        return {
+          ...fromSchedule,
+          cuotaAmount: today,
+          moraAmount: past,
+          alertCount,
+        };
+      }
+      // Sin mora aún: el atraso se cobra junto con la cuota, como alerta.
+      return {
+        cuotaAmount: today + past,
+        moraAmount: 0,
+        amountDue: fromSchedule.amountDue,
+        oldestOverdue: fromSchedule.oldestOverdue,
+        alertCount,
+      };
+    }
+    const cuota = fallbackDueAmount(loan);
+    if (cuota > 0) {
+      return {
+        cuotaAmount: cuota,
+        moraAmount: 0,
+        amountDue: cuota,
+        oldestOverdue: undefined as string | undefined,
+        alertCount,
+      };
+    }
+    return { ...fromSchedule, alertCount };
   }
 
   const fallback = fallbackDueAmount(loan);
-  if (fallback <= 0) return { cuotaAmount: 0, moraAmount: 0, amountDue: 0, oldestOverdue: undefined };
-
-  const isMora = loan.kind === "overdue" || loan.status === "Mora";
+  if (fallback <= 0) {
+    return {
+      cuotaAmount: 0,
+      moraAmount: 0,
+      amountDue: 0,
+      oldestOverdue: undefined as string | undefined,
+      alertCount,
+    };
+  }
+  if (inMora) {
+    return {
+      cuotaAmount: 0,
+      moraAmount: fallback,
+      amountDue: fallback,
+      oldestOverdue: selectedDate,
+      alertCount,
+    };
+  }
   return {
-    cuotaAmount: isMora ? 0 : fallback,
-    moraAmount: isMora ? fallback : 0,
+    cuotaAmount: fallback,
+    moraAmount: 0,
     amountDue: fallback,
-    oldestOverdue: isMora ? selectedDate : undefined,
+    oldestOverdue: undefined as string | undefined,
+    alertCount,
   };
 }
 
-/** Cobros del día: un registro por préstamo con cuota + mora acumulada. */
+/** Cobros del día: un registro por préstamo (cuota / alerta 1-4 / mora al 5). */
 export function buildDailyCollectionList(
   loans: LoanRow[],
   clients: ClientRow[],
@@ -122,14 +184,13 @@ export function buildDailyCollectionList(
 
   for (const loan of activeLoans(loans)) {
     if (loan.balance <= 0) continue;
-    const { cuotaAmount, moraAmount, amountDue, oldestOverdue } = accumulatedDueForLoan(
-      loan,
-      selectedDate,
-    );
+    const client = clients.find((row) => row.ref === loan.clientRef);
+    if (client && isPendingReview(client)) continue;
+    const { cuotaAmount, moraAmount, amountDue, oldestOverdue, alertCount } =
+      accumulatedDueForLoan(loan, selectedDate);
     if (amountDue <= 0) continue;
 
-    const client = clients.find((row) => row.ref === loan.clientRef);
-    const hasMora = moraAmount > 0;
+    const kind = collectionChargeKind(alertCount);
     items.push({
       loanRef: loan.ref,
       clientRef: loan.clientRef,
@@ -139,17 +200,26 @@ export function buildDailyCollectionList(
       phone: client?.phone,
       id: `${selectedDate}:${loan.ref}:acum`,
       chargeDate: oldestOverdue ?? selectedDate,
-      chargeLabel: accumulationLabel(cuotaAmount, moraAmount),
+      chargeLabel: accumulationLabel(cuotaAmount, moraAmount, alertCount),
       amountDue,
       cuotaAmount,
       moraAmount,
-      kind: hasMora ? "mora" : "cuota",
-      statusKind: hasMora ? "overdue" : cuotaAmount > 0 && loan.kind === "partial" ? "partial" : "pending",
+      alertCount,
+      kind,
+      statusKind:
+        kind === "mora"
+          ? "overdue"
+          : kind === "alerta"
+            ? "warn"
+            : cuotaAmount > 0 && loan.kind === "partial"
+              ? "partial"
+              : "pending",
     });
   }
 
   return items.sort(
     (a, b) =>
+      b.alertCount - a.alertCount ||
       b.moraAmount - a.moraAmount ||
       a.clientName.localeCompare(b.clientName) ||
       a.loanRef.localeCompare(b.loanRef),
@@ -158,10 +228,12 @@ export function buildDailyCollectionList(
 
 export function dailyCollectionSummary(items: DailyCollectionItem[]) {
   const cuotas = items.filter((row) => row.kind === "cuota");
+  const alertas = items.filter((row) => row.kind === "alerta");
   const mora = items.filter((row) => row.kind === "mora");
   return {
     total: items.length,
     cuotas: cuotas.length,
+    alertas: alertas.length,
     mora: mora.length,
     totalDue: items.reduce((sum, row) => sum + row.amountDue, 0),
     cuotaDue: items.reduce((sum, row) => sum + row.cuotaAmount, 0),
