@@ -20,7 +20,7 @@ import {
   normalizeAllPayments,
 } from "@/lib/payment-detail";
 
-export const DEMO_USERS_KEY = "nexo-demo-users";
+export const DEMO_USERS_KEY = "nexo-demo-users-v2";
 export const DEMO_CLIENTS_KEY = "nexo-demo-clients";
 export const DEMO_COLLECTORS_KEY = "nexo-demo-collectors";
 export const DEMO_ROUTES_KEY = "nexo-demo-routes";
