@@ -46,7 +46,13 @@ export const DEMO_LOANS_RESEED_KEY = "nexo-demo-loans-reseed-v1";
 export const DEMO_BANK_REGISTROS_CLEAN_KEY = "nexo-demo-banco-registros-clean-v1";
 export const DEMO_PLANILLA_PURGE_KEY = "nexo-demo-planilla-purge-invalid-v1";
 
-const SYSTEM_LOGINS = new Set(["truqui", "supervisor"]);
+const SYSTEM_LOGINS = new Set([
+  "truqui",
+  "supervisor",
+  "juan.rios",
+  "lina.soto",
+  "diego.mora",
+]);
 
 const SEED_CLIENT_REFS = new Set(CLIENTS.map((row) => row.ref));
 const SEED_PAYMENT_REFS = new Set(PAYMENTS.map((row) => row.ref));
@@ -448,17 +454,25 @@ export function loadDemoUsers(): UserRow[] {
       continue;
     }
     if (SYSTEM_LOGINS.has(seed.login.toLowerCase())) {
+      const login = seed.login.toLowerCase();
       merged[idx] = {
         ...merged[idx],
-        // No forzar name: respeta el nombre guardado (p.ej. Carlos ya editado).
-        login: merged[idx].login?.trim() || seed.login,
-        password: merged[idx].password?.trim() || seed.password,
+        login: seed.login,
+        // Clave demo fija para el paquete sincronizado.
+        password: seed.password || "123",
         roleRef: seed.roleRef,
+        // Acceso por canal: admin solo truqui; cobrador/supervisor solo mobile.
         channels: [...seed.channels],
+        collectorRef: seed.collectorRef ?? merged[idx].collectorRef,
         active: merged[idx].active !== false,
-        permissions: merged[idx].permissions?.length
-          ? merged[idx].permissions
-          : [...seed.permissions],
+        permissions: seed.permissions?.length
+          ? [...seed.permissions]
+          : merged[idx].permissions,
+        // Supervisor siempre Carlos; truqui mantiene nombre guardado si existe.
+        name:
+          login === "supervisor"
+            ? seed.name
+            : merged[idx].name?.trim() || seed.name,
       };
     }
   }

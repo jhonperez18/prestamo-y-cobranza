@@ -527,7 +527,8 @@ export const USERS: UserRow[] = [
     phone: "315 400 5504",
     document: "51.444.004",
     roleRef: "ROL-2",
-    channels: ["admin", "mobile"],
+    // Solo app móvil (nunca panel admin).
+    channels: ["mobile"],
     permissions: [...SUPERVISOR_DEFAULT_PERMS],
     active: true,
     lastAccess: "27/08 · 11:10",

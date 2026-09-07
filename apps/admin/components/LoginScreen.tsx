@@ -11,9 +11,11 @@ type Props = {
 };
 
 const DEMO_HINTS = [
-  { login: "truqui", role: "Administrador · PC panel / celular vista móvil" },
-  { login: "supervisor", role: "Supervisor · app móvil en celular" },
-  { login: "juan.rios", role: "Cobrador · app móvil" },
+  { login: "truqui", role: "Admin · sistema completo" },
+  { login: "supervisor", role: "Carlos · solo app supervisor" },
+  { login: "juan.rios", role: "Cobrador · solo app" },
+  { login: "lina.soto", role: "Cobradora · solo app" },
+  { login: "diego.mora", role: "Cobrador · solo app" },
 ];
 
 export function LoginScreen({ onSuccess }: Props) {
@@ -49,7 +51,7 @@ export function LoginScreen({ onSuccess }: Props) {
             tabIndex={-1}
             draggable={false}
           />
-          <p>Panel de administración</p>
+          <p>Acceso CA préstamo</p>
         </div>
 
         <label className="login-field">

@@ -12,6 +12,9 @@ export function hasPermission(session: AppSession | null | undefined, perm: stri
 }
 
 export function canAccessAdminPanel(session: AppSession) {
+  // Solo canal admin (truqui). Cobradores/supervisor nunca entran al sistema.
+  if (session.roleRef === "ROL-1" || session.roleRef === "ROL-2") return false;
+  if (session.collectorRef) return false;
   return session.channels.includes("admin");
 }
 
