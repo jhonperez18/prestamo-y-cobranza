@@ -7,8 +7,6 @@ import { LoginScreen } from "@/components/LoginScreen";
 import { SupervisorShell } from "@/components/SupervisorShell";
 import {
   clearSession,
-  readSession,
-  sessionFromUser,
   writeSession,
   type AppSession,
 } from "@/lib/auth";
@@ -51,19 +49,9 @@ export function AuthGate() {
 
     const users = loadDemoUsers();
     writeDemoJson(DEMO_USERS_KEY, users);
-    const current = readSession();
-    if (current) {
-      const user = users.find((row) => row.ref === current.userRef);
-      if (user) {
-        const next = sessionFromUser(user);
-        writeSession(next);
-        setSession(next);
-      } else {
-        setSession(current);
-      }
-    } else {
-      setSession(null);
-    }
+    // Cada visita al link (Vercel/local) empieza en login: usuario + contraseña.
+    clearSession();
+    setSession(null);
     const mq = window.matchMedia("(max-width: 900px)");
     const sync = () => setIsPhone(mq.matches);
     sync();
