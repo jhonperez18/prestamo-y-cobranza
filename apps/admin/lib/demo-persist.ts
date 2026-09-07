@@ -1,15 +1,16 @@
 /**
  * Persistencia demo en localStorage.
  *
- * Flujo de datos:
- *   App móvil (cobrador) → claves nexo-demo-* → Panel administración
- *   Entre celulares de cobradores NO hay intercambio (cada uno ve solo lo suyo).
+ * Regla de oro: NUNCA borrar ni sobrescribir datos del usuario/demo con semillas.
+ * Flujo: App móvil / panel → claves nexo-demo-* (con respaldo -bak).
  */
 import {
+  CLIENTS,
   LOANS,
   PAYMENTS,
   USERS,
   normalizeUserPermissions,
+  type ClientRow,
   type LoanRow,
   type PaymentRow,
   type UserRow,
@@ -20,7 +21,9 @@ import {
   normalizeAllPayments,
 } from "@/lib/payment-detail";
 
-export const DEMO_USERS_KEY = "nexo-demo-users-v2";
+export const DEMO_USERS_KEY = "nexo-demo-users";
+/** Clave breve usada en un deploy; se migra de vuelta a DEMO_USERS_KEY. */
+const DEMO_USERS_KEY_V2 = "nexo-demo-users-v2";
 export const DEMO_CLIENTS_KEY = "nexo-demo-clients";
 export const DEMO_COLLECTORS_KEY = "nexo-demo-collectors";
 export const DEMO_ROUTES_KEY = "nexo-demo-routes";
@@ -33,146 +36,222 @@ export const DEMO_BANK_MOVEMENTS_KEY = "nexo-demo-banco-movements";
 export const DEMO_BANK_RECONCILIATIONS_KEY = "nexo-demo-banco-reconciliations";
 export const DEMO_BANK_SIDES_VERSION_KEY = "nexo-demo-banco-sides-version";
 export const DEMO_MISC_PAYMENTS_KEY = "nexo-demo-pagos-varios";
-/** Cierres de mes del cobrador (revisión / arrastre de saldo). */
 export const DEMO_COLLECTOR_MONTH_CLOSES_KEY = "nexo-demo-collector-month-closes";
-/** Borradores de gastos de ruta (se guardan durante el día; el cierre los fija). */
 export const DEMO_COLLECTOR_DAY_EXPENSES_KEY = "nexo-demo-collector-day-expenses";
-/** Cierres de jornada del cobrador (cuadre + caja menor). */
 export const DEMO_COLLECTOR_DAY_CLOSES_KEY = "nexo-demo-collector-day-closes";
-/** Una sola vez: vacía préstamos y cobros guardados en el navegador. */
+
+/** Banderas legadas (ya no borran datos; solo se marcan para no reactivar limpiezas viejas). */
 export const DEMO_LOANS_CLEARED_KEY = "nexo-demo-loans-cleared-v2";
-/** Si no hay préstamos guardados, vuelve a sembrar cartera demo (planilla del día). */
 export const DEMO_LOANS_RESEED_KEY = "nexo-demo-loans-reseed-v1";
-/** Una sola vez: limpia Registros banco + cobros demo para empezar de nuevo. */
 export const DEMO_BANK_REGISTROS_CLEAN_KEY = "nexo-demo-banco-registros-clean-v1";
-/** Una sola vez: saca de planillas a no-clientes (pte. revisión / visitas inventadas). */
 export const DEMO_PLANILLA_PURGE_KEY = "nexo-demo-planilla-purge-invalid-v1";
 
 const SYSTEM_LOGINS = new Set(["truqui", "supervisor"]);
 
-function ensureLoansClearedOnce() {
-  if (typeof window === "undefined") return;
-  const done = readDemoJson<number>(DEMO_LOANS_CLEARED_KEY, 0);
-  if (done >= 1) return;
-  writeDemoJson(DEMO_LOANS_KEY, []);
-  writeDemoJson(DEMO_PAYMENTS_KEY, []);
-  writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, []);
-  writeDemoJson(DEMO_LOANS_CLEARED_KEY, 1);
+const SEED_CLIENT_REFS = new Set(CLIENTS.map((row) => row.ref));
+const SEED_PAYMENT_REFS = new Set(PAYMENTS.map((row) => row.ref));
+const SEED_LOAN_REFS = new Set(LOANS.map((row) => row.ref));
+
+function backupKey(key: string) {
+  return `${key}-bak`;
 }
 
-/** Si el navegador quedó sin préstamos, restaura la semilla para poder generar cobro del día. */
-function ensureLoansReseededIfEmpty() {
+/** Desactiva para siempre las limpiezas destructivas del pasado. */
+function disarmLegacyWipes() {
   if (typeof window === "undefined") return;
-  const done = readDemoJson<number>(DEMO_LOANS_RESEED_KEY, 0);
-  if (done >= 1) return;
-  const stored = readStoredLoans();
-  if (stored !== null && stored.length === 0 && LOANS.length > 0) {
-    writeDemoJson(DEMO_LOANS_KEY, LOANS);
+  try {
+    window.localStorage.setItem(DEMO_LOANS_CLEARED_KEY, "1");
+    window.localStorage.setItem(DEMO_LOANS_RESEED_KEY, "1");
+    window.localStorage.setItem(DEMO_BANK_REGISTROS_CLEAN_KEY, "1");
+    window.localStorage.setItem(DEMO_PLANILLA_PURGE_KEY, "1");
+  } catch {
+    /* ignore quota */
   }
-  writeDemoJson(DEMO_LOANS_RESEED_KEY, 1);
 }
 
-/**
- * Ya no borra datos. Las limpiezas automáticas desalineaban la app (Historial)
- * del sistema (Registros / Gastos). Solo marca la bandera si faltaba.
- */
+/** @deprecated No-op: antes vaciaba préstamos/cobros/planilla. */
 export function ensureBankRegistrosCleanOnce() {
-  if (typeof window === "undefined") return;
-  const done = readDemoJson<number>(DEMO_BANK_REGISTROS_CLEAN_KEY, 0);
-  if (done >= 1) return;
-  writeDemoJson(DEMO_BANK_REGISTROS_CLEAN_KEY, 1);
+  disarmLegacyWipes();
 }
 
-/**
- * Saca de la planilla guardada a quien no es cliente activo (pte. revisión, visita inventada).
- * Crítico: no puede aparecer en listas de cobro.
- */
+/** @deprecated No-op: antes purgaba filas de planilla. */
 export function ensureInvalidPlanillaPurgedOnce() {
-  if (typeof window === "undefined") return;
-  const done = readDemoJson<number>(DEMO_PLANILLA_PURGE_KEY, 0);
-  if (done >= 1) return;
-
-  const clients = readDemoJson<
-    Array<{ ref?: string; status?: string }>
-  >(DEMO_CLIENTS_KEY, []);
-  const reviewRefs = new Set(
-    clients
-      .filter((row) => row.status === "Pte. revisión" || row.status === "Prospecto")
-      .map((row) => row.ref)
-      .filter(Boolean) as string[],
-  );
-
-  const assignments = readDemoJson<
-    Array<{
-      clientRef?: string;
-      loanRef?: string;
-      itemId?: string;
-      clientName?: string;
-      [key: string]: unknown;
-    }>
-  >(DEMO_DAILY_ASSIGNMENTS_KEY, []);
-
-  writeDemoJson(
-    DEMO_DAILY_ASSIGNMENTS_KEY,
-    assignments.filter((row) => {
-      if (!row.loanRef || String(row.itemId ?? "").includes(":ruta")) return false;
-      if (row.clientRef && reviewRefs.has(row.clientRef)) return false;
-      const name = String(row.clientName ?? "").toLowerCase();
-      if (name.includes("roberto") && name.includes("vargas")) return false;
-      return true;
-    }),
-  );
-
-  writeDemoJson(DEMO_PLANILLA_PURGE_KEY, 1);
+  disarmLegacyWipes();
 }
 
-/** Lee préstamos guardados; `[]` cuenta (no vuelve a la semilla). */
-function readStoredLoans(): LoanRow[] | null {
+function readRaw(key: string): string | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(DEMO_LOANS_KEY);
-    if (raw === null) return null;
-    const parsed = JSON.parse(raw) as LoanRow[];
-    return Array.isArray(parsed) ? parsed : [];
+    return window.localStorage.getItem(key);
   } catch {
     return null;
   }
 }
 
-/** Lee cobros guardados; `[]` cuenta (no vuelve a la semilla). */
-function readStoredPayments(): PaymentRow[] | null {
-  if (typeof window === "undefined") return null;
+function parseJson<T>(raw: string | null): T | null {
+  if (!raw) return null;
   try {
-    const raw = window.localStorage.getItem(DEMO_PAYMENTS_KEY);
-    if (raw === null) return null;
-    const parsed = JSON.parse(raw) as PaymentRow[];
-    return Array.isArray(parsed) ? parsed : [];
+    return JSON.parse(raw) as T;
   } catch {
     return null;
   }
 }
 
+function readBakArray<T>(key: string): T[] {
+  const bak = parseJson<T[]>(readRaw(backupKey(key)));
+  return Array.isArray(bak) ? bak : [];
+}
+
+/** Lee JSON; si la clave principal falla o está vacía, intenta el respaldo -bak. */
 export function readDemoJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
-  try {
-    const raw = window.localStorage.getItem(key);
-    if (raw) return JSON.parse(raw) as T;
-  } catch {
-    /* ignore corrupt storage */
+  const primary = parseJson<T>(readRaw(key));
+  if (primary !== null && primary !== undefined) {
+    if (Array.isArray(primary) && primary.length === 0) {
+      const bak = parseJson<T>(readRaw(backupKey(key)));
+      if (Array.isArray(bak) && bak.length > 0) return bak;
+    }
+    return primary;
   }
+  const bak = parseJson<T>(readRaw(backupKey(key)));
+  if (bak !== null && bak !== undefined) return bak;
   return fallback;
 }
 
+/**
+ * Escribe JSON guardando antes una copia en -bak (no pisa un bak bueno con []).
+ * Así un fallo o una limpieza accidental no destruye el último estado válido.
+ */
 export function writeDemoJson(key: string, value: unknown) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(key, JSON.stringify(value));
+  try {
+    const prev = readRaw(key);
+    const next = JSON.stringify(value);
+    if (prev && prev !== next) {
+      const prevParsed = parseJson<unknown>(prev);
+      const wipingArray =
+        Array.isArray(value) &&
+        value.length === 0 &&
+        Array.isArray(prevParsed) &&
+        prevParsed.length > 0;
+      // Nunca respaldar un [] encima de un bak con datos.
+      if (!wipingArray) {
+        window.localStorage.setItem(backupKey(key), prev);
+      } else {
+        // Intento de vaciar: conservar prev en -bak y NO escribir [] si hay datos.
+        window.localStorage.setItem(backupKey(key), prev);
+        return;
+      }
+    }
+    window.localStorage.setItem(key, next);
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function mergeByRefKeepAll<T extends { ref?: string }>(primary: T[], extra: T[]): T[] {
+  const byRef = new Map<string, T>();
+  for (const row of primary) {
+    if (row?.ref) byRef.set(row.ref, row);
+  }
+  for (const row of extra) {
+    if (row?.ref && !byRef.has(row.ref)) byRef.set(row.ref, row);
+  }
+  return [...byRef.values()];
+}
+
+/**
+ * Recupera del -bak filas personalizadas (no-semilla) que desaparecieron del primary.
+ * No reinyecta borrados de filas semilla: evita impedir deletes intencionales del catálogo base.
+ */
+function recoverCustomRowsFromBak<T extends { ref?: string }>(
+  key: string,
+  stored: T[],
+  seedRefs: Set<string>,
+): T[] {
+  const bak = readBakArray<T>(key);
+  if (!bak.length) return stored;
+  if (!stored.length) return bak;
+
+  const byRef = new Map<string, T>();
+  for (const row of stored) {
+    if (row?.ref) byRef.set(row.ref, row);
+  }
+  let restored = 0;
+  for (const row of bak) {
+    if (!row?.ref || byRef.has(row.ref)) continue;
+    if (seedRefs.has(row.ref)) continue;
+    byRef.set(row.ref, row);
+    restored += 1;
+  }
+  return restored > 0 ? [...byRef.values()] : stored;
+}
+
+/** Lee préstamos guardados; null = primera vez / vacío tras wipe legado. */
+function readStoredLoans(): LoanRow[] | null {
+  if (typeof window === "undefined") return null;
+  const primary = parseJson<LoanRow[]>(readRaw(DEMO_LOANS_KEY));
+  if (primary && Array.isArray(primary)) {
+    if (primary.length === 0) {
+      const bak = readBakArray<LoanRow>(DEMO_LOANS_KEY);
+      if (bak.length > 0) return bak;
+      return null;
+    }
+    return recoverCustomRowsFromBak(DEMO_LOANS_KEY, primary, SEED_LOAN_REFS);
+  }
+  const bak = readBakArray<LoanRow>(DEMO_LOANS_KEY);
+  if (bak.length > 0) return bak;
+  return null;
+}
+
+function readStoredPayments(): PaymentRow[] | null {
+  if (typeof window === "undefined") return null;
+  const primary = parseJson<PaymentRow[]>(readRaw(DEMO_PAYMENTS_KEY));
+  if (primary && Array.isArray(primary)) {
+    if (primary.length === 0) {
+      const bak = readBakArray<PaymentRow>(DEMO_PAYMENTS_KEY);
+      if (bak.length > 0) return bak;
+      return null;
+    }
+    return recoverCustomRowsFromBak(DEMO_PAYMENTS_KEY, primary, SEED_PAYMENT_REFS);
+  }
+  const bak = readBakArray<PaymentRow>(DEMO_PAYMENTS_KEY);
+  if (bak.length > 0) return bak;
+  return null;
+}
+
+/**
+ * Clientes: conserva TODOS los guardados (Martina, altas en calle, etc.).
+ * Solo agrega refs del seed que falten; nunca elimina los del usuario.
+ * Si un wipe dejó solo la semilla, recupera altas custom desde -bak.
+ */
+export function loadDemoClients(seed: ClientRow[] = CLIENTS): ClientRow[] {
+  disarmLegacyWipes();
+  const stored = readDemoJson<ClientRow[] | null>(DEMO_CLIENTS_KEY, null);
+  if (!stored || !Array.isArray(stored) || stored.length === 0) {
+    const bak = readBakArray<ClientRow>(DEMO_CLIENTS_KEY);
+    if (bak.length > 0) {
+      const merged = mergeClientsKeepAll(bak, seed);
+      writeDemoJson(DEMO_CLIENTS_KEY, merged);
+      return merged;
+    }
+    return seed.map((row) => ({ ...row }));
+  }
+  const withCustom = recoverCustomRowsFromBak(DEMO_CLIENTS_KEY, stored, SEED_CLIENT_REFS);
+  const merged = mergeClientsKeepAll(withCustom, seed);
+  if (merged.length !== stored.length) {
+    writeDemoJson(DEMO_CLIENTS_KEY, merged);
+  }
+  return merged;
+}
+
+function mergeClientsKeepAll(stored: ClientRow[], seed: ClientRow[]): ClientRow[] {
+  return mergeByRefKeepAll(stored, seed.map((row) => ({ ...row })));
 }
 
 /** Pagos registrados (incluye cobros móviles con evidencia). */
 export function loadDemoPayments(loans?: LoanRow[]): PaymentRow[] {
-  ensureLoansClearedOnce();
-  ensureBankRegistrosCleanOnce();
-  ensureInvalidPlanillaPurgedOnce();
+  disarmLegacyWipes();
   const stored = readStoredPayments();
   const firstBoot = stored === null;
   const merged = mergeStoredPaymentsWithSeed(stored ?? PAYMENTS, {
@@ -184,10 +263,7 @@ export function loadDemoPayments(loans?: LoanRow[]): PaymentRow[] {
 
 /** Carga pagos y préstamos sincronizados (fuente única para el panel). */
 export function loadDemoPaymentsBundle() {
-  ensureLoansClearedOnce();
-  ensureLoansReseededIfEmpty();
-  ensureBankRegistrosCleanOnce();
-  ensureInvalidPlanillaPurgedOnce();
+  disarmLegacyWipes();
   const stored = readStoredPayments();
   const firstBoot = stored === null;
   const merged = mergeStoredPaymentsWithSeed(stored ?? PAYMENTS, {
@@ -195,19 +271,143 @@ export function loadDemoPaymentsBundle() {
   });
   const loans = loadDemoLoans(merged);
   const payments = normalizeAllPayments(merged, loans);
+  // Rehidrata claves vacías tras wipe legado para que el siguiente arranque no “parta de cero”.
+  if (firstBoot || !readRaw(DEMO_PAYMENTS_KEY)) {
+    writeDemoJson(DEMO_PAYMENTS_KEY, payments);
+  }
+  if (!readRaw(DEMO_LOANS_KEY) || readStoredLoans() === null) {
+    writeDemoJson(DEMO_LOANS_KEY, loans);
+  }
   return { payments, loans };
 }
 
-/** Préstamos con saldos sincronizados a los pagos guardados. */
+/** Préstamos: usa guardados; si no hay clave / quedó [], semilla. Nunca vacía datos existentes. */
 export function loadDemoLoans(payments: PaymentRow[] = loadDemoPayments()): LoanRow[] {
-  ensureLoansClearedOnce();
-  ensureLoansReseededIfEmpty();
+  disarmLegacyWipes();
   const stored = readStoredLoans();
   const base = stored ?? LOANS;
   return syncAllLoans(base, payments);
 }
 
-/** Normaliza usuarios guardados antes de la separación correo / usuario. */
+/** Cierres de jornada: recupera -bak si la clave quedó vacía. */
+export function loadDemoDayCloses<T extends { ref?: string }>(fallback: T[] = []): T[] {
+  disarmLegacyWipes();
+  const stored = readDemoJson<T[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, fallback);
+  if (!Array.isArray(stored) || stored.length === 0) {
+    const bak = readBakArray<T>(DEMO_COLLECTOR_DAY_CLOSES_KEY);
+    if (bak.length > 0) {
+      writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, bak);
+      return bak;
+    }
+    return fallback;
+  }
+  const bak = readBakArray<T>(DEMO_COLLECTOR_DAY_CLOSES_KEY);
+  if (!bak.length) return stored;
+  const merged = mergeByRefKeepAll(stored, bak);
+  if (merged.length > stored.length) {
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, merged);
+    return merged;
+  }
+  return stored;
+}
+
+/** Movimientos de banco: nunca parte de [] si hay -bak; fusiona refs del respaldo. */
+export function loadDemoBankMovements<T extends { ref?: string }>(fallback: T[] = []): T[] {
+  disarmLegacyWipes();
+  const stored = readDemoJson<T[] | null>(DEMO_BANK_MOVEMENTS_KEY, null);
+  const bak = readBakArray<T>(DEMO_BANK_MOVEMENTS_KEY);
+  if (!stored || !Array.isArray(stored) || stored.length === 0) {
+    if (bak.length > 0) {
+      writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, bak);
+      return bak;
+    }
+    return fallback;
+  }
+  const merged = mergeByRefKeepAll(stored, bak);
+  if (merged.length > stored.length) {
+    writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, merged);
+    return merged;
+  }
+  return stored;
+}
+
+/** Asignaciones de planilla: no pierde historial de otros días si la clave quedó vacía. */
+export function loadDemoDailyAssignments<T>(fallback: T[] = []): T[] {
+  disarmLegacyWipes();
+  return readDemoJson<T[]>(DEMO_DAILY_ASSIGNMENTS_KEY, fallback);
+}
+
+/** Claves operativas a respaldar (negocio + banco). */
+const DEMO_SNAPSHOT_KEYS = [
+  DEMO_USERS_KEY,
+  DEMO_CLIENTS_KEY,
+  DEMO_COLLECTORS_KEY,
+  DEMO_ROUTES_KEY,
+  DEMO_DAILY_LOGS_KEY,
+  DEMO_DAILY_ASSIGNMENTS_KEY,
+  DEMO_PAYMENTS_KEY,
+  DEMO_LOANS_KEY,
+  DEMO_BANK_ACCOUNTS_KEY,
+  DEMO_BANK_MOVEMENTS_KEY,
+  DEMO_BANK_RECONCILIATIONS_KEY,
+  DEMO_MISC_PAYMENTS_KEY,
+  DEMO_COLLECTOR_MONTH_CLOSES_KEY,
+  DEMO_COLLECTOR_DAY_EXPENSES_KEY,
+  DEMO_COLLECTOR_DAY_CLOSES_KEY,
+] as const;
+
+export type DemoSnapshot = {
+  exportedAt: string;
+  version: 1;
+  keys: Record<string, unknown>;
+  source?: string;
+  note?: string;
+};
+
+/** Exporta todo el estado de negocio/banco del navegador (para archivo de seguridad). */
+export function exportDemoSnapshot(): DemoSnapshot {
+  disarmLegacyWipes();
+  const keys: Record<string, unknown> = {};
+  for (const key of DEMO_SNAPSHOT_KEYS) {
+    const primary = parseJson<unknown>(readRaw(key));
+    if (primary !== null && primary !== undefined) keys[key] = primary;
+    const bak = parseJson<unknown>(readRaw(backupKey(key)));
+    if (bak !== null && bak !== undefined) keys[backupKey(key)] = bak;
+  }
+  return { exportedAt: new Date().toISOString(), version: 1, keys };
+}
+
+export function downloadDemoSnapshot() {
+  if (typeof window === "undefined") return;
+  const snapshot = exportDemoSnapshot();
+  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const day = new Date().toISOString().slice(0, 10);
+  anchor.href = url;
+  anchor.download = `nexo-respaldo-${day}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Restaura un respaldo JSON. Recarga la página después. */
+export function importDemoSnapshot(raw: string): { ok: true } | { ok: false; error: string } {
+  if (typeof window === "undefined") return { ok: false, error: "Solo en el navegador." };
+  try {
+    const parsed = JSON.parse(raw) as DemoSnapshot;
+    if (!parsed || parsed.version !== 1 || !parsed.keys || typeof parsed.keys !== "object") {
+      return { ok: false, error: "Archivo de respaldo inválido." };
+    }
+    for (const [key, value] of Object.entries(parsed.keys)) {
+      if (!key.startsWith("nexo-demo-")) continue;
+      window.localStorage.setItem(key, JSON.stringify(value));
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: "No se pudo leer el archivo JSON." };
+  }
+}
+
 function normalizeStoredUser(row: UserRow): UserRow {
   const normalized = normalizeUserPermissions(row);
   if (normalized.email?.trim()) return normalized;
@@ -224,14 +424,21 @@ function normalizeStoredUser(row: UserRow): UserRow {
 
 /** Combina usuarios guardados con el seed para no perder cuentas del sistema. */
 export function loadDemoUsers(): UserRow[] {
-  const stored = readDemoJson<UserRow[]>(DEMO_USERS_KEY, []);
+  disarmLegacyWipes();
+  let stored = readDemoJson<UserRow[]>(DEMO_USERS_KEY, []);
+  if (!stored.length) {
+    const v2 = readDemoJson<UserRow[]>(DEMO_USERS_KEY_V2, []);
+    if (v2.length) {
+      stored = v2;
+      writeDemoJson(DEMO_USERS_KEY, v2);
+    }
+  }
   if (!stored.length) {
     return USERS.map((row) => normalizeUserPermissions(row));
   }
 
   const merged = stored.map((row) => normalizeStoredUser(row));
   for (const seed of USERS) {
-    // Solo por ref: evitar cruzar cuentas si alguien cambió el login (Diego/Lina/etc.).
     const idx = merged.findIndex((row) => row.ref === seed.ref);
     if (idx === -1) {
       const loginTaken = merged.some(
@@ -243,7 +450,7 @@ export function loadDemoUsers(): UserRow[] {
     if (SYSTEM_LOGINS.has(seed.login.toLowerCase())) {
       merged[idx] = {
         ...merged[idx],
-        name: seed.name,
+        // No forzar name: respeta el nombre guardado (p.ej. Carlos ya editado).
         login: merged[idx].login?.trim() || seed.login,
         password: merged[idx].password?.trim() || seed.password,
         roleRef: seed.roleRef,

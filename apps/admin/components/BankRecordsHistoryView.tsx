@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type {
   BankAccount,
   BankHistoryKindFilter,
@@ -33,6 +33,7 @@ import {
 import { BANK_RECORD_COLUMNS, BANK_RECORD_DEFAULT_COLS } from "@/lib/table-columns";
 import { paymentMethodKind } from "@/lib/payment-method";
 import { Pill } from "@/components/ui";
+import { downloadDemoSnapshot, importDemoSnapshot } from "@/lib/demo-persist";
 
 type Props = {
   accounts: BankAccount[];
@@ -66,6 +67,7 @@ export function BankRecordsHistoryView({
     BANK_RECORD_DEFAULT_COLS,
     { storageKey: "nexo.banco.registros.columns.v4" },
   );
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const [scope, setScope] = useState<BankHistoryScope>(initialScope);
   const [accountFilter, setAccountFilter] = useState(initialAccountRef ?? "");
@@ -73,6 +75,27 @@ export function BankRecordsHistoryView({
   const [kindFilter, setKindFilter] = useState<BankHistoryKindFilter>("all");
   const [query, setQuery] = useState("");
   const [pageSize, setPageSize] = useState(50);
+
+  function handleExportBackup() {
+    downloadDemoSnapshot();
+    onToast?.("Respaldo descargado · guárdalo fuera del navegador.");
+  }
+
+  function handleImportFile(file: File | null) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === "string" ? reader.result : "";
+      const result = importDemoSnapshot(text);
+      if (!result.ok) {
+        onToast?.(result.error);
+        return;
+      }
+      onToast?.("Respaldo restaurado · recargando…");
+      window.setTimeout(() => window.location.reload(), 600);
+    };
+    reader.readAsText(file);
+  }
 
   const accountMap = useMemo(
     () => new Map(accounts.map((row) => [row.ref, row.name])),
@@ -201,6 +224,28 @@ export function BankRecordsHistoryView({
           Historial del sistema · los cobros y gastos permanecen hasta conciliar el periodo.
         </p>
         <div className="grow" />
+        <div className="bank-backup-actions">
+          <button type="button" className="btn ghost" onClick={handleExportBackup}>
+            Descargar respaldo
+          </button>
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={() => importInputRef.current?.click()}
+          >
+            Restaurar respaldo
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            hidden
+            onChange={(e) => {
+              handleImportFile(e.target.files?.[0] ?? null);
+              e.target.value = "";
+            }}
+          />
+        </div>
         <div className="bank-history-tabs" role="tablist" aria-label="Alcance del historial">
           <button
             type="button"

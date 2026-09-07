@@ -833,12 +833,21 @@ export function routesForCollector(collectorRef: string, rows: RouteRow[] = ROUT
 
 export function paymentsForCollector(
   collectorRef: string,
-  _collectors: CollectorRow[] = COLLECTORS,
+  collectors: CollectorRow[] = COLLECTORS,
   rows: PaymentRow[] = PAYMENTS,
 ) {
   if (!collectorRef) return [];
-  // Solo por ref: evita que un cobrador nuevo herede cobros por coincidencia de nombre.
-  return rows.filter((row) => row.collectorRef === collectorRef);
+  const collector = collectors.find((row) => row.ref === collectorRef);
+  const name = collector?.name?.trim().toLowerCase() ?? "";
+  // Prefer ref; si el cobro viejo solo tiene nombre, igual cuenta para historial.
+  return rows.filter((row) => {
+    if (row.collectorRef === collectorRef) return true;
+    if (row.collectorRef) return false;
+    if (!name) return false;
+    return String(row.collector ?? "")
+      .trim()
+      .toLowerCase() === name;
+  });
 }
 
 export function collectedByCollectorRef(

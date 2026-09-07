@@ -11,6 +11,7 @@ import {
   writeSession,
   type AppSession,
 } from "@/lib/auth";
+import { bootstrapProtectedDemoData } from "@/lib/bootstrap-demo-data";
 import { COLLECTOR_ROLE_REF, SUPERVISOR_ROLE_REF } from "@/lib/mock-data";
 import { canAccessAdminPanel } from "@/lib/session-access";
 
@@ -40,7 +41,20 @@ export function AuthGate() {
     sync();
     mq.addEventListener("change", sync);
     setReady(true);
-    return () => mq.removeEventListener("change", sync);
+
+    // No bloquear el login: restaura/retención en segundo plano.
+    const t = window.setTimeout(() => {
+      try {
+        bootstrapProtectedDemoData();
+      } catch {
+        /* ignore bootstrap errors */
+      }
+    }, 0);
+
+    return () => {
+      window.clearTimeout(t);
+      mq.removeEventListener("change", sync);
+    };
   }, []);
 
   if (!ready) {

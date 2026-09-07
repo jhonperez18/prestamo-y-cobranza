@@ -18,7 +18,6 @@ import {
   type DailyCollectionItem,
 } from "@/lib/daily-collection-plan";
 import {
-  isValidPlanillaAssignment,
   purgeInvalidPlanillaAssignments,
 } from "@/lib/planilla-eligibility";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
@@ -111,16 +110,16 @@ function preserveProgress(
 function keepAssignmentsOutsideOpenDay(
   existing: DailyCollectionAssignment[],
   date: string,
-  clients: ClientRow[],
-  loans: LoanRow[],
+  _clients: ClientRow[],
+  _loans: LoanRow[],
 ) {
-  const kept = existing.filter((row) => {
-    if (!isValidPlanillaAssignment(row, clients, loans)) return false;
+  // Nunca borrar historial de otros días ni cierres: aunque falte el préstamo/cliente
+  // en storage (p.ej. tras un wipe legado), el registro del día cerrado es evidencia.
+  return existing.filter((row) => {
     if (row.dispatchDate !== date) return true;
     if (row.dayClosedAt) return true;
     return false;
   });
-  return purgeInvalidPlanillaAssignments(kept, clients, loans);
 }
 
 /** Motivo si hoy no corre cobro (domingo / festivo). */
@@ -217,16 +216,15 @@ export function syncPermanentRoutePlanilla(
   const built = [...builtMap.values()];
 
   const kept = existing.filter((row) => {
-    if (!isValidPlanillaAssignment(row, clients, loans)) return false;
     if (row.dispatchDate !== date) return true;
     if (row.dayClosedAt) return true;
-    // Sustituye el día abierto por la planilla permanente actual.
+    // Sustituye solo el día abierto actual; historial y cierres se conservan siempre.
     return false;
   });
 
-  const assignments = dedupePlanillaAssignments(
-    purgeInvalidPlanillaAssignments([...kept, ...built], clients, loans),
-  );
+  // Solo valida/purga filas del día abierto recién armado; no toca otros días.
+  const todayClean = purgeInvalidPlanillaAssignments(built, clients, loans);
+  const assignments = dedupePlanillaAssignments([...kept, ...todayClean]);
 
   let nextRoutes = routes;
   // Actualiza conteo de clientes en rutas de catálogo (para listados / fichas).

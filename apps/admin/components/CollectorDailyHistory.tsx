@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Pill } from "@/components/ui";
 import {
   dailyLogsForCollector,
@@ -8,30 +8,105 @@ import {
   paymentsForDailyLog,
   type CollectorDailyLogRow,
 } from "@/lib/collector-daily-log";
-import { money, type ActivityRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
+import {
+  buildCollectorDayHistory,
+  type CollectorDayCloseRecord,
+  type CollectorDayExpenseDraft,
+  type CollectorMonthCloseRecord,
+} from "@/lib/collector-day-close";
+import { periodFromDateIso } from "@/lib/collector-day-close";
+import { todayIso } from "@/lib/daily-dispatch";
+import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import { money, type ActivityRow, type CollectorRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
 import { normalizePaymentMethod, paymentMethodLabel } from "@/lib/payment-method";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 
 type Props = {
   collectorRef: string;
+  collector?: CollectorRow | null;
   dailyLogs: CollectorDailyLogRow[];
   payments: PaymentRow[];
   activities: ActivityRow[];
   routes: RouteRow[];
+  dayCloses?: CollectorDayCloseRecord[];
+  dayExpenseDrafts?: CollectorDayExpenseDraft[];
+  monthCloses?: CollectorMonthCloseRecord[];
+  assignments?: DailyCollectionAssignment[];
 };
 
 export function CollectorDailyHistory({
   collectorRef,
+  collector,
   dailyLogs,
   payments,
   activities,
   routes,
+  dayCloses = [],
+  dayExpenseDrafts = [],
+  monthCloses = [],
+  assignments = [],
 }: Props) {
   const [openRef, setOpenRef] = useState("");
   const rows = dailyLogsForCollector(collectorRef, dailyLogs, payments, activities, routes);
 
-  if (!rows.length) {
+  const fallbackHistory = useMemo(() => {
+    if (rows.length) return [];
+    const period = periodFromDateIso(todayIso());
+    return buildCollectorDayHistory(
+      collectorRef,
+      payments,
+      dayCloses,
+      collector ? [collector] : [],
+      [],
+      dayExpenseDrafts,
+      monthCloses,
+      period,
+      { assignments, dailyLogs },
+    ).filter((row) => row.cobro > 0 || row.gasto > 0);
+  }, [
+    assignments,
+    collector,
+    collectorRef,
+    dailyLogs,
+    dayCloses,
+    dayExpenseDrafts,
+    monthCloses,
+    payments,
+    rows.length,
+  ]);
+
+  if (!rows.length && !fallbackHistory.length) {
     return <p className="ficha-empty">Aún no hay jornadas registradas para este cobrador.</p>;
+  }
+
+  if (!rows.length && fallbackHistory.length) {
+    return (
+      <div className="daily-archive">
+        <p className="daily-archive-intro">
+          Historial reconstruido desde cobros, cierres y planilla del mes en curso.
+        </p>
+        <table className="data mini-table daily-log-table">
+          <thead>
+            <tr>
+              <th>Día</th>
+              <th className="right">Cobro</th>
+              <th className="right">Gasto</th>
+              <th className="right">Saldo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {fallbackHistory.map((row) => (
+              <tr key={row.date}>
+                <td>{row.dateLabel}</td>
+                <td className="money right">{row.cobro > 0 ? money(row.cobro) : "—"}</td>
+                <td className="money right">{row.gasto > 0 ? money(row.gasto) : "—"}</td>
+                <td className="money right">{money(row.saldo)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
   }
 
   return (

@@ -1,11 +1,15 @@
 import {
   addManualExpense,
+  paymentRefForMovement,
   periodFromIso,
   type BankExpenseCategory,
   type BankMovement,
 } from "@/lib/bank";
+import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import { displayToIso } from "@/lib/loan-preview";
 import { money, type CollectorRow, type PaymentRow, paymentsForCollector } from "@/lib/mock-data";
+import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
 
 /** Gastos típicos de ruta del cobrador (cuadre de cierre). */
 export const ROUTE_EXPENSE_ITEMS = [
@@ -385,9 +389,8 @@ export function syncRouteExpensesToMovements(
       .map((row) => [row.dayExpenseLineRef as string, row]),
   );
 
-  let next = movements.filter(
-    (row) => !row.dayExpenseLineRef || wanted.has(row.dayExpenseLineRef),
-  );
+  // No borrar gastos de ruta huérfanos si se perdieron cierres/borradores en storage.
+  let next = [...movements];
 
   for (const [lineRef, { source, line }] of wanted) {
     const period = periodFromIso(source.date);
@@ -448,11 +451,155 @@ export function dayCloseSummaryLabel(record: CollectorDayCloseRecord) {
   return `Cierre ${record.date} · Recaudo ${money(record.collected)} · Gastos ${money(record.expensesTotal)} · Caja ${money(record.cashFloat)}`;
 }
 
+/** Fuentes opcionales para reconstruir historial si faltan cobros en storage. */
+export type CollectorHistoryExtras = {
+  dailyLogs?: CollectorDailyLogRow[];
+  assignments?: DailyCollectionAssignment[];
+};
+
+/**
+ * Reconstruye cobros perdidos desde la planilla (paymentRef + visita cobrada/parcial).
+ */
+export function recoverPaymentsFromAssignments(
+  assignments: DailyCollectionAssignment[],
+  existing: PaymentRow[],
+): PaymentRow[] {
+  const byRef = new Map(existing.map((row) => [row.ref, row]));
+  for (const row of assignments) {
+    if (!row.paymentRef || byRef.has(row.paymentRef)) continue;
+    if (row.visitStatus !== "cobrado" && row.visitStatus !== "parcial") continue;
+    const amount = Number(row.amountDue) || 0;
+    if (amount <= 0) continue;
+    const date = normalizeHistoryDate(row.dispatchDate);
+    if (!date) continue;
+    byRef.set(row.paymentRef, {
+      ref: row.paymentRef,
+      loanRef: row.loanRef || undefined,
+      when: `${isoToDispatchLabel(date)} · 12:00`,
+      paidDate: date,
+      paidTime: "12:00",
+      client: row.clientName,
+      collector: row.collector,
+      collectorRef: row.collectorRef,
+      routeRef: undefined,
+      amount,
+      type: row.visitStatus === "parcial" ? "Abono" : "Cuota",
+      kind: row.visitStatus === "parcial" ? "partial" : "paid",
+      source: "pwa",
+    });
+  }
+  return [...byRef.values()];
+}
+
+/**
+ * Reconstruye cobros desde movimientos bancarios ligados a PG- / paymentRef.
+ * Asocia cobrador por paymentRef en planilla o por cliente+fecha.
+ */
+export function recoverPaymentsFromBankMovements(
+  movements: BankMovement[],
+  assignments: DailyCollectionAssignment[],
+  existing: PaymentRow[],
+): PaymentRow[] {
+  const byRef = new Map(existing.map((row) => [row.ref, row]));
+  for (const mov of movements) {
+    const pg = paymentRefForMovement(mov);
+    if (!pg || byRef.has(pg)) continue;
+    const amount = Math.max(Number(mov.debit) || 0, Number(mov.credit) || 0);
+    if (amount <= 0) continue;
+    const date = normalizeHistoryDate(mov.valueDate || mov.opDate || "");
+    if (!date) continue;
+    const match =
+      assignments.find((row) => row.paymentRef === pg) ??
+      assignments.find(
+        (row) =>
+          normalizeHistoryDate(row.dispatchDate) === date &&
+          row.clientName.trim().toLowerCase() === String(mov.thirdParty ?? "").trim().toLowerCase(),
+      );
+    byRef.set(pg, {
+      ref: pg,
+      when: `${isoToDispatchLabel(date)} · 12:00`,
+      paidDate: date,
+      paidTime: "12:00",
+      client: match?.clientName || mov.thirdParty || "Cliente",
+      collector: match?.collector || "",
+      collectorRef: match?.collectorRef,
+      loanRef: match?.loanRef || undefined,
+      amount,
+      type: "Cuota",
+      kind: "paid",
+      source: "pwa",
+    });
+  }
+  return [...byRef.values()];
+}
+
+/**
+ * Si la jornada quedó cerrada en planilla pero no hay registro CIE-, lo sintetiza
+ * para que el historial muestre el día con su recaudo.
+ */
+export function synthesizeDayClosesFromAssignments(
+  assignments: DailyCollectionAssignment[],
+  payments: PaymentRow[],
+  existing: CollectorDayCloseRecord[],
+): CollectorDayCloseRecord[] {
+  const byRef = new Map(existing.map((row) => [row.ref, row]));
+  const groups = new Map<string, DailyCollectionAssignment[]>();
+  for (const row of assignments) {
+    if (!row.collectorRef || !row.dispatchDate) continue;
+    const key = `${row.collectorRef}::${normalizeHistoryDate(row.dispatchDate)}`;
+    const list = groups.get(key) ?? [];
+    list.push(row);
+    groups.set(key, list);
+  }
+
+  for (const [, rows] of groups) {
+    const dispatched = rows.filter((row) => row.dispatched);
+    if (!dispatched.length) continue;
+    if (!dispatched.every((row) => Boolean(row.dayClosedAt))) continue;
+    const sample = dispatched[0];
+    const date = normalizeHistoryDate(sample.dispatchDate);
+    if (!date) continue;
+    const ref = dayCloseRef(sample.collectorRef, date);
+    if (byRef.has(ref)) continue;
+
+    const collectedFromPayments = payments
+      .filter(
+        (pay) =>
+          pay.collectorRef === sample.collectorRef &&
+          normalizeHistoryDate(pay.paidDate ?? "") === date,
+      )
+      .reduce((sum, pay) => sum + pay.amount, 0);
+    const collectedFromVisits = dispatched
+      .filter((row) => row.visitStatus === "cobrado" || row.visitStatus === "parcial")
+      .reduce((sum, row) => sum + (Number(row.amountDue) || 0), 0);
+    const collected = Math.max(collectedFromPayments, collectedFromVisits);
+    const closedAt =
+      dispatched.map((row) => row.dayClosedAt!).sort().slice(-1)[0] ?? new Date().toISOString();
+
+    byRef.set(ref, {
+      ref,
+      collectorRef: sample.collectorRef,
+      collectorName: sample.collector,
+      date,
+      routeRef: "",
+      collected,
+      expenses: [],
+      expensesTotal: 0,
+      cashFloat: collected,
+      closedAt,
+      movementRefs: [],
+    });
+  }
+
+  return [...byRef.values()];
+}
+
 /**
  * Historial por día: cobro, gasto y saldo en mano (acumulado hasta consignar).
  * Gastos: cierre definitivo si existe; si no, borrador guardado del día.
  * Arrastra saldo del cierre de mes anterior.
  * Más reciente primero. Por defecto filtra al mes de `viewPeriod`.
+ * Si faltan pagos, usa cierres, logs diarios y planilla cerrada.
  */
 export function buildCollectorDayHistory(
   collectorRef: string,
@@ -463,6 +610,7 @@ export function buildCollectorDayHistory(
   expenseDrafts: CollectorDayExpenseDraft[] = [],
   monthCloses: CollectorMonthCloseRecord[] = [],
   viewPeriod?: string,
+  extras: CollectorHistoryExtras = {},
 ): CollectorDayHistoryRow[] {
   const mine = paymentsForCollector(collectorRef, collectors, payments);
   const cobroByDate = new Map<string, number>();
@@ -470,6 +618,28 @@ export function buildCollectorDayHistory(
     const date = normalizeHistoryDate(row.paidDate ?? "");
     if (!date) continue;
     cobroByDate.set(date, (cobroByDate.get(date) ?? 0) + row.amount);
+  }
+
+  // Planilla: visitas cobradas sin pago en storage.
+  for (const row of extras.assignments ?? []) {
+    if (row.collectorRef !== collectorRef) continue;
+    if (row.visitStatus !== "cobrado" && row.visitStatus !== "parcial") continue;
+    const date = normalizeHistoryDate(row.dispatchDate);
+    if (!date) continue;
+    const amount = Number(row.amountDue) || 0;
+    if (amount <= 0) continue;
+    // Solo suma si ese paymentRef no está ya en payments (evita doble conteo).
+    if (row.paymentRef && mine.some((pay) => pay.ref === row.paymentRef)) continue;
+    cobroByDate.set(date, (cobroByDate.get(date) ?? 0) + amount);
+  }
+
+  // Logs diarios (archivo de jornadas).
+  for (const row of extras.dailyLogs ?? []) {
+    if (row.collectorRef !== collectorRef) continue;
+    const date = normalizeHistoryDate(row.date);
+    if (!date) continue;
+    const fromPayments = cobroByDate.get(date) ?? 0;
+    if (row.collected > fromPayments) cobroByDate.set(date, row.collected);
   }
 
   const closedDates = new Set<string>();
@@ -480,6 +650,11 @@ export function buildCollectorDayHistory(
     if (!date) continue;
     closedDates.add(date);
     gastoByDate.set(date, (gastoByDate.get(date) ?? 0) + row.expensesTotal);
+    // Si se perdieron pagos en storage, el cierre del día aún guarda el recaudo.
+    const fromPayments = cobroByDate.get(date) ?? 0;
+    if (row.collected > fromPayments) {
+      cobroByDate.set(date, row.collected);
+    }
   }
   for (const row of expenseDrafts) {
     if (row.collectorRef !== collectorRef) continue;
@@ -488,10 +663,18 @@ export function buildCollectorDayHistory(
     gastoByDate.set(date, row.expensesTotal);
   }
 
+  // Fechas cerradas en planilla aunque no haya cobro/gasto numérico.
+  for (const row of extras.assignments ?? []) {
+    if (row.collectorRef !== collectorRef || !row.dayClosedAt) continue;
+    const date = normalizeHistoryDate(row.dispatchDate);
+    if (date) closedDates.add(date);
+  }
+
   let dates = [
     ...new Set([
       ...cobroByDate.keys(),
       ...gastoByDate.keys(),
+      ...closedDates,
       ...extraDates.map(normalizeHistoryDate).filter(Boolean),
     ]),
   ].sort((a, b) => a.localeCompare(b));

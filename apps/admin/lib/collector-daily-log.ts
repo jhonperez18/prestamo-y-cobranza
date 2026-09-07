@@ -123,7 +123,18 @@ export function buildCollectorDailyLogs(
   const collectorActs = activities.filter((row) => row.collectorRef === collectorRef);
 
   for (const payment of collectorPay) {
-    const parsed = parseActivityWhen(payment.when);
+    const parsed =
+      parseActivityWhen(payment.when) ??
+      (payment.paidDate
+        ? {
+            date: payment.paidDate.slice(0, 10),
+            dateLabel:
+              payment.paidDate.length >= 10
+                ? `${payment.paidDate.slice(8, 10)}/${payment.paidDate.slice(5, 7)}/${payment.paidDate.slice(0, 4)}`
+                : payment.paidDate,
+            time: payment.paidTime,
+          }
+        : null);
     if (!parsed) continue;
     const route = payment.routeRef
       ? routes.find((row) => row.ref === payment.routeRef)
@@ -426,6 +437,7 @@ export function paymentsForDailyLog(
 ) {
   return payments.filter((row) => {
     if (row.collectorRef !== collectorRef) return false;
+    if (row.paidDate && row.paidDate.slice(0, 10) === date) return true;
     const parsed = parseActivityWhen(row.when);
     return parsed?.date === date;
   });

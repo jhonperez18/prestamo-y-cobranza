@@ -54,6 +54,9 @@ type Props = {
   activities: ActivityRow[];
   dailyLogs: CollectorDailyLogRow[];
   dailyAssignments: DailyCollectionAssignment[];
+  dayCloses?: import("@/lib/collector-day-close").CollectorDayCloseRecord[];
+  dayExpenseDrafts?: import("@/lib/collector-day-close").CollectorDayExpenseDraft[];
+  monthCloses?: import("@/lib/collector-day-close").CollectorMonthCloseRecord[];
   collectors: CollectorRow[];
   user?: UserRow | null;
   role?: RoleRow | null;
@@ -89,6 +92,9 @@ export function CollectorFicha({
   activities,
   dailyLogs,
   dailyAssignments,
+  dayCloses = [],
+  dayExpenseDrafts = [],
+  monthCloses = [],
   collectors,
   user,
   role,
@@ -641,10 +647,15 @@ export function CollectorFicha({
           {tab === "historial" ? (
             <CollectorDailyHistory
               collectorRef={collector.ref}
+              collector={collector}
               dailyLogs={dailyLogs}
               payments={payments}
               activities={activities}
               routes={routes}
+              dayCloses={dayCloses}
+              dayExpenseDrafts={dayExpenseDrafts}
+              monthCloses={monthCloses}
+              assignments={dailyAssignments}
             />
           ) : null}
 

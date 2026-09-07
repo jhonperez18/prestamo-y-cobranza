@@ -21,11 +21,14 @@ import {
   DEMO_COLLECTOR_MONTH_CLOSES_KEY,
   DEMO_COLLECTORS_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
+  DEMO_BANK_MOVEMENTS_KEY,
   DEMO_LOANS_KEY,
   DEMO_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
   loadDemoPaymentsBundle,
   loadDemoUsers,
+  loadDemoClients,
+  loadDemoDayCloses,
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
@@ -36,11 +39,15 @@ import {
 } from "@/lib/client-review";
 import { dedupeClientsByRef, normalizeAllRouteOrders } from "@/lib/client-route-order";
 import { rebuildDispatchRoutes } from "@/lib/collector-dispatch-sync";
-import type {
-  CollectorDayCloseRecord,
-  CollectorDayExpenseDraft,
-  CollectorMonthCloseRecord,
+import {
+  recoverPaymentsFromAssignments,
+  recoverPaymentsFromBankMovements,
+  synthesizeDayClosesFromAssignments,
+  type CollectorDayCloseRecord,
+  type CollectorDayExpenseDraft,
+  type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
+import type { BankMovement } from "@/lib/bank";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { todayIso } from "@/lib/daily-dispatch";
 import { usePlanillaDayRollover } from "@/lib/planilla-day-sync";
@@ -83,7 +90,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
     const storedRoutes = readDemoJson(DEMO_ROUTES_KEY, ROUTES);
     const storedClients = normalizeAllRouteOrders(
       dedupeClientsByRef(
-        readDemoJson(DEMO_CLIENTS_KEY, CLIENTS).map(normalizeClientLifecycle),
+        loadDemoClients(CLIENTS).map(normalizeClientLifecycle),
       ),
     );
     const loadedUsers = loadDemoUsers();
@@ -91,9 +98,21 @@ export function SupervisorShell({ session, onLogout }: Props) {
     setClients(storedClients);
     writeDemoJson(DEMO_CLIENTS_KEY, storedClients);
     setCollectors(storedCollectors);
-    setPayments(storedPayments);
+
+    const bankMovements = readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []);
+    let nextPayments = recoverPaymentsFromAssignments(storedAssignments, storedPayments);
+    nextPayments = recoverPaymentsFromBankMovements(bankMovements, storedAssignments, nextPayments);
+    const nextDayCloses = synthesizeDayClosesFromAssignments(
+      storedAssignments,
+      nextPayments,
+      loadDemoDayCloses<CollectorDayCloseRecord>(),
+    );
+    setPayments(nextPayments);
     setLoans(storedLoans);
-    writeDemoJson(DEMO_PAYMENTS_KEY, storedPayments);
+    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextDayCloses);
+    setDayCloses(nextDayCloses);
+
     const rebuilt = rebuildDispatchRoutes(
       storedRoutes,
       storedAssignments,
@@ -113,7 +132,6 @@ export function SupervisorShell({ session, onLogout }: Props) {
     setRoutes(synced.routes);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
     writeDemoJson(DEMO_ROUTES_KEY, synced.routes);
-    setDayCloses(readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []));
     setDayExpenseDrafts(
       readDemoJson<CollectorDayExpenseDraft[]>(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),
     );

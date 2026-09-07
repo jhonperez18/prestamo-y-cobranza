@@ -1017,7 +1017,13 @@ export function syncAllPaymentsToMovements(
     });
   }
 
-  return dedupeBankMovements([...nonCobro, ...paymentRows]);
+  // Conserva cobros que ya estaban en banco aunque el pago se haya perdido del storage.
+  // Sin esto, un wipe de payments vaciaba todo el historial de Registros.
+  const orphanCobros = [...byPayment.entries()]
+    .filter(([pg]) => !seenPayments.has(pg))
+    .map(([, row]) => row);
+
+  return dedupeBankMovements([...nonCobro, ...paymentRows, ...orphanCobros]);
 }
 
 export function reconcilePeriod(

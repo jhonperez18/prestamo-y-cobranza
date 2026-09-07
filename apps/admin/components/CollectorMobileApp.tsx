@@ -247,9 +247,11 @@ export function CollectorMobileApp({
       dayExpenseDrafts,
       monthCloses,
       viewPeriod,
+      { assignments, dailyLogs: undefined },
     );
   }, [
     activeDate,
+    assignments,
     collector,
     date,
     dayCloses,
@@ -298,12 +300,13 @@ export function CollectorMobileApp({
       dayExpenseDrafts,
       monthCloses,
       previousMonth,
+      { assignments },
     );
     return monthClosingSaldoFromHistory(
       rows,
       openingSaldoForPeriod(collector.ref, previousMonth, monthCloses),
     );
-  }, [collector, dayCloses, dayExpenseDrafts, monthCloses, payments, previousMonth]);
+  }, [assignments, collector, dayCloses, dayExpenseDrafts, monthCloses, payments, previousMonth]);
 
   const carriedOpening = openingSaldoForPeriod(collector.ref, viewPeriod, monthCloses);
 
@@ -617,10 +620,12 @@ export function CollectorMobileApp({
                   </div>
                 </li>
               ) : null}
-              {dayHistory.length === 0 ? (
+              {dayHistory.filter((row) => row.cobro > 0 || row.gasto > 0 || row.date === activeDate).length === 0 ? (
                 <li className="collector-mobile-day-history-empty">Sin movimientos este mes.</li>
               ) : (
-                dayHistory.map((row) => (
+                dayHistory
+                  .filter((row) => row.cobro > 0 || row.gasto > 0 || row.date === activeDate)
+                  .map((row) => (
                   <li key={row.date}>
                     <button
                       type="button"

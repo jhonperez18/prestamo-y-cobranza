@@ -28,6 +28,8 @@ import {
   DEMO_ROUTES_KEY,
   loadDemoPaymentsBundle,
   loadDemoUsers,
+  loadDemoClients,
+  loadDemoDayCloses,
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
@@ -45,7 +47,10 @@ import {
   buildMonthCloseRecord,
   dayExpenseLineMovementRef,
   finalizeCollectorDayClose,
+  recoverPaymentsFromAssignments,
+  recoverPaymentsFromBankMovements,
   removeDayExpenseDraft,
+  synthesizeDayClosesFromAssignments,
   upsertDayExpenseDraft,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
@@ -140,16 +145,28 @@ export function CollectorShell({ session, onLogout }: Props) {
     const storedRoutes = readDemoJson(DEMO_ROUTES_KEY, ROUTES);
     const storedClients = normalizeAllRouteOrders(
       dedupeClientsByRef(
-        readDemoJson(DEMO_CLIENTS_KEY, CLIENTS).map(normalizeClientLifecycle),
+        loadDemoClients(CLIENTS).map(normalizeClientLifecycle),
       ),
     );
     loadDemoUsers();
     setClients(storedClients);
     writeDemoJson(DEMO_CLIENTS_KEY, storedClients);
     setCollectors(storedCollectors);
-    setPayments(storedPayments);
+
+    const bankMovements = readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []);
+    let nextPayments = recoverPaymentsFromAssignments(storedAssignments, storedPayments);
+    nextPayments = recoverPaymentsFromBankMovements(bankMovements, storedAssignments, nextPayments);
+    const nextDayCloses = synthesizeDayClosesFromAssignments(
+      storedAssignments,
+      nextPayments,
+      loadDemoDayCloses<CollectorDayCloseRecord>(),
+    );
+    setPayments(nextPayments);
     setLoans(storedLoans);
-    writeDemoJson(DEMO_PAYMENTS_KEY, storedPayments);
+    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextDayCloses);
+    setDayCloses(nextDayCloses);
+
     const rebuilt = rebuildDispatchRoutes(
       storedRoutes,
       storedAssignments,
@@ -170,7 +187,6 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
     writeDemoJson(DEMO_ROUTES_KEY, synced.routes);
     setDailyLogs(readDemoJson(DEMO_DAILY_LOGS_KEY, COLLECTOR_DAILY_LOGS_SEED));
-    setDayCloses(readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []));
     setDayExpenseDrafts(
       readDemoJson<CollectorDayExpenseDraft[]>(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),
     );
@@ -357,7 +373,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       accounts,
       miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
       dayExpenseDrafts: readDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),
-      dayCloses: readDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, []),
+      dayCloses: loadDemoDayCloses<CollectorDayCloseRecord>(),
     });
     writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, nextMovements);
 
@@ -494,7 +510,7 @@ export function CollectorShell({ session, onLogout }: Props) {
         accounts,
         miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
         dayExpenseDrafts: nextDrafts,
-        dayCloses: readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []),
+        dayCloses: loadDemoDayCloses<CollectorDayCloseRecord>(),
       }),
     );
 
@@ -536,7 +552,7 @@ export function CollectorShell({ session, onLogout }: Props) {
         dayExpenseLineMovementRef(payload.collectorRef, payload.date, line.id),
       ),
     });
-    const closes = readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []);
+    const closes = loadDemoDayCloses<CollectorDayCloseRecord>();
     const nextCloses = [record, ...closes.filter((row) => row.ref !== record.ref)];
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextCloses);
     setDayCloses(nextCloses);

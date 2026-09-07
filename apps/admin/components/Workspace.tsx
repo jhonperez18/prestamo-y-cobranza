@@ -185,6 +185,9 @@ import {
   DEMO_COLLECTOR_MONTH_CLOSES_KEY,
   loadDemoPaymentsBundle,
   loadDemoUsers,
+  loadDemoClients,
+  loadDemoDayCloses,
+  loadDemoBankMovements,
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
@@ -193,7 +196,10 @@ import {
   buildMonthCloseRecord,
   dayExpenseLineMovementRef,
   finalizeCollectorDayClose,
+  recoverPaymentsFromAssignments,
+  recoverPaymentsFromBankMovements,
   removeDayExpenseDraft,
+  synthesizeDayClosesFromAssignments,
   upsertDayExpenseDraft,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
@@ -342,7 +348,7 @@ export function Workspace({
     });
     const storedClients = normalizeAllRouteOrders(
       dedupeClientsByRef(
-        readDemoJson(DEMO_CLIENTS_KEY, CLIENTS).map((row) =>
+        loadDemoClients(CLIENTS).map((row) =>
           normalizeClientLifecycle({
             ...row,
             nickname: row.nickname ?? "",
@@ -354,9 +360,23 @@ export function Workspace({
     );
     setClients(storedClients);
     writeDemoJson(DEMO_CLIENTS_KEY, storedClients);
-    setPayments(storedPayments);
+
+    const storedMovementsEarly = loadDemoBankMovements<BankMovement>();
+    let nextPayments = recoverPaymentsFromAssignments(storedAssignments, storedPayments);
+    nextPayments = recoverPaymentsFromBankMovements(
+      storedMovementsEarly ?? [],
+      storedAssignments,
+      nextPayments,
+    );
+    const recoveredDayCloses = synthesizeDayClosesFromAssignments(
+      storedAssignments,
+      nextPayments,
+      loadDemoDayCloses<CollectorDayCloseRecord>(),
+    );
+
+    setPayments(nextPayments);
     setLoans(storedLoans);
-    writeDemoJson(DEMO_PAYMENTS_KEY, storedPayments);
+    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
     const linked = ensureCollectorsForUsers(loadDemoUsers(), storedCollectors);
     setUsers(linked.users);
     setCollectors(linked.collectors);
@@ -382,10 +402,8 @@ export function Workspace({
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
     writeDemoJson(DEMO_ROUTES_KEY, synced.routes);
     setDailyLogs(readDemoJson(DEMO_DAILY_LOGS_KEY, COLLECTOR_DAILY_LOGS_SEED));
-    const storedDayCloses = readDemoJson<CollectorDayCloseRecord[]>(
-      DEMO_COLLECTOR_DAY_CLOSES_KEY,
-      [],
-    );
+    const storedDayCloses = recoveredDayCloses;
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, storedDayCloses);
     const storedExpenseDrafts = readDemoJson<CollectorDayExpenseDraft[]>(
       DEMO_COLLECTOR_DAY_EXPENSES_KEY,
       [],
@@ -398,17 +416,18 @@ export function Workspace({
     const storedAccounts = ensureBankAccounts(
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
     );
-    const storedMovements = readDemoJson<BankMovement[] | null>(DEMO_BANK_MOVEMENTS_KEY, null);
+    const storedMovements = storedMovementsEarly;
     const storedReconciliations = readDemoJson<BankReconciliation[]>(DEMO_BANK_RECONCILIATIONS_KEY, []);
     const sidesVersion = readDemoJson<number>(DEMO_BANK_SIDES_VERSION_KEY, 1);
     const nextReconciliations =
       sidesVersion < 2 ? swapReconciliationDebitCredit(storedReconciliations) : storedReconciliations;
     // Registros: una sola sync (cobros + gastos + pagos varios), sin duplicar.
-    const nextMovementsRaw = storedMovements?.length
+    // Conserva movimientos huérfanos (cobros/gastos ya registrados aunque falte el pago).
+    const nextMovementsRaw = storedMovements.length
       ? normalizeBankMovements(storedMovements)
       : [];
     const nextMovements = syncBankLedger({
-      payments: storedPayments,
+      payments: nextPayments,
       movements: nextMovementsRaw,
       accounts: storedAccounts,
       miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
@@ -1329,7 +1348,7 @@ export function Workspace({
         dayExpenseLineMovementRef(payload.collectorRef, payload.date, line.id),
       ),
     });
-    const closes = readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []);
+    const closes = loadDemoDayCloses<CollectorDayCloseRecord>();
     const nextCloses = [record, ...closes.filter((row) => row.ref !== record.ref)];
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextCloses);
     setDayCloses(nextCloses);
@@ -3109,6 +3128,9 @@ export function Workspace({
               activities={activities}
               dailyLogs={dailyLogs}
               dailyAssignments={dailyAssignments}
+              dayCloses={dayCloses}
+              dayExpenseDrafts={dayExpenseDrafts}
+              monthCloses={monthCloses}
               collectors={collectors}
               user={openUser}
               role={linkedRole}

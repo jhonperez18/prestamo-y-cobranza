@@ -238,6 +238,15 @@
       font-weight: 700;
       font-size: 18px;
     }
+    .login-recovery-link {
+      margin: 12px 0 0;
+      text-align: center;
+      font-size: 13px;
+    }
+    .login-recovery-link a {
+      color: rgba(255, 255, 255, 0.85);
+      text-decoration: underline;
+    }
     .login-demo-hints {
       margin-top: 20px;
       padding-top: 16px;
@@ -8387,6 +8396,12 @@
       color: #5b7268;
       font-weight: 400;
       order: 5;
+    }
+    .bank-backup-actions {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
     }
     .bank-history-tabs {
       display: inline-flex;

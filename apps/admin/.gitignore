@@ -41,3 +41,8 @@ yarn-error.log*
 next-env.d.ts
 
 .vercel
+
+# recuperación local (copias Chrome / dumps)
+/scripts/_chrome_ls_copy/
+/scripts/_chrome_ls_full/
+/scripts/_recovery/
