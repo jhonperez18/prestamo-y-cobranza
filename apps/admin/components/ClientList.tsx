@@ -12,6 +12,7 @@ import {
 import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell } from "@/components/ColumnPicker";
 import { money, ROUTES, type ClientRow } from "@/lib/mock-data";
 import { clientStatusKind } from "@/lib/client-review";
+import { clientNeedsProfileCompletion } from "@/lib/profile-pending";
 import { Pill } from "@/components/ui";
 
 export const CLIENT_COLUMNS = [
@@ -246,7 +247,12 @@ export function ClientList({
     if (id === "pending") return money(row.pending);
     if (id === "routeOrder") return row.routeOrder || "—";
     if (id === "nickname") return row.nickname?.trim() || "—";
-    if (id === "status") return <Pill label={row.status} kind={clientStatusKind(row.status)} />;
+    if (id === "status") {
+      if (clientNeedsProfileCompletion(row)) {
+        return <Pill label="Completar" kind="warn" />;
+      }
+      return <Pill label={row.status} kind={clientStatusKind(row.status)} />;
+    }
     return fieldOf(row, id) || "—";
   }
 

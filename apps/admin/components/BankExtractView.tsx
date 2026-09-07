@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ColumnPicker, useColumnVisibility } from "@/components/ColumnPicker";
 import { EditMiniIcon, TrashMiniIcon } from "@/components/icons";
 import { BankSortTh, useBankMovementSort } from "@/components/BankSortTh";
@@ -104,16 +104,6 @@ export function BankExtractView({
   const closed = account ? isPeriodClosed(reconciliations, account.ref, period) : false;
   const ledgerMovements = useMemo(() => normalizeBankMovements(movements), [movements]);
   const editingRow = editingRef ? ledgerMovements.find((row) => row.ref === editingRef) : null;
-
-  useEffect(() => {
-    const changed = ledgerMovements.some((row, index) => {
-      const prev = movements[index];
-      return !prev || prev.ref !== row.ref || prev.debit !== row.debit || prev.credit !== row.credit;
-    });
-    if (changed || ledgerMovements.length !== movements.length) {
-      onMovementsChange(ledgerMovements);
-    }
-  }, [ledgerMovements, movements, onMovementsChange]);
 
   const periodRows = useMemo(() => {
     if (!account) return [];

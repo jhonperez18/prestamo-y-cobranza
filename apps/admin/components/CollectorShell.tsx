@@ -23,6 +23,7 @@ import {
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_DAILY_LOGS_KEY,
   DEMO_LOANS_KEY,
+  DEMO_MISC_PAYMENTS_KEY,
   DEMO_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
   loadDemoPaymentsBundle,
@@ -30,6 +31,7 @@ import {
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
+import { buildQuickLoan, type QuickLoanDraft } from "@/lib/street-client-loan";
 import { COLLECTOR_DAILY_LOGS_SEED, upsertDailyLogPayment } from "@/lib/collector-daily-log";
 import {
   applyPaymentToAssignments,
@@ -44,26 +46,26 @@ import {
   dayExpenseLineMovementRef,
   finalizeCollectorDayClose,
   removeDayExpenseDraft,
-  syncRouteExpensesToMovements,
   upsertDayExpenseDraft,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
+import type { MiscPayment } from "@/lib/misc-payments";
 import {
-  bankMovementsForToday,
   ensureBankAccounts,
   normalizeBankAccount,
   normalizeBankMovements,
-  syncAllPaymentsToMovements,
   type BankAccount,
   type BankMovement,
 } from "@/lib/bank";
+import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import {
   bumpMissedCollectionAlerts,
   formatCloseDayAlertSummary,
 } from "@/lib/collection-alerts";
 import { syncPermanentRoutePlanilla } from "@/lib/route-planilla";
+import { dedupeClientsByRef, normalizeAllRouteOrders } from "@/lib/client-route-order";
 import { usePlanillaDayRollover } from "@/lib/planilla-day-sync";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { isoToDispatchLabel, todayIso } from "@/lib/daily-dispatch";
@@ -136,7 +138,11 @@ export function CollectorShell({ session, onLogout }: Props) {
     const storedCollectors = readDemoJson(DEMO_COLLECTORS_KEY, COLLECTORS);
     const storedAssignments = readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []);
     const storedRoutes = readDemoJson(DEMO_ROUTES_KEY, ROUTES);
-    const storedClients = readDemoJson(DEMO_CLIENTS_KEY, CLIENTS).map(normalizeClientLifecycle);
+    const storedClients = normalizeAllRouteOrders(
+      dedupeClientsByRef(
+        readDemoJson(DEMO_CLIENTS_KEY, CLIENTS).map(normalizeClientLifecycle),
+      ),
+    );
     loadDemoUsers();
     setClients(storedClients);
     writeDemoJson(DEMO_CLIENTS_KEY, storedClients);
@@ -161,6 +167,8 @@ export function CollectorShell({ session, onLogout }: Props) {
     );
     setDailyAssignments(synced.assignments);
     setRoutes(synced.routes);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
+    writeDemoJson(DEMO_ROUTES_KEY, synced.routes);
     setDailyLogs(readDemoJson(DEMO_DAILY_LOGS_KEY, COLLECTOR_DAILY_LOGS_SEED));
     setDayCloses(readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []));
     setDayExpenseDrafts(
@@ -338,13 +346,17 @@ export function CollectorShell({ session, onLogout }: Props) {
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
     );
     writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, accounts);
-    const movements = bankMovementsForToday(
-      normalizeBankMovements(readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, [])),
-    );
     const nextPayments = [payment, ...payments];
-    const nextMovements = bankMovementsForToday(
-      syncAllPaymentsToMovements(nextPayments, movements, accounts),
-    );
+    const nextMovements = syncBankLedger({
+      payments: nextPayments,
+      movements: normalizeBankMovements(
+        readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
+      ),
+      accounts,
+      miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
+      dayExpenseDrafts: readDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),
+      dayCloses: readDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, []),
+    });
     writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, nextMovements);
 
     showToast(`Cobro ${paymentRef} guardado · sincronizado en Registros y planillas.`);
@@ -387,6 +399,43 @@ export function CollectorShell({ session, onLogout }: Props) {
     showToast(
       `Nuevo préstamo ${newRef}: capital ${money(result.created.capital)} + 20% · total ${money(result.created.total ?? 0)} · 1 mes.`,
     );
+  }
+
+  function createQuickLoanFromMobile(draft: QuickLoanDraft) {
+    const client = clients.find((row) => row.ref === draft.clientRef);
+    if (!client) {
+      showToast("Cliente no encontrado.");
+      return;
+    }
+    const loan = buildQuickLoan(draft, client, loans);
+    if (!loan) {
+      showToast("Revise capital, interés, tiempo y frecuencia.");
+      return;
+    }
+    const nextLoans = [loan, ...loans];
+    const nextClients = clients.map((entry) =>
+      entry.ref === client.ref
+        ? {
+            ...entry,
+            awaitingLoan: false,
+            total: entry.total + (loan.total ?? 0),
+            pending: entry.pending + (loan.total ?? 0),
+          }
+        : entry,
+    );
+    setLoans(nextLoans);
+    setClients(nextClients);
+    const planilla = syncPermanentRoutePlanilla(
+      todayIso(),
+      routes,
+      nextClients,
+      nextLoans,
+      collectors,
+      dailyAssignments,
+    );
+    setDailyAssignments(planilla.assignments);
+    setRoutes(planilla.routes);
+    showToast(`Préstamo ${loan.ref} creado · cuota ${money(loan.installment ?? 0)}.`);
   }
 
   function skipCollectorVisit(draft: CollectorSkipVisitDraft) {
@@ -433,19 +482,18 @@ export function CollectorShell({ session, onLogout }: Props) {
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
     );
     writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, accounts);
-    const account = accounts.find((row) => row.active) ?? accounts[0] ?? null;
-    const movements = readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []);
-    const closes = readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []);
     writeDemoJson(
       DEMO_BANK_MOVEMENTS_KEY,
-      bankMovementsForToday(
-        syncRouteExpensesToMovements(
-          nextDrafts,
-          closes,
-          normalizeBankMovements(movements),
-          account?.ref,
+      syncBankLedger({
+        payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, payments),
+        movements: normalizeBankMovements(
+          readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
         ),
-      ),
+        accounts,
+        miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
+        dayExpenseDrafts: nextDrafts,
+        dayCloses: readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []),
+      }),
     );
 
     showToast(
@@ -470,7 +518,6 @@ export function CollectorShell({ session, onLogout }: Props) {
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
     );
     writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, accounts);
-    const account = accounts.find((row) => row.active) ?? accounts[0] ?? null;
     const lines = payload.expenses.filter((row) => row.amount > 0);
 
     const record = finalizeCollectorDayClose({
@@ -500,17 +547,18 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
     setDayExpenseDrafts(nextDrafts);
 
-    const movements = readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []);
     writeDemoJson(
       DEMO_BANK_MOVEMENTS_KEY,
-      bankMovementsForToday(
-        syncRouteExpensesToMovements(
-          nextDrafts,
-          nextCloses,
-          normalizeBankMovements(movements),
-          account?.ref,
+      syncBankLedger({
+        payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, payments),
+        movements: normalizeBankMovements(
+          readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
         ),
-      ),
+        accounts,
+        miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
+        dayExpenseDrafts: nextDrafts,
+        dayCloses: nextCloses,
+      }),
     );
 
     const result = closeDispatchDay(
@@ -535,7 +583,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       `caja menor ${money(record.cashFloat)}`,
       record.expensesTotal > 0 ? `gastos ${money(record.expensesTotal)} (Haber)` : null,
       formatCloseDayAlertSummary(alertResult.alerted, alertResult.toMora),
-      !account && lines.length ? "sin cuenta banco: gastos quedan en cierre" : null,
+      !accounts.length && lines.length ? "sin cuenta banco: gastos quedan en cierre" : null,
     ].filter(Boolean);
     showToast(`Día cerrado · ${parts.join(" · ")}.`);
   }
@@ -582,6 +630,9 @@ export function CollectorShell({ session, onLogout }: Props) {
         }
         onRenewLoan={
           hasPermission(session, "cobros.registrar") ? renewCollectorLoan : undefined
+        }
+        onCreateQuickLoan={
+          hasPermission(session, "cobros.registrar") ? createQuickLoanFromMobile : undefined
         }
         onSkipVisit={
           hasPermission(session, "cobros.registrar") ? skipCollectorVisit : undefined

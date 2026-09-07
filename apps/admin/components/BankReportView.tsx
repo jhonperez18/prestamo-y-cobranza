@@ -66,6 +66,9 @@ export function BankReportView({ movements, onOpenLedger }: Props) {
     <section className="panel bank-report-panel">
       <div className="head">
         <h1>Resultado del ejercicio</h1>
+        <p className="bank-history-hint">
+          Historial contable del sistema · incluye movimientos pendientes y conciliados.
+        </p>
       </div>
 
       <div className="bank-report-wrap">

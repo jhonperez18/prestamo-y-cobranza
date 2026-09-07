@@ -9,6 +9,7 @@ import {
   countPendingForAccount,
   formatBankAmount,
   latestOpenPendingPeriod,
+  liveBalanceForAccount,
   normalizeBankAccount,
 } from "@/lib/bank";
 import { BANK_ACCOUNT_COLUMNS, BANK_ACCOUNT_DEFAULT_COLS } from "@/lib/table-columns";
@@ -35,7 +36,10 @@ export function BankAccountListView({
   );
 
   const rows = accounts.map(normalizeBankAccount);
-  const totalBalance = rows.reduce((sum, row) => sum + row.openingBalance, 0);
+  const totalBalance = rows.reduce(
+    (sum, row) => sum + liveBalanceForAccount(row, movements),
+    0,
+  );
   const showTotal = rows.length > 1;
   const colsBeforeBalance = ["ref", "name", "type", "bank", "number", "pending"].filter((id) =>
     isVisible(id),
@@ -99,6 +103,7 @@ export function BankAccountListView({
                   reconciliations,
                   account.ref,
                 );
+                const liveBalance = liveBalanceForAccount(account, movements);
 
                 return (
                   <tr key={account.ref}>
@@ -126,7 +131,7 @@ export function BankAccountListView({
                       </td>
                     ) : null}
                     {isVisible("balance") ? (
-                      <td className="money right">{formatBankAmount(account.openingBalance)}</td>
+                      <td className="money right">{formatBankAmount(liveBalance)}</td>
                     ) : null}
                     {isVisible("status") ? (
                       <td>

@@ -13,6 +13,7 @@ import { isPendingReview } from "@/lib/client-review";
 import { isColombiaHoliday, isDailyCollectionDay, weekdayLabel } from "@/lib/colombia-holidays";
 import {
   accumulatedDueForLoan,
+  loanIsCollectibleOn,
   type DailyCollectionAssignment,
   type DailyCollectionItem,
 } from "@/lib/daily-collection-plan";
@@ -20,6 +21,7 @@ import {
   isValidPlanillaAssignment,
   purgeInvalidPlanillaAssignments,
 } from "@/lib/planilla-eligibility";
+import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 import {
   catalogRoutes,
   routeIsActive,
@@ -35,6 +37,7 @@ function clientLabel(client: ClientRow) {
 }
 
 export { isValidPlanillaAssignment, purgeInvalidPlanillaAssignments } from "@/lib/planilla-eligibility";
+export { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 
 function loanItemsForClient(
   client: ClientRow,
@@ -47,10 +50,11 @@ function loanItemsForClient(
     if (isPendingReview(client)) continue;
     let { cuotaAmount, moraAmount, amountDue, oldestOverdue, alertCount } =
       accumulatedDueForLoan(loan, date);
-    // Si el cronograma no trae vencido hoy, igual cobramos la cuota diaria fija.
+    // Respaldo: si el cronograma no marca vencido hoy, cuota diaria fija (rutas ya en cobro).
     if (amountDue <= 0) {
       const cuota = Math.min(loan.installment ?? 0, loan.balance);
       if (cuota <= 0) continue;
+      if (!loanIsCollectibleOn(loan, date)) continue;
       cuotaAmount = cuota;
       moraAmount = 0;
       amountDue = cuota;
@@ -157,7 +161,7 @@ export function syncPermanentRoutePlanilla(
       .map((row) => [`${row.itemId}`, row] as const),
   );
 
-  const built: DailyCollectionAssignment[] = [];
+  const builtMap = new Map<string, DailyCollectionAssignment>();
   const at = new Date().toISOString();
 
   for (const route of owned) {
@@ -165,6 +169,38 @@ export function syncPermanentRoutePlanilla(
     if (!collector) continue;
 
     for (const client of clientsOnRouteSorted(clients, route.name)) {
+      if (client.awaitingLoan) {
+        const hasActiveLoan = loans.some(
+          (loan) =>
+            loan.clientRef === client.ref && loan.balance > 0 && loan.status !== "Anulado",
+        );
+        if (!hasActiveLoan && !isPendingReview(client)) {
+          const itemId = `${date}:${client.ref}:prestar`;
+          const base: DailyCollectionAssignment = {
+            itemId,
+            dispatchDate: date,
+            loanRef: "",
+            clientRef: client.ref,
+            clientName: clientLabel(client),
+            clientRoute: client.route,
+            address: client.address,
+            chargeDate: date,
+            amountDue: 0,
+            chargeLabel: "Completar",
+            kind: "cuota",
+            alertCount: 0,
+            collectorRef: collector.ref,
+            collector: collector.name,
+            assignedAt: at,
+            dispatched: true,
+            dispatchedAt: at,
+            visitStatus: "pendiente",
+            awaitingLoan: true,
+          };
+          builtMap.set(itemId, preserveProgress(base, previousByKey.get(itemId)));
+        }
+      }
+
       // Solo cobros reales: no inventar “visita de ruta” si el cliente no tiene cuota.
       const items = loanItemsForClient(client, loans, date);
       if (!items.length) continue;
@@ -174,10 +210,11 @@ export function syncPermanentRoutePlanilla(
           dispatched: true,
           dispatchedAt: at,
         };
-        built.push(preserveProgress(base, previousByKey.get(item.id)));
+        builtMap.set(item.id, preserveProgress(base, previousByKey.get(item.id)));
       }
     }
   }
+  const built = [...builtMap.values()];
 
   const kept = existing.filter((row) => {
     if (!isValidPlanillaAssignment(row, clients, loans)) return false;
@@ -187,13 +224,18 @@ export function syncPermanentRoutePlanilla(
     return false;
   });
 
-  const assignments = purgeInvalidPlanillaAssignments(
-    [...kept, ...built],
-    clients,
-    loans,
+  const assignments = dedupePlanillaAssignments(
+    purgeInvalidPlanillaAssignments([...kept, ...built], clients, loans),
   );
 
   let nextRoutes = routes;
+  // Actualiza conteo de clientes en rutas de catálogo (para listados / fichas).
+  nextRoutes = nextRoutes.map((row) => {
+    if (row.ref.startsWith("RUT-D-")) return row;
+    const count = clientsOnRouteSorted(clients, row.name).length;
+    return count === row.clients ? row : { ...row, clients: count };
+  });
+
   const collectorRefs = [...new Set(built.map((row) => row.collectorRef))];
   for (const collectorRef of collectorRefs) {
     const collector = collectors.find((row) => row.ref === collectorRef);

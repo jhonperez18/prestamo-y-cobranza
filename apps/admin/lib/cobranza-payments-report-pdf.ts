@@ -52,7 +52,10 @@ export function buildCobranzaPaymentsReportPdf(
     report.payments.length > 0
       ? report.payments.map((payment) => {
           const movement = report.movements.find((row) => row.ref === payment.ref)!;
-          return columns.map((col) => cobranzaPaymentReportCell(col.id, payment, movement));
+          const routeLabel = report.routeByPaymentRef[payment.ref] ?? "—";
+          return columns.map((col) =>
+            cobranzaPaymentReportCell(col.id, payment, movement, routeLabel),
+          );
         })
       : [["Sin movimientos en este periodo.", ...Array(Math.max(columns.length - 1, 0)).fill("")]];
 

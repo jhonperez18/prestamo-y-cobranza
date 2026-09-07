@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ModuleId } from "@/lib/navigation";
-import { CLIENTS, COLLECTORS, ACTIVITY, ADMIN_ROLE_REF, ASSIGNABLE_ROLES, COLLECTOR_ROLE_REF, COLLECTOR_UNASSIGNED_ZONE, DEMO_USER_PASSWORD, activeLoans, loansForClient, LOANS, money, nextClientCode, clientCreationDate, nextCollectorCode, nextLoanCode, nextPaymentCode, nextRouteCode, nextUserCode, normalizeRouteNumber, normalizeUserPermissions, PAYMENTS, roleByRef, ROLES, ROUTES, routeSlug, catalogRoutes, clientsOnRouteListed, routeIsActive, routeStatusMeta, userForCollector, USERS, type ClientRow, type CollectorRow, type LoanRow, type PaymentRow, type RouteRow, type UserRow } from "@/lib/mock-data";
+import { CLIENTS, COLLECTORS, ACTIVITY, ADMIN_ROLE_REF, ASSIGNABLE_ROLES, COLLECTOR_ROLE_REF, COLLECTOR_UNASSIGNED_ZONE, DEMO_USER_PASSWORD, activeLoans, loansForClient, LOANS, money, nextClientCode, clientCreationDate, nextCollectorCode, nextLoanCode, nextPaymentCode, nextRouteCode, nextUserCode, normalizeRouteNumber, normalizeUserPermissions, PAYMENTS, roleByRef, ROLES, ROUTES, routeSlug, catalogRoutes, clientsOnRouteListed, routeIsActive, routeStatusMeta, userForCollector, ensureCollectorsForUsers, collectorViewForUser, USERS, type ClientRow, type CollectorRow, type LoanRow, type PaymentRow, type RouteRow, type UserRow } from "@/lib/mock-data";
 import {
   CLIENT_STATUS_ACTIVE,
   CLIENT_STATUS_REVIEW,
@@ -24,6 +24,12 @@ import { UserList } from "@/components/UserList";
 import { DailyCollectionsView } from "@/components/DailyCollectionsView";
 import { TodayMovementsTable } from "@/components/TodayMovementsTable";
 import { buildHomeDashboard } from "@/lib/home-dashboard";
+import {
+  buildQuickLoan,
+  buildStreetClient,
+  insertStreetClient,
+  type QuickLoanDraft,
+} from "@/lib/street-client-loan";
 import {
   isoToDispatchLabel,
   isoToDispatchToken,
@@ -130,6 +136,7 @@ import {
   type CollectorPaymentDraft,
 } from "@/lib/route-sync";
 import {
+  dedupeClientsByRef,
   migrateLegacyRouteName,
   normalizeAllRouteOrders,
   placeClientOnRoute,
@@ -150,17 +157,13 @@ import {
   normalizeBankAccount,
   normalizeBankMovements,
   ensureBankAccounts,
-  bankMovementsForToday,
-  repairMiscPaymentLinks,
   swapReconciliationDebitCredit,
-  syncAllPaymentsToMovements,
-  syncMiscPaymentsToMovements,
-  syncPaymentsToMovements,
   type BankAccount,
   type BankLedgerKind,
   type BankMovement,
   type BankReconciliation,
 } from "@/lib/bank";
+import { applyBankLedgerSync, syncBankLedger } from "@/lib/bank-ledger-sync";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement, miscPaymentRefForMovement } from "@/lib/misc-payments";
 import {
@@ -191,7 +194,6 @@ import {
   dayExpenseLineMovementRef,
   finalizeCollectorDayClose,
   removeDayExpenseDraft,
-  syncRouteExpensesToMovements,
   upsertDayExpenseDraft,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
@@ -310,6 +312,7 @@ export function Workspace({
   const [bankPeriod, setBankPeriod] = useState(currentPeriod());
   const [bankAccountRef, setBankAccountRef] = useState("");
   const [bankLedgerPeriod, setBankLedgerPeriod] = useState<string | null>(null);
+  const [bankRecordsAccountRef, setBankRecordsAccountRef] = useState<string | null>(null);
   const bankLedgerFromReportRef = useRef(false);
   const [openBankMovementRef, setOpenBankMovementRef] = useState("");
   const [bankExpenseReturn, setBankExpenseReturn] = useState<{ moduleId: ModuleId; viewId: string } | null>(
@@ -338,26 +341,31 @@ export function Workspace({
       };
     });
     const storedClients = normalizeAllRouteOrders(
-      readDemoJson(DEMO_CLIENTS_KEY, CLIENTS).map((row) =>
-        normalizeClientLifecycle({
-          ...row,
-          nickname: row.nickname ?? "",
-          routeOrder: Number(row.routeOrder) || 0,
-          route: migrateLegacyRouteName(row.route),
-        }),
+      dedupeClientsByRef(
+        readDemoJson(DEMO_CLIENTS_KEY, CLIENTS).map((row) =>
+          normalizeClientLifecycle({
+            ...row,
+            nickname: row.nickname ?? "",
+            routeOrder: Number(row.routeOrder) || 0,
+            route: migrateLegacyRouteName(row.route),
+          }),
+        ),
       ),
     );
-    setUsers(loadDemoUsers());
     setClients(storedClients);
     writeDemoJson(DEMO_CLIENTS_KEY, storedClients);
-    setCollectors(storedCollectors);
     setPayments(storedPayments);
     setLoans(storedLoans);
     writeDemoJson(DEMO_PAYMENTS_KEY, storedPayments);
+    const linked = ensureCollectorsForUsers(loadDemoUsers(), storedCollectors);
+    setUsers(linked.users);
+    setCollectors(linked.collectors);
+    writeDemoJson(DEMO_USERS_KEY, linked.users);
+    writeDemoJson(DEMO_COLLECTORS_KEY, linked.collectors);
     const rebuilt = rebuildDispatchRoutes(
       storedRoutes,
       storedAssignments,
-      storedCollectors,
+      linked.collectors,
       storedLoans,
       storedClients,
     );
@@ -366,11 +374,13 @@ export function Workspace({
       rebuilt,
       storedClients,
       storedLoans,
-      storedCollectors,
+      linked.collectors,
       storedAssignments,
     );
     setRoutes(synced.routes);
     setDailyAssignments(synced.assignments);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
+    writeDemoJson(DEMO_ROUTES_KEY, synced.routes);
     setDailyLogs(readDemoJson(DEMO_DAILY_LOGS_KEY, COLLECTOR_DAILY_LOGS_SEED));
     const storedDayCloses = readDemoJson<CollectorDayCloseRecord[]>(
       DEMO_COLLECTOR_DAY_CLOSES_KEY,
@@ -393,19 +403,18 @@ export function Workspace({
     const sidesVersion = readDemoJson<number>(DEMO_BANK_SIDES_VERSION_KEY, 1);
     const nextReconciliations =
       sidesVersion < 2 ? swapReconciliationDebitCredit(storedReconciliations) : storedReconciliations;
-    // Registros: cobros + gastos de ruta del día (misma fuente que la app).
+    // Registros: una sola sync (cobros + gastos + pagos varios), sin duplicar.
     const nextMovementsRaw = storedMovements?.length
       ? normalizeBankMovements(storedMovements)
       : [];
-    const account = storedAccounts.find((row) => row.active) ?? storedAccounts[0] ?? null;
-    const nextMovements = bankMovementsForToday(
-      syncRouteExpensesToMovements(
-        storedExpenseDrafts,
-        storedDayCloses,
-        syncAllPaymentsToMovements(storedPayments, nextMovementsRaw, storedAccounts),
-        account?.ref,
-      ),
-    );
+    const nextMovements = syncBankLedger({
+      payments: storedPayments,
+      movements: nextMovementsRaw,
+      accounts: storedAccounts,
+      miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
+      dayExpenseDrafts: storedExpenseDrafts,
+      dayCloses: storedDayCloses,
+    });
     setBankAccounts(storedAccounts);
     setBankMovements(nextMovements);
     setBankReconciliations(nextReconciliations);
@@ -444,44 +453,19 @@ export function Workspace({
     }
   }, [moduleId, viewId]);
 
+  // Una sola sincronización banco ← cobros / gastos / pagos varios (idempotente).
   useEffect(() => {
     if (!demoHydrated) return;
     setBankMovements((rows) =>
-      bankMovementsForToday(
-        normalizeBankMovements(
-          syncMiscPaymentsToMovements(miscPayments, repairMiscPaymentLinks(miscPayments, rows)),
-        ),
-      ),
+      applyBankLedgerSync(rows, {
+        payments,
+        accounts: bankAccounts,
+        miscPayments,
+        dayExpenseDrafts,
+        dayCloses,
+      }),
     );
-  }, [miscPayments, demoHydrated]);
-
-  // Siempre regenera Registros de hoy desde cobros + gastos (app y banco en línea).
-  useEffect(() => {
-    if (!demoHydrated) return;
-    const accounts = ensureBankAccounts(bankAccounts);
-    const account = accounts.find((row) => row.active) ?? accounts[0] ?? null;
-    if (!account) return;
-    setBankMovements((rows) =>
-      bankMovementsForToday(
-        syncRouteExpensesToMovements(
-          dayExpenseDrafts,
-          dayCloses,
-          syncAllPaymentsToMovements(payments, rows, accounts),
-          account.ref,
-        ),
-      ),
-    );
-  }, [demoHydrated, payments, dayExpenseDrafts, dayCloses, bankAccounts]);
-
-  // Purga movimientos de días anteriores (Registros = solo hoy).
-  useEffect(() => {
-    if (!demoHydrated) return;
-    setBankMovements((rows) => {
-      const onlyToday = bankMovementsForToday(rows);
-      if (onlyToday.length === rows.length) return rows;
-      return onlyToday;
-    });
-  }, [demoHydrated]);
+  }, [demoHydrated, payments, dayExpenseDrafts, dayCloses, bankAccounts, miscPayments]);
 
   useEffect(() => {
     if (!demoHydrated) return;
@@ -525,7 +509,7 @@ export function Workspace({
 
   useEffect(() => {
     if (!demoHydrated) return;
-    const alerts = buildAlerts(pendingReviewClients(clients).length, loans);
+    const alerts = buildAlerts(pendingReviewClients(clients).length, loans, clients);
     onNavBadges?.({
       ...clientNavBadges(clients),
       "inicio:alertas": alerts.length > 0 ? String(alerts.length) : undefined,
@@ -568,39 +552,6 @@ export function Workspace({
   }, [miscPayments, demoHydrated]);
 
   useEffect(() => {
-    if (!demoHydrated || moduleId !== "banco") return;
-
-    if (viewId === "registros" || viewId === "informe-gastos" || viewId === "informe-ingresos") {
-      const account = bankAccounts.find((row) => row.active) ?? bankAccounts[0] ?? null;
-      setBankMovements((rows) =>
-        bankMovementsForToday(
-          syncRouteExpensesToMovements(
-            dayExpenseDrafts,
-            dayCloses,
-            syncAllPaymentsToMovements(payments, rows, bankAccounts),
-            account?.ref,
-          ),
-        ),
-      );
-      return;
-    }
-
-    if (viewId !== "extracto" && viewId !== "extracto-pendiente") return;
-    if (!bankAccountRef) return;
-    setBankMovements((rows) => syncPaymentsToMovements(payments, rows, bankAccountRef, bankPeriod));
-  }, [
-    demoHydrated,
-    moduleId,
-    viewId,
-    payments,
-    bankAccountRef,
-    bankPeriod,
-    bankAccounts,
-    dayExpenseDrafts,
-    dayCloses,
-  ]);
-
-  useEffect(() => {
     if (
       moduleId === "banco" &&
       (viewId === "informe-ingresos" || viewId === "informe-gastos") &&
@@ -620,11 +571,12 @@ export function Workspace({
     setPayMode(null);
   }
 
-  const openClient = clients.find((row) => row.ref === openRef) ?? clients[0] ?? null;
-  const rawOpenLoan = loans.find((row) => row.ref === openLoanRef) ?? loans[0] ?? null;
+  const openClient = clients.find((row) => row.ref === openRef) ?? null;
+  const rawOpenLoan = loans.find((row) => row.ref === openLoanRef) ?? null;
   const openLoan = rawOpenLoan ? (syncLoan(rawOpenLoan, payments) as LoanRow) : null;
-  const openUser = users.find((row) => row.ref === openUserRef) ?? users[0] ?? null;
-  const openCollector = collectors.find((row) => row.ref === openCollectorRef) ?? collectors[0] ?? null;
+  const openUser = users.find((row) => row.ref === openUserRef) ?? null;
+  /** Cobrador de la ficha: siempre el del usuario abierto (sin cruzar con otro). */
+  const openCollector = openUser ? collectorViewForUser(openUser, collectors) : null;
   const catalogRouteList = catalogRoutes(routes);
   const openRoute = catalogRouteList.find((row) => row.ref === openRouteRef) ?? null;
   const activeCatalogRoutes = catalogRouteList.filter(routeIsActive);
@@ -785,12 +737,37 @@ export function Workspace({
   }
 
   function openUserFicha(userRef: string, tab: CollectorTab | UserTab = "ficha") {
-    setOpenUserRef(userRef);
-    const user = users.find((row) => row.ref === userRef);
-    if (user?.collectorRef) {
-      setOpenCollectorRef(user.collectorRef);
+    const wanted = String(userRef ?? "").trim();
+    let user = users.find((row) => row.ref === wanted);
+    if (!user) {
+      onToast("Usuario no encontrado.");
+      return;
+    }
+
+    let collectorRows = collectors;
+    // Si es cobrador sin COB válido, reparar antes de abrir la ficha.
+    if (user.roleRef === COLLECTOR_ROLE_REF && !collectorViewForUser(user, collectors)) {
+      const repaired = ensureCollectorsForUsers(users, collectors);
+      setUsers(repaired.users);
+      setCollectors(repaired.collectors);
+      collectorRows = repaired.collectors;
+      user = repaired.users.find((row) => row.ref === wanted) ?? user;
+    }
+
+    setOpenUserRef(user.ref);
+    const linkedCollector = collectorViewForUser(user, collectorRows);
+    if (linkedCollector) {
+      setOpenCollectorRef(linkedCollector.ref);
       setCollectorTab(tab as CollectorTab);
+      if (user.collectorRef !== linkedCollector.ref) {
+        setUsers((current) =>
+          current.map((row) =>
+            row.ref === user!.ref ? { ...row, collectorRef: linkedCollector.ref } : row,
+          ),
+        );
+      }
     } else {
+      setOpenCollectorRef("");
       setUserTab(tab === "acceso" ? "acceso" : "ficha");
     }
     setConfirmUserDelete(false);
@@ -803,6 +780,12 @@ export function Workspace({
       openUserFicha(linked.ref, tab);
       return;
     }
+    const collector = collectors.find((row) => row.ref === collectorRef);
+    if (!collector) {
+      onToast("Cobrador no encontrado.");
+      return;
+    }
+    setOpenUserRef("");
     setOpenCollectorRef(collectorRef);
     setCollectorTab(tab);
     onGo("inicio", "ficha-usuario");
@@ -839,6 +822,15 @@ export function Workspace({
   function saveEdit(draft: ClientDraft) {
     if (!openClient) return;
     const approving = isPendingReview(openClient);
+    const doc = draft.document.trim();
+    const hasRealDoc = Boolean(doc) && !doc.toUpperCase().startsWith("S/");
+    const hasContactOrPlace = Boolean(
+      openClient.phone?.trim() ||
+        draft.address.trim() ||
+        draft.city.trim() ||
+        draft.barrio.trim(),
+    );
+    const profileComplete = hasRealDoc && hasContactOrPlace;
     const updated: ClientRow = {
       ...openClient,
       name: draft.name,
@@ -851,24 +843,42 @@ export function Workspace({
       address: draft.address,
       notes: draft.notes,
       photo: draft.photo,
+      profilePending: profileComplete ? false : openClient.profilePending,
       ...(approving
         ? { status: CLIENT_STATUS_ACTIVE, kind: clientStatusKind(CLIENT_STATUS_ACTIVE) }
         : {}),
     };
-    setClients((current) =>
-      placeClientOnRoute(current, updated, draft.route, draft.routeOrder),
+    const nextClients = placeClientOnRoute(clients, updated, draft.route, draft.routeOrder);
+    setClients(nextClients);
+    const synced = syncPermanentRoutePlanilla(
+      todayIso(),
+      routes,
+      nextClients,
+      loans,
+      collectors,
+      dailyAssignments,
     );
+    setRoutes(synced.routes);
+    setDailyAssignments(synced.assignments);
     if (approving) {
       onGo("clientes", "listado");
-      onToast("Cliente aprobado y agregado al listado.");
+      onToast(
+        draft.route
+          ? `Cliente aprobado en ruta ${draft.route} y cargado a la planilla.`
+          : "Cliente aprobado y agregado al listado.",
+      );
       return;
     }
     onGo("clientes", "ficha");
-    onToast("Cliente actualizado.");
+    onToast(
+      updated.profilePending
+        ? "Cliente actualizado. Aún faltan datos de ficha (alerta activa)."
+        : "Cliente actualizado.",
+    );
   }
 
   function saveNew(draft: ClientDraft) {
-    const ref = nextClientCode(clients.length);
+    const ref = nextClientCode(clients);
     const review = canApproveClient
       ? { status: CLIENT_STATUS_ACTIVE, kind: clientStatusKind(CLIENT_STATUS_ACTIVE) }
       : { status: CLIENT_STATUS_REVIEW, kind: clientStatusKind(CLIENT_STATUS_REVIEW) };
@@ -894,11 +904,11 @@ export function Workspace({
       kind: review.kind,
       createdBy: sessionUser?.name,
     };
-    setClients((current) =>
+    const nextClients =
       review.status === CLIENT_STATUS_REVIEW
-        ? [...current, row]
-        : placeClientOnRoute(current, row, draft.route, draft.routeOrder),
-    );
+        ? [...clients, row]
+        : placeClientOnRoute(clients, row, draft.route, draft.routeOrder);
+    setClients(nextClients);
     setOpenRef(ref);
     setFileTab("ficha");
     if (review.status === CLIENT_STATUS_REVIEW) {
@@ -906,6 +916,16 @@ export function Workspace({
       onToast("Enviado a revisión. Aún no es cliente de ruta ni cobros.");
       return;
     }
+    const synced = syncPermanentRoutePlanilla(
+      todayIso(),
+      routes,
+      nextClients,
+      loans,
+      collectors,
+      dailyAssignments,
+    );
+    setRoutes(synced.routes);
+    setDailyAssignments(synced.assignments);
     onGo("clientes", "ficha");
     onToast(`Cliente creado en ruta ${draft.route}, posición ${draft.routeOrder}.`);
   }
@@ -1024,6 +1044,7 @@ export function Workspace({
                 total: draft.total,
                 installment: draft.installment,
                 schedule: draft.schedule,
+                termsPending: false,
               },
               payments,
             ) as LoanRow)
@@ -1042,7 +1063,11 @@ export function Workspace({
       ),
     );
     onGo("prestamos", "cuenta");
-    onToast("Préstamo actualizado.");
+    onToast(
+      openLoan.termsPending
+        ? "Préstamo actualizado. Ya no aparece en alertas de revisión."
+        : "Préstamo actualizado.",
+    );
   }
 
   function openRouteEdit(ref: string) {
@@ -1113,6 +1138,10 @@ export function Workspace({
       onToast("Indique un número de ruta válido.");
       return;
     }
+    if (catalogRouteList.some((row) => row.name === name)) {
+      onToast(`Ya existe la ruta ${name}. Asígnele cobrador o clientes a esa ruta.`);
+      return;
+    }
     const ref = nextRouteCode(catalogRouteList);
     const row: RouteRow = {
       ref,
@@ -1130,7 +1159,7 @@ export function Workspace({
     };
     setRoutes((current) => [...current, row]);
     onGo("inicio", "lista");
-    onToast(`Ruta ${name} creada. Asígnela a clientes al darlos de alta.`);
+    onToast(`Ruta ${name} creada. Asígnela a un cobrador para que aparezca en la app.`);
   }
 
   function assignRouteCollector(routeRef: string, collectorRef: string) {
@@ -1151,10 +1180,10 @@ export function Workspace({
     );
     setRoutes(synced.routes);
     setDailyAssignments(synced.assignments);
-    const route = catalogRouteList.find((row) => row.ref === routeRef);
+    const route = synced.routes.find((row) => row.ref === routeRef) ?? catalogRouteList.find((row) => row.ref === routeRef);
     onToast(
       collector
-        ? `Ruta ${route?.name ?? ""} asignada a ${collector.name}. Queda fija hasta modificarla.`
+        ? `Ruta ${route?.name ?? ""} asignada a ${collector.name}. Ya aparece en supervisor y app.`
         : `Ruta ${route?.name ?? ""} sin cobrador.`,
     );
   }
@@ -1252,11 +1281,14 @@ export function Workspace({
 
     const accounts = ensureBankAccounts(bankAccounts);
     if (!bankAccounts.length) setBankAccounts(accounts);
-    const account = accounts.find((row) => row.active) ?? accounts[0] ?? null;
     setBankMovements((rows) =>
-      bankMovementsForToday(
-        syncRouteExpensesToMovements(nextDrafts, dayCloses, rows, account?.ref),
-      ),
+      applyBankLedgerSync(rows, {
+        payments,
+        accounts,
+        miscPayments,
+        dayExpenseDrafts: nextDrafts,
+        dayCloses,
+      }),
     );
 
     onToast(
@@ -1280,7 +1312,6 @@ export function Workspace({
     const lines = payload.expenses.filter((row) => row.amount > 0);
     const accounts = ensureBankAccounts(bankAccounts);
     if (!bankAccounts.length) setBankAccounts(accounts);
-    const account = accounts.find((row) => row.active) ?? accounts[0] ?? null;
 
     const record = finalizeCollectorDayClose({
       draft: {
@@ -1310,9 +1341,13 @@ export function Workspace({
     setDayExpenseDrafts(nextDrafts);
 
     setBankMovements((rows) =>
-      bankMovementsForToday(
-        syncRouteExpensesToMovements(nextDrafts, nextCloses, rows, account?.ref),
-      ),
+      applyBankLedgerSync(rows, {
+        payments,
+        accounts,
+        miscPayments,
+        dayExpenseDrafts: nextDrafts,
+        dayCloses: nextCloses,
+      }),
     );
 
     const result = closeDispatchDay(
@@ -1449,7 +1484,13 @@ export function Workspace({
         ),
       );
       setBankMovements((rows) =>
-        bankMovementsForToday(syncAllPaymentsToMovements(nextPayments, rows, bankAccounts)),
+        applyBankLedgerSync(rows, {
+          payments: nextPayments,
+          accounts: bankAccounts,
+          miscPayments,
+          dayExpenseDrafts,
+          dayCloses,
+        }),
       );
       return nextPayments;
     });
@@ -1533,18 +1574,95 @@ export function Workspace({
     );
   }
 
-  function toggleCollectorActive() {
-    if (!openCollector) return;
-    const nextActive = !openCollector.active;
-    setCollectors((current) =>
-      current.map((row) =>
-        row.ref === openCollector.ref ? { ...row, active: nextActive } : row,
-      ),
+  function createStreetClientFromMobile(draft: {
+    name: string;
+    lastName?: string;
+    phone?: string;
+    routeOrder: number;
+    routeName: string;
+    routeRef: string;
+  }) {
+    const row = buildStreetClient(
+      {
+        name: draft.name,
+        lastName: draft.lastName,
+        phone: draft.phone,
+        routeOrder: draft.routeOrder,
+        routeName: draft.routeName,
+        createdBy: sessionUser?.name ?? "Supervisor",
+      },
+      clients,
     );
-    const linked = userForCollector(openCollector.ref, users);
-    if (linked) {
+    const nextClients = insertStreetClient(clients, row);
+    setClients(nextClients);
+    const planilla = syncPermanentRoutePlanilla(
+      todayIso(),
+      routes,
+      nextClients,
+      loans,
+      collectors,
+      dailyAssignments,
+    );
+    setDailyAssignments(planilla.assignments);
+    setRoutes(planilla.routes);
+    onToast(
+      `Cliente ${row.name} en ruta ${draft.routeName}, posición ${row.routeOrder}: listo para prestar.`,
+    );
+  }
+
+  function createQuickLoanFromMobile(draft: QuickLoanDraft) {
+    const client = clients.find((row) => row.ref === draft.clientRef);
+    if (!client) {
+      onToast("Cliente no encontrado.");
+      return;
+    }
+    const loan = buildQuickLoan(draft, client, loans);
+    if (!loan) {
+      onToast("Revise capital, interés, tiempo y frecuencia.");
+      return;
+    }
+    const nextLoans = [loan, ...loans];
+    const targetRoute = (draft.routeName ?? client.route).trim() || client.route;
+    const nextClients = clients.map((entry) =>
+      entry.ref === client.ref
+        ? {
+            ...entry,
+            awaitingLoan: false,
+            status: CLIENT_STATUS_ACTIVE,
+            kind: clientStatusKind(CLIENT_STATUS_ACTIVE),
+            route: targetRoute,
+            total: entry.total + (loan.total ?? 0),
+            pending: entry.pending + (loan.total ?? 0),
+          }
+        : entry,
+    );
+    setLoans(nextLoans);
+    setClients(nextClients);
+    const planilla = syncPermanentRoutePlanilla(
+      todayIso(),
+      routes,
+      nextClients,
+      nextLoans,
+      collectors,
+      dailyAssignments,
+    );
+    setDailyAssignments(planilla.assignments);
+    setRoutes(planilla.routes);
+    onToast(`Préstamo ${loan.ref} creado · cuota ${money(loan.installment ?? 0)}.`);
+  }
+
+  function toggleCollectorActive() {
+    const collectorRef = openUser?.collectorRef;
+    if (!collectorRef) return;
+    const collector = collectors.find((row) => row.ref === collectorRef);
+    if (!collector) return;
+    const nextActive = !collector.active;
+    setCollectors((current) =>
+      current.map((row) => (row.ref === collectorRef ? { ...row, active: nextActive } : row)),
+    );
+    if (openUser) {
       setUsers((current) =>
-        current.map((row) => (row.ref === linked.ref ? { ...row, active: nextActive } : row)),
+        current.map((row) => (row.ref === openUser.ref ? { ...row, active: nextActive } : row)),
       );
     }
     setConfirmUserDelete(false);
@@ -1565,14 +1683,23 @@ export function Workspace({
 
     setUsers(remaining);
     if (collectorRef) {
-      setCollectors((current) => current.filter((row) => row.ref !== collectorRef));
-      setRoutes((current) =>
-        current.map((route) =>
-          route.collectorRef === collectorRef
-            ? { ...route, collectorRef: "", collector: "Sin asignar" }
-            : route,
-        ),
+      const nextCollectors = collectors.filter((row) => row.ref !== collectorRef);
+      const nextRoutes = routes.map((route) =>
+        route.collectorRef === collectorRef
+          ? { ...route, collectorRef: "", collector: "—" }
+          : route,
       );
+      setCollectors(nextCollectors);
+      const synced = syncPermanentRoutePlanilla(
+        todayIso(),
+        nextRoutes,
+        clients,
+        loans,
+        nextCollectors,
+        dailyAssignments,
+      );
+      setRoutes(synced.routes);
+      setDailyAssignments(synced.assignments);
     }
     setOpenUserRef(remaining[0]?.ref ?? "");
     setConfirmUserDelete(false);
@@ -1649,43 +1776,57 @@ export function Workspace({
       onToast("El administrador no se asigna como cobrador.");
       return;
     }
-    if (user.collectorRef) {
-      openUserFicha(userRef);
-      return;
-    }
     if (!user.active) {
       onToast("Activa el usuario antes de asignarlo como cobrador.");
       return;
     }
 
-    const cobRef = nextCollectorCode(collectors);
-    const collector: CollectorRow = {
-      ref: cobRef,
-      name: user.name,
-      zone: COLLECTOR_UNASSIGNED_ZONE,
-      phone: user.phone,
-      document: user.document,
-      active: true,
-      userRef: user.ref,
-      login: user.login,
-      mobileAccess: true,
-    };
+    const existing = collectorViewForUser(user, collectors);
+    if (existing) {
+      setUsers((current) =>
+        current.map((row) =>
+          row.ref === userRef
+            ? {
+                ...row,
+                roleRef: COLLECTOR_ROLE_REF,
+                collectorRef: existing.ref,
+                channels: row.channels.includes("mobile")
+                  ? row.channels
+                  : [...row.channels, "mobile"],
+              }
+            : row,
+        ),
+      );
+      onToast(`Cobrador ${existing.ref} vinculado a ${user.name}.`);
+      openUserFicha(userRef);
+      return;
+    }
 
-    setCollectors((current) => [...current, collector]);
-    setUsers((current) =>
-      current.map((row) =>
+    const repaired = ensureCollectorsForUsers(
+      users.map((row) =>
         row.ref === userRef
           ? {
               ...row,
               roleRef: COLLECTOR_ROLE_REF,
-              collectorRef: cobRef,
-              channels: ["mobile"],
-              permissions: [...(roleByRef(COLLECTOR_ROLE_REF, ROLES)?.permissions ?? [])],
+              channels: row.channels.includes("mobile")
+                ? row.channels
+                : [...row.channels, "mobile"],
+              permissions: row.permissions?.length
+                ? row.permissions
+                : [...(roleByRef(COLLECTOR_ROLE_REF, ROLES)?.permissions ?? [])],
             }
           : row,
       ),
+      collectors,
     );
-    onToast(`${user.name} asignado como cobrador ${cobRef}. Ya puede ingresar al celular.`);
+    setUsers(repaired.users);
+    setCollectors(repaired.collectors);
+    const linked = repaired.users.find((row) => row.ref === userRef);
+    onToast(
+      linked?.collectorRef
+        ? `${user.name} listo como cobrador ${linked.collectorRef}. Ya puede entrar al celular.`
+        : `${user.name} preparado como cobrador.`,
+    );
     openUserFicha(userRef);
   }
 
@@ -2023,7 +2164,7 @@ export function Workspace({
     }
 
     if (key === "inicio:alertas") {
-      const alerts = buildAlerts(pendingReviewClients(clients).length, loans);
+      const alerts = buildAlerts(pendingReviewClients(clients).length, loans, clients);
       return (
         <section className="panel">
           <div className="head">
@@ -2106,7 +2247,7 @@ export function Workspace({
             <h1>Nuevo cliente</h1>
           </div>
           <NewClientForm
-            code={nextClientCode(clients.length)}
+            code={nextClientCode(clients)}
             routes={activeCatalogRoutes}
             clients={clients}
             onCancel={() => onGo("clientes", "listado")}
@@ -2770,6 +2911,8 @@ export function Workspace({
           kind={viewId === "abonos" ? "abonos" : "pagos"}
           payments={payments}
           loans={loans}
+          clients={clients}
+          routes={routes}
           collectors={collectorNames}
           assignments={dailyAssignments}
           initialRange={pagosTodayRange}
@@ -2907,9 +3050,7 @@ export function Workspace({
           </section>
         );
       }
-      const linkedCollector = openUser.collectorRef
-        ? collectors.find((row) => row.ref === openUser.collectorRef) ?? openCollector
-        : null;
+      const linkedCollector = openUser ? collectorViewForUser(openUser, collectors) : null;
       return (
         <section className="panel">
           <EditUserForm
@@ -2934,9 +3075,8 @@ export function Workspace({
           </section>
         );
       }
-      if (openUser.collectorRef) {
-        const collector =
-          collectors.find((row) => row.ref === openUser.collectorRef) ?? openCollector;
+      if (openUser.collectorRef || openUser.roleRef === COLLECTOR_ROLE_REF) {
+        const collector = collectorViewForUser(openUser, collectors);
         if (collector) {
           const linkedRole = roleByRef(openUser.roleRef, ROLES);
           return (
@@ -2957,6 +3097,7 @@ export function Workspace({
                 </span>
               </div>
               <CollectorFicha
+              key={openUser.ref}
               collector={collector}
               tab={collectorTab}
               routes={routes}
@@ -2981,6 +3122,28 @@ export function Workspace({
             </>
         );
         }
+        // Usuario cobrador sin fila de cobrador válida: no mostrar otro cobrador.
+        const role = roleByRef(openUser.roleRef, ROLES);
+        const deleteGuard = userDeleteGuard(openUser, routes, payments, activities, collectors);
+        return (
+          <UserFicha
+            key={openUser.ref}
+            user={openUser}
+            role={role}
+            tab={userTab}
+            deleteGuard={deleteGuard}
+            confirmDelete={confirmUserDelete}
+            onTab={goUserTab}
+            onEdit={() => onGo("inicio", "editar-usuario")}
+            onToggleActive={toggleUserActive}
+            onConfirmDelete={setConfirmUserDelete}
+            onDelete={deleteUser}
+            onConvertToCollector={
+              openUser.active ? () => convertUserToCollector(openUser.ref) : undefined
+            }
+            onSavePermissions={(permissions) => saveUserPermissions(openUser.ref, permissions)}
+          />
+        );
       }
       const role = roleByRef(openUser.roleRef, ROLES);
       const deleteGuard = userDeleteGuard(openUser, routes, payments, activities, collectors);
@@ -3030,26 +3193,50 @@ export function Workspace({
       );
     }
 
-    if (
-      moduleId === "banco" &&
-      (viewId === "extractos" || viewId === "extracto" || viewId === "extracto-pendiente")
-    ) {
+    if (moduleId === "banco" && viewId === "extractos") {
       return (
-        <section className="panel">
-          <div className="head">
-            <h1>Extracto retirado</h1>
-          </div>
-          <p className="ficha-empty">
-            El extracto ya no se usa. Los movimientos del día están en <strong>Registros</strong>.
-          </p>
-          <button
-            type="button"
-            className="btn compact primary"
-            onClick={() => onGo("banco", "registros")}
-          >
-            Ir a Registros
-          </button>
-        </section>
+        <BankExtractsListView
+          accounts={bankAccounts}
+          accountRef={bankAccountRef}
+          movements={bankMovements}
+          reconciliations={bankReconciliations}
+          onAccountChange={setBankAccountRef}
+          onMovementsChange={setBankMovements}
+          onReconciliationsChange={setBankReconciliations}
+          onOpenExtract={(accountRef, period) => {
+            setBankAccountRef(accountRef);
+            setBankPeriod(period);
+            onGo("banco", "extracto");
+          }}
+          onToast={onToast}
+        />
+      );
+    }
+
+    if (moduleId === "banco" && (viewId === "extracto" || viewId === "extracto-pendiente")) {
+      return (
+        <BankExtractView
+          accounts={bankAccounts}
+          accountRef={bankAccountRef}
+          period={bankPeriod}
+          movements={bankMovements}
+          reconciliations={bankReconciliations}
+          payments={payments}
+          miscPayments={miscPayments}
+          onAccountChange={setBankAccountRef}
+          onPeriodChange={setBankPeriod}
+          onMovementsChange={setBankMovements}
+          onReconciliationsChange={setBankReconciliations}
+          onOpenMiscPayment={(ref) =>
+            openMiscPaymentFicha(ref, { moduleId: "banco", viewId })
+          }
+          onOpenPaymentFicha={(ref) =>
+            openPaymentFicha(ref, "pagos", { moduleId: "banco", viewId })
+          }
+          onOpenExpense={(row) => openExpenseFromMovement(row, { moduleId: "banco", viewId })}
+          onToast={onToast}
+          filterMode={viewId === "extracto-pendiente" ? "pending" : "all"}
+        />
       );
     }
 
@@ -3058,13 +3245,22 @@ export function Workspace({
         <BankRecordsHistoryView
           accounts={bankAccounts}
           movements={bankMovements}
-          onOpenPeriod={() => onGo("banco", "registros")}
+          reconciliations={bankReconciliations}
+          initialAccountRef={bankRecordsAccountRef}
+          onMovementsChange={setBankMovements}
+          onReconciliationsChange={setBankReconciliations}
+          onOpenPeriod={(accountRef, period) => {
+            setBankAccountRef(accountRef);
+            setBankPeriod(period);
+            onGo("banco", "extracto");
+          }}
           onOpenPaymentFicha={(ref) =>
             openPaymentFicha(ref, "pagos", { moduleId: "banco", viewId: "registros" })
           }
           onOpenExpense={(row) =>
             openExpenseFromMovement(row, { moduleId: "banco", viewId: "registros" })
           }
+          onToast={onToast}
         />
       );
     }
@@ -3076,7 +3272,12 @@ export function Workspace({
           movements={bankMovements}
           reconciliations={bankReconciliations}
           onNewAccount={() => onGo("banco", "nueva-cuenta")}
-          onOpenPending={() => onGo("banco", "registros")}
+          onOpenPending={(accountRef, period) => {
+            if (accountRef) setBankRecordsAccountRef(accountRef);
+            if (accountRef) setBankAccountRef(accountRef);
+            if (period) setBankPeriod(period);
+            onGo("banco", "registros");
+          }}
         />
       );
     }
@@ -3173,11 +3374,25 @@ export function Workspace({
     }
 
     if (moduleId === "reportes") {
+      if (viewId === "diarios") {
+        return (
+          <CobranzaPaymentsView
+            kind="pagos"
+            payments={payments}
+            loans={loans}
+            clients={clients}
+            routes={routes}
+            collectors={[...new Set(collectors.map((row) => row.name))].sort((a, b) =>
+              a.localeCompare(b, "es"),
+            )}
+            assignments={dailyAssignments}
+            onOpenPayment={(ref) =>
+              openPaymentFicha(ref, "pagos", { moduleId: "reportes", viewId: "diarios" })
+            }
+          />
+        );
+      }
       const reportCopy: Record<string, { purpose: string; later: string }> = {
-        diarios: {
-          purpose: "Informe formal de lo recaudado por día (totales, métodos de pago, cobradores).",
-          later: "Distinto de Cobranza → Cobros del día: aquí será consulta SQL + exportación.",
-        },
         "por-cobrador": {
           purpose: "Informe de rendimiento y recaudo por cobrador en un rango de fechas.",
           later: "Distinto de Cartera → Por cobrador (vista operativa). Este es el reporte imprimible.",
@@ -3261,6 +3476,8 @@ export function Workspace({
           onSaveExpenses={saveCollectorExpensesFromMobile}
           onCloseDay={closeCollectorDayFromMobile}
           onCloseMonth={closeCollectorMonthFromMobile}
+          onCreateStreetClient={createStreetClientFromMobile}
+          onCreateQuickLoan={createQuickLoanFromMobile}
         />
       );
     }

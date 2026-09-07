@@ -2,8 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { Pill } from "@/components/ui";
+import { QuickLoanForm } from "@/components/QuickLoanForm";
 import { routeCoverageSummaries } from "@/lib/collector-preview";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
+import { nextRouteOrder } from "@/lib/client-route-order";
+import {
+  clientsEligibleForNewLoan,
+  type QuickLoanDraft,
+} from "@/lib/street-client-loan";
 import {
   buildCollectorDayHistory,
   openingSaldoForPeriod,
@@ -16,6 +23,8 @@ import { todayIso } from "@/lib/daily-dispatch";
 import { isoToDisplay } from "@/lib/loan-preview";
 import {
   money,
+  catalogRoutes,
+  routeIsActive,
   type ClientRow,
   type CollectorRow,
   type LoanRow,
@@ -36,9 +45,19 @@ type Props = {
   dayExpenseDrafts?: CollectorDayExpenseDraft[];
   dayCloses?: CollectorDayCloseRecord[];
   monthCloses?: CollectorMonthCloseRecord[];
+  onCreateStreetClient?: (draft: {
+    name: string;
+    lastName?: string;
+    phone?: string;
+    routeOrder: number;
+    routeName: string;
+    routeRef: string;
+  }) => void;
+  onCreateQuickLoan?: (draft: QuickLoanDraft) => void;
 };
 
-type SupervisorView = "routes" | "planilla" | "caja";
+type SupervisorView = "inicio" | "planilla" | "caja" | "nuevo";
+type NuevoMode = "menu" | "cliente" | "prestamo";
 type RouteDetailMode = "totales" | "planilla" | "prestamos";
 
 type RouteLiquidacion = {
@@ -54,6 +73,7 @@ type RouteLiquidacion = {
   cobradoHoy: number;
   gastosHoy: number;
   enCaja: number;
+  closed: boolean;
   newLoans: LoanRow[];
   renewals: LoanRow[];
   statusLabel: string;
@@ -63,14 +83,14 @@ type RouteLiquidacion = {
 function visitLabel(status?: DailyCollectionAssignment["visitStatus"]) {
   if (status === "cobrado") return "Cobrado";
   if (status === "parcial") return "Parcial";
-  if (status === "omitido") return "No visitado";
+  if (status === "omitido") return "sin cobro";
   return "Pendiente";
 }
 
 function visitLabelShort(status?: DailyCollectionAssignment["visitStatus"]) {
   if (status === "cobrado") return "Cob.";
   if (status === "parcial") return "Parc.";
-  if (status === "omitido") return "N/V";
+  if (status === "omitido") return "S/C";
   return "Pend.";
 }
 
@@ -131,6 +151,89 @@ function LiquidacionTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function RouteBoardCard({
+  row,
+  accent,
+  onOpen,
+  mode = "ruta",
+}: {
+  row: RouteLiquidacion;
+  accent: number;
+  onOpen: (routeRef: string) => void;
+  /** En vista caja siempre destaca el dinero en mano. */
+  mode?: "ruta" | "caja";
+}) {
+  const total = row.planilla || 0;
+  const pct = total > 0 ? Math.round((row.done / total) * 100) : 0;
+  const showClosedSummary = mode === "ruta" && row.closed;
+  const showLiveProgress = mode === "ruta" && !row.closed;
+
+  return (
+    <button
+      type="button"
+      className={`supervisor-route-board accent-${accent % 2}${row.closed ? " is-closed" : ""}${mode === "caja" ? " is-caja-mode" : ""}`}
+      onClick={() => onOpen(row.routeRef)}
+    >
+      {mode === "caja" ? (
+        <div className="supervisor-caja-row">
+          <div className="supervisor-route-board-id">
+            <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
+            <strong>{row.collectorName}</strong>
+          </div>
+          <div className="supervisor-caja-hero is-row">
+            <span>Saldo</span>
+            <b>{money(row.enCaja, { symbol: false })}</b>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="supervisor-caja-row">
+            <div className="supervisor-route-board-id">
+              <div className="supervisor-route-board-ruta-row">
+                <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
+                {row.statusLabel ? (
+                  <Pill label={row.statusLabel} kind={row.statusKind} />
+                ) : null}
+              </div>
+              <strong>{row.collectorName}</strong>
+            </div>
+            <div className="supervisor-caja-hero is-row is-money-lg">
+              <span>Saldo</span>
+              <b>{money(row.enCaja, { symbol: false })}</b>
+            </div>
+          </div>
+
+          {(showClosedSummary || showLiveProgress) ? (
+            <div className="supervisor-route-board-progress" aria-hidden>
+              <div className="supervisor-route-board-bar">
+                <span style={{ width: `${pct}%` }} />
+              </div>
+              <em>
+                {row.done}/{total || 0} · {pct}%
+              </em>
+            </div>
+          ) : null}
+
+          <div className="supervisor-route-board-metrics">
+            <div>
+              <span>Inicial</span>
+              <b>{money(row.saldoInicial, { symbol: false })}</b>
+            </div>
+            <div>
+              <span>Cobrado</span>
+              <b>{money(row.cobradoHoy, { symbol: false })}</b>
+            </div>
+            <div>
+              <span>Gasto</span>
+              <b>{money(row.gastosHoy, { symbol: false })}</b>
+            </div>
+          </div>
+        </>
+      )}
+    </button>
   );
 }
 
@@ -246,12 +349,24 @@ export function SupervisorMobileApp({
   dayExpenseDrafts = [],
   dayCloses = [],
   monthCloses = [],
+  onCreateStreetClient,
+  onCreateQuickLoan,
 }: Props) {
   const today = todayIso();
   const todayDisplay = isoToDisplay(today);
-  const [view, setView] = useState<SupervisorView>("routes");
+  const [view, setView] = useState<SupervisorView>("inicio");
   const [openRouteRef, setOpenRouteRef] = useState<string | null>(null);
   const [detailMode, setDetailMode] = useState<RouteDetailMode>("totales");
+  const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
+  const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
+  const [nuevoName, setNuevoName] = useState("");
+  const [nuevoPhone, setNuevoPhone] = useState("");
+  const [nuevoPos, setNuevoPos] = useState("");
+  const [nuevoMsg, setNuevoMsg] = useState("");
+  const [nuevoClientSearch, setNuevoClientSearch] = useState("");
+  const [nuevoLoanClientRef, setNuevoLoanClientRef] = useState<string | null>(null);
+  /** null = todas las rutas; string = nombre de ruta filtrada en planilla. */
+  const [planillaRouteFilter, setPlanillaRouteFilter] = useState<string | null>(null);
 
   const coverage = useMemo(
     () => routeCoverageSummaries(collectors, routes, payments, clients, assignments, today),
@@ -259,19 +374,25 @@ export function SupervisorMobileApp({
   );
 
   const todayAssignments = useMemo(
-    () => assignments.filter((row) => row.dispatched && row.dispatchDate === today),
+    () =>
+      dedupePlanillaAssignments(
+        assignments.filter((row) => row.dispatched && row.dispatchDate === today),
+      ),
     [assignments, today],
   );
 
   const assignedCoverage = useMemo(
-    () => coverage.filter((row) => row.collectorName !== "Sin cobrador"),
+    () =>
+      coverage.filter(
+        (row) => row.active && Boolean(row.collector?.ref || row.collectorRef),
+      ),
     [coverage],
   );
 
   const liquidaciones = useMemo((): RouteLiquidacion[] => {
     return assignedCoverage.map((route) => {
       const collector = route.collector;
-      const collectorRef = collector?.ref ?? "";
+      const collectorRef = collector?.ref || route.collectorRef || "";
       const mine = todayAssignments.filter((row) => row.collectorRef === collectorRef);
       const pending = mine.filter((row) => !row.visitStatus || row.visitStatus === "pendiente").length;
       const done = mine.filter((row) => row.visitStatus === "cobrado").length;
@@ -292,21 +413,35 @@ export function SupervisorMobileApp({
         ? cajaDelDia(collector, today, payments, dayCloses, dayExpenseDrafts, monthCloses)
         : { saldoInicial: 0, cobradoHoy: 0, gastosHoy: 0, enCaja: 0 };
 
+      const closeRecord = dayCloses.find(
+        (row) => row.collectorRef === collectorRef && row.date === today,
+      );
+      const planillaClosed = mine.length > 0 && mine.every((row) => Boolean(row.dayClosedAt));
+      const closed = Boolean(closeRecord) || planillaClosed;
+
+      const cobradoHoy = closeRecord ? closeRecord.collected : caja.cobradoHoy;
+      const gastosHoy = closeRecord ? closeRecord.expensesTotal : caja.gastosHoy;
+      /** Dinero real en mano (incluye saldo de arrastre / inicial). */
+      const enCaja = caja.enCaja;
+
       let statusLabel = "Sin planilla";
       let statusKind: StatusKind = "draft";
-      if (mine.length) {
+      if (closed) {
+        statusLabel = "Cerrado";
+        statusKind = "closed";
+      } else if (mine.length) {
         if (pending === 0) {
           statusLabel = "Al día";
           statusKind = "ok";
-        } else if (done > 0 || caja.cobradoHoy > 0) {
-          statusLabel = "En campo";
+        } else if (done > 0 || cobradoHoy > 0) {
+          statusLabel = "En ruta";
           statusKind = "pending";
         } else {
-          statusLabel = "Por iniciar";
-          statusKind = "warn";
+          statusLabel = "";
+          statusKind = "draft";
         }
       }
-      if (loansToday.length > 0 && statusKind !== "ok") {
+      if (!closed && loansToday.length > 0 && statusKind !== "ok") {
         statusLabel = loansToday.length === 1 ? "1 préstamo hoy" : `${loansToday.length} préstamos hoy`;
         statusKind = "partial";
       }
@@ -321,9 +456,10 @@ export function SupervisorMobileApp({
         pending,
         done,
         saldoInicial: caja.saldoInicial,
-        cobradoHoy: caja.cobradoHoy,
-        gastosHoy: caja.gastosHoy,
-        enCaja: caja.enCaja,
+        cobradoHoy,
+        gastosHoy,
+        enCaja,
+        closed,
         newLoans,
         renewals,
         statusLabel,
@@ -368,16 +504,104 @@ export function SupervisorMobileApp({
     [todayAssignments, openRoute],
   );
 
-  function toggleView(next: SupervisorView) {
+  function goToView(next: SupervisorView) {
     setOpenRouteRef(null);
     setDetailMode("totales");
-    setView((current) => (current === next ? "routes" : next));
+    setNuevoRouteRef(null);
+    setNuevoMsg("");
+    setNuevoMode("menu");
+    setNuevoClientSearch("");
+    setNuevoLoanClientRef(null);
+    setNuevoName("");
+    setNuevoPhone("");
+    if (next !== "planilla") setPlanillaRouteFilter(null);
+    setView(next);
+  }
+
+  function resetNuevoFlow() {
+    setNuevoRouteRef(null);
+    setNuevoMsg("");
+    setNuevoClientSearch("");
+    setNuevoLoanClientRef(null);
+    setNuevoName("");
+    setNuevoPhone("");
+  }
+
+  /** Pins 1, 2, 3, 4…: toda ruta activa con cobrador asignado (aparece al asignar). */
+  const planillaRoutePins = useMemo(
+    () =>
+      catalogRoutes(routes)
+        .filter((row) => routeIsActive(row) && Boolean(row.collectorRef))
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+        .map((row) => row.name)
+        .filter(Boolean),
+    [routes],
+  );
+
+  const planillaAssignments = useMemo(() => {
+    if (!planillaRouteFilter) return todayAssignments;
+    const fromLiq = liquidaciones.find((row) => row.routeName === planillaRouteFilter);
+    const fromCatalog = catalogRoutes(routes).find((row) => row.name === planillaRouteFilter);
+    const collectorRef = fromLiq?.collectorRef || fromCatalog?.collectorRef || "";
+    return todayAssignments.filter(
+      (row) =>
+        row.clientRoute === planillaRouteFilter ||
+        (collectorRef ? row.collectorRef === collectorRef : false),
+    );
+  }, [todayAssignments, planillaRouteFilter, liquidaciones, routes]);
+
+  const nuevoRoute = liquidaciones.find((row) => row.routeRef === nuevoRouteRef) ?? null;
+
+  const eligibleLoanClients = useMemo(() => {
+    if (!nuevoRoute) return [];
+    const q = nuevoClientSearch.trim().toLowerCase();
+    return clientsEligibleForNewLoan(clients, loans, nuevoRoute.routeName).filter((row) => {
+      if (!q) return true;
+      const hay = `${row.name} ${row.lastName} ${row.document} ${row.phone} ${row.ref}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [clients, loans, nuevoRoute, nuevoClientSearch]);
+
+  const nuevoLoanClient =
+    eligibleLoanClients.find((row) => row.ref === nuevoLoanClientRef) ??
+    clients.find((row) => row.ref === nuevoLoanClientRef) ??
+    null;
+
+  function submitStreetClient() {
+    const route = liquidaciones.find((row) => row.routeRef === nuevoRouteRef);
+    if (!route || !onCreateStreetClient) return;
+    const name = nuevoName.trim();
+    if (!name) {
+      setNuevoMsg("Escriba el nombre del cliente.");
+      return;
+    }
+    const nextPos = nextRouteOrder(clients, route.routeName);
+    const pos = Math.min(
+      Math.max(1, Math.trunc(Number(String(nuevoPos).replace(/\D/g, ""))) || nextPos),
+      nextPos,
+    );
+    onCreateStreetClient({
+      name,
+      phone: nuevoPhone.trim() || undefined,
+      routeOrder: pos,
+      routeName: route.routeName,
+      routeRef: route.routeRef,
+    });
+    setNuevoName("");
+    setNuevoPhone("");
+    setNuevoPos("");
+    setNuevoMsg(
+      `Listo: ${name} en posición ${pos} de la ruta de ${route.collectorName}.`,
+    );
+    setNuevoRouteRef(null);
+    setNuevoMode("menu");
   }
 
   function openRouteSummary(ref: string) {
     setOpenRouteRef(ref);
     setDetailMode("totales");
-    setView("routes");
+    setView("inicio");
   }
 
   const dateLabel = today.split("-").reverse().join("/");
@@ -394,59 +618,75 @@ export function SupervisorMobileApp({
       </header>
 
       <div
-        className={
-          openRoute
-            ? "supervisor-mobile-kpis has-caja"
-            : "supervisor-mobile-kpis"
-        }
+        className="supervisor-mobile-kpis is-home has-nuevo"
         role="group"
-        aria-label="Resumen del día"
+        aria-label="Menú supervisor"
       >
         <button
           type="button"
-          className={view === "routes" && !openRoute ? "supervisor-mobile-kpi on" : "supervisor-mobile-kpi"}
+          className={
+            view === "inicio" && !openRoute
+              ? "supervisor-mobile-kpi is-inicio on"
+              : "supervisor-mobile-kpi is-inicio"
+          }
           onClick={() => {
             setOpenRouteRef(null);
             setDetailMode("totales");
-            setView("routes");
+            setView("inicio");
           }}
         >
-          <b>{totals.routes}</b>
-          <span>Rutas</span>
+          <b>INICIO</b>
         </button>
         <button
           type="button"
-          className={view === "planilla" ? "supervisor-mobile-kpi on" : "supervisor-mobile-kpi"}
-          onClick={() => toggleView("planilla")}
+          className={
+            view === "planilla"
+              ? "supervisor-mobile-kpi is-ruta on"
+              : "supervisor-mobile-kpi is-ruta"
+          }
+          onClick={() => {
+            setPlanillaRouteFilter(null);
+            goToView("planilla");
+          }}
         >
-          <b>{totals.planilla}</b>
-          <span>Planilla</span>
+          <b>RUTA</b>
         </button>
-        {openRoute ? (
-          <button
-            type="button"
-            className={
-              detailMode === "totales"
-                ? "supervisor-mobile-kpi is-money on"
-                : "supervisor-mobile-kpi is-money"
-            }
-            onClick={() => {
+        <button
+          type="button"
+          className={
+            view === "caja" || (openRoute && detailMode === "totales")
+              ? "supervisor-mobile-kpi is-caja on"
+              : "supervisor-mobile-kpi is-caja"
+          }
+          onClick={() => {
+            if (openRoute) {
               setDetailMode("totales");
-              setView("routes");
-            }}
-            title={`En caja · ${openRoute.collectorName}`}
-          >
-            <b>{money(openRoute.enCaja)}</b>
-            <span>En caja</span>
-          </button>
-        ) : null}
+              return;
+            }
+            goToView("caja");
+          }}
+          title={openRoute ? `Caja · ${openRoute.collectorName}` : "Caja del día"}
+        >
+          <b>CAJA</b>
+        </button>
+        <button
+          type="button"
+          className={
+            view === "nuevo"
+              ? "supervisor-mobile-kpi is-nuevo on"
+              : "supervisor-mobile-kpi is-nuevo"
+          }
+          onClick={() => goToView("nuevo")}
+        >
+          <b>NUEVO</b>
+        </button>
       </div>
 
       {openRoute ? (
         <section className="supervisor-mobile-section">
           <div className="supervisor-mobile-detail-head">
             <h3>
-              {openRoute.routeName} · {openRoute.collectorName}
+              Ruta {openRoute.routeName} · {openRoute.collectorName}
             </h3>
             <button
               type="button"
@@ -456,6 +696,7 @@ export function SupervisorMobileApp({
                 else {
                   setOpenRouteRef(null);
                   setDetailMode("totales");
+                  setView("inicio");
                 }
               }}
             >
@@ -468,19 +709,19 @@ export function SupervisorMobileApp({
               <div className="supervisor-mobile-sheet" aria-label="Liquidación de caja">
                 <div className="supervisor-mobile-sheet-row">
                   <span>Saldo inicial</span>
-                  <b>{money(openRoute.saldoInicial)}</b>
+                  <b>{money(openRoute.saldoInicial, { symbol: false })}</b>
                 </div>
                 <div className="supervisor-mobile-sheet-row">
                   <span>Cobrado hoy</span>
-                  <b>+ {money(openRoute.cobradoHoy)}</b>
+                  <b>+ {money(openRoute.cobradoHoy, { symbol: false })}</b>
                 </div>
                 <div className="supervisor-mobile-sheet-row">
                   <span>Gastos / consignación</span>
-                  <b>− {money(openRoute.gastosHoy)}</b>
+                  <b>− {money(openRoute.gastosHoy, { symbol: false })}</b>
                 </div>
                 <div className="supervisor-mobile-sheet-row is-total">
                   <span>En caja</span>
-                  <b>{money(openRoute.enCaja)}</b>
+                  <b>{money(openRoute.enCaja, { symbol: false })}</b>
                 </div>
                 <div className="supervisor-mobile-sheet-row is-muted">
                   <span>Avance planilla</span>
@@ -526,7 +767,7 @@ export function SupervisorMobileApp({
                 <span className="supervisor-mobile-detail-sep" aria-hidden>
                   ·
                 </span>
-                <span>En caja {money(openRoute.enCaja)}</span>
+                <span>En caja {money(openRoute.enCaja, { symbol: false })}</span>
               </p>
               {openAssignments.length === 0 ? (
                 <p className="ficha-empty">Sin planilla enviada hoy.</p>
@@ -559,7 +800,7 @@ export function SupervisorMobileApp({
                         <strong>{loan.client}</strong>
                         <span>
                           {loan.ref} · {isRenewalLoan(loan) ? "Renovación" : "Nuevo"} ·{" "}
-                          {money(loan.balance || loan.total || 0)}
+                          {money(loan.balance || loan.total || 0, { symbol: false })}
                         </span>
                       </div>
                       <Pill
@@ -575,12 +816,40 @@ export function SupervisorMobileApp({
         </section>
       ) : view === "planilla" ? (
         <section className="supervisor-mobile-section">
-          <h3>Planilla de hoy</h3>
-          {todayAssignments.length === 0 ? (
+          <div className="supervisor-planilla-head">
+            <h3>Planilla de hoy</h3>
+            {planillaRoutePins.length > 0 ? (
+              <div
+                className="supervisor-planilla-route-btns"
+                role="group"
+                aria-label="Filtrar por ruta"
+              >
+                {planillaRoutePins.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className={
+                      planillaRouteFilter === name
+                        ? "supervisor-planilla-route-btn on"
+                        : "supervisor-planilla-route-btn"
+                    }
+                    onClick={() =>
+                      setPlanillaRouteFilter((prev) => (prev === name ? null : name))
+                    }
+                    title={`Ruta ${name}`}
+                    aria-label={`Ruta ${name}`}
+                  >
+                    <b>{name}</b>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          {planillaAssignments.length === 0 ? (
             <p className="ficha-empty">No hay cobros en planilla hoy.</p>
           ) : (
             <PlanillaTable
-              rows={todayAssignments.map((row, index) => ({
+              rows={planillaAssignments.map((row, index) => ({
                 key: `${row.itemId}-${row.collectorRef}`,
                 index: index + 1,
                 clientName: row.clientName,
@@ -593,39 +862,342 @@ export function SupervisorMobileApp({
           )}
         </section>
       ) : view === "caja" ? (
-        <section className="supervisor-mobile-section">
-          <h3>Caja consolidada</h3>
-          <div className="supervisor-mobile-sheet">
-            <div className="supervisor-mobile-sheet-row">
-              <span>Saldo inicial</span>
-              <b>{money(totals.saldoInicial)}</b>
-            </div>
-            <div className="supervisor-mobile-sheet-row">
-              <span>Cobrado hoy</span>
-              <b>+ {money(totals.cobradoHoy)}</b>
-            </div>
-            <div className="supervisor-mobile-sheet-row">
-              <span>Gastos / consignación</span>
-              <b>− {money(totals.gastosHoy)}</b>
-            </div>
-            <div className="supervisor-mobile-sheet-row is-total">
-              <span>En caja</span>
-              <b>{money(totals.enCaja)}</b>
-            </div>
-            <div className="supervisor-mobile-sheet-row is-muted">
-              <span>Préstamos / renovaciones</span>
-              <b>{totals.prestamosHoy}</b>
+        <section className="supervisor-mobile-section supervisor-mobile-home">
+          <div className="supervisor-day-boards" aria-label="Total en caja">
+            <div className="supervisor-day-board is-caja supervisor-day-board-wide is-total-row">
+              <div className="supervisor-day-board-copy">
+                <span>Total en caja</span>
+                <em>
+                  {liquidaciones.length} cobrador
+                  {liquidaciones.length === 1 ? "" : "es"}
+                </em>
+              </div>
+              <b>{money(totals.enCaja, { symbol: false })}</b>
             </div>
           </div>
-          <LiquidacionTable rows={liquidaciones} onOpen={openRouteSummary} />
-        </section>
-      ) : (
-        <section className="supervisor-mobile-section">
-          <h3>Liquidación por ruta</h3>
+
+          <h3>Por cobrador</h3>
           {liquidaciones.length === 0 ? (
             <p className="ficha-empty">No hay rutas con cobrador.</p>
           ) : (
-            <LiquidacionTable rows={liquidaciones} onOpen={openRouteSummary} />
+            <div className="supervisor-route-boards">
+              {liquidaciones.map((row, index) => (
+                <RouteBoardCard
+                  key={row.routeRef}
+                  row={row}
+                  accent={index}
+                  mode="caja"
+                  onOpen={openRouteSummary}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      ) : view === "nuevo" ? (
+        <section className="supervisor-mobile-section">
+          {nuevoMode === "menu" ? (
+            <>
+              <h3>Nuevo</h3>
+              {nuevoMsg ? <p className="supervisor-nuevo-msg">{nuevoMsg}</p> : null}
+              <div className="supervisor-nuevo-menu">
+                <button
+                  type="button"
+                  className="supervisor-nuevo-menu-btn is-cliente"
+                  disabled={!onCreateStreetClient}
+                  onClick={() => {
+                    resetNuevoFlow();
+                    setNuevoMode("cliente");
+                  }}
+                >
+                  <b>Nuevo cliente</b>
+                </button>
+                <button
+                  type="button"
+                  className="supervisor-nuevo-menu-btn is-prestamo"
+                  disabled={!onCreateQuickLoan}
+                  onClick={() => {
+                    resetNuevoFlow();
+                    setNuevoMode("prestamo");
+                  }}
+                >
+                  <b>Nuevo préstamo</b>
+                </button>
+              </div>
+              {!onCreateStreetClient && !onCreateQuickLoan ? (
+                <p className="ficha-empty">No hay permiso para crear desde esta vista.</p>
+              ) : null}
+            </>
+          ) : nuevoMode === "cliente" ? (
+            <>
+              <div className="supervisor-mobile-detail-head">
+                <h3>Nuevo cliente</h3>
+                <button
+                  type="button"
+                  className="collector-mobile-pay-link"
+                  onClick={() => {
+                    resetNuevoFlow();
+                    setNuevoMode("menu");
+                  }}
+                >
+                  atrás
+                </button>
+              </div>
+              {!onCreateStreetClient ? (
+                <p className="ficha-empty">No hay permiso para crear clientes desde esta vista.</p>
+              ) : !nuevoRouteRef ? (
+                <>
+                  <p className="supervisor-mobile-subhead">
+                    Elija la ruta: el cliente llega a la lista del cobrador para prestarle.
+                  </p>
+                  {nuevoMsg ? <p className="supervisor-nuevo-msg">{nuevoMsg}</p> : null}
+                  {liquidaciones.length === 0 ? (
+                    <p className="ficha-empty">No hay rutas con cobrador.</p>
+                  ) : (
+                    <div className="supervisor-route-boards">
+                      {liquidaciones.map((row, index) => (
+                        <button
+                          key={row.routeRef}
+                          type="button"
+                          className={`supervisor-route-board accent-${index % 2}${row.closed ? " is-closed" : ""}`}
+                          onClick={() => {
+                            setNuevoRouteRef(row.routeRef);
+                            setNuevoPos(String(nextRouteOrder(clients, row.routeName)));
+                            setNuevoMsg("");
+                          }}
+                        >
+                          <div className="supervisor-caja-row">
+                            <div className="supervisor-route-board-id">
+                              <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
+                              <strong>{row.collectorName}</strong>
+                            </div>
+                            <span className="supervisor-nuevo-go">Elegir</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="supervisor-mobile-detail-head">
+                    <h3>
+                      Ruta {nuevoRoute?.routeName} · {nuevoRoute?.collectorName}
+                    </h3>
+                    <button
+                      type="button"
+                      className="collector-mobile-pay-link"
+                      onClick={() => setNuevoRouteRef(null)}
+                    >
+                      cambiar
+                    </button>
+                  </div>
+                  <form
+                    className="supervisor-nuevo-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      submitStreetClient();
+                    }}
+                  >
+                    <label className="quick-loan-field">
+                      <span>Nombre</span>
+                      <input
+                        value={nuevoName}
+                        onChange={(event) => setNuevoName(event.target.value)}
+                        placeholder="Nombre del cliente"
+                        autoFocus
+                      />
+                    </label>
+                    <label className="quick-loan-field">
+                      <span>Teléfono</span>
+                      <input
+                        inputMode="tel"
+                        value={nuevoPhone}
+                        onChange={(event) => setNuevoPhone(event.target.value)}
+                        placeholder="Celular"
+                      />
+                    </label>
+                    <label className="quick-loan-field">
+                      <span>Posición en la lista</span>
+                      <input
+                        inputMode="numeric"
+                        value={nuevoPos}
+                        onChange={(event) => setNuevoPos(event.target.value)}
+                        placeholder="Ej. 1"
+                      />
+                    </label>
+                    {nuevoMsg ? <p className="supervisor-nuevo-msg is-warn">{nuevoMsg}</p> : null}
+                    <div className="quick-loan-actions">
+                      <button type="submit" className="btn">
+                        Crear y enviar a ruta
+                      </button>
+                    </div>
+                  </form>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="supervisor-mobile-detail-head">
+                <h3>Nuevo préstamo</h3>
+                <button
+                  type="button"
+                  className="collector-mobile-pay-link"
+                  onClick={() => {
+                    if (nuevoLoanClientRef) {
+                      setNuevoLoanClientRef(null);
+                      return;
+                    }
+                    if (nuevoRouteRef) {
+                      setNuevoRouteRef(null);
+                      setNuevoClientSearch("");
+                      return;
+                    }
+                    resetNuevoFlow();
+                    setNuevoMode("menu");
+                  }}
+                >
+                  atrás
+                </button>
+              </div>
+              {!onCreateQuickLoan ? (
+                <p className="ficha-empty">No hay permiso para crear préstamos desde esta vista.</p>
+              ) : !nuevoRouteRef ? (
+                <>
+                  <p className="supervisor-mobile-subhead">
+                    Elija la ruta del cobrador que entregará el dinero.
+                  </p>
+                  {liquidaciones.length === 0 ? (
+                    <p className="ficha-empty">No hay rutas con cobrador.</p>
+                  ) : (
+                    <div className="supervisor-route-boards">
+                      {liquidaciones.map((row, index) => (
+                        <button
+                          key={row.routeRef}
+                          type="button"
+                          className={`supervisor-route-board accent-${index % 2}${row.closed ? " is-closed" : ""}`}
+                          onClick={() => {
+                            setNuevoRouteRef(row.routeRef);
+                            setNuevoLoanClientRef(null);
+                            setNuevoClientSearch("");
+                          }}
+                        >
+                          <div className="supervisor-caja-row">
+                            <div className="supervisor-route-board-id">
+                              <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
+                              <strong>{row.collectorName}</strong>
+                            </div>
+                            <span className="supervisor-nuevo-go">Elegir</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : nuevoLoanClient && nuevoRoute ? (
+                <>
+                  <div className="supervisor-mobile-detail-head">
+                    <h3>
+                      {`${nuevoLoanClient.name} ${nuevoLoanClient.lastName}`.trim()}
+                    </h3>
+                    <button
+                      type="button"
+                      className="collector-mobile-pay-link"
+                      onClick={() => setNuevoLoanClientRef(null)}
+                    >
+                      cambiar
+                    </button>
+                  </div>
+                  <p className="supervisor-mobile-subhead">
+                    Ruta {nuevoRoute.routeName} · {nuevoRoute.collectorName}
+                  </p>
+                  <QuickLoanForm
+                    clientName={`${nuevoLoanClient.name} ${nuevoLoanClient.lastName}`.trim()}
+                    clientRef={nuevoLoanClient.ref}
+                    onCancel={() => setNuevoLoanClientRef(null)}
+                    onSave={(draft) => {
+                      onCreateQuickLoan({
+                        ...draft,
+                        routeName: nuevoRoute.routeName,
+                      });
+                      resetNuevoFlow();
+                      setNuevoMode("menu");
+                      setNuevoMsg("Préstamo creado y cargado a la ruta.");
+                    }}
+                  />
+                </>
+              ) : (
+                <>
+                  <div className="supervisor-mobile-detail-head">
+                    <h3>
+                      Ruta {nuevoRoute?.routeName} · {nuevoRoute?.collectorName}
+                    </h3>
+                    <button
+                      type="button"
+                      className="collector-mobile-pay-link"
+                      onClick={() => {
+                        setNuevoRouteRef(null);
+                        setNuevoClientSearch("");
+                      }}
+                    >
+                      cambiar
+                    </button>
+                  </div>
+                  <p className="supervisor-mobile-subhead">
+                    Clientes sin préstamo activo. Busque o elija uno.
+                  </p>
+                  <label className="quick-loan-field supervisor-nuevo-search">
+                    <span>Buscar</span>
+                    <input
+                      value={nuevoClientSearch}
+                      onChange={(event) => setNuevoClientSearch(event.target.value)}
+                      placeholder="Nombre, cédula o celular"
+                      autoFocus
+                    />
+                  </label>
+                  {eligibleLoanClients.length === 0 ? (
+                    <p className="ficha-empty">
+                      No hay clientes disponibles en esta ruta
+                      {nuevoClientSearch.trim() ? " con ese filtro" : ""}.
+                    </p>
+                  ) : (
+                    <ul className="supervisor-nuevo-client-list">
+                      {eligibleLoanClients.map((row) => (
+                        <li key={row.ref}>
+                          <button
+                            type="button"
+                            className="supervisor-nuevo-client-btn"
+                            onClick={() => setNuevoLoanClientRef(row.ref)}
+                          >
+                            <strong>{`${row.name} ${row.lastName}`.trim()}</strong>
+                            <span>
+                              {row.document || row.ref}
+                              {row.phone ? ` · ${row.phone}` : ""}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </section>
+      ) : (
+        <section className="supervisor-mobile-section supervisor-mobile-home">
+          {liquidaciones.length === 0 ? (
+            <p className="ficha-empty">No hay rutas con cobrador.</p>
+          ) : (
+            <div className="supervisor-route-boards">
+              {liquidaciones.map((row, index) => (
+                <RouteBoardCard
+                  key={row.routeRef}
+                  row={row}
+                  accent={index}
+                  onOpen={openRouteSummary}
+                />
+              ))}
+            </div>
           )}
         </section>
       )}

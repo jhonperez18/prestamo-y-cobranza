@@ -9,16 +9,19 @@ import {
   bankMovementDescriptionText,
   bankMovementMethodLabel,
   expenseCategoryLabel,
+  filterBankHistory,
   formatBankAmount,
   isoToDisplay,
   listReconciledMovementsByKind,
   listReconciledPeriods,
   bankVisibleRef,
   normalizeBankMovements,
+  normalizeBankPeriod,
   paymentRefForMovement,
   periodLabel,
   sortBankMovements,
   summarizeReconciledMovements,
+  type BankHistoryScope,
 } from "@/lib/bank";
 import { paymentMethodKind } from "@/lib/payment-method";
 import {
@@ -50,15 +53,21 @@ export function BankReconciledLedgerView({
   const isIncome = kind === "income";
   const columns = isIncome ? BANK_LEDGER_INCOME_COLUMNS : BANK_LEDGER_EXPENSE_COLUMNS;
   const defaultCols = isIncome ? BANK_LEDGER_INCOME_DEFAULT_COLS : BANK_LEDGER_EXPENSE_DEFAULT_COLS;
-  const storageKey = isIncome ? "nexo.banco.ingresos.columns.v3" : "nexo.banco.gastos.columns.v2";
+  const storageKey = isIncome ? "nexo.banco.ingresos.columns.v4" : "nexo.banco.gastos.columns.v3";
   const amountColId = isIncome ? "debit" : "credit";
 
   const { isVisible, visibleCols, toggleColumn } = useColumnVisibility(columns, defaultCols, {
     storageKey,
   });
 
-  const periods = useMemo(() => listReconciledPeriods(reconciliations), [reconciliations]);
+  const periods = useMemo(() => {
+    const fromRecon = listReconciledPeriods(reconciliations);
+    const fromRows = movements.map((row) => normalizeBankPeriod(row.period)).filter(Boolean);
+    return [...new Set([...fromRecon, ...fromRows])].sort((a, b) => b.localeCompare(a));
+  }, [reconciliations, movements]);
   const [periodFilter, setPeriodFilter] = useState(initialPeriod ?? "");
+  const [accountFilter, setAccountFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<BankHistoryScope>("all");
   const { sortKey, sortDir, toggleSort } = useBankMovementSort("valueDate");
 
   const accountMap = useMemo(
@@ -68,9 +77,13 @@ export function BankReconciledLedgerView({
 
   const rows = useMemo(() => {
     const normalized = normalizeBankMovements(movements);
-    const filtered = listReconciledMovementsByKind(normalized, kind, periodFilter || undefined);
+    const byKind = listReconciledMovementsByKind(normalized, kind, periodFilter || undefined);
+    const filtered = filterBankHistory(byKind, {
+      scope: statusFilter,
+      accountRef: accountFilter || undefined,
+    });
     return sortBankMovements(filtered, sortKey, sortDir);
-  }, [movements, kind, periodFilter, sortKey, sortDir]);
+  }, [movements, kind, periodFilter, accountFilter, statusFilter, sortKey, sortDir]);
 
   const total = useMemo(() => summarizeReconciledMovements(rows, kind), [rows, kind]);
   const title = isIncome ? "Ingresos" : "Gastos";
@@ -138,6 +151,12 @@ export function BankReconciledLedgerView({
         return row.thirdParty;
       case "category":
         return row.category ? expenseCategoryLabel(row.category) : "—";
+      case "status":
+        return row.reconciled ? (
+          <Pill label="Conciliado" kind="ok" />
+        ) : (
+          <Pill label="Pendiente" kind="pending" />
+        );
       case "credit":
       case "debit":
         return formatBankAmount(amount);
@@ -151,14 +170,42 @@ export function BankReconciledLedgerView({
       <div className="head">
         <h1>{title}</h1>
         <span className="count">{rows.length}</span>
+        <p className="bank-history-hint">
+          Libro permanente · cobros y egresos del banco (abiertos y conciliados).
+        </p>
         <div className="grow" />
         <label className="bank-ledger-filter">
-          Mes conciliado{" "}
+          Estado{" "}
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as BankHistoryScope)}
+          >
+            <option value="all">Todos</option>
+            <option value="open">Pendientes</option>
+            <option value="closed">Conciliados</option>
+          </select>
+        </label>
+        <label className="bank-ledger-filter">
+          Cuenta{" "}
+          <select
+            value={accountFilter}
+            onChange={(event) => setAccountFilter(event.target.value)}
+          >
+            <option value="">Todas</option>
+            {accounts.map((row) => (
+              <option key={row.ref} value={row.ref}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="bank-ledger-filter">
+          Periodo{" "}
           <select
             value={periodFilter}
             onChange={(event) => setPeriodFilter(event.target.value)}
           >
-            <option value="">Todos los meses</option>
+            <option value="">Todos</option>
             {periods.map((period) => (
               <option key={period} value={period}>
                 {periodLabel(period)}
@@ -179,6 +226,7 @@ export function BankReconciledLedgerView({
             {isVisible("account") ? <col className="br-account" /> : null}
             {isVisible("thirdParty") ? <col className="br-third" /> : null}
             {isVisible("category") ? <col className="br-category" /> : null}
+            {isVisible("status") ? <col className="br-extract" /> : null}
             {isVisible(amountColId) ? <col className="br-amount" /> : null}
             <col className="br-picker" />
           </colgroup>
@@ -200,6 +248,7 @@ export function BankReconciledLedgerView({
               {isVisible("account") ? <th>Cuenta</th> : null}
               {isVisible("thirdParty") ? <th>Tercero</th> : null}
               {isVisible("category") ? <th>Categoría</th> : null}
+              {isVisible("status") ? <th className="center">Estado</th> : null}
               {isVisible(amountColId) ? (
                 <BankSortTh
                   label={amountLabel}
@@ -219,9 +268,9 @@ export function BankReconciledLedgerView({
             {rows.length === 0 ? (
               <tr className="empty-row">
                 <td colSpan={Math.max(visibleCols.length, 1) + 1}>
-                  {periodFilter
-                    ? `No hay ${title.toLowerCase()} conciliados en ${periodLabel(periodFilter)}.`
-                    : `Aún no hay ${title.toLowerCase()} conciliados.`}
+                  {periodFilter || accountFilter || statusFilter !== "all"
+                    ? `No hay ${title.toLowerCase()} con estos filtros.`
+                    : `Aún no hay ${title.toLowerCase()} en el banco.`}
                 </td>
               </tr>
             ) : (

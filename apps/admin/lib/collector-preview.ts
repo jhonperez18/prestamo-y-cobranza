@@ -22,6 +22,7 @@ import { isOperationalClient } from "@/lib/client-review";
 import { mobileAccessLabel } from "@/lib/access-preview";
 import { paymentsForDay, todayDispatchToken, todayIso } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 import { normalizePaymentMethod, paymentMethodLabel } from "@/lib/payment-method";
 import { paymentHasReceipt, paymentHasSignature } from "@/lib/payment-evidence";
 
@@ -41,6 +42,7 @@ export type RouteCoverageSummary = {
   routeName: string;
   active: boolean;
   collector: CollectorRow | null;
+  collectorRef: string;
   collectorName: string;
   clients: number;
   planillaToday: number;
@@ -91,11 +93,13 @@ export function routeCoverageSummaries(
       const clientRows = clientsOnRouteListed(route.name, clients).filter(isOperationalClient);
       const clientRefs = new Set(clientRows.map((row) => row.ref));
 
-      const planillaToday = assignments.filter((row) => {
-        if (!row.dispatched || row.dispatchDate !== day) return false;
-        if (clientRefs.has(row.clientRef)) return true;
-        return Boolean(route.collectorRef && row.collectorRef === route.collectorRef);
-      }).length;
+      const planillaToday = dedupePlanillaAssignments(
+        assignments.filter((row) => {
+          if (!row.dispatched || row.dispatchDate !== day) return false;
+          if (clientRefs.has(row.clientRef)) return true;
+          return Boolean(route.collectorRef && row.collectorRef === route.collectorRef);
+        }),
+      ).length;
 
       const collectedToday = todayPayments
         .filter((row) => {
@@ -107,9 +111,7 @@ export function routeCoverageSummaries(
         })
         .reduce((sum, row) => sum + row.amount, 0);
 
-      const hasCollector = Boolean(
-        collector || (route.collectorRef && route.collector && route.collector !== "—"),
-      );
+      const hasCollector = Boolean(collector?.ref || route.collectorRef);
       const statusLabel = !routeIsActive(route)
         ? "Inactiva"
         : hasCollector
@@ -130,6 +132,7 @@ export function routeCoverageSummaries(
         routeName: route.name,
         active: routeIsActive(route),
         collector,
+        collectorRef: collector?.ref || route.collectorRef || "",
         collectorName:
           collector?.name ||
           (route.collector && route.collector !== "—" ? route.collector : "Sin cobrador"),

@@ -10,6 +10,7 @@ export type StatusKind =
   | "ok"
   | "draft"
   | "warn"
+  | "closed"
   | "efectivo"
   | "nequi";
 
@@ -38,6 +39,13 @@ export type ClientRow = {
   status: string;
   kind: StatusKind;
   createdBy?: string;
+  /** Cliente de calle sin préstamo: aparece en planilla solo para Prestar. */
+  awaitingLoan?: boolean;
+  /**
+   * Alta incompleta (calle): opera normal, pero alerta en oficina para completar ficha.
+   * No bloquea cobros ni préstamos.
+   */
+  profilePending?: boolean;
 };
 
 export type LoanRow = {
@@ -66,6 +74,10 @@ export type LoanRow = {
    * 1–4 = alerta; al llegar a 5 = mora.
    */
   collectionAlerts?: number;
+  /**
+   * Préstamo rápido / incompleto: opera normal, alerta en oficina para revisar o completar.
+   */
+  termsPending?: boolean;
 };
 
 export type PaymentRow = {
@@ -487,11 +499,19 @@ export function nextRouteNumber(rows: RouteRow[] = ROUTES) {
 }
 
 export function nextCollectorCode(rows: CollectorRow[] = COLLECTORS) {
-  return `COB-${rows.length}`;
+  const nums = rows
+    .map((row) => Number(String(row.ref).replace(/^COB-/i, "")))
+    .filter((value) => Number.isFinite(value));
+  const next = nums.length ? Math.max(...nums) + 1 : 0;
+  return `COB-${next}`;
 }
 
 export function nextUserCode(rows: UserRow[] = USERS) {
-  return `USR-${rows.length}`;
+  const nums = rows
+    .map((row) => Number(String(row.ref).replace(/^USR-/i, "")))
+    .filter((value) => Number.isFinite(value));
+  const next = nums.length ? Math.max(...nums) + 1 : 0;
+  return `USR-${next}`;
 }
 
 export function roleByRef(ref: string, rows: RoleRow[] = ROLES) {
@@ -500,6 +520,176 @@ export function roleByRef(ref: string, rows: RoleRow[] = ROLES) {
 
 export function userForCollector(collectorRef: string, rows: UserRow[] = USERS) {
   return rows.find((row) => row.collectorRef === collectorRef) ?? null;
+}
+
+/**
+ * Cobrador de un usuario sin cruzar con otro.
+ * Prioridad: collector.userRef === user.ref → user.collectorRef si ese cobrador
+ * no pertenece a otra persona.
+ */
+export function collectorForUser(
+  user: UserRow,
+  collectors: CollectorRow[],
+): CollectorRow | null {
+  const byUserRef = collectors.find((row) => row.userRef === user.ref) ?? null;
+  if (byUserRef) return byUserRef;
+
+  if (!user.collectorRef) return null;
+  const byCollectorRef = collectors.find((row) => row.ref === user.collectorRef) ?? null;
+  if (!byCollectorRef) return null;
+  // Si esa fila ya está atada a otro usuario, no usarla (evita ficha de Lina al abrir Diego).
+  if (byCollectorRef.userRef && byCollectorRef.userRef !== user.ref) return null;
+  return byCollectorRef;
+}
+
+/** Vista de cobrador alineada a la identidad del usuario (nombre/login), sin datos ajenos. */
+export function collectorViewForUser(
+  user: UserRow,
+  collectors: CollectorRow[],
+): CollectorRow | null {
+  const base = collectorForUser(user, collectors);
+  if (!base) return null;
+  return {
+    ...base,
+    userRef: user.ref,
+    name: user.name,
+    phone: user.phone || base.phone,
+    document: user.document || base.document,
+    login: user.login || base.login,
+    active: user.active,
+    mobileAccess: user.channels?.includes("mobile") ?? base.mobileAccess,
+  };
+}
+
+/** Alinea user.collectorRef ↔ collector.userRef (1:1). El usuario manda. */
+export function alignUserCollectorLinks(
+  users: UserRow[],
+  collectors: CollectorRow[],
+): { users: UserRow[]; collectors: CollectorRow[] } {
+  const claimedCollector = new Set<string>();
+  const nextUsers: UserRow[] = users.map((user) => {
+    if (!user.collectorRef) return user;
+    const owned = collectors.find(
+      (row) => row.ref === user.collectorRef && (!row.userRef || row.userRef === user.ref),
+    );
+    const byUserRef = collectors.find((row) => row.userRef === user.ref);
+    const target = byUserRef ?? owned ?? null;
+    if (!target) {
+      return { ...user, collectorRef: undefined };
+    }
+    if (claimedCollector.has(target.ref)) {
+      return { ...user, collectorRef: undefined };
+    }
+    claimedCollector.add(target.ref);
+    return { ...user, collectorRef: target.ref };
+  });
+
+  const userByCollectorRef = new Map<string, UserRow>();
+  for (const user of nextUsers) {
+    if (user.collectorRef && !userByCollectorRef.has(user.collectorRef)) {
+      userByCollectorRef.set(user.collectorRef, user);
+    }
+  }
+
+  const nextCollectors = collectors.map((collector) => {
+    const linked = userByCollectorRef.get(collector.ref);
+    if (!linked) {
+      return { ...collector, userRef: undefined };
+    }
+    return {
+      ...collector,
+      userRef: linked.ref,
+      name: linked.name,
+      phone: linked.phone || collector.phone,
+      document: linked.document || collector.document,
+      login: linked.login || collector.login,
+      active: linked.active,
+      mobileAccess: linked.channels?.includes("mobile") ?? collector.mobileAccess,
+    };
+  });
+
+  return { users: nextUsers, collectors: nextCollectors };
+}
+
+/**
+ * Todo usuario con rol cobrador debe tener su fila COB propia.
+ * Reclama huérfanos o crea uno nuevo (Diego no debe quedar solo con Ficha/Acceso).
+ */
+export function ensureCollectorsForUsers(
+  users: UserRow[],
+  collectors: CollectorRow[],
+): { users: UserRow[]; collectors: CollectorRow[] } {
+  let nextCollectors = collectors.map((row) => ({ ...row }));
+  const nextUsers = users.map((user) => {
+    if (user.roleRef !== COLLECTOR_ROLE_REF) return user;
+
+    const linked = collectorForUser(user, nextCollectors);
+    if (linked) {
+      return { ...user, collectorRef: linked.ref };
+    }
+
+    // Reclamar cobrador huérfano que el usuario ya apuntaba.
+    if (user.collectorRef) {
+      const idx = nextCollectors.findIndex((row) => row.ref === user.collectorRef);
+      if (idx >= 0) {
+        const row = nextCollectors[idx]!;
+        if (!row.userRef || row.userRef === user.ref) {
+          nextCollectors[idx] = {
+            ...row,
+            userRef: user.ref,
+            name: user.name,
+            phone: user.phone || row.phone,
+            document: user.document || row.document,
+            login: user.login || row.login,
+            active: user.active,
+            mobileAccess: true,
+          };
+          return { ...user, collectorRef: row.ref };
+        }
+      }
+    }
+
+    // Huérfano con el mismo login / nombre.
+    const orphanIdx = nextCollectors.findIndex(
+      (row) =>
+        !row.userRef &&
+        ((row.login && row.login.toLowerCase() === user.login.toLowerCase()) ||
+          row.name.trim().toLowerCase() === user.name.trim().toLowerCase()),
+    );
+    if (orphanIdx >= 0) {
+      const row = nextCollectors[orphanIdx]!;
+      nextCollectors[orphanIdx] = {
+        ...row,
+        userRef: user.ref,
+        name: user.name,
+        phone: user.phone || row.phone,
+        document: user.document || row.document,
+        login: user.login || row.login,
+        active: user.active,
+        mobileAccess: true,
+      };
+      return { ...user, collectorRef: row.ref };
+    }
+
+    const cobRef = nextCollectorCode(nextCollectors);
+    nextCollectors = [
+      ...nextCollectors,
+      {
+        ref: cobRef,
+        name: user.name,
+        zone: COLLECTOR_UNASSIGNED_ZONE,
+        phone: user.phone,
+        document: user.document,
+        active: user.active,
+        userRef: user.ref,
+        login: user.login,
+        mobileAccess: true,
+      },
+    ];
+    return { ...user, collectorRef: cobRef };
+  });
+
+  return alignUserCollectorLinks(nextUsers, nextCollectors);
 }
 
 /** Completa permisos faltantes (p. ej. datos viejos en localStorage). */
@@ -539,13 +729,12 @@ export function routesForCollector(collectorRef: string, rows: RouteRow[] = ROUT
 
 export function paymentsForCollector(
   collectorRef: string,
-  collectors: CollectorRow[] = COLLECTORS,
+  _collectors: CollectorRow[] = COLLECTORS,
   rows: PaymentRow[] = PAYMENTS,
 ) {
-  const collector = collectors.find((row) => row.ref === collectorRef);
-  return rows.filter(
-    (row) => row.collectorRef === collectorRef || (collector && row.collector === collector.name),
-  );
+  if (!collectorRef) return [];
+  // Solo por ref: evita que un cobrador nuevo herede cobros por coincidencia de nombre.
+  return rows.filter((row) => row.collectorRef === collectorRef);
 }
 
 export function collectedByCollectorRef(
@@ -594,9 +783,13 @@ export function routeSlug(name: string) {
 }
 
 export function clientsOnRoute(routeName: string, rows: ClientRow[] = CLIENTS) {
-  return rows.filter(
-    (row) => row.route === routeName && row.status !== "Pte. revisión",
-  );
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    if (row.route !== routeName || row.status === "Pte. revisión") return false;
+    if (seen.has(row.ref)) return false;
+    seen.add(row.ref);
+    return true;
+  });
 }
 
 /** Clientes de ruta visibles en listado operativo (sin pendientes de revisión). */
@@ -604,8 +797,15 @@ export function clientsOnRouteListed(routeName: string, rows: ClientRow[] = CLIE
   return clientsOnRoute(routeName, rows);
 }
 
-export function nextClientCode(count = CLIENTS.length) {
-  return `COD-${count}`;
+export function nextClientCode(rows: ClientRow[] | number = CLIENTS) {
+  const list = typeof rows === "number" ? CLIENTS : rows;
+  const nums = list
+    .map((row) => Number(String(row.ref).replace(/^COD-/i, "")))
+    .filter((value) => Number.isFinite(value));
+  // Compat: si pasan un número (API vieja), no reutilizar refs existentes.
+  const floor = typeof rows === "number" ? rows - 1 : -1;
+  const next = Math.max(nums.length ? Math.max(...nums) : -1, floor) + 1;
+  return `COD-${next}`;
 }
 
 /** Fecha de alta del cliente (DD/MM/AAAA), asignada por el sistema al crear. */
@@ -617,7 +817,11 @@ export function clientCreationDate(date = new Date()) {
 }
 
 export function nextLoanCode(rows: LoanRow[] = LOANS) {
-  return `P-${rows.length}`;
+  const nums = rows
+    .map((row) => Number(String(row.ref).replace(/^P-/i, "")))
+    .filter((value) => Number.isFinite(value));
+  const next = nums.length ? Math.max(...nums) + 1 : 0;
+  return `P-${next}`;
 }
 
 export const PAYMENTS: PaymentRow[] = [];

@@ -215,12 +215,13 @@ export function loadDemoUsers(): UserRow[] {
 
   const merged = stored.map((row) => normalizeStoredUser(row));
   for (const seed of USERS) {
-    const idx = merged.findIndex(
-      (row) =>
-        row.ref === seed.ref || row.login.toLowerCase() === seed.login.toLowerCase(),
-    );
+    // Solo por ref: evitar cruzar cuentas si alguien cambió el login (Diego/Lina/etc.).
+    const idx = merged.findIndex((row) => row.ref === seed.ref);
     if (idx === -1) {
-      merged.push({ ...seed });
+      const loginTaken = merged.some(
+        (row) => row.login.toLowerCase() === seed.login.toLowerCase(),
+      );
+      if (!loginTaken) merged.push({ ...seed });
       continue;
     }
     if (SYSTEM_LOGINS.has(seed.login.toLowerCase())) {

@@ -1,4 +1,8 @@
 import { pendingReviewClients } from "@/lib/client-review";
+import {
+  clientsNeedingProfileCompletion,
+  loansNeedingOfficeReview,
+} from "@/lib/profile-pending";
 import { activityFeed } from "@/lib/collector-preview";
 import {
   dispatchSummary,
@@ -115,6 +119,30 @@ export function buildHomePendingActions(
       kind: "warn",
       module: "clientes",
       view: "revision",
+    });
+  }
+
+  const profilePending = clientsNeedingProfileCompletion(clients).length;
+  if (profilePending > 0) {
+    items.push({
+      id: "ficha-incompleta",
+      message: `${profilePending} cliente${profilePending === 1 ? "" : "s"} con ficha incompleta (calle)`,
+      pill: "Completar",
+      kind: "warn",
+      module: "clientes",
+      view: "listado",
+    });
+  }
+
+  const loanPending = loansNeedingOfficeReview(loans).length;
+  if (loanPending > 0) {
+    items.push({
+      id: "prestamo-rapido",
+      message: `${loanPending} préstamo${loanPending === 1 ? "" : "s"} rápido${loanPending === 1 ? "" : "s"} por revisar`,
+      pill: "Revisar",
+      kind: "partial",
+      module: "prestamos",
+      view: "listado",
     });
   }
 

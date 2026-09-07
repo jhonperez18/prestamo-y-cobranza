@@ -2,10 +2,23 @@
 
 import { PhoneMiniIcon } from "@/components/icons";
 import { Pill } from "@/components/ui";
-import { collectorFieldStatus, money } from "@/lib/mock-data";
+import {
+  catalogRoutes,
+  clientsOnRouteListed,
+  collectorFieldStatus,
+  money,
+  type ActivityRow,
+  type ClientRow,
+  type CollectorRow,
+  type LoanRow,
+  type PaymentRow,
+  type RoleRow,
+  type RouteRow,
+  type UserRow,
+} from "@/lib/mock-data";
+import { isOperationalClient } from "@/lib/client-review";
 import {
   collectorProgramDays,
-  collectorDispatchRoutes,
   dispatchRouteRef,
 } from "@/lib/collector-dispatch-sync";
 import { todayIso } from "@/lib/daily-dispatch";
@@ -20,8 +33,7 @@ import { PermissionChecklist } from "@/components/PermissionChecklist";
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
 import { normalizePaymentMethod, paymentMethodKind, paymentMethodLabel } from "@/lib/payment-method";
 import type { CollectorPaymentDraft } from "@/lib/route-sync";
-import type { ActivityRow, ClientRow, CollectorRow, LoanRow, PaymentRow, RoleRow, RouteRow, UserRow } from "@/lib/mock-data";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type PayContext = {
   routeRef: string;
@@ -92,7 +104,14 @@ export function CollectorFicha({
   allowedTabs,
 }: Props) {
   const [payContext, setPayContext] = useState<PayContext | null>(null);
-  const dispatchRoutes = collectorDispatchRoutes(collector.ref, routes);
+  const permanentRoute = useMemo(
+    () => catalogRoutes(routes).find((row) => row.collectorRef === collector.ref) ?? null,
+    [routes, collector.ref],
+  );
+  const routeClientCount = useMemo(() => {
+    if (!permanentRoute) return 0;
+    return clientsOnRouteListed(permanentRoute.name, clients).filter(isOperationalClient).length;
+  }, [permanentRoute, clients]);
   const programDays = collectorProgramDays(
     collector.ref,
     collector.name,
@@ -106,7 +125,8 @@ export function CollectorFicha({
   const status = collectorFieldStatus(collector, routes);
   const collectorPay = collectorPayments(collector.ref, collectors, payments);
   const collectorActs = activities.filter((row) => row.collectorRef === collector.ref);
-  const initials = collector.name
+  const displayName = (user?.name ?? collector.name).trim() || collector.name;
+  const initials = displayName
     .split(/\s+/)
     .slice(0, 2)
     .map((part) => part.charAt(0))
@@ -175,7 +195,12 @@ export function CollectorFicha({
       <div className="ficha">
         <aside className="ficha-side">
           <div className="photo">{initials}</div>
-          <h2>{collector.name}</h2>
+          <h2>{displayName}</h2>
+          <p className="ficha-user-codes">
+            <span className="ref">{user?.ref ?? "—"}</span>
+            {" · "}
+            <span className="ref">{collector.ref}</span>
+          </p>
           <div className="meta">
             <div>
               <span>Teléfono</span>
@@ -298,19 +323,25 @@ export function CollectorFicha({
                         <td className="loan-val-col">Todas las zonas</td>
                       </tr>
                       <tr>
-                        <td className="loan-label-col">Ruta de hoy</td>
+                        <td className="loan-label-col">Ruta asignada</td>
                         <td className="loan-val-col" colSpan={3}>
-                          {todayProgram?.dispatched && todayProgram.route
-                            ? `${todayProgram.route.name} · ${todayProgram.route.clients} cobros`
-                            : todayProgram && !todayProgram.dispatched
-                              ? `${todayProgram.items.length} cobros asignados · pendiente de envío`
-                              : dispatchRoutes[0]
-                                ? `${dispatchRoutes[0].name} · ${dispatchRoutes[0].clients} cobros`
-                                : "Sin programación"}
+                          {permanentRoute
+                            ? `Ruta ${permanentRoute.name}${
+                                routeClientCount
+                                  ? ` · ${routeClientCount} cliente${routeClientCount === 1 ? "" : "s"}`
+                                  : " · sin clientes"
+                              }${
+                                todayDispatched.length
+                                  ? ` · ${todayDispatched.length} cobro${todayDispatched.length === 1 ? "" : "s"} hoy`
+                                  : ""
+                              }`
+                            : todayProgram?.dispatched && todayProgram.route
+                              ? `${todayProgram.route.name} · ${todayProgram.items.length} cobro${todayProgram.items.length === 1 ? "" : "s"} hoy`
+                              : "Sin ruta asignada"}
                         </td>
                       </tr>
                       <tr>
-                        <td className="loan-label-col">Cobrado (reciente)</td>
+                        <td className="loan-label-col">Cobrado</td>
                         <td className="loan-val-col money">
                           {collectorPay.length
                             ? money(collectorPay.reduce((sum, row) => sum + row.amount, 0))

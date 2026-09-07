@@ -73,6 +73,7 @@ export function planillaAssignmentsForRoute(
   date: string,
 ) {
   if (!collectorRef) return [];
+  const seen = new Set<string>();
   return assignments
     .filter(
       (row) =>
@@ -81,6 +82,12 @@ export function planillaAssignmentsForRoute(
         row.collectorRef === collectorRef &&
         (row.clientRoute === routeName || row.clientRoute === String(routeName)),
     )
+    .filter((row) => {
+      const key = row.itemId || `${row.loanRef}:${row.clientRef}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .slice()
     .sort((a, b) => a.clientName.localeCompare(b.clientName, "es"));
 }

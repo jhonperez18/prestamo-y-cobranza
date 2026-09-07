@@ -1,5 +1,6 @@
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { RouteRow } from "@/lib/mock-data";
+import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 
 /**
  * Modelo de sincronización demo:
@@ -12,7 +13,9 @@ export function assignmentsForMobileCollector(
   collectorRef: string,
   assignments: DailyCollectionAssignment[],
 ) {
-  return assignments.filter((row) => row.collectorRef === collectorRef);
+  return dedupePlanillaAssignments(
+    assignments.filter((row) => row.collectorRef === collectorRef),
+  );
 }
 
 export function routesForMobileCollector(collectorRef: string, routes: RouteRow[]) {

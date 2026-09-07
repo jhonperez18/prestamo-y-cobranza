@@ -135,10 +135,17 @@ export function DailyCollectionsView({
     [syncedLoans, clients, selectedDate],
   );
 
-  const routeOptions = useMemo(() => {
-    const zones = new Set(allItems.map((row) => row.clientRoute).filter((row) => row && row !== "—"));
-    return [...zones].sort();
-  }, [allItems]);
+  const catalog = useMemo(() => catalogRoutes(routes), [routes]);
+
+  /** Todas las rutas del catálogo (aunque hoy no tengan cobros). */
+  const routeOptions = useMemo(
+    () =>
+      catalog
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+        .map((row) => row.name),
+    [catalog],
+  );
 
   useEffect(() => {
     setSelectedDate(readStoredDate());
@@ -152,8 +159,6 @@ export function DailyCollectionsView({
     if (typeof window === "undefined") return;
     window.localStorage.setItem(DISPATCH_DATE_KEY, selectedDate);
   }, [selectedDate]);
-
-  const catalog = useMemo(() => catalogRoutes(routes), [routes]);
 
   function collectorRefForRoute(routeName: string) {
     return catalog.find((row) => row.name === routeName)?.collectorRef ?? "";
@@ -402,12 +407,12 @@ export function DailyCollectionsView({
           />
         </label>
         <label className="daily-date-field">
-          <span>Zona</span>
+          <span>Ruta</span>
           <select value={routeFilter} onChange={(event) => setRouteFilter(event.target.value)}>
-            <option value="">Todas las zonas</option>
+            <option value="">Todas las rutas</option>
             {routeOptions.map((row) => (
               <option key={row} value={row}>
-                {row}
+                Ruta {row}
               </option>
             ))}
           </select>
@@ -440,7 +445,7 @@ export function DailyCollectionsView({
             <tr className="col-titles">
               {isVisible("index") ? <th>#</th> : null}
               {isVisible("client") ? <th>Cliente</th> : null}
-              {isVisible("zone") ? <th>Zona</th> : null}
+              {isVisible("zone") ? <th>Ruta</th> : null}
               {isVisible("loan") ? <th>Préstamo</th> : null}
               {isVisible("concept") ? <th>Concepto</th> : null}
               {isVisible("since") ? <th>Desde</th> : null}

@@ -145,7 +145,7 @@ export function collectorRecaudoForDate(
 export function visitStatusLabel(status?: DailyCollectionAssignment["visitStatus"]) {
   if (status === "cobrado") return "Cobrado";
   if (status === "parcial") return "Parcial";
-  if (status === "omitido") return "No visitado";
+  if (status === "omitido") return "sin cobro";
   return "Pendiente";
 }
 

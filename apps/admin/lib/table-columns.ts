@@ -3,12 +3,13 @@ import type { ColumnOption } from "@/components/ColumnPicker";
 export const COBRANZA_PAYMENT_COLUMNS: ColumnOption[] = [
   { id: "ref", label: "Ref." },
   { id: "fecha", label: "Fecha" },
+  { id: "hora", label: "Hora" },
   { id: "cliente", label: "Cliente" },
   { id: "cobrador", label: "Cobrador" },
   { id: "valor", label: "Valor" },
   { id: "method", label: "Forma de pago" },
   { id: "evidence", label: "Comprobante" },
-  { id: "tipo", label: "Tipo" },
+  { id: "ruta", label: "Ruta" },
   { id: "estado", label: "Estado" },
 ];
 
@@ -135,6 +136,7 @@ export const BANK_LEDGER_INCOME_COLUMNS: ColumnOption[] = [
   { id: "period", label: "Periodo" },
   { id: "account", label: "Cuenta" },
   { id: "thirdParty", label: "Tercero" },
+  { id: "status", label: "Estado" },
   { id: "debit", label: "Debe" },
 ];
 
@@ -148,6 +150,7 @@ export const BANK_LEDGER_EXPENSE_COLUMNS: ColumnOption[] = [
   { id: "account", label: "Cuenta" },
   { id: "thirdParty", label: "Tercero" },
   { id: "category", label: "Categoría" },
+  { id: "status", label: "Estado" },
   { id: "credit", label: "Haber" },
 ];
 
@@ -156,7 +159,7 @@ export const BANK_LEDGER_EXPENSE_DEFAULT_COLS = BANK_LEDGER_EXPENSE_COLUMNS.map(
 export const DAILY_COLLECTION_COLUMNS: ColumnOption[] = [
   { id: "index", label: "#" },
   { id: "client", label: "Cliente" },
-  { id: "zone", label: "Zona" },
+  { id: "zone", label: "Ruta" },
   { id: "loan", label: "Préstamo" },
   { id: "concept", label: "Concepto" },
   { id: "since", label: "Desde" },

@@ -7,8 +7,9 @@ import {
   sortPaymentsNewestFirst,
   type PaymentMovement,
 } from "@/lib/payment-detail";
-import type { LoanRow, PaymentRow } from "@/lib/mock-data";
+import type { ClientRow, LoanRow, PaymentRow, RouteRow } from "@/lib/mock-data";
 import { money } from "@/lib/mock-data";
+import { paymentRouteLabel } from "@/lib/cobranza-payment-columns";
 
 export type CobranzaPaymentsReportKind = "pagos" | "abonos";
 
@@ -37,6 +38,8 @@ export type CobranzaPaymentsReportDocument = {
     byCollector: CobranzaPaymentsReportBreakdownRow[];
   };
   footer: { label: string; value: string; highlight?: boolean; tone?: "capital" | "neutral" | "highlight" }[];
+  /** Ref de pago → etiqueta de ruta (para PDF / export). */
+  routeByPaymentRef: Record<string, string>;
 };
 
 function reportTimestamp() {
@@ -67,6 +70,8 @@ export function buildCobranzaPaymentsReport(input: {
   kind: CobranzaPaymentsReportKind;
   payments: PaymentRow[];
   loans: LoanRow[];
+  clients?: ClientRow[];
+  routes?: RouteRow[];
   assignments?: DailyCollectionAssignment[];
   fromIso: string;
   toIso: string;
@@ -87,6 +92,16 @@ export function buildCobranzaPaymentsReport(input: {
   const sorted = sortPaymentsNewestFirst(filtered);
   const movements = sorted.map((payment) =>
     enrichPaymentMovement(payment, payment.loanRef ? loansByRef.get(payment.loanRef) : null, input.assignments),
+  );
+
+  const routeCtx = {
+    loans: loansByRef,
+    clients: input.clients ?? [],
+    routes: input.routes ?? [],
+    assignments: input.assignments,
+  };
+  const routeByPaymentRef = Object.fromEntries(
+    sorted.map((payment) => [payment.ref, paymentRouteLabel(payment, routeCtx)]),
   );
 
   const total = sorted.reduce((sum, row) => sum + row.amount, 0);
@@ -137,6 +152,7 @@ export function buildCobranzaPaymentsReport(input: {
       byCollector,
     },
     footer,
+    routeByPaymentRef,
   };
 }
 

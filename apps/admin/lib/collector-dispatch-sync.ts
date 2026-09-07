@@ -7,6 +7,7 @@ import {
   loanCollectionAlerts,
 } from "@/lib/collection-alerts";
 import { isValidPlanillaAssignment } from "@/lib/planilla-eligibility";
+import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 import type {
   ClientRow,
   CollectorRow,
@@ -53,14 +54,22 @@ export function hydrateAssignment(
   const loan = loans.find((entry) => entry.ref === row.loanRef);
   const client = clients.find((entry) => entry.ref === (row.clientRef || loan?.clientRef));
   const amountDue =
-    row.amountDue ??
-    (loan?.installment && loan.installment > 0
-      ? Math.min(loan.installment, loan.balance)
-      : loan?.balance ?? 0);
-  const alertCount = loan
-    ? loanCollectionAlerts(loan)
-    : Number(row.alertCount) || 0;
-  const kind = loan ? collectionChargeKind(alertCount) : row.kind ?? "cuota";
+    row.awaitingLoan
+      ? 0
+      : row.amountDue ??
+        (loan?.installment && loan.installment > 0
+          ? Math.min(loan.installment, loan.balance)
+          : loan?.balance ?? 0);
+  const alertCount = row.awaitingLoan
+    ? 0
+    : loan
+      ? loanCollectionAlerts(loan)
+      : Number(row.alertCount) || 0;
+  const kind = row.awaitingLoan
+    ? "cuota"
+    : loan
+      ? collectionChargeKind(alertCount)
+      : row.kind ?? "cuota";
   return {
     ...row,
     clientRef: row.clientRef ?? client?.ref ?? "",
@@ -71,8 +80,11 @@ export function hydrateAssignment(
     amountDue,
     alertCount,
     kind,
-    chargeLabel: collectionAlertLabel(alertCount) || "Cuota",
+    chargeLabel: row.awaitingLoan
+      ? "Completar"
+      : collectionAlertLabel(alertCount) || row.chargeLabel || "Cuota",
     visitStatus: row.visitStatus ?? "pendiente",
+    awaitingLoan: Boolean(row.awaitingLoan),
   };
 }
 
@@ -89,9 +101,11 @@ export function assignmentsForCollectorDate(
       ? client.routeOrder
       : Number.MAX_SAFE_INTEGER;
   };
-  return assignments
-    .filter((row) => row.collectorRef === collectorRef && row.dispatchDate === date)
-    .filter((row) => isValidPlanillaAssignment(row, clients, loans))
+  return dedupePlanillaAssignments(
+    assignments
+      .filter((row) => row.collectorRef === collectorRef && row.dispatchDate === date)
+      .filter((row) => isValidPlanillaAssignment(row, clients, loans)),
+  )
     .map((row) => hydrateAssignment(row, loans, clients))
     .sort(
       (a, b) =>
@@ -107,11 +121,16 @@ export function assignmentsForCollector(
   loans: LoanRow[],
   clients: ClientRow[],
 ) {
-  return assignments
-    .filter((row) => row.collectorRef === collectorRef)
-    .filter((row) => isValidPlanillaAssignment(row, clients, loans))
+  return dedupePlanillaAssignments(
+    assignments
+      .filter((row) => row.collectorRef === collectorRef)
+      .filter((row) => isValidPlanillaAssignment(row, clients, loans)),
+  )
     .map((row) => hydrateAssignment(row, loans, clients))
-    .sort((a, b) => b.dispatchDate.localeCompare(a.dispatchDate) || a.clientName.localeCompare(b.clientName));
+    .sort(
+      (a, b) =>
+        b.dispatchDate.localeCompare(a.dispatchDate) || a.clientName.localeCompare(b.clientName),
+    );
 }
 
 export function buildDispatchRoute(

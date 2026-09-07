@@ -42,6 +42,15 @@ type Props = {
   onSaveExpenses?: (payload: CollectorSaveExpensesPayload) => void;
   onCloseDay?: (payload: CollectorCloseDayPayload) => void;
   onCloseMonth?: (payload: CollectorCloseMonthPayload) => void;
+  onCreateStreetClient?: (draft: {
+    name: string;
+    lastName?: string;
+    phone?: string;
+    routeOrder: number;
+    routeName: string;
+    routeRef: string;
+  }) => void;
+  onCreateQuickLoan?: (draft: import("@/lib/street-client-loan").QuickLoanDraft) => void;
 };
 
 export function CollectorMobilePreview({
@@ -63,6 +72,8 @@ export function CollectorMobilePreview({
   onSaveExpenses,
   onCloseDay,
   onCloseMonth,
+  onCreateStreetClient,
+  onCreateQuickLoan,
 }: Props) {
   const [kind, setKind] = useState<PreviewKind>("collector");
   const [supervisorRef, setSupervisorRef] = useState("");
@@ -163,6 +174,8 @@ export function CollectorMobilePreview({
                   dayExpenseDrafts={dayExpenseDrafts}
                   dayCloses={dayCloses}
                   monthCloses={monthCloses}
+                  onCreateStreetClient={onCreateStreetClient}
+                  onCreateQuickLoan={onCreateQuickLoan}
                 />
               ) : collector ? (
                 <CollectorMobileApp
@@ -180,6 +193,7 @@ export function CollectorMobilePreview({
                   onRegisterPayment={onRegisterPayment}
                   onSkipVisit={onSkipVisit}
                   onRenewLoan={onRenewLoan}
+                  onCreateQuickLoan={onCreateQuickLoan}
                   onSaveExpenses={onSaveExpenses}
                   onCloseDay={onCloseDay}
                   onCloseMonth={onCloseMonth}

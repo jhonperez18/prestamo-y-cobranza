@@ -260,6 +260,20 @@ export function findDayExpenseDraft(
   return drafts.find((row) => row.ref === ref) ?? null;
 }
 
+/** Gastos del día: cierre definitivo si existe; si no, borrador guardado. */
+export function expensesForCollectorDay(
+  collectorRef: string,
+  date: string,
+  closes: CollectorDayCloseRecord[],
+  drafts: CollectorDayExpenseDraft[],
+): RouteExpenseLine[] {
+  const closeRef = dayCloseRef(collectorRef, date);
+  const closed = closes.find((row) => row.ref === closeRef);
+  if (closed) return closed.expenses.filter((row) => row.amount > 0);
+  const draft = findDayExpenseDraft(drafts, collectorRef, date);
+  return draft?.expenses.filter((row) => row.amount > 0) ?? [];
+}
+
 export function upsertDayExpenseDraft(
   drafts: CollectorDayExpenseDraft[],
   draft: CollectorDayExpenseDraft,

@@ -16,9 +16,19 @@ export function migrateLegacyRouteName(route: string) {
   return LEGACY_ROUTE_MAP[key] ?? route;
 }
 
+/** Una sola fila por ref (limpia duplicados en localStorage / sync). */
+export function dedupeClientsByRef(clients: ClientRow[]): ClientRow[] {
+  const byRef = new Map<string, ClientRow>();
+  for (const row of clients) {
+    if (!row?.ref) continue;
+    if (!byRef.has(row.ref)) byRef.set(row.ref, row);
+  }
+  return [...byRef.values()];
+}
+
 /** Clientes de una ruta ordenados por posición (1…N). Sin pendientes de revisión. */
 export function clientsOnRouteSorted(clients: ClientRow[], routeName: string) {
-  return clients
+  return dedupeClientsByRef(clients)
     .filter((row) => row.route === routeName && !isPendingReview(row))
     .slice()
     .sort((a, b) => {
@@ -38,8 +48,9 @@ export function nextRouteOrder(clients: ClientRow[], routeName: string) {
  * Conserva el orden relativo actual. Ignora pendientes de revisión.
  */
 export function normalizeAllRouteOrders(clients: ClientRow[]): ClientRow[] {
+  const unique = dedupeClientsByRef(clients);
   const byRoute = new Map<string, ClientRow[]>();
-  for (const row of clients) {
+  for (const row of unique) {
     if (isPendingReview(row)) continue;
     const key = row.route || "";
     const list = byRoute.get(key) ?? [];
@@ -58,7 +69,7 @@ export function normalizeAllRouteOrders(clients: ClientRow[]): ClientRow[] {
     sorted.forEach((row, index) => orderByRef.set(row.ref, index + 1));
   }
 
-  return clients.map((row) => {
+  return unique.map((row) => {
     if (isPendingReview(row)) {
       return { ...row, routeOrder: 0 };
     }

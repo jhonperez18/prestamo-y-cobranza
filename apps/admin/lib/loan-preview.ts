@@ -56,6 +56,7 @@ export type LoanTermsRow = {
   kind?: string;
   notes?: string;
   collectionAlerts?: number;
+  termsPending?: boolean;
 };
 
 export const LOAN_TERM_OPTIONS: { id: LoanTermMonths; label: string }[] = [
@@ -505,7 +506,10 @@ export function collectionDatesForTerm(
 /** Primera fecha de cobro según frecuencia (desde el desembolso). */
 export function firstCollectionIso(startIso: string, frequency: PayFrequency) {
   if (!startIso) return "";
-  if (frequency === "diario") return "";
+  if (frequency === "diario") {
+    const dates = collectionDatesForTerm(startIso, frequency, 1);
+    return dates[0] ?? "";
+  }
   if (frequency === "semanal") return addDays(startIso, 8);
   if (frequency === "quincenal") return addDays(startIso, 15);
   return addMonths(startIso, 1);
@@ -514,17 +518,19 @@ export function firstCollectionIso(startIso: string, frequency: PayFrequency) {
 /** Etiqueta para la casilla “Día de cobro”. */
 export function firstCollectionLabel(startIso: string, frequency: PayFrequency) {
   if (!startIso) return "";
-  if (frequency === "diario") return "Lun–sáb";
   const iso = firstCollectionIso(startIso, frequency);
+  if (frequency === "diario") {
+    return iso ? `Desde ${isoToDisplay(iso)} (lun–sáb)` : "Lun–sáb";
+  }
   return iso ? isoToDisplay(iso) : "";
 }
 
 export function collectionAnchorHint(startIso: string, frequency: PayFrequency) {
   if (!startIso) return "";
-  if (frequency === "diario") {
-    return "Diario: 30 cuotas por mes (lun–sáb, sin festivos).";
-  }
   const first = firstCollectionLabel(startIso, frequency);
+  if (frequency === "diario") {
+    return `Diario: 30 cuotas por mes (lun–sáb, sin festivos). Primer cobro: ${first}.`;
+  }
   if (frequency === "semanal") {
     return `Semanal: 4 cuotas por mes (cada 8 días). Primer cobro: ${first}.`;
   }

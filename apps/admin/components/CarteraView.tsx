@@ -132,35 +132,35 @@ export function CarteraView({
   return (
     <>
       {isResumen ? (
-        <div className="kpis tone-kpis">
-          <Kpi
-            label="Cartera total"
-            value={money(portfolio.totalBalance)}
-            hint={`${portfolio.activeCount} crédito${portfolio.activeCount === 1 ? "" : "s"}`}
-            tone="teal"
+      <div className="kpis tone-kpis">
+        <Kpi
+          label="Cartera total"
+          value={money(portfolio.totalBalance)}
+          hint={`${portfolio.activeCount} crédito${portfolio.activeCount === 1 ? "" : "s"}`}
+          tone="teal"
             active={resumenDrill === "total"}
             onClick={() => toggleResumenDrill("total")}
-          />
-          <Kpi
-            label="Al día"
-            value={money(portfolio.onTimeBalance)}
-            hint={`${portfolio.onTimeCount} crédito${portfolio.onTimeCount === 1 ? "" : "s"}`}
-            tone="sage"
+        />
+        <Kpi
+          label="Al día"
+          value={money(portfolio.onTimeBalance)}
+          hint={`${portfolio.onTimeCount} crédito${portfolio.onTimeCount === 1 ? "" : "s"}`}
+          tone="sage"
             active={resumenDrill === "al-dia"}
             onClick={() => toggleResumenDrill("al-dia")}
-          />
-          <Kpi
-            label="En mora"
-            value={money(portfolio.moraBalance)}
-            hint={`${portfolio.moraCount} crédito${portfolio.moraCount === 1 ? "" : "s"}`}
-            tone="coral"
+        />
+        <Kpi
+          label="En mora"
+          value={money(portfolio.moraBalance)}
+          hint={`${portfolio.moraCount} crédito${portfolio.moraCount === 1 ? "" : "s"}`}
+          tone="coral"
             onClick={() => onGo?.("cartera", "mora")}
-          />
-          <Kpi
-            label="Cobrado del mes"
-            value={money(portfolio.collectedMonth)}
-            hint={portfolio.monthLabel}
-            tone="amber"
+        />
+        <Kpi
+          label="Cobrado del mes"
+          value={money(portfolio.collectedMonth)}
+          hint={portfolio.monthLabel}
+          tone="amber"
             active={resumenDrill === "cobrado"}
             onClick={() => toggleResumenDrill("cobrado")}
           />
@@ -175,7 +175,7 @@ export function CarteraView({
               <span className="count">
                 {resumenDrill === "cobrado" ? collectedRows.length : resumenDrill === "al-dia" ? onTimeRows.length : totalRows.length}
               </span>
-            </div>
+      </div>
 
             {resumenDrill === "cobrado" ? (
               <div className="table-wrap">
@@ -305,8 +305,8 @@ export function CarteraView({
         )
       ) : (
         <>
-          <div className="cartera-mora-toolbar panel">
-            <div className="filters cobranza-report-filters cartera-mora-filters">
+        <div className="cartera-mora-toolbar panel">
+          <div className="filters cobranza-report-filters cartera-mora-filters">
               <select
                 className="cartera-mora-route-filter"
                 value={routeFilter}
@@ -320,13 +320,13 @@ export function CarteraView({
                   </option>
                 ))}
               </select>
-              <div className="cartera-mora-toolbar-actions">
-                <button type="button" className="btn primary" onClick={() => setPdfPreviewOpen(true)}>
-                  Vista previa PDF
-                </button>
-              </div>
+            <div className="cartera-mora-toolbar-actions">
+              <button type="button" className="btn primary" onClick={() => setPdfPreviewOpen(true)}>
+                Vista previa PDF
+              </button>
             </div>
           </div>
+        </div>
 
           <section className="panel">
             <div className="head">
@@ -365,36 +365,36 @@ export function CarteraView({
                   </tr>
                 </thead>
                 <tbody>
-                  {moraRows.length === 0 ? (
-                    <tr className="empty-row">
+        {moraRows.length === 0 ? (
+          <tr className="empty-row">
                       <td colSpan={moraVisibleCount + 1}>No hay préstamos en mora.</td>
-                    </tr>
-                  ) : (
-                    moraRows.map((row) => (
-                      <tr key={row.loanRef}>
+          </tr>
+        ) : (
+          moraRows.map((row) => (
+            <tr key={row.loanRef}>
                         {moraColumns.isVisible("client") ? (
-                          <td>
-                            <button
-                              type="button"
-                              className="btn-link"
-                              title="Ver cliente"
-                              onClick={() => onOpenClient(row.clientRef)}
-                            >
-                              {row.clientName}
-                            </button>
-                          </td>
+              <td>
+                <button
+                  type="button"
+                  className="btn-link"
+                  title="Ver cliente"
+                  onClick={() => onOpenClient(row.clientRef)}
+                >
+                  {row.clientName}
+                </button>
+              </td>
                         ) : null}
                         {moraColumns.isVisible("loan") ? (
-                          <td>
-                            <button
-                              type="button"
-                              className="btn-link ref"
-                              title="Ver préstamo"
-                              onClick={() => onOpenLoan(row.loanRef)}
-                            >
-                              {row.loanRef}
-                            </button>
-                          </td>
+              <td>
+                <button
+                  type="button"
+                  className="btn-link ref"
+                  title="Ver préstamo"
+                  onClick={() => onOpenLoan(row.loanRef)}
+                >
+                  {row.loanRef}
+                </button>
+              </td>
                         ) : null}
                         {moraColumns.isVisible("route") ? <td>{row.route}</td> : null}
                         {moraColumns.isVisible("days") ? <td className="col-mora-days">{row.days}</td> : null}
@@ -407,12 +407,12 @@ export function CarteraView({
                         {moraColumns.isVisible("status") ? (
                           <td className="col-mora-status">
                             <Pill label={row.statusLabel} kind="overdue" />
-                          </td>
+              </td>
                         ) : null}
                         <ColumnPickerBodyCell />
-                      </tr>
-                    ))
-                  )}
+            </tr>
+          ))
+        )}
                 </tbody>
               </table>
             </div>

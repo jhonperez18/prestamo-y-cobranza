@@ -186,8 +186,13 @@ export function UserList({
               visible.map((row) => (
                 <tr
                   key={row.ref}
+                  data-user-ref={row.ref}
                   className={onOpenUser ? "clickable" : undefined}
-                  onClick={() => onOpenUser?.(row.ref)}
+                  onClick={(event) => {
+                    const ref =
+                      event.currentTarget.getAttribute("data-user-ref")?.trim() || row.ref;
+                    onOpenUser?.(ref);
+                  }}
                 >
                   {USER_LIST_COLUMNS.filter((col) => isVisible(col.id)).map((col) => (
                     <td key={col.id}>{renderCell(row, col.id)}</td>

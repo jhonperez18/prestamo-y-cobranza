@@ -490,12 +490,87 @@ export function displayToday() {
   return `${now.getFullYear()}-${month}-${day}`;
 }
 
-/** Conserva solo movimientos con fecha valor = hoy. */
+/** @deprecated No usar para persistir: borraba cobros de días anteriores. Preferir bankOpenMovements. */
 export function bankMovementsForToday(movements: BankMovement[], today = displayToday()) {
   return movements.filter((row) => {
     const value = (row.valueDate || row.opDate || "").slice(0, 10);
     return value === today;
   });
+}
+
+/** Movimientos aún no conciliados (cualquier fecha). Permanecen en banco hasta cerrar el extracto. */
+export function bankOpenMovements(movements: BankMovement[]) {
+  return movements.filter((row) => !row.reconciled);
+}
+
+export type BankHistoryScope = "open" | "closed" | "all";
+export type BankHistoryKindFilter = "all" | "income" | "expense";
+
+export function filterBankHistory(
+  movements: BankMovement[],
+  opts: {
+    scope?: BankHistoryScope;
+    accountRef?: string;
+    period?: string;
+    kind?: BankHistoryKindFilter;
+    query?: string;
+  } = {},
+) {
+  const scope = opts.scope ?? "all";
+  const kind = opts.kind ?? "all";
+  const q = (opts.query ?? "").trim().toLowerCase();
+  return movements.filter((row) => {
+    if (scope === "open" && row.reconciled) return false;
+    if (scope === "closed" && !row.reconciled) return false;
+    if (opts.accountRef && row.accountRef !== opts.accountRef) return false;
+    if (opts.period && normalizeBankPeriod(row.period) !== normalizeBankPeriod(opts.period)) {
+      return false;
+    }
+    if (kind === "income" && !isBankIncomeMovement(row)) return false;
+    if (kind === "expense" && !isBankExpenseMovement(row)) return false;
+    if (!q) return true;
+    const hay = [
+      row.ref,
+      row.description,
+      row.thirdParty,
+      row.paymentRef ?? "",
+      row.miscPaymentRef ?? "",
+      expenseCategoryLabel(row.category),
+      row.accountRef,
+      row.period,
+    ]
+      .join(" ")
+      .toLowerCase();
+    return hay.includes(q);
+  });
+}
+
+/** Saldo vivo: apertura + debe − haber de todos los movimientos de la cuenta. */
+export function liveBalanceForAccount(account: BankAccount, movements: BankMovement[]) {
+  const ledger = movements.filter((row) => row.accountRef === account.ref);
+  const summary = summarizeMovements(ledger);
+  return account.openingBalance + summary.balance;
+}
+
+/** Periodos con movimientos abiertos en una cuenta (más recientes primero). */
+export function openPeriodsForAccount(
+  movements: BankMovement[],
+  reconciliations: BankReconciliation[],
+  accountRef: string,
+) {
+  const periods = [
+    ...new Set(
+      movements
+        .filter(
+          (row) =>
+            row.accountRef === accountRef &&
+            !row.reconciled &&
+            !isPeriodClosed(reconciliations, accountRef, row.period),
+        )
+        .map((row) => normalizeBankPeriod(row.period)),
+    ),
+  ].sort((a, b) => b.localeCompare(a));
+  return periods;
 }
 
 export function expenseCategoryLabel(category?: BankExpenseCategory) {
@@ -575,7 +650,11 @@ export function syncPaymentsToMovements(
   accountRef: string,
   period: string,
 ) {
-  const linked = new Set(movements.map((row) => row.paymentRef).filter(Boolean) as string[]);
+  const linked = new Set(
+    movements
+      .map((row) => paymentRefForMovement(row))
+      .filter((ref): ref is string => Boolean(ref)),
+  );
   const next = [...movements];
   for (const payment of payments) {
     if (linked.has(payment.ref)) continue;
@@ -596,8 +675,71 @@ export function syncPaymentsToMovements(
       reconciled: false,
       manual: false,
     });
+    linked.add(payment.ref);
   }
-  return next;
+  return dedupeBankMovements(next);
+}
+
+function preferBankMovement(a: BankMovement, b: BankMovement): BankMovement {
+  if (a.reconciled && !b.reconciled) return a;
+  if (b.reconciled && !a.reconciled) return b;
+  if (a.paymentRef && !b.paymentRef) return a;
+  if (b.paymentRef && !a.paymentRef) return b;
+  return a;
+}
+
+/** Una sola fila por cobro (PG-), gasto de ruta o pago varios. */
+export function dedupeBankMovements(movements: BankMovement[]): BankMovement[] {
+  const byPayment = new Map<string, BankMovement>();
+  const byMisc = new Map<string, BankMovement>();
+  const byExpense = new Map<string, BankMovement>();
+  const other: BankMovement[] = [];
+
+  for (const row of movements) {
+    const pg = paymentRefForMovement(row);
+    if (pg) {
+      const normalized = { ...row, paymentRef: pg };
+      const prev = byPayment.get(pg);
+      byPayment.set(pg, prev ? preferBankMovement(prev, normalized) : normalized);
+      continue;
+    }
+    if (row.miscPaymentRef) {
+      const prev = byMisc.get(row.miscPaymentRef);
+      byMisc.set(row.miscPaymentRef, prev ? preferBankMovement(prev, row) : row);
+      continue;
+    }
+    if (row.dayExpenseLineRef) {
+      const prev = byExpense.get(row.dayExpenseLineRef);
+      byExpense.set(row.dayExpenseLineRef, prev ? preferBankMovement(prev, row) : row);
+      continue;
+    }
+    other.push(row);
+  }
+
+  return [...byPayment.values(), ...byMisc.values(), ...byExpense.values(), ...other];
+}
+
+/** Firma estable para evitar setState / writes innecesarios. */
+export function bankMovementsSignature(rows: BankMovement[]): string {
+  return rows
+    .map(
+      (row) =>
+        [
+          row.ref,
+          row.paymentRef ?? "",
+          row.miscPaymentRef ?? "",
+          row.dayExpenseLineRef ?? "",
+          row.accountRef,
+          row.period,
+          row.valueDate,
+          row.debit,
+          row.credit,
+          row.reconciled ? 1 : 0,
+          row.description,
+        ].join(":"),
+    )
+    .sort()
+    .join("|");
 }
 
 export function miscPaymentMovementDescription(payment: MiscPayment) {
@@ -638,7 +780,16 @@ export function syncMiscPaymentsToMovements(
     };
     const existing = movementByMisc.get(payment.ref);
     if (existing) {
-      next = next.map((row) => (row.ref === existing.ref ? { ...row, ...patch } : row));
+      next = next.map((row) =>
+        row.ref === existing.ref
+          ? {
+              ...row,
+              ...patch,
+              reconciled: existing.reconciled,
+              inExtract: existing.inExtract,
+            }
+          : row,
+      );
     } else {
       next.push({
         ref: nextBankMovementRef(),
@@ -795,16 +946,13 @@ export function repairBankMovementsFromPayments(
   payments: PaymentRow[],
 ): BankMovement[] {
   const paymentByRef = new Map(payments.map((row) => [row.ref, row]));
-  const linked = new Set(movements.map((row) => row.paymentRef).filter(Boolean) as string[]);
   const next: BankMovement[] = [];
 
   for (const row of movements) {
     const pg = paymentRefForMovement(row);
-    if (pg && linked.has(pg) && row.ref === pg && !row.paymentRef) continue;
-
     const payment = pg ? paymentByRef.get(pg) : undefined;
     let current = row;
-    if (payment && pg && (!row.description?.trim() || (row.credit <= 0 && row.debit <= 0))) {
+    if (payment && pg) {
       current = {
         ...row,
         paymentRef: pg,
@@ -821,29 +969,55 @@ export function repairBankMovementsFromPayments(
     next.push(current);
   }
 
-  return next;
+  return dedupeBankMovements(next);
 }
 
-/** Importa cobros pendientes de enlace a la primera cuenta activa, por cada periodo con pagos. */
+/**
+ * Fuente de verdad: cada cobro (PG-) existe una sola vez en banco.
+ * Conserva conciliado / cuenta / ref previos; rellena los que faltan.
+ */
 export function syncAllPaymentsToMovements(
   payments: PaymentRow[],
   movements: BankMovement[],
   accounts: BankAccount[],
 ) {
-  const primary = accounts.find((row) => row.active);
-  if (!primary) return movements;
+  const primary = accounts.find((row) => row.active) ?? accounts[0];
+  if (!primary) return dedupeBankMovements(movements);
 
-  const periods = new Set<string>();
+  const existing = dedupeBankMovements(repairBankMovementsFromPayments(movements, payments));
+  const byPayment = new Map<string, BankMovement>();
+  for (const row of existing) {
+    const pg = paymentRefForMovement(row);
+    if (pg) byPayment.set(pg, row);
+  }
+
+  const nonCobro = existing.filter((row) => !paymentRefForMovement(row));
+  const paymentRows: BankMovement[] = [];
+  const seenPayments = new Set<string>();
+
   for (const payment of payments) {
+    if (seenPayments.has(payment.ref)) continue;
+    seenPayments.add(payment.ref);
+    const prev = byPayment.get(payment.ref);
     const period = periodFromIso(payment.paidDate);
-    if (period) periods.add(period);
+    paymentRows.push({
+      ref: prev?.ref && !/^PG-/i.test(prev.ref) ? prev.ref : prev?.ref ?? nextBankMovementRef(),
+      accountRef: prev?.accountRef ?? primary.ref,
+      period: prev?.reconciled ? prev.period : period,
+      description: paymentMovementDescription(payment),
+      valueDate: payment.paidDate ?? prev?.valueDate ?? displayToday(),
+      opDate: payment.paidDate ?? prev?.opDate ?? displayToday(),
+      thirdParty: payment.client,
+      debit: payment.amount,
+      credit: 0,
+      paymentRef: payment.ref,
+      inExtract: prev?.inExtract ?? true,
+      reconciled: prev?.reconciled ?? false,
+      manual: false,
+    });
   }
 
-  let next = repairBankMovementsFromPayments(movements, payments);
-  for (const period of periods) {
-    next = syncPaymentsToMovements(payments, next, primary.ref, period);
-  }
-  return next;
+  return dedupeBankMovements([...nonCobro, ...paymentRows]);
 }
 
 export function reconcilePeriod(
@@ -907,9 +1081,8 @@ export function currentFiscalStart(reference = new Date()) {
 }
 
 /**
- * Matriz contable por año fiscal.
- * Siempre incluye al menos el año fiscal actual (columna vacía si aún no hay conciliaciones)
- * y agrega columnas nuevas a medida que se concilian periodos de otros años.
+ * Matriz contable por año fiscal (historial del sistema).
+ * Incluye movimientos abiertos y conciliados: nada queda fuera del informe.
  */
 export function buildAccountingReport(movements: BankMovement[]): BankReportYear[] {
   const yearMap = new Map<string, BankReportYear>();
@@ -923,7 +1096,6 @@ export function buildAccountingReport(movements: BankMovement[]): BankReportYear
   ensureYear(currentFiscalStart());
 
   for (const row of movements) {
-    if (!row.reconciled) continue;
     const [yearStr, monthStr] = row.period.split("-");
     const year = Number(yearStr);
     const month = Number(monthStr);
@@ -933,7 +1105,6 @@ export function buildAccountingReport(movements: BankMovement[]): BankReportYear
     const monthEntry = bucket.months[month - 1];
     if (!monthEntry) continue;
     // En bancos (activo): ingreso = Debe, gasto = Haber.
-    // Los movimientos ya vienen normalizados (Debe/Haber correctos).
     monthEntry.gastos += row.credit;
     monthEntry.ingresos += row.debit;
     bucket.totalGastos += row.credit;
@@ -974,19 +1145,14 @@ export function listReconciledMovementsByKind(
   period?: string,
 ) {
   const normalizedPeriod = period ? normalizeBankPeriod(period) : null;
-  const today = displayToday();
   return movements
     .filter((row) => {
       if (kind === "income" ? !isBankIncomeMovement(row) : !isBankExpenseMovement(row)) {
         return false;
       }
-      // Conciliados del periodo + abiertos de hoy (operación del día).
-      const isOpenToday =
-        !row.reconciled && (row.valueDate === today || row.opDate === today);
-      if (!row.reconciled && !isOpenToday) return false;
+      // Abiertos de cualquier día (pendientes de conciliar) + conciliados del filtro.
       if (normalizedPeriod && normalizeBankPeriod(row.period) !== normalizedPeriod) {
-        // Abiertos de hoy siempre visibles aunque el filtro de periodo no coincida.
-        if (!isOpenToday) return false;
+        return false;
       }
       return true;
     })

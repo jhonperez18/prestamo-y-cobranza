@@ -4,8 +4,12 @@ import {
   loanCollectionAlerts,
 } from "@/lib/collection-alerts";
 import type { ModuleId } from "@/lib/navigation";
-import type { LoanRow, StatusKind } from "@/lib/mock-data";
+import type { ClientRow, LoanRow, StatusKind } from "@/lib/mock-data";
 import { activeLoans } from "@/lib/mock-data";
+import {
+  clientsNeedingProfileCompletion,
+  loansNeedingOfficeReview,
+} from "@/lib/profile-pending";
 
 export type AlertRow = {
   id: string;
@@ -20,6 +24,7 @@ export type AlertRow = {
 export function buildAlerts(
   pendingReviewCount: number,
   loans: LoanRow[] = [],
+  clients: ClientRow[] = [],
 ): AlertRow[] {
   const rows: AlertRow[] = [];
 
@@ -32,6 +37,32 @@ export function buildAlerts(
       kind: "warn",
       module: "clientes",
       view: "revision",
+    });
+  }
+
+  const profilePending = clientsNeedingProfileCompletion(clients).length;
+  if (profilePending > 0) {
+    rows.push({
+      id: "ficha-incompleta",
+      when: "Hoy",
+      message: `${profilePending} cliente${profilePending === 1 ? "" : "s"} con ficha incompleta (alta en calle)`,
+      pill: "Completar",
+      kind: "warn",
+      module: "clientes",
+      view: "listado",
+    });
+  }
+
+  const loanPending = loansNeedingOfficeReview(loans).length;
+  if (loanPending > 0) {
+    rows.push({
+      id: "prestamo-rapido",
+      when: "Hoy",
+      message: `${loanPending} préstamo${loanPending === 1 ? "" : "s"} rápido${loanPending === 1 ? "" : "s"} por revisar en oficina`,
+      pill: "Revisar",
+      kind: "partial",
+      module: "prestamos",
+      view: "listado",
     });
   }
 

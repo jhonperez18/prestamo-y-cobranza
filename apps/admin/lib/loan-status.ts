@@ -12,10 +12,15 @@ export function loanStatusPill(loan: {
   status?: string;
   balance?: number;
   schedule?: ScheduleLine[];
+  termsPending?: boolean;
 }): { label: string; kind: StatusKind } {
   const balance = loan.balance ?? 0;
   if (loan.status === "Finalizado" || balance <= 0) {
     return { label: "Finalizado", kind: "paid" };
+  }
+
+  if (loan.termsPending) {
+    return { label: "Revisar", kind: "partial" };
   }
 
   const today = todayIso();

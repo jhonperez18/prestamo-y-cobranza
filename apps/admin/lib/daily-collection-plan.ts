@@ -1,4 +1,4 @@
-import { isoToDisplay } from "@/lib/loan-preview";
+import { displayToIso, isoToDisplay } from "@/lib/loan-preview";
 import { lineRemaining, type ScheduleEntry } from "@/lib/loan-pay";
 import {
   collectionAlertLabel,
@@ -13,6 +13,43 @@ import {
   type LoanRow,
   type StatusKind,
 } from "@/lib/mock-data";
+
+function scheduleDateToIso(date: string) {
+  const raw = String(date ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return displayToIso(raw) || raw;
+}
+
+/** Primera fecha de cuota del cronograma (ISO), o null si no hay. */
+export function firstScheduleCollectionIso(loan: LoanRow) {
+  const lines = loan.schedule ?? [];
+  if (!lines.length) return null;
+  const dates = lines
+    .map((line) => scheduleDateToIso(line.date))
+    .filter((iso) => /^\d{4}-\d{2}-\d{2}$/.test(iso))
+    .sort();
+  return dates[0] ?? null;
+}
+
+/**
+ * ¿Ya puede entrar a planilla/cobro ese día?
+ * Solo bloquea préstamo NUEVO el mismo día del desembolso si la 1.ª cuota es futura
+ * (ej. prestó sábado → cobra lunes). No toca cartera ya operativa (Juan/Lina/etc.).
+ */
+export function loanIsCollectibleOn(loan: LoanRow, selectedDate: string) {
+  const day = scheduleDateToIso(selectedDate);
+  if (!day) return true;
+
+  const first = firstScheduleCollectionIso(loan);
+  if (!first || first <= day) return true;
+
+  // 1.ª cuota aún no llega: solo aplica el día del desembolso.
+  const disbursed = scheduleDateToIso(loan.date);
+  if (disbursed && disbursed === day) return false;
+
+  // Desembolso anterior + cronograma raro/regenerado → sigue en cobro diario.
+  return true;
+}
 
 export type DailyCollectionItem = {
   id: string;
@@ -55,6 +92,8 @@ export type DailyCollectionAssignment = {
   dayClosedAt?: string;
   paymentRef?: string;
   alertCount?: number;
+  /** Cliente nuevo en ruta esperando primer préstamo (solo nombre + Prestar). */
+  awaitingLoan?: boolean;
 };
 
 export function assignmentKey(itemId: string, dispatchDate: string) {
@@ -78,15 +117,17 @@ function clientName(client: ClientRow | undefined, fallback: string) {
 
 function dueFromSchedule(loan: LoanRow, selectedDate: string) {
   const lines = loan.schedule ?? [];
+  const day = scheduleDateToIso(selectedDate);
   const cuotaAmount = lines
-    .filter((line) => line.date === selectedDate)
+    .filter((line) => scheduleDateToIso(line.date) === day)
     .reduce((sum, line) => sum + lineRemaining(line as ScheduleEntry), 0);
   const moraAmount = lines
-    .filter((line) => line.date < selectedDate)
+    .filter((line) => scheduleDateToIso(line.date) < day)
     .reduce((sum, line) => sum + lineRemaining(line as ScheduleEntry), 0);
   const amountDue = Math.min(cuotaAmount + moraAmount, loan.balance);
   const oldestOverdue = lines.find(
-    (line) => line.date < selectedDate && lineRemaining(line as ScheduleEntry) > 0,
+    (line) =>
+      scheduleDateToIso(line.date) < day && lineRemaining(line as ScheduleEntry) > 0,
   )?.date;
   return { cuotaAmount, moraAmount, amountDue, oldestOverdue };
 }
@@ -110,8 +151,20 @@ function accumulationLabel(cuotaAmount: number, moraAmount: number, alertCount: 
 export function accumulatedDueForLoan(loan: LoanRow, selectedDate: string) {
   const alertCount = loanCollectionAlerts(loan);
   const inMora = isLoanInCollectionMora(loan);
+  const empty = {
+    cuotaAmount: 0,
+    moraAmount: 0,
+    amountDue: 0,
+    oldestOverdue: undefined as string | undefined,
+    alertCount,
+  };
 
   if ((loan.schedule?.length ?? 0) > 0) {
+    // Solo bloquear préstamos nuevos: 1.ª cuota todavía no llega (ej. prestó sáb → lunes).
+    if (!loanIsCollectibleOn(loan, selectedDate)) {
+      return empty;
+    }
+
     const fromSchedule = dueFromSchedule(loan, selectedDate);
     if (fromSchedule.amountDue > 0) {
       const past = fromSchedule.moraAmount;
@@ -133,6 +186,7 @@ export function accumulatedDueForLoan(loan: LoanRow, selectedDate: string) {
         alertCount,
       };
     }
+    // Ya en cobro operativo: cuota diaria (planilla de Juan/Lina, etc.).
     const cuota = fallbackDueAmount(loan);
     if (cuota > 0) {
       return {
@@ -147,15 +201,7 @@ export function accumulatedDueForLoan(loan: LoanRow, selectedDate: string) {
   }
 
   const fallback = fallbackDueAmount(loan);
-  if (fallback <= 0) {
-    return {
-      cuotaAmount: 0,
-      moraAmount: 0,
-      amountDue: 0,
-      oldestOverdue: undefined as string | undefined,
-      alertCount,
-    };
-  }
+  if (fallback <= 0) return empty;
   if (inMora) {
     return {
       cuotaAmount: 0,

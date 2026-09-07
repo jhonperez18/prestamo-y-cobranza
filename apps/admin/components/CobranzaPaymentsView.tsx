@@ -18,7 +18,7 @@ import {
   cobranzaPaymentsReportPdfBlobAsync,
   downloadCobranzaPaymentsReportPdfAsync,
 } from "@/lib/cobranza-payments-report-pdf";
-import { money, type LoanRow, type PaymentRow } from "@/lib/mock-data";
+import { money, type ClientRow, type LoanRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
 import {
   normalizePaymentMethod,
   paymentMethodKind,
@@ -27,10 +27,13 @@ import {
 import {
   filterPaymentsByRecaudoRange,
   loansByRef,
+  paymentTimeLabel,
   sortPayments,
   type PaymentSortKey,
   type SortDir,
 } from "@/lib/payment-detail";
+import { isoToDispatchLabel } from "@/lib/daily-dispatch";
+import { paymentRouteLabel } from "@/lib/cobranza-payment-columns";
 import {
   COBRANZA_PAYMENT_COLUMNS,
   COBRANZA_PAYMENT_DEFAULT_COLS,
@@ -40,21 +43,30 @@ type Props = {
   kind: CobranzaPaymentsReportKind;
   payments: PaymentRow[];
   loans: LoanRow[];
+  clients?: ClientRow[];
+  routes?: RouteRow[];
   collectors: string[];
   assignments?: DailyCollectionAssignment[];
   initialRange?: { fromIso: string; toIso: string };
   onOpenPayment: (ref: string) => void;
 };
 
+function paymentFechaLabel(row: PaymentRow) {
+  if (row.paidDate?.includes("-")) return isoToDispatchLabel(row.paidDate);
+  if (row.paidDate?.trim()) return row.paidDate.trim();
+  return row.when.split(" · ")[0]?.trim() || "—";
+}
+
 const SORT_HEADERS = [
   { id: "ref", t: "Ref", sortKey: "ref" },
   { id: "fecha", t: "Fecha", sortKey: "fecha" },
+  { id: "hora", t: "Hora" },
   { id: "cliente", t: "Cliente", sortKey: "cliente" },
   { id: "cobrador", t: "Cobrador", sortKey: "cobrador" },
   { id: "valor", t: "Valor", right: true, sortKey: "valor" },
   { id: "method", t: "Forma de pago" },
   { id: "evidence", t: "Comprobante" },
-  { id: "tipo", t: "Tipo", sortKey: "tipo" },
+  { id: "ruta", t: "Ruta" },
   { id: "estado", t: "Estado" },
 ] as const;
 
@@ -62,6 +74,8 @@ export function CobranzaPaymentsView({
   kind,
   payments,
   loans,
+  clients = [],
+  routes = [],
   collectors,
   assignments = [],
   initialRange,
@@ -77,7 +91,7 @@ export function CobranzaPaymentsView({
   const columnVisibility = useColumnVisibility(
     COBRANZA_PAYMENT_COLUMNS,
     COBRANZA_PAYMENT_DEFAULT_COLS,
-    { storageKey: "nexo.cobranza.pagos.columns" },
+    { storageKey: "nexo.cobranza.pagos.columns.v3" },
   );
 
   const title = kind === "abonos" ? "Abonos" : "Pagos";
@@ -104,12 +118,14 @@ export function CobranzaPaymentsView({
         kind,
         payments,
         loans,
+        clients,
+        routes,
         assignments,
         fromIso,
         toIso,
         collectorFilter: collectorFilter || undefined,
       }),
-    [kind, payments, loans, assignments, fromIso, toIso, collectorFilter],
+    [kind, payments, loans, clients, routes, assignments, fromIso, toIso, collectorFilter],
   );
 
   const buildPdfBlob = useCallback(
@@ -278,7 +294,12 @@ export function CobranzaPaymentsView({
                         <PaymentRefLink refCode={row.ref} onOpen={onOpenPayment} />
                       </td>
                     ) : null}
-                    {columnVisibility.isVisible("fecha") ? <td>{row.when}</td> : null}
+                    {columnVisibility.isVisible("fecha") ? (
+                      <td>{paymentFechaLabel(row)}</td>
+                    ) : null}
+                    {columnVisibility.isVisible("hora") ? (
+                      <td>{paymentTimeLabel(row)}</td>
+                    ) : null}
                     {columnVisibility.isVisible("cliente") ? <td>{row.client}</td> : null}
                     {columnVisibility.isVisible("cobrador") ? <td>{row.collector}</td> : null}
                     {columnVisibility.isVisible("valor") ? (
@@ -297,7 +318,16 @@ export function CobranzaPaymentsView({
                         <PaymentEvidenceThumb evidence={row.evidence} size={22} />
                       </td>
                     ) : null}
-                    {columnVisibility.isVisible("tipo") ? <td>{row.type}</td> : null}
+                    {columnVisibility.isVisible("ruta") ? (
+                      <td>
+                        {paymentRouteLabel(row, {
+                          loans: loanMap,
+                          clients,
+                          routes,
+                          assignments,
+                        })}
+                      </td>
+                    ) : null}
                     {columnVisibility.isVisible("estado") ? (
                       <td>
                         <PaymentStatusPill

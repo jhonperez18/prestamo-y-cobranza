@@ -63,6 +63,7 @@ type RouteClientRow = {
   alertKind: StatusKind;
   visitStatus: string;
   order: number | string;
+  rowKey: string;
 };
 
 function paymentSortKey(row: PaymentRow) {
@@ -151,6 +152,7 @@ function rowFromAssignment(
     alertKind: alertCount > 0 ? alertKind : "ok",
     visitStatus: assignment.visitStatus || "pendiente",
     order: client.routeOrder || order,
+    rowKey: assignment.itemId || `${assignment.clientRef}:${assignment.loanRef}:${order}`,
   };
 }
 
@@ -263,7 +265,7 @@ export function RouteClientsView({
                   ? () => onOpenClient(row.client.ref)
                   : undefined;
                 return (
-                  <tr key={row.client.ref}>
+                  <tr key={row.rowKey}>
                     <td
                       className={`ref${openClient ? " clickable" : ""}`}
                       onClick={openClient}

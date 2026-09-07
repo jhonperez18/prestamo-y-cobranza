@@ -173,6 +173,7 @@ export const MODULES: AppModule[] = [
           { id: "nueva-cuenta", label: "Nueva cuenta" },
           { id: "listado", label: "Listado" },
           { id: "registros", label: "Registros" },
+          { id: "extractos", label: "Extractos" },
         ],
       },
       {
@@ -194,7 +195,7 @@ export const MODULES: AppModule[] = [
       {
         title: "Informes",
         items: [
-          { id: "diarios", label: "Cobros diarios", soon: true },
+          { id: "diarios", label: "Cobros diarios" },
           { id: "por-cobrador", label: "Por cobrador", soon: true },
           { id: "cartera", label: "Cartera", soon: true },
           { id: "mora", label: "Mora", soon: true },
