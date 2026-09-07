@@ -7,7 +7,8 @@
     "dev:next": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "deploy:prod": "node scripts/deploy-prod.mjs"
   },
   "dependencies": {
     "jspdf": "^4.2.1",
