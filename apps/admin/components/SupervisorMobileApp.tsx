@@ -54,6 +54,7 @@ type Props = {
     routeRef: string;
   }) => void;
   onCreateQuickLoan?: (draft: QuickLoanDraft) => void;
+  onLogout?: () => void;
 };
 
 type SupervisorView = "inicio" | "planilla" | "caja" | "nuevo";
@@ -351,6 +352,7 @@ export function SupervisorMobileApp({
   monthCloses = [],
   onCreateStreetClient,
   onCreateQuickLoan,
+  onLogout,
 }: Props) {
   const today = todayIso();
   const todayDisplay = isoToDisplay(today);
@@ -1201,6 +1203,14 @@ export function SupervisorMobileApp({
           )}
         </section>
       )}
+
+      {onLogout ? (
+        <footer className="collector-mobile-foot">
+          <button type="button" className="btn aside-logout" onClick={onLogout}>
+            Cerrar sesión
+          </button>
+        </footer>
+      ) : null}
     </div>
   );
 }

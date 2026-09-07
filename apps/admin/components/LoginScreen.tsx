@@ -11,7 +11,7 @@ type Props = {
 
 const DEMO_HINTS = [
   { login: "truqui", role: "Administrador · panel web" },
-  { login: "supervisor", role: "Supervisor · panel web filtrado" },
+  { login: "supervisor", role: "Supervisor · app móvil en celular" },
   { login: "juan.rios", role: "Cobrador · app móvil" },
 ];
 
