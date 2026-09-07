@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { validateLogin, type AppSession } from "@/lib/auth";
 import { DEMO_USER_PASSWORD } from "@/lib/mock-data";
 import { loadDemoUsers } from "@/lib/demo-persist";
+import { APP_BUILD } from "@/lib/app-build";
 
 type Props = {
   onSuccess: (session: AppSession) => void;
@@ -103,6 +104,9 @@ export function LoginScreen({ onSuccess }: Props) {
               </li>
             ))}
           </ul>
+          {APP_BUILD ? (
+            <p className="login-build-stamp">build {APP_BUILD}</p>
+          ) : null}
         </div>
       </form>
     </div>

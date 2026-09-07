@@ -249,6 +249,13 @@
       color: rgba(255, 255, 255, 0.65);
       text-align: center;
     }
+    .login-build-stamp {
+      margin: 12px 0 0 !important;
+      font-size: 11px !important;
+      color: rgba(255, 255, 255, 0.45) !important;
+      letter-spacing: 0.02em;
+      text-align: center;
+    }
     .login-demo-hints ul {
       list-style: none;
       margin: 0;
