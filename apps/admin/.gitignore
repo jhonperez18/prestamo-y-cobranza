@@ -46,3 +46,5 @@ next-env.d.ts
 /scripts/_chrome_ls_copy/
 /scripts/_chrome_ls_full/
 /scripts/_recovery/
+
+.vercel
