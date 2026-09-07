@@ -10,7 +10,7 @@ type Props = {
 };
 
 const DEMO_HINTS = [
-  { login: "truqui", role: "Administrador · panel web" },
+  { login: "truqui", role: "Administrador · PC panel / celular vista móvil" },
   { login: "supervisor", role: "Supervisor · app móvil en celular" },
   { login: "juan.rios", role: "Cobrador · app móvil" },
 ];

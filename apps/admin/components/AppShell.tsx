@@ -27,15 +27,23 @@ type Props = {
   session: AppSession;
   onLogout: () => void;
   onSessionChange: (session: AppSession) => void;
+  /** En celular abre directo la vista móvil del sistema (cobrador + supervisor). */
+  phoneLayout?: boolean;
 };
 
-export function AppShell({ session, onLogout, onSessionChange }: Props) {
+export function AppShell({ session, onLogout, onSessionChange, phoneLayout = false }: Props) {
   const filteredModules = useMemo(() => filterModulesForSession(session), [session]);
-  const landing = useMemo(() => defaultLandingForSession(session), [session]);
+  const landing = useMemo(() => {
+    const base = defaultLandingForSession(session);
+    if (phoneLayout && canAccessView(session, "inicio", "vista-movil")) {
+      return { moduleId: "inicio" as ModuleId, viewId: "vista-movil" };
+    }
+    return base;
+  }, [session, phoneLayout]);
 
   const [moduleId, setModuleId] = useState<ModuleId>(landing.moduleId);
   const [viewId, setViewId] = useState(landing.viewId);
-  const [asideOpen, setAsideOpen] = useState(true);
+  const [asideOpen, setAsideOpen] = useState(!phoneLayout);
   const { showToast, toastNode } = useActionToast();
   const adminProfile = readAdminProfile(session.userRef, session.name, session.username);
   const displayName = adminProfile.displayName || session.name;
@@ -164,10 +172,23 @@ export function AppShell({ session, onLogout, onSessionChange }: Props) {
     );
   }
 
+  const topbarClass = [
+    asideOpen ? "topbar" : "topbar aside-off",
+    phoneLayout ? "is-phone-layout" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const shellClass = [
+    asideOpen ? "shell" : "shell aside-off",
+    phoneLayout ? "is-phone-layout" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <>
       <ThemeApplier />
-      <header className={asideOpen ? "topbar" : "topbar aside-off"}>
+      <header className={topbarClass}>
         <div className="topbar-brand">
           <div className="brand">
             <img src="/logo-ca-prestamo.png" alt="CA préstamo" className="brand-logo" />
@@ -235,7 +256,7 @@ export function AppShell({ session, onLogout, onSessionChange }: Props) {
         </div>
       </header>
 
-      <div className={asideOpen ? "shell" : "shell aside-off"}>
+      <div className={shellClass}>
         <aside className="aside">
           <div className="aside-body">
             {current.groups.map((group) => {

@@ -11,10 +11,18 @@ import {
   writeSession,
   type AppSession,
 } from "@/lib/auth";
-import { SUPERVISOR_ROLE_REF } from "@/lib/mock-data";
+import { COLLECTOR_ROLE_REF, SUPERVISOR_ROLE_REF } from "@/lib/mock-data";
 import { canAccessAdminPanel } from "@/lib/session-access";
 
 const PHONE_MQ = "(max-width: 900px)";
+
+function isCollectorSession(session: AppSession) {
+  return (
+    session.roleRef === COLLECTOR_ROLE_REF ||
+    Boolean(session.collectorRef) ||
+    (session.channels.includes("mobile") && !session.channels.includes("admin"))
+  );
+}
 
 function isSupervisorSession(session: AppSession) {
   return session.roleRef === SUPERVISOR_ROLE_REF;
@@ -55,12 +63,33 @@ export function AuthGate() {
     setSession(null);
   };
 
-  if (!canAccessAdminPanel(session)) {
+  // Cobradores: siempre app móvil (PC o celular).
+  if (isCollectorSession(session) && !canAccessAdminPanel(session)) {
     return <CollectorShell session={session} onLogout={logout} />;
   }
 
-  if (isSupervisorSession(session) && isPhone) {
-    return <SupervisorShell session={session} onLogout={logout} />;
+  // Celular: apps móviles / vista móvil del sistema.
+  if (isPhone) {
+    if (isSupervisorSession(session)) {
+      return <SupervisorShell session={session} onLogout={logout} />;
+    }
+    if (isCollectorSession(session)) {
+      return <CollectorShell session={session} onLogout={logout} />;
+    }
+    // Admin u otros con panel: vista móvil del sistema completo.
+    return (
+      <AppShell
+        session={session}
+        onSessionChange={setSession}
+        onLogout={logout}
+        phoneLayout
+      />
+    );
+  }
+
+  // PC: panel web si tiene canal admin; si no, app cobrador.
+  if (!canAccessAdminPanel(session)) {
+    return <CollectorShell session={session} onLogout={logout} />;
   }
 
   return (
