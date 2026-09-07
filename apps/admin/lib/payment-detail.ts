@@ -158,7 +158,10 @@ export type PaymentSortKey = "ref" | "fecha" | "cliente" | "cobrador" | "valor" 
 export type SortDir = "asc" | "desc";
 
 export function paymentRecaudoIso(row: PaymentRow) {
-  if (row.paidDate) return row.paidDate;
+  if (row.paidDate) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(row.paidDate)) return row.paidDate;
+    return displayToIso(row.paidDate) || row.paidDate;
+  }
   const fromWhen = displayToIso(parseWhenParts(row.when).date);
   if (fromWhen) return fromWhen;
   const match = row.when.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);

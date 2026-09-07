@@ -4,6 +4,7 @@ import {
   type BankExpenseCategory,
   type BankMovement,
 } from "@/lib/bank";
+import { displayToIso } from "@/lib/loan-preview";
 import { money, type CollectorRow, type PaymentRow, paymentsForCollector } from "@/lib/mock-data";
 
 /** Gastos típicos de ruta del cobrador (cuadre de cierre). */
@@ -77,17 +78,29 @@ export type CollectorMonthCloseRecord = {
   closedAt: string;
 };
 
+/** Unifica fechas de historial: ISO `YYYY-MM-DD` (acepta también `DD/MM/YYYY`). */
+export function normalizeHistoryDate(raw: string) {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const fromDisplay = displayToIso(s);
+  return fromDisplay || s;
+}
+
 export function periodFromDateIso(iso: string) {
-  return iso.slice(0, 7);
+  const norm = normalizeHistoryDate(iso);
+  return norm.slice(0, 7);
 }
 
 export function dayNumberFromIso(iso: string) {
-  const day = Number(iso.slice(8, 10));
-  return Number.isFinite(day) ? String(day) : iso;
+  const norm = normalizeHistoryDate(iso);
+  const day = Number(norm.slice(8, 10));
+  return Number.isFinite(day) && day > 0 ? String(day) : iso;
 }
 
 export function isLastCalendarDayOfMonth(iso: string) {
-  const [y, m, d] = iso.split("-").map(Number);
+  const norm = normalizeHistoryDate(iso);
+  const [y, m, d] = norm.split("-").map(Number);
   if (!y || !m || !d) return false;
   const last = new Date(y, m, 0).getDate();
   return d === last;
@@ -164,10 +177,11 @@ export function buildMonthCloseRecord(input: {
 
 /** Etiqueta de fecha en historial: solo día si es el mes en curso. */
 export function historyDayLabel(iso: string, viewPeriod: string) {
-  const period = periodFromDateIso(iso);
-  const day = dayNumberFromIso(iso);
+  const norm = normalizeHistoryDate(iso);
+  const period = periodFromDateIso(norm);
+  const day = dayNumberFromIso(norm);
   if (period === viewPeriod) return day;
-  const [, month] = iso.split("-");
+  const [, month] = norm.split("-");
   return `${day}/${month}`;
 }
 
@@ -453,7 +467,7 @@ export function buildCollectorDayHistory(
   const mine = paymentsForCollector(collectorRef, collectors, payments);
   const cobroByDate = new Map<string, number>();
   for (const row of mine) {
-    const date = row.paidDate;
+    const date = normalizeHistoryDate(row.paidDate ?? "");
     if (!date) continue;
     cobroByDate.set(date, (cobroByDate.get(date) ?? 0) + row.amount);
   }
@@ -462,24 +476,29 @@ export function buildCollectorDayHistory(
   const gastoByDate = new Map<string, number>();
   for (const row of closes) {
     if (row.collectorRef !== collectorRef) continue;
-    closedDates.add(row.date);
-    gastoByDate.set(row.date, (gastoByDate.get(row.date) ?? 0) + row.expensesTotal);
+    const date = normalizeHistoryDate(row.date);
+    if (!date) continue;
+    closedDates.add(date);
+    gastoByDate.set(date, (gastoByDate.get(date) ?? 0) + row.expensesTotal);
   }
   for (const row of expenseDrafts) {
     if (row.collectorRef !== collectorRef) continue;
-    if (closedDates.has(row.date)) continue;
-    gastoByDate.set(row.date, row.expensesTotal);
+    const date = normalizeHistoryDate(row.date);
+    if (!date || closedDates.has(date)) continue;
+    gastoByDate.set(date, row.expensesTotal);
   }
 
   let dates = [
     ...new Set([
       ...cobroByDate.keys(),
       ...gastoByDate.keys(),
-      ...extraDates,
+      ...extraDates.map(normalizeHistoryDate).filter(Boolean),
     ]),
   ].sort((a, b) => a.localeCompare(b));
 
-  const period = viewPeriod ?? (dates[dates.length - 1] ? periodFromDateIso(dates[dates.length - 1]) : undefined);
+  const period =
+    viewPeriod ??
+    (dates[dates.length - 1] ? periodFromDateIso(dates[dates.length - 1]) : undefined);
   if (period) {
     dates = dates.filter((date) => periodFromDateIso(date) === period);
   }
@@ -520,10 +539,18 @@ export function periodHadCollectorActivity(
 ) {
   const mine = paymentsForCollector(collectorRef, collectors, payments);
   if (mine.some((row) => row.paidDate && periodFromDateIso(row.paidDate) === period)) return true;
-  if (closes.some((row) => row.collectorRef === collectorRef && periodFromDateIso(row.date) === period)) {
+  if (
+    closes.some(
+      (row) => row.collectorRef === collectorRef && periodFromDateIso(row.date) === period,
+    )
+  ) {
     return true;
   }
-  if (drafts.some((row) => row.collectorRef === collectorRef && periodFromDateIso(row.date) === period)) {
+  if (
+    drafts.some(
+      (row) => row.collectorRef === collectorRef && periodFromDateIso(row.date) === period,
+    )
+  ) {
     return true;
   }
   return false;
