@@ -59,8 +59,8 @@ const SEED_PAYMENT_REFS = new Set(PAYMENTS.map((row) => row.ref));
 const SEED_LOAN_REFS = new Set(LOANS.map((row) => row.ref));
 
 /**
- * Clientes demo del catálogo mock (Carlos, María, Ana…) que NO son del paquete Chrome.
- * COD-8/COD-9 del paquete son Martina/Roberto reales — no tocar.
+ * Clientes demo basura (Carlos, María, Ana…) — nunca deben volver.
+ * COD-8…COD-17 son los 10 reales del paquete.
  */
 export const LEGACY_MOCK_CLIENT_REFS = new Set([
   "COD-0",
@@ -72,6 +72,27 @@ export const LEGACY_MOCK_CLIENT_REFS = new Set([
   "COD-6",
   "COD-7",
 ]);
+
+/** Los 10 del paquete Chrome; altas nuevas en calle = COD-18+. */
+export const PACKAGE_CLIENT_REFS = new Set([
+  "COD-8",
+  "COD-9",
+  "COD-10",
+  "COD-11",
+  "COD-12",
+  "COD-13",
+  "COD-14",
+  "COD-15",
+  "COD-16",
+  "COD-17",
+]);
+
+export function isAllowedPackagedClientRef(ref: string) {
+  if (PACKAGE_CLIENT_REFS.has(ref)) return true;
+  const match = /^COD-(\d+)$/i.exec(ref.trim());
+  if (!match) return false;
+  return Number(match[1]) > 17;
+}
 
 function backupKey(key: string) {
   return `${key}-bak`;
@@ -249,6 +270,7 @@ function isCanonicalPackageFlag() {
   if (typeof window === "undefined") return false;
   try {
     return (
+      window.localStorage.getItem("nexo-demo-bootstrap-package-v4") === "1" ||
       window.localStorage.getItem("nexo-demo-bootstrap-package-v3") === "1" ||
       window.localStorage.getItem("nexo-demo-bootstrap-package-v2") === "1"
     );
@@ -257,31 +279,45 @@ function isCanonicalPackageFlag() {
   }
 }
 
-/** Quita clientes/préstamos/pagos mock COD-0…7 que inflan admin y no van con cobradores. */
+/** Quita basura demo: solo deja los 10 del paquete (+ altas COD-18+). */
 export function scrubLegacyMockDemoRows() {
   if (typeof window === "undefined" || !isCanonicalPackageFlag()) {
     return { clients: 0, loans: 0, payments: 0 };
   }
 
   const clients = readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []);
-  const nextClients = clients.filter((row) => !LEGACY_MOCK_CLIENT_REFS.has(row.ref));
+  const nextClients = clients.filter((row) => isAllowedPackagedClientRef(row.ref));
   if (nextClients.length !== clients.length) {
     writeDemoJson(DEMO_CLIENTS_KEY, nextClients);
   }
+  // Pin bak limpio para que no resuciten Carlos/Ana desde -bak.
+  try {
+    window.localStorage.setItem(backupKey(DEMO_CLIENTS_KEY), JSON.stringify(nextClients));
+  } catch {
+    /* ignore */
+  }
 
   const loans = readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []);
-  const nextLoans = loans.filter((row) => !LEGACY_MOCK_CLIENT_REFS.has(row.clientRef));
+  const nextLoans = loans.filter((row) => isAllowedPackagedClientRef(row.clientRef));
   if (nextLoans.length !== loans.length) {
     writeDemoJson(DEMO_LOANS_KEY, nextLoans);
   }
+  try {
+    window.localStorage.setItem(backupKey(DEMO_LOANS_KEY), JSON.stringify(nextLoans));
+  } catch {
+    /* ignore */
+  }
 
-  const dropLoanRefs = new Set(
-    loans.filter((row) => LEGACY_MOCK_CLIENT_REFS.has(row.clientRef)).map((row) => row.ref),
-  );
+  const keepLoanRefs = new Set(nextLoans.map((row) => row.ref));
   const payments = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []);
-  const nextPayments = payments.filter((row) => !(row.loanRef && dropLoanRefs.has(row.loanRef)));
+  const nextPayments = payments.filter((row) => !row.loanRef || keepLoanRefs.has(row.loanRef));
   if (nextPayments.length !== payments.length) {
     writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
+  }
+  try {
+    window.localStorage.setItem(backupKey(DEMO_PAYMENTS_KEY), JSON.stringify(nextPayments));
+  } catch {
+    /* ignore */
   }
 
   return {
@@ -300,7 +336,7 @@ export function loadDemoClients(seed: ClientRow[] = CLIENTS): ClientRow[] {
     const bak = readBakArray<ClientRow>(DEMO_CLIENTS_KEY);
     if (bak && bak.length > 0) {
       if (packaged) {
-        const cleaned = bak.filter((row) => !LEGACY_MOCK_CLIENT_REFS.has(row.ref));
+        const cleaned = bak.filter((row) => isAllowedPackagedClientRef(row.ref));
         writeDemoJson(DEMO_CLIENTS_KEY, cleaned);
         return cleaned;
       }
@@ -311,11 +347,16 @@ export function loadDemoClients(seed: ClientRow[] = CLIENTS): ClientRow[] {
     return seed.map((row) => ({ ...row }));
   }
 
-  // Con paquete: solo clientes reales; quita COD-0…7 si quedaron mezclados.
+  // Con paquete: solo los 10 (+ COD-18+); nunca COD-0…7 ni basura del -bak.
   if (packaged) {
-    const cleaned = stored.filter((row) => !LEGACY_MOCK_CLIENT_REFS.has(row.ref));
+    const cleaned = stored.filter((row) => isAllowedPackagedClientRef(row.ref));
     if (cleaned.length !== stored.length) {
       writeDemoJson(DEMO_CLIENTS_KEY, cleaned);
+      try {
+        window.localStorage.setItem(backupKey(DEMO_CLIENTS_KEY), JSON.stringify(cleaned));
+      } catch {
+        /* ignore */
+      }
     }
     return cleaned;
   }
@@ -375,7 +416,7 @@ export function loadDemoLoans(payments: PaymentRow[] = loadDemoPayments()): Loan
   const stored = readStoredLoans();
   const base = stored ?? (packaged ? [] : LOANS);
   const filtered = packaged
-    ? base.filter((row) => !LEGACY_MOCK_CLIENT_REFS.has(row.clientRef))
+    ? base.filter((row) => isAllowedPackagedClientRef(row.clientRef))
     : base;
   return syncAllLoans(filtered, payments);
 }

@@ -1,7 +1,7 @@
 /**
- * Arranque del paquete canónico (lo que se ve en Chrome local recuperado).
- * v3: reinstala el snapshot (limpia COD-0…COD-7 mezclados) y alinea lista admin = cobradores.
- * Luego solo aplica retención 30 días; no vuelve a mezclar semilla demo.
+ * Arranque del paquete canónico (Chrome).
+ * v4: reinstala SIEMPRE una vez el snapshot de 10 clientes y borra bak de basura demo.
+ * Luego retención 30 días; nunca reinyecta Carlos/Ana/etc.
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
 import {
@@ -25,7 +25,7 @@ import { applyDataRetention } from "@/lib/data-retention";
 import { COLLECTORS, USERS } from "@/lib/mock-data";
 
 /** Subir versión = reinstala el paquete canónico una vez en cada navegador/origen. */
-export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v3";
+export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v4";
 
 const PACKAGE_KEYS = [
   DEMO_CLIENTS_KEY,
@@ -46,7 +46,6 @@ function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
-/** Evita que -bak de Vercel/Chrome viejo reinyecte COD-0… tras instalar el paquete. */
 function pinBackupToCurrent(key: string) {
   if (typeof window === "undefined") return;
   try {
@@ -54,6 +53,18 @@ function pinBackupToCurrent(key: string) {
     if (raw) window.localStorage.setItem(`${key}-bak`, raw);
   } catch {
     /* ignore */
+  }
+}
+
+/** Borra bak viejo antes de montar el paquete (evita que Carlos/Ana resuciten). */
+function clearLegacyBackups() {
+  if (typeof window === "undefined") return;
+  for (const key of [DEMO_CLIENTS_KEY, DEMO_LOANS_KEY, DEMO_PAYMENTS_KEY]) {
+    try {
+      window.localStorage.removeItem(`${key}-bak`);
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -66,13 +77,13 @@ export function isCanonicalPackageInstalled() {
   }
 }
 
-/** Borra el flag y vuelve a montar el paquete Chrome (útil en /recovery). */
 export function forceReinstallCanonicalPackage() {
   if (typeof window === "undefined") {
     return { restored: false, retention: null as null | { cutoff: string; changed: boolean } };
   }
   try {
     window.localStorage.removeItem(DEMO_BOOTSTRAP_PACKAGE_KEY);
+    window.localStorage.removeItem("nexo-demo-bootstrap-package-v3");
     window.localStorage.removeItem("nexo-demo-bootstrap-package-v2");
   } catch {
     /* ignore */
@@ -80,20 +91,17 @@ export function forceReinstallCanonicalPackage() {
   return bootstrapProtectedDemoData();
 }
 
-/**
- * Instala el paquete Chrome (días 3–5 + banco + clientes reales) y usuarios de acceso.
- * No mezcla COD-0… demo viejos. Idempotente tras el flag v3.
- */
 export function bootstrapProtectedDemoData() {
   if (typeof window === "undefined") {
     return { restored: false, retention: null as null | { cutoff: string; changed: boolean } };
   }
 
   if (isCanonicalPackageInstalled()) {
-    // Limpia COD-0…7 si quedaron mezclados antes (admin 18 ≠ cobradores).
     scrubLegacyMockDemoRows();
     return { restored: false, retention: applyDataRetention() };
   }
+
+  clearLegacyBackups();
 
   const snapshot = recoverySeed as DemoSnapshot;
   const keys = snapshot.keys ?? {};
@@ -113,7 +121,6 @@ export function bootstrapProtectedDemoData() {
   const reconciliations = asArray(keys[DEMO_BANK_RECONCILIATIONS_KEY]);
   writeDemoJson(DEMO_BANK_RECONCILIATIONS_KEY, reconciliations);
 
-  // Accesos del paquete: truqui / Carlos / Juan / Lina / Diego (clave 123).
   writeDemoJson(DEMO_USERS_KEY, USERS.map((row) => ({ ...row })));
   writeDemoJson(
     DEMO_COLLECTORS_KEY,
@@ -126,12 +133,14 @@ export function bootstrapProtectedDemoData() {
 
   try {
     window.localStorage.setItem(DEMO_BOOTSTRAP_PACKAGE_KEY, "1");
+    window.localStorage.setItem("nexo-demo-bootstrap-package-v3", "1");
     window.localStorage.setItem("nexo-demo-bootstrap-package-v2", "1");
     window.localStorage.setItem("nexo-demo-bootstrap-recovery-v1", "1");
   } catch {
     /* ignore */
   }
 
+  scrubLegacyMockDemoRows();
   const retention = applyDataRetention();
   return { restored: true, retention };
 }
