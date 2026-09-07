@@ -419,7 +419,7 @@ export const USERS: UserRow[] = [
     login: "supervisor",
     email: "supervisor@nexo.com",
     password: DEMO_USER_PASSWORD,
-    name: "Ana Supervisor",
+    name: "Carlos",
     phone: "315 400 5504",
     document: "51.444.004",
     roleRef: "ROL-2",

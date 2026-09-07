@@ -227,6 +227,7 @@ export function loadDemoUsers(): UserRow[] {
     if (SYSTEM_LOGINS.has(seed.login.toLowerCase())) {
       merged[idx] = {
         ...merged[idx],
+        name: seed.name,
         login: merged[idx].login?.trim() || seed.login,
         password: merged[idx].password?.trim() || seed.password,
         roleRef: seed.roleRef,
