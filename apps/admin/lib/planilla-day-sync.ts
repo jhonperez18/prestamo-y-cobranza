@@ -14,9 +14,16 @@ type PlanillaState = {
   assignments: DailyCollectionAssignment[];
 };
 
+function todayOpenCount(assignments: DailyCollectionAssignment[], date: string) {
+  return assignments.filter(
+    (row) => row.dispatchDate === date && row.dispatched && !row.dayClosedAt,
+  ).length;
+}
+
 /**
- * Al cambiar el día calendario (medianoche local), regenera la planilla
- * Lun–sáb y la deja despachada a la app. También re-sincroniza al volver a la pestaña.
+ * Regenera la planilla Lun–sáb y la deja despachada a la app.
+ * Se dispara al hidratar, al cambiar rutas/préstamos/clientes, al volver a la pestaña
+ * y cada 30s (antes solo corría al cambiar de día y podía dejar el día sin cobros).
  */
 export function usePlanillaDayRollover(
   enabled: boolean,
@@ -27,15 +34,12 @@ export function usePlanillaDayRollover(
   stateRef.current = state;
   const applyRef = useRef(apply);
   applyRef.current = apply;
-  const lastDateRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
 
-    function syncIfNeeded(force = false) {
+    function syncNow() {
       const date = todayIso();
-      if (!force && lastDateRef.current === date) return;
-      lastDateRef.current = date;
       const current = stateRef.current;
       const synced = syncPermanentRoutePlanilla(
         date,
@@ -45,15 +49,34 @@ export function usePlanillaDayRollover(
         current.collectors,
         current.assignments,
       );
+
+      const before = todayOpenCount(current.assignments, date);
+      const after = todayOpenCount(synced.assignments, date);
+      const routesChanged = synced.routes !== current.routes;
+      if (before === after && !routesChanged) {
+        // Misma cantidad de cobros abiertos: igual aplica si cambió el contenido del día.
+        const prevIds = current.assignments
+          .filter((row) => row.dispatchDate === date && !row.dayClosedAt)
+          .map((row) => row.itemId)
+          .sort()
+          .join("|");
+        const nextIds = synced.assignments
+          .filter((row) => row.dispatchDate === date && !row.dayClosedAt)
+          .map((row) => row.itemId)
+          .sort()
+          .join("|");
+        if (prevIds === nextIds) return;
+      }
+
       applyRef.current(synced);
     }
 
-    syncIfNeeded(true);
+    syncNow();
 
     const onVisible = () => {
-      if (document.visibilityState === "visible") syncIfNeeded(false);
+      if (document.visibilityState === "visible") syncNow();
     };
-    const interval = window.setInterval(() => syncIfNeeded(false), 30_000);
+    const interval = window.setInterval(syncNow, 30_000);
 
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
@@ -62,7 +85,13 @@ export function usePlanillaDayRollover(
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);
     };
-  }, [enabled]);
+  }, [
+    enabled,
+    state.loans,
+    state.clients,
+    state.routes,
+    state.collectors,
+  ]);
 }
 
 /** Asignaciones despachadas de una ruta en una fecha (espejo de lo enviado a la app). */

@@ -41,6 +41,8 @@ export const DEMO_COLLECTOR_DAY_EXPENSES_KEY = "nexo-demo-collector-day-expenses
 export const DEMO_COLLECTOR_DAY_CLOSES_KEY = "nexo-demo-collector-day-closes";
 /** Una sola vez: vacía préstamos y cobros guardados en el navegador. */
 export const DEMO_LOANS_CLEARED_KEY = "nexo-demo-loans-cleared-v2";
+/** Si no hay préstamos guardados, vuelve a sembrar cartera demo (planilla del día). */
+export const DEMO_LOANS_RESEED_KEY = "nexo-demo-loans-reseed-v1";
 /** Una sola vez: limpia Registros banco + cobros demo para empezar de nuevo. */
 export const DEMO_BANK_REGISTROS_CLEAN_KEY = "nexo-demo-banco-registros-clean-v1";
 /** Una sola vez: saca de planillas a no-clientes (pte. revisión / visitas inventadas). */
@@ -56,6 +58,18 @@ function ensureLoansClearedOnce() {
   writeDemoJson(DEMO_PAYMENTS_KEY, []);
   writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, []);
   writeDemoJson(DEMO_LOANS_CLEARED_KEY, 1);
+}
+
+/** Si el navegador quedó sin préstamos, restaura la semilla para poder generar cobro del día. */
+function ensureLoansReseededIfEmpty() {
+  if (typeof window === "undefined") return;
+  const done = readDemoJson<number>(DEMO_LOANS_RESEED_KEY, 0);
+  if (done >= 1) return;
+  const stored = readStoredLoans();
+  if (stored !== null && stored.length === 0 && LOANS.length > 0) {
+    writeDemoJson(DEMO_LOANS_KEY, LOANS);
+  }
+  writeDemoJson(DEMO_LOANS_RESEED_KEY, 1);
 }
 
 /**
@@ -171,6 +185,7 @@ export function loadDemoPayments(loans?: LoanRow[]): PaymentRow[] {
 /** Carga pagos y préstamos sincronizados (fuente única para el panel). */
 export function loadDemoPaymentsBundle() {
   ensureLoansClearedOnce();
+  ensureLoansReseededIfEmpty();
   ensureBankRegistrosCleanOnce();
   ensureInvalidPlanillaPurgedOnce();
   const stored = readStoredPayments();
@@ -186,6 +201,7 @@ export function loadDemoPaymentsBundle() {
 /** Préstamos con saldos sincronizados a los pagos guardados. */
 export function loadDemoLoans(payments: PaymentRow[] = loadDemoPayments()): LoanRow[] {
   ensureLoansClearedOnce();
+  ensureLoansReseededIfEmpty();
   const stored = readStoredLoans();
   const base = stored ?? LOANS;
   return syncAllLoans(base, payments);

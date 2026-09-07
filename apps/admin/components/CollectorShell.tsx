@@ -184,6 +184,8 @@ export function CollectorShell({ session, onLogout }: Props) {
     (next: { assignments: typeof dailyAssignments; routes: typeof routes }) => {
       setDailyAssignments(next.assignments);
       setRoutes(next.routes);
+      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
+      writeDemoJson(DEMO_ROUTES_KEY, next.routes);
     },
     [],
   );
