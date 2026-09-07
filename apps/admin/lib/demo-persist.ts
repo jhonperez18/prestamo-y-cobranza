@@ -58,6 +58,21 @@ const SEED_CLIENT_REFS = new Set(CLIENTS.map((row) => row.ref));
 const SEED_PAYMENT_REFS = new Set(PAYMENTS.map((row) => row.ref));
 const SEED_LOAN_REFS = new Set(LOANS.map((row) => row.ref));
 
+/**
+ * Clientes demo del catálogo mock (Carlos, María, Ana…) que NO son del paquete Chrome.
+ * COD-8/COD-9 del paquete son Martina/Roberto reales — no tocar.
+ */
+export const LEGACY_MOCK_CLIENT_REFS = new Set([
+  "COD-0",
+  "COD-1",
+  "COD-2",
+  "COD-3",
+  "COD-4",
+  "COD-5",
+  "COD-6",
+  "COD-7",
+]);
+
 function backupKey(key: string) {
   return `${key}-bak`;
 }
@@ -233,10 +248,47 @@ function readStoredPayments(): PaymentRow[] | null {
 function isCanonicalPackageFlag() {
   if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem("nexo-demo-bootstrap-package-v2") === "1";
+    return (
+      window.localStorage.getItem("nexo-demo-bootstrap-package-v3") === "1" ||
+      window.localStorage.getItem("nexo-demo-bootstrap-package-v2") === "1"
+    );
   } catch {
     return false;
   }
+}
+
+/** Quita clientes/préstamos/pagos mock COD-0…7 que inflan admin y no van con cobradores. */
+export function scrubLegacyMockDemoRows() {
+  if (typeof window === "undefined" || !isCanonicalPackageFlag()) {
+    return { clients: 0, loans: 0, payments: 0 };
+  }
+
+  const clients = readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []);
+  const nextClients = clients.filter((row) => !LEGACY_MOCK_CLIENT_REFS.has(row.ref));
+  if (nextClients.length !== clients.length) {
+    writeDemoJson(DEMO_CLIENTS_KEY, nextClients);
+  }
+
+  const loans = readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []);
+  const nextLoans = loans.filter((row) => !LEGACY_MOCK_CLIENT_REFS.has(row.clientRef));
+  if (nextLoans.length !== loans.length) {
+    writeDemoJson(DEMO_LOANS_KEY, nextLoans);
+  }
+
+  const dropLoanRefs = new Set(
+    loans.filter((row) => LEGACY_MOCK_CLIENT_REFS.has(row.clientRef)).map((row) => row.ref),
+  );
+  const payments = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []);
+  const nextPayments = payments.filter((row) => !(row.loanRef && dropLoanRefs.has(row.loanRef)));
+  if (nextPayments.length !== payments.length) {
+    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
+  }
+
+  return {
+    clients: clients.length - nextClients.length,
+    loans: loans.length - nextLoans.length,
+    payments: payments.length - nextPayments.length,
+  };
 }
 
 export function loadDemoClients(seed: ClientRow[] = CLIENTS): ClientRow[] {
@@ -248,8 +300,9 @@ export function loadDemoClients(seed: ClientRow[] = CLIENTS): ClientRow[] {
     const bak = readBakArray<ClientRow>(DEMO_CLIENTS_KEY);
     if (bak && bak.length > 0) {
       if (packaged) {
-        writeDemoJson(DEMO_CLIENTS_KEY, bak);
-        return bak;
+        const cleaned = bak.filter((row) => !LEGACY_MOCK_CLIENT_REFS.has(row.ref));
+        writeDemoJson(DEMO_CLIENTS_KEY, cleaned);
+        return cleaned;
       }
       const merged = mergeClientsKeepAll(bak, seed);
       writeDemoJson(DEMO_CLIENTS_KEY, merged);
@@ -258,8 +311,14 @@ export function loadDemoClients(seed: ClientRow[] = CLIENTS): ClientRow[] {
     return seed.map((row) => ({ ...row }));
   }
 
-  // Con paquete v2: no reinyectar semilla COD-0… ni recuperar basura del -bak.
-  if (packaged) return stored;
+  // Con paquete: solo clientes reales; quita COD-0…7 si quedaron mezclados.
+  if (packaged) {
+    const cleaned = stored.filter((row) => !LEGACY_MOCK_CLIENT_REFS.has(row.ref));
+    if (cleaned.length !== stored.length) {
+      writeDemoJson(DEMO_CLIENTS_KEY, cleaned);
+    }
+    return cleaned;
+  }
 
   const withCustom = recoverCustomRowsFromBak(DEMO_CLIENTS_KEY, stored, SEED_CLIENT_REFS);
   const merged = mergeClientsKeepAll(withCustom, seed);
@@ -290,6 +349,7 @@ export function loadDemoPayments(loans?: LoanRow[]): PaymentRow[] {
 export function loadDemoPaymentsBundle() {
   disarmLegacyWipes();
   const packaged = isCanonicalPackageFlag();
+  if (packaged) scrubLegacyMockDemoRows();
   const stored = readStoredPayments();
   const firstBoot = stored === null;
   // Paquete canónico: no mezclar pagos demo del seed (evita “doble historial”).
@@ -314,7 +374,10 @@ export function loadDemoLoans(payments: PaymentRow[] = loadDemoPayments()): Loan
   const packaged = isCanonicalPackageFlag();
   const stored = readStoredLoans();
   const base = stored ?? (packaged ? [] : LOANS);
-  return syncAllLoans(base, payments);
+  const filtered = packaged
+    ? base.filter((row) => !LEGACY_MOCK_CLIENT_REFS.has(row.clientRef))
+    : base;
+  return syncAllLoans(filtered, payments);
 }
 
 /** Cierres de jornada: recupera -bak si la clave quedó vacía. */

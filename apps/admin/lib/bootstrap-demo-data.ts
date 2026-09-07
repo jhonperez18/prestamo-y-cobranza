@@ -1,6 +1,6 @@
 /**
  * Arranque del paquete canónico (lo que se ve en Chrome local recuperado).
- * v2: instala UNA vez el snapshot completo (reemplaza basura vieja de Vercel/otros orígenes).
+ * v3: reinstala el snapshot (limpia COD-0…COD-7 mezclados) y alinea lista admin = cobradores.
  * Luego solo aplica retención 30 días; no vuelve a mezclar semilla demo.
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
@@ -17,6 +17,7 @@ import {
   DEMO_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
   DEMO_USERS_KEY,
+  scrubLegacyMockDemoRows,
   writeDemoJson,
   type DemoSnapshot,
 } from "@/lib/demo-persist";
@@ -24,7 +25,7 @@ import { applyDataRetention } from "@/lib/data-retention";
 import { COLLECTORS, USERS } from "@/lib/mock-data";
 
 /** Subir versión = reinstala el paquete canónico una vez en cada navegador/origen. */
-export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v2";
+export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v3";
 
 const PACKAGE_KEYS = [
   DEMO_CLIENTS_KEY,
@@ -65,13 +66,14 @@ export function isCanonicalPackageInstalled() {
   }
 }
 
-/** Borra el flag v2 y vuelve a montar el paquete Chrome (útil en /recovery). */
+/** Borra el flag y vuelve a montar el paquete Chrome (útil en /recovery). */
 export function forceReinstallCanonicalPackage() {
   if (typeof window === "undefined") {
     return { restored: false, retention: null as null | { cutoff: string; changed: boolean } };
   }
   try {
     window.localStorage.removeItem(DEMO_BOOTSTRAP_PACKAGE_KEY);
+    window.localStorage.removeItem("nexo-demo-bootstrap-package-v2");
   } catch {
     /* ignore */
   }
@@ -80,7 +82,7 @@ export function forceReinstallCanonicalPackage() {
 
 /**
  * Instala el paquete Chrome (días 3–5 + banco + clientes reales) y usuarios de acceso.
- * No mezcla COD-0… demo viejos. Idempotente tras el flag v2.
+ * No mezcla COD-0… demo viejos. Idempotente tras el flag v3.
  */
 export function bootstrapProtectedDemoData() {
   if (typeof window === "undefined") {
@@ -88,6 +90,8 @@ export function bootstrapProtectedDemoData() {
   }
 
   if (isCanonicalPackageInstalled()) {
+    // Limpia COD-0…7 si quedaron mezclados antes (admin 18 ≠ cobradores).
+    scrubLegacyMockDemoRows();
     return { restored: false, retention: applyDataRetention() };
   }
 
@@ -122,7 +126,7 @@ export function bootstrapProtectedDemoData() {
 
   try {
     window.localStorage.setItem(DEMO_BOOTSTRAP_PACKAGE_KEY, "1");
-    // Apaga merge v1 viejo si existía.
+    window.localStorage.setItem("nexo-demo-bootstrap-package-v2", "1");
     window.localStorage.setItem("nexo-demo-bootstrap-recovery-v1", "1");
   } catch {
     /* ignore */
