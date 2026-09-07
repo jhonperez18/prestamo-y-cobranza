@@ -227,22 +227,40 @@ function readStoredPayments(): PaymentRow[] | null {
 }
 
 /**
- * Clientes: conserva TODOS los guardados (Martina, altas en calle, etc.).
- * Solo agrega refs del seed que falten; nunca elimina los del usuario.
- * Si un wipe dejó solo la semilla, recupera altas custom desde -bak.
+ * Clientes: conserva guardados (Martina, altas en calle, etc.).
+ * Con paquete canónico instalado NO reinyecta la semilla demo COD-0… (evita duplicados viejos en Vercel).
  */
+function isCanonicalPackageFlag() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem("nexo-demo-bootstrap-package-v2") === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function loadDemoClients(seed: ClientRow[] = CLIENTS): ClientRow[] {
   disarmLegacyWipes();
+  const packaged = isCanonicalPackageFlag();
+
   const stored = readDemoJson<ClientRow[] | null>(DEMO_CLIENTS_KEY, null);
   if (!stored || !Array.isArray(stored) || stored.length === 0) {
     const bak = readBakArray<ClientRow>(DEMO_CLIENTS_KEY);
-    if (bak.length > 0) {
+    if (bak && bak.length > 0) {
+      if (packaged) {
+        writeDemoJson(DEMO_CLIENTS_KEY, bak);
+        return bak;
+      }
       const merged = mergeClientsKeepAll(bak, seed);
       writeDemoJson(DEMO_CLIENTS_KEY, merged);
       return merged;
     }
     return seed.map((row) => ({ ...row }));
   }
+
+  // Con paquete v2: no reinyectar semilla COD-0… ni recuperar basura del -bak.
+  if (packaged) return stored;
+
   const withCustom = recoverCustomRowsFromBak(DEMO_CLIENTS_KEY, stored, SEED_CLIENT_REFS);
   const merged = mergeClientsKeepAll(withCustom, seed);
   if (merged.length !== stored.length) {
@@ -258,10 +276,11 @@ function mergeClientsKeepAll(stored: ClientRow[], seed: ClientRow[]): ClientRow[
 /** Pagos registrados (incluye cobros móviles con evidencia). */
 export function loadDemoPayments(loans?: LoanRow[]): PaymentRow[] {
   disarmLegacyWipes();
+  const packaged = isCanonicalPackageFlag();
   const stored = readStoredPayments();
   const firstBoot = stored === null;
-  const merged = mergeStoredPaymentsWithSeed(stored ?? PAYMENTS, {
-    addMissingSeed: firstBoot,
+  const merged = mergeStoredPaymentsWithSeed(stored ?? (packaged ? [] : PAYMENTS), {
+    addMissingSeed: firstBoot && !packaged,
   });
   if (!loans) return merged;
   return normalizeAllPayments(merged, loans);
@@ -270,10 +289,12 @@ export function loadDemoPayments(loans?: LoanRow[]): PaymentRow[] {
 /** Carga pagos y préstamos sincronizados (fuente única para el panel). */
 export function loadDemoPaymentsBundle() {
   disarmLegacyWipes();
+  const packaged = isCanonicalPackageFlag();
   const stored = readStoredPayments();
   const firstBoot = stored === null;
-  const merged = mergeStoredPaymentsWithSeed(stored ?? PAYMENTS, {
-    addMissingSeed: firstBoot,
+  // Paquete canónico: no mezclar pagos demo del seed (evita “doble historial”).
+  const merged = mergeStoredPaymentsWithSeed(stored ?? (packaged ? [] : PAYMENTS), {
+    addMissingSeed: firstBoot && !packaged,
   });
   const loans = loadDemoLoans(merged);
   const payments = normalizeAllPayments(merged, loans);
@@ -290,8 +311,9 @@ export function loadDemoPaymentsBundle() {
 /** Préstamos: usa guardados; si no hay clave / quedó [], semilla. Nunca vacía datos existentes. */
 export function loadDemoLoans(payments: PaymentRow[] = loadDemoPayments()): LoanRow[] {
   disarmLegacyWipes();
+  const packaged = isCanonicalPackageFlag();
   const stored = readStoredLoans();
-  const base = stored ?? LOANS;
+  const base = stored ?? (packaged ? [] : LOANS);
   return syncAllLoans(base, payments);
 }
 

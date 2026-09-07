@@ -68,7 +68,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
   const [hydrated, setHydrated] = useState(false);
   const [users, setUsers] = useState<UserRow[]>([]);
   const [collectors, setCollectors] = useState(COLLECTORS);
-  const [clients, setClients] = useState(CLIENTS);
+  const [clients, setClients] = useState<ClientRow[]>([]);
   const [loans, setLoans] = useState<LoanRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [routes, setRoutes] = useState(ROUTES);

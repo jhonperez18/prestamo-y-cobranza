@@ -3590,33 +3590,19 @@
       }
     }
 
-    /* Admin en celular: vista móvil a pantalla completa */
+    /* Admin en celular: app a pantalla completa (sin topbar ni rieles = sin vista duplicada) */
     .shell.is-phone-layout {
       grid-template-columns: 1fr;
-      min-height: calc(100dvh - var(--top));
+      min-height: 100dvh;
     }
     .shell.is-phone-layout .aside {
       display: none;
     }
     .shell.is-phone-layout .workspace {
-      padding: 8px;
+      padding: 0;
       max-width: none;
     }
     .topbar.is-phone-layout {
-      grid-template-columns: 1fr;
-    }
-    .topbar.is-phone-layout .topbar-brand {
-      display: none;
-    }
-    .topbar.is-phone-layout .modules {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-    }
-    .topbar.is-phone-layout .modules::-webkit-scrollbar {
-      display: none;
-    }
-    .topbar.is-phone-layout .search {
       display: none;
     }
     .shell.is-phone-layout .collector-mobile-preview-panel.is-compact {
@@ -3624,38 +3610,25 @@
       border: 0;
       background: transparent;
       box-shadow: none;
+      min-height: 100dvh;
     }
     .shell.is-phone-layout .mobile-preview-layout {
       grid-template-columns: 1fr;
-      gap: 10px;
-      min-height: calc(100dvh - 120px);
+      gap: 0;
+      min-height: 100dvh;
     }
     .shell.is-phone-layout .mobile-preview-rail {
-      display: flex;
-      flex-direction: row;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-    }
-    .shell.is-phone-layout .mobile-preview-rail h2 {
-      width: 100%;
-      margin: 0;
-    }
-    .shell.is-phone-layout .mobile-preview-person-list {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      width: 100%;
+      display: none;
     }
     .shell.is-phone-layout .mobile-preview-stage {
-      min-height: calc(100dvh - 220px);
+      min-height: 100dvh;
     }
     .shell.is-phone-layout .mobile-preview-wrap,
     .shell.is-phone-layout .mobile-preview-frame {
       width: 100%;
       max-width: none;
-      height: calc(100dvh - 220px);
-      min-height: 520px;
+      height: 100dvh;
+      min-height: 100dvh;
       border-radius: 0;
       border: 0;
       box-shadow: none;

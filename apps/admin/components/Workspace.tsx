@@ -267,7 +267,7 @@ export function Workspace({
   sessionPermissions,
 }: Props) {
   const key = `${moduleId}:${viewId}`;
-  const [clients, setClients] = useState<ClientRow[]>(CLIENTS);
+  const [clients, setClients] = useState<ClientRow[]>([]);
   const [loans, setLoans] = useState<LoanRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>(PAYMENTS);
   const [routes, setRoutes] = useState<RouteRow[]>(ROUTES);

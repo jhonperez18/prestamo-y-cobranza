@@ -1,24 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { bootstrapProtectedDemoData } from "@/lib/bootstrap-demo-data";
+import { forceReinstallCanonicalPackage } from "@/lib/bootstrap-demo-data";
 import { DATA_RETENTION_DAYS } from "@/lib/data-retention";
 import { importDemoSnapshot } from "@/lib/demo-persist";
 
 /** Pantalla de respaldo manual; el arranque normal ya restaura solo. */
 export default function RecoveryPage() {
-  const [status, setStatus] = useState("Aplicando datos protegidos…");
+  const [status, setStatus] = useState("Reinstalando paquete canónico (Chrome)…");
 
   useEffect(() => {
-    const result = bootstrapProtectedDemoData();
+    const result = forceReinstallCanonicalPackage();
     setStatus(
       result.restored
-        ? `Listo. Historial días 3–5 + banco fusionados. Retención: ${DATA_RETENTION_DAYS} días (corte ${result.retention?.cutoff ?? "—"}). Redirigiendo…`
-        : "No se pudo aplicar el respaldo en este entorno.",
+        ? `Listo. Paquete Chrome montado (días 3–5 + banco + 10 clientes). Retención: ${DATA_RETENTION_DAYS} días (corte ${result.retention?.cutoff ?? "—"}). Redirigiendo…`
+        : `Paquete ya aplicado o sin cambios. Retención: ${DATA_RETENTION_DAYS} días. Redirigiendo…`,
     );
     const t = window.setTimeout(() => {
       window.location.href = "/";
-    }, 1200);
+    }, 1400);
     return () => window.clearTimeout(t);
   }, []);
 
@@ -32,7 +32,7 @@ export default function RecoveryPage() {
         setStatus(result.error);
         return;
       }
-      bootstrapProtectedDemoData();
+      forceReinstallCanonicalPackage();
       setStatus("Archivo restaurado. Recargando…");
       window.setTimeout(() => {
         window.location.href = "/";
@@ -63,7 +63,10 @@ export default function RecoveryPage() {
         }}
       >
         <h1 style={{ margin: "0 0 8px", fontSize: 26, color: "#1f3d32" }}>Datos protegidos</h1>
-        <p style={{ margin: "0 0 14px", color: "#4a6358", lineHeight: 1.45 }}>{status}</p>
+        <p style={{ margin: "0 0 14px", color: "#4a6358", lineHeight: 1.45 }}>
+          Reinstala el paquete canónico (igual Chrome) y retención de {DATA_RETENTION_DAYS} días.
+        </p>
+        <p style={{ margin: "0 0 14px", color: "#2f5344", lineHeight: 1.45 }}>{status}</p>
         <label
           style={{
             display: "block",

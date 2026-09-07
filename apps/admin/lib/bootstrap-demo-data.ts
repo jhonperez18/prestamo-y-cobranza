@@ -1,136 +1,129 @@
 /**
- * Arranque seguro:
- * 1) Fusiona el respaldo recuperado (días 3–5 + banco + Martina) sin pisar datos más nuevos.
- * 2) Aplica retención de 30 días.
+ * Arranque del paquete canónico (lo que se ve en Chrome local recuperado).
+ * v2: instala UNA vez el snapshot completo (reemplaza basura vieja de Vercel/otros orígenes).
+ * Luego solo aplica retención 30 días; no vuelve a mezclar semilla demo.
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
 import {
+  DEMO_BANK_ACCOUNTS_KEY,
   DEMO_BANK_MOVEMENTS_KEY,
+  DEMO_BANK_RECONCILIATIONS_KEY,
   DEMO_CLIENTS_KEY,
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
+  DEMO_COLLECTORS_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_DAILY_LOGS_KEY,
   DEMO_LOANS_KEY,
   DEMO_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
-  DEMO_BANK_ACCOUNTS_KEY,
-  DEMO_BANK_RECONCILIATIONS_KEY,
-  readDemoJson,
+  DEMO_USERS_KEY,
   writeDemoJson,
   type DemoSnapshot,
 } from "@/lib/demo-persist";
 import { applyDataRetention } from "@/lib/data-retention";
+import { COLLECTORS, USERS } from "@/lib/mock-data";
 
-export const DEMO_BOOTSTRAP_MERGED_KEY = "nexo-demo-bootstrap-recovery-v1";
+/** Subir versión = reinstala el paquete canónico una vez en cada navegador/origen. */
+export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v2";
 
-function mergeById<T extends Record<string, unknown>>(
-  existing: T[],
-  incoming: T[],
-  idOf: (row: T) => string | undefined,
-): T[] {
-  const map = new Map<string, T>();
-  for (const row of existing) {
-    const id = idOf(row);
-    if (id) map.set(id, row);
-  }
-  for (const row of incoming) {
-    const id = idOf(row);
-    if (!id) continue;
-    if (!map.has(id)) map.set(id, row);
-  }
-  return [...map.values()];
-}
+const PACKAGE_KEYS = [
+  DEMO_CLIENTS_KEY,
+  DEMO_LOANS_KEY,
+  DEMO_PAYMENTS_KEY,
+  DEMO_COLLECTOR_DAY_CLOSES_KEY,
+  DEMO_BANK_MOVEMENTS_KEY,
+  DEMO_DAILY_ASSIGNMENTS_KEY,
+  DEMO_DAILY_LOGS_KEY,
+  DEMO_ROUTES_KEY,
+  DEMO_BANK_ACCOUNTS_KEY,
+  DEMO_BANK_RECONCILIATIONS_KEY,
+  DEMO_USERS_KEY,
+  DEMO_COLLECTORS_KEY,
+] as const;
 
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
+/** Evita que -bak de Vercel/Chrome viejo reinyecte COD-0… tras instalar el paquete. */
+function pinBackupToCurrent(key: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (raw) window.localStorage.setItem(`${key}-bak`, raw);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function isCanonicalPackageInstalled() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(DEMO_BOOTSTRAP_PACKAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Borra el flag v2 y vuelve a montar el paquete Chrome (útil en /recovery). */
+export function forceReinstallCanonicalPackage() {
+  if (typeof window === "undefined") {
+    return { restored: false, retention: null as null | { cutoff: string; changed: boolean } };
+  }
+  try {
+    window.localStorage.removeItem(DEMO_BOOTSTRAP_PACKAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+  return bootstrapProtectedDemoData();
+}
+
 /**
- * Restaura/fusiona el snapshot recuperado y deja historial bajo política de 30 días.
- * Idempotente: se puede llamar en cada arranque; no borra lo que ya tengas de más.
+ * Instala el paquete Chrome (días 3–5 + banco + clientes reales) y usuarios de acceso.
+ * No mezcla COD-0… demo viejos. Idempotente tras el flag v2.
  */
 export function bootstrapProtectedDemoData() {
-  if (typeof window === "undefined") return { restored: false, retention: null as null | { cutoff: string; changed: boolean } };
+  if (typeof window === "undefined") {
+    return { restored: false, retention: null as null | { cutoff: string; changed: boolean } };
+  }
+
+  if (isCanonicalPackageInstalled()) {
+    return { restored: false, retention: applyDataRetention() };
+  }
 
   const snapshot = recoverySeed as DemoSnapshot;
   const keys = snapshot.keys ?? {};
 
-  // Clientes / préstamos / planilla / cobros / banco: keep-all por ref.
-  const clients = mergeById(
-    readDemoJson(DEMO_CLIENTS_KEY, []),
-    asArray(keys[DEMO_CLIENTS_KEY]),
-    (row) => String((row as { ref?: string }).ref ?? ""),
-  );
-  writeDemoJson(DEMO_CLIENTS_KEY, clients);
+  writeDemoJson(DEMO_CLIENTS_KEY, asArray(keys[DEMO_CLIENTS_KEY]));
+  writeDemoJson(DEMO_LOANS_KEY, asArray(keys[DEMO_LOANS_KEY]));
+  writeDemoJson(DEMO_PAYMENTS_KEY, asArray(keys[DEMO_PAYMENTS_KEY]));
+  writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, asArray(keys[DEMO_COLLECTOR_DAY_CLOSES_KEY]));
+  writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, asArray(keys[DEMO_BANK_MOVEMENTS_KEY]));
+  writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, asArray(keys[DEMO_DAILY_ASSIGNMENTS_KEY]));
+  writeDemoJson(DEMO_DAILY_LOGS_KEY, asArray(keys[DEMO_DAILY_LOGS_KEY]));
+  writeDemoJson(DEMO_ROUTES_KEY, asArray(keys[DEMO_ROUTES_KEY]));
 
-  const loans = mergeById(
-    readDemoJson(DEMO_LOANS_KEY, []),
-    asArray(keys[DEMO_LOANS_KEY]),
-    (row) => String((row as { ref?: string }).ref ?? ""),
-  );
-  writeDemoJson(DEMO_LOANS_KEY, loans);
-
-  const payments = mergeById(
-    readDemoJson(DEMO_PAYMENTS_KEY, []),
-    asArray(keys[DEMO_PAYMENTS_KEY]),
-    (row) => String((row as { ref?: string }).ref ?? ""),
-  );
-  writeDemoJson(DEMO_PAYMENTS_KEY, payments);
-
-  const closes = mergeById(
-    readDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, []),
-    asArray(keys[DEMO_COLLECTOR_DAY_CLOSES_KEY]),
-    (row) => String((row as { ref?: string }).ref ?? ""),
-  );
-  writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, closes);
-
-  const movements = mergeById(
-    readDemoJson(DEMO_BANK_MOVEMENTS_KEY, []),
-    asArray(keys[DEMO_BANK_MOVEMENTS_KEY]),
-    (row) => String((row as { ref?: string }).ref ?? ""),
-  );
-  writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, movements);
-
-  const assignments = mergeById(
-    readDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, []),
-    asArray(keys[DEMO_DAILY_ASSIGNMENTS_KEY]),
-    (row) => String((row as { itemId?: string }).itemId ?? (row as { ref?: string }).ref ?? ""),
-  );
-  writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
-
-  const logs = mergeById(
-    readDemoJson(DEMO_DAILY_LOGS_KEY, []),
-    asArray(keys[DEMO_DAILY_LOGS_KEY]),
-    (row) => String((row as { ref?: string }).ref ?? ""),
-  );
-  writeDemoJson(DEMO_DAILY_LOGS_KEY, logs);
-
-  const routes = mergeById(
-    readDemoJson(DEMO_ROUTES_KEY, []),
-    asArray(keys[DEMO_ROUTES_KEY]),
-    (row) => String((row as { ref?: string }).ref ?? ""),
-  );
-  writeDemoJson(DEMO_ROUTES_KEY, routes);
-
-  const accounts = mergeById(
-    readDemoJson(DEMO_BANK_ACCOUNTS_KEY, []),
-    asArray(keys[DEMO_BANK_ACCOUNTS_KEY]),
-    (row) => String((row as { ref?: string }).ref ?? ""),
-  );
+  const accounts = asArray(keys[DEMO_BANK_ACCOUNTS_KEY]);
   if (accounts.length) writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, accounts);
 
-  const reconciliations = mergeById(
-    readDemoJson(DEMO_BANK_RECONCILIATIONS_KEY, []),
-    asArray(keys[DEMO_BANK_RECONCILIATIONS_KEY]),
-    (row) => {
-      const r = row as { accountRef?: string; period?: string; ref?: string };
-      return r.ref || (r.accountRef && r.period ? `${r.accountRef}:${r.period}` : "");
-    },
+  const reconciliations = asArray(keys[DEMO_BANK_RECONCILIATIONS_KEY]);
+  writeDemoJson(DEMO_BANK_RECONCILIATIONS_KEY, reconciliations);
+
+  // Accesos del paquete: truqui / Carlos / Juan / Lina / Diego (clave 123).
+  writeDemoJson(DEMO_USERS_KEY, USERS.map((row) => ({ ...row })));
+  writeDemoJson(
+    DEMO_COLLECTORS_KEY,
+    COLLECTORS.map((row) => ({ ...row })),
   );
-  if (reconciliations.length) writeDemoJson(DEMO_BANK_RECONCILIATIONS_KEY, reconciliations);
+
+  for (const key of PACKAGE_KEYS) {
+    pinBackupToCurrent(key);
+  }
 
   try {
-    window.localStorage.setItem(DEMO_BOOTSTRAP_MERGED_KEY, "1");
+    window.localStorage.setItem(DEMO_BOOTSTRAP_PACKAGE_KEY, "1");
+    // Apaga merge v1 viejo si existía.
+    window.localStorage.setItem("nexo-demo-bootstrap-recovery-v1", "1");
   } catch {
     /* ignore */
   }

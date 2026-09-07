@@ -9,6 +9,7 @@ import {
   money,
   nextLoanCode,
   nextPaymentCode,
+  type ClientRow,
   type LoanRow,
   type PaymentRow,
 } from "@/lib/mock-data";
@@ -109,7 +110,7 @@ type Props = {
 export function CollectorShell({ session, onLogout }: Props) {
   const [hydrated, setHydrated] = useState(false);
   const [collectors, setCollectors] = useState(COLLECTORS);
-  const [clients, setClients] = useState(CLIENTS);
+  const [clients, setClients] = useState<ClientRow[]>([]);
   const [loans, setLoans] = useState<LoanRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [routes, setRoutes] = useState(ROUTES);

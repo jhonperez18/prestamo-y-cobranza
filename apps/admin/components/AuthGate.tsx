@@ -41,6 +41,14 @@ export function AuthGate() {
   const [isPhone, setIsPhone] = useState(false);
 
   useEffect(() => {
+    // Primero el paquete canónico (Chrome); luego sesión/usuarios.
+    // Si el bootstrap va después, Vercel reinyecta clientes/usuarios viejos en el primer paint.
+    try {
+      bootstrapProtectedDemoData();
+    } catch {
+      /* ignore */
+    }
+
     const users = loadDemoUsers();
     writeDemoJson(DEMO_USERS_KEY, users);
     const current = readSession();
@@ -62,16 +70,7 @@ export function AuthGate() {
     mq.addEventListener("change", sync);
     setReady(true);
 
-    const t = window.setTimeout(() => {
-      try {
-        bootstrapProtectedDemoData();
-      } catch {
-        /* ignore */
-      }
-    }, 0);
-
     return () => {
-      window.clearTimeout(t);
       mq.removeEventListener("change", sync);
     };
   }, []);

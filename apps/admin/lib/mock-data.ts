@@ -382,8 +382,8 @@ export const ROLES: RoleRow[] = [
     ref: "ROL-2",
     id: "supervisor",
     name: "Supervisor",
-    description: "Usuario con acceso web y móvil para supervisar cobradores en campo.",
-    channels: ["admin", "mobile"],
+    description: "Usuario con acceso móvil para supervisar cobradores en campo.",
+    channels: ["mobile"],
     permissions: [
       "clientes.ver",
       "clientes.crear",
