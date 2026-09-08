@@ -145,16 +145,23 @@ export function buildDispatchRoute(
   const items = assignmentsForCollectorDate(assignments, collectorRef, date, loans, clients);
   const stops: RouteStop[] = items.map((item, index) => {
     const existing = existingRoute?.stops.find(
-      (stop) => stop.clientRef === item.clientRef && stop.loanRef === item.loanRef,
+      (stop) =>
+        stop.clientRef === item.clientRef &&
+        (!stop.loanRef || !item.loanRef || stop.loanRef === item.loanRef),
     );
-    if (existing) return { ...existing, visitOrder: index + 1 };
+    // Preferir estado de la asignación (cobrado al pagar); no resucitar pendiente del stop viejo.
+    const visitStatus = item.visitStatus ?? existing?.visitStatus ?? "pendiente";
+    const paymentRef = item.paymentRef ?? existing?.paymentRef;
     return {
       clientRef: item.clientRef,
       visitOrder: index + 1,
-      loanRef: item.loanRef,
-      amountDue: item.amountDue,
-      visitStatus: item.visitStatus ?? "pendiente",
-      paymentRef: item.paymentRef,
+      loanRef: item.loanRef || existing?.loanRef,
+      amountDue:
+        visitStatus === "cobrado" || visitStatus === "omitido"
+          ? 0
+          : item.amountDue ?? existing?.amountDue ?? 0,
+      visitStatus,
+      paymentRef,
     };
   });
   const zones = [...new Set(items.map((row) => row.clientRoute).filter((row) => row && row !== "—"))];
@@ -306,21 +313,26 @@ export function applyPaymentToAssignments(
 ) {
   const paymentLoanRef = payment.loanRef;
   if (!payment.collectorRef || !paymentLoanRef) return assignments;
+  const targetClient = clientRef?.trim() || "";
+
   return assignments.map((row) => {
     if (row.dispatchDate !== dispatchDate) return row;
     if (row.collectorRef !== payment.collectorRef) return row;
-    const loanMatch = row.loanRef === paymentLoanRef;
-    const clientMatch =
-      Boolean(clientRef) &&
-      row.clientRef === clientRef &&
-      (!row.loanRef || row.loanRef === paymentLoanRef);
-    if (!loanMatch && !clientMatch) return row;
     if (row.visitStatus === "omitido") return row;
+
+    const loanMatch = Boolean(row.loanRef) && row.loanRef === paymentLoanRef;
+    const sameClientDay = Boolean(targetClient) && row.clientRef === targetClient;
+    if (!loanMatch && !sameClientDay) return row;
+
+    const due = Number(row.amountDue) || 0;
+    const paid = Number(payment.amount) || 0;
+    // Cubre la cuota mostrada / adeudo de la visita → cobrado (cierra en planilla).
     const visitStatus =
-      payment.amount >= row.amountDue ? "cobrado" : payment.amount > 0 ? "parcial" : row.visitStatus;
+      due <= 0 || paid >= due ? "cobrado" : paid > 0 ? "parcial" : row.visitStatus;
     return {
       ...row,
       loanRef: row.loanRef || paymentLoanRef,
+      amountDue: visitStatus === "cobrado" ? 0 : Math.max(0, due - paid),
       visitStatus,
       paymentRef: payment.ref,
     };

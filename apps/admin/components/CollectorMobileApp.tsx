@@ -1136,6 +1136,7 @@ export function CollectorMobileApp({
                               routeRef,
                               clientRef: item.clientRef,
                               loanRef: identity.loanRef,
+                              dispatchDate: item.dispatchDate || activeDate,
                               amount: payload.amount,
                               kind: payload.kind,
                               method: payload.method,

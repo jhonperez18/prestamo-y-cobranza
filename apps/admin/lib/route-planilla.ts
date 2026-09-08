@@ -102,6 +102,14 @@ function preserveProgress(
     skipReason: previous.skipReason,
     dayClosedAt: previous.dayClosedAt,
     paymentRef: previous.paymentRef,
+    // Si ya cobró, no reabrir adeudo al regenerar planilla.
+    amountDue:
+      previous.visitStatus === "cobrado" || previous.visitStatus === "omitido"
+        ? 0
+        : previous.paymentRef
+          ? previous.amountDue
+          : next.amountDue,
+    loanRef: previous.loanRef || next.loanRef,
     dispatched: true,
     dispatchedAt: previous.dispatchedAt ?? next.dispatchedAt,
   };
@@ -159,6 +167,11 @@ export function syncPermanentRoutePlanilla(
       .filter((row) => row.dispatchDate === date)
       .map((row) => [`${row.itemId}`, row] as const),
   );
+  const previousByClientLoan = new Map(
+    existing
+      .filter((row) => row.dispatchDate === date && row.clientRef)
+      .map((row) => [`${row.clientRef}:${row.loanRef || ""}`, row] as const),
+  );
 
   const builtMap = new Map<string, DailyCollectionAssignment>();
   const at = new Date().toISOString();
@@ -196,7 +209,13 @@ export function syncPermanentRoutePlanilla(
             visitStatus: "pendiente",
             awaitingLoan: true,
           };
-          builtMap.set(itemId, preserveProgress(base, previousByKey.get(itemId)));
+          builtMap.set(
+            itemId,
+            preserveProgress(
+              base,
+              previousByKey.get(itemId) ?? previousByClientLoan.get(`${client.ref}:`),
+            ),
+          );
         }
       }
 
@@ -209,7 +228,15 @@ export function syncPermanentRoutePlanilla(
           dispatched: true,
           dispatchedAt: at,
         };
-        builtMap.set(item.id, preserveProgress(base, previousByKey.get(item.id)));
+        builtMap.set(
+          item.id,
+          preserveProgress(
+            base,
+            previousByKey.get(item.id) ??
+              previousByClientLoan.get(`${item.clientRef}:${item.loanRef}`) ??
+              previousByClientLoan.get(`${item.clientRef}:`),
+          ),
+        );
       }
     }
   }

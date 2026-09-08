@@ -55,6 +55,8 @@ export type CollectorPaymentDraft = {
   routeRef: string;
   clientRef: string;
   loanRef: string;
+  /** Día de la visita en planilla (ISO). Obligatorio para cerrar la fila correcta. */
+  dispatchDate?: string;
   amount: number;
   kind: PayKind;
   method?: PaymentMethod;
@@ -94,7 +96,8 @@ export function validateCollectorPayment(
 }
 
 export function nextStopStatus(stop: RouteStop, amount: number) {
-  if (amount >= stop.amountDue) return "cobrado" as const;
+  const due = Number(stop.amountDue) || 0;
+  if (due <= 0 || amount >= due) return "cobrado" as const;
   if (amount > 0) return "parcial" as const;
   return stop.visitStatus;
 }

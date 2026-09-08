@@ -45,9 +45,12 @@ export function collectorMobileQueue(
   const dayItems = assignmentsForCollectorDate(assignments, collectorRef, date, loans, clients);
   const dispatched = dayItems.filter((row) => row.dispatched);
   const awaitingDispatch = dayItems.filter((row) => !row.dispatched);
-  const pending = dispatched.filter(
-    (row) => row.visitStatus === "pendiente" || row.visitStatus === "parcial" || !row.visitStatus,
-  );
+  const pending = dispatched.filter((row) => {
+    if (row.visitStatus === "cobrado" || row.visitStatus === "omitido") return false;
+    // Parcial con pago ya registrado: no bloquear la planilla (va a Hechos).
+    if (row.visitStatus === "parcial" && row.paymentRef) return false;
+    return row.visitStatus === "pendiente" || row.visitStatus === "parcial" || !row.visitStatus;
+  });
   const done = dispatched.filter(
     (row) =>
       row.visitStatus === "cobrado" ||

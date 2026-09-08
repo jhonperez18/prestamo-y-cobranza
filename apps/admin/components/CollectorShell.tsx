@@ -283,7 +283,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       return;
     }
 
-    const dispatchDate = todayIso();
+    const dispatchDate = draft.dispatchDate?.trim() || todayIso();
     const { loan, route } = resolveCollectorPaymentContext(draft, loans, routes, dispatchDate);
     if (!loan || loan.balance <= 0) {
       showToast("No hay préstamo activo para este cliente. No se registró el cobro.");
@@ -294,6 +294,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       ...draft,
       loanRef: loan.ref,
       routeRef: route?.ref ?? draft.routeRef,
+      dispatchDate,
     };
 
     const result = applyCollectorPaymentResult(loan, safeDraft, route);
@@ -304,7 +305,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     const pay = result.pay;
 
     const paymentRef = nextPaymentCode(payments);
-    const paidDate = route?.scheduledDate ?? dispatchDate;
+    const paidDate = dispatchDate;
     const paidTime = new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
     const assignment = dailyAssignments.find(
       (row) =>
