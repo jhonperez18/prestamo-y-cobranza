@@ -67,6 +67,10 @@ import {
 } from "@/lib/bank";
 import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import {
+  purgeUnclosedPlanillaPayments,
+  stripRemovedPaymentMovements,
+} from "@/lib/purge-unclosed-payments";
+import {
   bumpMissedCollectionAlerts,
   formatCloseDayAlertSummary,
 } from "@/lib/collection-alerts";
@@ -163,9 +167,6 @@ export function CollectorShell({ session, onLogout }: Props) {
       nextPayments,
       loadDemoDayCloses<CollectorDayCloseRecord>(),
     );
-    setPayments(nextPayments);
-    setLoans(storedLoans);
-    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextDayCloses);
     setDayCloses(nextDayCloses);
 
@@ -184,10 +185,37 @@ export function CollectorShell({ session, onLogout }: Props) {
       storedCollectors,
       storedAssignments,
     );
+    const purged = purgeUnclosedPlanillaPayments({
+      date: todayIso(),
+      payments: nextPayments,
+      assignments: synced.assignments,
+      loans: storedLoans,
+    });
+    nextPayments = purged.payments;
+    const nextLoans = purged.loans;
+    setPayments(nextPayments);
+    setLoans(nextLoans);
+    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
+    writeDemoJson(DEMO_LOANS_KEY, nextLoans);
     setDailyAssignments(synced.assignments);
     setRoutes(synced.routes);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
     writeDemoJson(DEMO_ROUTES_KEY, synced.routes);
+    const accounts = ensureBankAccounts(
+      readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
+    );
+    const cleanedMovements = stripRemovedPaymentMovements(bankMovements, purged.removedRefs);
+    writeDemoJson(
+      DEMO_BANK_MOVEMENTS_KEY,
+      syncBankLedger({
+        payments: nextPayments,
+        movements: cleanedMovements,
+        accounts,
+        miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
+        dayExpenseDrafts: readDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),
+        dayCloses: nextDayCloses,
+      }),
+    );
     setDailyLogs(readDemoJson(DEMO_DAILY_LOGS_KEY, COLLECTOR_DAILY_LOGS_SEED));
     setDayExpenseDrafts(
       readDemoJson<CollectorDayExpenseDraft[]>(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),

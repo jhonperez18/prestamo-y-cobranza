@@ -165,6 +165,10 @@ import {
   type BankReconciliation,
 } from "@/lib/bank";
 import { applyBankLedgerSync, syncBankLedger } from "@/lib/bank-ledger-sync";
+import {
+  purgeUnclosedPlanillaPayments,
+  stripRemovedPaymentMovements,
+} from "@/lib/purge-unclosed-payments";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement, miscPaymentRefForMovement } from "@/lib/misc-payments";
 import {
@@ -377,7 +381,6 @@ export function Workspace({
 
     setPayments(nextPayments);
     setLoans(storedLoans);
-    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
     const linked = ensureCollectorsForUsers(loadDemoUsers(), storedCollectors);
     setUsers(linked.users);
     setCollectors(linked.collectors);
@@ -398,10 +401,23 @@ export function Workspace({
       linked.collectors,
       storedAssignments,
     );
+    // Cobros de hoy sin visita cerrada en planilla (o duplicados) no van a Registros.
+    const purged = purgeUnclosedPlanillaPayments({
+      date: todayIso(),
+      payments: nextPayments,
+      assignments: synced.assignments,
+      loans: storedLoans,
+    });
+    nextPayments = purged.payments;
+    const nextLoans = purged.loans;
     setRoutes(synced.routes);
     setDailyAssignments(synced.assignments);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
     writeDemoJson(DEMO_ROUTES_KEY, synced.routes);
+    setPayments(nextPayments);
+    setLoans(nextLoans);
+    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
+    writeDemoJson(DEMO_LOANS_KEY, nextLoans);
     setDailyLogs(readDemoJson(DEMO_DAILY_LOGS_KEY, COLLECTOR_DAILY_LOGS_SEED));
     const storedDayCloses = recoveredDayCloses;
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, storedDayCloses);
@@ -417,13 +433,15 @@ export function Workspace({
     const storedAccounts = ensureBankAccounts(
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
     );
-    const storedMovements = storedMovementsEarly;
+    const storedMovements = stripRemovedPaymentMovements(
+      storedMovementsEarly ?? [],
+      purged.removedRefs,
+    );
     const storedReconciliations = readDemoJson<BankReconciliation[]>(DEMO_BANK_RECONCILIATIONS_KEY, []);
     const sidesVersion = readDemoJson<number>(DEMO_BANK_SIDES_VERSION_KEY, 1);
     const nextReconciliations =
       sidesVersion < 2 ? swapReconciliationDebitCredit(storedReconciliations) : storedReconciliations;
-    // Registros: una sola sync (cobros + gastos + pagos varios), sin duplicar.
-    // Conserva movimientos huérfanos (cobros/gastos ya registrados aunque falte el pago).
+    // Registros: solo cobros que cerraron planilla (+ gastos / pagos varios).
     const nextMovementsRaw = storedMovements.length
       ? normalizeBankMovements(storedMovements)
       : [];
