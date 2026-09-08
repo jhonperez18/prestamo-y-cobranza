@@ -985,6 +985,7 @@ export function CollectorMobileApp({
                   !identity.awaitingLoan &&
                   item.visitStatus !== "cobrado" &&
                   item.visitStatus !== "omitido" &&
+                  !item.paymentRef &&
                   !queue.closed &&
                   canCollect &&
                   Boolean(identity.loanRef) &&

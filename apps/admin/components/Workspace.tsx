@@ -133,6 +133,7 @@ import {
   applyCollectorPaymentResult,
   buildRouteStop,
   resolveCollectorPaymentContext,
+  visitAlreadyPaidToday,
   type CollectorPaymentDraft,
 } from "@/lib/route-sync";
 import {
@@ -1445,6 +1446,22 @@ export function Workspace({
     const { loan, route } = resolveCollectorPaymentContext(draft, loans, routes, dispatchDate);
     if (!loan || loan.balance <= 0) {
       onToast("No hay préstamo activo para este cliente. No se registró el cobro.");
+      return;
+    }
+
+    const already = visitAlreadyPaidToday(dailyAssignments, payments, {
+      loanRef: loan.ref,
+      clientRef: draft.clientRef,
+      dispatchDate,
+      collectorRef: draft.collectorRef,
+      loans,
+    });
+    if (already) {
+      onToast(
+        already.ref && already.ref !== "COBRADO"
+          ? `Ya existe el cobro ${already.ref} de este cliente hoy. Un cliente = un pago = un código.`
+          : "Este cliente ya tiene cobro hoy. Un cliente = un pago = un código.",
+      );
       return;
     }
 

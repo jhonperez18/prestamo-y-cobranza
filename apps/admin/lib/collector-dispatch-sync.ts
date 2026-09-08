@@ -332,7 +332,7 @@ export function applyPaymentToAssignments(
     const dateHit = dateHints.some((date) => rowMatches(row, date));
     if (!dateHit) return row;
     hit = true;
-    // Cobro registrado = visita hecha: sale de “Por cobrar”.
+    // Cobro registrado = visita hecha (un pago único del día).
     return {
       ...row,
       loanRef: row.loanRef || paymentLoanRef,
@@ -347,6 +347,7 @@ export function applyPaymentToAssignments(
   return assignments.map((row) => {
     if (row.visitStatus === "omitido" || row.visitStatus === "cobrado") return row;
     if (row.dayClosedAt) return row;
+    if (row.paymentRef) return row;
     if (collectorRef && row.collectorRef !== collectorRef) return row;
     const loanOk = row.loanRef === paymentLoanRef;
     const clientOk = Boolean(targetClient) && row.clientRef === targetClient;

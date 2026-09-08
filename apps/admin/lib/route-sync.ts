@@ -1,4 +1,4 @@
-import { activeLoans, loansForClient, type LoanRow, type RouteRow, type RouteStop } from "@/lib/mock-data";
+import { activeLoans, loansForClient, type LoanRow, type PaymentRow, type RouteRow, type RouteStop } from "@/lib/mock-data";
 import { applyPay, cuotaTarget, validatePay, type ApplyPaySuccess, type PayKind } from "@/lib/loan-pay";
 import type { PaymentMethod } from "@/lib/payment-method";
 import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
@@ -70,11 +70,76 @@ export function findRouteStop(route: RouteRow, clientRef: string) {
   return route.stops.find((stop) => stop.clientRef === clientRef) ?? null;
 }
 
+/**
+ * Regla de negocio: un cliente / préstamo = un solo cobro por día (único e irrepetible).
+ * Devuelve el pago existente si ya hay registro ese día.
+ */
+export function findDailyClientPayment(
+  payments: PaymentRow[],
+  input: {
+    loanRef: string;
+    clientRef?: string;
+    dispatchDate: string;
+    loans?: LoanRow[];
+  },
+): PaymentRow | null {
+  const day = input.dispatchDate.trim();
+  if (!day || !input.loanRef) return null;
+  const loanRefs = new Set<string>([input.loanRef]);
+  if (input.clientRef && input.loans?.length) {
+    for (const loan of input.loans) {
+      if (loan.clientRef === input.clientRef) loanRefs.add(loan.ref);
+    }
+  }
+  return (
+    payments.find((row) => {
+      if (!row.loanRef || !loanRefs.has(row.loanRef)) return false;
+      const paid = (row.paidDate || "").trim();
+      return paid === day;
+    }) ?? null
+  );
+}
+
+/** True si la visita del día ya tiene cobro (planilla o pago). */
+export function visitAlreadyPaidToday(
+  assignments: {
+    dispatchDate: string;
+    clientRef: string;
+    loanRef?: string;
+    collectorRef?: string;
+    visitStatus?: string;
+    paymentRef?: string;
+  }[],
+  payments: PaymentRow[],
+  input: {
+    loanRef: string;
+    clientRef: string;
+    dispatchDate: string;
+    collectorRef?: string;
+    loans?: LoanRow[];
+  },
+) {
+  const existingPay = findDailyClientPayment(payments, input);
+  if (existingPay) return existingPay;
+  const visit = assignments.find((row) => {
+    if (row.dispatchDate !== input.dispatchDate) return false;
+    if (input.collectorRef && row.collectorRef && row.collectorRef !== input.collectorRef) {
+      return false;
+    }
+    const sameClient = row.clientRef === input.clientRef;
+    const sameLoan = Boolean(row.loanRef) && row.loanRef === input.loanRef;
+    if (!sameClient && !sameLoan) return false;
+    return row.visitStatus === "cobrado" || Boolean(row.paymentRef);
+  });
+  return visit ? ({ ref: visit.paymentRef || "COBRADO" } as PaymentRow) : null;
+}
+
 export function validateCollectorPayment(
   draft: CollectorPaymentDraft,
   route: RouteRow | undefined,
   loan: LoanRow | undefined,
   existingKeys: Set<string>,
+  payments: PaymentRow[] = [],
 ) {
   if (existingKeys.has(draft.idempotencyKey)) {
     return { duplicate: true as const, error: null };
@@ -82,11 +147,31 @@ export function validateCollectorPayment(
   if (!route) return { duplicate: false as const, error: "Ruta no encontrada." };
   const stop = findRouteStop(route, draft.clientRef);
   if (!stop) return { duplicate: false as const, error: "Cliente no está en esta ruta." };
-  if (stop.visitStatus === "cobrado") {
-    return { duplicate: false as const, error: "Esta visita ya fue cobrada." };
-  }
   if (!loan || loan.ref !== draft.loanRef) {
     return { duplicate: false as const, error: "Préstamo no válido para este cliente." };
+  }
+  if (loan.balance <= 0) {
+    return { duplicate: false as const, error: "Este préstamo ya no tiene saldo por cobrar." };
+  }
+  const day = draft.dispatchDate?.trim() || "";
+  if (day) {
+    const existing = findDailyClientPayment(payments, {
+      loanRef: draft.loanRef,
+      clientRef: draft.clientRef,
+      dispatchDate: day,
+    });
+    if (existing) {
+      return {
+        duplicate: true as const,
+        error: `Ya existe el cobro ${existing.ref} de este cliente hoy. Un cliente = un pago = un código.`,
+      };
+    }
+  }
+  if (stop.visitStatus === "cobrado" || stop.paymentRef) {
+    return {
+      duplicate: true as const,
+      error: "Esta visita ya tiene cobro hoy. Un cliente = un pago = un código.",
+    };
   }
   const payError = validatePay(loan, draft.kind, draft.amount);
   if (payError) return { duplicate: false as const, error: payError };
@@ -103,11 +188,12 @@ export function nextStopStatus(stop: RouteStop, amount: number) {
 }
 
 export function applyPayToRouteStop(stop: RouteStop, amount: number, paymentRef: string) {
-  const remaining = Math.max(0, stop.amountDue - amount);
+  const due = Number(stop.amountDue) || 0;
+  const remaining = Math.max(0, due - amount);
   return {
     ...stop,
     amountDue: remaining,
-    visitStatus: nextStopStatus(stop, amount),
+    visitStatus: nextStopStatus({ ...stop, amountDue: due }, amount),
     paymentRef,
   };
 }
@@ -180,6 +266,13 @@ export function applyCollectorPaymentResult(
         status: allDone ? "Cerrada" : "En curso",
         kind: allDone ? ("paid" as const) : "pending",
       },
+    };
+  }
+
+  if (stop.visitStatus === "cobrado" || stop.paymentRef) {
+    return {
+      ok: false,
+      error: "Esta visita ya tiene cobro hoy. Un cliente = un pago = un código.",
     };
   }
 
