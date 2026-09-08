@@ -86,10 +86,6 @@ export function LoginScreen({ onSuccess }: Props) {
           Entrar
         </button>
 
-        <p className="login-recovery-link">
-          <a href="/recovery">Reaplicar respaldo / retención 30 días</a>
-        </p>
-
         <div className="login-demo-hints">
           <p>Usuarios de prueba (contraseña: {DEMO_USER_PASSWORD})</p>
           <ul>

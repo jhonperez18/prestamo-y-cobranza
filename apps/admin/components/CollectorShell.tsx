@@ -340,33 +340,45 @@ export function CollectorShell({ session, onLogout }: Props) {
       pay,
     );
 
+    const nextPayments = [payment, ...payments];
     const nextLoans = loans.map((row) =>
-      row.ref === loan.ref ? loanRowAfterPay(row, pay, [payment, ...payments]) : row,
+      row.ref === loan.ref ? loanRowAfterPay(row, pay, nextPayments) : row,
+    );
+    const nextClients = clients.map((entry) => {
+      if (entry.ref !== draft.clientRef) return entry;
+      return { ...entry, pending: Math.max(0, entry.pending - draft.amount) };
+    });
+    const closedAssignments = applyPaymentToAssignments(
+      dailyAssignments,
+      payment,
+      paidDate,
+      draft.clientRef,
+    );
+    const routesForSync = result.updatedRoute
+      ? routes.map((row) => (row.ref === result.updatedRoute!.ref ? result.updatedRoute! : row))
+      : routes;
+    const planilla = syncPermanentRoutePlanilla(
+      todayIso(),
+      routesForSync,
+      nextClients,
+      nextLoans,
+      collectors,
+      closedAssignments,
     );
 
-    setPayments((current) => [payment, ...current]);
+    setPayments(nextPayments);
     setLoans(nextLoans);
     if (result.updatedRoute) {
       setDailyLogs((current) => upsertDailyLogPayment(current, payment, result.updatedRoute!));
-      setRoutes((current) =>
-        current.map((row) => (row.ref === result.updatedRoute!.ref ? result.updatedRoute! : row)),
-      );
     }
-    setDailyAssignments((current) =>
-      applyPaymentToAssignments(current, payment, paidDate, draft.clientRef),
-    );
-    setClients((current) =>
-      current.map((entry) => {
-        if (entry.ref !== draft.clientRef) return entry;
-        return { ...entry, pending: Math.max(0, entry.pending - draft.amount) };
-      }),
-    );
+    setDailyAssignments(planilla.assignments);
+    setRoutes(planilla.routes);
+    setClients(nextClients);
 
     const accounts = ensureBankAccounts(
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
     );
     writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, accounts);
-    const nextPayments = [payment, ...payments];
     const nextMovements = syncBankLedger({
       payments: nextPayments,
       movements: normalizeBankMovements(

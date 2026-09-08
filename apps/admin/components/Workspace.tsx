@@ -1498,33 +1498,48 @@ export function Workspace({
       pay,
     );
 
-    setPayments((current) => {
-      const nextPayments = [payment, ...current];
-      setLoans((rows) =>
-        rows.map((row) =>
-          row.ref === loan.ref ? loanRowAfterPay(row, pay, nextPayments) : row,
-        ),
-      );
-      setBankMovements((rows) =>
-        applyBankLedgerSync(rows, {
-          payments: nextPayments,
-          accounts: bankAccounts,
-          miscPayments,
-          dayExpenseDrafts,
-          dayCloses,
-        }),
-      );
-      return nextPayments;
-    });
+    const nextPayments = [payment, ...payments];
+    const nextLoans = loans.map((row) =>
+      row.ref === loan.ref ? loanRowAfterPay(row, pay, nextPayments) : row,
+    );
+    const closedAssignments = applyPaymentToAssignments(
+      dailyAssignments,
+      payment,
+      paidDate,
+      draft.clientRef,
+    );
+    // Regenerar planilla YA con la visita cobrada, para que el rollover no la reabra.
+    const planilla = syncPermanentRoutePlanilla(
+      todayIso(),
+      result.updatedRoute
+        ? routes.map((row) => (row.ref === result.updatedRoute!.ref ? result.updatedRoute! : row))
+        : routes,
+      clients.map((entry) =>
+        entry.ref === draft.clientRef
+          ? { ...entry, pending: Math.max(0, entry.pending - draft.amount) }
+          : entry,
+      ),
+      nextLoans,
+      collectors,
+      closedAssignments,
+    );
+
+    setPayments(nextPayments);
+    setLoans(nextLoans);
+    setBankMovements((rows) =>
+      applyBankLedgerSync(rows, {
+        payments: nextPayments,
+        accounts: bankAccounts,
+        miscPayments,
+        dayExpenseDrafts,
+        dayCloses,
+      }),
+    );
     if (result.updatedRoute) {
       setDailyLogs((current) => upsertDailyLogPayment(current, payment, result.updatedRoute!));
-      setRoutes((current) =>
-        current.map((row) => (row.ref === result.updatedRoute!.ref ? result.updatedRoute! : row)),
-      );
     }
-    setDailyAssignments((current) =>
-      applyPaymentToAssignments(current, payment, paidDate, draft.clientRef),
-    );
+    setDailyAssignments(planilla.assignments);
+    setRoutes(planilla.routes);
     setClients((current) =>
       current.map((entry) => {
         if (entry.ref !== draft.clientRef) return entry;

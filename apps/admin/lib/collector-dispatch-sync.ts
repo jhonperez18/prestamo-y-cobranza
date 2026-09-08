@@ -311,29 +311,51 @@ export function applyPaymentToAssignments(
   dispatchDate: string,
   clientRef?: string,
 ) {
-  const paymentLoanRef = payment.loanRef;
-  if (!payment.collectorRef || !paymentLoanRef) return assignments;
+  const paymentLoanRef = payment.loanRef?.trim() || "";
+  if (!paymentLoanRef) return assignments;
+
   const targetClient = clientRef?.trim() || "";
+  const collectorRef = payment.collectorRef?.trim() || "";
+  const dateHints = [...new Set([dispatchDate, payment.paidDate].filter(Boolean))] as string[];
 
-  return assignments.map((row) => {
-    if (row.dispatchDate !== dispatchDate) return row;
-    if (row.collectorRef !== payment.collectorRef) return row;
-    if (row.visitStatus === "omitido") return row;
+  function rowMatches(row: DailyCollectionAssignment, date: string) {
+    if (row.dispatchDate !== date) return false;
+    if (row.visitStatus === "omitido") return false;
+    if (collectorRef && row.collectorRef !== collectorRef) return false;
+    if (row.loanRef && row.loanRef === paymentLoanRef) return true;
+    if (targetClient && row.clientRef === targetClient) return true;
+    return false;
+  }
 
-    const loanMatch = Boolean(row.loanRef) && row.loanRef === paymentLoanRef;
-    const sameClientDay = Boolean(targetClient) && row.clientRef === targetClient;
-    if (!loanMatch && !sameClientDay) return row;
-
-    const due = Number(row.amountDue) || 0;
-    const paid = Number(payment.amount) || 0;
-    // Cubre la cuota mostrada / adeudo de la visita → cobrado (cierra en planilla).
-    const visitStatus =
-      due <= 0 || paid >= due ? "cobrado" : paid > 0 ? "parcial" : row.visitStatus;
+  let hit = false;
+  const next = assignments.map((row) => {
+    const dateHit = dateHints.some((date) => rowMatches(row, date));
+    if (!dateHit) return row;
+    hit = true;
+    // Cobro registrado = visita hecha: sale de “Por cobrar”.
     return {
       ...row,
       loanRef: row.loanRef || paymentLoanRef,
-      amountDue: visitStatus === "cobrado" ? 0 : Math.max(0, due - paid),
-      visitStatus,
+      amountDue: 0,
+      visitStatus: "cobrado" as const,
+      paymentRef: payment.ref,
+    };
+  });
+  if (hit) return next;
+
+  // Fallback: misma visita abierta del cobrador/cliente sin importar desfase de fecha.
+  return assignments.map((row) => {
+    if (row.visitStatus === "omitido" || row.visitStatus === "cobrado") return row;
+    if (row.dayClosedAt) return row;
+    if (collectorRef && row.collectorRef !== collectorRef) return row;
+    const loanOk = row.loanRef === paymentLoanRef;
+    const clientOk = Boolean(targetClient) && row.clientRef === targetClient;
+    if (!loanOk && !clientOk) return row;
+    return {
+      ...row,
+      loanRef: row.loanRef || paymentLoanRef,
+      amountDue: 0,
+      visitStatus: "cobrado" as const,
       paymentRef: payment.ref,
     };
   });
