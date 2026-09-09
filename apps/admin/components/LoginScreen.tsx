@@ -107,7 +107,9 @@ export function LoginScreen({ onSuccess }: Props) {
             ))}
           </ul>
           {APP_BUILD ? (
-            <p className="login-build-stamp">build {APP_BUILD}</p>
+            <p className="login-build-stamp" title="Commit desplegado en este sitio">
+              Código en este sitio: <strong>{APP_BUILD}</strong>
+            </p>
           ) : null}
         </div>
       </form>

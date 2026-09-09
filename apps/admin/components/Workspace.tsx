@@ -163,6 +163,7 @@ import {
 } from "@/lib/purge-unclosed-payments";
 import { commitCollectorPayment } from "@/lib/commit-collector-payment";
 import { runOperationalDayCycle } from "@/lib/collector-day-auto-close";
+import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
 import { dedupeDailyPaymentsByVisit } from "@/lib/planilla-payment-reconcile";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement, miscPaymentRefForMovement } from "@/lib/misc-payments";
@@ -332,6 +333,8 @@ export function Workspace({
   });
 
   useEffect(() => {
+    // Nuevo deploy → no heredar flags de jornada cerrada del build anterior.
+    syncDemoStorageToServedBuild();
     const { payments: storedPayments, loans: storedLoans } = loadDemoPaymentsBundle();
     const storedCollectors = readDemoJson(DEMO_COLLECTORS_KEY, COLLECTORS).map((row) => ({
       ...row,

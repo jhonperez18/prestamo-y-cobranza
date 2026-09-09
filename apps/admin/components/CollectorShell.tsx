@@ -72,6 +72,7 @@ import {
 import { dedupeDailyPaymentsByVisit } from "@/lib/planilla-payment-reconcile";
 import { commitCollectorPayment } from "@/lib/commit-collector-payment";
 import { runOperationalDayCycle } from "@/lib/collector-day-auto-close";
+import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
 import {
   bumpMissedCollectionAlerts,
   formatCloseDayAlertSummary,
@@ -137,6 +138,7 @@ export function CollectorShell({ session, onLogout }: Props) {
   );
 
   useEffect(() => {
+    syncDemoStorageToServedBuild();
     const { payments: storedPayments, loans: storedLoans } = loadDemoPaymentsBundle();
     const storedCollectors = readDemoJson(DEMO_COLLECTORS_KEY, COLLECTORS);
     const storedAssignments = readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []);

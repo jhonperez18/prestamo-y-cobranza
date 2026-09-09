@@ -282,11 +282,16 @@
       text-align: center;
     }
     .login-build-stamp {
-      margin: 12px 0 0 !important;
-      font-size: 11px !important;
-      color: rgba(255, 255, 255, 0.45) !important;
+      margin: 14px 0 0 !important;
+      font-size: 13px !important;
+      color: #ecfdf5 !important;
       letter-spacing: 0.02em;
       text-align: center;
+      font-weight: 600;
+    }
+    .login-build-stamp strong {
+      color: #a7f3d0;
+      font-weight: 800;
     }
     .login-demo-hints ul {
       list-style: none;

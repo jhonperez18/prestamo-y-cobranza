@@ -4,7 +4,8 @@
  * - A las 00:00 nace la planilla del día siguiente ya sin arrastre de abiertas.
  * - Quien no pagó a esa hora queda omitido; gastos no cargados no se inventan.
  *
- * NO se fuerza el cierre de “hoy” al hidratar (eso hacía ver Vercel como “día de ayer”).
+ * En horario laboral (antes de 23:30) la jornada de HOY debe quedar ABIERTA.
+ * No se fuerza cierre al hidratar (eso hacía ver Vercel como “día de ayer”).
  */
 import {
   applyDayCloseRecordsToAssignments,
@@ -118,6 +119,75 @@ function openCollectorDatePairs(
   );
 }
 
+function todaySealedOrClosed(
+  assignments: DailyCollectionAssignment[],
+  dayCloses: CollectorDayCloseRecord[],
+  today: string,
+) {
+  const hasCie = dayCloses.some(
+    (row) => (normalizeHistoryDate(row.date) || row.date) === today,
+  );
+  const hasSeal = assignments.some(
+    (row) =>
+      (normalizeHistoryDate(row.dispatchDate) || row.dispatchDate) === today &&
+      Boolean(row.dayClosedAt),
+  );
+  return hasCie || hasSeal;
+}
+
+/**
+ * Antes de las 23:30: hoy debe estar abierto (quita CIE de hoy + reabre visitas).
+ * Evita que localStorage de un deploy viejo deje la app en “jornada de ayer”.
+ */
+export function ensureTodayOpenDuringBusinessHours(
+  state: OperationalDayState,
+  now = new Date(),
+): OperationalDayState {
+  const today = todayIso(now);
+  if (dayHasReachedAutoClose(today, now)) return state;
+  if (!todaySealedOrClosed(state.assignments, state.dayCloses, today)) {
+    return state;
+  }
+
+  const dayCloses = state.dayCloses.filter(
+    (row) => (normalizeHistoryDate(row.date) || row.date) !== today,
+  );
+
+  const reopened = reopenDispatchDay(
+    state.assignments,
+    state.routes,
+    state.logs,
+    today,
+    state.collectors,
+    state.loans,
+    state.clients,
+  );
+
+  const planilla = syncPermanentRoutePlanilla(
+    today,
+    reopened.routes,
+    state.clients,
+    state.loans,
+    state.collectors,
+    reopened.assignments,
+  );
+
+  let assignments = sealOpenVisitsWithLaterPayments(
+    reconcilePaymentsOntoPlanilla(planilla.assignments, state.payments),
+    state.payments,
+    { untilDate: today },
+  );
+  assignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
+
+  return {
+    ...state,
+    assignments,
+    routes: planilla.routes,
+    logs: reopened.logs,
+    dayCloses,
+  };
+}
+
 /**
  * Cierra jornadas vencidas (23:30 / días previos) y luego arma la planilla de hoy.
  * Una sola pasada operativa: sin arrastre de planillas abiertas al día nuevo.
@@ -194,7 +264,6 @@ export function runOperationalDayCycle(
     autoClosed.push(pair);
   }
 
-  // CIE ya existentes → sellan visitas (cierre a medias / auto previo).
   assignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
 
   const planilla = syncPermanentRoutePlanilla(
@@ -224,121 +293,9 @@ export function runOperationalDayCycle(
     collectors: state.collectors,
   };
 
-  // Deshace el cierre forzado de “hoy” (migración mala v1) si aún estamos en horario.
-  const repaired = reopenPrematureTodayClosesOnce(afterCycle, now);
+  const openToday = ensureTodayOpenDuringBusinessHours(afterCycle, now);
   return {
-    ...repaired,
+    ...openToday,
     autoClosed,
-  };
-}
-
-/** Flag de la migración mala que cerraba hoy al abrir Vercel. */
-const FORCE_CLOSE_OPEN_DAYS_KEY = "nexo-demo-force-close-open-days-v1";
-/** Una vez: reabre hoy si se cerró antes de las 23:30 por esa migración. */
-const REOPEN_PREMATURE_TODAY_KEY = "nexo-demo-reopen-premature-today-v2";
-
-function storageFlag(key: string) {
-  if (typeof window === "undefined") return true;
-  try {
-    return window.localStorage.getItem(key) === "1";
-  } catch {
-    return true;
-  }
-}
-
-function setStorageFlag(key: string) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(key, "1");
-  } catch {
-    /* ignore */
-  }
-}
-
-/**
- * Reabre la jornada de hoy si quedó cerrada antes del corte 23:30
- * (efecto del force-close-open-days-v1). Corre una sola vez por origen.
- */
-export function reopenPrematureTodayClosesOnce(
-  state: OperationalDayState,
-  now = new Date(),
-): OperationalDayResult {
-  if (storageFlag(REOPEN_PREMATURE_TODAY_KEY)) {
-    return { ...state, autoClosed: [] };
-  }
-
-  const today = todayIso(now);
-  if (dayHasReachedAutoClose(today, now)) {
-    setStorageFlag(REOPEN_PREMATURE_TODAY_KEY);
-    return { ...state, autoClosed: [] };
-  }
-
-  const todayCloseRefs = new Set(
-    state.dayCloses
-      .filter((row) => (normalizeHistoryDate(row.date) || row.date) === today)
-      .map((row) => row.collectorRef),
-  );
-  const todaySealed = state.assignments.some(
-    (row) =>
-      (normalizeHistoryDate(row.dispatchDate) || row.dispatchDate) === today &&
-      Boolean(row.dayClosedAt),
-  );
-
-  if (!todayCloseRefs.size && !todaySealed) {
-    setStorageFlag(REOPEN_PREMATURE_TODAY_KEY);
-    return { ...state, autoClosed: [] };
-  }
-
-  let dayCloses = state.dayCloses.filter(
-    (row) => (normalizeHistoryDate(row.date) || row.date) !== today,
-  );
-  let assignments = state.assignments;
-  let routes = state.routes;
-  let logs = state.logs;
-
-  const reopened = reopenDispatchDay(
-    assignments,
-    routes,
-    logs,
-    today,
-    state.collectors,
-    state.loans,
-    state.clients,
-  );
-  assignments = reopened.assignments;
-  routes = reopened.routes;
-  logs = reopened.logs;
-
-  const planilla = syncPermanentRoutePlanilla(
-    today,
-    routes,
-    state.clients,
-    state.loans,
-    state.collectors,
-    assignments,
-  );
-  assignments = sealOpenVisitsWithLaterPayments(
-    reconcilePaymentsOntoPlanilla(planilla.assignments, state.payments),
-    state.payments,
-    { untilDate: today },
-  );
-  // Sin CIE de hoy: no volver a sellar.
-  assignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
-
-  setStorageFlag(REOPEN_PREMATURE_TODAY_KEY);
-  // Marca la v1 como hecha para que nadie la reintroduzca a medias.
-  setStorageFlag(FORCE_CLOSE_OPEN_DAYS_KEY);
-
-  return {
-    assignments,
-    routes: planilla.routes,
-    logs,
-    dayCloses,
-    dayExpenseDrafts: state.dayExpenseDrafts,
-    payments: state.payments,
-    loans: state.loans,
-    clients: state.clients,
-    collectors: state.collectors,
-    autoClosed: [],
   };
 }

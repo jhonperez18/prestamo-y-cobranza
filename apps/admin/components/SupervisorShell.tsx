@@ -55,6 +55,7 @@ import { COLLECTOR_DAILY_LOGS_SEED } from "@/lib/collector-daily-log";
 import { todayIso } from "@/lib/daily-dispatch";
 import { usePlanillaDayRollover } from "@/lib/planilla-day-sync";
 import { runOperationalDayCycle } from "@/lib/collector-day-auto-close";
+import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
 import { syncPermanentRoutePlanilla } from "@/lib/route-planilla";
 import {
   buildQuickLoan,
@@ -89,6 +90,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
   );
 
   useEffect(() => {
+    syncDemoStorageToServedBuild();
     const { payments: storedPayments, loans: storedLoans } = loadDemoPaymentsBundle();
     const storedCollectors = readDemoJson(DEMO_COLLECTORS_KEY, COLLECTORS);
     const storedAssignments = readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []);
