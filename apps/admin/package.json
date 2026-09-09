@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node scripts/dev-chrome.mjs",
     "dev:next": "next dev",
-    "build": "next build",
+    "build": "node scripts/stamp-build.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "deploy:prod": "node scripts/deploy-prod.mjs"

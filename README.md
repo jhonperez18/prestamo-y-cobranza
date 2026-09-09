@@ -13,13 +13,19 @@ npm run dev
 
 Abre http://localhost:3000 — módulos arriba, variantes a la izquierda, trabajo al centro.
 
-## Producción (auto-deploy)
+## Producción (una sola URL)
 
-Cada `git push` a `main` actualiza GitHub y Vercel (Root Directory: `apps/admin`):
+**URL canónica:** https://prestamo-y-cobranza.vercel.app
 
-- https://admin-jhon-fredy-perezs-projects.vercel.app
-- https://prestamo-y-cobranza.vercel.app
+Cada `git push` a `main` despliega ese dominio (proyecto Vercel `prestamo-y-cobranza`, Root Directory `apps/admin`).
 
+En el login debe verse `build` = commit corto de GitHub (ej. `cdfcd9c`). Si el build no cambia, estás en una URL vieja o con caché del navegador.
+
+| Usar | No usar (proyecto duplicado) |
+| --- | --- |
+| https://prestamo-y-cobranza.vercel.app | https://admin-*.vercel.app / proyecto Vercel `admin` |
+
+Emergencia (forzar deploy + limpiar CDN): `cd apps/admin && npm run deploy:prod`
 ## Documentación
 
 | Documento | Contenido |
