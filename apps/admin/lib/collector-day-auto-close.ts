@@ -210,9 +210,134 @@ export function runOperationalDayCycle(
   );
   assignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
 
-  return {
+  const afterCycle: OperationalDayState = {
     assignments,
     routes: planilla.routes,
+    logs,
+    dayCloses,
+    dayExpenseDrafts,
+    payments: state.payments,
+    loans,
+    clients: state.clients,
+    collectors: state.collectors,
+  };
+
+  // Una sola vez: en Vercel/Git el día nace abierto; Chrome ya tenía cierres locales.
+  const showcase = closeOpenMobileDaysOnce(afterCycle, now);
+  return {
+    ...showcase,
+    autoClosed: [...autoClosed, ...showcase.autoClosed],
+  };
+}
+
+const FORCE_CLOSE_OPEN_DAYS_KEY = "nexo-demo-force-close-open-days-v1";
+
+function alreadyForcedCloseOpenDays() {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(FORCE_CLOSE_OPEN_DAYS_KEY) === "1";
+  } catch {
+    return true;
+  }
+}
+
+function markForcedCloseOpenDays() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(FORCE_CLOSE_OPEN_DAYS_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Cierra cobradores móviles con planilla abierta de hoy (migración demo).
+ * Corre una sola vez por navegador/origen para igualar Chrome ↔ Vercel.
+ */
+export function closeOpenMobileDaysOnce(
+  state: OperationalDayState,
+  now = new Date(),
+): OperationalDayResult {
+  if (alreadyForcedCloseOpenDays()) {
+    return { ...state, autoClosed: [] };
+  }
+
+  const today = todayIso(now);
+  let assignments = state.assignments;
+  let routes = state.routes;
+  let logs = state.logs;
+  let dayCloses = state.dayCloses;
+  let dayExpenseDrafts = state.dayExpenseDrafts;
+  let loans = state.loans;
+  const autoClosed: Array<{ collectorRef: string; date: string }> = [];
+
+  const mobile = state.collectors.filter((row) => row.mobileAccess && row.active);
+  for (const collector of mobile) {
+    const hasCie = dayCloses.some(
+      (row) =>
+        row.collectorRef === collector.ref &&
+        (normalizeHistoryDate(row.date) || row.date) === today,
+    );
+    const dayRows = assignments.filter(
+      (row) =>
+        row.collectorRef === collector.ref &&
+        (normalizeHistoryDate(row.dispatchDate) || row.dispatchDate) === today,
+    );
+    if (!dayRows.length || hasCie) continue;
+    if (dayRows.every((row) => Boolean(row.dayClosedAt))) continue;
+
+    const draft = findDayExpenseDraft(dayExpenseDrafts, collector.ref, today);
+    const lines = (draft?.expenses ?? []).filter((row) => row.amount > 0);
+    const collected = collectorRecaudoForDate(
+      collector.ref,
+      today,
+      state.payments,
+      state.collectors,
+    );
+    const record = finalizeCollectorDayClose({
+      draft: {
+        collectorRef: collector.ref,
+        collectorName: collector.name,
+        date: today,
+        routeRef: draft?.routeRef || `RUT-D-${collector.ref}-${today}`,
+        collected,
+        expenses: lines,
+      },
+      lines,
+      movementRefs: lines.map((line) =>
+        dayExpenseLineMovementRef(collector.ref, today, line.id),
+      ),
+    });
+
+    dayCloses = [record, ...dayCloses.filter((row) => row.ref !== record.ref)];
+    dayExpenseDrafts = removeDayExpenseDraft(dayExpenseDrafts, collector.ref, today);
+
+    const closed = closeDispatchDay(
+      assignments,
+      routes,
+      logs,
+      today,
+      state.collectors,
+      loans,
+      state.clients,
+      collector.ref,
+      state.payments,
+    );
+    assignments = closed.assignments;
+    routes = closed.routes;
+    logs = closed.logs;
+
+    const alerted = bumpMissedCollectionAlerts(loans, closed.missedLoanRefs, today);
+    loans = alerted.loans;
+    autoClosed.push({ collectorRef: collector.ref, date: today });
+  }
+
+  assignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
+  markForcedCloseOpenDays();
+
+  return {
+    assignments,
+    routes,
     logs,
     dayCloses,
     dayExpenseDrafts,

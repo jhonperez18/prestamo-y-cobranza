@@ -2462,7 +2462,10 @@
       gap: 2px;
     }
     .mobile-preview-person-list button {
-      display: block;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
       width: 100%;
       text-align: left;
       border: 0;
@@ -2475,6 +2478,18 @@
       color: #14201b;
       cursor: pointer;
       line-height: 1.25;
+    }
+    .mobile-preview-closed-tag {
+      flex: none;
+      margin: 0;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: #dbeafe;
+      color: #1e40af;
+      font-size: 11px;
+      font-style: normal;
+      font-weight: 700;
+      letter-spacing: 0.02em;
     }
     .mobile-preview-person-list button:hover {
       background: #eef5f1;

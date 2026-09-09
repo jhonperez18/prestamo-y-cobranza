@@ -10,12 +10,14 @@ import {
 } from "@/components/CollectorMobileApp";
 import { MobilePreviewFrame } from "@/components/MobilePreviewFrame";
 import { SupervisorMobileApp } from "@/components/SupervisorMobileApp";
+import { collectorMobileQueue } from "@/lib/collector-mobile";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type {
   CollectorDayCloseRecord,
   CollectorDayExpenseDraft,
   CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
+import { todayIso } from "@/lib/daily-dispatch";
 import type { ClientRow, CollectorRow, LoanRow, PaymentRow, RouteRow, UserRow } from "@/lib/mock-data";
 import type { CollectorPaymentDraft } from "@/lib/route-sync";
 
@@ -83,6 +85,24 @@ export function CollectorMobilePreview({
     [collectors],
   );
 
+  const today = todayIso();
+  const closedByCollector = useMemo(() => {
+    const map = new Map<string, boolean>();
+    for (const row of mobileCollectors) {
+      const queue = collectorMobileQueue(
+        row.ref,
+        today,
+        assignments,
+        loans,
+        clients,
+        routes,
+        dayCloses,
+      );
+      map.set(row.ref, queue.closed);
+    }
+    return map;
+  }, [assignments, clients, dayCloses, loans, mobileCollectors, routes, today]);
+
   const supervisors = useMemo(
     () =>
       users.filter(
@@ -136,21 +156,25 @@ export function CollectorMobilePreview({
             <p className="mobile-preview-rail-empty">Sin cobradores móviles</p>
           ) : (
             <ul className="mobile-preview-person-list">
-              {mobileCollectors.map((row) => (
-                <li key={row.ref}>
-                  <button
-                    type="button"
-                    className={
-                      kind === "collector" && collector?.ref === row.ref
-                        ? "is-active"
-                        : undefined
-                    }
-                    onClick={() => pickCollector(row.ref)}
-                  >
-                    {row.name}
-                  </button>
-                </li>
-              ))}
+              {mobileCollectors.map((row) => {
+                const closed = closedByCollector.get(row.ref);
+                return (
+                  <li key={row.ref}>
+                    <button
+                      type="button"
+                      className={
+                        kind === "collector" && collector?.ref === row.ref
+                          ? "is-active"
+                          : undefined
+                      }
+                      onClick={() => pickCollector(row.ref)}
+                    >
+                      <span>{row.name}</span>
+                      {closed ? <em className="mobile-preview-closed-tag">Cerrado</em> : null}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </aside>
