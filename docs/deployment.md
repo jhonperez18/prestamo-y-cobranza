@@ -1,56 +1,62 @@
-# Despliegue
+# Despliegue — contrato fijo
 
-## Producción actual (admin Next.js)
+Este documento **define** producción. No es una guía de parches.
+
+## Una sola producción
 
 | Pieza | Valor |
 | --- | --- |
-| Repo / rama | `jhonperez18/prestamo-y-cobranza` → `main` |
-| Proyecto Vercel **único** | `prestamo-y-cobranza` |
+| Repo | `jhonperez18/prestamo-y-cobranza` |
+| Rama | `main` |
+| Proyecto Vercel | `prestamo-y-cobranza` (**único** conectado a GitHub) |
 | Root Directory | `apps/admin` |
-| URL canónica | https://prestamo-y-cobranza.vercel.app |
-| Build id en login | commit corto (`VERCEL_GIT_COMMIT_SHA` vía `scripts/stamp-build.mjs`) |
+| URL | https://prestamo-y-cobranza.vercel.app |
+| Id de versión | commit corto en el login (`build xxxxxxx`) |
 
-### Por qué a veces “se ve viejo”
+El proyecto Vercel llamado `admin` quedó **desconectado de GitHub**. No usarlo. No volver a conectarlo.
 
-1. **Dos proyectos Vercel** (`prestamo-y-cobranza` y `admin`) apuntaban al mismo repo. Un URL se actualizaba y el otro no, o el sello `build` del login quedaba congelado.
-2. El sello `APP_BUILD` solo se regeneraba con `deploy:prod` manual; los deploys por GitHub seguían mostrando un commit antiguo aunque el código sí fuera nuevo.
-3. Datos demo en `localStorage` del navegador no son el código: parecen “versión vieja” si no se limpian.
-
-### Regla operativa (no romper diario)
-
-- **Solo** usar https://prestamo-y-cobranza.vercel.app
-- Tras cada push a `main`, verificar en login: `build` = SHA de GitHub
-- Hard refresh si hace falta (Ctrl+F5) o ventana privada
-- No publicar con el proyecto Vercel `admin` (dejarlo desconectado del Git o borrarlo cuando se pueda)
-- Emergencia: `cd apps/admin && npm run deploy:prod`
-
-### Flujo normal
+## Flujo diario
 
 ```bash
 git push origin main
-# Esperar Ready en Vercel → abrir prestamo-y-cobranza.vercel.app
+# Vercel construye solo prestamo-y-cobranza
+# Abrir https://prestamo-y-cobranza.vercel.app
+# Login → build = SHA del commit
 ```
 
----
+Verificación rápida:
+
+```bash
+cd apps/admin
+npm run verify:prod
+```
+
+Emergencia (rebuild forzado al mismo dominio):
+
+```bash
+cd apps/admin
+npm run release:force
+```
+
+## Cómo se garantiza que no “quede viejo”
+
+1. **Un solo proyecto Git → Vercel** (sin duplicados).
+2. **El sello `build` sale del commit en cada build** (`next.config.ts` → `NEXT_PUBLIC_APP_BUILD`). No hay archivo de sello manual.
+3. **HTML raíz sin caché agresiva** (headers en `next.config.ts`).
+4. **Regla Cursor** `.cursor/rules/production-deploy.mdc` para que agentes no improvisen otro deploy.
+
+## Qué NO es “código viejo”
+
+- Datos demo en `localStorage` del navegador (siguen ahí aunque el JS sea nuevo).
+- Abrir una URL `admin-*.vercel.app` de un deploy antiguo.
+- Comparar localhost con producción sin mirar el `build` del login.
 
 ## Entornos futuros (API / Supabase)
 
 | Entorno | Uso |
 | --- | --- |
-| local | Docker/Supabase local + apps en dev |
-| staging | Copia de esquema, datos ficticios |
-| production | Proyecto Supabase propio, secretos propios |
+| local | Dev |
+| staging | Datos ficticios |
+| production | Secretos propios |
 
-Staging y production **nunca** comparten base ni service role.
-
-### Piezas previstas
-
-- `apps/admin` → Vercel (ya)
-- `apps/pwa` → CDN / dominio dedicado
-- `packages/api` → proceso Node
-- Supabase → Postgres, Auth, Storage, PITR
-
-### Secretos
-
-- `SUPABASE_SERVICE_ROLE_KEY` solo en el servidor de API.
-- El admin recibe únicamente anon key + URL cuando exista backend real.
+Staging y production no comparten base ni service role.

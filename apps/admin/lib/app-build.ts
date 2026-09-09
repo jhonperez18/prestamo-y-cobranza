@@ -1,2 +1,2 @@
-/** Generado en cada build — no editar a mano. */
-export const APP_BUILD = "cdfcd9c";
+/** Id de build = commit corto. Lo inyecta next.config en cada build. */
+export const APP_BUILD = process.env.NEXT_PUBLIC_APP_BUILD || "dev";

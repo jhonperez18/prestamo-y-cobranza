@@ -5,10 +5,11 @@
   "scripts": {
     "dev": "node scripts/dev-chrome.mjs",
     "dev:next": "next dev",
-    "build": "node scripts/stamp-build.mjs && next build",
+    "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "deploy:prod": "node scripts/deploy-prod.mjs"
+    "verify:prod": "node scripts/release.mjs verify",
+    "release:force": "node scripts/release.mjs force"
   },
   "dependencies": {
     "jspdf": "^4.2.1",

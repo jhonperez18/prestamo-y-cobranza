@@ -13,19 +13,22 @@ npm run dev
 
 Abre http://localhost:3000 — módulos arriba, variantes a la izquierda, trabajo al centro.
 
-## Producción (una sola URL)
+## Producción (contrato fijo)
 
-**URL canónica:** https://prestamo-y-cobranza.vercel.app
-
-Cada `git push` a `main` despliega ese dominio (proyecto Vercel `prestamo-y-cobranza`, Root Directory `apps/admin`).
-
-En el login debe verse `build` = commit corto de GitHub (ej. `cdfcd9c`). Si el build no cambia, estás en una URL vieja o con caché del navegador.
-
-| Usar | No usar (proyecto duplicado) |
+| | |
 | --- | --- |
-| https://prestamo-y-cobranza.vercel.app | https://admin-*.vercel.app / proyecto Vercel `admin` |
+| **URL** | https://prestamo-y-cobranza.vercel.app |
+| **Proyecto Vercel** | `prestamo-y-cobranza` (único) |
+| **Cómo publica** | `git push` a `main` |
+| **Cómo verificar** | En el login: `build` = commit corto de GitHub |
 
-Emergencia (forzar deploy + limpiar CDN): `cd apps/admin && npm run deploy:prod`
+```bash
+cd apps/admin
+npm run verify:prod      # confirma contrato + últimos deploys
+npm run release:force    # solo emergencia
+```
+
+Detalle: [docs/deployment.md](docs/deployment.md). Regla del agente: `.cursor/rules/production-deploy.mdc`.
 ## Documentación
 
 | Documento | Contenido |
