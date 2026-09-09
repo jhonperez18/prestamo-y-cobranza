@@ -15,6 +15,7 @@ import { fileURLToPath } from "url";
 const PROJECT = "prestamo-y-cobranza";
 const DOMAIN = "https://prestamo-y-cobranza.vercel.app";
 const adminRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+/** Raíz del monorepo: Vercel Root Directory = apps/admin. */
 const repoRoot = join(adminRoot, "..", "..");
 
 function run(cmd, cwd = repoRoot) {
@@ -49,21 +50,22 @@ if (mode === "verify") {
   console.log(`Commit local    : ${sha}`);
   console.log(`origin/main     : ${remoteSha || "(sin fetch)"}`);
   console.log("");
-  console.log(`En el login DEBE verse: build ${remoteSha || sha}`);
+  console.log(`En el login DEBE verse: Código en este sitio: ${remoteSha || sha}`);
   console.log(`Abrir solo: ${DOMAIN}`);
-  console.log("No uses admin-*.vercel.app (proyecto viejo desconectado).");
+  console.log("GitHub muestra código fuente, no la app. La app es Vercel.");
   console.log("");
-  run(`npx vercel link --yes --project ${PROJECT}`, adminRoot);
-  run("npx vercel ls prestamo-y-cobranza", adminRoot);
+  run(`npx vercel link --yes --project ${PROJECT}`, repoRoot);
+  run("npx vercel ls prestamo-y-cobranza", repoRoot);
   process.exit(0);
 }
 
 if (mode === "force") {
   console.log(`Forzando deploy ${sha} → ${DOMAIN}`);
-  run(`npx vercel link --yes --project ${PROJECT}`, adminRoot);
+  // Desde la raíz del repo: Root Directory de Vercel ya es apps/admin.
+  run(`npx vercel link --yes --project ${PROJECT}`, repoRoot);
   const out = execSync("npx vercel deploy --prod --force --yes", {
     encoding: "utf8",
-    cwd: adminRoot,
+    cwd: repoRoot,
     stdio: ["inherit", "pipe", "inherit"],
   });
   const match = String(out).match(
@@ -73,14 +75,14 @@ if (mode === "force") {
     console.error("No se encontró URL del deploy.");
     process.exit(1);
   }
-  run(`npx vercel alias set ${match[0]} prestamo-y-cobranza.vercel.app`, adminRoot);
+  run(`npx vercel alias set ${match[0]} prestamo-y-cobranza.vercel.app`, repoRoot);
   try {
-    run("npx vercel cache purge --yes --type cdn", adminRoot);
+    run("npx vercel cache purge --yes --type cdn", repoRoot);
   } catch {
     /* opcional */
   }
   console.log(`\nListo → ${DOMAIN}`);
-  console.log(`Login debe mostrar: build ${sha}`);
+  console.log(`Login debe mostrar: Código en este sitio: ${sha}`);
   process.exit(0);
 }
 
