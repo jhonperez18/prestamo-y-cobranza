@@ -13,6 +13,13 @@ npm run dev
 
 Abre http://localhost:3000 — módulos arriba, variantes a la izquierda, trabajo al centro.
 
+## Producción (auto-deploy)
+
+Cada `git push` a `main` actualiza GitHub y Vercel (Root Directory: `apps/admin`):
+
+- https://admin-jhon-fredy-perezs-projects.vercel.app
+- https://prestamo-y-cobranza.vercel.app
+
 ## Documentación
 
 | Documento | Contenido |
