@@ -92,7 +92,7 @@ export function EditUserForm({ user, collector, roles = ASSIGNABLE_ROLES, onCanc
       <form className="sheet collector-create" onSubmit={onSubmit}>
         <div className="sheet-body">
           <div className="sheet-fields">
-            <div className="sheet-row split">
+            <div className="sheet-row split-3">
               <label className="sheet-label" htmlFor="edit-nombre">
                 Nombre
               </label>
@@ -101,13 +101,13 @@ export function EditUserForm({ user, collector, roles = ASSIGNABLE_ROLES, onCanc
                 Documento
               </label>
               <input id="edit-documento" name="documento" defaultValue={user.document ?? ""} />
-            </div>
-
-            <div className="sheet-row split">
               <label className="sheet-label" htmlFor="edit-telefono">
                 Teléfono
               </label>
               <input id="edit-telefono" name="telefono" required type="tel" defaultValue={user.phone} />
+            </div>
+
+            <div className="sheet-row split-3">
               <label className="sheet-label" htmlFor="edit-email">
                 Correo
               </label>
@@ -119,9 +119,6 @@ export function EditUserForm({ user, collector, roles = ASSIGNABLE_ROLES, onCanc
                 autoComplete="email"
                 defaultValue={userEmail(user)}
               />
-            </div>
-
-            <div className="sheet-row split">
               <label className="sheet-label" htmlFor="edit-rol">
                 Acceso (rol)
               </label>
@@ -164,14 +161,23 @@ export function EditUserForm({ user, collector, roles = ASSIGNABLE_ROLES, onCanc
             </label>
 
             {isCollector && collector ? (
-              <>
-                <div className="sheet-row split">
-                  <span className="sheet-label">Código cobrador</span>
-                  <input readOnly tabIndex={-1} value={collector.ref} />
-                  <span className="sheet-label">Cobertura</span>
-                  <input readOnly tabIndex={-1} value="Todas las zonas · según cobros del día" />
-                </div>
-                <div className="sheet-row">
+              <div className="sheet-row split">
+                <span className="sheet-label">Código cobrador</span>
+                <input readOnly tabIndex={-1} value={collector.ref} />
+                <span className="sheet-label">Cobertura</span>
+                <input readOnly tabIndex={-1} value="Todas las zonas · según cobros del día" />
+              </div>
+            ) : null}
+
+            <div
+              className={
+                isCollector && collector
+                  ? "sheet-row edit-user-notes-creds"
+                  : "sheet-row split"
+              }
+            >
+              {isCollector && collector ? (
+                <div className="edit-user-notes-half">
                   <label className="sheet-label" htmlFor="edit-notas-cobrador">
                     Notas
                   </label>
@@ -182,30 +188,61 @@ export function EditUserForm({ user, collector, roles = ASSIGNABLE_ROLES, onCanc
                     defaultValue={collector.notes ?? ""}
                   />
                 </div>
-              </>
-            ) : null}
+              ) : null}
 
-            <div className="sheet-row split">
-              <label className="sheet-label" htmlFor="edit-login">
-                Usuario
-              </label>
-              <input
-                id="edit-login"
-                name="login"
-                required
-                autoComplete="username"
-                defaultValue={user.login}
-              />
-              <label className="sheet-label" htmlFor="edit-password">
-                Contraseña
-              </label>
-              <input
-                id="edit-password"
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                placeholder="Dejar en blanco para mantener la actual"
-              />
+              <div className={isCollector && collector ? "edit-user-creds-half" : undefined}>
+                {isCollector && collector ? (
+                  <>
+                    <div className="edit-user-cred-line">
+                      <label className="sheet-label" htmlFor="edit-login">
+                        Usuario
+                      </label>
+                      <input
+                        id="edit-login"
+                        name="login"
+                        required
+                        autoComplete="username"
+                        defaultValue={user.login}
+                      />
+                    </div>
+                    <div className="edit-user-cred-line">
+                      <label className="sheet-label" htmlFor="edit-password">
+                        Contraseña
+                      </label>
+                      <input
+                        id="edit-password"
+                        name="password"
+                        type="password"
+                        autoComplete="new-password"
+                        placeholder="Dejar en blanco para mantener la actual"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <label className="sheet-label" htmlFor="edit-login">
+                      Usuario
+                    </label>
+                    <input
+                      id="edit-login"
+                      name="login"
+                      required
+                      autoComplete="username"
+                      defaultValue={user.login}
+                    />
+                    <label className="sheet-label" htmlFor="edit-password">
+                      Contraseña
+                    </label>
+                    <input
+                      id="edit-password"
+                      name="password"
+                      type="password"
+                      autoComplete="new-password"
+                      placeholder="Dejar en blanco para mantener la actual"
+                    />
+                  </>
+                )}
+              </div>
             </div>
 
             <div className="access-perms">

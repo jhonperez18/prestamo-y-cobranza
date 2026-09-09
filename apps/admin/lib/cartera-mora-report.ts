@@ -1,4 +1,4 @@
-import { countCollectionDaysAfter } from "@/lib/colombia-holidays";
+import { addCalendarDaysIso, countCollectionDaysAfter } from "@/lib/colombia-holidays";
 import { isLoanInCollectionMora } from "@/lib/collection-alerts";
 import { isoToDispatchLabel, todayIso } from "@/lib/daily-dispatch";
 import { computeLoanFinancials } from "@/lib/loan-balance";
@@ -26,7 +26,7 @@ function overdueDays(loan: LoanRow, today: string) {
     .sort();
   const oldest = overdueDates[0];
   if (!oldest) return 0;
-  const days = countCollectionDaysAfter(oldest, today);
+  const days = countCollectionDaysAfter(oldest, addCalendarDaysIso(today, -1));
   return Math.max(1, days);
 }
 

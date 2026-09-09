@@ -219,7 +219,7 @@ function shouldHideCrumb(moduleId: ModuleId, viewId: string) {
     return !["ficha"].includes(viewId);
   }
   if (moduleId === "inicio") {
-    return !["ficha-usuario", "editar-usuario", "pagos-varios-ficha"].includes(viewId);
+    return !["ficha-usuario", "pagos-varios-ficha"].includes(viewId);
   }
   if (moduleId === "cartera" || moduleId === "reportes") {
     return true;

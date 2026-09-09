@@ -1,11 +1,13 @@
 /**
  * Alertas de cobro = días hábiles SEGUIDOS sin dar dinero (retacar).
- * - Se cuentan desde el día siguiente al último pago hasta hoy (lun–sáb, sin festivos).
+ * - Se cuentan desde el día siguiente al último pago hasta ayer (lun–sáb, sin festivos).
+ * - Hoy no cuenta: si pagó ayer hoy está normal; si hoy no paga, mañana = Alerta 1.
  * - Alerta 1–3; al 4.º día hábil sin pago → Mora.
  * - Cualquier pago reinicia el contador (aunque el cronograma siga atrasado en papel).
  * El atraso del plan de cuotas es aparte: el cliente puede ponerse al día pagando de más.
  */
 import {
+  addCalendarDaysIso,
   countCollectionDaysAfter,
   isDailyCollectionDay,
 } from "@/lib/colombia-holidays";
@@ -44,6 +46,15 @@ type PaymentTouch = {
   amount?: number;
 };
 
+function paymentDateIso(raw: string) {
+  const trimmed = (raw || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return "";
+  const [, day, month, year] = match;
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
+
 /** ¿Hubo cobro/abono de este préstamo en la fecha? (borra alerta). */
 export function loanPaidOnDate(
   loanRef: string | undefined,
@@ -54,7 +65,7 @@ export function loanPaidOnDate(
   return payments.some(
     (row) =>
       row.loanRef === loanRef &&
-      row.paidDate === date &&
+      paymentDateIso(row.paidDate || "") === date &&
       (Number(row.amount) || 0) > 0,
   );
 }
@@ -69,16 +80,17 @@ export function lastPaymentDateIso(
   for (const row of payments) {
     if (row.loanRef !== loanRef) continue;
     if ((Number(row.amount) || 0) <= 0) continue;
-    const day = (row.paidDate || "").trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;
+    const day = paymentDateIso(row.paidDate || "");
+    if (!day) continue;
     if (day > latest) latest = day;
   }
   return latest;
 }
 
 /**
- * Días hábiles de cobro sin pago desde el último abono hasta hoy.
- * Ej.: pagó sábado → lunes y martes sin pago = 2 (Alerta 2).
+ * Días hábiles de cobro sin pago desde el último abono hasta ayer.
+ * Ej.: pagó ayer → hoy 0; no pagó ayer → hoy Alerta 1.
+ * Ej.: pagó sábado, hoy martes sin pagar lun/lun → Alerta 2.
  */
 export function collectionAlertsFromPayments(
   loanRef: string | undefined,
@@ -91,9 +103,11 @@ export function collectionAlertsFromPayments(
   const lastPay = lastPaymentDateIso(loanRef, payments);
   if (lastPay) {
     if (lastPay >= today) return 0;
+    const throughDay = addCalendarDaysIso(today, -1);
+    if (lastPay > throughDay) return 0;
     return Math.min(
       COLLECTION_ALERTS_BEFORE_MORA,
-      countCollectionDaysAfter(lastPay, today),
+      countCollectionDaysAfter(lastPay, throughDay),
     );
   }
 

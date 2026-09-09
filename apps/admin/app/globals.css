@@ -2413,6 +2413,21 @@
       background: #fff;
       border-top: 1px solid #dbe5df;
     }
+    .supervisor-mobile-logout-foot,
+    .mobile-app-logout-foot {
+      display: flex;
+      justify-content: center;
+      padding: 8px 16px 12px;
+    }
+    .supervisor-mobile-logout-foot .aside-logout,
+    .mobile-app-logout-foot .aside-logout {
+      width: auto;
+      min-width: 0;
+      max-width: 68%;
+      padding: 7px 18px;
+      font-size: 12px;
+      letter-spacing: 0.03em;
+    }
     .collector-mobile-sheet .collector-pay-sheet-panel {
       width: 100%;
       max-height: 88vh;
@@ -2989,6 +3004,269 @@
     }
     .supervisor-planilla-table .is-num {
       width: 15%;
+    }
+    .supervisor-clientes-table .is-ruta {
+      width: 10%;
+    }
+    .supervisor-clientes-table .is-nombre {
+      width: 36%;
+    }
+    .supervisor-clientes-table .is-tel {
+      width: 24%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .supervisor-clientes-table th.is-tel {
+      color: #14201b;
+      font-weight: 700;
+    }
+    .supervisor-clientes-table td.is-tel {
+      color: #3d5249;
+    }
+    .supervisor-clientes-table .is-alert {
+      width: 10%;
+      text-align: center;
+      padding-left: 2px;
+      padding-right: 2px;
+    }
+    .supervisor-clientes-table td.is-alert {
+      vertical-align: middle;
+    }
+    .supervisor-clientes-table td.is-alert .supervisor-mobile-alert-n {
+      margin-inline: auto;
+    }
+    .supervisor-clientes-table .is-num {
+      width: 22%;
+    }
+    .supervisor-clientes-table tbody tr.is-clickable {
+      cursor: pointer;
+    }
+    .supervisor-clientes-table tbody tr.is-clickable:active {
+      background: #eef5f1;
+    }
+    .supervisor-client-ficha {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      padding: 0 2px 6px;
+      min-width: 0;
+      max-width: 100%;
+      overflow-x: hidden;
+      box-sizing: border-box;
+    }
+    .supervisor-client-ficha > * + * {
+      margin-top: 6px;
+    }
+    .supervisor-client-ficha > .supervisor-mobile-detail-head {
+      margin-bottom: 0;
+    }
+    .supervisor-client-ficha > .supervisor-mobile-detail-head + .supervisor-client-ficha-block {
+      margin-top: 1px;
+    }
+    .supervisor-client-ficha > .supervisor-client-ficha-title {
+      margin-top: 6px;
+      margin-bottom: 0;
+    }
+    .supervisor-client-ficha > .supervisor-client-ficha-title + .supervisor-client-ficha-block {
+      margin-top: 1px;
+    }
+    .supervisor-client-ficha-block {
+      border: 1px solid #d5e2db;
+      border-radius: 10px;
+      background: #f7faf8;
+      padding: 4px 6px;
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+      overflow: hidden;
+    }
+    .supervisor-client-ficha-block h4 {
+      margin: 0 0 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: #3d5249;
+    }
+    .supervisor-client-ficha-title {
+      margin-left: 2px;
+      margin-right: 2px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: #3d5249;
+    }
+    .supervisor-client-ficha-facts {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0;
+      margin: 0;
+      min-width: 0;
+    }
+    .supervisor-client-ficha-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      column-gap: 8px;
+      row-gap: 0;
+      align-items: baseline;
+      padding: 2px 0;
+      line-height: 1.2;
+      border-bottom: 1px solid #e4ebe8;
+      min-width: 0;
+    }
+    .supervisor-client-ficha-row:last-child {
+      border-bottom: 0;
+    }
+    .supervisor-client-ficha-row.is-single {
+      grid-template-columns: 1fr;
+      justify-items: center;
+      padding: 3px 0;
+    }
+    .supervisor-client-ficha-cell {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: baseline;
+      gap: 4px;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .supervisor-client-ficha-row.is-single .supervisor-client-ficha-cell {
+      justify-content: center;
+    }
+    .supervisor-client-ficha-cell dt {
+      margin: 0;
+      flex: 0 0 auto;
+      font-size: 10px;
+      font-weight: 400;
+      color: #6b7f76;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .supervisor-client-ficha-cell dt::after {
+      content: ":";
+    }
+    .supervisor-client-ficha-cell dd {
+      margin: 0;
+      flex: 1 1 auto;
+      min-width: 0;
+      font-size: 11px;
+      font-weight: 400;
+      color: #000;
+      text-align: left;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: visible;
+    }
+    .supervisor-client-ficha-moves {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 0;
+      min-width: 0;
+    }
+    .supervisor-client-ficha-moves li {
+      display: grid;
+      grid-template-columns: 4.6rem 5.6rem minmax(4.2rem, 1fr) auto;
+      column-gap: 8px;
+      align-items: baseline;
+      padding: 2px 0;
+      line-height: 1.2;
+      border-bottom: 1px solid #e4ebe8;
+      min-width: 0;
+    }
+    .supervisor-client-ficha-moves li:last-child {
+      border-bottom: 0;
+    }
+    .supervisor-client-ficha-moves .is-amount,
+    .supervisor-client-ficha-moves strong {
+      font-size: 11px;
+      font-weight: 650;
+      color: #0f766e;
+      font-variant-numeric: tabular-nums;
+      text-align: left;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .supervisor-client-ficha-moves span {
+      font-size: 11px;
+      font-weight: 400;
+      color: #000;
+      text-align: left;
+      min-width: 0;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .supervisor-client-ficha-moves .is-date {
+      text-align: left;
+    }
+    .supervisor-client-ficha-moves .is-time {
+      text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #3d5249;
+    }
+    .supervisor-client-ficha-moves .is-method {
+      text-align: right;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 4.8rem;
+      color: #3d5249;
+    }
+    .supervisor-client-ficha-sum {
+      display: grid;
+      gap: 0;
+      border: 1px solid #c3d4cc;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #eef2f1;
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
+    }
+    .supervisor-client-ficha-sum div {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      padding: 3px 8px;
+      line-height: 1.2;
+      border-bottom: 1px solid #d5e2db;
+      min-width: 0;
+    }
+    .supervisor-client-ficha-sum div:last-child {
+      border-bottom: 0;
+    }
+    .supervisor-client-ficha-sum span {
+      font-size: 11px;
+      font-weight: 400;
+      color: #6b7f76;
+      flex: 0 1 auto;
+      min-width: 0;
+    }
+    .supervisor-client-ficha-sum b {
+      font-size: 12px;
+      font-weight: 400;
+      color: #000;
+      font-variant-numeric: tabular-nums;
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .supervisor-client-ficha-sum .is-rest {
+      background: #dbeafe;
+    }
+    .supervisor-client-ficha-sum .is-rest b {
+      color: #000;
+    }
+    .supervisor-client-ficha-foot {
+      margin: 0 2px;
+      font-size: 11px;
+      color: #5b7268;
+      text-align: right;
     }
     .supervisor-planilla-table .is-alert {
       width: 12%;
@@ -5903,6 +6181,47 @@
     .sheet-row.split {
       grid-template-columns: 132px minmax(0, 1fr) 128px minmax(0, 1fr);
     }
+    .sheet-row.split-3 {
+      grid-template-columns:
+        minmax(72px, 0.9fr) minmax(0, 1.2fr)
+        minmax(72px, 0.9fr) minmax(0, 1.2fr)
+        minmax(72px, 0.9fr) minmax(0, 1.2fr);
+      gap: 8px 10px;
+    }
+    .sheet-row.split-3 .sheet-label {
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    .sheet-row.edit-user-notes-creds {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      align-items: stretch;
+      gap: 10px 16px;
+    }
+    .edit-user-notes-half,
+    .edit-user-creds-half {
+      display: grid;
+      grid-template-columns: 72px minmax(0, 1fr);
+      gap: 8px 10px;
+      align-items: start;
+      min-width: 0;
+    }
+    .edit-user-notes-half textarea {
+      min-height: 88px;
+      height: 100%;
+      resize: vertical;
+    }
+    .edit-user-creds-half {
+      grid-template-columns: 1fr;
+      align-content: start;
+      gap: 10px;
+    }
+    .edit-user-cred-line {
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      gap: 8px 10px;
+      align-items: center;
+      min-width: 0;
+    }
     .sheet-hint {
       font-size: 12px;
       color: #5b7268;
@@ -7104,6 +7423,12 @@
         height: 120px;
       }
       .sheet-row.split { grid-template-columns: 132px minmax(0, 1fr); }
+      .sheet-row.split-3 {
+        grid-template-columns: minmax(88px, 0.85fr) minmax(0, 1fr);
+      }
+      .sheet-row.edit-user-notes-creds {
+        grid-template-columns: 1fr;
+      }
     }
 
     .timeline { padding: 8px 16px 20px; }

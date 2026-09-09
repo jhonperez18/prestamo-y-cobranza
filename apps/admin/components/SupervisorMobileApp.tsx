@@ -1,13 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { LoanReportView } from "@/components/LoanReportView";
 import { Pill } from "@/components/ui";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
+import { buildLoanReport } from "@/lib/loan-report";
 import { routeCoverageSummaries } from "@/lib/collector-preview";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
-import { nextRouteOrder } from "@/lib/client-route-order";
+import { clientsOnRouteSorted, nextRouteOrder } from "@/lib/client-route-order";
 import { isOperationalClient } from "@/lib/client-review";
 import {
   clientsEligibleForNewLoan,
@@ -27,8 +27,16 @@ import {
   visitStatusLabel,
   visitStatusLabelShort,
 } from "@/lib/collector-mobile";
-import { enrichSupervisorPlanillaRow } from "@/lib/planilla-display";
-import { isoToDisplay } from "@/lib/loan-preview";
+import {
+  enrichSupervisorPlanillaRow,
+  planillaAlertBadgeText,
+  planillaAlertTitle,
+} from "@/lib/planilla-display";
+import {
+  COLLECTION_ALERTS_BEFORE_MORA,
+  collectionAlertsFromPayments,
+} from "@/lib/collection-alerts";
+import { isoToDisplay, syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import {
   money,
@@ -301,6 +309,217 @@ function PlanillaTable({
   );
 }
 
+/** Lista de clientes para app supervisor: # (ruta), nombre, teléfono, saldo vivo. */
+function ClientesTable({
+  rows,
+  onOpen,
+}: {
+  rows: Array<{
+    ref: string;
+    routeOrder: number;
+    name: string;
+    phone: string;
+    alertCount: number;
+    alertBadge: string;
+    alertTitle?: string;
+    inMora: boolean;
+    saldo: number | null;
+    hasLoan: boolean;
+  }>;
+  onOpen?: (clientRef: string) => void;
+}) {
+  return (
+    <div className="supervisor-liq-wrap">
+      <table className="supervisor-liq-table supervisor-clientes-table">
+        <thead>
+          <tr>
+            <th className="is-ruta">#</th>
+            <th className="is-nombre">Nombre</th>
+            <th className="is-tel">Teléfono</th>
+            <th className="is-alert" aria-label="Alerta" />
+            <th className="is-num">Saldo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => {
+            const badge = row.alertBadge ?? "";
+            const alertOn = Boolean(badge);
+            return (
+              <tr
+                key={row.ref}
+                className={onOpen ? "is-clickable" : undefined}
+                onClick={onOpen ? () => onOpen(row.ref) : undefined}
+              >
+                <td className="is-ruta">{row.routeOrder > 0 ? row.routeOrder : "—"}</td>
+                <td className="is-nombre" title={row.name}>
+                  {row.name}
+                </td>
+                <td className="is-tel" title={row.phone}>
+                  {row.phone}
+                </td>
+                <td className="is-alert">
+                  <span
+                    className={
+                      alertOn
+                        ? row.inMora
+                          ? "supervisor-mobile-alert-n is-mora"
+                          : "supervisor-mobile-alert-n"
+                        : "supervisor-mobile-alert-n is-empty"
+                    }
+                    title={row.alertTitle}
+                    aria-hidden={!alertOn}
+                  >
+                    {badge}
+                  </span>
+                </td>
+                <td className="is-num">
+                  {row.hasLoan && row.saldo != null
+                    ? money(row.saldo, { symbol: false })
+                    : "—"}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Préstamo activo actual (con saldo), sincronizado con todos los pagos del sistema. */
+function currentActiveLoan(
+  clientRef: string,
+  loans: LoanRow[],
+  payments: PaymentRow[],
+): LoanRow | null {
+  const raw = primaryLoanForClient(clientRef, loans);
+  if (!raw) return null;
+  const synced = syncLoan(raw, payments) as LoanRow;
+  if (synced.status === "Finalizado" || synced.balance <= 0) return null;
+  return synced;
+}
+
+/** Ficha del cliente/préstamo dentro del teléfono (luego se afina legibilidad). */
+function SupervisorClientFicha({
+  report,
+  onBack,
+}: {
+  report: ReturnType<typeof buildLoanReport>;
+  onBack: () => void;
+}) {
+  const f = report.financials;
+  const cobro =
+    f.installment > 0
+      ? money(f.installment, { symbol: false })
+      : "—";
+  const cuotas =
+    f.installmentsTotal > 0
+      ? `${f.installmentsPaid} / ${f.installmentsTotal}`
+      : String(f.installmentsPaid);
+  const capital = money(report.loan.capital, { symbol: false });
+  const interes = money(f.interestTerm, { symbol: false });
+  const total = money(
+    f.totalAgreement || report.loan.total || report.loan.capital + f.interestTerm,
+    { symbol: false },
+  );
+
+  const factPairs: Array<[{ label: string; value: string }, { label: string; value: string }?]> = [
+    [
+      { label: "Cédula", value: report.client?.document?.trim() || "—" },
+      { label: "Teléfono", value: report.client?.phone?.trim() || "—" },
+    ],
+    [
+      { label: "Desembolso", value: report.loan.date || "—" },
+      { label: "Vencimiento", value: report.loan.due || "—" },
+    ],
+    [
+      { label: "Valor cobro", value: cobro },
+      { label: "Cuotas", value: cuotas },
+    ],
+    [
+      { label: "Capital", value: capital },
+      { label: "Interés", value: interes },
+    ],
+    [{ label: "Total a cobrar", value: total }],
+  ];
+
+  return (
+    <div className="supervisor-client-ficha">
+      <div className="supervisor-mobile-detail-head">
+        <h3>{report.clientName}</h3>
+        <button type="button" className="collector-mobile-pay-link" onClick={onBack}>
+          volver
+        </button>
+      </div>
+
+      <div className="supervisor-client-ficha-block">
+        <dl className="supervisor-client-ficha-facts">
+          {factPairs.map((pair) => {
+            const [left, right] = pair;
+            if (!right) {
+              return (
+                <div key={left.label} className="supervisor-client-ficha-row is-single">
+                  <div className="supervisor-client-ficha-cell">
+                    <dt>{left.label}</dt>
+                    <dd>{left.value}</dd>
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div key={left.label} className="supervisor-client-ficha-row">
+                <div className="supervisor-client-ficha-cell">
+                  <dt>{left.label}</dt>
+                  <dd>{left.value}</dd>
+                </div>
+                <div className="supervisor-client-ficha-cell">
+                  <dt>{right.label}</dt>
+                  <dd>{right.value}</dd>
+                </div>
+              </div>
+            );
+          })}
+        </dl>
+      </div>
+
+      <h4 className="supervisor-client-ficha-title">Movimientos</h4>
+      <div className="supervisor-client-ficha-block">
+        {report.movements.length === 0 ? (
+          <p className="ficha-empty">Sin movimientos registrados.</p>
+        ) : (
+          <ul className="supervisor-client-ficha-moves">
+            {report.movements.map((row) => (
+              <li key={row.ref}>
+                <span className="is-amount">{money(row.amount, { symbol: false })}</span>
+                <span className="is-date">{row.paidDate || "—"}</span>
+                <span className="is-time">{row.paidTime || "—"}</span>
+                <span className="is-method">{row.method || "—"}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="supervisor-client-ficha-sum">
+        <div>
+          <span>Capital</span>
+          <b>{money(report.loan.capital, { symbol: false })}</b>
+        </div>
+        <div>
+          <span>Ya pagado</span>
+          <b>{money(f.paidTotal, { symbol: false })}</b>
+        </div>
+        <div className="is-rest">
+          <span>Resta por pagar</span>
+          <b>{money(f.balancePending, { symbol: false })}</b>
+        </div>
+      </div>
+
+      <p className="supervisor-client-ficha-foot">{report.generatedLabel}</p>
+    </div>
+  );
+}
+
 function isRenewalLoan(loan: LoanRow) {
   return Boolean(loan.notes?.toLowerCase().includes("renovación"));
 }
@@ -555,26 +774,57 @@ export function SupervisorMobileApp({
     );
   }, [todayAssignments, planillaRouteFilter, liquidaciones, routes]);
 
-  const supervisorClients = useMemo(() => {
-    const rows = clients
-      .filter((row) => isOperationalClient(row))
-      .slice()
-      .sort((a, b) => {
-        const routeCmp = String(a.route).localeCompare(String(b.route), undefined, {
-          numeric: true,
-        });
-        if (routeCmp) return routeCmp;
-        return `${a.name} ${a.lastName}`.localeCompare(`${b.name} ${b.lastName}`, "es");
-      });
-    if (!clientesRouteFilter) return rows;
-    return rows.filter((row) => String(row.route) === clientesRouteFilter);
-  }, [clients, clientesRouteFilter]);
+  const supervisorClientRows = useMemo(() => {
+    // Lista = todos los clientes operativos del sistema (filtro de ruta opcional).
+    const base = clientesRouteFilter
+      ? clientsOnRouteSorted(clients, clientesRouteFilter).filter(isOperationalClient)
+      : clients
+          .filter(isOperationalClient)
+          .slice()
+          .sort((a, b) => {
+            const routeCmp = String(a.route || "").localeCompare(String(b.route || ""), undefined, {
+              numeric: true,
+            });
+            if (routeCmp) return routeCmp;
+            return (a.routeOrder || 0) - (b.routeOrder || 0);
+          });
+
+    return base.map((row) => {
+      const loan = currentActiveLoan(row.ref, loans, payments);
+      const alertCount = loan
+        ? collectionAlertsFromPayments(
+            loan.ref,
+            payments,
+            today,
+            Number(loan.collectionAlerts) || 0,
+          )
+        : 0;
+      return {
+        ref: row.ref,
+        routeOrder: row.routeOrder || 0,
+        name: `${row.name} ${row.lastName}`.trim(),
+        phone: row.phone?.trim() || "—",
+        alertCount,
+        alertBadge: planillaAlertBadgeText(alertCount),
+        alertTitle: planillaAlertTitle(alertCount),
+        inMora: alertCount >= COLLECTION_ALERTS_BEFORE_MORA,
+        saldo: loan ? loan.balance : null,
+        hasLoan: Boolean(loan),
+      };
+    });
+  }, [clients, clientesRouteFilter, loans, payments, today]);
 
   const clientesLoanClient =
     clients.find((row) => row.ref === clientesLoanClientRef) ?? null;
-  const clientesLoan = clientesLoanClient
-    ? primaryLoanForClient(clientesLoanClient.ref, loans)
+  const clientesLoanSynced = clientesLoanClient
+    ? currentActiveLoan(clientesLoanClient.ref, loans, payments)
     : null;
+  const clientesPdfReport = useMemo(() => {
+    if (!clientesLoanSynced || !clientesLoanClient) return null;
+    // Misma ficha del sistema: préstamo sincronizado + todos los pagos.
+    return buildLoanReport(clientesLoanSynced, clientesLoanClient, payments, assignments);
+  }, [assignments, clientesLoanClient, clientesLoanSynced, payments]);
+  const clientesDetailOpen = Boolean(clientesLoanClientRef);
 
   const nuevoRoute = liquidaciones.find((row) => row.routeRef === nuevoRouteRef) ?? null;
 
@@ -1211,6 +1461,75 @@ export function SupervisorMobileApp({
             </>
           )}
         </section>
+      ) : view === "clientes" ? (
+        <section className="supervisor-mobile-section supervisor-mobile-clientes">
+          {clientesPdfReport ? (
+            <SupervisorClientFicha
+              report={clientesPdfReport}
+              onBack={() => setClientesLoanClientRef(null)}
+            />
+          ) : clientesDetailOpen && clientesLoanClient ? (
+            <div className="supervisor-client-ficha">
+              <div className="supervisor-mobile-detail-head">
+                <h3>{`${clientesLoanClient.name} ${clientesLoanClient.lastName}`.trim()}</h3>
+                <button
+                  type="button"
+                  className="collector-mobile-pay-link"
+                  onClick={() => setClientesLoanClientRef(null)}
+                >
+                  volver
+                </button>
+              </div>
+              <p className="ficha-empty">
+                Sin préstamo activo actual. No hay ficha de cobro para mostrar.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="supervisor-planilla-head">
+                <h3>Clientes</h3>
+                {planillaRoutePins.length > 0 ? (
+                  <div
+                    className="supervisor-planilla-route-btns"
+                    role="group"
+                    aria-label="Filtrar clientes por ruta"
+                  >
+                    {planillaRoutePins.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        className={
+                          clientesRouteFilter === name
+                            ? "supervisor-planilla-route-btn on"
+                            : "supervisor-planilla-route-btn"
+                        }
+                        onClick={() =>
+                          setClientesRouteFilter((prev) => (prev === name ? null : name))
+                        }
+                        title={`Ruta ${name}`}
+                        aria-label={`Ruta ${name}`}
+                      >
+                        <b>{name}</b>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              {supervisorClientRows.length === 0 ? (
+                <p className="ficha-empty">
+                  {clientesRouteFilter
+                    ? `No hay clientes en la ruta ${clientesRouteFilter}.`
+                    : "No hay clientes activos."}
+                </p>
+              ) : (
+                <ClientesTable
+                  rows={supervisorClientRows}
+                  onOpen={(ref) => setClientesLoanClientRef(ref)}
+                />
+              )}
+            </>
+          )}
+        </section>
       ) : (
         <section className="supervisor-mobile-section supervisor-mobile-home">
           {liquidaciones.length === 0 ? (
@@ -1230,8 +1549,8 @@ export function SupervisorMobileApp({
         </section>
       )}
 
-      {onLogout ? (
-        <footer className="collector-mobile-foot">
+      {onLogout && view === "inicio" && !openRoute ? (
+        <footer className="collector-mobile-foot mobile-app-logout-foot">
           <button type="button" className="btn aside-logout" onClick={onLogout}>
             Cerrar sesión
           </button>

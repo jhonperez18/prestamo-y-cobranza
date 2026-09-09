@@ -1227,7 +1227,7 @@ export function CollectorMobileApp({
       ) : null}
 
       {onLogout && !preview ? (
-        <footer className="collector-mobile-foot">
+        <footer className="collector-mobile-foot mobile-app-logout-foot">
           <button type="button" className="btn aside-logout" onClick={onLogout}>
             Cerrar sesión
           </button>
