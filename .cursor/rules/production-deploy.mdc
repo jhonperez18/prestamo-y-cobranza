@@ -1,0 +1,49 @@
+---
+description: Contrato fijo de producción (GitHub + Vercel). Una sola URL, sin deploys improvisados.
+alwaysApply: true
+---
+
+# Producción — contrato fijo
+
+## Fuente de verdad
+
+| Pieza | Valor fijo |
+| --- | --- |
+| Rama | `main` |
+| Proyecto Vercel | **solo** `prestamo-y-cobranza` |
+| Root Directory | `apps/admin` |
+| URL canónica | https://prestamo-y-cobranza.vercel.app |
+| Build en login | commit corto (`NEXT_PUBLIC_APP_BUILD` vía `next.config.ts`) |
+
+## Flujo diario (el único)
+
+1. Cambios en código → commit en `main`
+2. `git push origin main`
+3. Esperar Ready en Vercel del proyecto `prestamo-y-cobranza`
+4. Abrir **solo** https://prestamo-y-cobranza.vercel.app
+5. En login debe verse `build` = SHA del commit (ej. `4821362`)
+6. Opcional: `cd apps/admin && npm run verify:prod`
+
+## Prohibido (causa el “versión vieja” de todos los días)
+
+- Crear o reactivar otro proyecto Vercel (`admin`, previews como producción, etc.)
+- Publicar o aliasar a `admin-*.vercel.app` / `admin-weld-*.vercel.app`
+- Editar a mano `APP_BUILD` / inventar sellos de build
+- Scripts de “parche” que despliegan a un proyecto y apuntan el dominio a otro
+- Decir “ya está en prod” sin verificar el `build` del login
+
+## Emergencia
+
+Solo si el push a `main` no disparó deploy:
+
+```bash
+cd apps/admin
+npm run release:force
+```
+
+## Si el usuario ve versión vieja
+
+1. Confirmar URL = `prestamo-y-cobranza.vercel.app`
+2. Comparar `build` del login vs `git rev-parse --short HEAD` / `origin/main`
+3. Ctrl+F5 o ventana privada (caché del navegador / localStorage demo ≠ código viejo)
+4. No crear un segundo deploy improvisado

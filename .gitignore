@@ -36,7 +36,9 @@ Thumbs.db
 # Vercel
 .vercel/
 
-# Cursor local
-.cursor/
+# Cursor local (sí versionamos reglas del equipo)
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 
 .vercel
