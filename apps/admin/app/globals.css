@@ -4796,6 +4796,21 @@
       gap: 14px;
       padding-bottom: 12px;
     }
+    .home-build-stamp {
+      margin: 0;
+      padding: 0 4px;
+      font-size: 12px;
+      color: #3d5249;
+      font-weight: 600;
+    }
+    .home-build-stamp strong {
+      color: #0f766e;
+      font-weight: 800;
+    }
+    .home-build-hint {
+      font-weight: 500;
+      color: #5b7268;
+    }
     .home-welcome.panel {
       background: linear-gradient(135deg, #f7fbf8 0%, #eef5f1 100%);
       border: 1px solid #c5ddd5;
