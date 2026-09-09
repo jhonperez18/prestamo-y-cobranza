@@ -4,6 +4,8 @@ import {
   loansNeedingOfficeReview,
 } from "@/lib/profile-pending";
 import { activityFeed } from "@/lib/collector-preview";
+import { normalizeHistoryDate } from "@/lib/collector-day-close";
+import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
   dispatchSummary,
   isoToDispatchLabel,
@@ -198,11 +200,31 @@ export function buildHomePendingActions(
   return items.slice(0, 5);
 }
 
-function routeCard(route: RouteRow, clients: ClientRow[]): HomeRouteCard {
+function routeCard(
+  route: RouteRow,
+  clients: ClientRow[],
+  assignments: DailyCollectionAssignment[],
+  today: string,
+): HomeRouteCard {
   const catalogCount = clientsOnRouteListed(route.name, clients).length;
-  const total = route.stops.length || catalogCount;
-  const visited = route.stops.filter((stop) => stop.visitStatus === "cobrado").length;
-  const pending = route.stops.length ? routePendingCount(route.stops) : catalogCount;
+  const dayRows = assignments.filter((row) => {
+    if (!row.dispatched) return false;
+    const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
+    if (date !== today) return false;
+    if (route.collectorRef && row.collectorRef === route.collectorRef) return true;
+    return row.clientRoute === route.name;
+  });
+  const total = dayRows.length || route.stops.length || catalogCount;
+  const visited = dayRows.length
+    ? dayRows.filter((row) => row.visitStatus === "cobrado" || row.visitStatus === "parcial").length
+    : route.stops.filter((stop) => stop.visitStatus === "cobrado").length;
+  const pending = dayRows.length
+    ? dayRows.filter((row) => row.visitStatus === "pendiente" || !row.visitStatus).length
+    : route.stops.length
+      ? routePendingCount(route.stops)
+      : catalogCount;
+  const jornadaCerrada =
+    dayRows.length > 0 && dayRows.every((row) => Boolean(row.dayClosedAt));
   return {
     ref: route.ref,
     zone: route.name || route.zone,
@@ -211,8 +233,8 @@ function routeCard(route: RouteRow, clients: ClientRow[]): HomeRouteCard {
     visited,
     pending,
     progress: total ? Math.round((visited / total) * 100) : 0,
-    status: route.status,
-    statusKind: route.kind,
+    status: jornadaCerrada ? "Cerrada" : "En curso",
+    statusKind: jornadaCerrada ? "draft" : "ok",
   };
 }
 
@@ -223,9 +245,11 @@ export function buildHomeDashboard(
   routes: RouteRow[],
   collectors: CollectorRow[],
   activities: ActivityRow[],
+  assignments: DailyCollectionAssignment[] = [],
   now = new Date(),
 ): HomeDashboardData {
   const todayToken = todayDispatchToken(now);
+  const today = todayIso(now);
   const summary = dispatchSummary(routes, payments, todayToken);
   const allTodayPayments = paymentsForDay(payments, todayToken);
   const portfolio = buildPortfolioStats(loans, payments, now);
@@ -238,7 +262,7 @@ export function buildHomeDashboard(
 
   return {
     greeting: homeGreeting(now),
-    dateLabel: `${homeDateLabel(now)} · Operación del ${isoToDispatchLabel(todayIso(now))}`,
+    dateLabel: `${homeDateLabel(now)} · Operación del ${isoToDispatchLabel(today)}`,
     collectedToday: allTodayPayments.reduce((sum, row) => sum + row.amount, 0),
     collectedCount: allTodayPayments.length,
     dueToday: summary.totalDue,
@@ -251,7 +275,7 @@ export function buildHomeDashboard(
     portfolioTotal: portfolio.totalBalance,
     pendingActions: buildHomePendingActions(clients, loans, payments, collectors, routes),
     todayPayments: allTodayPayments,
-    routes: catalog.map((route) => routeCard(route, clients)),
+    routes: catalog.map((route) => routeCard(route, clients, assignments, today)),
     recentActivity: activityFeed(activities, payments, collectors).slice(0, 6),
   };
 }
