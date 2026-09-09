@@ -10,10 +10,11 @@ Este documento **define** producción. No es una guía de parches.
 | Rama | `main` |
 | Proyecto Vercel | `prestamo-y-cobranza` (**único** conectado a GitHub) |
 | Root Directory | `apps/admin` |
-| URL | https://prestamo-y-cobranza.vercel.app |
-| Id de versión | commit corto en el login (`build xxxxxxx`) |
+| URL principal | https://prestamo-y-cobranza.vercel.app |
+| Alias (misma app) | https://admin-jhon-fredy-perezs-projects.vercel.app |
+| Id de versión | commit corto en Resumen / login (`Código en este sitio`) |
 
-El proyecto Vercel llamado `admin` quedó **desconectado de GitHub**. No usarlo. No volver a conectarlo.
+El proyecto Vercel llamado `admin` se eliminó; su URL quedó como **alias** del proyecto bueno para que no dé 404.
 
 ## Flujo diario
 
