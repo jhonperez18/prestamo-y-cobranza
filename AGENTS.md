@@ -26,9 +26,10 @@
 - Sellos de build manuales / scripts que despliegan a un proyecto y aliasan otro
 - Decir “ya está en prod” sin mirar el `build` del login
 
-## Emergencia
+## Si el usuario ve versión vieja
 
-```bash
-cd apps/admin
-npm run release:force
-```
+1. URL = `prestamo-y-cobranza.vercel.app`
+2. Login `build` = SHA de `origin/main`
+3. Ctrl+F5 o ventana privada
+4. Planilla “cerrada” / movimientos 0 antes de 23:30 = estado demo (localStorage), no deploy fallido
+5. No crear otro proyecto Vercel

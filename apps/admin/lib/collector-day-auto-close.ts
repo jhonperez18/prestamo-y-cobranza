@@ -3,6 +3,8 @@
  * - A las 23:30 (hora local) se cierra sola cualquier planilla aún abierta.
  * - A las 00:00 nace la planilla del día siguiente ya sin arrastre de abiertas.
  * - Quien no pagó a esa hora queda omitido; gastos no cargados no se inventan.
+ *
+ * NO se fuerza el cierre de “hoy” al hidratar (eso hacía ver Vercel como “día de ayer”).
  */
 import {
   applyDayCloseRecordsToAssignments,
@@ -15,7 +17,7 @@ import {
   type CollectorDayExpenseDraft,
 } from "@/lib/collector-day-close";
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
-import { closeDispatchDay } from "@/lib/collector-dispatch-sync";
+import { closeDispatchDay, reopenDispatchDay } from "@/lib/collector-dispatch-sync";
 import { bumpMissedCollectionAlerts } from "@/lib/collection-alerts";
 import { collectorRecaudoForDate } from "@/lib/collector-mobile";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
@@ -222,129 +224,121 @@ export function runOperationalDayCycle(
     collectors: state.collectors,
   };
 
-  // Una sola vez: en Vercel/Git el día nace abierto; Chrome ya tenía cierres locales.
-  const showcase = closeOpenMobileDaysOnce(afterCycle, now);
+  // Deshace el cierre forzado de “hoy” (migración mala v1) si aún estamos en horario.
+  const repaired = reopenPrematureTodayClosesOnce(afterCycle, now);
   return {
-    ...showcase,
-    autoClosed: [...autoClosed, ...showcase.autoClosed],
+    ...repaired,
+    autoClosed,
   };
 }
 
+/** Flag de la migración mala que cerraba hoy al abrir Vercel. */
 const FORCE_CLOSE_OPEN_DAYS_KEY = "nexo-demo-force-close-open-days-v1";
+/** Una vez: reabre hoy si se cerró antes de las 23:30 por esa migración. */
+const REOPEN_PREMATURE_TODAY_KEY = "nexo-demo-reopen-premature-today-v2";
 
-function alreadyForcedCloseOpenDays() {
+function storageFlag(key: string) {
   if (typeof window === "undefined") return true;
   try {
-    return window.localStorage.getItem(FORCE_CLOSE_OPEN_DAYS_KEY) === "1";
+    return window.localStorage.getItem(key) === "1";
   } catch {
     return true;
   }
 }
 
-function markForcedCloseOpenDays() {
+function setStorageFlag(key: string) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(FORCE_CLOSE_OPEN_DAYS_KEY, "1");
+    window.localStorage.setItem(key, "1");
   } catch {
     /* ignore */
   }
 }
 
 /**
- * Cierra cobradores móviles con planilla abierta de hoy (migración demo).
- * Corre una sola vez por navegador/origen para igualar Chrome ↔ Vercel.
+ * Reabre la jornada de hoy si quedó cerrada antes del corte 23:30
+ * (efecto del force-close-open-days-v1). Corre una sola vez por origen.
  */
-export function closeOpenMobileDaysOnce(
+export function reopenPrematureTodayClosesOnce(
   state: OperationalDayState,
   now = new Date(),
 ): OperationalDayResult {
-  if (alreadyForcedCloseOpenDays()) {
+  if (storageFlag(REOPEN_PREMATURE_TODAY_KEY)) {
     return { ...state, autoClosed: [] };
   }
 
   const today = todayIso(now);
+  if (dayHasReachedAutoClose(today, now)) {
+    setStorageFlag(REOPEN_PREMATURE_TODAY_KEY);
+    return { ...state, autoClosed: [] };
+  }
+
+  const todayCloseRefs = new Set(
+    state.dayCloses
+      .filter((row) => (normalizeHistoryDate(row.date) || row.date) === today)
+      .map((row) => row.collectorRef),
+  );
+  const todaySealed = state.assignments.some(
+    (row) =>
+      (normalizeHistoryDate(row.dispatchDate) || row.dispatchDate) === today &&
+      Boolean(row.dayClosedAt),
+  );
+
+  if (!todayCloseRefs.size && !todaySealed) {
+    setStorageFlag(REOPEN_PREMATURE_TODAY_KEY);
+    return { ...state, autoClosed: [] };
+  }
+
+  let dayCloses = state.dayCloses.filter(
+    (row) => (normalizeHistoryDate(row.date) || row.date) !== today,
+  );
   let assignments = state.assignments;
   let routes = state.routes;
   let logs = state.logs;
-  let dayCloses = state.dayCloses;
-  let dayExpenseDrafts = state.dayExpenseDrafts;
-  let loans = state.loans;
-  const autoClosed: Array<{ collectorRef: string; date: string }> = [];
 
-  const mobile = state.collectors.filter((row) => row.mobileAccess && row.active);
-  for (const collector of mobile) {
-    const hasCie = dayCloses.some(
-      (row) =>
-        row.collectorRef === collector.ref &&
-        (normalizeHistoryDate(row.date) || row.date) === today,
-    );
-    const dayRows = assignments.filter(
-      (row) =>
-        row.collectorRef === collector.ref &&
-        (normalizeHistoryDate(row.dispatchDate) || row.dispatchDate) === today,
-    );
-    if (!dayRows.length || hasCie) continue;
-    if (dayRows.every((row) => Boolean(row.dayClosedAt))) continue;
-
-    const draft = findDayExpenseDraft(dayExpenseDrafts, collector.ref, today);
-    const lines = (draft?.expenses ?? []).filter((row) => row.amount > 0);
-    const collected = collectorRecaudoForDate(
-      collector.ref,
-      today,
-      state.payments,
-      state.collectors,
-    );
-    const record = finalizeCollectorDayClose({
-      draft: {
-        collectorRef: collector.ref,
-        collectorName: collector.name,
-        date: today,
-        routeRef: draft?.routeRef || `RUT-D-${collector.ref}-${today}`,
-        collected,
-        expenses: lines,
-      },
-      lines,
-      movementRefs: lines.map((line) =>
-        dayExpenseLineMovementRef(collector.ref, today, line.id),
-      ),
-    });
-
-    dayCloses = [record, ...dayCloses.filter((row) => row.ref !== record.ref)];
-    dayExpenseDrafts = removeDayExpenseDraft(dayExpenseDrafts, collector.ref, today);
-
-    const closed = closeDispatchDay(
-      assignments,
-      routes,
-      logs,
-      today,
-      state.collectors,
-      loans,
-      state.clients,
-      collector.ref,
-      state.payments,
-    );
-    assignments = closed.assignments;
-    routes = closed.routes;
-    logs = closed.logs;
-
-    const alerted = bumpMissedCollectionAlerts(loans, closed.missedLoanRefs, today);
-    loans = alerted.loans;
-    autoClosed.push({ collectorRef: collector.ref, date: today });
-  }
-
-  assignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
-  markForcedCloseOpenDays();
-
-  return {
+  const reopened = reopenDispatchDay(
     assignments,
     routes,
     logs,
+    today,
+    state.collectors,
+    state.loans,
+    state.clients,
+  );
+  assignments = reopened.assignments;
+  routes = reopened.routes;
+  logs = reopened.logs;
+
+  const planilla = syncPermanentRoutePlanilla(
+    today,
+    routes,
+    state.clients,
+    state.loans,
+    state.collectors,
+    assignments,
+  );
+  assignments = sealOpenVisitsWithLaterPayments(
+    reconcilePaymentsOntoPlanilla(planilla.assignments, state.payments),
+    state.payments,
+    { untilDate: today },
+  );
+  // Sin CIE de hoy: no volver a sellar.
+  assignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
+
+  setStorageFlag(REOPEN_PREMATURE_TODAY_KEY);
+  // Marca la v1 como hecha para que nadie la reintroduzca a medias.
+  setStorageFlag(FORCE_CLOSE_OPEN_DAYS_KEY);
+
+  return {
+    assignments,
+    routes: planilla.routes,
+    logs,
     dayCloses,
-    dayExpenseDrafts,
+    dayExpenseDrafts: state.dayExpenseDrafts,
     payments: state.payments,
-    loans,
+    loans: state.loans,
     clients: state.clients,
     collectors: state.collectors,
-    autoClosed,
+    autoClosed: [],
   };
 }

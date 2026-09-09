@@ -45,5 +45,6 @@ npm run release:force
 
 1. Confirmar URL = `prestamo-y-cobranza.vercel.app`
 2. Comparar `build` del login vs `git rev-parse --short HEAD` / `origin/main`
-3. Ctrl+F5 o ventana privada (caché del navegador / localStorage demo ≠ código viejo)
-4. No crear un segundo deploy improvisado
+3. Ctrl+F5 o ventana privada (caché / localStorage demo ≠ código viejo)
+4. Si planilla hoy aparece toda cerrada / movimientos 0 antes de 23:30: es estado demo, no deploy; el ciclo `reopenPrematureTodayClosesOnce` lo corrige una vez — no reinventar otro proyecto Vercel
+5. No crear un segundo deploy improvisado

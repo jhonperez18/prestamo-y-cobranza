@@ -50,6 +50,7 @@ npm run release:force
 - Datos demo en `localStorage` del navegador (siguen ahí aunque el JS sea nuevo).
 - Abrir una URL `admin-*.vercel.app` de un deploy antiguo.
 - Comparar localhost con producción sin mirar el `build` del login.
+- Planilla con cobradores “Cerrado” y movimientos en 0 **antes de las 23:30**: era un cierre forzado malo al hidratar; se reabre solo una vez con `reopenPrematureTodayClosesOnce`. Si sigue raro: ventana privada o borrar keys `nexo-demo-*` del origen.
 
 ## Entornos futuros (API / Supabase)
 
