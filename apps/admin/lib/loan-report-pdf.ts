@@ -1,7 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { LoanReportDocument } from "@/lib/loan-report";
-import { formatLoanReportPendingSummary } from "@/lib/loan-report";
 import { money } from "@/lib/mock-data";
 import {
   LOAN_PAYMENT_DEFAULT_COLS,
@@ -57,7 +56,10 @@ type DocWithAutoTable = jsPDF & { lastAutoTable?: { finalY: number } };
 export async function loadLoanReportLogo(): Promise<string | null> {
   if (typeof window === "undefined") return null;
   try {
-    const response = await fetch("/logo-ca-prestamo.png");
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 2500);
+    const response = await fetch("/logo-ca-prestamo.png", { signal: controller.signal });
+    window.clearTimeout(timer);
     if (!response.ok) return null;
     const blob = await response.blob();
     return await new Promise((resolve) => {
@@ -204,77 +206,41 @@ function drawClientFicha(doc: jsPDF, report: LoanReportDocument, startY: number)
   return (doc as DocWithAutoTable).lastAutoTable?.finalY ?? startY;
 }
 
-function drawInstallmentTable(
+function drawLabeledAmountRight(
   doc: jsPDF,
-  rows: LoanReportDocument["overdueInstallments"],
-  emptyMessage: string,
-  startY: number,
-  options: { pendingHighlight?: boolean } = {},
+  label: string,
+  value: string,
+  rightX: number,
+  y: number,
+  opts?: { labelSize?: number; valueSize?: number },
 ) {
-  const body =
-    rows.length > 0
-      ? rows.map((row) => [row.concept, money(row.amount), money(row.paid), money(row.pending)])
-      : [[emptyMessage, "", "", ""]];
+  const labelSize = opts?.labelSize ?? 9;
+  const valueSize = opts?.valueSize ?? 10.5;
+  const gap = 2.2;
 
-  autoTable(doc, {
-    startY,
-    margin: { left: PAGE_MARGIN, right: PAGE_MARGIN },
-    head: [["Concepto", "Valor", "Pagado", "Pendiente"]],
-    body,
-    theme: "plain",
-    headStyles: {
-      fillColor: THEME.tableHeadFill,
-      textColor: THEME.ink,
-      fontStyle: "bold",
-      fontSize: PDF_TABLE_HEAD_FONT,
-      cellPadding: PDF_TABLE_CELL_PADDING,
-    },
-    bodyStyles: {
-      fontSize: PDF_TABLE_FONT,
-      textColor: THEME.ink,
-      cellPadding: PDF_TABLE_CELL_PADDING,
-      lineColor: THEME.border,
-      lineWidth: 0.12,
-    },
-    columnStyles: {
-      1: { halign: "right" },
-      2: { halign: "right" },
-      3: {
-        halign: "right",
-        fontStyle: "bold",
-        textColor: options.pendingHighlight ? [180, 52, 52] : THEME.ink,
-      },
-    },
-    alternateRowStyles: { fillColor: THEME.rowA },
-  });
-
-  return (doc as DocWithAutoTable).lastAutoTable?.finalY ?? startY;
-}
-
-function drawOverdueTable(doc: jsPDF, report: LoanReportDocument, startY: number) {
-  return drawInstallmentTable(doc, report.overdueInstallments, "Sin cuotas en mora.", startY, {
-    pendingHighlight: true,
-  });
-}
-
-function drawPendingSummary(doc: jsPDF, report: LoanReportDocument, startY: number) {
-  let y = drawSectionTitle(doc, "Cuotas pendientes", startY);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(PDF_TABLE_FONT);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(valueSize);
   doc.setTextColor(...THEME.ink);
-  doc.text(formatLoanReportPendingSummary(report.pendingSummary), PAGE_MARGIN, y + 4);
-  return y + 10;
+  doc.text(value, rightX, y, { align: "right" });
+  const valueW = doc.getTextWidth(value);
+
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(labelSize);
+  doc.setTextColor(...THEME.muted);
+  doc.text(label, rightX - valueW - gap, y, { align: "right" });
 }
 
-function drawSummaryBoxes(doc: jsPDF, report: LoanReportDocument, startY: number) {
+function drawSummaryRows(doc: jsPDF, report: LoanReportDocument, startY: number) {
   const width = pageWidth(doc);
   const height = pageHeight(doc);
-  const gap = 3;
-  const boxWidth = (width - PAGE_MARGIN * 2 - gap * 3) / 4;
-  const boxHeight = 18;
-  const lines = Math.ceil(report.footer.length / 4);
+  const contentW = width - PAGE_MARGIN * 2;
+  const midX = PAGE_MARGIN + contentW / 2;
+  const rightX = width - PAGE_MARGIN;
+  const rowH = 9;
+  const topRows = report.footer.filter((row) => !row.highlight);
+  const restRow = report.footer.find((row) => row.highlight);
   const titleHeight = 12;
-  const blockHeight = titleHeight + lines * (boxHeight + gap) + 4;
+  const blockHeight = titleHeight + rowH + (restRow ? rowH : 0) + 8;
 
   let y = startY;
   if (y + blockHeight > height - FOOTER_RESERVED - 4) {
@@ -283,39 +249,35 @@ function drawSummaryBoxes(doc: jsPDF, report: LoanReportDocument, startY: number
   }
 
   y = drawSectionTitle(doc, "Resumen financiero", y);
+  const left = topRows[0];
+  const right = topRows[1];
 
-  report.footer.forEach((row, index) => {
-    const col = index % 4;
-    const line = Math.floor(index / 4);
-    const x = PAGE_MARGIN + col * (boxWidth + gap);
-    const boxY = y + line * (boxHeight + gap);
+  // Números en su sitio; títulos pegados a la izquierda de cada número
+  if (left) {
+    drawLabeledAmountRight(doc, left.label, left.value, midX - 4, y + 4);
+  }
+  if (right) {
+    drawLabeledAmountRight(doc, right.label, right.value, rightX, y + 4);
+  }
 
-    if (row.highlight) {
-      doc.setFillColor(...THEME.sumRestFill);
-      doc.setDrawColor(...THEME.sumRestBorder);
-    } else if (row.label.toLowerCase().includes("capital")) {
-      doc.setFillColor(...THEME.sumCapitalFill);
-      doc.setDrawColor(...THEME.sumCapitalBorder);
-    } else {
-      doc.setFillColor(...THEME.sumNeutralFill);
-      doc.setDrawColor(...THEME.sumNeutralBorder);
-    }
+  doc.setDrawColor(...THEME.border);
+  doc.setLineWidth(0.35);
+  doc.line(PAGE_MARGIN, y + rowH - 1.2, rightX, y + rowH - 1.2);
+  y += rowH;
 
+  if (restRow) {
+    drawLabeledAmountRight(doc, restRow.label, restRow.value, rightX, y + 4.2, {
+      labelSize: 9.2,
+      valueSize: 11,
+    });
+
+    doc.setDrawColor(...THEME.border);
     doc.setLineWidth(0.35);
-    doc.roundedRect(x, boxY, boxWidth, boxHeight, 2.5, 2.5, "FD");
+    doc.line(PAGE_MARGIN, y + rowH - 1.2, rightX, y + rowH - 1.2);
+    y += rowH;
+  }
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(7.8);
-    doc.setTextColor(...THEME.muted);
-    doc.text(row.label, x + 3.5, boxY + 6);
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(row.highlight ? 11 : 10.2);
-    doc.setTextColor(...THEME.ink);
-    doc.text(row.value, x + 3.5, boxY + 13.5);
-  });
-
-  return y + lines * (boxHeight + gap) + 4;
+  return y + 3;
 }
 
 function stampAllFooters(doc: jsPDF, generatedLabel: string) {
@@ -333,9 +295,6 @@ export function buildLoanReportPdf(report: LoanReportDocument, options: LoanRepo
   let y = CONTENT_TOP;
   y = drawSectionTitle(doc, "Ficha", y);
   y = drawClientFicha(doc, report, y) + 5;
-  y = drawSectionTitle(doc, `Cuotas en mora (${report.overdueInstallments.length})`, y);
-  y = drawOverdueTable(doc, report, y) + 5;
-  y = drawPendingSummary(doc, report, y) + 2;
   y = drawSectionTitle(doc, `Movimientos recaudados (${report.movements.length})`, y);
 
   const tableHead = [columns.map((col) => col.label)];
@@ -387,7 +346,7 @@ export function buildLoanReportPdf(report: LoanReportDocument, options: LoanRepo
   });
 
   y = ((doc as DocWithAutoTable).lastAutoTable?.finalY ?? y) + 8;
-  drawSummaryBoxes(doc, report, y);
+  drawSummaryRows(doc, report, y);
 
   stampFirstPageHeader(doc, options.logoDataUrl);
   stampAllFooters(doc, report.generatedLabel);

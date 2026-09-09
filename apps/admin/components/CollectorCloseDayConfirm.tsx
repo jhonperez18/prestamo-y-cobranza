@@ -77,8 +77,8 @@ export function CollectorCloseDayConfirm({
 
       {pendingCount > 0 ? (
         <p className="receipt-error" role="alert">
-          Quedan {pendingCount} pendiente{pendingCount === 1 ? "" : "s"} → alerta (mora solo al 5.º
-          sin pago).
+          Quedan {pendingCount} pendiente{pendingCount === 1 ? "" : "s"} → alerta (mora al 4.º
+          día hábil sin pago).
         </p>
       ) : null}
 

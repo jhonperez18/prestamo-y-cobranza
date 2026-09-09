@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type Props = {
   title: string;
@@ -11,6 +11,11 @@ type Props = {
   onClose: () => void;
 };
 
+/**
+ * Genera el PDF una sola vez al abrir.
+ * No depende de `buildBlob` en cada render (evita cancelar la carga
+ * cuando el padre regenera datos / columnas en segundo plano).
+ */
 export function ReportPdfPreview({
   title,
   subtitle,
@@ -22,6 +27,8 @@ export function ReportPdfPreview({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const buildRef = useRef(buildBlob);
+  buildRef.current = buildBlob;
 
   useEffect(() => {
     let active = true;
@@ -29,21 +36,38 @@ export function ReportPdfPreview({
     setError(null);
     setPreviewUrl(null);
 
-    buildBlob()
-      .then((blob) => {
+    const failTimer = window.setTimeout(() => {
+      if (active && !url) {
+        setError("No se pudo generar la vista previa a tiempo. Intente de nuevo.");
+      }
+    }, 12_000);
+
+    void (async () => {
+      try {
+        const blob = await buildRef.current();
         if (!active) return;
         url = URL.createObjectURL(blob);
         setPreviewUrl(url);
-      })
-      .catch(() => {
-        if (active) setError("No se pudo generar la vista previa del PDF.");
-      });
+      } catch (err) {
+        if (!active) return;
+        const message =
+          err instanceof Error && err.message
+            ? err.message
+            : "No se pudo generar la vista previa del PDF.";
+        setError(message);
+      } finally {
+        window.clearTimeout(failTimer);
+      }
+    })();
 
     return () => {
       active = false;
+      window.clearTimeout(failTimer);
       if (url) URL.revokeObjectURL(url);
     };
-  }, [buildBlob]);
+    // Solo al montar el diálogo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {

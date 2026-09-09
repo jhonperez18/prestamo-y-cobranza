@@ -106,6 +106,11 @@ export function CollectorPayForm({
     });
   }
 
+  /** Siempre clickeable: si falta firma/valor, muestra el error en vez de “no hacer nada”. */
+  function handleConfirmClick() {
+    setAttempted(true);
+  }
+
   return (
     <form
       className={inline ? "collector-pay-form collector-pay-inline" : "collector-pay-form"}
@@ -250,9 +255,16 @@ export function CollectorPayForm({
         </button>
         <button
           type="submit"
-          className={inline ? "collector-mobile-pay-link" : "btn compact primary"}
-          disabled={!canSubmit}
+          className={
+            inline
+              ? canSubmit
+                ? "collector-mobile-pay-link"
+                : "collector-mobile-pay-link is-blocked"
+              : "btn compact primary"
+          }
+          aria-disabled={!canSubmit}
           title={blockReason ?? undefined}
+          onClick={handleConfirmClick}
         >
           {inline ? "confirmar" : "Confirmar"}
         </button>

@@ -133,12 +133,18 @@ export function computeLoanFinancials(loan: LoanRow, payments: PaymentRow[]): Lo
   const installmentsTotal = flat
     ? interestLines.length || preview?.count || 0
     : interestLines.length;
-  const installmentsPaid = interestLines.filter((line) => line.statusKind === "paid").length;
+  // Cuotas pagadas = cobros reales / valor cuota (no el cronograma, que puede ir adelantado).
+  const installmentValue = loan.installment ?? preview?.installment ?? 0;
+  const installmentsPaid = flat
+    ? installmentValue > 0
+      ? Math.min(installmentsTotal, Math.floor(paidTotal / installmentValue + 1e-9))
+      : loanPayments.length
+    : interestLines.filter((line) => line.statusKind === "paid").length;
   const installmentsPending = Math.max(0, installmentsTotal - installmentsPaid);
 
   const capitalDueDate = capitalLine?.date ?? loan.due;
   const interestTerm = loan.interest ?? preview?.interest ?? interestTotal;
-  const installment = loan.installment ?? preview?.installment ?? 0;
+  const installment = installmentValue;
   const days = loan.days ?? preview?.days;
   const previewTotal = loan.total ?? preview?.total ?? totalAgreement;
 

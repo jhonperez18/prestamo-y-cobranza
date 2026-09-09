@@ -518,17 +518,17 @@ export function CollectorFicha({
                             const client = clients.find((row) => row.ref === stop.clientRef);
                             const visitLabel =
                               stop.visitStatus === "cobrado"
-                                ? "Cobrado"
+                                ? "pago"
                                 : stop.visitStatus === "parcial"
-                                  ? "Parcial"
+                                  ? "Parc."
                                   : stop.visitStatus === "omitido"
-                                    ? "Omitido"
+                                    ? "S/C"
                                     : day.dispatched
-                                      ? "Pendiente"
-                                      : "Asignado";
+                                      ? "Pend."
+                                      : "Asig.";
                             const visitKind =
                               stop.visitStatus === "cobrado"
-                                ? "paid"
+                                ? "ok"
                                 : stop.visitStatus === "parcial"
                                   ? "partial"
                                   : day.dispatched

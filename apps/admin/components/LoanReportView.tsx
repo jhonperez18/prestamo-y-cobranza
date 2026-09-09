@@ -4,8 +4,7 @@ import { useMemo, useState } from "react";
 import { useColumnVisibility } from "@/components/ColumnPicker";
 import { LoanPaymentsTable } from "@/components/LoanPaymentsTable";
 import { LoanReportPdfPreview } from "@/components/LoanReportPdfPreview";
-import { buildLoanReport, formatLoanReportPendingSummary } from "@/lib/loan-report";
-import { money } from "@/lib/mock-data";
+import { buildLoanReport } from "@/lib/loan-report";
 import {
   LOAN_PAYMENT_COLUMNS,
   LOAN_PAYMENT_COLUMNS_STORAGE_KEY,
@@ -45,48 +44,6 @@ function ReportBody({
             </div>
           ))}
         </dl>
-      </section>
-
-      <section className="mini-block loan-report-overdue">
-        <div className="mini-head">
-          <h2>Cuotas en mora</h2>
-          <span className="mini-badge">{report.overdueInstallments.length}</span>
-        </div>
-        <div className="table-wrap">
-          <table className="data mini-grid">
-            <thead>
-              <tr className="col-titles">
-                <th>Concepto</th>
-                <th className="right">Valor</th>
-                <th className="right">Pagado</th>
-                <th className="right">Pendiente</th>
-              </tr>
-            </thead>
-            <tbody>
-              {report.overdueInstallments.length === 0 ? (
-                <tr className="empty-row">
-                  <td colSpan={4}>Sin cuotas en mora.</td>
-                </tr>
-              ) : (
-                report.overdueInstallments.map((row, index) => (
-                  <tr key={`${row.concept}-${index}`}>
-                    <td>{row.concept}</td>
-                    <td className="money right">{money(row.amount)}</td>
-                    <td className="money right">{money(row.paid)}</td>
-                    <td className="money right">{money(row.pending)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="mini-block loan-report-pending">
-        <div className="mini-head">
-          <h2>Cuotas pendientes</h2>
-        </div>
-        <p className="loan-report-pending-line">{formatLoanReportPendingSummary(report.pendingSummary)}</p>
       </section>
 
       <section className="loan-report-movements">

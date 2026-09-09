@@ -1,24 +1,9 @@
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
-import { computeLoanFinancials, loanPaySummaryRows, type LoanFinancials } from "@/lib/loan-balance";
+import { computeLoanFinancials } from "@/lib/loan-balance";
 import { PAY_FREQUENCIES, rateFieldLabel } from "@/lib/loan-preview";
 import { enrichPaymentMovement, sortPaymentsNewestFirst } from "@/lib/payment-detail";
 import type { ClientRow, LoanRow, PaymentRow } from "@/lib/mock-data";
 import { money } from "@/lib/mock-data";
-
-export type LoanReportScheduleRow = {
-  date: string;
-  concept: string;
-  amount: number;
-  paid: number;
-  pending: number;
-};
-
-export type LoanReportOverdueRow = LoanReportScheduleRow;
-
-export type LoanReportPendingSummary = {
-  count: number;
-  total: number;
-};
 
 export type LoanReportDocument = {
   loanRef: string;
@@ -29,30 +14,10 @@ export type LoanReportDocument = {
   client: ClientRow | null;
   loan: LoanRow;
   clientFicha: { label: string; value: string }[];
-  overdueInstallments: LoanReportOverdueRow[];
-  pendingSummary: LoanReportPendingSummary;
   movements: ReturnType<typeof enrichPaymentMovement>[];
   footer: { label: string; value: string; highlight?: boolean }[];
   financials: ReturnType<typeof computeLoanFinancials>;
 };
-
-function buildPendingSummary(financials: LoanFinancials): LoanReportPendingSummary {
-  const lines = financials.schedule.filter((line) => Math.max(0, line.amount - line.paid) > 0);
-
-  return {
-    count: lines.length,
-    total: lines.reduce((sum, line) => sum + Math.max(0, line.amount - line.paid), 0),
-  };
-}
-
-export function formatLoanReportPendingSummary(
-  summary: LoanReportPendingSummary,
-  formatMoney: (value: number) => string = money,
-) {
-  if (summary.count === 0) return "Sin cuotas pendientes.";
-  const label = summary.count === 1 ? "cuota" : "cuotas";
-  return `${summary.count} ${label} · ${formatMoney(summary.total)}`;
-}
 
 function reportTimestamp() {
   const now = new Date();
@@ -76,6 +41,9 @@ export function buildLoanReport(
     payments.filter((row) => row.loanRef === loan.ref),
   ).map((row) => enrichPaymentMovement(row, loan, assignments));
 
+  const capitalUnificado =
+    financials.totalAgreement || loan.total || loan.capital + financials.interestTerm;
+
   const clientFicha: LoanReportDocument["clientFicha"] = [
     { label: "Titular", value: clientName },
     { label: "Cédula", value: client?.document ?? "—" },
@@ -96,12 +64,14 @@ export function buildLoanReport(
           : String(financials.installmentsPaid),
     },
     { label: "Interés del plazo", value: money(financials.interestTerm) },
-    { label: "Total", value: money(loan.total ?? loan.capital + financials.interestTerm) },
+    { label: "Total", value: money(capitalUnificado) },
   ];
 
-  const footer = loanPaySummaryRows(financials, money);
-  const overdueInstallments: LoanReportOverdueRow[] = [];
-  const pendingSummary = buildPendingSummary(financials);
+  const footer = [
+    { label: "Capital", value: money(capitalUnificado) },
+    { label: "Ya pagado", value: money(financials.paidTotal) },
+    { label: "Resta por pagar", value: money(financials.balancePending), highlight: true },
+  ];
 
   return {
     loanRef: loan.ref,
@@ -112,8 +82,6 @@ export function buildLoanReport(
     client,
     loan,
     clientFicha,
-    overdueInstallments,
-    pendingSummary,
     movements,
     footer,
     financials,
@@ -130,17 +98,6 @@ export function formatLoanReportText(report: LoanReportDocument) {
     ...report.clientFicha.map((row) => `${row.label}: ${row.value}`),
     `Plazo: ${f.days != null ? `${f.days} días` : `${report.loan.date} → ${report.loan.due}`}`,
     "",
-    "—— CUOTAS EN MORA ——",
-    ...(report.overdueInstallments.length
-      ? report.overdueInstallments.map(
-          (row) =>
-            `${row.concept} · ${money(row.amount)} · pagado ${money(row.paid)} · pendiente ${money(row.pending)}`,
-        )
-      : ["Sin cuotas en mora."]),
-    "",
-    "—— CUOTAS PENDIENTES ——",
-    formatLoanReportPendingSummary(report.pendingSummary),
-    "",
     "—— MOVIMIENTOS ——",
     ...(report.movements.length
       ? report.movements.map(
@@ -151,8 +108,6 @@ export function formatLoanReportText(report: LoanReportDocument) {
     "",
     "—— RESUMEN ——",
     ...report.footer.map((row) => `${row.label}: ${row.value}`),
-    `Cuotas pagadas: ${f.installmentsPaid} · Cuotas pendientes: ${f.installmentsPending}`,
-    `Verificación: recaudado (${money(f.paidTotal)}) + saldo (${money(f.balancePending)}) = acuerdo (${money(f.totalAgreement)})`,
   ];
   return lines.filter(Boolean).join("\n");
 }

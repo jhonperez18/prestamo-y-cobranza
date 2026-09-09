@@ -36,7 +36,7 @@ type Props = {
   dayCloses?: CollectorDayCloseRecord[];
   dayExpenseDrafts?: CollectorDayExpenseDraft[];
   monthCloses?: CollectorMonthCloseRecord[];
-  onRegisterPayment?: (draft: CollectorPaymentDraft) => void;
+  onRegisterPayment?: (draft: CollectorPaymentDraft) => boolean | void;
   onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
   onRenewLoan?: (loanRef: string) => void;
   onSaveExpenses?: (payload: CollectorSaveExpensesPayload) => void;

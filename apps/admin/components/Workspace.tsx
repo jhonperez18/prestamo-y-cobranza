@@ -22,8 +22,6 @@ import { UserFicha, type UserTab } from "@/components/UserFicha";
 import { NewUserForm, type UserDraft } from "@/components/NewUserForm";
 import { UserList } from "@/components/UserList";
 import { DailyCollectionsView } from "@/components/DailyCollectionsView";
-import { TodayMovementsTable } from "@/components/TodayMovementsTable";
-import { buildHomeDashboard } from "@/lib/home-dashboard";
 import {
   buildQuickLoan,
   buildStreetClient,
@@ -38,7 +36,6 @@ import {
 } from "@/lib/daily-dispatch";
 import { buildDailyCollectionList, type DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
-  applyPaymentToAssignments,
   applySkipToRoute,
   assignmentFromItem,
   buildDispatchRoute,
@@ -66,7 +63,7 @@ import { PaymentFicha } from "@/components/PaymentFicha";
 import { PaymentStatusPill } from "@/components/PaymentStatusPill";
 import { PaymentRefLink } from "@/components/PaymentRefLink";
 import { LoanReportView } from "@/components/LoanReportView";
-import { DataTable, Kpi, Pill } from "@/components/ui";
+import { DataTable, Pill } from "@/components/ui";
 import { ClientList } from "@/components/ClientList";
 import { HomeDashboard } from "@/components/HomeDashboard";
 import {
@@ -128,12 +125,8 @@ import {
   paymentMethodLabel,
   type PaymentMethod,
 } from "@/lib/payment-method";
-import { validatePaymentEvidence } from "@/lib/payment-evidence";
 import {
-  applyCollectorPaymentResult,
   buildRouteStop,
-  resolveCollectorPaymentContext,
-  visitAlreadyPaidToday,
   type CollectorPaymentDraft,
 } from "@/lib/route-sync";
 import {
@@ -142,7 +135,7 @@ import {
   normalizeAllRouteOrders,
   placeClientOnRoute,
 } from "@/lib/client-route-order";
-import { applyPay, cuotaTarget, lineStatus, loanRowAfterPay, paymentRowKind, type PayKind } from "@/lib/loan-pay";
+import { applyPay, cuotaTarget, loanRowAfterPay, paymentRowKind, type PayKind } from "@/lib/loan-pay";
 import {
   bumpMissedCollectionAlerts,
   formatCloseDayAlertSummary,
@@ -166,9 +159,11 @@ import {
 } from "@/lib/bank";
 import { applyBankLedgerSync, syncBankLedger } from "@/lib/bank-ledger-sync";
 import {
-  purgeUnclosedPlanillaPayments,
   stripRemovedPaymentMovements,
 } from "@/lib/purge-unclosed-payments";
+import { commitCollectorPayment } from "@/lib/commit-collector-payment";
+import { runOperationalDayCycle } from "@/lib/collector-day-auto-close";
+import { dedupeDailyPaymentsByVisit } from "@/lib/planilla-payment-reconcile";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement, miscPaymentRefForMovement } from "@/lib/misc-payments";
 import {
@@ -201,6 +196,7 @@ import {
   buildMonthCloseRecord,
   dayExpenseLineMovementRef,
   finalizeCollectorDayClose,
+  applyDayCloseRecordsToAssignments,
   recoverPaymentsFromAssignments,
   recoverPaymentsFromBankMovements,
   removeDayExpenseDraft,
@@ -212,7 +208,7 @@ import {
 } from "@/lib/collector-day-close";
 
 type FileTab = "ficha" | "activos" | "prestamos" | "evidencias";
-type LoanTab = "ficha" | "prestamos" | "fechas" | "pagos";
+type LoanTab = "ficha" | "prestamos" | "pagos";
 
 /** Oculta el breadcrumb cuando la vista ya muestra su título en el panel (Listado 10, Activos 8, etc.). */
 function shouldHideCrumb(moduleId: ModuleId, viewId: string) {
@@ -380,7 +376,8 @@ export function Workspace({
     );
 
     setPayments(nextPayments);
-    setLoans(storedLoans);
+    const reconciledLoans = syncAllLoans(storedLoans, nextPayments) as LoanRow[];
+    setLoans(reconciledLoans);
     const linked = ensureCollectorsForUsers(loadDemoUsers(), storedCollectors);
     setUsers(linked.users);
     setCollectors(linked.collectors);
@@ -390,43 +387,43 @@ export function Workspace({
       storedRoutes,
       storedAssignments,
       linked.collectors,
-      storedLoans,
+      reconciledLoans,
       storedClients,
     );
-    const synced = syncPermanentRoutePlanilla(
-      todayIso(),
-      rebuilt,
-      storedClients,
-      storedLoans,
-      linked.collectors,
-      storedAssignments,
-    );
-    // Cobros de hoy sin visita cerrada en planilla (o duplicados) no van a Registros.
-    const purged = purgeUnclosedPlanillaPayments({
-      date: todayIso(),
-      payments: nextPayments,
-      assignments: synced.assignments,
-      loans: storedLoans,
-    });
-    nextPayments = purged.payments;
-    const nextLoans = purged.loans;
-    setRoutes(synced.routes);
-    setDailyAssignments(synced.assignments);
-    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
-    writeDemoJson(DEMO_ROUTES_KEY, synced.routes);
-    setPayments(nextPayments);
-    setLoans(nextLoans);
-    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
-    writeDemoJson(DEMO_LOANS_KEY, nextLoans);
-    setDailyLogs(readDemoJson(DEMO_DAILY_LOGS_KEY, COLLECTOR_DAILY_LOGS_SEED));
-    const storedDayCloses = recoveredDayCloses;
-    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, storedDayCloses);
+    const storedLogs = readDemoJson(DEMO_DAILY_LOGS_KEY, COLLECTOR_DAILY_LOGS_SEED);
     const storedExpenseDrafts = readDemoJson<CollectorDayExpenseDraft[]>(
       DEMO_COLLECTOR_DAY_EXPENSES_KEY,
       [],
     );
-    setDayCloses(storedDayCloses);
-    setDayExpenseDrafts(storedExpenseDrafts);
+    // Ciclo operativo: cierra jornadas vencidas (23:30) y arma planilla de hoy.
+    const cycle = runOperationalDayCycle({
+      assignments: storedAssignments,
+      routes: rebuilt,
+      logs: storedLogs,
+      dayCloses: recoveredDayCloses,
+      dayExpenseDrafts: storedExpenseDrafts,
+      payments: nextPayments,
+      loans: reconciledLoans,
+      clients: storedClients,
+      collectors: linked.collectors,
+    });
+    const deduped = dedupeDailyPaymentsByVisit(cycle.payments, cycle.assignments);
+    nextPayments = deduped.payments;
+    setRoutes(cycle.routes);
+    setDailyAssignments(cycle.assignments);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, cycle.assignments);
+    writeDemoJson(DEMO_ROUTES_KEY, cycle.routes);
+    setPayments(nextPayments);
+    const cycleLoans = syncAllLoans(cycle.loans, nextPayments) as LoanRow[];
+    setLoans(cycleLoans);
+    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
+    writeDemoJson(DEMO_LOANS_KEY, cycleLoans);
+    setDailyLogs(cycle.logs);
+    writeDemoJson(DEMO_DAILY_LOGS_KEY, cycle.logs);
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, cycle.dayCloses);
+    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, cycle.dayExpenseDrafts);
+    setDayCloses(cycle.dayCloses);
+    setDayExpenseDrafts(cycle.dayExpenseDrafts);
     setMonthCloses(
       readDemoJson<CollectorMonthCloseRecord[]>(DEMO_COLLECTOR_MONTH_CLOSES_KEY, []),
     );
@@ -435,7 +432,7 @@ export function Workspace({
     );
     const storedMovements = stripRemovedPaymentMovements(
       storedMovementsEarly ?? [],
-      purged.removedRefs,
+      deduped.removedRefs,
     );
     const storedReconciliations = readDemoJson<BankReconciliation[]>(DEMO_BANK_RECONCILIATIONS_KEY, []);
     const sidesVersion = readDemoJson<number>(DEMO_BANK_SIDES_VERSION_KEY, 1);
@@ -450,8 +447,8 @@ export function Workspace({
       movements: nextMovementsRaw,
       accounts: storedAccounts,
       miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-      dayExpenseDrafts: storedExpenseDrafts,
-      dayCloses: storedDayCloses,
+      dayExpenseDrafts: cycle.dayExpenseDrafts,
+      dayCloses: cycle.dayCloses,
     });
     setBankAccounts(storedAccounts);
     setBankMovements(nextMovements);
@@ -466,11 +463,27 @@ export function Workspace({
   }, []);
 
   const applyPlanillaSync = useCallback(
-    (next: { assignments: typeof dailyAssignments; routes: typeof routes }) => {
+    (next: {
+      assignments: typeof dailyAssignments;
+      routes: typeof routes;
+      loans: typeof loans;
+      logs: typeof dailyLogs;
+      dayCloses: typeof dayCloses;
+      dayExpenseDrafts: typeof dayExpenseDrafts;
+      autoClosedCount: number;
+    }) => {
       setDailyAssignments(next.assignments);
       setRoutes(next.routes);
+      setLoans(next.loans);
+      setDailyLogs(next.logs);
+      setDayCloses(next.dayCloses);
+      setDayExpenseDrafts(next.dayExpenseDrafts);
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
       writeDemoJson(DEMO_ROUTES_KEY, next.routes);
+      writeDemoJson(DEMO_LOANS_KEY, next.loans);
+      writeDemoJson(DEMO_DAILY_LOGS_KEY, next.logs);
+      writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, next.dayCloses);
+      writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, next.dayExpenseDrafts);
     },
     [],
   );
@@ -483,6 +496,10 @@ export function Workspace({
       loans,
       collectors,
       assignments: dailyAssignments,
+      payments,
+      dayCloses,
+      dayExpenseDrafts,
+      logs: dailyLogs,
     },
     applyPlanillaSync,
   );
@@ -1290,6 +1307,8 @@ export function Workspace({
       collectors,
       loans,
       clients,
+      undefined,
+      payments,
     );
     if (!result.collectorsClosed) {
       onToast("No hay rutas enviadas para cerrar en esta fecha.");
@@ -1298,7 +1317,7 @@ export function Workspace({
     setDailyAssignments(result.assignments);
     setRoutes(result.routes);
     setDailyLogs(result.logs);
-    const alertResult = bumpMissedCollectionAlerts(loans, result.missedLoanRefs);
+    const alertResult = bumpMissedCollectionAlerts(loans, result.missedLoanRefs, date);
     setLoans(alertResult.loans);
     const parts = [
       `${result.collectorsClosed} cobrador${result.collectorsClosed === 1 ? "" : "es"}`,
@@ -1399,12 +1418,23 @@ export function Workspace({
       loans,
       clients,
       payload.collectorRef,
+      payments,
     );
-    setDailyAssignments(result.assignments);
+    const closedAssignments = applyDayCloseRecordsToAssignments(
+      result.assignments,
+      nextCloses,
+    );
+    setDailyAssignments(closedAssignments);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, closedAssignments);
     setRoutes(result.routes);
+    writeDemoJson(DEMO_ROUTES_KEY, result.routes);
     setDailyLogs(result.logs);
 
-    const alertResult = bumpMissedCollectionAlerts(loans, result.missedLoanRefs);
+    const alertResult = bumpMissedCollectionAlerts(
+      loans,
+      result.missedLoanRefs,
+      payload.date,
+    );
     setLoans(alertResult.loans);
 
     const parts = [
@@ -1447,141 +1477,44 @@ export function Workspace({
   }
 
   function registerCollectorPayment(draft: CollectorPaymentDraft) {
-    const keys = new Set(payments.map((row) => row.idempotencyKey).filter(Boolean) as string[]);
-
-    if (keys.has(draft.idempotencyKey)) {
-      onToast("Pago ya sincronizado (sin duplicar).");
-      return;
-    }
-
-    const evidenceError = validatePaymentEvidence(draft.method, draft.evidence);
-    if (evidenceError) {
-      onToast(evidenceError);
-      return;
-    }
-
-    const dispatchDate = draft.dispatchDate?.trim() || todayIso();
-    const { loan, route } = resolveCollectorPaymentContext(draft, loans, routes, dispatchDate);
-    if (!loan || loan.balance <= 0) {
-      onToast("No hay préstamo activo para este cliente. No se registró el cobro.");
-      return;
-    }
-
-    const already = visitAlreadyPaidToday(dailyAssignments, payments, {
-      loanRef: loan.ref,
-      clientRef: draft.clientRef,
-      dispatchDate,
-      collectorRef: draft.collectorRef,
+    const committed = commitCollectorPayment({
+      draft,
+      payments,
       loans,
-    });
-    if (already) {
-      onToast(
-        already.ref && already.ref !== "COBRADO"
-          ? `Ya existe el cobro ${already.ref} de este cliente hoy. Un cliente = un pago = un código.`
-          : "Este cliente ya tiene cobro hoy. Un cliente = un pago = un código.",
-      );
-      return;
-    }
-
-    const safeDraft: CollectorPaymentDraft = {
-      ...draft,
-      loanRef: loan.ref,
-      routeRef: route?.ref ?? draft.routeRef,
-      dispatchDate,
-    };
-
-    const result = applyCollectorPaymentResult(loan, safeDraft, route);
-    if (!result.ok) {
-      onToast(result.error);
-      return;
-    }
-    const pay = result.pay;
-
-    const paymentRef = nextPaymentCode(payments);
-    const paidDate = dispatchDate;
-    const paidTime = new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
-    const assignment = dailyAssignments.find(
-      (row) =>
-        row.collectorRef === draft.collectorRef &&
-        row.dispatchDate === paidDate &&
-        (row.loanRef === loan.ref || row.clientRef === draft.clientRef),
-    );
-    const payTarget = cuotaTarget(loan);
-    const payment = buildPaymentRow(
-      {
-        ref: paymentRef,
-        loanRef: loan.ref,
-        when: `${isoToDispatchLabel(paidDate)} · ${paidTime}`,
-        paidDate,
-        paidTime,
-        dueDate: assignment?.chargeDate ?? payTarget?.date,
-        chargeLabel: assignment?.chargeLabel ?? (payTarget?.kind ? chargeLabel(payTarget.kind) : undefined),
-        client: draft.clientName,
-        collector: draft.collectorName,
-        collectorRef: draft.collectorRef,
-        routeRef: safeDraft.routeRef,
-        idempotencyKey: draft.idempotencyKey,
-        amount: draft.amount,
-        type: pay.type,
-        kind: paymentRowKind(pay),
-        method: normalizePaymentMethod(draft.method),
-        evidence: draft.evidence?.length ? draft.evidence : undefined,
-        source: "pwa",
-        gps: true,
-      },
-      loan,
-      pay,
-    );
-
-    const nextPayments = [payment, ...payments];
-    const nextLoans = loans.map((row) =>
-      row.ref === loan.ref ? loanRowAfterPay(row, pay, nextPayments) : row,
-    );
-    const closedAssignments = applyPaymentToAssignments(
-      dailyAssignments,
-      payment,
-      paidDate,
-      draft.clientRef,
-    );
-    // Regenerar planilla YA con la visita cobrada, para que el rollover no la reabra.
-    const planilla = syncPermanentRoutePlanilla(
-      todayIso(),
-      result.updatedRoute
-        ? routes.map((row) => (row.ref === result.updatedRoute!.ref ? result.updatedRoute! : row))
-        : routes,
-      clients.map((entry) =>
-        entry.ref === draft.clientRef
-          ? { ...entry, pending: Math.max(0, entry.pending - draft.amount) }
-          : entry,
-      ),
-      nextLoans,
+      clients,
+      routes,
+      assignments: dailyAssignments,
       collectors,
-      closedAssignments,
-    );
+    });
+    if (!committed.ok) {
+      onToast(committed.error);
+      return false;
+    }
 
-    setPayments(nextPayments);
-    setLoans(nextLoans);
+    setPayments(committed.payments);
+    setLoans(committed.loans);
+    setClients(committed.clients);
+    setDailyAssignments(committed.assignments);
+    setRoutes(committed.routes);
     setBankMovements((rows) =>
       applyBankLedgerSync(rows, {
-        payments: nextPayments,
+        payments: committed.payments,
         accounts: bankAccounts,
         miscPayments,
         dayExpenseDrafts,
         dayCloses,
       }),
     );
-    if (result.updatedRoute) {
-      setDailyLogs((current) => upsertDailyLogPayment(current, payment, result.updatedRoute!));
+    const paidRoute =
+      committed.routes.find((row) => row.ref === committed.payment.routeRef) ??
+      committed.routes.find((row) =>
+        row.ref.startsWith(`RUT-D-${draft.collectorRef}-`),
+      );
+    if (paidRoute) {
+      setDailyLogs((current) => upsertDailyLogPayment(current, committed.payment, paidRoute));
     }
-    setDailyAssignments(planilla.assignments);
-    setRoutes(planilla.routes);
-    setClients((current) =>
-      current.map((entry) => {
-        if (entry.ref !== draft.clientRef) return entry;
-        return { ...entry, pending: Math.max(0, entry.pending - draft.amount) };
-      }),
-    );
-    onToast(`Cobro ${paymentRef} sincronizado · Registros y planillas al día.`);
+    onToast(`Cobro ${committed.payment.ref} sincronizado · Registros y planillas al día.`);
+    return true;
   }
 
   function skipCollectorVisit(draft: CollectorSkipVisitDraft) {
@@ -2096,142 +2029,24 @@ export function Workspace({
   );
 
   function renderView() {
-    if (key === "inicio:resumen") {
+    if (key === "inicio:resumen" || key === "inicio:hoy" || key === "inicio:ruta-clientes") {
       return (
         <HomeDashboard
           clients={clients}
           routes={routes}
           loans={loans}
           payments={payments}
+          collectors={collectors}
+          activities={activities}
           assignments={dailyAssignments}
           onRenewLoan={renewLoan}
           onOpenLoan={openLoanAccount}
           onOpenClient={openFicha}
+          onGo={onGo}
+          onOpenPayment={(ref) =>
+            openPaymentFicha(ref, "pagos", { moduleId: "inicio", viewId: "resumen" })
+          }
         />
-      );
-    }
-
-    if (key === "inicio:ruta-clientes") {
-      return (
-        <HomeDashboard
-          clients={clients}
-          routes={routes}
-          loans={loans}
-          payments={payments}
-          assignments={dailyAssignments}
-          onRenewLoan={renewLoan}
-          onOpenLoan={openLoanAccount}
-          onOpenClient={openFicha}
-        />
-      );
-    }
-
-    if (key === "inicio:hoy") {
-      const home = buildHomeDashboard(
-        clients,
-        loans,
-        payments,
-        routes,
-        collectors,
-        activities,
-      );
-      return (
-        <>
-          <div className="kpis tone-kpis">
-            <Kpi
-              label="Clientes activos"
-              value={home.activeClients.toLocaleString("es-CO")}
-              hint={
-                home.clientsNewThisWeek > 0
-                  ? `+${home.clientsNewThisWeek} esta semana`
-                  : "Estado Activo"
-              }
-              tone="teal"
-              onClick={() => onGo("clientes", "activos")}
-            />
-            <Kpi
-              label="Préstamos vigentes"
-              value={home.activeLoansCount.toLocaleString("es-CO")}
-              hint={`Cartera ${money(home.portfolioTotal)}`}
-              tone="sage"
-              onClick={() => onGo("prestamos", "listado")}
-            />
-            <Kpi
-              label="Cobrado hoy"
-              value={money(home.collectedToday)}
-              hint={
-                home.collectedCount === 1
-                  ? "1 operación"
-                  : `${home.collectedCount.toLocaleString("es-CO")} operaciones`
-              }
-              tone="amber"
-              onClick={() => onGo("cobranza", "pagos")}
-            />
-            <Kpi
-              label="Mora"
-              value={money(home.moraTotal)}
-              hint={
-                home.moraCount === 1
-                  ? "1 crédito"
-                  : `${home.moraCount.toLocaleString("es-CO")} créditos`
-              }
-              tone="coral"
-              onClick={() => onGo("cartera", "mora")}
-            />
-          </div>
-          <div className="grid-2">
-            <TodayMovementsTable
-              payments={home.todayPayments}
-              loans={loans}
-              onCreate={() => onGo("cobranza", "hoy")}
-              onOpenPayment={(ref) =>
-                openPaymentFicha(ref, "pagos", { moduleId: "inicio", viewId: "hoy" })
-              }
-            />
-            <section className="panel">
-              <div className="head">
-                <h2>Rutas en campo</h2>
-                <span className="count">{home.routes.length}</span>
-              </div>
-              <div className="table-wrap">
-                <table className="data routes-table">
-                  <colgroup>
-                    <col className="routes-col-zone" />
-                    <col className="routes-col-assignment" />
-                    <col className="routes-col-status" />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th>Zona</th>
-                      <th>Asignación</th>
-                      <th>Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {home.routes.length === 0 ? (
-                      <tr className="empty-row">
-                        <td colSpan={3}>No hay rutas activas.</td>
-                      </tr>
-                    ) : (
-                      home.routes.map((row) => (
-                        <tr key={row.ref}>
-                          <td className="routes-zone">{row.zone}</td>
-                          <td className="routes-assignment">
-                            {row.collector} · {row.clients} cliente
-                            {row.clients === 1 ? "" : "s"}
-                          </td>
-                          <td>
-                            <Pill label={row.status} kind={row.statusKind} />
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          </div>
-        </>
       );
     }
 
@@ -2580,7 +2395,6 @@ export function Workspace({
       const loanTabs: { id: LoanTab; label: string }[] = [
         { id: "ficha", label: "Ficha" },
         { id: "prestamos", label: "Préstamos" },
-        { id: "fechas", label: "Fechas de cobro" },
         { id: "pagos", label: "Pagos" },
       ];
       const loanTitle = loanTabs.find((tab) => tab.id === loanTab)?.label ?? "Ficha";
@@ -2604,15 +2418,10 @@ export function Workspace({
               const status = loanStatusPill(openLoan);
               return <Pill label={status.label} kind={status.kind} />;
             })() : null}
-            {loanTab === "fechas" && openLoan?.schedule?.length ? (
-              <span className="count">{openLoan.schedule.length}</span>
-            ) : null}
-            {openLoan && (loanTab === "fechas" || loanTab === "pagos") ? (
+            {openLoan && loanTab === "pagos" ? (
               <span className="file-title-ref ref">{openLoan.ref}</span>
             ) : null}
-            {openLoan &&
-            loanTab !== "prestamos" &&
-            (loanTab !== "fechas" || canPay || confirmLoanDelete) ? (
+            {openLoan && loanTab !== "prestamos" ? (
               <div className="file-toolbar-actions">
                 {confirmLoanDelete ? (
                   <>
@@ -2626,7 +2435,7 @@ export function Workspace({
                   </>
                 ) : (
                   <>
-                    {canPay && loanTab === "fechas" ? (
+                    {canPay && loanTab === "pagos" ? (
                       <>
                         <button
                           type="button"
@@ -2641,17 +2450,17 @@ export function Workspace({
                         </button>
                       </>
                     ) : null}
-                    {loanTab !== "fechas" ? (
+                    {loanTab !== "pagos" ? (
                       <button type="button" className="btn-bar" onClick={() => onGo("prestamos", "informe")}>
                         Ver informe
                       </button>
                     ) : null}
-                    {loanTab !== "fechas" ? (
+                    {loanTab !== "pagos" ? (
                       <button type="button" className="btn-bar" onClick={() => onGo("prestamos", "editar")}>
                         Modificar
                       </button>
                     ) : null}
-                    {loanTab !== "fechas" && loanTab !== "pagos" ? (
+                    {loanTab !== "pagos" ? (
                       <button type="button" className="btn-bar" onClick={() => setConfirmLoanDelete(true)}>
                         Borrar
                       </button>
@@ -2723,51 +2532,6 @@ export function Workspace({
                   selectedRef={openLoan?.ref}
                   onSelect={selectClientLoan}
                 />
-              ) : null}
-
-              {loanTab === "fechas" ? (
-                openLoan?.schedule?.length ? (
-                  <div className="mini-block loan-fechas-block">
-                    <div className="table-wrap pay-dates">
-                      <table className="data mini-grid loan-fechas-table">
-                        <colgroup>
-                          <col className="loan-fechas-col-num" />
-                          <col className="loan-fechas-col-date" />
-                          <col className="loan-fechas-col-concept" />
-                          <col className="loan-fechas-col-amount" />
-                          <col className="loan-fechas-col-status" />
-                        </colgroup>
-                        <thead>
-                          <tr className="col-titles">
-                            <th>N.º</th>
-                            <th>Fecha</th>
-                            <th>Concepto</th>
-                            <th className="right">A cobrar</th>
-                            <th>Estado</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {openLoan.schedule.map((line, index) => {
-                            const state = lineStatus(line);
-                            return (
-                              <tr key={`${line.kind ?? "pago"}-${line.date}-${index}`}>
-                                <td>{index + 1}</td>
-                                <td>{isoToDisplay(line.date)}</td>
-                                <td>{chargeLabel(line.kind)}</td>
-                                <td className="money right">{money(line.amount)}</td>
-                                <td>
-                                  <Pill label={state.label} kind={state.kind} />
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="ficha-empty">Este préstamo no tiene fechas de cobro.</p>
-                )
               ) : null}
 
               {loanTab === "pagos" ? (

@@ -1,3 +1,5 @@
+import { countCollectionDaysAfter } from "@/lib/colombia-holidays";
+import { isLoanInCollectionMora } from "@/lib/collection-alerts";
 import { isoToDispatchLabel, todayIso } from "@/lib/daily-dispatch";
 import { computeLoanFinancials } from "@/lib/loan-balance";
 import { loanStatusPill } from "@/lib/loan-status";
@@ -16,18 +18,16 @@ export type CarteraMoraRow = {
   statusLabel: string;
 };
 
+/** Días de atraso solo con días de cobro (lun–sáb, sin festivos). */
 function overdueDays(loan: LoanRow, today: string) {
   const overdueDates = (loan.schedule ?? [])
     .filter((line) => line.date < today && (line.paid ?? 0) < line.amount)
-    .map((line) => line.date);
+    .map((line) => line.date)
+    .sort();
   const oldest = overdueDates[0];
   if (!oldest) return 0;
-  return Math.max(
-    1,
-    Math.round(
-      (Date.parse(`${today}T12:00:00`) - Date.parse(`${oldest}T12:00:00`)) / (1000 * 60 * 60 * 24),
-    ),
-  );
+  const days = countCollectionDaysAfter(oldest, today);
+  return Math.max(1, days);
 }
 
 export function buildCarteraMoraRows(
@@ -41,7 +41,7 @@ export function buildCarteraMoraRows(
 
   const rows = loans
     .map((loan) => syncLoan(loan, payments) as LoanRow)
-    .filter((loan) => loanStatusPill(loan).kind === "overdue")
+    .filter((loan) => isLoanInCollectionMora(loan))
     .map((loan) => {
       const client = clientByRef.get(loan.clientRef);
       const overdueInstallments = (loan.schedule ?? []).filter(

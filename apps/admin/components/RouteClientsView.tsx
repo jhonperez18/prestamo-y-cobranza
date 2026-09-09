@@ -7,6 +7,7 @@ import {
   collectionAlertLabel,
   collectionChargeKind,
   loanCollectionAlerts,
+  loanPaidOnDate,
 } from "@/lib/collection-alerts";
 import { computeLoanFinancials } from "@/lib/loan-balance";
 import { todayIso } from "@/lib/daily-dispatch";
@@ -124,7 +125,9 @@ function rowFromAssignment(
       ? [...todayPays].sort((a, b) => paymentSortKey(b).localeCompare(paymentSortKey(a)))[0]
       : null;
   const alertCount = loan
-    ? loanCollectionAlerts(loan)
+    ? loanPaidOnDate(loan.ref, payments, today)
+      ? 0
+      : loanCollectionAlerts(loan)
     : Number(assignment.alertCount) || 0;
   const chargeKind = collectionChargeKind(alertCount);
   const alertKind: StatusKind =
@@ -148,8 +151,8 @@ function rowFromAssignment(
     paidTime: lastToday?.paidTime?.trim() || "",
     paidMethod: lastToday ? paymentMethodLabel(lastToday.method) : "",
     paidMethodKind: paymentMethodKind(lastToday?.method),
-    alertLabel: alertCount > 0 ? collectionAlertLabel(alertCount) : "Al día",
-    alertKind: alertCount > 0 ? alertKind : "ok",
+    alertLabel: paidToday || alertCount === 0 ? "Al día" : collectionAlertLabel(alertCount),
+    alertKind: paidToday || alertCount === 0 ? "ok" : alertKind,
     visitStatus: assignment.visitStatus || "pendiente",
     order: client.routeOrder || order,
     rowKey: assignment.itemId || `${assignment.clientRef}:${assignment.loanRef}:${order}`,
@@ -210,12 +213,13 @@ export function RouteClientsView({
       ? "Esta ruta no tiene cobrador asignado: no se envía planilla a la app."
       : rows.length === 0
         ? "Aún no hay planilla de hoy para esta ruta. Se genera sola Lun–sáb a medianoche (o al abrir el sistema)."
-        : `Planilla de hoy enviada a ${collectorName || "el cobrador"} · se actualiza con cada cobro en la app.`;
+        : null;
 
   return (
     <section className={embedded ? "panel home-route-plantilla-panel" : "panel"}>
-      <div className="head">
-        <h1>Ruta {routeName}</h1>
+      <div className={embedded ? "head home-route-plantilla-head" : "head"}>
+        <h1>{embedded ? "Planilla" : `Ruta ${routeName}`}</h1>
+        {embedded ? <span className="home-route-plantilla-route">Ruta {routeName}</span> : null}
         <span className="count">{rows.length}</span>
         <div className="grow" />
         {!embedded && onBack ? (
@@ -225,13 +229,24 @@ export function RouteClientsView({
         ) : null}
       </div>
 
-      <p className="panel-lead route-clients-lead">{lead}</p>
+      {lead && !embedded ? <p className="panel-lead route-clients-lead">{lead}</p> : null}
 
-      <div className="table-wrap">
+      <div className="table-wrap route-clients-table-wrap">
         <table className="data list-grid route-clients-table">
+          <colgroup>
+            <col className="rc-col-order" />
+            <col className="rc-col-name" />
+            <col className="rc-col-nick" />
+            <col className="rc-col-saldo" />
+            <col className="rc-col-cuota" />
+            <col className="rc-col-cobrado" />
+            <col className="rc-col-hora" />
+            <col className="rc-col-aviso" />
+            <col className="rc-col-accion" />
+          </colgroup>
           <thead>
             <tr className="col-titles">
-              <th style={{ width: 40 }}>#</th>
+              <th>#</th>
               <th>Nombre</th>
               <th>Apodo</th>
               <th className="right">Saldo</th>
@@ -240,13 +255,11 @@ export function RouteClientsView({
               </th>
               <th title="Se actualiza cuando el cobrador registra el pago">Cobrado</th>
               <th title="Hora del cobro en la app">Hora</th>
-              <th title="Alerta 1–4 antes de mora; al 5.º día = Mora">Aviso</th>
-              <th className="right" style={{ width: 120 }}>
-                Acción
-              </th>
+              <th title="Alerta 1–3; al 4.º día hábil sin pago = Mora">Aviso</th>
+              <th className="right">Acción</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody key={routeName}>
             {rows.length === 0 ? (
               <tr className="empty-row">
                 <td colSpan={9}>
@@ -296,7 +309,7 @@ export function RouteClientsView({
                           ) : null}
                         </div>
                       ) : (
-                        <span className="route-clients-muted">Pendiente</span>
+                        <span className="route-clients-muted">Pend.</span>
                       )}
                     </td>
                     <td className="route-clients-hora">
@@ -306,19 +319,6 @@ export function RouteClientsView({
                       <Pill label={row.alertLabel} kind={row.alertKind} />
                     </td>
                     <td className="right route-clients-actions">
-                      {openLoan ? (
-                        <button
-                          type="button"
-                          className="collector-mobile-pay-link"
-                          title={`Abrir ficha ${row.loan!.ref}`}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            openLoan();
-                          }}
-                        >
-                          ficha
-                        </button>
-                      ) : null}
                       {onRenewLoan ? (
                         <button
                           type="button"
@@ -336,9 +336,9 @@ export function RouteClientsView({
                         >
                           renovar
                         </button>
-                      ) : !openLoan ? (
+                      ) : (
                         "—"
-                      ) : null}
+                      )}
                     </td>
                   </tr>
                 );

@@ -279,7 +279,7 @@ export function DailyCollectionsView({
     }
     const detail =
       closeSummary.pending > 0
-        ? `${closeSummary.pending} visita(s) pendiente(s) sumarán alerta (mora solo al 5.º sin pago).`
+        ? `${closeSummary.pending} visita(s) pendiente(s) sumarán alerta (mora al 4.º día hábil sin pago).`
         : "Se cerrará la jornada con los cobros ya registrados.";
     if (
       typeof window !== "undefined" &&
@@ -551,16 +551,16 @@ export function DailyCollectionsView({
                           <Pill
                             label={
                               assigned.visitStatus === "cobrado"
-                                ? "Cobrado"
+                                ? "pago"
                                 : assigned.visitStatus === "parcial"
-                                  ? "Parcial"
+                                  ? "Parc."
                                   : assigned.visitStatus === "omitido"
-                                    ? "No visitado"
-                                    : "En ruta"
+                                    ? "S/C"
+                                    : "Pend."
                             }
                             kind={
                               assigned.visitStatus === "cobrado"
-                                ? "paid"
+                                ? "ok"
                                 : assigned.visitStatus === "parcial"
                                   ? "partial"
                                   : assigned.visitStatus === "omitido"

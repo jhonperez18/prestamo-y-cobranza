@@ -53,7 +53,7 @@ export function BankReconciledLedgerView({
   const isIncome = kind === "income";
   const columns = isIncome ? BANK_LEDGER_INCOME_COLUMNS : BANK_LEDGER_EXPENSE_COLUMNS;
   const defaultCols = isIncome ? BANK_LEDGER_INCOME_DEFAULT_COLS : BANK_LEDGER_EXPENSE_DEFAULT_COLS;
-  const storageKey = isIncome ? "nexo.banco.ingresos.columns.v4" : "nexo.banco.gastos.columns.v3";
+  const storageKey = isIncome ? "nexo.banco.ingresos.columns.v5" : "nexo.banco.gastos.columns.v4";
   const amountColId = isIncome ? "debit" : "credit";
 
   const { isVisible, visibleCols, toggleColumn } = useColumnVisibility(columns, defaultCols, {
@@ -151,12 +151,6 @@ export function BankReconciledLedgerView({
         return row.thirdParty;
       case "category":
         return row.category ? expenseCategoryLabel(row.category) : "—";
-      case "status":
-        return row.reconciled ? (
-          <Pill label="Conciliado" kind="ok" />
-        ) : (
-          <Pill label="Pendiente" kind="pending" />
-        );
       case "credit":
       case "debit":
         return formatBankAmount(amount);
@@ -226,7 +220,6 @@ export function BankReconciledLedgerView({
             {isVisible("account") ? <col className="br-account" /> : null}
             {isVisible("thirdParty") ? <col className="br-third" /> : null}
             {isVisible("category") ? <col className="br-category" /> : null}
-            {isVisible("status") ? <col className="br-extract" /> : null}
             {isVisible(amountColId) ? <col className="br-amount" /> : null}
             <col className="br-picker" />
           </colgroup>
@@ -248,7 +241,6 @@ export function BankReconciledLedgerView({
               {isVisible("account") ? <th>Cuenta</th> : null}
               {isVisible("thirdParty") ? <th>Tercero</th> : null}
               {isVisible("category") ? <th>Categoría</th> : null}
-              {isVisible("status") ? <th className="center">Estado</th> : null}
               {isVisible(amountColId) ? (
                 <BankSortTh
                   label={amountLabel}

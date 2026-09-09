@@ -197,7 +197,7 @@ export function Kpi({
 }: {
   label: string;
   value: string;
-  hint: string;
+  hint?: string;
   tone?: KpiTone;
   onClick?: () => void;
   active?: boolean;
@@ -207,7 +207,7 @@ export function Kpi({
     <>
       <s>{label}</s>
       <b>{value}</b>
-      <em>{hint}</em>
+      {hint ? <em>{hint}</em> : null}
     </>
   );
 

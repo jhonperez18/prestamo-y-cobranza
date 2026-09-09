@@ -139,7 +139,7 @@ function fallbackDueAmount(loan: LoanRow) {
 }
 
 function accumulationLabel(cuotaAmount: number, moraAmount: number, alertCount: number) {
-  if (alertCount >= 5 || moraAmount > 0) {
+  if (isLoanInCollectionMora({ collectionAlerts: alertCount }) || moraAmount > 0) {
     if (cuotaAmount > 0 && moraAmount > 0) return "Cuota + mora";
     if (moraAmount > 0) return "Mora acumulada";
   }
@@ -147,7 +147,7 @@ function accumulationLabel(cuotaAmount: number, moraAmount: number, alertCount: 
   return "Cuota";
 }
 
-/** Monto acumulado hasta la fecha. Mora solo con 5 alertas; antes es atraso con alerta. */
+/** Monto acumulado hasta la fecha. Mora solo al 4.º día hábil; antes es alerta 1–3. */
 export function accumulatedDueForLoan(loan: LoanRow, selectedDate: string) {
   const alertCount = loanCollectionAlerts(loan);
   const inMora = isLoanInCollectionMora(loan);
@@ -220,7 +220,7 @@ export function accumulatedDueForLoan(loan: LoanRow, selectedDate: string) {
   };
 }
 
-/** Cobros del día: un registro por préstamo (cuota / alerta 1-4 / mora al 5). */
+/** Cobros del día: un registro por préstamo (cuota / alerta 1-3 / mora al 4). */
 export function buildDailyCollectionList(
   loans: LoanRow[],
   clients: ClientRow[],

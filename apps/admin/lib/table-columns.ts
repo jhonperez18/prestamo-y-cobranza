@@ -48,8 +48,6 @@ export const BANK_RECORD_COLUMNS: ColumnOption[] = [
   { id: "thirdParty", label: "Tercero" },
   { id: "debit", label: "Debe" },
   { id: "credit", label: "Haber" },
-  { id: "balance", label: "Saldo" },
-  { id: "extract", label: "Extracto" },
 ];
 
 export const BANK_RECORD_DEFAULT_COLS = BANK_RECORD_COLUMNS.map((col) => col.id);
@@ -136,7 +134,6 @@ export const BANK_LEDGER_INCOME_COLUMNS: ColumnOption[] = [
   { id: "period", label: "Periodo" },
   { id: "account", label: "Cuenta" },
   { id: "thirdParty", label: "Tercero" },
-  { id: "status", label: "Estado" },
   { id: "debit", label: "Debe" },
 ];
 
@@ -150,7 +147,6 @@ export const BANK_LEDGER_EXPENSE_COLUMNS: ColumnOption[] = [
   { id: "account", label: "Cuenta" },
   { id: "thirdParty", label: "Tercero" },
   { id: "category", label: "Categoría" },
-  { id: "status", label: "Estado" },
   { id: "credit", label: "Haber" },
 ];
 

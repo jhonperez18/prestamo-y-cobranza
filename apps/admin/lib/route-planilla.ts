@@ -95,20 +95,23 @@ function preserveProgress(
   previous: DailyCollectionAssignment | undefined,
 ): DailyCollectionAssignment {
   if (!previous) return next;
+  // paymentRef implica visita cobrada aunque visitStatus se haya perdido.
+  const paid =
+    previous.visitStatus === "cobrado" ||
+    Boolean(previous.paymentRef?.trim());
+  const omitted = previous.visitStatus === "omitido";
   return {
     ...next,
     assignedAt: previous.assignedAt || next.assignedAt,
-    visitStatus: previous.visitStatus ?? next.visitStatus,
+    visitStatus: paid ? ("cobrado" as const) : omitted ? ("omitido" as const) : (previous.visitStatus ?? next.visitStatus),
     skipReason: previous.skipReason,
     dayClosedAt: previous.dayClosedAt,
     paymentRef: previous.paymentRef,
-    // Si ya cobró, no reabrir adeudo al regenerar planilla.
-    amountDue:
-      previous.visitStatus === "cobrado" || previous.visitStatus === "omitido"
-        ? 0
-        : previous.paymentRef
-          ? previous.amountDue
-          : next.amountDue,
+    // Si ya cobró/omitió, no reabrir adeudo ni alertas al regenerar planilla.
+    amountDue: paid || omitted ? 0 : next.amountDue,
+    alertCount: paid || omitted ? 0 : next.alertCount,
+    kind: paid || omitted ? ("cuota" as const) : next.kind,
+    chargeLabel: paid || omitted ? "Cuota" : next.chargeLabel,
     loanRef: previous.loanRef || next.loanRef,
     dispatched: true,
     dispatchedAt: previous.dispatchedAt ?? next.dispatchedAt,
@@ -240,6 +243,36 @@ export function syncPermanentRoutePlanilla(
       }
     }
   }
+
+  // Visitas ya cobradas/omitidas del día abierto: no se pierden si el préstamo
+  // ya no genera cuota (saldo 0) o el itemId cambió al regenerar.
+  for (const prev of existing) {
+    if (prev.dispatchDate !== date) continue;
+    if (prev.dayClosedAt) continue;
+    const sealed =
+      prev.visitStatus === "cobrado" ||
+      prev.visitStatus === "omitido" ||
+      Boolean(prev.paymentRef?.trim());
+    if (!sealed) continue;
+    const inBuilt =
+      builtMap.has(prev.itemId) ||
+      [...builtMap.values()].some(
+        (row) =>
+          row.collectorRef === prev.collectorRef &&
+          row.clientRef === prev.clientRef &&
+          (row.loanRef === prev.loanRef || !prev.loanRef || !row.loanRef),
+      );
+    if (inBuilt) continue;
+    builtMap.set(prev.itemId, {
+      ...prev,
+      amountDue: 0,
+      visitStatus:
+        prev.visitStatus === "omitido" ? ("omitido" as const) : ("cobrado" as const),
+      dispatched: true,
+      dispatchedAt: prev.dispatchedAt ?? at,
+    });
+  }
+
   const built = [...builtMap.values()];
 
   const kept = existing.filter((row) => {

@@ -39,11 +39,12 @@ export function lineStatus(
   const overdue = line.date < today;
   if (paid > 0) {
     return overdue
-      ? { label: "Mora parcial", kind: "partial" }
+      ? { label: "Vencida parcial", kind: "partial" }
       : { label: "Pendiente parcial", kind: "partial" };
   }
 
-  return overdue ? { label: "Mora", kind: "overdue" } : { label: "Pendiente", kind: "pending" };
+  // Vencida ≠ mora del préstamo (mora = 4 días hábiles seguidos sin pago).
+  return overdue ? { label: "Vencida", kind: "pending" } : { label: "Pendiente", kind: "pending" };
 }
 
 export function nextOpenCuota(schedule?: ScheduleEntry[]): CuotaTarget | null {

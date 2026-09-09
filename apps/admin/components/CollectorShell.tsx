@@ -8,7 +8,6 @@ import {
   ROUTES,
   money,
   nextLoanCode,
-  nextPaymentCode,
   type ClientRow,
   type LoanRow,
   type PaymentRow,
@@ -35,15 +34,16 @@ import {
   writeDemoJson,
 } from "@/lib/demo-persist";
 import { buildQuickLoan, type QuickLoanDraft } from "@/lib/street-client-loan";
+import { syncAllLoans } from "@/lib/loan-preview";
 import { COLLECTOR_DAILY_LOGS_SEED, upsertDailyLogPayment } from "@/lib/collector-daily-log";
 import {
-  applyPaymentToAssignments,
   applySkipToRoute,
   closeDispatchDay,
   rebuildDispatchRoutes,
   skipAssignmentVisit,
 } from "@/lib/collector-dispatch-sync";
 import {
+  applyDayCloseRecordsToAssignments,
   buildDayExpenseDraft,
   buildMonthCloseRecord,
   dayExpenseLineMovementRef,
@@ -67,9 +67,11 @@ import {
 } from "@/lib/bank";
 import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import {
-  purgeUnclosedPlanillaPayments,
   stripRemovedPaymentMovements,
 } from "@/lib/purge-unclosed-payments";
+import { dedupeDailyPaymentsByVisit } from "@/lib/planilla-payment-reconcile";
+import { commitCollectorPayment } from "@/lib/commit-collector-payment";
+import { runOperationalDayCycle } from "@/lib/collector-day-auto-close";
 import {
   bumpMissedCollectionAlerts,
   formatCloseDayAlertSummary,
@@ -78,18 +80,7 @@ import { syncPermanentRoutePlanilla } from "@/lib/route-planilla";
 import { dedupeClientsByRef, normalizeAllRouteOrders } from "@/lib/client-route-order";
 import { usePlanillaDayRollover } from "@/lib/planilla-day-sync";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
-import { isoToDispatchLabel, todayIso } from "@/lib/daily-dispatch";
-import { chargeLabel } from "@/lib/loan-preview";
-import { buildPaymentRow } from "@/lib/payment-detail";
-import { cuotaTarget, loanRowAfterPay } from "@/lib/loan-pay";
-import { validatePaymentEvidence } from "@/lib/payment-evidence";
-import { normalizePaymentMethod } from "@/lib/payment-method";
-import {
-  applyCollectorPaymentResult,
-  resolveCollectorPaymentContext,
-  visitAlreadyPaidToday,
-  type CollectorPaymentDraft,
-} from "@/lib/route-sync";
+import { todayIso } from "@/lib/daily-dispatch";
 import { buildRenewalLoans } from "@/lib/loan-renew";
 import {
   CollectorMobileApp,
@@ -106,6 +97,7 @@ import {
   routesForMobileCollector,
 } from "@/lib/mobile-sync";
 import { normalizeClientLifecycle } from "@/lib/client-review";
+import type { CollectorPaymentDraft } from "@/lib/route-sync";
 
 type Props = {
   session: AppSession;
@@ -162,49 +154,59 @@ export function CollectorShell({ session, onLogout }: Props) {
     const bankMovements = readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []);
     let nextPayments = recoverPaymentsFromAssignments(storedAssignments, storedPayments);
     nextPayments = recoverPaymentsFromBankMovements(bankMovements, storedAssignments, nextPayments);
-    const nextDayCloses = synthesizeDayClosesFromAssignments(
+    const seedDayCloses = synthesizeDayClosesFromAssignments(
       storedAssignments,
       nextPayments,
       loadDemoDayCloses<CollectorDayCloseRecord>(),
     );
-    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextDayCloses);
-    setDayCloses(nextDayCloses);
-
+    const expenseDrafts = readDemoJson<CollectorDayExpenseDraft[]>(
+      DEMO_COLLECTOR_DAY_EXPENSES_KEY,
+      [],
+    );
+    const storedLogs = readDemoJson(DEMO_DAILY_LOGS_KEY, COLLECTOR_DAILY_LOGS_SEED);
+    const reconciledLoans = syncAllLoans(storedLoans, nextPayments) as LoanRow[];
     const rebuilt = rebuildDispatchRoutes(
       storedRoutes,
       storedAssignments,
       storedCollectors,
-      storedLoans,
+      reconciledLoans,
       storedClients,
     );
-    const synced = syncPermanentRoutePlanilla(
-      todayIso(),
-      rebuilt,
-      storedClients,
-      storedLoans,
-      storedCollectors,
-      storedAssignments,
-    );
-    const purged = purgeUnclosedPlanillaPayments({
-      date: todayIso(),
+    // Ciclo operativo: cierra jornadas vencidas (23:30) y arma planilla de hoy.
+    const cycle = runOperationalDayCycle({
+      assignments: storedAssignments,
+      routes: rebuilt,
+      logs: storedLogs,
+      dayCloses: seedDayCloses,
+      dayExpenseDrafts: expenseDrafts,
       payments: nextPayments,
-      assignments: synced.assignments,
-      loans: storedLoans,
+      loans: reconciledLoans,
+      clients: storedClients,
+      collectors: storedCollectors,
     });
-    nextPayments = purged.payments;
-    const nextLoans = purged.loans;
+    const deduped = dedupeDailyPaymentsByVisit(cycle.payments, cycle.assignments);
+    nextPayments = deduped.payments;
+    const cycleLoans = syncAllLoans(cycle.loans, nextPayments) as LoanRow[];
+
+    setDayCloses(cycle.dayCloses);
+    setDayExpenseDrafts(cycle.dayExpenseDrafts);
+    setDailyLogs(cycle.logs);
     setPayments(nextPayments);
-    setLoans(nextLoans);
+    setLoans(cycleLoans);
+    setDailyAssignments(cycle.assignments);
+    setRoutes(cycle.routes);
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, cycle.dayCloses);
+    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, cycle.dayExpenseDrafts);
+    writeDemoJson(DEMO_DAILY_LOGS_KEY, cycle.logs);
     writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
-    writeDemoJson(DEMO_LOANS_KEY, nextLoans);
-    setDailyAssignments(synced.assignments);
-    setRoutes(synced.routes);
-    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
-    writeDemoJson(DEMO_ROUTES_KEY, synced.routes);
+    writeDemoJson(DEMO_LOANS_KEY, cycleLoans);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, cycle.assignments);
+    writeDemoJson(DEMO_ROUTES_KEY, cycle.routes);
+
     const accounts = ensureBankAccounts(
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
     );
-    const cleanedMovements = stripRemovedPaymentMovements(bankMovements, purged.removedRefs);
+    const cleanedMovements = stripRemovedPaymentMovements(bankMovements, deduped.removedRefs);
     writeDemoJson(
       DEMO_BANK_MOVEMENTS_KEY,
       syncBankLedger({
@@ -212,13 +214,9 @@ export function CollectorShell({ session, onLogout }: Props) {
         movements: cleanedMovements,
         accounts,
         miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-        dayExpenseDrafts: readDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),
-        dayCloses: nextDayCloses,
+        dayExpenseDrafts: cycle.dayExpenseDrafts,
+        dayCloses: cycle.dayCloses,
       }),
-    );
-    setDailyLogs(readDemoJson(DEMO_DAILY_LOGS_KEY, COLLECTOR_DAILY_LOGS_SEED));
-    setDayExpenseDrafts(
-      readDemoJson<CollectorDayExpenseDraft[]>(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),
     );
     setMonthCloses(
       readDemoJson<CollectorMonthCloseRecord[]>(DEMO_COLLECTOR_MONTH_CLOSES_KEY, []),
@@ -227,11 +225,44 @@ export function CollectorShell({ session, onLogout }: Props) {
   }, []);
 
   const applyPlanillaSync = useCallback(
-    (next: { assignments: typeof dailyAssignments; routes: typeof routes }) => {
+    (next: {
+      assignments: typeof dailyAssignments;
+      routes: typeof routes;
+      loans: typeof loans;
+      logs: typeof dailyLogs;
+      dayCloses: typeof dayCloses;
+      dayExpenseDrafts: typeof dayExpenseDrafts;
+      autoClosedCount: number;
+    }) => {
       setDailyAssignments(next.assignments);
       setRoutes(next.routes);
+      setLoans(next.loans);
+      setDailyLogs(next.logs);
+      setDayCloses(next.dayCloses);
+      setDayExpenseDrafts(next.dayExpenseDrafts);
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
       writeDemoJson(DEMO_ROUTES_KEY, next.routes);
+      writeDemoJson(DEMO_LOANS_KEY, next.loans);
+      writeDemoJson(DEMO_DAILY_LOGS_KEY, next.logs);
+      writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, next.dayCloses);
+      writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, next.dayExpenseDrafts);
+      if (next.autoClosedCount > 0) {
+        writeDemoJson(
+          DEMO_BANK_MOVEMENTS_KEY,
+          syncBankLedger({
+            payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []),
+            movements: normalizeBankMovements(
+              readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
+            ),
+            accounts: ensureBankAccounts(
+              readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
+            ),
+            miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
+            dayExpenseDrafts: next.dayExpenseDrafts,
+            dayCloses: next.dayCloses,
+          }),
+        );
+      }
     },
     [],
   );
@@ -244,6 +275,10 @@ export function CollectorShell({ session, onLogout }: Props) {
       loans,
       collectors,
       assignments: dailyAssignments,
+      payments,
+      dayCloses,
+      dayExpenseDrafts,
+      logs: dailyLogs,
     },
     applyPlanillaSync,
   );
@@ -297,135 +332,49 @@ export function CollectorShell({ session, onLogout }: Props) {
     const ownershipError = assertOwnCollectorPayment(session.collectorRef, draft.collectorRef);
     if (ownershipError) {
       showToast(ownershipError);
-      return;
+      return false;
     }
 
-    const keys = new Set(payments.map((row) => row.idempotencyKey).filter(Boolean) as string[]);
-    if (keys.has(draft.idempotencyKey)) {
-      showToast("Pago ya sincronizado (sin duplicar).");
-      return;
-    }
-
-    const evidenceError = validatePaymentEvidence(draft.method, draft.evidence);
-    if (evidenceError) {
-      showToast(evidenceError);
-      return;
-    }
-
-    const dispatchDate = draft.dispatchDate?.trim() || todayIso();
-    const { loan, route } = resolveCollectorPaymentContext(draft, loans, routes, dispatchDate);
-    if (!loan || loan.balance <= 0) {
-      showToast("No hay préstamo activo para este cliente. No se registró el cobro.");
-      return;
-    }
-
-    const already = visitAlreadyPaidToday(dailyAssignments, payments, {
-      loanRef: loan.ref,
-      clientRef: draft.clientRef,
-      dispatchDate,
-      collectorRef: draft.collectorRef,
+    const committed = commitCollectorPayment({
+      draft,
+      payments,
       loans,
-    });
-    if (already) {
-      showToast(
-        already.ref && already.ref !== "COBRADO"
-          ? `Ya existe el cobro ${already.ref} de este cliente hoy. Un cliente = un pago = un código.`
-          : "Este cliente ya tiene cobro hoy. Un cliente = un pago = un código.",
-      );
-      return;
-    }
-
-    const safeDraft: CollectorPaymentDraft = {
-      ...draft,
-      loanRef: loan.ref,
-      routeRef: route?.ref ?? draft.routeRef,
-      dispatchDate,
-    };
-
-    const result = applyCollectorPaymentResult(loan, safeDraft, route);
-    if (!result.ok) {
-      showToast(result.error);
-      return;
-    }
-    const pay = result.pay;
-
-    const paymentRef = nextPaymentCode(payments);
-    const paidDate = dispatchDate;
-    const paidTime = new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
-    const assignment = dailyAssignments.find(
-      (row) =>
-        row.collectorRef === draft.collectorRef &&
-        row.dispatchDate === paidDate &&
-        (row.loanRef === loan.ref || row.clientRef === draft.clientRef),
-    );
-    const payTarget = cuotaTarget(loan);
-    const payment = buildPaymentRow(
-      {
-        ref: paymentRef,
-        loanRef: loan.ref,
-        when: `${isoToDispatchLabel(paidDate)} · ${paidTime}`,
-        paidDate,
-        paidTime,
-        dueDate: assignment?.chargeDate ?? payTarget?.date,
-        chargeLabel: assignment?.chargeLabel ?? (payTarget?.kind ? chargeLabel(payTarget.kind) : undefined),
-        client: draft.clientName,
-        collector: draft.collectorName,
-        collectorRef: draft.collectorRef,
-        routeRef: safeDraft.routeRef,
-        idempotencyKey: draft.idempotencyKey,
-        amount: draft.amount,
-        type: pay.type,
-        kind: "paid",
-        method: normalizePaymentMethod(draft.method),
-        evidence: draft.evidence?.length ? draft.evidence : undefined,
-        source: "pwa",
-        gps: true,
-      },
-      loan,
-      pay,
-    );
-
-    const nextPayments = [payment, ...payments];
-    const nextLoans = loans.map((row) =>
-      row.ref === loan.ref ? loanRowAfterPay(row, pay, nextPayments) : row,
-    );
-    const nextClients = clients.map((entry) => {
-      if (entry.ref !== draft.clientRef) return entry;
-      return { ...entry, pending: Math.max(0, entry.pending - draft.amount) };
-    });
-    const closedAssignments = applyPaymentToAssignments(
-      dailyAssignments,
-      payment,
-      paidDate,
-      draft.clientRef,
-    );
-    const routesForSync = result.updatedRoute
-      ? routes.map((row) => (row.ref === result.updatedRoute!.ref ? result.updatedRoute! : row))
-      : routes;
-    const planilla = syncPermanentRoutePlanilla(
-      todayIso(),
-      routesForSync,
-      nextClients,
-      nextLoans,
+      clients,
+      routes,
+      assignments: dailyAssignments,
       collectors,
-      closedAssignments,
-    );
-
-    setPayments(nextPayments);
-    setLoans(nextLoans);
-    if (result.updatedRoute) {
-      setDailyLogs((current) => upsertDailyLogPayment(current, payment, result.updatedRoute!));
+    });
+    if (!committed.ok) {
+      showToast(committed.error);
+      return false;
     }
-    setDailyAssignments(planilla.assignments);
-    setRoutes(planilla.routes);
-    setClients(nextClients);
+
+    setPayments(committed.payments);
+    setLoans(committed.loans);
+    setClients(committed.clients);
+    setDailyAssignments(committed.assignments);
+    setRoutes(committed.routes);
+    writeDemoJson(DEMO_PAYMENTS_KEY, committed.payments);
+    writeDemoJson(DEMO_LOANS_KEY, committed.loans);
+    writeDemoJson(DEMO_CLIENTS_KEY, committed.clients);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, committed.assignments);
+    writeDemoJson(DEMO_ROUTES_KEY, committed.routes);
+
+    const paidRoute = committed.routes.find(
+      (row) =>
+        row.ref.startsWith(`RUT-D-${draft.collectorRef}-`) &&
+        committed.payment.routeRef === row.ref,
+    );
+    if (paidRoute) {
+      setDailyLogs((current) => upsertDailyLogPayment(current, committed.payment, paidRoute));
+    }
 
     const accounts = ensureBankAccounts(
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
     );
     writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, accounts);
     const nextMovements = syncBankLedger({
-      payments: nextPayments,
+      payments: committed.payments,
       movements: normalizeBankMovements(
         readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
       ),
@@ -436,7 +385,8 @@ export function CollectorShell({ session, onLogout }: Props) {
     });
     writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, nextMovements);
 
-    showToast(`Cobro ${paymentRef} guardado · sincronizado en Registros y planillas.`);
+    showToast(`Cobro ${committed.payment.ref} guardado · sincronizado en Registros y planillas.`);
+    return true;
   }
 
   function renewCollectorLoan(loanRef: string) {
@@ -647,14 +597,23 @@ export function CollectorShell({ session, onLogout }: Props) {
       loans,
       clients,
       payload.collectorRef,
+      payments,
     );
-    setDailyAssignments(result.assignments);
+    const closedAssignments = applyDayCloseRecordsToAssignments(
+      result.assignments,
+      nextCloses,
+    );
+    setDailyAssignments(closedAssignments);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, closedAssignments);
     setRoutes(result.routes);
+    writeDemoJson(DEMO_ROUTES_KEY, result.routes);
     setDailyLogs(result.logs);
 
-    const alertResult = bumpMissedCollectionAlerts(loans, result.missedLoanRefs);
-    setLoans(alertResult.loans);
-    writeDemoJson(DEMO_LOANS_KEY, alertResult.loans);
+    const alertResult = bumpMissedCollectionAlerts(
+      loans,
+      result.missedLoanRefs,
+      payload.date,
+    );
 
     const parts = [
       `caja menor ${money(record.cashFloat)}`,

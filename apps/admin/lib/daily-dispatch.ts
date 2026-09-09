@@ -81,14 +81,21 @@ export function clientDisplayName(client: ClientRow | undefined, clientRef: stri
 }
 
 export function visitStatusLabel(status: RouteStop["visitStatus"]) {
-  if (status === "cobrado") return "Cobrado";
+  if (status === "cobrado") return "Pago";
   if (status === "parcial") return "Parcial";
   if (status === "omitido") return "Omitido";
   return "Pendiente";
 }
 
+export function visitStatusLabelShort(status: RouteStop["visitStatus"]) {
+  if (status === "cobrado") return "pago";
+  if (status === "parcial") return "Parc.";
+  if (status === "omitido") return "S/C";
+  return "Pend.";
+}
+
 export function visitStatusKind(status: RouteStop["visitStatus"]): StatusKind {
-  if (status === "cobrado") return "paid";
+  if (status === "cobrado") return "ok";
   if (status === "parcial") return "partial";
   if (status === "omitido") return "overdue";
   return "pending";

@@ -52,7 +52,6 @@ export const MODULES: AppModule[] = [
         title: "Panel",
         items: [
           { id: "resumen", label: "Resumen" },
-          { id: "hoy", label: "Operación de hoy" },
           { id: "zonas", label: "Cobertura" },
           { id: "alertas", label: "Alertas" },
           { id: "vista-movil", label: "Vista móvil" },
@@ -234,6 +233,7 @@ export function getViewLabel(moduleId: ModuleId, viewId: string) {
   if (moduleId === "inicio" && viewId === "nuevo-usuario") return "Nuevo usuario";
   if (moduleId === "inicio" && viewId === "asignar-clientes") return "Asignar cobrador";
   if (moduleId === "inicio" && viewId === "zonas") return "Cobertura";
+  if (moduleId === "inicio" && viewId === "hoy") return "Resumen";
   if (moduleId === "inicio" && viewId === "nueva-ruta") return "Nueva ruta";
   if (moduleId === "inicio" && viewId === "ruta-clientes") return "Listado de ruta";
   if (moduleId === "inicio" && viewId === "editar-ruta") return "Modificar ruta";

@@ -35,7 +35,13 @@ import { canRenewLoan } from "@/lib/loan-renew";
 import { syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import { dispatchRouteRef } from "@/lib/collector-dispatch-sync";
-import { collectionAlertLabel, loanCollectionAlerts } from "@/lib/collection-alerts";
+import { collectionAlertLabel, COLLECTION_ALERTS_BEFORE_MORA } from "@/lib/collection-alerts";
+import {
+  planillaAlertBadgeText,
+  planillaAlertTitle,
+  planillaLiveAlertCount,
+  planillaLiveCuota,
+} from "@/lib/planilla-display";
 import type {
   RouteExpenseLine,
   CollectorDayCloseRecord,
@@ -107,7 +113,7 @@ type Props = {
   date?: string;
   preview?: boolean;
   canRegister?: boolean;
-  onRegisterPayment?: (draft: CollectorPaymentDraft) => void;
+  onRegisterPayment?: (draft: CollectorPaymentDraft) => boolean | void;
   /** @deprecated Ya no se usa en la lista: sin pago = sigue el saldo. */
   onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
   onRenewLoan?: (loanRef: string) => void;
@@ -130,6 +136,7 @@ function visitIdentity(
   clients: ClientRow[],
   loans: LoanRow[],
   payments: PaymentRow[],
+  today = todayIso(),
 ) {
   const client = clients.find((row) => row.ref === item.clientRef);
   const awaitingLoan = Boolean(item.awaitingLoan || client?.awaitingLoan);
@@ -138,15 +145,9 @@ function visitIdentity(
     : (item.loanRef ? loans.find((row) => row.ref === item.loanRef) : null) ??
       primaryLoanForClient(item.clientRef, loans);
   const loan = rawLoan ? (syncLoan(rawLoan, payments) as LoanRow) : null;
-  const cuota =
-    awaitingLoan
-      ? 0
-      : item.amountDue > 0
-        ? item.amountDue
-        : loan?.installment && loan.installment > 0
-          ? Math.min(loan.installment, loan.balance)
-          : 0;
+  const cuota = awaitingLoan ? 0 : planillaLiveCuota(item, loan, today);
   const balance = awaitingLoan ? 0 : loan?.balance ?? 0;
+  const alertCount = awaitingLoan ? 0 : planillaLiveAlertCount(item, loan, payments, today);
   const first = client?.name?.trim() || "";
   const last = client?.lastName?.trim() || "";
   const fullName =
@@ -162,11 +163,11 @@ function visitIdentity(
     loan,
     loanRef: loan?.ref ?? item.loanRef ?? "",
     awaitingLoan,
-    alertCount: loan ? loanCollectionAlerts(loan) : 0,
-    alertLabel:
-      loan && loanCollectionAlerts(loan) > 0
-        ? collectionAlertLabel(loanCollectionAlerts(loan))
-        : "",
+    alertCount,
+    alertBadge: planillaAlertBadgeText(alertCount),
+    alertTitle: planillaAlertTitle(alertCount),
+    alertLabel: alertCount > 0 ? collectionAlertLabel(alertCount) : "",
+    inMora: alertCount >= COLLECTION_ALERTS_BEFORE_MORA,
   };
 }
 
@@ -220,8 +221,8 @@ export function CollectorMobileApp({
   }, [menuOpen]);
 
   const routeOptions = useMemo(
-    () => collectorMobileRoutes(collector.ref, assignments, loans, clients, routes),
-    [assignments, clients, collector.ref, loans, routes],
+    () => collectorMobileRoutes(collector.ref, assignments, loans, clients, routes, dayCloses),
+    [assignments, clients, collector.ref, dayCloses, loans, routes],
   );
 
   const activeDate = useMemo(() => {
@@ -316,11 +317,25 @@ export function CollectorMobileApp({
     null;
 
   const queue = useMemo(
-    () => collectorMobileQueue(collector.ref, activeDate, assignments, loans, clients, routes),
-    [activeDate, assignments, clients, collector.ref, loans, routes],
+    () =>
+      collectorMobileQueue(
+        collector.ref,
+        activeDate,
+        assignments,
+        loans,
+        clients,
+        routes,
+        dayCloses,
+      ),
+    [activeDate, assignments, clients, collector.ref, dayCloses, loans, routes],
   );
-  const dayWasClosedByCollector = queue.dispatched.some((row) => Boolean(row.dayClosedAt));
+  const dayWasClosedByCollector = queue.closed;
   const dayLocked = dayWasClosedByCollector;
+  const today = date ?? todayIso();
+  const isPastOpenDay = !dayLocked && activeDate < today;
+  const canCloseDay = Boolean(onCloseDay) && !dayLocked && queue.dispatched.length > 0;
+  /** No más cobros si la jornada cerró o ya no hay pendientes. */
+  const collectionStopped = dayLocked || queue.allDone;
 
   const routeRef = queue.routeRef ?? dispatchRouteRef(collector.ref, activeDate);
   const visibleItems = listFilter === "done" ? queue.done : queue.pending;
@@ -383,7 +398,7 @@ export function CollectorMobileApp({
   }, [activeDate, listFilter]);
 
   function togglePay(item: DailyCollectionAssignment) {
-    if (!canCollect || queue.closed || !onRegisterPayment) return;
+    if (!canCollect || collectionStopped || !onRegisterPayment) return;
     const key = itemKey(item);
     setExpandedKey((current) => {
       const next = current === key ? null : key;
@@ -411,8 +426,8 @@ export function CollectorMobileApp({
 
   function openExpenses() {
     // Inicio con jornada cerrada: datos solo desde Historial.
-    if ((dayLocked || queue.closed) && !fromHistory) return;
-    if (dayLocked || queue.closed) {
+    if (dayLocked && !fromHistory) return;
+    if (dayLocked) {
       setExpandedKey(null);
       setConfirmingClose(false);
       setEditingExpenses(false);
@@ -428,8 +443,8 @@ export function CollectorMobileApp({
   }
 
   function openRecaudoDetail() {
-    if ((dayLocked || queue.closed) && !fromHistory) return;
-    if (!dayLocked && !queue.closed) {
+    if (dayLocked && !fromHistory) return;
+    if (!dayLocked) {
       selectFilter("done");
       return;
     }
@@ -476,7 +491,9 @@ export function CollectorMobileApp({
       expenses: savedExpenses,
     });
     setConfirmingClose(false);
-    setFromHistory(false);
+    // Queda en el día cerrado con el cuadre (como Lina), no vuelve al inicio en blanco.
+    setFromHistory(true);
+    setListFilter("pending");
   }
 
   function confirmCloseMonth() {
@@ -505,12 +522,17 @@ export function CollectorMobileApp({
   const visitTotal = visitRows.length;
 
   /** Inicio cerrado: paneles en cero. Historial llena y habilita Recaudo/Gastos. */
-  const onInicioCerrado = (dayLocked || queue.closed) && !fromHistory;
+  const onInicioCerrado = dayLocked && !fromHistory;
   const showTopDayTotals = !onInicioCerrado;
   const topRecaudo = showTopDayTotals ? recaudo.total : 0;
   const topGastos = showTopDayTotals ? savedExpensesTotal : 0;
   const topCobrosLabel =
     showTopDayTotals && visitTotal > 0 ? `${cobradoCount}/${visitTotal} cobros` : null;
+
+  const openPlanillaDates = useMemo(
+    () => new Set(routeOptions.filter((row) => !row.closed).map((row) => row.date)),
+    [routeOptions],
+  );
 
   return (
     <div className={`collector-mobile-app${preview ? " is-preview" : ""}`}>
@@ -568,7 +590,7 @@ export function CollectorMobileApp({
                 type="button"
                 role="menuitem"
                 className="collector-mobile-menu-item"
-                disabled={!onCloseDay || dayLocked || !queue.dispatched.length}
+                disabled={!canCloseDay}
                 title="Revisar y confirmar cierre del día"
                 onClick={openCloseConfirm}
               >
@@ -620,11 +642,23 @@ export function CollectorMobileApp({
                   </div>
                 </li>
               ) : null}
-              {dayHistory.filter((row) => row.cobro > 0 || row.gasto > 0 || row.date === activeDate).length === 0 ? (
+              {dayHistory.filter(
+                (row) =>
+                  row.cobro > 0 ||
+                  row.gasto > 0 ||
+                  row.date === activeDate ||
+                  openPlanillaDates.has(row.date),
+              ).length === 0 ? (
                 <li className="collector-mobile-day-history-empty">Sin movimientos este mes.</li>
               ) : (
                 dayHistory
-                  .filter((row) => row.cobro > 0 || row.gasto > 0 || row.date === activeDate)
+                  .filter(
+                    (row) =>
+                      row.cobro > 0 ||
+                      row.gasto > 0 ||
+                      row.date === activeDate ||
+                      openPlanillaDates.has(row.date),
+                  )
                   .map((row) => (
                   <li key={row.date}>
                     <button
@@ -697,7 +731,16 @@ export function CollectorMobileApp({
         </div>
       ) : null}
 
-      <div className="collector-mobile-stats">
+      <div className={dayLocked ? "collector-mobile-stats" : "collector-mobile-stats has-inicial"}>
+        {!dayLocked ? (
+          <div
+            className="collector-mobile-stat is-inicial readonly"
+            title="Saldo en caja al iniciar el día (cierre del día anterior)"
+          >
+            <span>Inicial</span>
+            <b>{money(dayCuadre.saldoInicial)}</b>
+          </div>
+        ) : null}
         <button
           type="button"
           className={
@@ -753,14 +796,14 @@ export function CollectorMobileApp({
           disabled={
             onInicioCerrado
               ? true
-              : queue.closed
+              : dayLocked
                 ? !queue.dispatched.length && savedExpensesTotal <= 0
                 : !onSaveExpenses || !queue.dispatched.length
           }
           title={
             onInicioCerrado
               ? "Consulta el día en Historial"
-              : dayLocked || queue.closed
+              : dayLocked
                 ? "Ver gastos del día"
                 : "Guardar gastos de la ruta (sin cerrar el día)"
           }
@@ -770,6 +813,18 @@ export function CollectorMobileApp({
           <b>{topGastos > 0 ? money(topGastos) : "—"}</b>
         </button>
       </div>
+
+      {isPastOpenDay && canCloseDay && !confirmingClose && !editingExpenses ? (
+        <div className="collector-mobile-month-alert" role="status">
+          <p>
+            El día {queue.dateLabel} sigue abierto. Los cobros ya hechos quedan registrados; cierra
+            esta jornada para dejar el historial en orden.
+          </p>
+          <button type="button" className="collector-mobile-pay-link" onClick={openCloseConfirm}>
+            Cerrar día {queue.dateLabel}
+          </button>
+        </div>
+      ) : null}
 
       {queue.closed && listFilter === "pending" && !editingExpenses && !confirmingClose ? (
         cuadreDetail && fromHistory ? (
@@ -786,7 +841,7 @@ export function CollectorMobileApp({
         ) : (
         <section className="collector-mobile-home-cuadre" aria-label="Cuadre de la jornada">
           <div className="collector-mobile-home-cuadre-head">
-            <Pill label={dayWasClosedByCollector ? "Jornada cerrada" : "Ruta cerrada"} kind="paid" />
+            <Pill label="Jornada cerrada" kind="paid" />
             <div className="collector-mobile-home-cuadre-title-row">
               <h2>
                 {activeDate === (date ?? todayIso())
@@ -960,16 +1015,18 @@ export function CollectorMobileApp({
                   ? recaudo.total > 0
                     ? "El cuadre arriba es para tus cuentas (efectivo / Nequi). Abajo van las visitas de la ruta."
                     : "Aún no hay cobros. Al pagar, el cuadre suma efectivo y Nequi por separado."
-                  : queue.closed
-                    ? "Ruta cerrada. Elige otra ruta si tienes más asignadas."
-                    : "¡Listo! No quedan cobros pendientes en esta ruta."}
+                  : dayLocked
+                    ? "Jornada cerrada. Elige otra fecha en Historial si tienes más."
+                    : queue.allDone
+                      ? "Listo: ya no hay pendientes. Cierra el día en el menú para archivar la jornada."
+                      : "¡Listo! No quedan cobros pendientes en esta ruta."}
               </li>
             ) : (
               visibleItems.map((item) => {
                 const key = itemKey(item);
                 const isOpen = expandedKey === key;
                 const isDoneView = listFilter === "done";
-                const identity = visitIdentity(item, clients, loans, payments);
+                const identity = visitIdentity(item, clients, loans, payments, activeDate);
                 const paidPayment = item.paymentRef
                   ? payments.find((row) => row.ref === item.paymentRef)
                   : undefined;
@@ -978,7 +1035,7 @@ export function CollectorMobileApp({
                   : null;
                 const canLend =
                   identity.awaitingLoan &&
-                  !queue.closed &&
+                  !collectionStopped &&
                   canCollect &&
                   Boolean(onCreateQuickLoan);
                 const canAct =
@@ -986,7 +1043,7 @@ export function CollectorMobileApp({
                   item.visitStatus !== "cobrado" &&
                   item.visitStatus !== "omitido" &&
                   !item.paymentRef &&
-                  !queue.closed &&
+                  !collectionStopped &&
                   canCollect &&
                   Boolean(identity.loanRef) &&
                   identity.balance > 0;
@@ -1067,19 +1124,15 @@ export function CollectorMobileApp({
                           <span
                             className={
                               identity.alertCount > 0
-                                ? identity.alertCount >= 5
+                                ? identity.inMora
                                   ? "collector-mobile-alert-n is-mora"
                                   : "collector-mobile-alert-n"
                                 : "collector-mobile-alert-n is-empty"
                             }
-                            title={
-                              identity.alertCount > 0
-                                ? identity.alertLabel || `${identity.alertCount} día(s) sin pago`
-                                : undefined
-                            }
+                            title={identity.alertTitle}
                             aria-hidden={identity.alertCount <= 0}
                           >
-                            {identity.alertCount > 0 ? identity.alertCount : ""}
+                            {identity.alertBadge}
                           </span>
                           <button
                             type="button"
@@ -1132,7 +1185,7 @@ export function CollectorMobileApp({
                               : undefined
                           }
                           onSubmit={(payload) => {
-                            onRegisterPayment({
+                            const ok = onRegisterPayment({
                               idempotencyKey: payload.idempotencyKey,
                               routeRef,
                               clientRef: item.clientRef,
@@ -1146,7 +1199,8 @@ export function CollectorMobileApp({
                               collectorName: collector.name,
                               clientName: identity.fullName,
                             });
-                            closeCard();
+                            // Solo cerrar si el cobro quedó registrado (o el handler no reporta fallo).
+                            if (ok !== false) closeCard();
                           }}
                         />
                       </div>

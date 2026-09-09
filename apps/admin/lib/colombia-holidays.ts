@@ -119,3 +119,23 @@ export function weekdayLabel(iso: string) {
 export function utcWeekdayIndex(iso: string) {
   return utcWeekday(iso);
 }
+
+/** Suma días de calendario a una fecha ISO (UTC). */
+export function addCalendarDaysIso(iso: string, days: number) {
+  return addDaysIso(iso, days);
+}
+
+/**
+ * Días de cobro (lun–sáb, sin festivos) estrictamente después de `fromIso`
+ * hasta `untilIso` inclusive. Domingos y festivos no cuentan.
+ */
+export function countCollectionDaysAfter(fromIso: string, untilIso: string) {
+  if (!fromIso || !untilIso || fromIso >= untilIso) return 0;
+  let count = 0;
+  let cur = addDaysIso(fromIso, 1);
+  while (cur <= untilIso) {
+    if (isDailyCollectionDay(cur)) count += 1;
+    cur = addDaysIso(cur, 1);
+  }
+  return count;
+}

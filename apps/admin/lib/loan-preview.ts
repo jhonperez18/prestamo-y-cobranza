@@ -1,5 +1,7 @@
 import { isDailyCollectionDay } from "@/lib/colombia-holidays";
+import { reconcileLoanCollectionAlerts } from "@/lib/collection-alerts";
 import { loanStatusPill } from "@/lib/loan-status";
+import type { LoanRow } from "@/lib/mock-data";
 
 export type PayFrequency = "diario" | "semanal" | "quincenal" | "mensual";
 export type LoanTermMonths = 1 | 2 | 3;
@@ -879,19 +881,15 @@ export function normalizeLoan<T extends LoanTermsRow>(
     paid: ledger.paid,
     balance: ledger.balance,
   };
-  const pill = loanStatusPill(merged);
-  const alerts = Number((merged as { collectionAlerts?: number }).collectionAlerts) || 0;
-  if (alerts >= 5) {
-    return {
-      ...merged,
-      collectionAlerts: alerts,
-      status: "Mora",
-      kind: "overdue",
-    } as T;
-  }
+  const reconciled = reconcileLoanCollectionAlerts(
+    merged as LoanRow,
+    undefined,
+    payments as { loanRef?: string; paidDate?: string; amount?: number }[] | undefined,
+  );
+  const pill = loanStatusPill(reconciled);
   return {
-    ...merged,
-    collectionAlerts: alerts || undefined,
+    ...reconciled,
+    collectionAlerts: reconciled.collectionAlerts || undefined,
     status: pill.label,
     kind: pill.kind,
   } as T;

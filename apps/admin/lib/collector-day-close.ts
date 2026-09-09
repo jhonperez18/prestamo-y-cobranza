@@ -436,15 +436,70 @@ export function finalizeCollectorDayClose(input: {
   movementRefs: string[];
 }): CollectorDayCloseRecord {
   const expensesTotal = sumExpenseLines(input.lines);
+  const date = normalizeHistoryDate(input.draft.date) || input.draft.date;
   return {
     ...input.draft,
-    ref: dayCloseRef(input.draft.collectorRef, input.draft.date),
+    date,
+    ref: dayCloseRef(input.draft.collectorRef, date),
     closedAt: new Date().toISOString(),
     expenses: input.lines,
     expensesTotal,
     cashFloat: cashFloatAfterExpenses(input.draft.collected, expensesTotal),
     movementRefs: input.movementRefs,
   };
+}
+
+/**
+ * Si ya hay CIE- del día pero la planilla no tiene dayClosedAt (cierre a medias),
+ * sella las visitas para que la app muestre “Jornada cerrada”.
+ */
+export function applyDayCloseRecordsToAssignments(
+  assignments: DailyCollectionAssignment[],
+  dayCloses: CollectorDayCloseRecord[],
+): DailyCollectionAssignment[] {
+  if (!assignments.length || !dayCloses.length) return assignments;
+
+  const byKey = new Map<string, CollectorDayCloseRecord>();
+  for (const row of dayCloses) {
+    const date = normalizeHistoryDate(row.date);
+    if (!date || !row.collectorRef) continue;
+    byKey.set(`${row.collectorRef}::${date}`, row);
+  }
+  if (!byKey.size) return assignments;
+
+  return assignments.map((row) => {
+    const date = normalizeHistoryDate(row.dispatchDate);
+    if (!date) return row;
+    const close = byKey.get(`${row.collectorRef}::${date}`);
+    if (!close || row.dayClosedAt) return row;
+
+    const closedAt =
+      close.closedAt && !close.closedAt.includes("T") && close.closedAt.length <= 8
+        ? close.closedAt
+        : new Date(close.closedAt || Date.now()).toLocaleTimeString("es-CO", {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+
+    const paid =
+      row.visitStatus === "cobrado" ||
+      row.visitStatus === "omitido" ||
+      Boolean(row.paymentRef);
+
+    return {
+      ...row,
+      dispatched: true,
+      dispatchedAt: row.dispatchedAt ?? close.closedAt,
+      dayClosedAt: closedAt,
+      amountDue: 0,
+      visitStatus: paid
+        ? row.visitStatus === "omitido"
+          ? ("omitido" as const)
+          : ("cobrado" as const)
+        : ("omitido" as const),
+      skipReason: paid ? row.skipReason : row.skipReason || "Cierre de jornada",
+    };
+  });
 }
 
 export function dayCloseSummaryLabel(record: CollectorDayCloseRecord) {
@@ -493,7 +548,7 @@ export function recoverPaymentsFromAssignments(
 
 /**
  * Reconstruye cobros desde movimientos bancarios ligados a PG- / paymentRef.
- * Asocia cobrador por paymentRef en planilla o por cliente+fecha.
+ * Asocia cobrador y préstamo por paymentRef en planilla o por cliente+fecha.
  */
 export function recoverPaymentsFromBankMovements(
   movements: BankMovement[],
@@ -508,12 +563,19 @@ export function recoverPaymentsFromBankMovements(
     if (amount <= 0) continue;
     const date = normalizeHistoryDate(mov.valueDate || mov.opDate || "");
     if (!date) continue;
+    const third = String(mov.thirdParty ?? "").trim().toLowerCase();
     const match =
       assignments.find((row) => row.paymentRef === pg) ??
       assignments.find(
         (row) =>
           normalizeHistoryDate(row.dispatchDate) === date &&
-          row.clientName.trim().toLowerCase() === String(mov.thirdParty ?? "").trim().toLowerCase(),
+          Boolean(row.loanRef) &&
+          row.clientName.trim().toLowerCase() === third,
+      ) ??
+      assignments.find(
+        (row) =>
+          normalizeHistoryDate(row.dispatchDate) === date &&
+          row.clientName.trim().toLowerCase() === third,
       );
     byRef.set(pg, {
       ref: pg,
@@ -528,6 +590,25 @@ export function recoverPaymentsFromBankMovements(
       type: "Cuota",
       kind: "paid",
       source: "pwa",
+    });
+  }
+  // Completa loanRef/collectorRef en PG ya existentes si la planilla lo conoce.
+  for (const [ref, pay] of byRef) {
+    if (pay.loanRef && pay.collectorRef) continue;
+    const match =
+      assignments.find((row) => row.paymentRef === ref) ??
+      assignments.find(
+        (row) =>
+          normalizeHistoryDate(row.dispatchDate) === normalizeHistoryDate(pay.paidDate ?? "") &&
+          Boolean(row.loanRef) &&
+          row.clientName.trim().toLowerCase() === (pay.client || "").trim().toLowerCase(),
+      );
+    if (!match) continue;
+    byRef.set(ref, {
+      ...pay,
+      loanRef: pay.loanRef || match.loanRef || undefined,
+      collectorRef: pay.collectorRef || match.collectorRef,
+      collector: pay.collector || match.collector || "",
     });
   }
   return [...byRef.values()];

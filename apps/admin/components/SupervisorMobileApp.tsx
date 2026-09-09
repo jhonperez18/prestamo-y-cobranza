@@ -1,12 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { LoanReportView } from "@/components/LoanReportView";
 import { Pill } from "@/components/ui";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import { routeCoverageSummaries } from "@/lib/collector-preview";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 import { nextRouteOrder } from "@/lib/client-route-order";
+import { isOperationalClient } from "@/lib/client-review";
 import {
   clientsEligibleForNewLoan,
   type QuickLoanDraft,
@@ -20,7 +22,14 @@ import {
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
 import { todayIso } from "@/lib/daily-dispatch";
+import {
+  visitStatusKind,
+  visitStatusLabel,
+  visitStatusLabelShort,
+} from "@/lib/collector-mobile";
+import { enrichSupervisorPlanillaRow } from "@/lib/planilla-display";
 import { isoToDisplay } from "@/lib/loan-preview";
+import { primaryLoanForClient } from "@/lib/route-sync";
 import {
   money,
   catalogRoutes,
@@ -57,7 +66,7 @@ type Props = {
   onLogout?: () => void;
 };
 
-type SupervisorView = "inicio" | "planilla" | "caja" | "nuevo";
+type SupervisorView = "inicio" | "planilla" | "caja" | "nuevo" | "clientes";
 type NuevoMode = "menu" | "cliente" | "prestamo";
 type RouteDetailMode = "totales" | "planilla" | "prestamos";
 
@@ -80,27 +89,6 @@ type RouteLiquidacion = {
   statusLabel: string;
   statusKind: StatusKind;
 };
-
-function visitLabel(status?: DailyCollectionAssignment["visitStatus"]) {
-  if (status === "cobrado") return "Cobrado";
-  if (status === "parcial") return "Parcial";
-  if (status === "omitido") return "sin cobro";
-  return "Pendiente";
-}
-
-function visitLabelShort(status?: DailyCollectionAssignment["visitStatus"]) {
-  if (status === "cobrado") return "Cob.";
-  if (status === "parcial") return "Parc.";
-  if (status === "omitido") return "S/C";
-  return "Pend.";
-}
-
-function visitKind(status?: DailyCollectionAssignment["visitStatus"]): StatusKind {
-  if (status === "cobrado") return "paid";
-  if (status === "parcial") return "partial";
-  if (status === "omitido") return "overdue";
-  return "pending";
-}
 
 function LiquidacionTable({
   rows,
@@ -238,10 +226,6 @@ function RouteBoardCard({
   );
 }
 
-function loanBalanceForAssignment(loans: LoanRow[], loanRef: string) {
-  return loans.find((row) => row.ref === loanRef)?.balance ?? 0;
-}
-
 function PlanillaTable({
   rows,
 }: {
@@ -252,6 +236,9 @@ function PlanillaTable({
     saldo: number;
     cuota: number;
     alertCount?: number;
+    alertBadge?: string;
+    alertTitle?: string;
+    inMora?: boolean;
     visitStatus?: DailyCollectionAssignment["visitStatus"];
   }>;
 }) {
@@ -264,41 +251,50 @@ function PlanillaTable({
             <th className="is-nombre">Nombre</th>
             <th className="is-num">Saldo</th>
             <th className="is-num">Cuota</th>
-            <th className="is-alert" aria-label="Atraso" />
+            <th className="is-alert" aria-label="Alerta" />
             <th className="is-estado">Estado</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.key}>
-              <td className="is-ruta">{row.index}</td>
-              <td className="is-nombre" title={row.clientName}>
-                {row.clientName}
-              </td>
-              <td className="is-num">{money(row.saldo, { symbol: false })}</td>
-              <td className="is-num">{row.cuota > 0 ? money(row.cuota, { symbol: false }) : "—"}</td>
-              <td className="is-alert">
-                <span
-                  className={
-                    (row.alertCount ?? 0) > 0
-                      ? "supervisor-mobile-alert-n"
-                      : "supervisor-mobile-alert-n is-empty"
-                  }
-                  title={
-                    (row.alertCount ?? 0) > 0 ? `${row.alertCount} día(s) sin pago` : undefined
-                  }
-                  aria-hidden={(row.alertCount ?? 0) <= 0}
-                >
-                  {(row.alertCount ?? 0) > 0 ? row.alertCount : ""}
-                </span>
-              </td>
-              <td className="is-estado">
-                <span title={visitLabel(row.visitStatus)}>
-                  <Pill label={visitLabelShort(row.visitStatus)} kind={visitKind(row.visitStatus)} />
-                </span>
-              </td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const badge = row.alertBadge ?? "";
+            const alertOn = Boolean(badge);
+            return (
+              <tr key={row.key}>
+                <td className="is-ruta">{row.index}</td>
+                <td className="is-nombre" title={row.clientName}>
+                  {row.clientName}
+                </td>
+                <td className="is-num">{money(row.saldo, { symbol: false })}</td>
+                <td className="is-num">
+                  {row.cuota > 0 ? money(row.cuota, { symbol: false }) : "—"}
+                </td>
+                <td className="is-alert">
+                  <span
+                    className={
+                      alertOn
+                        ? row.inMora
+                          ? "supervisor-mobile-alert-n is-mora"
+                          : "supervisor-mobile-alert-n"
+                        : "supervisor-mobile-alert-n is-empty"
+                    }
+                    title={row.alertTitle}
+                    aria-hidden={!alertOn}
+                  >
+                    {badge}
+                  </span>
+                </td>
+                <td className="is-estado">
+                  <span title={visitStatusLabel(row.visitStatus)}>
+                    <Pill
+                      label={visitStatusLabelShort(row.visitStatus)}
+                      kind={visitStatusKind(row.visitStatus)}
+                    />
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -369,6 +365,8 @@ export function SupervisorMobileApp({
   const [nuevoLoanClientRef, setNuevoLoanClientRef] = useState<string | null>(null);
   /** null = todas las rutas; string = nombre de ruta filtrada en planilla. */
   const [planillaRouteFilter, setPlanillaRouteFilter] = useState<string | null>(null);
+  const [clientesRouteFilter, setClientesRouteFilter] = useState<string | null>(null);
+  const [clientesLoanClientRef, setClientesLoanClientRef] = useState<string | null>(null);
 
   const coverage = useMemo(
     () => routeCoverageSummaries(collectors, routes, payments, clients, assignments, today),
@@ -517,6 +515,10 @@ export function SupervisorMobileApp({
     setNuevoName("");
     setNuevoPhone("");
     if (next !== "planilla") setPlanillaRouteFilter(null);
+    if (next !== "clientes") {
+      setClientesRouteFilter(null);
+      setClientesLoanClientRef(null);
+    }
     setView(next);
   }
 
@@ -552,6 +554,27 @@ export function SupervisorMobileApp({
         (collectorRef ? row.collectorRef === collectorRef : false),
     );
   }, [todayAssignments, planillaRouteFilter, liquidaciones, routes]);
+
+  const supervisorClients = useMemo(() => {
+    const rows = clients
+      .filter((row) => isOperationalClient(row))
+      .slice()
+      .sort((a, b) => {
+        const routeCmp = String(a.route).localeCompare(String(b.route), undefined, {
+          numeric: true,
+        });
+        if (routeCmp) return routeCmp;
+        return `${a.name} ${a.lastName}`.localeCompare(`${b.name} ${b.lastName}`, "es");
+      });
+    if (!clientesRouteFilter) return rows;
+    return rows.filter((row) => String(row.route) === clientesRouteFilter);
+  }, [clients, clientesRouteFilter]);
+
+  const clientesLoanClient =
+    clients.find((row) => row.ref === clientesLoanClientRef) ?? null;
+  const clientesLoan = clientesLoanClient
+    ? primaryLoanForClient(clientesLoanClient.ref, loans)
+    : null;
 
   const nuevoRoute = liquidaciones.find((row) => row.routeRef === nuevoRouteRef) ?? null;
 
@@ -620,7 +643,7 @@ export function SupervisorMobileApp({
       </header>
 
       <div
-        className="supervisor-mobile-kpis is-home has-nuevo"
+        className="supervisor-mobile-kpis is-home has-nuevo has-clientes"
         role="group"
         aria-label="Menú supervisor"
       >
@@ -681,6 +704,21 @@ export function SupervisorMobileApp({
           onClick={() => goToView("nuevo")}
         >
           <b>NUEVO</b>
+        </button>
+        <button
+          type="button"
+          className={
+            view === "clientes"
+              ? "supervisor-mobile-kpi is-clientes on"
+              : "supervisor-mobile-kpi is-clientes"
+          }
+          onClick={() => {
+            setClientesRouteFilter(null);
+            setClientesLoanClientRef(null);
+            goToView("clientes");
+          }}
+        >
+          <b>CLIENTES</b>
         </button>
       </div>
 
@@ -775,15 +813,9 @@ export function SupervisorMobileApp({
                 <p className="ficha-empty">Sin planilla enviada hoy.</p>
               ) : (
                 <PlanillaTable
-                  rows={openAssignments.map((row, index) => ({
-                    key: row.itemId,
-                    index: index + 1,
-                    clientName: row.clientName,
-                    saldo: loanBalanceForAssignment(loans, row.loanRef),
-                    cuota: row.amountDue,
-                    alertCount: row.alertCount,
-                    visitStatus: row.visitStatus,
-                  }))}
+                  rows={openAssignments.map((row, index) =>
+                    enrichSupervisorPlanillaRow(row, index + 1, loans, payments, today),
+                  )}
                 />
               )}
             </>
@@ -851,15 +883,9 @@ export function SupervisorMobileApp({
             <p className="ficha-empty">No hay cobros en planilla hoy.</p>
           ) : (
             <PlanillaTable
-              rows={planillaAssignments.map((row, index) => ({
-                key: `${row.itemId}-${row.collectorRef}`,
-                index: index + 1,
-                clientName: row.clientName,
-                saldo: loanBalanceForAssignment(loans, row.loanRef),
-                cuota: row.amountDue,
-                alertCount: row.alertCount,
-                visitStatus: row.visitStatus,
-              }))}
+              rows={planillaAssignments.map((row, index) =>
+                enrichSupervisorPlanillaRow(row, index + 1, loans, payments, today),
+              )}
             />
           )}
         </section>

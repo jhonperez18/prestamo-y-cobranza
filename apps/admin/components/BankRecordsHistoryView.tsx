@@ -13,7 +13,6 @@ import { BankSortTh, useBankMovementSort } from "@/components/BankSortTh";
 import {
   bankMovementDescriptionText,
   bankMovementMethodLabel,
-  bankMovementsWithDisplayBalance,
   expenseCategoryLabel,
   filterBankHistory,
   formatBankAmount,
@@ -28,6 +27,7 @@ import {
   periodLabel,
   bankVisibleRef,
   reconcilePeriod,
+  sortBankMovements,
   summarizeMovements,
 } from "@/lib/bank";
 import { BANK_RECORD_COLUMNS, BANK_RECORD_DEFAULT_COLS } from "@/lib/table-columns";
@@ -65,7 +65,7 @@ export function BankRecordsHistoryView({
   const { isVisible, visibleCols, toggleColumn } = useColumnVisibility(
     BANK_RECORD_COLUMNS,
     BANK_RECORD_DEFAULT_COLS,
-    { storageKey: "nexo.banco.registros.columns.v4" },
+    { storageKey: "nexo.banco.registros.columns.v5" },
   );
   const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -123,19 +123,11 @@ export function BankRecordsHistoryView({
     [normalized, scope, accountFilter, periodFilter, kindFilter, query],
   );
 
-  const openingForBalance = useMemo(() => {
-    if (accountFilter) {
-      const account = accounts.find((row) => row.ref === accountFilter);
-      return account?.openingBalance ?? 0;
-    }
-    return accounts.reduce((sum, row) => sum + row.openingBalance, 0);
-  }, [accounts, accountFilter]);
-
   const { sortKey, sortDir, toggleSort } = useBankMovementSort("valueDate");
 
   const history = useMemo(
-    () => bankMovementsWithDisplayBalance(filtered, sortKey, sortDir, openingForBalance),
-    [filtered, openingForBalance, sortKey, sortDir],
+    () => sortBankMovements(filtered, sortKey, sortDir),
+    [filtered, sortKey, sortDir],
   );
 
   const visibleRows = useMemo(() => history.slice(0, pageSize), [history, pageSize]);
@@ -356,8 +348,6 @@ export function BankRecordsHistoryView({
             {isVisible("thirdParty") ? <col className="br-third" /> : null}
             {isVisible("debit") ? <col className="br-debit" /> : null}
             {isVisible("credit") ? <col className="br-credit" /> : null}
-            {isVisible("balance") ? <col className="br-balance" /> : null}
-            {isVisible("extract") ? <col className="br-extract" /> : null}
             <col className="br-picker" />
           </colgroup>
           <thead>
@@ -396,8 +386,6 @@ export function BankRecordsHistoryView({
                   align="right"
                 />
               ) : null}
-              {isVisible("balance") ? <th className="bank-num">Saldo</th> : null}
-              {isVisible("extract") ? <th className="center">Estado</th> : null}
               <ColumnPickerHeadCell>
                 <ColumnPicker
                   columns={BANK_RECORD_COLUMNS}
@@ -498,30 +486,6 @@ export function BankRecordsHistoryView({
                         {row.credit > 0 ? formatBankAmount(row.credit) : "—"}
                       </td>
                     ) : null}
-                    {isVisible("balance") ? (
-                      <td className="bank-num bank-balance">
-                        {formatBankAmount(row.runningBalance)}
-                      </td>
-                    ) : null}
-                    {isVisible("extract") ? (
-                      <td className="center">
-                        {row.reconciled ? (
-                          <button
-                            type="button"
-                            className="btn-link bank-extract-ref-link"
-                            title="Ver extracto conciliado"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onOpenPeriod(row.accountRef, row.period);
-                            }}
-                          >
-                            {periodLabel(row.period)}
-                          </button>
-                        ) : (
-                          <Pill label="Pendiente" kind="pending" />
-                        )}
-                      </td>
-                    ) : null}
                     <ColumnPickerBodyCell />
                   </tr>
                 );
@@ -549,12 +513,6 @@ export function BankRecordsHistoryView({
                 {isVisible("credit") ? (
                   <td className="bank-num">{formatBankAmount(summary.totalCredit)}</td>
                 ) : null}
-                {isVisible("balance") ? (
-                  <td className="bank-num">
-                    {formatBankAmount(openingForBalance + summary.balance)}
-                  </td>
-                ) : null}
-                {isVisible("extract") ? <td /> : null}
                 <ColumnPickerBodyCell />
               </tr>
             </tfoot>

@@ -73,7 +73,7 @@ export function buildAlerts(
   const warning = withAlerts.filter((loan) => !isLoanInCollectionMora(loan));
 
   if (warning.length > 0) {
-    const byLevel = [1, 2, 3, 4]
+    const byLevel = [1, 2, 3]
       .map((level) => ({
         level,
         count: warning.filter((loan) => loanCollectionAlerts(loan) === level).length,
@@ -97,7 +97,7 @@ export function buildAlerts(
     rows.push({
       id: "cobro-mora",
       when: "Hoy",
-      message: `${inMora.length} préstamo${inMora.length === 1 ? "" : "s"} en mora (5 días sin pago)`,
+      message: `${inMora.length} préstamo${inMora.length === 1 ? "" : "s"} en mora (4 días hábiles sin pago)`,
       pill: "Mora",
       kind: "overdue",
       module: "cartera",

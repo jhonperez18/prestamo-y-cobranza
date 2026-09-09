@@ -608,6 +608,12 @@
       background: #fff;
       border-bottom: 1px solid #dbe5df;
     }
+    .collector-mobile-stats.has-inicial {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 3px;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
     .collector-mobile-stat {
       text-align: center;
       padding: 2px 2px;
@@ -619,6 +625,27 @@
       font: inherit;
       min-height: 0;
       line-height: 1.05;
+      min-width: 0;
+    }
+    .collector-mobile-stats.has-inicial .collector-mobile-stat {
+      padding: 2px 1px;
+    }
+    .collector-mobile-stats.has-inicial .collector-mobile-stat span {
+      font-size: 9px;
+    }
+    .collector-mobile-stats.has-inicial .collector-mobile-stat b {
+      font-size: 10px;
+    }
+    .collector-mobile-stats.has-inicial .collector-mobile-stat-meta {
+      font-size: 8px;
+    }
+    .collector-mobile-stat.is-inicial {
+      background: #f0f7f4;
+      border-color: #9dc4b4;
+      cursor: default;
+    }
+    .collector-mobile-stat.is-inicial b {
+      color: #14532d;
     }
     .collector-mobile-stat.is-pending {
       background: #fff7ed;
@@ -2147,7 +2174,8 @@
       flex: 0 0 auto;
       width: auto;
     }
-    .collector-pay-inline .collector-pay-actions .collector-mobile-pay-link:disabled {
+    .collector-pay-inline .collector-pay-actions .collector-mobile-pay-link:disabled,
+    .collector-pay-inline .collector-pay-actions .collector-mobile-pay-link.is-blocked {
       opacity: 0.55;
       color: #5b7268;
       text-decoration: underline;
@@ -2603,6 +2631,25 @@
     .supervisor-mobile-kpis.has-nuevo {
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
+    /* 5 botones en una sola línea (inicio · ruta · caja · nuevo · clientes) */
+    .supervisor-mobile-kpis.has-clientes {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 3px;
+      padding: 6px 8px;
+    }
+    .supervisor-mobile-kpis.has-clientes .supervisor-mobile-kpi {
+      padding: 4px 2px;
+      border-width: 1px;
+      border-radius: 6px;
+      box-shadow: none;
+    }
+    .supervisor-mobile-kpis.has-clientes .supervisor-mobile-kpi b {
+      font-size: 10px;
+      letter-spacing: 0.01em;
+    }
+    .supervisor-mobile-kpis.has-clientes .supervisor-mobile-kpi.on {
+      outline-width: 1px;
+    }
     .supervisor-mobile-kpi {
       text-align: center;
       padding: 6px 5px;
@@ -2644,6 +2691,12 @@
       border-color: #f5d5a8;
       color: #7c2d12;
       box-shadow: 0 2px 10px rgba(232, 89, 12, 0.08);
+    }
+    .supervisor-mobile-kpi.is-clientes {
+      background: #f4f6f5;
+      border-color: #d0ddd6;
+      color: #1f3a30;
+      box-shadow: 0 2px 10px rgba(18, 32, 27, 0.06);
     }
     .supervisor-mobile-kpi:hover {
       filter: brightness(0.98);
@@ -2947,6 +3000,10 @@
       letter-spacing: 0;
       border-radius: 3px;
       max-width: 100%;
+    }
+    .supervisor-planilla-table .is-estado .pill.ok {
+      background: #a7f3d0;
+      color: #065f46;
     }
     .supervisor-planilla-table th.is-estado {
       font-size: 9px;
@@ -3606,6 +3663,11 @@
       border-color: transparent;
       color: transparent;
       visibility: hidden;
+    }
+    .supervisor-mobile-alert-n.is-mora {
+      background: #fef2f2;
+      border-color: #f87171;
+      color: #991b1b;
     }
     @media (max-width: 980px) {
       .mobile-preview-layout {
@@ -4553,8 +4615,121 @@
       display: grid;
       justify-items: center;
       align-content: start;
-      gap: 16px;
-      padding: 12px 16px 24px;
+      gap: 10px;
+      padding: 8px 16px 20px;
+    }
+    .home-routes-dashboard.is-unified {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      justify-items: stretch;
+      gap: 8px;
+    }
+    /* Una fila: mismo tamaño que tenían las rutas (altos, sin cortar texto). */
+    .home-strip {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(var(--home-strip-count, 6), minmax(0, 1fr));
+      gap: 8px;
+      margin: 0;
+      align-items: stretch;
+    }
+    .home-strip-chip {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+      min-height: 72px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border-width: 1px;
+      border-style: solid;
+      box-shadow: none;
+      text-align: center;
+      font: inherit;
+      line-height: 1.2;
+    }
+    .home-strip-chip.is-clickable {
+      cursor: pointer;
+    }
+    .home-strip-chip.is-clickable:hover {
+      filter: brightness(0.98);
+    }
+    .home-strip-chip.is-active {
+      outline: 1.5px solid #0f766e;
+      outline-offset: 1px;
+    }
+    .home-strip-label {
+      display: block;
+      width: 100%;
+      font-weight: 600;
+      line-height: 1.2;
+      color: inherit;
+      text-align: center;
+      white-space: normal;
+      overflow: visible;
+      word-break: break-word;
+    }
+    .home-strip-value {
+      display: block;
+      width: 100%;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.25;
+      color: inherit;
+      text-align: center;
+      white-space: normal;
+      overflow: visible;
+      word-break: break-word;
+    }
+    .home-strip-meta {
+      display: block;
+      width: 100%;
+      margin-top: 1px;
+      font-weight: 500;
+      line-height: 1.2;
+      opacity: 0.85;
+      text-align: center;
+      white-space: normal;
+      overflow: visible;
+    }
+    .home-strip-chip.kpi-teal {
+      background: #e6f7f3;
+      border-color: #b8e4dc;
+      color: #0a3d38;
+    }
+    .home-strip-chip.kpi-teal .home-strip-label { color: #0d6b62; }
+    .home-strip-chip.kpi-sage {
+      background: #eef6ef;
+      border-color: #c5e0cb;
+      color: #14532d;
+    }
+    .home-strip-chip.kpi-sage .home-strip-label { color: #166534; }
+    .home-strip-chip.kpi-amber {
+      background: #fff6e8;
+      border-color: #f5d5a8;
+      color: #7c2d12;
+    }
+    .home-strip-chip.kpi-amber .home-strip-label { color: #9a4a0a; }
+    .home-strip-chip.kpi-coral {
+      background: #fff0ee;
+      border-color: #f5c4bc;
+      color: #881337;
+    }
+    .home-strip-chip.kpi-coral .home-strip-label { color: #9f1239; }
+    @media (max-width: 900px) {
+      .home-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    .home-today-split {
+      width: 100%;
+      gap: 10px;
+      align-items: start;
+    }
+    .home-routes-field .head h2 {
+      font-size: 16px;
     }
     .home-route-plantilla {
       width: min(1180px, 100%);
@@ -4562,6 +4737,47 @@
     .home-route-plantilla-panel {
       width: 100%;
       margin: 0;
+    }
+    .home-route-plantilla-head {
+      min-height: 44px;
+      align-items: center;
+    }
+    .home-route-plantilla-route {
+      margin-left: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #3d5349;
+      min-width: 4.5rem;
+    }
+    /* Columnas fijas: al cambiar de ruta solo cambia el cuerpo, no saltan los títulos. */
+    .route-clients-table-wrap {
+      width: 100%;
+    }
+    table.route-clients-table {
+      width: 100%;
+      table-layout: fixed;
+    }
+    table.route-clients-table col.rc-col-order { width: 44px; }
+    table.route-clients-table col.rc-col-name { width: 16%; }
+    table.route-clients-table col.rc-col-nick { width: 10%; }
+    table.route-clients-table col.rc-col-saldo { width: 11%; }
+    table.route-clients-table col.rc-col-cuota { width: 10%; }
+    table.route-clients-table col.rc-col-cobrado { width: 16%; }
+    table.route-clients-table col.rc-col-hora { width: 11%; }
+    table.route-clients-table col.rc-col-aviso { width: 10%; }
+    table.route-clients-table col.rc-col-accion { width: 72px; }
+    table.route-clients-table .col-titles th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    table.route-clients-table td {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    table.route-clients-table td .route-clients-cobrado {
+      overflow: hidden;
     }
     .route-clients-table .route-clients-muted {
       font-variant-numeric: tabular-nums;
@@ -4607,12 +4823,46 @@
       line-height: 1.2;
     }
     .home-route-kpis {
-      width: min(920px, 100%);
-      margin: 0 auto !important;
+      width: min(420px, 100%);
+      margin: 0 !important;
       display: grid !important;
       grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-      gap: 16px !important;
-      justify-content: center;
+      gap: 8px !important;
+      justify-self: start;
+    }
+    .home-route-kpis.is-compact .kpi {
+      padding: 10px 12px;
+      border-radius: 8px;
+      box-shadow: none;
+      min-height: 0;
+    }
+    .home-route-kpis.is-compact .kpi s {
+      margin-bottom: 2px;
+      line-height: 1.15;
+    }
+    .home-route-kpis.is-compact .kpi b {
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .home-route-kpis.is-compact .kpi em {
+      display: block;
+      margin-top: 2px;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .home-route-kpis.is-compact .kpi-clickable:hover {
+      transform: none;
+      box-shadow: none;
+      filter: brightness(0.98);
+    }
+    .home-route-kpis.is-compact .kpi-clickable.kpi-active {
+      outline-width: 1.5px;
+      outline-offset: 1px;
+      box-shadow: none;
     }
     .route-collector-select {
       min-width: 180px;
@@ -4644,8 +4894,11 @@
     }
     @media (max-width: 760px) {
       .home-route-kpis {
-        grid-template-columns: 1fr !important;
-        width: min(360px, 100%);
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        width: 100%;
+      }
+      .home-route-kpis.is-compact .kpi em {
+        font-size: 9px;
       }
     }
     .home-split {
@@ -5376,12 +5629,15 @@
     .loan-report-movements { margin: 0; }
     .loan-report-footer {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       margin-top: 0;
     }
     .loan-report-footer div {
       padding: 6px 10px;
       text-align: right;
+    }
+    .loan-report-footer .rest {
+      grid-column: 1 / -1;
     }
     .loan-report-footer span { font-size: 13px; }
     .loan-report-footer b { font-size: 15px; }
@@ -8477,26 +8733,25 @@
       overflow: hidden;
       text-overflow: ellipsis;
       vertical-align: middle;
+      padding: 10px 14px;
     }
     .bank-records-table th.col-picker-cell,
     .bank-records-table td.col-picker-cell {
       max-width: 44px;
       overflow: visible;
     }
-    /* Cuenta operativa en 1 línea; el resto cede un poco de ancho */
-    .bank-records-table col.br-ref { width: 8%; }
-    .bank-records-table col.br-desc { width: 14%; }
-    .bank-records-table col.br-method { width: 8%; }
-    .bank-records-table col.br-date { width: 9%; }
-    .bank-records-table col.br-period { width: 11%; }
-    .bank-records-table col.br-account { width: 15%; }
-    .bank-records-table col.br-third { width: 11%; }
-    .bank-records-table col.br-category { width: 10%; }
-    .bank-records-table col.br-debit { width: 9%; }
-    .bank-records-table col.br-credit { width: 8%; }
-    .bank-records-table col.br-balance { width: 9%; }
-    .bank-records-table col.br-amount { width: 10%; }
-    .bank-records-table col.br-extract { width: 7%; }
+    /* Sin Saldo/Estado: más aire a descripción, tercero y montos */
+    .bank-records-table col.br-ref { width: 9%; }
+    .bank-records-table col.br-desc { width: 22%; }
+    .bank-records-table col.br-method { width: 9%; }
+    .bank-records-table col.br-date { width: 10%; }
+    .bank-records-table col.br-period { width: 10%; }
+    .bank-records-table col.br-account { width: 14%; }
+    .bank-records-table col.br-third { width: 14%; }
+    .bank-records-table col.br-category { width: 12%; }
+    .bank-records-table col.br-debit { width: 10%; }
+    .bank-records-table col.br-credit { width: 10%; }
+    .bank-records-table col.br-amount { width: 11%; }
     .bank-records-table col.br-picker { width: 44px; }
     .bank-records-table td.bank-account-cell,
     .bank-records-table th.bank-account-cell {
@@ -8564,6 +8819,12 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      letter-spacing: 0.01em;
+    }
+    .bank-records-table .bank-num {
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.02em;
+      padding-right: 16px;
     }
     .bank-records-table .bank-category {
       font-size: 12px;
