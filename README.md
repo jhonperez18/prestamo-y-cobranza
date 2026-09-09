@@ -17,10 +17,11 @@ Abre http://localhost:3000 — módulos arriba, variantes a la izquierda, trabaj
 
 | | |
 | --- | --- |
-| **URL** | https://prestamo-y-cobranza.vercel.app |
+| **URL principal** | https://prestamo-y-cobranza.vercel.app |
+| **Misma app (alias)** | https://admin-jhon-fredy-perezs-projects.vercel.app |
 | **Proyecto Vercel** | `prestamo-y-cobranza` (único) |
 | **Cómo publica** | `git push` a `main` |
-| **Cómo verificar** | En el login: `build` = commit corto de GitHub |
+| **Cómo verificar** | En Resumen / login: `Código en este sitio: …` = commit de GitHub |
 
 ```bash
 cd apps/admin

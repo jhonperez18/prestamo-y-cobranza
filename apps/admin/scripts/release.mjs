@@ -76,6 +76,7 @@ if (mode === "force") {
     process.exit(1);
   }
   run(`npx vercel alias set ${match[0]} prestamo-y-cobranza.vercel.app`, repoRoot);
+  run(`npx vercel alias set ${match[0]} admin-jhon-fredy-perezs-projects.vercel.app`, repoRoot);
   try {
     run("npx vercel cache purge --yes --type cdn", repoRoot);
   } catch {
