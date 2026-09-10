@@ -131,8 +131,8 @@ export function DailyCollectionsView({
   );
 
   const allItems = useMemo(
-    () => buildDailyCollectionList(syncedLoans, clients, selectedDate),
-    [syncedLoans, clients, selectedDate],
+    () => buildDailyCollectionList(syncedLoans, clients, selectedDate, payments),
+    [syncedLoans, clients, selectedDate, payments],
   );
 
   const catalog = useMemo(() => catalogRoutes(routes), [routes]);

@@ -6,7 +6,7 @@
 import {
   COLLECTION_ALERTS_BEFORE_MORA,
   collectionAlertLabel,
-  collectionAlertsFromPayments,
+  liveLoanCollectionAlerts,
   loanPaidOnDate,
 } from "@/lib/collection-alerts";
 import { accumulatedDueForLoan } from "@/lib/daily-collection-plan";
@@ -33,12 +33,8 @@ export function planillaLiveAlertCount(
   if (planillaVisitPaid(row)) return 0;
   const loanRef = loan?.ref || row.loanRef;
   if (loanPaidOnDate(loanRef, payments, today)) return 0;
-  return collectionAlertsFromPayments(
-    loanRef,
-    payments,
-    today,
-    Number(row.alertCount) || Number(loan?.collectionAlerts) || 0,
-  );
+  if (loan) return liveLoanCollectionAlerts(loan, payments, today);
+  return Number(row.alertCount) || 0;
 }
 
 export function planillaAlertBadgeText(alertCount: number) {
@@ -49,8 +45,13 @@ export function planillaAlertBadgeText(alertCount: number) {
 
 export function planillaAlertTitle(alertCount: number) {
   if (alertCount <= 0) return undefined;
-  if (alertCount >= COLLECTION_ALERTS_BEFORE_MORA) return "Mora · 4 días hábiles sin pago";
-  return collectionAlertLabel(alertCount) || `${alertCount} día(s) sin pago`;
+  if (alertCount >= COLLECTION_ALERTS_BEFORE_MORA) {
+    return "Mora · alerta 4 (4 días hábiles sin pago)";
+  }
+  return (
+    collectionAlertLabel(alertCount) ||
+    `Alerta ${alertCount} · días hábiles sin pago (si no paga hoy, mañana sube)`
+  );
 }
 
 export function planillaLiveCuota(

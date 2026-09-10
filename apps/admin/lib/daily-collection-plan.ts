@@ -1,10 +1,11 @@
 import { displayToIso, isoToDisplay } from "@/lib/loan-preview";
 import { lineRemaining, type ScheduleEntry } from "@/lib/loan-pay";
 import {
+  COLLECTION_ALERTS_BEFORE_MORA,
   collectionAlertLabel,
   collectionChargeKind,
-  isLoanInCollectionMora,
-  loanCollectionAlerts,
+  type CollectionPaymentTouch,
+  liveLoanCollectionAlerts,
 } from "@/lib/collection-alerts";
 import { isPendingReview } from "@/lib/client-review";
 import {
@@ -139,7 +140,7 @@ function fallbackDueAmount(loan: LoanRow) {
 }
 
 function accumulationLabel(cuotaAmount: number, moraAmount: number, alertCount: number) {
-  if (isLoanInCollectionMora({ collectionAlerts: alertCount }) || moraAmount > 0) {
+  if (alertCount >= COLLECTION_ALERTS_BEFORE_MORA || moraAmount > 0) {
     if (cuotaAmount > 0 && moraAmount > 0) return "Cuota + mora";
     if (moraAmount > 0) return "Mora acumulada";
   }
@@ -148,9 +149,13 @@ function accumulationLabel(cuotaAmount: number, moraAmount: number, alertCount: 
 }
 
 /** Monto acumulado hasta la fecha. Mora solo al 4.º día hábil; antes es alerta 1–3. */
-export function accumulatedDueForLoan(loan: LoanRow, selectedDate: string) {
-  const alertCount = loanCollectionAlerts(loan);
-  const inMora = isLoanInCollectionMora(loan);
+export function accumulatedDueForLoan(
+  loan: LoanRow,
+  selectedDate: string,
+  payments?: CollectionPaymentTouch[],
+) {
+  const alertCount = liveLoanCollectionAlerts(loan, payments, selectedDate);
+  const inMora = alertCount >= COLLECTION_ALERTS_BEFORE_MORA;
   const empty = {
     cuotaAmount: 0,
     moraAmount: 0,
@@ -225,6 +230,7 @@ export function buildDailyCollectionList(
   loans: LoanRow[],
   clients: ClientRow[],
   selectedDate: string,
+  payments?: CollectionPaymentTouch[],
 ): DailyCollectionItem[] {
   const items: DailyCollectionItem[] = [];
 
@@ -233,7 +239,7 @@ export function buildDailyCollectionList(
     const client = clients.find((row) => row.ref === loan.clientRef);
     if (client && isPendingReview(client)) continue;
     const { cuotaAmount, moraAmount, amountDue, oldestOverdue, alertCount } =
-      accumulatedDueForLoan(loan, selectedDate);
+      accumulatedDueForLoan(loan, selectedDate, payments);
     if (amountDue <= 0) continue;
 
     const kind = collectionChargeKind(alertCount);

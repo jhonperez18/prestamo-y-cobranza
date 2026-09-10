@@ -1,6 +1,6 @@
 /**
  * Arranque del paquete canónico (Chrome).
- * v4: reinstala SIEMPRE una vez el snapshot de 10 clientes y borra bak de basura demo.
+ * v12: solo registro canónico 03→09. Al instalar, reemplaza estado anterior del navegador.
  * Luego retención 30 días; nunca reinyecta Carlos/Ana/etc.
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
@@ -25,7 +25,7 @@ import { applyDataRetention } from "@/lib/data-retention";
 import { COLLECTORS, USERS } from "@/lib/mock-data";
 
 /** Subir versión = reinstala el paquete canónico una vez en cada navegador/origen. */
-export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v4";
+export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v12";
 
 const PACKAGE_KEYS = [
   DEMO_CLIENTS_KEY,
@@ -83,6 +83,14 @@ export function forceReinstallCanonicalPackage() {
   }
   try {
     window.localStorage.removeItem(DEMO_BOOTSTRAP_PACKAGE_KEY);
+    window.localStorage.removeItem("nexo-demo-bootstrap-package-v11");
+    window.localStorage.removeItem("nexo-demo-bootstrap-package-v10");
+    window.localStorage.removeItem("nexo-demo-bootstrap-package-v9");
+    window.localStorage.removeItem("nexo-demo-bootstrap-package-v8");
+    window.localStorage.removeItem("nexo-demo-bootstrap-package-v7");
+    window.localStorage.removeItem("nexo-demo-bootstrap-package-v6");
+    window.localStorage.removeItem("nexo-demo-bootstrap-package-v5");
+    window.localStorage.removeItem("nexo-demo-bootstrap-package-v4");
     window.localStorage.removeItem("nexo-demo-bootstrap-package-v3");
     window.localStorage.removeItem("nexo-demo-bootstrap-package-v2");
   } catch {
@@ -133,6 +141,14 @@ export function bootstrapProtectedDemoData() {
 
   try {
     window.localStorage.setItem(DEMO_BOOTSTRAP_PACKAGE_KEY, "1");
+    window.localStorage.setItem("nexo-demo-bootstrap-package-v11", "1");
+    window.localStorage.setItem("nexo-demo-bootstrap-package-v10", "1");
+    window.localStorage.setItem("nexo-demo-bootstrap-package-v9", "1");
+    window.localStorage.setItem("nexo-demo-bootstrap-package-v8", "1");
+    window.localStorage.setItem("nexo-demo-bootstrap-package-v7", "1");
+    window.localStorage.setItem("nexo-demo-bootstrap-package-v6", "1");
+    window.localStorage.setItem("nexo-demo-bootstrap-package-v5", "1");
+    window.localStorage.setItem("nexo-demo-bootstrap-package-v4", "1");
     window.localStorage.setItem("nexo-demo-bootstrap-package-v3", "1");
     window.localStorage.setItem("nexo-demo-bootstrap-package-v2", "1");
     window.localStorage.setItem("nexo-demo-bootstrap-recovery-v1", "1");

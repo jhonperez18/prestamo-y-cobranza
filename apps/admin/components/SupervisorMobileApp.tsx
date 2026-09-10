@@ -34,7 +34,7 @@ import {
 } from "@/lib/planilla-display";
 import {
   COLLECTION_ALERTS_BEFORE_MORA,
-  collectionAlertsFromPayments,
+  liveLoanCollectionAlerts,
 } from "@/lib/collection-alerts";
 import { isoToDisplay, syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
@@ -638,7 +638,7 @@ export function SupervisorMobileApp({
       const planillaClosed = mine.length > 0 && mine.every((row) => Boolean(row.dayClosedAt));
       const closed = Boolean(closeRecord) || planillaClosed;
 
-      const cobradoHoy = closeRecord ? closeRecord.collected : caja.cobradoHoy;
+      const cobradoHoy = caja.cobradoHoy;
       const gastosHoy = closeRecord ? closeRecord.expensesTotal : caja.gastosHoy;
       /** Dinero real en mano (incluye saldo de arrastre / inicial). */
       const enCaja = caja.enCaja;
@@ -792,11 +792,10 @@ export function SupervisorMobileApp({
     return base.map((row) => {
       const loan = currentActiveLoan(row.ref, loans, payments);
       const alertCount = loan
-        ? collectionAlertsFromPayments(
-            loan.ref,
+        ? liveLoanCollectionAlerts(
+            loan,
             payments,
             today,
-            Number(loan.collectionAlerts) || 0,
           )
         : 0;
       return {

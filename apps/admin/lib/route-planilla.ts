@@ -7,7 +7,8 @@ import {
 import {
   collectionAlertLabel,
   collectionChargeKind,
-  loanCollectionAlerts,
+  type CollectionPaymentTouch,
+  liveLoanCollectionAlerts,
 } from "@/lib/collection-alerts";
 import { isPendingReview } from "@/lib/client-review";
 import { isColombiaHoliday, isDailyCollectionDay, weekdayLabel } from "@/lib/colombia-holidays";
@@ -28,6 +29,7 @@ import {
   type ClientRow,
   type CollectorRow,
   type LoanRow,
+  type PaymentRow,
   type RouteRow,
 } from "@/lib/mock-data";
 
@@ -42,13 +44,14 @@ function loanItemsForClient(
   client: ClientRow,
   loans: LoanRow[],
   date: string,
+  payments?: CollectionPaymentTouch[],
 ): DailyCollectionItem[] {
   const items: DailyCollectionItem[] = [];
   for (const loan of activeLoans(loans)) {
     if (loan.clientRef !== client.ref || loan.balance <= 0) continue;
     if (isPendingReview(client)) continue;
     let { cuotaAmount, moraAmount, amountDue, oldestOverdue, alertCount } =
-      accumulatedDueForLoan(loan, date);
+      accumulatedDueForLoan(loan, date, payments);
     // Respaldo: si el cronograma no marca vencido hoy, cuota diaria fija (rutas ya en cobro).
     if (amountDue <= 0) {
       const cuota = Math.min(loan.installment ?? 0, loan.balance);
@@ -58,7 +61,7 @@ function loanItemsForClient(
       moraAmount = 0;
       amountDue = cuota;
       oldestOverdue = undefined;
-      alertCount = loanCollectionAlerts(loan);
+      alertCount = liveLoanCollectionAlerts(loan, payments, date);
     }
     const kind = collectionChargeKind(alertCount);
     items.push({
@@ -152,6 +155,7 @@ export function syncPermanentRoutePlanilla(
   loans: LoanRow[],
   collectors: CollectorRow[],
   existing: DailyCollectionAssignment[],
+  payments?: CollectionPaymentTouch[] | PaymentRow[],
 ): { assignments: DailyCollectionAssignment[]; routes: RouteRow[] } {
   // Domingo / festivo: no crear planilla; limpia abiertas del día.
   if (!isDailyCollectionDay(date)) {
@@ -223,7 +227,7 @@ export function syncPermanentRoutePlanilla(
       }
 
       // Solo cobros reales: no inventar “visita de ruta” si el cliente no tiene cuota.
-      const items = loanItemsForClient(client, loans, date);
+      const items = loanItemsForClient(client, loans, date, payments);
       if (!items.length) continue;
       for (const item of items) {
         const base = {

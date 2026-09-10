@@ -15,6 +15,8 @@ import {
   type UserRow,
 } from "@/lib/mock-data";
 import {
+  DEMO_BANK_ACCOUNTS_KEY,
+  DEMO_BANK_MOVEMENTS_KEY,
   DEMO_CLIENTS_KEY,
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
@@ -22,8 +24,8 @@ import {
   DEMO_COLLECTORS_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_DAILY_LOGS_KEY,
-  DEMO_BANK_MOVEMENTS_KEY,
   DEMO_LOANS_KEY,
+  DEMO_MISC_PAYMENTS_KEY,
   DEMO_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
   loadDemoPaymentsBundle,
@@ -39,6 +41,17 @@ import {
   normalizeClientLifecycle,
 } from "@/lib/client-review";
 import { syncAllLoans } from "@/lib/loan-preview";
+import { synchronizeOperationalState } from "@/lib/operational-sync";
+import {
+  ensureBankAccounts,
+  normalizeBankAccount,
+  normalizeBankMovements,
+  type BankAccount,
+  type BankMovement,
+} from "@/lib/bank";
+import type { MiscPayment } from "@/lib/misc-payments";
+import { stripRemovedPaymentMovements } from "@/lib/purge-unclosed-payments";
+import { dedupeDailyPaymentsByVisit } from "@/lib/planilla-payment-reconcile";
 import { dedupeClientsByRef, normalizeAllRouteOrders } from "@/lib/client-route-order";
 import { rebuildDispatchRoutes } from "@/lib/collector-dispatch-sync";
 import {
@@ -49,7 +62,6 @@ import {
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
-import type { BankMovement } from "@/lib/bank";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { COLLECTOR_DAILY_LOGS_SEED } from "@/lib/collector-daily-log";
 import { todayIso } from "@/lib/daily-dispatch";
@@ -138,22 +150,45 @@ export function SupervisorShell({ session, onLogout }: Props) {
       clients: storedClients,
       collectors: storedCollectors,
     });
-    const cycleLoans = syncAllLoans(cycle.loans, cycle.payments) as LoanRow[];
+    const deduped = dedupeDailyPaymentsByVisit(cycle.payments, cycle.assignments);
+    nextPayments = deduped.payments;
+    const accounts = ensureBankAccounts(
+      readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
+    );
+    const cleanedMovements = stripRemovedPaymentMovements(
+      normalizeBankMovements(bankMovements),
+      deduped.removedRefs,
+    );
+    const synced = synchronizeOperationalState({
+      loans: cycle.loans,
+      payments: nextPayments,
+      collectors: storedCollectors,
+      clients: storedClients,
+      dayCloses: cycle.dayCloses,
+      dayExpenseDrafts: cycle.dayExpenseDrafts,
+      bankAccounts: accounts,
+      bankMovements: cleanedMovements,
+      miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
+      assignments: cycle.assignments,
+      dailyLogs: cycle.logs,
+    });
 
-    setPayments(cycle.payments);
-    setLoans(cycleLoans);
-    setDayCloses(cycle.dayCloses);
+    setPayments(nextPayments);
+    setLoans(synced.loans);
+    setDayCloses(synced.dayCloses);
     setDayExpenseDrafts(cycle.dayExpenseDrafts);
-    setDailyLogs(cycle.logs);
-    setDailyAssignments(cycle.assignments);
+    setDailyLogs(synced.dailyLogs);
+    setDailyAssignments(synced.assignments);
     setRoutes(cycle.routes);
-    writeDemoJson(DEMO_PAYMENTS_KEY, cycle.payments);
-    writeDemoJson(DEMO_LOANS_KEY, cycleLoans);
-    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, cycle.dayCloses);
+    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
+    writeDemoJson(DEMO_LOANS_KEY, synced.loans);
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, synced.dayCloses);
     writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, cycle.dayExpenseDrafts);
-    writeDemoJson(DEMO_DAILY_LOGS_KEY, cycle.logs);
-    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, cycle.assignments);
+    writeDemoJson(DEMO_DAILY_LOGS_KEY, synced.dailyLogs);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
     writeDemoJson(DEMO_ROUTES_KEY, cycle.routes);
+    writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, synced.bankMovements);
+    writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, accounts);
     setMonthCloses(
       readDemoJson<CollectorMonthCloseRecord[]>(DEMO_COLLECTOR_MONTH_CLOSES_KEY, []),
     );
@@ -275,6 +310,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
       loans,
       collectors,
       dailyAssignments,
+      payments,
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
@@ -318,6 +354,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
       nextLoans,
       collectors,
       dailyAssignments,
+      payments,
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);

@@ -70,8 +70,9 @@ export type LoanRow = {
   installment?: number;
   schedule?: { date: string; amount: number; kind?: "interes" | "capital" | "cuota"; paid?: number }[];
   /**
-   * Faltas consecutivas sin pago al cerrar jornada.
-   * 1–4 = alerta; al llegar a 5 = mora.
+   * Días hábiles seguidos sin pago (lun–sáb).
+   * 1–3 = Alerta 1..3; al 4.º día = Mora.
+   * Si paga cualquier día, el contador vuelve a 0.
    */
   collectionAlerts?: number;
   /**

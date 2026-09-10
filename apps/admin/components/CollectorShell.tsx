@@ -35,6 +35,7 @@ import {
 } from "@/lib/demo-persist";
 import { buildQuickLoan, type QuickLoanDraft } from "@/lib/street-client-loan";
 import { syncAllLoans } from "@/lib/loan-preview";
+import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { COLLECTOR_DAILY_LOGS_SEED, upsertDailyLogPayment } from "@/lib/collector-daily-log";
 import {
   applySkipToRoute,
@@ -188,38 +189,40 @@ export function CollectorShell({ session, onLogout }: Props) {
     });
     const deduped = dedupeDailyPaymentsByVisit(cycle.payments, cycle.assignments);
     nextPayments = deduped.payments;
-    const cycleLoans = syncAllLoans(cycle.loans, nextPayments) as LoanRow[];
-
-    setDayCloses(cycle.dayCloses);
-    setDayExpenseDrafts(cycle.dayExpenseDrafts);
-    setDailyLogs(cycle.logs);
-    setPayments(nextPayments);
-    setLoans(cycleLoans);
-    setDailyAssignments(cycle.assignments);
-    setRoutes(cycle.routes);
-    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, cycle.dayCloses);
-    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, cycle.dayExpenseDrafts);
-    writeDemoJson(DEMO_DAILY_LOGS_KEY, cycle.logs);
-    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
-    writeDemoJson(DEMO_LOANS_KEY, cycleLoans);
-    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, cycle.assignments);
-    writeDemoJson(DEMO_ROUTES_KEY, cycle.routes);
-
     const accounts = ensureBankAccounts(
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
     );
     const cleanedMovements = stripRemovedPaymentMovements(bankMovements, deduped.removedRefs);
-    writeDemoJson(
-      DEMO_BANK_MOVEMENTS_KEY,
-      syncBankLedger({
-        payments: nextPayments,
-        movements: cleanedMovements,
-        accounts,
-        miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-        dayExpenseDrafts: cycle.dayExpenseDrafts,
-        dayCloses: cycle.dayCloses,
-      }),
-    );
+    const misc = readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []);
+    const synced = synchronizeOperationalState({
+      loans: cycle.loans,
+      payments: nextPayments,
+      collectors: storedCollectors,
+      clients: storedClients,
+      dayCloses: cycle.dayCloses,
+      dayExpenseDrafts: cycle.dayExpenseDrafts,
+      bankAccounts: accounts,
+      bankMovements: cleanedMovements,
+      miscPayments: misc,
+      assignments: cycle.assignments,
+      dailyLogs: cycle.logs,
+    });
+
+    setDayCloses(synced.dayCloses);
+    setDayExpenseDrafts(cycle.dayExpenseDrafts);
+    setDailyLogs(synced.dailyLogs);
+    setPayments(nextPayments);
+    setLoans(synced.loans);
+    setDailyAssignments(synced.assignments);
+    setRoutes(cycle.routes);
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, synced.dayCloses);
+    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, cycle.dayExpenseDrafts);
+    writeDemoJson(DEMO_DAILY_LOGS_KEY, synced.dailyLogs);
+    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
+    writeDemoJson(DEMO_LOANS_KEY, synced.loans);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
+    writeDemoJson(DEMO_ROUTES_KEY, cycle.routes);
+    writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, synced.bankMovements);
     setMonthCloses(
       readDemoJson<CollectorMonthCloseRecord[]>(DEMO_COLLECTOR_MONTH_CLOSES_KEY, []),
     );
@@ -422,6 +425,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       nextLoans,
       collectors,
       dailyAssignments,
+      payments,
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
@@ -461,6 +465,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       nextLoans,
       collectors,
       dailyAssignments,
+      payments,
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
@@ -615,7 +620,10 @@ export function CollectorShell({ session, onLogout }: Props) {
       loans,
       result.missedLoanRefs,
       payload.date,
+      payments,
     );
+    setLoans(alertResult.loans);
+    writeDemoJson(DEMO_LOANS_KEY, alertResult.loans);
 
     const parts = [
       `caja menor ${money(record.cashFloat)}`,

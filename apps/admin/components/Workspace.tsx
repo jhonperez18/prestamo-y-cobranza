@@ -110,6 +110,7 @@ import {
 } from "@/lib/table-columns";
 import { loanStatusPill } from "@/lib/loan-status";
 import { chargeLabel, displayToIso, isoToDisplay, normalizeLoan, syncAllLoans, syncLoan } from "@/lib/loan-preview";
+import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { computeLoanFinancials, loanPaySummaryRows } from "@/lib/loan-balance";
 import { buildRenewalLoans } from "@/lib/loan-renew";
 import { buildPortfolioStats } from "@/lib/portfolio-stats";
@@ -412,24 +413,6 @@ export function Workspace({
     });
     const deduped = dedupeDailyPaymentsByVisit(cycle.payments, cycle.assignments);
     nextPayments = deduped.payments;
-    setRoutes(cycle.routes);
-    setDailyAssignments(cycle.assignments);
-    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, cycle.assignments);
-    writeDemoJson(DEMO_ROUTES_KEY, cycle.routes);
-    setPayments(nextPayments);
-    const cycleLoans = syncAllLoans(cycle.loans, nextPayments) as LoanRow[];
-    setLoans(cycleLoans);
-    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
-    writeDemoJson(DEMO_LOANS_KEY, cycleLoans);
-    setDailyLogs(cycle.logs);
-    writeDemoJson(DEMO_DAILY_LOGS_KEY, cycle.logs);
-    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, cycle.dayCloses);
-    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, cycle.dayExpenseDrafts);
-    setDayCloses(cycle.dayCloses);
-    setDayExpenseDrafts(cycle.dayExpenseDrafts);
-    setMonthCloses(
-      readDemoJson<CollectorMonthCloseRecord[]>(DEMO_COLLECTOR_MONTH_CLOSES_KEY, []),
-    );
     const storedAccounts = ensureBankAccounts(
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
     );
@@ -437,31 +420,51 @@ export function Workspace({
       storedMovementsEarly ?? [],
       deduped.removedRefs,
     );
+    const misc = readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []);
+    const synced = synchronizeOperationalState({
+      loans: cycle.loans,
+      payments: nextPayments,
+      collectors: linked.collectors,
+      clients: storedClients,
+      dayCloses: cycle.dayCloses,
+      dayExpenseDrafts: cycle.dayExpenseDrafts,
+      bankAccounts: storedAccounts,
+      bankMovements: storedMovements.length ? normalizeBankMovements(storedMovements) : [],
+      miscPayments: misc,
+      assignments: cycle.assignments,
+      dailyLogs: cycle.logs,
+    });
+
+    setRoutes(cycle.routes);
+    setDailyAssignments(synced.assignments);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
+    writeDemoJson(DEMO_ROUTES_KEY, cycle.routes);
+    setPayments(nextPayments);
+    setLoans(synced.loans);
+    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
+    writeDemoJson(DEMO_LOANS_KEY, synced.loans);
+    setDailyLogs(synced.dailyLogs);
+    writeDemoJson(DEMO_DAILY_LOGS_KEY, synced.dailyLogs);
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, synced.dayCloses);
+    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, cycle.dayExpenseDrafts);
+    setDayCloses(synced.dayCloses);
+    setDayExpenseDrafts(cycle.dayExpenseDrafts);
+    setMonthCloses(
+      readDemoJson<CollectorMonthCloseRecord[]>(DEMO_COLLECTOR_MONTH_CLOSES_KEY, []),
+    );
     const storedReconciliations = readDemoJson<BankReconciliation[]>(DEMO_BANK_RECONCILIATIONS_KEY, []);
     const sidesVersion = readDemoJson<number>(DEMO_BANK_SIDES_VERSION_KEY, 1);
     const nextReconciliations =
       sidesVersion < 2 ? swapReconciliationDebitCredit(storedReconciliations) : storedReconciliations;
-    // Registros: solo cobros que cerraron planilla (+ gastos / pagos varios).
-    const nextMovementsRaw = storedMovements.length
-      ? normalizeBankMovements(storedMovements)
-      : [];
-    const nextMovements = syncBankLedger({
-      payments: nextPayments,
-      movements: nextMovementsRaw,
-      accounts: storedAccounts,
-      miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-      dayExpenseDrafts: cycle.dayExpenseDrafts,
-      dayCloses: cycle.dayCloses,
-    });
     setBankAccounts(storedAccounts);
-    setBankMovements(nextMovements);
+    setBankMovements(synced.bankMovements);
     setBankReconciliations(nextReconciliations);
     writeDemoJson(DEMO_BANK_SIDES_VERSION_KEY, 2);
     writeDemoJson(DEMO_BANK_RECONCILIATIONS_KEY, nextReconciliations);
     writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, storedAccounts);
-    writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, nextMovements);
+    writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, synced.bankMovements);
     setBankAccountRef(storedAccounts[0]?.ref ?? "");
-    setMiscPayments(readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []));
+    setMiscPayments(misc);
     setDemoHydrated(true);
   }, []);
 
@@ -569,7 +572,7 @@ export function Workspace({
 
   useEffect(() => {
     if (!demoHydrated) return;
-    const alerts = buildAlerts(pendingReviewClients(clients).length, loans, clients);
+    const alerts = buildAlerts(pendingReviewClients(clients).length, loans, clients, payments);
     onNavBadges?.({
       ...clientNavBadges(clients),
       "inicio:alertas": alerts.length > 0 ? String(alerts.length) : undefined,
@@ -917,6 +920,7 @@ export function Workspace({
       loans,
       collectors,
       dailyAssignments,
+      payments,
     );
     setRoutes(synced.routes);
     setDailyAssignments(synced.assignments);
@@ -983,6 +987,7 @@ export function Workspace({
       loans,
       collectors,
       dailyAssignments,
+      payments,
     );
     setRoutes(synced.routes);
     setDailyAssignments(synced.assignments);
@@ -1237,6 +1242,7 @@ export function Workspace({
       loans,
       collectors,
       dailyAssignments,
+      payments,
     );
     setRoutes(synced.routes);
     setDailyAssignments(synced.assignments);
@@ -1257,6 +1263,7 @@ export function Workspace({
       loans,
       collectors,
       dailyAssignments,
+      payments,
     );
     setRoutes(synced.routes);
     setDailyAssignments(synced.assignments);
@@ -1320,7 +1327,7 @@ export function Workspace({
     setDailyAssignments(result.assignments);
     setRoutes(result.routes);
     setDailyLogs(result.logs);
-    const alertResult = bumpMissedCollectionAlerts(loans, result.missedLoanRefs, date);
+    const alertResult = bumpMissedCollectionAlerts(loans, result.missedLoanRefs, date, payments);
     setLoans(alertResult.loans);
     const parts = [
       `${result.collectorsClosed} cobrador${result.collectorsClosed === 1 ? "" : "es"}`,
@@ -1437,6 +1444,7 @@ export function Workspace({
       loans,
       result.missedLoanRefs,
       payload.date,
+      payments,
     );
     setLoans(alertResult.loans);
 
@@ -1470,7 +1478,7 @@ export function Workspace({
       onToast("Cobrador no encontrado.");
       return;
     }
-    const item = buildDailyCollectionList(loans, clients, date).find((row) => row.id === itemId);
+    const item = buildDailyCollectionList(loans, clients, date, payments).find((row) => row.id === itemId);
     if (!item || item.loanRef !== loanRef) {
       onToast("Cobro no encontrado en la lista del día.");
       return;
@@ -1574,6 +1582,7 @@ export function Workspace({
       nextLoans,
       collectors,
       dailyAssignments,
+      payments,
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
@@ -1610,6 +1619,7 @@ export function Workspace({
       loans,
       collectors,
       dailyAssignments,
+      payments,
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
@@ -1653,6 +1663,7 @@ export function Workspace({
       nextLoans,
       collectors,
       dailyAssignments,
+      payments,
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
@@ -1705,7 +1716,8 @@ export function Workspace({
         loans,
         nextCollectors,
         dailyAssignments,
-      );
+      payments,
+    );
       setRoutes(synced.routes);
       setDailyAssignments(synced.assignments);
     }
@@ -2054,7 +2066,7 @@ export function Workspace({
     }
 
     if (key === "inicio:alertas") {
-      const alerts = buildAlerts(pendingReviewClients(clients).length, loans, clients);
+      const alerts = buildAlerts(pendingReviewClients(clients).length, loans, clients, payments);
       return (
         <section className="panel">
           <div className="head">
@@ -2526,7 +2538,9 @@ export function Workspace({
                 />
               ) : null}
 
-              {loanTab === "ficha" && openLoan ? <LoanDetailView loan={openLoan} /> : null}
+              {loanTab === "ficha" && openLoan ? (
+                <LoanDetailView loan={openLoan} payments={payments} />
+              ) : null}
 
               {loanTab === "prestamos" ? (
                 <LoanFichaGrid

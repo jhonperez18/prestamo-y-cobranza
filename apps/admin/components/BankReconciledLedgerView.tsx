@@ -89,6 +89,9 @@ export function BankReconciledLedgerView({
   const title = isIncome ? "Ingresos" : "Gastos";
   const amountLabel = isIncome ? "Debe" : "Haber";
   const labelColSpan = columns.filter((col) => col.id !== amountColId && isVisible(col.id)).length;
+  const hint = isIncome
+    ? "Sincronizado con pagos: todo cobro que entra al banco aparece aquí (Debe)."
+    : "Sincronizado con gastos de ruta y egresos del banco (Haber).";
 
   function renderRefCell(row: BankMovement) {
     const paymentRef = paymentRefForMovement(row);
@@ -164,9 +167,7 @@ export function BankReconciledLedgerView({
       <div className="head">
         <h1>{title}</h1>
         <span className="count">{rows.length}</span>
-        <p className="bank-history-hint">
-          Libro permanente · cobros y egresos del banco (abiertos y conciliados).
-        </p>
+        <p className="bank-history-hint">{hint}</p>
         <div className="grow" />
         <label className="bank-ledger-filter">
           Estado{" "}

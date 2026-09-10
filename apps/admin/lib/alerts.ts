@@ -2,9 +2,11 @@ import {
   collectionAlertLabel,
   isLoanInCollectionMora,
   loanCollectionAlerts,
+  reconcileLoanCollectionAlerts,
 } from "@/lib/collection-alerts";
+import { todayIso } from "@/lib/daily-dispatch";
 import type { ModuleId } from "@/lib/navigation";
-import type { ClientRow, LoanRow, StatusKind } from "@/lib/mock-data";
+import type { ClientRow, LoanRow, PaymentRow, StatusKind } from "@/lib/mock-data";
 import { activeLoans } from "@/lib/mock-data";
 import {
   clientsNeedingProfileCompletion,
@@ -21,10 +23,17 @@ export type AlertRow = {
   view: string;
 };
 
+/**
+ * Panel Alertas: misma regla que planilla/cobranza.
+ * Alerta 1–3 por días hábiles sin pago; 4 = Mora.
+ * Contadores desde pagos reales (no solo el número guardado en el préstamo).
+ */
 export function buildAlerts(
   pendingReviewCount: number,
   loans: LoanRow[] = [],
   clients: ClientRow[] = [],
+  payments: PaymentRow[] = [],
+  today = todayIso(),
 ): AlertRow[] {
   const rows: AlertRow[] = [];
 
@@ -66,9 +75,11 @@ export function buildAlerts(
     });
   }
 
-  const withAlerts = activeLoans(loans).filter(
-    (loan) => loan.balance > 0 && loanCollectionAlerts(loan) > 0,
-  );
+  const liveLoans = activeLoans(loans)
+    .filter((loan) => loan.balance > 0)
+    .map((loan) => reconcileLoanCollectionAlerts(loan, today, payments));
+
+  const withAlerts = liveLoans.filter((loan) => loanCollectionAlerts(loan) > 0);
   const inMora = withAlerts.filter((loan) => isLoanInCollectionMora(loan));
   const warning = withAlerts.filter((loan) => !isLoanInCollectionMora(loan));
 
@@ -85,7 +96,7 @@ export function buildAlerts(
     rows.push({
       id: "cobro-alertas",
       when: "Hoy",
-      message: `${warning.length} préstamo${warning.length === 1 ? "" : "s"} sin pago (${detail})`,
+      message: `${warning.length} préstamo${warning.length === 1 ? "" : "s"} sin pago (${detail || "Alerta 1–3"})`,
       pill: "Alerta",
       kind: "warn",
       module: "cobranza",
@@ -97,7 +108,7 @@ export function buildAlerts(
     rows.push({
       id: "cobro-mora",
       when: "Hoy",
-      message: `${inMora.length} préstamo${inMora.length === 1 ? "" : "s"} en mora (4 días hábiles sin pago)`,
+      message: `${inMora.length} préstamo${inMora.length === 1 ? "" : "s"} en mora (alerta 4 = 4 días hábiles sin pago)`,
       pill: "Mora",
       kind: "overdue",
       module: "cartera",

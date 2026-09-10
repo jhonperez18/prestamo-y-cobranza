@@ -6,8 +6,7 @@ import { clientsOnRouteSorted } from "@/lib/client-route-order";
 import {
   collectionAlertLabel,
   collectionChargeKind,
-  loanCollectionAlerts,
-  loanPaidOnDate,
+  liveLoanCollectionAlerts,
 } from "@/lib/collection-alerts";
 import { computeLoanFinancials } from "@/lib/loan-balance";
 import { todayIso } from "@/lib/daily-dispatch";
@@ -125,9 +124,7 @@ function rowFromAssignment(
       ? [...todayPays].sort((a, b) => paymentSortKey(b).localeCompare(paymentSortKey(a)))[0]
       : null;
   const alertCount = loan
-    ? loanPaidOnDate(loan.ref, payments, today)
-      ? 0
-      : loanCollectionAlerts(loan)
+    ? liveLoanCollectionAlerts(loan, payments, today)
     : Number(assignment.alertCount) || 0;
   const chargeKind = collectionChargeKind(alertCount);
   const alertKind: StatusKind =

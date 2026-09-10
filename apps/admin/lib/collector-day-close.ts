@@ -677,10 +677,10 @@ export function synthesizeDayClosesFromAssignments(
 
 /**
  * Historial por día: cobro, gasto y saldo en mano (acumulado hasta consignar).
+ * Cobro = solo pagos reales (igual que banco Debe y recaudo del día).
  * Gastos: cierre definitivo si existe; si no, borrador guardado del día.
  * Arrastra saldo del cierre de mes anterior.
  * Más reciente primero. Por defecto filtra al mes de `viewPeriod`.
- * Si faltan pagos, usa cierres, logs diarios y planilla cerrada.
  */
 export function buildCollectorDayHistory(
   collectorRef: string,
@@ -701,27 +701,8 @@ export function buildCollectorDayHistory(
     cobroByDate.set(date, (cobroByDate.get(date) ?? 0) + row.amount);
   }
 
-  // Planilla: visitas cobradas sin pago en storage.
-  for (const row of extras.assignments ?? []) {
-    if (row.collectorRef !== collectorRef) continue;
-    if (row.visitStatus !== "cobrado" && row.visitStatus !== "parcial") continue;
-    const date = normalizeHistoryDate(row.dispatchDate);
-    if (!date) continue;
-    const amount = Number(row.amountDue) || 0;
-    if (amount <= 0) continue;
-    // Solo suma si ese paymentRef no está ya en payments (evita doble conteo).
-    if (row.paymentRef && mine.some((pay) => pay.ref === row.paymentRef)) continue;
-    cobroByDate.set(date, (cobroByDate.get(date) ?? 0) + amount);
-  }
-
-  // Logs diarios (archivo de jornadas).
-  for (const row of extras.dailyLogs ?? []) {
-    if (row.collectorRef !== collectorRef) continue;
-    const date = normalizeHistoryDate(row.date);
-    if (!date) continue;
-    const fromPayments = cobroByDate.get(date) ?? 0;
-    if (row.collected > fromPayments) cobroByDate.set(date, row.collected);
-  }
+  // Cobro = solo pagos reales (misma cifra que banco Debe / recaudo / efectivo+nequi).
+  // No inventar desde CIE.collected, dailyLog ni amountDue de planilla.
 
   const closedDates = new Set<string>();
   const gastoByDate = new Map<string, number>();
@@ -731,11 +712,6 @@ export function buildCollectorDayHistory(
     if (!date) continue;
     closedDates.add(date);
     gastoByDate.set(date, (gastoByDate.get(date) ?? 0) + row.expensesTotal);
-    // Si se perdieron pagos en storage, el cierre del día aún guarda el recaudo.
-    const fromPayments = cobroByDate.get(date) ?? 0;
-    if (row.collected > fromPayments) {
-      cobroByDate.set(date, row.collected);
-    }
   }
   for (const row of expenseDrafts) {
     if (row.collectorRef !== collectorRef) continue;
@@ -748,6 +724,13 @@ export function buildCollectorDayHistory(
   for (const row of extras.assignments ?? []) {
     if (row.collectorRef !== collectorRef || !row.dayClosedAt) continue;
     const date = normalizeHistoryDate(row.dispatchDate);
+    if (date) closedDates.add(date);
+  }
+
+  // dailyLogs solo aportan fechas de jornada (no montos inventados).
+  for (const row of extras.dailyLogs ?? []) {
+    if (row.collectorRef !== collectorRef) continue;
+    const date = normalizeHistoryDate(row.date);
     if (date) closedDates.add(date);
   }
 
@@ -783,6 +766,41 @@ export function buildCollectorDayHistory(
   });
 
   return ascending.reverse();
+}
+
+/**
+ * Alinea `CIE.collected` con la suma real de pagos del día (por cobrador).
+ * Fuente de verdad = PG- del día (igual que banco Debe / recaudo).
+ */
+export function alignDayClosesCollectedToPayments(
+  closes: CollectorDayCloseRecord[],
+  payments: PaymentRow[],
+  collectors: CollectorRow[] = [],
+): CollectorDayCloseRecord[] {
+  if (!closes.length) return closes;
+  let changed = false;
+  const next = closes.map((row) => {
+    const real = collectorRecaudoTotalForClose(row.collectorRef, row.date, payments, collectors);
+    if (row.collected === real) return row;
+    changed = true;
+    return { ...row, collected: real };
+  });
+  return changed ? next : closes;
+}
+
+function collectorRecaudoTotalForClose(
+  collectorRef: string,
+  date: string,
+  payments: PaymentRow[],
+  collectors: CollectorRow[],
+) {
+  const norm = normalizeHistoryDate(date) || date;
+  let total = 0;
+  for (const row of paymentsForCollector(collectorRef, collectors, payments)) {
+    if (normalizeHistoryDate(row.paidDate || "") !== norm) continue;
+    total += Number(row.amount) || 0;
+  }
+  return total;
 }
 
 /** Saldo final del mes (último día con movimiento o opening si vacío). */

@@ -55,6 +55,7 @@ import {
   isLastCalendarDayOfMonth,
   monthClosingSaldoFromHistory,
   monthReviewBlock,
+  normalizeHistoryDate,
   openingSaldoForPeriod,
   periodFromDateIso,
   periodHadCollectorActivity,
@@ -248,7 +249,7 @@ export function CollectorMobileApp({
       dayExpenseDrafts,
       monthCloses,
       viewPeriod,
-      { assignments, dailyLogs: undefined },
+      { assignments },
     );
   }, [
     activeDate,
@@ -262,6 +263,21 @@ export function CollectorMobileApp({
     routeOptions,
     viewPeriod,
   ]);
+
+  const closedHistoryDates = useMemo(() => {
+    const set = new Set<string>();
+    for (const row of dayCloses) {
+      if (row.collectorRef !== collector.ref) continue;
+      const d = normalizeHistoryDate(row.date);
+      if (d) set.add(d);
+    }
+    for (const row of assignments) {
+      if (row.collectorRef !== collector.ref || !row.dayClosedAt) continue;
+      const d = normalizeHistoryDate(row.dispatchDate);
+      if (d) set.add(d);
+    }
+    return set;
+  }, [assignments, collector.ref, dayCloses]);
 
   const activePeriod = viewPeriod;
   const previousMonth = previousPeriod(activePeriod);
@@ -371,9 +387,10 @@ export function CollectorMobileApp({
     const todayRow = ascending.find((row) => row.date === activeDate);
     const prior = ascending.filter((row) => row.date < activeDate);
     const saldoInicial = prior.length ? prior[prior.length - 1].saldo : periodOpening;
-    const cobrado = todayRow?.cobro ?? recaudo.total;
+    // Cobrado = pagos reales del día (igual que Recaudo / banco Debe).
+    const cobrado = recaudo.total;
     const gastos = todayRow?.gasto ?? savedExpensesTotal;
-    const saldo = todayRow?.saldo ?? saldoInicial + cobrado - gastos;
+    const saldo = saldoInicial + cobrado - gastos;
     return { saldoInicial, cobrado, gastos, saldo };
   }, [
     activeDate,
@@ -512,22 +529,20 @@ export function CollectorMobileApp({
     () => queue.dispatched.filter((row) => !row.awaitingLoan),
     [queue.dispatched],
   );
-  const cobradoCount = useMemo(
-    () =>
-      visitRows.filter(
-        (row) => row.visitStatus === "cobrado" || Boolean(row.paymentRef),
-      ).length,
-    [visitRows],
-  );
+  const cobradoCount = useMemo(() => recaudo.count, [recaudo.count]);
   const visitTotal = visitRows.length;
 
-  /** Inicio cerrado: paneles en cero. Historial llena y habilita Recaudo/Gastos. */
+  /** Inicio tras cierre: lista en blanco; si el día tiene cobros/gastos reales, se muestran. */
   const onInicioCerrado = dayLocked && !fromHistory;
-  const showTopDayTotals = !onInicioCerrado;
-  const topRecaudo = showTopDayTotals ? recaudo.total : 0;
-  const topGastos = showTopDayTotals ? savedExpensesTotal : 0;
+  const blankStart =
+    onInicioCerrado && recaudo.total <= 0 && savedExpensesTotal <= 0;
+  /** Totales = pagos reales del día (mismo número que banco Debe / “Lo que cobró”). */
+  const topRecaudo = recaudo.total;
+  const topGastos = savedExpensesTotal;
   const topCobrosLabel =
-    showTopDayTotals && visitTotal > 0 ? `${cobradoCount}/${visitTotal} cobros` : null;
+    cobradoCount > 0 || visitTotal > 0
+      ? `${cobradoCount}/${Math.max(visitTotal, cobradoCount)} cobros`
+      : null;
 
   const openPlanillaDates = useMemo(
     () => new Set(routeOptions.filter((row) => !row.closed).map((row) => row.date)),
@@ -647,7 +662,8 @@ export function CollectorMobileApp({
                   row.cobro > 0 ||
                   row.gasto > 0 ||
                   row.date === activeDate ||
-                  openPlanillaDates.has(row.date),
+                  openPlanillaDates.has(row.date) ||
+                  closedHistoryDates.has(row.date),
               ).length === 0 ? (
                 <li className="collector-mobile-day-history-empty">Sin movimientos este mes.</li>
               ) : (
@@ -657,7 +673,8 @@ export function CollectorMobileApp({
                       row.cobro > 0 ||
                       row.gasto > 0 ||
                       row.date === activeDate ||
-                      openPlanillaDates.has(row.date),
+                      openPlanillaDates.has(row.date) ||
+                      closedHistoryDates.has(row.date),
                   )
                   .map((row) => (
                   <li key={row.date}>
@@ -744,16 +761,16 @@ export function CollectorMobileApp({
         <button
           type="button"
           className={
-            onInicioCerrado
+            blankStart
               ? "collector-mobile-stat is-pending is-off"
               : !reviewingPanel && listFilter === "pending"
                 ? "collector-mobile-stat is-pending on"
                 : "collector-mobile-stat is-pending"
           }
-          disabled={onInicioCerrado}
-          title={onInicioCerrado ? "Consulta el día en Historial" : undefined}
+          disabled={blankStart}
+          title={blankStart ? "Consulta el día en Historial" : undefined}
           onClick={() => {
-            if (onInicioCerrado) return;
+            if (blankStart) return;
             selectFilter("pending");
           }}
         >
@@ -766,7 +783,7 @@ export function CollectorMobileApp({
         <button
           type="button"
           className={
-            onInicioCerrado
+            blankStart
               ? "collector-mobile-stat is-recaudo is-off"
               : !reviewingPanel && listFilter === "done"
                 ? "collector-mobile-stat is-recaudo on"
@@ -774,8 +791,8 @@ export function CollectorMobileApp({
                   ? "collector-mobile-stat is-recaudo on"
                   : "collector-mobile-stat is-recaudo"
           }
-          disabled={onInicioCerrado}
-          title={onInicioCerrado ? "Consulta el día en Historial" : undefined}
+          disabled={blankStart}
+          title={blankStart ? "Consulta el día en Historial" : undefined}
           onClick={openRecaudoDetail}
         >
           <span>Recaudo</span>
@@ -787,25 +804,31 @@ export function CollectorMobileApp({
         <button
           type="button"
           className={
-            onInicioCerrado
+            blankStart
               ? "collector-mobile-stat collector-mobile-stat-close is-gastos is-off"
               : editingExpenses || cuadreDetail === "gastos"
                 ? "collector-mobile-stat on collector-mobile-stat-close is-gastos"
                 : "collector-mobile-stat collector-mobile-stat-close is-gastos"
           }
           disabled={
-            onInicioCerrado
+            blankStart
               ? true
               : dayLocked
                 ? !queue.dispatched.length && savedExpensesTotal <= 0
                 : !onSaveExpenses || !queue.dispatched.length
           }
           title={
-            onInicioCerrado
+            blankStart
               ? "Consulta el día en Historial"
               : dayLocked
-                ? "Ver gastos del día"
-                : "Guardar gastos de la ruta (sin cerrar el día)"
+                ? savedExpensesTotal > 0
+                  ? "Ver gastos del día"
+                  : "Sin gastos"
+                : !onSaveExpenses
+                  ? "Sin permiso para gastos"
+                  : !queue.dispatched.length
+                    ? "Sin planilla"
+                    : "Gastos del día"
           }
           onClick={openExpenses}
         >

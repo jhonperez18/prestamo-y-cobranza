@@ -4,7 +4,8 @@ import type { DailyCollectionAssignment, DailyCollectionItem } from "@/lib/daily
 import {
   collectionAlertLabel,
   collectionChargeKind,
-  loanCollectionAlerts,
+  type CollectionPaymentTouch,
+  liveLoanCollectionAlerts,
 } from "@/lib/collection-alerts";
 import { isValidPlanillaAssignment } from "@/lib/planilla-eligibility";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
@@ -55,6 +56,7 @@ export function hydrateAssignment(
   row: DailyCollectionAssignment,
   loans: LoanRow[],
   clients: ClientRow[],
+  payments?: CollectionPaymentTouch[],
 ): DailyCollectionAssignment {
   const loan = loans.find((entry) => entry.ref === row.loanRef);
   const client = clients.find((entry) => entry.ref === (row.clientRef || loan?.clientRef));
@@ -70,7 +72,7 @@ export function hydrateAssignment(
     : row.visitStatus === "cobrado" || row.visitStatus === "parcial" || Boolean(row.paymentRef)
       ? 0
       : loan
-        ? loanCollectionAlerts(loan)
+        ? liveLoanCollectionAlerts(loan, payments, row.dispatchDate || todayIso())
         : Number(row.alertCount) || 0;
   const kind = row.awaitingLoan
     ? "cuota"
@@ -105,6 +107,7 @@ export function assignmentsForCollectorDate(
   date: string,
   loans: LoanRow[],
   clients: ClientRow[],
+  payments?: CollectionPaymentTouch[],
 ) {
   const orderOf = (clientRef: string) => {
     const client = clients.find((row) => row.ref === clientRef);
@@ -121,7 +124,7 @@ export function assignmentsForCollectorDate(
       )
       .filter((row) => isValidPlanillaAssignment(row, clients, loans)),
   )
-    .map((row) => hydrateAssignment(row, loans, clients))
+    .map((row) => hydrateAssignment(row, loans, clients, payments))
     .sort(
       (a, b) =>
         orderOf(a.clientRef) - orderOf(b.clientRef) ||
@@ -135,13 +138,14 @@ export function assignmentsForCollector(
   collectorRef: string,
   loans: LoanRow[],
   clients: ClientRow[],
+  payments?: CollectionPaymentTouch[],
 ) {
   return dedupePlanillaAssignments(
     assignments
       .filter((row) => row.collectorRef === collectorRef)
       .filter((row) => isValidPlanillaAssignment(row, clients, loans)),
   )
-    .map((row) => hydrateAssignment(row, loans, clients))
+    .map((row) => hydrateAssignment(row, loans, clients, payments))
     .sort(
       (a, b) =>
         b.dispatchDate.localeCompare(a.dispatchDate) || a.clientName.localeCompare(b.clientName),
@@ -156,8 +160,16 @@ export function buildDispatchRoute(
   loans: LoanRow[],
   clients: ClientRow[],
   existingRoute?: RouteRow,
+  payments?: CollectionPaymentTouch[],
 ): RouteRow {
-  const items = assignmentsForCollectorDate(assignments, collectorRef, date, loans, clients);
+  const items = assignmentsForCollectorDate(
+    assignments,
+    collectorRef,
+    date,
+    loans,
+    clients,
+    payments,
+  );
   const stops: RouteStop[] = items.map((item, index) => {
     const existing = existingRoute?.stops.find(
       (stop) =>

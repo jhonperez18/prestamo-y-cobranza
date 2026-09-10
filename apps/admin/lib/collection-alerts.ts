@@ -1,10 +1,15 @@
 /**
- * Alertas de cobro = días hábiles SEGUIDOS sin dar dinero (retacar).
- * - Se cuentan desde el día siguiente al último pago hasta ayer (lun–sáb, sin festivos).
- * - Hoy no cuenta: si pagó ayer hoy está normal; si hoy no paga, mañana = Alerta 1.
- * - Alerta 1–3; al 4.º día hábil sin pago → Mora.
- * - Cualquier pago reinicia el contador (aunque el cronograma siga atrasado en papel).
- * El atraso del plan de cuotas es aparte: el cliente puede ponerse al día pagando de más.
+ * Alertas de cobro = días hábiles SEGUIDOS sin dar dinero.
+ *
+ * Regla (única en todo el sistema):
+ * - Primer día de pago = día hábil siguiente al desembolso.
+ * - Si no paga ese día → al siguiente Alerta 1; luego 2; luego 3.
+ * - Al 4.º día hábil sin pago reflejado → Mora (COLLECTION_ALERTS_BEFORE_MORA = 4).
+ * - Hoy no cuenta todavía: la alerta del no-pago se ve al amanecer del día siguiente.
+ * - Sin ningún pago: se cuenta desde el desembolso (mismo criterio que desde el último abono).
+ * - Domingo/festivo no suman.
+ * - Cualquier pago reinicia a 0 (aunque el cronograma siga atrasado).
+ * - Misma cifra en admin, cobrador, supervisor, planilla, cartera y panel Alertas.
  */
 import {
   addCalendarDaysIso,
@@ -14,8 +19,14 @@ import {
 import { todayIso } from "@/lib/daily-dispatch";
 import type { LoanRow, StatusKind } from "@/lib/mock-data";
 
-/** Al llegar a este contador (4.º día hábil sin pago) el préstamo entra en mora. */
+/** 4.º día hábil sin pago → mora. Alertas visibles: 1, 2 y 3. */
 export const COLLECTION_ALERTS_BEFORE_MORA = 4;
+
+export type CollectionPaymentTouch = {
+  loanRef?: string;
+  paidDate?: string;
+  amount?: number;
+};
 
 export function loanCollectionAlerts(loan: Pick<LoanRow, "collectionAlerts">) {
   const n = Number(loan.collectionAlerts) || 0;
@@ -40,12 +51,6 @@ export function collectionChargeKind(
   return "cuota";
 }
 
-type PaymentTouch = {
-  loanRef?: string;
-  paidDate?: string;
-  amount?: number;
-};
-
 function paymentDateIso(raw: string) {
   const trimmed = (raw || "").trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
@@ -58,7 +63,7 @@ function paymentDateIso(raw: string) {
 /** ¿Hubo cobro/abono de este préstamo en la fecha? (borra alerta). */
 export function loanPaidOnDate(
   loanRef: string | undefined,
-  payments: PaymentTouch[] | undefined,
+  payments: CollectionPaymentTouch[] | undefined,
   date = todayIso(),
 ) {
   if (!loanRef || !payments?.length) return false;
@@ -73,7 +78,7 @@ export function loanPaidOnDate(
 /** Última fecha ISO con pago > 0 de este préstamo. */
 export function lastPaymentDateIso(
   loanRef: string | undefined,
-  payments: PaymentTouch[] | undefined,
+  payments: CollectionPaymentTouch[] | undefined,
 ) {
   if (!loanRef || !payments?.length) return "";
   let latest = "";
@@ -88,31 +93,60 @@ export function lastPaymentDateIso(
 }
 
 /**
- * Días hábiles de cobro sin pago desde el último abono hasta ayer.
+ * Días hábiles de cobro sin pago desde el último abono (o el desembolso) hasta ayer.
  * Ej.: pagó ayer → hoy 0; no pagó ayer → hoy Alerta 1.
- * Ej.: pagó sábado, hoy martes sin pagar lun/lun → Alerta 2.
+ * Ej.: nunca pagó, desembolsó el sábado 5 → lun/mar/mié = 3 → Alerta 3 (jueves).
+ * Domingo/festivo no suman. Hoy todavía no cuenta.
  */
 export function collectionAlertsFromPayments(
   loanRef: string | undefined,
-  payments: PaymentTouch[] | undefined,
+  payments: CollectionPaymentTouch[] | undefined,
   today = todayIso(),
   fallbackAlerts = 0,
+  /** Fecha de desembolso (ISO o dd/mm/aaaa). Obligatoria para quien nunca ha pagado. */
+  disbursementDate?: string,
 ) {
   if (loanPaidOnDate(loanRef, payments, today)) return 0;
 
+  const throughDay = addCalendarDaysIso(today, -1);
   const lastPay = lastPaymentDateIso(loanRef, payments);
-  if (lastPay) {
-    if (lastPay >= today) return 0;
-    const throughDay = addCalendarDaysIso(today, -1);
-    if (lastPay > throughDay) return 0;
+  const since =
+    lastPay ||
+    paymentDateIso(disbursementDate || "") ||
+    (/^\d{4}-\d{2}-\d{2}$/.test((disbursementDate || "").trim())
+      ? (disbursementDate || "").trim()
+      : "");
+
+  if (since) {
+    if (since >= today) return 0;
+    if (since > throughDay) return 0;
     return Math.min(
       COLLECTION_ALERTS_BEFORE_MORA,
-      countCollectionDaysAfter(lastPay, throughDay),
+      countCollectionDaysAfter(since, throughDay),
     );
   }
 
-  // Sin historial de pagos: respeta contador guardado (cierres de día).
+  // Sin pagos ni fecha de desembolso: último recurso = contador guardado.
   return Math.max(0, Math.min(COLLECTION_ALERTS_BEFORE_MORA, fallbackAlerts));
+}
+
+/**
+ * Contador vivo para un préstamo (misma cifra en todos los módulos).
+ * Preferir esto a leer `loan.collectionAlerts` crudo.
+ */
+export function liveLoanCollectionAlerts(
+  loan: Pick<LoanRow, "ref" | "collectionAlerts"> & { date?: string } | null | undefined,
+  payments?: CollectionPaymentTouch[],
+  today = todayIso(),
+) {
+  if (!loan?.ref) return 0;
+  return collectionAlertsFromPayments(
+    loan.ref,
+    payments,
+    today,
+    loanCollectionAlerts(loan),
+    loan.date,
+  );
 }
 
 function statusFromAlerts(
@@ -131,19 +165,18 @@ function statusFromAlerts(
 
 /**
  * Sincroniza alertas con pagos reales + status del préstamo.
- * Fuente de verdad: días hábiles sin cobro desde el último pago.
+ * Fuente de verdad: días hábiles sin cobro desde el último pago / desembolso.
+ * Si `payments` es `undefined`, no recalcula desde fechas (solo alinea status al contador guardado).
  */
 export function reconcileLoanCollectionAlerts<T extends LoanRow>(
   loan: T,
   today = todayIso(),
-  payments?: PaymentTouch[],
+  payments?: CollectionPaymentTouch[],
 ): T {
-  const alerts = collectionAlertsFromPayments(
-    loan.ref,
-    payments,
-    today,
-    loanCollectionAlerts(loan),
-  );
+  const alerts =
+    payments === undefined
+      ? loanCollectionAlerts(loan)
+      : liveLoanCollectionAlerts(loan, payments, today);
 
   const finalized = loan.status === "Finalizado" || (loan.balance ?? 0) <= 0;
   const { status: nextStatus, kind: nextKind } = statusFromAlerts(alerts, finalized);
@@ -165,39 +198,38 @@ export function reconcileLoanCollectionAlerts<T extends LoanRow>(
 }
 
 /**
- * Suma 1 alerta a cada préstamo no cobrado al cerrar el día.
- * Si `date` no es día de cobro (domingo/festivo), no suma nada.
+ * Al cerrar el día de cobro: recalcula alertas con pagos reales (no +1 ciego).
+ * El no-pago de `date` queda reflejado como estado al amanecer del día siguiente.
+ * Si `date` no es día de cobro (domingo/festivo), no cambia nada.
  */
 export function bumpMissedCollectionAlerts(
   loans: LoanRow[],
   loanRefs: string[],
   date?: string,
+  payments?: CollectionPaymentTouch[],
 ) {
   if (date && !isDailyCollectionDay(date)) {
     return { loans, alerted: 0, toMora: 0 };
   }
 
+  const asOf = date ? addCalendarDaysIso(date, 1) : todayIso();
   const targets = new Set(loanRefs.filter(Boolean));
   let alerted = 0;
   let toMora = 0;
 
   const next = loans.map((loan) => {
-    if (!targets.has(loan.ref)) return loan;
     const prev = loanCollectionAlerts(loan);
-    if (prev >= COLLECTION_ALERTS_BEFORE_MORA) return loan;
+    const reconciled = reconcileLoanCollectionAlerts(loan, asOf, payments);
+    const count = loanCollectionAlerts(reconciled);
 
-    const count = prev + 1;
-    alerted += 1;
-    const hitMora = count >= COLLECTION_ALERTS_BEFORE_MORA;
-    if (hitMora) toMora += 1;
+    if (targets.size === 0 || targets.has(loan.ref)) {
+      if (count > prev && count > 0) alerted += 1;
+      if (prev < COLLECTION_ALERTS_BEFORE_MORA && count >= COLLECTION_ALERTS_BEFORE_MORA) {
+        toMora += 1;
+      }
+    }
 
-    const stamped = statusFromAlerts(count, false);
-    return {
-      ...loan,
-      collectionAlerts: count,
-      status: stamped.status,
-      kind: stamped.kind,
-    };
+    return reconciled;
   });
 
   return { loans: next, alerted, toMora };

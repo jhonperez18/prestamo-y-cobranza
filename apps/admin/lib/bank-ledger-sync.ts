@@ -1,10 +1,12 @@
 /**
  * Única sincronización banco ← cobros + gastos + pagos varios.
  * Evita efectos duplicados que triplicaban filas en Registros.
+ * Regla de raíz: todo pago PG- que entra al banco = Ingreso (Debe).
  */
 import {
   bankMovementsSignature,
   ensureBankAccounts,
+  lockPaymentCobrosAsIncome,
   normalizeBankMovements,
   repairMiscPaymentLinks,
   syncAllPaymentsToMovements,
@@ -35,12 +37,14 @@ export function syncBankLedger(input: {
     input.miscPayments,
     repairMiscPaymentLinks(input.miscPayments, withPayments),
   );
-  return syncRouteExpensesToMovements(
+  const withExpenses = syncRouteExpensesToMovements(
     input.dayExpenseDrafts,
     input.dayCloses,
     normalizeBankMovements(withMisc),
     account?.ref,
   );
+  // Último paso: los cobros nunca se desalinean de Ingresos.
+  return normalizeBankMovements(lockPaymentCobrosAsIncome(withExpenses, input.payments));
 }
 
 /** Aplica sync solo si el contenido cambió (corta bucles de setState). */

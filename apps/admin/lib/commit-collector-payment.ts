@@ -228,6 +228,7 @@ export function commitCollectorPayment(
     nextLoans,
     collectors,
     nextAssignments,
+    nextPayments,
   );
   nextAssignments = reconcilePaymentsOntoPlanilla(planilla.assignments, nextPayments);
 

@@ -6,6 +6,7 @@
  * - “Cerrar día” manual se respeta: no se reabre solo antes de las 23:30.
  */
 import {
+  alignDayClosesCollectedToPayments,
   applyDayCloseRecordsToAssignments,
   dayExpenseLineMovementRef,
   finalizeCollectorDayClose,
@@ -189,7 +190,12 @@ export function runOperationalDayCycle(
     routes = closed.routes;
     logs = closed.logs;
 
-    const alerted = bumpMissedCollectionAlerts(loans, closed.missedLoanRefs, pair.date);
+    const alerted = bumpMissedCollectionAlerts(
+      loans,
+      closed.missedLoanRefs,
+      pair.date,
+      state.payments,
+    );
     loans = alerted.loans;
     autoClosed.push(pair);
   }
@@ -203,6 +209,7 @@ export function runOperationalDayCycle(
     loans,
     state.collectors,
     assignments,
+    state.payments,
   );
   assignments = sealOpenVisitsWithLaterPayments(
     reconcilePaymentsOntoPlanilla(planilla.assignments, state.payments),
@@ -210,6 +217,12 @@ export function runOperationalDayCycle(
     { untilDate: today },
   );
   assignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
+
+  dayCloses = alignDayClosesCollectedToPayments(
+    dayCloses,
+    state.payments,
+    state.collectors,
+  );
 
   return {
     assignments,

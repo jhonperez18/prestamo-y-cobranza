@@ -29,6 +29,14 @@ export type LoanPreview = {
   schedule: ScheduleLine[];
 };
 
+/** Toque de pago para saldo + alertas (necesita paidDate). */
+export type LoanPaymentTouch = {
+  loanRef?: string;
+  paidDate?: string;
+  dueDate?: string;
+  amount: number;
+};
+
 export type LoanScheduleEntry = {
   date: string;
   amount: number;
@@ -835,7 +843,7 @@ function paidFromPayments(
 function resolveLoanLedger(
   terms: LoanTermsRow,
   total: number,
-  payments?: { loanRef?: string; dueDate?: string; amount: number }[],
+  payments?: LoanPaymentTouch[],
 ) {
   if (payments === undefined) {
     const paid = terms.paid ?? 0;
@@ -854,7 +862,7 @@ function resolveLoanLedger(
  */
 export function normalizeLoan<T extends LoanTermsRow>(
   loan: T,
-  payments?: { loanRef?: string; dueDate?: string; amount: number }[],
+  payments?: LoanPaymentTouch[],
 ): T {
   const terms = standardizeLoanTerms(loan);
   const preview = loanPreviewFromRow(terms);
@@ -896,16 +904,13 @@ export function normalizeLoan<T extends LoanTermsRow>(
 }
 
 /** Préstamo con cronograma y totales recalculados (formato unificado P-8). */
-export function syncLoan(
-  loan: LoanTermsRow,
-  payments?: { loanRef?: string; dueDate?: string; amount: number }[],
-) {
+export function syncLoan(loan: LoanTermsRow, payments?: LoanPaymentTouch[]) {
   return normalizeLoan(standardizeLoanTerms(loan), payments);
 }
 
 export function syncAllLoans<T extends LoanTermsRow>(
   loans: T[],
-  payments?: { loanRef?: string; dueDate?: string; amount: number }[],
+  payments?: LoanPaymentTouch[],
 ): T[] {
   return loans.map((loan) => syncLoan(loan, payments) as T);
 }

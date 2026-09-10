@@ -189,15 +189,20 @@ export function bankMovementAmount(row: Pick<BankMovement, "debit" | "credit">) 
   return Math.max(Number(row.debit) || 0, Number(row.credit) || 0);
 }
 
+/** Cobro (PG-) = ingreso de banco. Nunca gasto. */
+function isPaymentCobroMovement(row: BankMovement) {
+  return Boolean(paymentRefForMovement(row));
+}
+
 function looksLikeBankIncome(row: BankMovement) {
-  if (row.miscPaymentRef || row.category) return false;
-  if (row.paymentRef || /^PG-\d+$/i.test(row.ref)) return true;
+  if (isPaymentCobroMovement(row)) return true;
+  if (row.miscPaymentRef || row.category || row.dayExpenseLineRef) return false;
   const desc = row.description.trim().toLowerCase();
   return desc.includes("cobro") || desc.includes("ingreso");
 }
 
 function looksLikeBankExpense(row: BankMovement) {
-  if (looksLikeBankIncome(row)) return false;
+  if (isPaymentCobroMovement(row)) return false;
   if (row.dayExpenseLineRef || row.miscPaymentRef || row.category) return true;
   if (row.manual && !row.paymentRef) return true;
   const desc = row.description.trim().toLowerCase();
@@ -213,14 +218,14 @@ function looksLikeBankExpense(row: BankMovement) {
 
 /** Cuenta de banco (activo): ingreso = Debe, gasto = Haber. */
 export function isBankIncomeMovement(row: BankMovement) {
-  if (looksLikeBankIncome(row)) return true;
+  if (isPaymentCobroMovement(row)) return true;
   if (looksLikeBankExpense(row)) return false;
   return row.debit > 0 && row.credit <= 0;
 }
 
 export function isBankExpenseMovement(row: BankMovement) {
+  if (isPaymentCobroMovement(row)) return false;
   if (looksLikeBankExpense(row)) return true;
-  if (looksLikeBankIncome(row)) return false;
   return row.credit > 0 && row.debit <= 0;
 }
 
@@ -228,7 +233,9 @@ export function isBankExpenseMovement(row: BankMovement) {
 function applyBankAccountSides(row: BankMovement): BankMovement {
   const amount = bankMovementAmount(row);
   if (amount <= 0) return { ...row, debit: 0, credit: 0 };
-  if (looksLikeBankIncome(row)) return { ...row, debit: amount, credit: 0 };
+  if (isPaymentCobroMovement(row) || looksLikeBankIncome(row)) {
+    return { ...row, debit: amount, credit: 0 };
+  }
   if (looksLikeBankExpense(row)) return { ...row, debit: 0, credit: amount };
   return row;
 }
@@ -624,10 +631,46 @@ export function bankMovementDescriptionText(description: string) {
 }
 
 export function paymentRefForMovement(row: BankMovement) {
-  if (row.paymentRef) return row.paymentRef;
+  if (row.paymentRef?.trim()) return row.paymentRef.trim();
   if (/^PG-\d+$/i.test(row.ref)) return row.ref;
-  const match = /Cobro\s+(PG-\d+)/i.exec(row.description);
-  return match?.[1] ?? null;
+  const fromDesc = /(?:Cobro\s+)?(PG-\d+)/i.exec(row.description ?? "");
+  return fromDesc?.[1] ?? null;
+}
+
+/**
+ * Garantía de raíz: todo cobro (pago PG-) en banco queda como Ingreso (Debe).
+ * Si el pago existe, alinea monto/fecha/tercero/descripcion con el pago.
+ */
+export function lockPaymentCobrosAsIncome(
+  movements: BankMovement[],
+  payments: PaymentRow[],
+): BankMovement[] {
+  const byPg = new Map(payments.map((row) => [row.ref, row]));
+  return movements.map((row) => {
+    const pg = paymentRefForMovement(row);
+    if (!pg) return row;
+    const payment = byPg.get(pg);
+    const amount =
+      payment && payment.amount > 0 ? payment.amount : bankMovementAmount(row);
+    if (amount <= 0) return row;
+    const valueDate = payment?.paidDate || row.valueDate || displayToday();
+    return {
+      ...row,
+      paymentRef: pg,
+      category: undefined,
+      dayExpenseLineRef: undefined,
+      miscPaymentRef: undefined,
+      description: payment ? paymentMovementDescription(payment) : row.description,
+      thirdParty: payment?.client?.trim() || row.thirdParty,
+      valueDate,
+      opDate: payment?.paidDate || row.opDate || valueDate,
+      period: row.reconciled ? row.period : periodFromIso(valueDate),
+      debit: amount,
+      credit: 0,
+      manual: false,
+      inExtract: row.inExtract ?? true,
+    };
+  });
 }
 
 export function movementDisplayRef(row: BankMovement) {
@@ -1153,10 +1196,10 @@ export function listReconciledMovementsByKind(
   const normalizedPeriod = period ? normalizeBankPeriod(period) : null;
   return movements
     .filter((row) => {
+      // Ingresos = cobros/pagos; Gastos = egresos. Un PG- nunca cae en Gastos.
       if (kind === "income" ? !isBankIncomeMovement(row) : !isBankExpenseMovement(row)) {
         return false;
       }
-      // Abiertos de cualquier día (pendientes de conciliar) + conciliados del filtro.
       if (normalizedPeriod && normalizeBankPeriod(row.period) !== normalizedPeriod) {
         return false;
       }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { money, type LoanRow } from "@/lib/mock-data";
+import { money, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 import {
   buildLoanDetailFields,
   interestChargeCount,
@@ -11,10 +11,11 @@ import { QuadDetailTable } from "@/components/QuadDetailTable";
 
 type Props = {
   loan: LoanRow;
+  payments?: PaymentRow[];
 };
 
-export function LoanDetailView({ loan }: Props) {
-  const synced = useMemo(() => syncLoan(loan), [loan]);
+export function LoanDetailView({ loan, payments }: Props) {
+  const synced = useMemo(() => syncLoan(loan, payments), [loan, payments]);
   const schedule = synced.schedule ?? [];
   const interestCount = interestChargeCount(schedule);
 
