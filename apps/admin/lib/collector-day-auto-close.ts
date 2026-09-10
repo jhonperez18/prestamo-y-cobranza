@@ -3,9 +3,7 @@
  * - A las 23:30 (hora local) se cierra sola cualquier planilla aún abierta.
  * - A las 00:00 nace la planilla del día siguiente ya sin arrastre de abiertas.
  * - Quien no pagó a esa hora queda omitido; gastos no cargados no se inventan.
- *
- * En horario laboral (antes de 23:30) la jornada de HOY debe quedar ABIERTA.
- * No se fuerza cierre al hidratar (eso hacía ver Vercel como “día de ayer”).
+ * - “Cerrar día” manual se respeta: no se reabre solo antes de las 23:30.
  */
 import {
   applyDayCloseRecordsToAssignments,
@@ -18,7 +16,7 @@ import {
   type CollectorDayExpenseDraft,
 } from "@/lib/collector-day-close";
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
-import { closeDispatchDay, reopenDispatchDay } from "@/lib/collector-dispatch-sync";
+import { closeDispatchDay } from "@/lib/collector-dispatch-sync";
 import { bumpMissedCollectionAlerts } from "@/lib/collection-alerts";
 import { collectorRecaudoForDate } from "@/lib/collector-mobile";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
@@ -119,78 +117,10 @@ function openCollectorDatePairs(
   );
 }
 
-function todaySealedOrClosed(
-  assignments: DailyCollectionAssignment[],
-  dayCloses: CollectorDayCloseRecord[],
-  today: string,
-) {
-  const hasCie = dayCloses.some(
-    (row) => (normalizeHistoryDate(row.date) || row.date) === today,
-  );
-  const hasSeal = assignments.some(
-    (row) =>
-      (normalizeHistoryDate(row.dispatchDate) || row.dispatchDate) === today &&
-      Boolean(row.dayClosedAt),
-  );
-  return hasCie || hasSeal;
-}
-
-/**
- * Antes de las 23:30: hoy debe estar abierto (quita CIE de hoy + reabre visitas).
- * Evita que localStorage de un deploy viejo deje la app en “jornada de ayer”.
- */
-export function ensureTodayOpenDuringBusinessHours(
-  state: OperationalDayState,
-  now = new Date(),
-): OperationalDayState {
-  const today = todayIso(now);
-  if (dayHasReachedAutoClose(today, now)) return state;
-  if (!todaySealedOrClosed(state.assignments, state.dayCloses, today)) {
-    return state;
-  }
-
-  const dayCloses = state.dayCloses.filter(
-    (row) => (normalizeHistoryDate(row.date) || row.date) !== today,
-  );
-
-  const reopened = reopenDispatchDay(
-    state.assignments,
-    state.routes,
-    state.logs,
-    today,
-    state.collectors,
-    state.loans,
-    state.clients,
-  );
-
-  const planilla = syncPermanentRoutePlanilla(
-    today,
-    reopened.routes,
-    state.clients,
-    state.loans,
-    state.collectors,
-    reopened.assignments,
-  );
-
-  let assignments = sealOpenVisitsWithLaterPayments(
-    reconcilePaymentsOntoPlanilla(planilla.assignments, state.payments),
-    state.payments,
-    { untilDate: today },
-  );
-  assignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
-
-  return {
-    ...state,
-    assignments,
-    routes: planilla.routes,
-    logs: reopened.logs,
-    dayCloses,
-  };
-}
-
 /**
  * Cierra jornadas vencidas (23:30 / días previos) y luego arma la planilla de hoy.
  * Una sola pasada operativa: sin arrastre de planillas abiertas al día nuevo.
+ * El cierre manual (“Cerrar día”) se conserva hasta el rollover del día siguiente.
  */
 export function runOperationalDayCycle(
   state: OperationalDayState,
@@ -281,7 +211,7 @@ export function runOperationalDayCycle(
   );
   assignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
 
-  const afterCycle: OperationalDayState = {
+  return {
     assignments,
     routes: planilla.routes,
     logs,
@@ -291,11 +221,6 @@ export function runOperationalDayCycle(
     loans,
     clients: state.clients,
     collectors: state.collectors,
-  };
-
-  const openToday = ensureTodayOpenDuringBusinessHours(afterCycle, now);
-  return {
-    ...openToday,
     autoClosed,
   };
 }

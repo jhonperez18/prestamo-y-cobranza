@@ -18,6 +18,7 @@ import {
 } from "@/lib/demo-persist";
 import { COLLECTOR_ROLE_REF, SUPERVISOR_ROLE_REF } from "@/lib/mock-data";
 import { canAccessAdminPanel } from "@/lib/session-access";
+import { signOutSupabaseAuth } from "@/lib/supabase/auth-login";
 
 /**
  * Acceso:
@@ -79,6 +80,7 @@ export function AuthGate() {
   }
 
   const logout = () => {
+    void signOutSupabaseAuth();
     clearSession();
     setSession(null);
   };

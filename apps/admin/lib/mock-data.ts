@@ -416,7 +416,7 @@ export const USERS: UserRow[] = [
   {
     ref: "USR-3",
     login: "truqui",
-    email: "truqui@nexo.com",
+    email: "jhonefe18@yahoo.es",
     password: DEMO_USER_PASSWORD,
     name: "Truqui",
     phone: "300 000 0000",
