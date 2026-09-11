@@ -1,6 +1,7 @@
 /**
  * Arranque del paquete canónico (Chrome).
- * v12: solo registro canónico 03→09. Al instalar, reemplaza estado anterior del navegador.
+ * v13: misma verdad del PC — historial 03→09 + jornada 10 cerrada (cobradores/banco).
+ * Al instalar, reemplaza estado anterior del origen (localhost ≠ vercel.app).
  * Luego retención 30 días; nunca reinyecta Carlos/Ana/etc.
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
@@ -25,7 +26,7 @@ import { applyDataRetention } from "@/lib/data-retention";
 import { COLLECTORS, USERS } from "@/lib/mock-data";
 
 /** Subir versión = reinstala el paquete canónico una vez en cada navegador/origen. */
-export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v12";
+export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v13";
 
 const PACKAGE_KEYS = [
   DEMO_CLIENTS_KEY,
@@ -83,6 +84,7 @@ export function forceReinstallCanonicalPackage() {
   }
   try {
     window.localStorage.removeItem(DEMO_BOOTSTRAP_PACKAGE_KEY);
+    window.localStorage.removeItem("nexo-demo-bootstrap-package-v12");
     window.localStorage.removeItem("nexo-demo-bootstrap-package-v11");
     window.localStorage.removeItem("nexo-demo-bootstrap-package-v10");
     window.localStorage.removeItem("nexo-demo-bootstrap-package-v9");
@@ -141,6 +143,7 @@ export function bootstrapProtectedDemoData() {
 
   try {
     window.localStorage.setItem(DEMO_BOOTSTRAP_PACKAGE_KEY, "1");
+    window.localStorage.setItem("nexo-demo-bootstrap-package-v12", "1");
     window.localStorage.setItem("nexo-demo-bootstrap-package-v11", "1");
     window.localStorage.setItem("nexo-demo-bootstrap-package-v10", "1");
     window.localStorage.setItem("nexo-demo-bootstrap-package-v9", "1");
