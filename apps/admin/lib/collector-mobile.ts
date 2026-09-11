@@ -161,6 +161,9 @@ export function defaultMobileRouteDate(
   if (withPending) return withPending.date;
   const openToday = options.find((row) => !row.closed && row.date === fallback);
   if (openToday) return openToday.date;
+  // Hoy cerrado → inicio en planilla cerrada de ese día (no un día viejo del historial).
+  const closedToday = options.find((row) => row.closed && row.date === fallback);
+  if (closedToday) return closedToday.date;
   return options[0].date;
 }
 

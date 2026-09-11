@@ -820,8 +820,12 @@ export function Workspace({
     setOpenUserRef(user.ref);
     const linkedCollector = collectorViewForUser(user, collectorRows);
     if (linkedCollector) {
+      const switchingCollector = linkedCollector.ref !== openCollectorRef;
       setOpenCollectorRef(linkedCollector.ref);
-      setCollectorTab(tab as CollectorTab);
+      // Independiente por cobrador: al cambiar, inicio en ficha (salvo deep-link a actividad).
+      const nextTab =
+        switchingCollector && tab !== "actividad" ? "ficha" : (tab as CollectorTab);
+      setCollectorTab(nextTab);
       if (user.collectorRef !== linkedCollector.ref) {
         setUsers((current) =>
           current.map((row) =>
@@ -848,9 +852,10 @@ export function Workspace({
       onToast("Cobrador no encontrado.");
       return;
     }
+    const switching = collectorRef !== openCollectorRef;
     setOpenUserRef("");
     setOpenCollectorRef(collectorRef);
-    setCollectorTab(tab);
+    setCollectorTab(switching && tab !== "actividad" ? "ficha" : tab);
     onGo("inicio", "ficha-usuario");
   }
 

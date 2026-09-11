@@ -79,6 +79,8 @@ export function CollectorMobilePreview({
 }: Props) {
   const [kind, setKind] = useState<PreviewKind>("collector");
   const [supervisorRef, setSupervisorRef] = useState("");
+  /** Sube al cambiar persona → remount total (no hereda Recaudo/Historial). */
+  const [panelEpoch, setPanelEpoch] = useState(0);
 
   const mobileCollectors = useMemo(
     () => collectors.filter((row) => row.mobileAccess && row.active),
@@ -126,6 +128,11 @@ export function CollectorMobilePreview({
     }
   }, [kind, collector, selectedRef, onSelect]);
 
+  // Si el cobrador cambia desde fuera (Workspace), también remonta el panel.
+  useEffect(() => {
+    setPanelEpoch((n) => n + 1);
+  }, [selectedRef]);
+
   useEffect(() => {
     if (kind === "supervisor" && supervisor && supervisor.ref !== supervisorRef) {
       setSupervisorRef(supervisor.ref);
@@ -139,6 +146,7 @@ export function CollectorMobilePreview({
 
   function pickSupervisor(ref: string) {
     setKind("supervisor");
+    setPanelEpoch((n) => n + 1);
     setSupervisorRef(ref);
   }
 
@@ -146,6 +154,9 @@ export function CollectorMobilePreview({
     kind === "supervisor"
       ? `${supervisor?.name ?? "Supervisor"} · app`
       : `${collector?.name ?? "Cobrador"} · app`;
+
+  const collectorPanelKey = `cob-${collector?.ref ?? "x"}-${panelEpoch}`;
+  const supervisorPanelKey = `sup-${supervisor?.ref ?? "x"}-${panelEpoch}`;
 
   return (
     <section className="panel collector-mobile-preview-panel is-compact">
@@ -188,6 +199,7 @@ export function CollectorMobilePreview({
             <MobilePreviewFrame title={phoneTitle}>
               {kind === "supervisor" && supervisor ? (
                 <SupervisorMobileApp
+                  key={supervisorPanelKey}
                   supervisor={supervisor}
                   collectors={collectors}
                   routes={routes}
@@ -203,6 +215,7 @@ export function CollectorMobilePreview({
                 />
               ) : collector ? (
                 <CollectorMobileApp
+                  key={collectorPanelKey}
                   collector={collector}
                   assignments={assignments}
                   routes={routes}

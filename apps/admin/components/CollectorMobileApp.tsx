@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CollectorCloseDayConfirm } from "@/components/CollectorCloseDayConfirm";
 import { CollectorCloseDaySheet } from "@/components/CollectorCloseDaySheet";
 import {
@@ -205,6 +205,19 @@ export function CollectorMobileApp({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
+  /** Cada cobrador es independiente: al cambiar, vuelve a su propio inicio (antes del paint). */
+  useLayoutEffect(() => {
+    setExpandedKey(null);
+    setListFilter("pending");
+    setSelectedDate(null);
+    setEditingExpenses(false);
+    setConfirmingClose(false);
+    setCuadreDetail(null);
+    setHistoryOpen(false);
+    setFromHistory(false);
+    setMenuOpen(false);
+  }, [collector.ref]);
+
   useEffect(() => {
     if (!menuOpen) return;
     function onPointerDown(event: MouseEvent | TouchEvent) {
@@ -401,11 +414,6 @@ export function CollectorMobileApp({
     savedExpensesTotal,
     viewPeriod,
   ]);
-
-  useEffect(() => {
-    setSelectedDate(null);
-    setFromHistory(false);
-  }, [collector.ref]);
 
   useEffect(() => {
     setExpandedKey(null);
