@@ -6,6 +6,7 @@ import {
   OPERATIONAL_DEMO_STORAGE_PREFIX,
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
+import { pullRemotePaymentsIntoDemo } from "@/lib/supabase/payment-mirror";
 
 type Options = {
   /**
@@ -21,6 +22,8 @@ type Options = {
  * 2) Re-hidrata si otra pestaña escribe nexo-demo-*
  * 3) Re-hidrata al activar `resyncActive` (entrada a Vista móvil)
  * 4) Re-hidrata al volver a la pestaña si `resyncActive` sigue activo
+ * 5) C3: tras hidratar / al volver visible, pull de payments desde Supabase
+ *    y re-hidrata solo si entraron refs nuevos
  */
 export function useOperationalDemoSync(
   apply: (snapshot: OperationalDemoSnapshot) => void,
@@ -32,8 +35,7 @@ export function useOperationalDemoSync(
   const applyRef = useRef(apply);
   applyRef.current = apply;
   const resyncGateRef = useRef(false);
-  const resyncActiveRef = useRef(resyncActive);
-  resyncActiveRef.current = resyncActive;
+  const pullInFlightRef = useRef(false);
 
   const runHydrate = useCallback(() => {
     const snapshot = hydrateOperationalDemo();
@@ -42,9 +44,23 @@ export function useOperationalDemoSync(
     setEpoch((n) => n + 1);
   }, []);
 
-  useEffect(() => {
+  const runHydrateWithRemotePull = useCallback(async () => {
     runHydrate();
+    if (pullInFlightRef.current) return;
+    pullInFlightRef.current = true;
+    try {
+      const pull = await pullRemotePaymentsIntoDemo();
+      if (pull.ok && pull.added > 0) {
+        runHydrate();
+      }
+    } finally {
+      pullInFlightRef.current = false;
+    }
   }, [runHydrate]);
+
+  useEffect(() => {
+    void runHydrateWithRemotePull();
+  }, [runHydrateWithRemotePull]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -54,8 +70,8 @@ export function useOperationalDemoSync(
     }
     if (resyncGateRef.current) return;
     resyncGateRef.current = true;
-    runHydrate();
-  }, [hydrated, resyncActive, runHydrate]);
+    void runHydrateWithRemotePull();
+  }, [hydrated, resyncActive, runHydrateWithRemotePull]);
 
   useEffect(() => {
     function onStorage(event: StorageEvent) {
@@ -64,8 +80,8 @@ export function useOperationalDemoSync(
     }
     function onVisible() {
       if (document.visibilityState !== "visible") return;
-      if (!resyncActiveRef.current) return;
-      runHydrate();
+      // C3: siempre intentar pull al volver (celular ↔ PC).
+      void runHydrateWithRemotePull();
     }
     window.addEventListener("storage", onStorage);
     document.addEventListener("visibilitychange", onVisible);
@@ -73,7 +89,7 @@ export function useOperationalDemoSync(
       window.removeEventListener("storage", onStorage);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [runHydrate]);
+  }, [runHydrate, runHydrateWithRemotePull]);
 
-  return { hydrated, epoch, reload: runHydrate };
+  return { hydrated, epoch, reload: runHydrateWithRemotePull };
 }
