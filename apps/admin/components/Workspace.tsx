@@ -169,7 +169,8 @@ import {
 import { commitCollectorPayment } from "@/lib/commit-collector-payment";
 import { runOperationalDayCycle } from "@/lib/collector-day-auto-close";
 import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
-import { dedupeDailyPaymentsByVisit } from "@/lib/planilla-payment-reconcile";
+import { dedupeDailyPaymentsByVisit, reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
+import { collectorRecaudoForDate } from "@/lib/collector-mobile";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement, miscPaymentRefForMovement } from "@/lib/misc-payments";
 import {
@@ -202,6 +203,7 @@ import {
   buildMonthCloseRecord,
   dayExpenseLineMovementRef,
   finalizeCollectorDayClose,
+  findDayExpenseDraft,
   applyDayCloseRecordsToAssignments,
   recoverPaymentsFromAssignments,
   recoverPaymentsFromBankMovements,
@@ -382,8 +384,20 @@ export function Workspace({
       writeDemoJson(DEMO_DAILY_LOGS_KEY, next.logs);
       writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, next.dayCloses);
       writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, next.dayExpenseDrafts);
+      // Cierre auto 23:30: proyectar gastos/CIE al banco de inmediato (misma raíz que cobrador).
+      if (next.autoClosedCount > 0) {
+        setBankMovements((rows) =>
+          applyBankLedgerSync(rows, {
+            payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []),
+            accounts: bankAccounts,
+            miscPayments: readDemoJson(DEMO_MISC_PAYMENTS_KEY, []),
+            dayExpenseDrafts: next.dayExpenseDrafts,
+            dayCloses: next.dayCloses,
+          }),
+        );
+      }
     },
-    [],
+    [bankAccounts],
   );
 
   usePlanillaDayRollover(
@@ -1221,16 +1235,68 @@ export function Workspace({
       onToast("No hay rutas enviadas para cerrar en esta fecha.");
       return;
     }
-    setDailyAssignments(result.assignments);
+
+    // Misma raíz que cierre móvil / 23:30: CIE + gastos → banco, no solo planilla.
+    let nextCloses = dayCloses;
+    let nextDrafts = dayExpenseDrafts;
+    for (const collectorRef of result.collectorRefs) {
+      const collector = collectors.find((row) => row.ref === collectorRef);
+      if (!collector) continue;
+      const draft = findDayExpenseDraft(nextDrafts, collectorRef, date);
+      const lines = (draft?.expenses ?? []).filter((row) => row.amount > 0);
+      const collected = collectorRecaudoForDate(collectorRef, date, payments, collectors);
+      const record = finalizeCollectorDayClose({
+        draft: {
+          collectorRef,
+          collectorName: collector.name,
+          date,
+          routeRef: draft?.routeRef || `RUT-D-${collectorRef}-${date}`,
+          collected,
+          expenses: lines,
+        },
+        lines,
+        movementRefs: lines.map((line) =>
+          dayExpenseLineMovementRef(collectorRef, date, line.id),
+        ),
+      });
+      nextCloses = [record, ...nextCloses.filter((row) => row.ref !== record.ref)];
+      nextDrafts = removeDayExpenseDraft(nextDrafts, collectorRef, date);
+    }
+
+    const closedAssignments = applyDayCloseRecordsToAssignments(
+      result.assignments,
+      nextCloses,
+    );
+    setDailyAssignments(closedAssignments);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, closedAssignments);
     setRoutes(result.routes);
+    writeDemoJson(DEMO_ROUTES_KEY, result.routes);
     setDailyLogs(result.logs);
+    writeDemoJson(DEMO_DAILY_LOGS_KEY, result.logs);
+    setDayCloses(nextCloses);
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextCloses);
+    setDayExpenseDrafts(nextDrafts);
+    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
+
+    const accounts = ensureBankAccounts(bankAccounts);
+    if (!bankAccounts.length) setBankAccounts(accounts);
+    setBankMovements((rows) =>
+      applyBankLedgerSync(rows, {
+        payments,
+        accounts,
+        miscPayments,
+        dayExpenseDrafts: nextDrafts,
+        dayCloses: nextCloses,
+      }),
+    );
+
     const alertResult = bumpMissedCollectionAlerts(loans, result.missedLoanRefs, date, payments);
     setLoans(alertResult.loans);
     const parts = [
       `${result.collectorsClosed} cobrador${result.collectorsClosed === 1 ? "" : "es"}`,
       formatCloseDayAlertSummary(alertResult.alerted, alertResult.toMora),
     ].filter(Boolean);
-    onToast(`Día cerrado · ${parts.join(" · ")}.`);
+    onToast(`Día cerrado · ${parts.join(" · ")} · CIE y banco al día.`);
   }
 
   function saveCollectorExpensesFromMobile(payload: CollectorSaveExpensesPayload) {
@@ -1893,6 +1959,10 @@ export function Workspace({
           loan.ref === openLoan!.ref ? loanRowAfterPay(loan, result, nextPayments) : loan,
         ),
       );
+      // Planilla / Cobranza hoy deben ver el cobro de caja (misma raíz PG-).
+      setDailyAssignments((assignments) =>
+        reconcilePaymentsOntoPlanilla(assignments, nextPayments),
+      );
       return nextPayments;
     });
     setClients((current) =>
@@ -1903,7 +1973,7 @@ export function Workspace({
       ),
     );
     setPayMode(null);
-    onToast(result.message);
+    onToast(`${result.message} · sincronizado con planilla y banco.`);
   }
 
   function selectClientLoan(ref: string) {

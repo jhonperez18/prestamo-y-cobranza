@@ -22,6 +22,24 @@ import type {
   RouteRow,
   RouteStop,
 } from "@/lib/mock-data";
+import { paymentsForCollector } from "@/lib/mock-data";
+
+function recaudoFromPayments(
+  collectorRef: string,
+  date: string,
+  payments: PaymentRow[],
+  collectors: CollectorRow[],
+) {
+  const norm = normalizeHistoryDate(date) || date;
+  let total = 0;
+  let count = 0;
+  for (const row of paymentsForCollector(collectorRef, collectors, payments)) {
+    if (normalizeHistoryDate(row.paidDate || "") !== norm) continue;
+    total += Number(row.amount) || 0;
+    count += 1;
+  }
+  return { total, count };
+}
 
 export function dispatchRouteRef(collectorRef: string, date: string) {
   return `RUT-D-${collectorRef}-${date}`;
@@ -447,6 +465,8 @@ export type CloseDayResult = {
   missedLoanRefs: string[];
   collected: number;
   collectorsClosed: number;
+  /** Cobradores sellados en este cierre (para crear CIE alineados). */
+  collectorRefs: string[];
 };
 
 /**
@@ -557,7 +577,13 @@ export function closeDispatchDay(
     const visitsPartial = closedRoute.stops.filter((s) => s.visitStatus === "parcial").length;
     const logRef = dailyLogRef(ref, normDate);
     const existingLog = nextLogs.find((row) => row.ref === logRef);
-    collected += existingLog?.collected ?? 0;
+    const recaudo = payments.length
+      ? recaudoFromPayments(ref, normDate, payments, collectors)
+      : {
+          total: existingLog?.collected ?? 0,
+          count: existingLog?.paymentsCount ?? 0,
+        };
+    collected += recaudo.total;
 
     const closedLog: CollectorDailyLogRow = {
       ref: logRef,
@@ -571,15 +597,15 @@ export function closeDispatchDay(
       visitsDone,
       visitsPartial,
       visitsPending: 0,
-      collected: existingLog?.collected ?? 0,
-      paymentsCount: existingLog?.paymentsCount ?? 0,
+      collected: recaudo.total,
+      paymentsCount: recaudo.count,
       startedAt: existingLog?.startedAt ?? closedAt,
       closedAt,
       status: "Cerrada",
       kind: "paid",
       summary: [
-        existingLog?.paymentsCount
-          ? `${existingLog.paymentsCount} cobro${existingLog.paymentsCount === 1 ? "" : "s"}`
+        recaudo.count
+          ? `${recaudo.count} cobro${recaudo.count === 1 ? "" : "s"}`
           : null,
         visitsDone ? `${visitsDone} cobrado${visitsDone === 1 ? "" : "s"}` : null,
         visitsPartial ? `${visitsPartial} parcial${visitsPartial === 1 ? "" : "es"}` : null,
@@ -603,6 +629,7 @@ export function closeDispatchDay(
     missedLoanRefs: [...new Set(missedLoanRefs)],
     collected,
     collectorsClosed: collectorRefs.length,
+    collectorRefs,
   };
 }
 

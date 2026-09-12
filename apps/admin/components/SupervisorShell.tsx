@@ -14,6 +14,8 @@ import {
   type UserRow,
 } from "@/lib/mock-data";
 import {
+  DEMO_BANK_ACCOUNTS_KEY,
+  DEMO_BANK_MOVEMENTS_KEY,
   DEMO_CLIENTS_KEY,
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
@@ -22,10 +24,20 @@ import {
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_DAILY_LOGS_KEY,
   DEMO_LOANS_KEY,
+  DEMO_MISC_PAYMENTS_KEY,
   DEMO_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
+  readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
+import {
+  ensureBankAccounts,
+  normalizeBankAccount,
+  normalizeBankMovements,
+  type BankAccount,
+  type BankMovement,
+} from "@/lib/bank";
+import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import {
   CLIENT_STATUS_ACTIVE,
   clientStatusKind,
@@ -111,6 +123,23 @@ export function SupervisorShell({ session, onLogout }: Props) {
       writeDemoJson(DEMO_DAILY_LOGS_KEY, next.logs);
       writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, next.dayCloses);
       writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, next.dayExpenseDrafts);
+      if (next.autoClosedCount > 0) {
+        writeDemoJson(
+          DEMO_BANK_MOVEMENTS_KEY,
+          syncBankLedger({
+            payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []),
+            movements: normalizeBankMovements(
+              readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
+            ),
+            accounts: ensureBankAccounts(
+              readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
+            ),
+            miscPayments: readDemoJson(DEMO_MISC_PAYMENTS_KEY, []),
+            dayExpenseDrafts: next.dayExpenseDrafts,
+            dayCloses: next.dayCloses,
+          }),
+        );
+      }
     },
     [],
   );

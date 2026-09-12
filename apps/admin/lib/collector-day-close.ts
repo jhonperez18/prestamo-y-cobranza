@@ -769,7 +769,7 @@ export function buildCollectorDayHistory(
 }
 
 /**
- * Alinea `CIE.collected` con la suma real de pagos del día (por cobrador).
+ * Alinea `CIE.collected` (y caja menor) con la suma real de pagos del día (por cobrador).
  * Fuente de verdad = PG- del día (igual que banco Debe / recaudo).
  */
 export function alignDayClosesCollectedToPayments(
@@ -781,9 +781,18 @@ export function alignDayClosesCollectedToPayments(
   let changed = false;
   const next = closes.map((row) => {
     const real = collectorRecaudoTotalForClose(row.collectorRef, row.date, payments, collectors);
-    if (row.collected === real) return row;
+    const expensesTotal = Number(row.expensesTotal) || sumExpenseLines(row.expenses ?? []);
+    const cashFloat = cashFloatAfterExpenses(real, expensesTotal);
+    if (row.collected === real && row.expensesTotal === expensesTotal && row.cashFloat === cashFloat) {
+      return row;
+    }
     changed = true;
-    return { ...row, collected: real };
+    return {
+      ...row,
+      collected: real,
+      expensesTotal,
+      cashFloat,
+    };
   });
   return changed ? next : closes;
 }
