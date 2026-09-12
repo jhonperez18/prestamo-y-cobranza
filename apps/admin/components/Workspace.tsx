@@ -111,6 +111,7 @@ import {
 import { loanStatusPill } from "@/lib/loan-status";
 import { chargeLabel, displayToIso, isoToDisplay, normalizeLoan, syncAllLoans, syncLoan } from "@/lib/loan-preview";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
+import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import {
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
@@ -1504,6 +1505,7 @@ export function Workspace({
     writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
 
     onToast(`Cobro ${committed.payment.ref} sincronizado · Cobranza, banco y planilla al día.`);
+    queuePaymentMirror(committed.payment);
     return true;
   }
 
@@ -1990,6 +1992,7 @@ export function Workspace({
     );
     setPayMode(null);
     onToast(`${result.message} · sincronizado con planilla y banco.`);
+    queuePaymentMirror(row);
   }
 
   function selectClientLoan(ref: string) {

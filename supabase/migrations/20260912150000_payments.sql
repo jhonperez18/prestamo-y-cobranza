@@ -1,12 +1,10 @@
--- C1: cimiento de pagos compartidos (demo → backend)
--- Semántica alineada a PaymentRow / docs/operational-money.md
--- Aún no es fuente de verdad de la app (sigue localStorage hasta C3/C4).
+-- C1/C2: pagos compartidos (demo → backend)
+-- Semántica: PaymentRow / docs/operational-money.md / docs/demo-to-backend.md
 
 create extension if not exists "pgcrypto";
 
 create table if not exists public.payments (
   id uuid primary key default gen_random_uuid(),
-  -- Código de negocio (PG-…); único para idempotencia / banco
   ref text not null unique,
   loan_ref text not null,
   client_ref text,
@@ -34,28 +32,35 @@ create index if not exists payments_collector_ref_paid_date_idx
   on public.payments (collector_ref, paid_date desc);
 
 comment on table public.payments is
-  'Cobros canónicos. En fase C3+ son la raíz de plata; hasta entonces dual-write opcional.';
+  'Cobros canónicos. C2 dual-write; C3+ fuente de verdad compartida.';
 
 alter table public.payments enable row level security;
 
--- Borrador RLS: ajustar roles reales en C2 (admin vs cobrador).
--- Por ahora políticas permisivas solo si hay JWT; sin política = denegado para anon.
+-- Autenticados (futuro login Supabase)
+drop policy if exists "payments_select_authenticated" on public.payments;
+drop policy if exists "payments_insert_authenticated" on public.payments;
+drop policy if exists "payments_update_authenticated" on public.payments;
 
 create policy "payments_select_authenticated"
-  on public.payments
-  for select
-  to authenticated
-  using (true);
+  on public.payments for select to authenticated using (true);
 
 create policy "payments_insert_authenticated"
-  on public.payments
-  for insert
-  to authenticated
-  with check (true);
+  on public.payments for insert to authenticated with check (true);
 
 create policy "payments_update_authenticated"
-  on public.payments
-  for update
-  to authenticated
-  using (true)
-  with check (true);
+  on public.payments for update to authenticated using (true) with check (true);
+
+-- C2 temporal: dual-write desde demo (anon key) hasta cerrar auth en C3.
+-- Quitar estas políticas en C3 cuando el login Supabase sea obligatorio.
+drop policy if exists "payments_select_anon_c2" on public.payments;
+drop policy if exists "payments_insert_anon_c2" on public.payments;
+drop policy if exists "payments_update_anon_c2" on public.payments;
+
+create policy "payments_select_anon_c2"
+  on public.payments for select to anon using (true);
+
+create policy "payments_insert_anon_c2"
+  on public.payments for insert to anon with check (true);
+
+create policy "payments_update_anon_c2"
+  on public.payments for update to anon using (true) with check (true);

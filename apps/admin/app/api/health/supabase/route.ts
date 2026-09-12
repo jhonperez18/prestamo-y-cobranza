@@ -21,10 +21,22 @@ export async function GET() {
         { status: 502 },
       );
     }
+
+    // C2: la tabla payments debe existir tras aplicar la migración SQL.
+    const payments = await supabase.from("payments").select("ref").limit(1);
+    const tableMissing =
+      payments.error?.code === "PGRST205" ||
+      /Could not find the table/i.test(payments.error?.message ?? "");
+
     return NextResponse.json({
       ok: true,
       url,
       auth: "reachable",
+      payments: tableMissing
+        ? { ok: false, error: "payments_table_missing" }
+        : payments.error
+          ? { ok: false, error: payments.error.message }
+          : { ok: true },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";

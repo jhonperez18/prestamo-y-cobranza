@@ -57,6 +57,7 @@ import {
 } from "@/lib/bank";
 import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
+import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import { commitCollectorPayment } from "@/lib/commit-collector-payment";
 import { type OperationalDemoSnapshot } from "@/lib/hydrate-operational-demo";
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
@@ -308,6 +309,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, projected.bankMovements);
 
     showToast(`Cobro ${committed.payment.ref} guardado · Cobranza, banco y planilla al día.`);
+    queuePaymentMirror(committed.payment);
     return true;
   }
 

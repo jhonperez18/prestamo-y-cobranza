@@ -40,3 +40,6 @@ Thumbs.db
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/**
+
+# Supabase CLI local cache
+supabase/.temp/
