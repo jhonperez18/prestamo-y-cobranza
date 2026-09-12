@@ -1,12 +1,13 @@
 /**
  * Contrato de producción — un solo camino, sin parches.
  *
- * Uso diario:
- *   git push origin main
- *   npm run verify:prod
+ * Uso diario (después de push a main + Ready):
+ *   cd apps/admin && npm run verify:prod
  *
  * Emergencia (forzar rebuild en Vercel):
  *   npm run release:force
+ *
+ * Siempre: aliases alineados + purge de caché CDN/data (nada viejo arrastrado).
  */
 import { execSync } from "child_process";
 import { dirname, join } from "path";
@@ -64,6 +65,18 @@ function syncAliases(deploymentUrl) {
   run(`npx vercel alias set ${deploymentUrl} ${LEGACY_HOST}`, repoRoot);
 }
 
+/** Obligatorio: sin esto el celular/CDN arrastra HTML/JS viejo. */
+function purgeCaches() {
+  console.log("Purgando caché CDN…");
+  run("npx vercel cache purge --yes --type cdn", repoRoot);
+  console.log("Purgando caché Data…");
+  try {
+    run("npx vercel cache purge --yes --type data", repoRoot);
+  } catch {
+    console.warn("Aviso: no se pudo purgar Data cache (CDN sí se limpió).");
+  }
+}
+
 const mode = process.argv[2] || "verify";
 
 const branch = capture("git rev-parse --abbrev-ref HEAD");
@@ -100,6 +113,8 @@ if (mode === "verify") {
     console.log(`\nSincronizando aliases → ${prod}`);
     syncAliases(prod);
   }
+  purgeCaches();
+  console.log(`\nListo. Login → build ${remoteSha || sha}. Si el celular sigue viejo: ventana privada.`);
   process.exit(0);
 }
 
@@ -117,11 +132,7 @@ if (mode === "force") {
     process.exit(1);
   }
   syncAliases(match[0]);
-  try {
-    run("npx vercel cache purge --yes --type cdn", repoRoot);
-  } catch {
-    /* opcional */
-  }
+  purgeCaches();
   console.log(`\nListo → ${DOMAIN}`);
   console.log(`Login debe mostrar: Código en este sitio: ${sha}`);
   process.exit(0);

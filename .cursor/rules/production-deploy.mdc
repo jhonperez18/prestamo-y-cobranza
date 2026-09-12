@@ -20,9 +20,9 @@ alwaysApply: true
 1. Cambios en código → commit en `main`
 2. `git push origin main`
 3. Esperar Ready en Vercel del proyecto `prestamo-y-cobranza`
-4. Abrir **solo** https://prestamo-y-cobranza.vercel.app
-5. En login debe verse `build` = SHA del commit (ej. `4821362`)
-6. Opcional: `cd apps/admin && npm run verify:prod`
+4. **Obligatorio:** `cd apps/admin && npm run verify:prod` (alineá aliases + **purge CDN/data**)
+5. Abrir **solo** https://prestamo-y-cobranza.vercel.app
+6. En login debe verse `build` = SHA del commit (ej. `4821362`)
 
 ## Prohibido (causa el “versión vieja” de todos los días)
 
@@ -31,6 +31,7 @@ alwaysApply: true
 - Editar a mano `APP_BUILD` / inventar sellos de build
 - Scripts de “parche” que despliegan a un proyecto y apuntan el dominio a otro
 - Decir “ya está en prod” sin verificar el `build` del login
+- Hacer push/deploy **sin** purgar caché CDN (arrastra HTML/JS viejo en celular)
 
 ## Emergencia
 
@@ -41,10 +42,12 @@ cd apps/admin
 npm run release:force
 ```
 
+(`release:force` también purga CDN/data al terminar.)
+
 ## Si el usuario ve versión vieja
 
 1. Confirmar URL = `prestamo-y-cobranza.vercel.app`
 2. Comparar `build` del login vs `git rev-parse --short HEAD` / `origin/main`
-3. Ctrl+F5 o ventana privada (caché / localStorage demo ≠ código viejo)
+3. Correr `npm run verify:prod` (purge) + Ctrl+F5 o ventana privada
 4. “Cerrar día” debe quedarse cerrado hasta el rollover; el ciclo no reabre jornadas manuales antes de 23:30
 5. No crear un segundo deploy improvisado

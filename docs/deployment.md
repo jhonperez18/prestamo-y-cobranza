@@ -20,19 +20,20 @@ El proyecto Vercel llamado `admin` se eliminó; su URL quedó como **alias** del
 
 ```bash
 git push origin main
-# Vercel construye solo prestamo-y-cobranza
+# Esperar Ready en Vercel (prestamo-y-cobranza)
+cd apps/admin && npm run verify:prod   # aliases + purge CDN/data (obligatorio)
 # Abrir https://prestamo-y-cobranza.vercel.app
 # Login → build = SHA del commit
 ```
 
-Verificación rápida:
+Verificación / limpieza de caché:
 
 ```bash
 cd apps/admin
 npm run verify:prod
 ```
 
-Emergencia (rebuild forzado al mismo dominio):
+Emergencia (rebuild forzado al mismo dominio + purge):
 
 ```bash
 cd apps/admin
@@ -43,10 +44,11 @@ npm run release:force
 
 1. **Un solo proyecto Git → Vercel** (`prestamo-y-cobranza`). El proyecto `admin` ya no existe; su URL es solo alias.
 2. **El sello `build` sale del commit en cada build** (`next.config.ts` → `NEXT_PUBLIC_APP_BUILD`). No hay archivo de sello manual.
-3. **HTML raíz sin caché agresiva** (headers en `next.config.ts`).
-4. **Aliases alineados**: `npm run verify:prod` apunta `prestamo-y-cobranza.vercel.app` y `admin-jhon-fredy-perezs-projects.vercel.app` al mismo deploy Ready.
-5. **Enlace local CLI**: siempre `npx vercel link --yes --project prestamo-y-cobranza` (nunca `admin`).
-6. **Regla Cursor** `.cursor/rules/production-deploy.mdc` para que agentes no improvisen otro deploy.
+3. **HTML sin caché agresiva** (headers `no-store` en `next.config.ts`).
+4. **Purge CDN/data obligatorio** tras cada deploy (`verify:prod` / `release:force`). Sin esto el celular arrastra shell viejo.
+5. **Aliases alineados**: mismas URLs → mismo deploy Ready.
+6. **Enlace local CLI**: siempre `npx vercel link --yes --project prestamo-y-cobranza` (nunca `admin`).
+7. **Regla Cursor** `.cursor/rules/production-deploy.mdc` para que agentes no improvisen otro deploy.
 
 ## Qué NO es “código viejo”
 
