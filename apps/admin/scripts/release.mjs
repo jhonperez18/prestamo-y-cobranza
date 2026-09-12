@@ -35,6 +35,12 @@ function ensureLinked() {
   // Siempre el proyecto canónico. Nunca "admin" u otro.
   run(`npx vercel link --yes --project ${PROJECT}`, repoRoot);
   run(`npx vercel link --yes --project ${PROJECT}`, adminRoot);
+  // `vercel link` a veces vuelve a appendear `.vercel` / `.env*` al .gitignore.
+  try {
+    capture("git checkout -- .gitignore", repoRoot);
+  } catch {
+    /* ignore */
+  }
 }
 
 function latestProductionDeployUrl() {
