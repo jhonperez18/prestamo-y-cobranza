@@ -1,55 +1,49 @@
 # Camino demo → backend (fase C)
 
-**Estado:** C4 en código — Postgres es la **raíz de pagos** (`PG-`); localStorage es caché + cola offline.  
+**Estado:** C5 — sincronización operativa al 100% para **cobros + clientes + préstamos**.  
 **Contrato de dinero vivo:** [`operational-money.md`](operational-money.md)  
 **Arquitectura objetivo:** [`architecture.md`](architecture.md)
 
 ---
 
-## Por qué esta fase
+## Qué quedó unificado
 
-Celular y PC no comparten `localStorage`. Los cobros viven en Supabase (`public.payments`) y cada dispositivo proyecta Cobranza / Banco / CIE desde esos `PG-…`.
-
----
-
-## Orden profesional
-
-| Paso | Qué | Criterio de listo |
+| Entidad | Tabla Supabase | Comportamiento |
 | --- | --- | --- |
-| C0 | Contrato PG- estable en demo | Smoke de `operational-money.md` |
-| C1 | Migración SQL `payments` | Tabla + RLS |
-| C2 | Dual-write al cobrar | Fila en `public.payments` |
-| C3 | Lectura + merge | PC ve cobro del celular |
-| **C4** | Postgres raíz de pagos | Remoto manda; local = caché / offline |
-| C5 | Préstamos / clientes compartidos | Alta en un lado se ve en el otro |
-| C6 | Auth + RLS por rol | Quitar `anon` temporal |
+| Cobros `PG-` | `public.payments` | Raíz de plata (C4) |
+| Clientes `COD-` | `public.clients` | Dual-write + pull (C5) |
+| Préstamos `P-` | `public.loans` | Dual-write + pull (C5) |
+
+Celular y PC (mismo Vercel o localhost con env) comparten esas tres raíces.  
+Planilla / CIE / banco se **re-proyectan** desde pagos al hidratar (no hace falta otro ledger).
 
 ---
 
-## C4 — reglas
+## Orden hecho
 
-1. **Cobro:** se guarda local (UX calle) y se sube a Supabase; si falla → cola `nexo-demo-payment-mirror-queue`.
-2. **Al abrir / volver a la pestaña:** flush de cola → pull remoto → merge.
-3. **Merge:** remoto gana en campos de dinero; se conservan cobros solo-locales (offline) y extras UI (evidencia, gps).
-4. **Proyecciones** (planilla, CIE, banco) siguen saliendo de `synchronizeOperationalState` sobre el array fusionado.
-
-Código:
-
-- `lib/supabase/payment-mirror.ts` — persist, flush, pull, merge C4
-- `GET /api/payments` · `POST /api/payments/mirror`
-- `useOperationalDemoSync` — flush + pull + hidratar
+| Paso | Qué |
+| --- | --- |
+| C0–C1 | Contrato PG- + SQL payments |
+| C2–C4 | Dual-write, pull, Postgres raíz de cobros + cola offline |
+| **C5** | Clientes y préstamos igual (mirror + pull + cola) |
 
 ---
 
-## Semántica a preservar
+## C5 — reglas
 
-- `ref` tipo `PG-…`
-- `loan_ref`, `amount`, `paid_date`, `method`, `collector_ref`, `source`
-- SQL `NUMERIC`
-- RLS `anon` temporal hasta C6
+1. Alta/edición/renovación/calle → `queueClientMirror` / `queueLoanMirror`
+2. Al abrir / volver: flush colas → pull payments + clients + loans → hidratar
+3. Remoto manda por `ref`; offline local se conserva hasta subir
+4. Auth/RLS `anon` temporal hasta C6
+
+Código: `lib/supabase/catalog-mirror.ts`, `GET|POST /api/clients*`, `/api/loans*`, `useOperationalDemoSync`
+
+Migración: `supabase/migrations/20260912160000_clients_loans.sql`
 
 ---
 
-## Siguiente (C5)
+## Siguiente (crecimiento)
 
-Compartir préstamos y clientes (mismo patrón: tabla + dual-write + pull).
+- C6: login Supabase + RLS por rol (quitar anon)
+- Catálogo (rutas/cobradores/usuarios) si hace falta multi-oficina
+- Offline robusto / realtime

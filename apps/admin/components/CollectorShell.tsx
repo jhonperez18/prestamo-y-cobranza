@@ -58,6 +58,7 @@ import {
 import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
 import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
+import { queueClientMirror, queueLoanMirror, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 import { commitCollectorPayment } from "@/lib/commit-collector-payment";
 import { type OperationalDemoSnapshot } from "@/lib/hydrate-operational-demo";
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
@@ -310,6 +311,14 @@ export function CollectorShell({ session, onLogout }: Props) {
 
     showToast(`Cobro ${committed.payment.ref} guardado · Cobranza, banco y planilla al día.`);
     queuePaymentMirror(committed.payment);
+    const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
+    if (paidLoan) queueLoanMirror(paidLoan);
+    const paidClient = committed.clients.find((row) =>
+      committed.loans.some(
+        (loan) => loan.ref === committed.payment.loanRef && loan.clientRef === row.ref,
+      ),
+    );
+    if (paidClient) queueClientMirror(paidClient);
     return true;
   }
 
@@ -348,6 +357,18 @@ export function CollectorShell({ session, onLogout }: Props) {
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
+    queueLoansMirror([result.created, result.closed]);
+    const renewedClient = clients.find((entry) => entry.ref === loan.clientRef);
+    if (renewedClient) {
+      queueClientMirror({
+        ...renewedClient,
+        total: renewedClient.total + (result.created.total ?? 0),
+        pending: Math.max(
+          0,
+          renewedClient.pending - loan.balance + (result.created.total ?? 0),
+        ),
+      });
+    }
     showToast(
       `Nuevo préstamo ${newRef}: capital ${money(result.created.capital)} + 20% · total ${money(result.created.total ?? 0)} · 1 mes.`,
     );
@@ -388,6 +409,9 @@ export function CollectorShell({ session, onLogout }: Props) {
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
+    queueLoanMirror(loan);
+    const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
+    if (mirroredClient) queueClientMirror(mirroredClient);
     showToast(`Préstamo ${loan.ref} creado · cuota ${money(loan.installment ?? 0)}.`);
   }
 

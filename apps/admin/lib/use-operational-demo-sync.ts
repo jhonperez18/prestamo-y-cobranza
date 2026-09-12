@@ -10,6 +10,10 @@ import {
   flushPaymentMirrorQueue,
   pullRemotePaymentsIntoDemo,
 } from "@/lib/supabase/payment-mirror";
+import {
+  flushCatalogMirrorQueues,
+  pullRemoteCatalogIntoDemo,
+} from "@/lib/supabase/catalog-mirror";
 
 type Options = {
   /**
@@ -20,10 +24,10 @@ type Options = {
 };
 
 /**
- * Contrato de sincronización operativa (C4 pagos):
- * 1) Flush cola offline → pull Postgres (raíz) → hidratar proyecciones
+ * Contrato de sincronización operativa (C4+C5):
+ * 1) Flush colas offline → pull pagos/clientes/préstamos → hidratar
  * 2) Re-hidrata si otra pestaña escribe nexo-demo-*
- * 3) Re-hidrata al activar `resyncActive` (entrada a Vista móvil)
+ * 3) Re-hidrata al activar `resyncActive`
  * 4) Al volver visible: flush + pull + hidratar
  */
 export function useOperationalDemoSync(
@@ -52,11 +56,14 @@ export function useOperationalDemoSync(
     }
     pullInFlightRef.current = true;
     try {
-      // Caché local primero (UI rápida), luego raíz remota.
       runHydrate();
       await flushPaymentMirrorQueue();
-      const pull = await pullRemotePaymentsIntoDemo();
-      if (pull.ok && pull.changed) {
+      await flushCatalogMirrorQueues();
+      const [paymentsPull, catalogPull] = await Promise.all([
+        pullRemotePaymentsIntoDemo(),
+        pullRemoteCatalogIntoDemo(),
+      ]);
+      if ((paymentsPull.ok && paymentsPull.changed) || (catalogPull.ok && catalogPull.changed)) {
         runHydrate();
       }
     } finally {

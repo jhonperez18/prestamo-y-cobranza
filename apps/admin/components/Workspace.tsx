@@ -112,6 +112,7 @@ import { loanStatusPill } from "@/lib/loan-status";
 import { chargeLabel, displayToIso, isoToDisplay, normalizeLoan, syncAllLoans, syncLoan } from "@/lib/loan-preview";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
 import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
+import { queueClientMirror, queueLoanMirror, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 import {
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
@@ -836,6 +837,8 @@ export function Workspace({
     );
     setRoutes(synced.routes);
     setDailyAssignments(synced.assignments);
+    const mirrored = nextClients.find((row) => row.ref === updated.ref) ?? updated;
+    queueClientMirror(mirrored);
     if (approving) {
       onGo("clientes", "listado");
       onToast(
@@ -887,6 +890,8 @@ export function Workspace({
     setClients(nextClients);
     setOpenRef(ref);
     setFileTab("ficha");
+    const mirrored = nextClients.find((entry) => entry.ref === ref) ?? row;
+    queueClientMirror(mirrored);
     if (review.status === CLIENT_STATUS_REVIEW) {
       onGo("clientes", "revision");
       onToast("Enviado a revisión. Aún no es cliente de ruta ni cobros.");
@@ -979,14 +984,17 @@ export function Workspace({
       },
       payments,
     ) as LoanRow;
+    const nextClient: ClientRow = {
+      ...client,
+      total: client.total + draft.total,
+      pending: client.pending + draft.total,
+    };
     setLoans((current) => [row, ...current]);
     setClients((current) =>
-      current.map((entry) =>
-        entry.ref === client.ref
-          ? { ...entry, total: entry.total + draft.total, pending: entry.pending + draft.total }
-          : entry,
-      ),
+      current.map((entry) => (entry.ref === client.ref ? nextClient : entry)),
     );
+    queueLoanMirror(row);
+    queueClientMirror(nextClient);
     setOpenLoanRef(ref);
     setOpenRef(client.ref);
     setLoanTab("ficha");
@@ -999,46 +1007,42 @@ export function Workspace({
     const client = clients.find((row) => row.ref === draft.clientRef);
     if (!client) return;
     const oldTotal = openLoan.total ?? openLoan.capital;
+    const nextLoan = syncLoan(
+      {
+        ...openLoan,
+        clientRef: client.ref,
+        client: `${client.name} ${client.lastName}`.trim(),
+        date: draft.date,
+        due: draft.due,
+        capital: draft.capital,
+        paid: openLoan.paid,
+        notes: draft.notes,
+        rate: draft.rate,
+        frequency: draft.frequency,
+        mode: draft.mode,
+        pact: draft.pact,
+        days: draft.days,
+        interest: draft.interest,
+        total: draft.total,
+        installment: draft.installment,
+        schedule: draft.schedule,
+        termsPending: false,
+      },
+      payments,
+    ) as LoanRow;
+    const nextClient: ClientRow = {
+      ...client,
+      total: Math.max(0, client.total - oldTotal + draft.total),
+      pending: Math.max(0, client.pending - oldTotal + draft.total),
+    };
     setLoans((current) =>
-      current.map((row) =>
-        row.ref === openLoan.ref
-          ? (syncLoan(
-              {
-                ...row,
-                clientRef: client.ref,
-                client: `${client.name} ${client.lastName}`.trim(),
-                date: draft.date,
-                due: draft.due,
-                capital: draft.capital,
-                paid: row.paid,
-                notes: draft.notes,
-                rate: draft.rate,
-                frequency: draft.frequency,
-                mode: draft.mode,
-                pact: draft.pact,
-                days: draft.days,
-                interest: draft.interest,
-                total: draft.total,
-                installment: draft.installment,
-                schedule: draft.schedule,
-                termsPending: false,
-              },
-              payments,
-            ) as LoanRow)
-          : row,
-      ),
+      current.map((row) => (row.ref === openLoan.ref ? nextLoan : row)),
     );
     setClients((current) =>
-      current.map((entry) =>
-        entry.ref === client.ref
-          ? {
-              ...entry,
-              total: Math.max(0, entry.total - oldTotal + draft.total),
-              pending: Math.max(0, entry.pending - oldTotal + draft.total),
-            }
-          : entry,
-      ),
+      current.map((entry) => (entry.ref === client.ref ? nextClient : entry)),
     );
+    queueLoanMirror(nextLoan);
+    queueClientMirror(nextClient);
     onGo("prestamos", "cuenta");
     onToast(
       openLoan.termsPending
@@ -1506,6 +1510,14 @@ export function Workspace({
 
     onToast(`Cobro ${committed.payment.ref} sincronizado · Cobranza, banco y planilla al día.`);
     queuePaymentMirror(committed.payment);
+    const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
+    if (paidLoan) queueLoanMirror(paidLoan);
+    const paidClient = committed.clients.find((row) =>
+      committed.loans.some(
+        (loan) => loan.ref === committed.payment.loanRef && loan.clientRef === row.ref,
+      ),
+    );
+    if (paidClient) queueClientMirror(paidClient);
     return true;
   }
 
@@ -1567,6 +1579,18 @@ export function Workspace({
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
+    queueLoansMirror([result.created, result.closed]);
+    const renewedClient = clients.find((entry) => entry.ref === loan.clientRef);
+    if (renewedClient) {
+      queueClientMirror({
+        ...renewedClient,
+        total: renewedClient.total + (result.created.total ?? 0),
+        pending: Math.max(
+          0,
+          renewedClient.pending - loan.balance + (result.created.total ?? 0),
+        ),
+      });
+    }
     onToast(
       `Nuevo préstamo ${newRef}: capital ${money(result.created.capital)} + 20% · total ${money(result.created.total ?? 0)} · 1 mes.`,
     );
@@ -1604,6 +1628,7 @@ export function Workspace({
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
+    queueClientMirror(row);
     onToast(
       `Cliente ${row.name} en ruta ${draft.routeName}, posición ${row.routeOrder}: listo para prestar.`,
     );
@@ -1648,6 +1673,9 @@ export function Workspace({
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
+    queueLoanMirror(loan);
+    const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
+    if (mirroredClient) queueClientMirror(mirroredClient);
     onToast(`Préstamo ${loan.ref} creado · cuota ${money(loan.installment ?? 0)}.`);
   }
 
@@ -1993,6 +2021,15 @@ export function Workspace({
     setPayMode(null);
     onToast(`${result.message} · sincronizado con planilla y banco.`);
     queuePaymentMirror(row);
+    const nextLoan = loanRowAfterPay(openLoan, result, [row, ...payments]);
+    queueLoanMirror(nextLoan);
+    const cajaClient = clients.find((entry) => entry.ref === openLoan.clientRef);
+    if (cajaClient) {
+      queueClientMirror({
+        ...cajaClient,
+        pending: Math.max(0, cajaClient.pending - amount),
+      });
+    }
   }
 
   function selectClientLoan(ref: string) {

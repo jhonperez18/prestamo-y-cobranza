@@ -38,6 +38,7 @@ import {
   type BankMovement,
 } from "@/lib/bank";
 import { syncBankLedger } from "@/lib/bank-ledger-sync";
+import { queueClientMirror, queueLoanMirror } from "@/lib/supabase/catalog-mirror";
 import {
   CLIENT_STATUS_ACTIVE,
   clientStatusKind,
@@ -237,6 +238,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
+    queueClientMirror(row);
     showToast(
       `Cliente ${row.name} en ruta ${draft.routeName}, posición ${row.routeOrder}: listo para prestar.`,
     );
@@ -281,6 +283,9 @@ export function SupervisorShell({ session, onLogout }: Props) {
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
+    queueLoanMirror(loan);
+    const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
+    if (mirroredClient) queueClientMirror(mirroredClient);
     showToast(`Préstamo ${loan.ref} creado · cuota ${money(loan.installment ?? 0)}.`);
   }
 
