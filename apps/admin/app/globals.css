@@ -4032,6 +4032,54 @@
       font-size: 13px;
     }
 
+    /* Módulos siempre visibles (fuera del cajón) */
+    .phone-module-rail {
+      position: sticky;
+      top: 56px;
+      z-index: 35;
+      display: flex;
+      gap: 6px;
+      padding: 8px 10px;
+      overflow-x: auto;
+      background: var(--topbar-bg, #14201b);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .phone-module-rail::-webkit-scrollbar {
+      display: none;
+    }
+    .phone-mod {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      min-width: 68px;
+      padding: 8px 8px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.72);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .phone-mod em {
+      font-style: normal;
+      font-size: 11px !important;
+      line-height: 1.1;
+      white-space: nowrap;
+    }
+    .phone-mod svg {
+      width: 18px;
+      height: 18px;
+      flex-shrink: 0;
+    }
+    .phone-mod.on {
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
+    }
+
     .phone-nav-scrim {
       position: fixed;
       inset: 0;
@@ -4045,16 +4093,16 @@
 
     .shell.is-phone-layout {
       grid-template-columns: 1fr;
-      min-height: calc(100dvh - 56px);
+      min-height: calc(100dvh - 56px - 58px);
     }
     .shell.is-phone-layout .aside {
       display: flex;
       flex-direction: column;
       position: fixed;
-      top: 56px;
+      top: calc(56px + 58px);
       left: 0;
       bottom: 0;
-      width: min(300px, 86vw);
+      width: min(320px, 88vw);
       z-index: 50;
       transform: translateX(0);
       opacity: 1;
@@ -4071,52 +4119,54 @@
     .shell.is-phone-layout .workspace {
       padding: 12px 12px 28px;
       max-width: none;
+      min-height: calc(100dvh - 56px - 58px);
+    }
+    .shell.is-phone-layout.is-phone-preview {
+      min-height: calc(100dvh - 56px);
+    }
+    .shell.is-phone-layout.is-phone-preview .aside {
+      top: 56px;
+    }
+    .shell.is-phone-layout.is-phone-preview .workspace {
       min-height: calc(100dvh - 56px);
     }
 
-    .phone-module-rail {
+    .phone-drawer-head {
       display: flex;
-      gap: 6px;
-      padding: 10px 10px 8px;
-      overflow-x: auto;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      flex-shrink: 0;
-      -webkit-overflow-scrolling: touch;
-    }
-    .phone-mod {
-      display: flex;
-      flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 4px;
-      min-width: 64px;
-      padding: 8px 6px;
-      border: 0;
-      border-radius: 10px;
-      background: transparent;
-      color: rgba(255, 255, 255, 0.72);
-      cursor: pointer;
-    }
-    .phone-mod em {
-      font-style: normal;
-      font-size: 11px !important;
-      line-height: 1.1;
-      white-space: nowrap;
-    }
-    .phone-mod svg {
-      width: 18px;
-      height: 18px;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 12px 14px 8px;
       flex-shrink: 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     }
-    .phone-mod.on {
-      background: rgba(255, 255, 255, 0.12);
+    .phone-drawer-head strong {
+      font-size: 14px;
+      font-weight: 650;
+      color: rgba(255, 255, 255, 0.92);
+    }
+    .phone-drawer-close {
+      border: 0;
+      background: rgba(255, 255, 255, 0.1);
       color: #fff;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font: inherit;
+      font-size: 13px !important;
+      cursor: pointer;
+      min-height: 36px;
     }
     .shell.is-phone-layout .aside-body {
       flex: 1;
       min-height: 0;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
+      padding-bottom: 8px;
+    }
+    .shell.is-phone-layout .aside .item {
+      min-height: 44px;
+      padding-top: 10px;
+      padding-bottom: 10px;
     }
 
     /* Solo Vista móvil: app a pantalla completa (sin marco de teléfono) */

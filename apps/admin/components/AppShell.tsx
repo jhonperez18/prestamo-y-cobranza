@@ -7,7 +7,7 @@ import {
   getViewLabel,
   type ModuleId,
 } from "@/lib/navigation";
-import { Icon, SearchIcon, SidebarToggleIcon } from "@/components/icons";
+import { Icon, MenuIcon, SearchIcon, SidebarToggleIcon } from "@/components/icons";
 import { Workspace } from "@/components/Workspace";
 import type { AppSession } from "@/lib/auth";
 import {
@@ -83,7 +83,16 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
     if (!mod) return;
     setModuleId(nextModule);
     setViewId(resolveView(nextModule, nextView));
-    if (phoneLayout) setAsideOpen(false);
+    // En celular: solo cerrar el cajón al elegir una vista concreta (no al cambiar de módulo).
+    if (phoneLayout && nextView) setAsideOpen(false);
+  }
+
+  function selectPhoneModule(nextModule: ModuleId) {
+    const mod = filteredModules.find((entry) => entry.id === nextModule);
+    if (!mod) return;
+    setModuleId(nextModule);
+    setViewId(resolveView(nextModule));
+    setAsideOpen(true);
   }
 
   function exclusiveGroupState(title: string | null) {
@@ -220,11 +229,11 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
                 type="button"
                 className="icon-btn phone-menu-btn"
                 title="Menú"
-                aria-label="Abrir menú"
+                aria-label={asideOpen ? "Cerrar menú" : "Abrir menú"}
                 aria-expanded={asideOpen}
                 onClick={() => setAsideOpen((open) => !open)}
               >
-                <SidebarToggleIcon />
+                <MenuIcon />
               </button>
               <div className="phone-topbar-title">
                 <strong>{current.label}</strong>
@@ -323,6 +332,22 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
         </div>
       </header>
 
+      {phoneLayout && !phonePreview ? (
+        <nav className="phone-module-rail" aria-label="Módulos">
+          {filteredModules.map((module) => (
+            <button
+              key={module.id}
+              type="button"
+              className={module.id === moduleId ? "phone-mod on" : "phone-mod"}
+              onClick={() => selectPhoneModule(module.id)}
+            >
+              <Icon name={module.icon} />
+              <em>{module.label}</em>
+            </button>
+          ))}
+        </nav>
+      ) : null}
+
       {phoneLayout && asideOpen ? (
         <button
           type="button"
@@ -335,28 +360,27 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
       <div className={shellClass}>
         <aside className="aside">
           {phoneLayout ? (
-            <nav className="phone-module-rail" aria-label="Módulos">
-              {filteredModules.map((module) => (
-                <button
-                  key={module.id}
-                  type="button"
-                  className={module.id === moduleId ? "phone-mod on" : "phone-mod"}
-                  onClick={() => go(module.id)}
-                >
-                  <Icon name={module.icon} />
-                  <em>{module.label}</em>
-                </button>
-              ))}
-            </nav>
+            <div className="phone-drawer-head">
+              <strong>Vistas</strong>
+              <button
+                type="button"
+                className="phone-drawer-close"
+                aria-label="Cerrar menú"
+                onClick={() => setAsideOpen(false)}
+              >
+                Cerrar
+              </button>
+            </div>
           ) : null}
           <div className="aside-body">
             {current.groups.map((group) => {
               const key = groupKey(moduleId, group.title);
-              const isOpen = group.collapsible ? Boolean(openGroups[key]) : true;
+              // En celular: lista abierta (sin submenús que se contraen).
+              const isOpen = phoneLayout ? true : group.collapsible ? Boolean(openGroups[key]) : true;
 
               return (
-                <div className={group.collapsible ? "group collapsible" : "group"} key={group.title}>
-                  {group.collapsible ? (
+                <div className={group.collapsible && !phoneLayout ? "group collapsible" : "group"} key={group.title}>
+                  {group.collapsible && !phoneLayout ? (
                     <button
                       type="button"
                       className={isOpen ? "group-head group-toggle on" : "group-head group-toggle"}
