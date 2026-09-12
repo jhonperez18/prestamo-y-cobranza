@@ -4274,7 +4274,115 @@
       margin-inline: -4px;
       border-radius: 10px;
       overflow-x: auto;
+      overflow-y: visible;
       -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
+      touch-action: pan-x pan-y;
+    }
+    /* Hojas grandes: no comprimir; scroll horizontal para leer. */
+    .shell.is-phone-layout .table-wrap,
+    .shell.is-phone-layout .bank-table-wrap,
+    .shell.is-phone-layout .panel > .table-wrap,
+    .shell.is-phone-layout .panel-surface {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .shell.is-phone-layout table.data,
+    .shell.is-phone-layout table.list-grid,
+    .shell.is-phone-layout table.list-data-table,
+    .shell.is-phone-layout table.bank-table,
+    .shell.is-phone-layout table.bank-records-table,
+    .shell.is-phone-layout table.mini-grid {
+      width: max-content;
+      min-width: 100%;
+      max-width: none;
+      table-layout: auto;
+    }
+    .shell.is-phone-layout table.data th,
+    .shell.is-phone-layout table.data td,
+    .shell.is-phone-layout table.list-grid th,
+    .shell.is-phone-layout table.list-grid td,
+    .shell.is-phone-layout table.list-data-table th,
+    .shell.is-phone-layout table.list-data-table td,
+    .shell.is-phone-layout table.bank-table th,
+    .shell.is-phone-layout table.bank-table td,
+    .shell.is-phone-layout table.bank-records-table th,
+    .shell.is-phone-layout table.bank-records-table td,
+    .shell.is-phone-layout table.mini-grid th,
+    .shell.is-phone-layout table.mini-grid td {
+      white-space: nowrap;
+      min-width: 4.75rem;
+      font-size: 13px !important;
+      line-height: 1.35 !important;
+      padding-top: 8px !important;
+      padding-bottom: 8px !important;
+    }
+    .shell.is-phone-layout table.data th.col-picker-cell,
+    .shell.is-phone-layout table.data td.col-picker-cell,
+    .shell.is-phone-layout table.list-grid th.col-picker-cell,
+    .shell.is-phone-layout table.list-grid td.col-picker-cell,
+    .shell.is-phone-layout table.bank-table th.col-picker-cell,
+    .shell.is-phone-layout table.bank-table td.col-picker-cell {
+      min-width: 2.5rem;
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      background: var(--panel-table-bg, #fff);
+    }
+    .shell.is-phone-layout table.data thead th.col-picker-cell,
+    .shell.is-phone-layout table.list-grid thead th.col-picker-cell,
+    .shell.is-phone-layout table.bank-table thead th.col-picker-cell {
+      background: var(--table-head-bg);
+      z-index: 4;
+    }
+    /* Primera columna de datos fija al deslizar (después del picker si existe). */
+    .shell.is-phone-layout table.data th:nth-child(1):not(.col-picker-cell),
+    .shell.is-phone-layout table.data td:nth-child(1):not(.col-picker-cell),
+    .shell.is-phone-layout table.data th:nth-child(2),
+    .shell.is-phone-layout table.data td:nth-child(2),
+    .shell.is-phone-layout table.list-grid th:nth-child(1):not(.col-picker-cell),
+    .shell.is-phone-layout table.list-grid td:nth-child(1):not(.col-picker-cell),
+    .shell.is-phone-layout table.list-grid th:nth-child(2),
+    .shell.is-phone-layout table.list-grid td:nth-child(2) {
+      position: sticky;
+      z-index: 2;
+      background: var(--panel-table-bg, #fff);
+      box-shadow: 4px 0 8px rgba(20, 32, 27, 0.06);
+    }
+    .shell.is-phone-layout table.data th:nth-child(1):not(.col-picker-cell),
+    .shell.is-phone-layout table.data td:nth-child(1):not(.col-picker-cell),
+    .shell.is-phone-layout table.list-grid th:nth-child(1):not(.col-picker-cell),
+    .shell.is-phone-layout table.list-grid td:nth-child(1):not(.col-picker-cell) {
+      left: 0;
+    }
+    .shell.is-phone-layout table.data:has(.col-picker-cell) th:nth-child(2),
+    .shell.is-phone-layout table.data:has(.col-picker-cell) td:nth-child(2),
+    .shell.is-phone-layout table.list-grid:has(.col-picker-cell) th:nth-child(2),
+    .shell.is-phone-layout table.list-grid:has(.col-picker-cell) td:nth-child(2) {
+      left: 2.5rem;
+    }
+    .shell.is-phone-layout table.data:not(:has(.col-picker-cell)) th:nth-child(2),
+    .shell.is-phone-layout table.data:not(:has(.col-picker-cell)) td:nth-child(2),
+    .shell.is-phone-layout table.list-grid:not(:has(.col-picker-cell)) th:nth-child(2),
+    .shell.is-phone-layout table.list-grid:not(:has(.col-picker-cell)) td:nth-child(2) {
+      position: static;
+      box-shadow: none;
+      left: auto;
+    }
+    .shell.is-phone-layout table.data thead th:nth-child(1):not(.col-picker-cell),
+    .shell.is-phone-layout table.data thead th:nth-child(2),
+    .shell.is-phone-layout table.list-grid thead th:nth-child(1):not(.col-picker-cell),
+    .shell.is-phone-layout table.list-grid thead th:nth-child(2) {
+      background: var(--table-head-bg);
+      z-index: 5;
+    }
+    .phone-sheet-hint {
+      margin: 0;
+      padding: 6px 12px 2px;
+      font-size: 12px !important;
+      line-height: 1.3;
+      color: #3d5349;
+      background: var(--paper, #f2f9f9);
     }
     .shell.is-phone-layout .panel {
       border-radius: 12px;

@@ -437,6 +437,9 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
           </div>
         </aside>
         <main className="workspace">
+          {phoneLayout && !phonePreview ? (
+            <p className="phone-sheet-hint">En tablas grandes: desliza a los lados para ver todas las columnas.</p>
+          ) : null}
           <Workspace
             moduleId={moduleId}
             viewId={viewId}
