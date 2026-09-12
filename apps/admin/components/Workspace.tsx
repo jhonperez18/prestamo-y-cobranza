@@ -111,6 +111,10 @@ import {
 import { loanStatusPill } from "@/lib/loan-status";
 import { chargeLabel, displayToIso, isoToDisplay, normalizeLoan, syncAllLoans, syncLoan } from "@/lib/loan-preview";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
+import {
+  type OperationalDemoSnapshot,
+} from "@/lib/hydrate-operational-demo";
+import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
 import { computeLoanFinancials, loanPaySummaryRows } from "@/lib/loan-balance";
 import { buildRenewalLoans } from "@/lib/loan-renew";
 import { buildPortfolioStats } from "@/lib/portfolio-stats";
@@ -304,7 +308,6 @@ export function Workspace({
   const [loanTab, setLoanTab] = useState<LoanTab>("ficha");
   const navigationKey = `${moduleId}:${viewId}:${openRef}:${fileTab}:${openUserRef}:${openCollectorRef}:${openRouteRef}:${collectorTab}:${userTab}`;
   const [seenKey, setSeenKey] = useState(navigationKey);
-  const [demoHydrated, setDemoHydrated] = useState(false);
   const [mobilePreviewCollectorRef, setMobilePreviewCollectorRef] = useState(COLLECTORS[0]?.ref ?? "");
   const [openPaymentRef, setOpenPaymentRef] = useState(PAYMENTS[0]?.ref ?? "");
   const [paymentReturnView, setPaymentReturnView] = useState<"pagos" | "abonos">("pagos");
@@ -333,140 +336,29 @@ export function Workspace({
     storageKey: "nexo.prestamos.listado.columns.v3",
   });
 
-  useEffect(() => {
-    // Nuevo deploy → no heredar flags de jornada cerrada del build anterior.
-    syncDemoStorageToServedBuild();
-    const { payments: storedPayments, loans: storedLoans } = loadDemoPaymentsBundle();
-    const storedCollectors = readDemoJson(DEMO_COLLECTORS_KEY, COLLECTORS).map((row) => ({
-      ...row,
-      zone: COLLECTOR_UNASSIGNED_ZONE,
-    }));
-    const storedAssignments = readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []);
-    const storedRoutes = readDemoJson(DEMO_ROUTES_KEY, ROUTES).map((row) => {
-      const name = migrateLegacyRouteName(row.name);
-      return {
-        ...row,
-        name,
-        id: routeSlug(name),
-        zone: row.zone ?? "",
-      };
-    });
-    const storedClients = normalizeAllRouteOrders(
-      dedupeClientsByRef(
-        loadDemoClients(CLIENTS).map((row) =>
-          normalizeClientLifecycle({
-            ...row,
-            nickname: row.nickname ?? "",
-            routeOrder: Number(row.routeOrder) || 0,
-            route: migrateLegacyRouteName(row.route),
-          }),
-        ),
-      ),
-    );
-    setClients(storedClients);
-    writeDemoJson(DEMO_CLIENTS_KEY, storedClients);
-
-    const storedMovementsEarly = loadDemoBankMovements<BankMovement>();
-    let nextPayments = recoverPaymentsFromAssignments(storedAssignments, storedPayments);
-    nextPayments = recoverPaymentsFromBankMovements(
-      storedMovementsEarly ?? [],
-      storedAssignments,
-      nextPayments,
-    );
-    const recoveredDayCloses = synthesizeDayClosesFromAssignments(
-      storedAssignments,
-      nextPayments,
-      loadDemoDayCloses<CollectorDayCloseRecord>(),
-    );
-
-    setPayments(nextPayments);
-    const reconciledLoans = syncAllLoans(storedLoans, nextPayments) as LoanRow[];
-    setLoans(reconciledLoans);
-    const linked = ensureCollectorsForUsers(loadDemoUsers(), storedCollectors);
-    setUsers(linked.users);
-    setCollectors(linked.collectors);
-    writeDemoJson(DEMO_USERS_KEY, linked.users);
-    writeDemoJson(DEMO_COLLECTORS_KEY, linked.collectors);
-    const rebuilt = rebuildDispatchRoutes(
-      storedRoutes,
-      storedAssignments,
-      linked.collectors,
-      reconciledLoans,
-      storedClients,
-    );
-    const storedLogs = readDemoJson(DEMO_DAILY_LOGS_KEY, COLLECTOR_DAILY_LOGS_SEED);
-    const storedExpenseDrafts = readDemoJson<CollectorDayExpenseDraft[]>(
-      DEMO_COLLECTOR_DAY_EXPENSES_KEY,
-      [],
-    );
-    // Ciclo operativo: cierra jornadas vencidas (23:30) y arma planilla de hoy.
-    const cycle = runOperationalDayCycle({
-      assignments: storedAssignments,
-      routes: rebuilt,
-      logs: storedLogs,
-      dayCloses: recoveredDayCloses,
-      dayExpenseDrafts: storedExpenseDrafts,
-      payments: nextPayments,
-      loans: reconciledLoans,
-      clients: storedClients,
-      collectors: linked.collectors,
-    });
-    const deduped = dedupeDailyPaymentsByVisit(cycle.payments, cycle.assignments);
-    nextPayments = deduped.payments;
-    const storedAccounts = ensureBankAccounts(
-      readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
-    );
-    const storedMovements = stripRemovedPaymentMovements(
-      storedMovementsEarly ?? [],
-      deduped.removedRefs,
-    );
-    const misc = readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []);
-    const synced = synchronizeOperationalState({
-      loans: cycle.loans,
-      payments: nextPayments,
-      collectors: linked.collectors,
-      clients: storedClients,
-      dayCloses: cycle.dayCloses,
-      dayExpenseDrafts: cycle.dayExpenseDrafts,
-      bankAccounts: storedAccounts,
-      bankMovements: storedMovements.length ? normalizeBankMovements(storedMovements) : [],
-      miscPayments: misc,
-      assignments: cycle.assignments,
-      dailyLogs: cycle.logs,
-    });
-
-    setRoutes(cycle.routes);
-    setDailyAssignments(synced.assignments);
-    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
-    writeDemoJson(DEMO_ROUTES_KEY, cycle.routes);
-    setPayments(nextPayments);
-    setLoans(synced.loans);
-    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
-    writeDemoJson(DEMO_LOANS_KEY, synced.loans);
-    setDailyLogs(synced.dailyLogs);
-    writeDemoJson(DEMO_DAILY_LOGS_KEY, synced.dailyLogs);
-    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, synced.dayCloses);
-    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, cycle.dayExpenseDrafts);
-    setDayCloses(synced.dayCloses);
-    setDayExpenseDrafts(cycle.dayExpenseDrafts);
-    setMonthCloses(
-      readDemoJson<CollectorMonthCloseRecord[]>(DEMO_COLLECTOR_MONTH_CLOSES_KEY, []),
-    );
-    const storedReconciliations = readDemoJson<BankReconciliation[]>(DEMO_BANK_RECONCILIATIONS_KEY, []);
-    const sidesVersion = readDemoJson<number>(DEMO_BANK_SIDES_VERSION_KEY, 1);
-    const nextReconciliations =
-      sidesVersion < 2 ? swapReconciliationDebitCredit(storedReconciliations) : storedReconciliations;
-    setBankAccounts(storedAccounts);
-    setBankMovements(synced.bankMovements);
-    setBankReconciliations(nextReconciliations);
-    writeDemoJson(DEMO_BANK_SIDES_VERSION_KEY, 2);
-    writeDemoJson(DEMO_BANK_RECONCILIATIONS_KEY, nextReconciliations);
-    writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, storedAccounts);
-    writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, synced.bankMovements);
-    setBankAccountRef(storedAccounts[0]?.ref ?? "");
-    setMiscPayments(misc);
-    setDemoHydrated(true);
+  const applyOperationalSnapshot = useCallback((snap: OperationalDemoSnapshot) => {
+    setClients(snap.clients);
+    setUsers(snap.users);
+    setCollectors(snap.collectors);
+    setRoutes(snap.routes);
+    setLoans(snap.loans);
+    setPayments(snap.payments);
+    setDailyAssignments(snap.assignments);
+    setDayCloses(snap.dayCloses);
+    setDayExpenseDrafts(snap.dayExpenseDrafts);
+    setDailyLogs(snap.dailyLogs);
+    setMonthCloses(snap.monthCloses);
+    setBankAccounts(snap.bankAccounts);
+    setBankMovements(snap.bankMovements);
+    setBankReconciliations(snap.bankReconciliations);
+    setMiscPayments(snap.miscPayments);
+    setBankAccountRef((current) => current || snap.bankAccounts[0]?.ref || "");
   }, []);
+
+  const { hydrated: demoHydrated, epoch: storageReloadNonce } = useOperationalDemoSync(
+    applyOperationalSnapshot,
+    { resyncActive: moduleId === "inicio" && viewId === "vista-movil" },
+  );
 
   const applyPlanillaSync = useCallback(
     (next: {
@@ -3323,6 +3215,7 @@ export function Workspace({
           users={users}
           selectedRef={mobilePreviewCollectorRef}
           onSelect={setMobilePreviewCollectorRef}
+          dataEpoch={storageReloadNonce}
           assignments={dailyAssignments}
           routes={routes}
           loans={loans}
