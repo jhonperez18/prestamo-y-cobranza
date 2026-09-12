@@ -226,11 +226,9 @@ export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> 
   if (typeof window === "undefined") {
     return { ok: true, added: 0, skipped: true, reason: "ssr" };
   }
-  const { configured } = getSupabasePublicEnv();
-  if (!configured) {
-    return { ok: true, added: 0, skipped: true, reason: "supabase_not_configured" };
-  }
 
+  // El pull va por API route (env del servidor). No exigir NEXT_PUBLIC en el bundle
+  // del browser: un `npm run dev` viejo o sin reiniciar saltaba el sync a localhost.
   try {
     const res = await fetch("/api/payments", { method: "GET", cache: "no-store" });
     const body = (await res.json()) as {
