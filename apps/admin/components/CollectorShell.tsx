@@ -56,6 +56,7 @@ import {
   type BankMovement,
 } from "@/lib/bank";
 import { syncBankLedger } from "@/lib/bank-ledger-sync";
+import { projectOperationalMoney } from "@/lib/project-operational-money";
 import { commitCollectorPayment } from "@/lib/commit-collector-payment";
 import { type OperationalDemoSnapshot } from "@/lib/hydrate-operational-demo";
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
@@ -260,43 +261,53 @@ export function CollectorShell({ session, onLogout }: Props) {
       return false;
     }
 
-    setPayments(committed.payments);
-    setLoans(committed.loans);
-    setClients(committed.clients);
-    setDailyAssignments(committed.assignments);
-    setRoutes(committed.routes);
-    writeDemoJson(DEMO_PAYMENTS_KEY, committed.payments);
-    writeDemoJson(DEMO_LOANS_KEY, committed.loans);
-    writeDemoJson(DEMO_CLIENTS_KEY, committed.clients);
-    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, committed.assignments);
-    writeDemoJson(DEMO_ROUTES_KEY, committed.routes);
-
     const paidRoute = committed.routes.find(
       (row) =>
         row.ref.startsWith(`RUT-D-${draft.collectorRef}-`) &&
         committed.payment.routeRef === row.ref,
     );
-    if (paidRoute) {
-      setDailyLogs((current) => upsertDailyLogPayment(current, committed.payment, paidRoute));
-    }
+    const logsAfterPay = paidRoute
+      ? upsertDailyLogPayment(dailyLogs, committed.payment, paidRoute)
+      : dailyLogs;
 
     const accounts = ensureBankAccounts(
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
     );
     writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, accounts);
-    const nextMovements = syncBankLedger({
+
+    const projected = projectOperationalMoney({
+      loans: committed.loans,
       payments: committed.payments,
-      movements: normalizeBankMovements(
+      collectors,
+      clients: committed.clients,
+      dayCloses: loadDemoDayCloses<CollectorDayCloseRecord>(),
+      dayExpenseDrafts: readDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),
+      bankAccounts: accounts,
+      bankMovements: normalizeBankMovements(
         readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
       ),
-      accounts,
       miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-      dayExpenseDrafts: readDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),
-      dayCloses: loadDemoDayCloses<CollectorDayCloseRecord>(),
+      assignments: committed.assignments,
+      dailyLogs: logsAfterPay,
     });
-    writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, nextMovements);
 
-    showToast(`Cobro ${committed.payment.ref} guardado · sincronizado en Registros y planillas.`);
+    setPayments(committed.payments);
+    setClients(committed.clients);
+    setRoutes(committed.routes);
+    setLoans(projected.loans);
+    setDayCloses(projected.dayCloses);
+    setDailyAssignments(projected.assignments);
+    setDailyLogs(projected.dailyLogs);
+    writeDemoJson(DEMO_PAYMENTS_KEY, committed.payments);
+    writeDemoJson(DEMO_LOANS_KEY, projected.loans);
+    writeDemoJson(DEMO_CLIENTS_KEY, committed.clients);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
+    writeDemoJson(DEMO_ROUTES_KEY, committed.routes);
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, projected.dayCloses);
+    writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
+    writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, projected.bankMovements);
+
+    showToast(`Cobro ${committed.payment.ref} guardado · Cobranza, banco y planilla al día.`);
     return true;
   }
 

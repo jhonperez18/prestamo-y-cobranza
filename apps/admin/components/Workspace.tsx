@@ -110,7 +110,7 @@ import {
 } from "@/lib/table-columns";
 import { loanStatusPill } from "@/lib/loan-status";
 import { chargeLabel, displayToIso, isoToDisplay, normalizeLoan, syncAllLoans, syncLoan } from "@/lib/loan-preview";
-import { synchronizeOperationalState } from "@/lib/operational-sync";
+import { projectOperationalMoney } from "@/lib/project-operational-money";
 import {
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
@@ -1465,29 +1465,45 @@ export function Workspace({
       return false;
     }
 
-    setPayments(committed.payments);
-    setLoans(committed.loans);
-    setClients(committed.clients);
-    setDailyAssignments(committed.assignments);
-    setRoutes(committed.routes);
-    setBankMovements((rows) =>
-      applyBankLedgerSync(rows, {
-        payments: committed.payments,
-        accounts: bankAccounts,
-        miscPayments,
-        dayExpenseDrafts,
-        dayCloses,
-      }),
-    );
     const paidRoute =
       committed.routes.find((row) => row.ref === committed.payment.routeRef) ??
       committed.routes.find((row) =>
         row.ref.startsWith(`RUT-D-${draft.collectorRef}-`),
       );
-    if (paidRoute) {
-      setDailyLogs((current) => upsertDailyLogPayment(current, committed.payment, paidRoute));
-    }
-    onToast(`Cobro ${committed.payment.ref} sincronizado · Registros y planillas al día.`);
+    const logsAfterPay = paidRoute
+      ? upsertDailyLogPayment(dailyLogs, committed.payment, paidRoute)
+      : dailyLogs;
+
+    // Proyección única: préstamos + CIE + banco + planilla + logs (raíz PG-).
+    const projected = projectOperationalMoney({
+      loans: committed.loans,
+      payments: committed.payments,
+      collectors,
+      clients: committed.clients,
+      dayCloses,
+      dayExpenseDrafts,
+      bankAccounts,
+      bankMovements,
+      miscPayments,
+      assignments: committed.assignments,
+      dailyLogs: logsAfterPay,
+    });
+
+    setPayments(committed.payments);
+    setClients(committed.clients);
+    setRoutes(committed.routes);
+    setLoans(projected.loans);
+    setDayCloses(projected.dayCloses);
+    setDailyAssignments(projected.assignments);
+    setDailyLogs(projected.dailyLogs);
+    setBankMovements(projected.bankMovements);
+    writeDemoJson(DEMO_PAYMENTS_KEY, committed.payments);
+    writeDemoJson(DEMO_LOANS_KEY, projected.loans);
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, projected.dayCloses);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
+    writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
+
+    onToast(`Cobro ${committed.payment.ref} sincronizado · Cobranza, banco y planilla al día.`);
     return true;
   }
 

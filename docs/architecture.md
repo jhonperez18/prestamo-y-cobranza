@@ -8,6 +8,8 @@ Este documento cumple la primera fase obligatoria. No crea tablas definitivas, n
 
 El enfoque visual del admin (botones arriba + variantes a la izquierda) está en [`ui-navigation.md`](ui-navigation.md). La app vive en `apps/admin`.
 
+**Demo actual (antes de API):** la raíz de dinero operativa está en [`operational-money.md`](operational-money.md) — pagos `PG-` mandan; Cobranza / Banco / CIE se proyectan juntos.
+
 ---
 
 ## 1. Arquitectura general

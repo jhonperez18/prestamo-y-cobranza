@@ -19,6 +19,9 @@
 5. Abrir **solo** https://prestamo-y-cobranza.vercel.app
 6. Login: `build` = SHA del commit
 
+Dinero operativo (demo): ver `docs/operational-money.md`.  
+Camino a backend: `docs/demo-to-backend.md`.
+
 ## Prohibido
 
 - Otro proyecto Vercel para este admin (`admin`, etc.)

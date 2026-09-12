@@ -1,0 +1,29 @@
+---
+description: Raíz de dinero operativo — pagos PG- mandan; proyectar Cobranza/Banco/CIE juntos.
+alwaysApply: true
+---
+
+# Dinero operativo — raíces firmes
+
+## Fuente de verdad
+
+- **Pagos `PaymentRow` (`PG-`)** son la raíz de plata en el demo actual.
+- Planilla, CIE (`collected` / `cashFloat`), banco y logs diarios son **proyecciones**.
+- Detalle: `docs/operational-money.md`.
+
+## Obligatorio tras mutar dinero o cierre
+
+1. Persistir el pago / CIE / gasto canónico.
+2. Proyectar con `synchronizeOperationalState` y/o `syncBankLedger` / `applyBankLedgerSync`.
+3. No cerrar planilla sin CIE cuando el cierre es de jornada de cobrador.
+4. No inventar movimientos de banco sin `PG-` o gasto de ruta documentado.
+
+## Prohibido
+
+- Tres lógicas distintas de “cobrado hoy” que no lean los mismos `PG-`.
+- Parches de UI que muestren totales distintos a pagos.
+- Segundo ledger “temporal” que no pase por `operational-sync` / `bank-ledger-sync`.
+
+## Deploy
+
+Tras push a `main`: Ready → `cd apps/admin && npm run verify:prod` (aliases + purge CDN/data).
