@@ -33,12 +33,10 @@ Thumbs.db
 # TypeScript
 *.tsbuildinfo
 
-# Vercel
+# Vercel (solo enlace local; nunca versionar)
 .vercel/
 
 # Cursor local (sí versionamos reglas del equipo)
 .cursor/*
 !.cursor/rules/
 !.cursor/rules/**
-
-.vercel

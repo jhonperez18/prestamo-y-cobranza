@@ -502,8 +502,8 @@ function SupervisorClientFicha({
 
       <div className="supervisor-client-ficha-sum">
         <div>
-          <span>Capital</span>
-          <b>{money(report.loan.capital, { symbol: false })}</b>
+          <span>Total préstamo</span>
+          <b>{total}</b>
         </div>
         <div>
           <span>Ya pagado</span>

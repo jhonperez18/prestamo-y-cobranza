@@ -68,7 +68,7 @@ export function buildLoanReport(
   ];
 
   const footer = [
-    { label: "Capital", value: money(capitalUnificado) },
+    { label: "Total préstamo", value: money(capitalUnificado) },
     { label: "Ya pagado", value: money(financials.paidTotal) },
     { label: "Resta por pagar", value: money(financials.balancePending), highlight: true },
   ];

@@ -27,19 +27,13 @@ type Props = {
   session: AppSession;
   onLogout: () => void;
   onSessionChange: (session: AppSession) => void;
-  /** En celular abre directo la vista móvil del sistema (cobrador + supervisor). */
+  /** Celular: chrome compacto + menú cajón (admin usable en teléfono). */
   phoneLayout?: boolean;
 };
 
 export function AppShell({ session, onLogout, onSessionChange, phoneLayout = false }: Props) {
   const filteredModules = useMemo(() => filterModulesForSession(session), [session]);
-  const landing = useMemo(() => {
-    const base = defaultLandingForSession(session);
-    if (phoneLayout && canAccessView(session, "inicio", "vista-movil")) {
-      return { moduleId: "inicio" as ModuleId, viewId: "vista-movil" };
-    }
-    return base;
-  }, [session, phoneLayout]);
+  const landing = useMemo(() => defaultLandingForSession(session), [session]);
 
   const [moduleId, setModuleId] = useState<ModuleId>(landing.moduleId);
   const [viewId, setViewId] = useState(landing.viewId);
@@ -59,6 +53,7 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
 
   const current = filteredModules.find((entry) => entry.id === moduleId) ?? filteredModules[0];
   const viewLabel = getViewLabel(moduleId, viewId);
+  const phonePreview = phoneLayout && viewId === "vista-movil";
   const sidebarView =
     (moduleId === "clientes" && (viewId === "ficha" || viewId === "editar")) ||
     (moduleId === "prestamos" && (viewId === "cuenta" || viewId === "editar")) ||
@@ -88,6 +83,7 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
     if (!mod) return;
     setModuleId(nextModule);
     setViewId(resolveView(nextModule, nextView));
+    if (phoneLayout) setAsideOpen(false);
   }
 
   function exclusiveGroupState(title: string | null) {
@@ -154,6 +150,28 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
     };
   }, [userMenuOpen]);
 
+  useEffect(() => {
+    setAsideOpen(!phoneLayout);
+  }, [phoneLayout]);
+
+  useEffect(() => {
+    if (!phoneLayout || !asideOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setAsideOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [phoneLayout, asideOpen]);
+
+  useEffect(() => {
+    if (!phoneLayout || !asideOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [phoneLayout, asideOpen]);
+
   function openProfile() {
     setUserMenuOpen(false);
     go("inicio", "perfil");
@@ -181,6 +199,7 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
   const shellClass = [
     asideOpen ? "shell" : "shell aside-off",
     phoneLayout ? "is-phone-layout" : "",
+    phonePreview ? "is-phone-preview" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -195,69 +214,141 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
           </div>
         </div>
         <div className="topbar-main">
-          <nav className="modules">
-            {filteredModules.map((module) => (
-              <button
-                key={module.id}
-                className={module.id === moduleId ? "mod on" : "mod"}
-                onClick={() => go(module.id)}
-              >
-                <Icon name={module.icon} />
-                <em>{module.label}</em>
-              </button>
-            ))}
-          </nav>
-          <div className="utils">
-            <label className="search">
-              <SearchIcon />
-              <input placeholder="Cliente, cédula, préstamo…" />
-            </label>
-            <button
-              className="icon-btn"
-              title="Mostrar u ocultar variantes"
-              onClick={() => setAsideOpen((open) => !open)}
-            >
-              <SidebarToggleIcon />
-            </button>
-            <div className="topbar-user" ref={userMenuRef}>
+          {phoneLayout ? (
+            <div className="phone-topbar-bar">
               <button
                 type="button"
-                className="topbar-user-btn"
-                aria-expanded={userMenuOpen}
-                aria-haspopup="menu"
-                onClick={() => setUserMenuOpen((open) => !open)}
+                className="icon-btn phone-menu-btn"
+                title="Menú"
+                aria-label="Abrir menú"
+                aria-expanded={asideOpen}
+                onClick={() => setAsideOpen((open) => !open)}
               >
-                <div className="avatar">
-                  {adminProfile.photo ? (
-                    <img src={adminProfile.photo} alt="" />
-                  ) : (
-                    initials
-                  )}
-                </div>
-                <div className="topbar-user-text">
-                  <strong>{displayName}</strong>
-                  <span>
-                    {session.roleName} · {session.username}
-                  </span>
-                </div>
-                <span className="topbar-user-chevron" aria-hidden>
-                  ▾
-                </span>
+                <SidebarToggleIcon />
               </button>
-              {userMenuOpen ? (
-                <div className="topbar-user-menu" role="menu">
-                  <button type="button" className="topbar-user-menu-item" role="menuitem" onClick={openProfile}>
-                    Perfil
-                  </button>
-                </div>
-              ) : null}
+              <div className="phone-topbar-title">
+                <strong>{current.label}</strong>
+                <span>{viewLabel}</span>
+              </div>
+              <div className="topbar-user" ref={userMenuRef}>
+                <button
+                  type="button"
+                  className="topbar-user-btn"
+                  aria-expanded={userMenuOpen}
+                  aria-haspopup="menu"
+                  onClick={() => setUserMenuOpen((open) => !open)}
+                >
+                  <div className="avatar">
+                    {adminProfile.photo ? (
+                      <img src={adminProfile.photo} alt="" />
+                    ) : (
+                      initials
+                    )}
+                  </div>
+                </button>
+                {userMenuOpen ? (
+                  <div className="topbar-user-menu" role="menu">
+                    <button type="button" className="topbar-user-menu-item" role="menuitem" onClick={openProfile}>
+                      Perfil
+                    </button>
+                    <button type="button" className="topbar-user-menu-item" role="menuitem" onClick={onLogout}>
+                      Cerrar sesión
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             </div>
-          </div>
+          ) : (
+            <>
+              <nav className="modules">
+                {filteredModules.map((module) => (
+                  <button
+                    key={module.id}
+                    className={module.id === moduleId ? "mod on" : "mod"}
+                    onClick={() => go(module.id)}
+                  >
+                    <Icon name={module.icon} />
+                    <em>{module.label}</em>
+                  </button>
+                ))}
+              </nav>
+              <div className="utils">
+                <label className="search">
+                  <SearchIcon />
+                  <input placeholder="Cliente, cédula, préstamo…" />
+                </label>
+                <button
+                  className="icon-btn"
+                  title="Mostrar u ocultar variantes"
+                  onClick={() => setAsideOpen((open) => !open)}
+                >
+                  <SidebarToggleIcon />
+                </button>
+                <div className="topbar-user" ref={userMenuRef}>
+                  <button
+                    type="button"
+                    className="topbar-user-btn"
+                    aria-expanded={userMenuOpen}
+                    aria-haspopup="menu"
+                    onClick={() => setUserMenuOpen((open) => !open)}
+                  >
+                    <div className="avatar">
+                      {adminProfile.photo ? (
+                        <img src={adminProfile.photo} alt="" />
+                      ) : (
+                        initials
+                      )}
+                    </div>
+                    <div className="topbar-user-text">
+                      <strong>{displayName}</strong>
+                      <span>
+                        {session.roleName} · {session.username}
+                      </span>
+                    </div>
+                    <span className="topbar-user-chevron" aria-hidden>
+                      ▾
+                    </span>
+                  </button>
+                  {userMenuOpen ? (
+                    <div className="topbar-user-menu" role="menu">
+                      <button type="button" className="topbar-user-menu-item" role="menuitem" onClick={openProfile}>
+                        Perfil
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </header>
 
+      {phoneLayout && asideOpen ? (
+        <button
+          type="button"
+          className="phone-nav-scrim"
+          aria-label="Cerrar menú"
+          onClick={() => setAsideOpen(false)}
+        />
+      ) : null}
+
       <div className={shellClass}>
         <aside className="aside">
+          {phoneLayout ? (
+            <nav className="phone-module-rail" aria-label="Módulos">
+              {filteredModules.map((module) => (
+                <button
+                  key={module.id}
+                  type="button"
+                  className={module.id === moduleId ? "phone-mod on" : "phone-mod"}
+                  onClick={() => go(module.id)}
+                >
+                  <Icon name={module.icon} />
+                  <em>{module.label}</em>
+                </button>
+              ))}
+            </nav>
+          ) : null}
           <div className="aside-body">
             {current.groups.map((group) => {
               const key = groupKey(moduleId, group.title);

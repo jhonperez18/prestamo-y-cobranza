@@ -22,7 +22,7 @@ import { signOutSupabaseAuth } from "@/lib/supabase/auth-login";
 
 /**
  * Acceso:
- * - truqui (admin) → sistema completo (panel PC / vista móvil admin en celular)
+ * - truqui (admin) → sistema completo (panel PC; en celular chrome compacto + menú cajón)
  * - cobradores → solo app cobrador
  * - supervisor → solo app supervisor
  */
