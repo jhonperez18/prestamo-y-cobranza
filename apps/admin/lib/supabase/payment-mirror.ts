@@ -1,6 +1,6 @@
 /**
- * C2/C3: espejo y lectura de cobros en Supabase.
- * Escritura = dual-write; lectura = fusiona por `ref` en localStorage (aún raíz demo).
+ * C2–C4: pagos compartidos en Supabase.
+ * C4: Postgres es la raíz de `PG-`; localStorage es caché + cola offline.
  * @see docs/demo-to-backend.md
  * @see docs/operational-money.md
  */
@@ -35,6 +35,9 @@ export type PaymentMirrorRow = {
   route_ref: string | null;
   updated_at: string;
 };
+
+/** Cola de cobros locales pendientes de subir a Supabase (offline / fallo de red). */
+export const DEMO_PAYMENT_MIRROR_QUEUE_KEY = "nexo-demo-payment-mirror-queue";
 
 const STATUS_KINDS = new Set<StatusKind>([
   "paid",
@@ -126,22 +129,72 @@ function enrichClientNames(payments: PaymentRow[]): PaymentRow[] {
   });
 }
 
-/** Local gana si el `ref` ya existe; solo se agregan remotos nuevos. */
+function moneySignature(row: PaymentRow) {
+  return [
+    row.ref,
+    row.loanRef ?? "",
+    Number(row.amount),
+    row.paidDate ?? "",
+    row.paidTime ?? "",
+    row.method ?? "",
+    row.collectorRef ?? "",
+    row.source ?? "",
+  ].join("|");
+}
+
+function preferDisplay(remote: string | undefined, local: string | undefined) {
+  const r = (remote || "").trim();
+  if (r && r !== "—") return r;
+  const l = (local || "").trim();
+  return l || "—";
+}
+
+/**
+ * C4: remoto manda en campos de dinero; local-only (offline) se conserva;
+ * extras de UI local (evidencia, gps, cliente rico) se preservan.
+ */
 export function mergePaymentsByRef(local: PaymentRow[], remote: PaymentRow[]): {
   merged: PaymentRow[];
   added: number;
+  changed: boolean;
 } {
-  const byRef = new Map<string, PaymentRow>();
+  const localByRef = new Map<string, PaymentRow>();
   for (const row of local) {
-    if (row?.ref) byRef.set(row.ref, row);
+    if (row?.ref) localByRef.set(row.ref, row);
   }
+
+  const merged: PaymentRow[] = [];
   let added = 0;
-  for (const row of remote) {
-    if (!row?.ref || byRef.has(row.ref)) continue;
-    byRef.set(row.ref, row);
-    added += 1;
+  let changed = false;
+
+  for (const remoteRow of remote) {
+    if (!remoteRow?.ref) continue;
+    const localRow = localByRef.get(remoteRow.ref);
+    if (!localRow) {
+      merged.push(remoteRow);
+      added += 1;
+      changed = true;
+      localByRef.delete(remoteRow.ref);
+      continue;
+    }
+    const next: PaymentRow = {
+      ...remoteRow,
+      client: preferDisplay(remoteRow.client, localRow.client),
+      collector: preferDisplay(remoteRow.collector, localRow.collector),
+      evidence: localRow.evidence ?? remoteRow.evidence,
+      gps: localRow.gps ?? remoteRow.gps,
+      idempotencyKey: localRow.idempotencyKey ?? remoteRow.idempotencyKey,
+    };
+    if (moneySignature(localRow) !== moneySignature(next)) changed = true;
+    merged.push(next);
+    localByRef.delete(remoteRow.ref);
   }
-  return { merged: [...byRef.values()], added };
+
+  for (const row of localByRef.values()) {
+    merged.push(row);
+  }
+
+  return { merged, added, changed };
 }
 
 function createMirrorClient(): SupabaseClient | null {
@@ -179,7 +232,7 @@ export type FetchPaymentsResult =
   | { ok: true; skipped: true; reason: string; rows: [] }
   | { ok: false; error: string; rows: [] };
 
-/** Lectura C3 desde Supabase (servidor o cliente con anon key). */
+/** Lectura desde Supabase (servidor o cliente con anon key). */
 export async function fetchPaymentsFromSupabase(): Promise<FetchPaymentsResult> {
   const client = createMirrorClient();
   if (!client) return { ok: true, skipped: true, reason: "supabase_not_configured", rows: [] };
@@ -196,39 +249,109 @@ export async function fetchPaymentsFromSupabase(): Promise<FetchPaymentsResult> 
   return { ok: true, rows: (data ?? []) as PaymentMirrorRow[] };
 }
 
-/** Disparo fire-and-forget desde el browser (no bloquea la UX del cobro). */
+function readMirrorQueue(): PaymentRow[] {
+  return readDemoJson<PaymentRow[]>(DEMO_PAYMENT_MIRROR_QUEUE_KEY, []).filter((row) => row?.ref);
+}
+
+function writeMirrorQueue(rows: PaymentRow[]) {
+  writeDemoJson(DEMO_PAYMENT_MIRROR_QUEUE_KEY, rows);
+}
+
+function enqueueMirrorPayment(payment: PaymentRow) {
+  if (!payment?.ref) return;
+  const queue = readMirrorQueue().filter((row) => row.ref !== payment.ref);
+  queue.push(payment);
+  writeMirrorQueue(queue);
+}
+
+function dequeueMirrorPayment(ref: string) {
+  writeMirrorQueue(readMirrorQueue().filter((row) => row.ref !== ref));
+}
+
+/** POST al API de espejo; si falla, deja el cobro en cola offline. */
+export async function persistPaymentToSupabase(
+  payment: PaymentRow,
+): Promise<MirrorPaymentResult> {
+  if (typeof window === "undefined") {
+    return { ok: true, skipped: true, reason: "ssr" };
+  }
+  try {
+    const res = await fetch("/api/payments/mirror", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ payment }),
+      keepalive: true,
+    });
+    const body = (await res.json()) as MirrorPaymentResult & { error?: string };
+    if (!res.ok || !body.ok) {
+      enqueueMirrorPayment(payment);
+      return { ok: false, error: body.error || `http_${res.status}` };
+    }
+    if (!body.skipped) {
+      dequeueMirrorPayment(payment.ref);
+    }
+    return body;
+  } catch (err) {
+    enqueueMirrorPayment(payment);
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "mirror_network_error",
+    };
+  }
+}
+
+/** C4: intenta subir la cola offline (no tumba la UX). */
+export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left: number }> {
+  if (typeof window === "undefined") return { flushed: 0, left: 0 };
+  const queue = readMirrorQueue();
+  if (!queue.length) return { flushed: 0, left: 0 };
+
+  let flushed = 0;
+  const left: PaymentRow[] = [];
+  for (const payment of queue) {
+    try {
+      const res = await fetch("/api/payments/mirror", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payment }),
+      });
+      const body = (await res.json()) as { ok?: boolean; skipped?: boolean };
+      if (res.ok && body.ok) {
+        flushed += 1;
+      } else {
+        left.push(payment);
+      }
+    } catch {
+      left.push(payment);
+    }
+  }
+  writeMirrorQueue(left);
+  return { flushed, left: left.length };
+}
+
+/** Disparo tras cobro local: sube a Postgres; si no, queda en cola. */
 export function queuePaymentMirror(payment: PaymentRow) {
   if (typeof window === "undefined") return;
-  const { configured } = getSupabasePublicEnv();
-  if (!configured) return;
-  void fetch("/api/payments/mirror", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ payment }),
-    keepalive: true,
-  }).catch(() => {
-    /* el demo local ya guardó; el espejo es best-effort */
-  });
+  void persistPaymentToSupabase(payment);
 }
 
 export type PullPaymentsResult = {
   ok: boolean;
   added: number;
+  changed: boolean;
   skipped?: boolean;
   reason?: string;
 };
 
 /**
- * C3: trae cobros remotos, fusiona por `ref` en nexo-demo-payments.
- * Devuelve cuántos refs nuevos entraron (para re-hidratar proyecciones).
+ * C4: trae cobros remotos (raíz), fusiona con caché local / offline.
+ * `changed` incluye refs nuevos o dinero remoto distinto.
  */
 export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> {
   if (typeof window === "undefined") {
-    return { ok: true, added: 0, skipped: true, reason: "ssr" };
+    return { ok: true, added: 0, changed: false, skipped: true, reason: "ssr" };
   }
 
-  // El pull va por API route (env del servidor). No exigir NEXT_PUBLIC en el bundle
-  // del browser: un `npm run dev` viejo o sin reiniciar saltaba el sync a localhost.
   try {
     const res = await fetch("/api/payments", { method: "GET", cache: "no-store" });
     const body = (await res.json()) as {
@@ -242,11 +365,18 @@ export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> 
       return {
         ok: false,
         added: 0,
+        changed: false,
         reason: body.error || body.reason || `http_${res.status}`,
       };
     }
     if (body.skipped) {
-      return { ok: true, added: 0, skipped: true, reason: body.reason };
+      return {
+        ok: true,
+        added: 0,
+        changed: false,
+        skipped: true,
+        reason: body.reason,
+      };
     }
 
     const remote = enrichClientNames(
@@ -255,13 +385,13 @@ export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> 
         .filter((row): row is PaymentRow => Boolean(row)),
     );
     const local = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []);
-    const { merged, added } = mergePaymentsByRef(local, remote);
-    if (added > 0) {
+    const { merged, added, changed } = mergePaymentsByRef(local, remote);
+    if (changed) {
       writeDemoJson(DEMO_PAYMENTS_KEY, merged);
     }
-    return { ok: true, added };
+    return { ok: true, added, changed };
   } catch (err) {
     const message = err instanceof Error ? err.message : "pull_failed";
-    return { ok: false, added: 0, reason: message };
+    return { ok: false, added: 0, changed: false, reason: message };
   }
 }

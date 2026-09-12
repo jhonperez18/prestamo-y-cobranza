@@ -1,9 +1,9 @@
 # Dinero operativo — contrato vivo (demo → backend)
 
-**Estado:** vigente en `apps/admin` (demo localStorage).  
+**Estado:** vigente en `apps/admin`. Pagos: Postgres (`public.payments`) es raíz C4; localStorage es caché/offline.  
 **Objetivo:** que el sistema crezca grande sin que Cobranza, Banco y Cobros diarios se peleen.
 
-Este documento es la **raíz de dinero** mientras no exista API + PostgreSQL oficiales (`architecture.md`).
+Detalle del camino backend: [`demo-to-backend.md`](demo-to-backend.md).
 
 ---
 
@@ -11,7 +11,7 @@ Este documento es la **raíz de dinero** mientras no exista API + PostgreSQL ofi
 
 | Capa | Qué es | Quién manda |
 | --- | --- | --- |
-| **Pagos** `PaymentRow` (`PG-`) | Cobros reales | **Raíz** |
+| **Pagos** `PaymentRow` (`PG-`) | Cobros reales | **Raíz** (Supabase en C4; caché local) |
 | **Planilla** `DailyCollectionAssignment` | Visitas del día | Derivada de pagos + reglas de visita |
 | **CIE** `CollectorDayCloseRecord` | Cierre de jornada | `collected` / `cashFloat` derivados de pagos |
 | **Banco** `BankMovement` | Debe/Haber | Proyectado desde pagos + gastos CIE/draft + varios |

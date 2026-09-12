@@ -1,6 +1,6 @@
 # Camino demo → backend (fase C)
 
-**Estado:** C3 en código (lectura + merge por `ref`). Dual-write C2 sigue activo.  
+**Estado:** C4 en código — Postgres es la **raíz de pagos** (`PG-`); localStorage es caché + cola offline.  
 **Contrato de dinero vivo:** [`operational-money.md`](operational-money.md)  
 **Arquitectura objetivo:** [`architecture.md`](architecture.md)
 
@@ -8,56 +8,48 @@
 
 ## Por qué esta fase
 
-Celular (Vercel) y PC (localhost u otro navegador) tienen `localStorage` distinto.  
-C2 escribe cobros en Supabase; **C3 los vuelve a leer** para que ambos vean los mismos `PG-…`.
+Celular y PC no comparten `localStorage`. Los cobros viven en Supabase (`public.payments`) y cada dispositivo proyecta Cobranza / Banco / CIE desde esos `PG-…`.
 
 ---
 
-## Orden profesional (no saltar)
+## Orden profesional
 
 | Paso | Qué | Criterio de listo |
 | --- | --- | --- |
-| C0 | Contrato PG- estable en demo | Smoke de `operational-money.md` en verde |
-| C1 | Migración SQL `payments` (+ RLS) | `supabase/migrations/20260912150000_payments.sql` |
-| C2 | Dual-write al cobrar | Cobro local + fila en `public.payments` |
-| **C3** | Lectura + merge en demo | Truqui PC ve cobro del celular (y viceversa) |
-| C4 | Apagar localStorage como raíz | Solo Postgres manda |
+| C0 | Contrato PG- estable en demo | Smoke de `operational-money.md` |
+| C1 | Migración SQL `payments` | Tabla + RLS |
+| C2 | Dual-write al cobrar | Fila en `public.payments` |
+| C3 | Lectura + merge | PC ve cobro del celular |
+| **C4** | Postgres raíz de pagos | Remoto manda; local = caché / offline |
+| C5 | Préstamos / clientes compartidos | Alta en un lado se ve en el otro |
+| C6 | Auth + RLS por rol | Quitar `anon` temporal |
 
 ---
 
-## C3 — checklist operativo
+## C4 — reglas
 
-1. Env + tabla `payments` (ya en C2).
-2. Abrir / volver a la pestaña → `GET /api/payments` → merge por `ref` en `nexo-demo-payments`.
-3. Si entraron refs nuevos → re-hidratar (`hydrateOperationalDemo` / proyecciones).
-4. Local gana si el `ref` ya existe (no pisa cobros locales).
+1. **Cobro:** se guarda local (UX calle) y se sube a Supabase; si falla → cola `nexo-demo-payment-mirror-queue`.
+2. **Al abrir / volver a la pestaña:** flush de cola → pull remoto → merge.
+3. **Merge:** remoto gana en campos de dinero; se conservan cobros solo-locales (offline) y extras UI (evidencia, gps).
+4. **Proyecciones** (planilla, CIE, banco) siguen saliendo de `synchronizeOperationalState` sobre el array fusionado.
 
 Código:
 
-- `lib/supabase/payment-mirror.ts` (`pullRemotePaymentsIntoDemo`, `mergePaymentsByRef`)
-- `GET /api/payments`
-- `useOperationalDemoSync` (pull al montar y al `visibilitychange`)
-
-**Límite C3:** préstamos / clientes nuevos solo en un dispositivo aún no se sincronizan; solo **pagos**.
-
----
-
-## C2 — dual-write (sigue)
-
-- `POST /api/payments/mirror` tras cobro calle / caja
-- Si el espejo falla: el cobro local no se tumba
+- `lib/supabase/payment-mirror.ts` — persist, flush, pull, merge C4
+- `GET /api/payments` · `POST /api/payments/mirror`
+- `useOperationalDemoSync` — flush + pull + hidratar
 
 ---
 
 ## Semántica a preservar
 
-- `ref` tipo `PG-…` (idempotencia / conciliación banco)
+- `ref` tipo `PG-…`
 - `loan_ref`, `amount`, `paid_date`, `method`, `collector_ref`, `source`
-- SQL: `NUMERIC` (nunca float)
-- RLS: políticas `anon` temporales hasta auth obligatorio (C4)
+- SQL `NUMERIC`
+- RLS `anon` temporal hasta C6
 
 ---
 
-## Siguiente (C4)
+## Siguiente (C5)
 
-Hacer de Postgres la raíz de pagos y dejar localStorage como caché / offline.
+Compartir préstamos y clientes (mismo patrón: tabla + dual-write + pull).

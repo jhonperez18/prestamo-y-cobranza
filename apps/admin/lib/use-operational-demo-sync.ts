@@ -6,7 +6,10 @@ import {
   OPERATIONAL_DEMO_STORAGE_PREFIX,
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
-import { pullRemotePaymentsIntoDemo } from "@/lib/supabase/payment-mirror";
+import {
+  flushPaymentMirrorQueue,
+  pullRemotePaymentsIntoDemo,
+} from "@/lib/supabase/payment-mirror";
 
 type Options = {
   /**
@@ -17,13 +20,11 @@ type Options = {
 };
 
 /**
- * Contrato de sincronización operativa:
- * 1) Hidrata al montar
+ * Contrato de sincronización operativa (C4 pagos):
+ * 1) Flush cola offline → pull Postgres (raíz) → hidratar proyecciones
  * 2) Re-hidrata si otra pestaña escribe nexo-demo-*
  * 3) Re-hidrata al activar `resyncActive` (entrada a Vista móvil)
- * 4) Re-hidrata al volver a la pestaña si `resyncActive` sigue activo
- * 5) C3: tras hidratar / al volver visible, pull de payments desde Supabase
- *    y re-hidrata solo si entraron refs nuevos
+ * 4) Al volver visible: flush + pull + hidratar
  */
 export function useOperationalDemoSync(
   apply: (snapshot: OperationalDemoSnapshot) => void,
@@ -45,12 +46,17 @@ export function useOperationalDemoSync(
   }, []);
 
   const runHydrateWithRemotePull = useCallback(async () => {
-    runHydrate();
-    if (pullInFlightRef.current) return;
+    if (pullInFlightRef.current) {
+      runHydrate();
+      return;
+    }
     pullInFlightRef.current = true;
     try {
+      // Caché local primero (UI rápida), luego raíz remota.
+      runHydrate();
+      await flushPaymentMirrorQueue();
       const pull = await pullRemotePaymentsIntoDemo();
-      if (pull.ok && pull.added > 0) {
+      if (pull.ok && pull.changed) {
         runHydrate();
       }
     } finally {
@@ -80,7 +86,6 @@ export function useOperationalDemoSync(
     }
     function onVisible() {
       if (document.visibilityState !== "visible") return;
-      // C3: siempre intentar pull al volver (celular ↔ PC).
       void runHydrateWithRemotePull();
     }
     window.addEventListener("storage", onStorage);
