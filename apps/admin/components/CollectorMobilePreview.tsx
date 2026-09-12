@@ -164,6 +164,59 @@ export function CollectorMobilePreview({
   return (
     <section className="panel collector-mobile-preview-panel is-compact">
       <div className="mobile-preview-layout">
+        <div className="mobile-preview-phone-switcher" aria-label="Cambiar persona">
+          <div className="mobile-preview-phone-switcher-row">
+            <span className="mobile-preview-phone-switcher-label">Cobradores</span>
+            <div className="mobile-preview-phone-switcher-chips">
+              {mobileCollectors.length === 0 ? (
+                <em className="mobile-preview-rail-empty">Sin cobradores</em>
+              ) : (
+                mobileCollectors.map((row) => {
+                  const closed = closedByCollector.get(row.ref);
+                  return (
+                    <button
+                      key={row.ref}
+                      type="button"
+                      className={
+                        kind === "collector" && collector?.ref === row.ref
+                          ? "mobile-preview-phone-chip is-active"
+                          : "mobile-preview-phone-chip"
+                      }
+                      onClick={() => pickCollector(row.ref)}
+                    >
+                      {row.name}
+                      {closed ? <i>Cerrado</i> : null}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          <div className="mobile-preview-phone-switcher-row">
+            <span className="mobile-preview-phone-switcher-label">Supervisor</span>
+            <div className="mobile-preview-phone-switcher-chips">
+              {supervisors.length === 0 ? (
+                <em className="mobile-preview-rail-empty">Sin supervisores</em>
+              ) : (
+                supervisors.map((row) => (
+                  <button
+                    key={row.ref}
+                    type="button"
+                    className={
+                      kind === "supervisor" && supervisor?.ref === row.ref
+                        ? "mobile-preview-phone-chip is-active"
+                        : "mobile-preview-phone-chip"
+                    }
+                    onClick={() => pickSupervisor(row.ref)}
+                  >
+                    {row.name}
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+
         <aside className="mobile-preview-rail">
           <h2>Cobradores</h2>
           {mobileCollectors.length === 0 ? (

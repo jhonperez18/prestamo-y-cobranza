@@ -2518,6 +2518,73 @@
       background: #e4f2ec;
       box-shadow: inset 3px 0 0 #0f766e;
     }
+    /* Selector cobrador/supervisor solo en celular (el rail lateral se oculta) */
+    .mobile-preview-phone-switcher {
+      display: none;
+    }
+    .mobile-preview-phone-switcher-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 6px 10px 4px;
+    }
+    .mobile-preview-phone-switcher-row + .mobile-preview-phone-switcher-row {
+      padding-top: 0;
+      padding-bottom: 8px;
+    }
+    .mobile-preview-phone-switcher-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #5b7268;
+    }
+    .mobile-preview-phone-switcher-chips {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+      padding-bottom: 2px;
+    }
+    .mobile-preview-phone-switcher-chips::-webkit-scrollbar {
+      display: none;
+    }
+    .mobile-preview-phone-chip {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 36px;
+      padding: 6px 12px;
+      border: 1px solid #c5d6ce;
+      border-radius: 999px;
+      background: #fff;
+      color: #14201b;
+      font: inherit;
+      font-size: 13px !important;
+      font-weight: 650;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .mobile-preview-phone-chip i {
+      font-style: normal;
+      font-size: 10px !important;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    .mobile-preview-phone-chip.is-active {
+      background: #0f766e;
+      border-color: #0f766e;
+      color: #fff;
+    }
+    .mobile-preview-phone-chip.is-active i {
+      background: rgba(255, 255, 255, 0.22);
+      color: #fff;
+    }
     .mobile-preview-stage {
       display: flex;
       justify-content: center;
@@ -4199,30 +4266,46 @@
     .shell.is-phone-layout.is-phone-preview .workspace {
       padding: 0;
     }
+    .shell.is-phone-layout.is-phone-preview .phone-sheet-hint {
+      display: none;
+    }
     .shell.is-phone-layout.is-phone-preview .collector-mobile-preview-panel.is-compact {
       padding: 0;
       border: 0;
       background: transparent;
       box-shadow: none;
       min-height: calc(100dvh - 56px);
+      height: calc(100dvh - 56px);
     }
     .shell.is-phone-layout.is-phone-preview .mobile-preview-layout {
-      grid-template-columns: 1fr;
+      display: flex;
+      flex-direction: column;
+      grid-template-columns: none;
       gap: 0;
       min-height: calc(100dvh - 56px);
+      height: calc(100dvh - 56px);
+    }
+    .shell.is-phone-layout.is-phone-preview .mobile-preview-phone-switcher {
+      display: block;
+      flex-shrink: 0;
+      z-index: 6;
+      background: #eef5f1;
+      border-bottom: 1px solid #c5d6ce;
     }
     .shell.is-phone-layout.is-phone-preview .mobile-preview-rail {
       display: none;
     }
     .shell.is-phone-layout.is-phone-preview .mobile-preview-stage {
-      min-height: calc(100dvh - 56px);
+      flex: 1 1 auto;
+      min-height: 0;
+      height: auto;
     }
     .shell.is-phone-layout.is-phone-preview .mobile-preview-wrap,
     .shell.is-phone-layout.is-phone-preview .mobile-preview-frame {
       width: 100%;
       max-width: none;
-      height: calc(100dvh - 56px);
-      min-height: calc(100dvh - 56px);
+      height: 100%;
+      min-height: 0;
       border-radius: 0;
       border: 0;
       box-shadow: none;
