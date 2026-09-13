@@ -6,7 +6,7 @@
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
-import type { PaymentMethod, PaymentRow, StatusKind } from "@/lib/mock-data";
+import type { LoanRow, PaymentMethod, PaymentRow, StatusKind } from "@/lib/mock-data";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import {
@@ -15,7 +15,6 @@ import {
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
-import type { LoanRow } from "@/lib/mock-data";
 
 export type PaymentMirrorRow = {
   ref: string;
@@ -56,10 +55,17 @@ export function paymentRowToMirror(payment: PaymentRow): PaymentMirrorRow | null
   const loanRef = (payment.loanRef || "").trim();
   const paidDate = normalizeHistoryDate(payment.paidDate || "") || payment.paidDate;
   if (!loanRef || !paidDate || !(Number(payment.amount) > 0)) return null;
+
+  let clientRef: string | null = null;
+  if (typeof window !== "undefined") {
+    const loans = readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []);
+    clientRef = loans.find((loan) => loan.ref === loanRef)?.clientRef?.trim() || null;
+  }
+
   return {
     ref: payment.ref,
     loan_ref: loanRef,
-    client_ref: null,
+    client_ref: clientRef,
     collector_ref: payment.collectorRef?.trim() || null,
     collector_name: payment.collector?.trim() || null,
     amount: Number(payment.amount),

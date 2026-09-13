@@ -1,8 +1,8 @@
 # Camino demo → backend (fase C)
 
-**Estado:** C5 — sincronización operativa al 100% para **cobros + clientes + préstamos**.  
-**Contrato de dinero vivo:** [`operational-money.md`](operational-money.md)  
-**Arquitectura objetivo:** [`architecture.md`](architecture.md)
+**Estado:** C5 — sync cobros + clientes + préstamos. Esquema endurecido: [`supabase-schema.md`](supabase-schema.md).  
+**Contrato de dinero:** [`operational-money.md`](operational-money.md)  
+**Arquitectura:** [`architecture.md`](architecture.md)
 
 ---
 
