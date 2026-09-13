@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "verify:prod": "node scripts/release.mjs verify",
-    "release:force": "node scripts/release.mjs force"
+    "release:force": "node scripts/release.mjs force",
+    "db:push": "npx supabase db push --workdir ../.."
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

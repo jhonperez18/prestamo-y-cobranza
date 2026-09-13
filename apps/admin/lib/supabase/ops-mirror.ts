@@ -355,8 +355,14 @@ async function persistKind(
 export function queueCollectorMirror(c: CollectorRow) {
   void persistKind(Q_COLLECTORS, { kind: "collector", row: c }, c.ref);
 }
+export function queueCollectorsMirror(rows: CollectorRow[]) {
+  for (const row of rows) queueCollectorMirror(row);
+}
 export function queueRouteMirror(r: RouteRow) {
   void persistKind(Q_ROUTES, { kind: "route", row: r }, r.ref);
+}
+export function queueRoutesMirror(rows: RouteRow[]) {
+  for (const row of rows) queueRouteMirror(row);
 }
 export function queueDayCloseMirror(c: CollectorDayCloseRecord) {
   void persistKind(Q_CLOSES, { kind: "day_close", row: c }, c.ref);

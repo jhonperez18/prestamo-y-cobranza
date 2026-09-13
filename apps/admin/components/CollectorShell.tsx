@@ -60,8 +60,10 @@ import { projectOperationalMoney } from "@/lib/project-operational-money";
 import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 import {
+  queueAssignmentsMirror,
   queueDayCloseMirror,
   queueDayExpenseMirror,
+  queueRoutesMirror,
 } from "@/lib/supabase/ops-mirror";
 import { commitCollectorPayment } from "@/lib/commit-collector-payment";
 import { type OperationalDemoSnapshot } from "@/lib/hydrate-operational-demo";
@@ -563,6 +565,8 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, closedAssignments);
     setRoutes(result.routes);
     writeDemoJson(DEMO_ROUTES_KEY, result.routes);
+    queueAssignmentsMirror(closedAssignments);
+    queueRoutesMirror(result.routes);
     setDailyLogs(result.logs);
 
     const alertResult = bumpMissedCollectionAlerts(

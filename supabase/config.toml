@@ -1,0 +1,14 @@
+# Supabase local config — proyecto prestamo-y-cobranza
+# Link: npx supabase link --project-ref connkdwezlwqlwgjerav
+# Push:  npx supabase db push
+
+project_id = "connkdwezlwqlwgjerav"
+
+[api]
+enabled = true
+
+[db]
+major_version = 17
+
+[db.migrations]
+schema_paths = []

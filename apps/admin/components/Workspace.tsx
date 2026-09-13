@@ -114,9 +114,14 @@ import { projectOperationalMoney } from "@/lib/project-operational-money";
 import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 import {
+  queueAssignmentsMirror,
+  queueCollectorMirror,
+  queueCollectorsMirror,
   queueDayCloseMirror,
   queueDayExpenseMirror,
   queueMiscPaymentMirror,
+  queueRouteMirror,
+  queueRoutesMirror,
 } from "@/lib/supabase/ops-mirror";
 import {
   type OperationalDemoSnapshot,
@@ -1070,17 +1075,15 @@ export function Workspace({
       return;
     }
     const previousName = openRoute.name;
+    const updated: RouteRow = {
+      ...openRoute,
+      id: routeSlug(name),
+      name,
+    };
     setRoutes((current) =>
-      current.map((row) =>
-        row.ref === openRoute.ref
-          ? {
-              ...row,
-              id: routeSlug(name),
-              name,
-            }
-          : row,
-      ),
+      current.map((row) => (row.ref === openRoute.ref ? updated : row)),
     );
+    queueRouteMirror(updated);
     if (name !== previousName) {
       setClients((current) =>
         current.map((client) =>
@@ -1097,9 +1100,11 @@ export function Workspace({
     if (!route) return;
     const nextActive = !routeIsActive(route);
     const meta = routeStatusMeta(nextActive);
+    const updated = { ...route, ...meta };
     setRoutes((current) =>
-      current.map((row) => (row.ref === ref ? { ...row, ...meta } : row)),
+      current.map((row) => (row.ref === ref ? updated : row)),
     );
+    queueRouteMirror(updated);
     onToast(nextActive ? `Ruta "${route.name}" activada.` : `Ruta "${route.name}" desactivada.`);
   }
 
@@ -1144,6 +1149,7 @@ export function Workspace({
       kind: "ok",
     };
     setRoutes((current) => [...current, row]);
+    queueRouteMirror(row);
     onGo("inicio", "lista");
     onToast(`Ruta ${name} creada. Asígnela a un cobrador para que aparezca en la app.`);
   }
@@ -1167,6 +1173,8 @@ export function Workspace({
     );
     setRoutes(synced.routes);
     setDailyAssignments(synced.assignments);
+    queueRoutesMirror(synced.routes);
+    queueAssignmentsMirror(synced.assignments);
     const route = synced.routes.find((row) => row.ref === routeRef) ?? catalogRouteList.find((row) => row.ref === routeRef);
     onToast(
       collector
@@ -1282,6 +1290,8 @@ export function Workspace({
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, closedAssignments);
     setRoutes(result.routes);
     writeDemoJson(DEMO_ROUTES_KEY, result.routes);
+    queueAssignmentsMirror(closedAssignments);
+    queueRoutesMirror(result.routes);
     setDailyLogs(result.logs);
     writeDemoJson(DEMO_DAILY_LOGS_KEY, result.logs);
     setDayCloses(nextCloses);
@@ -1414,6 +1424,8 @@ export function Workspace({
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, closedAssignments);
     setRoutes(result.routes);
     writeDemoJson(DEMO_ROUTES_KEY, result.routes);
+    queueAssignmentsMirror(closedAssignments);
+    queueRoutesMirror(result.routes);
     setDailyLogs(result.logs);
 
     const alertResult = bumpMissedCollectionAlerts(
@@ -1779,6 +1791,7 @@ export function Workspace({
         mobileAccess: true,
       };
       setCollectors((current) => [...current, collector]);
+      queueCollectorMirror(collector);
     }
 
     const userRow: UserRow = {
@@ -1858,6 +1871,7 @@ export function Workspace({
     );
     setUsers(repaired.users);
     setCollectors(repaired.collectors);
+    queueCollectorsMirror(repaired.collectors);
     const linked = repaired.users.find((row) => row.ref === userRef);
     onToast(
       linked?.collectorRef
