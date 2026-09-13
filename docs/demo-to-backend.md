@@ -60,10 +60,11 @@ npx supabase db push
 
 ---
 
-## C6.1 (siguiente, sin aflojar)
+## C6.1 (Auth + RLS — en curso)
 
-1. Crear usuarios Auth por cobrador y filas en `profiles`  
-2. Escribir con JWT (no anon)  
-3. RLS: cobrador solo su `collector_ref`  
-4. Validar FK tras backfill  
-5. Realtime opcional en `payments` / `day_closes`
+1. `SUPABASE_SERVICE_ROLE_KEY` solo en servidor (API mirrors)  
+2. Políticas `anon` eliminadas en tablas ops  
+3. `profiles` + login Auth (email) con upsert de perfil  
+4. Login corto (`juan.rios`) intenta Auth mapeado; si no, demo local  
+
+Pendiente operativo: crear usuarios Auth en Dashboard y poner la service role en Vercel.

@@ -166,9 +166,10 @@ classDiagram
 
 ---
 
-## Siguiente (C6.1)
+## C6.1 — seguridad
 
-1. Usuarios Auth para cada cobrador + filas en `profiles`  
-2. Quitar políticas `anon`  
-3. FK físicas tras backfill  
-4. Realtime en `payments` / `day_closes`
+- API mirrors usan `SUPABASE_SERVICE_ROLE_KEY` (servidor)
+- Políticas `anon` se retiran (migración `…230000_rls_c61_auth.sql`)
+- `profiles` define `role_id` + `collector_ref` para RLS authenticated
+- Login: email Auth; login corto intenta email mapeado; demo local como respaldo
+

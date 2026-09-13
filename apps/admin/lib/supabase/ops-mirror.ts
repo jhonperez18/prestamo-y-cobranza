@@ -3,8 +3,7 @@
  * Banco/logs siguen siendo proyección de PG- en la app.
  * @see docs/supabase-schema.md
  */
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { getSupabasePublicEnv } from "@/lib/supabase/env";
+import { createMirrorServerClient } from "@/lib/supabase/admin";
 import type { CollectorRow, RouteRow } from "@/lib/mock-data";
 import type {
   CollectorDayCloseRecord,
@@ -24,12 +23,8 @@ import {
   writeDemoJson,
 } from "@/lib/demo-persist";
 
-function createMirrorClient(): SupabaseClient | null {
-  const { url, anonKey, configured } = getSupabasePublicEnv();
-  if (!configured) return null;
-  return createClient(url, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+function createMirrorClient() {
+  return createMirrorServerClient();
 }
 
 function mergeByRefRemote<T extends { ref: string }>(

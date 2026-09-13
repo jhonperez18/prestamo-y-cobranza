@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  createMirrorServerClient,
+  mirrorUsesServiceRole,
+} from "@/lib/supabase/admin";
 
-/** Comprueba que el proyecto Supabase responde (sin exponer secretos). */
+/** Comprueba Supabase + modo C6.1 (service role) sin exponer secretos. */
 export async function GET() {
   const { url, configured } = getSupabasePublicEnv();
   if (!configured) {
@@ -22,8 +26,10 @@ export async function GET() {
       );
     }
 
-    // C2: la tabla payments debe existir tras aplicar la migración SQL.
-    const payments = await supabase.from("payments").select("ref").limit(1);
+    const mirror = createMirrorServerClient();
+    const payments = mirror
+      ? await mirror.from("payments").select("ref").limit(1)
+      : await supabase.from("payments").select("ref").limit(1);
     const tableMissing =
       payments.error?.code === "PGRST205" ||
       /Could not find the table/i.test(payments.error?.message ?? "");
@@ -32,6 +38,7 @@ export async function GET() {
       ok: true,
       url,
       auth: "reachable",
+      serviceRole: mirrorUsesServiceRole(),
       payments: tableMissing
         ? { ok: false, error: "payments_table_missing" }
         : payments.error

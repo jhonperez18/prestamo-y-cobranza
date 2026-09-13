@@ -4,8 +4,7 @@
  * @see docs/demo-to-backend.md
  * @see docs/operational-money.md
  */
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { getSupabasePublicEnv } from "@/lib/supabase/env";
+import { createMirrorServerClient } from "@/lib/supabase/admin";
 import type { LoanRow, PaymentMethod, PaymentRow, StatusKind } from "@/lib/mock-data";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
@@ -203,12 +202,8 @@ export function mergePaymentsByRef(local: PaymentRow[], remote: PaymentRow[]): {
   return { merged, added, changed };
 }
 
-function createMirrorClient(): SupabaseClient | null {
-  const { url, anonKey, configured } = getSupabasePublicEnv();
-  if (!configured) return null;
-  return createClient(url, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+function createMirrorClient() {
+  return createMirrorServerClient();
 }
 
 export type MirrorPaymentResult =

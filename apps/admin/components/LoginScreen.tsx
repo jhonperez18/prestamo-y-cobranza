@@ -7,6 +7,7 @@ import { loadDemoUsers } from "@/lib/demo-persist";
 import { APP_BUILD } from "@/lib/app-build";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import {
+  authEmailFromLoginHint,
   loginWithSupabaseAuth,
   shouldTrySupabaseLogin,
 } from "@/lib/supabase/auth-login";
@@ -40,6 +41,7 @@ export function LoginScreen({ onSuccess }: Props) {
     setError("");
     setBusy(true);
     try {
+      // 1) Email directo Auth
       if (shouldTrySupabaseLogin(username)) {
         const result = await loginWithSupabaseAuth(username, password);
         if (!result.ok) {
@@ -48,6 +50,17 @@ export function LoginScreen({ onSuccess }: Props) {
         }
         onSuccess(result.session);
         return;
+      }
+
+      // 2) Login corto (juan.rios) → intenta Auth con email mapeado
+      const mappedEmail = authEmailFromLoginHint(username);
+      if (mappedEmail && mappedEmail.includes("@")) {
+        const result = await loginWithSupabaseAuth(mappedEmail, password);
+        if (result.ok) {
+          onSuccess(result.session);
+          return;
+        }
+        // si Auth falla, cae a demo local
       }
 
       const users = loadDemoUsers();

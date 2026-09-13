@@ -2,8 +2,7 @@
  * C5: clientes y préstamos compartidos (Postgres raíz; local = caché + cola offline).
  * @see docs/demo-to-backend.md
  */
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { getSupabasePublicEnv } from "@/lib/supabase/env";
+import { createMirrorServerClient } from "@/lib/supabase/admin";
 import type { ClientRow, LoanRow, StatusKind } from "@/lib/mock-data";
 import {
   DEMO_CLIENTS_KEY,
@@ -69,12 +68,8 @@ export type LoanMirrorRow = {
   updated_at: string;
 };
 
-function createMirrorClient(): SupabaseClient | null {
-  const { url, anonKey, configured } = getSupabasePublicEnv();
-  if (!configured) return null;
-  return createClient(url, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+function createMirrorClient() {
+  return createMirrorServerClient();
 }
 
 export function clientRowToMirror(row: ClientRow): ClientMirrorRow | null {
