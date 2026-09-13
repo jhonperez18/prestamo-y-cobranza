@@ -1,0 +1,78 @@
+import { NextResponse } from "next/server";
+import {
+  assignmentToRow,
+  collectorToRow,
+  dayCloseToRow,
+  dayExpenseToRow,
+  miscToRow,
+  routeToRow,
+  upsertOpsRow,
+} from "@/lib/supabase/ops-mirror";
+import type { CollectorRow, RouteRow } from "@/lib/mock-data";
+import type {
+  CollectorDayCloseRecord,
+  CollectorDayExpenseDraft,
+} from "@/lib/collector-day-close";
+import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import type { MiscPayment } from "@/lib/misc-payments";
+
+type Body = {
+  kind?: string;
+  row?: unknown;
+};
+
+export async function POST(request: Request) {
+  try {
+    const body = (await request.json()) as Body;
+    const kind = body.kind;
+    if (!kind || !body.row) {
+      return NextResponse.json({ ok: false, error: "missing_kind_or_row" }, { status: 400 });
+    }
+
+    let result: Awaited<ReturnType<typeof upsertOpsRow>>;
+
+    switch (kind) {
+      case "collector": {
+        const mapped = collectorToRow(body.row as CollectorRow);
+        result = await upsertOpsRow("collectors", mapped, "ref");
+        break;
+      }
+      case "route": {
+        const mapped = routeToRow(body.row as RouteRow);
+        result = await upsertOpsRow("routes", mapped, "ref");
+        break;
+      }
+      case "day_close": {
+        const mapped = dayCloseToRow(body.row as CollectorDayCloseRecord);
+        result = await upsertOpsRow("day_closes", mapped, "ref");
+        break;
+      }
+      case "day_expense": {
+        const mapped = dayExpenseToRow(body.row as CollectorDayExpenseDraft);
+        result = await upsertOpsRow("day_expenses", mapped, "ref");
+        break;
+      }
+      case "misc_payment": {
+        const mapped = miscToRow(body.row as MiscPayment);
+        result = await upsertOpsRow("misc_payments", mapped, "ref");
+        break;
+      }
+      case "assignment": {
+        const raw = body.row as DailyCollectionAssignment & { ref?: string };
+        const mapped = assignmentToRow(raw);
+        result = await upsertOpsRow("daily_assignments", mapped, "dispatch_date,item_id");
+        break;
+      }
+      default:
+        return NextResponse.json({ ok: false, error: "unknown_kind" }, { status: 400 });
+    }
+
+    if (!result.ok) {
+      return NextResponse.json(result, { status: 502 });
+    }
+    return NextResponse.json(result);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown_error";
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}

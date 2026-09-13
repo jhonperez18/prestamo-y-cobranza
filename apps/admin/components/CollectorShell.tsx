@@ -59,6 +59,10 @@ import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
 import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
+import {
+  queueDayCloseMirror,
+  queueDayExpenseMirror,
+} from "@/lib/supabase/ops-mirror";
 import { commitCollectorPayment } from "@/lib/commit-collector-payment";
 import { type OperationalDemoSnapshot } from "@/lib/hydrate-operational-demo";
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
@@ -454,6 +458,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     const nextDrafts = upsertDayExpenseDraft(dayExpenseDrafts, draft);
     writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
     setDayExpenseDrafts(nextDrafts);
+    queueDayExpenseMirror(draft);
 
     const accounts = ensureBankAccounts(
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
@@ -515,6 +520,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     const nextCloses = [record, ...closes.filter((row) => row.ref !== record.ref)];
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextCloses);
     setDayCloses(nextCloses);
+    queueDayCloseMirror(record);
 
     const nextDrafts = removeDayExpenseDraft(
       dayExpenseDrafts,

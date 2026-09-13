@@ -114,6 +114,11 @@ import { projectOperationalMoney } from "@/lib/project-operational-money";
 import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 import {
+  queueDayCloseMirror,
+  queueDayExpenseMirror,
+  queueMiscPaymentMirror,
+} from "@/lib/supabase/ops-mirror";
+import {
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
@@ -1266,6 +1271,7 @@ export function Workspace({
       });
       nextCloses = [record, ...nextCloses.filter((row) => row.ref !== record.ref)];
       nextDrafts = removeDayExpenseDraft(nextDrafts, collectorRef, date);
+      queueDayCloseMirror(record);
     }
 
     const closedAssignments = applyDayCloseRecordsToAssignments(
@@ -1315,6 +1321,7 @@ export function Workspace({
     const nextDrafts = upsertDayExpenseDraft(dayExpenseDrafts, draft);
     writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
     setDayExpenseDrafts(nextDrafts);
+    queueDayExpenseMirror(draft);
 
     const accounts = ensureBankAccounts(bankAccounts);
     if (!bankAccounts.length) setBankAccounts(accounts);
@@ -1368,6 +1375,7 @@ export function Workspace({
     const nextCloses = [record, ...closes.filter((row) => row.ref !== record.ref)];
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextCloses);
     setDayCloses(nextCloses);
+    queueDayCloseMirror(record);
 
     const nextDrafts = removeDayExpenseDraft(
       dayExpenseDrafts,
@@ -3401,6 +3409,7 @@ export function Workspace({
           existing={miscPayments}
           onSave={(payment) => {
             setMiscPayments((rows) => [...rows, payment]);
+            queueMiscPaymentMirror(payment);
             openMiscPaymentFicha(payment.ref);
           }}
           onCancel={() => onGo("inicio", "pagos-varios-listado")}
@@ -3432,6 +3441,7 @@ export function Workspace({
           payment={payment}
           onSave={(updated) => {
             setMiscPayments((rows) => rows.map((row) => (row.ref === updated.ref ? updated : row)));
+            queueMiscPaymentMirror(updated);
             setOpenMiscPaymentRef(updated.ref);
             if (miscPaymentReturn?.viewId === "pagos-varios-ficha") {
               onGo("inicio", "pagos-varios-ficha");

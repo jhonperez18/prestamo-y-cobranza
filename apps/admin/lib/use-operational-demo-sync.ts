@@ -14,6 +14,10 @@ import {
   flushCatalogMirrorQueues,
   pullRemoteCatalogIntoDemo,
 } from "@/lib/supabase/catalog-mirror";
+import {
+  flushOpsMirrorQueues,
+  pullRemoteOpsIntoDemo,
+} from "@/lib/supabase/ops-mirror";
 
 type Options = {
   /**
@@ -24,11 +28,8 @@ type Options = {
 };
 
 /**
- * Contrato de sincronización operativa (C4+C5):
- * 1) Flush colas offline → pull pagos/clientes/préstamos → hidratar
- * 2) Re-hidrata si otra pestaña escribe nexo-demo-*
- * 3) Re-hidrata al activar `resyncActive`
- * 4) Al volver visible: flush + pull + hidratar
+ * Sync completo C5+C6:
+ * flush colas → pull payments/catalog/ops → hidratar proyecciones
  */
 export function useOperationalDemoSync(
   apply: (snapshot: OperationalDemoSnapshot) => void,
@@ -59,11 +60,17 @@ export function useOperationalDemoSync(
       runHydrate();
       await flushPaymentMirrorQueue();
       await flushCatalogMirrorQueues();
-      const [paymentsPull, catalogPull] = await Promise.all([
+      await flushOpsMirrorQueues();
+      const [paymentsPull, catalogPull, opsPull] = await Promise.all([
         pullRemotePaymentsIntoDemo(),
         pullRemoteCatalogIntoDemo(),
+        pullRemoteOpsIntoDemo(),
       ]);
-      if ((paymentsPull.ok && paymentsPull.changed) || (catalogPull.ok && catalogPull.changed)) {
+      if (
+        (paymentsPull.ok && paymentsPull.changed) ||
+        (catalogPull.ok && catalogPull.changed) ||
+        (opsPull.ok && opsPull.changed)
+      ) {
         runHydrate();
       }
     } finally {
