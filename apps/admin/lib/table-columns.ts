@@ -161,6 +161,8 @@ export const DAILY_COLLECTION_COLUMNS: ColumnOption[] = [
   { id: "since", label: "Desde" },
   { id: "amount", label: "A cobrar" },
   { id: "status", label: "Estado" },
+  { id: "method", label: "Forma de pago" },
+  { id: "evidence", label: "Comprobante" },
   { id: "collector", label: "Cobrador" },
   { id: "action", label: "Acción", pickerHidden: true },
 ];

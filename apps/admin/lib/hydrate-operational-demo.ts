@@ -48,6 +48,10 @@ import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { dedupeDailyPaymentsByVisit } from "@/lib/planilla-payment-reconcile";
 import { stripRemovedPaymentMovements } from "@/lib/purge-unclosed-payments";
 import { syncAllLoans } from "@/lib/loan-preview";
+import {
+  indexPaymentEvidenceFromPayments,
+  withPaymentEvidence,
+} from "@/lib/payment-evidence-store";
 import { dedupeClientsByRef, migrateLegacyRouteName, normalizeAllRouteOrders } from "@/lib/client-route-order";
 import { normalizeClientLifecycle } from "@/lib/client-review";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
@@ -229,13 +233,16 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
   writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, storedAccounts);
   writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, synced.bankMovements);
 
+  indexPaymentEvidenceFromPayments(nextPayments);
+  const paymentsWithEvidence = nextPayments.map(withPaymentEvidence);
+
   return {
     users: linked.users,
     collectors: linked.collectors,
     clients: storedClients,
     routes: cycle.routes,
     loans: synced.loans,
-    payments: nextPayments,
+    payments: paymentsWithEvidence,
     assignments: synced.assignments,
     dayCloses: synced.dayCloses,
     dayExpenseDrafts: cycle.dayExpenseDrafts,

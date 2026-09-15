@@ -19,6 +19,7 @@ import {
   downloadCobranzaPaymentsReportPdfAsync,
 } from "@/lib/cobranza-payments-report-pdf";
 import { money, type ClientRow, type LoanRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
+import { withPaymentEvidence } from "@/lib/payment-evidence-store";
 import {
   normalizePaymentMethod,
   paymentMethodKind,
@@ -107,6 +108,11 @@ export function CobranzaPaymentsView({
   const sorted = useMemo(
     () => sortPayments(filtered, paymentSortKey, paymentSortDir),
     [filtered, paymentSortKey, paymentSortDir],
+  );
+
+  const paymentsWithEvidence = useMemo(
+    () => sorted.map((row) => withPaymentEvidence(row)),
+    [sorted],
   );
 
   const loanMap = useMemo(() => loansByRef(loans), [loans]);
@@ -287,7 +293,7 @@ export function CobranzaPaymentsView({
                   <td colSpan={visibleHeaders.length + 1}>Sin registros en este periodo.</td>
                 </tr>
               ) : (
-                sorted.map((row) => (
+                paymentsWithEvidence.map((row) => (
                   <tr key={row.ref}>
                     {columnVisibility.isVisible("ref") ? (
                       <td>

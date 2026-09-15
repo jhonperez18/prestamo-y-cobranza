@@ -143,6 +143,7 @@ import {
   paymentMethodLabel,
   type PaymentMethod,
 } from "@/lib/payment-method";
+import { withPaymentEvidence } from "@/lib/payment-evidence-store";
 import {
   buildRouteStop,
   type CollectorPaymentDraft,
@@ -358,7 +359,7 @@ export function Workspace({
     setCollectors(snap.collectors);
     setRoutes(snap.routes);
     setLoans(snap.loans);
-    setPayments(snap.payments);
+    setPayments(snap.payments.map((row) => withPaymentEvidence(row)));
     setDailyAssignments(snap.assignments);
     setDayCloses(snap.dayCloses);
     setDayExpenseDrafts(snap.dayExpenseDrafts);

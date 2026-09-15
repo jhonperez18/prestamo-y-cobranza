@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell, useColumnVisibility } from "@/components/ColumnPicker";
+import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { Kpi, Pill } from "@/components/ui";
 import type { ModuleId } from "@/lib/navigation";
 import {
@@ -12,6 +13,7 @@ import {
   type DailyCollectionAssignment,
 } from "@/lib/daily-collection-plan";
 import { dayCloseSummary } from "@/lib/collector-dispatch-sync";
+import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import { syncLoan } from "@/lib/loan-preview";
 import {
   dispatchDateHint,
@@ -27,7 +29,37 @@ import {
   type PaymentRow,
   type RouteRow,
 } from "@/lib/mock-data";
+import {
+  normalizePaymentMethod,
+  paymentMethodKind,
+  paymentMethodLabel,
+} from "@/lib/payment-method";
+import { withPaymentEvidence } from "@/lib/payment-evidence-store";
 import { DAILY_COLLECTION_COLUMNS, DAILY_COLLECTION_DEFAULT_COLS } from "@/lib/table-columns";
+
+function paymentForDailyRow(
+  loanRef: string,
+  selectedDate: string,
+  assigned: DailyCollectionAssignment | undefined,
+  payments: PaymentRow[],
+): PaymentRow | undefined {
+  if (assigned?.paymentRef) {
+    const byRef = payments.find((row) => row.ref === assigned.paymentRef);
+    if (byRef) return withPaymentEvidence(byRef);
+  }
+  const day = normalizeHistoryDate(selectedDate) || selectedDate;
+  const matches = payments
+    .filter(
+      (row) =>
+        row.loanRef === loanRef &&
+        (Number(row.amount) || 0) > 0 &&
+        (normalizeHistoryDate(row.paidDate || "") || "") === day,
+    )
+    .slice()
+    .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));
+  const hit = matches[0];
+  return hit ? withPaymentEvidence(hit) : undefined;
+}
 
 type Props = {
   loans: LoanRow[];
@@ -112,7 +144,7 @@ export function DailyCollectionsView({
   const { isVisible, visibleCols, toggleColumn } = useColumnVisibility(
     DAILY_COLLECTION_COLUMNS,
     DAILY_COLLECTION_DEFAULT_COLS,
-    { storageKey: "nexo.cobranza.cobros-dia.columns" },
+    { storageKey: "nexo.cobranza.cobros-dia.columns.v2" },
   );
 
   const today = todayIso();
@@ -437,6 +469,8 @@ export function DailyCollectionsView({
             {isVisible("since") ? <col className="dc-since" /> : null}
             {isVisible("amount") ? <col className="dc-amount" /> : null}
             {isVisible("status") ? <col className="dc-status" /> : null}
+            {isVisible("method") ? <col className="dc-method" /> : null}
+            {isVisible("evidence") ? <col className="dc-evidence" /> : null}
             {isVisible("collector") ? <col className="dc-collector" /> : null}
             {isVisible("action") ? <col className="dc-action" /> : null}
             <col className="dc-picker" />
@@ -451,6 +485,8 @@ export function DailyCollectionsView({
               {isVisible("since") ? <th>Desde</th> : null}
               {isVisible("amount") ? <th className="right">A cobrar</th> : null}
               {isVisible("status") ? <th>Estado</th> : null}
+              {isVisible("method") ? <th>Forma de pago</th> : null}
+              {isVisible("evidence") ? <th>Comprobante</th> : null}
               {isVisible("collector") ? <th>Cobrador</th> : null}
               {isVisible("action") ? <th>Acción</th> : null}
               <ColumnPickerHeadCell>
@@ -490,6 +526,8 @@ export function DailyCollectionsView({
                   assigned?.collector ||
                   collectorNameForRef(draftRef) ||
                   "—";
+                const pay = paymentForDailyRow(item.loanRef, selectedDate, assigned, payments);
+                const payMethod = pay ? normalizePaymentMethod(pay.method) : null;
 
                 return (
                   <tr key={item.id}>
@@ -574,6 +612,23 @@ export function DailyCollectionsView({
                             kind={itemStatusKind(item.kind)}
                           />
                         )}
+                      </td>
+                    ) : null}
+                    {isVisible("method") ? (
+                      <td>
+                        {payMethod ? (
+                          <Pill
+                            label={paymentMethodLabel(payMethod)}
+                            kind={paymentMethodKind(payMethod)}
+                          />
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    ) : null}
+                    {isVisible("evidence") ? (
+                      <td className="pay-evidence-cell">
+                        <PaymentEvidenceThumb evidence={pay?.evidence} size={22} />
                       </td>
                     ) : null}
                     {isVisible("collector") ? (
