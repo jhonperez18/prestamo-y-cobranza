@@ -9476,6 +9476,25 @@
     }
 
     .payment-evidence-empty { color: #8aa198; font-size: 12px; }
+    .payment-evidence-attach { display: inline-flex; vertical-align: middle; }
+    .payment-evidence-attach-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px dashed #7c3aed;
+      border-radius: 6px;
+      background: #f5f3ff;
+      color: #6d28d9;
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+    }
+    .payment-evidence-attach-btn:disabled {
+      opacity: 0.55;
+      cursor: wait;
+    }
     .pay-evidence-cell {
       width: 36px;
       padding-top: 2px !important;

@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
+  buildReceiptEvidence,
+  compressReceiptImage,
   formatEvidenceSize,
   primaryPaymentEvidence,
   resolvePaymentEvidencePreview,
@@ -15,6 +17,8 @@ type Props = {
   emptyLabel?: string;
   /** thumb = celda de tabla; panel = ficha con imagen grande */
   variant?: "thumb" | "panel";
+  /** Si no hay foto, permite subir el comprobante (Nequi sin evidencia en nube). */
+  onAttach?: (evidence: PaymentEvidenceRef) => void;
 };
 
 function EvidenceLightbox({
@@ -68,8 +72,12 @@ export function PaymentEvidenceThumb({
   size = 22,
   emptyLabel = "—",
   variant = "thumb",
+  onAttach,
 }: Props) {
   const [openUrl, setOpenUrl] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
   const item = primaryPaymentEvidence(evidence);
   const previewUrl = item ? resolvePaymentEvidencePreview(item) : null;
   const isSignature = item?.kind === "firma";
@@ -86,7 +94,51 @@ export function PaymentEvidenceThumb({
     return () => window.removeEventListener("keydown", onKey);
   }, [close, openUrl]);
 
+  async function onPhoto(file: File | undefined) {
+    if (!file || !onAttach) return;
+    setBusy(true);
+    try {
+      const compressed = await compressReceiptImage(file);
+      onAttach(buildReceiptEvidence(compressed.dataUrl, compressed));
+    } catch {
+      // Silencioso: el padre puede mostrar toast; no tumbar la lista.
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
   if (!item || !previewUrl) {
+    if (onAttach) {
+      return (
+        <span className="payment-evidence-attach">
+          <input
+            id={inputId}
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="sr-only"
+            disabled={busy}
+            onChange={(event) => void onPhoto(event.target.files?.[0])}
+          />
+          <button
+            type="button"
+            className="payment-evidence-attach-btn"
+            title="Subir comprobante"
+            aria-label="Subir comprobante"
+            disabled={busy}
+            onClick={(event) => {
+              event.stopPropagation();
+              fileRef.current?.click();
+            }}
+            style={{ width: Math.max(size, 28), height: Math.max(size, 28) }}
+          >
+            {busy ? "…" : "+"}
+          </button>
+        </span>
+      );
+    }
     return <span className="payment-evidence-empty">{emptyLabel}</span>;
   }
 

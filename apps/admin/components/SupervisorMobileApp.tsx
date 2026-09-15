@@ -67,6 +67,7 @@ import {
   indexPaymentEvidenceFromPayments,
   withPaymentEvidence,
 } from "@/lib/payment-evidence-store";
+import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
 
 type Props = {
   supervisor: UserRow;
@@ -88,6 +89,8 @@ type Props = {
     routeRef: string;
   }) => void;
   onCreateQuickLoan?: (draft: QuickLoanDraft) => void;
+  /** Adjuntar constancia a un PG- que quedó sin foto en la nube. */
+  onAttachPaymentEvidence?: (paymentRef: string, evidence: PaymentEvidenceRef[]) => void;
   onLogout?: () => void;
 };
 
@@ -629,6 +632,7 @@ export function SupervisorMobileApp({
   monthCloses = [],
   onCreateStreetClient,
   onCreateQuickLoan,
+  onAttachPaymentEvidence,
   onLogout,
 }: Props) {
   const today = todayIso();
@@ -1328,7 +1332,15 @@ export function SupervisorMobileApp({
                         {paymentMethodLabel("nequi")}
                       </em>
                       <span className="is-evidence">
-                        <PaymentEvidenceThumb evidence={pay.evidence} size={28} />
+                        <PaymentEvidenceThumb
+                          evidence={pay.evidence}
+                          size={28}
+                          onAttach={
+                            onAttachPaymentEvidence
+                              ? (piece) => onAttachPaymentEvidence(pay.ref, [piece])
+                              : undefined
+                          }
+                        />
                       </span>
                       <b className="is-cobro">{money(pay.amount, { symbol: false })}</b>
                     </li>
@@ -1687,7 +1699,15 @@ export function SupervisorMobileApp({
                         {paymentMethodLabel("nequi")}
                       </em>
                       <span className="is-evidence">
-                        <PaymentEvidenceThumb evidence={pay.evidence} size={36} />
+                        <PaymentEvidenceThumb
+                          evidence={pay.evidence}
+                          size={36}
+                          onAttach={
+                            onAttachPaymentEvidence
+                              ? (piece) => onAttachPaymentEvidence(pay.ref, [piece])
+                              : undefined
+                          }
+                        />
                       </span>
                       <b className="is-cobro">{money(pay.amount, { symbol: false })}</b>
                     </li>

@@ -55,6 +55,10 @@ type Props = {
     routeRef: string;
   }) => void;
   onCreateQuickLoan?: (draft: import("@/lib/street-client-loan").QuickLoanDraft) => void;
+  onAttachPaymentEvidence?: (
+    paymentRef: string,
+    evidence: import("@/lib/payment-evidence").PaymentEvidenceRef[],
+  ) => void;
 };
 
 export function CollectorMobilePreview({
@@ -79,6 +83,7 @@ export function CollectorMobilePreview({
   onCloseMonth,
   onCreateStreetClient,
   onCreateQuickLoan,
+  onAttachPaymentEvidence,
 }: Props) {
   const [kind, setKind] = useState<PreviewKind>("collector");
   const [supervisorRef, setSupervisorRef] = useState("");
@@ -268,6 +273,7 @@ export function CollectorMobilePreview({
                   monthCloses={monthCloses}
                   onCreateStreetClient={onCreateStreetClient}
                   onCreateQuickLoan={onCreateQuickLoan}
+                  onAttachPaymentEvidence={onAttachPaymentEvidence}
                 />
               ) : collector ? (
                 <CollectorMobileApp

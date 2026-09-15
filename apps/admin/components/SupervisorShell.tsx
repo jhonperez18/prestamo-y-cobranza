@@ -39,6 +39,10 @@ import {
 } from "@/lib/bank";
 import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import { queueClientMirror, queueLoanMirror } from "@/lib/supabase/catalog-mirror";
+import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
+import { rememberPaymentEvidence, withPaymentEvidence } from "@/lib/payment-evidence-store";
+import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
+import { preferRicherEvidence } from "@/lib/payment-evidence";
 import {
   CLIENT_STATUS_ACTIVE,
   clientStatusKind,
@@ -306,6 +310,24 @@ export function SupervisorShell({ session, onLogout }: Props) {
     showToast(`Préstamo ${loan.ref} creado · cuota ${money(loan.installment ?? 0)}.`);
   }
 
+  function attachPaymentEvidence(paymentRef: string, evidence: PaymentEvidenceRef[]) {
+    const ref = paymentRef.trim();
+    if (!ref || !evidence.length) return;
+    rememberPaymentEvidence(ref, evidence);
+    setPayments((current) => {
+      const next = current.map((row) => {
+        if (row.ref !== ref) return row;
+        const merged = preferRicherEvidence(evidence, row.evidence) ?? evidence;
+        return withPaymentEvidence({ ...row, evidence: merged });
+      });
+      writeDemoJson(DEMO_PAYMENTS_KEY, next);
+      const row = next.find((entry) => entry.ref === ref);
+      if (row) queuePaymentMirror(row);
+      return next;
+    });
+    showToast("Comprobante guardado · subiendo a la nube…");
+  }
+
   if (!hydrated) {
     return <div className="login-screen login-loading collector-shell-loading" aria-hidden />;
   }
@@ -345,6 +367,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
         monthCloses={monthCloses}
         onCreateStreetClient={createStreetClientFromMobile}
         onCreateQuickLoan={createQuickLoanFromMobile}
+        onAttachPaymentEvidence={attachPaymentEvidence}
         onLogout={onLogout}
       />
       {toastNode}

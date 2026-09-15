@@ -50,6 +50,10 @@ type Props = {
   assignments?: DailyCollectionAssignment[];
   initialRange?: { fromIso: string; toIso: string };
   onOpenPayment: (ref: string) => void;
+  onAttachPaymentEvidence?: (
+    paymentRef: string,
+    evidence: import("@/lib/payment-evidence").PaymentEvidenceRef[],
+  ) => void;
 };
 
 function paymentFechaLabel(row: PaymentRow) {
@@ -81,6 +85,7 @@ export function CobranzaPaymentsView({
   assignments = [],
   initialRange,
   onOpenPayment,
+  onAttachPaymentEvidence,
 }: Props) {
   const defaults = initialRange ?? defaultCobranzaReportRange();
   const [fromIso, setFromIso] = useState(defaults.fromIso);
@@ -321,7 +326,15 @@ export function CobranzaPaymentsView({
                     ) : null}
                     {columnVisibility.isVisible("evidence") ? (
                       <td className="pay-evidence-cell">
-                        <PaymentEvidenceThumb evidence={row.evidence} size={22} />
+                        <PaymentEvidenceThumb
+                          evidence={row.evidence}
+                          size={22}
+                          onAttach={
+                            onAttachPaymentEvidence
+                              ? (piece) => onAttachPaymentEvidence(row.ref, [piece])
+                              : undefined
+                          }
+                        />
                       </td>
                     ) : null}
                     {columnVisibility.isVisible("ruta") ? (

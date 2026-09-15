@@ -143,7 +143,8 @@ import {
   paymentMethodLabel,
   type PaymentMethod,
 } from "@/lib/payment-method";
-import { withPaymentEvidence } from "@/lib/payment-evidence-store";
+import { withPaymentEvidence, rememberPaymentEvidence } from "@/lib/payment-evidence-store";
+import { preferRicherEvidence, type PaymentEvidenceRef } from "@/lib/payment-evidence";
 import {
   buildRouteStop,
   type CollectorPaymentDraft,
@@ -1559,6 +1560,24 @@ export function Workspace({
     return true;
   }
 
+  function attachPaymentEvidence(paymentRef: string, evidence: PaymentEvidenceRef[]) {
+    const ref = paymentRef.trim();
+    if (!ref || !evidence.length) return;
+    rememberPaymentEvidence(ref, evidence);
+    setPayments((current) => {
+      const next = current.map((row) => {
+        if (row.ref !== ref) return row;
+        const merged = preferRicherEvidence(evidence, row.evidence) ?? evidence;
+        return withPaymentEvidence({ ...row, evidence: merged });
+      });
+      writeDemoJson(DEMO_PAYMENTS_KEY, next);
+      const row = next.find((entry) => entry.ref === ref);
+      if (row) queuePaymentMirror(row);
+      return next;
+    });
+    onToast("Comprobante guardado · subiendo a la nube…");
+  }
+
   function skipCollectorVisit(draft: CollectorSkipVisitDraft) {
     const nextAssignments = skipAssignmentVisit(dailyAssignments, {
       collectorRef: draft.collectorRef,
@@ -2753,6 +2772,7 @@ export function Workspace({
           }}
           onToast={onToast}
           onGo={onGo}
+          onAttachPaymentEvidence={attachPaymentEvidence}
         />
       );
     }
@@ -2835,6 +2855,7 @@ export function Workspace({
           onOpenPayment={(ref) =>
             openPaymentFicha(ref, viewId === "abonos" ? "abonos" : "pagos")
           }
+          onAttachPaymentEvidence={attachPaymentEvidence}
         />
       );
     }
@@ -3308,6 +3329,7 @@ export function Workspace({
             onOpenPayment={(ref) =>
               openPaymentFicha(ref, "pagos", { moduleId: "reportes", viewId: "diarios" })
             }
+            onAttachPaymentEvidence={attachPaymentEvidence}
           />
         );
       }
@@ -3398,6 +3420,7 @@ export function Workspace({
           onCloseMonth={closeCollectorMonthFromMobile}
           onCreateStreetClient={createStreetClientFromMobile}
           onCreateQuickLoan={createQuickLoanFromMobile}
+          onAttachPaymentEvidence={attachPaymentEvidence}
         />
       );
     }

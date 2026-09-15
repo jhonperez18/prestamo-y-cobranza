@@ -77,6 +77,7 @@ type Props = {
   onOpenMobile?: (collectorRef?: string) => void;
   onToast?: (message: string) => void;
   onGo?: (moduleId: ModuleId, viewId?: string) => void;
+  onAttachPaymentEvidence?: (paymentRef: string, evidence: import("@/lib/payment-evidence").PaymentEvidenceRef[]) => void;
 };
 
 type ListFilter = "all" | "pending" | "mora" | "assigned";
@@ -132,6 +133,7 @@ export function DailyCollectionsView({
   onOpenMobile,
   onToast,
   onGo,
+  onAttachPaymentEvidence,
 }: Props) {
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [routeFilter, setRouteFilter] = useState("");
@@ -628,7 +630,15 @@ export function DailyCollectionsView({
                     ) : null}
                     {isVisible("evidence") ? (
                       <td className="pay-evidence-cell">
-                        <PaymentEvidenceThumb evidence={pay?.evidence} size={22} />
+                        <PaymentEvidenceThumb
+                          evidence={pay?.evidence}
+                          size={22}
+                          onAttach={
+                            pay && onAttachPaymentEvidence
+                              ? (piece) => onAttachPaymentEvidence(pay.ref, [piece])
+                              : undefined
+                          }
+                        />
                       </td>
                     ) : null}
                     {isVisible("collector") ? (
