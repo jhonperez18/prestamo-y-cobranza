@@ -2983,24 +2983,48 @@
     .supervisor-mobile-actions > .btn:nth-child(n + 3) {
       grid-column: auto;
     }
-    .supervisor-mobile-sheet-row.is-sub {
-      padding-top: 4px;
-      padding-bottom: 4px;
+    .supervisor-mobile-sheet-means {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr auto 1fr;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 10px 8px;
+      border-bottom: 1px solid #e8efeb;
       background: #f7faf8;
     }
-    .supervisor-mobile-sheet-row.is-sub span {
-      font-size: 11px;
-      font-weight: 500;
-      padding-left: 8px;
+    .supervisor-mobile-sheet-means > div {
+      display: grid;
+      gap: 1px;
+      min-width: 0;
     }
-    .supervisor-mobile-sheet-row.is-sub b {
-      font-size: 11px;
+    .supervisor-mobile-sheet-means span {
+      font-size: 9px;
+      font-weight: 600;
+      color: #5b7268;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
     }
-    .supervisor-mobile-sheet-row.is-pay-efectivo b {
+    .supervisor-mobile-sheet-means b {
+      font-size: 12px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.15;
+    }
+    .supervisor-mobile-sheet-means .is-pay-efectivo b {
       color: #1f6b45;
     }
-    .supervisor-mobile-sheet-row.is-pay-nequi b {
+    .supervisor-mobile-sheet-means .is-pay-nequi b {
       color: #5b3d8a;
+    }
+    .supervisor-mobile-sheet-means .is-total-means b {
+      color: #111;
+    }
+    .supervisor-mobile-sheet-means-plus,
+    .supervisor-mobile-sheet-means-eq {
+      font-size: 11px;
+      font-weight: 700;
+      color: #8aa094;
+      padding-top: 10px;
     }
     .supervisor-mobile-sheet-row.is-cobrado.is-tap span em {
       display: block;
