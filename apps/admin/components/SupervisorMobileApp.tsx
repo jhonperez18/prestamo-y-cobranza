@@ -1082,13 +1082,14 @@ export function SupervisorMobileApp({
                   <span>Saldo inicial</span>
                   <b>{money(openRoute.saldoInicial, { symbol: false })}</b>
                 </div>
-                <div className="supervisor-mobile-sheet-row is-cobrado">
-                  <span>Cobrado hoy</span>
-                </div>
                 <div
                   className="supervisor-mobile-sheet-means"
                   aria-label="Desglose por medio de pago"
                 >
+                  <div className="is-title-means">
+                    <span>Cobrado</span>
+                    <b>hoy</b>
+                  </div>
                   <button
                     type="button"
                     className="is-pay-efectivo is-tap-means"
