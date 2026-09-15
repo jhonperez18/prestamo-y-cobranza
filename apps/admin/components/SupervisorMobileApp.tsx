@@ -1080,7 +1080,6 @@ export function SupervisorMobileApp({
                     Cobrado hoy
                     <em>· ver lista</em>
                   </span>
-                  <b>+ {money(openRoute.cobradoHoy, { symbol: false })}</b>
                 </button>
                 <div
                   className="supervisor-mobile-sheet-means"
@@ -1089,14 +1088,8 @@ export function SupervisorMobileApp({
                   <span className="is-pay-efectivo">
                     Efectivo <b>{money(openRoute.cobradoEfectivo, { symbol: false })}</b>
                   </span>
-                  <span className="supervisor-mobile-sheet-means-sep" aria-hidden>
-                    +
-                  </span>
                   <span className="is-pay-nequi">
                     Nequi <b>{money(openRoute.cobradoNequi, { symbol: false })}</b>
-                  </span>
-                  <span className="supervisor-mobile-sheet-means-sep" aria-hidden>
-                    =
                   </span>
                   <span className="is-total-means">
                     Total <b>{money(openRoute.cobradoHoy, { symbol: false })}</b>

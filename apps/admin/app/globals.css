@@ -2984,11 +2984,10 @@
       grid-column: auto;
     }
     .supervisor-mobile-sheet-means {
-      display: flex;
-      flex-wrap: nowrap;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
       align-items: center;
-      justify-content: space-between;
-      gap: 4px;
+      gap: 6px;
       padding: 5px 10px;
       border-bottom: 1px solid #e8efeb;
       background: #f7faf8;
@@ -2998,13 +2997,23 @@
       line-height: 1.2;
     }
     .supervisor-mobile-sheet-means > span {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 4px;
       white-space: nowrap;
       min-width: 0;
+    }
+    .supervisor-mobile-sheet-means > span:first-child {
+      justify-content: flex-start;
+    }
+    .supervisor-mobile-sheet-means > span:last-child {
+      justify-content: flex-end;
     }
     .supervisor-mobile-sheet-means b {
       font-weight: 700;
       font-variant-numeric: tabular-nums;
-      margin-left: 3px;
+      color: #111;
     }
     .supervisor-mobile-sheet-means .is-pay-efectivo b {
       color: #1f6b45;
@@ -3012,17 +3021,12 @@
     .supervisor-mobile-sheet-means .is-pay-nequi b {
       color: #5b3d8a;
     }
-    .supervisor-mobile-sheet-means .is-total-means b {
-      color: #111;
-    }
-    .supervisor-mobile-sheet-means-sep {
-      color: #8aa094;
-      font-weight: 700;
-      flex: 0 0 auto;
+    .supervisor-mobile-sheet-row.is-cobrado.is-tap {
+      justify-content: flex-start;
     }
     .supervisor-mobile-sheet-row.is-cobrado.is-tap span em {
-      display: block;
-      margin-top: 1px;
+      display: inline;
+      margin-left: 6px;
       font-size: 10px;
       font-style: normal;
       font-weight: 500;
