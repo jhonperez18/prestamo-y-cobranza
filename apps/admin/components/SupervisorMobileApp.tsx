@@ -1085,15 +1085,18 @@ export function SupervisorMobileApp({
                   className="supervisor-mobile-sheet-means"
                   aria-label="Desglose por medio de pago"
                 >
-                  <span className="is-pay-efectivo">
-                    Efectivo <b>{money(openRoute.cobradoEfectivo, { symbol: false })}</b>
-                  </span>
-                  <span className="is-pay-nequi">
-                    Nequi <b>{money(openRoute.cobradoNequi, { symbol: false })}</b>
-                  </span>
-                  <span className="is-total-means">
-                    Total <b>{money(openRoute.cobradoHoy, { symbol: false })}</b>
-                  </span>
+                  <div className="is-pay-efectivo">
+                    <span>Efectivo</span>
+                    <b>{money(openRoute.cobradoEfectivo, { symbol: false })}</b>
+                  </div>
+                  <div className="is-pay-nequi">
+                    <span>Nequi</span>
+                    <b>{money(openRoute.cobradoNequi, { symbol: false })}</b>
+                  </div>
+                  <div className="is-total-means">
+                    <span>Total</span>
+                    <b>{money(openRoute.cobradoHoy, { symbol: false })}</b>
+                  </div>
                 </div>
                 <button
                   type="button"
