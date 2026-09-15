@@ -316,8 +316,17 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ payment }),
       });
-      const body = (await res.json()) as { ok?: boolean; skipped?: boolean };
-      if (res.ok && body.ok) {
+      const body = (await res.json()) as {
+        ok?: boolean;
+        skipped?: boolean;
+        reason?: string;
+      };
+      // Solo sacar de cola si realmente escribió en Postgres.
+      // `skipped` (sin service role / inválido) NO cuenta como éxito.
+      if (res.ok && body.ok && !body.skipped) {
+        flushed += 1;
+      } else if (res.ok && body.ok && body.skipped && body.reason === "invalid_payment") {
+        // Basura irrecuperable: no reintentar.
         flushed += 1;
       } else {
         left.push(payment);
@@ -328,6 +337,56 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
   }
   writeMirrorQueue(left);
   return { flushed, left: left.length };
+}
+
+/**
+ * C4.1 — crítico negocio: todo `PG-` que exista solo en este navegador
+ * debe subir a Postgres. Sin esto, PC y celular divergen (alerta distinta).
+ */
+export async function reconcileLocalPaymentsToRemote(): Promise<{
+  pushed: number;
+  failed: number;
+  missing: number;
+}> {
+  if (typeof window === "undefined") {
+    return { pushed: 0, failed: 0, missing: 0 };
+  }
+
+  const local = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []).filter((row) => row?.ref);
+  if (!local.length) return { pushed: 0, failed: 0, missing: 0 };
+
+  try {
+    const res = await fetch("/api/payments", { method: "GET", cache: "no-store" });
+    const body = (await res.json()) as {
+      ok?: boolean;
+      payments?: PaymentMirrorRow[];
+      skipped?: boolean;
+      error?: string;
+    };
+    if (!res.ok || !body.ok || body.skipped) {
+      return { pushed: 0, failed: 0, missing: local.length };
+    }
+
+    const remoteRefs = new Set(
+      (body.payments ?? []).map((row) => row.ref).filter(Boolean),
+    );
+    const missing = local.filter((row) => !remoteRefs.has(row.ref));
+    if (!missing.length) return { pushed: 0, failed: 0, missing: 0 };
+
+    let pushed = 0;
+    let failed = 0;
+    for (const payment of missing) {
+      const result = await persistPaymentToSupabase(payment);
+      if (result.ok && !("skipped" in result && result.skipped)) {
+        pushed += 1;
+      } else if (!result.ok) {
+        failed += 1;
+      }
+    }
+    return { pushed, failed, missing: missing.length };
+  } catch {
+    return { pushed: 0, failed: local.length, missing: local.length };
+  }
 }
 
 /** Disparo tras cobro local: sube a Postgres; si no, queda en cola. */

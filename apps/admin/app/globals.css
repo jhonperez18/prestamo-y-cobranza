@@ -2922,6 +2922,32 @@
     .supervisor-mobile-sheet-row:last-child {
       border-bottom: 0;
     }
+    button.supervisor-mobile-sheet-row {
+      width: 100%;
+      margin: 0;
+      border-left: 0;
+      border-right: 0;
+      border-top: 0;
+      border-radius: 0;
+      background: #fff;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    button.supervisor-mobile-sheet-row.is-tap:active {
+      background: #f3f7f5;
+    }
+    .supervisor-mobile-sheet-row.is-gastos.is-tap span em {
+      display: block;
+      margin-top: 1px;
+      font-size: 10px;
+      font-style: normal;
+      font-weight: 500;
+      color: #7a3b3b;
+    }
+    .supervisor-mobile-sheet-row.is-gastos.is-tap b {
+      color: #b42318;
+    }
     .supervisor-mobile-sheet-row span {
       font-size: 12px;
       font-weight: 600;
@@ -2953,6 +2979,9 @@
       grid-template-columns: 1fr 1fr;
       gap: 6px;
       margin: 0 0 8px;
+    }
+    .supervisor-mobile-actions > .btn:nth-child(3) {
+      grid-column: 1 / -1;
     }
     .supervisor-mobile-actions .btn.compact {
       width: 100%;

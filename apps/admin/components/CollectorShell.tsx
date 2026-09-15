@@ -315,7 +315,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
     writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, projected.bankMovements);
 
-    showToast(`Cobro ${committed.payment.ref} guardado · Cobranza, banco y planilla al día.`);
+    showToast(`Cobro ${committed.payment.ref} guardado · subiendo a la nube…`);
     queuePaymentMirror(committed.payment);
     const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
     if (paidLoan) queueLoanMirror(paidLoan);

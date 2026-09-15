@@ -41,7 +41,9 @@
 
 1. Mutación local (calle/oficina)  
 2. Cola offline si falla red  
-3. Al abrir / volver: flush → pull (`payments` + catalog + ops) → `hydrateOperationalDemo`  
+3. Al abrir / volver: flush → **subir `PG-` / CIE / gastos / planilla locales que falten** → pull → `hydrateOperationalDemo`  
+
+> **Crítico:** localhost y Vercel no comparten `localStorage`. Si un cobro o un CIE queda solo en el PC, el celular verá otra alerta y otro **saldo de ruta**. El reconcile C4.1/C6.1 cierra ese hueco.
 
 | Módulo | Archivo |
 | --- | --- |

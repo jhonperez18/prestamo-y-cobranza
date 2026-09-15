@@ -1528,7 +1528,7 @@ export function Workspace({
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
     writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
 
-    onToast(`Cobro ${committed.payment.ref} sincronizado · Cobranza, banco y planilla al día.`);
+    onToast(`Cobro ${committed.payment.ref} guardado · subiendo a la nube…`);
     queuePaymentMirror(committed.payment);
     const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
     if (paidLoan) queueLoanMirror(paidLoan);
@@ -2041,7 +2041,7 @@ export function Workspace({
       ),
     );
     setPayMode(null);
-    onToast(`${result.message} · sincronizado con planilla y banco.`);
+    onToast(`${result.message} · guardado, subiendo a la nube…`);
     queuePaymentMirror(row);
     const nextLoan = loanRowAfterPay(openLoan, result, [row, ...payments]);
     queueLoanMirror(nextLoan);

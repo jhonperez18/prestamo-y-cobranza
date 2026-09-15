@@ -313,7 +313,12 @@ async function postMirror(path: string, body: unknown) {
     body: JSON.stringify(body),
     keepalive: true,
   });
-  const json = (await res.json()) as { ok?: boolean; skipped?: boolean; error?: string };
+  const json = (await res.json()) as {
+    ok?: boolean;
+    skipped?: boolean;
+    reason?: string;
+    error?: string;
+  };
   return { res, json };
 }
 
@@ -388,7 +393,9 @@ export async function flushCatalogMirrorQueues() {
   for (const client of clients) {
     try {
       const { res, json } = await postMirror("/api/clients/mirror", { client });
-      if (!(res.ok && json.ok)) leftClients.push(client);
+      if (res.ok && json.ok && !json.skipped) continue;
+      if (res.ok && json.ok && json.skipped && json.reason === "invalid_client") continue;
+      leftClients.push(client);
     } catch {
       leftClients.push(client);
     }
@@ -400,7 +407,9 @@ export async function flushCatalogMirrorQueues() {
   for (const loan of loans) {
     try {
       const { res, json } = await postMirror("/api/loans/mirror", { loan });
-      if (!(res.ok && json.ok)) leftLoans.push(loan);
+      if (res.ok && json.ok && !json.skipped) continue;
+      if (res.ok && json.ok && json.skipped && json.reason === "invalid_loan") continue;
+      leftLoans.push(loan);
     } catch {
       leftLoans.push(loan);
     }

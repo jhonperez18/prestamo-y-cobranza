@@ -403,6 +403,97 @@ export async function flushOpsMirrorQueues() {
 
 export type PullOpsResult = { ok: boolean; changed: boolean; reason?: string };
 
+/**
+ * C6.1 — crítico: CIE / gastos / planilla / rutas que viven solo en un
+ * navegador deben subir a Postgres. Sin esto el saldo de rutas diverge
+ * entre PC y celular (mismo bug que los PG- huérfanos).
+ */
+export async function reconcileLocalOpsToRemote(): Promise<{
+  pushed: number;
+  failed: number;
+}> {
+  if (typeof window === "undefined") return { pushed: 0, failed: 0 };
+
+  try {
+    const res = await fetch("/api/ops/bundle", { cache: "no-store" });
+    const body = (await res.json()) as {
+      ok?: boolean;
+      skipped?: boolean;
+      collectors?: { ref?: string }[];
+      routes?: { ref?: string }[];
+      day_closes?: { ref?: string }[];
+      day_expenses?: { ref?: string }[];
+      misc_payments?: { ref?: string }[];
+      daily_assignments?: { dispatch_date?: string; item_id?: string }[];
+    };
+    if (!res.ok || !body.ok || body.skipped) return { pushed: 0, failed: 0 };
+
+    const remoteCollector = new Set((body.collectors ?? []).map((r) => r.ref).filter(Boolean));
+    const remoteRoute = new Set((body.routes ?? []).map((r) => r.ref).filter(Boolean));
+    const remoteClose = new Set((body.day_closes ?? []).map((r) => r.ref).filter(Boolean));
+    const remoteExpense = new Set((body.day_expenses ?? []).map((r) => r.ref).filter(Boolean));
+    const remoteMisc = new Set((body.misc_payments ?? []).map((r) => r.ref).filter(Boolean));
+    const remoteAssign = new Set(
+      (body.daily_assignments ?? []).map((r) => `${r.dispatch_date}::${r.item_id}`),
+    );
+
+    const jobs: Array<{ kind: string; row: unknown; key: string }> = [];
+
+    for (const row of readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, [])) {
+      if (row?.ref && !remoteCollector.has(row.ref)) {
+        jobs.push({ kind: "collector", row, key: row.ref });
+      }
+    }
+    for (const row of readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, [])) {
+      if (row?.ref && !remoteRoute.has(row.ref)) {
+        jobs.push({ kind: "route", row, key: row.ref });
+      }
+    }
+    for (const row of readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, [])) {
+      if (row?.ref && !remoteClose.has(row.ref)) {
+        jobs.push({ kind: "day_close", row, key: row.ref });
+      }
+    }
+    for (const row of readDemoJson<CollectorDayExpenseDraft[]>(
+      DEMO_COLLECTOR_DAY_EXPENSES_KEY,
+      [],
+    )) {
+      if (row?.ref && !remoteExpense.has(row.ref)) {
+        jobs.push({ kind: "day_expense", row, key: row.ref });
+      }
+    }
+    for (const row of readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, [])) {
+      if (row?.ref && !remoteMisc.has(row.ref)) {
+        jobs.push({ kind: "misc_payment", row, key: row.ref });
+      }
+    }
+    for (const row of readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, [])) {
+      const key = `${row.dispatchDate}::${row.itemId}`;
+      if (row?.itemId && row?.dispatchDate && !remoteAssign.has(key)) {
+        jobs.push({ kind: "assignment", row, key });
+      }
+    }
+
+    let pushed = 0;
+    let failed = 0;
+    for (const job of jobs) {
+      try {
+        const { res: mirrorRes, json } = await postMirror("/api/ops/mirror", {
+          kind: job.kind,
+          row: job.row,
+        });
+        if (mirrorRes.ok && json.ok) pushed += 1;
+        else failed += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    return { pushed, failed };
+  } catch {
+    return { pushed: 0, failed: 0 };
+  }
+}
+
 /** Pull catálogo operativo + CIE + planilla + PV- */
 export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
   if (typeof window === "undefined") return { ok: true, changed: false, reason: "ssr" };

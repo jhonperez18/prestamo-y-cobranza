@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Pill } from "@/components/ui";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
+import { CollectorClosedDayReview } from "@/components/CollectorClosedDayReview";
 import { buildLoanReport } from "@/lib/loan-report";
 import { routeCoverageSummaries } from "@/lib/collector-preview";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
@@ -15,6 +16,7 @@ import {
 } from "@/lib/street-client-loan";
 import {
   buildCollectorDayHistory,
+  expensesForCollectorDay,
   openingSaldoForPeriod,
   periodFromDateIso,
   type CollectorDayCloseRecord,
@@ -76,7 +78,7 @@ type Props = {
 
 type SupervisorView = "inicio" | "planilla" | "caja" | "nuevo" | "clientes";
 type NuevoMode = "menu" | "cliente" | "prestamo";
-type RouteDetailMode = "totales" | "planilla" | "prestamos";
+type RouteDetailMode = "totales" | "planilla" | "prestamos" | "gastos";
 
 type RouteLiquidacion = {
   routeRef: string;
@@ -543,10 +545,15 @@ function cajaDelDia(
     monthCloses,
     period,
   );
-  const todayRow = history.find((row) => row.date === date);
-  const prior = history.filter((row) => row.date < date);
+  // history viene más reciente primero; el arrastre es el saldo del día previo.
+  const prior = history
+    .filter((row) => row.date < date)
+    .sort((a, b) => a.date.localeCompare(b.date));
   const saldoInicial =
-    prior[0]?.saldo ?? openingSaldoForPeriod(collector.ref, period, monthCloses);
+    prior.length > 0
+      ? prior[prior.length - 1].saldo
+      : openingSaldoForPeriod(collector.ref, period, monthCloses);
+  const todayRow = history.find((row) => row.date === date);
   const cobradoHoy = todayRow?.cobro ?? 0;
   const gastosHoy = todayRow?.gasto ?? 0;
   const enCaja = todayRow?.saldo ?? saldoInicial + cobradoHoy - gastosHoy;
@@ -721,6 +728,18 @@ export function SupervisorMobileApp({
         ? todayAssignments.filter((row) => row.collectorRef === openRoute.collectorRef)
         : [],
     [todayAssignments, openRoute],
+  );
+  const openRouteExpenses = useMemo(
+    () =>
+      openRoute
+        ? expensesForCollectorDay(
+            openRoute.collectorRef,
+            today,
+            dayCloses,
+            dayExpenseDrafts,
+          )
+        : [],
+    [openRoute, today, dayCloses, dayExpenseDrafts],
   );
 
   function goToView(next: SupervisorView) {
@@ -928,7 +947,8 @@ export function SupervisorMobileApp({
         <button
           type="button"
           className={
-            view === "caja" || (openRoute && detailMode === "totales")
+            view === "caja" ||
+            (openRoute && (detailMode === "totales" || detailMode === "gastos"))
               ? "supervisor-mobile-kpi is-caja on"
               : "supervisor-mobile-kpi is-caja"
           }
@@ -973,27 +993,40 @@ export function SupervisorMobileApp({
 
       {openRoute ? (
         <section className="supervisor-mobile-section">
-          <div className="supervisor-mobile-detail-head">
-            <h3>
-              Ruta {openRoute.routeName} · {openRoute.collectorName}
-            </h3>
-            <button
-              type="button"
-              className="collector-mobile-pay-link"
-              onClick={() => {
-                if (detailMode !== "totales") setDetailMode("totales");
-                else {
-                  setOpenRouteRef(null);
-                  setDetailMode("totales");
-                  setView("inicio");
-                }
-              }}
-            >
-              volver
-            </button>
-          </div>
+          {detailMode !== "gastos" ? (
+            <div className="supervisor-mobile-detail-head">
+              <h3>
+                Ruta {openRoute.routeName} · {openRoute.collectorName}
+              </h3>
+              <button
+                type="button"
+                className="collector-mobile-pay-link"
+                onClick={() => {
+                  if (detailMode !== "totales") setDetailMode("totales");
+                  else {
+                    setOpenRouteRef(null);
+                    setDetailMode("totales");
+                    setView("inicio");
+                  }
+                }}
+              >
+                volver
+              </button>
+            </div>
+          ) : null}
 
-          {detailMode === "totales" ? (
+          {detailMode === "gastos" ? (
+            <CollectorClosedDayReview
+              detail="gastos"
+              dateLabel={todayDisplay}
+              visits={openAssignments}
+              expenses={openRouteExpenses}
+              payments={payments}
+              cobradoCount={openRoute.done}
+              visitTotal={openRoute.planilla}
+              onBack={() => setDetailMode("totales")}
+            />
+          ) : detailMode === "totales" ? (
             <>
               <div className="supervisor-mobile-sheet" aria-label="Liquidación de caja">
                 <div className="supervisor-mobile-sheet-row">
@@ -1004,10 +1037,18 @@ export function SupervisorMobileApp({
                   <span>Cobrado hoy</span>
                   <b>+ {money(openRoute.cobradoHoy, { symbol: false })}</b>
                 </div>
-                <div className="supervisor-mobile-sheet-row">
-                  <span>Gastos / consignación</span>
+                <button
+                  type="button"
+                  className="supervisor-mobile-sheet-row is-tap is-gastos"
+                  onClick={() => setDetailMode("gastos")}
+                  aria-label="Ver reporte de gastos del día"
+                >
+                  <span>
+                    Gastos / consignación
+                    <em>{openRouteExpenses.length > 1 ? " · ver detalle" : " · ver"}</em>
+                  </span>
                   <b>− {money(openRoute.gastosHoy, { symbol: false })}</b>
-                </div>
+                </button>
                 <div className="supervisor-mobile-sheet-row is-total">
                   <span>En caja</span>
                   <b>{money(openRoute.enCaja, { symbol: false })}</b>
@@ -1032,6 +1073,16 @@ export function SupervisorMobileApp({
                   onClick={() => setDetailMode("planilla")}
                 >
                   Ver planilla
+                </button>
+                <button
+                  type="button"
+                  className="btn compact ghost"
+                  onClick={() => setDetailMode("gastos")}
+                >
+                  Ver gastos
+                  {openRoute.gastosHoy > 0
+                    ? ` · ${money(openRoute.gastosHoy, { symbol: false })}`
+                    : ""}
                 </button>
                 <button
                   type="button"

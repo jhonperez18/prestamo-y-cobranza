@@ -9,6 +9,7 @@ import {
 import {
   flushPaymentMirrorQueue,
   pullRemotePaymentsIntoDemo,
+  reconcileLocalPaymentsToRemote,
 } from "@/lib/supabase/payment-mirror";
 import {
   flushCatalogMirrorQueues,
@@ -17,6 +18,7 @@ import {
 import {
   flushOpsMirrorQueues,
   pullRemoteOpsIntoDemo,
+  reconcileLocalOpsToRemote,
 } from "@/lib/supabase/ops-mirror";
 
 type Options = {
@@ -29,7 +31,7 @@ type Options = {
 
 /**
  * Sync completo C5+C6:
- * flush colas → pull payments/catalog/ops → hidratar proyecciones
+ * flush colas → subir PG- locales huérfanos → pull → hidratar
  */
 export function useOperationalDemoSync(
   apply: (snapshot: OperationalDemoSnapshot) => void,
@@ -59,8 +61,12 @@ export function useOperationalDemoSync(
     try {
       runHydrate();
       await flushPaymentMirrorQueue();
+      // Antes del pull: cualquier cobro solo-en-este-PC debe llegar a la nube.
+      await reconcileLocalPaymentsToRemote();
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
+      // CIE / gastos / planilla huérfanos → misma nube (saldo de rutas).
+      await reconcileLocalOpsToRemote();
       const [paymentsPull, catalogPull, opsPull] = await Promise.all([
         pullRemotePaymentsIntoDemo(),
         pullRemoteCatalogIntoDemo(),
