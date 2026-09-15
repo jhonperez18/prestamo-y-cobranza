@@ -514,6 +514,7 @@ export function CollectorShell({ session, onLogout }: Props) {
         expenses: lines,
       },
       lines,
+      cashCollected: payload.collectedEfectivo,
       movementRefs: lines.map((line) =>
         dayExpenseLineMovementRef(payload.collectorRef, payload.date, line.id),
       ),

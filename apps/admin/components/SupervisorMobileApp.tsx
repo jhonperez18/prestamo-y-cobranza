@@ -23,12 +23,13 @@ import {
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
-import { todayIso } from "@/lib/daily-dispatch";
 import {
+  collectorRecaudoBreakdown,
   visitStatusKind,
   visitStatusLabel,
   visitStatusLabelShort,
 } from "@/lib/collector-mobile";
+import { todayIso } from "@/lib/daily-dispatch";
 import {
   enrichSupervisorPlanillaRow,
   planillaAlertBadgeText,
@@ -78,7 +79,7 @@ type Props = {
 
 type SupervisorView = "inicio" | "planilla" | "caja" | "nuevo" | "clientes";
 type NuevoMode = "menu" | "cliente" | "prestamo";
-type RouteDetailMode = "totales" | "planilla" | "prestamos" | "gastos";
+type RouteDetailMode = "totales" | "planilla" | "prestamos" | "gastos" | "cobros";
 
 type RouteLiquidacion = {
   routeRef: string;
@@ -91,6 +92,8 @@ type RouteLiquidacion = {
   done: number;
   saldoInicial: number;
   cobradoHoy: number;
+  cobradoEfectivo: number;
+  cobradoNequi: number;
   gastosHoy: number;
   enCaja: number;
   closed: boolean;
@@ -554,10 +557,21 @@ function cajaDelDia(
       ? prior[prior.length - 1].saldo
       : openingSaldoForPeriod(collector.ref, period, monthCloses);
   const todayRow = history.find((row) => row.date === date);
-  const cobradoHoy = todayRow?.cobro ?? 0;
+  const breakdown = collectorRecaudoBreakdown(collector.ref, date, payments, [collector]);
+  const cobradoHoy = todayRow?.cobro ?? breakdown.total;
+  const cobradoEfectivo = todayRow?.cobroEfectivo ?? breakdown.efectivo;
+  const cobradoNequi = todayRow?.cobroNequi ?? breakdown.nequi;
   const gastosHoy = todayRow?.gasto ?? 0;
-  const enCaja = todayRow?.saldo ?? saldoInicial + cobradoHoy - gastosHoy;
-  return { saldoInicial, cobradoHoy, gastosHoy, enCaja };
+  // En caja = arrastre + solo efectivo − gastos (Nequi no entra a mano del cobrador).
+  const enCaja = todayRow?.saldo ?? saldoInicial + cobradoEfectivo - gastosHoy;
+  return {
+    saldoInicial,
+    cobradoHoy,
+    cobradoEfectivo,
+    cobradoNequi,
+    gastosHoy,
+    enCaja,
+  };
 }
 
 /** App móvil del supervisor: caja + planilla + préstamos/renovaciones en vivo. */
@@ -637,7 +651,14 @@ export function SupervisorMobileApp({
 
       const caja = collector
         ? cajaDelDia(collector, today, payments, dayCloses, dayExpenseDrafts, monthCloses)
-        : { saldoInicial: 0, cobradoHoy: 0, gastosHoy: 0, enCaja: 0 };
+        : {
+            saldoInicial: 0,
+            cobradoHoy: 0,
+            cobradoEfectivo: 0,
+            cobradoNequi: 0,
+            gastosHoy: 0,
+            enCaja: 0,
+          };
 
       const closeRecord = dayCloses.find(
         (row) => row.collectorRef === collectorRef && row.date === today,
@@ -647,7 +668,7 @@ export function SupervisorMobileApp({
 
       const cobradoHoy = caja.cobradoHoy;
       const gastosHoy = closeRecord ? closeRecord.expensesTotal : caja.gastosHoy;
-      /** Dinero real en mano (incluye saldo de arrastre / inicial). */
+      /** Dinero en mano del cobrador (arrastre + efectivo − gastos; sin Nequi). */
       const enCaja = caja.enCaja;
 
       let statusLabel = "Sin planilla";
@@ -683,6 +704,8 @@ export function SupervisorMobileApp({
         done,
         saldoInicial: caja.saldoInicial,
         cobradoHoy,
+        cobradoEfectivo: caja.cobradoEfectivo,
+        cobradoNequi: caja.cobradoNequi,
         gastosHoy,
         enCaja,
         closed,
@@ -948,7 +971,10 @@ export function SupervisorMobileApp({
           type="button"
           className={
             view === "caja" ||
-            (openRoute && (detailMode === "totales" || detailMode === "gastos"))
+            (openRoute &&
+              (detailMode === "totales" ||
+                detailMode === "gastos" ||
+                detailMode === "cobros"))
               ? "supervisor-mobile-kpi is-caja on"
               : "supervisor-mobile-kpi is-caja"
           }
@@ -993,7 +1019,7 @@ export function SupervisorMobileApp({
 
       {openRoute ? (
         <section className="supervisor-mobile-section">
-          {detailMode !== "gastos" ? (
+          {detailMode !== "gastos" && detailMode !== "cobros" ? (
             <div className="supervisor-mobile-detail-head">
               <h3>
                 Ruta {openRoute.routeName} · {openRoute.collectorName}
@@ -1026,6 +1052,17 @@ export function SupervisorMobileApp({
               visitTotal={openRoute.planilla}
               onBack={() => setDetailMode("totales")}
             />
+          ) : detailMode === "cobros" ? (
+            <CollectorClosedDayReview
+              detail="cobros"
+              dateLabel={todayDisplay}
+              visits={openAssignments}
+              expenses={openRouteExpenses}
+              payments={payments}
+              cobradoCount={openRoute.done}
+              visitTotal={openRoute.planilla}
+              onBack={() => setDetailMode("totales")}
+            />
           ) : detailMode === "totales" ? (
             <>
               <div className="supervisor-mobile-sheet" aria-label="Liquidación de caja">
@@ -1033,9 +1070,25 @@ export function SupervisorMobileApp({
                   <span>Saldo inicial</span>
                   <b>{money(openRoute.saldoInicial, { symbol: false })}</b>
                 </div>
-                <div className="supervisor-mobile-sheet-row">
-                  <span>Cobrado hoy</span>
+                <button
+                  type="button"
+                  className="supervisor-mobile-sheet-row is-tap is-cobrado"
+                  onClick={() => setDetailMode("cobros")}
+                  aria-label="Ver cobros del día"
+                >
+                  <span>
+                    Cobrado hoy
+                    <em>· ver lista</em>
+                  </span>
                   <b>+ {money(openRoute.cobradoHoy, { symbol: false })}</b>
+                </button>
+                <div className="supervisor-mobile-sheet-row is-sub is-pay-efectivo">
+                  <span>Efectivo (caja cobrador)</span>
+                  <b>{money(openRoute.cobradoEfectivo, { symbol: false })}</b>
+                </div>
+                <div className="supervisor-mobile-sheet-row is-sub is-pay-nequi">
+                  <span>Nequi (cuenta dueño)</span>
+                  <b>{money(openRoute.cobradoNequi, { symbol: false })}</b>
                 </div>
                 <button
                   type="button"
@@ -1052,6 +1105,10 @@ export function SupervisorMobileApp({
                 <div className="supervisor-mobile-sheet-row is-total">
                   <span>En caja</span>
                   <b>{money(openRoute.enCaja, { symbol: false })}</b>
+                </div>
+                <div className="supervisor-mobile-sheet-row is-muted is-hint">
+                  <span>En caja = inicial + efectivo − gastos (Nequi no suma)</span>
+                  <b aria-hidden> </b>
                 </div>
                 <div className="supervisor-mobile-sheet-row is-muted">
                   <span>Avance planilla</span>
@@ -1082,6 +1139,17 @@ export function SupervisorMobileApp({
                   Ver gastos
                   {openRoute.gastosHoy > 0
                     ? ` · ${money(openRoute.gastosHoy, { symbol: false })}`
+                    : ""}
+                </button>
+                <button
+                  type="button"
+                  className="btn compact ghost"
+                  disabled={openRoute.cobradoHoy <= 0}
+                  onClick={() => setDetailMode("cobros")}
+                >
+                  Ver cobros
+                  {openRoute.cobradoHoy > 0
+                    ? ` · ${money(openRoute.cobradoHoy, { symbol: false })}`
                     : ""}
                 </button>
                 <button

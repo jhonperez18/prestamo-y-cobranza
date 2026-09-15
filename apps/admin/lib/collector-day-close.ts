@@ -8,6 +8,7 @@ import {
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import { displayToIso } from "@/lib/loan-preview";
 import { money, type CollectorRow, type PaymentRow, paymentsForCollector } from "@/lib/mock-data";
+import { normalizePaymentMethod } from "@/lib/payment-method";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
 
@@ -64,9 +65,14 @@ export type CollectorDayExpenseDraft = {
 export type CollectorDayHistoryRow = {
   date: string;
   dateLabel: string;
+  /** Total cobrado del día (efectivo + Nequi). */
   cobro: number;
+  /** Solo efectivo: carga la caja menor del cobrador. */
+  cobroEfectivo: number;
+  /** Nequi: pago directo a cuenta del dueño; no suma a caja del cobrador. */
+  cobroNequi: number;
   gasto: number;
-  /** Saldo en mano al cierre del día (acumulado hasta consignar). */
+  /** Saldo en mano al cierre del día (arrastre: inicial + efectivo − gastos). */
   saldo: number;
 };
 
@@ -434,9 +440,16 @@ export function finalizeCollectorDayClose(input: {
   draft: CollectorDayCloseDraft;
   lines: RouteExpenseLine[];
   movementRefs: string[];
+  /**
+   * Efectivo del día para caja menor.
+   * Nequi no entra: va a cuenta del dueño. Si falta, usa draft.collected (legado).
+   */
+  cashCollected?: number;
 }): CollectorDayCloseRecord {
   const expensesTotal = sumExpenseLines(input.lines);
   const date = normalizeHistoryDate(input.draft.date) || input.draft.date;
+  const cashBase =
+    typeof input.cashCollected === "number" ? input.cashCollected : input.draft.collected;
   return {
     ...input.draft,
     date,
@@ -444,7 +457,7 @@ export function finalizeCollectorDayClose(input: {
     closedAt: new Date().toISOString(),
     expenses: input.lines,
     expensesTotal,
-    cashFloat: cashFloatAfterExpenses(input.draft.collected, expensesTotal),
+    cashFloat: cashFloatAfterExpenses(cashBase, expensesTotal),
     movementRefs: input.movementRefs,
   };
 }
@@ -676,11 +689,11 @@ export function synthesizeDayClosesFromAssignments(
 }
 
 /**
- * Historial por día: cobro, gasto y saldo en mano (acumulado hasta consignar).
- * Cobro = solo pagos reales (igual que banco Debe y recaudo del día).
- * Gastos: cierre definitivo si existe; si no, borrador guardado del día.
- * Arrastra saldo del cierre de mes anterior.
- * Más reciente primero. Por defecto filtra al mes de `viewPeriod`.
+ * Historial por día: cobro, gasto y saldo en mano.
+ * - `cobro` = total (efectivo + Nequi) para informar recaudo.
+ * - Saldo en mano solo suma **efectivo** (Nequi va a cuenta del dueño).
+ * Gastos: cierre definitivo si existe; si no, borrador del día.
+ * Arrastra saldo del cierre de mes anterior. Más reciente primero.
  */
 export function buildCollectorDayHistory(
   collectorRef: string,
@@ -695,14 +708,20 @@ export function buildCollectorDayHistory(
 ): CollectorDayHistoryRow[] {
   const mine = paymentsForCollector(collectorRef, collectors, payments);
   const cobroByDate = new Map<string, number>();
+  const efectivoByDate = new Map<string, number>();
+  const nequiByDate = new Map<string, number>();
   for (const row of mine) {
     const date = normalizeHistoryDate(row.paidDate ?? "");
     if (!date) continue;
-    cobroByDate.set(date, (cobroByDate.get(date) ?? 0) + row.amount);
+    const amount = Number(row.amount) || 0;
+    if (!(amount > 0)) continue;
+    cobroByDate.set(date, (cobroByDate.get(date) ?? 0) + amount);
+    if (normalizePaymentMethod(row.method) === "nequi") {
+      nequiByDate.set(date, (nequiByDate.get(date) ?? 0) + amount);
+    } else {
+      efectivoByDate.set(date, (efectivoByDate.get(date) ?? 0) + amount);
+    }
   }
-
-  // Cobro = solo pagos reales (misma cifra que banco Debe / recaudo / efectivo+nequi).
-  // No inventar desde CIE.collected, dailyLog ni amountDue de planilla.
 
   const closedDates = new Set<string>();
   const gastoByDate = new Map<string, number>();
@@ -720,14 +739,12 @@ export function buildCollectorDayHistory(
     gastoByDate.set(date, row.expensesTotal);
   }
 
-  // Fechas cerradas en planilla aunque no haya cobro/gasto numérico.
   for (const row of extras.assignments ?? []) {
     if (row.collectorRef !== collectorRef || !row.dayClosedAt) continue;
     const date = normalizeHistoryDate(row.dispatchDate);
     if (date) closedDates.add(date);
   }
 
-  // dailyLogs solo aportan fechas de jornada (no montos inventados).
   for (const row of extras.dailyLogs ?? []) {
     if (row.collectorRef !== collectorRef) continue;
     const date = normalizeHistoryDate(row.date);
@@ -754,12 +771,16 @@ export function buildCollectorDayHistory(
   let running = opening;
   const ascending: CollectorDayHistoryRow[] = dates.map((date) => {
     const cobro = cobroByDate.get(date) ?? 0;
+    const cobroEfectivo = efectivoByDate.get(date) ?? 0;
+    const cobroNequi = nequiByDate.get(date) ?? 0;
     const gasto = gastoByDate.get(date) ?? 0;
-    running = running + cobro - gasto;
+    running = running + cobroEfectivo - gasto;
     return {
       date,
       dateLabel: historyDayLabel(date, period ?? periodFromDateIso(date)),
       cobro,
+      cobroEfectivo,
+      cobroNequi,
       gasto,
       saldo: running,
     };
@@ -769,8 +790,8 @@ export function buildCollectorDayHistory(
 }
 
 /**
- * Alinea `CIE.collected` (y caja menor) con la suma real de pagos del día (por cobrador).
- * Fuente de verdad = PG- del día (igual que banco Debe / recaudo).
+ * Alinea `CIE.collected` (total del día) y caja menor con pagos reales.
+ * `collected` = efectivo + Nequi; `cashFloat` = solo efectivo − gastos.
  */
 export function alignDayClosesCollectedToPayments(
   closes: CollectorDayCloseRecord[],
@@ -780,16 +801,25 @@ export function alignDayClosesCollectedToPayments(
   if (!closes.length) return closes;
   let changed = false;
   const next = closes.map((row) => {
-    const real = collectorRecaudoTotalForClose(row.collectorRef, row.date, payments, collectors);
+    const breakdown = collectorRecaudoBreakdownForClose(
+      row.collectorRef,
+      row.date,
+      payments,
+      collectors,
+    );
     const expensesTotal = Number(row.expensesTotal) || sumExpenseLines(row.expenses ?? []);
-    const cashFloat = cashFloatAfterExpenses(real, expensesTotal);
-    if (row.collected === real && row.expensesTotal === expensesTotal && row.cashFloat === cashFloat) {
+    const cashFloat = cashFloatAfterExpenses(breakdown.efectivo, expensesTotal);
+    if (
+      row.collected === breakdown.total &&
+      row.expensesTotal === expensesTotal &&
+      row.cashFloat === cashFloat
+    ) {
       return row;
     }
     changed = true;
     return {
       ...row,
-      collected: real,
+      collected: breakdown.total,
       expensesTotal,
       cashFloat,
     };
@@ -797,7 +827,7 @@ export function alignDayClosesCollectedToPayments(
   return changed ? next : closes;
 }
 
-function collectorRecaudoTotalForClose(
+function collectorRecaudoBreakdownForClose(
   collectorRef: string,
   date: string,
   payments: PaymentRow[],
@@ -805,11 +835,17 @@ function collectorRecaudoTotalForClose(
 ) {
   const norm = normalizeHistoryDate(date) || date;
   let total = 0;
+  let efectivo = 0;
+  let nequi = 0;
   for (const row of paymentsForCollector(collectorRef, collectors, payments)) {
     if (normalizeHistoryDate(row.paidDate || "") !== norm) continue;
-    total += Number(row.amount) || 0;
+    const amount = Number(row.amount) || 0;
+    if (!(amount > 0)) continue;
+    total += amount;
+    if (normalizePaymentMethod(row.method) === "nequi") nequi += amount;
+    else efectivo += amount;
   }
-  return total;
+  return { total, efectivo, nequi };
 }
 
 /** Saldo final del mes (último día con movimiento o opening si vacío). */

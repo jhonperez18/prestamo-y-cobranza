@@ -182,7 +182,7 @@ import { commitCollectorPayment } from "@/lib/commit-collector-payment";
 import { runOperationalDayCycle } from "@/lib/collector-day-auto-close";
 import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
 import { dedupeDailyPaymentsByVisit, reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
-import { collectorRecaudoForDate } from "@/lib/collector-mobile";
+import { collectorRecaudoBreakdown, collectorRecaudoForDate } from "@/lib/collector-mobile";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement, miscPaymentRefForMovement } from "@/lib/misc-payments";
 import {
@@ -1263,6 +1263,12 @@ export function Workspace({
       const draft = findDayExpenseDraft(nextDrafts, collectorRef, date);
       const lines = (draft?.expenses ?? []).filter((row) => row.amount > 0);
       const collected = collectorRecaudoForDate(collectorRef, date, payments, collectors);
+      const cashCollected = collectorRecaudoBreakdown(
+        collectorRef,
+        date,
+        payments,
+        collectors,
+      ).efectivo;
       const record = finalizeCollectorDayClose({
         draft: {
           collectorRef,
@@ -1273,6 +1279,7 @@ export function Workspace({
           expenses: lines,
         },
         lines,
+        cashCollected,
         movementRefs: lines.map((line) =>
           dayExpenseLineMovementRef(collectorRef, date, line.id),
         ),
@@ -1377,6 +1384,7 @@ export function Workspace({
         expenses: lines,
       },
       lines,
+      cashCollected: payload.collectedEfectivo,
       movementRefs: lines.map((line) =>
         dayExpenseLineMovementRef(payload.collectorRef, payload.date, line.id),
       ),

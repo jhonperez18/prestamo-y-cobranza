@@ -13,9 +13,16 @@ Detalle del camino backend: [`demo-to-backend.md`](demo-to-backend.md).
 | --- | --- | --- |
 | **Pagos** `PaymentRow` (`PG-`) | Cobros reales | **Raíz** (Supabase en C4; caché local) |
 | **Planilla** `DailyCollectionAssignment` | Visitas del día | Derivada de pagos + reglas de visita |
-| **CIE** `CollectorDayCloseRecord` | Cierre de jornada | `collected` / `cashFloat` derivados de pagos |
+| **CIE** `CollectorDayCloseRecord` | Cierre de jornada | `collected` = total PG-; `cashFloat` = **solo efectivo − gastos** |
 | **Banco** `BankMovement` | Debe/Haber | Proyectado desde pagos + gastos CIE/draft + varios |
 | **Logs diarios** | Resumen por cobrador/día | Alineados a pagos |
+
+### Medio de pago → caja del cobrador
+
+| Medio | Efecto |
+| --- | --- |
+| **Efectivo** | Suma a la caja menor del cobrador (`En caja` / arrastre) |
+| **Nequi** | Ingreso del negocio (cuenta del dueño); **no** suma al saldo en mano del cobrador |
 
 Regla dura: **si un número de plata no cuadra, se corrige desde `PG-`, no al revés.**
 

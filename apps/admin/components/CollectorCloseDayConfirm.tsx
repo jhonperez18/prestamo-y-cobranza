@@ -25,7 +25,7 @@ export function CollectorCloseDayConfirm({
   onConfirm,
 }: Props) {
   const expensesTotal = sumExpenseLines(expenses);
-  const cashFloat = cashFloatAfterExpenses(collected, expensesTotal);
+  const cashFloat = cashFloatAfterExpenses(efectivo, expensesTotal);
 
   return (
     <div
@@ -57,7 +57,7 @@ export function CollectorCloseDayConfirm({
           <b>{money(expensesTotal)}</b>
         </div>
         <div className="is-float">
-          <em>Caja / saldo</em>
+          <em>Caja (efectivo − gastos)</em>
           <b>{money(cashFloat)}</b>
         </div>
       </div>

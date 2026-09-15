@@ -19,7 +19,7 @@ import {
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
 import { closeDispatchDay } from "@/lib/collector-dispatch-sync";
 import { bumpMissedCollectionAlerts } from "@/lib/collection-alerts";
-import { collectorRecaudoForDate } from "@/lib/collector-mobile";
+import { collectorRecaudoBreakdown, collectorRecaudoForDate } from "@/lib/collector-mobile";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { todayIso } from "@/lib/daily-dispatch";
 import type {
@@ -153,6 +153,12 @@ export function runOperationalDayCycle(
       state.payments,
       state.collectors,
     );
+    const cashCollected = collectorRecaudoBreakdown(
+      pair.collectorRef,
+      pair.date,
+      state.payments,
+      state.collectors,
+    ).efectivo;
     const record = finalizeCollectorDayClose({
       draft: {
         collectorRef: pair.collectorRef,
@@ -163,6 +169,7 @@ export function runOperationalDayCycle(
         expenses: lines,
       },
       lines,
+      cashCollected,
       movementRefs: lines.map((line) =>
         dayExpenseLineMovementRef(pair.collectorRef, pair.date, line.id),
       ),

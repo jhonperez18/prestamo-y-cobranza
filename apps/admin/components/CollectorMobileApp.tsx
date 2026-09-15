@@ -82,7 +82,10 @@ export type CollectorCloseDayPayload = {
   routeRef: string;
   collectorRef: string;
   collectorName: string;
+  /** Total del día (efectivo + Nequi). */
   collected: number;
+  /** Solo efectivo → caja menor del cobrador. */
+  collectedEfectivo: number;
   expenses: RouteExpenseLine[];
 };
 
@@ -400,17 +403,26 @@ export function CollectorMobileApp({
     const todayRow = ascending.find((row) => row.date === activeDate);
     const prior = ascending.filter((row) => row.date < activeDate);
     const saldoInicial = prior.length ? prior[prior.length - 1].saldo : periodOpening;
-    // Cobrado = pagos reales del día (igual que Recaudo / banco Debe).
     const cobrado = recaudo.total;
     const gastos = todayRow?.gasto ?? savedExpensesTotal;
-    const saldo = saldoInicial + cobrado - gastos;
-    return { saldoInicial, cobrado, gastos, saldo };
+    // Caja del cobrador: solo efectivo. Nequi no entra a su mano.
+    const saldo = saldoInicial + recaudo.efectivo - gastos;
+    return {
+      saldoInicial,
+      cobrado,
+      cobradoEfectivo: recaudo.efectivo,
+      cobradoNequi: recaudo.nequi,
+      gastos,
+      saldo,
+    };
   }, [
     activeDate,
     collector.ref,
     dayHistory,
     monthCloses,
     recaudo.total,
+    recaudo.efectivo,
+    recaudo.nequi,
     savedExpensesTotal,
     viewPeriod,
   ]);
@@ -513,6 +525,7 @@ export function CollectorMobileApp({
       collectorRef: collector.ref,
       collectorName: collector.name,
       collected: recaudo.total,
+      collectedEfectivo: recaudo.efectivo,
       expenses: savedExpenses,
     });
     setConfirmingClose(false);

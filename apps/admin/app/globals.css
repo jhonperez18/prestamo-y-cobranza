@@ -2980,8 +2980,40 @@
       gap: 6px;
       margin: 0 0 8px;
     }
-    .supervisor-mobile-actions > .btn:nth-child(3) {
-      grid-column: 1 / -1;
+    .supervisor-mobile-actions > .btn:nth-child(n + 3) {
+      grid-column: auto;
+    }
+    .supervisor-mobile-sheet-row.is-sub {
+      padding-top: 4px;
+      padding-bottom: 4px;
+      background: #f7faf8;
+    }
+    .supervisor-mobile-sheet-row.is-sub span {
+      font-size: 11px;
+      font-weight: 500;
+      padding-left: 8px;
+    }
+    .supervisor-mobile-sheet-row.is-sub b {
+      font-size: 11px;
+    }
+    .supervisor-mobile-sheet-row.is-pay-efectivo b {
+      color: #1f6b45;
+    }
+    .supervisor-mobile-sheet-row.is-pay-nequi b {
+      color: #5b3d8a;
+    }
+    .supervisor-mobile-sheet-row.is-cobrado.is-tap span em {
+      display: block;
+      margin-top: 1px;
+      font-size: 10px;
+      font-style: normal;
+      font-weight: 500;
+      color: #3d6b54;
+    }
+    .supervisor-mobile-sheet-row.is-hint span {
+      font-size: 10px;
+      font-weight: 500;
+      color: #6a7f75;
     }
     .supervisor-mobile-actions .btn.compact {
       width: 100%;

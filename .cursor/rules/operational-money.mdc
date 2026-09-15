@@ -9,6 +9,7 @@ alwaysApply: true
 
 - **Pagos `PaymentRow` (`PG-`)** son la raíz de plata en el demo actual.
 - Planilla, CIE (`collected` / `cashFloat`), banco y logs diarios son **proyecciones**.
+- **Efectivo** suma a caja del cobrador; **Nequi** va a cuenta del dueño (no entra a `En caja`).
 - Detalle: `docs/operational-money.md`.
 
 ## Obligatorio tras mutar dinero o cierre
