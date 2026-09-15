@@ -1512,6 +1512,49 @@
     .collector-closed-review-list li.is-total b {
       color: #111;
     }
+    .collector-closed-review-list.is-cobros-cols > li:not(.is-total) {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) auto auto auto;
+      align-items: center;
+      gap: 6px 8px;
+    }
+    .collector-closed-review-list.is-cobros-cols .is-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .collector-closed-review-list.is-cobros-cols .is-loan {
+      font-size: 11px;
+      font-weight: 700;
+      color: #334155;
+      white-space: nowrap;
+    }
+    .collector-closed-review-list.is-cobros-cols .is-method {
+      margin: 0;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-style: normal;
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .collector-closed-review-list.is-cobros-cols .is-method.is-pay-efectivo {
+      color: #1f6b45;
+      background: #e7f6ee;
+    }
+    .collector-closed-review-list.is-cobros-cols .is-method.is-pay-nequi {
+      color: #5b3d8a;
+      background: #f1e9fb;
+    }
+    .collector-closed-review-list.is-cobros-cols .is-cobro {
+      justify-self: end;
+    }
+    .collector-closed-review-list.is-cobros-cols > li.is-total {
+      display: flex;
+      justify-content: space-between;
+    }
     .collector-closed-review-list strong {
       display: inline;
       font-size: 12px;

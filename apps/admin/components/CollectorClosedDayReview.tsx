@@ -7,6 +7,7 @@ import { money, type PaymentRow } from "@/lib/mock-data";
 import {
   normalizePaymentMethod,
   paymentMethodLabel,
+  paymentMethodToneClass,
   type PaymentMethod,
 } from "@/lib/payment-method";
 import { visitStatusKind, visitStatusLabel } from "@/lib/collector-mobile";
@@ -116,28 +117,28 @@ export function CollectorClosedDayReview({
               : "Sin cobros registrados."}
           </p>
         ) : (
-          <ul className="collector-closed-review-list">
+          <ul className="collector-closed-review-list is-cobros-cols">
             {cobros.map((item) => {
               const pay = paymentForVisit(item, payments);
-              const method = pay ? normalizePaymentMethod(pay.method) : null;
+              const method = pay ? normalizePaymentMethod(pay.method) : "efectivo";
               const amount = pay?.amount ?? item.amountDue;
               const loanRef = item.loanRef || "—";
-              const methodLabel = method ? paymentMethodLabel(method).toLowerCase() : "";
               return (
                 <li key={item.itemId}>
-                  <div className="collector-closed-review-line">
-                    <strong>{item.clientName}</strong>
-                    <span>
-                      {loanRef}
-                      {methodLabel ? ` en ${methodLabel}` : ""}
-                    </span>
-                  </div>
+                  <strong className="is-name">{item.clientName}</strong>
+                  <span className="is-loan">{loanRef}</span>
+                  <em className={`is-method ${paymentMethodToneClass(method)}`}>
+                    {paymentMethodLabel(method)}
+                  </em>
                   <b className="is-cobro">{money(amount)}</b>
                 </li>
               );
             })}
             <li className="is-total">
-              <span>Total {methodFilter ? paymentMethodLabel(methodFilter).toLowerCase() : "cobrado"}</span>
+              <span>
+                Total{" "}
+                {methodFilter ? paymentMethodLabel(methodFilter).toLowerCase() : "cobrado"}
+              </span>
               <b>{money(cobrosTotal)}</b>
             </li>
           </ul>
