@@ -87,7 +87,7 @@ export function CollectorCloseDayConfirm({
       </p>
 
       <div className="collector-close-actions is-links">
-        <button type="button" className="collector-mobile-pay-link" onClick={onCancel}>
+        <button type="button" className="collector-mobile-pay-link is-back" onClick={onCancel}>
           volver
         </button>
         <button type="button" className="collector-mobile-pay-link is-confirm" onClick={onConfirm}>

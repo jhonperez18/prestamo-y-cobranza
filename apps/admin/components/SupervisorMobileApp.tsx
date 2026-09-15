@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Pill } from "@/components/ui";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import { CollectorClosedDayReview } from "@/components/CollectorClosedDayReview";
+import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { buildLoanReport } from "@/lib/loan-report";
 import { routeCoverageSummaries } from "@/lib/collector-preview";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
@@ -39,9 +40,10 @@ import {
   COLLECTION_ALERTS_BEFORE_MORA,
   liveLoanCollectionAlerts,
 } from "@/lib/collection-alerts";
-import { isoToDisplay, syncLoan } from "@/lib/loan-preview";
+import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import {
+  normalizePaymentMethod,
   paymentMethodLabel,
   paymentMethodToneClass,
   type PaymentMethod,
@@ -49,6 +51,7 @@ import {
 import {
   money,
   catalogRoutes,
+  paymentsForCollector,
   routeIsActive,
   type ClientRow,
   type CollectorRow,
@@ -58,6 +61,11 @@ import {
   type StatusKind,
   type UserRow,
 } from "@/lib/mock-data";
+import { normalizeHistoryDate } from "@/lib/collector-day-close";
+import {
+  indexPaymentEvidenceFromPayments,
+  withPaymentEvidence,
+} from "@/lib/payment-evidence-store";
 
 type Props = {
   supervisor: UserRow;
@@ -82,9 +90,16 @@ type Props = {
   onLogout?: () => void;
 };
 
-type SupervisorView = "inicio" | "planilla" | "caja" | "nuevo" | "clientes";
+type SupervisorView = "inicio" | "planilla" | "caja" | "nequi" | "nuevo" | "clientes";
 type NuevoMode = "menu" | "cliente" | "prestamo";
-type RouteDetailMode = "totales" | "planilla" | "prestamos" | "gastos" | "cobros";
+type RouteDetailMode =
+  | "totales"
+  | "planilla"
+  | "prestamos"
+  | "gastos"
+  | "cobros"
+  | "nequi-historial"
+  | "nequi-dia";
 
 type RouteLiquidacion = {
   routeRef: string;
@@ -171,7 +186,7 @@ function RouteBoardCard({
   accent: number;
   onOpen: (routeRef: string) => void;
   /** En vista caja siempre destaca el dinero en mano. */
-  mode?: "ruta" | "caja";
+  mode?: "ruta" | "caja" | "nequi";
 }) {
   const total = row.planilla || 0;
   const pct = total > 0 ? Math.round((row.done / total) * 100) : 0;
@@ -181,18 +196,20 @@ function RouteBoardCard({
   return (
     <button
       type="button"
-      className={`supervisor-route-board accent-${accent % 2}${row.closed ? " is-closed" : ""}${mode === "caja" ? " is-caja-mode" : ""}`}
+      className={`supervisor-route-board accent-${accent % 2}${row.closed ? " is-closed" : ""}${mode === "caja" ? " is-caja-mode" : ""}${mode === "nequi" ? " is-nequi-mode" : ""}`}
       onClick={() => onOpen(row.routeRef)}
     >
-      {mode === "caja" ? (
+      {mode === "caja" || mode === "nequi" ? (
         <div className="supervisor-caja-row">
           <div className="supervisor-route-board-id">
             <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
             <strong>{row.collectorName}</strong>
           </div>
-          <div className="supervisor-caja-hero is-row">
-            <span>Saldo</span>
-            <b>{money(row.enCaja, { symbol: false })}</b>
+          <div className={`supervisor-caja-hero is-row${mode === "nequi" ? " is-nequi" : ""}`}>
+            <span>{mode === "nequi" ? "Nequi" : "Saldo"}</span>
+            <b>
+              {money(mode === "nequi" ? row.cobradoNequi : row.enCaja, { symbol: false })}
+            </b>
           </div>
         </div>
       ) : (
@@ -464,7 +481,7 @@ function SupervisorClientFicha({
     <div className="supervisor-client-ficha">
       <div className="supervisor-mobile-detail-head">
         <h3>{report.clientName}</h3>
-        <button type="button" className="collector-mobile-pay-link" onClick={onBack}>
+        <button type="button" className="collector-mobile-pay-link is-back" onClick={onBack}>
           volver
         </button>
       </div>
@@ -606,8 +623,15 @@ export function SupervisorMobileApp({
   const todayDisplay = isoToDisplay(today);
   const [view, setView] = useState<SupervisorView>("inicio");
   const [openRouteRef, setOpenRouteRef] = useState<string | null>(null);
+  /** Panel al que vuelve al salir del detalle de ruta (inicio / caja / nequi). */
+  const [routeReturnView, setRouteReturnView] = useState<SupervisorView>("inicio");
   const [detailMode, setDetailMode] = useState<RouteDetailMode>("totales");
   const [cobrosMethodFilter, setCobrosMethodFilter] = useState<PaymentMethod | null>(null);
+  /** Día ISO seleccionado en historial Nequi de una ruta. */
+  const [nequiDayIso, setNequiDayIso] = useState<string | null>(null);
+  const [nequiDayBackTo, setNequiDayBackTo] = useState<"totales" | "nequi-historial">(
+    "nequi-historial",
+  );
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [nuevoName, setNuevoName] = useState("");
@@ -625,6 +649,11 @@ export function SupervisorMobileApp({
     () => routeCoverageSummaries(collectors, routes, payments, clients, assignments, today),
     [collectors, routes, payments, clients, assignments, today],
   );
+
+  const paymentsWithEvidence = useMemo(() => {
+    indexPaymentEvidenceFromPayments(payments);
+    return payments.map(withPaymentEvidence);
+  }, [payments]);
 
   const todayAssignments = useMemo(
     () =>
@@ -750,12 +779,28 @@ export function SupervisorMobileApp({
       routes: liquidaciones.length,
       planilla: todayAssignments.length,
       cobradoHoy: liquidaciones.reduce((sum, row) => sum + row.cobradoHoy, 0),
+      cobradoNequi: liquidaciones.reduce((sum, row) => sum + row.cobradoNequi, 0),
       gastosHoy: liquidaciones.reduce((sum, row) => sum + row.gastosHoy, 0),
       enCaja: liquidaciones.reduce((sum, row) => sum + row.enCaja, 0),
       saldoInicial: liquidaciones.reduce((sum, row) => sum + row.saldoInicial, 0),
       prestamosHoy,
     };
   }, [liquidaciones, todayAssignments.length]);
+
+  /** Registro Nequi solo del día (se limpia solo al cambiar de fecha). */
+  const nequiRegisterToday = useMemo(() => {
+    const items = paymentsWithEvidence
+      .filter(
+        (row) =>
+          normalizePaymentMethod(row.method) === "nequi" &&
+          (row.amount ?? 0) > 0 &&
+          normalizeHistoryDate(row.paidDate ?? "") === today,
+      )
+      .slice()
+      .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));
+    const total = items.reduce((sum, row) => sum + (row.amount ?? 0), 0);
+    return { date: todayDisplay, items, total };
+  }, [paymentsWithEvidence, today, todayDisplay]);
 
   const openRoute = liquidaciones.find((row) => row.routeRef === openRouteRef) ?? null;
   const openAssignments = useMemo(
@@ -777,16 +822,79 @@ export function SupervisorMobileApp({
         : [],
     [openRoute, today, dayCloses, dayExpenseDrafts],
   );
+  const openRouteNequiDays = useMemo(() => {
+    if (!openRoute) return [];
+    const mine = paymentsForCollector(
+      openRoute.collectorRef,
+      collectors,
+      paymentsWithEvidence,
+    ).filter(
+      (row) => normalizePaymentMethod(row.method) === "nequi" && (row.amount ?? 0) > 0,
+    );
+    const byDate = new Map<string, { count: number; amount: number }>();
+    for (const row of mine) {
+      const date = normalizeHistoryDate(row.paidDate ?? "");
+      if (!date) continue;
+      const prev = byDate.get(date) ?? { count: 0, amount: 0 };
+      byDate.set(date, {
+        count: prev.count + 1,
+        amount: prev.amount + (row.amount ?? 0),
+      });
+    }
+    return Array.from(byDate.entries())
+      .map(([date, stats]) => ({
+        date,
+        dateLabel: isoToDisplay(date),
+        count: stats.count,
+        amount: stats.amount,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [openRoute, collectors, paymentsWithEvidence]);
+  const openRouteNequiDayPays = useMemo(() => {
+    if (!openRoute || !nequiDayIso) return [];
+    const byRef = new Map(
+      paymentsWithEvidence.filter((row) => row.ref).map((row) => [row.ref, row] as const),
+    );
+    return paymentsForCollector(openRoute.collectorRef, collectors, paymentsWithEvidence)
+      .filter(
+        (row) =>
+          normalizePaymentMethod(row.method) === "nequi" &&
+          (row.amount ?? 0) > 0 &&
+          normalizeHistoryDate(row.paidDate ?? "") === nequiDayIso,
+      )
+      .map((row) => withPaymentEvidence(byRef.get(row.ref) ?? row))
+      .slice()
+      .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));
+  }, [openRoute, nequiDayIso, collectors, paymentsWithEvidence]);
+  const openRouteNequiDayTotal = openRouteNequiDayPays.reduce(
+    (sum, row) => sum + (row.amount ?? 0),
+    0,
+  );
 
   function openCobrosReport(method: PaymentMethod | null = null) {
     setCobrosMethodFilter(method);
     setDetailMode("cobros");
   }
 
+  /** Misma ficha Nequi del día que el flujo NEQUI → ruta → día. */
+  function openNequiDayFicha(
+    dayIso: string,
+    backTo: "totales" | "nequi-historial" = "nequi-historial",
+  ) {
+    const day = normalizeHistoryDate(dayIso) || dayIso;
+    setCobrosMethodFilter("nequi");
+    setNequiDayIso(day);
+    setNequiDayBackTo(backTo);
+    setDetailMode("nequi-dia");
+  }
+
   function goToView(next: SupervisorView) {
     setOpenRouteRef(null);
+    setRouteReturnView("inicio");
     setDetailMode("totales");
     setCobrosMethodFilter(null);
+    setNequiDayIso(null);
+    setNequiDayBackTo("nequi-historial");
     setNuevoRouteRef(null);
     setNuevoMsg("");
     setNuevoMode("menu");
@@ -933,9 +1041,35 @@ export function SupervisorMobileApp({
     setNuevoMode("menu");
   }
 
-  function openRouteSummary(ref: string) {
-    setOpenRouteRef(ref);
+  function closeRouteDetail() {
+    const backTo = routeReturnView;
+    setOpenRouteRef(null);
     setDetailMode("totales");
+    setCobrosMethodFilter(null);
+    setNequiDayIso(null);
+    setNequiDayBackTo("nequi-historial");
+    setRouteReturnView("inicio");
+    setView(backTo);
+  }
+
+  function openRouteSummary(
+    ref: string,
+    opts?: { method?: PaymentMethod | null; returnView?: SupervisorView },
+  ) {
+    setOpenRouteRef(ref);
+    setRouteReturnView(opts?.returnView ?? "inicio");
+    setNequiDayIso(null);
+    setNequiDayBackTo("nequi-historial");
+    if (opts?.method === "nequi" && opts.returnView === "nequi") {
+      setCobrosMethodFilter("nequi");
+      setDetailMode("nequi-historial");
+    } else if (opts && "method" in opts) {
+      setCobrosMethodFilter(opts.method ?? null);
+      setDetailMode("cobros");
+    } else {
+      setCobrosMethodFilter(null);
+      setDetailMode("totales");
+    }
     setView("inicio");
   }
 
@@ -953,7 +1087,7 @@ export function SupervisorMobileApp({
       </header>
 
       <div
-        className="supervisor-mobile-kpis is-home has-nuevo has-clientes"
+        className="supervisor-mobile-kpis is-home has-nuevo has-clientes has-nequi"
         role="group"
         aria-label="Menú supervisor"
       >
@@ -966,7 +1100,11 @@ export function SupervisorMobileApp({
           }
           onClick={() => {
             setOpenRouteRef(null);
+            setRouteReturnView("inicio");
             setDetailMode("totales");
+            setCobrosMethodFilter(null);
+            setNequiDayIso(null);
+            setNequiDayBackTo("nequi-historial");
             setView("inicio");
           }}
         >
@@ -993,12 +1131,14 @@ export function SupervisorMobileApp({
             (openRoute &&
               (detailMode === "totales" ||
                 detailMode === "gastos" ||
-                detailMode === "cobros"))
+                detailMode === "cobros") &&
+              cobrosMethodFilter !== "nequi")
               ? "supervisor-mobile-kpi is-caja on"
               : "supervisor-mobile-kpi is-caja"
           }
           onClick={() => {
             if (openRoute) {
+              setCobrosMethodFilter(null);
               setDetailMode("totales");
               return;
             }
@@ -1007,6 +1147,18 @@ export function SupervisorMobileApp({
           title={openRoute ? `Caja · ${openRoute.collectorName}` : "Caja del día"}
         >
           <b>CAJA</b>
+        </button>
+        <button
+          type="button"
+          className={
+            view === "nequi"
+              ? "supervisor-mobile-kpi is-nequi on"
+              : "supervisor-mobile-kpi is-nequi"
+          }
+          onClick={() => goToView("nequi")}
+          title="Panel Nequi"
+        >
+          <b>NEQUI</b>
         </button>
         <button
           type="button"
@@ -1045,14 +1197,19 @@ export function SupervisorMobileApp({
               </h3>
               <button
                 type="button"
-                className="collector-mobile-pay-link"
+                className="collector-mobile-pay-link is-back"
                 onClick={() => {
-                  if (detailMode !== "totales") setDetailMode("totales");
-                  else {
-                    setOpenRouteRef(null);
-                    setDetailMode("totales");
-                    setView("inicio");
+                  if (detailMode === "nequi-dia") {
+                    setNequiDayIso(null);
+                    setDetailMode(nequiDayBackTo);
+                    return;
                   }
+                  if (detailMode === "nequi-historial") {
+                    closeRouteDetail();
+                    return;
+                  }
+                  if (detailMode !== "totales") setDetailMode("totales");
+                  else closeRouteDetail();
                 }}
               >
                 volver
@@ -1060,13 +1217,75 @@ export function SupervisorMobileApp({
             </div>
           ) : null}
 
-          {detailMode === "gastos" ? (
+          {detailMode === "nequi-historial" ? (
+            <>
+              <p className="supervisor-mobile-detail-meta">Historial Nequi por día</p>
+              {openRouteNequiDays.length === 0 ? (
+                <p className="ficha-empty">Sin cobros Nequi en esta ruta.</p>
+              ) : (
+                <ul className="supervisor-nequi-day-list" aria-label="Días con Nequi">
+                  {openRouteNequiDays.map((day) => (
+                    <li key={day.date}>
+                      <button
+                        type="button"
+                        className="supervisor-nequi-day-row"
+                        onClick={() => openNequiDayFicha(day.date, "nequi-historial")}
+                      >
+                        <span className="is-date">{day.dateLabel}</span>
+                        <span className="is-count">
+                          {day.count} cobro{day.count === 1 ? "" : "s"}
+                        </span>
+                        <b className="is-amount">{money(day.amount, { symbol: false })}</b>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          ) : detailMode === "nequi-dia" ? (
+            <>
+              <p className="supervisor-mobile-detail-meta">
+                <span>{nequiDayIso ? isoToDisplay(nequiDayIso) : ""}</span>
+                <span className="supervisor-mobile-detail-sep" aria-hidden>
+                  ·
+                </span>
+                <span>
+                  {openRouteNequiDayPays.length} cobro
+                  {openRouteNequiDayPays.length === 1 ? "" : "s"}
+                </span>
+              </p>
+              {openRouteNequiDayPays.length === 0 ? (
+                <p className="ficha-empty">Sin movimientos Nequi ese día.</p>
+              ) : (
+                <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-register is-nequi-day-ficha">
+                  {openRouteNequiDayPays.map((pay) => (
+                    <li key={pay.ref}>
+                      <strong className="is-name">{pay.client}</strong>
+                      <span className="is-when">{pay.paidTime || "—"}</span>
+                      <span className="is-loan">{pay.loanRef || "—"}</span>
+                      <em className={`is-method ${paymentMethodToneClass("nequi")}`}>
+                        {paymentMethodLabel("nequi")}
+                      </em>
+                      <span className="is-evidence">
+                        <PaymentEvidenceThumb evidence={pay.evidence} size={28} />
+                      </span>
+                      <b className="is-cobro">{money(pay.amount, { symbol: false })}</b>
+                    </li>
+                  ))}
+                  <li className="is-total">
+                    <span>Total Nequi</span>
+                    <b>{money(openRouteNequiDayTotal, { symbol: false })}</b>
+                  </li>
+                </ul>
+              )}
+            </>
+          ) : detailMode === "gastos" ? (
             <CollectorClosedDayReview
               detail="gastos"
               dateLabel={todayDisplay}
               visits={openAssignments}
               expenses={openRouteExpenses}
-              payments={payments}
+              payments={paymentsWithEvidence}
               cobradoCount={openRoute.done}
               visitTotal={openRoute.planilla}
               onBack={() => setDetailMode("totales")}
@@ -1077,11 +1296,16 @@ export function SupervisorMobileApp({
               dateLabel={todayDisplay}
               visits={openAssignments}
               expenses={openRouteExpenses}
-              payments={payments}
+              payments={paymentsWithEvidence}
               cobradoCount={openRoute.done}
               visitTotal={openRoute.planilla}
               methodFilter={cobrosMethodFilter ?? undefined}
               onBack={() => {
+                if (routeReturnView === "nequi") {
+                  setNequiDayIso(null);
+                  setDetailMode("nequi-historial");
+                  return;
+                }
                 setCobrosMethodFilter(null);
                 setDetailMode("totales");
               }}
@@ -1113,8 +1337,8 @@ export function SupervisorMobileApp({
                   <button
                     type="button"
                     className="is-pay-nequi is-tap-means"
-                    onClick={() => openCobrosReport("nequi")}
-                    aria-label="Ver cobros Nequi"
+                    onClick={() => openNequiDayFicha(today, "totales")}
+                    aria-label="Ver cobros Nequi del día"
                   >
                     <span>Nequi</span>
                     <b>{money(openRoute.cobradoNequi, { symbol: false })}</b>
@@ -1180,14 +1404,14 @@ export function SupervisorMobileApp({
                 </button>
                 <button
                   type="button"
-                  className="btn compact ghost"
+                  className="btn compact"
                   onClick={() => setDetailMode("gastos")}
                 >
                   Gastos
                 </button>
                 <button
                   type="button"
-                  className="btn compact ghost"
+                  className="btn compact"
                   disabled={openRoute.cobradoHoy <= 0}
                   onClick={() => openCobrosReport(null)}
                 >
@@ -1195,7 +1419,7 @@ export function SupervisorMobileApp({
                 </button>
                 <button
                   type="button"
-                  className="btn compact ghost"
+                  className="btn compact"
                   disabled={openRoute.newLoans.length + openRoute.renewals.length === 0}
                   onClick={() => setDetailMode("prestamos")}
                 >
@@ -1324,9 +1548,77 @@ export function SupervisorMobileApp({
                   row={row}
                   accent={index}
                   mode="caja"
-                  onOpen={openRouteSummary}
+                  onOpen={(ref) => openRouteSummary(ref, { returnView: "caja" })}
                 />
               ))}
+            </div>
+          )}
+        </section>
+      ) : view === "nequi" ? (
+        <section className="supervisor-mobile-section supervisor-mobile-home">
+          <div className="supervisor-day-boards" aria-label="Total Nequi">
+            <div className="supervisor-day-board is-nequi supervisor-day-board-wide is-total-row">
+              <div className="supervisor-day-board-copy">
+                <span>Total Nequi</span>
+                <em>
+                  {liquidaciones.length} cobrador
+                  {liquidaciones.length === 1 ? "" : "es"}
+                </em>
+              </div>
+              <b>{money(totals.cobradoNequi, { symbol: false })}</b>
+            </div>
+          </div>
+
+          <h3>Por cobrador</h3>
+          {liquidaciones.length === 0 ? (
+            <p className="ficha-empty">No hay rutas con cobrador.</p>
+          ) : (
+            <div className="supervisor-route-boards">
+              {liquidaciones.map((row, index) => (
+                <RouteBoardCard
+                  key={row.routeRef}
+                  row={row}
+                  accent={index}
+                  mode="nequi"
+                  onOpen={(ref) =>
+                    openRouteSummary(ref, { method: "nequi", returnView: "nequi" })
+                  }
+                />
+              ))}
+            </div>
+          )}
+
+          <h3>Registro Nequi</h3>
+          {nequiRegisterToday.items.length === 0 ? (
+            <p className="ficha-empty">Sin cobros Nequi hoy.</p>
+          ) : (
+            <div className="supervisor-nequi-register is-today-only">
+              <div className="supervisor-nequi-day">
+                <div className="supervisor-nequi-day-head">
+                  <strong>Hoy · {nequiRegisterToday.date}</strong>
+                  <b>{money(nequiRegisterToday.total, { symbol: false })}</b>
+                </div>
+                <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-register">
+                  {nequiRegisterToday.items.map((pay) => (
+                    <li key={pay.ref}>
+                      <div className="is-name-block">
+                        <strong className="is-name">{pay.client}</strong>
+                        {pay.paidTime ? (
+                          <span className="is-when">{pay.paidTime}</span>
+                        ) : null}
+                      </div>
+                      <span className="is-loan">{pay.loanRef || "—"}</span>
+                      <em className={`is-method ${paymentMethodToneClass("nequi")}`}>
+                        {paymentMethodLabel("nequi")}
+                      </em>
+                      <span className="is-evidence">
+                        <PaymentEvidenceThumb evidence={pay.evidence} size={36} />
+                      </span>
+                      <b className="is-cobro">{money(pay.amount, { symbol: false })}</b>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           )}
         </section>
@@ -1370,7 +1662,7 @@ export function SupervisorMobileApp({
                 <h3>Nuevo cliente</h3>
                 <button
                   type="button"
-                  className="collector-mobile-pay-link"
+                  className="collector-mobile-pay-link is-back"
                   onClick={() => {
                     resetNuevoFlow();
                     setNuevoMode("menu");
@@ -1478,7 +1770,7 @@ export function SupervisorMobileApp({
                 <h3>Nuevo préstamo</h3>
                 <button
                   type="button"
-                  className="collector-mobile-pay-link"
+                  className="collector-mobile-pay-link is-back"
                   onClick={() => {
                     if (nuevoLoanClientRef) {
                       setNuevoLoanClientRef(null);
@@ -1633,7 +1925,7 @@ export function SupervisorMobileApp({
                 <h3>{`${clientesLoanClient.name} ${clientesLoanClient.lastName}`.trim()}</h3>
                 <button
                   type="button"
-                  className="collector-mobile-pay-link"
+                  className="collector-mobile-pay-link is-back"
                   onClick={() => setClientesLoanClientRef(null)}
                 >
                   volver

@@ -7,6 +7,7 @@ import type { BankAccount, BankMovement } from "@/lib/bank";
 import {
   alignDayClosesCollectedToPayments,
   normalizeHistoryDate,
+  trimCollectorDayClosesHistory,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
 } from "@/lib/collector-day-close";
@@ -96,10 +97,8 @@ export function synchronizeOperationalState(
 
   const loans = syncAllLoans(input.loans, payments) as LoanRow[];
 
-  const dayCloses = alignDayClosesCollectedToPayments(
-    input.dayCloses,
-    payments,
-    collectors,
+  const dayCloses = trimCollectorDayClosesHistory(
+    alignDayClosesCollectedToPayments(input.dayCloses, payments, collectors),
   );
 
   const bankMovements = syncBankLedger({

@@ -42,6 +42,7 @@ import {
   dayExpenseLineMovementRef,
   finalizeCollectorDayClose,
   removeDayExpenseDraft,
+  upsertAndTrimCollectorDayClose,
   upsertDayExpenseDraft,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
@@ -520,7 +521,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       ),
     });
     const closes = loadDemoDayCloses<CollectorDayCloseRecord>();
-    const nextCloses = [record, ...closes.filter((row) => row.ref !== record.ref)];
+    const nextCloses = upsertAndTrimCollectorDayClose(closes, record);
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextCloses);
     setDayCloses(nextCloses);
     queueDayCloseMirror(record);

@@ -213,9 +213,11 @@ export function buildReceiptEvidence(dataUrl: string, meta: {
   width: number;
   height: number;
 }): PaymentEvidenceRef {
+  const id = newEvidenceId();
   return {
-    id: newEvidenceId(),
+    id,
     kind: "comprobante",
+    fileId: id,
     previewUrl: dataUrl,
     mime: meta.mime,
     byteSize: meta.byteSize,
@@ -231,9 +233,11 @@ export function buildSignatureEvidence(dataUrl: string, meta: {
   width: number;
   height: number;
 }): PaymentEvidenceRef {
+  const id = newEvidenceId("SG");
   return {
-    id: newEvidenceId("SG"),
+    id,
     kind: "firma",
+    fileId: id,
     previewUrl: dataUrl,
     mime: meta.mime,
     byteSize: meta.byteSize,
@@ -241,4 +245,19 @@ export function buildSignatureEvidence(dataUrl: string, meta: {
     height: meta.height,
     capturedAt: new Date().toISOString(),
   };
+}
+
+/** Evidencia liviana para mirror/DB (sin data URL). */
+export function evidenceForMirror(evidence?: PaymentEvidenceRef[]): PaymentEvidenceRef[] | undefined {
+  if (!evidence?.length) return undefined;
+  return evidence.map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    fileId: row.fileId || row.id,
+    mime: row.mime,
+    byteSize: row.byteSize,
+    width: row.width,
+    height: row.height,
+    capturedAt: row.capturedAt,
+  }));
 }

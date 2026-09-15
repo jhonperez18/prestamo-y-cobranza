@@ -13,6 +13,7 @@ import {
   findDayExpenseDraft,
   normalizeHistoryDate,
   removeDayExpenseDraft,
+  upsertAndTrimCollectorDayClose,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
 } from "@/lib/collector-day-close";
@@ -175,7 +176,7 @@ export function runOperationalDayCycle(
       ),
     });
 
-    dayCloses = [record, ...dayCloses.filter((row) => row.ref !== record.ref)];
+    dayCloses = upsertAndTrimCollectorDayClose(dayCloses, record);
     dayExpenseDrafts = removeDayExpenseDraft(
       dayExpenseDrafts,
       pair.collectorRef,

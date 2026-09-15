@@ -867,7 +867,7 @@ export function nextPaymentCode(rows: PaymentRow[] = PAYMENTS) {
 export function money(value: number, opts?: { symbol?: boolean }) {
   const digits = Math.trunc(Math.abs(value)).toString();
   const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  const showSymbol = opts?.symbol !== false;
+  const showSymbol = opts?.symbol === true;
   if (value < 0) return showSymbol ? `$ -${grouped}` : `-${grouped}`;
   return showSymbol ? `$ ${grouped}` : grouped;
 }

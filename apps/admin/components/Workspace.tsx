@@ -221,6 +221,7 @@ import {
   recoverPaymentsFromBankMovements,
   removeDayExpenseDraft,
   synthesizeDayClosesFromAssignments,
+  upsertAndTrimCollectorDayClose,
   upsertDayExpenseDraft,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
@@ -1284,7 +1285,7 @@ export function Workspace({
           dayExpenseLineMovementRef(collectorRef, date, line.id),
         ),
       });
-      nextCloses = [record, ...nextCloses.filter((row) => row.ref !== record.ref)];
+      nextCloses = upsertAndTrimCollectorDayClose(nextCloses, record);
       nextDrafts = removeDayExpenseDraft(nextDrafts, collectorRef, date);
       queueDayCloseMirror(record);
     }
@@ -1390,7 +1391,7 @@ export function Workspace({
       ),
     });
     const closes = loadDemoDayCloses<CollectorDayCloseRecord>();
-    const nextCloses = [record, ...closes.filter((row) => row.ref !== record.ref)];
+    const nextCloses = upsertAndTrimCollectorDayClose(closes, record);
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextCloses);
     setDayCloses(nextCloses);
     queueDayCloseMirror(record);

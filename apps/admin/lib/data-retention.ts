@@ -2,7 +2,7 @@
  * Retención operativa: historial vivo = últimos 30 días.
  * Cada día cae el más antiguo; maestros (clientes, préstamos, usuarios, rutas) no se tocan.
  */
-import { normalizeHistoryDate } from "@/lib/collector-day-close";
+import { normalizeHistoryDate, trimCollectorDayClosesHistory } from "@/lib/collector-day-close";
 import { todayIso } from "@/lib/daily-dispatch";
 import {
   DEMO_BANK_MOVEMENTS_KEY,
@@ -67,7 +67,9 @@ export function applyDataRetention(today = todayIso()) {
   }
 
   const closes = readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []);
-  const nextCloses = closes.filter((row) => keepDate(row.date, cutoff));
+  const nextCloses = trimCollectorDayClosesHistory(
+    closes.filter((row) => keepDate(row.date, cutoff)),
+  );
   if (nextCloses.length !== closes.length) {
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextCloses);
     changed = true;

@@ -14,6 +14,12 @@ import {
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
+import { evidenceForMirror } from "@/lib/payment-evidence";
+import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
+import {
+  rememberPaymentEvidence,
+  resolvePaymentEvidence,
+} from "@/lib/payment-evidence-store";
 
 export type PaymentMirrorRow = {
   ref: string;
@@ -31,6 +37,7 @@ export type PaymentMirrorRow = {
   payment_type: string | null;
   payment_kind: string | null;
   route_ref: string | null;
+  evidence: PaymentEvidenceRef[] | null;
   updated_at: string;
 };
 
@@ -77,6 +84,7 @@ export function paymentRowToMirror(payment: PaymentRow): PaymentMirrorRow | null
     payment_type: payment.type || null,
     payment_kind: payment.kind || null,
     route_ref: payment.routeRef?.trim() || null,
+    evidence: evidenceForMirror(payment.evidence) ?? null,
     updated_at: new Date().toISOString(),
   };
 }
@@ -104,6 +112,8 @@ export function mirrorRowToPaymentRow(row: PaymentMirrorRow): PaymentRow | null 
   if (!ref || !loanRef || !paidDate || !(amount > 0)) return null;
 
   const paidTime = (row.paid_time || "").trim() || "00:00";
+  const evidence = Array.isArray(row.evidence) && row.evidence.length ? row.evidence : undefined;
+  if (evidence?.length) rememberPaymentEvidence(ref, evidence);
   return {
     ref,
     loanRef,
@@ -120,6 +130,7 @@ export function mirrorRowToPaymentRow(row: PaymentMirrorRow): PaymentRow | null 
     type: row.payment_type?.trim() || "Cuota",
     kind: mapKind(row.payment_kind),
     method: mapMethod(row.method),
+    evidence,
     source: mapSource(row.source),
   };
 }
@@ -186,10 +197,11 @@ export function mergePaymentsByRef(local: PaymentRow[], remote: PaymentRow[]): {
       ...remoteRow,
       client: preferDisplay(remoteRow.client, localRow.client),
       collector: preferDisplay(remoteRow.collector, localRow.collector),
-      evidence: localRow.evidence ?? remoteRow.evidence,
+      evidence: resolvePaymentEvidence(localRow) ?? resolvePaymentEvidence(remoteRow),
       gps: localRow.gps ?? remoteRow.gps,
       idempotencyKey: localRow.idempotencyKey ?? remoteRow.idempotencyKey,
     };
+    if (next.evidence?.length) rememberPaymentEvidence(next.ref, next.evidence);
     if (moneySignature(localRow) !== moneySignature(next)) changed = true;
     merged.push(next);
     localByRef.delete(remoteRow.ref);
@@ -218,12 +230,23 @@ export async function mirrorPaymentToSupabase(
   const row = paymentRowToMirror(payment);
   if (!row) return { ok: true, skipped: true, reason: "invalid_payment" };
 
+  if (payment.evidence?.length) {
+    rememberPaymentEvidence(payment.ref, payment.evidence);
+  }
+
   const client = createMirrorClient();
   if (!client) return { ok: true, skipped: true, reason: "supabase_not_configured" };
 
   const { error } = await client.from("payments").upsert(row, { onConflict: "ref" });
   if (error) {
-    return { ok: false, error: error.message };
+    const msg = error.message || "";
+    if (/evidence/i.test(msg)) {
+      const { evidence: _drop, ...withoutEvidence } = row;
+      const retry = await client.from("payments").upsert(withoutEvidence, { onConflict: "ref" });
+      if (retry.error) return { ok: false, error: retry.error.message };
+      return { ok: true };
+    }
+    return { ok: false, error: msg };
   }
   return { ok: true };
 }
@@ -241,10 +264,22 @@ export async function fetchPaymentsFromSupabase(): Promise<FetchPaymentsResult> 
   const { data, error } = await client
     .from("payments")
     .select(
-      "ref,loan_ref,client_ref,collector_ref,collector_name,amount,paid_date,paid_time,due_date,charge_label,method,source,payment_type,payment_kind,route_ref,updated_at",
+      "ref,loan_ref,client_ref,collector_ref,collector_name,amount,paid_date,paid_time,due_date,charge_label,method,source,payment_type,payment_kind,route_ref,evidence,updated_at",
     )
     .order("paid_date", { ascending: false })
     .limit(3000);
+
+  if (error && /evidence/i.test(error.message || "")) {
+    const fallback = await client
+      .from("payments")
+      .select(
+        "ref,loan_ref,client_ref,collector_ref,collector_name,amount,paid_date,paid_time,due_date,charge_label,method,source,payment_type,payment_kind,route_ref,updated_at",
+      )
+      .order("paid_date", { ascending: false })
+      .limit(3000);
+    if (fallback.error) return { ok: false, error: fallback.error.message, rows: [] };
+    return { ok: true, rows: (fallback.data ?? []) as PaymentMirrorRow[] };
+  }
 
   if (error) return { ok: false, error: error.message, rows: [] };
   return { ok: true, rows: (data ?? []) as PaymentMirrorRow[] };

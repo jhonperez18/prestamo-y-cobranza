@@ -1,6 +1,7 @@
 "use client";
 
 import { Pill } from "@/components/ui";
+import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
 import { money, type PaymentRow } from "@/lib/mock-data";
@@ -55,6 +56,7 @@ export function CollectorClosedDayReview({
     const pay = paymentForVisit(item, payments);
     return sum + (pay?.amount ?? item.amountDue);
   }, 0);
+  const showEvidenceCol = methodFilter === "nequi" || methodFilter == null;
 
   const title =
     detail === "cobros"
@@ -82,7 +84,7 @@ export function CollectorClosedDayReview({
             <h2>{title}</h2>
             <p>{subtitle}</p>
           </div>
-          <button type="button" className="collector-mobile-pay-link" onClick={onBack}>
+          <button type="button" className="collector-mobile-pay-link is-back" onClick={onBack}>
             volver
           </button>
         </div>
@@ -117,20 +119,37 @@ export function CollectorClosedDayReview({
               : "Sin cobros registrados."}
           </p>
         ) : (
-          <ul className="collector-closed-review-list is-cobros-cols">
+          <ul
+            className={`collector-closed-review-list is-cobros-cols${
+              showEvidenceCol ? " has-evidence" : ""
+            }`}
+          >
             {cobros.map((item) => {
               const pay = paymentForVisit(item, payments);
               const method = pay ? normalizePaymentMethod(pay.method) : "efectivo";
               const amount = pay?.amount ?? item.amountDue;
               const loanRef = item.loanRef || "—";
+              const when = pay?.paidTime?.trim() || "";
               return (
                 <li key={item.itemId}>
-                  <strong className="is-name">{item.clientName}</strong>
+                  <div className="is-name-block">
+                    <strong className="is-name">{item.clientName}</strong>
+                    {when ? <span className="is-when">{when}</span> : null}
+                  </div>
                   <span className="is-loan">{loanRef}</span>
                   <em className={`is-method ${paymentMethodToneClass(method)}`}>
                     {paymentMethodLabel(method)}
                   </em>
-                  <b className="is-cobro">{money(amount)}</b>
+                  {showEvidenceCol ? (
+                    <span className="is-evidence">
+                      {method === "nequi" ? (
+                        <PaymentEvidenceThumb evidence={pay?.evidence} size={36} />
+                      ) : (
+                        <span className="payment-evidence-empty">—</span>
+                      )}
+                    </span>
+                  ) : null}
+                  <b className="is-cobro">{money(amount, { symbol: false })}</b>
                 </li>
               );
             })}

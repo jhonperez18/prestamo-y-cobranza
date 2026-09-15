@@ -71,8 +71,8 @@ function SizeControl({
 }
 
 const PREVIEW_ROWS = [
-  { ref: "COD-11", name: "edinson", phone: "—", pending: "$ 300.000", status: "Activo" },
-  { ref: "COD-1", name: "María Gómez", phone: "311 200 3302", pending: "$ 890.000", status: "Revisión" },
+  { ref: "COD-11", name: "edinson", phone: "—", pending: "300.000", status: "Activo" },
+  { ref: "COD-1", name: "María Gómez", phone: "311 200 3302", pending: "890.000", status: "Revisión" },
 ];
 
 function previewThemeVars(prefs: UiPreferences): React.CSSProperties {

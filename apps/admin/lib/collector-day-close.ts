@@ -462,6 +462,65 @@ export function finalizeCollectorDayClose(input: {
   };
 }
 
+/** Historial visible/guardado del cobrador: solo los últimos N días cerrados. */
+export const COLLECTOR_HISTORY_KEEP_DAYS = 5;
+
+/**
+ * Por cobrador: conserva solo los N cierres más recientes (por fecha).
+ * Al guardar el día 6, cae el más antiguo.
+ */
+export function trimCollectorDayClosesHistory(
+  closes: CollectorDayCloseRecord[],
+  keepDays = COLLECTOR_HISTORY_KEEP_DAYS,
+): CollectorDayCloseRecord[] {
+  if (!closes.length || keepDays <= 0) return closes;
+  const byCollector = new Map<string, CollectorDayCloseRecord[]>();
+  const orphan: CollectorDayCloseRecord[] = [];
+  for (const row of closes) {
+    const ref = String(row.collectorRef ?? "").trim();
+    if (!ref) {
+      orphan.push(row);
+      continue;
+    }
+    const list = byCollector.get(ref) ?? [];
+    list.push(row);
+    byCollector.set(ref, list);
+  }
+  const kept: CollectorDayCloseRecord[] = [...orphan];
+  for (const rows of byCollector.values()) {
+    const byDate = new Map<string, CollectorDayCloseRecord>();
+    for (const row of rows) {
+      const date = normalizeHistoryDate(row.date);
+      if (!date) {
+        kept.push(row);
+        continue;
+      }
+      const prev = byDate.get(date);
+      if (!prev || String(row.closedAt ?? "") >= String(prev.closedAt ?? "")) {
+        byDate.set(date, row);
+      }
+    }
+    const newestFirst = [...byDate.keys()].sort((a, b) => b.localeCompare(a));
+    for (const date of newestFirst.slice(0, keepDays)) {
+      const row = byDate.get(date);
+      if (row) kept.push(row);
+    }
+  }
+  return kept;
+}
+
+/** Inserta/actualiza un CIE y deja solo los últimos N días de ese cobrador. */
+export function upsertAndTrimCollectorDayClose(
+  closes: CollectorDayCloseRecord[],
+  record: CollectorDayCloseRecord,
+  keepDays = COLLECTOR_HISTORY_KEEP_DAYS,
+): CollectorDayCloseRecord[] {
+  return trimCollectorDayClosesHistory(
+    [record, ...closes.filter((row) => row.ref !== record.ref)],
+    keepDays,
+  );
+}
+
 /**
  * Si ya hay CIE- del día pero la planilla no tiene dayClosedAt (cierre a medias),
  * sella las visitas para que la app muestre “Jornada cerrada”.
@@ -769,6 +828,15 @@ export function buildCollectorDayHistory(
 
   const opening = period ? openingSaldoForPeriod(collectorRef, period, monthCloses) : 0;
   let running = opening;
+
+  // Solo últimos N días en el historial del cobrador; el saldo arrastra lo anterior.
+  const dropCount = Math.max(0, dates.length - COLLECTOR_HISTORY_KEEP_DAYS);
+  for (let i = 0; i < dropCount; i += 1) {
+    const date = dates[i];
+    running = running + (efectivoByDate.get(date) ?? 0) - (gastoByDate.get(date) ?? 0);
+  }
+  dates = dates.slice(dropCount);
+
   const ascending: CollectorDayHistoryRow[] = dates.map((date) => {
     const cobro = cobroByDate.get(date) ?? 0;
     const cobroEfectivo = efectivoByDate.get(date) ?? 0;

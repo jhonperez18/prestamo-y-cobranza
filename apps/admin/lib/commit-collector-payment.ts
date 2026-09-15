@@ -15,6 +15,7 @@ import { chargeLabel, syncLoan } from "@/lib/loan-preview";
 import { cuotaTarget, loanRowAfterPay, paymentRowKind } from "@/lib/loan-pay";
 import { buildPaymentRow } from "@/lib/payment-detail";
 import { validatePaymentEvidence } from "@/lib/payment-evidence";
+import { rememberPaymentEvidence } from "@/lib/payment-evidence-store";
 import { normalizePaymentMethod } from "@/lib/payment-method";
 import {
   nextPaymentCode,
@@ -192,6 +193,10 @@ export function commitCollectorPayment(
     loan,
     result.pay,
   );
+
+  if (payment.evidence?.length) {
+    rememberPaymentEvidence(payment.ref, payment.evidence);
+  }
 
   const nextPayments = [payment, ...payments];
   const nextLoans = loans.map((row) =>

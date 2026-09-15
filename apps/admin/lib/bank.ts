@@ -1,7 +1,61 @@
 import type { PaymentRow } from "@/lib/mock-data";
-import { money } from "@/lib/mock-data";
+import { COLLECTORS, money } from "@/lib/mock-data";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement } from "@/lib/misc-payments";
+
+/**
+ * Corrige texto UTF-8 mal leído (RÃ­os → Ríos) y caracteres de reemplazo ().
+ */
+export function repairMojibakeText(raw: string): string {
+  let s = String(raw ?? "");
+  if (!s) return s;
+
+  if (/Ã.|Â.|â.|ð.|Ã/.test(s)) {
+    try {
+      const bytes = Uint8Array.from(Array.from(s, (ch) => ch.charCodeAt(0) & 0xff));
+      const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+      if (decoded && decoded !== s && (decoded.match(/\uFFFD/g) ?? []).length < (s.match(/\uFFFD/g) ?? []).length + 1) {
+        // Prefer decoded when it looks like Spanish text with accents
+        if (/[áéíóúñÁÉÍÓÚÑ]/.test(decoded) || !/\uFFFD/.test(decoded)) {
+          s = decoded;
+        }
+      }
+    } catch {
+      /* keep original */
+    }
+  }
+
+  // Casos conocidos / basura de encoding sobre nombres de cobradores
+  s = s.replace(/Juan\s+R(?:Ã­|\u00C3\u00AD|\uFFFD+)\s*os/gi, "Juan Ríos");
+  s = s.replace(/\bR(?:Ã­|\u00C3\u00AD|\uFFFD+)os\b/gi, "Ríos");
+  s = s.replace(/N(?:Ã³|\uFFFD+)mina/gi, "Nómina");
+  s = s.replace(/Pr(?:Ã©|\uFFFD+)stamo/gi, "Préstamo");
+  s = s.replace(/Consignaci(?:Ã³|\uFFFD+)n/gi, "Consignación");
+
+  return s;
+}
+
+function foldPersonKey(value: string) {
+  return repairMojibakeText(value)
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+/** Devuelve el nombre canónico del cobrador si el texto es una variante corrupta. */
+export function canonicalPersonName(raw: string): string {
+  const repaired = repairMojibakeText(raw).trim();
+  if (!repaired) return repaired;
+  const key = foldPersonKey(repaired);
+  if (!key) return repaired;
+  if (key.includes("juan") && key.includes("rios")) return "Juan Ríos";
+  if (/^juanr+.*os$/.test(key) || key === "juanros") return "Juan Ríos";
+  for (const row of COLLECTORS) {
+    if (foldPersonKey(row.name) === key) return row.name;
+  }
+  return repaired;
+}
 
 export type BankAccountType =
   | "corriente"
@@ -250,14 +304,24 @@ export function normalizeBankMovement(
     row.period && isValidBankPeriod(row.period)
       ? normalizeBankPeriod(row.period)
       : periodFromIso(valueDate);
+  const thirdParty = canonicalPersonName(row.thirdParty ?? "");
+  let description = repairMojibakeText(row.description ?? "");
+  const rawThird = String(row.thirdParty ?? "").trim();
+  if (rawThird && thirdParty && rawThird !== thirdParty && description.includes(rawThird)) {
+    description = description.split(rawThird).join(thirdParty);
+  }
+  description = description
+    .replace(/Juan\s+R(?:Ã­|\uFFFD+)\s*os/gi, "Juan Ríos")
+    .replace(/\bR(?:Ã­|\uFFFD+)os\b/gi, "Ríos");
+
   return applyBankAccountSides({
     ref: row.ref,
     accountRef: row.accountRef ?? "",
     period,
-    description: row.description ?? "",
+    description,
     valueDate,
     opDate,
-    thirdParty: row.thirdParty ?? "",
+    thirdParty,
     debit: Number(row.debit) || 0,
     credit: Number(row.credit) || 0,
     category: row.category,
