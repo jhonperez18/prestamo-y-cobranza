@@ -1,7 +1,12 @@
-import type { PaymentRow } from "@/lib/mock-data";
+import type { LoanRow, PaymentRow } from "@/lib/mock-data";
 import { COLLECTORS, money } from "@/lib/mock-data";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement } from "@/lib/misc-payments";
+import {
+  loanDisbursementIsoDate,
+  loanDisbursementMovementRef,
+  loanFundedByNequi,
+} from "@/lib/nequi-pool";
 
 /**
  * Corrige texto UTF-8 mal leído (RÃ­os → Ríos) y caracteres de reemplazo ().
@@ -130,6 +135,8 @@ export type BankMovement = {
   miscPaymentRef?: string;
   /** Gasto de ruta del cobrador: GASL-{collector}-{date}-{expenseId} */
   dayExpenseLineRef?: string;
+  /** Desembolso de préstamo desde Nequi: DSB-{loanRef} */
+  loanDisbursementRef?: string;
   inExtract: boolean;
   reconciled: boolean;
   manual: boolean;
@@ -257,7 +264,9 @@ function looksLikeBankIncome(row: BankMovement) {
 
 function looksLikeBankExpense(row: BankMovement) {
   if (isPaymentCobroMovement(row)) return false;
-  if (row.dayExpenseLineRef || row.miscPaymentRef || row.category) return true;
+  if (row.dayExpenseLineRef || row.miscPaymentRef || row.loanDisbursementRef || row.category) {
+    return true;
+  }
   if (row.manual && !row.paymentRef) return true;
   const desc = row.description.trim().toLowerCase();
   return (
@@ -266,7 +275,8 @@ function looksLikeBankExpense(row: BankMovement) {
     desc.includes("nomina") ||
     desc.includes("gasto") ||
     desc.includes("servicios") ||
-    desc.includes("administrativ")
+    desc.includes("administrativ") ||
+    desc.includes("desembolso")
   );
 }
 
@@ -795,11 +805,12 @@ function preferBankMovement(a: BankMovement, b: BankMovement): BankMovement {
   return a;
 }
 
-/** Una sola fila por cobro (PG-), gasto de ruta o pago varios. */
+/** Una sola fila por cobro (PG-), gasto de ruta, pago varios o desembolso. */
 export function dedupeBankMovements(movements: BankMovement[]): BankMovement[] {
   const byPayment = new Map<string, BankMovement>();
   const byMisc = new Map<string, BankMovement>();
   const byExpense = new Map<string, BankMovement>();
+  const byDisbursement = new Map<string, BankMovement>();
   const other: BankMovement[] = [];
 
   for (const row of movements) {
@@ -820,10 +831,24 @@ export function dedupeBankMovements(movements: BankMovement[]): BankMovement[] {
       byExpense.set(row.dayExpenseLineRef, prev ? preferBankMovement(prev, row) : row);
       continue;
     }
+    if (row.loanDisbursementRef) {
+      const prev = byDisbursement.get(row.loanDisbursementRef);
+      byDisbursement.set(
+        row.loanDisbursementRef,
+        prev ? preferBankMovement(prev, row) : row,
+      );
+      continue;
+    }
     other.push(row);
   }
 
-  return [...byPayment.values(), ...byMisc.values(), ...byExpense.values(), ...other];
+  return [
+    ...byPayment.values(),
+    ...byMisc.values(),
+    ...byExpense.values(),
+    ...byDisbursement.values(),
+    ...other,
+  ];
 }
 
 /** Firma estable para evitar setState / writes innecesarios. */
@@ -836,6 +861,7 @@ export function bankMovementsSignature(rows: BankMovement[]): string {
           row.paymentRef ?? "",
           row.miscPaymentRef ?? "",
           row.dayExpenseLineRef ?? "",
+          row.loanDisbursementRef ?? "",
           row.accountRef,
           row.period,
           row.valueDate,
@@ -904,6 +930,69 @@ export function syncMiscPaymentsToMovements(
       });
     }
   }
+  return next;
+}
+
+/**
+ * Desembolsos de préstamo/renovación financiados con Nequi → Haber en banco.
+ * Ref estable DSB-{loanRef}; capital = plata entregada (no incluye interés).
+ */
+export function syncNequiLoanDisbursementsToMovements(
+  loans: LoanRow[],
+  movements: BankMovement[],
+  accountRef: string | null | undefined,
+): BankMovement[] {
+  if (!accountRef) return movements;
+
+  const wanted = loans.filter(
+    (loan) => loanFundedByNequi(loan) && (Number(loan.capital) || 0) > 0 && Boolean(loan.ref),
+  );
+  const byRef = new Map(
+    movements
+      .filter((row) => row.loanDisbursementRef)
+      .map((row) => [row.loanDisbursementRef as string, row]),
+  );
+
+  let next = [...movements];
+  for (const loan of wanted) {
+    const lineRef = loanDisbursementMovementRef(loan.ref);
+    const valueDate = loanDisbursementIsoDate(loan);
+    if (!valueDate) continue;
+    const capital = Number(loan.capital) || 0;
+    const isRenewal = /renovaci[oó]n/i.test(loan.notes || "");
+    const patch: BankMovement = {
+      ref: lineRef,
+      accountRef,
+      period: periodFromIso(valueDate),
+      description: `Desembolso Nequi · ${isRenewal ? "Renovación" : "Préstamo"} · ${loan.ref} · ${loan.client}`,
+      valueDate,
+      opDate: valueDate,
+      thirdParty: loan.client,
+      debit: 0,
+      credit: capital,
+      category: "prestamo_ruta",
+      loanDisbursementRef: lineRef,
+      inExtract: true,
+      reconciled: false,
+      manual: true,
+    };
+    const existing = byRef.get(lineRef) ?? next.find((row) => row.ref === lineRef);
+    if (existing) {
+      next = next.map((row) =>
+        row.ref === existing.ref || row.loanDisbursementRef === lineRef
+          ? {
+              ...row,
+              ...patch,
+              ref: existing.ref,
+              reconciled: existing.reconciled,
+            }
+          : row,
+      );
+    } else {
+      next = [patch, ...next];
+    }
+  }
+
   return next;
 }
 

@@ -17,6 +17,7 @@ import {
   type ClientRow,
   type LoanRow,
 } from "@/lib/mock-data";
+import { markLoanFundedByEfectivo, markLoanFundedByNequi } from "@/lib/nequi-pool";
 
 export type StreetClientDraft = {
   name: string;
@@ -39,6 +40,8 @@ export type QuickLoanDraft = {
   termMonths: LoanTermMonths;
   /** Si el supervisor elige ruta, se asegura el cliente en esa ruta. */
   routeName?: string;
+  /** Origen del desembolso. Por defecto Nequi (supervisor/admin). */
+  fundedBy?: "nequi" | "efectivo";
 };
 
 export const QUICK_INTEREST_PCT = [5, 10, 15, 20] as const;
@@ -99,7 +102,7 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
   const termLabel =
     LOAN_TERM_OPTIONS.find((item) => item.id === draft.termMonths)?.label ?? `${draft.termMonths} mes`;
 
-  return syncLoan(
+  const loan = syncLoan(
     {
       ref,
       clientRef: client.ref,
@@ -125,6 +128,9 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
     },
     undefined,
   ) as LoanRow;
+
+  if (draft.fundedBy === "efectivo") return markLoanFundedByEfectivo(loan);
+  return markLoanFundedByNequi(loan);
 }
 
 export function interestFromPct(capital: number, pct: number) {

@@ -14,11 +14,12 @@ import {
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
-import { evidenceForMirror } from "@/lib/payment-evidence";
+import { evidenceForMirror, evidenceHasPreview } from "@/lib/payment-evidence";
 import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
 import {
   rememberPaymentEvidence,
   resolvePaymentEvidence,
+  withPaymentEvidence,
 } from "@/lib/payment-evidence-store";
 
 export type PaymentMirrorRow = {
@@ -197,7 +198,11 @@ export function mergePaymentsByRef(local: PaymentRow[], remote: PaymentRow[]): {
       ...remoteRow,
       client: preferDisplay(remoteRow.client, localRow.client),
       collector: preferDisplay(remoteRow.collector, localRow.collector),
-      evidence: resolvePaymentEvidence(localRow) ?? resolvePaymentEvidence(remoteRow),
+      evidence:
+        resolvePaymentEvidence(localRow) ??
+        resolvePaymentEvidence(remoteRow) ??
+        remoteRow.evidence ??
+        localRow.evidence,
       gps: localRow.gps ?? remoteRow.gps,
       idempotencyKey: localRow.idempotencyKey ?? remoteRow.idempotencyKey,
     };
@@ -311,24 +316,25 @@ export async function persistPaymentToSupabase(
   if (typeof window === "undefined") {
     return { ok: true, skipped: true, reason: "ssr" };
   }
+  const payload = withPaymentEvidence(payment);
   try {
     const res = await fetch("/api/payments/mirror", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ payment }),
+      body: JSON.stringify({ payment: payload }),
       keepalive: true,
     });
     const body = (await res.json()) as MirrorPaymentResult & { error?: string };
     if (!res.ok || !body.ok) {
-      enqueueMirrorPayment(payment);
+      enqueueMirrorPayment(payload);
       return { ok: false, error: body.error || `http_${res.status}` };
     }
     if (!body.skipped) {
-      dequeueMirrorPayment(payment.ref);
+      dequeueMirrorPayment(payload.ref);
     }
     return body;
   } catch (err) {
-    enqueueMirrorPayment(payment);
+    enqueueMirrorPayment(payload);
     return {
       ok: false,
       error: err instanceof Error ? err.message : "mirror_network_error",
@@ -345,11 +351,12 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
   let flushed = 0;
   const left: PaymentRow[] = [];
   for (const payment of queue) {
+    const payload = withPaymentEvidence(payment);
     try {
       const res = await fetch("/api/payments/mirror", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ payment }),
+        body: JSON.stringify({ payment: payload }),
       });
       const body = (await res.json()) as {
         ok?: boolean;
@@ -364,10 +371,10 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
         // Basura irrecuperable: no reintentar.
         flushed += 1;
       } else {
-        left.push(payment);
+        left.push(payload);
       }
     } catch {
-      left.push(payment);
+      left.push(payload);
     }
   }
   writeMirrorQueue(left);
@@ -411,7 +418,7 @@ export async function reconcileLocalPaymentsToRemote(): Promise<{
     let pushed = 0;
     let failed = 0;
     for (const payment of missing) {
-      const result = await persistPaymentToSupabase(payment);
+      const result = await persistPaymentToSupabase(withPaymentEvidence(payment));
       if (result.ok && !("skipped" in result && result.skipped)) {
         pushed += 1;
       } else if (!result.ok) {
@@ -421,6 +428,59 @@ export async function reconcileLocalPaymentsToRemote(): Promise<{
     return { pushed, failed, missing: missing.length };
   } catch {
     return { pushed: 0, failed: local.length, missing: local.length };
+  }
+}
+
+/**
+ * Sube constancias (previewUrl) que quedaron solo en este dispositivo.
+ * Sin esto el celular ve la foto Nequi y el PC no (mismo link Vercel).
+ */
+export async function reconcilePaymentEvidenceToRemote(): Promise<{
+  pushed: number;
+  failed: number;
+}> {
+  if (typeof window === "undefined") {
+    return { pushed: 0, failed: 0 };
+  }
+
+  const local = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, [])
+    .filter((row) => row?.ref)
+    .map(withPaymentEvidence)
+    .filter((row) => evidenceHasPreview(row.evidence));
+  if (!local.length) return { pushed: 0, failed: 0 };
+
+  try {
+    const res = await fetch("/api/payments", { method: "GET", cache: "no-store" });
+    const body = (await res.json()) as {
+      ok?: boolean;
+      payments?: PaymentMirrorRow[];
+      skipped?: boolean;
+    };
+    if (!res.ok || !body.ok || body.skipped) {
+      return { pushed: 0, failed: 0 };
+    }
+
+    const remoteByRef = new Map(
+      (body.payments ?? []).map((row) => [row.ref, row] as const),
+    );
+
+    let pushed = 0;
+    let failed = 0;
+    for (const payment of local) {
+      const remote = remoteByRef.get(payment.ref);
+      const remoteEvidence = Array.isArray(remote?.evidence) ? remote.evidence : undefined;
+      if (evidenceHasPreview(remoteEvidence)) continue;
+
+      const result = await persistPaymentToSupabase(payment);
+      if (result.ok && !("skipped" in result && result.skipped)) {
+        pushed += 1;
+      } else if (!result.ok) {
+        failed += 1;
+      }
+    }
+    return { pushed, failed };
+  } catch {
+    return { pushed: 0, failed: local.length };
   }
 }
 

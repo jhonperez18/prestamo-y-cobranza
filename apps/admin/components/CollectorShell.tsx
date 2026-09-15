@@ -181,6 +181,7 @@ export function CollectorShell({ session, onLogout }: Props) {
             miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
             dayExpenseDrafts: next.dayExpenseDrafts,
             dayCloses: next.dayCloses,
+            loans: next.loans,
           }),
         );
       }
@@ -376,6 +377,22 @@ export function CollectorShell({ session, onLogout }: Props) {
         ),
       });
     }
+    writeDemoJson(
+      DEMO_BANK_MOVEMENTS_KEY,
+      syncBankLedger({
+        payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, payments),
+        movements: normalizeBankMovements(
+          readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
+        ),
+        accounts: ensureBankAccounts(
+          readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
+        ),
+        miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
+        dayExpenseDrafts,
+        dayCloses,
+        loans: nextLoans,
+      }),
+    );
     showToast(
       `Nuevo préstamo ${newRef}: capital ${money(result.created.capital)} + 20% · total ${money(result.created.total ?? 0)} · 1 mes.`,
     );
@@ -387,7 +404,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       showToast("Cliente no encontrado.");
       return;
     }
-    const loan = buildQuickLoan(draft, client, loans);
+    const loan = buildQuickLoan({ ...draft, fundedBy: "efectivo" }, client, loans);
     if (!loan) {
       showToast("Revise capital, interés, tiempo y frecuencia.");
       return;
@@ -419,6 +436,22 @@ export function CollectorShell({ session, onLogout }: Props) {
     queueLoanMirror(loan);
     const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
     if (mirroredClient) queueClientMirror(mirroredClient);
+    writeDemoJson(
+      DEMO_BANK_MOVEMENTS_KEY,
+      syncBankLedger({
+        payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, payments),
+        movements: normalizeBankMovements(
+          readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
+        ),
+        accounts: ensureBankAccounts(
+          readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
+        ),
+        miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
+        dayExpenseDrafts,
+        dayCloses,
+        loans: nextLoans,
+      }),
+    );
     showToast(`Préstamo ${loan.ref} creado · cuota ${money(loan.installment ?? 0)}.`);
   }
 
@@ -478,6 +511,7 @@ export function CollectorShell({ session, onLogout }: Props) {
         miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
         dayExpenseDrafts: nextDrafts,
         dayCloses: loadDemoDayCloses<CollectorDayCloseRecord>(),
+        loans,
       }),
     );
 
@@ -545,6 +579,7 @@ export function CollectorShell({ session, onLogout }: Props) {
         miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
         dayExpenseDrafts: nextDrafts,
         dayCloses: nextCloses,
+        loans,
       }),
     );
 

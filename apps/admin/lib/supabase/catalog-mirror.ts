@@ -193,6 +193,11 @@ export function mirrorToLoanRow(row: LoanMirrorRow): LoanRow | null {
     schedule: row.schedule || undefined,
     collectionAlerts: Number(row.collection_alerts) || 0,
     termsPending: Boolean(row.terms_pending),
+    fundedBy: row.notes?.includes("[[fb:nequi]]")
+      ? "nequi"
+      : row.notes?.includes("[[fb:efectivo]]")
+        ? "efectivo"
+        : undefined,
   };
 }
 

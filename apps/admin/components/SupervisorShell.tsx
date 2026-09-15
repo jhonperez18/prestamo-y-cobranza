@@ -138,6 +138,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
             miscPayments: readDemoJson(DEMO_MISC_PAYMENTS_KEY, []),
             dayExpenseDrafts: next.dayExpenseDrafts,
             dayCloses: next.dayCloses,
+            loans: next.loans,
           }),
         );
       }
@@ -286,6 +287,22 @@ export function SupervisorShell({ session, onLogout }: Props) {
     queueLoanMirror(loan);
     const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
     if (mirroredClient) queueClientMirror(mirroredClient);
+    writeDemoJson(
+      DEMO_BANK_MOVEMENTS_KEY,
+      syncBankLedger({
+        payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, payments),
+        movements: normalizeBankMovements(
+          readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
+        ),
+        accounts: ensureBankAccounts(
+          readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
+        ),
+        miscPayments: readDemoJson(DEMO_MISC_PAYMENTS_KEY, []),
+        dayExpenseDrafts,
+        dayCloses,
+        loans: nextLoans,
+      }),
+    );
     showToast(`Préstamo ${loan.ref} creado · cuota ${money(loan.installment ?? 0)}.`);
   }
 

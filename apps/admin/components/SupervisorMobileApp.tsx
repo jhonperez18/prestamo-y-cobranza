@@ -5,7 +5,7 @@ import { Pill } from "@/components/ui";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import { CollectorClosedDayReview } from "@/components/CollectorClosedDayReview";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
-import { buildLoanReport } from "@/lib/loan-report";
+import { buildLoanReport, shareLoanFichaWhatsApp } from "@/lib/loan-report";
 import { routeCoverageSummaries } from "@/lib/collector-preview";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
@@ -42,6 +42,7 @@ import {
 } from "@/lib/collection-alerts";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
+import { nequiAcumuladoNet, loanDisbursementSource, loanDisbursementSourceLabel } from "@/lib/nequi-pool";
 import {
   normalizePaymentMethod,
   paymentMethodLabel,
@@ -90,7 +91,7 @@ type Props = {
   onLogout?: () => void;
 };
 
-type SupervisorView = "inicio" | "planilla" | "caja" | "nequi" | "nuevo" | "clientes";
+type SupervisorView = "inicio" | "planilla" | "caja" | "nequi" | "nuevo" | "clientes" | "prestamos";
 type NuevoMode = "menu" | "cliente" | "prestamo";
 type RouteDetailMode =
   | "totales"
@@ -206,7 +207,7 @@ function RouteBoardCard({
             <strong>{row.collectorName}</strong>
           </div>
           <div className={`supervisor-caja-hero is-row${mode === "nequi" ? " is-nequi" : ""}`}>
-            <span>{mode === "nequi" ? "Nequi" : "Saldo"}</span>
+            {mode === "nequi" ? null : <span>Saldo</span>}
             <b>
               {money(mode === "nequi" ? row.cobradoNequi : row.enCaja, { symbol: false })}
             </b>
@@ -481,9 +482,20 @@ function SupervisorClientFicha({
     <div className="supervisor-client-ficha">
       <div className="supervisor-mobile-detail-head">
         <h3>{report.clientName}</h3>
-        <button type="button" className="collector-mobile-pay-link is-back" onClick={onBack}>
-          volver
-        </button>
+        <div className="supervisor-ficha-head-actions">
+          <button
+            type="button"
+            className="collector-mobile-pay-link is-share"
+            onClick={() => {
+              void shareLoanFichaWhatsApp(report);
+            }}
+          >
+            Compartir
+          </button>
+          <button type="button" className="collector-mobile-pay-link is-back" onClick={onBack}>
+            volver
+          </button>
+        </div>
       </div>
 
       <div className="supervisor-client-ficha-block">
@@ -644,6 +656,9 @@ export function SupervisorMobileApp({
   const [planillaRouteFilter, setPlanillaRouteFilter] = useState<string | null>(null);
   const [clientesRouteFilter, setClientesRouteFilter] = useState<string | null>(null);
   const [clientesLoanClientRef, setClientesLoanClientRef] = useState<string | null>(null);
+  /** Ficha de un préstamo concreto desde historial «Ver préstamos». */
+  const [prestamoFichaRef, setPrestamoFichaRef] = useState<string | null>(null);
+  const [prestamosSearch, setPrestamosSearch] = useState("");
 
   const coverage = useMemo(
     () => routeCoverageSummaries(collectors, routes, payments, clients, assignments, today),
@@ -802,6 +817,22 @@ export function SupervisorMobileApp({
     return { date: todayDisplay, items, total };
   }, [paymentsWithEvidence, today, todayDisplay]);
 
+  /** Total Nequi acumulado = cobros Nequi − capitales desembolsados (préstamo/renovación). */
+  const nequiAcumulado = useMemo(() => {
+    const refs = liquidaciones
+      .map((row) => row.collectorRef)
+      .filter((ref): ref is string => Boolean(ref));
+    return nequiAcumuladoNet({
+      payments: paymentsWithEvidence,
+      loans,
+      collectors,
+      collectorRefs: refs,
+    });
+  }, [liquidaciones, collectors, paymentsWithEvidence, loans]);
+
+  /** Suma Nequi solo de hoy (los cobradores de la lista). */
+  const nequiHoyTotal = totals.cobradoNequi;
+
   const openRoute = liquidaciones.find((row) => row.routeRef === openRouteRef) ?? null;
   const openAssignments = useMemo(
     () =>
@@ -907,6 +938,10 @@ export function SupervisorMobileApp({
       setClientesRouteFilter(null);
       setClientesLoanClientRef(null);
     }
+    if (next !== "prestamos") {
+      setPrestamoFichaRef(null);
+      setPrestamosSearch("");
+    }
     setView(next);
   }
 
@@ -993,6 +1028,32 @@ export function SupervisorMobileApp({
     return buildLoanReport(clientesLoanSynced, clientesLoanClient, payments, assignments);
   }, [assignments, clientesLoanClient, clientesLoanSynced, payments]);
   const clientesDetailOpen = Boolean(clientesLoanClientRef);
+
+  const prestamosHistorial = useMemo(() => {
+    const sorted = [...loans].sort((a, b) => {
+      const da = displayToIso(a.date) || a.date || "";
+      const db = displayToIso(b.date) || b.date || "";
+      return db.localeCompare(da) || b.ref.localeCompare(a.ref);
+    });
+    const q = prestamosSearch.trim().toLowerCase();
+    if (!q) return sorted;
+    return sorted.filter((loan) => {
+      const hay = `${loan.client} ${loan.ref} ${loan.date} ${loan.clientRef || ""}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [loans, prestamosSearch]);
+
+  const prestamoFichaLoan = prestamoFichaRef
+    ? loans.find((row) => row.ref === prestamoFichaRef) ?? null
+    : null;
+  const prestamoFichaClient = prestamoFichaLoan
+    ? clients.find((row) => row.ref === prestamoFichaLoan.clientRef) ?? null
+    : null;
+  const prestamoPdfReport = useMemo(() => {
+    if (!prestamoFichaLoan || !prestamoFichaClient) return null;
+    const synced = syncLoan(prestamoFichaLoan, payments) as LoanRow;
+    return buildLoanReport(synced, prestamoFichaClient, payments, assignments);
+  }, [assignments, payments, prestamoFichaClient, prestamoFichaLoan]);
 
   const nuevoRoute = liquidaciones.find((row) => row.routeRef === nuevoRouteRef) ?? null;
 
@@ -1163,7 +1224,7 @@ export function SupervisorMobileApp({
         <button
           type="button"
           className={
-            view === "nuevo"
+            view === "nuevo" || view === "prestamos"
               ? "supervisor-mobile-kpi is-nuevo on"
               : "supervisor-mobile-kpi is-nuevo"
           }
@@ -1556,16 +1617,12 @@ export function SupervisorMobileApp({
         </section>
       ) : view === "nequi" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
-          <div className="supervisor-day-boards" aria-label="Total Nequi">
+          <div className="supervisor-day-boards" aria-label="Total Nequi acumulado">
             <div className="supervisor-day-board is-nequi supervisor-day-board-wide is-total-row">
               <div className="supervisor-day-board-copy">
-                <span>Total Nequi</span>
-                <em>
-                  {liquidaciones.length} cobrador
-                  {liquidaciones.length === 1 ? "" : "es"}
-                </em>
+                <span>Total acumulado</span>
               </div>
-              <b>{money(totals.cobradoNequi, { symbol: false })}</b>
+              <b>{money(nequiAcumulado, { symbol: false })}</b>
             </div>
           </div>
 
@@ -1587,6 +1644,24 @@ export function SupervisorMobileApp({
               ))}
             </div>
           )}
+
+          <div
+            className="supervisor-day-boards supervisor-nequi-day-total"
+            aria-label="Total Nequi del día"
+          >
+            <div className="supervisor-day-board is-nequi supervisor-day-board-wide is-nequi-hoy">
+              <div className="supervisor-day-board-copy">
+                <span>Total del día</span>
+                <em>
+                  {liquidaciones.length} cobrador
+                  {liquidaciones.length === 1 ? "" : "es"} · hoy
+                </em>
+              </div>
+              <div className="supervisor-caja-hero is-row is-nequi">
+                <b>{money(nequiHoyTotal, { symbol: false })}</b>
+              </div>
+            </div>
+          </div>
 
           <h3>Registro Nequi</h3>
           {nequiRegisterToday.items.length === 0 ? (
@@ -1626,7 +1701,16 @@ export function SupervisorMobileApp({
         <section className="supervisor-mobile-section">
           {nuevoMode === "menu" ? (
             <>
-              <h3>Nuevo</h3>
+              <div className="supervisor-mobile-detail-head">
+                <h3>Nuevo</h3>
+                <button
+                  type="button"
+                  className="collector-mobile-pay-link"
+                  onClick={() => goToView("prestamos")}
+                >
+                  Ver préstamos
+                </button>
+              </div>
               {nuevoMsg ? <p className="supervisor-nuevo-msg">{nuevoMsg}</p> : null}
               <div className="supervisor-nuevo-menu">
                 <button
@@ -1768,25 +1852,34 @@ export function SupervisorMobileApp({
             <>
               <div className="supervisor-mobile-detail-head">
                 <h3>Nuevo préstamo</h3>
-                <button
-                  type="button"
-                  className="collector-mobile-pay-link is-back"
-                  onClick={() => {
-                    if (nuevoLoanClientRef) {
-                      setNuevoLoanClientRef(null);
-                      return;
-                    }
-                    if (nuevoRouteRef) {
-                      setNuevoRouteRef(null);
-                      setNuevoClientSearch("");
-                      return;
-                    }
-                    resetNuevoFlow();
-                    setNuevoMode("menu");
-                  }}
-                >
-                  atrás
-                </button>
+                <div className="supervisor-prestamos-head-actions">
+                  <button
+                    type="button"
+                    className="collector-mobile-pay-link"
+                    onClick={() => goToView("prestamos")}
+                  >
+                    Ver préstamos
+                  </button>
+                  <button
+                    type="button"
+                    className="collector-mobile-pay-link is-back"
+                    onClick={() => {
+                      if (nuevoLoanClientRef) {
+                        setNuevoLoanClientRef(null);
+                        return;
+                      }
+                      if (nuevoRouteRef) {
+                        setNuevoRouteRef(null);
+                        setNuevoClientSearch("");
+                        return;
+                      }
+                      resetNuevoFlow();
+                      setNuevoMode("menu");
+                    }}
+                  >
+                    atrás
+                  </button>
+                </div>
               </div>
               {!onCreateQuickLoan ? (
                 <p className="ficha-empty">No hay permiso para crear préstamos desde esta vista.</p>
@@ -1908,6 +2001,85 @@ export function SupervisorMobileApp({
                     </ul>
                   )}
                 </>
+              )}
+            </>
+          )}
+        </section>
+      ) : view === "prestamos" ? (
+        <section className="supervisor-mobile-section">
+          {prestamoPdfReport ? (
+            <SupervisorClientFicha
+              report={prestamoPdfReport}
+              onBack={() => setPrestamoFichaRef(null)}
+            />
+          ) : (
+            <>
+              <div className="supervisor-mobile-detail-head">
+                <h3>Préstamos</h3>
+                <button
+                  type="button"
+                  className="collector-mobile-pay-link is-back"
+                  onClick={() => goToView("nuevo")}
+                >
+                  volver
+                </button>
+              </div>
+              <label className="quick-loan-field supervisor-nuevo-search supervisor-prestamos-search">
+                <span className="sr-only">Buscar cliente</span>
+                <input
+                  value={prestamosSearch}
+                  onChange={(event) => setPrestamosSearch(event.target.value)}
+                  placeholder="Buscar cliente, ref o fecha"
+                  autoFocus
+                />
+              </label>
+              {prestamosHistorial.length === 0 ? (
+                <p className="ficha-empty">
+                  {prestamosSearch.trim()
+                    ? "No hay préstamos con ese filtro."
+                    : "Sin préstamos registrados."}
+                </p>
+              ) : (
+                <ul
+                  className="supervisor-mobile-list is-prestamos-hist"
+                  aria-label="Historial de préstamos"
+                >
+                  <li className="is-head" aria-hidden>
+                    <span className="is-client">Cliente</span>
+                    <span className="is-ref">Ref</span>
+                    <span className="is-date">Fecha</span>
+                    <span className="is-origin">Origen</span>
+                    <span className="is-amount">Monto</span>
+                  </li>
+                  {prestamosHistorial.map((loan) => {
+                    const origin = loanDisbursementSource(loan);
+                    const originClass =
+                      origin === "nequi"
+                        ? "is-nequi"
+                        : origin === "efectivo"
+                          ? "is-efectivo"
+                          : "is-unknown";
+                    return (
+                      <li key={loan.ref} className={originClass}>
+                        <button
+                          type="button"
+                          className={`supervisor-prestamo-hist-row ${originClass}`}
+                          onClick={() => setPrestamoFichaRef(loan.ref)}
+                        >
+                          <strong className="is-client">{loan.client}</strong>
+                          <span className="is-ref">{loan.ref}</span>
+                          <span className="is-date">{loan.date}</span>
+                          <em className={`is-origin ${originClass}`}>
+                            {loanDisbursementSourceLabel(origin)}
+                          </em>
+                          <b className={`is-amount ${originClass}`}>
+                            {money(loan.capital || loan.total || 0, { symbol: false })}
+                          </b>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
               )}
             </>
           )}

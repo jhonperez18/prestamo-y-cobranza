@@ -10,6 +10,7 @@ import {
   flushPaymentMirrorQueue,
   pullRemotePaymentsIntoDemo,
   reconcileLocalPaymentsToRemote,
+  reconcilePaymentEvidenceToRemote,
 } from "@/lib/supabase/payment-mirror";
 import {
   flushCatalogMirrorQueues,
@@ -63,6 +64,8 @@ export function useOperationalDemoSync(
       await flushPaymentMirrorQueue();
       // Antes del pull: cualquier cobro solo-en-este-PC debe llegar a la nube.
       await reconcileLocalPaymentsToRemote();
+      // Constancias Nequi/firma que quedaron solo en localStorage de este aparato.
+      await reconcilePaymentEvidenceToRemote();
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
       // CIE / gastos / planilla huérfanos → misma nube (saldo de rutas).

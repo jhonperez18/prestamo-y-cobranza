@@ -6,6 +6,7 @@ import {
   type PayFrequency,
 } from "@/lib/loan-preview";
 import type { LoanRow } from "@/lib/mock-data";
+import { markLoanFundedByNequi } from "@/lib/nequi-pool";
 
 export const RENEWAL_INTEREST_RATE = 0.2;
 export const RENEWAL_TERM_MONTHS = 1 as const;
@@ -74,7 +75,7 @@ export function buildRenewalLoans(
       : `Cerrado por renovación → ${newRef}`,
   };
 
-  const created: LoanRow = {
+  const created: LoanRow = markLoanFundedByNequi({
     ref: newRef,
     clientRef: source.clientRef,
     client: source.client,
@@ -95,7 +96,7 @@ export function buildRenewalLoans(
     installment: preview.installment,
     schedule: preview.schedule,
     notes: `Renovación de ${source.ref} · capital ${capital} + 20% (${interest}) · 1 mes`,
-  };
+  });
 
   return { closed, created };
 }

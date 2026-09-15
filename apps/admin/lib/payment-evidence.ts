@@ -247,17 +247,45 @@ export function buildSignatureEvidence(dataUrl: string, meta: {
   };
 }
 
-/** Evidencia liviana para mirror/DB (sin data URL). */
+/** True si alguna pieza trae la imagen real (data URL / URL firmada). */
+export function evidenceHasPreview(evidence?: PaymentEvidenceRef[]) {
+  return Boolean(evidence?.some((row) => Boolean(row.previewUrl?.trim())));
+}
+
+/**
+ * Prefiere la evidencia que trae foto real; si ninguna, la que tenga refs.
+ * Evita que un pull remoto (solo fileId) pise la constancia del celular.
+ */
+export function preferRicherEvidence(
+  a?: PaymentEvidenceRef[],
+  b?: PaymentEvidenceRef[],
+): PaymentEvidenceRef[] | undefined {
+  if (evidenceHasPreview(a)) return a;
+  if (evidenceHasPreview(b)) return b;
+  if (a?.length) return a;
+  if (b?.length) return b;
+  return undefined;
+}
+
+/**
+ * Evidencia para mirror/DB.
+ * Hasta tener bucket Storage, se incluye `previewUrl` (JPEG comprimido)
+ * para que PC y celular vean la misma constancia Nequi.
+ */
 export function evidenceForMirror(evidence?: PaymentEvidenceRef[]): PaymentEvidenceRef[] | undefined {
   if (!evidence?.length) return undefined;
-  return evidence.map((row) => ({
-    id: row.id,
-    kind: row.kind,
-    fileId: row.fileId || row.id,
-    mime: row.mime,
-    byteSize: row.byteSize,
-    width: row.width,
-    height: row.height,
-    capturedAt: row.capturedAt,
-  }));
+  return evidence.map((row) => {
+    const previewUrl = row.previewUrl?.trim() || undefined;
+    return {
+      id: row.id,
+      kind: row.kind,
+      fileId: row.fileId || row.id,
+      ...(previewUrl ? { previewUrl } : {}),
+      mime: row.mime,
+      byteSize: row.byteSize,
+      width: row.width,
+      height: row.height,
+      capturedAt: row.capturedAt,
+    };
+  });
 }

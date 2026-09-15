@@ -3120,6 +3120,135 @@
     .supervisor-mobile-detail-head h3 {
       margin: 0;
     }
+    .supervisor-prestamos-head-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .supervisor-mobile-list.is-prestamos-hist {
+      gap: 0;
+      border: 1px solid #d9e4de;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .supervisor-prestamos-search {
+      margin: 0 0 8px;
+    }
+    .supervisor-prestamos-search input {
+      width: 100%;
+    }
+    .supervisor-mobile-list.is-prestamos-hist > li {
+      display: block;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-bottom: 1px solid #e7eee9;
+      border-radius: 0;
+      background: #fff;
+    }
+    .supervisor-mobile-list.is-prestamos-hist > li:last-child {
+      border-bottom: 0;
+    }
+    .supervisor-mobile-list.is-prestamos-hist > li.is-head {
+      display: grid;
+      grid-template-columns:
+        minmax(0, 1.4fr) minmax(3.2rem, 0.5fr) minmax(4.2rem, 0.65fr) minmax(3.6rem, 0.5fr) minmax(4rem, 0.65fr);
+      column-gap: 6px;
+      align-items: center;
+      padding: 5px 8px;
+      background: #f4f8f6;
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      color: #5b7268;
+    }
+    .supervisor-mobile-list.is-prestamos-hist > li.is-nequi {
+      background: #faf5ff;
+    }
+    .supervisor-mobile-list.is-prestamos-hist > li.is-efectivo {
+      background: #f3fbf7;
+    }
+    .supervisor-prestamo-hist-row {
+      width: 100%;
+      display: grid;
+      grid-template-columns:
+        minmax(0, 1.4fr) minmax(3.2rem, 0.5fr) minmax(4.2rem, 0.65fr) minmax(3.6rem, 0.5fr) minmax(4rem, 0.65fr);
+      column-gap: 6px;
+      align-items: center;
+      margin: 0;
+      padding: 6px 8px;
+      min-height: 0;
+      border: 0;
+      background: transparent;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      color: inherit;
+    }
+    .supervisor-prestamo-hist-row .is-client {
+      min-width: 0;
+      font-size: 12px;
+      font-weight: 750;
+      color: #111;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .supervisor-prestamo-hist-row .is-ref,
+    .supervisor-prestamo-hist-row .is-date {
+      font-size: 11px;
+      font-weight: 650;
+      color: #475569;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .supervisor-prestamo-hist-row .is-origin {
+      justify-self: start;
+      margin: 0;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 9px;
+      font-style: normal;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+      line-height: 1.3;
+    }
+    .supervisor-prestamo-hist-row .is-origin.is-nequi {
+      color: #5b3d8a;
+      background: #f1e9fb;
+      border: 1px solid #d4c0ef;
+    }
+    .supervisor-prestamo-hist-row .is-origin.is-efectivo {
+      color: #0f766e;
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+    }
+    .supervisor-prestamo-hist-row .is-origin.is-unknown {
+      color: #64748b;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+    }
+    .supervisor-prestamo-hist-row .is-amount {
+      justify-self: end;
+      font-size: 12px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      color: #14201b;
+      line-height: 1.2;
+    }
+    .supervisor-prestamo-hist-row .is-amount.is-nequi {
+      color: #5b3d8a;
+    }
+    .supervisor-prestamo-hist-row .is-amount.is-efectivo {
+      color: #0f766e;
+    }
     .supervisor-mobile-detail-meta {
       margin: 0 0 8px;
       font-size: 14px;
@@ -3591,6 +3720,22 @@
     .supervisor-clientes-table tbody tr.is-clickable:active {
       background: #eef5f1;
     }
+    .supervisor-ficha-head-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .collector-mobile-pay-link.is-share {
+      color: #0f766e;
+      border-color: #a7e0d4;
+      background: #ecfdf8;
+    }
+    .collector-mobile-pay-link.is-share:hover {
+      color: #0b6b5f;
+      border-color: #75d0c0;
+      background: #d9f7ef;
+    }
     .supervisor-client-ficha {
       display: flex;
       flex-direction: column;
@@ -3968,6 +4113,36 @@
     .supervisor-day-board.is-nequi span,
     .supervisor-day-board.is-nequi b {
       color: #5b3d8a;
+    }
+    .supervisor-day-board.is-nequi.is-total-row b {
+      color: #5b3d8a;
+      font-size: 26px;
+    }
+    .supervisor-day-board.is-nequi-hoy {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 14px;
+      background: #faf5ff;
+      border-color: #e4dcf3;
+    }
+    .supervisor-nequi-day-total {
+      margin-top: 10px;
+    }
+    .supervisor-day-board.is-nequi-hoy .supervisor-caja-hero.is-nequi {
+      flex-shrink: 0;
+      align-items: flex-end;
+      text-align: right;
+      padding: 6px 10px;
+      min-width: 7.5rem;
+    }
+    .supervisor-day-board.is-nequi-hoy .supervisor-caja-hero.is-nequi b {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #5b3d8a;
+      line-height: 1;
     }
     .supervisor-nequi-register {
       display: grid;

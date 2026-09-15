@@ -129,6 +129,7 @@ import {
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
 import { computeLoanFinancials, loanPaySummaryRows } from "@/lib/loan-balance";
 import { buildRenewalLoans } from "@/lib/loan-renew";
+import { markLoanFundedByNequi } from "@/lib/nequi-pool";
 import { buildPortfolioStats } from "@/lib/portfolio-stats";
 import {
   enrichPaymentMovement,
@@ -406,6 +407,7 @@ export function Workspace({
             miscPayments: readDemoJson(DEMO_MISC_PAYMENTS_KEY, []),
             dayExpenseDrafts: next.dayExpenseDrafts,
             dayCloses: next.dayCloses,
+            loans: next.loans,
           }),
         );
       }
@@ -445,9 +447,10 @@ export function Workspace({
         miscPayments,
         dayExpenseDrafts,
         dayCloses,
+        loans,
       }),
     );
-  }, [demoHydrated, payments, dayExpenseDrafts, dayCloses, bankAccounts, miscPayments]);
+  }, [demoHydrated, payments, dayExpenseDrafts, dayCloses, bankAccounts, miscPayments, loans]);
 
   useEffect(() => {
     if (!demoHydrated) return;
@@ -970,31 +973,33 @@ export function Workspace({
       return;
     }
     const ref = nextLoanCode(loans);
-    const row = syncLoan(
-      {
-        ref,
-        clientRef: client.ref,
-        client: `${client.name} ${client.lastName}`.trim(),
-        date: draft.date,
-        due: draft.due,
-        capital: draft.capital,
-        paid: 0,
-        balance: draft.total,
-        status: "Activo",
-        kind: "ok",
-        notes: draft.notes,
-        rate: draft.rate,
-        frequency: draft.frequency,
-        mode: draft.mode,
-        pact: draft.pact,
-        days: draft.days,
-        interest: draft.interest,
-        total: draft.total,
-        installment: draft.installment,
-        schedule: draft.schedule,
-      },
-      payments,
-    ) as LoanRow;
+    const row = markLoanFundedByNequi(
+      syncLoan(
+        {
+          ref,
+          clientRef: client.ref,
+          client: `${client.name} ${client.lastName}`.trim(),
+          date: draft.date,
+          due: draft.due,
+          capital: draft.capital,
+          paid: 0,
+          balance: draft.total,
+          status: "Activo",
+          kind: "ok",
+          notes: draft.notes,
+          rate: draft.rate,
+          frequency: draft.frequency,
+          mode: draft.mode,
+          pact: draft.pact,
+          days: draft.days,
+          interest: draft.interest,
+          total: draft.total,
+          installment: draft.installment,
+          schedule: draft.schedule,
+        },
+        payments,
+      ) as LoanRow,
+    );
     const nextClient: ClientRow = {
       ...client,
       total: client.total + draft.total,
@@ -1316,6 +1321,7 @@ export function Workspace({
         miscPayments,
         dayExpenseDrafts: nextDrafts,
         dayCloses: nextCloses,
+        loans,
       }),
     );
 
@@ -1350,6 +1356,7 @@ export function Workspace({
         miscPayments,
         dayExpenseDrafts: nextDrafts,
         dayCloses,
+        loans,
       }),
     );
 
@@ -1411,6 +1418,7 @@ export function Workspace({
         miscPayments,
         dayExpenseDrafts: nextDrafts,
         dayCloses: nextCloses,
+        loans,
       }),
     );
 

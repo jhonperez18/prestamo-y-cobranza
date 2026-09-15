@@ -79,6 +79,12 @@ export type LoanRow = {
    * Préstamo rápido / incompleto: opera normal, alerta en oficina para revisar o completar.
    */
   termsPending?: boolean;
+  /**
+   * Origen del desembolso:
+   * - nequi = supervisor/admin (resta Total acumulado Nequi)
+   * - efectivo = cobrador desde caja
+   */
+  fundedBy?: "nequi" | "efectivo";
 };
 
 export type PaymentRow = {

@@ -23,8 +23,10 @@ Detalle del camino backend: [`demo-to-backend.md`](demo-to-backend.md).
 | --- | --- |
 | **Efectivo** | Suma a la caja menor del cobrador (`En caja` / arrastre) |
 | **Nequi** | Ingreso del negocio (cuenta del dueño); **no** suma al saldo en mano del cobrador |
+| **Desembolso préstamo/renovación** (supervisor/admin) | Sale del pool Nequi (`fundedBy: nequi`); resta del **Total acumulado** y genera Haber `DSB-P-…` en banco |
 
 Regla dura: **si un número de plata no cuadra, se corrige desde `PG-`, no al revés.**
+Total Nequi acumulado = suma PG- Nequi − capitales con `fundedBy: nequi`.
 
 ---
 

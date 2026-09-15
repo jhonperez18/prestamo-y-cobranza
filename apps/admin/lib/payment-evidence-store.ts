@@ -6,7 +6,10 @@ import {
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
-import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
+import {
+  preferRicherEvidence,
+  type PaymentEvidenceRef,
+} from "@/lib/payment-evidence";
 import type { PaymentRow } from "@/lib/mock-data";
 
 export const DEMO_PAYMENT_EVIDENCE_KEY = "nexo-demo-payment-evidence";
@@ -21,13 +24,15 @@ function writeMap(map: EvidenceMap) {
   writeDemoJson(DEMO_PAYMENT_EVIDENCE_KEY, map);
 }
 
-/** Guarda evidencia por ref de pago (PG-…). */
+/** Guarda evidencia por ref de pago (PG-…). No pisa una foto real con metadata sola. */
 export function rememberPaymentEvidence(ref: string, evidence?: PaymentEvidenceRef[]) {
   const key = ref.trim();
   if (!key || typeof window === "undefined") return;
   if (!evidence?.length) return;
   const map = readMap();
-  map[key] = evidence;
+  const next = preferRicherEvidence(evidence, map[key]);
+  if (!next?.length) return;
+  map[key] = next;
   writeMap(map);
 }
 
@@ -38,12 +43,11 @@ export function storedEvidenceForPayment(ref: string): PaymentEvidenceRef[] | un
   return rows?.length ? rows : undefined;
 }
 
-/** Prefiere evidencia del pago; si falta, usa el sidecar. */
+/** Prefiere la evidencia más rica entre pago y sidecar. */
 export function resolvePaymentEvidence(
   payment: Pick<PaymentRow, "ref" | "evidence">,
 ): PaymentEvidenceRef[] | undefined {
-  if (payment.evidence?.length) return payment.evidence;
-  return storedEvidenceForPayment(payment.ref);
+  return preferRicherEvidence(payment.evidence, storedEvidenceForPayment(payment.ref));
 }
 
 export function withPaymentEvidence<T extends PaymentRow>(payment: T): T {

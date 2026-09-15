@@ -108,6 +108,7 @@ export function synchronizeOperationalState(
     miscPayments: input.miscPayments ?? [],
     dayExpenseDrafts: input.dayExpenseDrafts ?? [],
     dayCloses,
+    loans,
   });
 
   const assignments = input.assignments?.length

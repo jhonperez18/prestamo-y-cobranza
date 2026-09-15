@@ -11,6 +11,7 @@ import {
   repairMiscPaymentLinks,
   syncAllPaymentsToMovements,
   syncMiscPaymentsToMovements,
+  syncNequiLoanDisbursementsToMovements,
   type BankAccount,
   type BankMovement,
 } from "@/lib/bank";
@@ -20,7 +21,7 @@ import {
   type CollectorDayExpenseDraft,
 } from "@/lib/collector-day-close";
 import type { MiscPayment } from "@/lib/misc-payments";
-import type { PaymentRow } from "@/lib/mock-data";
+import type { LoanRow, PaymentRow } from "@/lib/mock-data";
 
 export function syncBankLedger(input: {
   payments: PaymentRow[];
@@ -29,6 +30,8 @@ export function syncBankLedger(input: {
   miscPayments: MiscPayment[];
   dayExpenseDrafts: CollectorDayExpenseDraft[];
   dayCloses: CollectorDayCloseRecord[];
+  /** Préstamos/renovaciones con fundedBy Nequi → Haber. */
+  loans?: LoanRow[];
 }): BankMovement[] {
   const accounts = ensureBankAccounts(input.accounts);
   const account = accounts.find((row) => row.active) ?? accounts[0] ?? null;
@@ -43,8 +46,13 @@ export function syncBankLedger(input: {
     normalizeBankMovements(withMisc),
     account?.ref,
   );
+  const withLoans = syncNequiLoanDisbursementsToMovements(
+    input.loans ?? [],
+    withExpenses,
+    account?.ref,
+  );
   // Último paso: los cobros nunca se desalinean de Ingresos.
-  return normalizeBankMovements(lockPaymentCobrosAsIncome(withExpenses, input.payments));
+  return normalizeBankMovements(lockPaymentCobrosAsIncome(withLoans, input.payments));
 }
 
 /** Aplica sync solo si el contenido cambió (corta bucles de setState). */

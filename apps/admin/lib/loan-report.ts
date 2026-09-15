@@ -112,6 +112,93 @@ export function formatLoanReportText(report: LoanReportDocument) {
   return lines.filter(Boolean).join("\n");
 }
 
+/** Texto de ficha para WhatsApp (misma info de pantalla, sin botón volver). */
+export function formatLoanFichaWhatsAppText(report: LoanReportDocument) {
+  const f = report.financials;
+  const m = (value: number) => money(value, { symbol: false });
+  const cobro = f.installment > 0 ? m(f.installment) : "—";
+  const cuotas =
+    f.installmentsTotal > 0
+      ? `${f.installmentsPaid} / ${f.installmentsTotal}`
+      : String(f.installmentsPaid);
+  const total = m(f.totalAgreement || report.loan.total || report.loan.capital + f.interestTerm);
+
+  const lines: string[] = [
+    `*${report.clientName.trim().toUpperCase()}*`,
+    `Préstamo ${report.loanRef}`,
+    "",
+    `Cédula: ${report.client?.document?.trim() || "—"}`,
+    `Teléfono: ${report.client?.phone?.trim() || "—"}`,
+    `Desembolso: ${report.loan.date || "—"}`,
+    `Vencimiento: ${report.loan.due || "—"}`,
+    `Valor cobro: ${cobro}`,
+    `Cuotas: ${cuotas}`,
+    `Capital: ${m(report.loan.capital)}`,
+    `Interés: ${m(f.interestTerm)}`,
+    `*Total a cobrar: ${total}*`,
+    "",
+    "*MOVIMIENTOS*",
+  ];
+
+  if (!report.movements.length) {
+    lines.push("Sin movimientos registrados.");
+  } else {
+    for (const row of report.movements) {
+      lines.push(
+        `${m(row.amount)} · ${row.paidDate || "—"} · ${row.paidTime || "—"} · ${row.method || "—"}`,
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    `Total préstamo: ${total}`,
+    `Ya pagado: ${m(f.paidTotal)}`,
+    `*Resta por pagar: ${m(f.balancePending)}*`,
+    "",
+    report.generatedLabel,
+  );
+
+  return lines.join("\n");
+}
+
+/** Celular Colombia → dígitos internacionales (57…). */
+export function phoneDigitsForWhatsApp(raw?: string | null) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("57") && digits.length >= 12) return digits;
+  if (digits.length === 10) return `57${digits}`;
+  if (digits.length === 12 && digits.startsWith("57")) return digits;
+  return digits;
+}
+
+export function whatsappFichaUrl(report: LoanReportDocument) {
+  const text = encodeURIComponent(formatLoanFichaWhatsAppText(report));
+  const phone = phoneDigitsForWhatsApp(report.client?.phone);
+  return phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
+}
+
+/** Abre WhatsApp con la ficha; si el celular tiene compartir nativo, lo usa primero. */
+export async function shareLoanFichaWhatsApp(report: LoanReportDocument) {
+  if (typeof window === "undefined") return;
+  const text = formatLoanFichaWhatsAppText(report);
+  const url = whatsappFichaUrl(report);
+
+  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    try {
+      await navigator.share({
+        title: `Ficha ${report.clientName}`,
+        text,
+      });
+      return;
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return;
+    }
+  }
+
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 export function downloadLoanReport(report: LoanReportDocument) {
   if (typeof window === "undefined") return;
   const text = formatLoanReportText(report);
