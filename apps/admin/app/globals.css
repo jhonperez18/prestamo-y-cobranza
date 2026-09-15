@@ -2992,16 +2992,29 @@
       border-bottom: 1px solid #e8efeb;
       background: #f7faf8;
     }
-    .supervisor-mobile-sheet-means > div {
+    .supervisor-mobile-sheet-means > div,
+    .supervisor-mobile-sheet-means > button.is-tap-means {
       display: grid;
       gap: 2px;
       min-width: 0;
       text-align: center;
+      margin: 0;
+      padding: 2px 0;
+      border: 0;
+      background: transparent;
+      font: inherit;
+      cursor: pointer;
+      border-radius: 4px;
     }
-    .supervisor-mobile-sheet-means > div:first-child {
+    .supervisor-mobile-sheet-means > button.is-tap-means:active {
+      background: #e8f1ec;
+    }
+    .supervisor-mobile-sheet-means > div:first-child,
+    .supervisor-mobile-sheet-means > button.is-tap-means:first-child {
       text-align: left;
     }
-    .supervisor-mobile-sheet-means > div:last-child {
+    .supervisor-mobile-sheet-means > div:last-child,
+    .supervisor-mobile-sheet-means > button.is-tap-means:last-child {
       text-align: right;
     }
     .supervisor-mobile-sheet-means span {
@@ -3023,16 +3036,8 @@
     .supervisor-mobile-sheet-means .is-pay-nequi b {
       color: #5b3d8a;
     }
-    .supervisor-mobile-sheet-row.is-cobrado.is-tap {
+    .supervisor-mobile-sheet-row.is-cobrado {
       justify-content: flex-start;
-    }
-    .supervisor-mobile-sheet-row.is-cobrado.is-tap span em {
-      display: inline;
-      margin-left: 6px;
-      font-size: 10px;
-      font-style: normal;
-      font-weight: 500;
-      color: #3d6b54;
     }
     .supervisor-mobile-sheet-row.is-hint span {
       font-size: 10px;

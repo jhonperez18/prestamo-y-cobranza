@@ -7,6 +7,7 @@ import { money, type PaymentRow } from "@/lib/mock-data";
 import {
   normalizePaymentMethod,
   paymentMethodLabel,
+  type PaymentMethod,
 } from "@/lib/payment-method";
 import { visitStatusKind, visitStatusLabel } from "@/lib/collector-mobile";
 
@@ -20,6 +21,8 @@ type Props = {
   payments: PaymentRow[];
   cobradoCount: number;
   visitTotal: number;
+  /** Si viene, el reporte de cobros solo muestra ese medio. */
+  methodFilter?: PaymentMethod;
   onBack: () => void;
 };
 
@@ -36,16 +39,29 @@ export function CollectorClosedDayReview({
   payments,
   cobradoCount,
   visitTotal,
+  methodFilter,
   onBack,
 }: Props) {
-  const cobros = visits.filter(
-    (row) => row.visitStatus === "cobrado" || Boolean(row.paymentRef),
-  );
+  const cobros = visits.filter((row) => {
+    if (!(row.visitStatus === "cobrado" || Boolean(row.paymentRef))) return false;
+    if (!methodFilter) return true;
+    const pay = paymentForVisit(row, payments);
+    if (!pay) return methodFilter === "efectivo";
+    return normalizePaymentMethod(pay.method) === methodFilter;
+  });
   const expensesTotal = expenses.reduce((sum, row) => sum + row.amount, 0);
+  const cobrosTotal = cobros.reduce((sum, item) => {
+    const pay = paymentForVisit(item, payments);
+    return sum + (pay?.amount ?? item.amountDue);
+  }, 0);
 
   const title =
     detail === "cobros"
-      ? "Recaudo del día"
+      ? methodFilter === "nequi"
+        ? "Cobros Nequi"
+        : methodFilter === "efectivo"
+          ? "Cobros en efectivo"
+          : "Recaudo del día"
       : detail === "gastos"
         ? "Gastos del día"
         : "Planilla cerrada";
@@ -53,7 +69,9 @@ export function CollectorClosedDayReview({
   const subtitle =
     detail === "gastos"
       ? dateLabel
-      : `${dateLabel} · ${cobradoCount}/${visitTotal} cobros`;
+      : detail === "cobros" && methodFilter
+        ? `${dateLabel} · ${cobros.length} cobro${cobros.length === 1 ? "" : "s"}`
+        : `${dateLabel} · ${cobradoCount}/${visitTotal} cobros`;
 
   return (
     <section className="collector-closed-review" aria-label={title}>
@@ -92,7 +110,11 @@ export function CollectorClosedDayReview({
 
       {detail === "cobros" ? (
         cobros.length === 0 ? (
-          <p className="collector-closed-review-empty">Sin cobros registrados.</p>
+          <p className="collector-closed-review-empty">
+            {methodFilter
+              ? `Sin cobros en ${paymentMethodLabel(methodFilter).toLowerCase()}.`
+              : "Sin cobros registrados."}
+          </p>
         ) : (
           <ul className="collector-closed-review-list">
             {cobros.map((item) => {
@@ -114,6 +136,10 @@ export function CollectorClosedDayReview({
                 </li>
               );
             })}
+            <li className="is-total">
+              <span>Total {methodFilter ? paymentMethodLabel(methodFilter).toLowerCase() : "cobrado"}</span>
+              <b>{money(cobrosTotal)}</b>
+            </li>
           </ul>
         )
       ) : null}

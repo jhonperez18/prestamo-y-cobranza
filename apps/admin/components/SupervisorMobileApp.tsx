@@ -41,6 +41,7 @@ import {
 } from "@/lib/collection-alerts";
 import { isoToDisplay, syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
+import type { PaymentMethod } from "@/lib/payment-method";
 import {
   money,
   catalogRoutes,
@@ -595,6 +596,7 @@ export function SupervisorMobileApp({
   const [view, setView] = useState<SupervisorView>("inicio");
   const [openRouteRef, setOpenRouteRef] = useState<string | null>(null);
   const [detailMode, setDetailMode] = useState<RouteDetailMode>("totales");
+  const [cobrosMethodFilter, setCobrosMethodFilter] = useState<PaymentMethod | null>(null);
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [nuevoName, setNuevoName] = useState("");
@@ -765,9 +767,15 @@ export function SupervisorMobileApp({
     [openRoute, today, dayCloses, dayExpenseDrafts],
   );
 
+  function openCobrosReport(method: PaymentMethod | null = null) {
+    setCobrosMethodFilter(method);
+    setDetailMode("cobros");
+  }
+
   function goToView(next: SupervisorView) {
     setOpenRouteRef(null);
     setDetailMode("totales");
+    setCobrosMethodFilter(null);
     setNuevoRouteRef(null);
     setNuevoMsg("");
     setNuevoMode("menu");
@@ -1061,7 +1069,11 @@ export function SupervisorMobileApp({
               payments={payments}
               cobradoCount={openRoute.done}
               visitTotal={openRoute.planilla}
-              onBack={() => setDetailMode("totales")}
+              methodFilter={cobrosMethodFilter ?? undefined}
+              onBack={() => {
+                setCobrosMethodFilter(null);
+                setDetailMode("totales");
+              }}
             />
           ) : detailMode === "totales" ? (
             <>
@@ -1070,33 +1082,40 @@ export function SupervisorMobileApp({
                   <span>Saldo inicial</span>
                   <b>{money(openRoute.saldoInicial, { symbol: false })}</b>
                 </div>
-                <button
-                  type="button"
-                  className="supervisor-mobile-sheet-row is-tap is-cobrado"
-                  onClick={() => setDetailMode("cobros")}
-                  aria-label="Ver cobros del día"
-                >
-                  <span>
-                    Cobrado hoy
-                    <em>· ver lista</em>
-                  </span>
-                </button>
+                <div className="supervisor-mobile-sheet-row is-cobrado">
+                  <span>Cobrado hoy</span>
+                </div>
                 <div
                   className="supervisor-mobile-sheet-means"
                   aria-label="Desglose por medio de pago"
                 >
-                  <div className="is-pay-efectivo">
+                  <button
+                    type="button"
+                    className="is-pay-efectivo is-tap-means"
+                    onClick={() => openCobrosReport("efectivo")}
+                    aria-label="Ver cobros en efectivo"
+                  >
                     <span>Efectivo</span>
                     <b>{money(openRoute.cobradoEfectivo, { symbol: false })}</b>
-                  </div>
-                  <div className="is-pay-nequi">
+                  </button>
+                  <button
+                    type="button"
+                    className="is-pay-nequi is-tap-means"
+                    onClick={() => openCobrosReport("nequi")}
+                    aria-label="Ver cobros Nequi"
+                  >
                     <span>Nequi</span>
                     <b>{money(openRoute.cobradoNequi, { symbol: false })}</b>
-                  </div>
-                  <div className="is-total-means">
+                  </button>
+                  <button
+                    type="button"
+                    className="is-total-means is-tap-means"
+                    onClick={() => openCobrosReport(null)}
+                    aria-label="Ver todos los cobros"
+                  >
                     <span>Total</span>
                     <b>{money(openRoute.cobradoHoy, { symbol: false })}</b>
-                  </div>
+                  </button>
                 </div>
                 <button
                   type="button"
@@ -1153,7 +1172,7 @@ export function SupervisorMobileApp({
                   type="button"
                   className="btn compact ghost"
                   disabled={openRoute.cobradoHoy <= 0}
-                  onClick={() => setDetailMode("cobros")}
+                  onClick={() => openCobrosReport(null)}
                 >
                   Ver cobros
                   {openRoute.cobradoHoy > 0
