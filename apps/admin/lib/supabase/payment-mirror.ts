@@ -208,6 +208,12 @@ export function mergePaymentsByRef(local: PaymentRow[], remote: PaymentRow[]): {
     };
     if (next.evidence?.length) rememberPaymentEvidence(next.ref, next.evidence);
     if (moneySignature(localRow) !== moneySignature(next)) changed = true;
+    if (
+      evidenceHasPreview(next.evidence) &&
+      !evidenceHasPreview(remoteRow.evidence)
+    ) {
+      changed = true;
+    }
     merged.push(next);
     localByRef.delete(remoteRow.ref);
   }
@@ -245,10 +251,16 @@ export async function mirrorPaymentToSupabase(
   const { error } = await client.from("payments").upsert(row, { onConflict: "ref" });
   if (error) {
     const msg = error.message || "";
+    // Columna evidence ausente (migración vieja): guarda el cobro sin foto.
+    // Si ya hay foto y falla evidence, NO fingir éxito: la cola debe reintentar.
     if (/evidence/i.test(msg)) {
+      const hadPreview = evidenceHasPreview(payment.evidence);
       const { evidence: _drop, ...withoutEvidence } = row;
       const retry = await client.from("payments").upsert(withoutEvidence, { onConflict: "ref" });
       if (retry.error) return { ok: false, error: retry.error.message };
+      if (hadPreview) {
+        return { ok: false, error: `evidence_upsert_failed: ${msg}` };
+      }
       return { ok: true };
     }
     return { ok: false, error: msg };
@@ -317,12 +329,15 @@ export async function persistPaymentToSupabase(
     return { ok: true, skipped: true, reason: "ssr" };
   }
   const payload = withPaymentEvidence(payment);
+  // `keepalive` tiene tope ~64KB: una constancia JPEG en base64 lo rompe
+  // y el cobro sube sin foto (PC ve "—", celular sí). Solo keepalive sin preview.
+  const useKeepalive = !evidenceHasPreview(payload.evidence);
   try {
     const res = await fetch("/api/payments/mirror", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ payment: payload }),
-      keepalive: true,
+      ...(useKeepalive ? { keepalive: true } : {}),
     });
     const body = (await res.json()) as MirrorPaymentResult & { error?: string };
     if (!res.ok || !body.ok) {
