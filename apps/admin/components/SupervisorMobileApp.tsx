@@ -41,7 +41,11 @@ import {
 } from "@/lib/collection-alerts";
 import { isoToDisplay, syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
-import type { PaymentMethod } from "@/lib/payment-method";
+import {
+  paymentMethodLabel,
+  paymentMethodToneClass,
+  type PaymentMethod,
+} from "@/lib/payment-method";
 import {
   money,
   catalogRoutes,
@@ -248,7 +252,7 @@ function PlanillaTable({
     index: number;
     clientName: string;
     saldo: number;
-    cuota: number;
+    method?: PaymentMethod | null;
     alertCount?: number;
     alertBadge?: string;
     alertTitle?: string;
@@ -264,7 +268,7 @@ function PlanillaTable({
             <th className="is-ruta">#</th>
             <th className="is-nombre">Nombre</th>
             <th className="is-num">Saldo</th>
-            <th className="is-num">Cuota</th>
+            <th className="is-metodo">Método</th>
             <th className="is-alert" aria-label="Alerta" />
             <th className="is-estado">Estado</th>
           </tr>
@@ -273,6 +277,7 @@ function PlanillaTable({
           {rows.map((row) => {
             const badge = row.alertBadge ?? "";
             const alertOn = Boolean(badge);
+            const method = row.method ?? null;
             return (
               <tr key={row.key}>
                 <td className="is-ruta">{row.index}</td>
@@ -280,8 +285,14 @@ function PlanillaTable({
                   {row.clientName}
                 </td>
                 <td className="is-num">{money(row.saldo, { symbol: false })}</td>
-                <td className="is-num">
-                  {row.cuota > 0 ? money(row.cuota, { symbol: false }) : "—"}
+                <td className="is-metodo">
+                  {method ? (
+                    <em className={`supervisor-planilla-method ${paymentMethodToneClass(method)}`}>
+                      {paymentMethodLabel(method)}
+                    </em>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="is-alert">
                   <span
@@ -1078,8 +1089,8 @@ export function SupervisorMobileApp({
           ) : detailMode === "totales" ? (
             <>
               <div className="supervisor-mobile-sheet" aria-label="Liquidación de caja">
-                <div className="supervisor-mobile-sheet-row">
-                  <span>Saldo inicial</span>
+                <div className="supervisor-mobile-sheet-row is-primary-row">
+                  <span className="is-primary-title">Saldo inicial</span>
                   <b>{money(openRoute.saldoInicial, { symbol: false })}</b>
                 </div>
                 <div
@@ -1087,9 +1098,9 @@ export function SupervisorMobileApp({
                   aria-label="Desglose por medio de pago"
                 >
                   <div className="is-title-means">
-                    <span>Cobrado</span>
-                    <b>hoy</b>
+                    <span className="is-primary-title">Cobrado hoy</span>
                   </div>
+                  <div className="is-means-spacer" aria-hidden />
                   <button
                     type="button"
                     className="is-pay-efectivo is-tap-means"
@@ -1120,23 +1131,31 @@ export function SupervisorMobileApp({
                 </div>
                 <button
                   type="button"
-                  className="supervisor-mobile-sheet-row is-tap is-gastos"
+                  className="supervisor-mobile-sheet-row is-tap is-gastos is-primary-row"
                   onClick={() => setDetailMode("gastos")}
                   aria-label="Ver reporte de gastos del día"
                 >
-                  <span>
-                    Gastos / consignación
-                    <em>{openRouteExpenses.length > 1 ? " · ver detalle" : " · ver"}</em>
-                  </span>
-                  <b>− {money(openRoute.gastosHoy, { symbol: false })}</b>
+                  <span className="is-primary-title">Gasto</span>
+                  <b>{money(openRoute.gastosHoy, { symbol: false })}</b>
                 </button>
-                <div className="supervisor-mobile-sheet-row is-total">
-                  <span>En caja</span>
-                  <b>{money(openRoute.enCaja, { symbol: false })}</b>
-                </div>
-                <div className="supervisor-mobile-sheet-row is-muted is-hint">
-                  <span>En caja = inicial + efectivo − gastos (Nequi no suma)</span>
-                  <b aria-hidden> </b>
+                <div className="supervisor-mobile-cuadre" aria-label="Cuadre de caja">
+                  <div className="supervisor-mobile-cuadre-title is-primary-title">Cuadre</div>
+                  <div>
+                    <span>Saldo inicial</span>
+                    <b>{money(openRoute.saldoInicial, { symbol: false })}</b>
+                  </div>
+                  <div>
+                    <span>Efectivo</span>
+                    <b>{money(openRoute.cobradoEfectivo, { symbol: false })}</b>
+                  </div>
+                  <div>
+                    <span>Gasto</span>
+                    <b>{money(openRoute.gastosHoy, { symbol: false })}</b>
+                  </div>
+                  <div className="is-final">
+                    <span>Saldo final</span>
+                    <b>{money(openRoute.enCaja, { symbol: false })}</b>
+                  </div>
                 </div>
                 <div className="supervisor-mobile-sheet-row is-muted">
                   <span>Avance planilla</span>
@@ -1157,17 +1176,14 @@ export function SupervisorMobileApp({
                   disabled={openAssignments.length === 0}
                   onClick={() => setDetailMode("planilla")}
                 >
-                  Ver planilla
+                  Planilla
                 </button>
                 <button
                   type="button"
                   className="btn compact ghost"
                   onClick={() => setDetailMode("gastos")}
                 >
-                  Ver gastos
-                  {openRoute.gastosHoy > 0
-                    ? ` · ${money(openRoute.gastosHoy, { symbol: false })}`
-                    : ""}
+                  Gastos
                 </button>
                 <button
                   type="button"
@@ -1175,10 +1191,7 @@ export function SupervisorMobileApp({
                   disabled={openRoute.cobradoHoy <= 0}
                   onClick={() => openCobrosReport(null)}
                 >
-                  Ver cobros
-                  {openRoute.cobradoHoy > 0
-                    ? ` · ${money(openRoute.cobradoHoy, { symbol: false })}`
-                    : ""}
+                  Cobros
                 </button>
                 <button
                   type="button"
@@ -1186,7 +1199,7 @@ export function SupervisorMobileApp({
                   disabled={openRoute.newLoans.length + openRoute.renewals.length === 0}
                   onClick={() => setDetailMode("prestamos")}
                 >
-                  Ver préstamos
+                  Préstamos
                 </button>
               </div>
             </>

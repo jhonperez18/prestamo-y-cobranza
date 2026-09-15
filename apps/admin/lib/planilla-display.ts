@@ -14,6 +14,10 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { syncLoan } from "@/lib/loan-preview";
 import type { LoanRow, PaymentRow } from "@/lib/mock-data";
 import { todayIso } from "@/lib/daily-dispatch";
+import {
+  normalizePaymentMethod,
+  type PaymentMethod,
+} from "@/lib/payment-method";
 
 export function planillaVisitPaid(row: Pick<DailyCollectionAssignment, "visitStatus" | "paymentRef">) {
   return (
@@ -93,12 +97,25 @@ export function enrichSupervisorPlanillaRow(
   const alertCount = planillaLiveAlertCount(row, loan, payments, today);
   const cuota = planillaLiveCuota(row, loan, today);
   const saldo = loan?.balance ?? 0;
+  const pay =
+    (row.paymentRef
+      ? payments.find((entry) => entry.ref === row.paymentRef)
+      : undefined) ??
+    payments.find(
+      (entry) =>
+        entry.loanRef === row.loanRef &&
+        (entry.paidDate === today || entry.paidDate === row.dispatchDate),
+    );
+  const method: PaymentMethod | null = pay
+    ? normalizePaymentMethod(pay.method)
+    : null;
   return {
     key: `${row.itemId}-${row.collectorRef}-${row.dispatchDate}`,
     index,
     clientName: row.clientName,
     saldo,
     cuota,
+    method,
     alertCount,
     alertBadge: planillaAlertBadgeText(alertCount),
     alertTitle: planillaAlertTitle(alertCount),

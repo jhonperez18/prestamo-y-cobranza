@@ -1514,9 +1514,10 @@
     }
     .collector-closed-review-list.is-cobros-cols > li:not(.is-total) {
       display: grid;
-      grid-template-columns: minmax(0, 1.4fr) auto auto auto;
+      grid-template-columns: minmax(0, 1.35fr) minmax(40px, 0.55fr) minmax(72px, 0.9fr) minmax(76px, 0.95fr);
       align-items: center;
-      gap: 6px 8px;
+      column-gap: 12px;
+      row-gap: 4px;
     }
     .collector-closed-review-list.is-cobros-cols .is-name {
       min-width: 0;
@@ -1529,6 +1530,8 @@
       font-weight: 700;
       color: #334155;
       white-space: nowrap;
+      text-align: center;
+      justify-self: center;
     }
     .collector-closed-review-list.is-cobros-cols .is-method {
       margin: 0;
@@ -1539,6 +1542,8 @@
       font-weight: 700;
       line-height: 1.2;
       white-space: nowrap;
+      justify-self: center;
+      text-align: center;
     }
     .collector-closed-review-list.is-cobros-cols .is-method.is-pay-efectivo {
       color: #1f6b45;
@@ -1550,6 +1555,9 @@
     }
     .collector-closed-review-list.is-cobros-cols .is-cobro {
       justify-self: end;
+      text-align: right;
+      white-space: nowrap;
+      padding-left: 4px;
     }
     .collector-closed-review-list.is-cobros-cols > li.is-total {
       display: flex;
@@ -2980,16 +2988,20 @@
     button.supervisor-mobile-sheet-row.is-tap:active {
       background: #f3f7f5;
     }
-    .supervisor-mobile-sheet-row.is-gastos.is-tap span em {
-      display: block;
-      margin-top: 1px;
-      font-size: 10px;
-      font-style: normal;
-      font-weight: 500;
-      color: #7a3b3b;
-    }
     .supervisor-mobile-sheet-row.is-gastos.is-tap b {
       color: #b42318;
+    }
+    .supervisor-mobile-sheet .is-primary-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #111;
+      letter-spacing: 0.01em;
+      line-height: 1.15;
+    }
+    .supervisor-mobile-sheet-row.is-primary-row span.is-primary-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #111;
     }
     .supervisor-mobile-sheet-row span {
       font-size: 12px;
@@ -3028,10 +3040,10 @@
     }
     .supervisor-mobile-sheet-means {
       display: grid;
-      grid-template-columns: minmax(52px, 0.85fr) 1fr 1fr 1fr;
-      align-items: start;
-      gap: 6px;
-      padding: 6px 10px 8px;
+      grid-template-columns: minmax(72px, 1fr) repeat(4, minmax(0, 1fr));
+      align-items: center;
+      gap: 6px 8px;
+      padding: 8px 10px 9px;
       border-bottom: 1px solid #e8efeb;
       background: #f7faf8;
     }
@@ -3049,21 +3061,37 @@
       cursor: pointer;
       border-radius: 4px;
     }
+    .supervisor-mobile-sheet-means > div.is-means-spacer {
+      display: block;
+      padding: 0;
+      pointer-events: none;
+    }
     .supervisor-mobile-sheet-means > div.is-title-means {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: center;
+      align-self: center;
+      justify-self: start;
+      width: max-content;
+      max-width: 100%;
       text-align: left;
       cursor: default;
+      padding-top: 0;
+      transform: translateY(1px);
     }
     .supervisor-mobile-sheet-means > button.is-tap-means:active {
       background: #e8f1ec;
     }
     .supervisor-mobile-sheet-means > button.is-tap-means:last-child {
       text-align: right;
+      justify-items: end;
     }
     .supervisor-mobile-sheet-means span {
-      font-size: 10px;
-      font-weight: 600;
+      font-size: 11px;
+      font-weight: 700;
       color: #111;
-      letter-spacing: 0.02em;
+      letter-spacing: 0.01em;
     }
     .supervisor-mobile-sheet-means b {
       font-size: 13px;
@@ -3072,11 +3100,12 @@
       line-height: 1.15;
       color: #111;
     }
-    .supervisor-mobile-sheet-means .is-title-means b {
-      font-size: 12px;
-      font-weight: 700;
-      color: #3d5349;
+    .supervisor-mobile-sheet-means .is-title-means .is-primary-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #111;
       text-transform: none;
+      line-height: 1.15;
     }
     .supervisor-mobile-sheet-means .is-pay-efectivo b {
       color: #1f6b45;
@@ -3088,6 +3117,58 @@
       font-size: 10px;
       font-weight: 500;
       color: #6a7f75;
+    }
+    .supervisor-mobile-cuadre {
+      display: grid;
+      grid-template-columns: minmax(72px, 1fr) repeat(4, minmax(0, 1fr));
+      align-items: center;
+      gap: 6px 8px;
+      padding: 8px 10px 9px;
+      border-bottom: 1px solid #e8efeb;
+      background: #f7faf8;
+    }
+    .supervisor-mobile-cuadre-title,
+    .supervisor-mobile-cuadre-title.is-primary-title {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 800;
+      color: #111;
+      letter-spacing: 0.01em;
+      line-height: 1.15;
+      align-self: center;
+      justify-self: start;
+      transform: translateY(1px);
+    }
+    .supervisor-mobile-cuadre > div:not(.supervisor-mobile-cuadre-title) {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+      text-align: center;
+    }
+    .supervisor-mobile-cuadre > div:not(.supervisor-mobile-cuadre-title) span {
+      font-size: 11px;
+      font-weight: 700;
+      color: #111;
+      line-height: 1.15;
+      letter-spacing: 0.01em;
+    }
+    .supervisor-mobile-cuadre > div:not(.supervisor-mobile-cuadre-title) b {
+      font-size: 13px;
+      font-weight: 700;
+      color: #111;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.15;
+      word-break: break-word;
+    }
+    .supervisor-mobile-cuadre .is-final {
+      text-align: right;
+      justify-items: end;
+    }
+    .supervisor-mobile-cuadre .is-final b {
+      color: #0f766e;
+    }
+    .supervisor-mobile-sheet-row.is-primary-row b {
+      font-size: 13px;
     }
     .supervisor-mobile-actions .btn.compact {
       width: 100%;
@@ -3211,6 +3292,31 @@
     }
     .supervisor-planilla-table .is-num {
       width: 15%;
+    }
+    .supervisor-planilla-table .is-metodo {
+      width: 16%;
+      text-align: center;
+      white-space: nowrap;
+      padding-left: 6px;
+      padding-right: 10px;
+    }
+    .supervisor-planilla-method {
+      display: inline-block;
+      margin: 0;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-style: normal;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .supervisor-planilla-method.is-pay-efectivo {
+      color: #1f6b45;
+      background: #e7f6ee;
+    }
+    .supervisor-planilla-method.is-pay-nequi {
+      color: #5b3d8a;
+      background: #f1e9fb;
     }
     .supervisor-clientes-table .is-ruta {
       width: 10%;
@@ -3474,18 +3580,18 @@
       text-align: right;
     }
     .supervisor-planilla-table .is-alert {
-      width: 12%;
+      width: 10%;
       text-align: center;
-      padding-left: 2px;
-      padding-right: 2px;
+      padding-left: 4px;
+      padding-right: 6px;
     }
     .supervisor-planilla-table .is-estado {
-      width: 13%;
+      width: 14%;
       text-align: right;
       white-space: nowrap;
       overflow: visible;
       padding-right: 6px;
-      padding-left: 2px;
+      padding-left: 8px;
     }
     .supervisor-planilla-table .is-estado .pill {
       transform: none;
