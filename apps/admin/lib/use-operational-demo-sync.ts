@@ -28,6 +28,8 @@ type Options = {
    * Así cobros/cierres hechos con login de cobrador se ven igual en el preview.
    */
   resyncActive?: boolean;
+  /** Aviso cuando este aparato sube constancias que solo tenía en local. */
+  onEvidenceSync?: (result: { pushed: number; failed: number }) => void;
 };
 
 /**
@@ -38,11 +40,13 @@ export function useOperationalDemoSync(
   apply: (snapshot: OperationalDemoSnapshot) => void,
   options: Options = {},
 ) {
-  const { resyncActive = false } = options;
+  const { resyncActive = false, onEvidenceSync } = options;
   const [hydrated, setHydrated] = useState(false);
   const [epoch, setEpoch] = useState(0);
   const applyRef = useRef(apply);
   applyRef.current = apply;
+  const onEvidenceSyncRef = useRef(onEvidenceSync);
+  onEvidenceSyncRef.current = onEvidenceSync;
   const resyncGateRef = useRef(false);
   const pullInFlightRef = useRef(false);
 
@@ -65,7 +69,13 @@ export function useOperationalDemoSync(
       // Antes del pull: cualquier cobro solo-en-este-PC debe llegar a la nube.
       await reconcileLocalPaymentsToRemote();
       // Constancias Nequi/firma que quedaron solo en localStorage de este aparato.
-      await reconcilePaymentEvidenceToRemote();
+      const evidenceSync = await reconcilePaymentEvidenceToRemote();
+      if (evidenceSync.pushed > 0 || evidenceSync.failed > 0) {
+        onEvidenceSyncRef.current?.({
+          pushed: evidenceSync.pushed,
+          failed: evidenceSync.failed,
+        });
+      }
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
       // CIE / gastos / planilla huérfanos → misma nube (saldo de rutas).
@@ -78,7 +88,8 @@ export function useOperationalDemoSync(
       if (
         (paymentsPull.ok && paymentsPull.changed) ||
         (catalogPull.ok && catalogPull.changed) ||
-        (opsPull.ok && opsPull.changed)
+        (opsPull.ok && opsPull.changed) ||
+        evidenceSync.pushed > 0
       ) {
         runHydrate();
       }

@@ -104,7 +104,19 @@ export function SupervisorShell({ session, onLogout }: Props) {
     setMonthCloses(snap.monthCloses);
   }, []);
 
-  const { hydrated } = useOperationalDemoSync(applyOperationalSnapshot);
+  const { hydrated } = useOperationalDemoSync(applyOperationalSnapshot, {
+    onEvidenceSync: ({ pushed, failed }) => {
+      if (pushed > 0) {
+        showToast(
+          pushed === 1
+            ? "1 comprobante de este celular ya está en la nube."
+            : `${pushed} comprobantes de este celular ya están en la nube.`,
+        );
+      } else if (failed > 0) {
+        showToast("No se pudo subir el comprobante a la nube. Revisá la conexión.");
+      }
+    },
+  });
 
   const applyPlanillaSync = useCallback(
     (next: {

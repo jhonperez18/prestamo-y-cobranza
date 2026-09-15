@@ -1723,6 +1723,16 @@
       width: 28px;
       height: 28px;
     }
+    .supervisor-nequi-evidence-hint {
+      margin: 0 0 10px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: #f5f3ff;
+      border: 1px solid #ddd6fe;
+      color: #5b21b6;
+      font-size: 12px;
+      line-height: 1.35;
+    }
     .collector-closed-review-list.is-nequi-day-ficha .is-cobro {
       justify-self: end;
       min-width: 0;

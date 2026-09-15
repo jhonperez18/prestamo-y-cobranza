@@ -375,7 +375,20 @@ export function Workspace({
 
   const { hydrated: demoHydrated, epoch: storageReloadNonce } = useOperationalDemoSync(
     applyOperationalSnapshot,
-    { resyncActive: moduleId === "inicio" && viewId === "vista-movil" },
+    {
+      resyncActive: moduleId === "inicio" && viewId === "vista-movil",
+      onEvidenceSync: ({ pushed, failed }) => {
+        if (pushed > 0) {
+          onToast(
+            pushed === 1
+              ? "1 comprobante local ya está en la nube."
+              : `${pushed} comprobantes locales ya están en la nube.`,
+          );
+        } else if (failed > 0) {
+          onToast("No se pudo subir un comprobante a la nube.");
+        }
+      },
+    },
   );
 
   const applyPlanillaSync = useCallback(

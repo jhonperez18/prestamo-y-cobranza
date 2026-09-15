@@ -1322,6 +1322,13 @@ export function SupervisorMobileApp({
               {openRouteNequiDayPays.length === 0 ? (
                 <p className="ficha-empty">Sin movimientos Nequi ese día.</p>
               ) : (
+                <>
+                  {openRouteNequiDayPays.some((pay) => !pay.evidence?.some((e) => e.previewUrl)) ? (
+                    <p className="supervisor-nequi-evidence-hint">
+                      Si ves un +, la foto está solo en el celular que cobró. Abrí ese celular
+                      (misma app) o subila acá con +.
+                    </p>
+                  ) : null}
                 <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-register is-nequi-day-ficha">
                   {openRouteNequiDayPays.map((pay) => (
                     <li key={pay.ref}>
@@ -1350,6 +1357,7 @@ export function SupervisorMobileApp({
                     <b>{money(openRouteNequiDayTotal, { symbol: false })}</b>
                   </li>
                 </ul>
+                </>
               )}
             </>
           ) : detailMode === "gastos" ? (

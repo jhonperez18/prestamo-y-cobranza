@@ -27,33 +27,18 @@ export const RECEIPT_MAX_EDGE_PX = 1280;
 export const RECEIPT_JPEG_QUALITY = 0.72;
 export const RECEIPT_MAX_BYTES = 2 * 1024 * 1024;
 
-/** Vista previa demo cuando el comprobante está registrado pero sin imagen en cliente. */
-export const DEMO_RECEIPT_PREVIEW = `data:image/svg+xml,${encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" width="420" height="600" viewBox="0 0 420 600">
-  <rect fill="#eceff1" width="420" height="600"/>
-  <rect fill="#fff" x="28" y="28" width="364" height="544" rx="10" stroke="#cfd8dc"/>
-  <text x="210" y="78" text-anchor="middle" font-family="system-ui,sans-serif" font-size="26" font-weight="700" fill="#00b386">Nequi</text>
-  <text x="210" y="108" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" fill="#607d8b">Comprobante de transferencia</text>
-  <line x1="56" y1="130" x2="364" y2="130" stroke="#e0e0e0"/>
-  <text x="56" y="168" font-family="system-ui,sans-serif" font-size="13" fill="#78909c">Valor</text>
-  <text x="364" y="168" text-anchor="end" font-family="system-ui,sans-serif" font-size="20" font-weight="700" fill="#263238">$ 5.000</text>
-  <text x="56" y="210" font-family="system-ui,sans-serif" font-size="13" fill="#78909c">Estado</text>
-  <text x="364" y="210" text-anchor="end" font-family="system-ui,sans-serif" font-size="14" font-weight="600" fill="#2e7d32">Exitosa</text>
-  <text x="56" y="252" font-family="system-ui,sans-serif" font-size="13" fill="#78909c">Fecha</text>
-  <text x="364" y="252" text-anchor="end" font-family="system-ui,sans-serif" font-size="14" fill="#37474f">27/08/2026 · 09:12</text>
-  <rect fill="#f5f5f5" x="56" y="280" width="308" height="180" rx="6"/>
-  <text x="210" y="378" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#90a4ae">Evidencia demo · ampliar para verificar</text>
-</svg>
-`)}`;
+/** Vista previa demo (solo semillas / pruebas). No usar en UI de cobros reales. */
+export const DEMO_RECEIPT_PREVIEW = `data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="160"><rect fill="#eee" width="120" height="160"/><text x="60" y="84" text-anchor="middle" font-size="11" fill="#888">Demo</text></svg>`,
+)}`;
 
-/** URL lista para mostrar en miniatura o lightbox. */
+/** URL lista para mostrar en miniatura o lightbox.
+ * Solo imagen real (`previewUrl`). No inventar comprobante demo:
+ * eso hacía que el celular “viera” evidencia y el PC no.
+ */
 export function resolvePaymentEvidencePreview(receipt: PaymentEvidenceRef): string | null {
-  if (receipt.previewUrl?.trim()) return receipt.previewUrl.trim();
-  if (receipt.fileId) return DEMO_RECEIPT_PREVIEW;
-  if (receipt.kind === "comprobante" && receipt.mime?.startsWith("image/")) {
-    return DEMO_RECEIPT_PREVIEW;
-  }
-  return null;
+  const url = receipt.previewUrl?.trim();
+  return url || null;
 }
 
 let evidenceCounter = 0;

@@ -453,16 +453,18 @@ export async function reconcileLocalPaymentsToRemote(): Promise<{
 export async function reconcilePaymentEvidenceToRemote(): Promise<{
   pushed: number;
   failed: number;
+  pending: number;
+  errors: string[];
 }> {
   if (typeof window === "undefined") {
-    return { pushed: 0, failed: 0 };
+    return { pushed: 0, failed: 0, pending: 0, errors: [] };
   }
 
   const local = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, [])
     .filter((row) => row?.ref)
     .map(withPaymentEvidence)
     .filter((row) => evidenceHasPreview(row.evidence));
-  if (!local.length) return { pushed: 0, failed: 0 };
+  if (!local.length) return { pushed: 0, failed: 0, pending: 0, errors: [] };
 
   try {
     const res = await fetch("/api/payments", { method: "GET", cache: "no-store" });
@@ -470,9 +472,15 @@ export async function reconcilePaymentEvidenceToRemote(): Promise<{
       ok?: boolean;
       payments?: PaymentMirrorRow[];
       skipped?: boolean;
+      error?: string;
     };
     if (!res.ok || !body.ok || body.skipped) {
-      return { pushed: 0, failed: 0 };
+      return {
+        pushed: 0,
+        failed: 0,
+        pending: local.length,
+        errors: [body.error || (body.skipped ? "payments_get_skipped" : `http_${res.status}`)],
+      };
     }
 
     const remoteByRef = new Map(
@@ -481,6 +489,7 @@ export async function reconcilePaymentEvidenceToRemote(): Promise<{
 
     let pushed = 0;
     let failed = 0;
+    const errors: string[] = [];
     for (const payment of local) {
       const remote = remoteByRef.get(payment.ref);
       const remoteEvidence = Array.isArray(remote?.evidence) ? remote.evidence : undefined;
@@ -491,11 +500,20 @@ export async function reconcilePaymentEvidenceToRemote(): Promise<{
         pushed += 1;
       } else if (!result.ok) {
         failed += 1;
+        errors.push(`${payment.ref}: ${result.error}`);
+      } else if ("skipped" in result && result.skipped) {
+        failed += 1;
+        errors.push(`${payment.ref}: skipped_${result.reason}`);
       }
     }
-    return { pushed, failed };
-  } catch {
-    return { pushed: 0, failed: local.length };
+    return { pushed, failed, pending: local.length, errors };
+  } catch (err) {
+    return {
+      pushed: 0,
+      failed: local.length,
+      pending: local.length,
+      errors: [err instanceof Error ? err.message : "reconcile_failed"],
+    };
   }
 }
 
