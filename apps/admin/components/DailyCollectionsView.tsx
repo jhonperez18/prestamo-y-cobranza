@@ -35,6 +35,7 @@ import {
   paymentMethodLabel,
 } from "@/lib/payment-method";
 import { withPaymentEvidence } from "@/lib/payment-evidence-store";
+import { evidenceHasPreview } from "@/lib/payment-evidence";
 import { DAILY_COLLECTION_COLUMNS, DAILY_COLLECTION_DEFAULT_COLS } from "@/lib/table-columns";
 
 function paymentForDailyRow(
@@ -146,7 +147,7 @@ export function DailyCollectionsView({
   const { isVisible, visibleCols, toggleColumn } = useColumnVisibility(
     DAILY_COLLECTION_COLUMNS,
     DAILY_COLLECTION_DEFAULT_COLS,
-    { storageKey: "nexo.cobranza.cobros-dia.columns.v2" },
+    { storageKey: "nexo.cobranza.cobros-dia.columns.v4" },
   );
 
   const today = todayIso();
@@ -269,6 +270,30 @@ export function DailyCollectionsView({
     [assignments, selectedDate],
   );
 
+  /** Cobros del día en nube sin firma/foto real (quedaron solo en el celular). */
+  const missingCloudEvidence = useMemo(() => {
+    const day = normalizeHistoryDate(selectedDate) || selectedDate;
+    const rows = payments
+      .map(withPaymentEvidence)
+      .filter(
+        (row) =>
+          (normalizeHistoryDate(row.paidDate || "") || "") === day &&
+          (Number(row.amount) || 0) > 0 &&
+          !evidenceHasPreview(row.evidence),
+      );
+    const byCollector = new Map<string, number>();
+    for (const row of rows) {
+      const name = row.collector?.trim() || "—";
+      byCollector.set(name, (byCollector.get(name) || 0) + 1);
+    }
+    return {
+      total: rows.length,
+      collectors: [...byCollector.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => `${name} (${count})`),
+    };
+  }, [payments, selectedDate]);
+
   const firstDispatchedCollector = useMemo(() => {
     const row = assignments.find((entry) => entry.dispatchDate === selectedDate && entry.dispatched);
     return row?.collectorRef;
@@ -360,13 +385,6 @@ export function DailyCollectionsView({
           </button>
         ) : null}
       </div>
-      <p className="panel-lead">
-        El cobrador sale de la ruta y <strong>queda fijo</strong> día a día. Cámbialo solo en{" "}
-        <button type="button" className="btn-link" onClick={() => onGo?.("inicio", "asignar-clientes")}>
-          Asignar cobrador
-        </button>
-        ; la planilla de hoy (y futuros) se arma sola para la app.
-      </p>
 
       <div className="kpis tone-kpis">
         <Kpi
@@ -403,62 +421,62 @@ export function DailyCollectionsView({
         />
       </div>
 
-      {closeSummary.total > 0 ? (
-        <div className="daily-close-banner">
-          <div>
+      <div className="daily-toolbar-row">
+        <div className="daily-date-bar">
+          <label className="daily-date-field">
+            <span>Fecha de cobro</span>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => setSelectedDate(event.target.value)}
+            />
+          </label>
+          <label className="daily-date-field">
+            <span>Ruta</span>
+            <select value={routeFilter} onChange={(event) => setRouteFilter(event.target.value)}>
+              <option value="">Todas las rutas</option>
+              {routeOptions.map((row) => (
+                <option key={row} value={row}>
+                  Ruta {row}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="daily-date-meta">
+            <strong>{dateLabel}</strong>
+            <Pill
+              label={dateHint}
+              kind={dateHint === "Programado" ? "draft" : dateHint === "Hoy" ? "ok" : "paid"}
+            />
+          </div>
+        </div>
+
+        {closeSummary.total > 0 ? (
+          <div className="daily-close-banner">
             <strong>
               {closeSummary.alreadyClosed ? "Jornada cerrada" : "Jornada en curso"}
             </strong>
-            <p>
-              {closeSummary.collected} cobrado{closeSummary.collected === 1 ? "" : "s"}
-              {" · "}
-              {closeSummary.partial} parcial{closeSummary.partial === 1 ? "" : "es"}
-              {" · "}
-              {closeSummary.pending} pendiente{closeSummary.pending === 1 ? "" : "s"}
-              {" · "}
-              {closeSummary.skipped} no visitado{closeSummary.skipped === 1 ? "" : "s"}
-              {" · "}
-              {closeSummary.collectors} cobrador{closeSummary.collectors === 1 ? "" : "es"}
-            </p>
+            {closeSummary.alreadyClosed ? (
+              <Pill label="Cerrada" kind="paid" />
+            ) : closeSummary.pending > 0 ? (
+              <Pill label={`${closeSummary.pending} sin visitar`} kind="overdue" />
+            ) : (
+              <Pill label="Lista para cerrar" kind="ok" />
+            )}
           </div>
-          {closeSummary.alreadyClosed ? (
-            <Pill label="Cerrada" kind="paid" />
-          ) : closeSummary.pending > 0 ? (
-            <Pill label={`${closeSummary.pending} sin visitar`} kind="overdue" />
-          ) : (
-            <Pill label="Lista para cerrar" kind="ok" />
-          )}
-        </div>
-      ) : null}
-
-      <div className="daily-date-bar">
-        <label className="daily-date-field">
-          <span>Fecha de cobro</span>
-          <input
-            type="date"
-            value={selectedDate}
-            onChange={(event) => setSelectedDate(event.target.value)}
-          />
-        </label>
-        <label className="daily-date-field">
-          <span>Ruta</span>
-          <select value={routeFilter} onChange={(event) => setRouteFilter(event.target.value)}>
-            <option value="">Todas las rutas</option>
-            {routeOptions.map((row) => (
-              <option key={row} value={row}>
-                Ruta {row}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="daily-date-meta">
-          <strong>{dateLabel}</strong>
-          <Pill
-            label={dateHint}
-            kind={dateHint === "Programado" ? "draft" : dateHint === "Hoy" ? "ok" : "paid"}
-          />
-        </div>
+        ) : null}
       </div>
+
+      {missingCloudEvidence.total > 0 ? (
+        <p className="daily-missing-evidence-banner" role="status">
+          {missingCloudEvidence.total} cobro
+          {missingCloudEvidence.total === 1 ? "" : "s"} de esta fecha sin firma/foto en la nube
+          {missingCloudEvidence.collectors.length
+            ? ` · ${missingCloudEvidence.collectors.join(", ")}`
+            : ""}
+          . Abrí la app en el celular del cobrador (build actual) para subirlas; no se pueden inventar desde el PC.
+        </p>
+      ) : null}
 
       <div className="table-wrap daily-collection-table" ref={tableRef}>
         <table className="data list-grid daily-collection-grid">
@@ -470,7 +488,6 @@ export function DailyCollectionsView({
             {isVisible("concept") ? <col className="dc-concept" /> : null}
             {isVisible("since") ? <col className="dc-since" /> : null}
             {isVisible("amount") ? <col className="dc-amount" /> : null}
-            {isVisible("status") ? <col className="dc-status" /> : null}
             {isVisible("method") ? <col className="dc-method" /> : null}
             {isVisible("evidence") ? <col className="dc-evidence" /> : null}
             {isVisible("collector") ? <col className="dc-collector" /> : null}
@@ -486,9 +503,8 @@ export function DailyCollectionsView({
               {isVisible("concept") ? <th>Concepto</th> : null}
               {isVisible("since") ? <th>Desde</th> : null}
               {isVisible("amount") ? <th className="right">A cobrar</th> : null}
-              {isVisible("status") ? <th>Estado</th> : null}
-              {isVisible("method") ? <th>Forma de pago</th> : null}
-              {isVisible("evidence") ? <th>Comprobante</th> : null}
+              {isVisible("method") ? <th className="dc-method-head">Método</th> : null}
+              {isVisible("evidence") ? <th className="dc-evidence-head">Foto</th> : null}
               {isVisible("collector") ? <th>Cobrador</th> : null}
               {isVisible("action") ? <th>Acción</th> : null}
               <ColumnPickerHeadCell>
@@ -585,9 +601,14 @@ export function DailyCollectionsView({
                         {money(item.amountDue)}
                       </td>
                     ) : null}
-                    {isVisible("status") ? (
-                      <td>
-                        {assigned?.dispatched ? (
+                    {isVisible("method") ? (
+                      <td className="dc-method-cell">
+                        {payMethod ? (
+                          <Pill
+                            label={paymentMethodLabel(payMethod)}
+                            kind={paymentMethodKind(payMethod)}
+                          />
+                        ) : assigned?.dispatched ? (
                           <Pill
                             label={
                               assigned.visitStatus === "cobrado"
@@ -616,25 +637,23 @@ export function DailyCollectionsView({
                         )}
                       </td>
                     ) : null}
-                    {isVisible("method") ? (
-                      <td>
-                        {payMethod ? (
-                          <Pill
-                            label={paymentMethodLabel(payMethod)}
-                            kind={paymentMethodKind(payMethod)}
-                          />
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                    ) : null}
                     {isVisible("evidence") ? (
                       <td className="pay-evidence-cell">
                         <PaymentEvidenceThumb
                           evidence={pay?.evidence}
                           size={22}
+                          emptyLabel={
+                            payMethod === "nequi"
+                              ? "Sin foto"
+                              : payMethod === "efectivo"
+                                ? "Sin firma"
+                                : "—"
+                          }
                           onAttach={
-                            pay && onAttachPaymentEvidence
+                            pay &&
+                            onAttachPaymentEvidence &&
+                            payMethod === "nequi" &&
+                            !evidenceHasPreview(pay.evidence)
                               ? (piece) => onAttachPaymentEvidence(pay.ref, [piece])
                               : undefined
                           }

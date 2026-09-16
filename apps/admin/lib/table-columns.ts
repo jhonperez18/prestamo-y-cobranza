@@ -160,14 +160,16 @@ export const DAILY_COLLECTION_COLUMNS: ColumnOption[] = [
   { id: "concept", label: "Concepto" },
   { id: "since", label: "Desde" },
   { id: "amount", label: "A cobrar" },
-  { id: "status", label: "Estado" },
-  { id: "method", label: "Forma de pago" },
-  { id: "evidence", label: "Comprobante" },
+  { id: "method", label: "Método" },
+  { id: "evidence", label: "Foto" },
   { id: "collector", label: "Cobrador" },
   { id: "action", label: "Acción", pickerHidden: true },
 ];
 
-export const DAILY_COLLECTION_DEFAULT_COLS = DAILY_COLLECTION_COLUMNS.map((col) => col.id);
+/** Concepto casi siempre es “Cuota”: fuera del default para dar aire a Método/Foto. */
+export const DAILY_COLLECTION_DEFAULT_COLS = DAILY_COLLECTION_COLUMNS.map((col) => col.id).filter(
+  (id) => id !== "concept",
+);
 
 export const CARTERA_MORA_COLUMNS: ColumnOption[] = [
   { id: "client", label: "Cliente" },

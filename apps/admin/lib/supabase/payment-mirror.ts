@@ -5,7 +5,7 @@
  * @see docs/operational-money.md
  */
 import { createMirrorServerClient } from "@/lib/supabase/admin";
-import type { LoanRow, PaymentMethod, PaymentRow, StatusKind } from "@/lib/mock-data";
+import type { LoanRow, PaymentRow, StatusKind } from "@/lib/mock-data";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import {
@@ -21,6 +21,7 @@ import {
   resolvePaymentEvidence,
   withPaymentEvidence,
 } from "@/lib/payment-evidence-store";
+import { normalizePaymentMethod, type PaymentMethod } from "@/lib/payment-method";
 
 export type PaymentMirrorRow = {
   ref: string;
@@ -80,7 +81,7 @@ export function paymentRowToMirror(payment: PaymentRow): PaymentMirrorRow | null
     paid_time: payment.paidTime?.trim() || null,
     due_date: normalizeHistoryDate(payment.dueDate || "") || payment.dueDate || null,
     charge_label: payment.chargeLabel?.trim() || null,
-    method: payment.method || "efectivo",
+    method: normalizePaymentMethod(payment.method),
     source: payment.source || "ruta",
     payment_type: payment.type || null,
     payment_kind: payment.kind || null,
@@ -93,10 +94,6 @@ export function paymentRowToMirror(payment: PaymentRow): PaymentMirrorRow | null
 function mapSource(source: string | null | undefined): PaymentRow["source"] {
   if (source === "caja") return "caja";
   return "pwa";
-}
-
-function mapMethod(method: string | null | undefined): PaymentMethod {
-  return method === "nequi" ? "nequi" : "efectivo";
 }
 
 function mapKind(kind: string | null | undefined): StatusKind {
@@ -130,7 +127,7 @@ export function mirrorRowToPaymentRow(row: PaymentMirrorRow): PaymentRow | null 
     amount,
     type: row.payment_type?.trim() || "Cuota",
     kind: mapKind(row.payment_kind),
-    method: mapMethod(row.method),
+    method: normalizePaymentMethod(row.method),
     evidence,
     source: mapSource(row.source),
   };
@@ -196,6 +193,8 @@ export function mergePaymentsByRef(local: PaymentRow[], remote: PaymentRow[]): {
     }
     const next: PaymentRow = {
       ...remoteRow,
+      // Método del cobrador: remoto manda; si falta, se conserva el local. Nunca se infiere.
+      method: normalizePaymentMethod(remoteRow.method ?? localRow.method),
       client: preferDisplay(remoteRow.client, localRow.client),
       collector: preferDisplay(remoteRow.collector, localRow.collector),
       evidence:
@@ -329,25 +328,29 @@ export async function persistPaymentToSupabase(
     return { ok: true, skipped: true, reason: "ssr" };
   }
   const payload = withPaymentEvidence(payment);
-  // `keepalive` tiene tope ~64KB: una constancia JPEG en base64 lo rompe
-  // y el cobro sube sin foto (PC ve "—", celular sí). Solo keepalive sin preview.
-  const useKeepalive = !evidenceHasPreview(payload.evidence);
+  const body = JSON.stringify({ payment: payload });
+  // keepalive ~64KB: firmas caben; JPEG Nequi no. Sin evidencia usamos keepalive.
+  const useKeepalive = body.length < 60_000;
+  // Con evidencia: encolar YA. Si el celular se cierra a mitad del POST, al reabrir se reintenta.
+  if (evidenceHasPreview(payload.evidence)) {
+    enqueueMirrorPayment(payload);
+  }
   try {
     const res = await fetch("/api/payments/mirror", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ payment: payload }),
+      body,
       ...(useKeepalive ? { keepalive: true } : {}),
     });
-    const body = (await res.json()) as MirrorPaymentResult & { error?: string };
-    if (!res.ok || !body.ok) {
+    const result = (await res.json()) as MirrorPaymentResult & { error?: string };
+    if (!res.ok || !result.ok) {
       enqueueMirrorPayment(payload);
-      return { ok: false, error: body.error || `http_${res.status}` };
+      return { ok: false, error: result.error || `http_${res.status}` };
     }
-    if (!body.skipped) {
+    if (!result.skipped) {
       dequeueMirrorPayment(payload.ref);
     }
-    return body;
+    return result;
   } catch (err) {
     enqueueMirrorPayment(payload);
     return {
@@ -517,10 +520,12 @@ export async function reconcilePaymentEvidenceToRemote(): Promise<{
   }
 }
 
-/** Disparo tras cobro local: sube a Postgres; si no, queda en cola. */
-export function queuePaymentMirror(payment: PaymentRow) {
-  if (typeof window === "undefined") return;
-  void persistPaymentToSupabase(payment);
+/** Disparo tras cobro local: sube a Postgres (con evidencia); si no, queda en cola. */
+export function queuePaymentMirror(payment: PaymentRow): Promise<MirrorPaymentResult> {
+  if (typeof window === "undefined") {
+    return Promise.resolve({ ok: true, skipped: true, reason: "ssr" });
+  }
+  return persistPaymentToSupabase(payment);
 }
 
 export type PullPaymentsResult = {

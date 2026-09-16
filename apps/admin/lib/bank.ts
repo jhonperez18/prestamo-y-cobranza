@@ -7,6 +7,11 @@ import {
   loanDisbursementMovementRef,
   loanFundedByNequi,
 } from "@/lib/nequi-pool";
+import {
+  normalizePaymentMethod,
+  paymentMethodLabel,
+  type PaymentMethod,
+} from "@/lib/payment-method";
 
 /**
  * Corrige texto UTF-8 mal leído (RÃ­os → Ríos) y caracteres de reemplazo ().
@@ -132,6 +137,8 @@ export type BankMovement = {
   credit: number;
   category?: BankExpenseCategory;
   paymentRef?: string;
+  /** Medio del cobro PG- (inmutable desde el pago del cobrador). */
+  method?: PaymentMethod;
   miscPaymentRef?: string;
   /** Gasto de ruta del cobrador: GASL-{collector}-{date}-{expenseId} */
   dayExpenseLineRef?: string;
@@ -324,6 +331,9 @@ export function normalizeBankMovement(
     .replace(/Juan\s+R(?:Ã­|\uFFFD+)\s*os/gi, "Juan Ríos")
     .replace(/\bR(?:Ã­|\uFFFD+)os\b/gi, "Ríos");
 
+  const method: PaymentMethod | undefined =
+    row.method === "nequi" || row.method === "efectivo" ? row.method : undefined;
+
   return applyBankAccountSides({
     ref: row.ref,
     accountRef: row.accountRef ?? "",
@@ -336,8 +346,10 @@ export function normalizeBankMovement(
     credit: Number(row.credit) || 0,
     category: row.category,
     paymentRef: row.paymentRef,
+    method,
     miscPaymentRef: row.miscPaymentRef,
     dayExpenseLineRef: row.dayExpenseLineRef,
+    loanDisbursementRef: row.loanDisbursementRef,
     inExtract: row.inExtract !== false,
     reconciled: Boolean(row.reconciled),
     manual: Boolean(row.manual),
@@ -672,16 +684,36 @@ export function isPeriodClosed(reconciliations: BankReconciliation[], accountRef
 }
 
 export function paymentMovementDescription(payment: PaymentRow) {
-  const method = payment.method === "nequi" ? "Nequi" : "Efectivo";
+  const method = paymentMethodLabel(normalizePaymentMethod(payment.method));
   return `Cobro ${payment.ref} · ${payment.type} · ${method}`;
 }
 
+/** Etiqueta Método desde la descripción (solo respaldo de filas viejas). */
 export function bankMovementMethodLabel(description: string) {
-  const match = /\s·\s(?:Cuota|Abono)\s*(?:·|-)\s*(Efectivo|Nequi)\s*$/i.exec(description.trim())
-    ?? /\s·\s(Efectivo|Nequi)\s*$/i.exec(description.trim())
-    ?? /\s[-–]\s*(Efectivo|Nequi)\s*$/i.exec(description.trim());
+  const match =
+    /\s·\s(?:Cuota|Abono)\s*(?:·|-)\s*(Efectivo|Nequi)\s*$/i.exec(description.trim()) ??
+    /\s·\s(Efectivo|Nequi)\s*$/i.exec(description.trim()) ??
+    /\s[-–]\s*(Efectivo|Nequi)\s*$/i.exec(description.trim());
   if (!match) return "";
-  return /nequi/i.test(match[1]) ? "Nequi" : "Efectivo";
+  return /nequi/i.test(match[1]!) ? "Nequi" : "Efectivo";
+}
+
+/**
+ * Método del movimiento: campo `method` del PG- (fuente de verdad).
+ * Si falta (filas antiguas), lee la descripción; nunca inventa Nequi.
+ */
+export function bankMovementPaymentMethod(row: BankMovement): PaymentMethod | null {
+  if (!paymentRefForMovement(row)) return null;
+  if (row.method === "nequi" || row.method === "efectivo") return row.method;
+  const fromDesc = bankMovementMethodLabel(row.description);
+  if (fromDesc === "Nequi") return "nequi";
+  if (fromDesc === "Efectivo") return "efectivo";
+  return null;
+}
+
+export function bankMovementPaymentMethodLabel(row: BankMovement) {
+  const method = bankMovementPaymentMethod(row);
+  return method ? paymentMethodLabel(method) : "";
 }
 
 export function bankMovementDescriptionText(description: string) {
@@ -735,6 +767,11 @@ export function lockPaymentCobrosAsIncome(
       dayExpenseLineRef: undefined,
       miscPaymentRef: undefined,
       description: payment ? paymentMovementDescription(payment) : row.description,
+      method: payment
+        ? normalizePaymentMethod(payment.method)
+        : row.method === "nequi" || row.method === "efectivo"
+          ? row.method
+          : undefined,
       thirdParty: payment?.client?.trim() || row.thirdParty,
       valueDate,
       opDate: payment?.paidDate || row.opDate || valueDate,
@@ -788,6 +825,7 @@ export function syncPaymentsToMovements(
       debit: payment.amount,
       credit: 0,
       paymentRef: payment.ref,
+      method: normalizePaymentMethod(payment.method),
       inExtract: true,
       reconciled: false,
       manual: false,
@@ -868,6 +906,7 @@ export function bankMovementsSignature(rows: BankMovement[]): string {
           row.debit,
           row.credit,
           row.reconciled ? 1 : 0,
+          row.method ?? "",
           row.description,
         ].join(":"),
     )
@@ -876,7 +915,7 @@ export function bankMovementsSignature(rows: BankMovement[]): string {
 }
 
 export function miscPaymentMovementDescription(payment: MiscPayment) {
-  const method = payment.method === "nequi" ? "Nequi" : "Efectivo";
+  const method = paymentMethodLabel(normalizePaymentMethod(payment.method));
   return `${payment.label} · Pago varios · ${method}`;
 }
 
@@ -1152,7 +1191,8 @@ export function repairBankMovementsFromPayments(
       current = {
         ...row,
         paymentRef: pg,
-        description: row.description?.trim() || paymentMovementDescription(payment),
+        description: paymentMovementDescription(payment),
+        method: normalizePaymentMethod(payment.method),
         thirdParty: row.thirdParty?.trim() || payment.client,
         debit: row.debit > 0 ? row.debit : row.credit > 0 ? row.credit : payment.amount,
         credit: 0,
@@ -1207,6 +1247,7 @@ export function syncAllPaymentsToMovements(
       debit: payment.amount,
       credit: 0,
       paymentRef: payment.ref,
+      method: normalizePaymentMethod(payment.method),
       inExtract: prev?.inExtract ?? true,
       reconciled: prev?.reconciled ?? false,
       manual: false,

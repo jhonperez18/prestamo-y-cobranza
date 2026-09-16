@@ -9,7 +9,7 @@ import type { BankAccount, BankExpenseCategory, BankMovement, BankReconciliation
 import {
   addManualExpense,
   bankMovementDescriptionText,
-  bankMovementMethodLabel,
+  bankMovementPaymentMethodLabel,
   bankMovementsWithDisplayBalance,
   currentPeriod,
   expenseCategoryLabel,
@@ -28,7 +28,7 @@ import {
   summarizeMovements,
   syncPaymentsToMovements,
 } from "@/lib/bank";
-import { paymentMethodKind } from "@/lib/payment-method";
+import { paymentMethodKind, normalizePaymentMethod } from "@/lib/payment-method";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement } from "@/lib/misc-payments";
 import type { PaymentRow } from "@/lib/mock-data";
@@ -605,7 +605,7 @@ export function BankExtractView({
             ) : (
               rowsWithBalance.map((row) => {
                 const isExpense = isBankExpenseMovement(row);
-                const methodLabel = bankMovementMethodLabel(row.description);
+                const methodLabel = bankMovementPaymentMethodLabel(row);
                 const descriptionText =
                   isExpense && row.category
                     ? expenseCategoryLabel(row.category)
@@ -626,7 +626,7 @@ export function BankExtractView({
                         {methodLabel ? (
                           <Pill
                             label={methodLabel}
-                            kind={paymentMethodKind(methodLabel === "Nequi" ? "nequi" : "efectivo")}
+                            kind={paymentMethodKind(normalizePaymentMethod(methodLabel))}
                           />
                         ) : (
                           "—"

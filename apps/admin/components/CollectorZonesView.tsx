@@ -93,11 +93,6 @@ export function CollectorZonesView({
             Asignar cobrador
           </button>
         </div>
-        <p className="panel-lead">
-          Cada ruta tiene un cobrador fijo. Eso arma la planilla del día en la app. Si falta
-          cobrador, asígnalo una vez; queda hasta que lo cambies.
-        </p>
-
         {visible.length === 0 ? (
           <p className="ficha-empty">
             {summaries.length === 0

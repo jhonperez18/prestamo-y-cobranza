@@ -72,10 +72,6 @@ export function AssignRouteCollectorView({
         <h1>Asignar cobrador a ruta</h1>
         <span className="count">{catalog.length}</span>
       </div>
-      <p className="panel-lead">
-        El cobrador se asigna a <strong>toda la ruta</strong> y queda fijo día a día hasta que lo
-        modifique. Esa es la planilla que recibe en su app.
-      </p>
       <div className="table-wrap">
         <table className="data list-grid">
           <thead>

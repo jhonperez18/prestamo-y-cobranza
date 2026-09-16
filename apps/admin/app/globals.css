@@ -3869,10 +3869,10 @@
     }
     .supervisor-client-ficha-moves li {
       display: grid;
-      grid-template-columns: 4.6rem 5.6rem minmax(4.2rem, 1fr) auto;
-      column-gap: 8px;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1.25fr) minmax(0, 0.95fr);
+      column-gap: 10px;
       align-items: baseline;
-      padding: 2px 0;
+      padding: 4px 0;
       line-height: 1.2;
       border-bottom: 1px solid #e4ebe8;
       min-width: 0;
@@ -3883,8 +3883,8 @@
     .supervisor-client-ficha-moves .is-amount,
     .supervisor-client-ficha-moves strong {
       font-size: 11px;
-      font-weight: 650;
-      color: #0f766e;
+      font-weight: 700;
+      color: #111;
       font-variant-numeric: tabular-nums;
       text-align: left;
       line-height: 1.2;
@@ -3893,7 +3893,7 @@
     .supervisor-client-ficha-moves span {
       font-size: 11px;
       font-weight: 400;
-      color: #000;
+      color: #111;
       text-align: left;
       min-width: 0;
       line-height: 1.2;
@@ -3906,14 +3906,20 @@
       text-align: left;
       overflow: hidden;
       text-overflow: ellipsis;
-      color: #3d5249;
+      color: #111;
     }
     .supervisor-client-ficha-moves .is-method {
       text-align: right;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 4.8rem;
-      color: #3d5249;
+      font-weight: 700;
+      color: #111;
+    }
+    .supervisor-client-ficha-moves .is-method.is-pay-nequi {
+      color: #5b3d8a;
+    }
+    .supervisor-client-ficha-moves .is-method.is-pay-efectivo {
+      color: #1f6b45;
     }
     .supervisor-client-ficha-sum {
       display: grid;
@@ -4116,16 +4122,22 @@
       background: #ecfdf5;
       border-color: #a7f3d0;
     }
+    .supervisor-day-board.is-caja span,
+    .supervisor-day-board.is-caja em,
+    .supervisor-day-board.is-caja b {
+      color: #111;
+    }
     .supervisor-day-board.is-nequi {
       background: #f1e9fb;
       border-color: #d4c0ef;
     }
     .supervisor-day-board.is-nequi span,
+    .supervisor-day-board.is-nequi em,
     .supervisor-day-board.is-nequi b {
-      color: #5b3d8a;
+      color: #111;
     }
     .supervisor-day-board.is-nequi.is-total-row b {
-      color: #5b3d8a;
+      color: #111;
       font-size: 26px;
     }
     .supervisor-day-board.is-nequi-hoy {
@@ -4136,6 +4148,11 @@
       padding: 10px 14px;
       background: #faf5ff;
       border-color: #e4dcf3;
+    }
+    .supervisor-day-board.is-nequi-hoy span,
+    .supervisor-day-board.is-nequi-hoy em,
+    .supervisor-day-board.is-nequi-hoy b {
+      color: #111;
     }
     .supervisor-nequi-day-total {
       margin-top: 10px;
@@ -4151,7 +4168,7 @@
       font-size: 22px;
       font-weight: 800;
       letter-spacing: -0.02em;
-      color: #5b3d8a;
+      color: #111;
       line-height: 1;
     }
     .supervisor-nequi-register {
@@ -4276,7 +4293,7 @@
       font-size: 26px;
       font-weight: 800;
       letter-spacing: -0.03em;
-      color: #14201b;
+      color: #111;
       line-height: 1;
     }
     .supervisor-caja-hero {
@@ -4298,7 +4315,7 @@
     .supervisor-caja-hero b {
       font-size: 22px;
       font-weight: 750;
-      color: #14201b;
+      color: #111;
       font-variant-numeric: tabular-nums;
       line-height: 1.1;
     }
@@ -4533,7 +4550,7 @@
     .supervisor-caja-hero.is-nequi span,
     .supervisor-caja-hero.is-nequi b,
     .supervisor-route-board.is-nequi-mode .supervisor-caja-hero.is-row b {
-      color: #5b3d8a;
+      color: #111;
       font-size: 22px;
       font-weight: 800;
     }
@@ -4647,14 +4664,51 @@
     .supervisor-route-board.accent-1 .supervisor-route-board-ruta {
       color: #111;
     }
-    .supervisor-route-board-id strong {
+    .supervisor-route-board-id strong,
+    .supervisor-route-board-name {
       font-size: 16px;
       font-weight: 750;
       color: #14201b;
       line-height: 1.15;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .supervisor-route-board-name {
       overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+    }
+    .supervisor-route-unread {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
+      border-radius: 7px;
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      color: #92400e;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: 0.02em;
+    }
+    .supervisor-route-unread.is-pulse {
+      animation: supervisor-unread-pulse 1.25s ease-in-out infinite;
+    }
+    @keyframes supervisor-unread-pulse {
+      0%,
+      100% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45);
+      }
+      50% {
+        transform: scale(1.08);
+        box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+      }
     }
     .supervisor-route-board-progress {
       display: grid;
@@ -5518,7 +5572,15 @@
     .panel > .bank-expense-ficha-body,
     .panel > .access-denied-detail,
     .panel > .grid-2,
+    .panel > .daily-toolbar-row,
     .panel > .daily-date-bar {
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    .panel > .daily-toolbar-row .daily-date-bar,
+    .panel > .daily-toolbar-row .daily-close-banner {
       background: var(--paper);
       border: 1px solid #9ec4c4;
       border-radius: 12px;
@@ -8239,28 +8301,56 @@
       font-weight: 500;
     }
     .daily-preview-btn { margin-left: auto; }
+    .daily-missing-evidence-banner {
+      margin: 0 16px 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #fff7ed;
+      border: 1px solid #fdba74;
+      color: #9a3412;
+      font-size: 13px;
+      line-height: 1.4;
+    }
     .daily-collection-table { margin: 0 16px 20px; }
     .daily-collection-table table.daily-collection-grid {
       width: 100%;
       table-layout: fixed;
     }
-    .daily-collection-grid col.dc-index { width: 40px; }
-    .daily-collection-grid col.dc-client { width: 15%; }
-    .daily-collection-grid col.dc-zone { width: 8%; }
-    .daily-collection-grid col.dc-loan { width: 8%; }
-    .daily-collection-grid col.dc-concept { width: 16%; }
-    .daily-collection-grid col.dc-since { width: 9%; }
-    .daily-collection-grid col.dc-amount { width: 11%; }
-    .daily-collection-grid col.dc-status { width: 10%; }
-    .daily-collection-grid col.dc-collector { width: 12%; }
-    .daily-collection-grid col.dc-action { width: 9%; }
-    .daily-collection-grid col.dc-picker { width: 44px; }
+    .daily-collection-grid col.dc-index { width: 36px; }
+    .daily-collection-grid col.dc-client { width: 17%; }
+    .daily-collection-grid col.dc-zone { width: 48px; }
+    .daily-collection-grid col.dc-loan { width: 78px; }
+    .daily-collection-grid col.dc-concept { width: 70px; }
+    .daily-collection-grid col.dc-since { width: 96px; }
+    .daily-collection-grid col.dc-amount { width: 92px; }
+    .daily-collection-grid col.dc-method { width: 100px; }
+    .daily-collection-grid col.dc-evidence { width: 78px; }
+    .daily-collection-grid col.dc-collector { width: 13%; }
+    .daily-collection-grid col.dc-action { width: 76px; }
+    .daily-collection-grid col.dc-picker { width: 40px; }
     .daily-collection-grid th,
     .daily-collection-grid td {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
       vertical-align: middle;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+    .daily-collection-grid th.dc-method-head,
+    .daily-collection-grid th.dc-evidence-head,
+    .daily-collection-grid td.dc-method-cell,
+    .daily-collection-grid td.pay-evidence-cell {
+      text-align: center;
+      overflow: visible;
+    }
+    .daily-collection-grid td.dc-method-cell .pill {
+      display: inline-flex;
+      max-width: 100%;
+    }
+    .daily-collection-grid td.pay-evidence-cell {
+      padding-left: 4px;
+      padding-right: 4px;
     }
     .daily-collection-table .daily-row-collector {
       width: 100%;
@@ -8319,12 +8409,31 @@
       color: #14201b;
     }
     .daily-client-link:hover { color: #0f766e; }
+    .daily-toolbar-row {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: stretch;
+      gap: 12px;
+      margin: 0 16px 16px;
+    }
+    .daily-toolbar-row .daily-date-bar,
+    .daily-toolbar-row .daily-close-banner {
+      margin: 0;
+    }
+    .daily-toolbar-row .daily-date-bar {
+      flex: 1.4 1 0;
+      min-width: 0;
+    }
+    .daily-toolbar-row .daily-close-banner {
+      flex: 1 1 0;
+      min-width: 220px;
+      max-width: 340px;
+    }
     .daily-date-bar {
       display: flex;
       flex-wrap: wrap;
-      align-items: flex-start;
-      gap: 16px 24px;
-      margin: 0 16px 16px;
+      align-items: flex-end;
+      gap: 12px 16px;
       padding: 14px 16px;
       background: linear-gradient(135deg, #faf6f0 0%, #f0f5f1 100%);
       border: 1px solid rgba(180, 140, 90, 0.15);
@@ -8332,13 +8441,12 @@
       box-shadow: 0 2px 12px rgba(28, 43, 36, 0.04);
     }
     .daily-close-banner {
-      margin: 0 16px 16px;
       padding: 12px 16px;
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       align-items: center;
       justify-content: space-between;
-      gap: 10px 16px;
+      gap: 10px 12px;
       background: #f4f8f6;
       border: 1px solid #d5e4dc;
       border-radius: 12px;
@@ -8347,12 +8455,17 @@
       display: block;
       font-size: 15px;
       color: #14201b;
+      white-space: nowrap;
     }
-    .daily-close-banner p {
-      margin: 4px 0 0;
-      font-size: 13px;
-      color: #4a5f56;
-      line-height: 1.4;
+    @media (max-width: 900px) {
+      .daily-toolbar-row {
+        flex-wrap: wrap;
+      }
+      .daily-toolbar-row .daily-date-bar,
+      .daily-toolbar-row .daily-close-banner {
+        flex: 1 1 100%;
+        max-width: none;
+      }
     }
     .daily-date-field {
       display: grid;
@@ -8372,12 +8485,11 @@
     }
     .daily-date-field select { cursor: pointer; }
     .daily-date-meta {
-      flex: 1;
-      min-width: 220px;
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       align-items: center;
       gap: 8px 12px;
+      margin-left: auto;
     }
     .daily-date-meta strong {
       font-size: 18px;

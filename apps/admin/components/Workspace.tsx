@@ -144,7 +144,7 @@ import {
   type PaymentMethod,
 } from "@/lib/payment-method";
 import { withPaymentEvidence, rememberPaymentEvidence } from "@/lib/payment-evidence-store";
-import { preferRicherEvidence, type PaymentEvidenceRef } from "@/lib/payment-evidence";
+import { preferRicherEvidence, evidenceHasPreview, type PaymentEvidenceRef } from "@/lib/payment-evidence";
 import {
   buildRouteStop,
   type CollectorPaymentDraft,
@@ -1561,7 +1561,19 @@ export function Workspace({
     writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
 
     onToast(`Cobro ${committed.payment.ref} guardado · subiendo a la nube…`);
-    queuePaymentMirror(committed.payment);
+    void queuePaymentMirror(committed.payment).then((mirror) => {
+      if (mirror.ok && !("skipped" in mirror && mirror.skipped)) {
+        if (evidenceHasPreview(committed.payment.evidence)) {
+          onToast(`Cobro ${committed.payment.ref} en la nube · evidencia OK`);
+        }
+        return;
+      }
+      if (evidenceHasPreview(committed.payment.evidence)) {
+        onToast(
+          `Cobro ${committed.payment.ref} guardado · la evidencia se subirá al recuperar red`,
+        );
+      }
+    });
     const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
     if (paidLoan) queueLoanMirror(paidLoan);
     const paidClient = committed.clients.find((row) =>

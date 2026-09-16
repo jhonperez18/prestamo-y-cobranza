@@ -6,7 +6,6 @@ import { TodayMovementsTable } from "@/components/TodayMovementsTable";
 import { Pill } from "@/components/ui";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { todayIso } from "@/lib/daily-dispatch";
-import { APP_BUILD } from "@/lib/app-build";
 import { buildHomeDashboard } from "@/lib/home-dashboard";
 import type { ModuleId } from "@/lib/navigation";
 import { planillaAssignmentsForRoute } from "@/lib/planilla-day-sync";
@@ -169,15 +168,6 @@ export function HomeDashboard({
 
   return (
     <div className="home-dashboard home-routes-dashboard is-unified">
-      <p className="home-build-stamp" title="Commit desplegado en este sitio">
-        Código en este sitio: <strong>{APP_BUILD}</strong>
-        {home.collectedCount === 0 ? (
-          <span className="home-build-hint">
-            {" "}
-            · Cobrado hoy 0 = sin pagos en ESTE navegador (Chrome y Vercel no comparten datos demo)
-          </span>
-        ) : null}
-      </p>
       <div
         className="home-strip"
         style={{ ["--home-strip-count" as string]: String(Math.max(stripChips.length, 1)) }}

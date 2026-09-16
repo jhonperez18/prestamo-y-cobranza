@@ -17,6 +17,20 @@ Detalle del camino backend: [`demo-to-backend.md`](demo-to-backend.md).
 | **Banco** `BankMovement` | Debe/Haber | Proyectado desde pagos + gastos CIE/draft + varios |
 | **Logs diarios** | Resumen por cobrador/día | Alineados a pagos |
 
+### Evidencia (firma / comprobante Nequi)
+
+| Regla | Detalle |
+| --- | --- |
+| Obligatoria al cobrar | Nequi = foto; efectivo = firma. Sin eso no hay `PG-`. |
+| Va en el mismo `PG-` | Campo `evidence` en `public.payments` (nube). |
+| Celular ≠ nube | localStorage es caché; si la foto/firma no sube, el PC no la ve. |
+| Al registrar | Se encola y se POST a `/api/payments/mirror` con la evidencia. |
+| Al abrir / volver | Flush cola + `reconcilePaymentEvidenceToRemote` sube lo pendiente. |
+
+**Regla dura:** confirmar un pago = ver método + evidencia en Cobros del día / Pagos, no solo en el celular.
+
+---
+
 ### Medio de pago → caja del cobrador
 
 | Medio | Efecto |

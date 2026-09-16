@@ -58,6 +58,7 @@ import {
 } from "@/lib/bank";
 import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
+import { evidenceHasPreview } from "@/lib/payment-evidence";
 import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 import {
@@ -330,7 +331,19 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, projected.bankMovements);
 
     showToast(`Cobro ${committed.payment.ref} guardado · subiendo a la nube…`);
-    queuePaymentMirror(committed.payment);
+    void queuePaymentMirror(committed.payment).then((mirror) => {
+      if (mirror.ok && !("skipped" in mirror && mirror.skipped)) {
+        if (evidenceHasPreview(committed.payment.evidence)) {
+          showToast(`Cobro ${committed.payment.ref} en la nube · evidencia OK`);
+        }
+        return;
+      }
+      if (evidenceHasPreview(committed.payment.evidence)) {
+        showToast(
+          `Cobro ${committed.payment.ref} guardado · la evidencia se subirá al recuperar red`,
+        );
+      }
+    });
     const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
     if (paidLoan) queueLoanMirror(paidLoan);
     const paidClient = committed.clients.find((row) =>

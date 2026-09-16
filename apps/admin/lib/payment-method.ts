@@ -7,20 +7,21 @@ export const PAYMENT_METHODS: { id: PaymentMethod; label: string; hint: string }
   { id: "nequi", label: "Nequi", hint: "Transferencia Nequi al recaudar" },
 ];
 
-export function paymentMethodLabel(method?: PaymentMethod | string) {
-  if (method === "nequi") return "Nequi";
-  return "Efectivo";
+/** Acepta id (`nequi`) o etiqueta (`Nequi`); nunca infiere desde evidencia u otros campos. */
+export function normalizePaymentMethod(method?: PaymentMethod | string | null): PaymentMethod {
+  const raw = String(method ?? "").trim().toLowerCase();
+  return raw === "nequi" ? "nequi" : "efectivo";
 }
 
-export function paymentMethodKind(method?: PaymentMethod | string): StatusKind {
-  return method === "nequi" ? "nequi" : "efectivo";
+export function paymentMethodLabel(method?: PaymentMethod | string | null) {
+  return normalizePaymentMethod(method) === "nequi" ? "Nequi" : "Efectivo";
+}
+
+export function paymentMethodKind(method?: PaymentMethod | string | null): StatusKind {
+  return normalizePaymentMethod(method) === "nequi" ? "nequi" : "efectivo";
 }
 
 /** Clase CSS para tintar filas / celdas según forma de pago. */
-export function paymentMethodToneClass(method?: PaymentMethod | string) {
-  return method === "nequi" ? "is-pay-nequi" : "is-pay-efectivo";
-}
-
-export function normalizePaymentMethod(method?: PaymentMethod | string): PaymentMethod {
-  return method === "nequi" ? "nequi" : "efectivo";
+export function paymentMethodToneClass(method?: PaymentMethod | string | null) {
+  return normalizePaymentMethod(method) === "nequi" ? "is-pay-nequi" : "is-pay-efectivo";
 }

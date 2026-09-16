@@ -128,13 +128,9 @@ export function LoginScreen({ onSuccess }: Props) {
         </button>
 
         <div className="login-demo-hints">
-          {supabaseReady ? (
-            <p>
-              Acceso seguro: email de Supabase. Debajo siguen usuarios demo locales.
-            </p>
-          ) : (
+          {!supabaseReady ? (
             <p>Usuarios de prueba (contraseña: {DEMO_USER_PASSWORD})</p>
-          )}
+          ) : null}
           <ul>
             {DEMO_HINTS.map((entry) => (
               <li key={entry.login}>

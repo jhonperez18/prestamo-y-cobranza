@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pill } from "@/components/ui";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import { CollectorClosedDayReview } from "@/components/CollectorClosedDayReview";
@@ -63,6 +63,12 @@ import {
   type UserRow,
 } from "@/lib/mock-data";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
+import {
+  ensureCollectorDayBaseline,
+  markCollectorDaySeen,
+  playSupervisorPaymentChime,
+  unreadPaymentCountForCollector,
+} from "@/lib/supervisor-route-alerts";
 import {
   indexPaymentEvidenceFromPayments,
   withPaymentEvidence,
@@ -185,32 +191,45 @@ function RouteBoardCard({
   accent,
   onOpen,
   mode = "ruta",
+  unreadCount = 0,
 }: {
   row: RouteLiquidacion;
   accent: number;
   onOpen: (routeRef: string) => void;
   /** En vista caja siempre destaca el dinero en mano. */
   mode?: "ruta" | "caja" | "nequi";
+  /** Cobros nuevos del día aún no revisados por el supervisor. */
+  unreadCount?: number;
 }) {
   const total = row.planilla || 0;
   const pct = total > 0 ? Math.round((row.done / total) * 100) : 0;
   const showClosedSummary = mode === "ruta" && row.closed;
   const showLiveProgress = mode === "ruta" && !row.closed;
+  const unreadLabel = unreadCount > 99 ? "99+" : String(unreadCount);
 
   return (
     <button
       type="button"
-      className={`supervisor-route-board accent-${accent % 2}${row.closed ? " is-closed" : ""}${mode === "caja" ? " is-caja-mode" : ""}${mode === "nequi" ? " is-nequi-mode" : ""}`}
+      className={`supervisor-route-board accent-${accent % 2}${row.closed ? " is-closed" : ""}${mode === "caja" ? " is-caja-mode" : ""}${mode === "nequi" ? " is-nequi-mode" : ""}${unreadCount > 0 ? " has-unread" : ""}`}
       onClick={() => onOpen(row.routeRef)}
     >
       {mode === "caja" || mode === "nequi" ? (
         <div className="supervisor-caja-row">
           <div className="supervisor-route-board-id">
             <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
-            <strong>{row.collectorName}</strong>
+            <strong className="supervisor-route-board-name">
+              {row.collectorName}
+              {unreadCount > 0 ? (
+                <span
+                  className="supervisor-route-unread is-pulse"
+                  title={`${unreadCount} cobro${unreadCount === 1 ? "" : "s"} nuevo${unreadCount === 1 ? "" : "s"}`}
+                >
+                  {unreadLabel}
+                </span>
+              ) : null}
+            </strong>
           </div>
           <div className={`supervisor-caja-hero is-row${mode === "nequi" ? " is-nequi" : ""}`}>
-            {mode === "nequi" ? null : <span>Saldo</span>}
             <b>
               {money(mode === "nequi" ? row.cobradoNequi : row.enCaja, { symbol: false })}
             </b>
@@ -226,10 +245,19 @@ function RouteBoardCard({
                   <Pill label={row.statusLabel} kind={row.statusKind} />
                 ) : null}
               </div>
-              <strong>{row.collectorName}</strong>
+              <strong className="supervisor-route-board-name">
+                {row.collectorName}
+                {unreadCount > 0 ? (
+                  <span
+                    className="supervisor-route-unread is-pulse"
+                    title={`${unreadCount} cobro${unreadCount === 1 ? "" : "s"} nuevo${unreadCount === 1 ? "" : "s"}`}
+                  >
+                    {unreadLabel}
+                  </span>
+                ) : null}
+              </strong>
             </div>
             <div className="supervisor-caja-hero is-row is-money-lg">
-              <span>Saldo</span>
               <b>{money(row.enCaja, { symbol: false })}</b>
             </div>
           </div>
@@ -537,14 +565,19 @@ function SupervisorClientFicha({
           <p className="ficha-empty">Sin movimientos registrados.</p>
         ) : (
           <ul className="supervisor-client-ficha-moves">
-            {report.movements.map((row) => (
-              <li key={row.ref}>
-                <span className="is-amount">{money(row.amount, { symbol: false })}</span>
-                <span className="is-date">{row.paidDate || "—"}</span>
-                <span className="is-time">{row.paidTime || "—"}</span>
-                <span className="is-method">{row.method || "—"}</span>
-              </li>
-            ))}
+            {report.movements.map((row) => {
+              const method = normalizePaymentMethod(row.method);
+              return (
+                <li key={row.ref}>
+                  <span className="is-amount">{money(row.amount, { symbol: false })}</span>
+                  <span className="is-date">{row.paidDate || "—"}</span>
+                  <span className="is-time">{row.paidTime || "—"}</span>
+                  <span className={`is-method ${paymentMethodToneClass(method)}`}>
+                    {paymentMethodLabel(method)}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
@@ -789,6 +822,28 @@ export function SupervisorMobileApp({
     loans,
   ]);
 
+  const [unreadByCollector, setUnreadByCollector] = useState<Record<string, number>>({});
+  const unreadTotalRef = useRef(0);
+
+  useEffect(() => {
+    const next: Record<string, number> = {};
+    for (const row of liquidaciones) {
+      ensureCollectorDayBaseline(row.collectorRef, today);
+      next[row.collectorRef] = unreadPaymentCountForCollector(
+        row.collectorRef,
+        today,
+        collectors,
+        paymentsWithEvidence,
+      );
+    }
+    const total = Object.values(next).reduce((sum, n) => sum + n, 0);
+    if (total > unreadTotalRef.current) {
+      playSupervisorPaymentChime();
+    }
+    unreadTotalRef.current = total;
+    setUnreadByCollector(next);
+  }, [liquidaciones, collectors, paymentsWithEvidence, today]);
+
   const totals = useMemo(() => {
     const prestamosHoy = liquidaciones.reduce(
       (sum, row) => sum + row.newLoans.length + row.renewals.length,
@@ -1028,9 +1083,9 @@ export function SupervisorMobileApp({
     : null;
   const clientesPdfReport = useMemo(() => {
     if (!clientesLoanSynced || !clientesLoanClient) return null;
-    // Misma ficha del sistema: préstamo sincronizado + todos los pagos.
-    return buildLoanReport(clientesLoanSynced, clientesLoanClient, payments, assignments);
-  }, [assignments, clientesLoanClient, clientesLoanSynced, payments]);
+    // Misma ficha del sistema: préstamo sincronizado + todos los pagos (con método/evidencia).
+    return buildLoanReport(clientesLoanSynced, clientesLoanClient, paymentsWithEvidence, assignments);
+  }, [assignments, clientesLoanClient, clientesLoanSynced, paymentsWithEvidence]);
   const clientesDetailOpen = Boolean(clientesLoanClientRef);
 
   const prestamosHistorial = useMemo(() => {
@@ -1055,9 +1110,9 @@ export function SupervisorMobileApp({
     : null;
   const prestamoPdfReport = useMemo(() => {
     if (!prestamoFichaLoan || !prestamoFichaClient) return null;
-    const synced = syncLoan(prestamoFichaLoan, payments) as LoanRow;
-    return buildLoanReport(synced, prestamoFichaClient, payments, assignments);
-  }, [assignments, payments, prestamoFichaClient, prestamoFichaLoan]);
+    const synced = syncLoan(prestamoFichaLoan, paymentsWithEvidence) as LoanRow;
+    return buildLoanReport(synced, prestamoFichaClient, paymentsWithEvidence, assignments);
+  }, [assignments, paymentsWithEvidence, prestamoFichaClient, prestamoFichaLoan]);
 
   const nuevoRoute = liquidaciones.find((row) => row.routeRef === nuevoRouteRef) ?? null;
 
@@ -1121,6 +1176,23 @@ export function SupervisorMobileApp({
     ref: string,
     opts?: { method?: PaymentMethod | null; returnView?: SupervisorView },
   ) {
+    const route = liquidaciones.find((row) => row.routeRef === ref);
+    if (route?.collectorRef) {
+      markCollectorDaySeen(
+        route.collectorRef,
+        today,
+        collectors,
+        paymentsWithEvidence,
+      );
+      setUnreadByCollector((current) => ({
+        ...current,
+        [route.collectorRef]: 0,
+      }));
+      unreadTotalRef.current = Math.max(
+        0,
+        unreadTotalRef.current - (unreadByCollector[route.collectorRef] || 0),
+      );
+    }
     setOpenRouteRef(ref);
     setRouteReturnView(opts?.returnView ?? "inicio");
     setNequiDayIso(null);
@@ -1629,6 +1701,7 @@ export function SupervisorMobileApp({
                   row={row}
                   accent={index}
                   mode="caja"
+                  unreadCount={unreadByCollector[row.collectorRef] || 0}
                   onOpen={(ref) => openRouteSummary(ref, { returnView: "caja" })}
                 />
               ))}
@@ -1657,6 +1730,7 @@ export function SupervisorMobileApp({
                   row={row}
                   accent={index}
                   mode="nequi"
+                  unreadCount={unreadByCollector[row.collectorRef] || 0}
                   onOpen={(ref) =>
                     openRouteSummary(ref, { method: "nequi", returnView: "nequi" })
                   }
@@ -2192,6 +2266,7 @@ export function SupervisorMobileApp({
                   key={row.routeRef}
                   row={row}
                   accent={index}
+                  unreadCount={unreadByCollector[row.collectorRef] || 0}
                   onOpen={openRouteSummary}
                 />
               ))}

@@ -12,7 +12,7 @@ import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell, useColumnVisi
 import { BankSortTh, useBankMovementSort } from "@/components/BankSortTh";
 import {
   bankMovementDescriptionText,
-  bankMovementMethodLabel,
+  bankMovementPaymentMethodLabel,
   expenseCategoryLabel,
   filterBankHistory,
   formatBankAmount,
@@ -31,7 +31,7 @@ import {
   summarizeMovements,
 } from "@/lib/bank";
 import { BANK_RECORD_COLUMNS, BANK_RECORD_DEFAULT_COLS } from "@/lib/table-columns";
-import { paymentMethodKind } from "@/lib/payment-method";
+import { paymentMethodKind, normalizePaymentMethod } from "@/lib/payment-method";
 import { Pill } from "@/components/ui";
 import { downloadDemoSnapshot, importDemoSnapshot } from "@/lib/demo-persist";
 
@@ -212,9 +212,6 @@ export function BankRecordsHistoryView({
       <div className="head">
         <h1>Registros</h1>
         <span className="count">{history.length}</span>
-        <p className="bank-history-hint">
-          Historial del sistema · los cobros y gastos permanecen hasta conciliar el periodo.
-        </p>
         <div className="grow" />
         <div className="bank-backup-actions">
           <button type="button" className="btn ghost" onClick={handleExportBackup}>
@@ -410,7 +407,7 @@ export function BankRecordsHistoryView({
               visibleRows.map((row) => {
                 const isExpense = isBankExpenseMovement(row);
                 const paymentRef = paymentRefForMovement(row);
-                const methodLabel = bankMovementMethodLabel(row.description);
+                const methodLabel = bankMovementPaymentMethodLabel(row);
                 return (
                   <tr
                     key={row.ref}
@@ -459,7 +456,7 @@ export function BankRecordsHistoryView({
                         {methodLabel ? (
                           <Pill
                             label={methodLabel}
-                            kind={paymentMethodKind(methodLabel === "Nequi" ? "nequi" : "efectivo")}
+                            kind={paymentMethodKind(normalizePaymentMethod(methodLabel))}
                           />
                         ) : (
                           "—"

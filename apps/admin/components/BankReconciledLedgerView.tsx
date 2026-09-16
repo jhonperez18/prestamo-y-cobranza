@@ -7,7 +7,7 @@ import { Pill } from "@/components/ui";
 import type { BankAccount, BankLedgerKind, BankMovement, BankReconciliation } from "@/lib/bank";
 import {
   bankMovementDescriptionText,
-  bankMovementMethodLabel,
+  bankMovementPaymentMethodLabel,
   expenseCategoryLabel,
   filterBankHistory,
   formatBankAmount,
@@ -23,7 +23,7 @@ import {
   summarizeReconciledMovements,
   type BankHistoryScope,
 } from "@/lib/bank";
-import { paymentMethodKind } from "@/lib/payment-method";
+import { paymentMethodKind, normalizePaymentMethod } from "@/lib/payment-method";
 import {
   BANK_LEDGER_EXPENSE_COLUMNS,
   BANK_LEDGER_EXPENSE_DEFAULT_COLS,
@@ -89,9 +89,6 @@ export function BankReconciledLedgerView({
   const title = isIncome ? "Ingresos" : "Gastos";
   const amountLabel = isIncome ? "Debe" : "Haber";
   const labelColSpan = columns.filter((col) => col.id !== amountColId && isVisible(col.id)).length;
-  const hint = isIncome
-    ? "Sincronizado con pagos: todo cobro que entra al banco aparece aquí (Debe)."
-    : "Sincronizado con gastos de ruta y egresos del banco (Haber).";
 
   function renderRefCell(row: BankMovement) {
     const paymentRef = paymentRefForMovement(row);
@@ -135,12 +132,12 @@ export function BankReconciledLedgerView({
       case "description":
         return bankMovementDescriptionText(row.description);
       case "method": {
-        const methodLabel = bankMovementMethodLabel(row.description);
+        const methodLabel = bankMovementPaymentMethodLabel(row);
         if (!methodLabel) return "—";
         return (
           <Pill
             label={methodLabel}
-            kind={paymentMethodKind(methodLabel === "Nequi" ? "nequi" : "efectivo")}
+            kind={paymentMethodKind(normalizePaymentMethod(methodLabel))}
           />
         );
       }
@@ -167,7 +164,6 @@ export function BankReconciledLedgerView({
       <div className="head">
         <h1>{title}</h1>
         <span className="count">{rows.length}</span>
-        <p className="bank-history-hint">{hint}</p>
         <div className="grow" />
         <label className="bank-ledger-filter">
           Estado{" "}
