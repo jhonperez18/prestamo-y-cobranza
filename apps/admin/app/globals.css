@@ -400,10 +400,16 @@
       background: var(--panel);
     }
     .collector-shell-mobile {
-      min-height: 100vh;
+      min-height: 100dvh;
+      height: 100dvh;
+      max-height: 100dvh;
       max-width: 480px;
       margin: 0 auto;
       background: #f3f6f4;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
     .collector-shell-mobile .toast {
       left: 50%;
@@ -2944,6 +2950,10 @@
       min-height: 100%;
       height: 100%;
       box-sizing: border-box;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
     }
     .mobile-preview-home {
       width: 120px;
@@ -2960,6 +2970,7 @@
       color: #122018;
       min-width: 0;
       overflow-x: hidden;
+      padding-bottom: max(28px, env(safe-area-inset-bottom, 0px));
     }
     .supervisor-mobile-header {
       align-items: center;
@@ -3164,8 +3175,9 @@
     .supervisor-mobile-list.is-prestamos-hist > li.is-head {
       display: grid;
       grid-template-columns:
-        minmax(0, 1.4fr) minmax(3.2rem, 0.5fr) minmax(4.2rem, 0.65fr) minmax(3.6rem, 0.5fr) minmax(4rem, 0.65fr);
-      column-gap: 6px;
+        minmax(0, 1.25fr) minmax(2.6rem, 0.4fr) minmax(2.4rem, 0.4fr) minmax(3.2rem, 0.45fr)
+        minmax(3.4rem, 0.55fr) minmax(3.4rem, 0.55fr);
+      column-gap: 5px;
       align-items: center;
       padding: 5px 8px;
       background: #f4f8f6;
@@ -3185,8 +3197,9 @@
       width: 100%;
       display: grid;
       grid-template-columns:
-        minmax(0, 1.4fr) minmax(3.2rem, 0.5fr) minmax(4.2rem, 0.65fr) minmax(3.6rem, 0.5fr) minmax(4rem, 0.65fr);
-      column-gap: 6px;
+        minmax(0, 1.25fr) minmax(2.6rem, 0.4fr) minmax(2.4rem, 0.4fr) minmax(3.2rem, 0.45fr)
+        minmax(3.4rem, 0.55fr) minmax(3.4rem, 0.55fr);
+      column-gap: 5px;
       align-items: center;
       margin: 0;
       padding: 6px 8px;
@@ -3246,7 +3259,7 @@
     }
     .supervisor-prestamo-hist-row .is-amount {
       justify-self: end;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 800;
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
@@ -3258,6 +3271,19 @@
     }
     .supervisor-prestamo-hist-row .is-amount.is-efectivo {
       color: #0f766e;
+    }
+    .supervisor-prestamo-hist-row .is-saldo,
+    .supervisor-mobile-list.is-prestamos-hist > li.is-head .is-saldo {
+      justify-self: end;
+      text-align: right;
+    }
+    .supervisor-prestamo-hist-row .is-saldo {
+      font-size: 11px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      color: #111;
+      line-height: 1.2;
     }
     .supervisor-mobile-detail-meta {
       margin: 0 0 8px;
@@ -4039,7 +4065,7 @@
       overflow: hidden;
     }
     .supervisor-mobile-section {
-      padding: 8px 10px 4px;
+      padding: 8px 10px 16px;
     }
     .supervisor-mobile-section h3 {
       margin: 0 0 4px;
@@ -4176,12 +4202,12 @@
       gap: 10px;
       margin-top: 4px;
     }
+    /* En celular el scroll es de toda la pantalla Nequi, no un cajón truncado. */
     .supervisor-nequi-register.is-today-only {
-      max-height: min(52vh, 420px);
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      overscroll-behavior: contain;
-      padding-right: 2px;
+      max-height: none;
+      overflow: visible;
+      padding-right: 0;
+      padding-bottom: 8px;
     }
     .supervisor-nequi-register.is-today-only .supervisor-nequi-day {
       margin: 0;

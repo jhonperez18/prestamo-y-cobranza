@@ -75,6 +75,15 @@ import {
 } from "@/lib/payment-evidence-store";
 import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
 
+/** Fecha corta para listados: 05/09/2026 → 5/9 */
+function formatLoanListDate(raw?: string | null) {
+  const text = String(raw ?? "").trim();
+  if (!text) return "—";
+  const m = text.match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?$/);
+  if (!m) return text;
+  return `${Number(m[1])}/${Number(m[2])}`;
+}
+
 type Props = {
   supervisor: UserRow;
   collectors: CollectorRow[];
@@ -2152,6 +2161,7 @@ export function SupervisorMobileApp({
                     <span className="is-date">Fecha</span>
                     <span className="is-origin">Origen</span>
                     <span className="is-amount">Monto</span>
+                    <span className="is-saldo">Saldo</span>
                   </li>
                   {prestamosHistorial.map((loan) => {
                     const origin = loanDisbursementSource(loan);
@@ -2161,6 +2171,8 @@ export function SupervisorMobileApp({
                         : origin === "efectivo"
                           ? "is-efectivo"
                           : "is-unknown";
+                    const synced = syncLoan(loan, payments) as LoanRow;
+                    const dateShort = formatLoanListDate(loan.date);
                     return (
                       <li key={loan.ref} className={originClass}>
                         <button
@@ -2170,12 +2182,15 @@ export function SupervisorMobileApp({
                         >
                           <strong className="is-client">{loan.client}</strong>
                           <span className="is-ref">{loan.ref}</span>
-                          <span className="is-date">{loan.date}</span>
+                          <span className="is-date">{dateShort}</span>
                           <em className={`is-origin ${originClass}`}>
                             {loanDisbursementSourceLabel(origin)}
                           </em>
                           <b className={`is-amount ${originClass}`}>
                             {money(loan.capital || loan.total || 0, { symbol: false })}
+                          </b>
+                          <b className="is-saldo">
+                            {money(Math.max(0, synced.balance ?? 0), { symbol: false })}
                           </b>
                         </button>
                       </li>
