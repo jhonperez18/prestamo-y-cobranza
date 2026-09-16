@@ -3,16 +3,13 @@
 import { useMemo } from "react";
 import { Pill } from "@/components/ui";
 import { clientsOnRouteSorted } from "@/lib/client-route-order";
-import {
-  collectionAlertLabel,
-  collectionChargeKind,
-  liveLoanCollectionAlerts,
-} from "@/lib/collection-alerts";
 import { computeLoanFinancials } from "@/lib/loan-balance";
 import { todayIso } from "@/lib/daily-dispatch";
 import { canRenewLoan } from "@/lib/loan-renew";
 import { cuotaTarget } from "@/lib/loan-pay";
 import { syncLoan } from "@/lib/loan-preview";
+import { computeLoanCuotasProgress, type CuotasProgress } from "@/lib/loan-cuotas-progress";
+import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import {
   paymentMethodKind,
   paymentMethodLabel,
@@ -59,8 +56,7 @@ type RouteClientRow = {
   paidTime: string;
   paidMethod: string;
   paidMethodKind: StatusKind;
-  alertLabel: string;
-  alertKind: StatusKind;
+  cuotas: CuotasProgress;
   visitStatus: string;
   order: number | string;
   rowKey: string;
@@ -123,12 +119,7 @@ function rowFromAssignment(
     todayPays.length > 0
       ? [...todayPays].sort((a, b) => paymentSortKey(b).localeCompare(paymentSortKey(a)))[0]
       : null;
-  const alertCount = loan
-    ? liveLoanCollectionAlerts(loan, payments, today)
-    : Number(assignment.alertCount) || 0;
-  const chargeKind = collectionChargeKind(alertCount);
-  const alertKind: StatusKind =
-    chargeKind === "mora" ? "overdue" : chargeKind === "alerta" ? "warn" : "ok";
+  const cuotas = computeLoanCuotasProgress(loan, payments, today);
   const paidToday =
     cobradoHoy > 0 ||
     assignment.visitStatus === "cobrado" ||
@@ -148,8 +139,7 @@ function rowFromAssignment(
     paidTime: lastToday?.paidTime?.trim() || "",
     paidMethod: lastToday ? paymentMethodLabel(lastToday.method) : "",
     paidMethodKind: paymentMethodKind(lastToday?.method),
-    alertLabel: paidToday || alertCount === 0 ? "Al día" : collectionAlertLabel(alertCount),
-    alertKind: paidToday || alertCount === 0 ? "ok" : alertKind,
+    cuotas,
     visitStatus: assignment.visitStatus || "pendiente",
     order: client.routeOrder || order,
     rowKey: assignment.itemId || `${assignment.clientRef}:${assignment.loanRef}:${order}`,
@@ -238,7 +228,7 @@ export function RouteClientsView({
             <col className="rc-col-cuota" />
             <col className="rc-col-cobrado" />
             <col className="rc-col-hora" />
-            <col className="rc-col-aviso" />
+            <col className="rc-col-cuotas" />
             <col className="rc-col-accion" />
           </colgroup>
           <thead>
@@ -252,7 +242,9 @@ export function RouteClientsView({
               </th>
               <th title="Se actualiza cuando el cobrador registra el pago">Cobrado</th>
               <th title="Hora del cobro en la app">Hora</th>
-              <th title="Alerta 1–3; al 4.º día hábil sin pago = Mora">Aviso</th>
+              <th title="Cuotas pagadas / esperadas a hoy (calendario lun–sáb sin festivos)">
+                Mora
+              </th>
               <th className="right">Acción</th>
             </tr>
           </thead>
@@ -312,8 +304,8 @@ export function RouteClientsView({
                     <td className="route-clients-hora">
                       {row.paidToday && row.paidTime ? row.paidTime : "—"}
                     </td>
-                    <td>
-                      <Pill label={row.alertLabel} kind={row.alertKind} />
+                    <td className="route-clients-cuotas">
+                      <CuotasProgressCell progress={row.cuotas} />
                     </td>
                     <td className="right route-clients-actions">
                       {onRenewLoan ? (

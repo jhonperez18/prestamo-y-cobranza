@@ -34,13 +34,9 @@ import {
 import { todayIso } from "@/lib/daily-dispatch";
 import {
   enrichSupervisorPlanillaRow,
-  planillaAlertBadgeText,
-  planillaAlertTitle,
 } from "@/lib/planilla-display";
-import {
-  COLLECTION_ALERTS_BEFORE_MORA,
-  liveLoanCollectionAlerts,
-} from "@/lib/collection-alerts";
+import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
+import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import { nequiAcumuladoNet, loanDisbursementSource, loanDisbursementSourceLabel } from "@/lib/nequi-pool";
@@ -312,10 +308,7 @@ function PlanillaTable({
     clientName: string;
     saldo: number;
     method?: PaymentMethod | null;
-    alertCount?: number;
-    alertBadge?: string;
-    alertTitle?: string;
-    inMora?: boolean;
+    cuotas?: ReturnType<typeof computeLoanCuotasProgress>;
     visitStatus?: DailyCollectionAssignment["visitStatus"];
   }>;
 }) {
@@ -328,15 +321,24 @@ function PlanillaTable({
             <th className="is-nombre">Nombre</th>
             <th className="is-num">Saldo</th>
             <th className="is-metodo">Método</th>
-            <th className="is-alert" aria-label="Alerta" />
+            <th className="is-cuotas">Mora</th>
             <th className="is-estado">Estado</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => {
-            const badge = row.alertBadge ?? "";
-            const alertOn = Boolean(badge);
             const method = row.method ?? null;
+            const cuotas = row.cuotas ?? {
+              label: "",
+              intensity: 0,
+              title: "",
+              expected: 0,
+              paid: 0,
+              total: 0,
+              paidTotal: 0,
+              installment: 0,
+              lagDays: 0,
+            };
             return (
               <tr key={row.key}>
                 <td className="is-ruta">{row.index}</td>
@@ -353,20 +355,8 @@ function PlanillaTable({
                     "—"
                   )}
                 </td>
-                <td className="is-alert">
-                  <span
-                    className={
-                      alertOn
-                        ? row.inMora
-                          ? "supervisor-mobile-alert-n is-mora"
-                          : "supervisor-mobile-alert-n"
-                        : "supervisor-mobile-alert-n is-empty"
-                    }
-                    title={row.alertTitle}
-                    aria-hidden={!alertOn}
-                  >
-                    {badge}
-                  </span>
+                <td className="is-cuotas">
+                  <CuotasProgressCell progress={cuotas} />
                 </td>
                 <td className="is-estado">
                   <span title={visitStatusLabel(row.visitStatus)}>
@@ -395,10 +385,7 @@ function ClientesTable({
     routeOrder: number;
     name: string;
     phone: string;
-    alertCount: number;
-    alertBadge: string;
-    alertTitle?: string;
-    inMora: boolean;
+    cuotas: ReturnType<typeof computeLoanCuotasProgress>;
     saldo: number | null;
     hasLoan: boolean;
   }>;
@@ -412,14 +399,12 @@ function ClientesTable({
             <th className="is-ruta">#</th>
             <th className="is-nombre">Nombre</th>
             <th className="is-tel">Teléfono</th>
-            <th className="is-alert" aria-label="Alerta" />
+            <th className="is-cuotas">Mora</th>
             <th className="is-num">Saldo</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((row) => {
-            const badge = row.alertBadge ?? "";
-            const alertOn = Boolean(badge);
             return (
               <tr
                 key={row.ref}
@@ -433,20 +418,8 @@ function ClientesTable({
                 <td className="is-tel" title={row.phone}>
                   {row.phone}
                 </td>
-                <td className="is-alert">
-                  <span
-                    className={
-                      alertOn
-                        ? row.inMora
-                          ? "supervisor-mobile-alert-n is-mora"
-                          : "supervisor-mobile-alert-n"
-                        : "supervisor-mobile-alert-n is-empty"
-                    }
-                    title={row.alertTitle}
-                    aria-hidden={!alertOn}
-                  >
-                    {badge}
-                  </span>
+                <td className="is-cuotas">
+                  {row.hasLoan ? <CuotasProgressCell progress={row.cuotas} /> : "—"}
                 </td>
                 <td className="is-num">
                   {row.hasLoan && row.saldo != null
@@ -1086,22 +1059,13 @@ export function SupervisorMobileApp({
 
     return base.map((row) => {
       const loan = currentActiveLoan(row.ref, loans, payments);
-      const alertCount = loan
-        ? liveLoanCollectionAlerts(
-            loan,
-            payments,
-            today,
-          )
-        : 0;
+      const cuotas = computeLoanCuotasProgress(loan, payments, today);
       return {
         ref: row.ref,
         routeOrder: row.routeOrder || 0,
         name: `${row.name} ${row.lastName}`.trim(),
         phone: row.phone?.trim() || "—",
-        alertCount,
-        alertBadge: planillaAlertBadgeText(alertCount),
-        alertTitle: planillaAlertTitle(alertCount),
-        inMora: alertCount >= COLLECTION_ALERTS_BEFORE_MORA,
+        cuotas,
         saldo: loan ? loan.balance : null,
         hasLoan: Boolean(loan),
       };

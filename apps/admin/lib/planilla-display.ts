@@ -1,17 +1,15 @@
 /**
  * Vista unificada de planilla (supervisor / cobrador / resumen):
- * alertas en vivo desde el préstamo; se ocultan si ya pagó hoy.
- * Cuota desde amountDue o respaldo de cuota del préstamo.
+ * progreso de cuotas (paid/expected + intensidad) desde plata y calendario.
+ * Cuota del día desde amountDue o respaldo de cuota del préstamo.
  */
-import {
-  COLLECTION_ALERTS_BEFORE_MORA,
-  collectionAlertLabel,
-  liveLoanCollectionAlerts,
-  loanPaidOnDate,
-} from "@/lib/collection-alerts";
 import { accumulatedDueForLoan } from "@/lib/daily-collection-plan";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { syncLoan } from "@/lib/loan-preview";
+import {
+  computeLoanCuotasProgress,
+  type CuotasProgress,
+} from "@/lib/loan-cuotas-progress";
 import type { LoanRow, PaymentRow } from "@/lib/mock-data";
 import { todayIso } from "@/lib/daily-dispatch";
 import {
@@ -27,35 +25,12 @@ export function planillaVisitPaid(row: Pick<DailyCollectionAssignment, "visitSta
   );
 }
 
-/** Contador para badge: 0 si pagó; 1–3 alerta; 4 = mora (mostrar como M). */
-export function planillaLiveAlertCount(
-  row: DailyCollectionAssignment,
+export function planillaLiveCuotasProgress(
   loan: LoanRow | null | undefined,
   payments: PaymentRow[],
   today = todayIso(),
-): number {
-  if (planillaVisitPaid(row)) return 0;
-  const loanRef = loan?.ref || row.loanRef;
-  if (loanPaidOnDate(loanRef, payments, today)) return 0;
-  if (loan) return liveLoanCollectionAlerts(loan, payments, today);
-  return Number(row.alertCount) || 0;
-}
-
-export function planillaAlertBadgeText(alertCount: number) {
-  if (alertCount <= 0) return "";
-  if (alertCount >= COLLECTION_ALERTS_BEFORE_MORA) return "M";
-  return String(alertCount);
-}
-
-export function planillaAlertTitle(alertCount: number) {
-  if (alertCount <= 0) return undefined;
-  if (alertCount >= COLLECTION_ALERTS_BEFORE_MORA) {
-    return "Mora · alerta 4 (4 días hábiles sin pago)";
-  }
-  return (
-    collectionAlertLabel(alertCount) ||
-    `Alerta ${alertCount} · días hábiles sin pago (si no paga hoy, mañana sube)`
-  );
+): CuotasProgress {
+  return computeLoanCuotasProgress(loan, payments, today);
 }
 
 export function planillaLiveCuota(
@@ -94,7 +69,7 @@ export function enrichSupervisorPlanillaRow(
   today = todayIso(),
 ) {
   const loan = planillaSyncedLoan(loans, row.loanRef, payments);
-  const alertCount = planillaLiveAlertCount(row, loan, payments, today);
+  const cuotas = planillaLiveCuotasProgress(loan, payments, today);
   const cuota = planillaLiveCuota(row, loan, today);
   const saldo = loan?.balance ?? 0;
   const pay =
@@ -116,10 +91,7 @@ export function enrichSupervisorPlanillaRow(
     saldo,
     cuota,
     method,
-    alertCount,
-    alertBadge: planillaAlertBadgeText(alertCount),
-    alertTitle: planillaAlertTitle(alertCount),
+    cuotas,
     visitStatus: row.visitStatus,
-    inMora: alertCount >= COLLECTION_ALERTS_BEFORE_MORA,
   };
 }

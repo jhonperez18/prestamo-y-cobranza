@@ -2013,10 +2013,10 @@
     .collector-mobile-list.compact > .collector-mobile-card.is-open.is-dense:nth-child(even) {
       background: #e7f4ee;
     }
-    /* Lista densa: # | nombre… | saldo | cuota | atraso | billete */
+    /* Lista densa: # | nombre… | saldo | cuota | Cuotas | billete */
     .collector-mobile-dense-row {
       display: grid;
-      grid-template-columns: 1.05rem minmax(0, 1fr) 4.6rem 3.9rem 1rem 1rem;
+      grid-template-columns: 1.05rem minmax(0, 1fr) 4.6rem 3.9rem 3.4rem 1rem;
       grid-template-areas: "ord who saldo cuota alert pay";
       column-gap: 4px;
       row-gap: 0;
@@ -2101,7 +2101,8 @@
       justify-self: stretch;
       text-align: right;
     }
-    .collector-mobile-dense-row .collector-mobile-alert-n {
+    .collector-mobile-dense-row .collector-mobile-alert-n,
+    .collector-mobile-dense-row .collector-mobile-cuotas {
       grid-area: alert;
       justify-self: center;
     }
@@ -2180,6 +2181,70 @@
       background: #fee2e2;
       border-color: #fca5a5;
       color: #991b1b;
+    }
+
+    /* Cuotas paid/expected + barra de intensidad (reemplazo de Alerta/Mora en campo) */
+    .cuotas-progress {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      font-size: 10px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      color: #14201b;
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+    .cuotas-progress.is-empty {
+      color: #94a3b8;
+      font-weight: 500;
+    }
+    .cuotas-progress-sep {
+      opacity: 0.55;
+      font-weight: 600;
+    }
+    .cuotas-progress-bar {
+      display: inline-block;
+      width: 3px;
+      height: 12px;
+      margin-left: 3px;
+      border-radius: 2px;
+      background: #cbd5e1;
+      flex-shrink: 0;
+    }
+    .cuotas-progress.is-level-0 .cuotas-progress-bar {
+      background: #86efac;
+    }
+    .cuotas-progress.is-level-1 .cuotas-progress-bar {
+      background: #facc15;
+      box-shadow: 0 0 0 1px rgba(202, 138, 4, 0.25);
+    }
+    .cuotas-progress.is-level-2 .cuotas-progress-bar {
+      background: #fb923c;
+      height: 13px;
+    }
+    .cuotas-progress.is-level-3 .cuotas-progress-bar {
+      background: #f97316;
+      height: 14px;
+      width: 3.5px;
+    }
+    .cuotas-progress.is-level-4 .cuotas-progress-bar {
+      background: #ef4444;
+      height: 14px;
+      width: 4px;
+      box-shadow: 0 0 0 1px rgba(185, 28, 28, 0.3);
+    }
+    .cuotas-progress.is-level-1 .cuotas-progress-expected,
+    .cuotas-progress.is-level-2 .cuotas-progress-expected {
+      color: #a16207;
+    }
+    .cuotas-progress.is-level-3 .cuotas-progress-expected,
+    .cuotas-progress.is-level-4 .cuotas-progress-expected {
+      color: #9a3412;
+    }
+    .collector-mobile-cuotas {
+      justify-self: end;
     }
     .collector-mobile-card.is-done .collector-mobile-dense-row {
       grid-template-columns: 1.15rem minmax(0, 1fr) max-content auto;
@@ -3709,20 +3774,20 @@
       text-decoration: underline;
     }
     .supervisor-planilla-table .is-ruta {
-      width: 8%;
+      width: 7%;
     }
     .supervisor-planilla-table .is-nombre {
-      width: 36%;
+      width: 30%;
     }
     .supervisor-planilla-table .is-num {
-      width: 15%;
+      width: 14%;
     }
     .supervisor-planilla-table .is-metodo {
-      width: 16%;
+      width: 14%;
       text-align: center;
       white-space: nowrap;
-      padding-left: 6px;
-      padding-right: 10px;
+      padding-left: 4px;
+      padding-right: 6px;
     }
     .supervisor-planilla-method {
       display: inline-block;
@@ -3762,17 +3827,19 @@
     .supervisor-clientes-table td.is-tel {
       color: #3d5249;
     }
-    .supervisor-clientes-table .is-alert {
-      width: 10%;
+    .supervisor-clientes-table .is-cuotas {
+      width: 14%;
       text-align: center;
       padding-left: 2px;
       padding-right: 2px;
+      white-space: nowrap;
     }
-    .supervisor-clientes-table td.is-alert {
+    .supervisor-clientes-table th.is-cuotas {
+      font-size: 9px;
+      letter-spacing: 0.02em;
+    }
+    .supervisor-clientes-table td.is-cuotas {
       vertical-align: middle;
-    }
-    .supervisor-clientes-table td.is-alert .supervisor-mobile-alert-n {
-      margin-inline: auto;
     }
     .supervisor-clientes-table .is-num {
       width: 22%;
@@ -4042,11 +4109,20 @@
       color: #5b7268;
       text-align: right;
     }
-    .supervisor-planilla-table .is-alert {
-      width: 10%;
+    .supervisor-planilla-table .is-cuotas {
+      width: 16%;
       text-align: center;
-      padding-left: 4px;
-      padding-right: 6px;
+      padding-left: 2px;
+      padding-right: 4px;
+      white-space: nowrap;
+    }
+    .supervisor-planilla-table th.is-cuotas {
+      font-size: 9px;
+      letter-spacing: 0.02em;
+    }
+    .supervisor-planilla-table td.is-cuotas {
+      vertical-align: middle;
+      text-align: center;
     }
     .supervisor-planilla-table .is-estado {
       width: 14%;
@@ -4054,7 +4130,7 @@
       white-space: nowrap;
       overflow: visible;
       padding-right: 6px;
-      padding-left: 8px;
+      padding-left: 4px;
     }
     .supervisor-planilla-table .is-estado .pill {
       transform: none;
@@ -4074,13 +4150,6 @@
     }
     .supervisor-planilla-table th.is-estado {
       font-size: 9px;
-    }
-    .supervisor-planilla-table td.is-alert {
-      vertical-align: middle;
-      text-align: center;
-    }
-    .supervisor-planilla-table td.is-alert .supervisor-mobile-alert-n {
-      margin-inline: auto;
     }
     .supervisor-planilla-table td.is-nombre {
       font-weight: 650;

@@ -31,12 +31,10 @@ import { canRenewLoan } from "@/lib/loan-renew";
 import { syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import { dispatchRouteRef } from "@/lib/collector-dispatch-sync";
-import { collectionAlertLabel, COLLECTION_ALERTS_BEFORE_MORA } from "@/lib/collection-alerts";
+import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import {
-  planillaAlertBadgeText,
-  planillaAlertTitle,
-  planillaLiveAlertCount,
   planillaLiveCuota,
+  planillaLiveCuotasProgress,
 } from "@/lib/planilla-display";
 import type {
   RouteExpenseLine,
@@ -147,7 +145,9 @@ function visitIdentity(
   const loan = rawLoan ? (syncLoan(rawLoan, payments) as LoanRow) : null;
   const cuota = awaitingLoan ? 0 : planillaLiveCuota(item, loan, today);
   const balance = awaitingLoan ? 0 : loan?.balance ?? 0;
-  const alertCount = awaitingLoan ? 0 : planillaLiveAlertCount(item, loan, payments, today);
+  const cuotas = awaitingLoan
+    ? null
+    : planillaLiveCuotasProgress(loan, payments, today);
   const first = client?.name?.trim() || "";
   const last = client?.lastName?.trim() || "";
   const fullName =
@@ -163,11 +163,7 @@ function visitIdentity(
     loan,
     loanRef: loan?.ref ?? item.loanRef ?? "",
     awaitingLoan,
-    alertCount,
-    alertBadge: planillaAlertBadgeText(alertCount),
-    alertTitle: planillaAlertTitle(alertCount),
-    alertLabel: alertCount > 0 ? collectionAlertLabel(alertCount) : "",
-    inMora: alertCount >= COLLECTION_ALERTS_BEFORE_MORA,
+    cuotas,
   };
 }
 
@@ -1047,19 +1043,17 @@ export function CollectorMobileApp({
                       ) : null}
                       {!identity.awaitingLoan && !isDoneView && canAct && !isOpen ? (
                         <>
-                          <span
-                            className={
-                              identity.alertCount > 0
-                                ? identity.inMora
-                                  ? "collector-mobile-alert-n is-mora"
-                                  : "collector-mobile-alert-n"
-                                : "collector-mobile-alert-n is-empty"
+                          <CuotasProgressCell
+                            progress={
+                              identity.cuotas ?? {
+                                label: "",
+                                intensity: 0,
+                                title: "",
+                                expected: 0,
+                              }
                             }
-                            title={identity.alertTitle}
-                            aria-hidden={identity.alertCount <= 0}
-                          >
-                            {identity.alertBadge}
-                          </span>
+                            className="collector-mobile-cuotas"
+                          />
                           <button
                             type="button"
                             className="collector-mobile-pay-sticker"
