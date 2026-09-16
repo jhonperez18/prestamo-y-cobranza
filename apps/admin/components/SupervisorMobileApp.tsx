@@ -2140,7 +2140,7 @@ export function SupervisorMobileApp({
                 <input
                   value={prestamosSearch}
                   onChange={(event) => setPrestamosSearch(event.target.value)}
-                  placeholder="Buscar cliente, ref o fecha"
+                  placeholder="Buscar cliente o fecha"
                   autoFocus
                 />
               </label>
@@ -2157,7 +2157,6 @@ export function SupervisorMobileApp({
                 >
                   <li className="is-head" aria-hidden>
                     <span className="is-client">Cliente</span>
-                    <span className="is-ref">Ref</span>
                     <span className="is-date">Fecha</span>
                     <span className="is-origin">Origen</span>
                     <span className="is-amount">Monto</span>
@@ -2181,7 +2180,6 @@ export function SupervisorMobileApp({
                           onClick={() => setPrestamoFichaRef(loan.ref)}
                         >
                           <strong className="is-client">{loan.client}</strong>
-                          <span className="is-ref">{loan.ref}</span>
                           <span className="is-date">{dateShort}</span>
                           <em className={`is-origin ${originClass}`}>
                             {loanDisbursementSourceLabel(origin)}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   buildReceiptEvidence,
   compressReceiptImage,
@@ -34,37 +35,78 @@ function EvidenceLightbox({
   title: string;
   onClose: () => void;
 }) {
-  return (
-    <div className="evidence-lightbox" role="dialog" aria-modal="true" aria-label={title}>
-      <button
-        type="button"
-        className="evidence-lightbox-backdrop"
-        aria-label="Cerrar"
-        onClick={onClose}
-      />
-      <div className="evidence-lightbox-panel">
+  const canOpenExternal = /^https?:\/\//i.test(openUrl);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  const node = (
+    <div
+      className="evidence-lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      onClick={(event) => {
+        event.stopPropagation();
+        onClose();
+      }}
+      onTouchMove={(event) => event.stopPropagation()}
+    >
+      <div
+        className="evidence-lightbox-panel"
+        onClick={(event) => event.stopPropagation()}
+        onTouchMove={(event) => event.stopPropagation()}
+      >
         <header>
           <strong>{title}</strong>
-          {sizeHint !== "—" ? <span>{sizeHint}</span> : null}
+          {sizeHint !== "—" ? <span className="evidence-lightbox-meta">{sizeHint}</span> : null}
           {isDemoPreview ? <span className="evidence-demo-tag">Demo</span> : null}
-          <a
-            className="btn ghost compact"
-            href={openUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(event) => event.stopPropagation()}
+          {canOpenExternal ? (
+            <a
+              className="btn ghost compact"
+              href={openUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(event) => event.stopPropagation()}
+            >
+              Abrir
+            </a>
+          ) : null}
+          <button
+            type="button"
+            className="evidence-lightbox-close"
+            aria-label="Cerrar ampliación"
+            onClick={(event) => {
+              event.stopPropagation();
+              onClose();
+            }}
           >
-            Abrir
-          </a>
-          <button type="button" className="btn ghost compact" onClick={onClose}>
-            Cerrar
+            ×
           </button>
         </header>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={openUrl} alt={`${title} ampliado`} />
+        <div className="evidence-lightbox-stage">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={openUrl} alt={`${title} ampliado`} draggable={false} />
+        </div>
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return null;
+  return createPortal(node, document.body);
 }
 
 export function PaymentEvidenceThumb({
@@ -76,6 +118,7 @@ export function PaymentEvidenceThumb({
 }: Props) {
   const [openUrl, setOpenUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputId = useId();
   const item = primaryPaymentEvidence(evidence);
@@ -86,13 +129,8 @@ export function PaymentEvidenceThumb({
   const close = useCallback(() => setOpenUrl(null), []);
 
   useEffect(() => {
-    if (!openUrl) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [close, openUrl]);
+    setMounted(true);
+  }, []);
 
   async function onPhoto(file: File | undefined) {
     if (!file || !onAttach) return;
@@ -106,6 +144,13 @@ export function PaymentEvidenceThumb({
       setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
     }
+  }
+
+  function openPreview(event: React.MouseEvent | React.PointerEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!previewUrl) return;
+    setOpenUrl(previewUrl);
   }
 
   if (!item || !previewUrl) {
@@ -146,6 +191,17 @@ export function PaymentEvidenceThumb({
   const isDemoPreview = !item.previewUrl?.trim();
   const title = `Ver ${isSignature ? "firma" : "comprobante"} ampliado${sizeHint !== "—" ? ` · ${sizeHint}` : ""}`;
 
+  const lightbox =
+    mounted && openUrl ? (
+      <EvidenceLightbox
+        openUrl={openUrl}
+        sizeHint={sizeHint}
+        isDemoPreview={isDemoPreview}
+        title={label}
+        onClose={close}
+      />
+    ) : null;
+
   if (variant === "panel") {
     return (
       <>
@@ -159,22 +215,14 @@ export function PaymentEvidenceThumb({
             }
             title={title}
             aria-label={`Ampliar ${isSignature ? "firma" : "comprobante"}`}
-            onClick={() => setOpenUrl(previewUrl)}
+            onClick={openPreview}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={previewUrl} alt={label} />
           </button>
-          <p className="payment-evidence-panel-hint">Clic en la imagen para verla a pantalla completa</p>
+          <p className="payment-evidence-panel-hint">Toca la imagen para ampliarla</p>
         </div>
-        {openUrl ? (
-          <EvidenceLightbox
-            openUrl={openUrl}
-            sizeHint={sizeHint}
-            isDemoPreview={isDemoPreview}
-            title={label}
-            onClose={close}
-          />
-        ) : null}
+        {lightbox}
       </>
     );
   }
@@ -186,25 +234,13 @@ export function PaymentEvidenceThumb({
         className={isSignature ? "payment-evidence-thumb is-signature" : "payment-evidence-thumb"}
         title={title}
         aria-label={`Ver ${isSignature ? "firma" : "comprobante"} ampliado`}
-        onClick={(event) => {
-          event.stopPropagation();
-          setOpenUrl(previewUrl);
-        }}
+        onClick={openPreview}
         style={{ width: size, height: size }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={previewUrl} alt={label} />
       </button>
-
-      {openUrl ? (
-        <EvidenceLightbox
-          openUrl={openUrl}
-          sizeHint={sizeHint}
-          isDemoPreview={isDemoPreview}
-          title={label}
-          onClose={close}
-        />
-      ) : null}
+      {lightbox}
     </>
   );
 }

@@ -18,6 +18,9 @@ export const LOAN_PAYMENT_COLUMNS: ColumnOption[] = [
 
 export const LOAN_PAYMENT_DEFAULT_COLS = LOAN_PAYMENT_COLUMNS.map((col) => col.id);
 
+/** Columnas del PDF al compartir ficha desde el celular (como la pantalla). */
+export const LOAN_FICHA_SHARE_COLS = ["amount", "paidDate", "paidTime", "method"];
+
 export function orderedVisibleLoanPaymentColumns(visibleCols: string[]) {
   return LOAN_PAYMENT_COLUMNS.filter((col) => visibleCols.includes(col.id));
 }

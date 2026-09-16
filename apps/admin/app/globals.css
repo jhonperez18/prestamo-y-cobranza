@@ -3175,8 +3175,8 @@
     .supervisor-mobile-list.is-prestamos-hist > li.is-head {
       display: grid;
       grid-template-columns:
-        minmax(0, 1.25fr) minmax(2.6rem, 0.4fr) minmax(2.4rem, 0.4fr) minmax(3.2rem, 0.45fr)
-        minmax(3.4rem, 0.55fr) minmax(3.4rem, 0.55fr);
+        minmax(0, 1.4fr) minmax(2.4rem, 0.4fr) minmax(3.2rem, 0.45fr)
+        minmax(3.6rem, 0.55fr) minmax(3.6rem, 0.55fr);
       column-gap: 5px;
       align-items: center;
       padding: 5px 8px;
@@ -3197,8 +3197,8 @@
       width: 100%;
       display: grid;
       grid-template-columns:
-        minmax(0, 1.25fr) minmax(2.6rem, 0.4fr) minmax(2.4rem, 0.4fr) minmax(3.2rem, 0.45fr)
-        minmax(3.4rem, 0.55fr) minmax(3.4rem, 0.55fr);
+        minmax(0, 1.4fr) minmax(2.4rem, 0.4fr) minmax(3.2rem, 0.45fr)
+        minmax(3.6rem, 0.55fr) minmax(3.6rem, 0.55fr);
       column-gap: 5px;
       align-items: center;
       margin: 0;
@@ -9675,16 +9675,22 @@
     .evidence-lightbox {
       position: fixed;
       inset: 0;
-      z-index: 130;
+      z-index: 10050;
       display: grid;
       place-items: center;
-      padding: 20px;
+      padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px));
+      background: rgba(8, 12, 10, 0.72);
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      touch-action: manipulation;
     }
     .evidence-lightbox-panel {
       position: relative;
       z-index: 1;
       width: min(720px, 100%);
-      max-height: 90vh;
+      max-height: min(92dvh, 920px);
+      display: flex;
+      flex-direction: column;
       background: #fff;
       border-radius: 12px;
       overflow: hidden;
@@ -9693,11 +9699,48 @@
     .evidence-lightbox-panel header {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       padding: 10px 12px;
       border-bottom: 1px solid #e3ece7;
+      flex-shrink: 0;
+      min-width: 0;
     }
-    .evidence-lightbox-panel header strong { flex: 1; }
+    .evidence-lightbox-panel header strong {
+      flex: 1;
+      min-width: 0;
+      font-size: 14px;
+      color: #111;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .evidence-lightbox-meta {
+      flex-shrink: 0;
+      font-size: 11px;
+      color: #5b7268;
+      font-weight: 600;
+    }
+    .evidence-lightbox-close {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      margin: 0;
+      padding: 0;
+      border: 1px solid #d5e2db;
+      border-radius: 999px;
+      background: #f4f8f6;
+      color: #111;
+      font-size: 26px;
+      font-weight: 500;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .evidence-lightbox-close:active {
+      background: #e7eee9;
+    }
     .evidence-demo-tag {
       font-size: 11px;
       color: #0f766e;
@@ -9706,12 +9749,41 @@
       padding: 2px 8px;
       font-weight: 600;
     }
-    .evidence-lightbox-panel img {
+    .evidence-lightbox-stage {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      place-items: center;
+      background: #0f1412;
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+    }
+    .evidence-lightbox-stage img {
       width: 100%;
-      max-height: calc(90vh - 52px);
+      max-height: min(78dvh, 820px);
+      height: auto;
       object-fit: contain;
       display: block;
-      background: #0f1412;
+      user-select: none;
+      -webkit-user-drag: none;
+      pointer-events: none;
+    }
+    @media (max-width: 640px) {
+      .evidence-lightbox {
+        padding: 0;
+        place-items: stretch;
+      }
+      .evidence-lightbox-panel {
+        width: 100%;
+        max-height: none;
+        height: 100%;
+        border-radius: 0;
+      }
+      .evidence-lightbox-stage img {
+        max-height: calc(100dvh - 56px);
+      }
+    }
     }
 
     .payment-ficha .head {

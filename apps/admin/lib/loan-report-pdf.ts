@@ -117,7 +117,7 @@ function drawPageHeader(doc: jsPDF, logoDataUrl?: string | null) {
   doc.setTextColor(210, 228, 220);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(HEADER_SUBTITLE_FONT);
-  doc.text("Informe de préstamo", width / 2, logoY + LOGO_HEIGHT + 2.8, { align: "center" });
+  doc.text("Ficha de préstamo", width / 2, logoY + LOGO_HEIGHT + 2.8, { align: "center" });
 
   doc.setDrawColor(...THEME.teal);
   doc.setLineWidth(0.25);

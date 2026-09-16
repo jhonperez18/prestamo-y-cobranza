@@ -178,25 +178,45 @@ export function whatsappFichaUrl(report: LoanReportDocument) {
   return phone ? `https://wa.me/${phone}?text=${text}` : `https://wa.me/?text=${text}`;
 }
 
-/** Abre WhatsApp con la ficha; si el celular tiene compartir nativo, lo usa primero. */
+/** Abre el compartidor nativo con PDF de ficha (tabla no editable). */
 export async function shareLoanFichaWhatsApp(report: LoanReportDocument) {
   if (typeof window === "undefined") return;
-  const text = formatLoanFichaWhatsAppText(report);
-  const url = whatsappFichaUrl(report);
 
-  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+  const { loanReportPdfBlobAsync, loanReportPdfFileName } = await import("@/lib/loan-report-pdf");
+  const { LOAN_FICHA_SHARE_COLS } = await import("@/lib/loan-payment-columns");
+
+  const blob = await loanReportPdfBlobAsync(report, {
+    visibleCols: LOAN_FICHA_SHARE_COLS,
+  });
+  const fileName = loanReportPdfFileName(report);
+  const file = new File([blob], fileName, { type: "application/pdf" });
+  const caption = `Ficha ${report.clientName.trim()} · ${report.loanRef}`;
+
+  const nav = navigator as Navigator & {
+    canShare?: (data?: ShareData) => boolean;
+  };
+
+  if (typeof nav.share === "function") {
+    const withFile: ShareData = { title: caption, text: caption, files: [file] };
     try {
-      await navigator.share({
-        title: `Ficha ${report.clientName}`,
-        text,
-      });
-      return;
+      if (typeof nav.canShare !== "function" || nav.canShare(withFile)) {
+        await nav.share(withFile);
+        return;
+      }
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") return;
     }
   }
 
-  window.open(url, "_blank", "noopener,noreferrer");
+  // Sin Web Share de archivos: descarga el PDF (no texto plano a WhatsApp).
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 export function downloadLoanReport(report: LoanReportDocument) {
