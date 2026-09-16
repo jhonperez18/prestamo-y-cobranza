@@ -1,7 +1,7 @@
 import type { ColumnOption } from "@/components/ColumnPicker";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { PaymentMovement } from "@/lib/payment-detail";
-import { paymentSettlementStatus } from "@/lib/payment-detail";
+import { cuotaAmountForPayment, paymentSettlementStatus } from "@/lib/payment-detail";
 import type { ClientRow, LoanRow, PaymentRow, RouteRow } from "@/lib/mock-data";
 import { money } from "@/lib/mock-data";
 import { COBRANZA_PAYMENT_COLUMNS } from "@/lib/table-columns";
@@ -66,8 +66,10 @@ export function cobranzaPaymentReportCell(
   payment: PaymentRow,
   movement: PaymentMovement,
   routeLabel = "—",
+  loan?: LoanRow | null,
 ) {
-  const status = paymentSettlementStatus(payment);
+  const cuota = movement.cuotaPactada || cuotaAmountForPayment(payment, loan) || 0;
+  const status = paymentSettlementStatus(payment, cuota > 0 ? cuota : undefined);
   switch (columnId) {
     case "ref":
       return payment.ref;
@@ -79,6 +81,8 @@ export function cobranzaPaymentReportCell(
       return payment.client;
     case "cobrador":
       return movement.collector;
+    case "cuota":
+      return cuota > 0 ? money(cuota) : "—";
     case "valor":
       return money(payment.amount);
     case "method":
@@ -90,7 +94,7 @@ export function cobranzaPaymentReportCell(
     case "tipo":
       return routeLabel;
     case "estado":
-      return status.label;
+      return movement.settlementLabel || status.label;
     default:
       return "—";
   }

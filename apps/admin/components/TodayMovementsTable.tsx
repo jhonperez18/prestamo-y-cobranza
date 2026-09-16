@@ -23,7 +23,7 @@ const HEADER_DEFS: Record<string, { t: string; right?: boolean }> = {
   when: { t: "Hora" },
   client: { t: "Cliente" },
   collector: { t: "Cobrador" },
-  amount: { t: "Valor", right: true },
+  amount: { t: "Cobrado", right: true },
   type: { t: "Tipo" },
   status: { t: "Estado" },
 };

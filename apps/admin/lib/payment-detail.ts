@@ -13,17 +13,17 @@ export function loansByRef(loans: LoanRow[]) {
   return new Map(loans.map((loan) => [loan.ref, loan]));
 }
 
-/** Parcial solo si el importe no cubre el valor exigido de la cuota. */
+/** Cuota pactada de la ficha (fija). Preferir installment sobre línea de cronograma. */
 export function cuotaAmountForPayment(
   payment: Pick<PaymentRow, "loanRef" | "dueDate">,
   loan: LoanRow | null | undefined,
 ): number | undefined {
   if (!loan) return undefined;
+  if (loan.installment != null && loan.installment > 0) return Math.trunc(loan.installment);
   if (payment.dueDate && loan.schedule?.length) {
     const line = loan.schedule.find((row) => row.date === payment.dueDate);
-    if (line?.amount != null && line.amount > 0) return line.amount;
+    if (line?.amount != null && line.amount > 0) return Math.trunc(line.amount);
   }
-  if (loan.installment != null && loan.installment > 0) return loan.installment;
   return undefined;
 }
 
@@ -129,6 +129,16 @@ export function paymentSettlementStatus(
   payment: Pick<PaymentRow, "type" | "kind" | "amount">,
   cuotaAmount?: number,
 ) {
+  const amount = Number(payment.amount) || 0;
+  if (cuotaAmount != null && cuotaAmount > 0) {
+    if (amount > cuotaAmount) {
+      return { label: "Adelanto", kind: "ok" as StatusKind };
+    }
+    if (amount < cuotaAmount) {
+      return { label: "Parcial", kind: "partial" as StatusKind };
+    }
+    return { label: "Cuota", kind: "paid" as StatusKind };
+  }
   const partial = paymentIsPartial(payment, cuotaAmount);
   return {
     label: partial ? "Parcial" : "Pagada",
@@ -231,7 +241,10 @@ export type PaymentMovement = {
   evidence?: PaymentEvidenceRef[];
   hasReceipt: boolean;
   amount: number;
+  /** Cuota pactada del préstamo al momento del cobro (ficha). */
+  cuotaPactada: number;
   kind: PaymentRow["kind"];
+  settlementLabel: string;
   gps?: boolean;
 };
 
@@ -306,7 +319,9 @@ export function enrichPaymentMovement(
     evidence: payment.evidence,
     hasReceipt: paymentHasVisualEvidence(payment.evidence),
     amount: payment.amount,
+    cuotaPactada: cuotaAmountForPayment(payment, loan) ?? 0,
     kind: settlement.kind,
+    settlementLabel: settlement.label,
     gps: payment.gps,
   };
 }

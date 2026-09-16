@@ -50,20 +50,17 @@ function loanItemsForClient(
   for (const loan of activeLoans(loans)) {
     if (loan.clientRef !== client.ref || loan.balance <= 0) continue;
     if (isPendingReview(client)) continue;
-    let { cuotaAmount, moraAmount, amountDue, oldestOverdue, alertCount } =
+    if (!loanIsCollectibleOn(loan, date)) continue;
+
+    const pactada = Math.min(Number(loan.installment) || 0, Number(loan.balance) || 0);
+    if (pactada <= 0) continue;
+
+    // Acumulado solo para etiquetas/alertas; el monto a cobrar es la cuota pactada.
+    const { cuotaAmount, moraAmount, oldestOverdue, alertCount } =
       accumulatedDueForLoan(loan, date, payments);
-    // Respaldo: si el cronograma no marca vencido hoy, cuota diaria fija (rutas ya en cobro).
-    if (amountDue <= 0) {
-      const cuota = Math.min(loan.installment ?? 0, loan.balance);
-      if (cuota <= 0) continue;
-      if (!loanIsCollectibleOn(loan, date)) continue;
-      cuotaAmount = cuota;
-      moraAmount = 0;
-      amountDue = cuota;
-      oldestOverdue = undefined;
-      alertCount = liveLoanCollectionAlerts(loan, payments, date);
-    }
-    const kind = collectionChargeKind(alertCount);
+    const liveAlerts = alertCount;
+    const kind = collectionChargeKind(liveAlerts);
+
     items.push({
       id: `${date}:${loan.ref}:acum`,
       loanRef: loan.ref,
@@ -74,17 +71,17 @@ function loanItemsForClient(
       phone: client.phone,
       chargeDate: oldestOverdue ?? date,
       chargeLabel:
-        kind === "mora" && cuotaAmount > 0 && moraAmount > 0
+        kind === "mora" && moraAmount > 0 && cuotaAmount > 0
           ? "Cuota + mora"
           : kind === "mora"
-            ? collectionAlertLabel(alertCount) || "Mora"
-            : alertCount > 0
-              ? collectionAlertLabel(alertCount)
+            ? collectionAlertLabel(liveAlerts) || "Mora"
+            : liveAlerts > 0
+              ? collectionAlertLabel(liveAlerts)
               : "Cuota",
-      amountDue,
-      cuotaAmount,
+      amountDue: pactada,
+      cuotaAmount: pactada,
       moraAmount,
-      alertCount,
+      alertCount: liveAlerts,
       kind,
       statusKind:
         kind === "mora" ? "overdue" : kind === "alerta" ? "warn" : "pending",

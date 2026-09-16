@@ -129,7 +129,7 @@ import {
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
 import { computeLoanFinancials, loanPaySummaryRows } from "@/lib/loan-balance";
 import { buildRenewalLoans } from "@/lib/loan-renew";
-import { markLoanFundedByNequi } from "@/lib/nequi-pool";
+import { markLoanFundedByBanco, markLoanFundedByNequi } from "@/lib/nequi-pool";
 import { buildPortfolioStats } from "@/lib/portfolio-stats";
 import {
   enrichPaymentMovement,
@@ -988,33 +988,35 @@ export function Workspace({
       return;
     }
     const ref = nextLoanCode(loans);
-    const row = markLoanFundedByNequi(
-      syncLoan(
-        {
-          ref,
-          clientRef: client.ref,
-          client: `${client.name} ${client.lastName}`.trim(),
-          date: draft.date,
-          due: draft.due,
-          capital: draft.capital,
-          paid: 0,
-          balance: draft.total,
-          status: "Activo",
-          kind: "ok",
-          notes: draft.notes,
-          rate: draft.rate,
-          frequency: draft.frequency,
-          mode: draft.mode,
-          pact: draft.pact,
-          days: draft.days,
-          interest: draft.interest,
-          total: draft.total,
-          installment: draft.installment,
-          schedule: draft.schedule,
-        },
-        payments,
-      ) as LoanRow,
-    );
+    const synced = syncLoan(
+      {
+        ref,
+        clientRef: client.ref,
+        client: `${client.name} ${client.lastName}`.trim(),
+        date: draft.date,
+        due: draft.due,
+        capital: draft.capital,
+        paid: 0,
+        balance: draft.total,
+        status: "Activo",
+        kind: "ok",
+        notes: draft.notes,
+        rate: draft.rate,
+        frequency: draft.frequency,
+        mode: draft.mode,
+        pact: draft.pact,
+        days: draft.days,
+        interest: draft.interest,
+        total: draft.total,
+        installment: draft.installment,
+        schedule: draft.schedule,
+      },
+      payments,
+    ) as LoanRow;
+    const row =
+      draft.fundedBy === "banco"
+        ? markLoanFundedByBanco(synced)
+        : markLoanFundedByNequi(synced);
     const nextClient: ClientRow = {
       ...client,
       total: client.total + draft.total,
@@ -1302,7 +1304,7 @@ export function Workspace({
         lines,
         cashCollected,
         movementRefs: lines.map((line) =>
-          dayExpenseLineMovementRef(collectorRef, date, line.id),
+          dayExpenseLineMovementRef(collectorRef, date, line.id, line.loanRef),
         ),
       });
       nextCloses = upsertAndTrimCollectorDayClose(nextCloses, record);
@@ -1409,7 +1411,7 @@ export function Workspace({
       lines,
       cashCollected: payload.collectedEfectivo,
       movementRefs: lines.map((line) =>
-        dayExpenseLineMovementRef(payload.collectorRef, payload.date, line.id),
+        dayExpenseLineMovementRef(payload.collectorRef, payload.date, line.id, line.loanRef),
       ),
     });
     const closes = loadDemoDayCloses<CollectorDayCloseRecord>();
@@ -1633,7 +1635,8 @@ export function Workspace({
       return;
     }
     const newRef = nextLoanCode(loans);
-    const result = buildRenewalLoans(loan, newRef);
+    // Admin/oficina: renovación sale de Nequi (Haber DSB- + resta acumulado).
+    const result = buildRenewalLoans(loan, newRef, todayIso(), "nequi");
     if (!result) {
       onToast("La renovación se activa cuando se cumpla el plazo del préstamo.");
       return;
@@ -1674,7 +1677,7 @@ export function Workspace({
       });
     }
     onToast(
-      `Nuevo préstamo ${newRef}: capital ${money(result.created.capital)} + 20% · total ${money(result.created.total ?? 0)} · 1 mes.`,
+      `Renovación ${newRef}: capital ${money(result.created.capital)} sale de Nequi · total ${money(result.created.total ?? 0)}.`,
     );
   }
 
@@ -1722,7 +1725,14 @@ export function Workspace({
       onToast("Cliente no encontrado.");
       return;
     }
-    const loan = buildQuickLoan(draft, client, loans);
+    const loan = buildQuickLoan(
+      {
+        ...draft,
+        fundedBy: draft.fundedBy === "banco" ? "banco" : "nequi",
+      },
+      client,
+      loans,
+    );
     if (!loan) {
       onToast("Revise capital, interés, tiempo y frecuencia.");
       return;

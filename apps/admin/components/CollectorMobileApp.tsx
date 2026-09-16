@@ -31,6 +31,8 @@ import { canRenewLoan } from "@/lib/loan-renew";
 import { syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import { dispatchRouteRef } from "@/lib/collector-dispatch-sync";
+import { suppressGhostClick } from "@/lib/suppress-ghost-click";
+import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import {
   planillaLiveCuota,
@@ -143,7 +145,7 @@ function visitIdentity(
     : (item.loanRef ? loans.find((row) => row.ref === item.loanRef) : null) ??
       primaryLoanForClient(item.clientRef, loans);
   const loan = rawLoan ? (syncLoan(rawLoan, payments) as LoanRow) : null;
-  const cuota = awaitingLoan ? 0 : planillaLiveCuota(item, loan, today);
+  const cuota = awaitingLoan ? 0 : planillaLiveCuota(item, loan, payments, today);
   const balance = awaitingLoan ? 0 : loan?.balance ?? 0;
   const cuotas = awaitingLoan
     ? null
@@ -198,6 +200,7 @@ export function CollectorMobileApp({
   const [fromHistory, setFromHistory] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const navIntent = useMemo(() => createNavIntent(), []);
 
   /** Cada cobrador es independiente: al cambiar, vuelve a su propio inicio (antes del paint). */
   useLayoutEffect(() => {
@@ -387,6 +390,7 @@ export function CollectorMobileApp({
       cobrado,
       cobradoEfectivo: recaudo.efectivo,
       cobradoNequi: recaudo.nequi,
+      cobradoBanco: recaudo.banco,
       gastos,
       saldo,
     };
@@ -398,41 +402,38 @@ export function CollectorMobileApp({
     recaudo.total,
     recaudo.efectivo,
     recaudo.nequi,
+    recaudo.banco,
     savedExpensesTotal,
     viewPeriod,
   ]);
 
+  // Solo al cambiar de día: no cerrar el cobro al tocar la misma pestaña.
   useEffect(() => {
     setExpandedKey(null);
     setEditingExpenses(false);
     setConfirmingClose(false);
-  }, [activeDate, listFilter]);
+  }, [activeDate]);
 
   function togglePay(item: DailyCollectionAssignment) {
     if (!canCollect || collectionStopped || !onRegisterPayment) return;
     const key = itemKey(item);
-    setExpandedKey((current) => {
-      const next = current === key ? null : key;
-      if (next) {
-        queueMicrotask(() => {
-          document
-            .getElementById(`collector-pay-card-${key}`)
-            ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-        });
-      }
-      return next;
-    });
+    suppressGhostClick(900);
+    setExpandedKey((current) => (current === key ? null : key));
   }
 
   function closeCard() {
+    suppressGhostClick(900);
     setExpandedKey(null);
   }
 
   function selectFilter(next: ListFilter) {
     setEditingExpenses(false);
     setConfirmingClose(false);
+    // Misma pestaña: no resetear (evita que un click fantasma al abrir cobro cierre el panel).
+    if (next === listFilter) return;
+    suppressGhostClick(900);
     setListFilter(next);
-    closeCard();
+    setExpandedKey(null);
   }
 
   function openExpenses() {
@@ -742,10 +743,10 @@ export function CollectorMobileApp({
                 ? "Jornada cerrada"
                 : undefined
           }
-          onClick={() => {
+          {...navButtonProps(navIntent, () => {
             if (blankStart || dayLocked) return;
             selectFilter("pending");
-          }}
+          })}
         >
           <span>Por cobrar</span>
           <b>{queue.pending.length}</b>
@@ -767,7 +768,10 @@ export function CollectorMobileApp({
                 ? "Jornada cerrada"
                 : undefined
           }
-          onClick={openRecaudoDetail}
+          {...navButtonProps(navIntent, () => {
+            if (blankStart || dayLocked) return;
+            openRecaudoDetail();
+          })}
         >
           <span>Recaudo</span>
           <b>{money(topRecaudo)}</b>
@@ -797,7 +801,10 @@ export function CollectorMobileApp({
                     ? "Sin planilla"
                     : "Gastos del día"
           }
-          onClick={openExpenses}
+          {...navButtonProps(navIntent, () => {
+            if (blankStart || dayLocked) return;
+            openExpenses();
+          })}
         >
           <span>Gastos</span>
           <b>{topGastos > 0 ? money(topGastos) : "—"}</b>
@@ -852,6 +859,10 @@ export function CollectorMobileApp({
                   <span>Nequi</span>
                   <b>{money(dayCuadre.cobradoNequi)}</b>
                 </div>
+                <div className="is-mean is-pay-banco">
+                  <span>Banco</span>
+                  <b>{money(dayCuadre.cobradoBanco)}</b>
+                </div>
               </div>
             </div>
 
@@ -885,6 +896,7 @@ export function CollectorMobileApp({
           collected={recaudo.total}
           efectivo={recaudo.efectivo}
           nequi={recaudo.nequi}
+          banco={recaudo.banco}
           expenses={savedExpenses}
           pendingCount={queue.pending.length}
           onCancel={() => setConfirmingClose(false)}
@@ -903,6 +915,10 @@ export function CollectorMobileApp({
             <div className="is-pay-nequi">
               <em>Nequi</em>
               <b>{money(recaudo.nequi)}</b>
+            </div>
+            <div className="is-pay-banco">
+              <em>Banco</em>
+              <b>{money(recaudo.banco)}</b>
             </div>
             <div className="is-total">
               <em>Total</em>
@@ -1041,26 +1057,35 @@ export function CollectorMobileApp({
                           }
                         />
                       ) : null}
-                      {!identity.awaitingLoan && !isDoneView && canAct && !isOpen ? (
+                      {!identity.awaitingLoan && !isDoneView && canAct ? (
                         <>
-                          <CuotasProgressCell
-                            progress={
-                              identity.cuotas ?? {
-                                label: "",
-                                intensity: 0,
-                                title: "",
-                                expected: 0,
+                          {!isOpen ? (
+                            <CuotasProgressCell
+                              progress={
+                                identity.cuotas ?? {
+                                  label: "",
+                                  intensity: 0,
+                                  title: "",
+                                  expected: 0,
+                                }
                               }
-                            }
-                            className="collector-mobile-cuotas"
-                          />
+                              className="collector-mobile-cuotas"
+                            />
+                          ) : (
+                            <span className="collector-mobile-cuotas" aria-hidden />
+                          )}
                           <button
                             type="button"
                             className="collector-mobile-pay-sticker"
                             disabled={!canCollect || !onRegisterPayment}
-                            onClick={() => togglePay(item)}
-                            title="Pagar"
-                            aria-label="Pagar"
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              togglePay(item);
+                            }}
+                            title={isOpen ? "Cerrar cobro" : "Pagar"}
+                            aria-label={isOpen ? "Cerrar cobro" : "Pagar"}
+                            aria-expanded={isOpen}
                           >
                             <svg viewBox="0 0 16 12" aria-hidden="true" focusable="false">
                               <rect x="0.5" y="0.5" width="15" height="11" rx="1.5" fill="#dcfce7" stroke="#15803d" strokeWidth="1" />
@@ -1077,6 +1102,8 @@ export function CollectorMobileApp({
                         <QuickLoanForm
                           clientName={identity.fullName}
                           clientRef={item.clientRef}
+                          fundedByOptions={["efectivo"]}
+                          defaultFundedBy="efectivo"
                           onCancel={closeCard}
                           onSave={(draft) => {
                             onCreateQuickLoan(draft);

@@ -57,6 +57,7 @@ const STATUS_KINDS = new Set<StatusKind>([
   "closed",
   "efectivo",
   "nequi",
+  "banco",
 ]);
 
 export function paymentRowToMirror(payment: PaymentRow): PaymentMirrorRow | null {

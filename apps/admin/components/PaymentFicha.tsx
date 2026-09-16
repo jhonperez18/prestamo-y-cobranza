@@ -84,7 +84,12 @@ export function PaymentFicha({
               { label: "Cobrador", value: movement.collector },
               { label: "Hora", value: movement.paidTime },
               {
-                label: "Valor",
+                label: "Cuota pactada",
+                value: movement.cuotaPactada > 0 ? money(movement.cuotaPactada) : "—",
+                money: movement.cuotaPactada > 0,
+              },
+              {
+                label: "Cobrado",
                 value: money(payment.amount),
                 money: true,
               },
@@ -94,7 +99,7 @@ export function PaymentFicha({
                 value: paymentMethodLabel(method),
               },
               { label: "Tipo", value: payment.type },
-              { label: "Estado", value: movement.kind === "partial" ? "Parcial" : "Pagada" },
+              { label: "Estado", value: movement.settlementLabel || (movement.kind === "partial" ? "Parcial" : "Pagada") },
               { label: "Concepto", value: movement.chargeLabel },
               {
                 label: "Préstamo",

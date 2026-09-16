@@ -172,7 +172,7 @@ export function runOperationalDayCycle(
       lines,
       cashCollected,
       movementRefs: lines.map((line) =>
-        dayExpenseLineMovementRef(pair.collectorRef, pair.date, line.id),
+        dayExpenseLineMovementRef(pair.collectorRef, pair.date, line.id, line.loanRef),
       ),
     });
 

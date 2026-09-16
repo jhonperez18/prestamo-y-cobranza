@@ -6,7 +6,12 @@ import {
   type PayFrequency,
 } from "@/lib/loan-preview";
 import type { LoanRow } from "@/lib/mock-data";
-import { markLoanFundedByNequi } from "@/lib/nequi-pool";
+import {
+  markLoanFundedByBanco,
+  markLoanFundedByEfectivo,
+  markLoanFundedByNequi,
+  type LoanDisbursementSource,
+} from "@/lib/nequi-pool";
 
 export const RENEWAL_INTEREST_RATE = 0.2;
 export const RENEWAL_TERM_MONTHS = 1 as const;
@@ -14,6 +19,12 @@ export const RENEWAL_TERM_MONTHS = 1 as const;
 function pesos(value: number) {
   if (!Number.isFinite(value) || value < 0) return 0;
   return Math.trunc(value);
+}
+
+function markFunded(loan: LoanRow, fundedBy: LoanDisbursementSource): LoanRow {
+  if (fundedBy === "efectivo") return markLoanFundedByEfectivo(loan);
+  if (fundedBy === "banco") return markLoanFundedByBanco(loan);
+  return markLoanFundedByNequi(loan);
 }
 
 /** Renovación disponible cuando ya venció el plazo y aún hay saldo. */
@@ -51,11 +62,14 @@ export type LoanRenewalResult = {
 /**
  * Genera un préstamo nuevo sobre el saldo (capital = saldo, +20%, 1 mes)
  * y cierra el préstamo vencido.
+ *
+ * `fundedBy`: cobrador → efectivo; supervisor/admin → nequi | banco.
  */
 export function buildRenewalLoans(
   source: LoanRow,
   newRef: string,
   today = todayIso(),
+  fundedBy: LoanDisbursementSource = "nequi",
 ): LoanRenewalResult | null {
   if (!canRenewLoan(source, today)) return null;
   const built = renewalPreview(source, today);
@@ -75,34 +89,37 @@ export function buildRenewalLoans(
       : `Cerrado por renovación → ${newRef}`,
   };
 
-  const created: LoanRow = markLoanFundedByNequi({
-    ref: newRef,
-    clientRef: source.clientRef,
-    client: source.client,
-    date: isoToDisplay(today),
-    due: dueIso ? isoToDisplay(dueIso) : source.due,
-    capital,
-    paid: 0,
-    balance: preview.total,
-    status: "Activo",
-    kind: "ok",
-    frequency,
-    mode: "cuota_fija",
-    pact: "valor",
-    rate: 0,
-    days: preview.days,
-    interest,
-    total: preview.total,
-    installment: preview.installment,
-    schedule: preview.schedule,
-    notes: `Renovación de ${source.ref} · capital ${capital} + 20% (${interest}) · 1 mes`,
-  });
+  const created = markFunded(
+    {
+      ref: newRef,
+      clientRef: source.clientRef,
+      client: source.client,
+      date: isoToDisplay(today),
+      due: dueIso ? isoToDisplay(dueIso) : source.due,
+      capital,
+      paid: 0,
+      balance: preview.total,
+      status: "Activo",
+      kind: "ok",
+      frequency,
+      mode: "cuota_fija",
+      pact: "valor",
+      rate: 0,
+      days: preview.days,
+      interest,
+      total: preview.total,
+      installment: preview.installment,
+      schedule: preview.schedule,
+      notes: `Renovación de ${source.ref} · capital ${capital} + 20% (${interest}) · 1 mes`,
+    },
+    fundedBy,
+  );
 
   return { closed, created };
 }
 
 /** @deprecated Prefer buildRenewalLoans (préstamo nuevo). */
 export function renewLoanFromBalance(loan: LoanRow, today = todayIso()): LoanRow | null {
-  const result = buildRenewalLoans(loan, loan.ref, today);
+  const result = buildRenewalLoans(loan, loan.ref, today, "nequi");
   return result?.created ?? null;
 }

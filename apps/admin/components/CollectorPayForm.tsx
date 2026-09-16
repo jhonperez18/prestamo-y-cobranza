@@ -6,6 +6,7 @@ import { SignaturePad } from "@/components/SignaturePad";
 import {
   PAYMENT_METHODS,
   normalizePaymentMethod,
+  paymentMethodRequiresReceipt,
   type PaymentMethod,
 } from "@/lib/payment-method";
 import {
@@ -66,33 +67,40 @@ export function CollectorPayForm({
   onRenew,
 }: Props) {
   const maxAmount = balance != null && balance > 0 ? balance : 0;
+  const [method, setMethod] = useState<PaymentMethod | null>(null);
   const [rawAmount, setRawAmount] = useState(
     amountDue > 0 ? formatAmountInput(amountDue) : "",
   );
-  const [method, setMethod] = useState<PaymentMethod>("efectivo");
   const [evidenceItem, setEvidenceItem] = useState<PaymentEvidenceRef | undefined>();
   const [attempted, setAttempted] = useState(false);
   const amount = parseAmount(rawAmount);
   const evidence = useMemo(() => (evidenceItem ? [evidenceItem] : []), [evidenceItem]);
-  const evidenceError = validatePaymentEvidence(method, evidence);
+  const methodError = !method ? "Seleccione la forma de pago." : null;
+  const evidenceError = method ? validatePaymentEvidence(method, evidence) : null;
   const overBalance = maxAmount > 0 && amount > maxAmount;
   const amountError =
     amount <= 0 ? "Indique el valor recibido." : overBalance ? "El valor no puede superar el saldo." : null;
-  const blockReason = amountError || evidenceError;
+  const blockReason = methodError || amountError || evidenceError;
   const canSubmit = !blockReason;
   const inline = variant === "inline";
   const amountId = `collector-pay-amount-${formId}`;
   const methodName = `collector-pay-method-${formId}`;
   const receiptId = `collector-pay-receipt-${formId}`;
+  const needsReceipt = method ? paymentMethodRequiresReceipt(method) : false;
 
   function setAmountFromInput(raw: string) {
     setRawAmount(formatAmountInput(raw));
   }
 
+  function selectMethod(next: PaymentMethod) {
+    setMethod(next);
+    setEvidenceItem(undefined);
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAttempted(true);
-    if (!canSubmit) return;
+    if (!canSubmit || !method) return;
     const kind: PayKind = amount >= amountDue && amountDue > 0 ? "cuota" : "abono";
     onSubmit({
       amount,
@@ -111,6 +119,73 @@ export function CollectorPayForm({
     setAttempted(true);
   }
 
+  const methodPicker = (
+    <div
+      className={`pay-choice pay-method collector-pay-methods${inline ? " compact" : ""}`}
+      role="radiogroup"
+      aria-label="Forma de pago"
+    >
+      {PAYMENT_METHODS.map((entry) => (
+        <label
+          key={entry.id}
+          className={[
+            method === entry.id ? "on" : undefined,
+            entry.id === "efectivo"
+              ? "is-pay-efectivo"
+              : entry.id === "nequi"
+                ? "is-pay-nequi"
+                : "is-pay-banco",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+        >
+          <input
+            type="radio"
+            name={methodName}
+            checked={method === entry.id}
+            onChange={() => selectMethod(entry.id)}
+          />
+          <span>{entry.label}</span>
+        </label>
+      ))}
+    </div>
+  );
+
+  const amountField = (
+    <label className="collector-pay-field collector-pay-amount-only" htmlFor={amountId}>
+      <span className="sr-only">Valor recibido</span>
+      <input
+        id={amountId}
+        value={rawAmount}
+        onChange={(event) => setAmountFromInput(event.target.value)}
+        inputMode="numeric"
+        placeholder="0"
+        disabled={!method}
+        aria-label="Valor recibido"
+      />
+    </label>
+  );
+
+  const evidenceBlock = !method ? null : needsReceipt ? (
+    <ReceiptCapture
+      id={receiptId}
+      required
+      compact={inline}
+      hideLabel
+      value={evidenceItem}
+      onChange={setEvidenceItem}
+      hint={inline ? undefined : "Tomá foto o buscá el archivo (p. ej. captura de WhatsApp)"}
+    />
+  ) : (
+    <SignaturePad
+      required
+      compact={inline}
+      hideLabel
+      value={evidenceItem}
+      onChange={setEvidenceItem}
+    />
+  );
+
   return (
     <form
       className={inline ? "collector-pay-form collector-pay-inline" : "collector-pay-form"}
@@ -126,7 +201,7 @@ export function CollectorPayForm({
 
           <div className="collector-pay-facts">
             <div>
-              <span>A cobrar</span>
+              <span>Cuota</span>
               <b>{amountDue > 0 ? money(amountDue) : "—"}</b>
             </div>
             {maxAmount > 0 ? (
@@ -137,111 +212,23 @@ export function CollectorPayForm({
             ) : null}
           </div>
 
-          <label className="collector-pay-field" htmlFor={amountId}>
-            <span>Valor recibido</span>
-            <input
-              id={amountId}
-              value={rawAmount}
-              onChange={(event) => setAmountFromInput(event.target.value)}
-              inputMode="numeric"
-              placeholder="0"
-              autoFocus
-            />
-          </label>
-
-          <p className="pay-choice-label">Forma de pago</p>
-          <div
-            className="pay-choice pay-method collector-pay-methods"
-            role="radiogroup"
-            aria-label="Forma de pago"
-          >
-            {PAYMENT_METHODS.map((entry) => (
-              <label key={entry.id} className={method === entry.id ? "on" : undefined}>
-                <input
-                  type="radio"
-                  name={methodName}
-                  checked={method === entry.id}
-                  onChange={() => {
-                    setMethod(entry.id);
-                    setEvidenceItem(undefined);
-                  }}
-                />
-                <span>{entry.label}</span>
-                <b>{entry.id === "nequi" ? "Requiere comprobante" : "Requiere firma"}</b>
-              </label>
-            ))}
-          </div>
+          {methodPicker}
+          {amountField}
         </>
       ) : (
         <>
+          {methodPicker}
           <div className="collector-pay-inline-row">
-            <label className="collector-pay-field collector-pay-amount-col" htmlFor={amountId}>
-              <span>Valor recibido</span>
-              <input
-                id={amountId}
-                value={rawAmount}
-                onChange={(event) => setAmountFromInput(event.target.value)}
-                inputMode="numeric"
-                placeholder="0"
-                autoFocus
-              />
-            </label>
-
-            <div className="collector-pay-method-col">
-              <p className="pay-choice-label">Forma de pago</p>
-              <div
-                className="pay-choice pay-method collector-pay-methods compact"
-                role="radiogroup"
-                aria-label="Forma de pago"
-              >
-                {PAYMENT_METHODS.map((entry) => (
-                  <label key={entry.id} className={method === entry.id ? "on" : undefined}>
-                    <input
-                      type="radio"
-                      name={methodName}
-                      checked={method === entry.id}
-                      onChange={() => {
-                        setMethod(entry.id);
-                        setEvidenceItem(undefined);
-                      }}
-                    />
-                    <span>{entry.label}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
+            <div className="collector-pay-amount-col">{amountField}</div>
           </div>
         </>
       )}
 
-      {method === "nequi" ? (
-        <ReceiptCapture
-          id={receiptId}
-          required
-          compact={inline}
-          value={evidenceItem}
-          onChange={setEvidenceItem}
-          label="Comprobante Nequi"
-          hint="Toma foto con la cámara del comprobante Nequi"
-        />
-      ) : (
-        <SignaturePad
-          required
-          compact={inline}
-          value={evidenceItem}
-          onChange={setEvidenceItem}
-        />
-      )}
+      {evidenceBlock}
 
-      {blockReason && (attempted || evidenceItem || amount > 0) ? (
+      {attempted && blockReason ? (
         <p className="receipt-error" role="alert">
           {blockReason}
-        </p>
-      ) : !inline && !evidenceItem ? (
-        <p className="collector-pay-hint">
-          {method === "nequi"
-            ? "Adjunta el comprobante Nequi para confirmar."
-            : "El cliente debe firmar para confirmar el cobro."}
         </p>
       ) : null}
 
@@ -263,6 +250,7 @@ export function CollectorPayForm({
               : "btn compact primary"
           }
           aria-disabled={!canSubmit}
+          disabled={!canSubmit}
           title={blockReason ?? undefined}
           onClick={handleConfirmClick}
         >
@@ -279,7 +267,7 @@ export function CollectorPayForm({
             disabled={!canRenew}
             title={
               canRenew
-                ? "Renueva el saldo + 20% a 1 mes"
+                ? "Renueva el saldo + 20% a 1 mes · capital sale de efectivo (caja)"
                 : "Disponible cuando se cumpla el plazo del préstamo"
             }
             onClick={onRenew}

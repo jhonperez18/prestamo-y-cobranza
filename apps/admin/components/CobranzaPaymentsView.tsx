@@ -68,7 +68,8 @@ const SORT_HEADERS = [
   { id: "hora", t: "Hora" },
   { id: "cliente", t: "Cliente", sortKey: "cliente" },
   { id: "cobrador", t: "Cobrador", sortKey: "cobrador" },
-  { id: "valor", t: "Valor", right: true, sortKey: "valor" },
+  { id: "cuota", t: "Cuota", right: true },
+  { id: "valor", t: "Cobrado", right: true, sortKey: "valor" },
   { id: "method", t: "Forma de pago" },
   { id: "evidence", t: "Comprobante" },
   { id: "ruta", t: "Ruta" },
@@ -97,7 +98,7 @@ export function CobranzaPaymentsView({
   const columnVisibility = useColumnVisibility(
     COBRANZA_PAYMENT_COLUMNS,
     COBRANZA_PAYMENT_DEFAULT_COLS,
-    { storageKey: "nexo.cobranza.pagos.columns.v3" },
+    { storageKey: "nexo.cobranza.pagos.columns.v4" },
   );
 
   const title = kind === "abonos" ? "Abonos" : "Pagos";
@@ -313,6 +314,15 @@ export function CobranzaPaymentsView({
                     ) : null}
                     {columnVisibility.isVisible("cliente") ? <td>{row.client}</td> : null}
                     {columnVisibility.isVisible("cobrador") ? <td>{row.collector}</td> : null}
+                    {columnVisibility.isVisible("cuota") ? (
+                      <td className="money right">
+                        {(() => {
+                          const loan = row.loanRef ? loanMap.get(row.loanRef) : undefined;
+                          const cuota = loan?.installment ?? 0;
+                          return cuota > 0 ? money(cuota) : "—";
+                        })()}
+                      </td>
+                    ) : null}
                     {columnVisibility.isVisible("valor") ? (
                       <td className="money right">{money(row.amount)}</td>
                     ) : null}

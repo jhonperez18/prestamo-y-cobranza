@@ -103,7 +103,9 @@ export function LoanPaymentsTable({
               {isVisible("method") ? headerCell("method", "Forma de pago") : null}
               {isVisible("evidence") ? headerCell("evidence", "Comprobante") : null}
               {isVisible("source") ? headerCell("source", "Origen") : null}
-              {isVisible("amount") ? headerCell("amount", "Importe", "right") : null}
+              {isVisible("cuota") ? headerCell("cuota", "Cuota", "right") : null}
+              {isVisible("amount") ? headerCell("amount", "Cobrado", "right") : null}
+              {isVisible("estado") ? headerCell("estado", "Estado") : null}
               {showColumnPicker && picker ? (
                 <ColumnPickerHeadCell>{picker}</ColumnPickerHeadCell>
               ) : null}
@@ -152,8 +154,21 @@ export function LoanPaymentsTable({
                       </td>
                     ) : null}
                     {isVisible("source") ? <td>{movement.source}</td> : null}
+                    {isVisible("cuota") ? (
+                      <td className="money right">
+                        {movement.cuotaPactada > 0 ? money(movement.cuotaPactada) : "—"}
+                      </td>
+                    ) : null}
                     {isVisible("amount") ? (
                       <td className="money right">{money(movement.amount)}</td>
+                    ) : null}
+                    {isVisible("estado") ? (
+                      <td>
+                        <Pill
+                          label={movement.settlementLabel || "—"}
+                          kind={movement.kind}
+                        />
+                      </td>
                     ) : null}
                     {showColumnPicker ? <ColumnPickerBodyCell /> : null}
                   </tr>

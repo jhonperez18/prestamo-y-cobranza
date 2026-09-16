@@ -8,6 +8,7 @@ import { money, type PaymentRow } from "@/lib/mock-data";
 import {
   normalizePaymentMethod,
   paymentMethodLabel,
+  paymentMethodRequiresReceipt,
   paymentMethodToneClass,
   type PaymentMethod,
 } from "@/lib/payment-method";
@@ -56,15 +57,18 @@ export function CollectorClosedDayReview({
     const pay = paymentForVisit(item, payments);
     return sum + (pay?.amount ?? item.amountDue);
   }, 0);
-  const showEvidenceCol = methodFilter === "nequi" || methodFilter == null;
+  const showEvidenceCol =
+    methodFilter === "nequi" || methodFilter === "banco" || methodFilter == null;
 
   const title =
     detail === "cobros"
       ? methodFilter === "nequi"
         ? "Cobros Nequi"
-        : methodFilter === "efectivo"
-          ? "Cobros en efectivo"
-          : "Recaudo del día"
+        : methodFilter === "banco"
+          ? "Cobros banco"
+          : methodFilter === "efectivo"
+            ? "Cobros en efectivo"
+            : "Recaudo del día"
       : detail === "gastos"
         ? "Gastos del día"
         : "Planilla cerrada";
@@ -142,7 +146,7 @@ export function CollectorClosedDayReview({
                   </em>
                   {showEvidenceCol ? (
                     <span className="is-evidence">
-                      {method === "nequi" ? (
+                      {method && paymentMethodRequiresReceipt(method) ? (
                         <PaymentEvidenceThumb evidence={pay?.evidence} size={36} />
                       ) : (
                         <span className="payment-evidence-empty">—</span>

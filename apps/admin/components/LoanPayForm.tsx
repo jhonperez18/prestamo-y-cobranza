@@ -127,7 +127,7 @@ export function LoanPayForm({ loan, mode, onCancel, onRegister }: Props) {
               onChange={() => setMethod(entry.id)}
             />
             <span>{entry.label}</span>
-            <b>{entry.hint}</b>
+            <b>{entry.id === "efectivo" ? "Requiere firma" : "Requiere comprobante"}</b>
           </label>
         ))}
       </div>

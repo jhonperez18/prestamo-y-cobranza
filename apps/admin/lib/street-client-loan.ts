@@ -17,7 +17,7 @@ import {
   type ClientRow,
   type LoanRow,
 } from "@/lib/mock-data";
-import { markLoanFundedByEfectivo, markLoanFundedByNequi } from "@/lib/nequi-pool";
+import { markLoanFundedByBanco, markLoanFundedByEfectivo, markLoanFundedByNequi } from "@/lib/nequi-pool";
 
 export type StreetClientDraft = {
   name: string;
@@ -41,7 +41,7 @@ export type QuickLoanDraft = {
   /** Si el supervisor elige ruta, se asegura el cliente en esa ruta. */
   routeName?: string;
   /** Origen del desembolso. Por defecto Nequi (supervisor/admin). */
-  fundedBy?: "nequi" | "efectivo";
+  fundedBy?: "nequi" | "efectivo" | "banco";
 };
 
 export const QUICK_INTEREST_PCT = [5, 10, 15, 20] as const;
@@ -130,6 +130,7 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
   ) as LoanRow;
 
   if (draft.fundedBy === "efectivo") return markLoanFundedByEfectivo(loan);
+  if (draft.fundedBy === "banco") return markLoanFundedByBanco(loan);
   return markLoanFundedByNequi(loan);
 }
 

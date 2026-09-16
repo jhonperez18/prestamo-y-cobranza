@@ -8,7 +8,7 @@ import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { ClientRow, CollectorRow, LoanRow, PaymentRow, RouteRow } from "@/lib/mock-data";
 import { paymentsForCollector } from "@/lib/mock-data";
-import { normalizePaymentMethod } from "@/lib/payment-method";
+import { normalizePaymentMethod, paymentMethodIsCash } from "@/lib/payment-method";
 
 export type CollectorMobileQueue = {
   date: string;
@@ -167,7 +167,7 @@ export function defaultMobileRouteDate(
   return options[0].date;
 }
 
-/** Suma de cobros del día por medio (efectivo / Nequi) para que el cobrador cuadre su caja. */
+/** Suma de cobros del día por medio (efectivo / Nequi / Banco) para que el cobrador cuadre su caja. */
 export function collectorRecaudoBreakdown(
   collectorRef: string,
   date: string,
@@ -176,15 +176,26 @@ export function collectorRecaudoBreakdown(
 ) {
   let efectivo = 0;
   let nequi = 0;
+  let banco = 0;
   let count = 0;
   const norm = normalizeHistoryDate(date) || date;
   for (const row of paymentsForCollector(collectorRef, collectors, payments)) {
     if (normalizeHistoryDate(row.paidDate || "") !== norm) continue;
     count += 1;
-    if (normalizePaymentMethod(row.method) === "nequi") nequi += row.amount;
+    const method = normalizePaymentMethod(row.method);
+    if (method === "nequi") nequi += row.amount;
+    else if (method === "banco") banco += row.amount;
     else efectivo += row.amount;
   }
-  return { efectivo, nequi, total: efectivo + nequi, count };
+  return {
+    efectivo,
+    nequi,
+    banco,
+    /** Medios que no entran a caja (Nequi + Banco). */
+    digital: nequi + banco,
+    total: efectivo + nequi + banco,
+    count,
+  };
 }
 
 export function collectorRecaudoForDate(

@@ -7,7 +7,7 @@ import {
 } from "@/lib/bank";
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import { displayToIso } from "@/lib/loan-preview";
-import { money, type CollectorRow, type PaymentRow, paymentsForCollector } from "@/lib/mock-data";
+import { money, type CollectorRow, type LoanRow, type PaymentRow, paymentsForCollector } from "@/lib/mock-data";
 import { normalizePaymentMethod } from "@/lib/payment-method";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
@@ -30,6 +30,8 @@ export type RouteExpenseLine = {
   label: string;
   amount: number;
   category: BankExpenseCategory;
+  /** Desembolso de préstamo en efectivo: ancla el Haber al préstamo (varios por día). */
+  loanRef?: string;
 };
 
 export type CollectorDayCloseDraft = {
@@ -251,7 +253,11 @@ export function dayExpenseLineMovementRef(
   collectorRef: string,
   date: string,
   expenseId: string,
+  loanRef?: string,
 ) {
+  if (loanRef) {
+    return `GASL-${collectorRef}-${date}-prestamo-${loanRef}`;
+  }
   return `GASL-${collectorRef}-${date}-${expenseId}`;
 }
 
@@ -308,6 +314,43 @@ export function upsertDayExpenseDraft(
   return [draft, ...drafts.filter((row) => row.ref !== draft.ref)];
 }
 
+/**
+ * Desembolso del cobrador en efectivo → gasto «Préstamo» del día (resta En caja).
+ * Idempotente por loanRef.
+ */
+export function appendCashDisbursementExpense(
+  drafts: CollectorDayExpenseDraft[],
+  input: {
+    collectorRef: string;
+    collectorName: string;
+    date: string;
+    routeRef: string;
+    loan: Pick<LoanRow, "ref" | "client" | "capital">;
+  },
+): CollectorDayExpenseDraft[] {
+  const capital = Math.trunc(Number(input.loan.capital) || 0);
+  if (capital <= 0 || !input.collectorRef || !input.date) return drafts;
+  const existing = findDayExpenseDraft(drafts, input.collectorRef, input.date);
+  const line: RouteExpenseLine = {
+    id: "prestamo",
+    label: `Préstamo · ${input.loan.ref} · ${input.loan.client}`,
+    amount: capital,
+    category: "prestamo_ruta",
+    loanRef: input.loan.ref,
+  };
+  const prev = (existing?.expenses ?? []).filter((row) => row.loanRef !== input.loan.ref);
+  return upsertDayExpenseDraft(
+    drafts,
+    buildDayExpenseDraft({
+      collectorRef: input.collectorRef,
+      collectorName: input.collectorName,
+      date: input.date,
+      routeRef: input.routeRef || existing?.routeRef || "",
+      expenses: [...prev, line],
+    }),
+  );
+}
+
 export function removeDayExpenseDraft(
   drafts: CollectorDayExpenseDraft[],
   collectorRef: string,
@@ -325,7 +368,12 @@ export function buildDayCloseExpenseMovements(input: {
   const { draft, accountRef, lines } = input;
   const period = periodFromIso(draft.date);
   return lines.map((line) => {
-    const lineRef = dayExpenseLineMovementRef(draft.collectorRef, draft.date, line.id);
+    const lineRef = dayExpenseLineMovementRef(
+      draft.collectorRef,
+      draft.date,
+      line.id,
+      line.loanRef,
+    );
     return {
       ...addManualExpense({
         accountRef,
@@ -384,7 +432,12 @@ export function syncRouteExpensesToMovements(
   for (const source of sources) {
     for (const line of source.expenses) {
       if (line.amount <= 0) continue;
-      const key = dayExpenseLineMovementRef(source.collectorRef, source.date, line.id);
+      const key = dayExpenseLineMovementRef(
+        source.collectorRef,
+        source.date,
+        line.id,
+        line.loanRef,
+      );
       wanted.set(key, { source, line });
     }
   }
@@ -775,11 +828,13 @@ export function buildCollectorDayHistory(
     const amount = Number(row.amount) || 0;
     if (!(amount > 0)) continue;
     cobroByDate.set(date, (cobroByDate.get(date) ?? 0) + amount);
-    if (normalizePaymentMethod(row.method) === "nequi") {
+    const method = normalizePaymentMethod(row.method);
+    if (method === "nequi") {
       nequiByDate.set(date, (nequiByDate.get(date) ?? 0) + amount);
-    } else {
+    } else if (method === "efectivo") {
       efectivoByDate.set(date, (efectivoByDate.get(date) ?? 0) + amount);
     }
+    // Banco: va en cobro total, no a caja ni a pool Nequi.
   }
 
   const closedDates = new Set<string>();
@@ -905,15 +960,18 @@ function collectorRecaudoBreakdownForClose(
   let total = 0;
   let efectivo = 0;
   let nequi = 0;
+  let banco = 0;
   for (const row of paymentsForCollector(collectorRef, collectors, payments)) {
     if (normalizeHistoryDate(row.paidDate || "") !== norm) continue;
     const amount = Number(row.amount) || 0;
     if (!(amount > 0)) continue;
     total += amount;
-    if (normalizePaymentMethod(row.method) === "nequi") nequi += amount;
+    const method = normalizePaymentMethod(row.method);
+    if (method === "nequi") nequi += amount;
+    else if (method === "banco") banco += amount;
     else efectivo += amount;
   }
-  return { total, efectivo, nequi };
+  return { total, efectivo, nequi, banco, digital: nequi + banco };
 }
 
 /** Saldo final del mes (último día con movimiento o opening si vacío). */

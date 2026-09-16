@@ -6,6 +6,7 @@ import {
   QUICK_INTEREST_PCT,
   type QuickLoanDraft,
 } from "@/lib/street-client-loan";
+import type { LoanDisbursementSource } from "@/lib/nequi-pool";
 import {
   LOAN_TERM_OPTIONS,
   PAY_FREQUENCIES,
@@ -19,6 +20,12 @@ import { money } from "@/lib/mock-data";
 type Props = {
   clientName: string;
   clientRef: string;
+  /**
+   * Orígenes permitidos del desembolso.
+   * Cobrador: solo efectivo. Supervisor/admin: nequi | banco.
+   */
+  fundedByOptions?: LoanDisbursementSource[];
+  defaultFundedBy?: LoanDisbursementSource;
   onCancel: () => void;
   onSave: (draft: QuickLoanDraft) => void;
 };
@@ -34,11 +41,29 @@ function formatMiles(raw: string) {
   return Number(digits).toLocaleString("es-CO");
 }
 
-export function QuickLoanForm({ clientName, clientRef, onCancel, onSave }: Props) {
+const ORIGIN_LABEL: Record<LoanDisbursementSource, string> = {
+  nequi: "Nequi",
+  banco: "Banco",
+  efectivo: "Efectivo",
+};
+
+export function QuickLoanForm({
+  clientName,
+  clientRef,
+  fundedByOptions = ["nequi", "banco"],
+  defaultFundedBy,
+  onCancel,
+  onSave,
+}: Props) {
+  const options =
+    fundedByOptions.length > 0 ? fundedByOptions : (["nequi"] as LoanDisbursementSource[]);
+  const initial =
+    defaultFundedBy && options.includes(defaultFundedBy) ? defaultFundedBy : options[0];
   const [capitalRaw, setCapitalRaw] = useState("");
   const [ratePct, setRatePct] = useState<(typeof QUICK_INTEREST_PCT)[number]>(20);
   const [termMonths, setTermMonths] = useState<LoanTermMonths>(1);
   const [frequency, setFrequency] = useState<PayFrequency>("diario");
+  const [fundedBy, setFundedBy] = useState<LoanDisbursementSource>(initial);
 
   const capital = parseMoney(capitalRaw);
   const interest = interestFromPct(capital, ratePct);
@@ -55,6 +80,7 @@ export function QuickLoanForm({ clientName, clientRef, onCancel, onSave }: Props
   );
 
   const canSave = Boolean(preview && capital > 0 && interest >= 0);
+  const showOriginPicker = options.length > 1;
 
   return (
     <form
@@ -70,6 +96,7 @@ export function QuickLoanForm({ clientName, clientRef, onCancel, onSave }: Props
           rate: ratePct,
           frequency,
           termMonths,
+          fundedBy,
         });
       }}
     >
@@ -131,6 +158,28 @@ export function QuickLoanForm({ clientName, clientRef, onCancel, onSave }: Props
           </select>
         </label>
       </div>
+
+      {showOriginPicker ? (
+        <label className="quick-loan-field">
+          <span>Origen del desembolso</span>
+          <select
+            value={fundedBy}
+            onChange={(event) => setFundedBy(event.target.value as LoanDisbursementSource)}
+            aria-label="Origen del desembolso"
+          >
+            {options.map((opt) => (
+              <option key={opt} value={opt}>
+                {ORIGIN_LABEL[opt]}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <p className="quick-loan-summary is-muted">
+          Origen: {ORIGIN_LABEL[fundedBy]}
+          {fundedBy === "efectivo" ? " · se descuenta de la caja" : ""}
+        </p>
+      )}
 
       {preview ? (
         <p className="quick-loan-summary">

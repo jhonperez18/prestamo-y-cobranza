@@ -10,6 +10,7 @@ import {
   resolvePaymentEvidencePreview,
   type PaymentEvidenceRef,
 } from "@/lib/payment-evidence";
+import { suppressGhostClick } from "@/lib/suppress-ghost-click";
 
 type Props = {
   evidence?: PaymentEvidenceRef[];
@@ -126,7 +127,10 @@ export function PaymentEvidenceThumb({
   const isSignature = item?.kind === "firma";
   const label = isSignature ? "Firma del cliente" : "Comprobante de pago";
 
-  const close = useCallback(() => setOpenUrl(null), []);
+  const close = useCallback(() => {
+    suppressGhostClick();
+    setOpenUrl(null);
+  }, []);
 
   useEffect(() => {
     setMounted(true);

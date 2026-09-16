@@ -8,6 +8,7 @@ type Props = {
   collected: number;
   efectivo: number;
   nequi: number;
+  banco?: number;
   expenses: RouteExpenseLine[];
   pendingCount: number;
   onCancel: () => void;
@@ -19,6 +20,7 @@ export function CollectorCloseDayConfirm({
   collected,
   efectivo,
   nequi,
+  banco = 0,
   expenses,
   pendingCount,
   onCancel,
@@ -44,6 +46,10 @@ export function CollectorCloseDayConfirm({
         <div className="is-pay-nequi">
           <em>Nequi</em>
           <b>{money(nequi)}</b>
+        </div>
+        <div className="is-pay-banco">
+          <em>Banco</em>
+          <b>{money(banco)}</b>
         </div>
         <div className="is-total">
           <em>Total cobrado</em>

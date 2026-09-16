@@ -30,7 +30,7 @@ export function syncBankLedger(input: {
   miscPayments: MiscPayment[];
   dayExpenseDrafts: CollectorDayExpenseDraft[];
   dayCloses: CollectorDayCloseRecord[];
-  /** Préstamos/renovaciones con fundedBy Nequi → Haber. */
+  /** Préstamos/renovaciones con fundedBy Nequi o Banco → Haber. */
   loans?: LoanRow[];
 }): BankMovement[] {
   const accounts = ensureBankAccounts(input.accounts);

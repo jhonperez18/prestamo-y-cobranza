@@ -267,7 +267,14 @@ export function SupervisorShell({ session, onLogout }: Props) {
       showToast("Cliente no encontrado.");
       return;
     }
-    const loan = buildQuickLoan(draft, client, loans);
+    const loan = buildQuickLoan(
+      {
+        ...draft,
+        fundedBy: draft.fundedBy === "banco" ? "banco" : "nequi",
+      },
+      client,
+      loans,
+    );
     if (!loan) {
       showToast("Revise capital, interés, tiempo y frecuencia.");
       return;
@@ -319,7 +326,9 @@ export function SupervisorShell({ session, onLogout }: Props) {
         loans: nextLoans,
       }),
     );
-    showToast(`Préstamo ${loan.ref} creado · cuota ${money(loan.installment ?? 0)}.`);
+    showToast(
+      `Préstamo ${loan.ref} · origen ${loan.fundedBy === "banco" ? "Banco" : "Nequi"} · cuota ${money(loan.installment ?? 0)}.`,
+    );
   }
 
   function attachPaymentEvidence(paymentRef: string, evidence: PaymentEvidenceRef[]) {

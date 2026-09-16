@@ -186,7 +186,7 @@ export function CarteraView({
                       {resumenPaymentColumns.isVisible("fecha") ? <th>Fecha</th> : null}
                       {resumenPaymentColumns.isVisible("client") ? <th>Cliente</th> : null}
                       {resumenPaymentColumns.isVisible("collector") ? <th>Cobrador</th> : null}
-                      {resumenPaymentColumns.isVisible("amount") ? <th className="right">Valor</th> : null}
+                      {resumenPaymentColumns.isVisible("amount") ? <th className="right">Cobrado</th> : null}
                       {resumenPaymentColumns.isVisible("type") ? <th>Tipo</th> : null}
                       <ColumnPickerHeadCell>
                         <ColumnPicker

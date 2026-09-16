@@ -508,7 +508,7 @@ export function CollectorFicha({
                             <th>Zona</th>
                             <th>Concepto</th>
                             <th>Préstamo</th>
-                            <th className="right">A cobrar</th>
+                            <th className="right">Cuota</th>
                             <th>Estado</th>
                             {onRegisterCollectorPayment ? <th /> : null}
                           </tr>

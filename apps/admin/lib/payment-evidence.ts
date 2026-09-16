@@ -1,5 +1,9 @@
 import type { PaymentMethod } from "@/lib/payment-method";
-import { normalizePaymentMethod } from "@/lib/payment-method";
+import {
+  normalizePaymentMethod,
+  paymentMethodRequiresReceipt,
+  paymentMethodRequiresSignature,
+} from "@/lib/payment-method";
 
 /** Tipo de archivo adjunto al pago. Extensible (firma, otro). */
 export type PaymentEvidenceKind = "comprobante" | "firma";
@@ -49,8 +53,7 @@ export function newEvidenceId(prefix = "EV") {
 }
 
 export function evidenceRequiredForMethod(method?: PaymentMethod | string) {
-  const normalized = normalizePaymentMethod(method);
-  return normalized === "nequi" || normalized === "efectivo";
+  return paymentMethodRequiresReceipt(method) || paymentMethodRequiresSignature(method);
 }
 
 export function paymentEvidenceOfKind(
@@ -72,7 +75,7 @@ export function paymentHasSignature(evidence?: PaymentEvidenceRef[]) {
   );
 }
 
-/** Comprobante Nequi o firma de efectivo, el que esté disponible. */
+/** Comprobante (Nequi/Banco) o firma de efectivo, el que esté disponible. */
 export function primaryPaymentEvidence(evidence?: PaymentEvidenceRef[]) {
   const receipt = paymentEvidenceOfKind(evidence, "comprobante").find((row) =>
     Boolean(resolvePaymentEvidencePreview(row)),
@@ -92,9 +95,10 @@ export function validatePaymentEvidence(
   evidence: PaymentEvidenceRef[] | undefined,
 ) {
   const normalized = normalizePaymentMethod(method);
-  if (normalized === "nequi") {
+  if (paymentMethodRequiresReceipt(normalized)) {
+    const label = normalized === "banco" ? "Banco" : "Nequi";
     if (!paymentHasReceipt(evidence)) {
-      return "Nequi requiere foto del comprobante de transferencia.";
+      return `${label} requiere foto o archivo del comprobante de transferencia.`;
     }
     const receipt = paymentEvidenceOfKind(evidence, "comprobante")[0];
     if (receipt?.byteSize && receipt.byteSize > RECEIPT_MAX_BYTES) {
@@ -102,7 +106,7 @@ export function validatePaymentEvidence(
     }
     return null;
   }
-  if (normalized === "efectivo" && !paymentHasSignature(evidence)) {
+  if (paymentMethodRequiresSignature(normalized) && !paymentHasSignature(evidence)) {
     return "El cliente debe firmar el cobro en efectivo.";
   }
   return null;

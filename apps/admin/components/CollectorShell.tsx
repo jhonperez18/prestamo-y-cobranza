@@ -37,6 +37,7 @@ import {
 } from "@/lib/collector-dispatch-sync";
 import {
   applyDayCloseRecordsToAssignments,
+  appendCashDisbursementExpense,
   buildDayExpenseDraft,
   buildMonthCloseRecord,
   dayExpenseLineMovementRef,
@@ -356,13 +357,15 @@ export function CollectorShell({ session, onLogout }: Props) {
   }
 
   function renewCollectorLoan(loanRef: string) {
+    if (!collector) return;
     const loan = loans.find((row) => row.ref === loanRef);
     if (!loan) {
       showToast("Préstamo no encontrado.");
       return;
     }
     const newRef = nextLoanCode(loans);
-    const result = buildRenewalLoans(loan, newRef);
+    // Cobrador: renovación siempre sale de efectivo y resta de su caja.
+    const result = buildRenewalLoans(loan, newRef, todayIso(), "efectivo");
     if (!result) {
       showToast("La renovación se activa cuando se cumpla el plazo del préstamo.");
       return;
@@ -402,6 +405,24 @@ export function CollectorShell({ session, onLogout }: Props) {
         ),
       });
     }
+    const clientRow = clients.find((c) => c.ref === loan.clientRef);
+    const routeRef =
+      myRoutes.find((row) => row.name === clientRow?.route)?.ref ||
+      myRoutes[0]?.ref ||
+      "";
+    const nextDrafts = appendCashDisbursementExpense(dayExpenseDrafts, {
+      collectorRef: collector.ref,
+      collectorName: collector.name,
+      date: todayIso(),
+      routeRef,
+      loan: result.created,
+    });
+    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
+    setDayExpenseDrafts(nextDrafts);
+    const expenseDraft = nextDrafts.find(
+      (row) => row.ref === `GAS-${collector.ref}-${todayIso()}`,
+    );
+    if (expenseDraft) queueDayExpenseMirror(expenseDraft);
     writeDemoJson(
       DEMO_BANK_MOVEMENTS_KEY,
       syncBankLedger({
@@ -413,17 +434,18 @@ export function CollectorShell({ session, onLogout }: Props) {
           readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
         ),
         miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-        dayExpenseDrafts,
+        dayExpenseDrafts: nextDrafts,
         dayCloses,
         loans: nextLoans,
       }),
     );
     showToast(
-      `Nuevo préstamo ${newRef}: capital ${money(result.created.capital)} + 20% · total ${money(result.created.total ?? 0)} · 1 mes.`,
+      `Renovación ${newRef}: capital ${money(result.created.capital)} sale de efectivo · total ${money(result.created.total ?? 0)}.`,
     );
   }
 
   function createQuickLoanFromMobile(draft: QuickLoanDraft) {
+    if (!collector) return;
     const client = clients.find((row) => row.ref === draft.clientRef);
     if (!client) {
       showToast("Cliente no encontrado.");
@@ -461,6 +483,23 @@ export function CollectorShell({ session, onLogout }: Props) {
     queueLoanMirror(loan);
     const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
     if (mirroredClient) queueClientMirror(mirroredClient);
+    const routeRef =
+      myRoutes.find((row) => row.name === client.route)?.ref ||
+      myRoutes[0]?.ref ||
+      "";
+    const nextDrafts = appendCashDisbursementExpense(dayExpenseDrafts, {
+      collectorRef: collector.ref,
+      collectorName: collector.name,
+      date: todayIso(),
+      routeRef,
+      loan,
+    });
+    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
+    setDayExpenseDrafts(nextDrafts);
+    const expenseDraft = nextDrafts.find(
+      (row) => row.ref === `GAS-${collector.ref}-${todayIso()}`,
+    );
+    if (expenseDraft) queueDayExpenseMirror(expenseDraft);
     writeDemoJson(
       DEMO_BANK_MOVEMENTS_KEY,
       syncBankLedger({
@@ -472,12 +511,14 @@ export function CollectorShell({ session, onLogout }: Props) {
           readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
         ),
         miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-        dayExpenseDrafts,
+        dayExpenseDrafts: nextDrafts,
         dayCloses,
         loans: nextLoans,
       }),
     );
-    showToast(`Préstamo ${loan.ref} creado · cuota ${money(loan.installment ?? 0)}.`);
+    showToast(
+      `Préstamo ${loan.ref} · capital ${money(loan.capital)} descontado de caja · cuota ${money(loan.installment ?? 0)}.`,
+    );
   }
 
   function skipCollectorVisit(draft: CollectorSkipVisitDraft) {
@@ -576,7 +617,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       lines,
       cashCollected: payload.collectedEfectivo,
       movementRefs: lines.map((line) =>
-        dayExpenseLineMovementRef(payload.collectorRef, payload.date, line.id),
+        dayExpenseLineMovementRef(payload.collectorRef, payload.date, line.id, line.loanRef),
       ),
     });
     const closes = loadDemoDayCloses<CollectorDayCloseRecord>();

@@ -6,7 +6,8 @@ export const COBRANZA_PAYMENT_COLUMNS: ColumnOption[] = [
   { id: "hora", label: "Hora" },
   { id: "cliente", label: "Cliente" },
   { id: "cobrador", label: "Cobrador" },
-  { id: "valor", label: "Valor" },
+  { id: "cuota", label: "Cuota" },
+  { id: "valor", label: "Cobrado" },
   { id: "method", label: "Forma de pago" },
   { id: "evidence", label: "Comprobante" },
   { id: "ruta", label: "Ruta" },
@@ -20,7 +21,7 @@ export const HOME_TODAY_MOVEMENT_COLUMNS: ColumnOption[] = [
   { id: "when", label: "Hora" },
   { id: "client", label: "Cliente" },
   { id: "collector", label: "Cobrador" },
-  { id: "amount", label: "Valor" },
+  { id: "amount", label: "Cobrado" },
   { id: "type", label: "Tipo" },
   { id: "status", label: "Estado" },
 ];
@@ -159,7 +160,7 @@ export const DAILY_COLLECTION_COLUMNS: ColumnOption[] = [
   { id: "loan", label: "Préstamo" },
   { id: "concept", label: "Concepto" },
   { id: "since", label: "Desde" },
-  { id: "amount", label: "A cobrar" },
+  { id: "amount", label: "Cuota" },
   { id: "method", label: "Método" },
   { id: "evidence", label: "Foto" },
   { id: "collector", label: "Cobrador" },
@@ -198,7 +199,7 @@ export const CARTERA_RESUMEN_PAYMENT_COLUMNS: ColumnOption[] = [
   { id: "fecha", label: "Fecha" },
   { id: "client", label: "Cliente" },
   { id: "collector", label: "Cobrador" },
-  { id: "amount", label: "Valor" },
+  { id: "amount", label: "Cobrado" },
   { id: "type", label: "Tipo" },
 ];
 

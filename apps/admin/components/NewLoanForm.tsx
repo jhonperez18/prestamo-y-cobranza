@@ -19,6 +19,7 @@ import {
   type ScheduleLine,
 } from "@/lib/loan-preview";
 import { todayIso } from "@/lib/daily-dispatch";
+import type { LoanDisbursementSource } from "@/lib/nequi-pool";
 
 export type LoanDraft = {
   clientRef: string;
@@ -35,6 +36,8 @@ export type LoanDraft = {
   total: number;
   installment: number;
   schedule: ScheduleLine[];
+  /** Origen del desembolso (admin/supervisor): nequi o banco. */
+  fundedBy?: Extract<LoanDisbursementSource, "nequi" | "banco">;
 };
 
 type Props = {
@@ -139,6 +142,9 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
     syncedLoan?.frequency ?? loan?.frequency ?? "diario",
   );
   const [notes, setNotes] = useState(syncedLoan?.notes ?? loan?.notes ?? "");
+  const [fundedBy, setFundedBy] = useState<"nequi" | "banco">(
+    loan?.fundedBy === "banco" ? "banco" : "nequi",
+  );
   const [askingDelete, setAskingDelete] = useState(false);
 
   const suggestions = useMemo(
@@ -225,6 +231,7 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
       total: preview.total,
       installment: preview.installment,
       schedule: preview.schedule,
+      fundedBy,
     });
   }
 
@@ -504,6 +511,21 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
                   <input id="loan-due" value={dueLabel === "—" ? "" : dueLabel} readOnly tabIndex={-1} />
                 </div>
 
+                <div className="sheet-row sheet-row-top">
+                  <label className="sheet-label" htmlFor="loan-funded-by">
+                    Origen del desembolso
+                  </label>
+                  <select
+                    id="loan-funded-by"
+                    value={fundedBy}
+                    onChange={(event) =>
+                      setFundedBy(event.target.value as "nequi" | "banco")
+                    }
+                  >
+                    <option value="nequi">Nequi</option>
+                    <option value="banco">Banco</option>
+                  </select>
+                </div>
                 <div className="sheet-row sheet-row-top">
                   <label className="sheet-label" htmlFor="loan-notes">
                     Observaciones

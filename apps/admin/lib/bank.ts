@@ -5,6 +5,7 @@ import { findMiscPaymentForMovement } from "@/lib/misc-payments";
 import {
   loanDisbursementIsoDate,
   loanDisbursementMovementRef,
+  loanFundedByBanco,
   loanFundedByNequi,
 } from "@/lib/nequi-pool";
 import {
@@ -332,7 +333,9 @@ export function normalizeBankMovement(
     .replace(/\bR(?:Ã­|\uFFFD+)os\b/gi, "Ríos");
 
   const method: PaymentMethod | undefined =
-    row.method === "nequi" || row.method === "efectivo" ? row.method : undefined;
+    row.method === "nequi" || row.method === "efectivo" || row.method === "banco"
+      ? row.method
+      : undefined;
 
   return applyBankAccountSides({
     ref: row.ref,
@@ -691,11 +694,13 @@ export function paymentMovementDescription(payment: PaymentRow) {
 /** Etiqueta Método desde la descripción (solo respaldo de filas viejas). */
 export function bankMovementMethodLabel(description: string) {
   const match =
-    /\s·\s(?:Cuota|Abono)\s*(?:·|-)\s*(Efectivo|Nequi)\s*$/i.exec(description.trim()) ??
-    /\s·\s(Efectivo|Nequi)\s*$/i.exec(description.trim()) ??
-    /\s[-–]\s*(Efectivo|Nequi)\s*$/i.exec(description.trim());
+    /\s·\s(?:Cuota|Abono)\s*(?:·|-)\s*(Efectivo|Nequi|Banco)\s*$/i.exec(description.trim()) ??
+    /\s·\s(Efectivo|Nequi|Banco)\s*$/i.exec(description.trim()) ??
+    /\s[-–]\s*(Efectivo|Nequi|Banco)\s*$/i.exec(description.trim());
   if (!match) return "";
-  return /nequi/i.test(match[1]!) ? "Nequi" : "Efectivo";
+  if (/nequi/i.test(match[1]!)) return "Nequi";
+  if (/banco/i.test(match[1]!)) return "Banco";
+  return "Efectivo";
 }
 
 /**
@@ -704,9 +709,12 @@ export function bankMovementMethodLabel(description: string) {
  */
 export function bankMovementPaymentMethod(row: BankMovement): PaymentMethod | null {
   if (!paymentRefForMovement(row)) return null;
-  if (row.method === "nequi" || row.method === "efectivo") return row.method;
+  if (row.method === "nequi" || row.method === "efectivo" || row.method === "banco") {
+    return row.method;
+  }
   const fromDesc = bankMovementMethodLabel(row.description);
   if (fromDesc === "Nequi") return "nequi";
+  if (fromDesc === "Banco") return "banco";
   if (fromDesc === "Efectivo") return "efectivo";
   return null;
 }
@@ -728,9 +736,9 @@ export function bankMovementDescriptionText(description: string) {
 
   return (
     raw
-      .replace(/\s·\s(?:Cuota|Abono)\s*(?:·|-)\s*(?:Efectivo|Nequi)\s*$/i, "")
-      .replace(/\s·\s(Efectivo|Nequi)\s*$/i, "")
-      .replace(/\s[-–]\s*(?:Efectivo|Nequi)\s*$/i, "")
+      .replace(/\s·\s(?:Cuota|Abono)\s*(?:·|-)\s*(?:Efectivo|Nequi|Banco)\s*$/i, "")
+      .replace(/\s·\s(Efectivo|Nequi|Banco)\s*$/i, "")
+      .replace(/\s[-–]\s*(?:Efectivo|Nequi|Banco)\s*$/i, "")
       .replace(/\s·\s(Cuota|Abono)\s*$/i, "")
       .trim() || description
   );
@@ -769,7 +777,7 @@ export function lockPaymentCobrosAsIncome(
       description: payment ? paymentMovementDescription(payment) : row.description,
       method: payment
         ? normalizePaymentMethod(payment.method)
-        : row.method === "nequi" || row.method === "efectivo"
+        : row.method === "nequi" || row.method === "efectivo" || row.method === "banco"
           ? row.method
           : undefined,
       thirdParty: payment?.client?.trim() || row.thirdParty,
@@ -984,7 +992,10 @@ export function syncNequiLoanDisbursementsToMovements(
   if (!accountRef) return movements;
 
   const wanted = loans.filter(
-    (loan) => loanFundedByNequi(loan) && (Number(loan.capital) || 0) > 0 && Boolean(loan.ref),
+    (loan) =>
+      (loanFundedByNequi(loan) || loanFundedByBanco(loan)) &&
+      (Number(loan.capital) || 0) > 0 &&
+      Boolean(loan.ref),
   );
   const byRef = new Map(
     movements
@@ -999,11 +1010,12 @@ export function syncNequiLoanDisbursementsToMovements(
     if (!valueDate) continue;
     const capital = Number(loan.capital) || 0;
     const isRenewal = /renovaci[oó]n/i.test(loan.notes || "");
+    const originLabel = loanFundedByBanco(loan) ? "Banco" : "Nequi";
     const patch: BankMovement = {
       ref: lineRef,
       accountRef,
       period: periodFromIso(valueDate),
-      description: `Desembolso Nequi · ${isRenewal ? "Renovación" : "Préstamo"} · ${loan.ref} · ${loan.client}`,
+      description: `Desembolso ${originLabel} · ${isRenewal ? "Renovación" : "Préstamo"} · ${loan.ref} · ${loan.client}`,
       valueDate,
       opDate: valueDate,
       thirdParty: loan.client,

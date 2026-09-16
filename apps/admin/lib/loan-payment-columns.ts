@@ -2,7 +2,7 @@ import type { ColumnOption } from "@/components/ColumnPicker";
 import type { PaymentMovement } from "@/lib/payment-detail";
 import { money } from "@/lib/mock-data";
 
-export const LOAN_PAYMENT_COLUMNS_STORAGE_KEY = "nexo.prestamos.ficha-pagos.columns.v3";
+export const LOAN_PAYMENT_COLUMNS_STORAGE_KEY = "nexo.prestamos.ficha-pagos.columns.v4";
 
 export const LOAN_PAYMENT_COLUMNS: ColumnOption[] = [
   { id: "ref", label: "Pago" },
@@ -13,13 +13,15 @@ export const LOAN_PAYMENT_COLUMNS: ColumnOption[] = [
   { id: "method", label: "Forma de pago" },
   { id: "evidence", label: "Comprobante" },
   { id: "source", label: "Origen" },
-  { id: "amount", label: "Importe" },
+  { id: "cuota", label: "Cuota" },
+  { id: "amount", label: "Cobrado" },
+  { id: "estado", label: "Estado" },
 ];
 
 export const LOAN_PAYMENT_DEFAULT_COLS = LOAN_PAYMENT_COLUMNS.map((col) => col.id);
 
 /** Columnas del PDF al compartir ficha desde el celular (como la pantalla). */
-export const LOAN_FICHA_SHARE_COLS = ["amount", "paidDate", "paidTime", "method"];
+export const LOAN_FICHA_SHARE_COLS = ["cuota", "amount", "paidDate", "paidTime", "method", "estado"];
 
 export function orderedVisibleLoanPaymentColumns(visibleCols: string[]) {
   return LOAN_PAYMENT_COLUMNS.filter((col) => visibleCols.includes(col.id));
@@ -43,8 +45,12 @@ export function loanPaymentMovementCell(columnId: string, movement: PaymentMovem
       return movement.hasReceipt ? "Sí" : "—";
     case "source":
       return movement.source;
+    case "cuota":
+      return movement.cuotaPactada > 0 ? money(movement.cuotaPactada) : "—";
     case "amount":
       return money(movement.amount);
+    case "estado":
+      return movement.settlementLabel || "—";
     default:
       return "—";
   }

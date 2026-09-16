@@ -1,9 +1,12 @@
 /**
- * Vista unificada de planilla (supervisor / cobrador / resumen):
- * progreso de cuotas (paid/expected + intensidad) desde plata y calendario.
- * Cuota del día desde amountDue o respaldo de cuota del préstamo.
+ * Vista unificada de planilla (supervisor / cobrador / resumen).
+ *
+ * Contrato de cuota en cobro:
+ * - En planilla y default de pago = cuota PACTADA del préstamo
+ *   (valor fijo diario/semanal/mensual de la ficha), tope saldo.
+ * - El cobrador puede escribir otro valor (adelanto o atrasos).
+ * - Mora/alertas usan otro módulo; no inflan el monto de cuota.
  */
-import { accumulatedDueForLoan } from "@/lib/daily-collection-plan";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { syncLoan } from "@/lib/loan-preview";
 import {
@@ -25,6 +28,20 @@ export function planillaVisitPaid(row: Pick<DailyCollectionAssignment, "visitSta
   );
 }
 
+/**
+ * Cuota pactada = valor de cada cobro de la ficha, tope saldo.
+ * Misma cifra en planilla, default de pago y reportes.
+ */
+export function planillaCuotaPactada(loan: LoanRow | null | undefined): number {
+  if (!loan) return 0;
+  const synced = syncLoan(loan) as LoanRow;
+  const installment = Math.trunc(Number(synced.installment) || 0);
+  if (installment <= 0) return 0;
+  const balance = Math.trunc(Number(synced.balance) || 0);
+  if (balance <= 0) return 0;
+  return Math.min(installment, balance);
+}
+
 export function planillaLiveCuotasProgress(
   loan: LoanRow | null | undefined,
   payments: PaymentRow[],
@@ -33,22 +50,18 @@ export function planillaLiveCuotasProgress(
   return computeLoanCuotasProgress(loan, payments, today);
 }
 
+/**
+ * Monto de cuota en planilla = siempre la pactada de la ficha.
+ * El cobrado real (si el cobrador escribió otro valor) vive en el PG- / reportes.
+ */
 export function planillaLiveCuota(
   row: DailyCollectionAssignment,
   loan: LoanRow | null | undefined,
-  today = todayIso(),
+  _payments: PaymentRow[] = [],
+  _today = todayIso(),
 ): number {
   if (row.awaitingLoan) return 0;
-  if (planillaVisitPaid(row) || row.visitStatus === "omitido") {
-    return Number(row.amountDue) > 0 ? Number(row.amountDue) : 0;
-  }
-  if (Number(row.amountDue) > 0) return Number(row.amountDue);
-  if (!loan) return 0;
-  const due = accumulatedDueForLoan(loan, today).amountDue;
-  if (due > 0) return due;
-  const installment = Number(loan.installment) || 0;
-  if (installment > 0) return Math.min(installment, Number(loan.balance) || installment);
-  return 0;
+  return planillaCuotaPactada(loan);
 }
 
 export function planillaSyncedLoan(
@@ -70,7 +83,7 @@ export function enrichSupervisorPlanillaRow(
 ) {
   const loan = planillaSyncedLoan(loans, row.loanRef, payments);
   const cuotas = planillaLiveCuotasProgress(loan, payments, today);
-  const cuota = planillaLiveCuota(row, loan, today);
+  const cuota = planillaLiveCuota(row, loan, payments, today);
   const saldo = loan?.balance ?? 0;
   const pay =
     (row.paymentRef

@@ -6,10 +6,10 @@ import { clientsOnRouteSorted } from "@/lib/client-route-order";
 import { computeLoanFinancials } from "@/lib/loan-balance";
 import { todayIso } from "@/lib/daily-dispatch";
 import { canRenewLoan } from "@/lib/loan-renew";
-import { cuotaTarget } from "@/lib/loan-pay";
 import { syncLoan } from "@/lib/loan-preview";
 import { computeLoanCuotasProgress, type CuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
+import { planillaCuotaPactada } from "@/lib/planilla-display";
 import {
   paymentMethodKind,
   paymentMethodLabel,
@@ -131,7 +131,7 @@ function rowFromAssignment(
       routeOrder: client.routeOrder || order,
     },
     balance,
-    cuotaHoy: assignment.amountDue || (loan ? cuotaTarget(loan)?.remaining ?? 0 : 0),
+    cuotaHoy: loan ? planillaCuotaPactada(loan) : 0,
     loan,
     renewLoan,
     paidToday,
@@ -237,8 +237,8 @@ export function RouteClientsView({
               <th>Nombre</th>
               <th>Apodo</th>
               <th className="right">Saldo</th>
-              <th className="right" title="Valor enviado a la app para cobrar hoy">
-                Cuota hoy
+              <th className="right" title="Cuota pactada del préstamo (fija)">
+                Cuota
               </th>
               <th title="Se actualiza cuando el cobrador registra el pago">Cobrado</th>
               <th title="Hora del cobro en la app">Hora</th>

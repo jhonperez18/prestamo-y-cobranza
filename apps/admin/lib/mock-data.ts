@@ -12,7 +12,8 @@ export type StatusKind =
   | "warn"
   | "closed"
   | "efectivo"
-  | "nequi";
+  | "nequi"
+  | "banco";
 
 export type ClientRow = {
   ref: string;
@@ -80,11 +81,11 @@ export type LoanRow = {
    */
   termsPending?: boolean;
   /**
-   * Origen del desembolso:
-   * - nequi = supervisor/admin (resta Total acumulado Nequi)
-   * - efectivo = cobrador desde caja
+   * Origen del desembolso (≠ método de cobro):
+   * - nequi / banco = cuenta del dueño
+   * - efectivo = caja del cobrador
    */
-  fundedBy?: "nequi" | "efectivo";
+  fundedBy?: "nequi" | "efectivo" | "banco";
 };
 
 export type PaymentRow = {
@@ -103,7 +104,7 @@ export type PaymentRow = {
   amount: number;
   type: string;
   kind: StatusKind;
-  /** Efectivo en mano o transferencia Nequi. */
+  /** Efectivo, Nequi o Banco (consignación). */
   method?: PaymentMethod;
   /** Comprobantes, firmas u otras evidencias (referencias ligeras). */
   evidence?: import("@/lib/payment-evidence").PaymentEvidenceRef[];

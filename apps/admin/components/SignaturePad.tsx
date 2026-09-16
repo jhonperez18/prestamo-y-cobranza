@@ -6,6 +6,9 @@ import { buildSignatureEvidence, type PaymentEvidenceRef } from "@/lib/payment-e
 type Props = {
   compact?: boolean;
   required?: boolean;
+  label?: string;
+  /** Oculta el título “Firma…”; deja solo el pad. */
+  hideLabel?: boolean;
   value?: PaymentEvidenceRef;
   onChange: (evidence: PaymentEvidenceRef | undefined) => void;
 };
@@ -94,7 +97,14 @@ function exportSignatureDataUrl(canvas: HTMLCanvasElement) {
   };
 }
 
-export function SignaturePad({ compact = false, required, value, onChange }: Props) {
+export function SignaturePad({
+  compact = false,
+  required,
+  label = "Firma del cliente",
+  hideLabel = false,
+  value,
+  onChange,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
   const strokeInkRef = useRef(false);
@@ -249,18 +259,24 @@ export function SignaturePad({ compact = false, required, value, onChange }: Pro
 
   return (
     <div className={compact ? "signature-pad compact" : "signature-pad"}>
-      <div className="signature-pad-head">
-        <p className="pay-choice-label">
-          Firma del cliente
-          {required ? " *" : null}
-        </p>
-        {signed ? (
-          <button type="button" className="btn-link" onClick={clearPad}>
-            Borrar
-          </button>
-        ) : null}
-      </div>
-      {!compact ? (
+      {!hideLabel || signed ? (
+        <div className="signature-pad-head">
+          {!hideLabel ? (
+            <p className="pay-choice-label">
+              {label}
+              {required ? " *" : null}
+            </p>
+          ) : (
+            <span />
+          )}
+          {signed ? (
+            <button type="button" className="btn-link" onClick={clearPad}>
+              Borrar
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {!compact && !hideLabel ? (
         <p className="signature-pad-hint">El cliente firma con el dedo en la pantalla.</p>
       ) : null}
       <div className="signature-pad-frame">

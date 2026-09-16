@@ -21,7 +21,7 @@ Detalle del camino backend: [`demo-to-backend.md`](demo-to-backend.md).
 
 | Regla | Detalle |
 | --- | --- |
-| Obligatoria al cobrar | Nequi = foto; efectivo = firma. Sin eso no hay `PG-`. |
+| Obligatoria al cobrar | Nequi/Banco = foto o archivo; efectivo = firma. Sin eso no hay `PG-`. |
 | Va en el mismo `PG-` | Campo `evidence` en `public.payments` (nube). |
 | Celular ≠ nube | localStorage es caché; si la foto/firma no sube, el PC no la ve. |
 | Al registrar | Se encola y se POST a `/api/payments/mirror` con la evidencia. |
@@ -37,7 +37,14 @@ Detalle del camino backend: [`demo-to-backend.md`](demo-to-backend.md).
 | --- | --- |
 | **Efectivo** | Suma a la caja menor del cobrador (`En caja` / arrastre) |
 | **Nequi** | Ingreso del negocio (cuenta del dueño); **no** suma al saldo en mano del cobrador |
-| **Desembolso préstamo/renovación** (supervisor/admin) | Sale del pool Nequi (`fundedBy: nequi`); resta del **Total acumulado** y genera Haber `DSB-P-…` en banco |
+| **Banco** | Ingreso del negocio (cuenta del dueño); **no** suma a caja del cobrador |
+
+### Desembolso préstamo / renovación (`fundedBy`)
+
+| Quién | Origen | Efecto |
+| --- | --- | --- |
+| **Cobrador** | Solo **efectivo** | Gasto ruta «Préstamo» del día → resta `En caja` / `cashFloat`; Haber `GASL-…-prestamo-P-…` |
+| **Supervisor / admin** | **Nequi** o **Banco** | Nequi resta **Total acumulado**; ambos generan Haber `DSB-P-…` en banco |
 
 Regla dura: **si un número de plata no cuadra, se corrige desde `PG-`, no al revés.**
 Total Nequi acumulado = suma PG- Nequi − capitales con `fundedBy: nequi`.
@@ -70,7 +77,9 @@ Banco también puede proyectarse solo con `syncBankLedger` / `applyBankLedgerSyn
 | --- | --- | --- |
 | Cobro calle | `commitCollectorPayment` | pagos + planilla + `syncBankLedger` (+ log) |
 | Cobro caja oficina | `registerPay` (Workspace) | pagos + `reconcilePaymentsOntoPlanilla` + efecto banco |
-| Gastos ruta | `upsertDayExpenseDraft` | drafts + `syncBankLedger` |
+| Gastos ruta | `upsertDayExpenseDraft` / `appendCashDisbursementExpense` | drafts + `syncBankLedger` |
+| Desembolso cobrador | préstamo/renovación `fundedBy: efectivo` | gasto «Préstamo» + caja |
+| Desembolso oficina | préstamo/renovación `fundedBy: nequi\|banco` | Haber `DSB-` (+ resta Nequi si aplica) |
 | Cerrar día (móvil / admin / 23:30) | `finalizeCollectorDayClose` + `closeDispatchDay` | CIE + planilla sellada + banco |
 | Hydrate / pestaña | `hydrateOperationalDemo` | ciclo día + `synchronizeOperationalState` |
 

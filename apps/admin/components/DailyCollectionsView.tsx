@@ -502,7 +502,7 @@ export function DailyCollectionsView({
               {isVisible("loan") ? <th>Préstamo</th> : null}
               {isVisible("concept") ? <th>Concepto</th> : null}
               {isVisible("since") ? <th>Desde</th> : null}
-              {isVisible("amount") ? <th className="right">A cobrar</th> : null}
+              {isVisible("amount") ? <th className="right" title="Cuota pactada del préstamo">Cuota</th> : null}
               {isVisible("method") ? <th className="dc-method-head">Método</th> : null}
               {isVisible("evidence") ? <th className="dc-evidence-head">Foto</th> : null}
               {isVisible("collector") ? <th>Cobrador</th> : null}
@@ -643,7 +643,7 @@ export function DailyCollectionsView({
                           evidence={pay?.evidence}
                           size={22}
                           emptyLabel={
-                            payMethod === "nequi"
+                            payMethod === "nequi" || payMethod === "banco"
                               ? "Sin foto"
                               : payMethod === "efectivo"
                                 ? "Sin firma"
@@ -652,7 +652,7 @@ export function DailyCollectionsView({
                           onAttach={
                             pay &&
                             onAttachPaymentEvidence &&
-                            payMethod === "nequi" &&
+                            (payMethod === "nequi" || payMethod === "banco") &&
                             !evidenceHasPreview(pay.evidence)
                               ? (piece) => onAttachPaymentEvidence(pay.ref, [piece])
                               : undefined

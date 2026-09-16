@@ -80,7 +80,7 @@ export function buildCobranzaPaymentsReportPdf(
         data.cell.styles.textColor = REPORT_PDF_THEME.brand;
         data.cell.styles.fontStyle = "bold";
       }
-      if (column.id === "valor") {
+      if (column.id === "cuota" || column.id === "valor") {
         data.cell.styles.halign = "right";
         data.cell.styles.fontStyle = "bold";
         data.cell.styles.textColor = REPORT_PDF_THEME.brandDeep;
