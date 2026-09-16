@@ -382,7 +382,10 @@ export function isoToDisplay(iso: string) {
 }
 
 export function displayToIso(display: string) {
-  const [day, month, year] = display.split("/");
+  const raw = String(display ?? "").trim();
+  if (!raw) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const [day, month, year] = raw.split("/");
   if (!day || !month || !year) return "";
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }

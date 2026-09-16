@@ -1,43 +1,41 @@
 /**
- * Progreso de cuotas (reemplazo operativo de Alerta 1–3 / Mora en planilla).
+ * Progreso de cuotas / columna Mora (planilla).
+ *
+ * Fuente de verdad única — no reinterpretar en UI.
  *
  * ─────────────────────────────────────────────────────────────────────────
- * REGLAS FIRMES (no reinterpretar en UI):
+ * REGLAS:
  *
- * 1. Calendario de cobro = mismas fechas del préstamo (schedule) o, si no hay,
- *    lun–sáb sin festivos CO desde el día siguiente al desembolso
- *    (igual que `collectionDatesForTerm` / cronograma).
+ * 1. Calendario = fechas de cobro del préstamo (schedule normalizado a ISO),
+ *    o preview/cronograma estándar (lun–sáb, sin festivos CO).
+ *    Nunca usar `loan.days` (días calendario) como número de cuotas.
  *
- * 2. expected(asOf) = cuántas fechas de cobro caen en [primera, asOf] inclusive.
- *    Antes del primer cobro → 0 (no mostrar ratio).
- *    Nunca supera el total de cuotas del acuerdo.
+ * 2. expected(asOf) = cuántas fechas de cobro ≤ asOf.
+ *    Antes del primer cobro → 0 (sin label).
  *
- * 3. paid = floor(paidTotal / installment)  (plata, no “número de PG-”).
- *    Una cuota grande que cubre N días sube `paid` en N.
- *    capped a installmentsTotal.
+ * 3. paid = floor(paidTotalHastaAsOf / installment).
+ *    Cuota grande sube varias. Solo pagos con fecha ≤ asOf.
  *
- * 4. lagDays (atraso en “días-cuota”) se calcula SOLO por plata:
+ * 4. lagDays (barra) solo por plata:
  *      behind = max(0, expected * installment − paidTotal)
  *      lagDays = ceil(behind / installment)
- *    Así, si el ratio se viera “feo” pero el saldo ya cubrió lo esperado,
- *    lagDays = 0 y la barra baja.
  *
- * 5. Intensidad (barra al lado del denominador):
- *      lagDays ≤ 2 → 0 (tranquilo)
- *      lagDays = 3 → 1 (amarillo nace)
- *      lagDays = 4 → 2
- *      lagDays = 5 → 3
- *      lagDays ≥ 6 → 4 (máximo)
+ * 5. Intensidad:
+ *      ≤2 → 0 | 3 → 1 (amarillo) | 4 → 2 | 5 → 3 | ≥6 → 4
  *
- * 6. Display: `${paid}/${expected}` solo si expected > 0.
+ * 6. Label: `${paid}/${expected}` si expected > 0.
  * ─────────────────────────────────────────────────────────────────────────
  */
 import { addCalendarDaysIso, isDailyCollectionDay } from "@/lib/colombia-holidays";
 import { todayIso } from "@/lib/daily-dispatch";
 import {
+  collectionDatesForTerm,
   displayToIso,
+  installmentCountForTerm,
   isFlatLoanTerms,
   loanPreviewFromRow,
+  type LoanTermMonths,
+  type PayFrequency,
 } from "@/lib/loan-preview";
 import type { LoanRow, PaymentRow } from "@/lib/mock-data";
 
@@ -45,19 +43,13 @@ export const CUOTAS_LAG_YELLOW_FROM = 3;
 export const CUOTAS_INTENSITY_MAX = 4;
 
 export type CuotasProgress = {
-  /** Cuotas cubiertas por dinero: floor(paidTotal / installment). */
   paid: number;
-  /** Cuotas que debían ir pagadas a la fecha (días/fechas de cobro vencidos). */
   expected: number;
-  /** Total de cuotas del acuerdo (denominador máximo del plazo). */
   total: number;
   paidTotal: number;
   installment: number;
-  /** Días-cuota de atraso monetario (fuente de la barra). */
   lagDays: number;
-  /** 0..4 intensidad visual. */
   intensity: number;
-  /** Texto corto `2/15` o vacío si aún no arranca cobro. */
   label: string;
   title: string;
 };
@@ -67,50 +59,115 @@ function pesos(value: number) {
   return Math.trunc(value);
 }
 
+/** ISO o dd/mm/aaaa → ISO. */
+export function toCollectionIso(raw: string | undefined | null) {
+  const value = String(raw ?? "").trim();
+  if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  return displayToIso(value);
+}
+
 function uniqueSortedIsos(dates: string[]) {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const raw of dates) {
-    const d = String(raw || "").trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
-    if (seen.has(d)) continue;
-    seen.add(d);
-    out.push(d);
+    const iso = toCollectionIso(raw);
+    if (!iso || seen.has(iso)) continue;
+    seen.add(iso);
+    out.push(iso);
   }
   out.sort();
   return out;
 }
 
+function termMonthsFromLoan(loan: Pick<LoanRow, "date" | "due" | "days">): LoanTermMonths {
+  const start = toCollectionIso(loan.date);
+  const due = toCollectionIso(loan.due);
+  if (start && due && due > start) {
+    const ms = Date.parse(`${due}T12:00:00Z`) - Date.parse(`${start}T12:00:00Z`);
+    const calendarDays = Math.max(1, Math.round(ms / 86400000));
+    const months = Math.max(1, Math.round(calendarDays / 30)) as LoanTermMonths;
+    if (months === 1 || months === 2 || months === 3) return months;
+  }
+  return 1;
+}
+
+function expectedCuotaCount(
+  loan: Pick<LoanRow, "date" | "due" | "days" | "frequency" | "installment" | "total" | "capital" | "interest">,
+  previewCount: number,
+): number {
+  if (previewCount > 0) return previewCount;
+  const installment = pesos(Number(loan.installment) || 0);
+  const total = pesos(
+    Number(loan.total) || Number(loan.capital) + Number(loan.interest || 0),
+  );
+  if (installment > 0 && total > 0) {
+    return Math.max(1, Math.round(total / installment));
+  }
+  const frequency = (loan.frequency ?? "diario") as PayFrequency;
+  return installmentCountForTerm(frequency, termMonthsFromLoan(loan));
+}
+
 /**
- * Fechas de cobro del préstamo (sin capital aparte).
- * Prioridad: schedule guardado → preview → reconstrucción diaria por `days`.
+ * Fechas de cobro del préstamo (sin capital).
+ * Prioridad: schedule usable → preview → reconstrucción por frecuencia/cuotas.
  */
-export function loanCollectionDateIsos(loan: Pick<LoanRow, "date" | "due" | "frequency" | "days" | "schedule" | "capital" | "interest" | "total" | "installment" | "mode" | "pact" | "rate">): string[] {
+export function loanCollectionDateIsos(
+  loan: Pick<
+    LoanRow,
+    | "date"
+    | "due"
+    | "frequency"
+    | "days"
+    | "schedule"
+    | "capital"
+    | "interest"
+    | "total"
+    | "installment"
+    | "mode"
+    | "pact"
+    | "rate"
+  >,
+): string[] {
+  const preview = loanPreviewFromRow(loan);
+  const targetCount = expectedCuotaCount(loan, preview?.count ?? preview?.dates?.length ?? 0);
+
   const fromSchedule = uniqueSortedIsos(
     (loan.schedule ?? [])
       .filter((line) => (line.kind ?? "cuota") !== "capital")
       .map((line) => line.date),
   );
-  if (fromSchedule.length > 0) return fromSchedule;
 
-  const preview = loanPreviewFromRow(loan);
+  // Schedule completo (o casi) manda; incompleto → preview.
+  if (fromSchedule.length > 0) {
+    if (targetCount <= 0 || fromSchedule.length >= Math.max(1, targetCount - 1)) {
+      return fromSchedule;
+    }
+  }
+
   if (preview?.dates?.length) return uniqueSortedIsos(preview.dates);
 
-  const startIso = displayToIso(loan.date);
-  if (!startIso) return [];
-  const frequency = loan.frequency ?? "diario";
-  if (frequency !== "diario") return [];
+  const startIso = toCollectionIso(loan.date);
+  if (!startIso) return fromSchedule;
+  const frequency = (loan.frequency ?? "diario") as PayFrequency;
+  const count = Math.max(1, targetCount || fromSchedule.length || 30);
 
-  const target = Math.max(1, pesos(Number(loan.days) || 0) || 30);
-  const dates: string[] = [];
-  let cur = addCalendarDaysIso(startIso, 1);
-  let guard = 0;
-  while (dates.length < target && guard < 900) {
-    if (isDailyCollectionDay(cur)) dates.push(cur);
-    cur = addCalendarDaysIso(cur, 1);
-    guard += 1;
+  if (frequency === "diario") {
+    const dates: string[] = [];
+    let cur = addCalendarDaysIso(startIso, 1);
+    let guard = 0;
+    while (dates.length < count && guard < 900) {
+      if (isDailyCollectionDay(cur)) dates.push(cur);
+      cur = addCalendarDaysIso(cur, 1);
+      guard += 1;
+    }
+    return dates;
   }
-  return dates;
+
+  const termMonths = termMonthsFromLoan(loan);
+  const rebuilt = collectionDatesForTerm(startIso, frequency, termMonths);
+  if (rebuilt.length) return uniqueSortedIsos(rebuilt);
+  return fromSchedule;
 }
 
 export function cuotasIntensityFromLag(lagDays: number): number {
@@ -140,12 +197,20 @@ export function computeLoanCuotasProgress(
   };
   if (!loan?.ref || !asOf) return empty;
 
+  const asOfIso = toCollectionIso(asOf) || asOf;
   const dates = loanCollectionDateIsos(loan);
   const total = dates.length;
-  const expected = dates.filter((d) => d <= asOf).length;
+  const expected = dates.filter((d) => d <= asOfIso).length;
 
-  const loanPays = payments.filter((row) => row.loanRef === loan.ref);
-  const paidTotal = loanPays.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+  const paidTotal = payments
+    .filter((row) => {
+      if (row.loanRef !== loan.ref) return false;
+      if ((Number(row.amount) || 0) <= 0) return false;
+      const payDay = toCollectionIso(row.paidDate || row.when || "");
+      if (!payDay) return true; // sin fecha: cuenta (cobro vivo)
+      return payDay <= asOfIso;
+    })
+    .reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
 
   const preview = loanPreviewFromRow(loan);
   const installment = pesos(
@@ -156,13 +221,9 @@ export function computeLoanCuotasProgress(
         : 0),
   );
 
-  const paidRaw =
-    installment > 0
-      ? Math.floor(paidTotal / installment + 1e-9)
-      : 0;
+  const paidRaw = installment > 0 ? Math.floor(paidTotal / installment + 1e-9) : 0;
   const paid = total > 0 ? Math.min(total, Math.max(0, paidRaw)) : Math.max(0, paidRaw);
 
-  // Atraso monetario: no usar paid vs expected a ciegas (cuota grande / residuo).
   const expectedAmount = installment > 0 ? expected * installment : 0;
   const behind = Math.max(0, expectedAmount - paidTotal);
   const lagDays =
@@ -188,10 +249,10 @@ export function computeLoanCuotasProgress(
   const label = `${paid}/${expected}`;
   const title =
     lagDays <= 0
-      ? `Cuotas ${label} · al día (esperado a hoy: ${expected})`
+      ? `Mora ${label} · al día (esperado a hoy: ${expected})`
       : lagDays < CUOTAS_LAG_YELLOW_FROM
-        ? `Cuotas ${label} · atraso leve (${lagDays} día${lagDays === 1 ? "" : "s"}-cuota)`
-        : `Cuotas ${label} · atraso ${lagDays} días-cuota (barra nivel ${intensity})`;
+        ? `Mora ${label} · atraso leve (${lagDays} día${lagDays === 1 ? "" : "s"}-cuota)`
+        : `Mora ${label} · atraso ${lagDays} días-cuota (barra nivel ${intensity})`;
 
   return {
     paid,
