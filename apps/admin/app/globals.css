@@ -3141,6 +3141,33 @@
     .supervisor-mobile-detail-head h3 {
       margin: 0;
     }
+    .supervisor-ficha-share-head {
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .supervisor-ficha-client-name {
+      flex: 1 1 auto;
+      min-width: 0;
+      margin: 0;
+      padding-top: 2px;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.25;
+      color: #14201b;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .supervisor-client-ficha.is-sharing .supervisor-ficha-head-actions {
+      display: none !important;
+    }
+    .supervisor-client-ficha.is-sharing .supervisor-ficha-client-name {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: unset;
+    }
     .supervisor-prestamos-head-actions {
       display: flex;
       align-items: center;
@@ -3759,18 +3786,35 @@
     .supervisor-ficha-head-actions {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       flex-shrink: 0;
+      margin-left: auto;
     }
     .collector-mobile-pay-link.is-share {
-      color: #0f766e;
-      border-color: #a7e0d4;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 4px 9px;
+      border: 1px solid #a7e0d4;
+      border-radius: 6px;
       background: #ecfdf8;
+      color: #0f766e;
+      font-size: 11px;
+      font-weight: 600;
+      text-decoration: none;
+      line-height: 1.15;
+      box-shadow: none;
     }
-    .collector-mobile-pay-link.is-share:hover {
+    .collector-mobile-pay-link.is-share:hover,
+    .collector-mobile-pay-link.is-share:disabled {
       color: #0b6b5f;
       border-color: #75d0c0;
       background: #d9f7ef;
+      text-decoration: none;
+    }
+    .collector-mobile-pay-link.is-share:disabled {
+      opacity: 0.7;
+      cursor: wait;
     }
     .supervisor-client-ficha {
       display: flex;

@@ -5,7 +5,8 @@ import { Pill } from "@/components/ui";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import { CollectorClosedDayReview } from "@/components/CollectorClosedDayReview";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
-import { buildLoanReport, shareLoanFichaWhatsApp } from "@/lib/loan-report";
+import { buildLoanReport } from "@/lib/loan-report";
+import { shareLoanFichaCapture } from "@/lib/loan-ficha-share";
 import { routeCoverageSummaries } from "@/lib/collector-preview";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
@@ -475,6 +476,11 @@ function currentActiveLoan(
 }
 
 /** Ficha del cliente/préstamo dentro del teléfono (luego se afina legibilidad). */
+function fichaClientTitle(report: ReturnType<typeof buildLoanReport>) {
+  const base = report.clientName.trim().replace(/\s+/g, " ");
+  return base || report.loan.client.trim() || "Cliente";
+}
+
 function SupervisorClientFicha({
   report,
   onBack,
@@ -482,7 +488,10 @@ function SupervisorClientFicha({
   report: ReturnType<typeof buildLoanReport>;
   onBack: () => void;
 }) {
+  const shareRootRef = useRef<HTMLDivElement>(null);
+  const [sharing, setSharing] = useState(false);
   const f = report.financials;
+  const clientTitle = fichaClientTitle(report);
   const cobro =
     f.installment > 0
       ? money(f.installment, { symbol: false })
@@ -518,19 +527,33 @@ function SupervisorClientFicha({
     [{ label: "Total a cobrar", value: total }],
   ];
 
+  async function handleShare() {
+    const root = shareRootRef.current;
+    if (!root || sharing) return;
+    setSharing(true);
+    try {
+      await shareLoanFichaCapture(root, report);
+    } finally {
+      setSharing(false);
+    }
+  }
+
   return (
-    <div className="supervisor-client-ficha">
-      <div className="supervisor-mobile-detail-head">
-        <h3>{report.clientName}</h3>
+    <div className="supervisor-client-ficha" ref={shareRootRef}>
+      <div className="supervisor-mobile-detail-head supervisor-ficha-share-head">
+        <h3 className="supervisor-ficha-client-name" title={clientTitle}>
+          {clientTitle}
+        </h3>
         <div className="supervisor-ficha-head-actions">
           <button
             type="button"
             className="collector-mobile-pay-link is-share"
+            disabled={sharing}
             onClick={() => {
-              void shareLoanFichaWhatsApp(report);
+              void handleShare();
             }}
           >
-            Compartir
+            {sharing ? "…" : "Compartir"}
           </button>
           <button type="button" className="collector-mobile-pay-link is-back" onClick={onBack}>
             volver
