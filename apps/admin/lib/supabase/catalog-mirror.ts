@@ -7,6 +7,7 @@ import type { ClientRow, LoanRow, StatusKind } from "@/lib/mock-data";
 import {
   DEMO_CLIENTS_KEY,
   DEMO_LOANS_KEY,
+  isVirginRemoteHoldActive,
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
@@ -469,10 +470,14 @@ export async function pullRemoteCatalogIntoDemo(): Promise<PullCatalogResult> {
         .map(mirrorToClientRow)
         .filter((row): row is ClientRow => Boolean(row));
       const local = readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []);
-      const merge = mergeByRefRemoteAuthority(local, remote, clientSignature);
-      if (merge.changed) {
-        writeDemoJson(DEMO_CLIENTS_KEY, merge.merged);
-        changed = true;
+      if (isVirginRemoteHoldActive() && local.length === 0 && remote.length > 0) {
+        /* hold: no reimportar clientes demo */
+      } else {
+        const merge = mergeByRefRemoteAuthority(local, remote, clientSignature);
+        if (merge.changed) {
+          writeDemoJson(DEMO_CLIENTS_KEY, merge.merged);
+          changed = true;
+        }
       }
     }
     if (!loansBody.skipped) {
@@ -480,10 +485,14 @@ export async function pullRemoteCatalogIntoDemo(): Promise<PullCatalogResult> {
         .map(mirrorToLoanRow)
         .filter((row): row is LoanRow => Boolean(row));
       const local = readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []);
-      const merge = mergeByRefRemoteAuthority(local, remote, loanSignature);
-      if (merge.changed) {
-        writeDemoJson(DEMO_LOANS_KEY, merge.merged);
-        changed = true;
+      if (isVirginRemoteHoldActive() && local.length === 0 && remote.length > 0) {
+        /* hold: no reimportar préstamos demo */
+      } else {
+        const merge = mergeByRefRemoteAuthority(local, remote, loanSignature);
+        if (merge.changed) {
+          writeDemoJson(DEMO_LOANS_KEY, merge.merged);
+          changed = true;
+        }
       }
     }
     return { ok: true, changed };

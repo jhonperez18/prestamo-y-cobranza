@@ -153,11 +153,13 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
       nextPayments,
     );
   }
-  const recoveredDayCloses = synthesizeDayClosesFromAssignments(
-    storedAssignments,
-    nextPayments,
-    loadDemoDayCloses<CollectorDayCloseRecord>(),
-  );
+  const recoveredDayCloses = isVirginOpsMode()
+    ? loadDemoDayCloses<CollectorDayCloseRecord>()
+    : synthesizeDayClosesFromAssignments(
+        storedAssignments,
+        nextPayments,
+        loadDemoDayCloses<CollectorDayCloseRecord>(),
+      );
 
   const reconciledLoans = syncAllLoans(storedLoans, nextPayments) as LoanRow[];
   const linked = ensureCollectorsForUsers(loadDemoUsers(), storedCollectors);

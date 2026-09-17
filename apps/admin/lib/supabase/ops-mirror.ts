@@ -19,6 +19,7 @@ import {
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_MISC_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
+  isVirginRemoteHoldActive,
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
@@ -515,6 +516,7 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
     }
     if (body.skipped) return { ok: true, changed: false, reason: "skipped" };
 
+    const holdMoney = isVirginRemoteHoldActive();
     let changed = false;
 
     const collectors = (body.collectors ?? [])
@@ -539,6 +541,10 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
     if (rMerge.changed) {
       writeDemoJson(DEMO_ROUTES_KEY, rMerge.merged);
       changed = true;
+    }
+
+    if (holdMoney) {
+      return { ok: true, changed, reason: "virgin_hold_skip_money" };
     }
 
     const closes = (body.day_closes ?? [])

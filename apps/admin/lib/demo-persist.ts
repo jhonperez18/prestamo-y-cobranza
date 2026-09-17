@@ -308,15 +308,12 @@ function readStoredPayments(): PaymentRow[] | null {
 function isCanonicalPackageFlag() {
   if (typeof window === "undefined") return false;
   try {
-    return (
-      window.localStorage.getItem("nexo-demo-bootstrap-package-v17") === "1" ||
-      window.localStorage.getItem("nexo-demo-bootstrap-package-v16") === "1" ||
-      window.localStorage.getItem("nexo-demo-bootstrap-package-v15") === "1" ||
-      window.localStorage.getItem("nexo-demo-bootstrap-package-v14") === "1" ||
-      window.localStorage.getItem("nexo-demo-bootstrap-package-v4") === "1" ||
-      window.localStorage.getItem("nexo-demo-bootstrap-package-v3") === "1" ||
-      window.localStorage.getItem("nexo-demo-bootstrap-package-v2") === "1"
-    );
+    for (let v = 2; v <= 40; v += 1) {
+      if (window.localStorage.getItem(`nexo-demo-bootstrap-package-v${v}`) === "1") {
+        return true;
+      }
+    }
+    return window.localStorage.getItem("nexo-demo-bootstrap-recovery-v1") === "1";
   } catch {
     return false;
   }
@@ -376,6 +373,8 @@ export function loadDemoClients(seed: ClientRow[] = CLIENTS): ClientRow[] {
 
   const stored = readDemoJson<ClientRow[] | null>(DEMO_CLIENTS_KEY, null);
   if (!stored || !Array.isArray(stored) || stored.length === 0) {
+    // Virgen: [] es intencional; no resucitar clientes desde -bak / semilla.
+    if (isVirginOpsMode()) return [];
     const bak = readBakArray<ClientRow>(DEMO_CLIENTS_KEY);
     if (bak && bak.length > 0) {
       if (packaged) {
@@ -387,7 +386,7 @@ export function loadDemoClients(seed: ClientRow[] = CLIENTS): ClientRow[] {
       writeDemoJson(DEMO_CLIENTS_KEY, merged);
       return merged;
     }
-    return seed.map((row) => ({ ...row }));
+    return packaged ? [] : seed.map((row) => ({ ...row }));
   }
 
   // Con paquete: solo los 10 (+ COD-18+); nunca COD-0…7 ni basura del -bak.

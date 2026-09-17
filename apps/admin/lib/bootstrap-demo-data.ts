@@ -1,6 +1,6 @@
 /**
  * Arranque del paquete canónico (Chrome).
- * v18: virgen + hold remoto 2h + no resucitar cobros desde bak/planilla.
+ * v19: wipe total (cobros/gastos/ingresos/planilla) sin papelera; hold remoto 24h.
  * Al instalar, reemplaza estado anterior del origen (localhost ≠ vercel.app).
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
@@ -31,7 +31,8 @@ import { applyDataRetention } from "@/lib/data-retention";
 import { COLLECTORS, USERS } from "@/lib/mock-data";
 
 /** Subir versión = reinstala el paquete canónico una vez en cada navegador/origen. */
-export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v18";
+export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v19";
+export const DEMO_VIRGIN_WIPE_GEN = "v19";
 
 const PACKAGE_KEYS = [
   DEMO_CLIENTS_KEY,
@@ -54,6 +55,7 @@ const PACKAGE_KEYS = [
 ] as const;
 
 const PREVIOUS_PACKAGE_FLAGS = [
+  "nexo-demo-bootstrap-package-v18",
   "nexo-demo-bootstrap-package-v17",
   "nexo-demo-bootstrap-package-v16",
   "nexo-demo-bootstrap-package-v15",
@@ -100,6 +102,7 @@ function clearLegacyBackups() {
   }
 }
 
+/** Borra colas y restos; no deja “papelera” de cobros/gastos. */
 function clearMirrorQueues() {
   if (typeof window === "undefined") return;
   const queues = [
@@ -114,6 +117,8 @@ function clearMirrorQueues() {
     "nexo-demo-ops-assignments-queue",
     "nexo-demo-supervisor-route-seen",
     "nexo-dispatch-date",
+    "nexo-demo-nequi-pool",
+    "nexo-demo-loan-fund-pool",
   ];
   for (const key of queues) {
     try {
@@ -122,6 +127,61 @@ function clearMirrorQueues() {
     } catch {
       /* ignore */
     }
+  }
+}
+
+/** Elimina cualquier *-bak nexo y restos operativos sueltos. */
+function purgeOrphanDemoKeys() {
+  if (typeof window === "undefined") return;
+  try {
+    const keepExact = new Set<string>([
+      DEMO_USERS_KEY,
+      DEMO_COLLECTORS_KEY,
+      DEMO_BOOTSTRAP_PACKAGE_KEY,
+      DEMO_VIRGIN_OPS_KEY,
+      DEMO_VIRGIN_HOLD_UNTIL_KEY,
+      "nexo-demo-served-build",
+      ...PREVIOUS_PACKAGE_FLAGS,
+    ]);
+    const remove: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i);
+      if (!key) continue;
+      if (key.endsWith("-bak") && key.startsWith("nexo-demo-")) {
+        remove.push(key);
+        continue;
+      }
+      if (key.startsWith("nexo-demo-") && !keepExact.has(key) && !PACKAGE_KEYS.includes(key as (typeof PACKAGE_KEYS)[number])) {
+        // Deja solo claves del paquete; quita huérfanos (no papelera).
+        if (
+          key.includes("queue") ||
+          key.includes("trash") ||
+          key.includes("papelera") ||
+          key.includes("archive") ||
+          key.includes("deleted")
+        ) {
+          remove.push(key);
+        }
+      }
+    }
+    for (const key of remove) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function requestCloudVirginWipe() {
+  if (typeof window === "undefined") return;
+  try {
+    void fetch("/api/ops/wipe-virgin", {
+      method: "POST",
+      headers: { "x-nexo-wipe-gen": DEMO_VIRGIN_WIPE_GEN },
+      cache: "no-store",
+    });
+  } catch {
+    /* ignore offline */
   }
 }
 
@@ -161,6 +221,7 @@ export function bootstrapProtectedDemoData() {
 
   clearLegacyBackups();
   clearMirrorQueues();
+  purgeOrphanDemoKeys();
 
   const snapshot = recoverySeed as unknown as DemoSnapshot;
   const keys = snapshot.keys ?? {};
@@ -184,7 +245,11 @@ export function bootstrapProtectedDemoData() {
   forceInstallJson(
     DEMO_BANK_ACCOUNTS_KEY,
     accounts.length
-      ? accounts
+      ? accounts.map((row) =>
+          row && typeof row === "object"
+            ? { ...(row as Record<string, unknown>), openingBalance: 0 }
+            : row,
+        )
       : [
           {
             ref: "BCA-1",
@@ -192,6 +257,19 @@ export function bootstrapProtectedDemoData() {
             bankName: "Bancolombia",
             accountNumber: "",
             accountType: "corriente",
+            currency: "COP",
+            country: "Colombia (CO)",
+            province: "",
+            address: "",
+            active: true,
+            openingBalance: 0,
+          },
+          {
+            ref: "TRUQUI",
+            name: "Principal",
+            bankName: "Nequi",
+            accountNumber: "",
+            accountType: "caja",
             currency: "COP",
             country: "Colombia (CO)",
             province: "",
@@ -213,10 +291,10 @@ export function bootstrapProtectedDemoData() {
 
   try {
     window.localStorage.setItem(DEMO_VIRGIN_OPS_KEY, "1");
-    // 2h: evita que un celular viejo rellene Cobros/Historial/Actividad desde la nube.
+    // 24h: supervisor/cobrador no reimportan gastos/ingresos/cobros remotos viejos.
     window.localStorage.setItem(
       DEMO_VIRGIN_HOLD_UNTIL_KEY,
-      String(Date.now() + 2 * 60 * 60 * 1000),
+      String(Date.now() + 24 * 60 * 60 * 1000),
     );
     window.localStorage.setItem(DEMO_BOOTSTRAP_PACKAGE_KEY, "1");
     for (const key of PREVIOUS_PACKAGE_FLAGS) {
@@ -225,6 +303,9 @@ export function bootstrapProtectedDemoData() {
   } catch {
     /* ignore */
   }
+
+  // Nube: borrar de raíz (sin papelera) cobros/gastos/planilla/clientes.
+  requestCloudVirginWipe();
 
   scrubLegacyMockDemoRows();
   const retention = applyDataRetention();
