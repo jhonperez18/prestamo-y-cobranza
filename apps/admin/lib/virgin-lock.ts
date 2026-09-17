@@ -7,7 +7,7 @@
  * - Cuando ya operen con datos reales: subí VIRGIN_WRITE_LOCK_UNTIL_MS al pasado (o gen fija)
  *   y no vuelvas a subir VIRGIN_WIPE_GEN salvo wipe intencional.
  */
-export const VIRGIN_WIPE_GEN = 22;
+export const VIRGIN_WIPE_GEN = 23;
 
 /** Clave local: última generación de wipe aplicada en este origen. */
 export const DEMO_VIRGIN_WIPE_GEN_KEY = "nexo-demo-virgin-wipe-gen";

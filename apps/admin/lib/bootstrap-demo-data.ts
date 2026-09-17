@@ -1,6 +1,6 @@
 /**
  * Arranque del paquete canónico (Chrome).
- * v22: base limpia (2 rutas), Eliminar definitivo, sin candado de escritura.
+ * v23: hoja DIURNO en Ruta 1 (posición + nombre); sin hold remoto.
  * Al instalar, reemplaza estado anterior del origen (localhost ≠ vercel.app).
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
@@ -32,12 +32,19 @@ import { DEMO_PAYMENT_EVIDENCE_KEY } from "@/lib/payment-evidence-store";
 import { applyDataRetention } from "@/lib/data-retention";
 import { COLLECTORS, USERS } from "@/lib/mock-data";
 import {
+  DIURNO_ALTA,
+  DIURNO_CREATED_BY,
+  DIURNO_REF_START,
+  DIURNO_ROUTE,
+  DIURNO_ROUTE_NAMES,
+} from "@/lib/seeds/diurno-route-1";
+import {
   DEMO_VIRGIN_WIPE_GEN_KEY,
   VIRGIN_WIPE_GEN,
 } from "@/lib/virgin-lock";
 
 /** Subir versión = reinstala el paquete canónico una vez en cada navegador/origen. */
-export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v22";
+export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v23";
 export const DEMO_VIRGIN_WIPE_GEN = `v${VIRGIN_WIPE_GEN}`;
 
 const PACKAGE_KEYS = [
@@ -62,6 +69,7 @@ const PACKAGE_KEYS = [
 ] as const;
 
 const PREVIOUS_PACKAGE_FLAGS = [
+  "nexo-demo-bootstrap-package-v22",
   "nexo-demo-bootstrap-package-v21",
   "nexo-demo-bootstrap-package-v20",
   "nexo-demo-bootstrap-package-v19",
@@ -87,6 +95,32 @@ const PREVIOUS_PACKAGE_FLAGS = [
 
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function buildDiurnoRoute1Clients() {
+  return DIURNO_ROUTE_NAMES.map((name, index) => ({
+    ref: `COD-${DIURNO_REF_START + index}`,
+    alta: DIURNO_ALTA,
+    name,
+    lastName: "",
+    nickname: "",
+    document: "",
+    city: "",
+    barrio: "",
+    route: DIURNO_ROUTE,
+    routeOrder: index + 1,
+    email: "",
+    phone: "",
+    address: "",
+    notes: "DIURNO",
+    total: 0,
+    pending: 0,
+    status: "Activo",
+    kind: "ok" as const,
+    createdBy: DIURNO_CREATED_BY,
+    awaitingLoan: true,
+    profilePending: true,
+  }));
 }
 
 /** Instala el paquete aunque sea [] (writeDemoJson protege vaciados accidentales). */
@@ -249,13 +283,21 @@ export function bootstrapProtectedDemoData() {
   const snapshot = recoverySeed as unknown as DemoSnapshot;
   const keys = snapshot.keys ?? {};
 
-  forceInstallJson(DEMO_CLIENTS_KEY, asArray(keys[DEMO_CLIENTS_KEY]));
+  forceInstallJson(DEMO_CLIENTS_KEY, buildDiurnoRoute1Clients());
   forceInstallJson(DEMO_LOANS_KEY, asArray(keys[DEMO_LOANS_KEY]));
   forceInstallJson(DEMO_PAYMENTS_KEY, asArray(keys[DEMO_PAYMENTS_KEY]));
   forceInstallJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, asArray(keys[DEMO_COLLECTOR_DAY_CLOSES_KEY]));
   forceInstallJson(DEMO_DAILY_ASSIGNMENTS_KEY, asArray(keys[DEMO_DAILY_ASSIGNMENTS_KEY]));
   forceInstallJson(DEMO_DAILY_LOGS_KEY, asArray(keys[DEMO_DAILY_LOGS_KEY]));
-  forceInstallJson(DEMO_ROUTES_KEY, asArray(keys[DEMO_ROUTES_KEY]));
+  const routes = asArray(keys[DEMO_ROUTES_KEY]).map((row) => {
+    if (!row || typeof row !== "object") return row;
+    const route = row as Record<string, unknown>;
+    if (route.ref === "RUT-1" || route.name === "1") {
+      return { ...route, clients: DIURNO_ROUTE_NAMES.length };
+    }
+    return route;
+  });
+  forceInstallJson(DEMO_ROUTES_KEY, routes);
   // RUT-3.. duplicados viejos: quedan marcados borrados para que el pull no los reviva.
   forceInstallJson(DEMO_DELETED_ROUTES_KEY, ["RUT-3", "RUT-4", "RUT-5", "RUT-6"]);
   forceInstallJson(DEMO_MISC_PAYMENTS_KEY, []);
@@ -317,11 +359,7 @@ export function bootstrapProtectedDemoData() {
   try {
     window.localStorage.setItem(DEMO_VIRGIN_OPS_KEY, "1");
     window.localStorage.setItem(DEMO_VIRGIN_WIPE_GEN_KEY, String(VIRGIN_WIPE_GEN));
-    // 24h: no reimportar cobros/gastos/planilla remotos viejos mientras local está vacío.
-    window.localStorage.setItem(
-      DEMO_VIRGIN_HOLD_UNTIL_KEY,
-      String(Date.now() + 24 * 60 * 60 * 1000),
-    );
+    window.localStorage.removeItem(DEMO_VIRGIN_HOLD_UNTIL_KEY);
     window.localStorage.setItem(DEMO_BOOTSTRAP_PACKAGE_KEY, "1");
     for (const key of PREVIOUS_PACKAGE_FLAGS) {
       window.localStorage.setItem(key, "1");
