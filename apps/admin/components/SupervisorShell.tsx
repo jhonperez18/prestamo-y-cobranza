@@ -215,6 +215,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
 
   useEffect(() => {
     if (!hydrated) return;
+    if (clients.length === 0) return;
     writeDemoJson(DEMO_CLIENTS_KEY, clients);
   }, [clients, hydrated]);
 

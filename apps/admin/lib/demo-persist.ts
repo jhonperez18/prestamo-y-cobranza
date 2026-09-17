@@ -206,6 +206,11 @@ export function writeDemoJson(key: string, value: unknown) {
         value.length === 0 &&
         Array.isArray(prevParsed) &&
         prevParsed.length > 0;
+      // Clientes = catálogo sagrado: jamás vaciar desde React/state (ni en virgen).
+      if (wipingArray && key === DEMO_CLIENTS_KEY) {
+        window.localStorage.setItem(backupKey(key), prev);
+        return;
+      }
       // Nunca respaldar un [] encima de un bak con datos.
       if (!wipingArray) {
         window.localStorage.setItem(backupKey(key), prev);
@@ -375,20 +380,20 @@ export function loadDemoClients(seed: ClientRow[] = CLIENTS): ClientRow[] {
 
   const stored = readDemoJson<ClientRow[] | null>(DEMO_CLIENTS_KEY, null);
   if (!stored || !Array.isArray(stored) || stored.length === 0) {
-    // Virgen: [] es intencional; no resucitar clientes desde -bak / semilla.
-    if (isVirginOpsMode()) return [];
+    // Virgen sin clientes: intentar -bak; si no hay, [] (el pull de nube llena).
+    // Nunca inventar seed mock COD-0…17 encima del paquete.
     const bak = readBakArray<ClientRow>(DEMO_CLIENTS_KEY);
     if (bak && bak.length > 0) {
-      if (packaged) {
-        const cleaned = bak.filter((row) => isAllowedPackagedClientRef(row.ref));
+      const cleaned = packaged
+        ? bak.filter((row) => isAllowedPackagedClientRef(row.ref))
+        : bak;
+      if (cleaned.length > 0) {
         writeDemoJson(DEMO_CLIENTS_KEY, cleaned);
         return cleaned;
       }
-      const merged = mergeClientsKeepAll(bak, seed);
-      writeDemoJson(DEMO_CLIENTS_KEY, merged);
-      return merged;
     }
-    return packaged ? [] : seed.map((row) => ({ ...row }));
+    if (packaged || isVirginOpsMode()) return [];
+    return seed.map((row) => ({ ...row }));
   }
 
   // Con paquete: solo los 10 (+ COD-18+); nunca COD-0…7 ni basura del -bak.

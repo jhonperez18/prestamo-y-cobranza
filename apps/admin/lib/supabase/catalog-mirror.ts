@@ -456,26 +456,28 @@ export async function pullRemoteCatalogIntoDemo(): Promise<PullCatalogResult> {
     if (!clientsRes.ok || !clientsBody.ok) {
       return { ok: false, changed: false, reason: clientsBody.error || "clients_pull_failed" };
     }
-    if (!loansRes.ok || !loansBody.ok) {
-      return { ok: false, changed: false, reason: loansBody.error || "loans_pull_failed" };
-    }
-    if (clientsBody.skipped && loansBody.skipped) {
-      return { ok: true, changed: false, reason: "skipped" };
-    }
 
     let changed = false;
+    let loansOk = true;
+    let loansReason: string | undefined;
+
     if (!clientsBody.skipped) {
       const remote = (clientsBody.clients ?? [])
         .map(mirrorToClientRow)
         .filter((row): row is ClientRow => Boolean(row));
       const local = readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []);
+      // Si remoto trae catálogo y local está vacío, siempre escribe (clientes sagrados).
       const merge = mergeByRefRemoteAuthority(local, remote, clientSignature);
-      if (merge.changed) {
-        writeDemoJson(DEMO_CLIENTS_KEY, merge.merged);
+      if (merge.changed || (local.length === 0 && remote.length > 0)) {
+        writeDemoJson(DEMO_CLIENTS_KEY, merge.merged.length ? merge.merged : remote);
         changed = true;
       }
     }
-    if (!loansBody.skipped) {
+
+    if (!loansRes.ok || !loansBody.ok) {
+      loansOk = false;
+      loansReason = loansBody.error || "loans_pull_failed";
+    } else if (!loansBody.skipped) {
       const remote = (loansBody.loans ?? [])
         .map(mirrorToLoanRow)
         .filter((row): row is LoanRow => Boolean(row));
@@ -486,7 +488,16 @@ export async function pullRemoteCatalogIntoDemo(): Promise<PullCatalogResult> {
         changed = true;
       }
     }
-    return { ok: true, changed };
+
+    if (clientsBody.skipped && (!loansOk || loansBody.skipped)) {
+      return { ok: loansOk, changed: false, reason: loansReason || "skipped" };
+    }
+
+    return {
+      ok: true,
+      changed,
+      reason: loansOk ? undefined : loansReason,
+    };
   } catch (err) {
     return {
       ok: false,

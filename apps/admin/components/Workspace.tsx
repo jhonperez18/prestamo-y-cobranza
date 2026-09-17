@@ -507,6 +507,7 @@ export function Workspace({
 
   useEffect(() => {
     if (!demoHydrated) return;
+    if (clients.length === 0) return;
     writeDemoJson(DEMO_CLIENTS_KEY, clients);
   }, [clients, demoHydrated]);
 

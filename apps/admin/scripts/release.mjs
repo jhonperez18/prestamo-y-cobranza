@@ -126,14 +126,19 @@ function purgeCaches() {
   }
 }
 
-function assertLoginBuild(expectedSha) {
+async function fetchJson(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
+  return res.json();
+}
+
+async function assertLoginBuild(expectedSha) {
   console.log("Comprobando build servido…");
-  const raw = capture(`curl -fsSL "${DOMAIN}/api/ops/build-health"`);
   let data;
   try {
-    data = JSON.parse(raw);
-  } catch {
-    console.error("FALLO: build-health no devolvió JSON.");
+    data = await fetchJson(`${DOMAIN}/api/ops/build-health`);
+  } catch (err) {
+    console.error(`FALLO: build-health → ${err?.message || err}`);
     process.exit(1);
   }
   if (!data.build || String(data.build) !== String(expectedSha)) {
@@ -145,14 +150,13 @@ function assertLoginBuild(expectedSha) {
   console.log(`Build OK → ${data.build}`);
 }
 
-function assertCatalogHealth() {
+async function assertCatalogHealth() {
   console.log("Comprobando catálogo SQL (clientes)…");
-  const raw = capture(`curl -fsSL "${DOMAIN}/api/ops/catalog-health"`);
   let data;
   try {
-    data = JSON.parse(raw);
-  } catch {
-    console.error("FALLO: catalog-health no devolvió JSON.");
+    data = await fetchJson(`${DOMAIN}/api/ops/catalog-health`);
+  } catch (err) {
+    console.error(`FALLO: catalog-health → ${err?.message || err}`);
     process.exit(1);
   }
   if (!data.ok) {
@@ -182,6 +186,7 @@ if (branch !== "main") {
   process.exit(1);
 }
 
+void (async () => {
 if (mode === "verify") {
   console.log("── Producción (contrato fijo) ──");
   console.log(`Proyecto Vercel : ${PROJECT}`);
@@ -202,8 +207,8 @@ if (mode === "verify") {
   }
   purgeCaches();
   const expect = remoteSha || sha;
-  assertLoginBuild(expect);
-  assertCatalogHealth();
+  await assertLoginBuild(expect);
+  await assertCatalogHealth();
   console.log(`\nListo de verdad. Login → build ${expect}. Catálogo SQL verificado.`);
   process.exit(0);
 }
@@ -223,8 +228,8 @@ if (mode === "force") {
   }
   syncAliases(match[0]);
   purgeCaches();
-  assertLoginBuild(sha);
-  assertCatalogHealth();
+  await assertLoginBuild(sha);
+  await assertCatalogHealth();
   console.log(`\nListo → ${DOMAIN}`);
   console.log(`Login debe mostrar: Código en este sitio: ${sha}`);
   process.exit(0);
@@ -232,3 +237,8 @@ if (mode === "force") {
 
 console.error(`Modo desconocido: ${mode}. Usa verify | force`);
 process.exit(1);
+})().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
+

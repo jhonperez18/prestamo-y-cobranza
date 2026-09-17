@@ -188,26 +188,17 @@ function purgeOrphanDemoKeys() {
   }
 }
 
-function requestCloudVirginWipe() {
+function requestCloudCatalogRepair() {
   if (typeof window === "undefined") return;
   try {
-    void fetch("/api/ops/wipe-virgin", {
+    // Nunca wipe desde login: solo siembra/repara DIURNO en SQL.
+    void fetch("/api/ops/seed-diurno", {
       method: "POST",
       headers: { "x-nexo-wipe-gen": DEMO_VIRGIN_WIPE_GEN },
       cache: "no-store",
-    })
-      .then(async (res) => {
-        if (!res.ok) return;
-        // Tras wipe, siembra DIURNO en SQL (clientes sagrados; no dependen del navegador).
-        await fetch("/api/ops/seed-diurno", {
-          method: "POST",
-          headers: { "x-nexo-wipe-gen": DEMO_VIRGIN_WIPE_GEN },
-          cache: "no-store",
-        });
-      })
-      .catch(() => {
-        /* ignore offline */
-      });
+    }).catch(() => {
+      /* ignore offline */
+    });
   } catch {
     /* ignore offline */
   }
@@ -255,6 +246,25 @@ export function bootstrapProtectedDemoData() {
   }
 
   if (isCanonicalPackageInstalled()) {
+    // Paquete marcado sin clientes = caché rota; reparar hoja DIURNO local.
+    try {
+      const local = JSON.parse(window.localStorage.getItem(DEMO_CLIENTS_KEY) || "[]");
+      if (!Array.isArray(local) || local.length < DIURNO_ROUTE_NAMES.length) {
+        forceInstallJson(DEMO_CLIENTS_KEY, buildDiurnoRoute1Clients());
+      }
+    } catch {
+      forceInstallJson(DEMO_CLIENTS_KEY, buildDiurnoRoute1Clients());
+    }
+    // Solo repara SQL si faltan; nunca wipe desde login.
+    try {
+      void fetch("/api/ops/seed-diurno", {
+        method: "POST",
+        headers: { "x-nexo-wipe-gen": DEMO_VIRGIN_WIPE_GEN },
+        cache: "no-store",
+      });
+    } catch {
+      /* ignore */
+    }
     scrubLegacyMockDemoRows();
     return { restored: false, retention: applyDataRetention() };
   }
@@ -340,6 +350,13 @@ export function bootstrapProtectedDemoData() {
   );
 
   try {
+    const installed = JSON.parse(window.localStorage.getItem(DEMO_CLIENTS_KEY) || "[]");
+    if (!Array.isArray(installed) || installed.length < DIURNO_ROUTE_NAMES.length) {
+      // No marcar paquete si el catálogo no quedó instalado (evita caché vacía permanente).
+      scrubLegacyMockDemoRows();
+      const retention = applyDataRetention();
+      return { restored: false, retention };
+    }
     window.localStorage.setItem(DEMO_VIRGIN_OPS_KEY, "1");
     window.localStorage.setItem(DEMO_VIRGIN_WIPE_GEN_KEY, String(VIRGIN_WIPE_GEN));
     window.localStorage.removeItem(DEMO_VIRGIN_HOLD_UNTIL_KEY);
@@ -351,8 +368,8 @@ export function bootstrapProtectedDemoData() {
     /* ignore */
   }
 
-  // Nube: vacía basura y vuelve a sembrar clientes DIURNO (nunca deja SQL sin catálogo).
-  requestCloudVirginWipe();
+  // Nube: reparar catálogo DIURNO (sin wipe desde login).
+  requestCloudCatalogRepair();
 
   scrubLegacyMockDemoRows();
   const retention = applyDataRetention();

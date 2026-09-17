@@ -6,6 +6,7 @@ import {
   OPERATIONAL_DEMO_STORAGE_PREFIX,
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
+import { DEMO_CLIENTS_KEY, readDemoJson } from "@/lib/demo-persist";
 import {
   flushPaymentMirrorQueue,
   pullRemotePaymentsIntoDemo,
@@ -50,25 +51,24 @@ export function useOperationalDemoSync(
   const resyncGateRef = useRef(false);
   const pullInFlightRef = useRef(false);
 
-  const runHydrate = useCallback(() => {
+  const runHydrate = useCallback((markReady = true) => {
     const snapshot = hydrateOperationalDemo();
     applyRef.current(snapshot);
-    setHydrated(true);
+    if (markReady) setHydrated(true);
     setEpoch((n) => n + 1);
   }, []);
 
   const runHydrateWithRemotePull = useCallback(async () => {
     if (pullInFlightRef.current) {
-      runHydrate();
+      runHydrate(true);
       return;
     }
     pullInFlightRef.current = true;
     try {
-      runHydrate();
+      // Hidrata local primero (puede estar vacío); no marca listo hasta el pull.
+      runHydrate(false);
       await flushPaymentMirrorQueue();
-      // Antes del pull: cualquier cobro solo-en-este-PC debe llegar a la nube.
       await reconcileLocalPaymentsToRemote();
-      // Constancias Nequi/firma que quedaron solo en localStorage de este aparato.
       const evidenceSync = await reconcilePaymentEvidenceToRemote();
       if (evidenceSync.pushed > 0 || evidenceSync.failed > 0) {
         onEvidenceSyncRef.current?.({
@@ -78,23 +78,35 @@ export function useOperationalDemoSync(
       }
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
-      // CIE / gastos / planilla huérfanos → misma nube (saldo de rutas).
       await reconcileLocalOpsToRemote();
       const [paymentsPull, catalogPull, opsPull] = await Promise.all([
         pullRemotePaymentsIntoDemo(),
         pullRemoteCatalogIntoDemo(),
         pullRemoteOpsIntoDemo(),
       ]);
+      const localClients = readDemoJson(DEMO_CLIENTS_KEY, [] as unknown[]);
+      const catalogEmpty = !Array.isArray(localClients) || localClients.length === 0;
+      // Si el catálogo local sigue vacío, reintenta pull de clientes.
+      if (catalogEmpty) {
+        await pullRemoteCatalogIntoDemo();
+      }
+      const after = readDemoJson(DEMO_CLIENTS_KEY, [] as unknown[]);
+      const filled = Array.isArray(after) && after.length > 0;
       if (
         (paymentsPull.ok && paymentsPull.changed) ||
         (catalogPull.ok && catalogPull.changed) ||
         (opsPull.ok && opsPull.changed) ||
-        evidenceSync.pushed > 0
+        evidenceSync.pushed > 0 ||
+        catalogEmpty ||
+        filled
       ) {
-        runHydrate();
+        runHydrate(true);
+      } else {
+        setHydrated(true);
       }
     } finally {
       pullInFlightRef.current = false;
+      setHydrated(true);
     }
   }, [runHydrate]);
 
@@ -116,7 +128,7 @@ export function useOperationalDemoSync(
   useEffect(() => {
     function onStorage(event: StorageEvent) {
       if (!event.key || !event.key.startsWith(OPERATIONAL_DEMO_STORAGE_PREFIX)) return;
-      runHydrate();
+      runHydrate(true);
     }
     function onVisible() {
       if (document.visibilityState !== "visible") return;
