@@ -1367,6 +1367,9 @@ export function SupervisorMobileApp({
           </div>
         </div>
         <span className="supervisor-mobile-date">{dateLabel}</span>
+      </header>
+
+      <div className="supervisor-mobile-nav-block">
         <div
           className="supervisor-kpi-nb-sum"
           aria-label={`Saldo Nequi + Banco: ${money(nequiBancoSaldoTotal, { symbol: false })}`}
@@ -1374,13 +1377,11 @@ export function SupervisorMobileApp({
         >
           <b>{money(nequiBancoSaldoTotal, { symbol: false })}</b>
         </div>
-      </header>
-
-      <div
-        className="supervisor-mobile-kpis is-home has-nuevo has-clientes has-nequi has-banco"
-        role="group"
-        aria-label="Menú supervisor"
-      >
+        <div
+          className="supervisor-mobile-kpis is-home has-nuevo has-clientes has-nequi has-banco"
+          role="group"
+          aria-label="Menú supervisor"
+        >
         <button
           type="button"
           className={
@@ -1493,6 +1494,7 @@ export function SupervisorMobileApp({
         >
           <b>CLIENTES</b>
         </button>
+      </div>
       </div>
 
       {openRoute ? (

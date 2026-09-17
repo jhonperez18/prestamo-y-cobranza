@@ -3098,22 +3098,16 @@
       padding-bottom: max(28px, env(safe-area-inset-bottom, 0px));
     }
     .supervisor-mobile-header {
-      align-items: end;
-      padding: 4px 4px 0 !important;
+      align-items: center;
+      padding: 6px 4px 2px !important;
       display: grid;
-      grid-template-columns: repeat(7, minmax(0, 1fr));
-      grid-template-rows: auto auto;
-      column-gap: 2px;
-      row-gap: 0;
+      grid-template-columns: 1fr auto;
+      gap: 2px;
     }
     .supervisor-mobile-header .collector-mobile-brand {
-      grid-column: 1 / span 4;
-      grid-row: 1;
       justify-self: start;
-      align-self: center;
       min-width: 0;
       padding-left: 6px;
-      padding-bottom: 2px;
     }
     .supervisor-mobile-header strong {
       font-size: 14px;
@@ -3127,43 +3121,52 @@
       color: #5b7268;
     }
     .supervisor-mobile-date {
-      grid-column: 5 / span 3;
-      grid-row: 1;
       justify-self: end;
-      align-self: center;
       padding-right: 6px;
-      padding-bottom: 2px;
       font-size: 11px;
       font-weight: 600;
       color: #111;
       white-space: nowrap;
     }
-    .supervisor-mobile-header .supervisor-kpi-nb-sum {
-      grid-column: 3 / span 3;
-      grid-row: 2;
-      justify-self: center;
-      align-self: end;
+    /* Suma Nequi+Banco centrada justo encima de esas dos pestañas (cols 4–5 de 7). */
+    .supervisor-mobile-nav-block {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      column-gap: 2px;
+      row-gap: 0;
+      padding: 0 4px;
+      border-bottom: 1px solid #dbe5df;
+    }
+    .supervisor-mobile-nav-block .supervisor-kpi-nb-sum {
+      grid-column: 4 / span 2;
+      justify-self: stretch;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 0 0 -1px;
-      padding: 3px 10px 4px;
-      border: 1px solid #d9e2ec;
+      margin: 0;
+      padding: 3px 4px 2px;
+      border: 1px solid #c5d4e0;
       border-bottom: 0;
       border-radius: 6px 6px 0 0;
-      background: #eef2f7;
-      opacity: 1;
+      background: linear-gradient(180deg, #f1e9fb 0%, #e8f0fe 100%);
       pointer-events: none;
       user-select: none;
       z-index: 1;
     }
-    .supervisor-mobile-header .supervisor-kpi-nb-sum b {
+    .supervisor-mobile-nav-block .supervisor-kpi-nb-sum b {
       font-size: 12px;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
       letter-spacing: 0;
       color: #334155;
       line-height: 1;
+      text-align: center;
+    }
+    .supervisor-mobile-nav-block .supervisor-mobile-kpis {
+      grid-column: 1 / -1;
+      margin: 0;
+      border-top: 0;
+      border-bottom: 0;
     }
     .supervisor-mobile-kpis {
       display: grid;
@@ -3219,6 +3222,10 @@
       grid-template-columns: repeat(7, minmax(0, 1fr));
       gap: 2px;
       padding: 5px 4px;
+    }
+    .supervisor-mobile-nav-block .supervisor-mobile-kpis.has-banco {
+      padding: 2px 0 5px;
+      gap: 2px;
     }
     .supervisor-mobile-kpis.has-banco .supervisor-mobile-kpi {
       padding: 3px 0;
