@@ -122,18 +122,7 @@ export type ActivityRow = {
   gps?: boolean;
 };
 
-export const CLIENT_SEEDS: Omit<ClientRow, "routeOrder">[] = [
-  { ref: "COD-11", alta: "03/09/2026", name: "edinson", lastName: "", nickname: "soldador", document: "111111", city: "", barrio: "", route: "1", email: "", phone: "", address: "", notes: "", total: 360000, pending: 300000, status: "Activo", kind: "ok", createdBy: "TRUQUI" },
-  { ref: "COD-12", alta: "03/09/2026", name: "conse", lastName: "fritos", nickname: "", document: "22222", city: "", barrio: "", route: "1", email: "", phone: "", address: "", notes: "", total: 600000, pending: 560000, status: "Activo", kind: "ok", createdBy: "TRUQUI" },
-  { ref: "COD-13", alta: "03/09/2026", name: "victor", lastName: "olaya", nickname: "", document: "333333", city: "", barrio: "", route: "1", email: "", phone: "", address: "", notes: "", total: 540000, pending: 466000, status: "Activo", kind: "ok", createdBy: "TRUQUI" },
-  { ref: "COD-17", alta: "03/09/2026", name: "nuevo", lastName: "", nickname: "", document: "33333", city: "", barrio: "", route: "1", email: "", phone: "", address: "", notes: "", total: 1200000, pending: 1120000, status: "Activo", kind: "ok", createdBy: "TRUQUI" },
-  { ref: "COD-14", alta: "03/09/2026", name: "doris", lastName: "olaya", nickname: "", document: "444444", city: "", barrio: "", route: "1", email: "", phone: "", address: "", notes: "", total: 240000, pending: 240000, status: "Activo", kind: "ok", createdBy: "TRUQUI" },
-  { ref: "COD-15", alta: "03/09/2026", name: "Nora", lastName: "olaya", nickname: "", document: "55555", city: "", barrio: "", route: "1", email: "", phone: "", address: "", notes: "", total: 360000, pending: 324000, status: "Activo", kind: "ok", createdBy: "TRUQUI" },
-  { ref: "COD-16", alta: "03/09/2026", name: "Maria Nora", lastName: "Hija de norra", nickname: "", document: "66666", city: "", barrio: "", route: "1", email: "", phone: "", address: "", notes: "", total: 600000, pending: 520000, status: "Activo", kind: "ok", createdBy: "TRUQUI" },
-  { ref: "COD-9", alta: "05/09/2026", name: "Martina", lastName: "", nickname: "", document: "S/9", city: "", barrio: "", route: "2", email: "", phone: "85785458", address: "", notes: "Alta en calle (supervisor)", total: 240000, pending: 240000, status: "Activo", kind: "ok", createdBy: "TRUQUI", awaitingLoan: false, profilePending: true },
-  { ref: "COD-10", alta: "03/09/2026", name: "Eduardo", lastName: "eduardo", nickname: "", document: "222222", city: "", barrio: "", route: "2", email: "", phone: "", address: "", notes: "", total: 576000, pending: 487600, status: "Activo", kind: "ok", createdBy: "TRUQUI" },
-  { ref: "COD-8", alta: "28/08/2026", name: "Roberto", lastName: "Vargas", nickname: "", document: "91.220.441", city: "Kennedy", barrio: "Timiza", route: "3", email: "", phone: "301 555 9012", address: "Cra 78 # 38-20", notes: "Referido por cobrador", total: 360000, pending: 360000, status: "Activo", kind: "ok", createdBy: "Lina Soto", profilePending: false },
-];
+export const CLIENT_SEEDS: Omit<ClientRow, "routeOrder">[] = [];
 
 function withSeedRouteOrders(rows: Omit<ClientRow, "routeOrder">[]): ClientRow[] {
   const counters = new Map<string, number>();
@@ -152,19 +141,8 @@ export const CLIENTS: ClientRow[] = withSeedRouteOrders(CLIENT_SEEDS);
 
 import { normalizeLoan, type LoanTermsRow } from "@/lib/loan-preview";
 
-/** Semilla = mismos 10 préstamos del paquete Chrome (sin Carlos/Ana demo). */
-const LOAN_SEEDS: LoanTermsRow[] = [
-  { ref: "P-9", clientRef: "COD-8", client: "Roberto Vargas", date: "05/09/2026", due: "10/10/2026", capital: 300000, paid: 0, balance: 360000, status: "Activo", kind: "ok", mode: "cuota_fija", pact: "valor", frequency: "diario", installment: 12000, notes: "", rate: 0, days: 35, interest: 60000, total: 360000 },
-  { ref: "P-8", clientRef: "COD-9", client: "Martina", date: "05/09/2026", due: "10/10/2026", capital: 200000, paid: 0, balance: 240000, status: "Activo", kind: "ok", mode: "cuota_fija", pact: "valor", frequency: "diario", installment: 8000, notes: "Préstamo rápido · Diario · 1 mes", rate: 0, days: 35, interest: 40000, total: 240000 },
-  { ref: "P-7", clientRef: "COD-10", client: "Eduardo eduardo", date: "03/09/2026", due: "08/10/2026", capital: 480000, paid: 69200, balance: 506800, status: "Activo", kind: "ok", mode: "cuota_fija", pact: "valor", frequency: "diario", installment: 19200, notes: "", rate: 0, days: 35, interest: 96000, total: 576000 },
-  { ref: "P-6", clientRef: "COD-17", client: "nuevo", date: "03/09/2026", due: "08/10/2026", capital: 1000000, paid: 40000, balance: 1160000, status: "Activo", kind: "ok", mode: "cuota_fija", pact: "valor", frequency: "diario", installment: 40000, notes: "", rate: 0, days: 35, interest: 200000, total: 1200000 },
-  { ref: "P-5", clientRef: "COD-11", client: "edinson soldador", date: "03/09/2026", due: "08/10/2026", capital: 300000, paid: 36000, balance: 324000, status: "Activo", kind: "ok", mode: "cuota_fija", pact: "valor", frequency: "diario", installment: 12000, notes: "", rate: 0, days: 35, interest: 60000, total: 360000 },
-  { ref: "P-4", clientRef: "COD-12", client: "conse fritos", date: "03/09/2026", due: "08/10/2026", capital: 500000, paid: 20000, balance: 580000, status: "Activo", kind: "ok", mode: "cuota_fija", pact: "valor", frequency: "diario", installment: 20000, notes: "", rate: 0, days: 35, interest: 100000, total: 600000 },
-  { ref: "P-3", clientRef: "COD-13", client: "victor olaya", date: "03/09/2026", due: "08/10/2026", capital: 450000, paid: 54000, balance: 486000, status: "Activo", kind: "ok", mode: "cuota_fija", pact: "valor", frequency: "diario", installment: 18000, notes: "", rate: 0, days: 35, interest: 90000, total: 540000 },
-  { ref: "P-2", clientRef: "COD-14", client: "doris olaya", date: "03/09/2026", due: "08/10/2026", capital: 200000, paid: 0, balance: 240000, status: "Activo", kind: "ok", mode: "cuota_fija", pact: "valor", frequency: "diario", installment: 8000, notes: "", rate: 0, days: 35, interest: 40000, total: 240000 },
-  { ref: "P-1", clientRef: "COD-15", client: "Nora olaya", date: "03/09/2026", due: "08/10/2026", capital: 300000, paid: 24000, balance: 336000, status: "Activo", kind: "ok", mode: "cuota_fija", pact: "valor", frequency: "diario", installment: 12000, notes: "", rate: 0, days: 35, interest: 60000, total: 360000 },
-  { ref: "P-0", clientRef: "COD-16", client: "Maria Nora Hija de norra", date: "03/09/2026", due: "08/10/2026", capital: 500000, paid: 60000, balance: 540000, status: "Activo", kind: "ok", mode: "cuota_fija", pact: "valor", frequency: "diario", installment: 20000, notes: "", rate: 0, days: 35, interest: 100000, total: 600000 },
-];
+/** Semilla vacía: el sistema arranca sin préstamos hasta altas reales. */
+const LOAN_SEEDS: LoanTermsRow[] = [];
 
 
 export type RouteStop = {
@@ -460,7 +438,7 @@ export const ROUTES: RouteRow[] = [
     collector: "Juan Ríos",
     zone: "",
     frequency: "Lun–Sáb",
-    clients: 4,
+    clients: 0,
     status: "Activa",
     kind: "ok",
     stops: [],
@@ -473,7 +451,7 @@ export const ROUTES: RouteRow[] = [
     collector: "Lina Soto",
     zone: "",
     frequency: "Lun–Sáb",
-    clients: 3,
+    clients: 0,
     status: "Activa",
     kind: "ok",
     stops: [],
@@ -486,7 +464,7 @@ export const ROUTES: RouteRow[] = [
     collector: "Diego Mora",
     zone: "",
     frequency: "Lun–Sáb",
-    clients: 3,
+    clients: 0,
     status: "Activa",
     kind: "ok",
     stops: [],
@@ -858,12 +836,7 @@ export const PAYMENTS: PaymentRow[] = [];
 
 export const LOANS: LoanRow[] = LOAN_SEEDS.map((loan) => normalizeLoan(loan, PAYMENTS) as LoanRow);
 
-export const ACTIVITY: ActivityRow[] = [
-  { ref: "ACT-0", collectorRef: "COB-0", when: "27/08 · 08:05", label: "Ruta iniciada", detail: "Norte · 3 clientes en visita", kind: "ok", gps: true },
-  { ref: "ACT-1", collectorRef: "COB-1", when: "27/08 · 08:12", label: "Ruta iniciada", detail: "Sur · 2 clientes en visita", kind: "ok", gps: true },
-  { ref: "ACT-2", collectorRef: "COB-2", when: "27/08 · 07:50", label: "Ruta cerrada", detail: "Centro · jornada finalizada", kind: "paid", gps: true },
-  { ref: "ACT-3", collectorRef: "COB-0", when: "26/08 · 17:20", label: "Check-in GPS", detail: "Suba · visita programada", kind: "partial", gps: true },
-];
+export const ACTIVITY: ActivityRow[] = [];
 
 export function nextPaymentCode(rows: PaymentRow[] = PAYMENTS) {
   const nums = rows.map((row) => Number(row.ref.replace(/\D/g, ""))).filter((n) => Number.isFinite(n));

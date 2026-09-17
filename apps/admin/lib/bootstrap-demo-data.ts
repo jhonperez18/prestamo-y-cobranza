@@ -1,8 +1,8 @@
 /**
  * Arranque del paquete canónico (Chrome).
- * v14: historial 03→10 + jornada 11 cerrada por cobradores (fuente = calle).
+ * v15: estado virgen — sin clientes/préstamos/pagos/historial (listo para datos reales).
  * Al instalar, reemplaza estado anterior del origen (localhost ≠ vercel.app).
- * Luego retención 30 días; nunca reinyecta Carlos/Ana/etc.
+ * Luego retención 30 días; nunca reinyecta semilla demo.
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
 import {
@@ -11,22 +11,25 @@ import {
   DEMO_BANK_RECONCILIATIONS_KEY,
   DEMO_CLIENTS_KEY,
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
+  DEMO_COLLECTOR_DAY_EXPENSES_KEY,
+  DEMO_COLLECTOR_MONTH_CLOSES_KEY,
   DEMO_COLLECTORS_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_DAILY_LOGS_KEY,
   DEMO_LOANS_KEY,
+  DEMO_MISC_PAYMENTS_KEY,
   DEMO_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
   DEMO_USERS_KEY,
   scrubLegacyMockDemoRows,
-  writeDemoJson,
   type DemoSnapshot,
 } from "@/lib/demo-persist";
+import { DEMO_PAYMENT_EVIDENCE_KEY } from "@/lib/payment-evidence-store";
 import { applyDataRetention } from "@/lib/data-retention";
 import { COLLECTORS, USERS } from "@/lib/mock-data";
 
 /** Subir versión = reinstala el paquete canónico una vez en cada navegador/origen. */
-export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v14";
+export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v15";
 
 const PACKAGE_KEYS = [
   DEMO_CLIENTS_KEY,
@@ -41,27 +44,74 @@ const PACKAGE_KEYS = [
   DEMO_BANK_RECONCILIATIONS_KEY,
   DEMO_USERS_KEY,
   DEMO_COLLECTORS_KEY,
+  DEMO_MISC_PAYMENTS_KEY,
+  DEMO_COLLECTOR_DAY_EXPENSES_KEY,
+  DEMO_COLLECTOR_MONTH_CLOSES_KEY,
+  DEMO_PAYMENT_EVIDENCE_KEY,
+] as const;
+
+const PREVIOUS_PACKAGE_FLAGS = [
+  "nexo-demo-bootstrap-package-v14",
+  "nexo-demo-bootstrap-package-v13",
+  "nexo-demo-bootstrap-package-v12",
+  "nexo-demo-bootstrap-package-v11",
+  "nexo-demo-bootstrap-package-v10",
+  "nexo-demo-bootstrap-package-v9",
+  "nexo-demo-bootstrap-package-v8",
+  "nexo-demo-bootstrap-package-v7",
+  "nexo-demo-bootstrap-package-v6",
+  "nexo-demo-bootstrap-package-v5",
+  "nexo-demo-bootstrap-package-v4",
+  "nexo-demo-bootstrap-package-v3",
+  "nexo-demo-bootstrap-package-v2",
+  "nexo-demo-bootstrap-recovery-v1",
 ] as const;
 
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
 }
 
-function pinBackupToCurrent(key: string) {
+/** Instala el paquete aunque sea [] (writeDemoJson protege vaciados accidentales). */
+function forceInstallJson(key: string, value: unknown) {
   if (typeof window === "undefined") return;
   try {
-    const raw = window.localStorage.getItem(key);
-    if (raw) window.localStorage.setItem(`${key}-bak`, raw);
+    const next = JSON.stringify(value);
+    window.localStorage.setItem(key, next);
+    window.localStorage.setItem(`${key}-bak`, next);
   } catch {
-    /* ignore */
+    /* ignore quota / private mode */
   }
 }
 
-/** Borra bak viejo antes de montar el paquete (evita que Carlos/Ana resuciten). */
 function clearLegacyBackups() {
   if (typeof window === "undefined") return;
-  for (const key of [DEMO_CLIENTS_KEY, DEMO_LOANS_KEY, DEMO_PAYMENTS_KEY]) {
+  for (const key of PACKAGE_KEYS) {
     try {
+      window.localStorage.removeItem(`${key}-bak`);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function clearMirrorQueues() {
+  if (typeof window === "undefined") return;
+  const queues = [
+    "nexo-demo-payment-mirror-queue",
+    "nexo-demo-client-mirror-queue",
+    "nexo-demo-loan-mirror-queue",
+    "nexo-demo-ops-collectors-queue",
+    "nexo-demo-ops-routes-queue",
+    "nexo-demo-ops-day-closes-queue",
+    "nexo-demo-ops-day-expenses-queue",
+    "nexo-demo-ops-misc-queue",
+    "nexo-demo-ops-assignments-queue",
+    "nexo-demo-supervisor-route-seen",
+    "nexo-dispatch-date",
+  ];
+  for (const key of queues) {
+    try {
+      window.localStorage.removeItem(key);
       window.localStorage.removeItem(`${key}-bak`);
     } catch {
       /* ignore */
@@ -84,18 +134,9 @@ export function forceReinstallCanonicalPackage() {
   }
   try {
     window.localStorage.removeItem(DEMO_BOOTSTRAP_PACKAGE_KEY);
-    window.localStorage.removeItem("nexo-demo-bootstrap-package-v13");
-    window.localStorage.removeItem("nexo-demo-bootstrap-package-v12");
-    window.localStorage.removeItem("nexo-demo-bootstrap-package-v11");
-    window.localStorage.removeItem("nexo-demo-bootstrap-package-v10");
-    window.localStorage.removeItem("nexo-demo-bootstrap-package-v9");
-    window.localStorage.removeItem("nexo-demo-bootstrap-package-v8");
-    window.localStorage.removeItem("nexo-demo-bootstrap-package-v7");
-    window.localStorage.removeItem("nexo-demo-bootstrap-package-v6");
-    window.localStorage.removeItem("nexo-demo-bootstrap-package-v5");
-    window.localStorage.removeItem("nexo-demo-bootstrap-package-v4");
-    window.localStorage.removeItem("nexo-demo-bootstrap-package-v3");
-    window.localStorage.removeItem("nexo-demo-bootstrap-package-v2");
+    for (const key of PREVIOUS_PACKAGE_FLAGS) {
+      window.localStorage.removeItem(key);
+    }
   } catch {
     /* ignore */
   }
@@ -113,50 +154,61 @@ export function bootstrapProtectedDemoData() {
   }
 
   clearLegacyBackups();
+  clearMirrorQueues();
 
-  const snapshot = recoverySeed as DemoSnapshot;
+  const snapshot = recoverySeed as unknown as DemoSnapshot;
   const keys = snapshot.keys ?? {};
 
-  writeDemoJson(DEMO_CLIENTS_KEY, asArray(keys[DEMO_CLIENTS_KEY]));
-  writeDemoJson(DEMO_LOANS_KEY, asArray(keys[DEMO_LOANS_KEY]));
-  writeDemoJson(DEMO_PAYMENTS_KEY, asArray(keys[DEMO_PAYMENTS_KEY]));
-  writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, asArray(keys[DEMO_COLLECTOR_DAY_CLOSES_KEY]));
-  writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, asArray(keys[DEMO_BANK_MOVEMENTS_KEY]));
-  writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, asArray(keys[DEMO_DAILY_ASSIGNMENTS_KEY]));
-  writeDemoJson(DEMO_DAILY_LOGS_KEY, asArray(keys[DEMO_DAILY_LOGS_KEY]));
-  writeDemoJson(DEMO_ROUTES_KEY, asArray(keys[DEMO_ROUTES_KEY]));
+  forceInstallJson(DEMO_CLIENTS_KEY, asArray(keys[DEMO_CLIENTS_KEY]));
+  forceInstallJson(DEMO_LOANS_KEY, asArray(keys[DEMO_LOANS_KEY]));
+  forceInstallJson(DEMO_PAYMENTS_KEY, asArray(keys[DEMO_PAYMENTS_KEY]));
+  forceInstallJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, asArray(keys[DEMO_COLLECTOR_DAY_CLOSES_KEY]));
+  forceInstallJson(DEMO_BANK_MOVEMENTS_KEY, asArray(keys[DEMO_BANK_MOVEMENTS_KEY]));
+  forceInstallJson(DEMO_DAILY_ASSIGNMENTS_KEY, asArray(keys[DEMO_DAILY_ASSIGNMENTS_KEY]));
+  forceInstallJson(DEMO_DAILY_LOGS_KEY, asArray(keys[DEMO_DAILY_LOGS_KEY]));
+  forceInstallJson(DEMO_ROUTES_KEY, asArray(keys[DEMO_ROUTES_KEY]));
+  forceInstallJson(DEMO_BANK_RECONCILIATIONS_KEY, asArray(keys[DEMO_BANK_RECONCILIATIONS_KEY]));
+  forceInstallJson(DEMO_MISC_PAYMENTS_KEY, []);
+  forceInstallJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []);
+  forceInstallJson(DEMO_COLLECTOR_MONTH_CLOSES_KEY, []);
+  forceInstallJson(DEMO_PAYMENT_EVIDENCE_KEY, {});
 
   const accounts = asArray(keys[DEMO_BANK_ACCOUNTS_KEY]);
-  if (accounts.length) writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, accounts);
+  forceInstallJson(
+    DEMO_BANK_ACCOUNTS_KEY,
+    accounts.length
+      ? accounts
+      : [
+          {
+            ref: "BCA-1",
+            name: "Cuenta operativa",
+            bankName: "Bancolombia",
+            accountNumber: "",
+            accountType: "corriente",
+            currency: "COP",
+            country: "Colombia (CO)",
+            province: "",
+            address: "",
+            active: true,
+            openingBalance: 0,
+          },
+        ],
+  );
 
-  const reconciliations = asArray(keys[DEMO_BANK_RECONCILIATIONS_KEY]);
-  writeDemoJson(DEMO_BANK_RECONCILIATIONS_KEY, reconciliations);
-
-  writeDemoJson(DEMO_USERS_KEY, USERS.map((row) => ({ ...row })));
-  writeDemoJson(
+  forceInstallJson(
+    DEMO_USERS_KEY,
+    USERS.map((row) => ({ ...row })),
+  );
+  forceInstallJson(
     DEMO_COLLECTORS_KEY,
     COLLECTORS.map((row) => ({ ...row })),
   );
 
-  for (const key of PACKAGE_KEYS) {
-    pinBackupToCurrent(key);
-  }
-
   try {
     window.localStorage.setItem(DEMO_BOOTSTRAP_PACKAGE_KEY, "1");
-    window.localStorage.setItem("nexo-demo-bootstrap-package-v13", "1");
-    window.localStorage.setItem("nexo-demo-bootstrap-package-v12", "1");
-    window.localStorage.setItem("nexo-demo-bootstrap-package-v11", "1");
-    window.localStorage.setItem("nexo-demo-bootstrap-package-v10", "1");
-    window.localStorage.setItem("nexo-demo-bootstrap-package-v9", "1");
-    window.localStorage.setItem("nexo-demo-bootstrap-package-v8", "1");
-    window.localStorage.setItem("nexo-demo-bootstrap-package-v7", "1");
-    window.localStorage.setItem("nexo-demo-bootstrap-package-v6", "1");
-    window.localStorage.setItem("nexo-demo-bootstrap-package-v5", "1");
-    window.localStorage.setItem("nexo-demo-bootstrap-package-v4", "1");
-    window.localStorage.setItem("nexo-demo-bootstrap-package-v3", "1");
-    window.localStorage.setItem("nexo-demo-bootstrap-package-v2", "1");
-    window.localStorage.setItem("nexo-demo-bootstrap-recovery-v1", "1");
+    for (const key of PREVIOUS_PACKAGE_FLAGS) {
+      window.localStorage.setItem(key, "1");
+    }
   } catch {
     /* ignore */
   }
