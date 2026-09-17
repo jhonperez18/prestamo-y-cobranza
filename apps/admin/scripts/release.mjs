@@ -56,15 +56,38 @@ function ensureLinked() {
 }
 
 function latestProductionDeployUrl() {
-  const out = capture(`npx vercel ls ${PROJECT}`, repoRoot);
-  const lines = out.split(/\r?\n/);
-  for (const line of lines) {
-    if (!/Production/i.test(line) || !/Ready/i.test(line)) continue;
-    const match = line.match(DEPLOY_URL_RE);
-    if (match?.[0]) return match[0];
+  try {
+    const raw = capture(`npx vercel ls ${PROJECT} --json`, repoRoot);
+    const data = JSON.parse(raw);
+    const deployments = Array.isArray(data?.deployments) ? data.deployments : [];
+    for (const row of deployments) {
+      const state = String(row.readyState || row.state || row.status || "");
+      const target = String(row.target || row.environment || "");
+      const urlHost = String(row.url || "");
+      if (!urlHost) continue;
+      const isProd =
+        /production/i.test(target) ||
+        row.target === "production" ||
+        Boolean(row.production);
+      const isReady = /READY|ready/i.test(state);
+      if (isProd && isReady) {
+        return urlHost.startsWith("http") ? urlHost : `https://${urlHost}`;
+      }
+    }
+    // Fallback: primer Ready aunque el campo target venga vacío.
+    for (const row of deployments) {
+      const state = String(row.readyState || row.state || row.status || "");
+      const urlHost = String(row.url || "");
+      if (urlHost && /READY|ready/i.test(state)) {
+        return urlHost.startsWith("http") ? urlHost : `https://${urlHost}`;
+      }
+    }
+  } catch (err) {
+    console.warn("Aviso: vercel ls --json falló, uso texto.", err?.message || err);
   }
-  const fallback = out.match(DEPLOY_URL_RE);
-  return fallback?.[0] || "";
+  const out = capture(`npx vercel ls ${PROJECT}`, repoRoot);
+  const match = out.replace(/\s+/g, " ").match(DEPLOY_URL_RE);
+  return match?.[0] || "";
 }
 
 /** Espera Ready del deploy más reciente (no aliasar Building). */
