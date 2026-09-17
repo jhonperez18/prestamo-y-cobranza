@@ -1,6 +1,6 @@
 /**
  * Arranque del paquete canónico (Chrome).
- * v16: re-limpia virgen (banco/pagos) — evita que un origen viejo reinyecte historial.
+ * v18: virgen + hold remoto 2h + no resucitar cobros desde bak/planilla.
  * Al instalar, reemplaza estado anterior del origen (localhost ≠ vercel.app).
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
@@ -21,6 +21,8 @@ import {
   DEMO_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
   DEMO_USERS_KEY,
+  DEMO_VIRGIN_HOLD_UNTIL_KEY,
+  DEMO_VIRGIN_OPS_KEY,
   scrubLegacyMockDemoRows,
   type DemoSnapshot,
 } from "@/lib/demo-persist";
@@ -29,7 +31,7 @@ import { applyDataRetention } from "@/lib/data-retention";
 import { COLLECTORS, USERS } from "@/lib/mock-data";
 
 /** Subir versión = reinstala el paquete canónico una vez en cada navegador/origen. */
-export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v16";
+export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v18";
 
 const PACKAGE_KEYS = [
   DEMO_CLIENTS_KEY,
@@ -52,6 +54,8 @@ const PACKAGE_KEYS = [
 ] as const;
 
 const PREVIOUS_PACKAGE_FLAGS = [
+  "nexo-demo-bootstrap-package-v17",
+  "nexo-demo-bootstrap-package-v16",
   "nexo-demo-bootstrap-package-v15",
   "nexo-demo-bootstrap-package-v14",
   "nexo-demo-bootstrap-package-v13",
@@ -208,6 +212,12 @@ export function bootstrapProtectedDemoData() {
   );
 
   try {
+    window.localStorage.setItem(DEMO_VIRGIN_OPS_KEY, "1");
+    // 2h: evita que un celular viejo rellene Cobros/Historial/Actividad desde la nube.
+    window.localStorage.setItem(
+      DEMO_VIRGIN_HOLD_UNTIL_KEY,
+      String(Date.now() + 2 * 60 * 60 * 1000),
+    );
     window.localStorage.setItem(DEMO_BOOTSTRAP_PACKAGE_KEY, "1");
     for (const key of PREVIOUS_PACKAGE_FLAGS) {
       window.localStorage.setItem(key, "1");

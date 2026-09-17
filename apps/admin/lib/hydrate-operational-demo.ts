@@ -32,6 +32,7 @@ import {
   DEMO_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
   DEMO_USERS_KEY,
+  isVirginOpsMode,
 } from "@/lib/demo-persist";
 import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
 import { runOperationalDayCycle } from "@/lib/collector-day-auto-close";
@@ -141,12 +142,17 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
   writeDemoJson(DEMO_CLIENTS_KEY, storedClients);
 
   const storedMovementsEarly = loadDemoBankMovements<BankMovement>();
-  let nextPayments = recoverPaymentsFromAssignments(storedAssignments, storedPayments);
-  nextPayments = recoverPaymentsFromBankMovements(
-    storedMovementsEarly ?? [],
-    storedAssignments,
-    nextPayments,
-  );
+  // Virgen: no resucitar PG- desde planilla/banco viejos.
+  let nextPayments = isVirginOpsMode()
+    ? storedPayments
+    : recoverPaymentsFromAssignments(storedAssignments, storedPayments);
+  if (!isVirginOpsMode()) {
+    nextPayments = recoverPaymentsFromBankMovements(
+      storedMovementsEarly ?? [],
+      storedAssignments,
+      nextPayments,
+    );
+  }
   const recoveredDayCloses = synthesizeDayClosesFromAssignments(
     storedAssignments,
     nextPayments,

@@ -11,6 +11,7 @@ import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import {
   DEMO_LOANS_KEY,
   DEMO_PAYMENTS_KEY,
+  isVirginRemoteHoldActive,
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
@@ -586,6 +587,16 @@ export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> 
         .filter((row): row is PaymentRow => Boolean(row)),
     );
     const local = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []);
+    // Post-wipe (2h): no reinyectar PG- remotos mientras local sigue vacío.
+    if (isVirginRemoteHoldActive() && local.length === 0 && remote.length > 0) {
+      return {
+        ok: true,
+        added: 0,
+        changed: false,
+        skipped: true,
+        reason: "virgin_hold_empty",
+      };
+    }
     const { merged, added, changed } = mergePaymentsByRef(local, remote);
     if (changed) {
       writeDemoJson(DEMO_PAYMENTS_KEY, merged);

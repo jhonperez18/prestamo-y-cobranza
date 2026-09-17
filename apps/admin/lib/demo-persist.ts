@@ -35,6 +35,10 @@ export const DEMO_BANK_ACCOUNTS_KEY = "nexo-demo-banco-accounts";
 export const DEMO_BANK_MOVEMENTS_KEY = "nexo-demo-banco-movements";
 export const DEMO_BANK_RECONCILIATIONS_KEY = "nexo-demo-banco-reconciliations";
 export const DEMO_BANK_SIDES_VERSION_KEY = "nexo-demo-banco-sides-version";
+/** Modo virgen: [] es intencional; no resucitar historial desde -bak. */
+export const DEMO_VIRGIN_OPS_KEY = "nexo-demo-virgin-ops-v1";
+/** Hasta este epoch (ms): no reimportar cobros remotos si local está vacío. */
+export const DEMO_VIRGIN_HOLD_UNTIL_KEY = "nexo-demo-virgin-hold-until-v1";
 export const DEMO_MISC_PAYMENTS_KEY = "nexo-demo-pagos-varios";
 export const DEMO_COLLECTOR_MONTH_CLOSES_KEY = "nexo-demo-collector-month-closes";
 export const DEMO_COLLECTOR_DAY_EXPENSES_KEY = "nexo-demo-collector-day-expenses";
@@ -144,17 +148,41 @@ function readBakArray<T>(key: string): T[] {
   return Array.isArray(bak) ? bak : [];
 }
 
+/** Tras paquete virgen: no recuperar cobros/banco/historial desde -bak. */
+export function isVirginOpsMode() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(DEMO_VIRGIN_OPS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** Ventana post-wipe: local vacío no debe rellenarse desde nube sucia. */
+export function isVirginRemoteHoldActive() {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = window.localStorage.getItem(DEMO_VIRGIN_HOLD_UNTIL_KEY);
+    const until = raw ? Number(raw) : 0;
+    return Number.isFinite(until) && until > Date.now();
+  } catch {
+    return false;
+  }
+}
+
 /** Lee JSON; si la clave principal falla o está vacía, intenta el respaldo -bak. */
 export function readDemoJson<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
   const primary = parseJson<T>(readRaw(key));
   if (primary !== null && primary !== undefined) {
     if (Array.isArray(primary) && primary.length === 0) {
+      if (isVirginOpsMode()) return primary;
       const bak = parseJson<T>(readRaw(backupKey(key)));
       if (Array.isArray(bak) && bak.length > 0) return bak;
     }
     return primary;
   }
+  if (isVirginOpsMode()) return fallback;
   const bak = parseJson<T>(readRaw(backupKey(key)));
   if (bak !== null && bak !== undefined) return bak;
   return fallback;
@@ -179,6 +207,11 @@ export function writeDemoJson(key: string, value: unknown) {
       // Nunca respaldar un [] encima de un bak con datos.
       if (!wipingArray) {
         window.localStorage.setItem(backupKey(key), prev);
+      } else if (isVirginOpsMode()) {
+        // Paquete virgen: [] es intencional (cobros/historial/banco vacíos).
+        window.localStorage.setItem(backupKey(key), next);
+        window.localStorage.setItem(key, next);
+        return;
       } else {
         // Intento de vaciar: conservar prev en -bak y NO escribir [] si hay datos.
         window.localStorage.setItem(backupKey(key), prev);
@@ -235,12 +268,15 @@ function readStoredLoans(): LoanRow[] | null {
   const primary = parseJson<LoanRow[]>(readRaw(DEMO_LOANS_KEY));
   if (primary && Array.isArray(primary)) {
     if (primary.length === 0) {
+      if (isVirginOpsMode()) return [];
       const bak = readBakArray<LoanRow>(DEMO_LOANS_KEY);
       if (bak.length > 0) return bak;
       return null;
     }
+    if (isVirginOpsMode()) return primary;
     return recoverCustomRowsFromBak(DEMO_LOANS_KEY, primary, SEED_LOAN_REFS);
   }
+  if (isVirginOpsMode()) return [];
   const bak = readBakArray<LoanRow>(DEMO_LOANS_KEY);
   if (bak.length > 0) return bak;
   return null;
@@ -251,12 +287,15 @@ function readStoredPayments(): PaymentRow[] | null {
   const primary = parseJson<PaymentRow[]>(readRaw(DEMO_PAYMENTS_KEY));
   if (primary && Array.isArray(primary)) {
     if (primary.length === 0) {
+      if (isVirginOpsMode()) return [];
       const bak = readBakArray<PaymentRow>(DEMO_PAYMENTS_KEY);
       if (bak.length > 0) return bak;
       return null;
     }
+    if (isVirginOpsMode()) return primary;
     return recoverCustomRowsFromBak(DEMO_PAYMENTS_KEY, primary, SEED_PAYMENT_REFS);
   }
+  if (isVirginOpsMode()) return [];
   const bak = readBakArray<PaymentRow>(DEMO_PAYMENTS_KEY);
   if (bak.length > 0) return bak;
   return null;
@@ -270,6 +309,10 @@ function isCanonicalPackageFlag() {
   if (typeof window === "undefined") return false;
   try {
     return (
+      window.localStorage.getItem("nexo-demo-bootstrap-package-v17") === "1" ||
+      window.localStorage.getItem("nexo-demo-bootstrap-package-v16") === "1" ||
+      window.localStorage.getItem("nexo-demo-bootstrap-package-v15") === "1" ||
+      window.localStorage.getItem("nexo-demo-bootstrap-package-v14") === "1" ||
       window.localStorage.getItem("nexo-demo-bootstrap-package-v4") === "1" ||
       window.localStorage.getItem("nexo-demo-bootstrap-package-v3") === "1" ||
       window.localStorage.getItem("nexo-demo-bootstrap-package-v2") === "1"
@@ -424,6 +467,9 @@ export function loadDemoLoans(payments: PaymentRow[] = loadDemoPayments()): Loan
 /** Cierres de jornada: recupera -bak si la clave quedó vacía. */
 export function loadDemoDayCloses<T extends { ref?: string }>(fallback: T[] = []): T[] {
   disarmLegacyWipes();
+  if (isVirginOpsMode()) {
+    return readDemoJson<T[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, fallback);
+  }
   const stored = readDemoJson<T[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, fallback);
   if (!Array.isArray(stored) || stored.length === 0) {
     const bak = readBakArray<T>(DEMO_COLLECTOR_DAY_CLOSES_KEY);
@@ -446,6 +492,10 @@ export function loadDemoDayCloses<T extends { ref?: string }>(fallback: T[] = []
 /** Movimientos de banco: nunca parte de [] si hay -bak; fusiona refs del respaldo. */
 export function loadDemoBankMovements<T extends { ref?: string }>(fallback: T[] = []): T[] {
   disarmLegacyWipes();
+  if (isVirginOpsMode()) {
+    const stored = readDemoJson<T[] | null>(DEMO_BANK_MOVEMENTS_KEY, null);
+    return Array.isArray(stored) ? stored : fallback;
+  }
   const stored = readDemoJson<T[] | null>(DEMO_BANK_MOVEMENTS_KEY, null);
   const bak = readBakArray<T>(DEMO_BANK_MOVEMENTS_KEY);
   if (!stored || !Array.isArray(stored) || stored.length === 0) {
