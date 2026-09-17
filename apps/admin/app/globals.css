@@ -3950,7 +3950,7 @@
       width: 14%;
     }
     .supervisor-planilla-table .is-metodo {
-      width: 14%;
+      width: 10%;
       text-align: center;
       white-space: nowrap;
       padding-left: 4px;
@@ -3969,14 +3969,19 @@
       font-weight: 400;
     }
     .supervisor-planilla-method {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       margin: 0;
-      padding: 2px 7px;
+      min-width: 1.35rem;
+      padding: 2px 5px;
       border-radius: 999px;
       font-size: 10px;
       font-style: normal;
-      font-weight: 400;
+      font-weight: 700;
+      letter-spacing: 0.02em;
       line-height: 1.2;
+      text-align: center;
     }
     .supervisor-planilla-method.is-pay-efectivo {
       color: #1f6b45;
@@ -8573,6 +8578,24 @@
       background: transparent !important;
       box-shadow: none;
     }
+    /* Alerta «ficha incompleta»: señalar en naranja claro (mismo tono Completar) */
+    table.data tbody tr.is-profile-incomplete,
+    table.list-grid tbody tr.is-profile-incomplete,
+    table.data tbody tr.is-profile-incomplete:nth-child(odd),
+    table.list-grid tbody tr.is-profile-incomplete:nth-child(odd),
+    table.data tbody tr.is-profile-incomplete:nth-child(even),
+    table.list-grid tbody tr.is-profile-incomplete:nth-child(even) {
+      background: #fff1e6 !important;
+      box-shadow: inset 4px 0 0 #f97316;
+    }
+    table.list-grid tbody tr.is-profile-incomplete:hover,
+    table.data tbody tr.is-profile-incomplete:hover {
+      background: #ffe4cc !important;
+      box-shadow: inset 4px 0 0 #ea580c;
+    }
+    table.list-grid tbody tr.is-profile-incomplete:hover td {
+      background: transparent !important;
+    }
     .route-stops-layout {
       display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
       gap: 16px; align-items: start;
@@ -9696,7 +9719,7 @@
       text-rendering: geometricPrecision !important;
     }
     .payment-ficha-head-actions .btn-bar {
-      font-size: 13px !important;
+      font-size: 10px !important;
     }
     .aside .group-head,
     .aside .group-toggle {
@@ -10244,34 +10267,45 @@
     }
     .payment-ficha-evidence-head {
       display: flex;
+      flex-direction: row;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      flex-wrap: wrap;
-      padding: 8px 10px !important;
+      gap: 8px 10px;
+      flex-wrap: nowrap;
+      padding: 6px 8px !important;
     }
     .payment-ficha-evidence-head h2 {
       margin: 0;
-      flex: 0 0 auto;
+      flex: 1 1 auto;
+      min-width: 0;
     }
     .payment-ficha-head-actions {
-      margin-left: auto;
+      margin-left: 0;
+      width: auto;
+      flex: 0 0 auto;
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: flex-end;
-      gap: 6px;
+      flex-direction: column;
+      flex-wrap: nowrap;
+      align-items: stretch;
+      justify-content: center;
+      gap: 4px;
     }
     .payment-ficha-head-actions .btn-bar.light {
       background: var(--btn-bg);
       color: var(--btn-text);
       border: 0;
-      padding: 5px 10px;
-      font-size: 13px !important;
+      width: auto;
+      min-width: 0;
+      max-width: 9.5rem;
+      justify-content: center;
+      padding: 3px 7px;
+      font-size: 10px !important;
       font-weight: 600;
-      line-height: 1.3;
+      line-height: 1.2;
       white-space: nowrap;
-      letter-spacing: 0.04em;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: 0.03em;
       text-transform: uppercase;
       font-family: var(--bar-font);
     }
@@ -10333,9 +10367,13 @@
         grid-template-columns: 1fr;
       }
       .payment-ficha-head-actions {
-        width: 100%;
-        justify-content: flex-start;
+        width: auto;
         margin-left: 0;
+      }
+      .payment-ficha-head-actions .btn-bar.light {
+        max-width: 8.5rem;
+        font-size: 9px !important;
+        padding: 2px 6px;
       }
     }
 

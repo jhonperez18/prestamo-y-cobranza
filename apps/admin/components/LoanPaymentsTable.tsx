@@ -8,7 +8,7 @@ import { Pill } from "@/components/ui";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { LOAN_PAYMENT_COLUMNS, LOAN_PAYMENT_COLUMNS_STORAGE_KEY, LOAN_PAYMENT_DEFAULT_COLS } from "@/lib/loan-payment-columns";
 import { money, type LoanRow, type PaymentRow } from "@/lib/mock-data";
-import { normalizePaymentMethod, paymentMethodKind } from "@/lib/payment-method";
+import { normalizePaymentMethod, paymentMethodInitial, paymentMethodKind, paymentMethodLabel } from "@/lib/payment-method";
 import {
   enrichPaymentMovement,
   sortPaymentsNewestFirst,
@@ -140,8 +140,9 @@ export function LoanPaymentsTable({
                       <td>
                         {payment ? (
                           <Pill
-                            label={movement.method}
+                            label={paymentMethodInitial(payment.method)}
                             kind={paymentMethodKind(normalizePaymentMethod(payment.method))}
+                            title={paymentMethodLabel(payment.method)}
                           />
                         ) : (
                           movement.method

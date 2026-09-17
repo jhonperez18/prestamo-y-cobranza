@@ -27,6 +27,14 @@ export function paymentMethodLabel(method?: PaymentMethod | string | null) {
   return "Efectivo";
 }
 
+/** Inicial compacta para columnas / pills de listados (N / E / B). */
+export function paymentMethodInitial(method?: PaymentMethod | string | null) {
+  const normalized = normalizePaymentMethod(method);
+  if (normalized === "nequi") return "N";
+  if (normalized === "banco") return "B";
+  return "E";
+}
+
 export function paymentMethodKind(method?: PaymentMethod | string | null): StatusKind {
   return normalizePaymentMethod(method);
 }

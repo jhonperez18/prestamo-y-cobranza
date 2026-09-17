@@ -59,6 +59,7 @@ import {
 } from "@/lib/collector-day-close";
 import {
   normalizePaymentMethod,
+  paymentMethodInitial,
   paymentMethodKind,
   paymentMethodLabel,
   paymentMethodToneClass,
@@ -1047,13 +1048,16 @@ export function CollectorMobileApp({
                         <Pill
                           label={
                             payMethod
-                              ? paymentMethodLabel(payMethod)
+                              ? paymentMethodInitial(payMethod)
                               : visitStatusLabel(item.visitStatus)
                           }
                           kind={
                             payMethod
                               ? paymentMethodKind(payMethod)
                               : visitStatusKind(item.visitStatus)
+                          }
+                          title={
+                            payMethod ? paymentMethodLabel(payMethod) : undefined
                           }
                         />
                       ) : null}

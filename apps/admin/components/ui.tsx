@@ -4,8 +4,20 @@ import type { KpiTone } from "@/lib/kpi-tones";
 import { PlusIcon, SearchIcon } from "@/components/icons";
 import { monthStartIso, todayIso } from "@/lib/daily-dispatch";
 
-export function Pill({ label, kind }: { label: string; kind: StatusKind }) {
-  return <span className={`pill ${kind}`}>{label}</span>;
+export function Pill({
+  label,
+  kind,
+  title,
+}: {
+  label: string;
+  kind: StatusKind;
+  title?: string;
+}) {
+  return (
+    <span className={`pill ${kind}`} title={title}>
+      {label}
+    </span>
+  );
 }
 
 type Header = { t: string; right?: boolean; center?: boolean; width?: string; sortKey?: string };

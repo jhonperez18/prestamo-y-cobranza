@@ -156,6 +156,10 @@ export function ClientList({
       }),
     );
     return filtered.slice().sort((a, b) => {
+      // Ficha incompleta (alerta Completar) primero, tono naranja en la fila.
+      const aPending = clientNeedsProfileCompletion(a) ? 0 : 1;
+      const bPending = clientNeedsProfileCompletion(b) ? 0 : 1;
+      if (aPending !== bPending) return aPending - bPending;
       const routeCmp = a.route.localeCompare(b.route, undefined, { numeric: true });
       if (routeCmp !== 0) return routeCmp;
       return (a.routeOrder || 0) - (b.routeOrder || 0);
@@ -217,10 +221,13 @@ export function ClientList({
     if (id === "ref") return <span className="ref">{row.ref}</span>;
     if (id === "alta") return row.alta || "—";
     if (id === "name") {
+      const showCompletarBadge =
+        clientNeedsProfileCompletion(row) && !visibleCols.includes("status");
       return (
         <span className="cell-with-ico">
           <PersonMiniIcon />
           {row.name}
+          {showCompletarBadge ? <Pill label="Completar" kind="warn" /> : null}
         </span>
       );
     }
@@ -362,10 +369,19 @@ export function ClientList({
                 <td colSpan={activeCols.length + 1}>No hay clientes con esos filtros</td>
               </tr>
             ) : (
-              visible.map((row) => (
+              visible.map((row) => {
+                const incomplete = clientNeedsProfileCompletion(row);
+                const rowClass = [
+                  isRevision ? "client-review-row" : "clickable",
+                  incomplete ? "is-profile-incomplete" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ");
+                return (
                 <tr
                   key={row.ref}
-                  className={isRevision ? "client-review-row" : "clickable"}
+                  className={rowClass}
+                  title={incomplete ? "Ficha incompleta (alta en calle) — completar en oficina" : undefined}
                   onClick={isRevision ? undefined : () => onOpen(row.ref)}
                 >
                   {activeCols.map((col) => (
@@ -396,7 +412,8 @@ export function ClientList({
                     <ColumnPickerBodyCell />
                   )}
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>

@@ -18,7 +18,7 @@ import { periodFromDateIso } from "@/lib/collector-day-close";
 import { todayIso } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { money, type ActivityRow, type CollectorRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
-import { normalizePaymentMethod, paymentMethodLabel } from "@/lib/payment-method";
+import { normalizePaymentMethod, paymentMethodInitial, paymentMethodLabel } from "@/lib/payment-method";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 
 type Props = {
@@ -252,7 +252,12 @@ function DailyLogEntry({
                         <td className="pay-col-client">{payment.client}</td>
                         <td className="pay-col-value money">{money(payment.amount)}</td>
                         <td className="pay-col-type">{payment.type}</td>
-                        <td className="pay-col-method">{paymentMethodLabel(normalizePaymentMethod(payment.method))}</td>
+                        <td
+                          className="pay-col-method"
+                          title={paymentMethodLabel(normalizePaymentMethod(payment.method))}
+                        >
+                          {paymentMethodInitial(normalizePaymentMethod(payment.method))}
+                        </td>
                         <td className="pay-col-evidence pay-evidence-cell">
                           <PaymentEvidenceThumb evidence={payment.evidence} size={22} />
                         </td>

@@ -11,6 +11,7 @@ import { computeLoanCuotasProgress, type CuotasProgress } from "@/lib/loan-cuota
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { planillaCuotaPactada } from "@/lib/planilla-display";
 import {
+  paymentMethodInitial,
   paymentMethodKind,
   paymentMethodLabel,
 } from "@/lib/payment-method";
@@ -56,6 +57,7 @@ type RouteClientRow = {
   paidTime: string;
   paidMethod: string;
   paidMethodKind: StatusKind;
+  paidMethodTitle: string;
   cuotas: CuotasProgress;
   visitStatus: string;
   order: number | string;
@@ -137,8 +139,9 @@ function rowFromAssignment(
     paidToday,
     cobradoHoy: cobradoHoy || (paidToday ? assignment.amountDue : 0),
     paidTime: lastToday?.paidTime?.trim() || "",
-    paidMethod: lastToday ? paymentMethodLabel(lastToday.method) : "",
+    paidMethod: lastToday ? paymentMethodInitial(lastToday.method) : "",
     paidMethodKind: paymentMethodKind(lastToday?.method),
+    paidMethodTitle: lastToday ? paymentMethodLabel(lastToday.method) : "",
     cuotas,
     visitStatus: assignment.visitStatus || "pendiente",
     order: client.routeOrder || order,
@@ -294,7 +297,11 @@ export function RouteClientsView({
                         <div className="route-clients-cobrado">
                           <span className="money">{money(row.cobradoHoy)}</span>
                           {row.paidMethod ? (
-                            <Pill label={row.paidMethod} kind={row.paidMethodKind} />
+                            <Pill
+                              label={row.paidMethod}
+                              kind={row.paidMethodKind}
+                              title={row.paidMethodTitle || undefined}
+                            />
                           ) : null}
                         </div>
                       ) : (

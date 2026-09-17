@@ -31,6 +31,7 @@ import {
 } from "@/lib/mock-data";
 import {
   normalizePaymentMethod,
+  paymentMethodInitial,
   paymentMethodKind,
   paymentMethodLabel,
 } from "@/lib/payment-method";
@@ -605,8 +606,9 @@ export function DailyCollectionsView({
                       <td className="dc-method-cell">
                         {payMethod ? (
                           <Pill
-                            label={paymentMethodLabel(payMethod)}
+                            label={paymentMethodInitial(payMethod)}
                             kind={paymentMethodKind(payMethod)}
+                            title={paymentMethodLabel(payMethod)}
                           />
                         ) : assigned?.dispatched ? (
                           <Pill

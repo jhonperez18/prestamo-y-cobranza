@@ -44,6 +44,7 @@ import { suppressGhostClick, isNavQuiet } from "@/lib/suppress-ghost-click";
 import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import {
   normalizePaymentMethod,
+  paymentMethodInitial,
   paymentMethodLabel,
   paymentMethodToneClass,
   type PaymentMethod,
@@ -407,10 +408,13 @@ function PlanillaTable({
                   {row.clientName}
                 </td>
                 <td className="is-num">{money(row.saldo, { symbol: false })}</td>
-                <td className="is-metodo">
+                    <td className="is-metodo">
                   {method ? (
-                    <em className={`supervisor-planilla-method ${paymentMethodToneClass(method)}`}>
-                      {paymentMethodLabel(method)}
+                    <em
+                      className={`supervisor-planilla-method ${paymentMethodToneClass(method)}`}
+                      title={paymentMethodLabel(method)}
+                    >
+                      {paymentMethodInitial(method)}
                     </em>
                   ) : (
                     "—"
@@ -638,8 +642,11 @@ function SupervisorClientFicha({
                   <span className="is-amount">{money(row.amount, { symbol: false })}</span>
                   <span className="is-date">{row.paidDate || "—"}</span>
                   <span className="is-time">{row.paidTime || "—"}</span>
-                  <span className={`is-method ${paymentMethodToneClass(method)}`}>
-                    {paymentMethodLabel(method)}
+                  <span
+                    className={`is-method ${paymentMethodToneClass(method)}`}
+                    title={paymentMethodLabel(method)}
+                  >
+                    {paymentMethodInitial(method)}
                   </span>
                 </li>
               );

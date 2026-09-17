@@ -7,7 +7,7 @@ import { Pill } from "@/components/ui";
 import type { BankAccount, BankMovement, BankReconciliation } from "@/lib/bank";
 import { formatBankAmount, isPeriodClosed, isoToDisplay } from "@/lib/bank";
 import type { MiscPayment } from "@/lib/misc-payments";
-import { paymentMethodLabel } from "@/lib/payment-method";
+import { paymentMethodInitial, paymentMethodLabel } from "@/lib/payment-method";
 import { MISC_PAYMENT_COLUMNS, MISC_PAYMENT_DEFAULT_COLS } from "@/lib/table-columns";
 
 type Props = {
@@ -173,7 +173,11 @@ export function MiscPaymentListView({
                     {isVisible("account") ? (
                       <td>{accountMap.get(row.bankAccountRef) ?? row.bankAccountRef}</td>
                     ) : null}
-                    {isVisible("method") ? <td>{paymentMethodLabel(row.method)}</td> : null}
+                    {isVisible("method") ? (
+                      <td title={paymentMethodLabel(row.method)}>
+                        {paymentMethodInitial(row.method)}
+                      </td>
+                    ) : null}
                     {isVisible("amount") ? (
                       <td className="right money bank-debit">{formatBankAmount(row.amount)}</td>
                     ) : null}

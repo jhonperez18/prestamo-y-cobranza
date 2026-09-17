@@ -23,7 +23,7 @@ import {
   summarizeReconciledMovements,
   type BankHistoryScope,
 } from "@/lib/bank";
-import { paymentMethodKind, normalizePaymentMethod } from "@/lib/payment-method";
+import { paymentMethodInitial, paymentMethodKind, paymentMethodLabel, normalizePaymentMethod } from "@/lib/payment-method";
 import {
   BANK_LEDGER_EXPENSE_COLUMNS,
   BANK_LEDGER_EXPENSE_DEFAULT_COLS,
@@ -136,8 +136,9 @@ export function BankReconciledLedgerView({
         if (!methodLabel) return "—";
         return (
           <Pill
-            label={methodLabel}
+            label={paymentMethodInitial(methodLabel)}
             kind={paymentMethodKind(normalizePaymentMethod(methodLabel))}
+            title={paymentMethodLabel(methodLabel)}
           />
         );
       }

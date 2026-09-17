@@ -31,7 +31,7 @@ import { CollectorPayForm } from "@/components/CollectorPayForm";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { PermissionChecklist } from "@/components/PermissionChecklist";
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
-import { normalizePaymentMethod, paymentMethodKind, paymentMethodLabel } from "@/lib/payment-method";
+import { normalizePaymentMethod, paymentMethodInitial, paymentMethodKind, paymentMethodLabel } from "@/lib/payment-method";
 import type { CollectorPaymentDraft } from "@/lib/route-sync";
 import { useEffect, useMemo, useState } from "react";
 
@@ -626,8 +626,9 @@ export function CollectorFicha({
                       <td className="money right">{money(row.amount)}</td>
                       <td>
                         <Pill
-                          label={paymentMethodLabel(row.method)}
+                          label={paymentMethodInitial(row.method)}
                           kind={paymentMethodKind(normalizePaymentMethod(row.method))}
+                          title={paymentMethodLabel(row.method)}
                         />
                       </td>
                       <td className="pay-evidence-cell">
