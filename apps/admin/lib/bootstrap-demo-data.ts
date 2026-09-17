@@ -1,14 +1,14 @@
 /**
  * Arranque del paquete canónico (Chrome).
- * v15: estado virgen — sin clientes/préstamos/pagos/historial (listo para datos reales).
+ * v16: re-limpia virgen (banco/pagos) — evita que un origen viejo reinyecte historial.
  * Al instalar, reemplaza estado anterior del origen (localhost ≠ vercel.app).
- * Luego retención 30 días; nunca reinyecta semilla demo.
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
 import {
   DEMO_BANK_ACCOUNTS_KEY,
   DEMO_BANK_MOVEMENTS_KEY,
   DEMO_BANK_RECONCILIATIONS_KEY,
+  DEMO_BANK_SIDES_VERSION_KEY,
   DEMO_CLIENTS_KEY,
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
@@ -29,7 +29,7 @@ import { applyDataRetention } from "@/lib/data-retention";
 import { COLLECTORS, USERS } from "@/lib/mock-data";
 
 /** Subir versión = reinstala el paquete canónico una vez en cada navegador/origen. */
-export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v15";
+export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v16";
 
 const PACKAGE_KEYS = [
   DEMO_CLIENTS_KEY,
@@ -48,9 +48,11 @@ const PACKAGE_KEYS = [
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
   DEMO_COLLECTOR_MONTH_CLOSES_KEY,
   DEMO_PAYMENT_EVIDENCE_KEY,
+  DEMO_BANK_SIDES_VERSION_KEY,
 ] as const;
 
 const PREVIOUS_PACKAGE_FLAGS = [
+  "nexo-demo-bootstrap-package-v15",
   "nexo-demo-bootstrap-package-v14",
   "nexo-demo-bootstrap-package-v13",
   "nexo-demo-bootstrap-package-v12",
@@ -163,15 +165,16 @@ export function bootstrapProtectedDemoData() {
   forceInstallJson(DEMO_LOANS_KEY, asArray(keys[DEMO_LOANS_KEY]));
   forceInstallJson(DEMO_PAYMENTS_KEY, asArray(keys[DEMO_PAYMENTS_KEY]));
   forceInstallJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, asArray(keys[DEMO_COLLECTOR_DAY_CLOSES_KEY]));
-  forceInstallJson(DEMO_BANK_MOVEMENTS_KEY, asArray(keys[DEMO_BANK_MOVEMENTS_KEY]));
   forceInstallJson(DEMO_DAILY_ASSIGNMENTS_KEY, asArray(keys[DEMO_DAILY_ASSIGNMENTS_KEY]));
   forceInstallJson(DEMO_DAILY_LOGS_KEY, asArray(keys[DEMO_DAILY_LOGS_KEY]));
   forceInstallJson(DEMO_ROUTES_KEY, asArray(keys[DEMO_ROUTES_KEY]));
-  forceInstallJson(DEMO_BANK_RECONCILIATIONS_KEY, asArray(keys[DEMO_BANK_RECONCILIATIONS_KEY]));
   forceInstallJson(DEMO_MISC_PAYMENTS_KEY, []);
   forceInstallJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []);
   forceInstallJson(DEMO_COLLECTOR_MONTH_CLOSES_KEY, []);
   forceInstallJson(DEMO_PAYMENT_EVIDENCE_KEY, {});
+  forceInstallJson(DEMO_BANK_SIDES_VERSION_KEY, 2);
+  forceInstallJson(DEMO_BANK_MOVEMENTS_KEY, []);
+  forceInstallJson(DEMO_BANK_RECONCILIATIONS_KEY, []);
 
   const accounts = asArray(keys[DEMO_BANK_ACCOUNTS_KEY]);
   forceInstallJson(
