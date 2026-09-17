@@ -91,3 +91,30 @@ export const DIURNO_CREATED_BY = "Truqui";
 export const DIURNO_ROUTE = "1";
 /** Refs COD-18… para no chocar con el filtro de paquete (COD-0…17). */
 export const DIURNO_REF_START = 18;
+
+/** Clientes sagrados de la hoja: solo posición + nombre (sin datos privados). */
+export function buildDiurnoRoute1Clients() {
+  return DIURNO_ROUTE_NAMES.map((name, index) => ({
+    ref: `COD-${DIURNO_REF_START + index}`,
+    alta: DIURNO_ALTA,
+    name,
+    lastName: "",
+    nickname: "",
+    document: "",
+    city: "",
+    barrio: "",
+    route: DIURNO_ROUTE,
+    routeOrder: index + 1,
+    email: "",
+    phone: "",
+    address: "",
+    notes: "DIURNO",
+    total: 0,
+    pending: 0,
+    status: "Activo",
+    kind: "ok" as const,
+    createdBy: DIURNO_CREATED_BY,
+    awaitingLoan: true,
+    profilePending: true,
+  }));
+}

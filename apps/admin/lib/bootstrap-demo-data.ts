@@ -32,10 +32,7 @@ import { DEMO_PAYMENT_EVIDENCE_KEY } from "@/lib/payment-evidence-store";
 import { applyDataRetention } from "@/lib/data-retention";
 import { COLLECTORS, USERS } from "@/lib/mock-data";
 import {
-  DIURNO_ALTA,
-  DIURNO_CREATED_BY,
-  DIURNO_REF_START,
-  DIURNO_ROUTE,
+  buildDiurnoRoute1Clients,
   DIURNO_ROUTE_NAMES,
 } from "@/lib/seeds/diurno-route-1";
 import {
@@ -95,32 +92,6 @@ const PREVIOUS_PACKAGE_FLAGS = [
 
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : [];
-}
-
-function buildDiurnoRoute1Clients() {
-  return DIURNO_ROUTE_NAMES.map((name, index) => ({
-    ref: `COD-${DIURNO_REF_START + index}`,
-    alta: DIURNO_ALTA,
-    name,
-    lastName: "",
-    nickname: "",
-    document: "",
-    city: "",
-    barrio: "",
-    route: DIURNO_ROUTE,
-    routeOrder: index + 1,
-    email: "",
-    phone: "",
-    address: "",
-    notes: "DIURNO",
-    total: 0,
-    pending: 0,
-    status: "Activo",
-    kind: "ok" as const,
-    createdBy: DIURNO_CREATED_BY,
-    awaitingLoan: true,
-    profilePending: true,
-  }));
 }
 
 /** Instala el paquete aunque sea [] (writeDemoJson protege vaciados accidentales). */
@@ -224,7 +195,19 @@ function requestCloudVirginWipe() {
       method: "POST",
       headers: { "x-nexo-wipe-gen": DEMO_VIRGIN_WIPE_GEN },
       cache: "no-store",
-    });
+    })
+      .then(async (res) => {
+        if (!res.ok) return;
+        // Tras wipe, siembra DIURNO en SQL (clientes sagrados; no dependen del navegador).
+        await fetch("/api/ops/seed-diurno", {
+          method: "POST",
+          headers: { "x-nexo-wipe-gen": DEMO_VIRGIN_WIPE_GEN },
+          cache: "no-store",
+        });
+      })
+      .catch(() => {
+        /* ignore offline */
+      });
   } catch {
     /* ignore offline */
   }
@@ -368,7 +351,7 @@ export function bootstrapProtectedDemoData() {
     /* ignore */
   }
 
-  // Nube: borrar de raíz (sin papelera) cobros/gastos/planilla/clientes.
+  // Nube: vacía basura y vuelve a sembrar clientes DIURNO (nunca deja SQL sin catálogo).
   requestCloudVirginWipe();
 
   scrubLegacyMockDemoRows();

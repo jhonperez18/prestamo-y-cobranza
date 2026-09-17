@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
+import { seedDiurnoClientsInCloud } from "@/lib/diurno-cloud-seed";
+import { DIURNO_ROUTE_NAMES } from "@/lib/seeds/diurno-route-1";
 
 import { VIRGIN_WIPE_GEN } from "@/lib/virgin-lock";
 
@@ -36,9 +38,9 @@ async function deleteAllRefs(
 }
 
 /**
- * Vacía cobros / clientes / préstamos / planilla / CIE / gastos / PV.
+ * Vacía cobros / préstamos / planilla / CIE / gastos / PV.
+ * Luego vuelve a sembrar CLIENTES DIURNO en SQL (catálogo sagrado).
  * Conserva logins (profiles) y deja rutas/cobradores para el arranque.
- * No mueve nada a “papelera”: borra de raíz en Postgres.
  */
 export async function POST(req: Request) {
   const { configured } = getSupabasePublicEnv();
@@ -87,7 +89,7 @@ export async function POST(req: Request) {
             zone: "",
             frequency: "Lun–Sáb",
             stops: [],
-            clients_count: 0,
+            clients_count: DIURNO_ROUTE_NAMES.length,
             status: "Activa",
             kind: "ok",
             updated_at: new Date().toISOString(),
@@ -120,7 +122,22 @@ export async function POST(req: Request) {
       counts.routes = routeErr instanceof Error ? `err:${routeErr.message}` : "err";
     }
 
-    return NextResponse.json({ ok: true, gen: WIPE_GEN, counts });
+    // Clientes sagrados: nunca dejar SQL vacío tras wipe.
+    const seed = await seedDiurnoClientsInCloud();
+    if (!seed.ok) {
+      return NextResponse.json(
+        { ok: false, error: seed.error, gen: WIPE_GEN, counts },
+        { status: 500 },
+      );
+    }
+    counts.clients = seed.seeded;
+
+    return NextResponse.json({
+      ok: true,
+      gen: WIPE_GEN,
+      counts,
+      seededClients: seed.seeded,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "wipe_failed";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
