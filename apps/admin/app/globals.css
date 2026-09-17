@@ -6800,7 +6800,8 @@
       font-size: 16px;
     }
     .home-route-plantilla {
-      width: min(1180px, 100%);
+      width: 100%;
+      max-width: none;
     }
     .home-route-plantilla-panel {
       width: 100%;
