@@ -71,7 +71,7 @@ const SORT_HEADERS = [
   { id: "cobrador", t: "Cobrador", sortKey: "cobrador" },
   { id: "cuota", t: "Cuota", right: true },
   { id: "valor", t: "Cobrado", right: true, sortKey: "valor" },
-  { id: "method", t: "Forma de pago" },
+  { id: "method", t: "Método" },
   { id: "evidence", t: "Comprobante" },
   { id: "ruta", t: "Ruta" },
   { id: "estado", t: "Estado" },
@@ -240,14 +240,28 @@ export function CobranzaPaymentsView({
           <Kpi label="Total recaudado" value={money(total)} hint="En el periodo filtrado" tone="amber" />
         </div>
 
-        <div className="table-wrap">
-          <table className="data list-grid">
+        <div className="table-wrap cobranza-payments-table">
+          <table className="data list-grid cobranza-payments-grid">
+            <colgroup>
+              {columnVisibility.isVisible("ref") ? <col className="cp-ref" /> : null}
+              {columnVisibility.isVisible("fecha") ? <col className="cp-fecha" /> : null}
+              {columnVisibility.isVisible("hora") ? <col className="cp-hora" /> : null}
+              {columnVisibility.isVisible("cliente") ? <col className="cp-cliente" /> : null}
+              {columnVisibility.isVisible("cobrador") ? <col className="cp-cobrador" /> : null}
+              {columnVisibility.isVisible("cuota") ? <col className="cp-cuota" /> : null}
+              {columnVisibility.isVisible("valor") ? <col className="cp-valor" /> : null}
+              {columnVisibility.isVisible("method") ? <col className="cp-method" /> : null}
+              {columnVisibility.isVisible("evidence") ? <col className="cp-evidence" /> : null}
+              {columnVisibility.isVisible("ruta") ? <col className="cp-ruta" /> : null}
+              {columnVisibility.isVisible("estado") ? <col className="cp-estado" /> : null}
+              <col className="cp-picker" />
+            </colgroup>
           <thead>
             <tr className="col-titles">
                 {visibleHeaders.map((header) => {
                   const active = "sortKey" in header && header.sortKey === paymentSortKey;
                   const className = [
-                    "right" in header && header.right ? "right" : undefined,
+                    "cp-col",
                     "sortKey" in header && header.sortKey ? "sortable" : undefined,
                     active ? "sorted" : undefined,
                   ]
@@ -303,20 +317,24 @@ export function CobranzaPaymentsView({
                 paymentsWithEvidence.map((row) => (
                   <tr key={row.ref}>
                     {columnVisibility.isVisible("ref") ? (
-                      <td>
+                      <td className="cp-col">
                         <PaymentRefLink refCode={row.ref} onOpen={onOpenPayment} />
                       </td>
                     ) : null}
                     {columnVisibility.isVisible("fecha") ? (
-                      <td>{paymentFechaLabel(row)}</td>
+                      <td className="cp-col">{paymentFechaLabel(row)}</td>
                     ) : null}
                     {columnVisibility.isVisible("hora") ? (
-                      <td>{paymentTimeLabel(row)}</td>
+                      <td className="cp-col">{paymentTimeLabel(row)}</td>
                     ) : null}
-                    {columnVisibility.isVisible("cliente") ? <td>{row.client}</td> : null}
-                    {columnVisibility.isVisible("cobrador") ? <td>{row.collector}</td> : null}
+                    {columnVisibility.isVisible("cliente") ? (
+                      <td className="cp-col cp-name">{row.client}</td>
+                    ) : null}
+                    {columnVisibility.isVisible("cobrador") ? (
+                      <td className="cp-col cp-name">{row.collector}</td>
+                    ) : null}
                     {columnVisibility.isVisible("cuota") ? (
-                      <td className="money right">
+                      <td className="cp-col money">
                         {(() => {
                           const loan = row.loanRef ? loanMap.get(row.loanRef) : undefined;
                           const cuota = loan?.installment ?? 0;
@@ -325,10 +343,10 @@ export function CobranzaPaymentsView({
                       </td>
                     ) : null}
                     {columnVisibility.isVisible("valor") ? (
-                      <td className="money right">{money(row.amount)}</td>
+                      <td className="cp-col money">{money(row.amount)}</td>
                     ) : null}
                     {columnVisibility.isVisible("method") ? (
-                      <td>
+                      <td className="cp-col cp-method-cell">
                         <Pill
                           label={paymentMethodInitial(row.method)}
                           kind={paymentMethodKind(normalizePaymentMethod(row.method))}
@@ -337,7 +355,7 @@ export function CobranzaPaymentsView({
                       </td>
                     ) : null}
                     {columnVisibility.isVisible("evidence") ? (
-                      <td className="pay-evidence-cell">
+                      <td className="cp-col pay-evidence-cell">
                         <PaymentEvidenceThumb
                           evidence={row.evidence}
                           size={22}
@@ -350,7 +368,7 @@ export function CobranzaPaymentsView({
                       </td>
                     ) : null}
                     {columnVisibility.isVisible("ruta") ? (
-                      <td>
+                      <td className="cp-col">
                         {paymentRouteLabel(row, {
                           loans: loanMap,
                           clients,
@@ -360,7 +378,7 @@ export function CobranzaPaymentsView({
                       </td>
                     ) : null}
                     {columnVisibility.isVisible("estado") ? (
-                      <td>
+                      <td className="cp-col">
                         <PaymentStatusPill
                           payment={row}
                           loan={row.loanRef ? loanMap.get(row.loanRef) : undefined}

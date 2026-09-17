@@ -8,7 +8,7 @@ export const COBRANZA_PAYMENT_COLUMNS: ColumnOption[] = [
   { id: "cobrador", label: "Cobrador" },
   { id: "cuota", label: "Cuota" },
   { id: "valor", label: "Cobrado" },
-  { id: "method", label: "Forma de pago" },
+  { id: "method", label: "Método" },
   { id: "evidence", label: "Comprobante" },
   { id: "ruta", label: "Ruta" },
   { id: "estado", label: "Estado" },

@@ -7674,6 +7674,61 @@
     .cobranza-payments-view .head .btn.primary {
       margin-right: 4px;
     }
+    /* Informe Cobros diarios — título centrado sobre su dato, hoja uniforme */
+    .cobranza-payments-table {
+      margin: 0 16px 20px;
+    }
+    .cobranza-payments-grid {
+      table-layout: fixed;
+      width: 100%;
+    }
+    .cobranza-payments-grid col.cp-ref { width: 8%; }
+    .cobranza-payments-grid col.cp-fecha { width: 9%; }
+    .cobranza-payments-grid col.cp-hora { width: 9%; }
+    .cobranza-payments-grid col.cp-cliente { width: 14%; }
+    .cobranza-payments-grid col.cp-cobrador { width: 12%; }
+    .cobranza-payments-grid col.cp-cuota { width: 8%; }
+    .cobranza-payments-grid col.cp-valor { width: 8%; }
+    .cobranza-payments-grid col.cp-method { width: 7%; }
+    .cobranza-payments-grid col.cp-evidence { width: 8%; }
+    .cobranza-payments-grid col.cp-ruta { width: 5%; }
+    .cobranza-payments-grid col.cp-estado { width: 8%; }
+    .cobranza-payments-grid col.cp-picker { width: 40px; }
+    .cobranza-payments-grid th.cp-col,
+    .cobranza-payments-grid td.cp-col {
+      text-align: center;
+      vertical-align: middle;
+      padding: 8px 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .cobranza-payments-grid th.cp-col.sortable {
+      padding: 0;
+    }
+    .cobranza-payments-grid th.cp-col.sortable .th-sort {
+      justify-content: center;
+      width: 100%;
+      padding: 8px 6px;
+    }
+    .cobranza-payments-grid td.cp-name {
+      white-space: nowrap;
+    }
+    .cobranza-payments-grid td.cp-method-cell,
+    .cobranza-payments-grid td.pay-evidence-cell {
+      text-align: center;
+    }
+    .cobranza-payments-grid td.cp-method-cell .pill,
+    .cobranza-payments-grid td.cp-col .pill {
+      margin-inline: auto;
+    }
+    .cobranza-payments-grid td.pay-evidence-cell {
+      display: table-cell;
+    }
+    .cobranza-payments-grid td.pay-evidence-cell .payment-evidence-thumb,
+    .cobranza-payments-grid td.pay-evidence-cell > * {
+      margin-inline: auto;
+    }
     .cobranza-report-filters {
       display: flex;
       flex-wrap: wrap;

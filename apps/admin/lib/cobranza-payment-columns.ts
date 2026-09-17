@@ -4,6 +4,7 @@ import type { PaymentMovement } from "@/lib/payment-detail";
 import { cuotaAmountForPayment, paymentSettlementStatus } from "@/lib/payment-detail";
 import type { ClientRow, LoanRow, PaymentRow, RouteRow } from "@/lib/mock-data";
 import { money } from "@/lib/mock-data";
+import { paymentMethodInitial } from "@/lib/payment-method";
 import { COBRANZA_PAYMENT_COLUMNS } from "@/lib/table-columns";
 
 export const COBRANZA_PAYMENT_REPORT_COLUMNS = COBRANZA_PAYMENT_COLUMNS;
@@ -86,7 +87,7 @@ export function cobranzaPaymentReportCell(
     case "valor":
       return money(payment.amount);
     case "method":
-      return movement.method;
+      return paymentMethodInitial(payment.method);
     case "evidence":
       return movement.hasReceipt ? "Sí" : "—";
     case "ruta":
