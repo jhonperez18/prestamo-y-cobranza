@@ -31,7 +31,7 @@ import {
   summarizeMovements,
 } from "@/lib/bank";
 import { BANK_RECORD_COLUMNS, BANK_RECORD_DEFAULT_COLS } from "@/lib/table-columns";
-import { paymentMethodInitial, paymentMethodKind, paymentMethodLabel, normalizePaymentMethod } from "@/lib/payment-method";
+import { paymentMethodPillProps } from "@/lib/payment-method";
 import { Pill } from "@/components/ui";
 import { downloadDemoSnapshot, importDemoSnapshot } from "@/lib/demo-persist";
 
@@ -454,11 +454,7 @@ export function BankRecordsHistoryView({
                     {isVisible("method") ? (
                       <td>
                         {methodLabel ? (
-                          <Pill
-                            label={paymentMethodInitial(methodLabel)}
-                            kind={paymentMethodKind(normalizePaymentMethod(methodLabel))}
-                            title={paymentMethodLabel(methodLabel)}
-                          />
+                          <Pill {...paymentMethodPillProps(methodLabel)} />
                         ) : (
                           "—"
                         )}

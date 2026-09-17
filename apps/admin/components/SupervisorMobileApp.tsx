@@ -2049,8 +2049,11 @@ export function SupervisorMobileApp({
                         ) : null}
                       </div>
                       <span className="is-loan">{pay.loanRef || "—"}</span>
-                      <em className={`is-method ${paymentMethodToneClass("banco")}`}>
-                        {paymentMethodLabel("banco")}
+                      <em
+                        className={`is-method ${paymentMethodToneClass("banco")}`}
+                        title={paymentMethodLabel("banco")}
+                      >
+                        {paymentMethodInitial("banco")}
                       </em>
                       <span className="is-evidence">
                         <PaymentEvidenceThumb

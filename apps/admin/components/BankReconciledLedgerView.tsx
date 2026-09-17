@@ -23,7 +23,7 @@ import {
   summarizeReconciledMovements,
   type BankHistoryScope,
 } from "@/lib/bank";
-import { paymentMethodInitial, paymentMethodKind, paymentMethodLabel, normalizePaymentMethod } from "@/lib/payment-method";
+import { paymentMethodPillProps } from "@/lib/payment-method";
 import {
   BANK_LEDGER_EXPENSE_COLUMNS,
   BANK_LEDGER_EXPENSE_DEFAULT_COLS,
@@ -134,13 +134,7 @@ export function BankReconciledLedgerView({
       case "method": {
         const methodLabel = bankMovementPaymentMethodLabel(row);
         if (!methodLabel) return "—";
-        return (
-          <Pill
-            label={paymentMethodInitial(methodLabel)}
-            kind={paymentMethodKind(normalizePaymentMethod(methodLabel))}
-            title={paymentMethodLabel(methodLabel)}
-          />
-        );
+        return <Pill {...paymentMethodPillProps(methodLabel)} />;
       }
       case "valueDate":
         return isoToDisplay(row.valueDate);

@@ -263,6 +263,13 @@ export async function mirrorPaymentToSupabase(
       }
       return { ok: true };
     }
+    // Constraint viejo sin 'banco': no tumbar el cobro local; cola reintenta tras migración.
+    if (/method/i.test(msg) && /banco|check|constraint/i.test(msg)) {
+      return {
+        ok: false,
+        error: `payments_method_ok necesita 'banco' — aplicar migración 20260916200000_payments_method_banco.sql (${msg})`,
+      };
+    }
     return { ok: false, error: msg };
   }
   return { ok: true };

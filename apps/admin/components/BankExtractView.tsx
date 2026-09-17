@@ -28,7 +28,7 @@ import {
   summarizeMovements,
   syncPaymentsToMovements,
 } from "@/lib/bank";
-import { paymentMethodInitial, paymentMethodKind, paymentMethodLabel, normalizePaymentMethod } from "@/lib/payment-method";
+import { paymentMethodPillProps } from "@/lib/payment-method";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement } from "@/lib/misc-payments";
 import type { PaymentRow } from "@/lib/mock-data";
@@ -623,15 +623,7 @@ export function BankExtractView({
                     ) : null}
                     {isVisible("method") ? (
                       <td>
-                        {methodLabel ? (
-                          <Pill
-                            label={paymentMethodInitial(methodLabel)}
-                            kind={paymentMethodKind(normalizePaymentMethod(methodLabel))}
-                            title={paymentMethodLabel(methodLabel)}
-                          />
-                        ) : (
-                          "—"
-                        )}
+                        {methodLabel ? <Pill {...paymentMethodPillProps(methodLabel)} /> : "—"}
                       </td>
                     ) : null}
                     {isVisible("valueDate") ? <td>{isoToDisplay(row.valueDate)}</td> : null}

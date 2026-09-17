@@ -8,15 +8,18 @@ export const PAYMENT_METHODS: { id: PaymentMethod; label: string; hint: string }
   { id: "banco", label: "Banco", hint: "Consignación / transferencia · requiere comprobante" },
 ];
 
-/** Acepta id (`nequi`) o etiqueta (`Nequi`); nunca infiere desde evidencia u otros campos. */
+/** Acepta id (`nequi`), etiqueta (`Nequi`) o inicial (`N`/`E`/`B`); nunca infiere desde evidencia. */
 export function normalizePaymentMethod(method?: PaymentMethod | string | null): PaymentMethod {
   const raw = String(method ?? "")
     .trim()
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
-  if (raw === "nequi") return "nequi";
-  if (raw === "banco" || raw === "transferencia" || raw === "consignacion") return "banco";
+  if (raw === "nequi" || raw === "n") return "nequi";
+  if (raw === "banco" || raw === "b" || raw === "transferencia" || raw === "consignacion") {
+    return "banco";
+  }
+  if (raw === "efectivo" || raw === "e") return "efectivo";
   return "efectivo";
 }
 
@@ -33,6 +36,16 @@ export function paymentMethodInitial(method?: PaymentMethod | string | null) {
   if (normalized === "nequi") return "N";
   if (normalized === "banco") return "B";
   return "E";
+}
+
+/** Props seguras para Pill de método en tablas (nunca lanza). */
+export function paymentMethodPillProps(method?: PaymentMethod | string | null) {
+  const normalized = normalizePaymentMethod(method);
+  return {
+    label: paymentMethodInitial(normalized),
+    kind: paymentMethodKind(normalized),
+    title: paymentMethodLabel(normalized),
+  };
 }
 
 export function paymentMethodKind(method?: PaymentMethod | string | null): StatusKind {
