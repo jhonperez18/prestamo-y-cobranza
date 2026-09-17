@@ -238,7 +238,7 @@ export function RouteClientsView({
           <thead>
             <tr className="col-titles">
               <th>#</th>
-              <th>Nombre</th>
+              <th className="is-nombre">Nombre</th>
               <th>Apodo</th>
               <th>Saldo</th>
               <th title="Cuota pactada del préstamo (fija)">Cuota</th>
@@ -279,7 +279,12 @@ export function RouteClientsView({
                       {row.order || "—"}
                     </td>
                     <td
-                      className={openClient || openLoan ? "clickable" : undefined}
+                      className={[
+                        "is-nombre",
+                        openClient || openLoan ? "clickable" : undefined,
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                       onClick={openLoan ?? openClient}
                       style={openLoan || openClient ? { cursor: "pointer" } : undefined}
                       title={row.loan ? `Préstamo ${row.loan.ref}` : undefined}

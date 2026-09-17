@@ -10,6 +10,7 @@ import { shareLoanFichaCapture } from "@/lib/loan-ficha-share";
 import { routeCoverageSummaries } from "@/lib/collector-preview";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
+import { isValidPlanillaAssignment } from "@/lib/planilla-eligibility";
 import { clientsOnRouteSorted, nextRouteOrder } from "@/lib/client-route-order";
 import { isOperationalClient } from "@/lib/client-review";
 import {
@@ -798,9 +799,14 @@ export function SupervisorMobileApp({
   const todayAssignments = useMemo(
     () =>
       dedupePlanillaAssignments(
-        assignments.filter((row) => row.dispatched && row.dispatchDate === today),
+        assignments.filter(
+          (row) =>
+            row.dispatched &&
+            row.dispatchDate === today &&
+            isValidPlanillaAssignment(row, clients, loans),
+        ),
       ),
-    [assignments, today],
+    [assignments, today, clients, loans],
   );
 
   const assignedCoverage = useMemo(

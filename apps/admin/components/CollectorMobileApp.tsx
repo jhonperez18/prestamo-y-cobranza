@@ -140,7 +140,9 @@ function visitIdentity(
   today = todayIso(),
 ) {
   const client = clients.find((row) => row.ref === item.clientRef);
-  const awaitingLoan = Boolean(item.awaitingLoan || client?.awaitingLoan);
+  const awaitingLoan = Boolean(
+    (item.awaitingLoan || item.itemId.includes(":prestar")) && !item.loanRef,
+  );
   const rawLoan = awaitingLoan
     ? null
     : (item.loanRef ? loans.find((row) => row.ref === item.loanRef) : null) ??

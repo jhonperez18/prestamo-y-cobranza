@@ -185,45 +185,8 @@ export function syncPermanentRoutePlanilla(
     if (!collector) continue;
 
     for (const client of clientsOnRouteSorted(clients, route.name)) {
-      if (client.awaitingLoan) {
-        const hasActiveLoan = loans.some(
-          (loan) =>
-            loan.clientRef === client.ref && loan.balance > 0 && loan.status !== "Anulado",
-        );
-        if (!hasActiveLoan && !isPendingReview(client)) {
-          const itemId = `${date}:${client.ref}:prestar`;
-          const base: DailyCollectionAssignment = {
-            itemId,
-            dispatchDate: date,
-            loanRef: "",
-            clientRef: client.ref,
-            clientName: clientLabel(client),
-            clientRoute: client.route,
-            address: client.address,
-            chargeDate: date,
-            amountDue: 0,
-            chargeLabel: "Completar",
-            kind: "cuota",
-            alertCount: 0,
-            collectorRef: collector.ref,
-            collector: collector.name,
-            assignedAt: at,
-            dispatched: true,
-            dispatchedAt: at,
-            visitStatus: "pendiente",
-            awaitingLoan: true,
-          };
-          builtMap.set(
-            itemId,
-            preserveProgress(
-              base,
-              previousByKey.get(itemId) ?? previousByClientLoan.get(`${client.ref}:`),
-            ),
-          );
-        }
-      }
-
-      // Solo cobros reales: no inventar “visita de ruta” si el cliente no tiene cuota.
+      // Solo cobros reales: sin préstamo cobrable hoy → no entra a planilla del cobrador.
+      // Alta / awaitingLoan se gestiona en Clientes; no genera visita "Completar".
       const items = loanItemsForClient(client, loans, date, payments);
       if (!items.length) continue;
       for (const item of items) {

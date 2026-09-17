@@ -6443,6 +6443,31 @@
     .bank-records-table th:not(.col-picker-cell) {
       text-align: center !important;
     }
+    /* Única excepción del sistema: columna Nombre a la izquierda. */
+    table.data th.is-nombre,
+    table.data td.is-nombre,
+    table.list-grid th.is-nombre,
+    table.list-grid td.is-nombre,
+    table.list-data-table th.is-nombre,
+    table.list-data-table td.is-nombre,
+    table.mini-grid th.is-nombre,
+    table.mini-grid td.is-nombre,
+    .bank-table th.is-nombre,
+    .bank-table td.is-nombre,
+    .supervisor-liq-table th.is-nombre,
+    .supervisor-liq-table td.is-nombre,
+    .supervisor-planilla-table th.is-nombre,
+    .supervisor-planilla-table td.is-nombre,
+    .supervisor-clientes-table th.is-nombre,
+    .supervisor-clientes-table td.is-nombre {
+      text-align: left !important;
+    }
+    table.data th.is-nombre.sortable .th-sort,
+    table.list-grid th.is-nombre.sortable .th-sort,
+    table.list-data-table th.is-nombre.sortable .th-sort {
+      justify-content: flex-start;
+      text-align: left;
+    }
     table.data td {
       border-bottom: 1px solid #dce8e2;
     }

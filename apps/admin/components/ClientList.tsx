@@ -350,7 +350,7 @@ export function ClientList({
             </tr>
             <tr className="col-titles">
               {activeCols.map((col) => (
-                <th key={col.id} className={col.id === "pending" ? "right" : undefined}>
+                <th key={col.id} className={col.id === "pending" ? "right" : col.id === "name" ? "is-nombre" : undefined}>
                   {col.label}
                 </th>
               ))}
@@ -387,7 +387,13 @@ export function ClientList({
                   {activeCols.map((col) => (
                     <td
                       key={col.id}
-                      className={col.id === "pending" ? "money right" : undefined}
+                      className={
+                        col.id === "pending"
+                          ? "money right"
+                          : col.id === "name"
+                            ? "is-nombre"
+                            : undefined
+                      }
                       onClick={isRevision ? undefined : () => onOpen(row.ref)}
                       role={isRevision ? undefined : "button"}
                     >

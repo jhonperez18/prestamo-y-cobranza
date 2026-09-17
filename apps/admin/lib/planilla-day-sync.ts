@@ -182,6 +182,14 @@ export function planillaAssignmentsForRoute(
         row.collectorRef === collectorRef &&
         (row.clientRoute === routeName || row.clientRoute === String(routeName)),
     )
+    // Solo cobros con préstamo: nunca visitas Completar / alta sin cuota.
+    .filter(
+      (row) =>
+        Boolean(row.loanRef) &&
+        !row.awaitingLoan &&
+        !row.itemId.includes(":prestar") &&
+        !row.itemId.includes(":ruta"),
+    )
     .filter((row) => {
       const key = row.itemId || `${row.loanRef}:${row.clientRef}`;
       if (seen.has(key)) return false;

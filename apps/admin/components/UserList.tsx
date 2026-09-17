@@ -166,7 +166,9 @@ export function UserList({
           <thead>
             <tr className="col-titles">
               {USER_LIST_COLUMNS.filter((col) => isVisible(col.id)).map((col) => (
-                <th key={col.id}>{col.label}</th>
+                <th key={col.id} className={col.id === "name" ? "is-nombre" : undefined}>
+                  {col.label}
+                </th>
               ))}
               <ColumnPickerHeadCell>
                 <ColumnPicker
@@ -195,7 +197,9 @@ export function UserList({
                   }}
                 >
                   {USER_LIST_COLUMNS.filter((col) => isVisible(col.id)).map((col) => (
-                    <td key={col.id}>{renderCell(row, col.id)}</td>
+                    <td key={col.id} className={col.id === "name" ? "is-nombre" : undefined}>
+                      {renderCell(row, col.id)}
+                    </td>
                   ))}
                   <ColumnPickerBodyCell />
                 </tr>

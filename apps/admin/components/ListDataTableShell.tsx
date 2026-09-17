@@ -52,7 +52,15 @@ export function ListDataTableShell({
               {columns.map((col) => (
                 <th
                   key={col.id}
-                  className={col.center ? "center" : col.right ? "right" : undefined}
+                  className={
+                    col.label === "Nombre"
+                      ? "is-nombre"
+                      : col.center
+                        ? "center"
+                        : col.right
+                          ? "right"
+                          : undefined
+                  }
                 >
                   {col.label}
                 </th>
@@ -66,7 +74,15 @@ export function ListDataTableShell({
                   {columns.map((col) => (
                     <td
                       key={col.id}
-                      className={col.center ? "center" : col.right ? "right" : undefined}
+                      className={
+                        col.label === "Nombre"
+                          ? "is-nombre"
+                          : col.center
+                            ? "center"
+                            : col.right
+                              ? "right"
+                              : undefined
+                      }
                     >
                       <span className="list-data-ghost-bar" />
                     </td>
