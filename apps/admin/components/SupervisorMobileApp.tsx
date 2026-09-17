@@ -1573,8 +1573,11 @@ export function SupervisorMobileApp({
                       <strong className="is-name">{pay.client}</strong>
                       <span className="is-when">{pay.paidTime || "—"}</span>
                       <span className="is-loan">{pay.loanRef || "—"}</span>
-                      <em className={`is-method ${paymentMethodToneClass("nequi")}`}>
-                        {paymentMethodLabel("nequi")}
+                      <em
+                        className={`is-method ${paymentMethodToneClass("nequi")}`}
+                        title={paymentMethodLabel("nequi")}
+                      >
+                        {paymentMethodInitial("nequi")}
                       </em>
                       <span className="is-evidence">
                         <PaymentEvidenceThumb
@@ -1958,8 +1961,11 @@ export function SupervisorMobileApp({
                         ) : null}
                       </div>
                       <span className="is-loan">{pay.loanRef || "—"}</span>
-                      <em className={`is-method ${paymentMethodToneClass("nequi")}`}>
-                        {paymentMethodLabel("nequi")}
+                      <em
+                        className={`is-method ${paymentMethodToneClass("nequi")}`}
+                        title={paymentMethodLabel("nequi")}
+                      >
+                        {paymentMethodInitial("nequi")}
                       </em>
                       <span className="is-evidence">
                         <PaymentEvidenceThumb
