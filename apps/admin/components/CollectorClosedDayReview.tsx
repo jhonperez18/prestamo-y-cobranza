@@ -126,7 +126,7 @@ export function CollectorClosedDayReview({
         ) : (
           <ul
             className={`collector-closed-review-list is-cobros-cols${
-              showEvidenceCol ? " has-evidence" : ""
+              showEvidenceCol ? " has-evidence is-nequi-day-ficha" : ""
             }`}
           >
             {cobros.map((item) => {
@@ -137,10 +137,17 @@ export function CollectorClosedDayReview({
               const when = pay?.paidTime?.trim() || "";
               return (
                 <li key={item.itemId}>
-                  <div className="is-name-block">
-                    <strong className="is-name">{item.clientName}</strong>
-                    {when ? <span className="is-when">{when}</span> : null}
-                  </div>
+                  {showEvidenceCol ? (
+                    <>
+                      <strong className="is-name">{item.clientName}</strong>
+                      <span className="is-when">{when || "—"}</span>
+                    </>
+                  ) : (
+                    <div className="is-name-block">
+                      <strong className="is-name">{item.clientName}</strong>
+                      {when ? <span className="is-when">{when}</span> : null}
+                    </div>
+                  )}
                   <span className="is-loan">{loanRef}</span>
                   <em
                     className={`is-method ${paymentMethodToneClass(method)}`}
@@ -151,7 +158,7 @@ export function CollectorClosedDayReview({
                   {showEvidenceCol ? (
                     <span className="is-evidence">
                       {method && paymentMethodRequiresReceipt(method) ? (
-                        <PaymentEvidenceThumb evidence={pay?.evidence} size={36} />
+                        <PaymentEvidenceThumb evidence={pay?.evidence} size={28} />
                       ) : (
                         <span className="payment-evidence-empty">—</span>
                       )}

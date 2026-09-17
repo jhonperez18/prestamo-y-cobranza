@@ -418,12 +418,12 @@ export function CollectorMobileApp({
   function togglePay(item: DailyCollectionAssignment) {
     if (!canCollect || collectionStopped || !onRegisterPayment) return;
     const key = itemKey(item);
-    suppressGhostClick(900);
+    suppressGhostClick(420);
     setExpandedKey((current) => (current === key ? null : key));
   }
 
   function closeCard() {
-    suppressGhostClick(900);
+    suppressGhostClick(420);
     setExpandedKey(null);
   }
 
@@ -432,7 +432,7 @@ export function CollectorMobileApp({
     setConfirmingClose(false);
     // Misma pestaña: no resetear (evita que un click fantasma al abrir cobro cierre el panel).
     if (next === listFilter) return;
-    suppressGhostClick(900);
+    suppressGhostClick(420);
     setListFilter(next);
     setExpandedKey(null);
   }

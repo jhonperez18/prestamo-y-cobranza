@@ -1704,21 +1704,74 @@
       padding-left: 4px;
     }
     .collector-closed-review-list.is-cobros-cols.has-evidence.is-nequi-register > li:not(.is-total) {
-      grid-template-columns: minmax(10rem, 1fr) auto auto auto auto;
-      column-gap: 12px;
-      padding-left: 14px;
-      padding-right: 14px;
+      grid-template-columns: 1.35fr 1.15fr 0.55fr 0.85fr 32px 0.95fr;
+      column-gap: 6px;
+      padding-left: 10px;
+      padding-right: 10px;
     }
-    .collector-closed-review-list.is-cobros-cols.has-evidence.is-nequi-day-ficha > li:not(.is-total) {
+    /* Formato fijo del sistema: intercalado + misma altura (Nequi, Banco, cobros). */
+    .collector-closed-review-list.is-cobros-cols.has-evidence {
+      gap: 0;
+      border: 1px solid #c3d4cc;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .collector-closed-review-list.is-cobros-cols.has-evidence > li:not(.is-total) {
+      margin: 0;
+      border: 0;
+      border-bottom: 1px solid #e2ece7;
+      border-radius: 0;
+      padding-top: var(--table-row-pad-y);
+      padding-bottom: var(--table-row-pad-y);
+      min-height: calc(28px + (var(--table-row-pad-y) * 2));
+      line-height: var(--table-row-line);
+      box-sizing: border-box;
+      background: var(--row-b);
+    }
+    .collector-closed-review-list.is-cobros-cols.has-evidence > li:not(.is-total):nth-child(odd) {
+      background: var(--row-a);
+    }
+    .collector-closed-review-list.is-cobros-cols.has-evidence > li:not(.is-total):nth-child(even) {
+      background: var(--row-b);
+    }
+    .collector-closed-review-list.is-cobros-cols.has-evidence > li.is-total {
+      margin: 0;
+      border: 0;
+      border-top: 1px dashed #c3d4cc;
+      border-radius: 0;
+      background: #fff;
+      padding-top: var(--table-row-pad-y);
+      padding-bottom: var(--table-row-pad-y);
+      min-height: calc(28px + (var(--table-row-pad-y) * 2));
+      line-height: var(--table-row-line);
+      box-sizing: border-box;
+    }
+    .collector-closed-review-list.is-cobros-cols.has-evidence.is-nequi-day-ficha > li:not(.is-total),
+    .collector-closed-review-list.is-cobros-cols.has-evidence.is-nequi-register.is-nequi-day-ficha > li:not(.is-total) {
       display: grid;
       grid-template-columns: 1.35fr 1.15fr 0.55fr 0.85fr 32px 0.95fr;
       column-gap: 6px;
       row-gap: 0;
       align-items: center;
-      padding: 7px 10px;
-      min-height: 0;
       width: 100%;
-      box-sizing: border-box;
+      padding-left: 10px;
+      padding-right: 10px;
+      min-height: calc(28px + (var(--table-row-pad-y) * 2));
+    }
+    .collector-closed-review-list.is-cobros-cols.has-evidence.is-nequi-day-ficha > li.is-total {
+      padding-left: 10px;
+      padding-right: 10px;
+      min-height: calc(28px + (var(--table-row-pad-y) * 2));
+    }
+    /* Forzar rayado aunque el contenedor Nequi/Banco pinte fondo propio. */
+    .supervisor-nequi-day .collector-closed-review-list.is-cobros-cols.has-evidence > li:not(.is-total):nth-child(odd),
+    .supervisor-nequi-register .collector-closed-review-list.is-cobros-cols.has-evidence > li:not(.is-total):nth-child(odd) {
+      background: var(--row-a);
+    }
+    .supervisor-nequi-day .collector-closed-review-list.is-cobros-cols.has-evidence > li:not(.is-total):nth-child(even),
+    .supervisor-nequi-register .collector-closed-review-list.is-cobros-cols.has-evidence > li:not(.is-total):nth-child(even) {
+      background: var(--row-b);
     }
     .collector-closed-review-list.is-nequi-day-ficha .is-name {
       display: block;
@@ -2244,7 +2297,7 @@
       flex-shrink: 0;
     }
     .cuotas-progress.is-level-0 .cuotas-progress-bar {
-      background: #86efac;
+      background: #60a5fa;
     }
     .cuotas-progress.is-level-1 .cuotas-progress-bar {
       background: #facc15;
@@ -3975,20 +4028,20 @@
       text-decoration: underline;
     }
     .supervisor-planilla-table .is-ruta {
-      width: 7%;
+      width: 8%;
     }
     .supervisor-planilla-table .is-nombre {
-      width: 30%;
+      width: 32%;
     }
     .supervisor-planilla-table .is-num {
-      width: 14%;
+      width: 16%;
     }
     .supervisor-planilla-table .is-metodo {
-      width: 10%;
+      width: 12%;
       text-align: center;
       white-space: nowrap;
       padding-left: 4px;
-      padding-right: 6px;
+      padding-right: 4px;
     }
     .supervisor-planilla-table tbody td,
     .supervisor-planilla-table tbody td.is-ruta,
@@ -4228,13 +4281,26 @@
     }
     .supervisor-client-ficha-moves li {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) minmax(0, 1.25fr) minmax(0, 0.95fr);
-      column-gap: 10px;
-      align-items: baseline;
-      padding: 4px 0;
+      grid-template-columns: minmax(4.5rem, 1.05fr) minmax(5.25rem, 1.1fr) minmax(5.5rem, 1.2fr) 1.5rem;
+      column-gap: 8px;
+      align-items: center;
+      padding: 5px 2px;
       line-height: 1.2;
       border-bottom: 1px solid #e4ebe8;
       min-width: 0;
+    }
+    .supervisor-client-ficha-moves li.is-head {
+      padding-top: 2px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #cfdad4;
+      margin-bottom: 1px;
+    }
+    .supervisor-client-ficha-moves li.is-head span {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: #5b7268;
     }
     .supervisor-client-ficha-moves li:last-child {
       border-bottom: 0;
@@ -4246,6 +4312,7 @@
       color: #111;
       font-variant-numeric: tabular-nums;
       text-align: left;
+      justify-self: start;
       line-height: 1.2;
       white-space: nowrap;
     }
@@ -4253,26 +4320,33 @@
       font-size: 11px;
       font-weight: 400;
       color: #111;
-      text-align: left;
+      text-align: center;
+      justify-self: center;
       min-width: 0;
       line-height: 1.2;
       white-space: nowrap;
     }
     .supervisor-client-ficha-moves .is-date {
-      text-align: left;
+      text-align: center;
+      justify-self: center;
+      font-variant-numeric: tabular-nums;
     }
     .supervisor-client-ficha-moves .is-time {
-      text-align: left;
+      text-align: center;
+      justify-self: center;
       overflow: hidden;
       text-overflow: ellipsis;
       color: #111;
+      max-width: 100%;
     }
     .supervisor-client-ficha-moves .is-method {
-      text-align: right;
+      text-align: center;
+      justify-self: center;
       overflow: hidden;
       text-overflow: ellipsis;
       font-weight: 700;
       color: #111;
+      width: 100%;
     }
     .supervisor-client-ficha-moves .is-method.is-pay-nequi {
       color: #5b3d8a;
@@ -4338,7 +4412,7 @@
       width: 16%;
       text-align: center;
       padding-left: 2px;
-      padding-right: 4px;
+      padding-right: 2px;
       white-space: nowrap;
     }
     .supervisor-planilla-table th.is-cuotas {
@@ -4350,11 +4424,11 @@
       text-align: center;
     }
     .supervisor-planilla-table .is-estado {
-      width: 14%;
-      text-align: right;
+      width: 16%;
+      text-align: center;
       white-space: nowrap;
       overflow: visible;
-      padding-right: 6px;
+      padding-right: 4px;
       padding-left: 4px;
     }
     .supervisor-planilla-table .is-estado .pill {
@@ -10286,7 +10360,7 @@
       background: rgba(8, 12, 10, 0.72);
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
-      touch-action: manipulation;
+      touch-action: none;
     }
     .evidence-lightbox-panel {
       position: relative;
@@ -10324,6 +10398,35 @@
       color: #5b7268;
       font-weight: 600;
     }
+    .evidence-lightbox-zoom {
+      display: inline-flex;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .evidence-lightbox-zoom-btn {
+      width: 36px;
+      height: 36px;
+      margin: 0;
+      padding: 0;
+      border: 1px solid #d5e2db;
+      border-radius: 999px;
+      background: #f4f8f6;
+      color: #111;
+      font-size: 22px;
+      font-weight: 600;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .evidence-lightbox-zoom-btn:disabled {
+      opacity: 0.35;
+      cursor: default;
+    }
+    .evidence-lightbox-zoom-btn:not(:disabled):active {
+      background: #e7eee9;
+    }
     .evidence-lightbox-close {
       flex-shrink: 0;
       width: 36px;
@@ -10359,19 +10462,39 @@
       display: grid;
       place-items: center;
       background: #0f1412;
-      overflow: auto;
+      overflow: hidden;
+      touch-action: none;
+      cursor: zoom-in;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
     }
+    .evidence-lightbox-stage.is-zoomed {
+      cursor: grab;
+    }
+    .evidence-lightbox-stage.is-zoomed:active {
+      cursor: grabbing;
+    }
     .evidence-lightbox-stage img {
       width: 100%;
-      max-height: min(78dvh, 820px);
+      max-height: min(72dvh, 760px);
       height: auto;
       object-fit: contain;
       display: block;
       user-select: none;
       -webkit-user-drag: none;
+      transform-origin: center center;
+      will-change: transform;
       pointer-events: none;
+    }
+    .evidence-lightbox-hint {
+      margin: 0;
+      padding: 8px 12px 10px;
+      font-size: 11px;
+      color: #5b7268;
+      text-align: center;
+      background: #f7faf8;
+      border-top: 1px solid #e3ece7;
+      flex-shrink: 0;
     }
     @media (max-width: 640px) {
       .evidence-lightbox {
@@ -10385,7 +10508,7 @@
         border-radius: 0;
       }
       .evidence-lightbox-stage img {
-        max-height: calc(100dvh - 56px);
+        max-height: calc(100dvh - 96px);
       }
     }
 

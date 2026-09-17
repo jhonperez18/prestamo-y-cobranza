@@ -23,6 +23,16 @@ type Props = {
   onAttach?: (evidence: PaymentEvidenceRef) => void;
 };
 
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 4;
+const ZOOM_STEP = 0.5;
+
+type ViewState = { scale: number; x: number; y: number };
+
+function clampZoom(value: number) {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
+}
+
 function EvidenceLightbox({
   openUrl,
   sizeHint,
@@ -37,6 +47,32 @@ function EvidenceLightbox({
   onClose: () => void;
 }) {
   const canOpenExternal = /^https?:\/\//i.test(openUrl);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [view, setView] = useState<ViewState>({ scale: 1, x: 0, y: 0 });
+  const viewRef = useRef(view);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const pinchStart = useRef<{ dist: number; scale: number } | null>(null);
+  const panStart = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+  const lastTap = useRef(0);
+  const didDrag = useRef(false);
+
+  function commitView(next: ViewState) {
+    viewRef.current = next;
+    setView(next);
+  }
+
+  function resetView() {
+    commitView({ scale: 1, x: 0, y: 0 });
+  }
+
+  useEffect(() => {
+    resetView();
+    pointers.current.clear();
+    pinchStart.current = null;
+    panStart.current = null;
+    // Solo al abrir otra imagen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset por openUrl
+  }, [openUrl]);
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -46,6 +82,20 @@ function EvidenceLightbox({
         event.preventDefault();
         onClose();
       }
+      if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        const scale = clampZoom(viewRef.current.scale + ZOOM_STEP);
+        commitView({ ...viewRef.current, scale });
+      }
+      if (event.key === "-" || event.key === "_") {
+        event.preventDefault();
+        const scale = clampZoom(viewRef.current.scale - ZOOM_STEP);
+        commitView(scale <= 1 ? { scale: 1, x: 0, y: 0 } : { ...viewRef.current, scale });
+      }
+      if (event.key === "0") {
+        event.preventDefault();
+        resetView();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => {
@@ -53,6 +103,124 @@ function EvidenceLightbox({
       window.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
+
+  function zoomBy(delta: number) {
+    const scale = clampZoom(viewRef.current.scale + delta);
+    commitView(scale <= 1 ? { scale: 1, x: 0, y: 0 } : { ...viewRef.current, scale });
+  }
+
+  function beginPanFromPointer(pointerId: number) {
+    const point = pointers.current.get(pointerId);
+    if (!point || viewRef.current.scale <= 1) {
+      panStart.current = null;
+      return;
+    }
+    panStart.current = {
+      x: point.x,
+      y: point.y,
+      ox: viewRef.current.x,
+      oy: viewRef.current.y,
+    };
+  }
+
+  function onPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const stage = stageRef.current;
+    if (!stage) return;
+    stage.setPointerCapture(event.pointerId);
+    pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    didDrag.current = false;
+
+    if (pointers.current.size === 2) {
+      const pts = [...pointers.current.values()];
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      pinchStart.current = { dist: Math.max(dist, 1), scale: viewRef.current.scale };
+      panStart.current = null;
+      return;
+    }
+
+    beginPanFromPointer(event.pointerId);
+  }
+
+  function onPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (!pointers.current.has(event.pointerId)) return;
+    pointers.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    const pinch = pinchStart.current;
+    if (pointers.current.size >= 2 && pinch) {
+      const pts = [...pointers.current.values()];
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const nextScale = clampZoom(pinch.scale * (dist / pinch.dist));
+      didDrag.current = true;
+      if (nextScale <= 1) {
+        commitView({ scale: 1, x: 0, y: 0 });
+      } else {
+        commitView({ ...viewRef.current, scale: nextScale });
+      }
+      return;
+    }
+
+    const pan = panStart.current;
+    if (pointers.current.size === 1 && pan && viewRef.current.scale > 1) {
+      // Snapshot local: nunca leer panStart dentro de un updater de React.
+      const x = pan.ox + (event.clientX - pan.x);
+      const y = pan.oy + (event.clientY - pan.y);
+      if (Math.abs(event.clientX - pan.x) > 2 || Math.abs(event.clientY - pan.y) > 2) {
+        didDrag.current = true;
+      }
+      commitView({ scale: viewRef.current.scale, x, y });
+    }
+  }
+
+  function onPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    const stage = stageRef.current;
+    if (stage?.hasPointerCapture(event.pointerId)) {
+      stage.releasePointerCapture(event.pointerId);
+    }
+    pointers.current.delete(event.pointerId);
+
+    if (pointers.current.size < 2) {
+      pinchStart.current = null;
+    }
+
+    if (pointers.current.size === 1) {
+      const remainingId = pointers.current.keys().next().value as number | undefined;
+      if (remainingId != null) beginPanFromPointer(remainingId);
+      else panStart.current = null;
+      return;
+    }
+
+    panStart.current = null;
+  }
+
+  function onDoubleActivate(event: React.MouseEvent | React.PointerEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (viewRef.current.scale > 1.05) resetView();
+    else commitView({ scale: 2.2, x: 0, y: 0 });
+  }
+
+  function onStageClick(event: React.MouseEvent<HTMLDivElement>) {
+    if (didDrag.current) {
+      didDrag.current = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    const now = Date.now();
+    if (now - lastTap.current < 280) {
+      lastTap.current = 0;
+      onDoubleActivate(event);
+      return;
+    }
+    lastTap.current = now;
+  }
+
+  function onWheel(event: React.WheelEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const delta = event.deltaY < 0 ? ZOOM_STEP * 0.4 : -ZOOM_STEP * 0.4;
+    zoomBy(delta);
+  }
 
   const node = (
     <div
@@ -75,6 +243,32 @@ function EvidenceLightbox({
           <strong>{title}</strong>
           {sizeHint !== "—" ? <span className="evidence-lightbox-meta">{sizeHint}</span> : null}
           {isDemoPreview ? <span className="evidence-demo-tag">Demo</span> : null}
+          <div className="evidence-lightbox-zoom" role="group" aria-label="Ampliar comprobante">
+            <button
+              type="button"
+              className="evidence-lightbox-zoom-btn"
+              aria-label="Alejar"
+              disabled={view.scale <= MIN_ZOOM}
+              onClick={(event) => {
+                event.stopPropagation();
+                zoomBy(-ZOOM_STEP);
+              }}
+            >
+              −
+            </button>
+            <button
+              type="button"
+              className="evidence-lightbox-zoom-btn"
+              aria-label="Acercar"
+              disabled={view.scale >= MAX_ZOOM}
+              onClick={(event) => {
+                event.stopPropagation();
+                zoomBy(ZOOM_STEP);
+              }}
+            >
+              +
+            </button>
+          </div>
           {canOpenExternal ? (
             <a
               className="btn ghost compact"
@@ -98,10 +292,30 @@ function EvidenceLightbox({
             ×
           </button>
         </header>
-        <div className="evidence-lightbox-stage">
+        <div
+          ref={stageRef}
+          className={`evidence-lightbox-stage${view.scale > 1 ? " is-zoomed" : ""}`}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+          onClick={onStageClick}
+          onDoubleClick={onDoubleActivate}
+          onWheel={onWheel}
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={openUrl} alt={`${title} ampliado`} draggable={false} />
+          <img
+            src={openUrl}
+            alt={`${title} ampliado`}
+            draggable={false}
+            style={{
+              transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+            }}
+          />
         </div>
+        <p className="evidence-lightbox-hint">
+          Pellizcá o usá + / − para aumentar · doble toque para zoom
+        </p>
       </div>
     </div>
   );

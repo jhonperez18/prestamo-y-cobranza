@@ -40,7 +40,7 @@ import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import { nequiAcumuladoNet, loanDisbursementSource, loanDisbursementSourceLabel } from "@/lib/nequi-pool";
-import { suppressGhostClick, isNavQuiet } from "@/lib/suppress-ghost-click";
+import { suppressGhostClick } from "@/lib/suppress-ghost-click";
 import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import {
   normalizePaymentMethod,
@@ -635,6 +635,12 @@ function SupervisorClientFicha({
           <p className="ficha-empty">Sin movimientos registrados.</p>
         ) : (
           <ul className="supervisor-client-ficha-moves">
+            <li className="is-head" aria-hidden>
+              <span className="is-amount">Monto</span>
+              <span className="is-date">Fecha</span>
+              <span className="is-time">Hora</span>
+              <span className="is-method">M</span>
+            </li>
             {report.movements.map((row) => {
               const method = normalizePaymentMethod(row.method);
               return (
@@ -1097,10 +1103,9 @@ export function SupervisorMobileApp({
   }
 
   function goToView(next: SupervisorView) {
-    if (isNavQuiet()) return;
     // Misma pestaña sin detalle de ruta: no resetear (evita click fantasma).
     if (next === view && !openRouteRef) return;
-    suppressGhostClick(900);
+    suppressGhostClick(420);
     setOpenRouteRef(null);
     setRouteReturnView("inicio");
     setDetailMode("totales");
@@ -1128,11 +1133,10 @@ export function SupervisorMobileApp({
 
   /** INICIO solo por gesto intencional: cierra todo y queda en home. */
   function goHome() {
-    if (isNavQuiet()) return;
     if (view === "inicio" && !openRouteRef && !prestamoFichaRef && !clientesLoanClientRef) {
       return;
     }
-    suppressGhostClick(900);
+    suppressGhostClick(420);
     setOpenRouteRef(null);
     setRouteReturnView("inicio");
     setDetailMode("totales");
@@ -1957,15 +1961,11 @@ export function SupervisorMobileApp({
                   <strong>Hoy · {nequiRegisterToday.date}</strong>
                   <b>{money(nequiRegisterToday.total, { symbol: false })}</b>
                 </div>
-                <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-register">
+                <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-register is-nequi-day-ficha">
                   {nequiRegisterToday.items.map((pay) => (
                     <li key={pay.ref}>
-                      <div className="is-name-block">
-                        <strong className="is-name">{pay.client}</strong>
-                        {pay.paidTime ? (
-                          <span className="is-when">{pay.paidTime}</span>
-                        ) : null}
-                      </div>
+                      <strong className="is-name">{pay.client}</strong>
+                      <span className="is-when">{pay.paidTime || "—"}</span>
                       <span className="is-loan">{pay.loanRef || "—"}</span>
                       <em
                         className={`is-method ${paymentMethodToneClass("nequi")}`}
@@ -1976,7 +1976,7 @@ export function SupervisorMobileApp({
                       <span className="is-evidence">
                         <PaymentEvidenceThumb
                           evidence={pay.evidence}
-                          size={36}
+                          size={28}
                           onAttach={
                             onAttachPaymentEvidence
                               ? (piece) => onAttachPaymentEvidence(pay.ref, [piece])
@@ -2051,15 +2051,11 @@ export function SupervisorMobileApp({
                   <strong>Hoy · {bancoRegisterToday.date}</strong>
                   <b>{money(bancoRegisterToday.total, { symbol: false })}</b>
                 </div>
-                <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-register">
+                <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-register is-nequi-day-ficha">
                   {bancoRegisterToday.items.map((pay) => (
                     <li key={pay.ref}>
-                      <div className="is-name-block">
-                        <strong className="is-name">{pay.client}</strong>
-                        {pay.paidTime ? (
-                          <span className="is-when">{pay.paidTime}</span>
-                        ) : null}
-                      </div>
+                      <strong className="is-name">{pay.client}</strong>
+                      <span className="is-when">{pay.paidTime || "—"}</span>
                       <span className="is-loan">{pay.loanRef || "—"}</span>
                       <em
                         className={`is-method ${paymentMethodToneClass("banco")}`}
@@ -2070,7 +2066,7 @@ export function SupervisorMobileApp({
                       <span className="is-evidence">
                         <PaymentEvidenceThumb
                           evidence={pay.evidence}
-                          size={36}
+                          size={28}
                           onAttach={
                             onAttachPaymentEvidence
                               ? (piece) => onAttachPaymentEvidence(pay.ref, [piece])
