@@ -34,9 +34,12 @@ function capture(cmd, cwd = repoRoot) {
 }
 
 function sleep(ms) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    /* busy wait: portable en Windows sin Atomics */
+  try {
+    execSync(`powershell -NoProfile -Command "Start-Sleep -Milliseconds ${ms}"`, {
+      stdio: "ignore",
+    });
+  } catch {
+    /* ignore */
   }
 }
 
@@ -69,16 +72,18 @@ function waitForReadyProduction(timeoutMs = 180000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
     const out = capture(`npx vercel ls ${PROJECT}`, repoRoot);
-    const lines = out.split(/\r?\n/);
-    for (const line of lines) {
-      if (!/Production/i.test(line)) continue;
-      const match = line.match(DEPLOY_URL_RE);
-      if (!match?.[0]) continue;
-      if (/Building|Error|Canceled|Cancelled/i.test(line) && !/Ready/i.test(line)) {
-        console.log(`Esperando Ready… (${line.trim().slice(0, 120)})`);
-        break;
+    const firstProd = out
+      .split(/\r?\n/)
+      .find((line) => /Production/i.test(line) && DEPLOY_URL_RE.test(line));
+    if (firstProd) {
+      DEPLOY_URL_RE.lastIndex = 0;
+      const match = firstProd.match(DEPLOY_URL_RE);
+      if (match?.[0] && /Ready/i.test(firstProd)) return match[0];
+      if (match?.[0] && /Building/i.test(firstProd)) {
+        console.log("Deploy aún Building… esperando Ready");
+      } else if (match?.[0]) {
+        console.log(`Deploy en estado no Ready: ${firstProd.trim().slice(0, 140)}`);
       }
-      if (/Ready/i.test(line)) return match[0];
     }
     sleep(8000);
   }
@@ -107,15 +112,22 @@ function purgeCaches() {
 }
 
 function assertLoginBuild(expectedSha) {
-  console.log("Comprobando build en login…");
-  const html = capture(`curl -fsSL "${DOMAIN}/"`);
-  if (!html.includes(expectedSha)) {
+  console.log("Comprobando build servido…");
+  const raw = capture(`curl -fsSL "${DOMAIN}/api/ops/build-health"`);
+  let data;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    console.error("FALLO: build-health no devolvió JSON.");
+    process.exit(1);
+  }
+  if (!data.build || String(data.build) !== String(expectedSha)) {
     console.error(
-      `FALLO: login no muestra build ${expectedSha}. CDN o alias aún viejos.`,
+      `FALLO: build servido=${data.build ?? "?"} esperado=${expectedSha}. CDN o alias aún viejos.`,
     );
     process.exit(1);
   }
-  console.log(`Login OK → build ${expectedSha}`);
+  console.log(`Build OK → ${data.build}`);
 }
 
 function assertCatalogHealth() {
