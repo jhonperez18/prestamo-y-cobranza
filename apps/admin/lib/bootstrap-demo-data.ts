@@ -1,6 +1,6 @@
 /**
  * Arranque del paquete canónico (Chrome).
- * v21: Eliminar ruta es definitivo (nube + tumba local); solo 2 rutas base.
+ * v22: base limpia (2 rutas), Eliminar definitivo, sin candado de escritura.
  * Al instalar, reemplaza estado anterior del origen (localhost ≠ vercel.app).
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
@@ -37,7 +37,7 @@ import {
 } from "@/lib/virgin-lock";
 
 /** Subir versión = reinstala el paquete canónico una vez en cada navegador/origen. */
-export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v21";
+export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v22";
 export const DEMO_VIRGIN_WIPE_GEN = `v${VIRGIN_WIPE_GEN}`;
 
 const PACKAGE_KEYS = [
@@ -62,6 +62,7 @@ const PACKAGE_KEYS = [
 ] as const;
 
 const PREVIOUS_PACKAGE_FLAGS = [
+  "nexo-demo-bootstrap-package-v21",
   "nexo-demo-bootstrap-package-v20",
   "nexo-demo-bootstrap-package-v19",
   "nexo-demo-bootstrap-package-v18",
@@ -224,7 +225,7 @@ export function bootstrapProtectedDemoData() {
     return { restored: false, retention: null as null | { cutoff: string; changed: boolean } };
   }
 
-  // Gen nueva = reinstalar aunque el paquete v19/v20 ya estuviera marcado.
+  // Gen nueva = reinstalar aunque un paquete anterior ya estuviera marcado.
   if (needsVirginWipeReinstall()) {
     try {
       window.localStorage.removeItem(DEMO_BOOTSTRAP_PACKAGE_KEY);
