@@ -41,6 +41,7 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
   const { showToast, toastNode } = useActionToast();
   const adminProfile = readAdminProfile(session.userRef, session.name, session.username);
   const displayName = adminProfile.displayName || session.name;
+  const railRef = useRef<HTMLElement | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     "inicio:Usuario": false,
     "inicio:Rutas": false,
@@ -180,6 +181,32 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
       document.body.style.overflow = prev;
     };
   }, [phoneLayout, asideOpen]);
+
+  useEffect(() => {
+    if (!phoneLayout) {
+      document.documentElement.style.removeProperty("--phone-rail-h");
+      return;
+    }
+    const rail = railRef.current;
+    if (!rail) return;
+    function applyHeight() {
+      const node = railRef.current;
+      if (!node) return;
+      const h = Math.ceil(node.getBoundingClientRect().height);
+      if (h > 0) {
+        document.documentElement.style.setProperty("--phone-rail-h", `${h}px`);
+      }
+    }
+    applyHeight();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(applyHeight) : null;
+    ro?.observe(rail);
+    window.addEventListener("orientationchange", applyHeight);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("orientationchange", applyHeight);
+      document.documentElement.style.removeProperty("--phone-rail-h");
+    };
+  }, [phoneLayout]);
 
   function openProfile() {
     setUserMenuOpen(false);
@@ -333,7 +360,7 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
       </header>
 
       {phoneLayout && !phonePreview ? (
-        <nav className="phone-module-rail" aria-label="Módulos">
+        <nav ref={railRef} className="phone-module-rail" aria-label="Módulos">
           {filteredModules.map((module) => (
             <button
               key={module.id}
@@ -438,7 +465,9 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
         </aside>
         <main className="workspace">
           {phoneLayout && !phonePreview ? (
-            <p className="phone-sheet-hint">En tablas grandes: desliza a los lados para ver todas las columnas.</p>
+            <p className="phone-sheet-hint">
+              Tablas grandes: deslizá a los lados y arriba/abajo para ver toda la hoja.
+            </p>
           ) : null}
           <Workspace
             moduleId={moduleId}

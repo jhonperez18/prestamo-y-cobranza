@@ -65,6 +65,8 @@
       --table-cell-size: 13px;
       --table-head-pad-y: 6px;
       --table-pill-max-h: 22px;
+      /* Topbar 56 + rail módulos ~60 (padding + botones). */
+      --phone-rail-h: 60px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; }
@@ -5500,11 +5502,12 @@
 
     .shell.is-phone-layout {
       /* Sin grid de 2 columnas: el cajón es overlay; el contenido es el único flujo. */
-      display: block;
+      display: flex;
+      flex-direction: column;
       width: 100%;
-      height: calc(100dvh - 56px - 58px);
-      min-height: calc(100dvh - 56px - 58px);
-      max-height: calc(100dvh - 56px - 58px);
+      height: calc(100dvh - 56px - var(--phone-rail-h, 60px));
+      min-height: 0;
+      max-height: calc(100dvh - 56px - var(--phone-rail-h, 60px));
       overflow: hidden;
       background: var(--paper, #f2f9f9);
       grid-template-columns: none;
@@ -5516,7 +5519,7 @@
       display: flex;
       flex-direction: column;
       position: fixed;
-      top: calc(56px + 58px);
+      top: calc(56px + var(--phone-rail-h, 60px));
       left: 0;
       bottom: 0;
       width: min(320px, 88vw);
@@ -5537,14 +5540,16 @@
     }
     .shell.is-phone-layout .workspace {
       display: block;
+      flex: 1 1 auto;
       width: 100%;
-      height: 100%;
-      min-height: 100%;
+      height: auto;
+      min-height: 0;
       max-width: none;
-      padding: 12px 12px 28px;
-      overflow-x: hidden;
+      padding: 12px 12px 40px;
+      overflow-x: auto;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
       background: var(--paper, #f2f9f9);
       color: #14201b;
       position: relative;
@@ -6098,15 +6103,20 @@
       border-top: 0;
       border-radius: 0 0 12px 12px;
       box-shadow: 0 2px 8px rgba(20, 50, 45, 0.07);
-      overflow: hidden;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
     }
     .panel > .sheet {
-      overflow-x: hidden;
+      overflow-x: auto;
       min-width: 0;
+      -webkit-overflow-scrolling: touch;
     }
     .panel > .table-wrap,
     .panel > .bank-table-wrap {
-      overflow: hidden;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
     }
     .panel > .table-wrap,
     .panel-surface.panel-table {
@@ -6929,6 +6939,8 @@
     /* Columnas fijas: al cambiar de ruta solo cambia el cuerpo, no saltan los títulos. */
     .route-clients-table-wrap {
       width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
     }
     table.route-clients-table {
       width: 100%;
@@ -7625,7 +7637,13 @@
       margin-bottom: 14px;
     }
     .pay-box h2 { color: #111; font-size: 17px; font-weight: 600; margin: 0 0 8px; }
-    .pay-box .table-wrap { border: 1px solid #d5e2db; border-radius: 8px; overflow: hidden; }
+    .pay-box .table-wrap {
+      border: 1px solid #d5e2db;
+      border-radius: 8px;
+      overflow-x: auto;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+    }
     .pay-box table.data tbody tr { cursor: default; }
     .pay-box table.data tbody tr:hover { background: var(--row-a); }
     .pay-box table.data tbody tr:nth-child(even):hover { background: var(--row-b); }
@@ -12139,4 +12157,73 @@
       .settings-fields-grid,
       .settings-control-grid,
       .settings-color-grid { grid-template-columns: 1fr; }
+    }
+
+    /*
+     * Celular (AppShell phone): al final del CSS para ganar a table-layout:fixed
+     * y width:100% de escritorio. Las hojas grandes se deslizan, no se aplastan.
+     */
+    .shell.is-phone-layout .table-wrap,
+    .shell.is-phone-layout .bank-table-wrap,
+    .shell.is-phone-layout .route-clients-table-wrap,
+    .shell.is-phone-layout .panel > .table-wrap,
+    .shell.is-phone-layout .panel > .filters + .table-wrap,
+    .shell.is-phone-layout .panel > .bank-table-wrap,
+    .shell.is-phone-layout .pay-box .table-wrap,
+    .shell.is-phone-layout .panel-surface {
+      overflow-x: auto !important;
+      overflow-y: visible;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior-x: contain;
+      touch-action: pan-x pan-y;
+      max-width: 100%;
+    }
+    .shell.is-phone-layout table.data,
+    .shell.is-phone-layout table.data.list-grid,
+    .shell.is-phone-layout table.data.list-data-table,
+    .shell.is-phone-layout table.data.mini-grid,
+    .shell.is-phone-layout table.data.mini-table,
+    .shell.is-phone-layout table.data.cols-fixed,
+    .shell.is-phone-layout table.data:has(.col-picker-cell),
+    .shell.is-phone-layout table.list-grid,
+    .shell.is-phone-layout table.list-grid:has(.col-picker-cell),
+    .shell.is-phone-layout table.list-data-table,
+    .shell.is-phone-layout table.bank-table,
+    .shell.is-phone-layout table.bank-records-table,
+    .shell.is-phone-layout table.mini-grid,
+    .shell.is-phone-layout table.route-clients-table,
+    .shell.is-phone-layout table.daily-collection-grid,
+    .shell.is-phone-layout table.daily-log-table {
+      width: max-content !important;
+      min-width: 100%;
+      max-width: none !important;
+      table-layout: auto !important;
+    }
+    .shell.is-phone-layout table.data th,
+    .shell.is-phone-layout table.data td,
+    .shell.is-phone-layout table.list-grid th,
+    .shell.is-phone-layout table.list-grid td,
+    .shell.is-phone-layout table.list-data-table th,
+    .shell.is-phone-layout table.list-data-table td,
+    .shell.is-phone-layout table.bank-table th,
+    .shell.is-phone-layout table.bank-table td,
+    .shell.is-phone-layout table.route-clients-table th,
+    .shell.is-phone-layout table.route-clients-table td,
+    .shell.is-phone-layout table.daily-collection-grid th,
+    .shell.is-phone-layout table.daily-collection-grid td {
+      white-space: nowrap;
+      overflow: visible;
+      text-overflow: unset;
+      min-width: 4.5rem;
+    }
+    .shell.is-phone-layout .panel > .sheet,
+    .shell.is-phone-layout .sheet {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      max-width: 100%;
+    }
+    .shell.is-phone-layout .phone-sheet-hint {
+      position: sticky;
+      left: 0;
+      z-index: 2;
     }
