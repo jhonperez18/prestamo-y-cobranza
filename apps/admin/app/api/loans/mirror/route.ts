@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { mirrorLoanToSupabase } from "@/lib/supabase/catalog-mirror";
 import type { LoanRow } from "@/lib/mock-data";
+import { isVirginWriteLocked, virginWriteLockPayload } from "@/lib/virgin-lock";
 
 export async function POST(request: Request) {
+  if (isVirginWriteLocked()) {
+    return NextResponse.json(virginWriteLockPayload());
+  }
   try {
     const body = (await request.json()) as { loan?: LoanRow };
     if (!body?.loan?.ref) {

@@ -1,6 +1,6 @@
 /**
  * Arranque del paquete canónico (Chrome).
- * v19: wipe total (cobros/gastos/ingresos/planilla) sin papelera; hold remoto 24h.
+ * v20: wipe gen + candado de escritura en nube; reinstala si gen local < actual.
  * Al instalar, reemplaza estado anterior del origen (localhost ≠ vercel.app).
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
@@ -26,13 +26,18 @@ import {
   scrubLegacyMockDemoRows,
   type DemoSnapshot,
 } from "@/lib/demo-persist";
+import { needsVirginWipeReinstall } from "@/lib/demo-build-sync";
 import { DEMO_PAYMENT_EVIDENCE_KEY } from "@/lib/payment-evidence-store";
 import { applyDataRetention } from "@/lib/data-retention";
 import { COLLECTORS, USERS } from "@/lib/mock-data";
+import {
+  DEMO_VIRGIN_WIPE_GEN_KEY,
+  VIRGIN_WIPE_GEN,
+} from "@/lib/virgin-lock";
 
 /** Subir versión = reinstala el paquete canónico una vez en cada navegador/origen. */
-export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v19";
-export const DEMO_VIRGIN_WIPE_GEN = "v19";
+export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v20";
+export const DEMO_VIRGIN_WIPE_GEN = `v${VIRGIN_WIPE_GEN}`;
 
 const PACKAGE_KEYS = [
   DEMO_CLIENTS_KEY,
@@ -55,6 +60,7 @@ const PACKAGE_KEYS = [
 ] as const;
 
 const PREVIOUS_PACKAGE_FLAGS = [
+  "nexo-demo-bootstrap-package-v19",
   "nexo-demo-bootstrap-package-v18",
   "nexo-demo-bootstrap-package-v17",
   "nexo-demo-bootstrap-package-v16",
@@ -214,6 +220,18 @@ export function bootstrapProtectedDemoData() {
     return { restored: false, retention: null as null | { cutoff: string; changed: boolean } };
   }
 
+  // Gen nueva = reinstalar aunque el paquete v19/v20 ya estuviera marcado.
+  if (needsVirginWipeReinstall()) {
+    try {
+      window.localStorage.removeItem(DEMO_BOOTSTRAP_PACKAGE_KEY);
+      for (const key of PREVIOUS_PACKAGE_FLAGS) {
+        window.localStorage.removeItem(key);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   if (isCanonicalPackageInstalled()) {
     scrubLegacyMockDemoRows();
     return { restored: false, retention: applyDataRetention() };
@@ -291,7 +309,8 @@ export function bootstrapProtectedDemoData() {
 
   try {
     window.localStorage.setItem(DEMO_VIRGIN_OPS_KEY, "1");
-    // 24h: supervisor/cobrador no reimportan gastos/ingresos/cobros remotos viejos.
+    window.localStorage.setItem(DEMO_VIRGIN_WIPE_GEN_KEY, String(VIRGIN_WIPE_GEN));
+    // 24h: no reimportar cobros/gastos/planilla remotos viejos mientras local está vacío.
     window.localStorage.setItem(
       DEMO_VIRGIN_HOLD_UNTIL_KEY,
       String(Date.now() + 24 * 60 * 60 * 1000),

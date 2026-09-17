@@ -15,6 +15,7 @@ import type {
 } from "@/lib/collector-day-close";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { MiscPayment } from "@/lib/misc-payments";
+import { isVirginWriteLocked, virginWriteLockPayload } from "@/lib/virgin-lock";
 
 type Body = {
   kind?: string;
@@ -27,6 +28,18 @@ export async function POST(request: Request) {
     const kind = body.kind;
     if (!kind || !body.row) {
       return NextResponse.json({ ok: false, error: "missing_kind_or_row" }, { status: 400 });
+    }
+
+    // Candado virgen: no dejar que un celular viejo rellene CIE/gastos/planilla/rutas extra.
+    if (
+      isVirginWriteLocked() &&
+      (kind === "day_close" ||
+        kind === "day_expense" ||
+        kind === "misc_payment" ||
+        kind === "assignment" ||
+        kind === "route")
+    ) {
+      return NextResponse.json(virginWriteLockPayload());
     }
 
     let result: Awaited<ReturnType<typeof upsertOpsRow>>;

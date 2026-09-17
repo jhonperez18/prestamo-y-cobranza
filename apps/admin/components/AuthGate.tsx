@@ -11,6 +11,7 @@ import {
   type AppSession,
 } from "@/lib/auth";
 import { bootstrapProtectedDemoData } from "@/lib/bootstrap-demo-data";
+import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
 import {
   DEMO_USERS_KEY,
   loadDemoUsers,
@@ -40,9 +41,10 @@ export function AuthGate() {
   const [isPhone, setIsPhone] = useState(false);
 
   useEffect(() => {
-    // Primero el paquete canónico (Chrome); luego sesión/usuarios.
-    // Si el bootstrap va después, Vercel reinyecta clientes/usuarios viejos en el primer paint.
+    // 1) Si el build de Vercel cambió (candado virgen), invalida paquete local.
+    // 2) Bootstrap vacío. Sin esto el celular sigue con localStorage viejo aunque el deploy sea nuevo.
     try {
+      syncDemoStorageToServedBuild();
       bootstrapProtectedDemoData();
     } catch {
       /* ignore */

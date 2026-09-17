@@ -2,8 +2,10 @@ import { NextResponse } from "next/server";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 
+import { VIRGIN_WIPE_GEN } from "@/lib/virgin-lock";
+
 /** Generación de wipe virgen: debe coincidir con el bootstrap del cliente. */
-const WIPE_GEN = "v19";
+const WIPE_GEN = `v${VIRGIN_WIPE_GEN}`;
 
 const WIPE_TABLES = [
   "payments",
