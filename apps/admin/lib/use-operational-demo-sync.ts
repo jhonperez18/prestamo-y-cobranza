@@ -35,7 +35,7 @@ type Options = {
 
 /**
  * Sync completo C5+C6:
- * flush colas → subir PG- locales huérfanos → pull → hidratar
+ * flush colas → subir PG- locales huérfanos → pull → hidratar UNA vez (sin parpadeo).
  */
 export function useOperationalDemoSync(
   apply: (snapshot: OperationalDemoSnapshot) => void,
@@ -50,23 +50,19 @@ export function useOperationalDemoSync(
   onEvidenceSyncRef.current = onEvidenceSync;
   const resyncGateRef = useRef(false);
   const pullInFlightRef = useRef(false);
+  const lastVisiblePullAtRef = useRef(0);
 
-  const runHydrate = useCallback((markReady = true) => {
+  const commitHydrate = useCallback(() => {
     const snapshot = hydrateOperationalDemo();
     applyRef.current(snapshot);
-    if (markReady) setHydrated(true);
+    setHydrated(true);
     setEpoch((n) => n + 1);
   }, []);
 
   const runHydrateWithRemotePull = useCallback(async () => {
-    if (pullInFlightRef.current) {
-      runHydrate(true);
-      return;
-    }
+    if (pullInFlightRef.current) return;
     pullInFlightRef.current = true;
     try {
-      // Hidrata local primero (puede estar vacío); no marca listo hasta el pull.
-      runHydrate(false);
       await flushPaymentMirrorQueue();
       await reconcileLocalPaymentsToRemote();
       const evidenceSync = await reconcilePaymentEvidenceToRemote();
@@ -79,36 +75,22 @@ export function useOperationalDemoSync(
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
       await reconcileLocalOpsToRemote();
-      const [paymentsPull, catalogPull, opsPull] = await Promise.all([
+      await Promise.all([
         pullRemotePaymentsIntoDemo(),
         pullRemoteCatalogIntoDemo(),
         pullRemoteOpsIntoDemo(),
       ]);
       const localClients = readDemoJson(DEMO_CLIENTS_KEY, [] as unknown[]);
-      const catalogEmpty = !Array.isArray(localClients) || localClients.length === 0;
-      // Si el catálogo local sigue vacío, reintenta pull de clientes.
-      if (catalogEmpty) {
+      if (!Array.isArray(localClients) || localClients.length === 0) {
         await pullRemoteCatalogIntoDemo();
       }
-      const after = readDemoJson(DEMO_CLIENTS_KEY, [] as unknown[]);
-      const filled = Array.isArray(after) && after.length > 0;
-      if (
-        (paymentsPull.ok && paymentsPull.changed) ||
-        (catalogPull.ok && catalogPull.changed) ||
-        (opsPull.ok && opsPull.changed) ||
-        evidenceSync.pushed > 0 ||
-        catalogEmpty ||
-        filled
-      ) {
-        runHydrate(true);
-      } else {
-        setHydrated(true);
-      }
+      // Una sola pintura a la UI: evita saltos 0 → 81 → 0.
+      commitHydrate();
     } finally {
       pullInFlightRef.current = false;
       setHydrated(true);
     }
-  }, [runHydrate]);
+  }, [commitHydrate]);
 
   useEffect(() => {
     void runHydrateWithRemotePull();
@@ -128,10 +110,15 @@ export function useOperationalDemoSync(
   useEffect(() => {
     function onStorage(event: StorageEvent) {
       if (!event.key || !event.key.startsWith(OPERATIONAL_DEMO_STORAGE_PREFIX)) return;
-      runHydrate(true);
+      // Solo otra pestaña: no re-pull completo (evita espabilar).
+      commitHydrate();
     }
     function onVisible() {
       if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      // Máximo un pull por visibilidad cada 15s.
+      if (now - lastVisiblePullAtRef.current < 15_000) return;
+      lastVisiblePullAtRef.current = now;
       void runHydrateWithRemotePull();
     }
     window.addEventListener("storage", onStorage);
@@ -140,7 +127,7 @@ export function useOperationalDemoSync(
       window.removeEventListener("storage", onStorage);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [runHydrate, runHydrateWithRemotePull]);
+  }, [commitHydrate, runHydrateWithRemotePull]);
 
   return { hydrated, epoch, reload: runHydrateWithRemotePull };
 }

@@ -29,7 +29,6 @@ import {
   type RouteRow,
   type StatusKind,
 } from "@/lib/mock-data";
-import { routePendingCount } from "@/lib/route-sync";
 
 export type HomePendingAction = {
   id: string;
@@ -214,17 +213,18 @@ function routeCard(
     if (route.collectorRef && row.collectorRef === route.collectorRef) return true;
     return row.clientRoute === route.name;
   });
-  const total = dayRows.length || route.stops.length || catalogCount;
+  // En campo = solo planilla/cobros del día (nunca el catálogo CLIENTES).
+  // Si no hay visitas cobrables, total 0 — no “saltar” a 81 del catálogo.
+  const total = dayRows.length || route.stops.filter((stop) => Boolean(stop.loanRef)).length;
   const visited = dayRows.length
     ? dayRows.filter((row) => row.visitStatus === "cobrado" || row.visitStatus === "parcial").length
-    : route.stops.filter((stop) => stop.visitStatus === "cobrado").length;
+    : route.stops.filter((stop) => stop.visitStatus === "cobrado" && Boolean(stop.loanRef)).length;
   const pending = dayRows.length
     ? dayRows.filter((row) => row.visitStatus === "pendiente" || !row.visitStatus).length
-    : route.stops.length
-      ? routePendingCount(route.stops)
-      : catalogCount;
+    : Math.max(0, total - visited);
   const jornadaCerrada =
     dayRows.length > 0 && dayRows.every((row) => Boolean(row.dayClosedAt));
+  const hasWork = total > 0;
   return {
     ref: route.ref,
     zone: route.name || route.zone,
@@ -233,8 +233,8 @@ function routeCard(
     visited,
     pending,
     progress: total ? Math.round((visited / total) * 100) : 0,
-    status: jornadaCerrada ? "Cerrada" : "En curso",
-    statusKind: jornadaCerrada ? "draft" : "ok",
+    status: jornadaCerrada ? "Cerrada" : hasWork ? "En curso" : catalogCount > 0 ? "Sin cobros" : "Sin clientes",
+    statusKind: jornadaCerrada ? "draft" : hasWork ? "ok" : "draft",
   };
 }
 
