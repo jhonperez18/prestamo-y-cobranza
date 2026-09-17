@@ -19,7 +19,7 @@ const CANONICAL_HOST = "prestamo-y-cobranza.vercel.app";
 const LEGACY_HOST = "admin-jhon-fredy-perezs-projects.vercel.app";
 const DOMAIN = `https://${CANONICAL_HOST}`;
 const DEPLOY_URL_RE =
-  /https:\/\/prestamo-y-cobranza-[a-z0-9]+-jhon-fredy-perezs-projects\.vercel\.app/g;
+  /https:\/\/prestamo-y-cobranza-[a-z0-9]+-jhon-fredy-perezs-projects\.vercel\.app/;
 
 const adminRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 /** Raíz del monorepo: Vercel Root Directory = apps/admin. */
@@ -71,23 +71,15 @@ function latestProductionDeployUrl() {
 function waitForReadyProduction(timeoutMs = 180000) {
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    const out = capture(`npx vercel ls ${PROJECT}`, repoRoot);
-    const firstProd = out
-      .split(/\r?\n/)
-      .find((line) => /Production/i.test(line) && DEPLOY_URL_RE.test(line));
-    if (firstProd) {
-      DEPLOY_URL_RE.lastIndex = 0;
-      const match = firstProd.match(DEPLOY_URL_RE);
-      if (match?.[0] && /Ready/i.test(firstProd)) return match[0];
-      if (match?.[0] && /Building/i.test(firstProd)) {
-        console.log("Deploy aún Building… esperando Ready");
-      } else if (match?.[0]) {
-        console.log(`Deploy en estado no Ready: ${firstProd.trim().slice(0, 140)}`);
-      }
+    const url = latestProductionDeployUrl();
+    if (url) {
+      console.log(`Deploy Ready → ${url}`);
+      return url;
     }
+    console.log("Sin deploy Ready aún… esperando");
     sleep(8000);
   }
-  return latestProductionDeployUrl();
+  return "";
 }
 
 function syncAliases(deploymentUrl) {
