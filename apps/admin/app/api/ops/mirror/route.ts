@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createMirrorServerClient } from "@/lib/supabase/admin";
 import {
   assignmentToRow,
   collectorToRow,
@@ -30,7 +31,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "missing_kind_or_row" }, { status: 400 });
     }
 
-    // Candado virgen: no dejar que un celular viejo rellene CIE/gastos/planilla/rutas extra.
+    // Candado virgen: no dejar que un celular viejo rellene CIE/gastos/planilla.
+    // route_delete SÍ se permite (Eliminar debe borrar de verdad).
     if (
       isVirginWriteLocked() &&
       (kind === "day_close" ||
@@ -54,6 +56,21 @@ export async function POST(request: Request) {
         const mapped = routeToRow(body.row as RouteRow);
         result = await upsertOpsRow("routes", mapped, "ref");
         break;
+      }
+      case "route_delete": {
+        const ref = String((body.row as { ref?: string })?.ref || "").trim();
+        if (!ref) {
+          return NextResponse.json({ ok: false, error: "missing_ref" }, { status: 400 });
+        }
+        const client = createMirrorServerClient();
+        if (!client) {
+          return NextResponse.json({ ok: true, skipped: true, reason: "supabase_not_configured" });
+        }
+        const { error } = await client.from("routes").delete().eq("ref", ref);
+        if (error) {
+          return NextResponse.json({ ok: false, error: error.message }, { status: 502 });
+        }
+        return NextResponse.json({ ok: true, deleted: ref });
       }
       case "day_close": {
         const mapped = dayCloseToRow(body.row as CollectorDayCloseRecord);

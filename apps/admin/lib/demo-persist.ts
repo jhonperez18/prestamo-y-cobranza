@@ -27,6 +27,8 @@ const DEMO_USERS_KEY_V2 = "nexo-demo-users-v2";
 export const DEMO_CLIENTS_KEY = "nexo-demo-clients";
 export const DEMO_COLLECTORS_KEY = "nexo-demo-collectors";
 export const DEMO_ROUTES_KEY = "nexo-demo-routes";
+/** Refs borradas a propósito: pull/bootstrap no deben resucitarlas. */
+export const DEMO_DELETED_ROUTES_KEY = "nexo-demo-deleted-routes";
 export const DEMO_DAILY_LOGS_KEY = "nexo-demo-daily-logs";
 export const DEMO_DAILY_ASSIGNMENTS_KEY = "nexo-demo-daily-assignments";
 export const DEMO_PAYMENTS_KEY = "nexo-demo-payments";
@@ -516,6 +518,57 @@ export function loadDemoBankMovements<T extends { ref?: string }>(fallback: T[] 
 export function loadDemoDailyAssignments<T>(fallback: T[] = []): T[] {
   disarmLegacyWipes();
   return readDemoJson<T[]>(DEMO_DAILY_ASSIGNMENTS_KEY, fallback);
+}
+
+export function listDeletedRouteRefs(): string[] {
+  const rows = readDemoJson<string[]>(DEMO_DELETED_ROUTES_KEY, []);
+  return Array.isArray(rows) ? rows.filter(Boolean) : [];
+}
+
+export function rememberDeletedRouteRef(ref: string) {
+  const clean = (ref || "").trim();
+  if (!clean || typeof window === "undefined") return;
+  const prev = listDeletedRouteRefs();
+  if (prev.includes(clean)) return;
+  writeDemoJson(DEMO_DELETED_ROUTES_KEY, [...prev, clean]);
+}
+
+export function forgetDeletedRouteRef(ref: string) {
+  const clean = (ref || "").trim();
+  if (!clean || typeof window === "undefined") return;
+  writeDemoJson(
+    DEMO_DELETED_ROUTES_KEY,
+    listDeletedRouteRefs().filter((row) => row !== clean),
+  );
+}
+
+/** Quita duplicados de catálogo (mismo número de ruta, distinto RUT-*). */
+export function dedupeCatalogRoutesByName<T extends { ref?: string; name?: string }>(
+  routes: T[],
+): T[] {
+  const dispatch: T[] = [];
+  const byName = new Map<string, T>();
+  for (const row of routes) {
+    const ref = row?.ref || "";
+    if (ref.startsWith("RUT-D-")) {
+      dispatch.push(row);
+      continue;
+    }
+    const name = String(row?.name || "").trim();
+    if (!name) {
+      dispatch.push(row);
+      continue;
+    }
+    const prev = byName.get(name);
+    if (!prev) {
+      byName.set(name, row);
+      continue;
+    }
+    const prevN = Number(String(prev.ref || "").replace(/\D/g, "")) || 9999;
+    const nextN = Number(ref.replace(/\D/g, "")) || 9999;
+    if (nextN < prevN) byName.set(name, row);
+  }
+  return [...byName.values(), ...dispatch];
 }
 
 /** Claves operativas a respaldar (negocio + banco). */

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "exportedAt": "2026-09-17T00:00:00.000Z",
-  "note": "Paquete virgen: sin clientes, préstamos, pagos ni historial. Solo cuentas base en 0.",
+  "note": "Paquete virgen: sin clientes/préstamos/pagos. Solo 2 rutas base.",
   "keys": {
     "nexo-demo-banco-accounts": [
       {
@@ -59,19 +59,6 @@
         "name": "2",
         "collectorRef": "COB-1",
         "collector": "Lina Soto",
-        "zone": "",
-        "frequency": "Lun–Sáb",
-        "clients": 0,
-        "status": "Activa",
-        "kind": "ok",
-        "stops": []
-      },
-      {
-        "ref": "RUT-3",
-        "id": "3",
-        "name": "3",
-        "collectorRef": "COB-2",
-        "collector": "Diego Mora",
         "zone": "",
         "frequency": "Lun–Sáb",
         "clients": 0,

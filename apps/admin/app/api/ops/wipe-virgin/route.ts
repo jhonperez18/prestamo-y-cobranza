@@ -69,7 +69,7 @@ export async function POST(req: Request) {
       counts[table] = count ?? 0;
     }
 
-    // Rutas: intentar dejar solo las 3 base (si falla el upsert, igual ya se vació el dinero).
+    // Rutas: solo las 2 base (si falla el upsert, igual ya se vació el dinero).
     try {
       const { data: routeRows } = await client.from("routes").select("ref").limit(5000);
       const routeRefs = (routeRows ?? []).map((row) => row.ref).filter(Boolean) as string[];
@@ -98,20 +98,6 @@ export async function POST(req: Request) {
             name: "2",
             collector_ref: "COB-1",
             collector_name: "Lina Soto",
-            zone: "",
-            frequency: "Lun–Sáb",
-            stops: [],
-            clients_count: 0,
-            status: "Activa",
-            kind: "ok",
-            updated_at: new Date().toISOString(),
-          },
-          {
-            ref: "RUT-3",
-            slug: "3",
-            name: "3",
-            collector_ref: "COB-2",
-            collector_name: "Diego Mora",
             zone: "",
             frequency: "Lun–Sáb",
             stops: [],

@@ -32,7 +32,9 @@ import {
   DEMO_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
   DEMO_USERS_KEY,
+  dedupeCatalogRoutesByName,
   isVirginOpsMode,
+  listDeletedRouteRefs,
 } from "@/lib/demo-persist";
 import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
 import { runOperationalDayCycle } from "@/lib/collector-day-auto-close";
@@ -118,15 +120,21 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     DEMO_DAILY_ASSIGNMENTS_KEY,
     [],
   );
-  const storedRoutes = readDemoJson(DEMO_ROUTES_KEY, ROUTES).map((row) => {
-    const name = migrateLegacyRouteName(row.name);
-    return {
-      ...row,
-      name,
-      id: routeSlug(name),
-      zone: row.zone ?? "",
-    };
-  });
+  const deletedRoutes = new Set(listDeletedRouteRefs());
+  const storedRoutes = dedupeCatalogRoutesByName(
+    readDemoJson(DEMO_ROUTES_KEY, isVirginOpsMode() ? [] : ROUTES)
+      .filter((row) => row?.ref && !deletedRoutes.has(row.ref))
+      .map((row) => {
+        const name = migrateLegacyRouteName(row.name);
+        return {
+          ...row,
+          name,
+          id: routeSlug(name),
+          zone: row.zone ?? "",
+        };
+      }),
+  );
+  writeDemoJson(DEMO_ROUTES_KEY, storedRoutes);
   const storedClients = normalizeAllRouteOrders(
     dedupeClientsByRef(
       loadDemoClients(CLIENTS).map((row) =>

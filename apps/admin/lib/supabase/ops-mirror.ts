@@ -20,6 +20,7 @@ import {
   DEMO_MISC_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
   isVirginRemoteHoldActive,
+  listDeletedRouteRefs,
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
@@ -76,6 +77,7 @@ function dequeue(key: string, ref: string) {
 
 const Q_COLLECTORS = "nexo-demo-ops-collectors-queue";
 const Q_ROUTES = "nexo-demo-ops-routes-queue";
+const Q_ROUTE_DELETES = "nexo-demo-ops-route-deletes-queue";
 const Q_CLOSES = "nexo-demo-ops-day-closes-queue";
 const Q_EXPENSES = "nexo-demo-ops-day-expenses-queue";
 const Q_MISC = "nexo-demo-ops-misc-queue";
@@ -360,6 +362,27 @@ export function queueRouteMirror(r: RouteRow) {
 export function queueRoutesMirror(rows: RouteRow[]) {
   for (const row of rows) queueRouteMirror(row);
 }
+
+/** Borrado duro en Postgres (Eliminar = desaparecer, no solo en este PC). */
+export function queueRouteDeleteMirror(ref: string) {
+  const clean = (ref || "").trim();
+  if (!clean || typeof window === "undefined") return;
+  void (async () => {
+    try {
+      const { res, json } = await postMirror("/api/ops/mirror", {
+        kind: "route_delete",
+        row: { ref: clean },
+      });
+      if (res.ok && json.ok) return;
+    } catch {
+      /* cola */
+    }
+    const queued = readDemoJson<{ ref: string }[]>(Q_ROUTE_DELETES, []);
+    if (queued.some((row) => row.ref === clean)) return;
+    writeDemoJson(Q_ROUTE_DELETES, [...queued, { ref: clean }]);
+  })();
+}
+
 export function queueDayCloseMirror(c: CollectorDayCloseRecord) {
   void persistKind(Q_CLOSES, { kind: "day_close", row: c }, c.ref);
 }
@@ -380,9 +403,31 @@ export function queueAssignmentsMirror(rows: DailyCollectionAssignment[]) {
 
 export async function flushOpsMirrorQueues() {
   if (typeof window === "undefined") return;
+
+  // Primero deletes de rutas (si no, un upsert viejo las revive).
+  const routeDeletes = readDemoJson<{ ref: string }[]>(Q_ROUTE_DELETES, []);
+  const deletesLeft: { ref: string }[] = [];
+  for (const row of routeDeletes) {
+    try {
+      const { res, json } = await postMirror("/api/ops/mirror", {
+        kind: "route_delete",
+        row: { ref: row.ref },
+      });
+      if (!(res.ok && json.ok)) deletesLeft.push(row);
+    } catch {
+      deletesLeft.push(row);
+    }
+  }
+  writeDemoJson(Q_ROUTE_DELETES, deletesLeft);
+
+  const deleted = new Set(listDeletedRouteRefs());
   const jobs: Array<{ key: string; kind: string; rows: { ref: string }[] }> = [
     { key: Q_COLLECTORS, kind: "collector", rows: readDemoJson(Q_COLLECTORS, []) },
-    { key: Q_ROUTES, kind: "route", rows: readDemoJson(Q_ROUTES, []) },
+    {
+      key: Q_ROUTES,
+      kind: "route",
+      rows: readDemoJson<{ ref: string }[]>(Q_ROUTES, []).filter((row) => !deleted.has(row.ref)),
+    },
     { key: Q_CLOSES, kind: "day_close", rows: readDemoJson(Q_CLOSES, []) },
     { key: Q_EXPENSES, kind: "day_expense", rows: readDemoJson(Q_EXPENSES, []) },
     { key: Q_MISC, kind: "misc_payment", rows: readDemoJson(Q_MISC, []) },
@@ -437,6 +482,7 @@ export async function reconcileLocalOpsToRemote(): Promise<{
     const remoteAssign = new Set(
       (body.daily_assignments ?? []).map((r) => `${r.dispatch_date}::${r.item_id}`),
     );
+    const deletedRoutes = new Set(listDeletedRouteRefs());
 
     const jobs: Array<{ kind: string; row: unknown; key: string }> = [];
 
@@ -446,8 +492,14 @@ export async function reconcileLocalOpsToRemote(): Promise<{
       }
     }
     for (const row of readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, [])) {
-      if (row?.ref && !remoteRoute.has(row.ref)) {
+      if (!row?.ref || deletedRoutes.has(row.ref)) continue;
+      if (!remoteRoute.has(row.ref)) {
         jobs.push({ kind: "route", row, key: row.ref });
+      }
+    }
+    for (const ref of deletedRoutes) {
+      if (remoteRoute.has(ref)) {
+        jobs.push({ kind: "route_delete", row: { ref }, key: ref });
       }
     }
     for (const row of readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, [])) {
@@ -532,13 +584,19 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       changed = true;
     }
 
-    const routes = (body.routes ?? []).map(rowToRoute).filter((r): r is RouteRow => Boolean(r));
+    const deletedRoutes = new Set(listDeletedRouteRefs());
+    const routes = (body.routes ?? [])
+      .map(rowToRoute)
+      .filter((r): r is RouteRow => Boolean(r) && !deletedRoutes.has(r!.ref));
+    const localRoutes = readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, []).filter(
+      (r) => r?.ref && !deletedRoutes.has(r.ref),
+    );
     const rMerge = mergeByRefRemote(
-      readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, []),
+      localRoutes,
       routes,
       (r) => `${r.ref}|${r.name}|${r.collectorRef}|${r.status}|${r.clients}`,
     );
-    if (rMerge.changed) {
+    if (rMerge.changed || localRoutes.length !== readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, []).length) {
       writeDemoJson(DEMO_ROUTES_KEY, rMerge.merged);
       changed = true;
     }

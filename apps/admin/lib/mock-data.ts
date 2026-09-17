@@ -456,19 +456,6 @@ export const ROUTES: RouteRow[] = [
     kind: "ok",
     stops: [],
   },
-  {
-    ref: "RUT-3",
-    id: "3",
-    name: "3",
-    collectorRef: "COB-2",
-    collector: "Diego Mora",
-    zone: "",
-    frequency: "Lun–Sáb",
-    clients: 0,
-    status: "Activa",
-    kind: "ok",
-    stops: [],
-  },
 ];
 
 

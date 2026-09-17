@@ -1,6 +1,6 @@
 /**
  * Arranque del paquete canónico (Chrome).
- * v20: wipe gen + candado de escritura en nube; reinstala si gen local < actual.
+ * v21: Eliminar ruta es definitivo (nube + tumba local); solo 2 rutas base.
  * Al instalar, reemplaza estado anterior del origen (localhost ≠ vercel.app).
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
@@ -16,6 +16,7 @@ import {
   DEMO_COLLECTORS_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_DAILY_LOGS_KEY,
+  DEMO_DELETED_ROUTES_KEY,
   DEMO_LOANS_KEY,
   DEMO_MISC_PAYMENTS_KEY,
   DEMO_PAYMENTS_KEY,
@@ -36,7 +37,7 @@ import {
 } from "@/lib/virgin-lock";
 
 /** Subir versión = reinstala el paquete canónico una vez en cada navegador/origen. */
-export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v20";
+export const DEMO_BOOTSTRAP_PACKAGE_KEY = "nexo-demo-bootstrap-package-v21";
 export const DEMO_VIRGIN_WIPE_GEN = `v${VIRGIN_WIPE_GEN}`;
 
 const PACKAGE_KEYS = [
@@ -57,9 +58,11 @@ const PACKAGE_KEYS = [
   DEMO_COLLECTOR_MONTH_CLOSES_KEY,
   DEMO_PAYMENT_EVIDENCE_KEY,
   DEMO_BANK_SIDES_VERSION_KEY,
+  DEMO_DELETED_ROUTES_KEY,
 ] as const;
 
 const PREVIOUS_PACKAGE_FLAGS = [
+  "nexo-demo-bootstrap-package-v20",
   "nexo-demo-bootstrap-package-v19",
   "nexo-demo-bootstrap-package-v18",
   "nexo-demo-bootstrap-package-v17",
@@ -117,6 +120,7 @@ function clearMirrorQueues() {
     "nexo-demo-loan-mirror-queue",
     "nexo-demo-ops-collectors-queue",
     "nexo-demo-ops-routes-queue",
+    "nexo-demo-ops-route-deletes-queue",
     "nexo-demo-ops-day-closes-queue",
     "nexo-demo-ops-day-expenses-queue",
     "nexo-demo-ops-misc-queue",
@@ -251,6 +255,8 @@ export function bootstrapProtectedDemoData() {
   forceInstallJson(DEMO_DAILY_ASSIGNMENTS_KEY, asArray(keys[DEMO_DAILY_ASSIGNMENTS_KEY]));
   forceInstallJson(DEMO_DAILY_LOGS_KEY, asArray(keys[DEMO_DAILY_LOGS_KEY]));
   forceInstallJson(DEMO_ROUTES_KEY, asArray(keys[DEMO_ROUTES_KEY]));
+  // RUT-3.. duplicados viejos: quedan marcados borrados para que el pull no los reviva.
+  forceInstallJson(DEMO_DELETED_ROUTES_KEY, ["RUT-3", "RUT-4", "RUT-5", "RUT-6"]);
   forceInstallJson(DEMO_MISC_PAYMENTS_KEY, []);
   forceInstallJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []);
   forceInstallJson(DEMO_COLLECTOR_MONTH_CLOSES_KEY, []);

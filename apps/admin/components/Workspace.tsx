@@ -121,6 +121,7 @@ import {
   queueDayExpenseMirror,
   queueMiscPaymentMirror,
   queueRouteMirror,
+  queueRouteDeleteMirror,
   queueRoutesMirror,
 } from "@/lib/supabase/ops-mirror";
 import {
@@ -205,12 +206,14 @@ import {
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
   DEMO_COLLECTOR_MONTH_CLOSES_KEY,
+  forgetDeletedRouteRef,
   loadDemoPaymentsBundle,
   loadDemoUsers,
   loadDemoClients,
   loadDemoDayCloses,
   loadDemoBankMovements,
   readDemoJson,
+  rememberDeletedRouteRef,
   writeDemoJson,
 } from "@/lib/demo-persist";
 import {
@@ -1140,7 +1143,13 @@ export function Workspace({
       setConfirmRouteDelete("");
       return;
     }
-    setRoutes((current) => current.filter((row) => row.ref !== ref));
+    rememberDeletedRouteRef(ref);
+    setRoutes((current) => {
+      const next = current.filter((row) => row.ref !== ref);
+      writeDemoJson(DEMO_ROUTES_KEY, next);
+      return next;
+    });
+    queueRouteDeleteMirror(ref);
     setConfirmRouteDelete("");
     onGo("inicio", "lista");
     onToast(`Ruta "${route.name}" eliminada.`);
@@ -1157,6 +1166,7 @@ export function Workspace({
       return;
     }
     const ref = nextRouteCode(catalogRouteList);
+    forgetDeletedRouteRef(ref);
     const row: RouteRow = {
       ref,
       id: routeSlug(name),
