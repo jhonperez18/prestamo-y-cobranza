@@ -991,6 +991,9 @@ export function SupervisorMobileApp({
     }, 0);
   }, [liquidaciones, paymentsWithEvidence]);
 
+  /** Cabecera: saldo Nequi + saldo Banco (totales acumulados de ambos paneles). */
+  const nequiBancoSaldoTotal = nequiAcumulado + bancoAcumulado;
+
   const bancoRegisterToday = useMemo(() => {
     const items = paymentsWithEvidence
       .filter(
@@ -1363,13 +1366,14 @@ export function SupervisorMobileApp({
             <strong>{supervisor.name}</strong>
           </div>
         </div>
+        <span className="supervisor-mobile-date">{dateLabel}</span>
         <div
           className="supervisor-kpi-nb-sum"
-          aria-label={`Nequi + Banco: ${money(nequiHoyTotal + bancoHoyTotal, { symbol: false })}`}
+          aria-label={`Saldo Nequi + Banco: ${money(nequiBancoSaldoTotal, { symbol: false })}`}
+          title="Total acumulado Nequi + Total acumulado Banco"
         >
-          <b>{money(nequiHoyTotal + bancoHoyTotal, { symbol: false })}</b>
+          <b>{money(nequiBancoSaldoTotal, { symbol: false })}</b>
         </div>
-        <span className="supervisor-mobile-date">{dateLabel}</span>
       </header>
 
       <div

@@ -3098,17 +3098,22 @@
       padding-bottom: max(28px, env(safe-area-inset-bottom, 0px));
     }
     .supervisor-mobile-header {
-      align-items: center;
-      padding: 6px 4px !important;
+      align-items: end;
+      padding: 4px 4px 0 !important;
       display: grid;
       grid-template-columns: repeat(7, minmax(0, 1fr));
-      gap: 2px;
+      grid-template-rows: auto auto;
+      column-gap: 2px;
+      row-gap: 0;
     }
     .supervisor-mobile-header .collector-mobile-brand {
-      grid-column: 1 / span 3;
+      grid-column: 1 / span 4;
+      grid-row: 1;
       justify-self: start;
+      align-self: center;
       min-width: 0;
       padding-left: 6px;
+      padding-bottom: 2px;
     }
     .supervisor-mobile-header strong {
       font-size: 14px;
@@ -3122,34 +3127,42 @@
       color: #5b7268;
     }
     .supervisor-mobile-date {
-      grid-column: 6 / span 2;
+      grid-column: 5 / span 3;
+      grid-row: 1;
       justify-self: end;
+      align-self: center;
       padding-right: 6px;
+      padding-bottom: 2px;
       font-size: 11px;
       font-weight: 600;
       color: #111;
       white-space: nowrap;
     }
     .supervisor-mobile-header .supervisor-kpi-nb-sum {
-      grid-column: 4 / span 2;
-      justify-self: stretch;
+      grid-column: 3 / span 3;
+      grid-row: 2;
+      justify-self: center;
+      align-self: end;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 2px 4px;
+      margin: 0 0 -1px;
+      padding: 3px 10px 4px;
       border: 1px solid #d9e2ec;
-      border-radius: 4px;
-      background: #f3f5f8;
-      opacity: 0.55;
+      border-bottom: 0;
+      border-radius: 6px 6px 0 0;
+      background: #eef2f7;
+      opacity: 1;
       pointer-events: none;
       user-select: none;
+      z-index: 1;
     }
     .supervisor-mobile-header .supervisor-kpi-nb-sum b {
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
       letter-spacing: 0;
-      color: #64748b;
+      color: #334155;
       line-height: 1;
     }
     .supervisor-mobile-kpis {
@@ -3158,6 +3171,7 @@
       gap: 6px;
       padding: 8px 10px;
       background: transparent;
+      border-top: 1px solid #dbe5df;
       border-bottom: 1px solid #dbe5df;
     }
     .supervisor-mobile-kpis.has-caja,
