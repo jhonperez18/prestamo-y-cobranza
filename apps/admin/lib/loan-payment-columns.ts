@@ -10,7 +10,7 @@ export const LOAN_PAYMENT_COLUMNS: ColumnOption[] = [
   { id: "paidTime", label: "Hora" },
   { id: "concept", label: "Concepto" },
   { id: "collector", label: "Cobrador" },
-  { id: "method", label: "Forma de pago" },
+  { id: "method", label: "Método" },
   { id: "evidence", label: "Comprobante" },
   { id: "source", label: "Origen" },
   { id: "cuota", label: "Cuota" },

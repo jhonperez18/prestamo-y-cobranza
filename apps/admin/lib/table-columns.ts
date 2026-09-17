@@ -95,7 +95,7 @@ export const MISC_PAYMENT_COLUMNS: ColumnOption[] = [
   { id: "label", label: "Etiqueta" },
   { id: "paidDate", label: "Fecha pago" },
   { id: "account", label: "Cuenta bancaria" },
-  { id: "method", label: "Forma de pago" },
+  { id: "method", label: "Método" },
   { id: "amount", label: "Importe" },
   { id: "status", label: "Estado" },
   { id: "actions", label: "Acciones", pickerHidden: true },

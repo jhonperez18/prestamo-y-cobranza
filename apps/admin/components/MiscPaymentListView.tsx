@@ -113,7 +113,7 @@ export function MiscPaymentListView({
               {isVisible("label") ? <th>Etiqueta</th> : null}
               {isVisible("paidDate") ? <th>Fecha pago</th> : null}
               {isVisible("account") ? <th>Cuenta bancaria</th> : null}
-              {isVisible("method") ? <th>Forma de pago</th> : null}
+              {isVisible("method") ? <th>Método</th> : null}
               {isVisible("amount") ? <th className="right">Importe</th> : null}
               {isVisible("status") ? <th>Estado</th> : null}
               {showActions ? <th className="center">Acciones</th> : null}

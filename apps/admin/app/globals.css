@@ -6104,9 +6104,7 @@
       min-width: 0;
     }
     .th.right .th-label-with-picker,
-    th.right .th-label-with-picker {
-      justify-content: flex-end;
-    }
+    th.right .th-label-with-picker,
     .th.center .th-label-with-picker,
     th.center .th-label-with-picker {
       justify-content: center;
@@ -6210,8 +6208,24 @@
       font-size: 16px;
       color: #1a2a24;
     }
-    table.data th {
-      text-align: left;
+    /*
+     * Tablas del sistema: título centrado y dato centrado debajo.
+     * Solo afecta th/td — no cambia pantallas, KPIs ni formularios.
+     */
+    table.data.list-grid,
+    table.data.list-data-table,
+    table.data.mini-grid,
+    table.data.mini-table,
+    table.data.cols-fixed {
+      table-layout: fixed;
+    }
+    table.data th,
+    table.data .col-titles th,
+    table.list-grid thead th,
+    table.list-data-table thead th,
+    .bank-table thead th,
+    .bank-records-table th:not(.col-picker-cell) {
+      text-align: center;
       font-weight: 600;
       font-size: var(--bar-size);
       letter-spacing: 0;
@@ -6222,13 +6236,14 @@
       border-bottom: 1px solid var(--table-head-border);
       font-family: var(--bar-font);
       line-height: 1.3;
+      vertical-align: middle;
     }
     table.data th.right,
-    table.data td.right {
-      text-align: right;
-    }
+    table.data td.right,
     table.data th.center,
-    table.data td.center {
+    table.data td.center,
+    table.data td,
+    table.data tbody td {
       text-align: center;
     }
     table.data th.sortable {
@@ -6238,6 +6253,7 @@
       width: 100%;
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 4px;
       padding: 8px 10px;
       border: 0;
@@ -6249,11 +6265,11 @@
       line-height: 1.3;
       letter-spacing: 0;
       cursor: pointer;
-      text-align: left;
+      text-align: center;
     }
     table.data th.sortable.right .th-sort {
-      justify-content: flex-end;
-      text-align: right;
+      justify-content: center;
+      text-align: center;
     }
     table.data th.sortable .th-sort:hover {
       background: rgba(0, 0, 0, 0.08);
@@ -6269,6 +6285,16 @@
     }
     table.data th.sortable.sorted .th-sort-arrow {
       opacity: 1;
+    }
+    table.data .pill,
+    table.list-grid .pill,
+    table.list-data-table .pill,
+    .bank-table .pill {
+      margin-inline: auto;
+    }
+    table.data td .payment-evidence-thumb,
+    table.data td.pay-evidence-cell > * {
+      margin-inline: auto;
     }
     /*
      * Formato estándar de renglones — todas las tablas del sistema.
@@ -6289,6 +6315,15 @@
       overflow: hidden;
       text-overflow: ellipsis;
       vertical-align: middle;
+      text-align: center !important;
+    }
+    table.data th,
+    table.data .col-titles th,
+    table.list-grid .col-titles th,
+    table.list-data-table .col-titles th,
+    .bank-table thead th,
+    .bank-records-table th:not(.col-picker-cell) {
+      text-align: center !important;
     }
     table.data td {
       border-bottom: 1px solid #dce8e2;
@@ -6339,8 +6374,13 @@
     }
     .ref { color: #0f766e; font-weight: 600; }
     .money { font-variant-numeric: tabular-nums; font-weight: 500; }
+    /* Fuera de tablas puede usarse; dentro de table.data manda el centrado de columnas. */
     .right { text-align: right; }
     .center { text-align: center; }
+    table.data .right,
+    table.data .center {
+      text-align: center;
+    }
 
     table.data.cols-fixed {
       table-layout: fixed;
@@ -7434,13 +7474,14 @@
       font-family: var(--bar-font);
     }
     .loan-ficha-grid table.loan-ficha-table th.align-left,
-    .loan-ficha-grid table.loan-ficha-table td.align-left { text-align: left; }
+    .loan-ficha-grid table.loan-ficha-table td.align-left,
     .loan-ficha-grid table.loan-ficha-table th.align-right,
-    .loan-ficha-grid table.loan-ficha-table td.align-right {
-      text-align: right; font-variant-numeric: tabular-nums;
-    }
+    .loan-ficha-grid table.loan-ficha-table td.align-right,
     .loan-ficha-grid table.loan-ficha-table th.align-center,
-    .loan-ficha-grid table.loan-ficha-table td.align-center { text-align: center; }
+    .loan-ficha-grid table.loan-ficha-table td.align-center {
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+    }
     .loan-ficha-grid table.loan-ficha-table tbody tr { cursor: pointer; }
     .loan-ficha-grid table.loan-ficha-table tbody tr.on { background: #dceee4; }
     .loan-ficha-grid table.loan-ficha-table tbody tr.on:nth-child(even) { background: #d4e8dd; }
@@ -9306,20 +9347,20 @@
     .daily-log-table th.daily-log-visits,
     .daily-log-table .daily-log-visits { text-align: center; white-space: nowrap; }
     .daily-log-table th.daily-log-collected,
-    .daily-log-table .daily-log-collected { text-align: right; white-space: nowrap; }
+    .daily-log-table .daily-log-collected { text-align: center; white-space: nowrap; }
     .daily-log-table th.daily-log-toggle,
-    .daily-log-table .daily-log-toggle { text-align: right; white-space: nowrap; }
+    .daily-log-table .daily-log-toggle { text-align: center; white-space: nowrap; }
     .daily-log-table th.daily-log-date,
-    .daily-log-table .daily-log-date { text-align: left; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .daily-log-table .daily-log-date { text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .daily-log-table th.daily-log-route,
     .daily-log-table .daily-log-route {
-      text-align: left;
+      text-align: center;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .daily-log-table th.daily-log-status,
-    .daily-log-table .daily-log-status { text-align: left; white-space: nowrap; }
+    .daily-log-table .daily-log-status { text-align: center; white-space: nowrap; }
     .daily-log-zone { color: #5b7268; }
     .daily-log-row.open td { background: #f4f9f7; }
     .daily-log-row.open:hover td { background: #f4f9f7 !important; }
@@ -9364,15 +9405,16 @@
     .daily-log-payments-table col.pay-col-type { width: 108px; }
     .daily-log-payments-table th,
     .daily-log-payments-table td { white-space: nowrap; vertical-align: middle; }
-    .daily-log-payments-table .pay-col-time { text-align: left; }
-    .daily-log-payments-table .pay-col-client {
-      text-align: left;
+    .daily-log-payments-table .pay-col-time,
+    .daily-log-payments-table .pay-col-client,
+    .daily-log-payments-table .pay-col-value,
+    .daily-log-payments-table .pay-col-type,
+    .daily-log-payments-table .pay-col-method {
+      text-align: center;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .daily-log-payments-table .pay-col-value { text-align: right; }
-    .daily-log-payments-table .pay-col-type { text-align: left; }
     .daily-log-payments-table tbody tr { cursor: default; }
     .daily-log-empty { margin: 0; color: #5b7268; font-size: 15px; }
     .ev {
@@ -10575,7 +10617,7 @@
     .bank-table th,
     .bank-table td {
       border-bottom: 1px solid #b8cfc4;
-      text-align: left;
+      text-align: center;
       vertical-align: middle;
       color: #14201b;
       white-space: nowrap;
@@ -10602,7 +10644,7 @@
       letter-spacing: 0;
     }
     .bank-num {
-      text-align: right !important;
+      text-align: center !important;
       font-variant-numeric: tabular-nums;
     }
     .bank-row-income {

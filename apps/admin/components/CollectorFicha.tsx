@@ -612,7 +612,7 @@ export function CollectorFicha({
                     <th>Fecha</th>
                     <th>Cliente</th>
                     <th className="right">Valor</th>
-                    <th>Forma de pago</th>
+                    <th>Método</th>
                     <th>Comprobante</th>
                     <th>Tipo</th>
                   </tr>

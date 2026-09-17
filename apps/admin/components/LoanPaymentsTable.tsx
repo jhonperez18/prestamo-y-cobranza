@@ -100,7 +100,7 @@ export function LoanPaymentsTable({
               {isVisible("paidTime") ? headerCell("paidTime", "Hora") : null}
               {isVisible("concept") ? headerCell("concept", "Concepto") : null}
               {isVisible("collector") ? headerCell("collector", "Cobrador") : null}
-              {isVisible("method") ? headerCell("method", "Forma de pago") : null}
+              {isVisible("method") ? headerCell("method", "Método") : null}
               {isVisible("evidence") ? headerCell("evidence", "Comprobante") : null}
               {isVisible("source") ? headerCell("source", "Origen") : null}
               {isVisible("cuota") ? headerCell("cuota", "Cuota", "right") : null}

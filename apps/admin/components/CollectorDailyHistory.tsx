@@ -239,7 +239,7 @@ function DailyLogEntry({
                       <th className="pay-col-client">Cliente</th>
                       <th className="pay-col-value">Cobrado</th>
                       <th className="pay-col-type">Tipo</th>
-                      <th className="pay-col-method">Forma de pago</th>
+                      <th className="pay-col-method">Método</th>
                       <th className="pay-col-evidence">Comprobante</th>
                     </tr>
                   </thead>
