@@ -7,6 +7,7 @@ import type { RouteExpenseLine } from "@/lib/collector-day-close";
 import { money, type PaymentRow } from "@/lib/mock-data";
 import {
   normalizePaymentMethod,
+  paymentMethodInitial,
   paymentMethodLabel,
   paymentMethodRequiresReceipt,
   paymentMethodToneClass,
@@ -141,8 +142,11 @@ export function CollectorClosedDayReview({
                     {when ? <span className="is-when">{when}</span> : null}
                   </div>
                   <span className="is-loan">{loanRef}</span>
-                  <em className={`is-method ${paymentMethodToneClass(method)}`}>
-                    {paymentMethodLabel(method)}
+                  <em
+                    className={`is-method ${paymentMethodToneClass(method)}`}
+                    title={paymentMethodLabel(method)}
+                  >
+                    {paymentMethodInitial(method)}
                   </em>
                   {showEvidenceCol ? (
                     <span className="is-evidence">
