@@ -230,6 +230,7 @@ export function RouteClientsView({
             <col className="rc-col-saldo" />
             <col className="rc-col-cuota" />
             <col className="rc-col-cobrado" />
+            <col className="rc-col-method" />
             <col className="rc-col-hora" />
             <col className="rc-col-cuotas" />
             <col className="rc-col-accion" />
@@ -239,22 +240,21 @@ export function RouteClientsView({
               <th>#</th>
               <th>Nombre</th>
               <th>Apodo</th>
-              <th className="right">Saldo</th>
-              <th className="right" title="Cuota pactada del préstamo (fija)">
-                Cuota
-              </th>
+              <th>Saldo</th>
+              <th title="Cuota pactada del préstamo (fija)">Cuota</th>
               <th title="Se actualiza cuando el cobrador registra el pago">Cobrado</th>
+              <th title="Efectivo / Nequi / Banco">Método</th>
               <th title="Hora del cobro en la app">Hora</th>
               <th title="Cuotas pagadas / esperadas a hoy (calendario lun–sáb sin festivos)">
                 Mora
               </th>
-              <th className="right">Acción</th>
+              <th>Acción</th>
             </tr>
           </thead>
           <tbody key={routeName}>
             {rows.length === 0 ? (
               <tr className="empty-row">
-                <td colSpan={9}>
+                <td colSpan={10}>
                   {blocked
                     ? blocked
                     : !collectorRef
@@ -288,24 +288,24 @@ export function RouteClientsView({
                         "—"}
                     </td>
                     <td>{row.client.nickname?.trim() || "—"}</td>
-                    <td className="money right">{row.balance > 0 ? money(row.balance) : "—"}</td>
-                    <td className="money right">
-                      {row.cuotaHoy > 0 ? money(row.cuotaHoy) : "—"}
-                    </td>
+                    <td className="money">{row.balance > 0 ? money(row.balance) : "—"}</td>
+                    <td className="money">{row.cuotaHoy > 0 ? money(row.cuotaHoy) : "—"}</td>
                     <td>
                       {row.paidToday ? (
-                        <div className="route-clients-cobrado">
-                          <span className="money">{money(row.cobradoHoy)}</span>
-                          {row.paidMethod ? (
-                            <Pill
-                              label={row.paidMethod}
-                              kind={row.paidMethodKind}
-                              title={row.paidMethodTitle || undefined}
-                            />
-                          ) : null}
-                        </div>
+                        <span className="money">{money(row.cobradoHoy)}</span>
                       ) : (
                         <span className="route-clients-muted">Pend.</span>
+                      )}
+                    </td>
+                    <td className="route-clients-method-cell">
+                      {row.paidToday && row.paidMethod ? (
+                        <Pill
+                          label={row.paidMethod}
+                          kind={row.paidMethodKind}
+                          title={row.paidMethodTitle || undefined}
+                        />
+                      ) : (
+                        "—"
                       )}
                     </td>
                     <td className="route-clients-hora">
@@ -314,7 +314,7 @@ export function RouteClientsView({
                     <td className="route-clients-cuotas">
                       <CuotasProgressCell progress={row.cuotas} />
                     </td>
-                    <td className="right route-clients-actions">
+                    <td className="route-clients-actions">
                       {onRenewLoan ? (
                         <button
                           type="button"

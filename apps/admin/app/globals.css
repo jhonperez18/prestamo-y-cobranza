@@ -6679,14 +6679,16 @@
     }
     .home-routes-dashboard {
       display: grid;
-      justify-items: center;
+      justify-items: stretch;
       align-content: start;
       gap: 10px;
-      padding: 8px 16px 20px;
+      padding: 8px 0 20px;
+      width: 100%;
     }
     .home-routes-dashboard.is-unified {
-      width: min(1180px, 100%);
-      margin: 0 auto;
+      width: 100%;
+      max-width: none;
+      margin: 0;
       justify-items: stretch;
       gap: 8px;
     }
@@ -6824,13 +6826,15 @@
       table-layout: fixed;
     }
     table.route-clients-table col.rc-col-order { width: 44px; }
-    table.route-clients-table col.rc-col-name { width: 16%; }
+    table.route-clients-table col.rc-col-name { width: 15%; }
     table.route-clients-table col.rc-col-nick { width: 10%; }
-    table.route-clients-table col.rc-col-saldo { width: 11%; }
-    table.route-clients-table col.rc-col-cuota { width: 10%; }
-    table.route-clients-table col.rc-col-cobrado { width: 16%; }
-    table.route-clients-table col.rc-col-hora { width: 11%; }
-    table.route-clients-table col.rc-col-aviso { width: 10%; }
+    table.route-clients-table col.rc-col-saldo { width: 10%; }
+    table.route-clients-table col.rc-col-cuota { width: 9%; }
+    table.route-clients-table col.rc-col-cobrado { width: 10%; }
+    table.route-clients-table col.rc-col-method { width: 7%; }
+    table.route-clients-table col.rc-col-hora { width: 10%; }
+    table.route-clients-table col.rc-col-cuotas { width: 9%; }
+    table.route-clients-table col.rc-col-aviso { width: 9%; }
     table.route-clients-table col.rc-col-accion { width: 72px; }
     table.route-clients-table .col-titles th {
       position: sticky;
@@ -6844,6 +6848,7 @@
     }
     table.route-clients-table td .route-clients-cobrado {
       overflow: hidden;
+      justify-content: center;
     }
     .route-clients-table .route-clients-muted {
       font-variant-numeric: tabular-nums;
@@ -6861,12 +6866,16 @@
       display: inline-flex;
       flex-wrap: nowrap;
       align-items: center;
-      gap: 6px;
+      justify-content: center;
+      gap: 0;
       min-width: 0;
     }
     .route-clients-cobrado .money {
       font-weight: 650;
       color: #14201b;
+    }
+    .route-clients-method-cell .pill {
+      margin-inline: auto;
     }
     .route-clients-hora {
       font-variant-numeric: tabular-nums;
@@ -6877,7 +6886,7 @@
     .route-clients-actions {
       display: inline-flex;
       flex-wrap: nowrap;
-      justify-content: flex-end;
+      justify-content: center;
       align-items: center;
       gap: 10px;
       white-space: nowrap;
