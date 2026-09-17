@@ -59,66 +59,78 @@ export async function POST(req: Request) {
     for (const table of WIPE_TABLES) {
       const result = await deleteAllRefs(client, table);
       if (!result.ok) {
-        return NextResponse.json({ ok: false, error: `${table}: ${result.error}` }, { status: 502 });
+        // Tabla ausente u otro error no bloquea el resto del wipe.
+        counts[table] = `skip:${result.error}`;
+        continue;
       }
       const { count } = await client.from(table).select("*", { count: "exact", head: true });
       counts[table] = count ?? 0;
     }
 
-    // Rutas: solo las 3 base, sin clientes ni historial.
-    const { data: routeRows } = await client.from("routes").select("ref").limit(5000);
-    const routeRefs = (routeRows ?? []).map((row) => row.ref).filter(Boolean) as string[];
-    for (let i = 0; i < routeRefs.length; i += 100) {
-      await client.from("routes").delete().in("ref", routeRefs.slice(i, i + 100));
+    // Rutas: intentar dejar solo las 3 base (si falla el upsert, igual ya se vació el dinero).
+    try {
+      const { data: routeRows } = await client.from("routes").select("ref").limit(5000);
+      const routeRefs = (routeRows ?? []).map((row) => row.ref).filter(Boolean) as string[];
+      for (let i = 0; i < routeRefs.length; i += 100) {
+        await client.from("routes").delete().in("ref", routeRefs.slice(i, i + 100));
+      }
+      const upsert = await client.from("routes").upsert(
+        [
+          {
+            ref: "RUT-1",
+            slug: "1",
+            name: "1",
+            collector_ref: "COB-0",
+            collector_name: "Juan Ríos",
+            zone: "",
+            frequency: "Lun–Sáb",
+            stops: [],
+            clients_count: 0,
+            status: "Activa",
+            kind: "ok",
+            updated_at: new Date().toISOString(),
+          },
+          {
+            ref: "RUT-2",
+            slug: "2",
+            name: "2",
+            collector_ref: "COB-1",
+            collector_name: "Lina Soto",
+            zone: "",
+            frequency: "Lun–Sáb",
+            stops: [],
+            clients_count: 0,
+            status: "Activa",
+            kind: "ok",
+            updated_at: new Date().toISOString(),
+          },
+          {
+            ref: "RUT-3",
+            slug: "3",
+            name: "3",
+            collector_ref: "COB-2",
+            collector_name: "Diego Mora",
+            zone: "",
+            frequency: "Lun–Sáb",
+            stops: [],
+            clients_count: 0,
+            status: "Activa",
+            kind: "ok",
+            updated_at: new Date().toISOString(),
+          },
+        ],
+        { onConflict: "ref" },
+      );
+      if (upsert.error) counts.routes = `upsert_warn:${upsert.error.message}`;
+      else {
+        const { count: routesCount } = await client
+          .from("routes")
+          .select("*", { count: "exact", head: true });
+        counts.routes = routesCount ?? 0;
+      }
+    } catch (routeErr) {
+      counts.routes = routeErr instanceof Error ? `err:${routeErr.message}` : "err";
     }
-    await client.from("routes").upsert(
-      [
-        {
-          ref: "RUT-1",
-          slug: "1",
-          name: "1",
-          collector_ref: "COB-0",
-          collector_name: "Juan Ríos",
-          zone: "",
-          frequency: "Lun–Sáb",
-          stops: [],
-          clients_count: 0,
-          status: "Activa",
-          kind: "ok",
-        },
-        {
-          ref: "RUT-2",
-          slug: "2",
-          name: "2",
-          collector_ref: "COB-1",
-          collector_name: "Lina Soto",
-          zone: "",
-          frequency: "Lun–Sáb",
-          stops: [],
-          clients_count: 0,
-          status: "Activa",
-          kind: "ok",
-        },
-        {
-          ref: "RUT-3",
-          slug: "3",
-          name: "3",
-          collector_ref: "COB-2",
-          collector_name: "Diego Mora",
-          zone: "",
-          frequency: "Lun–Sáb",
-          stops: [],
-          clients_count: 0,
-          status: "Activa",
-          kind: "ok",
-        },
-      ],
-      { onConflict: "ref" },
-    );
-    const { count: routesCount } = await client
-      .from("routes")
-      .select("*", { count: "exact", head: true });
-    counts.routes = routesCount ?? 0;
 
     return NextResponse.json({ ok: true, gen: WIPE_GEN, counts });
   } catch (err) {
