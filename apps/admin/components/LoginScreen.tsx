@@ -5,6 +5,11 @@ import { validateLogin, type AppSession } from "@/lib/auth";
 import { DEMO_USER_PASSWORD } from "@/lib/mock-data";
 import { loadDemoUsers } from "@/lib/demo-persist";
 import { APP_BUILD } from "@/lib/app-build";
+import {
+  PWA_CHANNELS,
+  sessionAllowedOnChannel,
+  type PwaChannelId,
+} from "@/lib/pwa-channels";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import {
   authEmailFromLoginHint,
@@ -14,27 +19,53 @@ import {
 
 type Props = {
   onSuccess: (session: AppSession) => void;
+  /** Link independiente: filtra usuarios y rechaza roles ajenos. */
+  channel?: PwaChannelId;
 };
 
-const DEMO_HINTS = [
-  { login: "truqui", role: "Admin · demo local" },
-  { login: "supervisor", role: "Carlos · solo app supervisor" },
-  { login: "juan.rios", role: "Cobrador · solo app" },
-  { login: "lina.soto", role: "Cobradora · solo app" },
-  { login: "diego.mora", role: "Cobrador · solo app" },
+const DEMO_HINTS: Array<{ login: string; role: string; channel: PwaChannelId }> = [
+  { login: "truqui", role: "Admin · demo local", channel: "sistema" },
+  { login: "supervisor", role: "Carlos · solo app supervisor", channel: "supervisor" },
+  { login: "juan.rios", role: "Cobrador · solo app", channel: "cobrador" },
+  { login: "lina.soto", role: "Cobradora · solo app", channel: "cobrador" },
+  { login: "diego.mora", role: "Cobrador · solo app", channel: "cobrador" },
 ];
 
-export function LoginScreen({ onSuccess }: Props) {
+function channelRejectMessage(channel: PwaChannelId) {
+  if (channel === "supervisor") {
+    return "Este enlace es solo para supervisor. Usá el usuario supervisor.";
+  }
+  if (channel === "cobrador") {
+    return "Este enlace es solo para cobrador. Usá tu usuario de cobro.";
+  }
+  return "Usuario no permitido en este acceso.";
+}
+
+export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const passwordRef = useRef<HTMLInputElement>(null);
   const supabaseReady = getSupabasePublicEnv().configured;
+  const channelMeta = PWA_CHANNELS[channel];
+  const hints =
+    channel === "sistema"
+      ? DEMO_HINTS
+      : DEMO_HINTS.filter((entry) => entry.channel === channel);
 
   useEffect(() => {
     passwordRef.current?.focus();
   }, []);
+
+  function acceptSession(session: AppSession) {
+    if (!sessionAllowedOnChannel(session, channel)) {
+      setError(channelRejectMessage(channel));
+      return false;
+    }
+    onSuccess(session);
+    return true;
+  }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,7 +79,7 @@ export function LoginScreen({ onSuccess }: Props) {
           setError(result.error);
           return;
         }
-        onSuccess(result.session);
+        acceptSession(result.session);
         return;
       }
 
@@ -57,7 +88,7 @@ export function LoginScreen({ onSuccess }: Props) {
       if (mappedEmail && mappedEmail.includes("@")) {
         const result = await loginWithSupabaseAuth(mappedEmail, password);
         if (result.ok) {
-          onSuccess(result.session);
+          acceptSession(result.session);
           return;
         }
         // si Auth falla, cae a demo local
@@ -69,7 +100,7 @@ export function LoginScreen({ onSuccess }: Props) {
         setError("Usuario o contraseña incorrectos.");
         return;
       }
-      onSuccess(session);
+      acceptSession(session);
     } finally {
       setBusy(false);
     }
@@ -86,7 +117,7 @@ export function LoginScreen({ onSuccess }: Props) {
             tabIndex={-1}
             draggable={false}
           />
-          <p>Acceso CA préstamo</p>
+          <p>{channelMeta.loginEyebrow}</p>
         </div>
 
         <label className="login-field">
@@ -95,9 +126,13 @@ export function LoginScreen({ onSuccess }: Props) {
             name="usuario"
             autoComplete="username"
             placeholder={
-              supabaseReady
-                ? "jhonefe18@yahoo.es o truqui"
-                : "truqui o usuario de acceso"
+              channel === "supervisor"
+                ? "supervisor"
+                : channel === "cobrador"
+                  ? "juan.rios o tu usuario"
+                  : supabaseReady
+                    ? "jhonefe18@yahoo.es o truqui"
+                    : "truqui o usuario de acceso"
             }
             value={username}
             onChange={(event) => setUsername(event.target.value)}
@@ -132,7 +167,7 @@ export function LoginScreen({ onSuccess }: Props) {
             <p>Usuarios de prueba (contraseña: {DEMO_USER_PASSWORD})</p>
           ) : null}
           <ul>
-            {DEMO_HINTS.map((entry) => (
+            {hints.map((entry) => (
               <li key={entry.login}>
                 <button
                   type="button"

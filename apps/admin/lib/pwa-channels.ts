@@ -1,14 +1,18 @@
+import type { AppSession } from "@/lib/auth";
+import { COLLECTOR_ROLE_REF, SUPERVISOR_ROLE_REF } from "@/lib/mock-data";
+
 /**
- * Canales PWA / futuros subdominios.
+ * Canales de acceso (links independientes + futuros subdominios).
+ *
+ * Hoy (un solo host Vercel):
+ *   /                 → sistema (admin + demos)
+ *   /supervisor       → solo app supervisor
+ *   /cobrador         → solo app cobrador (si se habilita)
  *
  * Dominio futuro (Hostinger → Vercel):
  *   sistema.tudominio.com     → panel completo (admin)
  *   supervisor.tudominio.com  → app supervisor
- *   cobro.tudominio.com       → app cobrador (1–N cobradores, mismo canal)
- *
- * Hoy (un solo host Vercel):
- *   /?canal=sistema|supervisor|cobrador
- *   /instalar/sistema|supervisor|cobrador  → pantallas para “Agregar a inicio”
+ *   cobro.tudominio.com       → app cobrador
  */
 export type PwaChannelId = "sistema" | "supervisor" | "cobrador";
 
@@ -43,33 +47,33 @@ export const PWA_CHANNELS: Record<PwaChannelId, PwaChannel> = {
     name: "CA préstamo · Sistema",
     shortName: "CA Sistema",
     description: "Panel completo de préstamos y cobranza",
-    startPath: "/?canal=sistema",
+    startPath: "/",
     hostPrefix: "sistema",
     themeColor: PWA_BRAND.themeColor,
     backgroundColor: PWA_BRAND.backgroundColor,
-    loginEyebrow: "Sistema completo",
+    loginEyebrow: "Acceso CA préstamo",
   },
   supervisor: {
     id: "supervisor",
     name: "CA préstamo · Supervisor",
     shortName: "CA Superv.",
     description: "App de campo para supervisión de rutas y caja",
-    startPath: "/?canal=supervisor",
+    startPath: "/supervisor",
     hostPrefix: "supervisor",
     themeColor: PWA_BRAND.themeColor,
     backgroundColor: PWA_BRAND.backgroundColor,
-    loginEyebrow: "App supervisor",
+    loginEyebrow: "Acceso supervisor",
   },
   cobrador: {
     id: "cobrador",
     name: "CA préstamo · Cobrador",
     shortName: "CA Cobro",
     description: "App de cobro en ruta (2–3 cobradores con su usuario)",
-    startPath: "/?canal=cobrador",
+    startPath: "/cobrador",
     hostPrefix: "cobro",
     themeColor: PWA_BRAND.themeColor,
     backgroundColor: PWA_BRAND.backgroundColor,
-    loginEyebrow: "App cobrador",
+    loginEyebrow: "Acceso cobrador",
   },
 };
 
@@ -82,9 +86,10 @@ export function isPwaChannelId(value: string | null | undefined): value is PwaCh
   return value === "sistema" || value === "supervisor" || value === "cobrador";
 }
 
-/** Resuelve canal por host futuro o ?canal= (hoy). */
+/** Resuelve canal por host futuro, path o ?canal=. */
 export function resolvePwaChannel(input: {
   host?: string | null;
+  pathname?: string | null;
   canalParam?: string | null;
 }): PwaChannel {
   const host = (input.host || "").toLowerCase().split(":")[0];
@@ -93,10 +98,22 @@ export function resolvePwaChannel(input: {
   if (host.startsWith("sistema.") || host.startsWith("admin.") || host.startsWith("app.")) {
     return PWA_CHANNELS.sistema;
   }
+  const path = (input.pathname || "").toLowerCase();
+  if (path === "/supervisor" || path.startsWith("/supervisor/")) return PWA_CHANNELS.supervisor;
+  if (path === "/cobrador" || path.startsWith("/cobrador/")) return PWA_CHANNELS.cobrador;
   if (isPwaChannelId(input.canalParam)) return PWA_CHANNELS[input.canalParam];
   return PWA_CHANNELS.sistema;
 }
 
 export function pwaManifestPath(channel: PwaChannelId) {
   return `/pwa/manifests/${channel}.webmanifest`;
+}
+
+/** Solo el rol del canal puede entrar por ese link. */
+export function sessionAllowedOnChannel(session: AppSession, channel: PwaChannelId): boolean {
+  if (channel === "supervisor") return session.roleRef === SUPERVISOR_ROLE_REF;
+  if (channel === "cobrador") {
+    return session.roleRef === COLLECTOR_ROLE_REF || Boolean(session.collectorRef);
+  }
+  return true;
 }

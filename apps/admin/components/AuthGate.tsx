@@ -18,14 +18,18 @@ import {
   writeDemoJson,
 } from "@/lib/demo-persist";
 import { COLLECTOR_ROLE_REF, SUPERVISOR_ROLE_REF } from "@/lib/mock-data";
+import {
+  sessionAllowedOnChannel,
+  type PwaChannelId,
+} from "@/lib/pwa-channels";
 import { canAccessAdminPanel } from "@/lib/session-access";
 import { signOutSupabaseAuth } from "@/lib/supabase/auth-login";
 
 /**
  * Acceso:
- * - truqui (admin) → sistema completo (panel PC; en celular chrome compacto + menú cajón)
- * - cobradores → solo app cobrador
- * - supervisor → solo app supervisor
+ * - / → sistema (admin + demos)
+ * - /supervisor → solo app supervisor
+ * - /cobrador → solo app cobrador
  */
 function isCollectorSession(session: AppSession) {
   return session.roleRef === COLLECTOR_ROLE_REF || Boolean(session.collectorRef);
@@ -35,7 +39,11 @@ function isSupervisorSession(session: AppSession) {
   return session.roleRef === SUPERVISOR_ROLE_REF;
 }
 
-export function AuthGate() {
+type Props = {
+  channel?: PwaChannelId;
+};
+
+export function AuthGate({ channel = "sistema" }: Props) {
   const [session, setSession] = useState<AppSession | null>(null);
   const [ready, setReady] = useState(false);
   const [isPhone, setIsPhone] = useState(false);
@@ -64,16 +72,25 @@ export function AuthGate() {
     return () => {
       mq.removeEventListener("change", sync);
     };
-  }, []);
+  }, [channel]);
+
+  useEffect(() => {
+    if (!session) return;
+    if (sessionAllowedOnChannel(session, channel)) return;
+    clearSession();
+    setSession(null);
+  }, [session, channel]);
 
   if (!ready) {
     return <div className="login-screen login-loading" aria-hidden />;
   }
 
-  if (!session) {
+  if (!session || !sessionAllowedOnChannel(session, channel)) {
     return (
       <LoginScreen
+        channel={channel}
         onSuccess={(next) => {
+          if (!sessionAllowedOnChannel(next, channel)) return;
           writeSession(next);
           setSession(next);
         }}
@@ -86,6 +103,16 @@ export function AuthGate() {
     clearSession();
     setSession(null);
   };
+
+  // Canal supervisor: solo shell supervisor (nunca admin ni cobrador).
+  if (channel === "supervisor") {
+    return <SupervisorShell session={session} onLogout={logout} />;
+  }
+
+  // Canal cobrador: solo shell cobrador.
+  if (channel === "cobrador") {
+    return <CollectorShell session={session} onLogout={logout} />;
+  }
 
   // Cobradores: únicamente app móvil (PC o celular).
   if (isCollectorSession(session) && !canAccessAdminPanel(session)) {
