@@ -5,7 +5,7 @@
   "description": "App de campo para supervisión de rutas y caja",
   "lang": "es-CO",
   "dir": "ltr",
-  "start_url": "/?canal=supervisor",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",

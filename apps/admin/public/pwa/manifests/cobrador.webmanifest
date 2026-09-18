@@ -5,7 +5,7 @@
   "description": "App de cobro en ruta — cada cobrador entra con su usuario",
   "lang": "es-CO",
   "dir": "ltr",
-  "start_url": "/?canal=cobrador",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",

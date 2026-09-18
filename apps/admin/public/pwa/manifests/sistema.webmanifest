@@ -1,11 +1,11 @@
 {
-  "id": "/?canal=sistema",
+  "id": "/",
   "name": "CA préstamo · Sistema",
   "short_name": "CA Sistema",
   "description": "Panel completo de préstamos y cobranza",
   "lang": "es-CO",
   "dir": "ltr",
-  "start_url": "/?canal=sistema",
+  "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",

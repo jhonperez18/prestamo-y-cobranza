@@ -11,12 +11,12 @@ import {
 export default function manifest(): MetadataRoute.Manifest {
   const channel = PWA_CHANNELS.sistema;
   return {
-    id: channel.startPath,
+    id: "/",
     name: channel.name,
     short_name: channel.shortName,
     description: channel.description,
     lang: PWA_BRAND.lang,
-    start_url: channel.startPath,
+    start_url: "/",
     scope: "/",
     display: "standalone",
     orientation: "any",
