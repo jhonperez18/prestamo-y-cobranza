@@ -10,6 +10,7 @@
     "lint": "eslint",
     "verify:prod": "node scripts/release.mjs verify",
     "release:force": "node scripts/release.mjs force",
+    "pwa:icons": "node scripts/generate-pwa-icons.mjs",
     "db:push": "npx supabase db push --workdir ../.."
   },
   "dependencies": {
@@ -29,6 +30,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

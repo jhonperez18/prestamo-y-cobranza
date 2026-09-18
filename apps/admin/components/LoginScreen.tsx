@@ -11,26 +11,40 @@ import {
   loginWithSupabaseAuth,
   shouldTrySupabaseLogin,
 } from "@/lib/supabase/auth-login";
+import type { PwaChannelId } from "@/lib/pwa-channels";
 
 type Props = {
   onSuccess: (session: AppSession) => void;
+  /** Canal PWA / futuro subdominio (sistema · supervisor · cobrador). */
+  channelEyebrow?: string;
 };
 
-const DEMO_HINTS = [
-  { login: "truqui", role: "Admin · demo local" },
-  { login: "supervisor", role: "Carlos · solo app supervisor" },
-  { login: "juan.rios", role: "Cobrador · solo app" },
-  { login: "lina.soto", role: "Cobradora · solo app" },
-  { login: "diego.mora", role: "Cobrador · solo app" },
+const DEMO_HINTS: Array<{
+  login: string;
+  role: string;
+  canals: PwaChannelId[];
+}> = [
+  { login: "truqui", role: "Admin · demo local", canals: ["sistema"] },
+  { login: "supervisor", role: "Carlos · solo app supervisor", canals: ["sistema", "supervisor"] },
+  { login: "juan.rios", role: "Cobrador · solo app", canals: ["sistema", "cobrador"] },
+  { login: "lina.soto", role: "Cobradora · solo app", canals: ["sistema", "cobrador"] },
+  { login: "diego.mora", role: "Cobrador · solo app", canals: ["sistema", "cobrador"] },
 ];
 
-export function LoginScreen({ onSuccess }: Props) {
+export function LoginScreen({ onSuccess, channelEyebrow }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const passwordRef = useRef<HTMLInputElement>(null);
   const supabaseReady = getSupabasePublicEnv().configured;
+  const hints = DEMO_HINTS.filter((entry) => {
+    if (!channelEyebrow) return true;
+    const key = channelEyebrow.toLowerCase();
+    if (key.includes("supervisor")) return entry.canals.includes("supervisor");
+    if (key.includes("cobrador")) return entry.canals.includes("cobrador");
+    return true;
+  });
 
   useEffect(() => {
     passwordRef.current?.focus();
@@ -80,12 +94,13 @@ export function LoginScreen({ onSuccess }: Props) {
       <form className="login-card" onSubmit={onSubmit}>
         <div className="login-brand">
           <img
-            src="/logo-ca-prestamo.png"
+            src="/pwa/icons/icon-192.png"
             alt="CA préstamo"
             className="login-logo"
             tabIndex={-1}
             draggable={false}
           />
+          {channelEyebrow ? <p className="login-channel-eyebrow">{channelEyebrow}</p> : null}
           <p>Acceso CA préstamo</p>
         </div>
 
@@ -132,7 +147,7 @@ export function LoginScreen({ onSuccess }: Props) {
             <p>Usuarios de prueba (contraseña: {DEMO_USER_PASSWORD})</p>
           ) : null}
           <ul>
-            {DEMO_HINTS.map((entry) => (
+            {hints.map((entry) => (
               <li key={entry.login}>
                 <button
                   type="button"

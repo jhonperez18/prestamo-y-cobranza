@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   DM_Sans,
   IBM_Plex_Sans,
@@ -10,6 +10,13 @@ import {
   Roboto,
   Source_Sans_3,
 } from "next/font/google";
+import {
+  PWA_APPLE_TOUCH,
+  PWA_BRAND,
+  PWA_CHANNELS,
+  PWA_ICON_192,
+  PWA_ICON_512,
+} from "@/lib/pwa-channels";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -81,13 +88,43 @@ const fontVars = [
   sourceSans.variable,
 ].join(" ");
 
+const sistema = PWA_CHANNELS.sistema;
+
 export const metadata: Metadata = {
-  title: "CA préstamo",
-  description: "Sistema profesional de préstamos y cobranza",
-  icons: {
-    icon: "/logo-ca-prestamo.png",
-    apple: "/logo-ca-prestamo.png",
+  title: {
+    default: PWA_BRAND.product,
+    template: `%s · ${PWA_BRAND.product}`,
   },
+  description: "Sistema profesional de préstamos y cobranza",
+  applicationName: sistema.shortName,
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: PWA_ICON_192, sizes: "192x192", type: "image/png" },
+      { url: PWA_ICON_512, sizes: "512x512", type: "image/png" },
+      { url: "/logo-ca-prestamo.png", type: "image/png" },
+    ],
+    apple: [{ url: PWA_APPLE_TOUCH, sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    title: sistema.shortName,
+    statusBarStyle: "default",
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: PWA_BRAND.themeColor,
+  colorScheme: "light",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

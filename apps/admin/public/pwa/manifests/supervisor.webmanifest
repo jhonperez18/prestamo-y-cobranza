@@ -1,0 +1,35 @@
+{
+  "id": "/?canal=supervisor",
+  "name": "CA préstamo · Supervisor",
+  "short_name": "CA Superv.",
+  "description": "App de campo para supervisión de rutas y caja",
+  "lang": "es-CO",
+  "dir": "ltr",
+  "start_url": "/?canal=supervisor",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f766e",
+  "theme_color": "#0f766e",
+  "categories": ["finance", "business"],
+  "icons": [
+    {
+      "src": "/pwa/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa/icons/maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

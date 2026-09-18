@@ -20,12 +20,15 @@ import {
 import { COLLECTOR_ROLE_REF, SUPERVISOR_ROLE_REF } from "@/lib/mock-data";
 import { canAccessAdminPanel } from "@/lib/session-access";
 import { signOutSupabaseAuth } from "@/lib/supabase/auth-login";
+import { resolvePwaChannel, type PwaChannel } from "@/lib/pwa-channels";
 
 /**
  * Acceso:
  * - truqui (admin) → sistema completo (panel PC; en celular chrome compacto + menú cajón)
  * - cobradores → solo app cobrador
  * - supervisor → solo app supervisor
+ *
+ * Canal PWA (?canal= / futuro subdominio) solo etiqueta el acceso; el rol lo decide el login.
  */
 function isCollectorSession(session: AppSession) {
   return session.roleRef === COLLECTOR_ROLE_REF || Boolean(session.collectorRef);
@@ -39,6 +42,7 @@ export function AuthGate() {
   const [session, setSession] = useState<AppSession | null>(null);
   const [ready, setReady] = useState(false);
   const [isPhone, setIsPhone] = useState(false);
+  const [pwaChannel, setPwaChannel] = useState<PwaChannel>(() => resolvePwaChannel({}));
 
   useEffect(() => {
     // 1) Si el build de Vercel cambió (candado virgen), invalida paquete local.
@@ -55,6 +59,15 @@ export function AuthGate() {
     // Cada visita al link (Vercel/local) empieza en login: usuario + contraseña.
     clearSession();
     setSession(null);
+
+    const params = new URLSearchParams(window.location.search);
+    setPwaChannel(
+      resolvePwaChannel({
+        host: window.location.hostname,
+        canalParam: params.get("canal"),
+      }),
+    );
+
     const mq = window.matchMedia("(max-width: 900px)");
     const sync = () => setIsPhone(mq.matches);
     sync();
@@ -73,6 +86,7 @@ export function AuthGate() {
   if (!session) {
     return (
       <LoginScreen
+        channelEyebrow={pwaChannel.loginEyebrow}
         onSuccess={(next) => {
           writeSession(next);
           setSession(next);

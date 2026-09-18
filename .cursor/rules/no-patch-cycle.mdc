@@ -1,0 +1,30 @@
+---
+description: Prohíbe el ciclo error→parche tras push; solo correcciones de raíz
+alwaysApply: true
+---
+
+# Sin parches — solo raíz
+
+## Contrato del usuario
+
+No se permiten errores repetidos al hacer push.  
+**Prohibido:** “error apareció → error corregido” con parche o reparación de una línea.
+
+## Obligatorio
+
+1. Antes de push/deploy: identificar la **causa raíz** (flujo, contrato de datos, sync, verify).
+2. Corregir la **estructura** (fuente de verdad, invariantes, gates).
+3. `verify:prod` debe fallar si build o catálogo SQL no están bien — nunca declarar “listo” solo por CDN.
+4. Clientes = catálogo sagrado: nunca wipe en login, nunca persistir `clients=[]`, pull antes de pintar UI.
+
+## Prohibido
+
+- Parches UI que oculten totales/listas vacías
+- “Si X falla, ignóralo” sin arreglar X
+- Wipe/bootstrap que vacíe SQL sin resembrar
+- Hidratar UI dos veces (vacío → lleno) causando parpadeo
+- Decir “ya está” sin build SHA + catálogo verificados
+
+## Si vuelve el mismo síntoma
+
+No re-parchear. Buscar qué invariante se rompió y cerrarlo en el módulo dueño (persist, bootstrap, sync, release).

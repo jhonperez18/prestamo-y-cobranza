@@ -31,6 +31,21 @@ const nextConfig: NextConfig = {
       { source: "/index", headers: noStore },
       // Documento HTML de la app (evita shell viejo en celular / CDN).
       { source: "/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)", headers: noStore },
+      {
+        source: "/pwa/manifests/:path*",
+        headers: [
+          { key: "Content-Type", value: "application/manifest+json; charset=utf-8" },
+          { key: "Cache-Control", value: "public, max-age=3600" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+        ],
+      },
+      {
+        source: "/pwa/icons/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, max-age=86400, immutable" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+        ],
+      },
     ];
   },
 };
