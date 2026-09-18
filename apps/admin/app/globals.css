@@ -12253,7 +12253,8 @@
       z-index: 2;
     }
 
-/* —— PWA instalar (canales sistema / supervisor / cobrador) —— */
+
+/* --- PWA instalar (canales sistema / supervisor / cobrador) --- */
 .pwa-install-page {
   min-height: 100dvh;
   display: grid;

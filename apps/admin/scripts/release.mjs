@@ -55,30 +55,40 @@ function ensureLinked() {
   }
 }
 
-function latestProductionDeployUrl() {
+function deploymentSha(row) {
+  return String(
+    row?.meta?.githubCommitSha || row?.meta?.gitCommitSha || row?.meta?.gitlabCommitSha || "",
+  ).slice(0, 7);
+}
+
+function listProductionDeployments() {
+  const raw = capture(`npx vercel ls ${PROJECT} --json`, repoRoot);
+  const jsonStart = Math.max(raw.indexOf("{"), raw.indexOf("["));
+  const data = JSON.parse(jsonStart >= 0 ? raw.slice(jsonStart) : raw);
+  return Array.isArray(data?.deployments) ? data.deployments : [];
+}
+
+function latestProductionDeployUrl(expectedSha = "") {
   try {
-    const raw = capture(`npx vercel ls ${PROJECT} --json`, repoRoot);
-    const data = JSON.parse(raw);
-    const deployments = Array.isArray(data?.deployments) ? data.deployments : [];
+    const deployments = listProductionDeployments();
+    const want = String(expectedSha || "").slice(0, 7);
+    if (want) {
+      for (const row of deployments) {
+        const state = String(row.state || row.readyState || "");
+        const urlHost = String(row.url || "");
+        if (urlHost && /READY/i.test(state) && deploymentSha(row) === want) {
+          return urlHost.startsWith("http") ? urlHost : `https://${urlHost}`;
+        }
+      }
+      return "";
+    }
     for (const row of deployments) {
-      const state = String(row.readyState || row.state || row.status || "");
-      const target = String(row.target || row.environment || "");
+      const state = String(row.state || row.readyState || "");
+      const target = String(row.target || "");
       const urlHost = String(row.url || "");
       if (!urlHost) continue;
-      const isProd =
-        /production/i.test(target) ||
-        row.target === "production" ||
-        Boolean(row.production);
-      const isReady = /READY|ready/i.test(state);
-      if (isProd && isReady) {
-        return urlHost.startsWith("http") ? urlHost : `https://${urlHost}`;
-      }
-    }
-    // Fallback: primer Ready aunque el campo target venga vacío.
-    for (const row of deployments) {
-      const state = String(row.readyState || row.state || row.status || "");
-      const urlHost = String(row.url || "");
-      if (urlHost && /READY|ready/i.test(state)) {
+      const isProd = /production/i.test(target) || Boolean(row.production);
+      if (isProd && /READY/i.test(state)) {
         return urlHost.startsWith("http") ? urlHost : `https://${urlHost}`;
       }
     }
@@ -90,19 +100,35 @@ function latestProductionDeployUrl() {
   return match?.[0] || "";
 }
 
-/** Espera Ready del deploy más reciente (no aliasar Building). */
-function waitForReadyProduction(timeoutMs = 180000) {
+/** Espera Ready del commit esperado (no aliasar deploy viejo ni ERROR). */
+function waitForReadyProduction(expectedSha, timeoutMs = 240000) {
   const started = Date.now();
+  const want = String(expectedSha || "").slice(0, 7);
   while (Date.now() - started < timeoutMs) {
-    const url = latestProductionDeployUrl();
+    try {
+      const deployments = listProductionDeployments();
+      const newest = deployments[0];
+      if (newest) {
+        const state = String(newest.state || "");
+        const sha = deploymentSha(newest);
+        console.log(`Deploy ${sha || "?"} → ${state}`);
+        if (want && sha === want && /ERROR|CANCELED/i.test(state)) {
+          console.error(`FALLO: deploy ${want} terminó en ${state}.`);
+          process.exit(1);
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    const url = latestProductionDeployUrl(want);
     if (url) {
       console.log(`Deploy Ready → ${url}`);
       return url;
     }
-    console.log("Sin deploy Ready aún… esperando");
-    sleep(8000);
+    console.log("Sin deploy Ready del commit aún… esperando");
+    sleep(10000);
   }
-  return "";
+  return latestProductionDeployUrl(want);
 }
 
 function syncAliases(deploymentUrl) {
@@ -200,13 +226,13 @@ if (mode === "verify") {
   console.log("GitHub muestra código fuente, no la app. La app es Vercel.");
   console.log("");
   ensureLinked();
-  const prod = waitForReadyProduction();
+  const expect = remoteSha || sha;
+  const prod = waitForReadyProduction(expect);
   if (prod) {
     console.log(`\nSincronizando aliases → ${prod}`);
     syncAliases(prod);
   }
   purgeCaches();
-  const expect = remoteSha || sha;
   await assertLoginBuild(expect);
   await assertCatalogHealth();
   console.log(`\nListo de verdad. Login → build ${expect}. Catálogo SQL verificado.`);
