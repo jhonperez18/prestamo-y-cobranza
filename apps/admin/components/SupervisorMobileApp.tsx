@@ -2804,7 +2804,7 @@ export function SupervisorMobileApp({
                       setEditMsg("");
                     }}
                   >
-                    {clientesModifyMode ? "cancelar" : "modificar"}
+                    {clientesModifyMode ? "CANCELAR" : "MODIFICAR"}
                   </button>
                 </div>
                 {planillaRoutePins.length > 0 ? (
