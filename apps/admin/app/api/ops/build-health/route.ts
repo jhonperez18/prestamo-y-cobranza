@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
-import { APP_BUILD } from "@/lib/app-build";
+import { resolveServedBuild } from "@/lib/app-build";
 
-/** Salud del build servido (para verify:prod; no depende del HTML del login). */
+/** Salud del build servido (para verify:prod y sello vivo en login local). */
 export async function GET() {
-  return NextResponse.json({
-    ok: true,
-    build: APP_BUILD,
-  });
+  const build = resolveServedBuild();
+  return NextResponse.json(
+    {
+      ok: true,
+      build,
+    },
+    {
+      headers: {
+        "Cache-Control": "no-store, max-age=0, must-revalidate",
+      },
+    },
+  );
 }

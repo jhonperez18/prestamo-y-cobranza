@@ -47,6 +47,8 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [exited, setExited] = useState(false);
+  /** En local se refresca desde /api/ops/build-health (SHA vivo). */
+  const [buildStamp, setBuildStamp] = useState(APP_BUILD);
   const passwordRef = useRef<HTMLInputElement>(null);
   const supabaseReady = getSupabasePublicEnv().configured;
   const channelMeta = PWA_CHANNELS[channel];
@@ -55,6 +57,28 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
     if (exited) return;
     passwordRef.current?.focus();
   }, [exited]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function refreshBuild() {
+      try {
+        const res = await fetch("/api/ops/build-health", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { build?: string };
+        if (!cancelled && data.build) setBuildStamp(data.build);
+      } catch {
+        /* keep APP_BUILD */
+      }
+    }
+    void refreshBuild();
+    window.addEventListener("focus", refreshBuild);
+    document.addEventListener("visibilitychange", refreshBuild);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", refreshBuild);
+      document.removeEventListener("visibilitychange", refreshBuild);
+    };
+  }, []);
 
   useEffect(() => {
     if (!exited) return;
@@ -231,9 +255,9 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
           </button>
         </div>
 
-        {APP_BUILD ? (
+        {buildStamp ? (
           <p className="login-build-stamp" title="Commit desplegado en este sitio">
-            Código en este sitio: <strong>{APP_BUILD}</strong>
+            Código en este sitio: <strong>{buildStamp}</strong>
           </p>
         ) : null}
       </form>

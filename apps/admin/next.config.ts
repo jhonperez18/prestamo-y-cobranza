@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 import { execSync } from "child_process";
 
-/** Commit corto del build — siempre el de Git/Vercel, nunca un archivo viejo. */
+/** Commit corto del build — Vercel/prod: SHA del deploy; arranque local: HEAD. */
 function resolveBuildId() {
   const fromVercel = (process.env.VERCEL_GIT_COMMIT_SHA || "").trim();
   if (fromVercel) return fromVercel.slice(0, 7);
