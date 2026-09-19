@@ -2376,11 +2376,8 @@ export function SupervisorMobileApp({
                       cambiar
                     </button>
                   </div>
-                  <p className="supervisor-mobile-subhead">
-                    Clientes de esta ruta listos para prestar. Busque o elija uno.
-                  </p>
                   <label className="quick-loan-field supervisor-nuevo-search">
-                    <span>Buscar</span>
+                    <span className="sr-only">Buscar</span>
                     <input
                       value={nuevoClientSearch}
                       onChange={(event) => setNuevoClientSearch(event.target.value)}
