@@ -5557,7 +5557,8 @@
       display: block;
       flex: 1 1 auto;
       width: 100%;
-      height: auto;
+      /* Altura acotada al shell: así overflow-y:auto sí baja el contenido. */
+      height: 0;
       min-height: 0;
       max-width: none;
       padding: 12px 12px 40px;
@@ -5565,13 +5566,11 @@
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-y: contain;
-      scroll-behavior: auto;
       background: var(--paper, #f2f9f9);
       color: #14201b;
       position: relative;
       z-index: 1;
-      /* Capa propia: scroll nativo más fluido en celular. */
-      transform: translateZ(0);
+      touch-action: pan-y;
     }
     .shell.is-phone-layout.is-phone-preview {
       height: calc(100dvh - 56px);
@@ -5666,9 +5665,6 @@
     /* Solo Vista móvil: app a pantalla completa (sin marco de teléfono) */
     .shell.is-phone-layout.is-phone-preview .workspace {
       padding: 0;
-    }
-    .shell.is-phone-layout.is-phone-preview .phone-sheet-hint {
-      display: none;
     }
     .shell.is-phone-layout.is-phone-preview .collector-mobile-preview-panel.is-compact {
       padding: 0;
@@ -5812,25 +5808,30 @@
       grid-template-columns: 1fr;
     }
     /*
-     * Hojas en celular: scroll nativo (fluido).
-     * Solo X en la hoja; el workspace baja la pantalla sin pelearse.
+     * Hojas en celular: X nativo en la tabla; Y lo baja el workspace.
+     * Sin touch-action:pan-x (bloqueaba bajar la pantalla).
      */
     .shell.is-phone-layout .table-wrap,
     .shell.is-phone-layout .bank-table-wrap,
     .shell.is-phone-layout .route-clients-table-wrap,
-    .shell.is-phone-layout .panel > .table-wrap,
-    .shell.is-phone-layout .panel-surface {
+    .shell.is-phone-layout .panel > .table-wrap {
       margin-inline: -4px;
       max-height: none;
       overflow-x: auto;
-      overflow-y: hidden;
+      overflow-y: visible;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-x: contain;
-      touch-action: pan-x;
+      touch-action: manipulation;
       scrollbar-width: thin;
       scrollbar-color: #9bb0a6 transparent;
       border-radius: 10px;
       background: var(--panel-table-bg, #fff);
+    }
+    .shell.is-phone-layout .panel-surface {
+      overflow: visible;
+      touch-action: auto;
+      max-height: none;
+      background: transparent;
     }
     .shell.is-phone-layout .table-wrap::-webkit-scrollbar,
     .shell.is-phone-layout .bank-table-wrap::-webkit-scrollbar,
@@ -5898,18 +5899,6 @@
       left: auto !important;
       z-index: auto;
       box-shadow: none !important;
-    }
-    .phone-sheet-hint {
-      margin: 0;
-      padding: 8px 12px 6px;
-      font-size: 12px !important;
-      line-height: 1.35;
-      color: #3d5349;
-      background: #e7f0ec;
-      border-bottom: 1px solid #c5d6ce;
-    }
-    .shell.is-phone-layout .workspace > .phone-sheet-hint + * {
-      margin-top: 0;
     }
     .shell.is-phone-layout .crumb {
       font-size: 14px !important;
@@ -12290,8 +12279,8 @@
     }
 
     /*
-     * Celular (AppShell phone): al final del CSS para ganar a table-layout:fixed
-     * y width:100% de escritorio. Hoja completa en pan — sin celdas sticky.
+     * Celular: tablas con pan X nativo; Y lo maneja .workspace (bajar pantalla).
+     * No usar touch-action:pan-x — robaba el gesto vertical.
      */
     .shell.is-phone-layout .table-wrap,
     .shell.is-phone-layout .bank-table-wrap,
@@ -12299,18 +12288,32 @@
     .shell.is-phone-layout .panel > .table-wrap,
     .shell.is-phone-layout .panel > .filters + .table-wrap,
     .shell.is-phone-layout .panel > .bank-table-wrap,
-    .shell.is-phone-layout .pay-box .table-wrap,
-    .shell.is-phone-layout .panel-surface,
-    .shell.is-phone-layout .panel > .sheet,
-    .shell.is-phone-layout .sheet {
+    .shell.is-phone-layout .pay-box .table-wrap {
       overflow-x: auto !important;
-      overflow-y: hidden !important;
+      overflow-y: visible !important;
       max-height: none !important;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-x: contain;
-      touch-action: pan-x;
+      touch-action: manipulation;
       max-width: 100%;
       background: var(--panel-table-bg, #fff);
+    }
+    .shell.is-phone-layout .panel-surface,
+    .shell.is-phone-layout .panel > .sheet,
+    .shell.is-phone-layout .sheet {
+      overflow: visible !important;
+      max-height: none !important;
+      touch-action: auto;
+      max-width: 100%;
+    }
+    .shell.is-phone-layout .workspace {
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+      height: 0;
+      min-height: 0;
+      flex: 1 1 auto;
     }
     .shell.is-phone-layout table.data,
     .shell.is-phone-layout table.data.list-grid,

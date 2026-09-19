@@ -464,11 +464,6 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
           </div>
         </aside>
         <main className="workspace">
-          {phoneLayout && !phonePreview ? (
-            <p className="phone-sheet-hint">
-              Tablas: deslizá de lado. La pantalla baja con scroll nativo (fluido).
-            </p>
-          ) : null}
           <Workspace
             moduleId={moduleId}
             viewId={viewId}
