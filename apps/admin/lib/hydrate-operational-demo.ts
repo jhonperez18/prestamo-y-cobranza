@@ -183,6 +183,9 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
   writeDemoJson(DEMO_USERS_KEY, linked.users);
   writeDemoJson(DEMO_COLLECTORS_KEY, linked.collectors);
   writeDemoJson(DEMO_ROUTES_KEY, namedRoutes);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("nexo-users-catalog-changed"));
+  }
 
   const rebuilt = rebuildDispatchRoutes(
     namedRoutes,

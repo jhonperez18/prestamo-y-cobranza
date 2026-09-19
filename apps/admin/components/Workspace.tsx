@@ -114,9 +114,10 @@ import { projectOperationalMoney } from "@/lib/project-operational-money";
 import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 import {
-  queueUserDeleteMirror,
-  queueUserMirror,
-} from "@/lib/supabase/user-mirror";
+  commitUsersCatalog,
+  removeUserFromCatalog,
+  upsertUserInCatalog,
+} from "@/lib/users-catalog";
 import {
   queueAssignmentsMirror,
   queueCollectorMirror,
@@ -476,7 +477,7 @@ export function Workspace({
 
   useEffect(() => {
     if (!demoHydrated) return;
-    writeDemoJson(DEMO_USERS_KEY, users);
+    commitUsersCatalog(users);
   }, [users, demoHydrated]);
 
   useEffect(() => {
@@ -1826,7 +1827,7 @@ export function Workspace({
     const remaining = users.filter((row) => row.ref !== deletedRef);
 
     setUsers(remaining);
-    queueUserDeleteMirror(deletedRef);
+    removeUserFromCatalog(deletedRef);
     if (collectorRef) {
       const nextCollectors = collectors.filter((row) => row.ref !== collectorRef);
       const nextRoutes = routes.map((route) =>
@@ -1908,7 +1909,7 @@ export function Workspace({
       active: draft.active,
     };
     setUsers((current) => [...current, userRow]);
-    queueUserMirror(userRow);
+    upsertUserInCatalog(userRow);
     onGo("inicio", "listado");
     onToast(
       collectorRef
@@ -2017,7 +2018,7 @@ export function Workspace({
     setUsers((current) =>
       current.map((row) => (row.ref === openUser.ref ? nextUser : row)),
     );
-    queueUserMirror(nextUser);
+    upsertUserInCatalog(nextUser);
 
     if (openUser.collectorRef) {
       setCollectors((current) =>
@@ -2062,7 +2063,7 @@ export function Workspace({
     setUsers((current) =>
       current.map((row) => (row.ref === openUser.ref ? nextUser : row)),
     );
-    queueUserMirror(nextUser);
+    upsertUserInCatalog(nextUser);
     if (openUser.collectorRef) {
       setCollectors((current) =>
         current.map((row) =>
@@ -2080,7 +2081,7 @@ export function Workspace({
     setUsers((rows) =>
       rows.map((row) => (row.ref === userRef ? nextUser : row)),
     );
-    queueUserMirror(nextUser);
+    upsertUserInCatalog(nextUser);
     onToast("Permisos actualizados según la confianza asignada.");
   }
 

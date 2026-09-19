@@ -122,9 +122,18 @@ export function AuthGate({ channel = "sistema" }: Props) {
   }
 
   const logout = () => {
-    void signOutSupabaseAuth();
-    clearSession();
-    setSession(null);
+    void (async () => {
+      try {
+        await flushUserMirrorQueues();
+        await pullRemoteUsersIntoDemo();
+      } catch {
+        /* offline */
+      }
+      void signOutSupabaseAuth();
+      clearSession();
+      setUsersEpoch((n) => n + 1);
+      setSession(null);
+    })();
   };
 
   // Canal supervisor: solo shell supervisor (nunca admin ni cobrador).

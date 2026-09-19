@@ -1,7 +1,7 @@
 import type { AppSession } from "@/lib/auth";
 import { writeSession } from "@/lib/auth";
-import { DEMO_USERS_KEY, loadDemoUsers, writeDemoJson } from "@/lib/demo-persist";
-import { queueUserMirror } from "@/lib/supabase/user-mirror";
+import { loadDemoUsers } from "@/lib/demo-persist";
+import { upsertUserInCatalog } from "@/lib/users-catalog";
 import { normalizeUserPermissions, type UserRow } from "@/lib/mock-data";
 
 export const ADMIN_PROFILES_KEY = "nexo-admin-profiles";
@@ -66,16 +66,11 @@ export function saveAdminPassword(userRef: string, login: string, password: stri
   const idx = users.findIndex((row) => row.ref === userRef || row.login.toLowerCase() === login.toLowerCase());
   if (idx === -1) return users;
 
-  const next = users.map((row, index) =>
-    index === idx ? { ...row, password: password.trim() } : row,
-  );
-  writeDemoJson(
-    DEMO_USERS_KEY,
-    next.map((row) => normalizeUserPermissions(row)),
-  );
-  const updated = next[idx];
-  if (updated) queueUserMirror(normalizeUserPermissions(updated));
-  return next;
+  const updated = normalizeUserPermissions({
+    ...users[idx]!,
+    password: password.trim(),
+  });
+  return upsertUserInCatalog(updated);
 }
 
 export function syncUserRowFromProfile(userRef: string, profile: AdminProfile) {
@@ -83,24 +78,14 @@ export function syncUserRowFromProfile(userRef: string, profile: AdminProfile) {
   const idx = users.findIndex((row) => row.ref === userRef);
   if (idx === -1) return users;
 
-  const next: UserRow[] = users.map((row, index) =>
-    index === idx
-      ? {
-          ...row,
-          name: profile.displayName.trim() || row.name,
-          login: profile.login.trim() || row.login,
-          phone: profile.phone.trim() || row.phone,
-          document: profile.document.trim() || row.document,
-        }
-      : row,
-  );
-  writeDemoJson(
-    DEMO_USERS_KEY,
-    next.map((row) => normalizeUserPermissions(row)),
-  );
-  const updated = next[idx];
-  if (updated) queueUserMirror(normalizeUserPermissions(updated));
-  return next;
+  const updated = normalizeUserPermissions({
+    ...users[idx]!,
+    name: profile.displayName.trim() || users[idx]!.name,
+    login: profile.login.trim() || users[idx]!.login,
+    phone: profile.phone.trim() || users[idx]!.phone,
+    document: profile.document.trim() || users[idx]!.document,
+  });
+  return upsertUserInCatalog(updated);
 }
 
 export function applyProfileToSession(session: AppSession, profile: AdminProfile): AppSession {

@@ -10,7 +10,6 @@ import {
   SUPERVISOR_ROLE_REF,
   type UserRow,
 } from "@/lib/mock-data";
-import { loadDemoUsers } from "@/lib/demo-persist";
 import { APP_BUILD } from "@/lib/app-build";
 import {
   PWA_CHANNELS,
@@ -23,6 +22,10 @@ import {
   loginWithSupabaseAuth,
   shouldTrySupabaseLogin,
 } from "@/lib/supabase/auth-login";
+import {
+  readUsersCatalog,
+  USERS_CATALOG_EVENT,
+} from "@/lib/users-catalog";
 
 type Props = {
   onSuccess: (session: AppSession) => void;
@@ -53,22 +56,17 @@ function hintLabel(user: UserRow): string {
   return `${user.name} · ${roleName}`;
 }
 
-/** Misma fuente que Listado de usuarios (activos). */
-function loginHintsFromUsers(users: UserRow[]): LoginHint[] {
-  return users
+/** Exactamente el Listado (activos), mismo orden USR-. */
+function loginHintsFromCatalog(channel: PwaChannelId): LoginHint[] {
+  const hints = readUsersCatalog()
     .filter((row) => row.active !== false)
     .map((row) => ({
       login: row.login,
       role: hintLabel(row),
       channel: channelForUser(row),
-    }))
-    .sort((a, b) => {
-      const order = (channel: PwaChannelId) =>
-        channel === "sistema" ? 0 : channel === "supervisor" ? 1 : 2;
-      const byChannel = order(a.channel) - order(b.channel);
-      if (byChannel !== 0) return byChannel;
-      return a.login.localeCompare(b.login, "es");
-    });
+    }));
+  if (channel === "sistema") return hints;
+  return hints.filter((entry) => entry.channel === channel);
 }
 
 function channelRejectMessage(channel: PwaChannelId) {
@@ -86,16 +84,27 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [hints, setHints] = useState(() => loginHintsFromCatalog(channel));
   const passwordRef = useRef<HTMLInputElement>(null);
   const supabaseReady = getSupabasePublicEnv().configured;
   const channelMeta = PWA_CHANNELS[channel];
-  const allHints = loginHintsFromUsers(loadDemoUsers());
-  const hints =
-    channel === "sistema" ? allHints : allHints.filter((entry) => entry.channel === channel);
 
   useEffect(() => {
     passwordRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    function refresh() {
+      setHints(loginHintsFromCatalog(channel));
+    }
+    refresh();
+    window.addEventListener(USERS_CATALOG_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(USERS_CATALOG_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, [channel]);
 
   function acceptSession(session: AppSession) {
     if (!sessionAllowedOnChannel(session, channel)) {
@@ -111,7 +120,6 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
     setError("");
     setBusy(true);
     try {
-      // 1) Email directo Auth
       if (shouldTrySupabaseLogin(username)) {
         const result = await loginWithSupabaseAuth(username, password);
         if (!result.ok) {
@@ -122,7 +130,6 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
         return;
       }
 
-      // 2) Login corto (juan.rios) → intenta Auth con email mapeado
       const mappedEmail = authEmailFromLoginHint(username);
       if (mappedEmail && mappedEmail.includes("@")) {
         const result = await loginWithSupabaseAuth(mappedEmail, password);
@@ -130,11 +137,9 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
           acceptSession(result.session);
           return;
         }
-        // si Auth falla, cae a demo local
       }
 
-      const users = loadDemoUsers();
-      const session = validateLogin(username, password, users);
+      const session = validateLogin(username, password, readUsersCatalog());
       if (!session) {
         setError("Usuario o contraseña incorrectos.");
         return;
@@ -202,9 +207,7 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
         </button>
 
         <div className="login-demo-hints">
-          {!supabaseReady ? (
-            <p>Usuarios de prueba (contraseña: {DEMO_USER_PASSWORD})</p>
-          ) : null}
+          <p>Usuarios del sistema (mismo listado)</p>
           <ul>
             {hints.map((entry) => (
               <li key={entry.login}>
