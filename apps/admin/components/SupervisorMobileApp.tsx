@@ -2387,6 +2387,9 @@ export function SupervisorMobileApp({
                             }}
                           >
                             <strong>{`${row.name} ${row.lastName}`.trim()}</strong>
+                            <span className="supervisor-nuevo-client-sep" aria-hidden>
+                              ·
+                            </span>
                             <span>
                               {row.document || row.ref}
                               {row.phone ? ` · ${row.phone}` : ""}

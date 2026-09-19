@@ -4926,38 +4926,79 @@
       padding: 0;
       display: flex;
       flex-direction: column;
-      gap: 6px;
-      max-height: 320px;
+      gap: 0;
+      max-height: min(52vh, 420px);
       overflow: auto;
+      -webkit-overflow-scrolling: touch;
+      border: 1px solid #d5e3dc;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .supervisor-nuevo-client-list > li {
+      margin: 0;
+      padding: 0;
+      border-bottom: 1px solid #e3ece7;
+    }
+    .supervisor-nuevo-client-list > li:last-child {
+      border-bottom: 0;
     }
     .supervisor-nuevo-client-btn {
       display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 2px;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: baseline;
+      gap: 6px;
       width: 100%;
       margin: 0;
-      padding: 10px 10px;
-      border: 1px solid #d5e2db;
-      border-radius: 8px;
-      background: #f7faf8;
+      padding: 6px 10px;
+      min-height: 0;
+      border: 0;
+      border-radius: 0;
+      background: var(--row-b);
       color: #14201b;
       text-align: left;
       font: inherit;
       cursor: pointer;
     }
+    .supervisor-nuevo-client-list > li:nth-child(odd) .supervisor-nuevo-client-btn {
+      background: var(--row-a);
+    }
+    .supervisor-nuevo-client-list > li:nth-child(even) .supervisor-nuevo-client-btn {
+      background: var(--row-b);
+    }
     .supervisor-nuevo-client-btn strong {
       font-size: 13px;
       font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 0 1 auto;
+      max-width: 48%;
     }
-    .supervisor-nuevo-client-btn span {
-      font-size: 11px;
+    .supervisor-nuevo-client-btn .supervisor-nuevo-client-sep {
+      color: #9aada4;
+      flex: none;
+      font-weight: 600;
+    }
+    .supervisor-nuevo-client-btn span:not(.supervisor-nuevo-client-sep) {
+      font-size: 12px;
       font-weight: 600;
       color: #5b7268;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1 1 auto;
+      min-width: 0;
     }
-    .supervisor-nuevo-client-btn:hover {
-      border-color: #9cc9a8;
-      background: #eef6ef;
+    .supervisor-nuevo-client-btn:hover,
+    .supervisor-nuevo-client-btn:focus-visible {
+      background: var(--row-h);
+      outline: none;
+    }
+    .shell.is-phone-layout .supervisor-nuevo-client-list,
+    .collector-mobile-app .supervisor-nuevo-client-list,
+    .supervisor-mobile-app .supervisor-nuevo-client-list {
+      max-height: min(58vh, 400px);
     }
     .supervisor-nuevo-msg {
       margin: 0 0 10px;
