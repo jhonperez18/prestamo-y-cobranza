@@ -2358,7 +2358,7 @@ export function SupervisorMobileApp({
                     </button>
                   </div>
                   <p className="supervisor-mobile-subhead">
-                    Clientes sin préstamo activo. Busque o elija uno.
+                    Clientes de esta ruta listos para prestar. Busque o elija uno.
                   </p>
                   <label className="quick-loan-field supervisor-nuevo-search">
                     <span>Buscar</span>

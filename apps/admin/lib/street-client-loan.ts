@@ -149,7 +149,7 @@ export function clientHasOpenLoan(clientRef: string, loans: LoanRow[]) {
   );
 }
 
-/** Clientes del sistema elegibles para un préstamo nuevo (ruta opcional). */
+/** Clientes de la ruta elegibles para un préstamo nuevo. */
 export function clientsEligibleForNewLoan(
   clients: ClientRow[],
   loans: LoanRow[],
@@ -159,8 +159,9 @@ export function clientsEligibleForNewLoan(
   return clients
     .filter((row) => {
       if (route && row.route !== route) return false;
-      if (row.awaitingLoan) return false;
       if (row.status === "Pte. revisión") return false;
+      // awaitingLoan = alta en calle / paquete listo para prestar (INCLUIR).
+      // Con crédito abierto no entra aquí (renovación es otro flujo).
       return !clientHasOpenLoan(row.ref, loans);
     })
     .slice()
