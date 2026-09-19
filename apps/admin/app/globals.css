@@ -5709,33 +5709,56 @@
     .shell.is-phone-layout .kpis.zone-kpis {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-    .shell.is-phone-layout .table-wrap {
+    /*
+     * Hojas en celular: una sola hoja que se mueve entera (pan X/Y).
+     * Sin columnas “congeladas”: eso distorsiona y se ve amateur.
+     */
+    .shell.is-phone-layout .table-wrap,
+    .shell.is-phone-layout .bank-table-wrap,
+    .shell.is-phone-layout .route-clients-table-wrap,
+    .shell.is-phone-layout .panel > .table-wrap,
+    .shell.is-phone-layout .panel-surface {
       margin-inline: -4px;
-      border-radius: 10px;
       overflow-x: auto;
-      overflow-y: visible;
+      overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-x: contain;
       touch-action: pan-x pan-y;
+      scrollbar-width: thin;
+      scrollbar-color: #9bb0a6 transparent;
+      border-radius: 10px;
+      background:
+        linear-gradient(90deg, var(--panel-table-bg, #fff) 70%, transparent) left center / 18px 100% no-repeat,
+        linear-gradient(270deg, var(--panel-table-bg, #fff) 70%, transparent) right center / 18px 100% no-repeat,
+        var(--panel-table-bg, #fff);
+      background-attachment: local, local, scroll;
     }
-    /* Hojas grandes: no comprimir; scroll horizontal para leer. */
-    .shell.is-phone-layout .table-wrap,
-    .shell.is-phone-layout .bank-table-wrap,
-    .shell.is-phone-layout .panel > .table-wrap,
-    .shell.is-phone-layout .panel-surface {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
+    .shell.is-phone-layout .table-wrap::-webkit-scrollbar,
+    .shell.is-phone-layout .bank-table-wrap::-webkit-scrollbar,
+    .shell.is-phone-layout .route-clients-table-wrap::-webkit-scrollbar {
+      height: 6px;
+      width: 6px;
+    }
+    .shell.is-phone-layout .table-wrap::-webkit-scrollbar-thumb,
+    .shell.is-phone-layout .bank-table-wrap::-webkit-scrollbar-thumb,
+    .shell.is-phone-layout .route-clients-table-wrap::-webkit-scrollbar-thumb {
+      background: #9bb0a6;
+      border-radius: 999px;
     }
     .shell.is-phone-layout table.data,
     .shell.is-phone-layout table.list-grid,
     .shell.is-phone-layout table.list-data-table,
     .shell.is-phone-layout table.bank-table,
     .shell.is-phone-layout table.bank-records-table,
-    .shell.is-phone-layout table.mini-grid {
+    .shell.is-phone-layout table.mini-grid,
+    .shell.is-phone-layout table.route-clients-table,
+    .shell.is-phone-layout table.daily-collection-grid {
       width: max-content;
       min-width: 100%;
       max-width: none;
       table-layout: auto;
+      border-collapse: separate;
+      border-spacing: 0;
     }
     .shell.is-phone-layout table.data th,
     .shell.is-phone-layout table.data td,
@@ -5748,13 +5771,22 @@
     .shell.is-phone-layout table.bank-records-table th,
     .shell.is-phone-layout table.bank-records-table td,
     .shell.is-phone-layout table.mini-grid th,
-    .shell.is-phone-layout table.mini-grid td {
+    .shell.is-phone-layout table.mini-grid td,
+    .shell.is-phone-layout table.route-clients-table th,
+    .shell.is-phone-layout table.route-clients-table td,
+    .shell.is-phone-layout table.daily-collection-grid th,
+    .shell.is-phone-layout table.daily-collection-grid td {
       white-space: nowrap;
       min-width: 4.75rem;
       font-size: 13px !important;
       line-height: 1.35 !important;
       padding-top: 8px !important;
       padding-bottom: 8px !important;
+      /* Ninguna celda congelada: toda la hoja viaja junta. */
+      position: static !important;
+      left: auto !important;
+      right: auto !important;
+      box-shadow: none !important;
     }
     .shell.is-phone-layout table.data th.col-picker-cell,
     .shell.is-phone-layout table.data td.col-picker-cell,
@@ -5763,57 +5795,10 @@
     .shell.is-phone-layout table.bank-table th.col-picker-cell,
     .shell.is-phone-layout table.bank-table td.col-picker-cell {
       min-width: 2.5rem;
-      position: sticky;
-      left: 0;
-      z-index: 3;
-      background: var(--panel-table-bg, #fff);
-    }
-    .shell.is-phone-layout table.data thead th.col-picker-cell,
-    .shell.is-phone-layout table.list-grid thead th.col-picker-cell,
-    .shell.is-phone-layout table.bank-table thead th.col-picker-cell {
-      background: var(--table-head-bg);
-      z-index: 4;
-    }
-    /* Primera columna de datos fija al deslizar (después del picker si existe). */
-    .shell.is-phone-layout table.data th:nth-child(1):not(.col-picker-cell),
-    .shell.is-phone-layout table.data td:nth-child(1):not(.col-picker-cell),
-    .shell.is-phone-layout table.data th:nth-child(2),
-    .shell.is-phone-layout table.data td:nth-child(2),
-    .shell.is-phone-layout table.list-grid th:nth-child(1):not(.col-picker-cell),
-    .shell.is-phone-layout table.list-grid td:nth-child(1):not(.col-picker-cell),
-    .shell.is-phone-layout table.list-grid th:nth-child(2),
-    .shell.is-phone-layout table.list-grid td:nth-child(2) {
-      position: sticky;
-      z-index: 2;
-      background: var(--panel-table-bg, #fff);
-      box-shadow: 4px 0 8px rgba(20, 32, 27, 0.06);
-    }
-    .shell.is-phone-layout table.data th:nth-child(1):not(.col-picker-cell),
-    .shell.is-phone-layout table.data td:nth-child(1):not(.col-picker-cell),
-    .shell.is-phone-layout table.list-grid th:nth-child(1):not(.col-picker-cell),
-    .shell.is-phone-layout table.list-grid td:nth-child(1):not(.col-picker-cell) {
-      left: 0;
-    }
-    .shell.is-phone-layout table.data:has(.col-picker-cell) th:nth-child(2),
-    .shell.is-phone-layout table.data:has(.col-picker-cell) td:nth-child(2),
-    .shell.is-phone-layout table.list-grid:has(.col-picker-cell) th:nth-child(2),
-    .shell.is-phone-layout table.list-grid:has(.col-picker-cell) td:nth-child(2) {
-      left: 2.5rem;
-    }
-    .shell.is-phone-layout table.data:not(:has(.col-picker-cell)) th:nth-child(2),
-    .shell.is-phone-layout table.data:not(:has(.col-picker-cell)) td:nth-child(2),
-    .shell.is-phone-layout table.list-grid:not(:has(.col-picker-cell)) th:nth-child(2),
-    .shell.is-phone-layout table.list-grid:not(:has(.col-picker-cell)) td:nth-child(2) {
-      position: static;
-      box-shadow: none;
-      left: auto;
-    }
-    .shell.is-phone-layout table.data thead th:nth-child(1):not(.col-picker-cell),
-    .shell.is-phone-layout table.data thead th:nth-child(2),
-    .shell.is-phone-layout table.list-grid thead th:nth-child(1):not(.col-picker-cell),
-    .shell.is-phone-layout table.list-grid thead th:nth-child(2) {
-      background: var(--table-head-bg);
-      z-index: 5;
+      position: static !important;
+      left: auto !important;
+      z-index: auto;
+      box-shadow: none !important;
     }
     .phone-sheet-hint {
       margin: 0;
@@ -12197,7 +12182,7 @@
 
     /*
      * Celular (AppShell phone): al final del CSS para ganar a table-layout:fixed
-     * y width:100% de escritorio. Las hojas grandes se deslizan, no se aplastan.
+     * y width:100% de escritorio. Hoja completa en pan — sin celdas sticky.
      */
     .shell.is-phone-layout .table-wrap,
     .shell.is-phone-layout .bank-table-wrap,
@@ -12206,9 +12191,11 @@
     .shell.is-phone-layout .panel > .filters + .table-wrap,
     .shell.is-phone-layout .panel > .bank-table-wrap,
     .shell.is-phone-layout .pay-box .table-wrap,
-    .shell.is-phone-layout .panel-surface {
+    .shell.is-phone-layout .panel-surface,
+    .shell.is-phone-layout .panel > .sheet,
+    .shell.is-phone-layout .sheet {
       overflow-x: auto !important;
-      overflow-y: visible;
+      overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-x: contain;
       touch-action: pan-x pan-y;
@@ -12243,23 +12230,36 @@
     .shell.is-phone-layout table.list-data-table td,
     .shell.is-phone-layout table.bank-table th,
     .shell.is-phone-layout table.bank-table td,
+    .shell.is-phone-layout table.bank-records-table th,
+    .shell.is-phone-layout table.bank-records-table td,
+    .shell.is-phone-layout table.mini-grid th,
+    .shell.is-phone-layout table.mini-grid td,
     .shell.is-phone-layout table.route-clients-table th,
     .shell.is-phone-layout table.route-clients-table td,
     .shell.is-phone-layout table.daily-collection-grid th,
-    .shell.is-phone-layout table.daily-collection-grid td {
+    .shell.is-phone-layout table.daily-collection-grid td,
+    .shell.is-phone-layout table.daily-log-table th,
+    .shell.is-phone-layout table.daily-log-table td {
       white-space: nowrap;
       overflow: visible;
       text-overflow: unset;
       min-width: 4.5rem;
+      position: static !important;
+      left: auto !important;
+      right: auto !important;
+      box-shadow: none !important;
     }
-    .shell.is-phone-layout .panel > .sheet,
-    .shell.is-phone-layout .sheet {
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      max-width: 100%;
+    /* Encabezado de ruta: sticky vertical OK; nunca freeze horizontal. */
+    .shell.is-phone-layout table.route-clients-table .col-titles th {
+      position: sticky !important;
+      top: 0;
+      left: auto !important;
+      right: auto !important;
+      z-index: 1;
+      box-shadow: none !important;
     }
     .shell.is-phone-layout .phone-sheet-hint {
-      position: sticky;
-      left: 0;
-      z-index: 2;
+      position: relative;
+      left: auto;
+      z-index: 1;
     }

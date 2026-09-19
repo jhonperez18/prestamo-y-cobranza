@@ -466,7 +466,7 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
         <main className="workspace">
           {phoneLayout && !phonePreview ? (
             <p className="phone-sheet-hint">
-              Tablas grandes: deslizá a los lados y arriba/abajo para ver toda la hoja.
+              Deslizá la hoja entera (lados y arriba/abajo). Todas las columnas se mueven juntas.
             </p>
           ) : null}
           <Workspace
