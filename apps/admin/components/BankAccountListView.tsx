@@ -19,6 +19,7 @@ type Props = {
   movements: BankMovement[];
   reconciliations: BankReconciliation[];
   onNewAccount: () => void;
+  onEditAccount: (accountRef: string) => void;
   onOpenPending: (accountRef?: string, period?: string) => void;
 };
 
@@ -27,6 +28,7 @@ export function BankAccountListView({
   movements,
   reconciliations,
   onNewAccount,
+  onEditAccount,
   onOpenPending,
 }: Props) {
   const { isVisible, visibleCols, toggleColumn } = useColumnVisibility(
@@ -76,6 +78,7 @@ export function BankAccountListView({
               {isVisible("pending") ? <th className="center">Registro a conciliar</th> : null}
               {isVisible("balance") ? <th className="right">Saldo</th> : null}
               {isVisible("status") ? <th>Estado</th> : null}
+              <th className="center">Acción</th>
               <ColumnPickerHeadCell>
                 <ColumnPicker
                   columns={BANK_ACCOUNT_COLUMNS}
@@ -88,7 +91,7 @@ export function BankAccountListView({
           <tbody>
             {rows.length === 0 ? (
               <tr className="empty-row">
-                <td colSpan={visibleCols.length + 1}>
+                <td colSpan={visibleCols.length + 2}>
                   No hay cuentas registradas.{" "}
                   <button type="button" className="btn-link" onClick={onNewAccount}>
                     Crear nueva cuenta
@@ -107,7 +110,18 @@ export function BankAccountListView({
 
                 return (
                   <tr key={account.ref}>
-                    {isVisible("ref") ? <td className="ref">{account.ref}</td> : null}
+                    {isVisible("ref") ? (
+                      <td className="ref">
+                        <button
+                          type="button"
+                          className="bank-inline-link"
+                          title="Modificar cuenta"
+                          onClick={() => onEditAccount(account.ref)}
+                        >
+                          {account.ref}
+                        </button>
+                      </td>
+                    ) : null}
                     {isVisible("name") ? <td>{account.name}</td> : null}
                     {isVisible("type") ? <td>{bankAccountTypeLabel(account.accountType)}</td> : null}
                     {isVisible("bank") ? <td>{account.bankName}</td> : null}
@@ -141,6 +155,15 @@ export function BankAccountListView({
                         />
                       </td>
                     ) : null}
+                    <td className="center">
+                      <button
+                        type="button"
+                        className="bank-account-edit-btn"
+                        onClick={() => onEditAccount(account.ref)}
+                      >
+                        Modificar
+                      </button>
+                    </td>
                     <ColumnPickerBodyCell />
                   </tr>
                 );
@@ -152,7 +175,12 @@ export function BankAccountListView({
               <tr className="bank-accounts-total-row">
                 <td colSpan={Math.max(colsBeforeBalance, 1)}>Total</td>
                 <td className="money right">{formatBankAmount(totalBalance)}</td>
-                {colsAfterBalance > 0 ? <td colSpan={colsAfterBalance + 1} /> : <ColumnPickerBodyCell />}
+                {colsAfterBalance > 0 ? <td colSpan={colsAfterBalance + 2} /> : (
+                  <>
+                    <td />
+                    <ColumnPickerBodyCell />
+                  </>
+                )}
               </tr>
             </tfoot>
           ) : null}

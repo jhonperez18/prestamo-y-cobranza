@@ -360,6 +360,8 @@ export function Workspace({
   const [bankAccountRef, setBankAccountRef] = useState("");
   const [bankLedgerPeriod, setBankLedgerPeriod] = useState<string | null>(null);
   const [bankRecordsAccountRef, setBankRecordsAccountRef] = useState<string | null>(null);
+  /** Ref de cuenta en edición (null = alta nueva en «Nueva cuenta»). */
+  const [editBankAccountRef, setEditBankAccountRef] = useState<string | null>(null);
   const bankLedgerFromReportRef = useRef(false);
   const [openBankMovementRef, setOpenBankMovementRef] = useState("");
   const [bankExpenseReturn, setBankExpenseReturn] = useState<{ moduleId: ModuleId; viewId: string } | null>(
@@ -553,6 +555,12 @@ export function Workspace({
     if (!demoHydrated) return;
     writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, bankAccounts);
   }, [bankAccounts, demoHydrated]);
+
+  /** Al salir del formulario de cuenta, no dejar edición colgada. */
+  useEffect(() => {
+    if (moduleId === "banco" && viewId === "nueva-cuenta") return;
+    setEditBankAccountRef(null);
+  }, [moduleId, viewId]);
 
   useEffect(() => {
     if (!demoHydrated) return;
@@ -3169,7 +3177,14 @@ export function Workspace({
           accounts={bankAccounts}
           movements={bankMovements}
           reconciliations={bankReconciliations}
-          onNewAccount={() => onGo("banco", "nueva-cuenta")}
+          onNewAccount={() => {
+            setEditBankAccountRef(null);
+            onGo("banco", "nueva-cuenta");
+          }}
+          onEditAccount={(accountRef) => {
+            setEditBankAccountRef(accountRef);
+            onGo("banco", "nueva-cuenta");
+          }}
           onOpenPending={(accountRef, period) => {
             if (accountRef) setBankRecordsAccountRef(accountRef);
             if (accountRef) setBankAccountRef(accountRef);
@@ -3181,15 +3196,32 @@ export function Workspace({
     }
 
     if (moduleId === "banco" && viewId === "nueva-cuenta") {
+      const editingAccount = editBankAccountRef
+        ? bankAccounts.find((row) => row.ref === editBankAccountRef) ?? null
+        : null;
       return (
         <BankNewAccountForm
+          key={editingAccount?.ref ?? "new"}
           accounts={bankAccounts}
+          initialAccount={editingAccount}
           onSave={(account) => {
-            setBankAccounts((rows) => [...rows, account]);
+            setBankAccounts((rows) => {
+              const idx = rows.findIndex((row) => row.ref === account.ref);
+              if (idx >= 0) {
+                const next = rows.slice();
+                next[idx] = account;
+                return next;
+              }
+              return [...rows, account];
+            });
             setBankAccountRef(account.ref);
+            setEditBankAccountRef(null);
             onGo("banco", "listado");
           }}
-          onCancel={() => onGo("banco", "listado")}
+          onCancel={() => {
+            setEditBankAccountRef(null);
+            onGo("banco", "listado");
+          }}
           onToast={onToast}
         />
       );

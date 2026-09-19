@@ -11669,6 +11669,29 @@
     table.data.list-grid.bank-accounts-table td {
       color: #111;
     }
+    .bank-accounts-table .bank-account-edit-btn {
+      height: 22px;
+      min-height: 22px;
+      padding: 0 8px;
+      border: 1px solid #c4b5a0;
+      border-radius: 4px;
+      background: #f7efe4;
+      color: #7a4e1d;
+      font: inherit;
+      font-size: 10px;
+      font-weight: 750;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      line-height: 1;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .bank-accounts-table .bank-account-edit-btn:hover {
+      background: #e8d7c4;
+      border-color: #a67c52;
+    }
     table.data.list-grid.bank-accounts-table td.ref {
       color: #0f766e;
     }

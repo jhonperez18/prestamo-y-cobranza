@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import type { BankAccount, BankAccountType } from "@/lib/bank";
 import {
   bankAccountTypeLabel,
@@ -12,6 +12,8 @@ import {
 
 type Props = {
   accounts: BankAccount[];
+  /** Si viene, el formulario edita esa cuenta (Ref. fija). */
+  initialAccount?: BankAccount | null;
   onSave: (account: BankAccount) => void;
   onCancel: () => void;
   onToast: (message?: string) => void;
@@ -70,6 +72,22 @@ type FormState = {
   openingBalance: string;
 };
 
+function formFromAccount(account: BankAccount): FormState {
+  return {
+    ref: account.ref,
+    name: account.name,
+    bankName: account.bankName === "Sin banco" ? "" : account.bankName,
+    accountNumber: account.accountNumber === "Sin número" ? "" : account.accountNumber,
+    accountType: account.accountType,
+    currency: account.currency || "COP",
+    status: account.active ? "abierto" : "cerrado",
+    country: account.country || "Colombia (CO)",
+    province: account.province || "",
+    address: account.address || "",
+    openingBalance: String(account.openingBalance ?? 0),
+  };
+}
+
 const EMPTY_FORM: FormState = {
   ref: "",
   name: "",
@@ -84,9 +102,25 @@ const EMPTY_FORM: FormState = {
   openingBalance: "",
 };
 
-export function BankNewAccountForm({ accounts, onSave, onCancel, onToast }: Props) {
+export function BankNewAccountForm({
+  accounts,
+  initialAccount = null,
+  onSave,
+  onCancel,
+  onToast,
+}: Props) {
+  const editing = Boolean(initialAccount);
   const suggestedRef = nextBankAccountRef(accounts);
-  const [form, setForm] = useState<FormState>({ ...EMPTY_FORM, ref: suggestedRef });
+  const [form, setForm] = useState<FormState>(() =>
+    initialAccount
+      ? formFromAccount(normalizeBankAccount(initialAccount))
+      : { ...EMPTY_FORM, ref: suggestedRef },
+  );
+
+  const title = useMemo(
+    () => (editing ? "Editar cuenta financiera" : "Nueva cuenta financiera"),
+    [editing],
+  );
 
   const setField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -94,12 +128,14 @@ export function BankNewAccountForm({ accounts, onSave, onCancel, onToast }: Prop
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    const ref = normalizeBankAccountRef(form.ref);
+    const ref = editing
+      ? normalizeBankAccountRef(initialAccount!.ref)
+      : normalizeBankAccountRef(form.ref);
     if (!ref) {
       onToast("Indique la referencia de la cuenta.");
       return;
     }
-    if (isBankAccountRefTaken(accounts, ref)) {
+    if (isBankAccountRefTaken(accounts, ref, editing ? initialAccount!.ref : undefined)) {
       onToast(`La referencia "${ref}" ya está en uso. Elija otra.`);
       return;
     }
@@ -122,7 +158,7 @@ export function BankNewAccountForm({ accounts, onSave, onCancel, onToast }: Prop
       openingBalance,
     });
     onSave(row);
-    onToast(`Cuenta ${row.ref} creada.`);
+    onToast(editing ? `Cuenta ${row.ref} actualizada.` : `Cuenta ${row.ref} creada.`);
   };
 
   return (
@@ -135,7 +171,7 @@ export function BankNewAccountForm({ accounts, onSave, onCancel, onToast }: Prop
               <path d="M12 3 2 10h20L12 3z" />
             </svg>
           </span>
-          <h2>Nueva cuenta financiera</h2>
+          <h2>{title}</h2>
         </div>
 
         <div className="sheet-body">
@@ -147,9 +183,11 @@ export function BankNewAccountForm({ accounts, onSave, onCancel, onToast }: Prop
               <input
                 id="bank-ref"
                 required
+                readOnly={editing}
                 placeholder={`Ej. ${suggestedRef}, CAJA-01, Operativa`}
                 value={form.ref}
                 onChange={(event) => setField("ref", event.target.value)}
+                title={editing ? "La referencia no se cambia al editar" : undefined}
               />
             </div>
 
@@ -303,7 +341,7 @@ export function BankNewAccountForm({ accounts, onSave, onCancel, onToast }: Prop
             Cancelar
           </button>
           <button type="submit" className="btn primary">
-            Guardar cuenta
+            {editing ? "Guardar cambios" : "Guardar cuenta"}
           </button>
         </div>
       </form>
