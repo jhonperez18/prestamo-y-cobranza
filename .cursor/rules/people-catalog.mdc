@@ -15,9 +15,10 @@ alwaysApply: true
 ## Obligatorio tras mutar personas
 
 1. Pasar por `commit-people-catalog` (crear / editar / borrar / activar / convertir / permisos).
-2. Encolar mirror + `flushPeopleCatalogToCloud`.
+2. Encolar mirror + **await** `flushPeopleCatalogToCloud` (acceso listo al instante).
 3. Proyectar identidad a `COB-`, rutas y pagos denormalizados.
-4. Login lee el catálogo primero; no inventar otra lista.
+4. Login: local primero; pull no borra altas frescas.
+5. Misma ley que el resto del padre: `docs/sistema-madre.md`.
 
 ## Prohibido
 

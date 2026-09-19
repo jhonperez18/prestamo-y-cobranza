@@ -1,0 +1,33 @@
+---
+description: Sistema madre — el panel manda; mutaciones instantáneas; cero datos viejos; estructura de producto vendible.
+alwaysApply: true
+---
+
+# Sistema madre — raíz del producto
+
+## Ley
+
+El **panel del sistema** (admin) es el **padre de todo**.  
+Cobrador, supervisor, login y reportes son **proyecciones**.  
+Detalle: `docs/sistema-madre.md`.
+
+No aplica solo a usuarios: **cualquier** alta/edición/baja del padre debe reflejarse al instante (misma fuerza que un cobro `PG-`).
+
+## Cadena obligatoria
+
+1. Commit atómico en el módulo dueño (ej. `commitCollectorPayment`, `commit-people-catalog`).
+2. Persistir raíz + encolar mirror.
+3. Proyectar hijos (nombres, planilla, banco, acceso).
+4. **Await** flush a la nube antes de “listo”.
+5. Lectura/login: **local primero**; pull no borra lo fresco del padre.
+
+## Prohibido
+
+- Parches UI / “ignora si falla” (ver `no-patch-cycle`).
+- Segunda fuente de verdad (seed, Auth, SQL espejo) que rebobine al padre.
+- `setState` sin commit + cola.
+- Declarar listo sin build SHA + raíz verificada.
+
+## Objetivo de producto
+
+Estructura limpia, clara y dura: una **super máquina** vendible, no un demo remendado.

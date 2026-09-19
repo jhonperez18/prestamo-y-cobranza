@@ -21,6 +21,7 @@
 
 Dinero operativo (demo): ver `docs/operational-money.md`.  
 Personas / Listado (demo): ver `docs/people-catalog.md`.  
+**Sistema madre** (ley del producto): ver `docs/sistema-madre.md`.  
 Camino a backend: `docs/demo-to-backend.md`.
 
 ## Prohibido
