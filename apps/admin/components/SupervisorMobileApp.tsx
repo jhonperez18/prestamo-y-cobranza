@@ -2169,9 +2169,6 @@ export function SupervisorMobileApp({
                 <p className="ficha-empty">No hay permiso para crear clientes desde esta vista.</p>
               ) : !nuevoRouteRef ? (
                 <>
-                  <p className="supervisor-mobile-subhead">
-                    Elija la ruta: el cliente llega a la lista del cobrador para prestarle.
-                  </p>
                   {nuevoMsg ? <p className="supervisor-nuevo-msg">{nuevoMsg}</p> : null}
                   {liquidaciones.length === 0 ? (
                     <p className="ficha-empty">No hay rutas con cobrador.</p>
