@@ -52,13 +52,6 @@ export const DEMO_LOANS_RESEED_KEY = "nexo-demo-loans-reseed-v1";
 export const DEMO_BANK_REGISTROS_CLEAN_KEY = "nexo-demo-banco-registros-clean-v1";
 export const DEMO_PLANILLA_PURGE_KEY = "nexo-demo-planilla-purge-invalid-v1";
 
-const SYSTEM_LOGINS = new Set([
-  "truqui",
-  "supervisor",
-  "juan.rios",
-  "lina.soto",
-]);
-
 const SEED_CLIENT_REFS = new Set(CLIENTS.map((row) => row.ref));
 const SEED_PAYMENT_REFS = new Set(PAYMENTS.map((row) => row.ref));
 const SEED_LOAN_REFS = new Set(LOANS.map((row) => row.ref));
@@ -665,7 +658,7 @@ function normalizeStoredUser(row: UserRow): UserRow {
   return normalized;
 }
 
-/** Combina usuarios guardados con el seed para no perder cuentas del sistema. */
+/** Lee usuarios del listado (caché local). Remoto manda vía user-mirror. */
 export function loadDemoUsers(): UserRow[] {
   disarmLegacyWipes();
   let stored = readDemoJson<UserRow[]>(DEMO_USERS_KEY, []);
@@ -681,35 +674,21 @@ export function loadDemoUsers(): UserRow[] {
   }
 
   const merged = stored.map((row) => normalizeStoredUser(row));
-  for (const seed of USERS) {
-    const idx = merged.findIndex((row) => row.ref === seed.ref);
-    if (idx === -1) {
-      // Solo reinyecta admin si alguien borró la cuenta de acceso al panel.
-      // El listado de usuarios es la verdad: no revivir cobradores/supervisor borrados.
-      if (seed.login.toLowerCase() !== "truqui") continue;
+  // Solo reinyecta admin si el catálogo quedó sin acceso al panel.
+  // Nunca pisa nombres/canales/roles con el seed (remoto / listado es la verdad).
+  const hasAdmin = merged.some(
+    (row) =>
+      row.login.toLowerCase() === "truqui" ||
+      row.roleRef === "ROL-0" ||
+      (row.channels ?? []).includes("admin"),
+  );
+  if (!hasAdmin) {
+    const seed = USERS.find((row) => row.login.toLowerCase() === "truqui");
+    if (seed) {
       const loginTaken = merged.some(
         (row) => row.login.toLowerCase() === seed.login.toLowerCase(),
       );
       if (!loginTaken) merged.push({ ...seed });
-      continue;
-    }
-    if (SYSTEM_LOGINS.has(seed.login.toLowerCase())) {
-      merged[idx] = {
-        ...merged[idx],
-        login: seed.login,
-        // Clave demo fija para el paquete sincronizado.
-        password: seed.password || "123",
-        roleRef: seed.roleRef,
-        // Acceso por canal: admin solo truqui; cobrador/supervisor solo mobile.
-        channels: [...seed.channels],
-        collectorRef: seed.collectorRef ?? merged[idx].collectorRef,
-        active: merged[idx].active !== false,
-        permissions: seed.permissions?.length
-          ? [...seed.permissions]
-          : merged[idx].permissions,
-        // Nombre editable en Listado — nunca pisar con el seed.
-        name: merged[idx].name?.trim() || seed.name,
-      };
     }
   }
   return merged.map((row) => normalizeUserPermissions(row));

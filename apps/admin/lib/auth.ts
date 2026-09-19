@@ -1,4 +1,4 @@
-import { roleByRef, ROLES, USERS, type UserRow } from "@/lib/mock-data";
+import { roleByRef, ROLES, type UserRow } from "@/lib/mock-data";
 
 export const AUTH_SESSION_KEY = "nexo-admin-session";
 export const DEFAULT_DEMO_PASSWORD = "123";
@@ -68,11 +68,7 @@ export function validateLogin(
 ): AppSession | null {
   const login = username.trim().toLowerCase();
   const pwd = password.trim();
-  let user = users.find((row) => row.login.toLowerCase() === login);
-
-  if (!user) {
-    user = USERS.find((row) => row.login.toLowerCase() === login);
-  }
+  const user = users.find((row) => row.login.toLowerCase() === login);
 
   if (!user || !user.active) return null;
 

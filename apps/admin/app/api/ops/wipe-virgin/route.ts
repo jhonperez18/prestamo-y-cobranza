@@ -85,7 +85,7 @@ export async function POST(req: Request) {
             slug: "1",
             name: "1",
             collector_ref: "COB-0",
-            collector_name: "Juan Ríos",
+            collector_name: "Cristian",
             zone: "",
             frequency: "Lun–Sáb",
             stops: [],

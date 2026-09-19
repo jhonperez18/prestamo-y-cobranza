@@ -409,7 +409,7 @@ export const ROUTES: RouteRow[] = [
     id: "1",
     name: "1",
     collectorRef: "COB-0",
-    collector: "Juan Ríos",
+    collector: "Cristian",
     zone: "",
     frequency: "Lun–Sáb",
     clients: 0,
@@ -572,13 +572,16 @@ export function alignUserCollectorLinks(
 }
 
 /**
- * Todo usuario con rol cobrador debe tener su fila COB propia.
- * Reclama huérfanos o crea uno nuevo (Diego no debe quedar solo con Ficha/Acceso).
+ * Alinea cobrador ↔ usuario.
+ * Por defecto NO inventa COB nuevos (hydrate/sync): eso contaminaba SQL entre orígenes.
+ * Solo crea cobrador nuevo cuando el admin crea usuario (inventMissing: true).
  */
 export function ensureCollectorsForUsers(
   users: UserRow[],
   collectors: CollectorRow[],
+  options: { inventMissing?: boolean } = {},
 ): { users: UserRow[]; collectors: CollectorRow[] } {
+  const inventMissing = options.inventMissing === true;
   let nextCollectors = collectors.map((row) => ({ ...row }));
   const nextUsers = users.map((user) => {
     if (user.roleRef !== COLLECTOR_ROLE_REF) return user;
@@ -631,6 +634,10 @@ export function ensureCollectorsForUsers(
       return { ...user, collectorRef: row.ref };
     }
 
+    if (!inventMissing) {
+      return { ...user, collectorRef: user.collectorRef };
+    }
+
     const cobRef = nextCollectorCode(nextCollectors);
     nextCollectors = [
       ...nextCollectors,
@@ -650,6 +657,34 @@ export function ensureCollectorsForUsers(
   });
 
   return alignUserCollectorLinks(nextUsers, nextCollectors);
+}
+
+/** Nombre visible del cobrador = usuario del listado (una sola verdad). */
+export function collectorDisplayName(
+  collectorRef: string,
+  users: UserRow[],
+  collectors: CollectorRow[],
+  fallback = "—",
+): string {
+  const user = users.find((row) => row.collectorRef === collectorRef);
+  if (user?.name?.trim()) return user.name.trim();
+  const collector = collectors.find((row) => row.ref === collectorRef);
+  if (collector?.name?.trim()) return collector.name.trim();
+  return fallback;
+}
+
+/** Reescribe nombres denormalizados en rutas desde el listado de usuarios. */
+export function syncRouteCollectorNames(
+  routes: RouteRow[],
+  users: UserRow[],
+  collectors: CollectorRow[],
+): RouteRow[] {
+  return routes.map((route) => {
+    if (!route.collectorRef) return route;
+    const name = collectorDisplayName(route.collectorRef, users, collectors, route.collector);
+    if (name === route.collector) return route;
+    return { ...route, collector: name };
+  });
 }
 
 /** Completa permisos faltantes (p. ej. datos viejos en localStorage). */

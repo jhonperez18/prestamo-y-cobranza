@@ -74,6 +74,7 @@ import {
   COLLECTOR_UNASSIGNED_ZONE,
   ROUTES,
   ensureCollectorsForUsers,
+  syncRouteCollectorNames,
   routeSlug,
   type ClientRow,
   type CollectorRow,
@@ -170,12 +171,21 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
       );
 
   const reconciledLoans = syncAllLoans(storedLoans, nextPayments) as LoanRow[];
-  const linked = ensureCollectorsForUsers(loadDemoUsers(), storedCollectors);
+  // No inventar COB en hydrate (evita diego fantasma entre localhost/Vercel).
+  const linked = ensureCollectorsForUsers(loadDemoUsers(), storedCollectors, {
+    inventMissing: false,
+  });
+  const namedRoutes = syncRouteCollectorNames(
+    storedRoutes,
+    linked.users,
+    linked.collectors,
+  );
   writeDemoJson(DEMO_USERS_KEY, linked.users);
   writeDemoJson(DEMO_COLLECTORS_KEY, linked.collectors);
+  writeDemoJson(DEMO_ROUTES_KEY, namedRoutes);
 
   const rebuilt = rebuildDispatchRoutes(
-    storedRoutes,
+    namedRoutes,
     storedAssignments,
     linked.collectors,
     reconciledLoans,

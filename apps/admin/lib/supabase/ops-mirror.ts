@@ -4,7 +4,7 @@
  * @see docs/supabase-schema.md
  */
 import { createMirrorServerClient } from "@/lib/supabase/admin";
-import type { CollectorRow, RouteRow } from "@/lib/mock-data";
+import type { CollectorRow, RouteRow, UserRow } from "@/lib/mock-data";
 import type {
   CollectorDayCloseRecord,
   CollectorDayExpenseDraft,
@@ -19,6 +19,7 @@ import {
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_MISC_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
+  DEMO_USERS_KEY,
   isVirginRemoteHoldActive,
   listDeletedRouteRefs,
   readDemoJson,
@@ -49,6 +50,39 @@ function mergeByRefRemote<T extends { ref: string }>(
     map.set(row.ref, row);
   }
   return { merged: [...map.values()], changed };
+}
+
+/** Remoto manda: dropea locales que no están en remoto (salvo cola pendiente). */
+function mergeRemoteAuthority<T extends { ref: string }>(
+  local: T[],
+  remote: T[],
+  pendingRefs: Set<string>,
+  sig: (row: T) => string,
+): { merged: T[]; changed: boolean } {
+  if (remote.length === 0) {
+    return { merged: local, changed: false };
+  }
+  const remoteRefs = new Set(remote.map((row) => row.ref).filter(Boolean));
+  const merged: T[] = [];
+  let changed = false;
+  const localByRef = new Map(local.filter((row) => row?.ref).map((row) => [row.ref, row]));
+
+  for (const remoteRow of remote) {
+    if (!remoteRow?.ref) continue;
+    const localRow = localByRef.get(remoteRow.ref);
+    if (!localRow) changed = true;
+    else if (sig(localRow) !== sig(remoteRow)) changed = true;
+    merged.push(remoteRow);
+    localByRef.delete(remoteRow.ref);
+  }
+  for (const row of localByRef.values()) {
+    if (pendingRefs.has(row.ref)) {
+      merged.push(row);
+      continue;
+    }
+    changed = true;
+  }
+  return { merged, changed };
 }
 
 async function postMirror(path: string, body: unknown) {
@@ -483,13 +517,23 @@ export async function reconcileLocalOpsToRemote(): Promise<{
       (body.daily_assignments ?? []).map((r) => `${r.dispatch_date}::${r.item_id}`),
     );
     const deletedRoutes = new Set(listDeletedRouteRefs());
+    const catalogUsers = readDemoJson<UserRow[]>(DEMO_USERS_KEY, []);
+    const linkedCollectorRefs = new Set(
+      catalogUsers.map((row) => row.collectorRef).filter(Boolean) as string[],
+    );
+    const pendingCollectorUpserts = new Set(
+      readDemoJson<{ ref: string }[]>(Q_COLLECTORS, [])
+        .map((row) => row.ref)
+        .filter(Boolean),
+    );
 
     const jobs: Array<{ kind: string; row: unknown; key: string }> = [];
 
     for (const row of readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, [])) {
-      if (row?.ref && !remoteCollector.has(row.ref)) {
-        jobs.push({ kind: "collector", row, key: row.ref });
-      }
+      if (!row?.ref || remoteCollector.has(row.ref)) continue;
+      // No subir cobradores fantasma (seed local / diego) que no están en el listado.
+      if (!linkedCollectorRefs.has(row.ref) && !pendingCollectorUpserts.has(row.ref)) continue;
+      jobs.push({ kind: "collector", row, key: row.ref });
     }
     for (const row of readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, [])) {
       if (!row?.ref || deletedRoutes.has(row.ref)) continue;
@@ -574,10 +618,16 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
     const collectors = (body.collectors ?? [])
       .map(rowToCollector)
       .filter((r): r is CollectorRow => Boolean(r));
-    const cMerge = mergeByRefRemote(
+    const pendingCollectors = new Set(
+      readDemoJson<{ ref: string }[]>(Q_COLLECTORS, [])
+        .map((row) => row.ref)
+        .filter(Boolean),
+    );
+    const cMerge = mergeRemoteAuthority(
       readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, []),
       collectors,
-      (r) => `${r.ref}|${r.name}|${r.active}|${r.zone}`,
+      pendingCollectors,
+      (r) => `${r.ref}|${r.name}|${r.active}|${r.zone}|${r.userRef ?? ""}|${r.login ?? ""}`,
     );
     if (cMerge.changed) {
       writeDemoJson(DEMO_COLLECTORS_KEY, cMerge.merged);
@@ -591,10 +641,16 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
     const localRoutes = readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, []).filter(
       (r) => r?.ref && !deletedRoutes.has(r.ref),
     );
-    const rMerge = mergeByRefRemote(
+    const pendingRoutes = new Set(
+      readDemoJson<{ ref: string }[]>(Q_ROUTES, [])
+        .map((row) => row.ref)
+        .filter(Boolean),
+    );
+    const rMerge = mergeRemoteAuthority(
       localRoutes,
       routes,
-      (r) => `${r.ref}|${r.name}|${r.collectorRef}|${r.status}|${r.clients}`,
+      pendingRoutes,
+      (r) => `${r.ref}|${r.name}|${r.collectorRef}|${r.collector}|${r.status}|${r.clients}`,
     );
     if (rMerge.changed || localRoutes.length !== readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, []).length) {
       writeDemoJson(DEMO_ROUTES_KEY, rMerge.merged);

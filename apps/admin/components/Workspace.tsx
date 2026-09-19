@@ -755,7 +755,10 @@ export function Workspace({
     let collectorRows = collectors;
     // Si es cobrador sin COB válido, reparar antes de abrir la ficha.
     if (user.roleRef === COLLECTOR_ROLE_REF && !collectorViewForUser(user, collectors)) {
-      const repaired = ensureCollectorsForUsers(users, collectors);
+      const repaired = ensureCollectorsForUsers(users, collectors, { inventMissing: true });
+      for (const cob of repaired.collectors) {
+        if (!collectors.some((row) => row.ref === cob.ref)) queueCollectorMirror(cob);
+      }
       setUsers(repaired.users);
       setCollectors(repaired.collectors);
       collectorRows = repaired.collectors;
@@ -815,9 +818,15 @@ export function Workspace({
   }
 
   function syncCollectorLinks(ref: string, name: string) {
-    setRoutes((current) =>
-      current.map((row) => (row.collectorRef === ref ? { ...row, collector: name } : row)),
-    );
+    setRoutes((current) => {
+      const next = current.map((row) =>
+        row.collectorRef === ref ? { ...row, collector: name } : row,
+      );
+      for (const row of next) {
+        if (row.collectorRef === ref) queueRouteMirror(row);
+      }
+      return next;
+    });
     setPayments((current) =>
       current.map((row) =>
         row.collectorRef === ref ? { ...row, collector: name, collectorRef: ref } : row,
@@ -1957,6 +1966,7 @@ export function Workspace({
           : row,
       ),
       collectors,
+      { inventMissing: true },
     );
     setUsers(repaired.users);
     setCollectors(repaired.collectors);
@@ -2183,6 +2193,10 @@ export function Workspace({
         onBack={() => onGo("inicio", "resumen")}
       />
     );
+  }
+
+  if (!demoHydrated) {
+    return <div className="login-screen login-loading" aria-hidden />;
   }
 
   return (
