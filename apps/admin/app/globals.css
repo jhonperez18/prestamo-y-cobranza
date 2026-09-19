@@ -5599,14 +5599,13 @@
     }
 
     .shell.is-phone-layout {
-      /* Sin grid de 2 columnas: el cajón es overlay; el contenido es el único flujo. */
-      display: flex;
-      flex-direction: column;
+      /* Flujo de página: el documento baja (no un viewport interno trabado). */
+      display: block;
       width: 100%;
-      height: calc(100dvh - 56px - var(--phone-rail-h, 60px));
-      min-height: 0;
-      max-height: calc(100dvh - 56px - var(--phone-rail-h, 60px));
-      overflow: hidden;
+      height: auto;
+      min-height: calc(100dvh - 56px - var(--phone-rail-h, 52px));
+      max-height: none;
+      overflow: visible;
       background: var(--paper, #f2f9f9);
       grid-template-columns: none;
     }
@@ -5617,7 +5616,7 @@
       display: flex;
       flex-direction: column;
       position: fixed;
-      top: calc(56px + var(--phone-rail-h, 60px));
+      top: calc(56px + var(--phone-rail-h, 52px));
       left: 0;
       bottom: 0;
       /* Ancho = nombre más largo + padding corto (sin hueco negro al borde). */
@@ -5641,34 +5640,38 @@
     }
     .shell.is-phone-layout .workspace {
       display: block;
-      flex: 1 1 auto;
       width: 100%;
-      /* Altura acotada al shell: así overflow-y:auto sí baja el contenido. */
-      height: 0;
+      height: auto;
       min-height: 0;
       max-width: none;
-      padding: 12px 12px 40px;
-      overflow-x: hidden;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      overscroll-behavior-y: contain;
+      padding: 12px 12px 48px;
+      overflow: visible;
       background: var(--paper, #f2f9f9);
       color: #14201b;
       position: relative;
       z-index: 1;
-      touch-action: pan-y;
+      touch-action: auto;
+      -webkit-overflow-scrolling: touch;
     }
+    /* Vista móvil embebida: sí usa viewport interno. */
     .shell.is-phone-layout.is-phone-preview {
+      display: flex;
+      flex-direction: column;
       height: calc(100dvh - 56px);
       min-height: calc(100dvh - 56px);
       max-height: calc(100dvh - 56px);
+      overflow: hidden;
     }
     .shell.is-phone-layout.is-phone-preview .aside {
       top: 56px;
     }
     .shell.is-phone-layout.is-phone-preview .workspace {
-      min-height: 100%;
-      height: 100%;
+      flex: 1 1 auto;
+      height: 0;
+      min-height: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       background: transparent;
     }
 
@@ -12483,13 +12486,26 @@
       max-width: 100%;
     }
     .shell.is-phone-layout .workspace {
+      overflow: visible !important;
+      height: auto !important;
+      min-height: 0 !important;
+      flex: none !important;
+      touch-action: auto !important;
+      -webkit-overflow-scrolling: touch;
+    }
+    .shell.is-phone-layout.is-phone-preview .workspace {
+      flex: 1 1 auto !important;
+      height: 0 !important;
       overflow-x: hidden !important;
       overflow-y: auto !important;
+    }
+    html:has(.shell.is-phone-layout:not(.is-phone-preview)),
+    body:has(.shell.is-phone-layout:not(.is-phone-preview)) {
+      overflow-x: hidden;
+      overflow-y: auto;
+      height: auto;
+      min-height: 100%;
       -webkit-overflow-scrolling: touch;
-      touch-action: pan-y;
-      height: 0;
-      min-height: 0;
-      flex: 1 1 auto;
     }
     .shell.is-phone-layout table.data,
     .shell.is-phone-layout table.data.list-grid,
