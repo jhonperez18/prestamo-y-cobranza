@@ -1277,6 +1277,25 @@ export function SupervisorMobileApp({
     });
   }, [clients, loans, nuevoRoute, nuevoClientSearch]);
 
+  /** Misma grilla/posición que la pestaña CLIENTES. */
+  const eligibleLoanClientRows = useMemo(
+    () =>
+      eligibleLoanClients.map((row) => {
+        const loan = currentActiveLoan(row.ref, loans, payments);
+        const cuotas = computeLoanCuotasProgress(loan, payments, today);
+        return {
+          ref: row.ref,
+          routeOrder: row.routeOrder || 0,
+          name: `${row.name} ${row.lastName}`.trim(),
+          phone: row.phone?.trim() || "—",
+          cuotas,
+          saldo: loan ? loan.balance : null,
+          hasLoan: Boolean(loan),
+        };
+      }),
+    [eligibleLoanClients, loans, payments, today],
+  );
+
   const nuevoLoanClient =
     eligibleLoanClients.find((row) => row.ref === nuevoLoanClientRef) ??
     clients.find((row) => row.ref === nuevoLoanClientRef) ??
