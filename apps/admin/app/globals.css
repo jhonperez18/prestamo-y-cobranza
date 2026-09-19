@@ -2233,9 +2233,9 @@
       font-size: 11px;
       font-weight: 600;
       letter-spacing: 0;
-      text-underline-offset: 1px;
-      line-height: 1;
-      padding: 0;
+      text-decoration: none;
+      line-height: 1.15;
+      padding: 3px 8px;
     }
     .collector-mobile-alert-n {
       display: inline-flex;
@@ -2397,19 +2397,24 @@
     }
     .collector-mobile-pay-link {
       appearance: none;
-      border: 0;
-      background: transparent;
-      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
       margin: 0;
+      padding: 4px 9px;
+      border: 1px solid #b8d4c8;
+      border-radius: 6px;
+      background: #eaf6ef;
+      color: #14201b;
       font: inherit;
       font-size: 11px;
       font-weight: 500;
-      color: #14201b;
-      text-decoration: underline;
-      text-underline-offset: 2px;
+      text-decoration: none;
       cursor: pointer;
       white-space: nowrap;
       line-height: 1.15;
+      box-shadow: none;
     }
     .collector-mobile-pay-link.is-back {
       display: inline-flex;
@@ -2440,7 +2445,10 @@
     }
     .collector-mobile-pay-link:hover,
     .collector-mobile-pay-link.is-open {
-      color: #0f766e;
+      color: #14201b;
+      background: #dceee3;
+      border-color: #9ec4b0;
+      text-decoration: none;
     }
     .collector-mobile-pay-link:disabled {
       opacity: 0.45;
@@ -2612,10 +2620,11 @@
     }
     .collector-pay-inline .collector-pay-actions .collector-mobile-pay-link {
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 650;
       color: #0f766e;
-      text-decoration: underline;
-      text-underline-offset: 2px;
+      border-color: #a7e0d4;
+      background: #ecfdf8;
+      text-decoration: none;
       line-height: 1.2;
       opacity: 1;
     }
@@ -2633,7 +2642,9 @@
     .collector-pay-inline .collector-pay-actions .collector-mobile-pay-link.is-blocked {
       opacity: 0.55;
       color: #5b7268;
-      text-decoration: underline;
+      border-color: #c5d4cc;
+      background: #f2f6f4;
+      text-decoration: none;
       cursor: not-allowed;
     }
     .collector-mobile-list.compact {
