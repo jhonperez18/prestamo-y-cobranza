@@ -4568,24 +4568,30 @@
     }
     .supervisor-clientes-modify-btn {
       flex: none;
-      height: 26px;
-      padding: 0 10px;
+      height: 22px;
+      min-height: 22px;
+      padding: 0 6px;
       border: 1px solid #c4b5a0;
-      border-radius: 8px;
+      border-radius: 4px;
       background: #f7efe4;
       color: #7a4e1d;
       font: inherit;
-      font-size: 11px;
-      font-weight: 700;
+      font-size: 9px;
+      font-weight: 750;
       text-transform: uppercase;
-      letter-spacing: 0.02em;
+      letter-spacing: 0;
       cursor: pointer;
       line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: none;
     }
     .supervisor-clientes-modify-btn.on {
       background: #e8d7c4;
       border-color: #a67c52;
       color: #5c3a14;
+      outline: none;
     }
     .supervisor-clientes-modify-btn:disabled {
       opacity: 0.45;
