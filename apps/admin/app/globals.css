@@ -4569,26 +4569,35 @@
       flex: 0 1 auto;
       min-width: 0;
     }
-    /* Mismo chip que Ruta 1/2; solo cambia el color (beige). */
+    /* MODIFICAR: chip beige compacto; letra chica (no heredar 16px del body). */
     .supervisor-planilla-route-btn.supervisor-clientes-modify-btn {
       border-color: #c4b5a0;
       background: #f7efe4;
       color: #7a4e1d;
       box-shadow: none;
       min-width: 0;
+      height: 20px;
+      min-height: 20px;
+      max-height: 20px;
+      padding: 0 5px;
+      font-size: 8px;
+      font-weight: 750;
+      line-height: 1;
+      border-radius: 4px;
     }
     .supervisor-planilla-route-btn.supervisor-clientes-modify-btn b {
-      font-size: inherit;
+      font-size: 8px !important;
       font-weight: 750;
       letter-spacing: 0;
       text-transform: uppercase;
       color: inherit;
+      line-height: 1;
     }
     .supervisor-planilla-route-btn.supervisor-clientes-modify-btn.on {
       background: #e8d7c4;
       border-color: #a67c52;
       color: #5c3a14;
-      outline: 2px solid rgba(122, 78, 29, 0.28);
+      outline: 1px solid rgba(122, 78, 29, 0.28);
       outline-offset: 0;
     }
     .supervisor-planilla-route-btn.supervisor-clientes-modify-btn:disabled {
@@ -9426,11 +9435,16 @@
       line-height: 1;
     }
     .supervisor-mobile-app .supervisor-planilla-route-btn.supervisor-clientes-modify-btn {
-      height: 22px;
-      min-height: 22px;
-      max-height: 22px;
-      padding: 0 6px;
-      font-size: 10px;
+      height: 20px !important;
+      min-height: 20px !important;
+      max-height: 20px !important;
+      padding: 0 5px !important;
+      font-size: 8px !important;
+      border-radius: 4px;
+    }
+    .supervisor-mobile-app .supervisor-planilla-route-btn.supervisor-clientes-modify-btn b {
+      font-size: 8px !important;
+      line-height: 1;
     }
     .client-review-note { margin: 0 16px 10px; }
     .head .client-review-actions {
