@@ -43,6 +43,9 @@ export function commitUsersCatalog(users: UserRow[]): UserRow[] {
   return next;
 }
 
+/**
+ * Persistencia síncrona + cola nube (edición local manda hasta subir).
+ */
 export function upsertUserInCatalog(user: UserRow): UserRow[] {
   const current = readUsersCatalog();
   const idx = current.findIndex((row) => row.ref === user.ref);
@@ -53,6 +56,12 @@ export function upsertUserInCatalog(user: UserRow): UserRow[] {
   const committed = commitUsersCatalog(next);
   queueUserMirror(normalizeUserPermissions(user));
   return committed;
+}
+
+/** Espera a que la cola de usuarios suba (tras Guardar en ficha). */
+export async function flushUsersCatalogToCloud() {
+  const { flushUserMirrorQueues } = await import("@/lib/supabase/user-mirror");
+  await flushUserMirrorQueues();
 }
 
 export function removeUserFromCatalog(ref: string): UserRow[] {

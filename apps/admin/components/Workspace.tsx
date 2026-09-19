@@ -115,10 +115,12 @@ import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 import {
   commitUsersCatalog,
+  flushUsersCatalogToCloud,
   removeUserFromCatalog,
   upsertUserInCatalog,
 } from "@/lib/users-catalog";
 import {
+  flushOpsMirrorQueues,
   queueAssignmentsMirror,
   queueCollectorMirror,
   queueCollectorsMirror,
@@ -1852,6 +1854,10 @@ export function Workspace({
     setConfirmUserDelete(false);
     onGo("inicio", "listado");
     onToast("Usuario eliminado del listado.");
+    void (async () => {
+      await flushUsersCatalogToCloud();
+      await flushOpsMirrorQueues();
+    })();
   }
 
   function saveNewUser(draft: UserDraft) {
@@ -1916,6 +1922,10 @@ export function Workspace({
         ? `Usuario ${userRef} creado. Acceso móvil = cobrador ${collectorRef}.`
         : `Usuario ${userRef} (${role.name}) creado.`,
     );
+    void (async () => {
+      await flushUsersCatalogToCloud();
+      await flushOpsMirrorQueues();
+    })();
   }
 
   function convertUserToCollector(userRef: string) {
@@ -2015,30 +2025,12 @@ export function Workspace({
         : [...role.permissions],
     };
 
-    setUsers((current) =>
-      current.map((row) => (row.ref === openUser.ref ? nextUser : row)),
-    );
+    const nextUsers = users.map((row) => (row.ref === openUser.ref ? nextUser : row));
+    setUsers(nextUsers);
     upsertUserInCatalog(nextUser);
 
     if (openUser.collectorRef) {
-      setCollectors((current) =>
-        current.map((row) =>
-          row.ref === openUser.collectorRef
-            ? {
-                ...row,
-                name: draft.name,
-                phone: draft.phone,
-                document: draft.document || undefined,
-                login: draft.login,
-                active: draft.active,
-                notes: draft.collectorNotes || undefined,
-                mobileAccess: true,
-              }
-            : row,
-        ),
-      );
-      syncCollectorLinks(openUser.collectorRef, draft.name);
-      queueCollectorMirror({
+      const nextCollector = {
         ref: openUser.collectorRef,
         name: draft.name,
         zone: collectors.find((c) => c.ref === openUser.collectorRef)?.zone ?? COLLECTOR_UNASSIGNED_ZONE,
@@ -2047,13 +2039,24 @@ export function Workspace({
         active: draft.active,
         userRef: openUser.ref,
         login: draft.login,
-        mobileAccess: true,
+        mobileAccess: true as const,
         notes: draft.collectorNotes || undefined,
-      });
+      };
+      setCollectors((current) =>
+        current.map((row) =>
+          row.ref === openUser.collectorRef ? { ...row, ...nextCollector } : row,
+        ),
+      );
+      syncCollectorLinks(openUser.collectorRef, draft.name);
+      queueCollectorMirror(nextCollector);
     }
 
     onGo("inicio", "ficha-usuario");
     onToast("Usuario actualizado.");
+    void (async () => {
+      await flushUsersCatalogToCloud();
+      await flushOpsMirrorQueues();
+    })();
   }
 
   function toggleUserActive() {
@@ -2070,8 +2073,14 @@ export function Workspace({
           row.ref === openUser.collectorRef ? { ...row, active: nextActive } : row,
         ),
       );
+      const cob = collectors.find((c) => c.ref === openUser.collectorRef);
+      if (cob) queueCollectorMirror({ ...cob, active: nextActive, name: nextUser.name, login: nextUser.login });
     }
     onToast(nextActive ? "Usuario activado." : "Usuario desactivado.");
+    void (async () => {
+      await flushUsersCatalogToCloud();
+      await flushOpsMirrorQueues();
+    })();
   }
 
   function saveUserPermissions(userRef: string, permissions: string[]) {

@@ -58,28 +58,44 @@ function mergeRemoteAuthority<T extends { ref: string }>(
   remote: T[],
   pendingRefs: Set<string>,
   sig: (row: T) => string,
+  pendingRows?: T[],
 ): { merged: T[]; changed: boolean } {
   if (remote.length === 0) {
     return { merged: local, changed: false };
   }
-  const remoteRefs = new Set(remote.map((row) => row.ref).filter(Boolean));
+  const pendingByRef = new Map(
+    (pendingRows ?? local.filter((row) => row?.ref && pendingRefs.has(row.ref))).map((row) => [
+      row.ref,
+      row,
+    ]),
+  );
   const merged: T[] = [];
   let changed = false;
   const localByRef = new Map(local.filter((row) => row?.ref).map((row) => [row.ref, row]));
+  const seen = new Set<string>();
 
   for (const remoteRow of remote) {
     if (!remoteRow?.ref) continue;
+    seen.add(remoteRow.ref);
+    const pending = pendingByRef.get(remoteRow.ref);
+    const chosen = pending ?? remoteRow;
     const localRow = localByRef.get(remoteRow.ref);
     if (!localRow) changed = true;
-    else if (sig(localRow) !== sig(remoteRow)) changed = true;
-    merged.push(remoteRow);
+    else if (sig(localRow) !== sig(chosen)) changed = true;
+    merged.push(chosen);
     localByRef.delete(remoteRow.ref);
   }
   for (const row of localByRef.values()) {
     if (pendingRefs.has(row.ref)) {
-      merged.push(row);
+      merged.push(pendingByRef.get(row.ref) ?? row);
       continue;
     }
+    changed = true;
+  }
+  for (const [ref, row] of pendingByRef) {
+    if (seen.has(ref)) continue;
+    if (merged.some((m) => m.ref === ref)) continue;
+    merged.push(row);
     changed = true;
   }
   return { merged, changed };
@@ -372,15 +388,16 @@ async function persistKind(
   ref: string,
 ) {
   if (typeof window === "undefined") return;
+  // Cola primero: el pull no debe pisar una edición en vuelo.
+  enqueue(queueKey, { ref, ...(pathBody.row as object) } as { ref: string });
   try {
     const { res, json } = await postMirror("/api/ops/mirror", pathBody);
-    if (!res.ok || !json.ok) {
-      enqueue(queueKey, { ref, ...(pathBody.row as object) } as { ref: string });
+    if (res.ok && json.ok) {
+      dequeue(queueKey, ref);
       return;
     }
-    dequeue(queueKey, ref);
   } catch {
-    enqueue(queueKey, { ref, ...(pathBody.row as object) } as { ref: string });
+    /* queda en cola */
   }
 }
 
@@ -618,16 +635,16 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
     const collectors = (body.collectors ?? [])
       .map(rowToCollector)
       .filter((r): r is CollectorRow => Boolean(r));
-    const pendingCollectors = new Set(
-      readDemoJson<{ ref: string }[]>(Q_COLLECTORS, [])
-        .map((row) => row.ref)
-        .filter(Boolean),
+    const pendingCollectorRows = readDemoJson<CollectorRow[]>(Q_COLLECTORS, []).filter(
+      (row) => row?.ref,
     );
+    const pendingCollectors = new Set(pendingCollectorRows.map((row) => row.ref));
     const cMerge = mergeRemoteAuthority(
       readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, []),
       collectors,
       pendingCollectors,
       (r) => `${r.ref}|${r.name}|${r.active}|${r.zone}|${r.userRef ?? ""}|${r.login ?? ""}`,
+      pendingCollectorRows,
     );
     if (cMerge.changed) {
       writeDemoJson(DEMO_COLLECTORS_KEY, cMerge.merged);
@@ -641,16 +658,14 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
     const localRoutes = readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, []).filter(
       (r) => r?.ref && !deletedRoutes.has(r.ref),
     );
-    const pendingRoutes = new Set(
-      readDemoJson<{ ref: string }[]>(Q_ROUTES, [])
-        .map((row) => row.ref)
-        .filter(Boolean),
-    );
+    const pendingRouteRows = readDemoJson<RouteRow[]>(Q_ROUTES, []).filter((row) => row?.ref);
+    const pendingRoutes = new Set(pendingRouteRows.map((row) => row.ref));
     const rMerge = mergeRemoteAuthority(
       localRoutes,
       routes,
       pendingRoutes,
       (r) => `${r.ref}|${r.name}|${r.collectorRef}|${r.collector}|${r.status}|${r.clients}`,
+      pendingRouteRows,
     );
     if (rMerge.changed || localRoutes.length !== readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, []).length) {
       writeDemoJson(DEMO_ROUTES_KEY, rMerge.merged);

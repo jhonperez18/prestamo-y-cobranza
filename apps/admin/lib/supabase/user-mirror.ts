@@ -309,23 +309,37 @@ async function postMirror(body: unknown) {
 
 export function queueUserMirror(user: UserRow) {
   if (typeof window === "undefined") return;
+  const normalized = {
+    ...user,
+    ref: (user.ref || "").trim(),
+    login: (user.login || "").trim(),
+  };
+  if (!normalized.ref || !normalized.login) return;
+
+  // Cola PRIMERO: si un pull llega mientras sube, conserva la edición local.
+  const q = readQueue<UserRow>(DEMO_USER_MIRROR_QUEUE_KEY).filter((r) => r.ref !== normalized.ref);
+  q.push(normalized);
+  writeQueue(DEMO_USER_MIRROR_QUEUE_KEY, q);
+
   void (async () => {
     try {
-      const { res, json } = await postMirror({ kind: "upsert", user });
+      const { res, json } = await postMirror({ kind: "upsert", user: normalized });
       if (res.ok && json.ok && !json.skipped) {
         writeQueue(
           DEMO_USER_MIRROR_QUEUE_KEY,
-          readQueue<UserRow>(DEMO_USER_MIRROR_QUEUE_KEY).filter((r) => r.ref !== user.ref),
+          readQueue<UserRow>(DEMO_USER_MIRROR_QUEUE_KEY).filter((r) => r.ref !== normalized.ref),
         );
         return;
       }
-      if (res.ok && json.ok && json.skipped && json.reason === "invalid_user") return;
+      if (res.ok && json.ok && json.skipped && json.reason === "invalid_user") {
+        writeQueue(
+          DEMO_USER_MIRROR_QUEUE_KEY,
+          readQueue<UserRow>(DEMO_USER_MIRROR_QUEUE_KEY).filter((r) => r.ref !== normalized.ref),
+        );
+      }
     } catch {
-      /* cola */
+      /* ya está en cola */
     }
-    const q = readQueue<UserRow>(DEMO_USER_MIRROR_QUEUE_KEY).filter((r) => r.ref !== user.ref);
-    q.push(user);
-    writeQueue(DEMO_USER_MIRROR_QUEUE_KEY, q);
   })();
 }
 
@@ -336,16 +350,27 @@ export function queueUsersMirror(rows: UserRow[]) {
 export function queueUserDeleteMirror(ref: string) {
   const clean = (ref || "").trim();
   if (!clean || typeof window === "undefined") return;
+  const queued = readQueue<{ ref: string }>(DEMO_USER_DELETE_QUEUE_KEY);
+  if (!queued.some((row) => row.ref === clean)) {
+    writeQueue(DEMO_USER_DELETE_QUEUE_KEY, [...queued, { ref: clean }]);
+  }
+  // Quitar upsert pendiente del mismo ref (delete gana).
+  writeQueue(
+    DEMO_USER_MIRROR_QUEUE_KEY,
+    readQueue<UserRow>(DEMO_USER_MIRROR_QUEUE_KEY).filter((r) => r.ref !== clean),
+  );
   void (async () => {
     try {
       const { res, json } = await postMirror({ kind: "delete", ref: clean });
-      if (res.ok && json.ok) return;
+      if (res.ok && json.ok) {
+        writeQueue(
+          DEMO_USER_DELETE_QUEUE_KEY,
+          readQueue<{ ref: string }>(DEMO_USER_DELETE_QUEUE_KEY).filter((r) => r.ref !== clean),
+        );
+      }
     } catch {
-      /* cola */
+      /* ya está en cola */
     }
-    const queued = readQueue<{ ref: string }>(DEMO_USER_DELETE_QUEUE_KEY);
-    if (queued.some((row) => row.ref === clean)) return;
-    writeQueue(DEMO_USER_DELETE_QUEUE_KEY, [...queued, { ref: clean }]);
   })();
 }
 
@@ -417,18 +442,31 @@ export async function pullRemoteUsersIntoDemo(): Promise<PullUsersResult> {
       return { ok: true, changed: false, reason: "remote_empty", count: 0 };
     }
 
-    const pendingUpserts = new Set(
-      readQueue<UserRow>(DEMO_USER_MIRROR_QUEUE_KEY).map((row) => row.ref),
+    const pendingUpserts = readQueue<UserRow>(DEMO_USER_MIRROR_QUEUE_KEY);
+    const pendingByRef = new Map(pendingUpserts.map((row) => [row.ref, row]));
+    const pendingDeletes = new Set(
+      readQueue<{ ref: string }>(DEMO_USER_DELETE_QUEUE_KEY).map((row) => row.ref),
     );
     const local = readDemoJson<UserRow[]>(DEMO_USERS_KEY, []);
-    const remoteRefs = new Set(remote.map((row) => row.ref));
-    const localOnlyPending = local.filter(
-      (row) => row?.ref && !remoteRefs.has(row.ref) && pendingUpserts.has(row.ref),
-    );
+    const localByRef = new Map(local.filter((row) => row?.ref).map((row) => [row.ref, row]));
 
     const byRef = new Map<string, UserRow>();
-    for (const row of remote) byRef.set(row.ref, row);
-    for (const row of localOnlyPending) byRef.set(row.ref, row);
+    for (const row of remote) {
+      if (!row?.ref || pendingDeletes.has(row.ref)) continue;
+      // Edición local pendiente manda sobre remoto viejo.
+      const pending = pendingByRef.get(row.ref);
+      byRef.set(row.ref, pending ?? row);
+    }
+    for (const [ref, row] of pendingByRef) {
+      if (pendingDeletes.has(ref)) continue;
+      if (!byRef.has(ref)) byRef.set(ref, row);
+    }
+    // Conservar local solo si aún no está en remoto ni en cola (offline create ya en pending).
+    for (const [ref, row] of localByRef) {
+      if (pendingDeletes.has(ref)) continue;
+      if (!byRef.has(ref) && pendingByRef.has(ref)) byRef.set(ref, row);
+    }
+
     const merged = Array.from(byRef.values()).sort((a, b) =>
       a.ref.localeCompare(b.ref, "es"),
     );
