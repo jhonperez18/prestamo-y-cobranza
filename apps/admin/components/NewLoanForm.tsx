@@ -285,7 +285,10 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
                       <b>
                         {row.name} {row.lastName}
                       </b>
-                      <span>
+                      <span className="suggest-sep" aria-hidden>
+                        ·
+                      </span>
+                      <span className="suggest-detail">
                         {row.ref} · {row.document || "Sin documento"} · {row.route || "Sin ruta"}
                       </span>
                     </span>
