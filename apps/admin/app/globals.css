@@ -5710,8 +5710,8 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     /*
-     * Hojas en celular: una sola hoja que se mueve entera (pan X/Y).
-     * Sin columnas “congeladas”: eso distorsiona y se ve amateur.
+     * Hojas en celular: pan horizontal de la hoja completa (sin columnas fijas).
+     * El eje del gesto lo fija phone-sheet-pan.ts (lado ≠ abajo).
      */
     .shell.is-phone-layout .table-wrap,
     .shell.is-phone-layout .bank-table-wrap,
@@ -5720,10 +5720,9 @@
     .shell.is-phone-layout .panel-surface {
       margin-inline: -4px;
       overflow-x: auto;
-      overflow-y: auto;
+      overflow-y: hidden;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-x: contain;
-      touch-action: pan-x pan-y;
       scrollbar-width: thin;
       scrollbar-color: #9bb0a6 transparent;
       border-radius: 10px;
@@ -5732,6 +5731,11 @@
         linear-gradient(270deg, var(--panel-table-bg, #fff) 70%, transparent) right center / 18px 100% no-repeat,
         var(--panel-table-bg, #fff);
       background-attachment: local, local, scroll;
+    }
+    html.phone-sheet-pan-x,
+    html.phone-sheet-pan-x body {
+      overflow: hidden !important;
+      overscroll-behavior: none;
     }
     .shell.is-phone-layout .table-wrap::-webkit-scrollbar,
     .shell.is-phone-layout .bank-table-wrap::-webkit-scrollbar,
@@ -12195,10 +12199,9 @@
     .shell.is-phone-layout .panel > .sheet,
     .shell.is-phone-layout .sheet {
       overflow-x: auto !important;
-      overflow-y: auto;
+      overflow-y: hidden !important;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-x: contain;
-      touch-action: pan-x pan-y;
       max-width: 100%;
     }
     .shell.is-phone-layout table.data,

@@ -18,6 +18,7 @@ import {
 import { ThemeApplier } from "@/components/ThemeApplier";
 import { readAdminProfile } from "@/lib/admin-profile";
 import { useActionToast } from "@/hooks/useActionToast";
+import { bindPhoneSheetPan } from "@/lib/phone-sheet-pan";
 
 function groupKey(moduleId: ModuleId, title: string) {
   return `${moduleId}:${title}`;
@@ -42,6 +43,7 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
   const adminProfile = readAdminProfile(session.userRef, session.name, session.username);
   const displayName = adminProfile.displayName || session.name;
   const railRef = useRef<HTMLElement | null>(null);
+  const workspaceRef = useRef<HTMLElement | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     "inicio:Usuario": false,
     "inicio:Rutas": false,
@@ -163,6 +165,13 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
   useEffect(() => {
     setAsideOpen(!phoneLayout);
   }, [phoneLayout]);
+
+  useEffect(() => {
+    if (!phoneLayout) return;
+    const root = workspaceRef.current;
+    if (!root) return;
+    return bindPhoneSheetPan(root);
+  }, [phoneLayout, moduleId, viewId]);
 
   useEffect(() => {
     if (!phoneLayout || !asideOpen) return;
@@ -463,10 +472,10 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
             </button>
           </div>
         </aside>
-        <main className="workspace">
+        <main className="workspace" ref={workspaceRef}>
           {phoneLayout && !phonePreview ? (
             <p className="phone-sheet-hint">
-              Deslizá la hoja entera (lados y arriba/abajo). Todas las columnas se mueven juntas.
+              Deslizá de lado para ver columnas; arriba/abajo para bajar la lista. El gesto se bloquea en un eje.
             </p>
           ) : null}
           <Workspace
