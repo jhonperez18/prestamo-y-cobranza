@@ -47,14 +47,18 @@ export function commitUsersCatalog(users: UserRow[]): UserRow[] {
  * Persistencia síncrona + cola nube (edición local manda hasta subir).
  */
 export function upsertUserInCatalog(user: UserRow): UserRow[] {
+  const stamped = normalizeUserPermissions({
+    ...user,
+    catalogUpdatedAt: new Date().toISOString(),
+  });
   const current = readUsersCatalog();
-  const idx = current.findIndex((row) => row.ref === user.ref);
+  const idx = current.findIndex((row) => row.ref === stamped.ref);
   const next =
     idx === -1
-      ? [...current, normalizeUserPermissions(user)]
-      : current.map((row, i) => (i === idx ? normalizeUserPermissions(user) : row));
+      ? [...current, stamped]
+      : current.map((row, i) => (i === idx ? stamped : row));
   const committed = commitUsersCatalog(next);
-  queueUserMirror(normalizeUserPermissions(user));
+  queueUserMirror(stamped);
   return committed;
 }
 
@@ -62,6 +66,23 @@ export function upsertUserInCatalog(user: UserRow): UserRow[] {
 export async function flushUsersCatalogToCloud() {
   const { flushUserMirrorQueues } = await import("@/lib/supabase/user-mirror");
   await flushUserMirrorQueues();
+}
+
+/**
+ * Antes de validar login: sube ediciones del Listado y trae la nube.
+ * Evita “guardé lina1 y el panel aún tiene lina.soto”.
+ */
+export async function syncUsersCatalogForLogin(): Promise<UserRow[]> {
+  const { flushUserMirrorQueues, pullRemoteUsersIntoDemo } = await import(
+    "@/lib/supabase/user-mirror"
+  );
+  try {
+    await flushUserMirrorQueues();
+    await pullRemoteUsersIntoDemo();
+  } catch {
+    /* offline: valida con lo local */
+  }
+  return readUsersCatalog();
 }
 
 export function removeUserFromCatalog(ref: string): UserRow[] {

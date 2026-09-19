@@ -14,7 +14,7 @@ import {
   loginWithSupabaseAuth,
   shouldTrySupabaseLogin,
 } from "@/lib/supabase/auth-login";
-import { readUsersCatalog } from "@/lib/users-catalog";
+import { syncUsersCatalogForLogin } from "@/lib/users-catalog";
 
 type Props = {
   onSuccess: (session: AppSession) => void;
@@ -64,14 +64,15 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
     setError("");
     setBusy(true);
     try {
-      // 1) Listado primero: lo que se guarda en Modificar usuario es lo que entra.
-      const catalogSession = validateLogin(username, password, readUsersCatalog());
+      // Sube lo del Listado y alinea nube ANTES de validar (misma verdad que Guardar).
+      const catalog = await syncUsersCatalogForLogin();
+      const catalogSession = validateLogin(username, password, catalog);
       if (catalogSession) {
         acceptSession(catalogSession);
         return;
       }
 
-      // 2) Respaldo Auth (email SSO). Si falla, no inventar otro mensaje: el catálogo ya dijo no.
+      // Respaldo Auth (email SSO).
       if (supabaseReady) {
         const emailHint = shouldTrySupabaseLogin(username)
           ? username.trim()

@@ -1824,6 +1824,7 @@ export function Workspace({
     onToast(result.message);
     if (options?.goListado) onGo("inicio", "listado");
     if (options?.openFicha && result.focusUserRef) openUserFicha(result.focusUserRef);
+    // Esperar nube: si no, el panel de ingreso puede validar el catálogo viejo.
     void flushPeopleCatalogToCloud();
     return true;
   }

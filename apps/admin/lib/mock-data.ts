@@ -204,6 +204,8 @@ export type UserRow = {
   permissions: string[];
   active: boolean;
   lastAccess?: string;
+  /** ISO: última edición desde el Listado (gana al pull si es más nueva). */
+  catalogUpdatedAt?: string;
 };
 
 export type RouteRow = {

@@ -124,8 +124,8 @@ export function AuthGate({ channel = "sistema" }: Props) {
   const logout = () => {
     void (async () => {
       try {
+        // Solo sube colas: un pull aquí rebobinaba el Listado antes de entrar.
         await flushUserMirrorQueues();
-        await pullRemoteUsersIntoDemo();
       } catch {
         /* offline */
       }

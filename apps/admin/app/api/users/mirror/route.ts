@@ -4,12 +4,9 @@ import {
   mirrorUserToSupabase,
 } from "@/lib/supabase/user-mirror";
 import type { UserRow } from "@/lib/mock-data";
-import { isVirginWriteLocked, virginWriteLockPayload } from "@/lib/virgin-lock";
 
 export async function POST(request: Request) {
-  if (isVirginWriteLocked()) {
-    return NextResponse.json(virginWriteLockPayload());
-  }
+  // Catálogo de personas: NUNCA bloquear por candado virgen de plata.
   try {
     const body = (await request.json()) as {
       kind?: "upsert" | "delete";

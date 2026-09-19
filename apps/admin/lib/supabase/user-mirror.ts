@@ -69,6 +69,7 @@ function normalizeUser(row: Partial<UserRow> & { ref?: string; login?: string })
     permissions: asStringArray(row.permissions),
     active: row.active !== false,
     lastAccess: row.lastAccess?.trim() || undefined,
+    catalogUpdatedAt: row.catalogUpdatedAt?.trim() || undefined,
   };
 }
 
@@ -90,7 +91,8 @@ export function userRowToMirror(row: UserRow): UserMirrorRow | null {
     permissions: [...(row.permissions ?? [])],
     active: row.active !== false,
     last_access: row.lastAccess?.trim() || null,
-    updated_at: new Date().toISOString(),
+    // Conserva el sello del Listado; no regenerar "ahora" en cada lectura.
+    updated_at: row.catalogUpdatedAt?.trim() || new Date().toISOString(),
   };
 }
 
@@ -109,6 +111,7 @@ export function mirrorToUserRow(row: UserMirrorRow): UserRow | null {
     permissions: asStringArray(row.permissions),
     active: row.active !== false,
     lastAccess: row.last_access || undefined,
+    catalogUpdatedAt: row.updated_at || undefined,
   });
 }
 
@@ -477,13 +480,21 @@ export async function pullRemoteUsersIntoDemo(): Promise<PullUsersResult> {
     const byRef = new Map<string, UserRow>();
     for (const row of remote) {
       if (!row?.ref || pendingDeletes.has(row.ref)) continue;
-      // Edición local pendiente manda sobre remoto viejo.
       const pending = pendingByRef.get(row.ref);
-      let chosen = pending ?? row;
-      // Remoto sin clave no debe borrar la del Listado (login quedaría roto).
       const localRow = localByRef.get(row.ref);
-      if (!chosen.password?.trim() && localRow?.password?.trim()) {
-        chosen = { ...chosen, password: localRow.password };
+      let chosen: UserRow;
+      if (pending) {
+        chosen = pending;
+      } else if (localRow) {
+        const localTs = Date.parse(localRow.catalogUpdatedAt || "") || 0;
+        const remoteTs = Date.parse(row.catalogUpdatedAt || "") || 0;
+        // Listado más nuevo (o igual) en este aparato no se rebobina.
+        chosen = localTs >= remoteTs && localTs > 0 ? localRow : row;
+        if (!chosen.password?.trim() && localRow.password?.trim()) {
+          chosen = { ...chosen, password: localRow.password };
+        }
+      } else {
+        chosen = row;
       }
       byRef.set(row.ref, chosen);
     }
