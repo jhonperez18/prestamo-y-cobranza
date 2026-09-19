@@ -100,7 +100,8 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
     if (!current) return {};
     const next: Record<string, boolean> = {};
     for (const group of current.groups) {
-      if (!group.collapsible) continue;
+      // Celular: todas las carpetas entran al acordeón. Escritorio: solo collapsible.
+      if (!phoneLayout && !group.collapsible) continue;
       const key = groupKey(moduleId, group.title);
       next[key] = title !== null && group.title === title;
     }
@@ -111,6 +112,7 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
     const key = groupKey(moduleId, title);
     const willOpen = !openGroups[key];
     if (willOpen) {
+      // Una abierta → las demás se recogen.
       setOpenGroups((currentState) => ({ ...currentState, ...exclusiveGroupState(title) }));
     } else {
       setOpenGroups((currentState) => ({ ...currentState, [key]: false }));
@@ -130,10 +132,10 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
 
   useEffect(() => {
     const group = groupForView(moduleId, viewId);
-    if (group?.collapsible) {
+    if (group && (phoneLayout || group.collapsible)) {
       setOpenGroups((currentState) => ({ ...currentState, ...exclusiveGroupState(group.title) }));
     }
-  }, [moduleId, viewId]);
+  }, [moduleId, viewId, phoneLayout]);
 
   useEffect(() => {
     if (!canAccessView(session, moduleId, viewId)) {
@@ -402,12 +404,13 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
           <div className="aside-body">
             {current.groups.map((group) => {
               const key = groupKey(moduleId, group.title);
-              // En celular: lista abierta (sin submenús que se contraen).
-              const isOpen = phoneLayout ? true : group.collapsible ? Boolean(openGroups[key]) : true;
+              // Celular: acordeón (una carpeta abierta). Escritorio: collapsible si aplica.
+              const isCollapsible = phoneLayout || Boolean(group.collapsible);
+              const isOpen = isCollapsible ? Boolean(openGroups[key]) : true;
 
               return (
-                <div className={group.collapsible && !phoneLayout ? "group collapsible" : "group"} key={group.title}>
-                  {group.collapsible && !phoneLayout ? (
+                <div className={isCollapsible ? "group collapsible" : "group"} key={group.title}>
+                  {isCollapsible ? (
                     <button
                       type="button"
                       className={isOpen ? "group-head group-toggle on" : "group-head group-toggle"}
