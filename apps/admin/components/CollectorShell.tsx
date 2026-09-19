@@ -718,6 +718,7 @@ export function CollectorShell({ session, onLogout }: Props) {
   return (
     <div className="collector-shell collector-shell-mobile">
       <CollectorMobileApp
+        key={collector.ref}
         collector={collector}
         assignments={myAssignments}
         routes={myRoutes}

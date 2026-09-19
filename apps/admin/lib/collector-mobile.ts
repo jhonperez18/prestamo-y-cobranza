@@ -150,12 +150,12 @@ export function collectorMobileRoutes(
 }
 
 /**
- * ¿Hay planilla que el cobrador deba trabajar o cerrar?
+ * ¿Hay planilla ENVIADA que el cobrador deba trabajar o cerrar?
  * Si es false → inicio = mismo panel de último cierre / saldo (todos iguales).
+ * awaitingDispatch NO cuenta: aún no hay hoja en el móvil → mismo home idle.
  */
 export function collectorHasOpenPlanillaWork(queue: CollectorMobileQueue): boolean {
   if (queue.closed) return false;
-  if (queue.awaitingDispatch.length > 0) return true;
   if (queue.pending.length > 0) return true;
   // Hoja enviada aún abierta (aunque ya no haya pendientes): falta cerrar jornada.
   if (queue.dispatched.length > 0) return true;
@@ -164,11 +164,11 @@ export function collectorHasOpenPlanillaWork(queue: CollectorMobileQueue): boole
 
 /**
  * Fecha de inicio de la app del cobrador (misma regla para todos):
- * 1) Jornada abierta atrasada (hay que cerrarla).
+ * 1) Jornada abierta atrasada CON hoja enviada (hay que cerrarla).
  * 2) Día con visitas pendientes.
  * 3) Hoy abierto con planilla asignada (total > 0).
  * 4) Último cierre formal → cuadre + saldo en caja (recordatorio).
- * 5) Hoy / fallback (home idle: mismo panel de cierre vacío o con arrastre).
+ * 5) Hoy / fallback (home idle: mismo panel para todos).
  */
 export function defaultMobileRouteDate(
   options: CollectorMobileRouteOption[],
@@ -176,7 +176,9 @@ export function defaultMobileRouteDate(
 ): string {
   if (!options.length) return fallback;
 
-  const openPast = options.find((row) => !row.closed && row.date < fallback);
+  const openPast = options.find(
+    (row) => !row.closed && row.date < fallback && row.total > 0,
+  );
   if (openPast) return openPast.date;
 
   const withPending = options.find((row) => !row.closed && row.pending > 0);

@@ -811,16 +811,10 @@ export function CollectorMobileApp({
       {showHomeCuadre ? (
         <section className="collector-mobile-home-cuadre" aria-label="Último cierre">
           <div className="collector-mobile-home-cuadre-head">
-            <Pill label={queue.closed ? "Jornada cerrada" : "Sin planilla"} kind="paid" />
+            <Pill label="Inicio" kind="paid" />
             <div className="collector-mobile-home-cuadre-title-row">
-              <h2>
-                {queue.closed
-                  ? activeDate === (date ?? todayIso())
-                    ? "Tu cierre de hoy"
-                    : "Tu último cierre"
-                  : "Tu saldo en caja"}
-              </h2>
-              {queue.closed && activeDate !== (date ?? todayIso()) ? (
+              <h2>Tu último cierre</h2>
+              {queue.closed ? (
                 <p className="collector-mobile-home-cuadre-progress">{queue.dateLabel}</p>
               ) : null}
             </div>
