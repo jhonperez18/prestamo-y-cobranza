@@ -5557,15 +5557,17 @@
       min-height: 0;
       max-width: none;
       padding: 12px 12px 40px;
-      /* Solo vertical: el pan lateral vive en la hoja (.table-wrap), no aquí. */
       overflow-x: hidden;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
-      overscroll-behavior: contain;
+      overscroll-behavior-y: contain;
+      scroll-behavior: auto;
       background: var(--paper, #f2f9f9);
       color: #14201b;
       position: relative;
       z-index: 1;
+      /* Capa propia: scroll nativo más fluido en celular. */
+      transform: translateZ(0);
     }
     .shell.is-phone-layout.is-phone-preview {
       height: calc(100dvh - 56px);
@@ -5717,7 +5719,43 @@
       line-height: 1.15 !important;
       margin-top: 0;
     }
+    /* Todos los paneles KPI del sistema (mismo estilo compacto). */
     .shell.is-phone-layout .kpis,
+    .shell.is-phone-layout .kpis.tone-kpis,
+    .shell.is-phone-layout .kpis.zone-kpis,
+    .shell.is-phone-layout .cobranza-report-kpis {
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      gap: 6px !important;
+      margin-bottom: 8px !important;
+    }
+    .shell.is-phone-layout .kpi,
+    .shell.is-phone-layout .kpis .kpi,
+    .shell.is-phone-layout .kpis.zone-kpis .kpi {
+      min-height: 0 !important;
+      padding: 6px 5px 7px !important;
+      gap: 0;
+      border-radius: 8px !important;
+      animation: none !important;
+      box-shadow: none !important;
+    }
+    .shell.is-phone-layout .kpi s,
+    .shell.is-phone-layout .kpis.zone-kpis .kpi s {
+      font-size: 10px !important;
+      line-height: 1.15 !important;
+      margin-bottom: 2px !important;
+    }
+    .shell.is-phone-layout .kpi b,
+    .shell.is-phone-layout .kpis.zone-kpis .kpi b {
+      font-size: 12px !important;
+      line-height: 1.2 !important;
+      letter-spacing: 0 !important;
+    }
+    .shell.is-phone-layout .kpi em,
+    .shell.is-phone-layout .kpis.zone-kpis .kpi em {
+      font-size: 9px !important;
+      line-height: 1.15 !important;
+      margin-top: 1px !important;
+    }
     .shell.is-phone-layout .grid-2,
     .shell.is-phone-layout .ficha,
     .shell.is-phone-layout .home-split,
@@ -5725,12 +5763,9 @@
     .shell.is-phone-layout .loan-split {
       grid-template-columns: 1fr;
     }
-    .shell.is-phone-layout .kpis.zone-kpis {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
     /*
-     * Hojas en celular: viewport propio (planilla).
-     * X e Y se mueven dentro de la hoja; el workspace no pelea el gesto.
+     * Hojas en celular: scroll nativo (fluido).
+     * Solo X en la hoja; el workspace baja la pantalla sin pelearse.
      */
     .shell.is-phone-layout .table-wrap,
     .shell.is-phone-layout .bank-table-wrap,
@@ -5738,25 +5773,16 @@
     .shell.is-phone-layout .panel > .table-wrap,
     .shell.is-phone-layout .panel-surface {
       margin-inline: -4px;
-      max-height: min(72dvh, calc(100dvh - 11rem));
+      max-height: none;
       overflow-x: auto;
-      overflow-y: auto;
+      overflow-y: hidden;
       -webkit-overflow-scrolling: touch;
-      overscroll-behavior: contain;
-      touch-action: none;
+      overscroll-behavior-x: contain;
+      touch-action: pan-x;
       scrollbar-width: thin;
       scrollbar-color: #9bb0a6 transparent;
       border-radius: 10px;
-      background:
-        linear-gradient(90deg, var(--panel-table-bg, #fff) 70%, transparent) left center / 18px 100% no-repeat,
-        linear-gradient(270deg, var(--panel-table-bg, #fff) 70%, transparent) right center / 18px 100% no-repeat,
-        var(--panel-table-bg, #fff);
-      background-attachment: local, local, scroll;
-    }
-    .shell.is-phone-layout .table-wrap.is-sheet-panning,
-    .shell.is-phone-layout .bank-table-wrap.is-sheet-panning,
-    .shell.is-phone-layout .route-clients-table-wrap.is-sheet-panning {
-      overscroll-behavior: none;
+      background: var(--panel-table-bg, #fff);
     }
     .shell.is-phone-layout .table-wrap::-webkit-scrollbar,
     .shell.is-phone-layout .bank-table-wrap::-webkit-scrollbar,
@@ -12229,12 +12255,13 @@
     .shell.is-phone-layout .panel > .sheet,
     .shell.is-phone-layout .sheet {
       overflow-x: auto !important;
-      overflow-y: auto !important;
-      max-height: min(72dvh, calc(100dvh - 11rem));
+      overflow-y: hidden !important;
+      max-height: none !important;
       -webkit-overflow-scrolling: touch;
-      overscroll-behavior: contain;
-      touch-action: none;
+      overscroll-behavior-x: contain;
+      touch-action: pan-x;
       max-width: 100%;
+      background: var(--panel-table-bg, #fff);
     }
     .shell.is-phone-layout table.data,
     .shell.is-phone-layout table.data.list-grid,
@@ -12298,33 +12325,49 @@
       left: auto;
       z-index: 1;
     }
-    /* KPI inicio en celular: chips compactos 3×2 (no una fila de 6 aplastada). */
+    /* Todos los paneles KPI / chips: compactos 3 columnas en celular. */
     .shell.is-phone-layout .home-routes-dashboard.is-unified {
       gap: 8px;
       padding: 4px 0 16px;
     }
-    .shell.is-phone-layout .home-strip {
+    .shell.is-phone-layout .home-strip,
+    .shell.is-phone-layout .kpis,
+    .shell.is-phone-layout .kpis.tone-kpis,
+    .shell.is-phone-layout .kpis.zone-kpis,
+    .shell.is-phone-layout .cobranza-report-kpis {
       display: grid !important;
       grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
       gap: 6px !important;
       width: 100%;
+      margin-bottom: 8px !important;
     }
-    .shell.is-phone-layout .home-strip-chip {
+    .shell.is-phone-layout .home-strip-chip,
+    .shell.is-phone-layout .kpi,
+    .shell.is-phone-layout .kpis .kpi,
+    .shell.is-phone-layout .kpis.zone-kpis .kpi {
       min-height: 0 !important;
       min-width: 0;
       padding: 6px 5px 7px !important;
       gap: 2px !important;
-      border-radius: 8px;
+      border-radius: 8px !important;
+      animation: none !important;
     }
-    .shell.is-phone-layout .home-strip-label {
+    .shell.is-phone-layout .home-strip-label,
+    .shell.is-phone-layout .kpi s,
+    .shell.is-phone-layout .kpis.zone-kpis .kpi s {
       font-size: 10px !important;
       line-height: 1.15 !important;
+      margin-bottom: 2px !important;
     }
-    .shell.is-phone-layout .home-strip-value {
+    .shell.is-phone-layout .home-strip-value,
+    .shell.is-phone-layout .kpi b,
+    .shell.is-phone-layout .kpis.zone-kpis .kpi b {
       font-size: 12px !important;
       line-height: 1.2 !important;
     }
-    .shell.is-phone-layout .home-strip-meta {
+    .shell.is-phone-layout .home-strip-meta,
+    .shell.is-phone-layout .kpi em,
+    .shell.is-phone-layout .kpis.zone-kpis .kpi em {
       font-size: 9px !important;
       line-height: 1.15 !important;
       margin-top: 0 !important;

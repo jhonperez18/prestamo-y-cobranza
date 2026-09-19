@@ -18,7 +18,6 @@ import {
 import { ThemeApplier } from "@/components/ThemeApplier";
 import { readAdminProfile } from "@/lib/admin-profile";
 import { useActionToast } from "@/hooks/useActionToast";
-import { bindPhoneSheetPan } from "@/lib/phone-sheet-pan";
 
 function groupKey(moduleId: ModuleId, title: string) {
   return `${moduleId}:${title}`;
@@ -43,7 +42,6 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
   const adminProfile = readAdminProfile(session.userRef, session.name, session.username);
   const displayName = adminProfile.displayName || session.name;
   const railRef = useRef<HTMLElement | null>(null);
-  const workspaceRef = useRef<HTMLElement | null>(null);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     "inicio:Usuario": false,
     "inicio:Rutas": false,
@@ -165,26 +163,6 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
   useEffect(() => {
     setAsideOpen(!phoneLayout);
   }, [phoneLayout]);
-
-  useEffect(() => {
-    if (!phoneLayout) return;
-    let unbind: (() => void) | undefined;
-    let cancelled = false;
-    const tryBind = () => {
-      if (cancelled) return;
-      const root = workspaceRef.current;
-      if (!root) {
-        requestAnimationFrame(tryBind);
-        return;
-      }
-      unbind = bindPhoneSheetPan(root);
-    };
-    tryBind();
-    return () => {
-      cancelled = true;
-      unbind?.();
-    };
-  }, [phoneLayout, moduleId, viewId]);
 
   useEffect(() => {
     if (!phoneLayout || !asideOpen) return;
@@ -485,10 +463,10 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
             </button>
           </div>
         </aside>
-        <main className="workspace" ref={workspaceRef}>
+        <main className="workspace">
           {phoneLayout && !phonePreview ? (
             <p className="phone-sheet-hint">
-              En la hoja: deslizá de lado o arriba/abajo. El gesto se queda en un eje (no se tuerce).
+              Tablas: deslizá de lado. La pantalla baja con scroll nativo (fluido).
             </p>
           ) : null}
           <Workspace
