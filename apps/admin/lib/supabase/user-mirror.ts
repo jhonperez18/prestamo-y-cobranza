@@ -452,21 +452,16 @@ export async function pullRemoteUsersIntoDemo(): Promise<PullUsersResult> {
       .map(mirrorToUserRow)
       .filter((row): row is UserRow => Boolean(row));
 
+    const local = readDemoJson<UserRow[]>(DEMO_USERS_KEY, []);
+
     if (remote.length === 0) {
-      // Nube vacía = verdad: no conservar seed local (juan/lina/diego).
-      const pendingUpserts = readQueue<UserRow>(DEMO_USER_MIRROR_QUEUE_KEY);
-      const pendingDeletes = new Set(
-        readQueue<{ ref: string }>(DEMO_USER_DELETE_QUEUE_KEY).map((row) => row.ref),
-      );
-      const kept = pendingUpserts.filter((row) => row?.ref && !pendingDeletes.has(row.ref));
-      const local = readDemoJson<UserRow[]>(DEMO_USERS_KEY, []);
-      const localSig = local.map(userSignature).sort().join("\n");
-      const nextSig = kept.map(userSignature).sort().join("\n");
-      if (localSig === nextSig) {
-        return { ok: true, changed: false, reason: "remote_empty", count: kept.length };
-      }
-      writeDemoJson(DEMO_USERS_KEY, kept);
-      return { ok: true, changed: true, reason: "remote_empty", count: kept.length };
+      // Nube vacía: NO borrar el Listado local (un alta recién hecha debe poder entrar).
+      return {
+        ok: true,
+        changed: false,
+        reason: "remote_empty_keep_local",
+        count: local.length,
+      };
     }
 
     const pendingUpserts = readQueue<UserRow>(DEMO_USER_MIRROR_QUEUE_KEY);
@@ -474,7 +469,6 @@ export async function pullRemoteUsersIntoDemo(): Promise<PullUsersResult> {
     const pendingDeletes = new Set(
       readQueue<{ ref: string }>(DEMO_USER_DELETE_QUEUE_KEY).map((row) => row.ref),
     );
-    const local = readDemoJson<UserRow[]>(DEMO_USERS_KEY, []);
     const localByRef = new Map(local.filter((row) => row?.ref).map((row) => [row.ref, row]));
 
     const byRef = new Map<string, UserRow>();
@@ -502,10 +496,10 @@ export async function pullRemoteUsersIntoDemo(): Promise<PullUsersResult> {
       if (pendingDeletes.has(ref)) continue;
       if (!byRef.has(ref)) byRef.set(ref, row);
     }
-    // Conservar local solo si aún no está en remoto ni en cola (offline create ya en pending).
+    // Altas locales (recién creadas) sobreviven aunque el pull aún no las vea en nube.
     for (const [ref, row] of localByRef) {
       if (pendingDeletes.has(ref)) continue;
-      if (!byRef.has(ref) && pendingByRef.has(ref)) byRef.set(ref, row);
+      if (!byRef.has(ref)) byRef.set(ref, row);
     }
 
     const merged = Array.from(byRef.values()).sort((a, b) =>

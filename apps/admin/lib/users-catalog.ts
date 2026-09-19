@@ -69,8 +69,10 @@ export async function flushUsersCatalogToCloud() {
 }
 
 /**
- * Antes de validar login: sube ediciones del Listado y trae la nube.
- * Evita “guardé lina1 y el panel aún tiene lina.soto”.
+ * Antes de validar login:
+ * 1) Sube colas del Listado (alta/edición recién hechas).
+ * 2) Valida con local primero (instante en el mismo aparato).
+ * 3) Si hace falta, trae nube (otro celular / PC) sin borrar altas locales.
  */
 export async function syncUsersCatalogForLogin(): Promise<UserRow[]> {
   const { flushUserMirrorQueues, pullRemoteUsersIntoDemo } = await import(
@@ -78,11 +80,18 @@ export async function syncUsersCatalogForLogin(): Promise<UserRow[]> {
   );
   try {
     await flushUserMirrorQueues();
+  } catch {
+    /* offline */
+  }
+  const local = readUsersCatalog();
+  try {
     await pullRemoteUsersIntoDemo();
   } catch {
-    /* offline: valida con lo local */
+    /* offline: queda local */
   }
-  return readUsersCatalog();
+  // Tras pull, relee: el merge ya no puede eliminar un USR- recién creado.
+  const merged = readUsersCatalog();
+  return merged.length ? merged : local;
 }
 
 export function removeUserFromCatalog(ref: string): UserRow[] {

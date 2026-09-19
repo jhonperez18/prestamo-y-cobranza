@@ -1809,7 +1809,7 @@ export function Workspace({
     return { users, collectors, routes, payments };
   }
 
-  function applyPeopleCommit(
+  async function applyPeopleCommit(
     result: ReturnType<typeof commitCreateUser>,
     options?: { goListado?: boolean; openFicha?: boolean },
   ) {
@@ -1821,19 +1821,23 @@ export function Workspace({
     setCollectors(result.state.collectors);
     setRoutes(result.state.routes);
     setPayments(result.state.payments);
-    onToast(result.message);
     if (options?.goListado) onGo("inicio", "listado");
     if (options?.openFicha && result.focusUserRef) openUserFicha(result.focusUserRef);
-    // Esperar nube: si no, el panel de ingreso puede validar el catálogo viejo.
-    void flushPeopleCatalogToCloud();
+    onToast("Guardando acceso…");
+    try {
+      await flushPeopleCatalogToCloud();
+      onToast(`${result.message} Acceso listo para ingresar.`);
+    } catch {
+      onToast(`${result.message} (sin nube; en este aparato ya puede entrar).`);
+    }
     return true;
   }
 
   function toggleCollectorActive() {
     if (!openUser) return;
-    const result = commitToggleUserActive(openUser.ref, peopleState());
-    if (!applyPeopleCommit(result)) return;
-    setConfirmUserDelete(false);
+    void applyPeopleCommit(commitToggleUserActive(openUser.ref, peopleState())).then((ok) => {
+      if (ok) setConfirmUserDelete(false);
+    });
   }
 
   function deleteUser() {
@@ -1861,32 +1865,34 @@ export function Workspace({
     setOpenUserRef(result.state.users[0]?.ref ?? "");
     setConfirmUserDelete(false);
     onGo("inicio", "listado");
-    onToast(result.message);
-    void flushPeopleCatalogToCloud();
+    onToast("Guardando acceso…");
+    void flushPeopleCatalogToCloud().then(() => {
+      onToast(result.message);
+    });
   }
 
   function saveNewUser(draft: UserDraft) {
-    applyPeopleCommit(commitCreateUser(draft, peopleState()), { goListado: true });
+    void applyPeopleCommit(commitCreateUser(draft, peopleState()), { goListado: true });
   }
 
   function convertUserToCollector(userRef: string) {
-    applyPeopleCommit(commitConvertToCollector(userRef, peopleState()), { openFicha: true });
+    void applyPeopleCommit(commitConvertToCollector(userRef, peopleState()), { openFicha: true });
   }
 
   function saveEditUser(draft: UserEditDraft) {
     if (!openUser) return;
-    const result = commitUpdateUser(openUser.ref, draft, peopleState());
-    if (!applyPeopleCommit(result)) return;
-    onGo("inicio", "ficha-usuario");
+    void applyPeopleCommit(commitUpdateUser(openUser.ref, draft, peopleState())).then((ok) => {
+      if (ok) onGo("inicio", "ficha-usuario");
+    });
   }
 
   function toggleUserActive() {
     if (!openUser) return;
-    applyPeopleCommit(commitToggleUserActive(openUser.ref, peopleState()));
+    void applyPeopleCommit(commitToggleUserActive(openUser.ref, peopleState()));
   }
 
   function saveUserPermissions(userRef: string, permissions: string[]) {
-    applyPeopleCommit(commitUserPermissions(userRef, permissions, peopleState()));
+    void applyPeopleCommit(commitUserPermissions(userRef, permissions, peopleState()));
   }
 
   function deleteLoan() {

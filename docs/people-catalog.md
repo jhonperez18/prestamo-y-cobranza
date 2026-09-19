@@ -40,9 +40,10 @@ Eso, en una pasada:
 ## 3. Obligatorio
 
 1. Crear / modificar / eliminar / activar solo desde el Listado (o perfil admin vía `upsertUserInCatalog`).
-2. Tras mutar: commit + flush (no “solo setState”).
-3. Login valida **primero** el catálogo; Auth es respaldo.
-4. Cambio de nombre/login/clave en Listado = mismo dato en app móvil / supervisor / login.
+2. Tras mutar: commit + **await** `flushPeopleCatalogToCloud` (toast “Acceso listo”).
+3. Login: flush → validar **local primero** (instante) → si falla, pull nube → reintentar.
+4. Pull **nunca** borra un `USR-` local que aún no aparece en remoto (alta recién hecha).
+5. Cambio de nombre/login/clave en Listado = mismo dato en app móvil / supervisor / login.
 
 ## 4. Prohibido
 

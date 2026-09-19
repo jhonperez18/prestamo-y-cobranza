@@ -14,7 +14,8 @@ import {
   loginWithSupabaseAuth,
   shouldTrySupabaseLogin,
 } from "@/lib/supabase/auth-login";
-import { syncUsersCatalogForLogin } from "@/lib/users-catalog";
+import { readUsersCatalog } from "@/lib/users-catalog";
+import { flushUserMirrorQueues, pullRemoteUsersIntoDemo } from "@/lib/supabase/user-mirror";
 
 type Props = {
   onSuccess: (session: AppSession) => void;
@@ -64,15 +65,33 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
     setError("");
     setBusy(true);
     try {
-      // Sube lo del Listado y alinea nube ANTES de validar (misma verdad que Guardar).
-      const catalog = await syncUsersCatalogForLogin();
-      const catalogSession = validateLogin(username, password, catalog);
+      // 1) Sube altas/edits del Listado.
+      try {
+        await flushUserMirrorQueues();
+      } catch {
+        /* offline */
+      }
+
+      // 2) Local primero = acceso inmediato tras crear/modificar en este aparato.
+      let catalogSession = validateLogin(username, password, readUsersCatalog());
       if (catalogSession) {
         acceptSession(catalogSession);
         return;
       }
 
-      // Respaldo Auth (email SSO).
+      // 3) Si no está en local, trae nube (otro PC/celular) y reintenta.
+      try {
+        await pullRemoteUsersIntoDemo();
+      } catch {
+        /* offline */
+      }
+      catalogSession = validateLogin(username, password, readUsersCatalog());
+      if (catalogSession) {
+        acceptSession(catalogSession);
+        return;
+      }
+
+      // 4) Respaldo Auth (email SSO).
       if (supabaseReady) {
         const emailHint = shouldTrySupabaseLogin(username)
           ? username.trim()
