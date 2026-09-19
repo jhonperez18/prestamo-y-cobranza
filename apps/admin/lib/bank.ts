@@ -1,0 +1,1465 @@
+import type { LoanRow, PaymentRow } from "@/lib/mock-data";
+import { COLLECTORS, money } from "@/lib/mock-data";
+import type { MiscPayment } from "@/lib/misc-payments";
+import { findMiscPaymentForMovement } from "@/lib/misc-payments";
+import {
+  loanDisbursementIsoDate,
+  loanDisbursementMovementRef,
+  loanFundedByBanco,
+  loanFundedByNequi,
+} from "@/lib/nequi-pool";
+import {
+  normalizePaymentMethod,
+  paymentMethodLabel,
+  type PaymentMethod,
+} from "@/lib/payment-method";
+
+/**
+ * Corrige texto UTF-8 mal leído (RÃ­os → Ríos) y caracteres de reemplazo ().
+ */
+export function repairMojibakeText(raw: string): string {
+  let s = String(raw ?? "");
+  if (!s) return s;
+
+  if (/Ã.|Â.|â.|ð.|Ã/.test(s)) {
+    try {
+      const bytes = Uint8Array.from(Array.from(s, (ch) => ch.charCodeAt(0) & 0xff));
+      const decoded = new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+      if (decoded && decoded !== s && (decoded.match(/\uFFFD/g) ?? []).length < (s.match(/\uFFFD/g) ?? []).length + 1) {
+        // Prefer decoded when it looks like Spanish text with accents
+        if (/[áéíóúñÁÉÍÓÚÑ]/.test(decoded) || !/\uFFFD/.test(decoded)) {
+          s = decoded;
+        }
+      }
+    } catch {
+      /* keep original */
+    }
+  }
+
+  // Casos conocidos / basura de encoding sobre nombres de cobradores
+  s = s.replace(/Juan\s+R(?:Ã­|\u00C3\u00AD|\uFFFD+)\s*os/gi, "Juan Ríos");
+  s = s.replace(/\bR(?:Ã­|\u00C3\u00AD|\uFFFD+)os\b/gi, "Ríos");
+  s = s.replace(/N(?:Ã³|\uFFFD+)mina/gi, "Nómina");
+  s = s.replace(/Pr(?:Ã©|\uFFFD+)stamo/gi, "Préstamo");
+  s = s.replace(/Consignaci(?:Ã³|\uFFFD+)n/gi, "Consignación");
+
+  return s;
+}
+
+function foldPersonKey(value: string) {
+  return repairMojibakeText(value)
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+/** Devuelve el nombre canónico del cobrador si el texto es una variante corrupta. */
+export function canonicalPersonName(raw: string): string {
+  const repaired = repairMojibakeText(raw).trim();
+  if (!repaired) return repaired;
+  const key = foldPersonKey(repaired);
+  if (!key) return repaired;
+  if (key.includes("juan") && key.includes("rios")) return "Juan Ríos";
+  if (/^juanr+.*os$/.test(key) || key === "juanros") return "Juan Ríos";
+  for (const row of COLLECTORS) {
+    if (foldPersonKey(row.name) === key) return row.name;
+  }
+  return repaired;
+}
+
+export type BankAccountType =
+  | "corriente"
+  | "ahorros"
+  | "caja"
+  | "nequi"
+  | "otro";
+
+export type BankAccount = {
+  ref: string;
+  /** Etiqueta cuenta o caja */
+  name: string;
+  bankName: string;
+  accountNumber: string;
+  accountType: BankAccountType;
+  currency: string;
+  country: string;
+  province: string;
+  address: string;
+  active: boolean;
+  openingBalance: number;
+};
+
+export function bankAccountTypeLabel(type: BankAccountType) {
+  if (type === "corriente") return "Cuenta corriente, cheque o tarjeta";
+  if (type === "ahorros") return "Cuenta de ahorros";
+  if (type === "caja") return "Caja / efectivo";
+  if (type === "nequi") return "Nequi / billetera digital";
+  return "Otro";
+}
+
+export function normalizeBankAccount(row: Partial<BankAccount> & Pick<BankAccount, "ref" | "name">): BankAccount {
+  return {
+    ref: row.ref,
+    name: row.name,
+    bankName: row.bankName?.trim() || "Sin banco",
+    accountNumber: row.accountNumber?.trim() || "Sin número",
+    accountType: row.accountType ?? "corriente",
+    currency: row.currency ?? "COP",
+    country: row.country ?? "Colombia (CO)",
+    province: row.province ?? "",
+    address: row.address ?? "",
+    active: row.active !== false,
+    openingBalance: Number(row.openingBalance) || 0,
+  };
+}
+
+export type BankExpenseCategory =
+  | "nomina"
+  | "administracion"
+  | "domicilio"
+  | "servicios"
+  | "otro"
+  | "almuerzo"
+  | "gasolina"
+  | "prestamo_ruta"
+  | "transporte"
+  | "consignacion";
+
+export type BankMovement = {
+  ref: string;
+  accountRef: string;
+  period: string;
+  description: string;
+  valueDate: string;
+  opDate: string;
+  thirdParty: string;
+  debit: number;
+  credit: number;
+  category?: BankExpenseCategory;
+  paymentRef?: string;
+  /** Medio del cobro PG- (inmutable desde el pago del cobrador). */
+  method?: PaymentMethod;
+  miscPaymentRef?: string;
+  /** Gasto de ruta del cobrador: GASL-{collector}-{date}-{expenseId} */
+  dayExpenseLineRef?: string;
+  /** Desembolso de préstamo desde Nequi: DSB-{loanRef} */
+  loanDisbursementRef?: string;
+  inExtract: boolean;
+  reconciled: boolean;
+  manual: boolean;
+};
+
+export type BankReconciliation = {
+  accountRef: string;
+  period: string;
+  closedAt: string;
+  totalDebit: number;
+  totalCredit: number;
+  balance: number;
+};
+
+export type BankExtractSummary = {
+  period: string;
+  openingBalance: number;
+  closingBalance: number;
+  closed: boolean;
+};
+
+export type BankMovementRow = BankMovement & {
+  runningBalance: number;
+};
+
+export type BankPeriodSummary = {
+  period: string;
+  label: string;
+  totalDebit: number;
+  totalCredit: number;
+  balance: number;
+  closed: boolean;
+};
+
+export type BankReportMonth = {
+  month: number;
+  label: string;
+  gastos: number;
+  ingresos: number;
+};
+
+export type BankReportYear = {
+  key: string;
+  label: string;
+  months: BankReportMonth[];
+  totalGastos: number;
+  totalIngresos: number;
+  resultado: number;
+};
+
+const MONTH_LABELS = [
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+];
+
+let movementCounter = 0;
+
+export function nextBankMovementRef(prefix = "BNK") {
+  movementCounter += 1;
+  return `${prefix}-${Date.now().toString(36)}-${movementCounter}`;
+}
+
+export function nextBankAccountRef(existing: BankAccount[]) {
+  const nums = existing
+    .map((row) => Number(row.ref.replace(/^BCA-/i, "")))
+    .filter((value) => Number.isFinite(value));
+  const next = nums.length ? Math.max(...nums) + 1 : 1;
+  return `BCA-${next}`;
+}
+
+/** Cuenta operativa por defecto: sin ella los cobros/gastos no llegan a Registros. */
+export function defaultBankAccount(): BankAccount {
+  return normalizeBankAccount({
+    ref: "BCA-1",
+    name: "Caja operativa",
+    bankName: "Caja",
+    accountNumber: "—",
+    accountType: "caja",
+    currency: "COP",
+    country: "Colombia (CO)",
+    province: "",
+    address: "",
+    active: true,
+    openingBalance: 0,
+  });
+}
+
+/** Si no hay cuentas guardadas, crea la caja operativa. */
+export function ensureBankAccounts(accounts: BankAccount[]): BankAccount[] {
+  const normalized = accounts.map(normalizeBankAccount);
+  if (normalized.length) return normalized;
+  return [defaultBankAccount()];
+}
+
+export function normalizeBankAccountRef(input: string) {
+  return input.trim();
+}
+
+/** Importe del movimiento (solo un lado lleva valor). */
+export function bankMovementAmount(row: Pick<BankMovement, "debit" | "credit">) {
+  return Math.max(Number(row.debit) || 0, Number(row.credit) || 0);
+}
+
+/** Cobro (PG-) = ingreso de banco. Nunca gasto. */
+function isPaymentCobroMovement(row: BankMovement) {
+  return Boolean(paymentRefForMovement(row));
+}
+
+function looksLikeBankIncome(row: BankMovement) {
+  if (isPaymentCobroMovement(row)) return true;
+  if (row.miscPaymentRef || row.category || row.dayExpenseLineRef) return false;
+  const desc = row.description.trim().toLowerCase();
+  return desc.includes("cobro") || desc.includes("ingreso");
+}
+
+function looksLikeBankExpense(row: BankMovement) {
+  if (isPaymentCobroMovement(row)) return false;
+  if (row.dayExpenseLineRef || row.miscPaymentRef || row.loanDisbursementRef || row.category) {
+    return true;
+  }
+  if (row.manual && !row.paymentRef) return true;
+  const desc = row.description.trim().toLowerCase();
+  return (
+    desc.includes("pago varios") ||
+    desc.includes("nómina") ||
+    desc.includes("nomina") ||
+    desc.includes("gasto") ||
+    desc.includes("servicios") ||
+    desc.includes("administrativ") ||
+    desc.includes("desembolso")
+  );
+}
+
+/** Cuenta de banco (activo): ingreso = Debe, gasto = Haber. */
+export function isBankIncomeMovement(row: BankMovement) {
+  if (isPaymentCobroMovement(row)) return true;
+  if (looksLikeBankExpense(row)) return false;
+  return row.debit > 0 && row.credit <= 0;
+}
+
+export function isBankExpenseMovement(row: BankMovement) {
+  if (isPaymentCobroMovement(row)) return false;
+  if (looksLikeBankExpense(row)) return true;
+  return row.credit > 0 && row.debit <= 0;
+}
+
+/** Corrige Debe/Haber: ingreso → debit, gasto → credit. Idempotente. */
+function applyBankAccountSides(row: BankMovement): BankMovement {
+  const amount = bankMovementAmount(row);
+  if (amount <= 0) return { ...row, debit: 0, credit: 0 };
+  if (isPaymentCobroMovement(row) || looksLikeBankIncome(row)) {
+    return { ...row, debit: amount, credit: 0 };
+  }
+  if (looksLikeBankExpense(row)) return { ...row, debit: 0, credit: amount };
+  return row;
+}
+
+export function normalizeBankMovement(
+  row: Partial<BankMovement> & { ref?: string },
+): BankMovement | null {
+  if (!row.ref) return null;
+  const valueDate = row.valueDate ?? row.opDate ?? displayToday();
+  const opDate = row.opDate ?? valueDate;
+  const period =
+    row.period && isValidBankPeriod(row.period)
+      ? normalizeBankPeriod(row.period)
+      : periodFromIso(valueDate);
+  const thirdParty = canonicalPersonName(row.thirdParty ?? "");
+  let description = repairMojibakeText(row.description ?? "");
+  const rawThird = String(row.thirdParty ?? "").trim();
+  if (rawThird && thirdParty && rawThird !== thirdParty && description.includes(rawThird)) {
+    description = description.split(rawThird).join(thirdParty);
+  }
+  description = description
+    .replace(/Juan\s+R(?:Ã­|\uFFFD+)\s*os/gi, "Juan Ríos")
+    .replace(/\bR(?:Ã­|\uFFFD+)os\b/gi, "Ríos");
+
+  const method: PaymentMethod | undefined =
+    row.method === "nequi" || row.method === "efectivo" || row.method === "banco"
+      ? row.method
+      : undefined;
+
+  return applyBankAccountSides({
+    ref: row.ref,
+    accountRef: row.accountRef ?? "",
+    period,
+    description,
+    valueDate,
+    opDate,
+    thirdParty,
+    debit: Number(row.debit) || 0,
+    credit: Number(row.credit) || 0,
+    category: row.category,
+    paymentRef: row.paymentRef,
+    method,
+    miscPaymentRef: row.miscPaymentRef,
+    dayExpenseLineRef: row.dayExpenseLineRef,
+    loanDisbursementRef: row.loanDisbursementRef,
+    inExtract: row.inExtract !== false,
+    reconciled: Boolean(row.reconciled),
+    manual: Boolean(row.manual),
+  });
+}
+
+/** Pasa totales de conciliación del criterio P&L (gasto=debe) al de cuenta (ingreso=debe). */
+export function swapReconciliationDebitCredit(rows: BankReconciliation[]): BankReconciliation[] {
+  return rows.map((row) => ({
+    ...row,
+    totalDebit: row.totalCredit,
+    totalCredit: row.totalDebit,
+  }));
+}
+
+export function normalizeBankMovements(rows: BankMovement[]) {
+  return rows
+    .map((row) => normalizeBankMovement(row))
+    .filter((row): row is BankMovement => row !== null);
+}
+
+export function compareBankMovementsChronological(a: BankMovement, b: BankMovement) {
+  const dateCmp = a.valueDate.localeCompare(b.valueDate);
+  if (dateCmp !== 0) return dateCmp;
+  const periodCmp = a.period.localeCompare(b.period);
+  if (periodCmp !== 0) return periodCmp;
+  return a.ref.localeCompare(b.ref);
+}
+
+export type BankMovementSortKey = "valueDate" | "debit" | "credit";
+export type BankSortDir = "asc" | "desc";
+
+export function sortBankMovements(
+  rows: BankMovement[],
+  sortKey: BankMovementSortKey,
+  sortDir: BankSortDir,
+): BankMovement[] {
+  const copy = [...rows];
+  if (sortKey === "valueDate") {
+    copy.sort(compareBankMovementsChronological);
+    if (sortDir === "desc") copy.reverse();
+    return copy;
+  }
+  copy.sort((a, b) => {
+    const aVal = sortKey === "debit" ? a.debit : a.credit;
+    const bVal = sortKey === "debit" ? b.debit : b.credit;
+    if (aVal !== bVal) return sortDir === "asc" ? aVal - bVal : bVal - aVal;
+    return compareBankMovementsChronological(a, b);
+  });
+  return copy;
+}
+
+export function bankMovementsWithDisplayBalance(
+  rows: BankMovement[],
+  sortKey: BankMovementSortKey,
+  sortDir: BankSortDir,
+  openingBalance: number,
+): BankMovementRow[] {
+  if (sortKey === "valueDate") {
+    const sorted = [...rows].sort(compareBankMovementsChronological);
+    const withBalance = withRunningBalance(sorted, openingBalance);
+    return sortDir === "desc" ? [...withBalance].reverse() : withBalance;
+  }
+  const balanceMap = new Map(
+    withRunningBalance([...rows].sort(compareBankMovementsChronological), openingBalance).map(
+      (row) => [row.ref, row.runningBalance],
+    ),
+  );
+  return sortBankMovements(rows, sortKey, sortDir).map((row) => ({
+    ...row,
+    runningBalance: balanceMap.get(row.ref) ?? openingBalance,
+  }));
+}
+
+export function isBankAccountRefTaken(existing: BankAccount[], ref: string, exceptRef?: string) {
+  const normalized = normalizeBankAccountRef(ref).toLowerCase();
+  if (!normalized) return false;
+  return existing.some(
+    (row) => row.ref.toLowerCase() === normalized && row.ref !== exceptRef,
+  );
+}
+
+export function periodFromIso(iso?: string) {
+  if (!iso || iso.length < 7) return currentPeriod();
+  return iso.slice(0, 7);
+}
+
+export function currentPeriod() {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  return `${now.getFullYear()}-${month}`;
+}
+
+export function periodLabel(period: string) {
+  const [year, month] = period.split("-");
+  const idx = Number(month) - 1;
+  if (!year || idx < 0 || idx > 11) return period;
+  return `${MONTH_LABELS[idx]} ${year}`;
+}
+
+/** Periodo bancario en formato año-mes (YYYY-MM). */
+export function isValidBankPeriod(period: string) {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(period.trim());
+  return Boolean(match);
+}
+
+export function normalizeBankPeriod(input: string) {
+  return input.trim();
+}
+
+export function periodsForAccount(
+  accountRef: string,
+  movements: BankMovement[],
+  reconciliations: BankReconciliation[],
+) {
+  const periods = new Set<string>();
+  for (const row of movements) {
+    if (row.accountRef === accountRef) periods.add(row.period);
+  }
+  for (const row of reconciliations) {
+    if (row.accountRef === accountRef) periods.add(row.period);
+  }
+  return periods;
+}
+
+/** Saldo inicial encadenado del periodo según cierres anteriores. */
+export function openingBalanceForPeriod(
+  accountRef: string,
+  period: string,
+  accountOpeningBalance: number,
+  movements: BankMovement[],
+  reconciliations: BankReconciliation[],
+) {
+  const periods = [...periodsForAccount(accountRef, movements, reconciliations)];
+  if (!periods.includes(period)) periods.push(period);
+  periods.sort((a, b) => a.localeCompare(b));
+
+  let running = accountOpeningBalance;
+  for (const p of periods) {
+    if (p === period) return running;
+    const recon = reconciliations.find((row) => row.accountRef === accountRef && row.period === p);
+    if (recon) {
+      running = recon.balance;
+      continue;
+    }
+    const rows = movementsForAccountPeriod(movements, accountRef, p);
+    running += summarizeMovements(rows).balance;
+  }
+  return accountOpeningBalance;
+}
+
+/** Listado de extractos: solo periodos conciliados (el mes en curso no aparece hasta conciliar). */
+export function listAccountExtracts(
+  accountRef: string,
+  accountOpeningBalance: number,
+  movements: BankMovement[],
+  reconciliations: BankReconciliation[],
+): BankExtractSummary[] {
+  const periods = periodsForAccount(accountRef, movements, reconciliations);
+  const asc = [...periods].sort((a, b) => a.localeCompare(b));
+  const byPeriod = new Map<string, BankExtractSummary>();
+  let runningOpening = accountOpeningBalance;
+
+  for (const period of asc) {
+    const rows = movementsForAccountPeriod(movements, accountRef, period);
+    const summary = summarizeMovements(rows);
+    const recon = reconciliations.find((row) => row.accountRef === accountRef && row.period === period);
+    const openingBalance = runningOpening;
+    const closingBalance = recon ? recon.balance : openingBalance + summary.balance;
+    if (recon) {
+      byPeriod.set(period, {
+        period,
+        openingBalance,
+        closingBalance,
+        closed: true,
+      });
+    }
+    runningOpening = closingBalance;
+  }
+
+  return [...byPeriod.values()].sort((a, b) => b.period.localeCompare(a.period));
+}
+
+export function renameAccountExtractPeriod(
+  movements: BankMovement[],
+  reconciliations: BankReconciliation[],
+  accountRef: string,
+  fromPeriod: string,
+  toPeriod: string,
+) {
+  const nextPeriod = normalizeBankPeriod(toPeriod);
+  if (!isValidBankPeriod(nextPeriod)) {
+    return { ok: false as const, error: "La referencia debe tener formato año-mes (YYYY-MM)." };
+  }
+  if (fromPeriod === nextPeriod) {
+    return { ok: true as const, movements, reconciliations };
+  }
+  const duplicate = reconciliations.some(
+    (row) => row.accountRef === accountRef && row.period === nextPeriod,
+  );
+  const duplicateMovements = movements.some(
+    (row) => row.accountRef === accountRef && row.period === nextPeriod,
+  );
+  if (duplicate || duplicateMovements) {
+    return { ok: false as const, error: `Ya existe un extracto con referencia ${nextPeriod}.` };
+  }
+
+  const nextMovements = movements.map((row) =>
+    row.accountRef === accountRef && row.period === fromPeriod
+      ? { ...row, period: nextPeriod }
+      : row,
+  );
+  const nextReconciliations = reconciliations.map((row) =>
+    row.accountRef === accountRef && row.period === fromPeriod
+      ? { ...row, period: nextPeriod }
+      : row,
+  );
+  return { ok: true as const, movements: nextMovements, reconciliations: nextReconciliations };
+}
+
+export function isoToDisplay(iso: string) {
+  const [year, month, day] = iso.split("-");
+  if (!year || !month || !day) return iso;
+  return `${day}/${month}/${year}`;
+}
+
+export function displayToday() {
+  const now = new Date();
+  const day = String(now.getDate()).padStart(2, "0");
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+}
+
+/** @deprecated No usar para persistir: borraba cobros de días anteriores. Preferir bankOpenMovements. */
+export function bankMovementsForToday(movements: BankMovement[], today = displayToday()) {
+  return movements.filter((row) => {
+    const value = (row.valueDate || row.opDate || "").slice(0, 10);
+    return value === today;
+  });
+}
+
+/** Movimientos aún no conciliados (cualquier fecha). Permanecen en banco hasta cerrar el extracto. */
+export function bankOpenMovements(movements: BankMovement[]) {
+  return movements.filter((row) => !row.reconciled);
+}
+
+export type BankHistoryScope = "open" | "closed" | "all";
+export type BankHistoryKindFilter = "all" | "income" | "expense";
+
+export function filterBankHistory(
+  movements: BankMovement[],
+  opts: {
+    scope?: BankHistoryScope;
+    accountRef?: string;
+    period?: string;
+    kind?: BankHistoryKindFilter;
+    query?: string;
+  } = {},
+) {
+  const scope = opts.scope ?? "all";
+  const kind = opts.kind ?? "all";
+  const q = (opts.query ?? "").trim().toLowerCase();
+  return movements.filter((row) => {
+    if (scope === "open" && row.reconciled) return false;
+    if (scope === "closed" && !row.reconciled) return false;
+    if (opts.accountRef && row.accountRef !== opts.accountRef) return false;
+    if (opts.period && normalizeBankPeriod(row.period) !== normalizeBankPeriod(opts.period)) {
+      return false;
+    }
+    if (kind === "income" && !isBankIncomeMovement(row)) return false;
+    if (kind === "expense" && !isBankExpenseMovement(row)) return false;
+    if (!q) return true;
+    const hay = [
+      row.ref,
+      row.description,
+      row.thirdParty,
+      row.paymentRef ?? "",
+      row.miscPaymentRef ?? "",
+      expenseCategoryLabel(row.category),
+      row.accountRef,
+      row.period,
+    ]
+      .join(" ")
+      .toLowerCase();
+    return hay.includes(q);
+  });
+}
+
+/** Saldo vivo: apertura + debe − haber de todos los movimientos de la cuenta. */
+export function liveBalanceForAccount(account: BankAccount, movements: BankMovement[]) {
+  const ledger = movements.filter((row) => row.accountRef === account.ref);
+  const summary = summarizeMovements(ledger);
+  return account.openingBalance + summary.balance;
+}
+
+/** Periodos con movimientos abiertos en una cuenta (más recientes primero). */
+export function openPeriodsForAccount(
+  movements: BankMovement[],
+  reconciliations: BankReconciliation[],
+  accountRef: string,
+) {
+  const periods = [
+    ...new Set(
+      movements
+        .filter(
+          (row) =>
+            row.accountRef === accountRef &&
+            !row.reconciled &&
+            !isPeriodClosed(reconciliations, accountRef, row.period),
+        )
+        .map((row) => normalizeBankPeriod(row.period)),
+    ),
+  ].sort((a, b) => b.localeCompare(a));
+  return periods;
+}
+
+export function expenseCategoryLabel(category?: BankExpenseCategory) {
+  if (category === "nomina") return "Nómina";
+  if (category === "administracion") return "Administración";
+  if (category === "domicilio") return "Domicilio";
+  if (category === "servicios") return "Servicios";
+  if (category === "almuerzo") return "Almuerzo";
+  if (category === "gasolina") return "Gasolina";
+  if (category === "prestamo_ruta") return "Préstamo";
+  if (category === "transporte") return "Transporte";
+  if (category === "consignacion") return "Consignación";
+  return "Otro";
+}
+
+export function isPeriodClosed(reconciliations: BankReconciliation[], accountRef: string, period: string) {
+  return reconciliations.some((row) => row.accountRef === accountRef && row.period === period);
+}
+
+export function paymentMovementDescription(payment: PaymentRow) {
+  const method = paymentMethodLabel(normalizePaymentMethod(payment.method));
+  return `Cobro ${payment.ref} · ${payment.type} · ${method}`;
+}
+
+/** Etiqueta Método desde la descripción (solo respaldo de filas viejas). */
+export function bankMovementMethodLabel(description: string) {
+  const match =
+    /\s·\s(?:Cuota|Abono)\s*(?:·|-)\s*(Efectivo|Nequi|Banco)\s*$/i.exec(description.trim()) ??
+    /\s·\s(Efectivo|Nequi|Banco)\s*$/i.exec(description.trim()) ??
+    /\s[-–]\s*(Efectivo|Nequi|Banco)\s*$/i.exec(description.trim());
+  if (!match) return "";
+  if (/nequi/i.test(match[1]!)) return "Nequi";
+  if (/banco/i.test(match[1]!)) return "Banco";
+  return "Efectivo";
+}
+
+/**
+ * Método del movimiento: campo `method` del PG- (fuente de verdad).
+ * Si falta (filas antiguas), lee la descripción; nunca inventa Nequi.
+ */
+export function bankMovementPaymentMethod(row: BankMovement): PaymentMethod | null {
+  if (!paymentRefForMovement(row)) return null;
+  if (row.method === "nequi" || row.method === "efectivo" || row.method === "banco") {
+    return row.method;
+  }
+  const fromDesc = bankMovementMethodLabel(row.description);
+  if (fromDesc === "Nequi") return "nequi";
+  if (fromDesc === "Banco") return "banco";
+  if (fromDesc === "Efectivo") return "efectivo";
+  return null;
+}
+
+export function bankMovementPaymentMethodLabel(row: BankMovement) {
+  const method = bankMovementPaymentMethod(row);
+  return method ? paymentMethodLabel(method) : "";
+}
+
+export function bankMovementDescriptionText(description: string) {
+  const raw = description.trim();
+  // Gasto ruta · Almuerzo · … → Almuerzo (el color / Haber ya dicen que es gasto)
+  const gasto = /^Gasto\s+ruta\s*·\s*([^·]+)/i.exec(raw);
+  if (gasto) return gasto[1].trim();
+  // Cobro PG-9001 · Cuota · Efectivo → PG-9001
+  const cobro = /^Cobro\s+(PG-\d+)/i.exec(raw);
+  if (cobro) return cobro[1];
+  if (/^PG-\d+$/i.test(raw)) return raw;
+
+  return (
+    raw
+      .replace(/\s·\s(?:Cuota|Abono)\s*(?:·|-)\s*(?:Efectivo|Nequi|Banco)\s*$/i, "")
+      .replace(/\s·\s(Efectivo|Nequi|Banco)\s*$/i, "")
+      .replace(/\s[-–]\s*(?:Efectivo|Nequi|Banco)\s*$/i, "")
+      .replace(/\s·\s(Cuota|Abono)\s*$/i, "")
+      .trim() || description
+  );
+}
+
+export function paymentRefForMovement(row: BankMovement) {
+  if (row.paymentRef?.trim()) return row.paymentRef.trim();
+  if (/^PG-\d+$/i.test(row.ref)) return row.ref;
+  const fromDesc = /(?:Cobro\s+)?(PG-\d+)/i.exec(row.description ?? "");
+  return fromDesc?.[1] ?? null;
+}
+
+/**
+ * Garantía de raíz: todo cobro (pago PG-) en banco queda como Ingreso (Debe).
+ * Si el pago existe, alinea monto/fecha/tercero/descripcion con el pago.
+ */
+export function lockPaymentCobrosAsIncome(
+  movements: BankMovement[],
+  payments: PaymentRow[],
+): BankMovement[] {
+  const byPg = new Map(payments.map((row) => [row.ref, row]));
+  return movements.map((row) => {
+    const pg = paymentRefForMovement(row);
+    if (!pg) return row;
+    const payment = byPg.get(pg);
+    const amount =
+      payment && payment.amount > 0 ? payment.amount : bankMovementAmount(row);
+    if (amount <= 0) return row;
+    const valueDate = payment?.paidDate || row.valueDate || displayToday();
+    return {
+      ...row,
+      paymentRef: pg,
+      category: undefined,
+      dayExpenseLineRef: undefined,
+      miscPaymentRef: undefined,
+      description: payment ? paymentMovementDescription(payment) : row.description,
+      method: payment
+        ? normalizePaymentMethod(payment.method)
+        : row.method === "nequi" || row.method === "efectivo" || row.method === "banco"
+          ? row.method
+          : undefined,
+      thirdParty: payment?.client?.trim() || row.thirdParty,
+      valueDate,
+      opDate: payment?.paidDate || row.opDate || valueDate,
+      period: row.reconciled ? row.period : periodFromIso(valueDate),
+      debit: amount,
+      credit: 0,
+      manual: false,
+      inExtract: row.inExtract ?? true,
+    };
+  });
+}
+
+export function movementDisplayRef(row: BankMovement) {
+  const parts = row.ref.split("-");
+  if (parts.length >= 2) return parts.slice(-2).join("-");
+  return row.ref;
+}
+
+/** Referencia visible: cobro = PG-; gasto = código del movimiento. Nunca recorta PG- a G-. */
+export function bankVisibleRef(row: BankMovement) {
+  const paymentRef = paymentRefForMovement(row);
+  if (paymentRef) return paymentRef;
+  if (row.miscPaymentRef) return row.miscPaymentRef;
+  return movementDisplayRef(row);
+}
+
+export function syncPaymentsToMovements(
+  payments: PaymentRow[],
+  movements: BankMovement[],
+  accountRef: string,
+  period: string,
+) {
+  const linked = new Set(
+    movements
+      .map((row) => paymentRefForMovement(row))
+      .filter((ref): ref is string => Boolean(ref)),
+  );
+  const next = [...movements];
+  for (const payment of payments) {
+    if (linked.has(payment.ref)) continue;
+    const payPeriod = periodFromIso(payment.paidDate);
+    if (payPeriod !== period) continue;
+    next.push({
+      ref: nextBankMovementRef(),
+      accountRef,
+      period,
+      description: paymentMovementDescription(payment),
+      valueDate: payment.paidDate ?? displayToday(),
+      opDate: payment.paidDate ?? displayToday(),
+      thirdParty: payment.client,
+      debit: payment.amount,
+      credit: 0,
+      paymentRef: payment.ref,
+      method: normalizePaymentMethod(payment.method),
+      inExtract: true,
+      reconciled: false,
+      manual: false,
+    });
+    linked.add(payment.ref);
+  }
+  return dedupeBankMovements(next);
+}
+
+function preferBankMovement(a: BankMovement, b: BankMovement): BankMovement {
+  if (a.reconciled && !b.reconciled) return a;
+  if (b.reconciled && !a.reconciled) return b;
+  if (a.paymentRef && !b.paymentRef) return a;
+  if (b.paymentRef && !a.paymentRef) return b;
+  return a;
+}
+
+/** Una sola fila por cobro (PG-), gasto de ruta, pago varios o desembolso. */
+export function dedupeBankMovements(movements: BankMovement[]): BankMovement[] {
+  const byPayment = new Map<string, BankMovement>();
+  const byMisc = new Map<string, BankMovement>();
+  const byExpense = new Map<string, BankMovement>();
+  const byDisbursement = new Map<string, BankMovement>();
+  const other: BankMovement[] = [];
+
+  for (const row of movements) {
+    const pg = paymentRefForMovement(row);
+    if (pg) {
+      const normalized = { ...row, paymentRef: pg };
+      const prev = byPayment.get(pg);
+      byPayment.set(pg, prev ? preferBankMovement(prev, normalized) : normalized);
+      continue;
+    }
+    if (row.miscPaymentRef) {
+      const prev = byMisc.get(row.miscPaymentRef);
+      byMisc.set(row.miscPaymentRef, prev ? preferBankMovement(prev, row) : row);
+      continue;
+    }
+    if (row.dayExpenseLineRef) {
+      const prev = byExpense.get(row.dayExpenseLineRef);
+      byExpense.set(row.dayExpenseLineRef, prev ? preferBankMovement(prev, row) : row);
+      continue;
+    }
+    if (row.loanDisbursementRef) {
+      const prev = byDisbursement.get(row.loanDisbursementRef);
+      byDisbursement.set(
+        row.loanDisbursementRef,
+        prev ? preferBankMovement(prev, row) : row,
+      );
+      continue;
+    }
+    other.push(row);
+  }
+
+  return [
+    ...byPayment.values(),
+    ...byMisc.values(),
+    ...byExpense.values(),
+    ...byDisbursement.values(),
+    ...other,
+  ];
+}
+
+/** Firma estable para evitar setState / writes innecesarios. */
+export function bankMovementsSignature(rows: BankMovement[]): string {
+  return rows
+    .map(
+      (row) =>
+        [
+          row.ref,
+          row.paymentRef ?? "",
+          row.miscPaymentRef ?? "",
+          row.dayExpenseLineRef ?? "",
+          row.loanDisbursementRef ?? "",
+          row.accountRef,
+          row.period,
+          row.valueDate,
+          row.debit,
+          row.credit,
+          row.reconciled ? 1 : 0,
+          row.method ?? "",
+          row.description,
+        ].join(":"),
+    )
+    .sort()
+    .join("|");
+}
+
+export function miscPaymentMovementDescription(payment: MiscPayment) {
+  const method = paymentMethodLabel(normalizePaymentMethod(payment.method));
+  return `${payment.label} · Pago varios · ${method}`;
+}
+
+/** Enlaza pagos varios como egresos pendientes de conciliar (alta y actualización). */
+export function syncMiscPaymentsToMovements(
+  miscPayments: MiscPayment[],
+  movements: BankMovement[],
+) {
+  const movementByMisc = new Map(
+    movements
+      .filter((row) => row.miscPaymentRef)
+      .map((row) => [row.miscPaymentRef as string, row]),
+  );
+  const miscRefs = new Set(miscPayments.map((row) => row.ref));
+  let next = movements.filter(
+    (row) => !row.miscPaymentRef || miscRefs.has(row.miscPaymentRef),
+  );
+
+  for (const payment of miscPayments) {
+    const patch = {
+      accountRef: payment.bankAccountRef,
+      period: periodFromIso(payment.paidDate),
+      description: miscPaymentMovementDescription(payment),
+      valueDate: payment.paidDate,
+      opDate: payment.paidDate,
+      thirdParty: payment.label,
+      debit: 0,
+      credit: payment.amount,
+      category: "otro" as BankExpenseCategory,
+      miscPaymentRef: payment.ref,
+      inExtract: true,
+      reconciled: false,
+      manual: false,
+    };
+    const existing = movementByMisc.get(payment.ref);
+    if (existing) {
+      next = next.map((row) =>
+        row.ref === existing.ref
+          ? {
+              ...row,
+              ...patch,
+              reconciled: existing.reconciled,
+              inExtract: existing.inExtract,
+            }
+          : row,
+      );
+    } else {
+      next.push({
+        ref: nextBankMovementRef(),
+        ...patch,
+      });
+    }
+  }
+  return next;
+}
+
+/**
+ * Desembolsos de préstamo/renovación financiados con Nequi → Haber en banco.
+ * Ref estable DSB-{loanRef}; capital = plata entregada (no incluye interés).
+ */
+export function syncNequiLoanDisbursementsToMovements(
+  loans: LoanRow[],
+  movements: BankMovement[],
+  accountRef: string | null | undefined,
+): BankMovement[] {
+  if (!accountRef) return movements;
+
+  const wanted = loans.filter(
+    (loan) =>
+      (loanFundedByNequi(loan) || loanFundedByBanco(loan)) &&
+      (Number(loan.capital) || 0) > 0 &&
+      Boolean(loan.ref),
+  );
+  const byRef = new Map(
+    movements
+      .filter((row) => row.loanDisbursementRef)
+      .map((row) => [row.loanDisbursementRef as string, row]),
+  );
+
+  let next = [...movements];
+  for (const loan of wanted) {
+    const lineRef = loanDisbursementMovementRef(loan.ref);
+    const valueDate = loanDisbursementIsoDate(loan);
+    if (!valueDate) continue;
+    const capital = Number(loan.capital) || 0;
+    const isRenewal = /renovaci[oó]n/i.test(loan.notes || "");
+    const originLabel = loanFundedByBanco(loan) ? "Banco" : "Nequi";
+    const patch: BankMovement = {
+      ref: lineRef,
+      accountRef,
+      period: periodFromIso(valueDate),
+      description: `Desembolso ${originLabel} · ${isRenewal ? "Renovación" : "Préstamo"} · ${loan.ref} · ${loan.client}`,
+      valueDate,
+      opDate: valueDate,
+      thirdParty: loan.client,
+      debit: 0,
+      credit: capital,
+      category: "prestamo_ruta",
+      loanDisbursementRef: lineRef,
+      inExtract: true,
+      reconciled: false,
+      manual: true,
+    };
+    const existing = byRef.get(lineRef) ?? next.find((row) => row.ref === lineRef);
+    if (existing) {
+      next = next.map((row) =>
+        row.ref === existing.ref || row.loanDisbursementRef === lineRef
+          ? {
+              ...row,
+              ...patch,
+              ref: existing.ref,
+              reconciled: existing.reconciled,
+            }
+          : row,
+      );
+    } else {
+      next = [patch, ...next];
+    }
+  }
+
+  return next;
+}
+
+/** Repara enlaces perdidos entre movimientos de egreso y pagos varios existentes. */
+export function repairMiscPaymentLinks(
+  miscPayments: MiscPayment[],
+  movements: BankMovement[],
+) {
+  return movements.map((row) => {
+    if (row.miscPaymentRef || row.paymentRef || bankMovementAmount(row) <= 0) return row;
+    const payment = findMiscPaymentForMovement(row, miscPayments);
+    if (!payment) return row;
+    return { ...row, miscPaymentRef: payment.ref };
+  });
+}
+
+export function addManualExpense(input: {
+  accountRef: string;
+  period: string;
+  description: string;
+  valueDate: string;
+  opDate: string;
+  thirdParty: string;
+  amount: number;
+  category: BankExpenseCategory;
+}) {
+  return {
+    ref: nextBankMovementRef(),
+    accountRef: input.accountRef,
+    period: input.period,
+    description: input.description.trim(),
+    valueDate: input.valueDate,
+    opDate: input.opDate,
+    thirdParty: input.thirdParty.trim(),
+    debit: 0,
+    credit: input.amount,
+    category: input.category,
+    inExtract: true,
+    reconciled: false,
+    manual: true,
+  } satisfies BankMovement;
+}
+
+export function filterMovements(
+  movements: BankMovement[],
+  accountRef: string,
+  period: string,
+  query: string,
+) {
+  const q = query.trim().toLowerCase();
+  return movements
+    .filter((row) => row.accountRef === accountRef && row.period === period)
+    .filter((row) => {
+      if (!q) return true;
+      const hay = [
+        row.ref,
+        row.description,
+        row.thirdParty,
+        row.paymentRef ?? "",
+        expenseCategoryLabel(row.category),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    })
+    .sort((a, b) => {
+      const dateCmp = a.valueDate.localeCompare(b.valueDate);
+      if (dateCmp !== 0) return dateCmp;
+      return a.ref.localeCompare(b.ref);
+    });
+}
+
+function withRunningBalance(
+  movements: BankMovement[],
+  openingBalance: number,
+): BankMovementRow[] {
+  let balance = openingBalance;
+  return movements.map((row) => {
+    balance += row.debit - row.credit;
+    return { ...row, runningBalance: balance };
+  });
+}
+
+export function summarizeMovements(rows: BankMovement[]) {
+  const totalDebit = rows.reduce((sum, row) => sum + row.debit, 0);
+  const totalCredit = rows.reduce((sum, row) => sum + row.credit, 0);
+  return {
+    totalDebit,
+    totalCredit,
+    balance: totalDebit - totalCredit,
+    count: rows.length,
+  };
+}
+
+export function movementsForAccountPeriod(
+  movements: BankMovement[],
+  accountRef: string,
+  period: string,
+) {
+  return movements.filter((row) => row.accountRef === accountRef && row.period === period);
+}
+
+/** Movimientos pendientes de conciliar para una cuenta (periodo abierto). */
+export function pendingMovementsForAccount(
+  movements: BankMovement[],
+  reconciliations: BankReconciliation[],
+  accountRef: string,
+  period?: string,
+) {
+  return movements
+    .filter((row) => {
+      if (row.accountRef !== accountRef) return false;
+      if (isPeriodClosed(reconciliations, accountRef, row.period)) return false;
+      if (period && row.period !== period) return false;
+      return true;
+    })
+    .sort(compareBankMovementsChronological);
+}
+
+export function countPendingForAccount(
+  movements: BankMovement[],
+  reconciliations: BankReconciliation[],
+  accountRef: string,
+  period?: string,
+) {
+  return pendingMovementsForAccount(movements, reconciliations, accountRef, period).length;
+}
+
+/** Periodo abierto más reciente con movimientos pendientes (para entrar desde el listado). */
+export function latestOpenPendingPeriod(
+  movements: BankMovement[],
+  reconciliations: BankReconciliation[],
+  accountRef: string,
+  fallback = currentPeriod(),
+) {
+  const periods = [
+    ...new Set(
+      pendingMovementsForAccount(movements, reconciliations, accountRef).map((row) => row.period),
+    ),
+  ].sort((a, b) => b.localeCompare(a));
+  return periods[0] ?? fallback;
+}
+
+/** Completa cobros que quedaron con ref PG- truncada/vacía y quita filas huecas. */
+export function repairBankMovementsFromPayments(
+  movements: BankMovement[],
+  payments: PaymentRow[],
+): BankMovement[] {
+  const paymentByRef = new Map(payments.map((row) => [row.ref, row]));
+  const next: BankMovement[] = [];
+
+  for (const row of movements) {
+    const pg = paymentRefForMovement(row);
+    const payment = pg ? paymentByRef.get(pg) : undefined;
+    let current = row;
+    if (payment && pg) {
+      current = {
+        ...row,
+        paymentRef: pg,
+        description: paymentMovementDescription(payment),
+        method: normalizePaymentMethod(payment.method),
+        thirdParty: row.thirdParty?.trim() || payment.client,
+        debit: row.debit > 0 ? row.debit : row.credit > 0 ? row.credit : payment.amount,
+        credit: 0,
+        valueDate: row.valueDate || payment.paidDate || displayToday(),
+        opDate: row.opDate || payment.paidDate || displayToday(),
+      };
+    }
+
+    if (current.debit <= 0 && current.credit <= 0 && !current.description?.trim()) continue;
+    next.push(current);
+  }
+
+  return dedupeBankMovements(next);
+}
+
+/**
+ * Fuente de verdad: cada cobro (PG-) existe una sola vez en banco.
+ * Conserva conciliado / cuenta / ref previos; rellena los que faltan.
+ */
+export function syncAllPaymentsToMovements(
+  payments: PaymentRow[],
+  movements: BankMovement[],
+  accounts: BankAccount[],
+) {
+  const primary = accounts.find((row) => row.active) ?? accounts[0];
+  if (!primary) return dedupeBankMovements(movements);
+
+  const existing = dedupeBankMovements(repairBankMovementsFromPayments(movements, payments));
+  const byPayment = new Map<string, BankMovement>();
+  for (const row of existing) {
+    const pg = paymentRefForMovement(row);
+    if (pg) byPayment.set(pg, row);
+  }
+
+  const nonCobro = existing.filter((row) => !paymentRefForMovement(row));
+  const paymentRows: BankMovement[] = [];
+  const seenPayments = new Set<string>();
+
+  for (const payment of payments) {
+    if (seenPayments.has(payment.ref)) continue;
+    seenPayments.add(payment.ref);
+    const prev = byPayment.get(payment.ref);
+    const period = periodFromIso(payment.paidDate);
+    paymentRows.push({
+      ref: prev?.ref && !/^PG-/i.test(prev.ref) ? prev.ref : prev?.ref ?? nextBankMovementRef(),
+      accountRef: prev?.accountRef ?? primary.ref,
+      period: prev?.reconciled ? prev.period : period,
+      description: paymentMovementDescription(payment),
+      valueDate: payment.paidDate ?? prev?.valueDate ?? displayToday(),
+      opDate: payment.paidDate ?? prev?.opDate ?? displayToday(),
+      thirdParty: payment.client,
+      debit: payment.amount,
+      credit: 0,
+      paymentRef: payment.ref,
+      method: normalizePaymentMethod(payment.method),
+      inExtract: prev?.inExtract ?? true,
+      reconciled: prev?.reconciled ?? false,
+      manual: false,
+    });
+  }
+
+  // Conserva cobros que ya estaban en banco aunque el pago se haya perdido del storage.
+  // Sin esto, un wipe de payments vaciaba todo el historial de Registros.
+  const orphanCobros = [...byPayment.entries()]
+    .filter(([pg]) => !seenPayments.has(pg))
+    .map(([, row]) => row);
+
+  return dedupeBankMovements([...nonCobro, ...paymentRows, ...orphanCobros]);
+}
+
+export function reconcilePeriod(
+  movements: BankMovement[],
+  reconciliations: BankReconciliation[],
+  accountRef: string,
+  period: string,
+  accountOpeningBalance: number,
+) {
+  const rows = movements.filter((row) => row.accountRef === accountRef && row.period === period);
+  const summary = summarizeMovements(rows);
+  const openingBalance = openingBalanceForPeriod(
+    accountRef,
+    period,
+    accountOpeningBalance,
+    movements,
+    reconciliations,
+  );
+  const closedAt = new Date().toISOString();
+  const nextMovements = movements.map((row) =>
+    row.accountRef === accountRef && row.period === period
+      ? { ...row, reconciled: true, inExtract: true }
+      : row,
+  );
+  const nextReconciliations = [
+    ...reconciliations.filter((row) => !(row.accountRef === accountRef && row.period === period)),
+    {
+      accountRef,
+      period: normalizeBankPeriod(period),
+      closedAt,
+      totalDebit: summary.totalDebit,
+      totalCredit: summary.totalCredit,
+      balance: openingBalance + summary.balance,
+    },
+  ];
+  return { movements: nextMovements, reconciliations: nextReconciliations, summary };
+}
+
+function emptyReportYear(fiscalStart: number): BankReportYear {
+  const fiscalEnd = fiscalStart + 1;
+  return {
+    key: `${fiscalStart}-${fiscalEnd}`,
+    label: String(fiscalStart),
+    months: MONTH_LABELS.map((label, index) => ({
+      month: index + 1,
+      label,
+      gastos: 0,
+      ingresos: 0,
+    })),
+    totalGastos: 0,
+    totalIngresos: 0,
+    resultado: 0,
+  };
+}
+
+/** Año fiscal vigente: marzo–febrero (si estamos en ene/feb, el inicio es el año anterior). */
+export function currentFiscalStart(reference = new Date()) {
+  const year = reference.getFullYear();
+  const month = reference.getMonth() + 1;
+  return month >= 3 ? year : year - 1;
+}
+
+/**
+ * Matriz contable por año fiscal (historial del sistema).
+ * Incluye movimientos abiertos y conciliados: nada queda fuera del informe.
+ */
+export function buildAccountingReport(movements: BankMovement[]): BankReportYear[] {
+  const yearMap = new Map<string, BankReportYear>();
+
+  const ensureYear = (fiscalStart: number) => {
+    const key = `${fiscalStart}-${fiscalStart + 1}`;
+    if (!yearMap.has(key)) yearMap.set(key, emptyReportYear(fiscalStart));
+    return yearMap.get(key)!;
+  };
+
+  ensureYear(currentFiscalStart());
+
+  for (const row of movements) {
+    const [yearStr, monthStr] = row.period.split("-");
+    const year = Number(yearStr);
+    const month = Number(monthStr);
+    if (!year || !month) continue;
+    const fiscalStart = month >= 3 ? year : year - 1;
+    const bucket = ensureYear(fiscalStart);
+    const monthEntry = bucket.months[month - 1];
+    if (!monthEntry) continue;
+    // En bancos (activo): ingreso = Debe, gasto = Haber.
+    monthEntry.gastos += row.credit;
+    monthEntry.ingresos += row.debit;
+    bucket.totalGastos += row.credit;
+    bucket.totalIngresos += row.debit;
+  }
+
+  return [...yearMap.values()]
+    .map((year) => ({
+      ...year,
+      resultado: year.totalIngresos - year.totalGastos,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+export function formatReportCell(value: number) {
+  if (!value) return "";
+  return money(value);
+}
+
+/** Periodo YYYY-MM a partir de celda del informe (año fiscal + mes calendario 1–12). */
+export function periodFromReportCell(fiscalYearKey: string, calendarMonth: number) {
+  const fiscalStart = Number(fiscalYearKey.split("-")[0]);
+  const year = calendarMonth >= 3 ? fiscalStart : fiscalStart + 1;
+  return `${year}-${String(calendarMonth).padStart(2, "0")}`;
+}
+
+export type BankLedgerKind = "income" | "expense";
+
+export function listReconciledPeriods(reconciliations: BankReconciliation[]) {
+  return [...new Set(reconciliations.map((row) => normalizeBankPeriod(row.period)))].sort((a, b) =>
+    b.localeCompare(a),
+  );
+}
+
+export function listReconciledMovementsByKind(
+  movements: BankMovement[],
+  kind: BankLedgerKind,
+  period?: string,
+) {
+  const normalizedPeriod = period ? normalizeBankPeriod(period) : null;
+  return movements
+    .filter((row) => {
+      // Ingresos = cobros/pagos; Gastos = egresos. Un PG- nunca cae en Gastos.
+      if (kind === "income" ? !isBankIncomeMovement(row) : !isBankExpenseMovement(row)) {
+        return false;
+      }
+      if (normalizedPeriod && normalizeBankPeriod(row.period) !== normalizedPeriod) {
+        return false;
+      }
+      return true;
+    })
+    .sort(compareBankMovementsChronological);
+}
+
+export function summarizeReconciledMovements(rows: BankMovement[], kind: BankLedgerKind) {
+  if (kind === "income") {
+    return rows.reduce((sum, row) => sum + row.debit, 0);
+  }
+  return rows.reduce((sum, row) => sum + row.credit, 0);
+}
+
+export function formatBankAmount(value: number) {
+  return money(value);
+}
+
+export function seedBankMovements(payments: PaymentRow[]): BankMovement[] {
+  const accountRef = "BCA-1";
+  const period = currentPeriod();
+  const fromPayments = syncPaymentsToMovements(payments, [], accountRef, period);
+  const manual: BankMovement[] = [
+    {
+      ref: nextBankMovementRef(),
+      accountRef,
+      period,
+      description: "Pago nómina cobradores",
+      valueDate: displayToday(),
+      opDate: displayToday(),
+      thirdParty: "Nómina",
+      debit: 0,
+      credit: 850000,
+      category: "nomina",
+      inExtract: true,
+      reconciled: false,
+      manual: true,
+    },
+    {
+      ref: nextBankMovementRef(),
+      accountRef,
+      period,
+      description: "Servicios administrativos",
+      valueDate: displayToday(),
+      opDate: displayToday(),
+      thirdParty: "Administración",
+      debit: 0,
+      credit: 120000,
+      category: "administracion",
+      inExtract: true,
+      reconciled: false,
+      manual: true,
+    },
+  ];
+  return [...fromPayments, ...manual];
+}
