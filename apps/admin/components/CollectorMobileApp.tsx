@@ -8,6 +8,7 @@ import { QuickLoanForm } from "@/components/QuickLoanForm";
 import type { QuickLoanDraft } from "@/lib/street-client-loan";
 import { Pill } from "@/components/ui";
 import {
+  collectorHasOpenPlanillaWork,
   collectorMobileQueue,
   collectorMobileRoutes,
   collectorRecaudoBreakdown,
@@ -199,8 +200,6 @@ export function CollectorMobileApp({
   const [editingExpenses, setEditingExpenses] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  /** Totales de Recaudo/Gastos arriba: solo con día elegido desde Historial. */
-  const [fromHistory, setFromHistory] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const navIntent = useMemo(() => createNavIntent(), []);
@@ -213,7 +212,6 @@ export function CollectorMobileApp({
     setEditingExpenses(false);
     setConfirmingClose(false);
     setHistoryOpen(false);
-    setFromHistory(false);
     setMenuOpen(false);
   }, [collector.ref]);
 
@@ -491,9 +489,9 @@ export function CollectorMobileApp({
       expenses: savedExpenses,
     });
     setConfirmingClose(false);
-    // Queda en el día cerrado con el cuadre (como Lina), no vuelve al inicio en blanco.
-    setFromHistory(true);
+    // Queda en el home de cierre (mismo panel para todos).
     setListFilter("pending");
+    setSelectedDate(null);
   }
 
   function confirmCloseMonth() {
@@ -507,6 +505,13 @@ export function CollectorMobileApp({
   }
 
   const reviewingPanel = editingExpenses || confirmingClose;
+  /** Sin planilla abierta → mismo inicio (último cierre + saldo) para todos los cobradores. */
+  const showHomeCuadre =
+    listFilter === "pending" &&
+    !editingExpenses &&
+    !confirmingClose &&
+    !collectorHasOpenPlanillaWork(queue);
+  const chromeLocked = dayLocked || showHomeCuadre;
 
   /** Totales = pagos reales del día (mismo número que banco Debe / “Lo que cobró”). */
   const topRecaudo = recaudo.total;
@@ -655,7 +660,6 @@ export function CollectorMobileApp({
                       }
                       onClick={() => {
                         setSelectedDate(row.date);
-                        setFromHistory(true);
                         setListFilter("pending");
                         setEditingExpenses(false);
                         setConfirmingClose(false);
@@ -715,8 +719,8 @@ export function CollectorMobileApp({
         </div>
       ) : null}
 
-      <div className={dayLocked ? "collector-mobile-stats" : "collector-mobile-stats has-inicial"}>
-        {!dayLocked ? (
+      <div className={chromeLocked ? "collector-mobile-stats" : "collector-mobile-stats has-inicial"}>
+        {!chromeLocked ? (
           <div
             className="collector-mobile-stat is-inicial readonly"
             title="Saldo en caja al iniciar el día (cierre del día anterior)"
@@ -728,16 +732,16 @@ export function CollectorMobileApp({
         <button
           type="button"
           className={
-            dayLocked
+            chromeLocked
               ? "collector-mobile-stat is-pending is-off"
               : !reviewingPanel && listFilter === "pending"
                 ? "collector-mobile-stat is-pending on"
                 : "collector-mobile-stat is-pending"
           }
-          disabled={dayLocked}
-          title={dayLocked ? "Jornada cerrada" : undefined}
+          disabled={chromeLocked}
+          title={chromeLocked ? "Jornada cerrada" : undefined}
           {...navButtonProps(navIntent, () => {
-            if (dayLocked) return;
+            if (chromeLocked) return;
             selectFilter("pending");
           })}
         >
@@ -747,16 +751,16 @@ export function CollectorMobileApp({
         <button
           type="button"
           className={
-            dayLocked
+            chromeLocked
               ? "collector-mobile-stat is-recaudo is-off"
               : !reviewingPanel && listFilter === "done"
                 ? "collector-mobile-stat is-recaudo on"
                 : "collector-mobile-stat is-recaudo"
           }
-          disabled={dayLocked}
-          title={dayLocked ? "Jornada cerrada" : undefined}
+          disabled={chromeLocked}
+          title={chromeLocked ? "Jornada cerrada" : undefined}
           {...navButtonProps(navIntent, () => {
-            if (dayLocked) return;
+            if (chromeLocked) return;
             openRecaudoDetail();
           })}
         >
@@ -766,15 +770,15 @@ export function CollectorMobileApp({
         <button
           type="button"
           className={
-            dayLocked
+            chromeLocked
               ? "collector-mobile-stat collector-mobile-stat-close is-gastos is-off"
               : editingExpenses
                 ? "collector-mobile-stat on collector-mobile-stat-close is-gastos"
                 : "collector-mobile-stat collector-mobile-stat-close is-gastos"
           }
-          disabled={dayLocked ? true : !onSaveExpenses || !queue.dispatched.length}
+          disabled={chromeLocked ? true : !onSaveExpenses || !queue.dispatched.length}
           title={
-            dayLocked
+            chromeLocked
               ? "Jornada cerrada"
               : !onSaveExpenses
                 ? "Sin permiso para gastos"
@@ -783,7 +787,7 @@ export function CollectorMobileApp({
                   : "Gastos del día"
           }
           {...navButtonProps(navIntent, () => {
-            if (dayLocked) return;
+            if (chromeLocked) return;
             openExpenses();
           })}
         >
@@ -804,17 +808,19 @@ export function CollectorMobileApp({
         </div>
       ) : null}
 
-      {queue.closed && listFilter === "pending" && !editingExpenses && !confirmingClose ? (
+      {showHomeCuadre ? (
         <section className="collector-mobile-home-cuadre" aria-label="Último cierre">
           <div className="collector-mobile-home-cuadre-head">
-            <Pill label="Jornada cerrada" kind="paid" />
+            <Pill label={queue.closed ? "Jornada cerrada" : "Sin planilla"} kind="paid" />
             <div className="collector-mobile-home-cuadre-title-row">
               <h2>
-                {activeDate === (date ?? todayIso())
-                  ? "Tu cierre de hoy"
-                  : "Tu último cierre"}
+                {queue.closed
+                  ? activeDate === (date ?? todayIso())
+                    ? "Tu cierre de hoy"
+                    : "Tu último cierre"
+                  : "Tu saldo en caja"}
               </h2>
-              {activeDate !== (date ?? todayIso()) ? (
+              {queue.closed && activeDate !== (date ?? todayIso()) ? (
                 <p className="collector-mobile-home-cuadre-progress">{queue.dateLabel}</p>
               ) : null}
             </div>
@@ -861,7 +867,7 @@ export function CollectorMobileApp({
         </section>
       ) : null}
 
-      {!(queue.closed && listFilter === "pending" && !editingExpenses && !confirmingClose) ? (
+      {!showHomeCuadre ? (
       <>
       {editingExpenses && onSaveExpenses ? (
         <CollectorCloseDaySheet
@@ -922,16 +928,6 @@ export function CollectorMobileApp({
         </p>
       ) : null}
 
-      {!queue.dispatched.length && !queue.awaitingDispatch.length ? (
-        <section className="collector-mobile-empty">
-          <h2>Sin planilla asignada</h2>
-          <p>
-            Cuando oficina te envíe la ruta, aquí verás los cobros. Si ya cerraste jornadas antes,
-            al abrir la app verás tu último cierre y el saldo en caja.
-          </p>
-        </section>
-      ) : (
-        <>
           <ul className={listFilter === "done" ? "collector-mobile-list compact" : "collector-mobile-list compact"}>
             {visibleItems.length === 0 ? (
               <li className="collector-mobile-empty-inline">
@@ -1155,8 +1151,6 @@ export function CollectorMobileApp({
                 : "No tienes más rutas pendientes."}
             </p>
           ) : null}
-        </>
-      )}
         </>
       )}
       </>

@@ -150,12 +150,25 @@ export function collectorMobileRoutes(
 }
 
 /**
+ * ¿Hay planilla que el cobrador deba trabajar o cerrar?
+ * Si es false → inicio = mismo panel de último cierre / saldo (todos iguales).
+ */
+export function collectorHasOpenPlanillaWork(queue: CollectorMobileQueue): boolean {
+  if (queue.closed) return false;
+  if (queue.awaitingDispatch.length > 0) return true;
+  if (queue.pending.length > 0) return true;
+  // Hoja enviada aún abierta (aunque ya no haya pendientes): falta cerrar jornada.
+  if (queue.dispatched.length > 0) return true;
+  return false;
+}
+
+/**
  * Fecha de inicio de la app del cobrador (misma regla para todos):
  * 1) Jornada abierta atrasada (hay que cerrarla).
  * 2) Día con visitas pendientes.
  * 3) Hoy abierto con planilla asignada (total > 0).
  * 4) Último cierre formal → cuadre + saldo en caja (recordatorio).
- * 5) Hoy abierto vacío / cualquier otra hoja.
+ * 5) Hoy / fallback (home idle: mismo panel de cierre vacío o con arrastre).
  */
 export function defaultMobileRouteDate(
   options: CollectorMobileRouteOption[],
@@ -180,10 +193,7 @@ export function defaultMobileRouteDate(
     .sort((a, b) => b.date.localeCompare(a.date))[0];
   if (lastClosed) return lastClosed.date;
 
-  const openToday = options.find((row) => !row.closed && row.date === fallback);
-  if (openToday) return openToday.date;
-
-  return options[0]!.date;
+  return fallback || options[0]!.date;
 }
 
 /** Suma de cobros del día por medio (efectivo / Nequi / Banco) para que el cobrador cuadre su caja. */
