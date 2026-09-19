@@ -827,15 +827,18 @@ export function CollectorMobileApp({
       ) : null}
 
       {queue.closed && listFilter === "pending" && !editingExpenses && !confirmingClose ? (
-        <section className="collector-mobile-home-cuadre" aria-label="Cuadre de la jornada">
+        <section className="collector-mobile-home-cuadre" aria-label="Último cierre">
           <div className="collector-mobile-home-cuadre-head">
             <Pill label="Jornada cerrada" kind="paid" />
             <div className="collector-mobile-home-cuadre-title-row">
               <h2>
                 {activeDate === (date ?? todayIso())
-                  ? "Tu cuadre de hoy"
-                  : `Tu cuadre del ${queue.dateLabel}`}
+                  ? "Tu cierre de hoy"
+                  : "Tu último cierre"}
               </h2>
+              {activeDate !== (date ?? todayIso()) ? (
+                <p className="collector-mobile-home-cuadre-progress">{queue.dateLabel}</p>
+              ) : null}
             </div>
           </div>
 
@@ -874,6 +877,9 @@ export function CollectorMobileApp({
               <b>{money(dayCuadre.saldo)}</b>
             </div>
           </div>
+          <p className="collector-mobile-home-cuadre-hint is-ok">
+            Este saldo es el que llevas hasta el próximo cobro. Historial para ver otros días.
+          </p>
         </section>
       ) : null}
 
@@ -940,11 +946,10 @@ export function CollectorMobileApp({
 
       {!queue.dispatched.length && !queue.awaitingDispatch.length ? (
         <section className="collector-mobile-empty">
-          <h2>Sin planilla de hoy</h2>
+          <h2>Sin planilla asignada</h2>
           <p>
-            La planilla se genera sola Lun–sáb (sin festivos) al iniciar el día y se envía a tu ruta
-            asignada. Si no ves cobros, revisa que oficina tenga cobrador en tu ruta o vuelve a abrir
-            la app.
+            Cuando oficina te envíe la ruta, aquí verás los cobros. Si ya cerraste jornadas antes,
+            al abrir la app verás tu último cierre y el saldo en caja.
           </p>
         </section>
       ) : (

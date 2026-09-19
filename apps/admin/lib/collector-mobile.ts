@@ -149,22 +149,41 @@ export function collectorMobileRoutes(
   });
 }
 
+/**
+ * Fecha de inicio de la app del cobrador (misma regla para todos):
+ * 1) Jornada abierta atrasada (hay que cerrarla).
+ * 2) Día con visitas pendientes.
+ * 3) Hoy abierto con planilla asignada (total > 0).
+ * 4) Último cierre formal → cuadre + saldo en caja (recordatorio).
+ * 5) Hoy abierto vacío / cualquier otra hoja.
+ */
 export function defaultMobileRouteDate(
   options: CollectorMobileRouteOption[],
   fallback = "",
 ): string {
   if (!options.length) return fallback;
-  // Prioriza días abiertos formales atrasados, luego con pendientes, luego hoy.
+
   const openPast = options.find((row) => !row.closed && row.date < fallback);
   if (openPast) return openPast.date;
-  const withPending = options.find((row) => row.pending > 0);
+
+  const withPending = options.find((row) => !row.closed && row.pending > 0);
   if (withPending) return withPending.date;
+
+  const openTodayWithSheet = options.find(
+    (row) => !row.closed && row.date === fallback && row.total > 0,
+  );
+  if (openTodayWithSheet) return openTodayWithSheet.date;
+
+  const lastClosed = options
+    .filter((row) => row.closed)
+    .slice()
+    .sort((a, b) => b.date.localeCompare(a.date))[0];
+  if (lastClosed) return lastClosed.date;
+
   const openToday = options.find((row) => !row.closed && row.date === fallback);
   if (openToday) return openToday.date;
-  // Hoy cerrado → inicio en planilla cerrada de ese día (no un día viejo del historial).
-  const closedToday = options.find((row) => row.closed && row.date === fallback);
-  if (closedToday) return closedToday.date;
-  return options[0].date;
+
+  return options[0]!.date;
 }
 
 /** Suma de cobros del día por medio (efectivo / Nequi / Banco) para que el cobrador cuadre su caja. */
