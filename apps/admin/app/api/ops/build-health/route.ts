@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveServedBuild } from "@/lib/app-build";
+import { resolveServedBuild } from "@/lib/resolve-served-build";
 
 /** Salud del build servido (para verify:prod y sello vivo en login local). */
 export async function GET() {
