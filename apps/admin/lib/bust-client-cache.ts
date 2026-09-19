@@ -2,7 +2,7 @@ const LAST_BUILD_KEY = "nexo-last-served-build";
 
 /**
  * Limpia SW + Cache Storage del navegador.
- * El panel madre / login deben verse siempre con el código fresco.
+ * Solo cuando el build servido cambió (no en cada foco / pestaña).
  */
 export async function bustClientCaches() {
   if (typeof window === "undefined") return;
@@ -25,25 +25,27 @@ export async function bustClientCaches() {
 }
 
 /**
- * Lee el build servido, sincroniza sello local y, si cambió el commit,
- * recarga una vez sin caché de documento.
+ * Lee el build servido desde la API dueña.
+ * - Misma SHA → no toca caché ni recarga.
+ * - SHA nueva vs sello de sesión → limpia caché una vez y recarga.
  */
 export async function refreshServedBuildOrReload(): Promise<string | null> {
   if (typeof window === "undefined") return null;
-  await bustClientCaches();
   try {
     const res = await fetch("/api/ops/build-health", { cache: "no-store" });
     if (!res.ok) return null;
     const data = (await res.json()) as { build?: string };
     const build = String(data.build || "").trim();
     if (!build) return null;
+
     const prev = window.sessionStorage.getItem(LAST_BUILD_KEY);
+    if (prev === build) return build;
+
     window.sessionStorage.setItem(LAST_BUILD_KEY, build);
-    if (prev && prev !== build) {
-      // Hard reload: descarta shell/JS viejo del documento.
-      window.location.reload();
-      return build;
-    }
+    if (!prev) return build;
+
+    await bustClientCaches();
+    window.location.reload();
     return build;
   } catch {
     return null;
