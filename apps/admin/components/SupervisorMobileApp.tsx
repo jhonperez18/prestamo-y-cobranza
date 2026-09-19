@@ -105,6 +105,20 @@ type Props = {
     routeRef: string;
   }) => void;
   onCreateQuickLoan?: (draft: QuickLoanDraft) => void;
+  /** Editar ficha de cliente desde CLIENTES (raíz + cola nube). */
+  onUpdateClient?: (draft: {
+    ref: string;
+    name: string;
+    lastName: string;
+    phone: string;
+    document: string;
+    address: string;
+    city: string;
+    barrio: string;
+    notes: string;
+    route: string;
+    routeOrder: number;
+  }) => void;
   /** Adjuntar constancia a un PG- que quedó sin foto en la nube. */
   onAttachPaymentEvidence?: (paymentRef: string, evidence: PaymentEvidenceRef[]) => void;
   onLogout?: () => void;
@@ -747,6 +761,7 @@ export function SupervisorMobileApp({
   monthCloses = [],
   onCreateStreetClient,
   onCreateQuickLoan,
+  onUpdateClient,
   onAttachPaymentEvidence,
   onLogout,
 }: Props) {
@@ -778,6 +793,21 @@ export function SupervisorMobileApp({
   const [planillaRouteFilter, setPlanillaRouteFilter] = useState<string | null>(null);
   const [clientesRouteFilter, setClientesRouteFilter] = useState<string | null>(null);
   const [clientesLoanClientRef, setClientesLoanClientRef] = useState<string | null>(null);
+  /** CLIENTES → modificar: elegir de la lista y editar ficha en la misma hoja. */
+  const [clientesModifyMode, setClientesModifyMode] = useState(false);
+  const [clientesEditRef, setClientesEditRef] = useState<string | null>(null);
+  const [clientesEditSearch, setClientesEditSearch] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editLastName, setEditLastName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editDocument, setEditDocument] = useState("");
+  const [editAddress, setEditAddress] = useState("");
+  const [editCity, setEditCity] = useState("");
+  const [editBarrio, setEditBarrio] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [editRoute, setEditRoute] = useState("");
+  const [editPos, setEditPos] = useState("");
+  const [editMsg, setEditMsg] = useState("");
   /** Ficha de un préstamo concreto desde historial «Ver préstamos». */
   const [prestamoFichaRef, setPrestamoFichaRef] = useState<string | null>(null);
   const [prestamosSearch, setPrestamosSearch] = useState("");
@@ -1129,6 +1159,7 @@ export function SupervisorMobileApp({
     if (next !== "clientes") {
       setClientesRouteFilter(null);
       setClientesLoanClientRef(null);
+      resetClientesModify();
     }
     if (next !== "prestamos") {
       setPrestamoFichaRef(null);
@@ -1159,9 +1190,78 @@ export function SupervisorMobileApp({
     setPlanillaRouteFilter(null);
     setClientesRouteFilter(null);
     setClientesLoanClientRef(null);
+    resetClientesModify();
     setPrestamoFichaRef(null);
     setPrestamosSearch("");
     setView("inicio");
+  }
+
+  function resetClientesModify() {
+    setClientesModifyMode(false);
+    setClientesEditRef(null);
+    setClientesEditSearch("");
+    setEditName("");
+    setEditLastName("");
+    setEditPhone("");
+    setEditDocument("");
+    setEditAddress("");
+    setEditCity("");
+    setEditBarrio("");
+    setEditNotes("");
+    setEditRoute("");
+    setEditPos("");
+    setEditMsg("");
+  }
+
+  function openClientesEdit(clientRef: string) {
+    const row = clients.find((entry) => entry.ref === clientRef);
+    if (!row) return;
+    setClientesLoanClientRef(null);
+    setClientesEditRef(row.ref);
+    setEditName(row.name ?? "");
+    setEditLastName(row.lastName ?? "");
+    setEditPhone(row.phone ?? "");
+    setEditDocument(row.document ?? "");
+    setEditAddress(row.address ?? "");
+    setEditCity(row.city ?? "");
+    setEditBarrio(row.barrio ?? "");
+    setEditNotes(row.notes ?? "");
+    setEditRoute(row.route ?? "");
+    setEditPos(String(row.routeOrder > 0 ? row.routeOrder : nextRouteOrder(clients, row.route)));
+    setEditMsg("");
+  }
+
+  function submitClientesEdit() {
+    if (!onUpdateClient || !clientesEditRef) return;
+    const name = editName.trim();
+    if (!name) {
+      setEditMsg("Escriba el nombre del cliente.");
+      return;
+    }
+    const route = editRoute.trim();
+    if (!route) {
+      setEditMsg("Elija la ruta del cliente.");
+      return;
+    }
+    const nextPos = nextRouteOrder(clients, route);
+    const pos = Math.min(
+      Math.max(1, Math.trunc(Number(String(editPos).replace(/\D/g, ""))) || nextPos),
+      Math.max(nextPos, clients.filter((row) => row.route === route && row.ref !== clientesEditRef).length + 1),
+    );
+    onUpdateClient({
+      ref: clientesEditRef,
+      name,
+      lastName: editLastName.trim(),
+      phone: editPhone.trim(),
+      document: editDocument.trim(),
+      address: editAddress.trim(),
+      city: editCity.trim(),
+      barrio: editBarrio.trim(),
+      notes: editNotes.trim(),
+      route,
+      routeOrder: pos,
+    });
+    resetClientesModify();
   }
 
   function resetNuevoFlow() {
@@ -1226,6 +1326,28 @@ export function SupervisorMobileApp({
       };
     });
   }, [clients, clientesRouteFilter, loans, payments, today]);
+
+  const clientesModifyRows = useMemo(() => {
+    const q = clientesEditSearch.trim().toLowerCase();
+    if (!q) return supervisorClientRows;
+    return supervisorClientRows.filter((row) => {
+      const client = clients.find((entry) => entry.ref === row.ref);
+      const hay = `${row.name} ${row.phone} ${client?.document ?? ""} ${row.ref}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [supervisorClientRows, clientesEditSearch, clients]);
+
+  const clientesEditClient =
+    clients.find((row) => row.ref === clientesEditRef) ?? null;
+
+  const editRouteOptions = useMemo(
+    () =>
+      catalogRoutes(routes)
+        .filter((row) => routeIsActive(row))
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
+    [routes],
+  );
 
   const clientesLoanClient =
     clients.find((row) => row.ref === clientesLoanClientRef) ?? null;
@@ -2499,7 +2621,141 @@ export function SupervisorMobileApp({
         </section>
       ) : view === "clientes" ? (
         <section className="supervisor-mobile-section supervisor-mobile-clientes">
-          {clientesPdfReport ? (
+          {clientesEditClient && clientesModifyMode ? (
+            <>
+              <div className="supervisor-mobile-detail-head">
+                <h3>Modificar</h3>
+                <button
+                  type="button"
+                  className="collector-mobile-pay-link is-back"
+                  onClick={() => {
+                    setClientesEditRef(null);
+                    setEditMsg("");
+                  }}
+                >
+                  volver
+                </button>
+              </div>
+              {!onUpdateClient ? (
+                <p className="ficha-empty">No hay permiso para modificar clientes desde esta vista.</p>
+              ) : (
+                <form
+                  className="supervisor-nuevo-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    submitClientesEdit();
+                  }}
+                >
+                  <label className="quick-loan-field">
+                    <span>Nombre</span>
+                    <input
+                      value={editName}
+                      onChange={(event) => setEditName(event.target.value)}
+                      placeholder="Nombre"
+                      autoFocus
+                    />
+                  </label>
+                  <label className="quick-loan-field">
+                    <span>Apellido</span>
+                    <input
+                      value={editLastName}
+                      onChange={(event) => setEditLastName(event.target.value)}
+                      placeholder="Apellido"
+                    />
+                  </label>
+                  <label className="quick-loan-field">
+                    <span>Teléfono</span>
+                    <input
+                      inputMode="tel"
+                      value={editPhone}
+                      onChange={(event) => setEditPhone(event.target.value)}
+                      placeholder="Celular"
+                    />
+                  </label>
+                  <label className="quick-loan-field">
+                    <span>Cédula</span>
+                    <input
+                      value={editDocument}
+                      onChange={(event) => setEditDocument(event.target.value)}
+                      placeholder="Documento"
+                    />
+                  </label>
+                  <label className="quick-loan-field">
+                    <span>Dirección</span>
+                    <input
+                      value={editAddress}
+                      onChange={(event) => setEditAddress(event.target.value)}
+                      placeholder="Dirección"
+                    />
+                  </label>
+                  <label className="quick-loan-field">
+                    <span>Ciudad</span>
+                    <input
+                      value={editCity}
+                      onChange={(event) => setEditCity(event.target.value)}
+                      placeholder="Ciudad"
+                    />
+                  </label>
+                  <label className="quick-loan-field">
+                    <span>Barrio</span>
+                    <input
+                      value={editBarrio}
+                      onChange={(event) => setEditBarrio(event.target.value)}
+                      placeholder="Barrio"
+                    />
+                  </label>
+                  <label className="quick-loan-field">
+                    <span>Ruta</span>
+                    <select
+                      value={editRoute}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        setEditRoute(next);
+                        setEditPos(
+                          String(
+                            nextRouteOrder(
+                              clients.filter((row) => row.ref !== clientesEditRef),
+                              next,
+                            ),
+                          ),
+                        );
+                      }}
+                    >
+                      <option value="">Elija ruta</option>
+                      {editRouteOptions.map((row) => (
+                        <option key={row.id} value={row.name}>
+                          Ruta {row.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="quick-loan-field">
+                    <span>Posición en la lista</span>
+                    <input
+                      inputMode="numeric"
+                      value={editPos}
+                      onChange={(event) => setEditPos(event.target.value)}
+                      placeholder="Ej. 1"
+                    />
+                  </label>
+                  <label className="quick-loan-field">
+                    <span>Notas</span>
+                    <input
+                      value={editNotes}
+                      onChange={(event) => setEditNotes(event.target.value)}
+                      placeholder="Notas"
+                    />
+                  </label>
+                  {editMsg ? <p className="supervisor-nuevo-msg is-warn">{editMsg}</p> : null}
+                  <div className="quick-loan-actions">
+                    <button type="submit" className="btn">
+                      Guardar
+                    </button>
+                  </div>
+                </form>
+              )}
+            </>
+          ) : clientesPdfReport ? (
             <SupervisorClientFicha
               report={clientesPdfReport}
               onBack={() => {
@@ -2526,7 +2782,31 @@ export function SupervisorMobileApp({
           ) : (
             <>
               <div className="supervisor-planilla-head">
-                <h3>Clientes</h3>
+                <div className="supervisor-planilla-head-start">
+                  <h3>Clientes</h3>
+                  <button
+                    type="button"
+                    className={
+                      clientesModifyMode
+                        ? "supervisor-clientes-modify-btn on"
+                        : "supervisor-clientes-modify-btn"
+                    }
+                    disabled={!onUpdateClient}
+                    onClick={() => {
+                      suppressGhostClick();
+                      if (clientesModifyMode) {
+                        resetClientesModify();
+                        return;
+                      }
+                      setClientesLoanClientRef(null);
+                      setClientesModifyMode(true);
+                      setClientesEditSearch("");
+                      setEditMsg("");
+                    }}
+                  >
+                    {clientesModifyMode ? "cancelar" : "modificar"}
+                  </button>
+                </div>
                 {planillaRoutePins.length > 0 ? (
                   <div
                     className="supervisor-planilla-route-btns"
@@ -2554,17 +2834,34 @@ export function SupervisorMobileApp({
                   </div>
                 ) : null}
               </div>
-              {supervisorClientRows.length === 0 ? (
+              {clientesModifyMode ? (
+                <label className="quick-loan-field supervisor-nuevo-search">
+                  <span className="sr-only">Buscar cliente</span>
+                  <input
+                    value={clientesEditSearch}
+                    onChange={(event) => setClientesEditSearch(event.target.value)}
+                    placeholder="Nombre, cédula o celular"
+                    autoFocus
+                  />
+                </label>
+              ) : null}
+              {(clientesModifyMode ? clientesModifyRows : supervisorClientRows).length === 0 ? (
                 <p className="ficha-empty">
-                  {clientesRouteFilter
-                    ? `No hay clientes en la ruta ${clientesRouteFilter}.`
-                    : "No hay clientes activos."}
+                  {clientesModifyMode && clientesEditSearch.trim()
+                    ? "No hay clientes con ese filtro."
+                    : clientesRouteFilter
+                      ? `No hay clientes en la ruta ${clientesRouteFilter}.`
+                      : "No hay clientes activos."}
                 </p>
               ) : (
                 <ClientesTable
-                  rows={supervisorClientRows}
+                  rows={clientesModifyMode ? clientesModifyRows : supervisorClientRows}
                   onOpen={(ref) => {
                     suppressGhostClick();
+                    if (clientesModifyMode) {
+                      openClientesEdit(ref);
+                      return;
+                    }
                     setClientesLoanClientRef(ref);
                   }}
                 />

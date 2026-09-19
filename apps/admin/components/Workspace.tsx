@@ -1753,6 +1753,70 @@ export function Workspace({
     );
   }
 
+  function updateClientFromMobile(draft: {
+    ref: string;
+    name: string;
+    lastName: string;
+    phone: string;
+    document: string;
+    address: string;
+    city: string;
+    barrio: string;
+    notes: string;
+    route: string;
+    routeOrder: number;
+  }) {
+    const openClient = clients.find((row) => row.ref === draft.ref);
+    if (!openClient) {
+      onToast("Cliente no encontrado.");
+      return;
+    }
+    const doc = draft.document.trim();
+    const hasRealDoc = Boolean(doc) && !doc.toUpperCase().startsWith("S/");
+    const hasContactOrPlace = Boolean(
+      draft.phone.trim() ||
+        draft.address.trim() ||
+        draft.city.trim() ||
+        draft.barrio.trim(),
+    );
+    const profileComplete = hasRealDoc && hasContactOrPlace;
+    const updated: ClientRow = {
+      ...openClient,
+      name: draft.name.trim(),
+      lastName: draft.lastName.trim(),
+      document: draft.document.trim(),
+      phone: draft.phone.trim(),
+      address: draft.address.trim(),
+      city: draft.city.trim(),
+      barrio: draft.barrio.trim(),
+      notes: draft.notes.trim(),
+      profilePending: profileComplete ? false : openClient.profilePending,
+      ...(isPendingReview(openClient)
+        ? { status: CLIENT_STATUS_ACTIVE, kind: clientStatusKind(CLIENT_STATUS_ACTIVE) }
+        : {}),
+    };
+    const nextClients = placeClientOnRoute(clients, updated, draft.route, draft.routeOrder);
+    setClients(nextClients);
+    const synced = syncPermanentRoutePlanilla(
+      todayIso(),
+      routes,
+      nextClients,
+      loans,
+      collectors,
+      dailyAssignments,
+      payments,
+    );
+    setRoutes(synced.routes);
+    setDailyAssignments(synced.assignments);
+    const mirrored = nextClients.find((row) => row.ref === updated.ref) ?? updated;
+    queueClientMirror(mirrored);
+    onToast(
+      mirrored.profilePending
+        ? "Cliente actualizado. Aún faltan datos de ficha."
+        : `Cliente actualizado · ruta ${mirrored.route}, posición ${mirrored.routeOrder}.`,
+    );
+  }
+
   function createQuickLoanFromMobile(draft: QuickLoanDraft) {
     const client = clients.find((row) => row.ref === draft.clientRef);
     if (!client) {
@@ -3314,6 +3378,7 @@ export function Workspace({
           onCloseMonth={closeCollectorMonthFromMobile}
           onCreateStreetClient={createStreetClientFromMobile}
           onCreateQuickLoan={createQuickLoanFromMobile}
+          onUpdateClient={updateClientFromMobile}
           onAttachPaymentEvidence={attachPaymentEvidence}
         />
       );
