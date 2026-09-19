@@ -37,19 +37,41 @@ function channelRejectMessage(channel: PwaChannelId) {
  * Solo entrada (usuario + contraseña).
  * Fuente de verdad = Usuario → Listado (misma clave/login que Guardar cambios).
  * Supabase Auth es respaldo opcional; nunca bloquea el catálogo del sistema madre.
+ *
+ * Salir cierra este panel: para volver hay que abrir desde el icono de la app
+ * (así el boot vuelve a tirar pull/actualizaciones).
  */
 export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [exited, setExited] = useState(false);
   const passwordRef = useRef<HTMLInputElement>(null);
   const supabaseReady = getSupabasePublicEnv().configured;
   const channelMeta = PWA_CHANNELS[channel];
 
   useEffect(() => {
+    if (exited) return;
     passwordRef.current?.focus();
-  }, []);
+  }, [exited]);
+
+  useEffect(() => {
+    if (!exited) return;
+    let leftScreen = false;
+    function onVis() {
+      if (document.visibilityState === "hidden") {
+        leftScreen = true;
+        return;
+      }
+      // Solo al volver desde el icono / otra app (no al pintar Salir).
+      if (leftScreen && document.visibilityState === "visible") {
+        window.location.reload();
+      }
+    }
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [exited]);
 
   function acceptSession(session: AppSession) {
     if (!sessionAllowedOnChannel(session, channel)) {
@@ -58,6 +80,18 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
     }
     onSuccess(session);
     return true;
+  }
+
+  function onExitPanel() {
+    setUsername("");
+    setPassword("");
+    setError("");
+    setExited(true);
+    try {
+      window.close();
+    } catch {
+      /* PWA / pestaña: el navegador puede bloquear close; queda la pantalla Salir. */
+    }
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -109,6 +143,26 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (exited) {
+    return (
+      <div className="login-screen login-exited">
+        <div className="login-card login-exited-card">
+          <img
+            src="/logo-ca-prestamo.png"
+            alt="CA préstamo"
+            className="login-logo"
+            draggable={false}
+          />
+          <p className="login-exited-title">Panel cerrado</p>
+          <p className="login-exited-copy">
+            Abrí de nuevo desde el icono de la app para entrar con usuario y contraseña (trae la
+            versión actualizada).
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -165,6 +219,15 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
 
         <button type="submit" className="btn primary login-submit" disabled={busy}>
           {busy ? "Entrando…" : "Entrar"}
+        </button>
+
+        <button
+          type="button"
+          className="btn login-exit"
+          onClick={onExitPanel}
+          disabled={busy}
+        >
+          Salir
         </button>
 
         {APP_BUILD ? (

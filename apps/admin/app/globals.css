@@ -263,6 +263,35 @@
       font-weight: 700;
       font-size: 18px;
     }
+    .login-exit {
+      width: 100%;
+      margin-top: 10px;
+      min-height: 42px;
+      font-weight: 650;
+      font-size: 16px;
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.28);
+      color: rgba(255, 255, 255, 0.92);
+    }
+    .login-exit:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+    .login-exited-card {
+      text-align: center;
+      gap: 12px;
+    }
+    .login-exited-title {
+      margin: 8px 0 0;
+      font-size: 18px;
+      font-weight: 700;
+      color: #ecfdf5;
+    }
+    .login-exited-copy {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.45;
+      color: rgba(255, 255, 255, 0.78);
+    }
     .login-recovery-link {
       margin: 12px 0 0;
       text-align: center;
