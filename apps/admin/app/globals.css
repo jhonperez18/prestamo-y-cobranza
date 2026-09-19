@@ -3812,8 +3812,8 @@
     .supervisor-mobile-actions {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 6px;
-      margin: 0 0 8px;
+      gap: 3px;
+      margin: 0 0 6px;
     }
     .supervisor-mobile-actions > .btn:nth-child(n + 3) {
       grid-column: auto;
@@ -3973,12 +3973,15 @@
     }
     .supervisor-mobile-actions .btn.compact {
       width: 100%;
-      min-height: 22px;
-      padding: 2px 6px;
+      min-height: 0;
+      height: 22px;
+      padding: 0 4px;
       font-size: 9px;
-      letter-spacing: 0.02em;
-      border-radius: 3px;
-      line-height: 1.15;
+      font-weight: 750;
+      letter-spacing: 0;
+      border-radius: 4px;
+      line-height: 1;
+      box-shadow: none;
     }
     .supervisor-mobile-actions .btn.compact.ghost {
       background: #fff;
@@ -4912,23 +4915,26 @@
     .supervisor-nuevo-menu {
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      margin-top: 6px;
+      gap: 4px;
+      margin-top: 4px;
     }
     .supervisor-nuevo-menu-btn {
       display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 2px;
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
       width: 100%;
       margin: 0;
-      padding: 12px 12px;
+      padding: 5px 8px;
+      min-height: 0;
+      height: 28px;
       border: 1px solid #c5e0cb;
-      border-radius: 10px;
+      border-radius: 4px;
       background: #eef6ef;
       color: #14532d;
-      box-shadow: 0 2px 10px rgba(26, 127, 90, 0.08);
-      text-align: left;
+      box-shadow: none;
+      text-align: center;
       font: inherit;
       cursor: pointer;
     }
@@ -4936,7 +4942,7 @@
       background: #fff6e8;
       border-color: #f5d5a8;
       color: #7c2d12;
-      box-shadow: 0 2px 10px rgba(232, 89, 12, 0.08);
+      box-shadow: none;
     }
     .supervisor-nuevo-menu-btn.is-prestamo {
       background: #eef6ef;
@@ -4948,14 +4954,14 @@
       cursor: not-allowed;
     }
     .supervisor-nuevo-menu-btn b {
-      font-size: 13px;
+      font-size: 10px;
       font-weight: 750;
-      letter-spacing: 0.02em;
+      letter-spacing: 0;
+      text-transform: uppercase;
+      line-height: 1;
     }
     .supervisor-nuevo-menu-btn span {
-      font-size: 11px;
-      font-weight: 600;
-      opacity: 0.85;
+      display: none;
     }
     .supervisor-nuevo-search {
       margin: 6px 0 8px;
@@ -9352,6 +9358,57 @@
       margin-top: 2px;
     }
     .btn.compact { padding: 6px 12px; font-size: 13px; }
+    /* Supervisor phone: chips compactos (misma escala que INICIO/RUTA). */
+    .supervisor-mobile-app .supervisor-mobile-actions {
+      gap: 3px;
+      margin-bottom: 6px;
+    }
+    .supervisor-mobile-app .supervisor-mobile-actions .btn.compact {
+      min-height: 0 !important;
+      height: 22px;
+      padding: 0 4px !important;
+      font-size: 9px !important;
+      font-weight: 750;
+      letter-spacing: 0;
+      border-radius: 4px;
+      line-height: 1;
+      box-shadow: none;
+    }
+    .supervisor-mobile-app .quick-loan-actions .btn,
+    .supervisor-mobile-app .supervisor-nuevo-form .btn {
+      min-height: 0;
+      height: 26px;
+      padding: 0 10px;
+      font-size: 10px;
+      font-weight: 750;
+      letter-spacing: 0;
+      border-radius: 4px;
+      line-height: 1;
+    }
+    .supervisor-mobile-app .collector-mobile-pay-link,
+    .supervisor-mobile-app .collector-mobile-pay-link.is-back {
+      height: 22px;
+      min-height: 0;
+      padding: 0 7px;
+      font-size: 9px;
+      font-weight: 650;
+      border-radius: 4px;
+      line-height: 1;
+    }
+    .supervisor-mobile-app .collector-mobile-pay-link.is-back {
+      padding: 0 7px 0 5px;
+    }
+    .supervisor-mobile-app .supervisor-planilla-route-btn {
+      min-width: 24px;
+      height: 22px;
+      padding: 0 6px;
+      border-radius: 4px;
+      box-shadow: none;
+    }
+    .supervisor-mobile-app .supervisor-planilla-route-btn b {
+      font-size: 10px;
+      font-weight: 750;
+    }
     .client-review-note { margin: 0 16px 10px; }
     .head .client-review-actions {
       display: flex;
