@@ -5692,12 +5692,30 @@
       flex: 1 1 100%;
     }
     .shell.is-phone-layout .home-strip {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      gap: 6px;
+      width: 100%;
     }
     .shell.is-phone-layout .home-strip-chip {
-      min-height: 64px;
-      padding: 8px 10px;
+      min-height: 0;
+      padding: 6px 6px 7px;
+      gap: 2px;
+      border-radius: 8px;
+    }
+    .shell.is-phone-layout .home-strip-label {
+      font-size: 10px !important;
+      line-height: 1.15 !important;
+      font-weight: 600;
+    }
+    .shell.is-phone-layout .home-strip-value {
+      font-size: 12px !important;
+      line-height: 1.2 !important;
+      font-weight: 700;
+    }
+    .shell.is-phone-layout .home-strip-meta {
+      font-size: 9px !important;
+      line-height: 1.15 !important;
+      margin-top: 0;
     }
     .shell.is-phone-layout .kpis,
     .shell.is-phone-layout .grid-2,
@@ -6934,8 +6952,17 @@
     .home-strip-chip.kpi-coral .home-strip-label { color: #9f1239; }
     @media (max-width: 900px) {
       .home-strip {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
       }
+      .home-strip-chip {
+        min-height: 0;
+        padding: 6px 6px 7px;
+        gap: 2px;
+      }
+      .home-strip-label { font-size: 10px; line-height: 1.15; }
+      .home-strip-value { font-size: 12px; line-height: 1.2; }
+      .home-strip-meta { font-size: 9px; line-height: 1.15; margin-top: 0; }
     }
     .home-today-split {
       width: 100%;
@@ -12270,4 +12297,35 @@
       position: relative;
       left: auto;
       z-index: 1;
+    }
+    /* KPI inicio en celular: chips compactos 3×2 (no una fila de 6 aplastada). */
+    .shell.is-phone-layout .home-routes-dashboard.is-unified {
+      gap: 8px;
+      padding: 4px 0 16px;
+    }
+    .shell.is-phone-layout .home-strip {
+      display: grid !important;
+      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+      gap: 6px !important;
+      width: 100%;
+    }
+    .shell.is-phone-layout .home-strip-chip {
+      min-height: 0 !important;
+      min-width: 0;
+      padding: 6px 5px 7px !important;
+      gap: 2px !important;
+      border-radius: 8px;
+    }
+    .shell.is-phone-layout .home-strip-label {
+      font-size: 10px !important;
+      line-height: 1.15 !important;
+    }
+    .shell.is-phone-layout .home-strip-value {
+      font-size: 12px !important;
+      line-height: 1.2 !important;
+    }
+    .shell.is-phone-layout .home-strip-meta {
+      font-size: 9px !important;
+      line-height: 1.15 !important;
+      margin-top: 0 !important;
     }
