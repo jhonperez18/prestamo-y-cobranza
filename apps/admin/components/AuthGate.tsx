@@ -12,6 +12,7 @@ import {
 } from "@/lib/auth";
 import { bootstrapProtectedDemoData } from "@/lib/bootstrap-demo-data";
 import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
+import { refreshServedBuildOrReload } from "@/lib/bust-client-cache";
 import {
   DEMO_USERS_KEY,
   loadDemoUsers,
@@ -62,7 +63,8 @@ export function AuthGate({ channel = "sistema" }: Props) {
 
     async function boot() {
       try {
-        syncDemoStorageToServedBuild();
+        const liveBuild = await refreshServedBuildOrReload();
+        syncDemoStorageToServedBuild(liveBuild || undefined);
         bootstrapProtectedDemoData();
       } catch {
         /* ignore */

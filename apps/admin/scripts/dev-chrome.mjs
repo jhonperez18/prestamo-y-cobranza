@@ -11,7 +11,10 @@ let opened = false;
 function openChrome() {
   if (opened) return;
   opened = true;
-  exec(`cmd /c start chrome ${url}`);
+  // Sin caché de disco: el panel madre debe verse al instante tras cada cambio.
+  exec(
+    `cmd /c start chrome --disk-cache-size=1 --media-cache-size=1 --disable-application-cache ${url}`,
+  );
 }
 
 const timer = setInterval(() => {

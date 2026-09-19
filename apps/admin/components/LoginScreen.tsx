@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { validateLogin, type AppSession } from "@/lib/auth";
 import { APP_BUILD } from "@/lib/app-build";
+import { refreshServedBuildOrReload } from "@/lib/bust-client-cache";
 import {
   PWA_CHANNELS,
   sessionAllowedOnChannel,
@@ -60,23 +61,20 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    function onVisible() {
+      if (document.visibilityState === "visible") void refreshBuild();
+    }
     async function refreshBuild() {
-      try {
-        const res = await fetch("/api/ops/build-health", { cache: "no-store" });
-        if (!res.ok) return;
-        const data = (await res.json()) as { build?: string };
-        if (!cancelled && data.build) setBuildStamp(data.build);
-      } catch {
-        /* keep APP_BUILD */
-      }
+      const build = await refreshServedBuildOrReload();
+      if (!cancelled && build) setBuildStamp(build);
     }
     void refreshBuild();
     window.addEventListener("focus", refreshBuild);
-    document.addEventListener("visibilitychange", refreshBuild);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       window.removeEventListener("focus", refreshBuild);
-      document.removeEventListener("visibilitychange", refreshBuild);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 

@@ -29,13 +29,14 @@ const nextConfig: NextConfig = {
     return [
       { source: "/", headers: noStore },
       { source: "/index", headers: noStore },
+      { source: "/manifest.webmanifest", headers: noStore },
       // Documento HTML de la app (evita shell viejo en celular / CDN).
       { source: "/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)", headers: noStore },
       {
         source: "/pwa/manifests/:path*",
         headers: [
           { key: "Content-Type", value: "application/manifest+json; charset=utf-8" },
-          { key: "Cache-Control", value: "public, max-age=3600" },
+          { key: "Cache-Control", value: "no-store, max-age=0, must-revalidate" },
           { key: "X-Content-Type-Options", value: "nosniff" },
         ],
       },
