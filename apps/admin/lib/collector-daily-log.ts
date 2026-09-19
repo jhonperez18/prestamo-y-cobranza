@@ -205,31 +205,20 @@ export function buildCollectorDailyLogs(
     byDate.set(parsed.date, existing);
   }
 
-  const todayKey = [...byDate.keys()].sort().at(-1);
-  const targetDate = todayKey ?? `${DEMO_YEAR}-08-27`;
-  const [, month, day] = targetDate.split("-");
-  const targetLabel = `${day}/${month}/${DEMO_YEAR}`;
-  for (const route of collectorRoutes) {
+  // Solo enriquecer días que ya existen por cobros/actividad.
+  // Nunca inventar jornadas vacías desde rutas (rompe paquete virgen).
+  for (const [date, existing] of byDate) {
+    const route =
+      (existing.routeRef
+        ? collectorRoutes.find((row) => row.ref === existing.routeRef)
+        : undefined) ??
+      collectorRoutes.find((row) => row.scheduledDate === date) ??
+      collectorRoutes.find((row) =>
+        Boolean(row.name && existing.routeName && row.name === existing.routeName),
+      );
+    if (!route) continue;
     const counts = visitCounts(route.stops);
     const { status, kind } = routeStatusKind(route);
-    const existing =
-      byDate.get(targetDate) ??
-      ({
-        ref: dailyLogRef(collectorRef, targetDate),
-        collectorRef,
-        date: targetDate,
-        dateLabel: targetLabel,
-        routeRef: route.ref,
-        routeName: route.name,
-        zone: route.zone,
-        ...counts,
-        collected: 0,
-        paymentsCount: 0,
-        status,
-        kind,
-        summary: "",
-      } satisfies CollectorDailyLogRow);
-
     existing.routeRef = route.ref;
     existing.routeName = route.name;
     existing.zone = route.zone;
@@ -244,7 +233,7 @@ export function buildCollectorDailyLogs(
       existing.status = status;
       existing.kind = kind;
     }
-    byDate.set(targetDate, existing);
+    byDate.set(date, existing);
   }
 
   return [...byDate.values()]
