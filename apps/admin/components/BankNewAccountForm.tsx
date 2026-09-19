@@ -283,13 +283,13 @@ export function BankNewAccountForm({ accounts, onSave, onCancel, onToast }: Prop
               />
             </div>
 
-            <div className="sheet-row sheet-row-top">
+            <div className="sheet-row sheet-row-top is-full">
               <label className="sheet-label" htmlFor="bank-address">
                 Domiciliación de cuenta
               </label>
               <textarea
                 id="bank-address"
-                rows={4}
+                rows={3}
                 placeholder="Dirección o datos de domiciliación…"
                 value={form.address}
                 onChange={(event) => setField("address", event.target.value)}
