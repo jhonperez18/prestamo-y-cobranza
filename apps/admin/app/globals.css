@@ -256,25 +256,41 @@
       color: #ffb4b4;
       text-align: center;
     }
-    .login-submit {
+    .login-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
       width: 100%;
-      margin-top: 4px;
-      min-height: 44px;
-      font-weight: 700;
-      font-size: 18px;
     }
-    .login-exit {
-      width: 100%;
-      margin-top: 10px;
+    .login-screen .login-action-btn,
+    .login-screen .btn.login-action-btn {
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: none;
+      align-self: center;
+      margin: 0;
       min-height: 42px;
-      font-weight: 650;
-      font-size: 16px;
-      background: transparent;
-      border: 1px solid rgba(255, 255, 255, 0.28);
-      color: rgba(255, 255, 255, 0.92);
+      padding: 8px 18px !important;
+      font-weight: 700 !important;
+      font-size: 18px !important;
+      line-height: 1.2;
+      letter-spacing: 0.02em;
+      background: transparent !important;
+      border: 1px solid rgba(255, 255, 255, 0.35) !important;
+      color: rgba(255, 255, 255, 0.95) !important;
+      border-radius: 8px;
+      box-shadow: none !important;
     }
-    .login-exit:hover {
-      background: rgba(255, 255, 255, 0.08);
+    .login-screen .login-action-btn:hover:not(:disabled),
+    .login-screen .login-action-btn:focus-visible:not(:disabled) {
+      background: rgba(255, 255, 255, 0.08) !important;
+      border-color: rgba(255, 255, 255, 0.5) !important;
+      outline: none;
+    }
+    .login-screen .login-action-btn:disabled {
+      opacity: 0.55;
     }
     .login-exited-card {
       text-align: center;
@@ -10221,7 +10237,9 @@
     .login-brand p {
       font-size: 16px !important;
     }
-    .login-submit {
+    .login-action-btn,
+    .login-submit,
+    .login-exit {
       font-size: 18px !important;
     }
     .home-activity-item,

@@ -217,18 +217,19 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
 
         {error ? <p className="login-error">{error}</p> : null}
 
-        <button type="submit" className="btn primary login-submit" disabled={busy}>
-          {busy ? "Entrando…" : "Entrar"}
-        </button>
-
-        <button
-          type="button"
-          className="btn login-exit"
-          onClick={onExitPanel}
-          disabled={busy}
-        >
-          Salir
-        </button>
+        <div className="login-actions">
+          <button type="submit" className="btn login-action-btn" disabled={busy}>
+            {busy ? "Entrando…" : "Entrar"}
+          </button>
+          <button
+            type="button"
+            className="btn login-action-btn"
+            onClick={onExitPanel}
+            disabled={busy}
+          >
+            Salir
+          </button>
+        </div>
 
         {APP_BUILD ? (
           <p className="login-build-stamp" title="Commit desplegado en este sitio">
