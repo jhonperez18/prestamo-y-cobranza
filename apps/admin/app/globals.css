@@ -5630,6 +5630,13 @@
       padding: 8px 10px 6px 12px;
       font-size: 12px !important;
     }
+    .shell.is-phone-layout .aside .group-toggle {
+      width: max-content;
+      max-width: 100%;
+      min-height: 36px;
+      padding: 8px 10px 8px 12px !important;
+      cursor: pointer;
+    }
     .shell.is-phone-layout .aside .item {
       width: max-content;
       max-width: 100%;
@@ -12371,11 +12378,6 @@
       right: auto !important;
       z-index: 1;
       box-shadow: none !important;
-    }
-    .shell.is-phone-layout .phone-sheet-hint {
-      position: relative;
-      left: auto;
-      z-index: 1;
     }
     /* Todos los paneles KPI / chips: al contenido, sin hueco vacío. */
     .shell.is-phone-layout .home-routes-dashboard.is-unified {
