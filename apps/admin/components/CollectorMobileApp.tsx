@@ -508,10 +508,6 @@ export function CollectorMobileApp({
 
   const reviewingPanel = editingExpenses || confirmingClose;
 
-  /** Inicio tras cierre: lista en blanco; si el día tiene cobros/gastos reales, se muestran. */
-  const onInicioCerrado = dayLocked && !fromHistory;
-  const blankStart =
-    onInicioCerrado && recaudo.total <= 0 && savedExpensesTotal <= 0;
   /** Totales = pagos reales del día (mismo número que banco Debe / “Lo que cobró”). */
   const topRecaudo = recaudo.total;
   const topGastos = savedExpensesTotal;
@@ -732,22 +728,16 @@ export function CollectorMobileApp({
         <button
           type="button"
           className={
-            blankStart || dayLocked
+            dayLocked
               ? "collector-mobile-stat is-pending is-off"
               : !reviewingPanel && listFilter === "pending"
                 ? "collector-mobile-stat is-pending on"
                 : "collector-mobile-stat is-pending"
           }
-          disabled={blankStart || dayLocked}
-          title={
-            blankStart
-              ? "Consulta el día en Historial"
-              : dayLocked
-                ? "Jornada cerrada"
-                : undefined
-          }
+          disabled={dayLocked}
+          title={dayLocked ? "Jornada cerrada" : undefined}
           {...navButtonProps(navIntent, () => {
-            if (blankStart || dayLocked) return;
+            if (dayLocked) return;
             selectFilter("pending");
           })}
         >
@@ -757,22 +747,16 @@ export function CollectorMobileApp({
         <button
           type="button"
           className={
-            blankStart || dayLocked
+            dayLocked
               ? "collector-mobile-stat is-recaudo is-off"
               : !reviewingPanel && listFilter === "done"
                 ? "collector-mobile-stat is-recaudo on"
                 : "collector-mobile-stat is-recaudo"
           }
-          disabled={blankStart || dayLocked}
-          title={
-            blankStart
-              ? "Consulta el día en Historial"
-              : dayLocked
-                ? "Jornada cerrada"
-                : undefined
-          }
+          disabled={dayLocked}
+          title={dayLocked ? "Jornada cerrada" : undefined}
           {...navButtonProps(navIntent, () => {
-            if (blankStart || dayLocked) return;
+            if (dayLocked) return;
             openRecaudoDetail();
           })}
         >
@@ -782,30 +766,24 @@ export function CollectorMobileApp({
         <button
           type="button"
           className={
-            blankStart || dayLocked
+            dayLocked
               ? "collector-mobile-stat collector-mobile-stat-close is-gastos is-off"
               : editingExpenses
                 ? "collector-mobile-stat on collector-mobile-stat-close is-gastos"
                 : "collector-mobile-stat collector-mobile-stat-close is-gastos"
           }
-          disabled={
-            blankStart || dayLocked
-              ? true
-              : !onSaveExpenses || !queue.dispatched.length
-          }
+          disabled={dayLocked ? true : !onSaveExpenses || !queue.dispatched.length}
           title={
-            blankStart
-              ? "Consulta el día en Historial"
-              : dayLocked
-                ? "Jornada cerrada"
-                : !onSaveExpenses
-                  ? "Sin permiso para gastos"
-                  : !queue.dispatched.length
-                    ? "Sin planilla"
-                    : "Gastos del día"
+            dayLocked
+              ? "Jornada cerrada"
+              : !onSaveExpenses
+                ? "Sin permiso para gastos"
+                : !queue.dispatched.length
+                  ? "Sin planilla"
+                  : "Gastos del día"
           }
           {...navButtonProps(navIntent, () => {
-            if (blankStart || dayLocked) return;
+            if (dayLocked) return;
             openExpenses();
           })}
         >

@@ -278,8 +278,7 @@ function RouteBoardCard({
 }) {
   const total = row.planilla || 0;
   const pct = total > 0 ? Math.round((row.done / total) * 100) : 0;
-  const showClosedSummary = mode === "ruta" && row.closed;
-  const showLiveProgress = mode === "ruta" && !row.closed;
+  const showRouteShell = mode === "ruta";
   const unreadLabel = unreadCount > 99 ? "99+" : String(unreadCount);
   const moneyMode = mode === "caja" || mode === "nequi" || mode === "banco";
   const heroAmount =
@@ -292,7 +291,7 @@ function RouteBoardCard({
   return (
     <button
       type="button"
-      className={`supervisor-route-board accent-${accent % 2}${row.closed ? " is-closed" : ""}${mode === "caja" ? " is-caja-mode" : ""}${mode === "nequi" ? " is-nequi-mode" : ""}${mode === "banco" ? " is-banco-mode" : ""}${unreadCount > 0 ? " has-unread" : ""}`}
+      className={`supervisor-route-board accent-${accent % 2}${row.closed || row.statusKind === "closed" ? " is-closed" : ""}${mode === "caja" ? " is-caja-mode" : ""}${mode === "nequi" ? " is-nequi-mode" : ""}${mode === "banco" ? " is-banco-mode" : ""}${unreadCount > 0 ? " has-unread" : ""}`}
       onClick={() => onOpen(row.routeRef)}
     >
       {moneyMode ? (
@@ -344,13 +343,17 @@ function RouteBoardCard({
             </div>
           </div>
 
-          {(showClosedSummary || showLiveProgress) ? (
+          {showRouteShell ? (
             <div className="supervisor-route-board-progress" aria-hidden>
               <div className="supervisor-route-board-bar">
-                <span style={{ width: `${pct}%` }} />
+                <span style={{ width: `${total > 0 ? pct : 0}%` }} />
               </div>
               <em>
-                {row.done}/{total || 0} · {pct}%
+                {total > 0
+                  ? `${row.done}/${total} · ${pct}%`
+                  : row.closed
+                    ? "Cerrado"
+                    : "Sin planilla"}
               </em>
             </div>
           ) : null}
@@ -768,10 +771,9 @@ export function SupervisorMobileApp({
   const today = todayIso();
   const todayDisplay = isoToDisplay(today);
   const navIntent = useMemo(() => createNavIntent(), []);
-  const [view, setView] = useState<SupervisorView>(() => readSupervisorNav().view);
-  const [openRouteRef, setOpenRouteRef] = useState<string | null>(
-    () => readSupervisorNav().openRouteRef,
-  );
+  /** Regla: al ingresar siempre INICIO (no restaurar otra pestaña). */
+  const [view, setView] = useState<SupervisorView>("inicio");
+  const [openRouteRef, setOpenRouteRef] = useState<string | null>(null);
   /** Panel al que vuelve al salir del detalle de ruta (inicio / caja / nequi). */
   const [routeReturnView, setRouteReturnView] = useState<SupervisorView>("inicio");
   const [detailMode, setDetailMode] = useState<RouteDetailMode>("totales");
@@ -815,6 +817,32 @@ export function SupervisorMobileApp({
   useEffect(() => {
     writeSupervisorNav(view, openRouteRef);
   }, [view, openRouteRef]);
+
+  /** Entrada / remount: siempre INICIO limpio. */
+  useEffect(() => {
+    setView("inicio");
+    setOpenRouteRef(null);
+    setRouteReturnView("inicio");
+    setDetailMode("totales");
+    setCobrosMethodFilter(null);
+    setNequiDayIso(null);
+    setNuevoMode("menu");
+    setNuevoRouteRef(null);
+    setNuevoMsg("");
+    setNuevoClientSearch("");
+    setNuevoLoanClientRef(null);
+    setNuevoName("");
+    setNuevoPhone("");
+    setClientesModifyMode(false);
+    setClientesEditRef(null);
+    setClientesEditSearch("");
+    setClientesRouteFilter(null);
+    setClientesLoanClientRef(null);
+    setPlanillaRouteFilter(null);
+    setPrestamoFichaRef(null);
+    setPrestamosSearch("");
+    writeSupervisorNav("inicio", null);
+  }, [supervisor.ref]);
 
   const coverage = useMemo(
     () => routeCoverageSummaries(collectors, routes, payments, clients, assignments, today),
@@ -905,6 +933,15 @@ export function SupervisorMobileApp({
         } else {
           statusLabel = "";
           statusKind = "draft";
+        }
+      } else {
+        const lastClose = dayCloses
+          .filter((row) => row.collectorRef === collectorRef)
+          .slice()
+          .sort((a, b) => b.date.localeCompare(a.date))[0];
+        if (lastClose) {
+          statusLabel = "Último cierre";
+          statusKind = "closed";
         }
       }
       if (!closed && loansToday.length > 0 && statusKind !== "ok") {
