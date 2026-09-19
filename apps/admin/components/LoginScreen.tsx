@@ -34,7 +34,8 @@ function channelRejectMessage(channel: PwaChannelId) {
 
 /**
  * Solo entrada (usuario + contraseña).
- * Los usuarios se administran únicamente en Usuario → Listado.
+ * Fuente de verdad = Usuario → Listado (misma clave/login que Guardar cambios).
+ * Supabase Auth es respaldo opcional; nunca bloquea el catálogo del sistema madre.
  */
 export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
   const [username, setUsername] = useState("");
@@ -63,32 +64,28 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
     setError("");
     setBusy(true);
     try {
-      if (shouldTrySupabaseLogin(username)) {
-        const result = await loginWithSupabaseAuth(username, password);
-        if (!result.ok) {
-          setError(result.error);
-          return;
-        }
-        acceptSession(result.session);
+      // 1) Listado primero: lo que se guarda en Modificar usuario es lo que entra.
+      const catalogSession = validateLogin(username, password, readUsersCatalog());
+      if (catalogSession) {
+        acceptSession(catalogSession);
         return;
       }
 
-      const mappedEmail = authEmailFromLoginHint(username);
-      if (mappedEmail && mappedEmail.includes("@")) {
-        const result = await loginWithSupabaseAuth(mappedEmail, password);
-        if (result.ok) {
-          acceptSession(result.session);
-          return;
+      // 2) Respaldo Auth (email SSO). Si falla, no inventar otro mensaje: el catálogo ya dijo no.
+      if (supabaseReady) {
+        const emailHint = shouldTrySupabaseLogin(username)
+          ? username.trim()
+          : authEmailFromLoginHint(username);
+        if (emailHint && emailHint.includes("@")) {
+          const result = await loginWithSupabaseAuth(emailHint, password);
+          if (result.ok) {
+            acceptSession(result.session);
+            return;
+          }
         }
       }
 
-      // Misma fuente que Usuario → Listado (sin segunda lista en pantalla).
-      const session = validateLogin(username, password, readUsersCatalog());
-      if (!session) {
-        setError("Usuario o contraseña incorrectos.");
-        return;
-      }
-      acceptSession(session);
+      setError("Usuario o contraseña incorrectos.");
     } finally {
       setBusy(false);
     }

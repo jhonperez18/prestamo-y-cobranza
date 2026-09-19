@@ -2016,7 +2016,10 @@ export function Workspace({
       name: draft.name,
       login: draft.login,
       email: draft.email,
-      password: draft.password?.trim() ? draft.password.trim() : openUser.password,
+      // Contraseña del Listado = la del login. Vacío = conservar; si no había, demo 123.
+      password: draft.password?.trim()
+        ? draft.password.trim()
+        : openUser.password?.trim() || DEMO_USER_PASSWORD,
       phone: draft.phone,
       document: draft.document || undefined,
       roleRef: draft.roleRef,

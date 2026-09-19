@@ -214,7 +214,7 @@ export function EditUserForm({ user, collector, roles = ASSIGNABLE_ROLES, onCanc
                         name="password"
                         type="password"
                         autoComplete="new-password"
-                        placeholder="Dejar en blanco para mantener la actual"
+                        placeholder="Vacío = se mantiene (demo: 123)"
                       />
                     </div>
                   </>
@@ -238,7 +238,7 @@ export function EditUserForm({ user, collector, roles = ASSIGNABLE_ROLES, onCanc
                       name="password"
                       type="password"
                       autoComplete="new-password"
-                      placeholder="Dejar en blanco para mantener la actual"
+                      placeholder="Vacío = se mantiene (demo: 123)"
                     />
                   </>
                 )}

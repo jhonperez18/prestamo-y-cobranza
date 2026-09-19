@@ -68,7 +68,11 @@ export function validateLogin(
 ): AppSession | null {
   const login = username.trim().toLowerCase();
   const pwd = password.trim();
-  const user = users.find((row) => row.login.toLowerCase() === login);
+  const user = users.find((row) => {
+    const rowLogin = row.login.toLowerCase();
+    const rowEmail = (row.email || "").trim().toLowerCase();
+    return rowLogin === login || (rowEmail !== "" && rowEmail === login);
+  });
 
   if (!user || !user.active) return null;
 

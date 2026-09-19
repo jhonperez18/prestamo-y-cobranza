@@ -256,15 +256,11 @@ export async function deleteUserFromSupabase(ref: string) {
   return writeStorageCatalog(current.users.filter((row) => row.ref !== clean));
 }
 
+/**
+ * Lectura del catálogo: Storage es la raíz (mismo archivo que escribe Guardar).
+ * SQL app_users es espejo opcional; si mandara primero, rebobinaba login/clave del Listado.
+ */
 export async function fetchUsersFromSupabase() {
-  const sql = await trySqlFetch();
-  if (sql.used && sql.ok && sql.rows.length > 0) {
-    return { ok: true as const, rows: sql.rows };
-  }
-  if (sql.used && !sql.ok) {
-    // cae a Storage
-  }
-
   const storage = await readStorageCatalog();
   if (storage.skipped) {
     return {
@@ -277,9 +273,24 @@ export async function fetchUsersFromSupabase() {
   if (!storage.ok) {
     return { ok: false as const, error: storage.error || "fetch_failed", rows: [] as UserMirrorRow[] };
   }
-  const rows = storage.users
-    .map(userRowToMirror)
-    .filter((row): row is UserMirrorRow => Boolean(row));
+
+  const byRef = new Map<string, UserMirrorRow>();
+  for (const row of storage.users) {
+    const mapped = userRowToMirror(row);
+    if (mapped) byRef.set(mapped.ref, mapped);
+  }
+
+  // Completa refs que solo existan en SQL (migración), sin pisar Storage.
+  const sql = await trySqlFetch();
+  if (sql.used && sql.ok) {
+    for (const row of sql.rows) {
+      const ref = (row.ref || "").trim();
+      if (!ref || byRef.has(ref)) continue;
+      byRef.set(ref, row);
+    }
+  }
+
+  const rows = Array.from(byRef.values()).sort((a, b) => a.ref.localeCompare(b.ref, "es"));
   return { ok: true as const, rows };
 }
 
@@ -468,7 +479,13 @@ export async function pullRemoteUsersIntoDemo(): Promise<PullUsersResult> {
       if (!row?.ref || pendingDeletes.has(row.ref)) continue;
       // Edición local pendiente manda sobre remoto viejo.
       const pending = pendingByRef.get(row.ref);
-      byRef.set(row.ref, pending ?? row);
+      let chosen = pending ?? row;
+      // Remoto sin clave no debe borrar la del Listado (login quedaría roto).
+      const localRow = localByRef.get(row.ref);
+      if (!chosen.password?.trim() && localRow?.password?.trim()) {
+        chosen = { ...chosen, password: localRow.password };
+      }
+      byRef.set(row.ref, chosen);
     }
     for (const [ref, row] of pendingByRef) {
       if (pendingDeletes.has(ref)) continue;
