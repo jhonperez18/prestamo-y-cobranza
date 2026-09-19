@@ -23,6 +23,7 @@ import { NewUserForm, type UserDraft } from "@/components/NewUserForm";
 import { UserList } from "@/components/UserList";
 import { DailyCollectionsView } from "@/components/DailyCollectionsView";
 import {
+  assignClientToRouteOnLoan,
   buildQuickLoan,
   buildStreetClient,
   insertStreetClient,
@@ -112,7 +113,7 @@ import { loanStatusPill } from "@/lib/loan-status";
 import { chargeLabel, displayToIso, isoToDisplay, normalizeLoan, syncAllLoans, syncLoan } from "@/lib/loan-preview";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
 import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
-import { queueClientMirror, queueLoanMirror, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
+import { queueClientMirror, queueLoanMirror, queueLoansMirror, flushCatalogMirrorQueues } from "@/lib/supabase/catalog-mirror";
 import {
   commitUsersCatalog,
 } from "@/lib/users-catalog";
@@ -1727,38 +1728,23 @@ export function Workspace({
     name: string;
     lastName?: string;
     phone?: string;
-    routeOrder: number;
-    routeName: string;
-    routeRef: string;
   }) {
     const row = buildStreetClient(
       {
         name: draft.name,
         lastName: draft.lastName,
         phone: draft.phone,
-        routeOrder: draft.routeOrder,
-        routeName: draft.routeName,
         createdBy: sessionUser?.name ?? "Supervisor",
       },
       clients,
     );
     const nextClients = insertStreetClient(clients, row);
     setClients(nextClients);
-    const planilla = syncPermanentRoutePlanilla(
-      todayIso(),
-      routes,
-      nextClients,
-      loans,
-      collectors,
-      dailyAssignments,
-      payments,
-    );
-    setDailyAssignments(planilla.assignments);
-    setRoutes(planilla.routes);
     queueClientMirror(row);
-    onToast(
-      `Cliente ${row.name} en ruta ${draft.routeName}, posición ${row.routeOrder}: listo para prestar.`,
-    );
+    onToast(`Cliente ${row.name} guardado en el catálogo.`);
+    void flushCatalogMirrorQueues().catch(() => {
+      /* offline: queda en cola local */
+    });
   }
 
   function updateClientFromMobile(draft: {
@@ -1844,20 +1830,14 @@ export function Workspace({
       return;
     }
     const nextLoans = [loan, ...loans];
-    const targetRoute = (draft.routeName ?? client.route).trim() || client.route;
-    const nextClients = clients.map((entry) =>
-      entry.ref === client.ref
-        ? {
-            ...entry,
-            awaitingLoan: false,
-            status: CLIENT_STATUS_ACTIVE,
-            kind: clientStatusKind(CLIENT_STATUS_ACTIVE),
-            route: targetRoute,
-            total: entry.total + (loan.total ?? 0),
-            pending: entry.pending + (loan.total ?? 0),
-          }
-        : entry,
-    );
+    const targetRoute = (draft.routeName ?? client.route).trim();
+    const nextClients = assignClientToRouteOnLoan(clients, client, targetRoute, {
+      awaitingLoan: false,
+      status: CLIENT_STATUS_ACTIVE,
+      kind: clientStatusKind(CLIENT_STATUS_ACTIVE),
+      total: client.total + (loan.total ?? 0),
+      pending: client.pending + (loan.total ?? 0),
+    });
     setLoans(nextLoans);
     setClients(nextClients);
     const planilla = syncPermanentRoutePlanilla(

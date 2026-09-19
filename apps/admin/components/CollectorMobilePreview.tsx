@@ -50,9 +50,6 @@ type Props = {
     name: string;
     lastName?: string;
     phone?: string;
-    routeOrder: number;
-    routeName: string;
-    routeRef: string;
   }) => void;
   onCreateQuickLoan?: (draft: import("@/lib/street-client-loan").QuickLoanDraft) => void;
   onUpdateClient?: (draft: {

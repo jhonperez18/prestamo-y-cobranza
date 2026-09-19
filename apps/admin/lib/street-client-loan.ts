@@ -1,5 +1,5 @@
 import { CLIENT_STATUS_ACTIVE, clientStatusKind } from "@/lib/client-review";
-import { nextRouteOrder, placeClientOnRoute } from "@/lib/client-route-order";
+import { placeClientOnRoute, nextRouteOrder } from "@/lib/client-route-order";
 import { todayIso } from "@/lib/daily-dispatch";
 import {
   LOAN_TERM_OPTIONS,
@@ -19,13 +19,14 @@ import {
 } from "@/lib/mock-data";
 import { markLoanFundedByBanco, markLoanFundedByEfectivo, markLoanFundedByNequi } from "@/lib/nequi-pool";
 
+/**
+ * Alta de cliente (calle / supervisor).
+ * Solo entra al catálogo sagrado. Ruta y posición se asignan al crear el préstamo.
+ */
 export type StreetClientDraft = {
   name: string;
   lastName?: string;
   phone?: string;
-  /** Posición en la lista de la ruta (1…N). */
-  routeOrder: number;
-  routeName: string;
   createdBy?: string;
 };
 
@@ -38,7 +39,7 @@ export type QuickLoanDraft = {
   rate?: number;
   frequency: PayFrequency;
   termMonths: LoanTermMonths;
-  /** Si el supervisor elige ruta, se asegura el cliente en esa ruta. */
+  /** Al prestar: el cliente queda en esta ruta (planilla). */
   routeName?: string;
   /** Origen del desembolso. Por defecto Nequi (supervisor/admin). */
   fundedBy?: "nequi" | "efectivo" | "banco";
@@ -46,16 +47,14 @@ export type QuickLoanDraft = {
 
 export const QUICK_INTEREST_PCT = [5, 10, 15, 20] as const;
 
+/** Cliente nuevo → catálogo, sin ruta. */
 export function buildStreetClient(
   draft: StreetClientDraft,
   clients: ClientRow[],
 ): ClientRow {
   const name = draft.name.trim();
   const lastName = (draft.lastName ?? "").trim();
-  const routeName = draft.routeName.trim();
   const ref = nextClientCode(clients);
-  const maxPos = nextRouteOrder(clients, routeName);
-  const order = Math.min(Math.max(1, Math.trunc(draft.routeOrder) || maxPos), maxPos);
   return {
     ref,
     alta: clientCreationDate(),
@@ -64,8 +63,8 @@ export function buildStreetClient(
     document: `S/${ref.replace(/\D/g, "") || "0"}`,
     city: "",
     barrio: "",
-    route: routeName,
-    routeOrder: order,
+    route: "",
+    routeOrder: 0,
     email: "",
     phone: (draft.phone ?? "").trim(),
     address: "",
@@ -80,8 +79,12 @@ export function buildStreetClient(
   };
 }
 
+/** Inserta en el catálogo (sin colocar en ruta). */
 export function insertStreetClient(clients: ClientRow[], row: ClientRow) {
-  return placeClientOnRoute(clients, row, row.route, row.routeOrder);
+  if (row.route.trim()) {
+    return placeClientOnRoute(clients, row, row.route, row.routeOrder);
+  }
+  return [...clients, { ...row, route: "", routeOrder: 0 }];
 }
 
 export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: LoanRow[]): LoanRow | null {
@@ -149,7 +152,11 @@ export function clientHasOpenLoan(clientRef: string, loans: LoanRow[]) {
   );
 }
 
-/** Clientes de la ruta elegibles para un préstamo nuevo. */
+/**
+ * Elegibles para préstamo nuevo en una ruta:
+ * - ya están en esa ruta, o
+ * - están en catálogo sin ruta (alta pendiente de prestar).
+ */
 export function clientsEligibleForNewLoan(
   clients: ClientRow[],
   loans: LoanRow[],
@@ -158,18 +165,45 @@ export function clientsEligibleForNewLoan(
   const route = (routeName ?? "").trim();
   return clients
     .filter((row) => {
-      if (route && row.route !== route) return false;
       if (row.status === "Pte. revisión") return false;
-      // awaitingLoan = alta en calle / paquete listo para prestar (INCLUIR).
-      // Con crédito abierto no entra aquí (renovación es otro flujo).
+      if (route) {
+        const onRoute = row.route === route;
+        const catalogOnly = !String(row.route || "").trim();
+        if (!onRoute && !catalogOnly) return false;
+      }
       return !clientHasOpenLoan(row.ref, loans);
     })
     .slice()
     .sort((a, b) => {
+      const aUnassigned = !String(a.route || "").trim() ? 0 : 1;
+      const bUnassigned = !String(b.route || "").trim() ? 0 : 1;
+      if (aUnassigned !== bUnassigned) return aUnassigned - bUnassigned;
       const orderCmp = (a.routeOrder || 0) - (b.routeOrder || 0);
       if (orderCmp !== 0) return orderCmp;
       const nameA = `${a.name} ${a.lastName}`.trim().toLowerCase();
       const nameB = `${b.name} ${b.lastName}`.trim().toLowerCase();
       return nameA.localeCompare(nameB, "es") || a.ref.localeCompare(b.ref);
     });
+}
+
+/** Tras prestar: coloca al cliente en la ruta (posición al final si venía del catálogo). */
+export function assignClientToRouteOnLoan(
+  clients: ClientRow[],
+  client: ClientRow,
+  routeName: string,
+  patch: Partial<ClientRow>,
+): ClientRow[] {
+  const route = routeName.trim();
+  const merged: ClientRow = { ...client, ...patch };
+  if (!route) {
+    return clients.map((row) => (row.ref === client.ref ? merged : row));
+  }
+  const order =
+    client.route === route && client.routeOrder > 0
+      ? client.routeOrder
+      : nextRouteOrder(
+          clients.filter((row) => row.ref !== client.ref),
+          route,
+        );
+  return placeClientOnRoute(clients, merged, route, order);
 }

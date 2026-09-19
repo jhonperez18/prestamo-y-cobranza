@@ -100,9 +100,6 @@ type Props = {
     name: string;
     lastName?: string;
     phone?: string;
-    routeOrder: number;
-    routeName: string;
-    routeRef: string;
   }) => void;
   onCreateQuickLoan?: (draft: QuickLoanDraft) => void;
   /** Editar ficha de cliente desde CLIENTES (raíz + cola nube). */
@@ -1461,32 +1458,20 @@ export function SupervisorMobileApp({
     null;
 
   function submitStreetClient() {
-    const route = liquidaciones.find((row) => row.routeRef === nuevoRouteRef);
-    if (!route || !onCreateStreetClient) return;
+    if (!onCreateStreetClient) return;
     const name = nuevoName.trim();
     if (!name) {
       setNuevoMsg("Escriba el nombre del cliente.");
       return;
     }
-    const nextPos = nextRouteOrder(clients, route.routeName);
-    const pos = Math.min(
-      Math.max(1, Math.trunc(Number(String(nuevoPos).replace(/\D/g, ""))) || nextPos),
-      nextPos,
-    );
     onCreateStreetClient({
       name,
       phone: nuevoPhone.trim() || undefined,
-      routeOrder: pos,
-      routeName: route.routeName,
-      routeRef: route.routeRef,
     });
     setNuevoName("");
     setNuevoPhone("");
     setNuevoPos("");
-    setNuevoMsg(
-      `Listo: ${name} en posición ${pos} de la ruta de ${route.collectorName}.`,
-    );
-    setNuevoRouteRef(null);
+    setNuevoMsg(`Listo: ${name} quedó en el catálogo de clientes.`);
     setNuevoMode("menu");
   }
 
@@ -2326,92 +2311,39 @@ export function SupervisorMobileApp({
               </div>
               {!onCreateStreetClient ? (
                 <p className="ficha-empty">No hay permiso para crear clientes desde esta vista.</p>
-              ) : !nuevoRouteRef ? (
-                <>
-                  {nuevoMsg ? <p className="supervisor-nuevo-msg">{nuevoMsg}</p> : null}
-                  {liquidaciones.length === 0 ? (
-                    <p className="ficha-empty">No hay rutas con cobrador.</p>
-                  ) : (
-                    <div className="supervisor-route-boards">
-                      {liquidaciones.map((row, index) => (
-                        <button
-                          key={row.routeRef}
-                          type="button"
-                          className={`supervisor-route-board accent-${index % 2}${row.closed ? " is-closed" : ""}`}
-                          onClick={() => {
-                            setNuevoRouteRef(row.routeRef);
-                            setNuevoPos(String(nextRouteOrder(clients, row.routeName)));
-                            setNuevoMsg("");
-                          }}
-                        >
-                          <div className="supervisor-caja-row">
-                            <div className="supervisor-route-board-id">
-                              <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
-                              <strong>{row.collectorName}</strong>
-                            </div>
-                            <span className="supervisor-nuevo-go">Elegir</span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
               ) : (
-                <>
-                  <div className="supervisor-mobile-detail-head">
-                    <h3>
-                      Ruta {nuevoRoute?.routeName} · {nuevoRoute?.collectorName}
-                    </h3>
-                    <button
-                      type="button"
-                      className="collector-mobile-pay-link"
-                      onClick={() => setNuevoRouteRef(null)}
-                    >
-                      cambiar
+                <form
+                  className="supervisor-nuevo-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    submitStreetClient();
+                  }}
+                >
+                  <label className="quick-loan-field">
+                    <span>Nombre</span>
+                    <input
+                      value={nuevoName}
+                      onChange={(event) => setNuevoName(event.target.value)}
+                      placeholder="Nombre del cliente"
+                      autoFocus
+                    />
+                  </label>
+                  <label className="quick-loan-field">
+                    <span>Teléfono</span>
+                    <input
+                      inputMode="tel"
+                      value={nuevoPhone}
+                      onChange={(event) => setNuevoPhone(event.target.value)}
+                      placeholder="Celular"
+                    />
+                  </label>
+                  {nuevoMsg ? <p className="supervisor-nuevo-msg is-warn">{nuevoMsg}</p> : null}
+                  <div className="quick-loan-actions">
+                    <button type="submit" className="btn">
+                      Crear cliente
                     </button>
                   </div>
-                  <form
-                    className="supervisor-nuevo-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      submitStreetClient();
-                    }}
-                  >
-                    <label className="quick-loan-field">
-                      <span>Nombre</span>
-                      <input
-                        value={nuevoName}
-                        onChange={(event) => setNuevoName(event.target.value)}
-                        placeholder="Nombre del cliente"
-                        autoFocus
-                      />
-                    </label>
-                    <label className="quick-loan-field">
-                      <span>Teléfono</span>
-                      <input
-                        inputMode="tel"
-                        value={nuevoPhone}
-                        onChange={(event) => setNuevoPhone(event.target.value)}
-                        placeholder="Celular"
-                      />
-                    </label>
-                    <label className="quick-loan-field">
-                      <span>Posición en la lista</span>
-                      <input
-                        inputMode="numeric"
-                        value={nuevoPos}
-                        onChange={(event) => setNuevoPos(event.target.value)}
-                        placeholder="Ej. 1"
-                      />
-                    </label>
-                    {nuevoMsg ? <p className="supervisor-nuevo-msg is-warn">{nuevoMsg}</p> : null}
-                    <div className="quick-loan-actions">
-                      <button type="submit" className="btn">
-                        Crear y enviar a ruta
-                      </button>
-                    </div>
-                  </form>
-                </>
+                </form>
               )}
             </>
           ) : (
