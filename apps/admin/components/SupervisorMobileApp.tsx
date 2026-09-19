@@ -2825,8 +2825,8 @@ export function SupervisorMobileApp({
                     type="button"
                     className={
                       clientesModifyMode
-                        ? "supervisor-clientes-modify-btn on"
-                        : "supervisor-clientes-modify-btn"
+                        ? "supervisor-planilla-route-btn supervisor-clientes-modify-btn on"
+                        : "supervisor-planilla-route-btn supervisor-clientes-modify-btn"
                     }
                     disabled={!onUpdateClient}
                     onClick={() => {
@@ -2841,7 +2841,7 @@ export function SupervisorMobileApp({
                       setEditMsg("");
                     }}
                   >
-                    {clientesModifyMode ? "CANCELAR" : "MODIFICAR"}
+                    <b>{clientesModifyMode ? "CANCELAR" : "MODIFICAR"}</b>
                   </button>
                 </div>
                 {planillaRoutePins.length > 0 ? (
