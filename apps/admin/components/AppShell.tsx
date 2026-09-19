@@ -168,9 +168,22 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
 
   useEffect(() => {
     if (!phoneLayout) return;
-    const root = workspaceRef.current;
-    if (!root) return;
-    return bindPhoneSheetPan(root);
+    let unbind: (() => void) | undefined;
+    let cancelled = false;
+    const tryBind = () => {
+      if (cancelled) return;
+      const root = workspaceRef.current;
+      if (!root) {
+        requestAnimationFrame(tryBind);
+        return;
+      }
+      unbind = bindPhoneSheetPan(root);
+    };
+    tryBind();
+    return () => {
+      cancelled = true;
+      unbind?.();
+    };
   }, [phoneLayout, moduleId, viewId]);
 
   useEffect(() => {
@@ -475,7 +488,7 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
         <main className="workspace" ref={workspaceRef}>
           {phoneLayout && !phonePreview ? (
             <p className="phone-sheet-hint">
-              Deslizá de lado para ver columnas; arriba/abajo para bajar la lista. El gesto se bloquea en un eje.
+              En la hoja: deslizá de lado o arriba/abajo. El gesto se queda en un eje (no se tuerce).
             </p>
           ) : null}
           <Workspace

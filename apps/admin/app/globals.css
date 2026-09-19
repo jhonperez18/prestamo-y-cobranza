@@ -5557,7 +5557,8 @@
       min-height: 0;
       max-width: none;
       padding: 12px 12px 40px;
-      overflow-x: auto;
+      /* Solo vertical: el pan lateral vive en la hoja (.table-wrap), no aquí. */
+      overflow-x: hidden;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
@@ -5710,8 +5711,8 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     /*
-     * Hojas en celular: pan horizontal de la hoja completa (sin columnas fijas).
-     * El eje del gesto lo fija phone-sheet-pan.ts (lado ≠ abajo).
+     * Hojas en celular: viewport propio (planilla).
+     * X e Y se mueven dentro de la hoja; el workspace no pelea el gesto.
      */
     .shell.is-phone-layout .table-wrap,
     .shell.is-phone-layout .bank-table-wrap,
@@ -5719,10 +5720,12 @@
     .shell.is-phone-layout .panel > .table-wrap,
     .shell.is-phone-layout .panel-surface {
       margin-inline: -4px;
+      max-height: min(72dvh, calc(100dvh - 11rem));
       overflow-x: auto;
-      overflow-y: hidden;
+      overflow-y: auto;
       -webkit-overflow-scrolling: touch;
-      overscroll-behavior-x: contain;
+      overscroll-behavior: contain;
+      touch-action: none;
       scrollbar-width: thin;
       scrollbar-color: #9bb0a6 transparent;
       border-radius: 10px;
@@ -5732,9 +5735,9 @@
         var(--panel-table-bg, #fff);
       background-attachment: local, local, scroll;
     }
-    html.phone-sheet-pan-x,
-    html.phone-sheet-pan-x body {
-      overflow: hidden !important;
+    .shell.is-phone-layout .table-wrap.is-sheet-panning,
+    .shell.is-phone-layout .bank-table-wrap.is-sheet-panning,
+    .shell.is-phone-layout .route-clients-table-wrap.is-sheet-panning {
       overscroll-behavior: none;
     }
     .shell.is-phone-layout .table-wrap::-webkit-scrollbar,
@@ -12199,9 +12202,11 @@
     .shell.is-phone-layout .panel > .sheet,
     .shell.is-phone-layout .sheet {
       overflow-x: auto !important;
-      overflow-y: hidden !important;
+      overflow-y: auto !important;
+      max-height: min(72dvh, calc(100dvh - 11rem));
       -webkit-overflow-scrolling: touch;
-      overscroll-behavior-x: contain;
+      overscroll-behavior: contain;
+      touch-action: none;
       max-width: 100%;
     }
     .shell.is-phone-layout table.data,

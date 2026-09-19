@@ -1,14 +1,14 @@
 /**
- * En celular: bloquea el eje del gesto en hojas anchas (tablas).
- * Lado → solo scroll horizontal de la hoja (no arrastra la página).
- * Arriba/abajo → scroll vertical de la página / contenedor.
+ * Celular: una sola hoja con pan en un eje (tipo planilla).
+ * Lado → scrollLeft de la hoja. Abajo → scrollTop de la misma hoja.
+ * No deja que el workspace/página robe el gesto.
  */
 
 const SHEET_SEL =
   ".table-wrap, .bank-table-wrap, .route-clients-table-wrap, .panel-surface, .sheet";
 
-const LOCK_PX = 8;
-const X_BIAS = 1.15;
+const LOCK_PX = 6;
+const X_BIAS = 1.05;
 
 type Axis = "x" | "y";
 
@@ -19,7 +19,8 @@ type PanState = {
   lastX: number;
   lastY: number;
   axis: Axis | null;
-  scroller: HTMLElement | null;
+  canX: boolean;
+  canY: boolean;
 };
 
 function closestSheet(target: EventTarget | null): HTMLElement | null {
@@ -28,38 +29,22 @@ function closestSheet(target: EventTarget | null): HTMLElement | null {
   return wrap instanceof HTMLElement ? wrap : null;
 }
 
-function verticalScroller(from: HTMLElement): HTMLElement {
-  let node: HTMLElement | null = from.parentElement;
-  while (node && node !== document.body) {
-    const style = window.getComputedStyle(node);
-    const oy = style.overflowY;
-    if (
-      (oy === "auto" || oy === "scroll" || oy === "overlay") &&
-      node.scrollHeight > node.clientHeight + 2
-    ) {
-      return node;
-    }
-    node = node.parentElement;
-  }
-  const doc = document.scrollingElement;
-  return doc instanceof HTMLElement ? doc : document.documentElement;
-}
-
 export function bindPhoneSheetPan(root: HTMLElement): () => void {
   let state: PanState | null = null;
-
-  function clearLockClass() {
-    document.documentElement.classList.remove("phone-sheet-pan-x");
-  }
 
   function onStart(e: TouchEvent) {
     if (e.touches.length !== 1) {
       state = null;
-      clearLockClass();
       return;
     }
     const wrap = closestSheet(e.target);
-    if (!wrap || wrap.scrollWidth <= wrap.clientWidth + 2) {
+    if (!wrap) {
+      state = null;
+      return;
+    }
+    const canX = wrap.scrollWidth > wrap.clientWidth + 2;
+    const canY = wrap.scrollHeight > wrap.clientHeight + 2;
+    if (!canX && !canY) {
       state = null;
       return;
     }
@@ -71,9 +56,10 @@ export function bindPhoneSheetPan(root: HTMLElement): () => void {
       lastX: t.clientX,
       lastY: t.clientY,
       axis: null,
-      scroller: null,
+      canX,
+      canY,
     };
-    wrap.style.touchAction = "none";
+    wrap.classList.add("is-sheet-panning");
   }
 
   function onMove(e: TouchEvent) {
@@ -84,20 +70,21 @@ export function bindPhoneSheetPan(root: HTMLElement): () => void {
 
     if (!state.axis) {
       if (Math.abs(dx) < LOCK_PX && Math.abs(dy) < LOCK_PX) return;
-      state.axis = Math.abs(dx) > Math.abs(dy) * X_BIAS ? "x" : "y";
-      if (state.axis === "x") {
-        document.documentElement.classList.add("phone-sheet-pan-x");
-      } else {
-        state.scroller = verticalScroller(state.wrap);
-      }
+      const preferX = Math.abs(dx) > Math.abs(dy) * X_BIAS;
+      if (preferX && state.canX) state.axis = "x";
+      else if (!preferX && state.canY) state.axis = "y";
+      else if (state.canX && Math.abs(dx) >= Math.abs(dy)) state.axis = "x";
+      else if (state.canY) state.axis = "y";
+      else if (state.canX) state.axis = "x";
+      else return;
     }
 
     e.preventDefault();
 
     if (state.axis === "x") {
       state.wrap.scrollLeft -= t.clientX - state.lastX;
-    } else if (state.scroller) {
-      state.scroller.scrollTop -= t.clientY - state.lastY;
+    } else {
+      state.wrap.scrollTop -= t.clientY - state.lastY;
     }
 
     state.lastX = t.clientX;
@@ -105,9 +92,8 @@ export function bindPhoneSheetPan(root: HTMLElement): () => void {
   }
 
   function onEnd() {
-    if (state?.wrap) state.wrap.style.touchAction = "";
+    if (state?.wrap) state.wrap.classList.remove("is-sheet-panning");
     state = null;
-    clearLockClass();
   }
 
   root.addEventListener("touchstart", onStart, { passive: true, capture: true });
@@ -116,11 +102,10 @@ export function bindPhoneSheetPan(root: HTMLElement): () => void {
   root.addEventListener("touchcancel", onEnd, { passive: true, capture: true });
 
   return () => {
-    if (state?.wrap) state.wrap.style.touchAction = "";
+    if (state?.wrap) state.wrap.classList.remove("is-sheet-panning");
     root.removeEventListener("touchstart", onStart, true);
     root.removeEventListener("touchmove", onMove, true);
     root.removeEventListener("touchend", onEnd, true);
     root.removeEventListener("touchcancel", onEnd, true);
-    clearLockClass();
   };
 }
