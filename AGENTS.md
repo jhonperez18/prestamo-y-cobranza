@@ -20,6 +20,7 @@
 6. Login: `build` = SHA del commit
 
 Dinero operativo (demo): ver `docs/operational-money.md`.  
+Personas / Listado (demo): ver `docs/people-catalog.md`.  
 Camino a backend: `docs/demo-to-backend.md`.
 
 ## Prohibido

@@ -115,14 +115,20 @@ import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 import {
   commitUsersCatalog,
-  flushUsersCatalogToCloud,
-  removeUserFromCatalog,
-  upsertUserInCatalog,
 } from "@/lib/users-catalog";
+import {
+  commitConvertToCollector,
+  commitCreateUser,
+  commitDeleteUser,
+  commitToggleUserActive,
+  commitUpdateUser,
+  commitUserPermissions,
+  flushPeopleCatalogToCloud,
+  type PeopleCatalogState,
+} from "@/lib/commit-people-catalog";
 import {
   flushOpsMirrorQueues,
   queueAssignmentsMirror,
-  queueCollectorDeleteMirror,
   queueCollectorMirror,
   queueCollectorsMirror,
   queueDayCloseMirror,
@@ -1799,304 +1805,87 @@ export function Workspace({
     onToast(`Préstamo ${loan.ref} creado · cuota ${money(loan.installment ?? 0)}.`);
   }
 
-  function toggleCollectorActive() {
-    const collectorRef = openUser?.collectorRef;
-    if (!collectorRef) return;
-    const collector = collectors.find((row) => row.ref === collectorRef);
-    if (!collector) return;
-    const nextActive = !collector.active;
-    setCollectors((current) =>
-      current.map((row) => (row.ref === collectorRef ? { ...row, active: nextActive } : row)),
-    );
-    if (openUser) {
-      setUsers((current) =>
-        current.map((row) => (row.ref === openUser.ref ? { ...row, active: nextActive } : row)),
-      );
+  function peopleState(): PeopleCatalogState {
+    return { users, collectors, routes, payments };
+  }
+
+  function applyPeopleCommit(
+    result: ReturnType<typeof commitCreateUser>,
+    options?: { goListado?: boolean; openFicha?: boolean },
+  ) {
+    if (!result.ok) {
+      onToast(result.error);
+      return false;
     }
+    setUsers(result.state.users);
+    setCollectors(result.state.collectors);
+    setRoutes(result.state.routes);
+    setPayments(result.state.payments);
+    onToast(result.message);
+    if (options?.goListado) onGo("inicio", "listado");
+    if (options?.openFicha && result.focusUserRef) openUserFicha(result.focusUserRef);
+    void flushPeopleCatalogToCloud();
+    return true;
+  }
+
+  function toggleCollectorActive() {
+    if (!openUser) return;
+    const result = commitToggleUserActive(openUser.ref, peopleState());
+    if (!applyPeopleCommit(result)) return;
     setConfirmUserDelete(false);
-    onToast(nextActive ? "Cobrador activado." : "Cobrador desactivado.");
   }
 
   function deleteUser() {
     if (!openUser) return;
-    const guard = userDeleteGuard(openUser, routes, payments, activities, collectors);
-    if (!guard.canDelete) {
-      onToast(guard.reason ?? "No se puede eliminar.");
+    const result = commitDeleteUser(openUser.ref, peopleState(), activities);
+    if (!result.ok) {
+      onToast(result.error);
       setConfirmUserDelete(false);
       return;
     }
-    const deletedRef = openUser.ref;
-    const collectorRef = openUser.collectorRef;
-    const remaining = users.filter((row) => row.ref !== deletedRef);
-
-    setUsers(remaining);
-    removeUserFromCatalog(deletedRef);
-    if (collectorRef) {
-      queueCollectorDeleteMirror(collectorRef);
-      const nextCollectors = collectors.filter((row) => row.ref !== collectorRef);
-      const nextRoutes = routes.map((route) =>
-        route.collectorRef === collectorRef
-          ? { ...route, collectorRef: "", collector: "—" }
-          : route,
-      );
-      setCollectors(nextCollectors);
-      const synced = syncPermanentRoutePlanilla(
-        todayIso(),
-        nextRoutes,
-        clients,
-        loans,
-        nextCollectors,
-        dailyAssignments,
-        payments,
-      );
-      setRoutes(synced.routes);
-      setDailyAssignments(synced.assignments);
-    }
-    setOpenUserRef(remaining[0]?.ref ?? "");
+    const synced = syncPermanentRoutePlanilla(
+      todayIso(),
+      result.state.routes,
+      clients,
+      loans,
+      result.state.collectors,
+      dailyAssignments,
+      result.state.payments,
+    );
+    setUsers(result.state.users);
+    setCollectors(result.state.collectors);
+    setRoutes(synced.routes);
+    setDailyAssignments(synced.assignments);
+    setPayments(result.state.payments);
+    setOpenUserRef(result.state.users[0]?.ref ?? "");
     setConfirmUserDelete(false);
     onGo("inicio", "listado");
-    onToast("Usuario eliminado del listado.");
-    void (async () => {
-      await flushUsersCatalogToCloud();
-      await flushOpsMirrorQueues();
-    })();
+    onToast(result.message);
+    void flushPeopleCatalogToCloud();
   }
 
   function saveNewUser(draft: UserDraft) {
-    if (!draft.name || !draft.phone || !draft.email || !draft.login) return;
-    if (users.some((row) => row.login.toLowerCase() === draft.login.toLowerCase())) {
-      onToast("Ese usuario de acceso ya está en uso.");
-      return;
-    }
-    if (
-      users.some(
-        (row) => row.email?.toLowerCase() === draft.email.toLowerCase(),
-      )
-    ) {
-      onToast("Ese correo ya está registrado.");
-      return;
-    }
-    const role = roleByRef(draft.roleRef, ROLES);
-    if (!role) return;
-
-    const userRef = nextUserCode(users);
-    let collectorRef: string | undefined;
-
-    if (draft.roleRef === COLLECTOR_ROLE_REF) {
-      const cobRef = nextCollectorCode(collectors);
-      collectorRef = cobRef;
-      const collector: CollectorRow = {
-        ref: cobRef,
-        name: draft.name,
-        zone: COLLECTOR_UNASSIGNED_ZONE,
-        phone: draft.phone,
-        document: draft.document || undefined,
-        active: draft.active,
-        userRef,
-        login: draft.login,
-        mobileAccess: true,
-      };
-      setCollectors((current) => [...current, collector]);
-      queueCollectorMirror(collector);
-    }
-
-    const userRow: UserRow = {
-      ref: userRef,
-      login: draft.login,
-      email: draft.email,
-      password: draft.password || DEMO_USER_PASSWORD,
-      name: draft.name,
-      phone: draft.phone,
-      document: draft.document || undefined,
-      roleRef: draft.roleRef,
-      collectorRef,
-      channels: [...role.channels],
-      permissions: draft.permissions.length
-        ? [...draft.permissions]
-        : [...role.permissions],
-      active: draft.active,
-    };
-    setUsers((current) => [...current, userRow]);
-    upsertUserInCatalog(userRow);
-    onGo("inicio", "listado");
-    onToast(
-      collectorRef
-        ? `Usuario ${userRef} creado. Acceso móvil = cobrador ${collectorRef}.`
-        : `Usuario ${userRef} (${role.name}) creado.`,
-    );
-    void (async () => {
-      await flushUsersCatalogToCloud();
-      await flushOpsMirrorQueues();
-    })();
+    applyPeopleCommit(commitCreateUser(draft, peopleState()), { goListado: true });
   }
 
   function convertUserToCollector(userRef: string) {
-    const user = users.find((row) => row.ref === userRef);
-    if (!user) return;
-    if (user.roleRef === ADMIN_ROLE_REF) {
-      onToast("El administrador no se asigna como cobrador.");
-      return;
-    }
-    if (!user.active) {
-      onToast("Activa el usuario antes de asignarlo como cobrador.");
-      return;
-    }
-
-    const existing = collectorViewForUser(user, collectors);
-    if (existing) {
-      setUsers((current) =>
-        current.map((row) =>
-          row.ref === userRef
-            ? {
-                ...row,
-                roleRef: COLLECTOR_ROLE_REF,
-                collectorRef: existing.ref,
-                channels: row.channels.includes("mobile")
-                  ? row.channels
-                  : [...row.channels, "mobile"],
-              }
-            : row,
-        ),
-      );
-      onToast(`Cobrador ${existing.ref} vinculado a ${user.name}.`);
-      openUserFicha(userRef);
-      return;
-    }
-
-    const repaired = ensureCollectorsForUsers(
-      users.map((row) =>
-        row.ref === userRef
-          ? {
-              ...row,
-              roleRef: COLLECTOR_ROLE_REF,
-              channels: row.channels.includes("mobile")
-                ? row.channels
-                : [...row.channels, "mobile"],
-              permissions: row.permissions?.length
-                ? row.permissions
-                : [...(roleByRef(COLLECTOR_ROLE_REF, ROLES)?.permissions ?? [])],
-            }
-          : row,
-      ),
-      collectors,
-      { inventMissing: true },
-    );
-    setUsers(repaired.users);
-    setCollectors(repaired.collectors);
-    queueCollectorsMirror(repaired.collectors);
-    const linked = repaired.users.find((row) => row.ref === userRef);
-    onToast(
-      linked?.collectorRef
-        ? `${user.name} listo como cobrador ${linked.collectorRef}. Ya puede entrar al celular.`
-        : `${user.name} preparado como cobrador.`,
-    );
-    openUserFicha(userRef);
+    applyPeopleCommit(commitConvertToCollector(userRef, peopleState()), { openFicha: true });
   }
 
   function saveEditUser(draft: UserEditDraft) {
     if (!openUser) return;
-    if (users.some((row) => row.login.toLowerCase() === draft.login.toLowerCase() && row.ref !== openUser.ref)) {
-      onToast("Ese usuario de acceso ya está en uso.");
-      return;
-    }
-    if (
-      users.some(
-        (row) =>
-          row.email?.toLowerCase() === draft.email.toLowerCase() && row.ref !== openUser.ref,
-      )
-    ) {
-      onToast("Ese correo ya está registrado.");
-      return;
-    }
-    const role = roleByRef(draft.roleRef, ROLES);
-    if (!role) return;
-
-    const nextUser: UserRow = {
-      ...openUser,
-      name: draft.name,
-      login: draft.login,
-      email: draft.email,
-      // Contraseña del Listado = la del login. Vacío = conservar; si no había, demo 123.
-      password: draft.password?.trim()
-        ? draft.password.trim()
-        : openUser.password?.trim() || DEMO_USER_PASSWORD,
-      phone: draft.phone,
-      document: draft.document || undefined,
-      roleRef: draft.roleRef,
-      active: draft.active,
-      channels: [...role.channels],
-      permissions: draft.permissions.length
-        ? [...draft.permissions]
-        : [...role.permissions],
-    };
-
-    const nextUsers = users.map((row) => (row.ref === openUser.ref ? nextUser : row));
-    setUsers(nextUsers);
-    upsertUserInCatalog(nextUser);
-
-    if (openUser.collectorRef) {
-      const nextCollector = {
-        ref: openUser.collectorRef,
-        name: draft.name,
-        zone: collectors.find((c) => c.ref === openUser.collectorRef)?.zone ?? COLLECTOR_UNASSIGNED_ZONE,
-        phone: draft.phone,
-        document: draft.document || undefined,
-        active: draft.active,
-        userRef: openUser.ref,
-        login: draft.login,
-        mobileAccess: true as const,
-        notes: draft.collectorNotes || undefined,
-      };
-      setCollectors((current) =>
-        current.map((row) =>
-          row.ref === openUser.collectorRef ? { ...row, ...nextCollector } : row,
-        ),
-      );
-      syncCollectorLinks(openUser.collectorRef, draft.name);
-      queueCollectorMirror(nextCollector);
-    }
-
+    const result = commitUpdateUser(openUser.ref, draft, peopleState());
+    if (!applyPeopleCommit(result)) return;
     onGo("inicio", "ficha-usuario");
-    onToast("Usuario actualizado.");
-    void (async () => {
-      await flushUsersCatalogToCloud();
-      await flushOpsMirrorQueues();
-    })();
   }
 
   function toggleUserActive() {
     if (!openUser) return;
-    const nextActive = !openUser.active;
-    const nextUser = { ...openUser, active: nextActive };
-    setUsers((current) =>
-      current.map((row) => (row.ref === openUser.ref ? nextUser : row)),
-    );
-    upsertUserInCatalog(nextUser);
-    if (openUser.collectorRef) {
-      setCollectors((current) =>
-        current.map((row) =>
-          row.ref === openUser.collectorRef ? { ...row, active: nextActive } : row,
-        ),
-      );
-      const cob = collectors.find((c) => c.ref === openUser.collectorRef);
-      if (cob) queueCollectorMirror({ ...cob, active: nextActive, name: nextUser.name, login: nextUser.login });
-    }
-    onToast(nextActive ? "Usuario activado." : "Usuario desactivado.");
-    void (async () => {
-      await flushUsersCatalogToCloud();
-      await flushOpsMirrorQueues();
-    })();
+    applyPeopleCommit(commitToggleUserActive(openUser.ref, peopleState()));
   }
 
   function saveUserPermissions(userRef: string, permissions: string[]) {
-    const current = users.find((row) => row.ref === userRef);
-    if (!current) return;
-    const nextUser = { ...current, permissions: [...permissions] };
-    setUsers((rows) =>
-      rows.map((row) => (row.ref === userRef ? nextUser : row)),
-    );
-    upsertUserInCatalog(nextUser);
-    onToast("Permisos actualizados según la confianza asignada.");
+    applyPeopleCommit(commitUserPermissions(userRef, permissions, peopleState()));
   }
 
   function deleteLoan() {

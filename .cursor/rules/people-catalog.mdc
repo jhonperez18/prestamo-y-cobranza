@@ -1,0 +1,30 @@
+---
+description: Catálogo de personas — Listado manda; commit atómico como cobros PG-.
+alwaysApply: true
+---
+
+# Personas — raíces firmes
+
+## Fuente de verdad
+
+- **Usuarios `UserRow` (`USR-`)** del Listado son la raíz de acceso (login, clave, rol).
+- Cobrador, nombres en rutas/pagos y pantalla de login son **proyecciones**.
+- Detalle: `docs/people-catalog.md`.
+- Misma lógica que dinero: `docs/operational-money.md` / cobro `commitCollectorPayment`.
+
+## Obligatorio tras mutar personas
+
+1. Pasar por `commit-people-catalog` (crear / editar / borrar / activar / convertir / permisos).
+2. Encolar mirror + `flushPeopleCatalogToCloud`.
+3. Proyectar identidad a `COB-`, rutas y pagos denormalizados.
+4. Login lee el catálogo primero; no inventar otra lista.
+
+## Prohibido
+
+- `setUsers` / `setCollectors` sin commit + cola nube.
+- Auth o SQL que rebobinen el Listado.
+- Parches de UI que muestren un usuario distinto al catálogo.
+
+## Deploy
+
+Tras push a `main`: Ready → `cd apps/admin && npm run verify:prod`.
