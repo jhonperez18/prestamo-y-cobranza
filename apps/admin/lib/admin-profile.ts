@@ -1,6 +1,7 @@
 import type { AppSession } from "@/lib/auth";
 import { writeSession } from "@/lib/auth";
 import { DEMO_USERS_KEY, loadDemoUsers, writeDemoJson } from "@/lib/demo-persist";
+import { queueUserMirror } from "@/lib/supabase/user-mirror";
 import { normalizeUserPermissions, type UserRow } from "@/lib/mock-data";
 
 export const ADMIN_PROFILES_KEY = "nexo-admin-profiles";
@@ -72,6 +73,8 @@ export function saveAdminPassword(userRef: string, login: string, password: stri
     DEMO_USERS_KEY,
     next.map((row) => normalizeUserPermissions(row)),
   );
+  const updated = next[idx];
+  if (updated) queueUserMirror(normalizeUserPermissions(updated));
   return next;
 }
 
@@ -95,6 +98,8 @@ export function syncUserRowFromProfile(userRef: string, profile: AdminProfile) {
     DEMO_USERS_KEY,
     next.map((row) => normalizeUserPermissions(row)),
   );
+  const updated = next[idx];
+  if (updated) queueUserMirror(normalizeUserPermissions(updated));
   return next;
 }
 

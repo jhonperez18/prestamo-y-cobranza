@@ -57,7 +57,6 @@ const SYSTEM_LOGINS = new Set([
   "supervisor",
   "juan.rios",
   "lina.soto",
-  "diego.mora",
 ]);
 
 const SEED_CLIENT_REFS = new Set(CLIENTS.map((row) => row.ref));
@@ -208,6 +207,11 @@ export function writeDemoJson(key: string, value: unknown) {
         prevParsed.length > 0;
       // Clientes = catálogo sagrado: jamás vaciar desde React/state (ni en virgen).
       if (wipingArray && key === DEMO_CLIENTS_KEY) {
+        window.localStorage.setItem(backupKey(key), prev);
+        return;
+      }
+      // Usuarios = misma regla (listado/login compartidos vía SQL).
+      if (wipingArray && key === DEMO_USERS_KEY) {
         window.localStorage.setItem(backupKey(key), prev);
         return;
       }
@@ -680,6 +684,9 @@ export function loadDemoUsers(): UserRow[] {
   for (const seed of USERS) {
     const idx = merged.findIndex((row) => row.ref === seed.ref);
     if (idx === -1) {
+      // Solo reinyecta admin si alguien borró la cuenta de acceso al panel.
+      // El listado de usuarios es la verdad: no revivir cobradores/supervisor borrados.
+      if (seed.login.toLowerCase() !== "truqui") continue;
       const loginTaken = merged.some(
         (row) => row.login.toLowerCase() === seed.login.toLowerCase(),
       );
@@ -687,7 +694,6 @@ export function loadDemoUsers(): UserRow[] {
       continue;
     }
     if (SYSTEM_LOGINS.has(seed.login.toLowerCase())) {
-      const login = seed.login.toLowerCase();
       merged[idx] = {
         ...merged[idx],
         login: seed.login,
@@ -701,11 +707,8 @@ export function loadDemoUsers(): UserRow[] {
         permissions: seed.permissions?.length
           ? [...seed.permissions]
           : merged[idx].permissions,
-        // Supervisor siempre Carlos; truqui mantiene nombre guardado si existe.
-        name:
-          login === "supervisor"
-            ? seed.name
-            : merged[idx].name?.trim() || seed.name,
+        // Nombre editable en Listado — nunca pisar con el seed.
+        name: merged[idx].name?.trim() || seed.name,
       };
     }
   }

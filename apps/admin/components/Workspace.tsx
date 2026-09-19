@@ -114,6 +114,10 @@ import { projectOperationalMoney } from "@/lib/project-operational-money";
 import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 import {
+  queueUserDeleteMirror,
+  queueUserMirror,
+} from "@/lib/supabase/user-mirror";
+import {
   queueAssignmentsMirror,
   queueCollectorMirror,
   queueCollectorsMirror,
@@ -1813,6 +1817,7 @@ export function Workspace({
     const remaining = users.filter((row) => row.ref !== deletedRef);
 
     setUsers(remaining);
+    queueUserDeleteMirror(deletedRef);
     if (collectorRef) {
       const nextCollectors = collectors.filter((row) => row.ref !== collectorRef);
       const nextRoutes = routes.map((route) =>
@@ -1894,6 +1899,7 @@ export function Workspace({
       active: draft.active,
     };
     setUsers((current) => [...current, userRow]);
+    queueUserMirror(userRow);
     onGo("inicio", "listado");
     onToast(
       collectorRef
@@ -1982,27 +1988,26 @@ export function Workspace({
     const role = roleByRef(draft.roleRef, ROLES);
     if (!role) return;
 
+    const nextUser: UserRow = {
+      ...openUser,
+      name: draft.name,
+      login: draft.login,
+      email: draft.email,
+      password: draft.password?.trim() ? draft.password.trim() : openUser.password,
+      phone: draft.phone,
+      document: draft.document || undefined,
+      roleRef: draft.roleRef,
+      active: draft.active,
+      channels: [...role.channels],
+      permissions: draft.permissions.length
+        ? [...draft.permissions]
+        : [...role.permissions],
+    };
+
     setUsers((current) =>
-      current.map((row) =>
-        row.ref === openUser.ref
-          ? {
-              ...row,
-              name: draft.name,
-              login: draft.login,
-              email: draft.email,
-              password: draft.password?.trim() ? draft.password.trim() : row.password,
-              phone: draft.phone,
-              document: draft.document || undefined,
-              roleRef: draft.roleRef,
-              active: draft.active,
-              channels: [...role.channels],
-              permissions: draft.permissions.length
-                ? [...draft.permissions]
-                : [...role.permissions],
-            }
-          : row,
-      ),
+      current.map((row) => (row.ref === openUser.ref ? nextUser : row)),
     );
+    queueUserMirror(nextUser);
 
     if (openUser.collectorRef) {
       setCollectors((current) =>
@@ -2022,6 +2027,18 @@ export function Workspace({
         ),
       );
       syncCollectorLinks(openUser.collectorRef, draft.name);
+      queueCollectorMirror({
+        ref: openUser.collectorRef,
+        name: draft.name,
+        zone: collectors.find((c) => c.ref === openUser.collectorRef)?.zone ?? COLLECTOR_UNASSIGNED_ZONE,
+        phone: draft.phone,
+        document: draft.document || undefined,
+        active: draft.active,
+        userRef: openUser.ref,
+        login: draft.login,
+        mobileAccess: true,
+        notes: draft.collectorNotes || undefined,
+      });
     }
 
     onGo("inicio", "ficha-usuario");
@@ -2031,9 +2048,11 @@ export function Workspace({
   function toggleUserActive() {
     if (!openUser) return;
     const nextActive = !openUser.active;
+    const nextUser = { ...openUser, active: nextActive };
     setUsers((current) =>
-      current.map((row) => (row.ref === openUser.ref ? { ...row, active: nextActive } : row)),
+      current.map((row) => (row.ref === openUser.ref ? nextUser : row)),
     );
+    queueUserMirror(nextUser);
     if (openUser.collectorRef) {
       setCollectors((current) =>
         current.map((row) =>
@@ -2045,9 +2064,13 @@ export function Workspace({
   }
 
   function saveUserPermissions(userRef: string, permissions: string[]) {
-    setUsers((current) =>
-      current.map((row) => (row.ref === userRef ? { ...row, permissions: [...permissions] } : row)),
+    const current = users.find((row) => row.ref === userRef);
+    if (!current) return;
+    const nextUser = { ...current, permissions: [...permissions] };
+    setUsers((rows) =>
+      rows.map((row) => (row.ref === userRef ? nextUser : row)),
     );
+    queueUserMirror(nextUser);
     onToast("Permisos actualizados según la confianza asignada.");
   }
 

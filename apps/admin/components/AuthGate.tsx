@@ -24,6 +24,10 @@ import {
 } from "@/lib/pwa-channels";
 import { canAccessAdminPanel } from "@/lib/session-access";
 import { signOutSupabaseAuth } from "@/lib/supabase/auth-login";
+import {
+  flushUserMirrorQueues,
+  pullRemoteUsersIntoDemo,
+} from "@/lib/supabase/user-mirror";
 
 /**
  * Acceso:
@@ -47,30 +51,48 @@ export function AuthGate({ channel = "sistema" }: Props) {
   const [session, setSession] = useState<AppSession | null>(null);
   const [ready, setReady] = useState(false);
   const [isPhone, setIsPhone] = useState(false);
+  const [usersEpoch, setUsersEpoch] = useState(0);
 
   useEffect(() => {
-    // 1) Si el build de Vercel cambió (candado virgen), invalida paquete local.
-    // 2) Bootstrap vacío. Sin esto el celular sigue con localStorage viejo aunque el deploy sea nuevo.
-    try {
-      syncDemoStorageToServedBuild();
-      bootstrapProtectedDemoData();
-    } catch {
-      /* ignore */
+    let cancelled = false;
+    let mq: MediaQueryList | null = null;
+    const syncPhone = () => {
+      if (mq) setIsPhone(mq.matches);
+    };
+
+    async function boot() {
+      try {
+        syncDemoStorageToServedBuild();
+        bootstrapProtectedDemoData();
+      } catch {
+        /* ignore */
+      }
+
+      try {
+        await flushUserMirrorQueues();
+        await pullRemoteUsersIntoDemo();
+      } catch {
+        /* offline: sigue con caché local */
+      }
+
+      if (cancelled) return;
+
+      const users = loadDemoUsers();
+      writeDemoJson(DEMO_USERS_KEY, users);
+      clearSession();
+      setSession(null);
+      setUsersEpoch((n) => n + 1);
+      mq = window.matchMedia("(max-width: 900px)");
+      syncPhone();
+      mq.addEventListener("change", syncPhone);
+      setReady(true);
     }
 
-    const users = loadDemoUsers();
-    writeDemoJson(DEMO_USERS_KEY, users);
-    // Cada visita al link (Vercel/local) empieza en login: usuario + contraseña.
-    clearSession();
-    setSession(null);
-    const mq = window.matchMedia("(max-width: 900px)");
-    const sync = () => setIsPhone(mq.matches);
-    sync();
-    mq.addEventListener("change", sync);
-    setReady(true);
+    void boot();
 
     return () => {
-      mq.removeEventListener("change", sync);
+      cancelled = true;
+      mq?.removeEventListener("change", syncPhone);
     };
   }, [channel]);
 
@@ -88,6 +110,7 @@ export function AuthGate({ channel = "sistema" }: Props) {
   if (!session || !sessionAllowedOnChannel(session, channel)) {
     return (
       <LoginScreen
+        key={`login-${channel}-${usersEpoch}`}
         channel={channel}
         onSuccess={(next) => {
           if (!sessionAllowedOnChannel(next, channel)) return;

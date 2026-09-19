@@ -22,6 +22,10 @@ import {
   pullRemoteOpsIntoDemo,
   reconcileLocalOpsToRemote,
 } from "@/lib/supabase/ops-mirror";
+import {
+  flushUserMirrorQueues,
+  pullRemoteUsersIntoDemo,
+} from "@/lib/supabase/user-mirror";
 
 type Options = {
   /**
@@ -74,11 +78,13 @@ export function useOperationalDemoSync(
       }
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
+      await flushUserMirrorQueues();
       await reconcileLocalOpsToRemote();
       await Promise.all([
         pullRemotePaymentsIntoDemo(),
         pullRemoteCatalogIntoDemo(),
         pullRemoteOpsIntoDemo(),
+        pullRemoteUsersIntoDemo(),
       ]);
       const localClients = readDemoJson(DEMO_CLIENTS_KEY, [] as unknown[]);
       if (!Array.isArray(localClients) || localClients.length === 0) {

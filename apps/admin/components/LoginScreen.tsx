@@ -2,7 +2,14 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { validateLogin, type AppSession } from "@/lib/auth";
-import { DEMO_USER_PASSWORD } from "@/lib/mock-data";
+import {
+  COLLECTOR_ROLE_REF,
+  DEMO_USER_PASSWORD,
+  roleByRef,
+  ROLES,
+  SUPERVISOR_ROLE_REF,
+  type UserRow,
+} from "@/lib/mock-data";
 import { loadDemoUsers } from "@/lib/demo-persist";
 import { APP_BUILD } from "@/lib/app-build";
 import {
@@ -23,13 +30,46 @@ type Props = {
   channel?: PwaChannelId;
 };
 
-const DEMO_HINTS: Array<{ login: string; role: string; channel: PwaChannelId }> = [
-  { login: "truqui", role: "Admin · demo local", channel: "sistema" },
-  { login: "supervisor", role: "Carlos · solo app supervisor", channel: "supervisor" },
-  { login: "juan.rios", role: "Cobrador · solo app", channel: "cobrador" },
-  { login: "lina.soto", role: "Cobradora · solo app", channel: "cobrador" },
-  { login: "diego.mora", role: "Cobrador · solo app", channel: "cobrador" },
-];
+type LoginHint = {
+  login: string;
+  role: string;
+  channel: PwaChannelId;
+};
+
+function channelForUser(user: UserRow): PwaChannelId {
+  if (user.roleRef === SUPERVISOR_ROLE_REF) return "supervisor";
+  if (user.roleRef === COLLECTOR_ROLE_REF || user.collectorRef) return "cobrador";
+  return "sistema";
+}
+
+function hintLabel(user: UserRow): string {
+  const roleName = roleByRef(user.roleRef, ROLES)?.name ?? "Usuario";
+  const channel = channelForUser(user);
+  if (channel === "supervisor") return `${user.name} · solo app supervisor`;
+  if (channel === "cobrador") {
+    const femenino = /a$/i.test(user.name.trim().split(/\s+/)[0] ?? "");
+    return `${user.name} · ${femenino ? "Cobradora" : "Cobrador"} · solo app`;
+  }
+  return `${user.name} · ${roleName}`;
+}
+
+/** Misma fuente que Listado de usuarios (activos). */
+function loginHintsFromUsers(users: UserRow[]): LoginHint[] {
+  return users
+    .filter((row) => row.active !== false)
+    .map((row) => ({
+      login: row.login,
+      role: hintLabel(row),
+      channel: channelForUser(row),
+    }))
+    .sort((a, b) => {
+      const order = (channel: PwaChannelId) =>
+        channel === "sistema" ? 0 : channel === "supervisor" ? 1 : 2;
+      const byChannel = order(a.channel) - order(b.channel);
+      if (byChannel !== 0) return byChannel;
+      return a.login.localeCompare(b.login, "es");
+    });
+}
 
 function channelRejectMessage(channel: PwaChannelId) {
   if (channel === "supervisor") {
@@ -49,10 +89,9 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
   const passwordRef = useRef<HTMLInputElement>(null);
   const supabaseReady = getSupabasePublicEnv().configured;
   const channelMeta = PWA_CHANNELS[channel];
+  const allHints = loginHintsFromUsers(loadDemoUsers());
   const hints =
-    channel === "sistema"
-      ? DEMO_HINTS
-      : DEMO_HINTS.filter((entry) => entry.channel === channel);
+    channel === "sistema" ? allHints : allHints.filter((entry) => entry.channel === channel);
 
   useEffect(() => {
     passwordRef.current?.focus();

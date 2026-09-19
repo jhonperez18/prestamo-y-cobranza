@@ -310,7 +310,7 @@ export const ASSIGNABLE_ROLES = ROLES.filter(
 export const COLLECTORS: CollectorRow[] = [
   {
     ref: "COB-0",
-    name: "Juan Ríos",
+    name: "Cristian",
     zone: COLLECTOR_UNASSIGNED_ZONE,
     phone: "310 100 2201",
     document: "80.111.001",
@@ -330,17 +330,6 @@ export const COLLECTORS: CollectorRow[] = [
     login: "lina.soto",
     mobileAccess: true,
   },
-  {
-    ref: "COB-2",
-    name: "Diego Mora",
-    zone: COLLECTOR_UNASSIGNED_ZONE,
-    phone: "312 300 4403",
-    document: "79.333.003",
-    active: true,
-    userRef: "USR-2",
-    login: "diego.mora",
-    mobileAccess: true,
-  },
 ];
 
 const COLLECTOR_DEFAULT_PERMS =
@@ -356,7 +345,7 @@ export const USERS: UserRow[] = [
     login: "juan.rios",
     email: "juan.rios@nexo.com",
     password: DEMO_USER_PASSWORD,
-    name: "Juan Ríos",
+    name: "Cristian",
     phone: "310 100 2201",
     document: "80.111.001",
     roleRef: COLLECTOR_ROLE_REF,
@@ -383,21 +372,6 @@ export const USERS: UserRow[] = [
     ),
     active: true,
     lastAccess: "27/08 · 08:40",
-  },
-  {
-    ref: "USR-2",
-    login: "diego.mora",
-    email: "diego.mora@nexo.com",
-    password: DEMO_USER_PASSWORD,
-    name: "Diego Mora",
-    phone: "312 300 4403",
-    document: "79.333.003",
-    roleRef: COLLECTOR_ROLE_REF,
-    collectorRef: "COB-2",
-    channels: ["mobile"],
-    permissions: [...COLLECTOR_DEFAULT_PERMS],
-    active: true,
-    lastAccess: "27/08 · 07:50",
   },
   {
     ref: "USR-3",
