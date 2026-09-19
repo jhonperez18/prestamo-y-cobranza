@@ -470,14 +470,14 @@ function ClientesTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
+          {rows.map((row, index) => {
             return (
               <tr
                 key={row.ref}
                 className={onOpen ? "is-clickable" : undefined}
                 onClick={onOpen ? () => onOpen(row.ref) : undefined}
               >
-                <td className="is-ruta">{row.routeOrder > 0 ? row.routeOrder : "—"}</td>
+                <td className="is-ruta">{index + 1}</td>
                 <td className="is-nombre" title={row.name}>
                   {row.name}
                 </td>
@@ -2388,35 +2388,19 @@ export function SupervisorMobileApp({
                       autoFocus
                     />
                   </label>
-                  {eligibleLoanClients.length === 0 ? (
+                  {eligibleLoanClientRows.length === 0 ? (
                     <p className="ficha-empty">
                       No hay clientes disponibles en esta ruta
                       {nuevoClientSearch.trim() ? " con ese filtro" : ""}.
                     </p>
                   ) : (
-                    <ul className="supervisor-nuevo-client-list">
-                      {eligibleLoanClients.map((row) => (
-                        <li key={row.ref}>
-                          <button
-                            type="button"
-                            className="supervisor-nuevo-client-btn"
-                            onClick={() => {
-                              suppressGhostClick();
-                              setNuevoLoanClientRef(row.ref);
-                            }}
-                          >
-                            <strong>{`${row.name} ${row.lastName}`.trim()}</strong>
-                            <span className="supervisor-nuevo-client-sep" aria-hidden>
-                              ·
-                            </span>
-                            <span>
-                              {row.document || row.ref}
-                              {row.phone ? ` · ${row.phone}` : ""}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
+                    <ClientesTable
+                      rows={eligibleLoanClientRows}
+                      onOpen={(ref) => {
+                        suppressGhostClick();
+                        setNuevoLoanClientRef(ref);
+                      }}
+                    />
                   )}
                 </>
               )}

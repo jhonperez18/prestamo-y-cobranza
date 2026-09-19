@@ -4014,22 +4014,22 @@
     }
     .supervisor-liq-table th,
     .supervisor-liq-table td {
-      padding: var(--table-row-pad-y) 4px;
-      line-height: var(--table-row-line);
+      padding: 2px 4px;
+      line-height: 1.15;
       font-size: 11px;
       border-bottom: 1px solid #e2ece7;
       vertical-align: middle;
     }
     .supervisor-liq-table th {
-      background: var(--table-head-bg, #dceeee);
-      color: #14201b;
+      background: var(--table-head-bg, #426650);
+      color: #fff;
       font-weight: 700;
       font-size: 10px;
       text-transform: uppercase;
       letter-spacing: 0.02em;
       text-align: left;
-      padding-top: 5px;
-      padding-bottom: 5px;
+      padding-top: 4px;
+      padding-bottom: 4px;
     }
     .supervisor-liq-table tbody tr:nth-child(odd) {
       background: var(--row-a);
@@ -4062,7 +4062,7 @@
       white-space: nowrap;
     }
     .supervisor-liq-table th.is-num {
-      color: #14201b;
+      color: #fff;
       font-weight: 700;
     }
     .supervisor-liq-link {
@@ -4154,11 +4154,12 @@
       font-variant-numeric: tabular-nums;
     }
     .supervisor-clientes-table th.is-tel {
-      color: #14201b;
+      color: #fff;
       font-weight: 700;
     }
     .supervisor-clientes-table td.is-tel {
       color: #3d5249;
+      text-align: center;
     }
     .supervisor-clientes-table .is-cuotas {
       width: 14%;
@@ -4168,6 +4169,7 @@
       white-space: nowrap;
     }
     .supervisor-clientes-table th.is-cuotas {
+      color: #fff;
       font-size: 9px;
       letter-spacing: 0.02em;
     }
