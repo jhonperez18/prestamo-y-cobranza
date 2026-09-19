@@ -116,16 +116,25 @@ export function useOperationalDemoSync(
   useEffect(() => {
     function onStorage(event: StorageEvent) {
       if (!event.key || !event.key.startsWith(OPERATIONAL_DEMO_STORAGE_PREFIX)) return;
-      // Solo otra pestaña: no re-pull completo (evita espabilar).
+      // Otra pestaña: rehidratar sin pull remoto (evita rebobinar).
       commitHydrate();
     }
     function onVisible() {
       if (document.visibilityState !== "visible") return;
       const now = Date.now();
-      // Máximo un pull por visibilidad cada 15s.
       if (now - lastVisiblePullAtRef.current < 15_000) return;
       lastVisiblePullAtRef.current = now;
-      void runHydrateWithRemotePull();
+      // Solo sube colas: un pull completo rebobinaba ediciones del Listado.
+      void (async () => {
+        try {
+          await flushPaymentMirrorQueue();
+          await flushCatalogMirrorQueues();
+          await flushOpsMirrorQueues();
+          await flushUserMirrorQueues();
+        } catch {
+          /* offline */
+        }
+      })();
     }
     window.addEventListener("storage", onStorage);
     document.addEventListener("visibilitychange", onVisible);
@@ -133,7 +142,6 @@ export function useOperationalDemoSync(
       window.removeEventListener("storage", onStorage);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [commitHydrate, runHydrateWithRemotePull]);
-
+  }, [commitHydrate]);
   return { hydrated, epoch, reload: runHydrateWithRemotePull };
 }

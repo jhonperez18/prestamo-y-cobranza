@@ -72,6 +72,21 @@ export async function POST(request: Request) {
         }
         return NextResponse.json({ ok: true, deleted: ref });
       }
+      case "collector_delete": {
+        const ref = String((body.row as { ref?: string })?.ref || "").trim();
+        if (!ref) {
+          return NextResponse.json({ ok: false, error: "missing_ref" }, { status: 400 });
+        }
+        const client = createMirrorServerClient();
+        if (!client) {
+          return NextResponse.json({ ok: true, skipped: true, reason: "supabase_not_configured" });
+        }
+        const { error } = await client.from("collectors").delete().eq("ref", ref);
+        if (error) {
+          return NextResponse.json({ ok: false, error: error.message }, { status: 502 });
+        }
+        return NextResponse.json({ ok: true, deleted: ref });
+      }
       case "day_close": {
         const mapped = dayCloseToRow(body.row as CollectorDayCloseRecord);
         result = await upsertOpsRow("day_closes", mapped, "ref");

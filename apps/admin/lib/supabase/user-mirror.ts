@@ -439,7 +439,20 @@ export async function pullRemoteUsersIntoDemo(): Promise<PullUsersResult> {
       .filter((row): row is UserRow => Boolean(row));
 
     if (remote.length === 0) {
-      return { ok: true, changed: false, reason: "remote_empty", count: 0 };
+      // Nube vacía = verdad: no conservar seed local (juan/lina/diego).
+      const pendingUpserts = readQueue<UserRow>(DEMO_USER_MIRROR_QUEUE_KEY);
+      const pendingDeletes = new Set(
+        readQueue<{ ref: string }>(DEMO_USER_DELETE_QUEUE_KEY).map((row) => row.ref),
+      );
+      const kept = pendingUpserts.filter((row) => row?.ref && !pendingDeletes.has(row.ref));
+      const local = readDemoJson<UserRow[]>(DEMO_USERS_KEY, []);
+      const localSig = local.map(userSignature).sort().join("\n");
+      const nextSig = kept.map(userSignature).sort().join("\n");
+      if (localSig === nextSig) {
+        return { ok: true, changed: false, reason: "remote_empty", count: kept.length };
+      }
+      writeDemoJson(DEMO_USERS_KEY, kept);
+      return { ok: true, changed: true, reason: "remote_empty", count: kept.length };
     }
 
     const pendingUpserts = readQueue<UserRow>(DEMO_USER_MIRROR_QUEUE_KEY);

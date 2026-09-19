@@ -59,16 +59,29 @@ function mergeRemoteAuthority<T extends { ref: string }>(
   pendingRefs: Set<string>,
   sig: (row: T) => string,
   pendingRows?: T[],
+  pendingDeleteRefs?: Set<string>,
 ): { merged: T[]; changed: boolean } {
-  if (remote.length === 0) {
-    return { merged: local, changed: false };
-  }
+  const deletes = pendingDeleteRefs ?? new Set<string>();
   const pendingByRef = new Map(
-    (pendingRows ?? local.filter((row) => row?.ref && pendingRefs.has(row.ref))).map((row) => [
-      row.ref,
-      row,
-    ]),
+    (pendingRows ?? local.filter((row) => row?.ref && pendingRefs.has(row.ref)))
+      .filter((row) => row?.ref && !deletes.has(row.ref))
+      .map((row) => [row.ref, row]),
   );
+
+  // Nube vacía = verdad: solo quedan upserts pendientes (nada de seed local viejo).
+  if (remote.length === 0) {
+    const merged = [...pendingByRef.values()];
+    const localSig = local
+      .map((r) => r.ref)
+      .sort()
+      .join("|");
+    const nextSig = merged
+      .map((r) => r.ref)
+      .sort()
+      .join("|");
+    return { merged, changed: localSig !== nextSig };
+  }
+
   const merged: T[] = [];
   let changed = false;
   const localByRef = new Map(local.filter((row) => row?.ref).map((row) => [row.ref, row]));
@@ -76,6 +89,10 @@ function mergeRemoteAuthority<T extends { ref: string }>(
 
   for (const remoteRow of remote) {
     if (!remoteRow?.ref) continue;
+    if (deletes.has(remoteRow.ref)) {
+      changed = true;
+      continue;
+    }
     seen.add(remoteRow.ref);
     const pending = pendingByRef.get(remoteRow.ref);
     const chosen = pending ?? remoteRow;
@@ -86,6 +103,10 @@ function mergeRemoteAuthority<T extends { ref: string }>(
     localByRef.delete(remoteRow.ref);
   }
   for (const row of localByRef.values()) {
+    if (deletes.has(row.ref)) {
+      changed = true;
+      continue;
+    }
     if (pendingRefs.has(row.ref)) {
       merged.push(pendingByRef.get(row.ref) ?? row);
       continue;
@@ -93,7 +114,7 @@ function mergeRemoteAuthority<T extends { ref: string }>(
     changed = true;
   }
   for (const [ref, row] of pendingByRef) {
-    if (seen.has(ref)) continue;
+    if (seen.has(ref) || deletes.has(ref)) continue;
     if (merged.some((m) => m.ref === ref)) continue;
     merged.push(row);
     changed = true;
@@ -126,6 +147,7 @@ function dequeue(key: string, ref: string) {
 }
 
 const Q_COLLECTORS = "nexo-demo-ops-collectors-queue";
+const Q_COLLECTOR_DELETES = "nexo-demo-ops-collector-deletes-queue";
 const Q_ROUTES = "nexo-demo-ops-routes-queue";
 const Q_ROUTE_DELETES = "nexo-demo-ops-route-deletes-queue";
 const Q_CLOSES = "nexo-demo-ops-day-closes-queue";
@@ -407,6 +429,36 @@ export function queueCollectorMirror(c: CollectorRow) {
 export function queueCollectorsMirror(rows: CollectorRow[]) {
   for (const row of rows) queueCollectorMirror(row);
 }
+
+/** Borrado duro en Postgres (Eliminar usuario cobrador = desaparecer COB-). */
+export function queueCollectorDeleteMirror(ref: string) {
+  const clean = (ref || "").trim();
+  if (!clean || typeof window === "undefined") return;
+  writeDemoJson(
+    Q_COLLECTORS,
+    readDemoJson<{ ref: string }[]>(Q_COLLECTORS, []).filter((row) => row.ref !== clean),
+  );
+  const queued = readDemoJson<{ ref: string }[]>(Q_COLLECTOR_DELETES, []);
+  if (!queued.some((row) => row.ref === clean)) {
+    writeDemoJson(Q_COLLECTOR_DELETES, [...queued, { ref: clean }]);
+  }
+  void (async () => {
+    try {
+      const { res, json } = await postMirror("/api/ops/mirror", {
+        kind: "collector_delete",
+        row: { ref: clean },
+      });
+      if (res.ok && json.ok) {
+        writeDemoJson(
+          Q_COLLECTOR_DELETES,
+          readDemoJson<{ ref: string }[]>(Q_COLLECTOR_DELETES, []).filter((row) => row.ref !== clean),
+        );
+      }
+    } catch {
+      /* cola */
+    }
+  })();
+}
 export function queueRouteMirror(r: RouteRow) {
   void persistKind(Q_ROUTES, { kind: "route", row: r }, r.ref);
 }
@@ -455,25 +507,49 @@ export function queueAssignmentsMirror(rows: DailyCollectionAssignment[]) {
 export async function flushOpsMirrorQueues() {
   if (typeof window === "undefined") return;
 
-  // Primero deletes de rutas (si no, un upsert viejo las revive).
+  // Primero deletes (si no, un upsert viejo las revive).
   const routeDeletes = readDemoJson<{ ref: string }[]>(Q_ROUTE_DELETES, []);
-  const deletesLeft: { ref: string }[] = [];
+  const routeDeletesLeft: { ref: string }[] = [];
   for (const row of routeDeletes) {
     try {
       const { res, json } = await postMirror("/api/ops/mirror", {
         kind: "route_delete",
         row: { ref: row.ref },
       });
-      if (!(res.ok && json.ok)) deletesLeft.push(row);
+      if (!(res.ok && json.ok)) routeDeletesLeft.push(row);
     } catch {
-      deletesLeft.push(row);
+      routeDeletesLeft.push(row);
     }
   }
-  writeDemoJson(Q_ROUTE_DELETES, deletesLeft);
+  writeDemoJson(Q_ROUTE_DELETES, routeDeletesLeft);
+
+  const collectorDeletes = readDemoJson<{ ref: string }[]>(Q_COLLECTOR_DELETES, []);
+  const collectorDeletesLeft: { ref: string }[] = [];
+  for (const row of collectorDeletes) {
+    try {
+      const { res, json } = await postMirror("/api/ops/mirror", {
+        kind: "collector_delete",
+        row: { ref: row.ref },
+      });
+      if (!(res.ok && json.ok)) collectorDeletesLeft.push(row);
+    } catch {
+      collectorDeletesLeft.push(row);
+    }
+  }
+  writeDemoJson(Q_COLLECTOR_DELETES, collectorDeletesLeft);
 
   const deleted = new Set(listDeletedRouteRefs());
+  const deletedCollectors = new Set(
+    readDemoJson<{ ref: string }[]>(Q_COLLECTOR_DELETES, []).map((row) => row.ref),
+  );
   const jobs: Array<{ key: string; kind: string; rows: { ref: string }[] }> = [
-    { key: Q_COLLECTORS, kind: "collector", rows: readDemoJson(Q_COLLECTORS, []) },
+    {
+      key: Q_COLLECTORS,
+      kind: "collector",
+      rows: readDemoJson<{ ref: string }[]>(Q_COLLECTORS, []).filter(
+        (row) => !deletedCollectors.has(row.ref),
+      ),
+    },
     {
       key: Q_ROUTES,
       kind: "route",
@@ -543,11 +619,23 @@ export async function reconcileLocalOpsToRemote(): Promise<{
         .map((row) => row.ref)
         .filter(Boolean),
     );
+    const pendingCollectorDeletes = new Set(
+      readDemoJson<{ ref: string }[]>(Q_COLLECTOR_DELETES, [])
+        .map((row) => row.ref)
+        .filter(Boolean),
+    );
 
     const jobs: Array<{ kind: string; row: unknown; key: string }> = [];
 
+    for (const ref of pendingCollectorDeletes) {
+      if (remoteCollector.has(ref)) {
+        jobs.push({ kind: "collector_delete", row: { ref }, key: ref });
+      }
+    }
+
     for (const row of readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, [])) {
       if (!row?.ref || remoteCollector.has(row.ref)) continue;
+      if (pendingCollectorDeletes.has(row.ref)) continue;
       // No subir cobradores fantasma (seed local / diego) que no están en el listado.
       if (!linkedCollectorRefs.has(row.ref) && !pendingCollectorUpserts.has(row.ref)) continue;
       jobs.push({ kind: "collector", row, key: row.ref });
@@ -639,12 +727,18 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       (row) => row?.ref,
     );
     const pendingCollectors = new Set(pendingCollectorRows.map((row) => row.ref));
+    const pendingCollectorDeletes = new Set(
+      readDemoJson<{ ref: string }[]>(Q_COLLECTOR_DELETES, [])
+        .map((row) => row.ref)
+        .filter(Boolean),
+    );
     const cMerge = mergeRemoteAuthority(
       readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, []),
       collectors,
       pendingCollectors,
       (r) => `${r.ref}|${r.name}|${r.active}|${r.zone}|${r.userRef ?? ""}|${r.login ?? ""}`,
       pendingCollectorRows,
+      pendingCollectorDeletes,
     );
     if (cMerge.changed) {
       writeDemoJson(DEMO_COLLECTORS_KEY, cMerge.merged);

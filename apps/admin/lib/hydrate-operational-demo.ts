@@ -70,7 +70,6 @@ import {
 } from "@/lib/bank";
 import {
   CLIENTS,
-  COLLECTORS,
   COLLECTOR_UNASSIGNED_ZONE,
   ROUTES,
   ensureCollectorsForUsers,
@@ -113,7 +112,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
   syncDemoStorageToServedBuild();
 
   const { payments: storedPayments, loans: storedLoans } = loadDemoPaymentsBundle();
-  const storedCollectors = readDemoJson(DEMO_COLLECTORS_KEY, COLLECTORS).map((row) => ({
+  const storedCollectors = readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, []).map((row) => ({
     ...row,
     zone: COLLECTOR_UNASSIGNED_ZONE,
   }));
@@ -175,13 +174,20 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
   const linked = ensureCollectorsForUsers(loadDemoUsers(), storedCollectors, {
     inventMissing: false,
   });
+  // Solo cobradores atados al listado (o huérfanos aún en cola de mirror).
+  const linkedRefs = new Set(
+    linked.users.map((row) => row.collectorRef).filter(Boolean) as string[],
+  );
+  const prunedCollectors = linked.collectors.filter(
+    (row) => linkedRefs.has(row.ref) || Boolean(row.userRef && linked.users.some((u) => u.ref === row.userRef)),
+  );
   const namedRoutes = syncRouteCollectorNames(
     storedRoutes,
     linked.users,
-    linked.collectors,
+    prunedCollectors,
   );
   writeDemoJson(DEMO_USERS_KEY, linked.users);
-  writeDemoJson(DEMO_COLLECTORS_KEY, linked.collectors);
+  writeDemoJson(DEMO_COLLECTORS_KEY, prunedCollectors);
   writeDemoJson(DEMO_ROUTES_KEY, namedRoutes);
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("nexo-users-catalog-changed"));
@@ -190,7 +196,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
   const rebuilt = rebuildDispatchRoutes(
     namedRoutes,
     storedAssignments,
-    linked.collectors,
+    prunedCollectors,
     reconciledLoans,
     storedClients,
   );
@@ -209,7 +215,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     payments: nextPayments,
     loans: reconciledLoans,
     clients: storedClients,
-    collectors: linked.collectors,
+    collectors: prunedCollectors,
   });
   const deduped = dedupeDailyPaymentsByVisit(cycle.payments, cycle.assignments);
   nextPayments = deduped.payments;
@@ -225,7 +231,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
   const synced = synchronizeOperationalState({
     loans: cycle.loans,
     payments: nextPayments,
-    collectors: linked.collectors,
+    collectors: prunedCollectors,
     clients: storedClients,
     dayCloses: cycle.dayCloses,
     dayExpenseDrafts: cycle.dayExpenseDrafts,
@@ -267,7 +273,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
 
   return {
     users: linked.users,
-    collectors: linked.collectors,
+    collectors: prunedCollectors,
     clients: storedClients,
     routes: cycle.routes,
     loans: synced.loans,

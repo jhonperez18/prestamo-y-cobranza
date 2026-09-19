@@ -670,7 +670,9 @@ export function loadDemoUsers(): UserRow[] {
     }
   }
   if (!stored.length) {
-    return USERS.map((row) => normalizeUserPermissions(row));
+    // Vacío: solo admin de emergencia (sin juan/lina/diego).
+    const admin = USERS.find((row) => row.login.toLowerCase() === "truqui");
+    return admin ? [normalizeUserPermissions(admin)] : [];
   }
 
   const merged = stored.map((row) => normalizeStoredUser(row));

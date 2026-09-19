@@ -122,6 +122,7 @@ import {
 import {
   flushOpsMirrorQueues,
   queueAssignmentsMirror,
+  queueCollectorDeleteMirror,
   queueCollectorMirror,
   queueCollectorsMirror,
   queueDayCloseMirror,
@@ -1831,6 +1832,7 @@ export function Workspace({
     setUsers(remaining);
     removeUserFromCatalog(deletedRef);
     if (collectorRef) {
+      queueCollectorDeleteMirror(collectorRef);
       const nextCollectors = collectors.filter((row) => row.ref !== collectorRef);
       const nextRoutes = routes.map((route) =>
         route.collectorRef === collectorRef
@@ -1845,8 +1847,8 @@ export function Workspace({
         loans,
         nextCollectors,
         dailyAssignments,
-      payments,
-    );
+        payments,
+      );
       setRoutes(synced.routes);
       setDailyAssignments(synced.assignments);
     }

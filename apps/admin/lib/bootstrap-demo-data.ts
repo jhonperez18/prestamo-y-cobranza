@@ -30,7 +30,7 @@ import {
 import { needsVirginWipeReinstall } from "@/lib/demo-build-sync";
 import { DEMO_PAYMENT_EVIDENCE_KEY } from "@/lib/payment-evidence-store";
 import { applyDataRetention } from "@/lib/data-retention";
-import { COLLECTORS, USERS } from "@/lib/mock-data";
+import { USERS } from "@/lib/mock-data";
 import {
   buildDiurnoRoute1Clients,
   DIURNO_ROUTE_NAMES,
@@ -125,6 +125,7 @@ function clearMirrorQueues() {
     "nexo-demo-client-mirror-queue",
     "nexo-demo-loan-mirror-queue",
     "nexo-demo-ops-collectors-queue",
+    "nexo-demo-ops-collector-deletes-queue",
     "nexo-demo-ops-routes-queue",
     "nexo-demo-ops-route-deletes-queue",
     "nexo-demo-ops-day-closes-queue",
@@ -340,14 +341,30 @@ export function bootstrapProtectedDemoData() {
         ],
   );
 
-  forceInstallJson(
-    DEMO_USERS_KEY,
-    USERS.map((row) => ({ ...row })),
-  );
-  forceInstallJson(
-    DEMO_COLLECTORS_KEY,
-    COLLECTORS.map((row) => ({ ...row })),
-  );
+  // Personas: NUNCA reseembra seed mock. El listado / nube manda.
+  // Solo deja truqui si el catálogo quedó vacío (sin acceso al panel).
+  try {
+    const rawUsers = window.localStorage.getItem(DEMO_USERS_KEY);
+    const parsedUsers = rawUsers ? (JSON.parse(rawUsers) as unknown) : [];
+    if (!Array.isArray(parsedUsers) || parsedUsers.length === 0) {
+      const admin = USERS.find((row) => row.login.toLowerCase() === "truqui");
+      if (admin) {
+        forceInstallJson(DEMO_USERS_KEY, [{ ...admin }]);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  // Cobradores: vacíos hasta pull de ops / vínculo con usuarios (no seed Juan/Lina/Diego).
+  try {
+    const rawCobs = window.localStorage.getItem(DEMO_COLLECTORS_KEY);
+    const parsedCobs = rawCobs ? (JSON.parse(rawCobs) as unknown) : null;
+    if (parsedCobs == null) {
+      forceInstallJson(DEMO_COLLECTORS_KEY, []);
+    }
+  } catch {
+    /* ignore */
+  }
 
   try {
     const installed = JSON.parse(window.localStorage.getItem(DEMO_CLIENTS_KEY) || "[]");
