@@ -387,16 +387,7 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
       ) : null}
 
       <div className={shellClass}>
-        <main
-          className="workspace"
-          onPointerDown={
-            phoneLayout && asideOpen
-              ? () => {
-                  setAsideOpen(false);
-                }
-              : undefined
-          }
-        >
+        <main className="workspace">
           <Workspace
             moduleId={moduleId}
             viewId={viewId}

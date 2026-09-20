@@ -65,6 +65,16 @@ export function HomeDashboard({
   onGo,
 }: Props) {
   const today = todayIso();
+  /** Celular vertical: siempre 2 columnas. Escritorio: una fila. */
+  const [phoneStrip, setPhoneStrip] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 900px)");
+    const sync = () => setPhoneStrip(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   const home = useMemo(
     () =>
@@ -166,12 +176,20 @@ export function HomeDashboard({
     return [...day, ...routeChips];
   }, [home, onGo, routePanels, selectedRoute]);
 
+  const stripStyle = phoneStrip
+    ? ({
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: "6px",
+        width: "100%",
+      } as const)
+    : ({
+        ["--home-strip-count" as string]: String(Math.max(stripChips.length, 1)),
+      } as const);
+
   return (
     <div className="home-dashboard home-routes-dashboard is-unified">
-      <div
-        className="home-strip"
-        style={{ ["--home-strip-count" as string]: String(Math.max(stripChips.length, 1)) }}
-      >
+      <div className={phoneStrip ? "home-strip is-phone-strip" : "home-strip"} style={stripStyle}>
         {stripChips.map((chip) => {
           const className = [
             "home-strip-chip",
