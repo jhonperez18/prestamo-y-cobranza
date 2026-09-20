@@ -5745,7 +5745,7 @@
       background: var(--paper, #f2f9f9);
       color: #14201b;
       z-index: 1;
-      touch-action: manipulation;
+      touch-action: pan-x pan-y;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-y: contain;
     }
@@ -5773,7 +5773,7 @@
       overflow-y: auto !important;
       -webkit-overflow-scrolling: touch;
       background: transparent !important;
-      touch-action: manipulation;
+      touch-action: pan-x pan-y;
     }
 
     .phone-drawer-head {
@@ -5881,16 +5881,21 @@
       flex: 1 1 auto;
       min-height: 0;
       height: auto;
+      display: flex;
+      flex-direction: column;
     }
     .shell.is-phone-layout.is-phone-preview .mobile-preview-wrap,
     .shell.is-phone-layout.is-phone-preview .mobile-preview-frame {
       width: 100%;
       max-width: none;
-      height: 100%;
+      flex: 1 1 auto;
+      height: auto !important;
       min-height: 0;
       border-radius: 0;
       border: 0;
       box-shadow: none;
+      display: flex;
+      flex-direction: column;
     }
     .shell.is-phone-layout.is-phone-preview .mobile-preview-notch,
     .shell.is-phone-layout.is-phone-preview .mobile-preview-status,
@@ -5899,7 +5904,12 @@
     }
     .shell.is-phone-layout.is-phone-preview .mobile-preview-screen {
       border-radius: 0;
-      height: 100%;
+      flex: 1 1 auto;
+      /* Anula el marco escritorio (70vh fijo) que dejaba la vista en blanco. */
+      height: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      overflow: hidden;
     }
 
     /* Contenido admin usable en 375px */
