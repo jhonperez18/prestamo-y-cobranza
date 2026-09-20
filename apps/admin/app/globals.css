@@ -5680,6 +5680,8 @@
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
       touch-action: manipulation;
+      /* Recibe el primer toque sin esperar click. */
+      pointer-events: auto;
     }
 
     .shell.is-phone-layout {

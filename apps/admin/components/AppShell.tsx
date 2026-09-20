@@ -175,6 +175,20 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [phoneLayout, asideOpen]);
 
+  /** Un toque suave fuera del cajón lo cierra (capture: no hay que "golpear"). */
+  useEffect(() => {
+    if (!phoneLayout || !asideOpen) return;
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest(".aside")) return;
+      if (target.closest(".phone-menu-btn")) return;
+      setAsideOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [phoneLayout, asideOpen]);
+
   useEffect(() => {
     if (!phoneLayout) {
       document.documentElement.classList.remove("is-phone-app");
@@ -408,7 +422,10 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
             type="button"
             className="phone-nav-scrim"
             aria-label="Cerrar menú"
-            onClick={() => setAsideOpen(false)}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              setAsideOpen(false);
+            }}
           />
         ) : null}
         <aside className="aside" aria-hidden={phoneLayout && !asideOpen}>
