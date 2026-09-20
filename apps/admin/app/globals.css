@@ -5886,16 +5886,23 @@
     }
     .shell.is-phone-layout.is-phone-preview .mobile-preview-wrap,
     .shell.is-phone-layout.is-phone-preview .mobile-preview-frame {
-      width: 100%;
-      max-width: none;
+      width: 100% !important;
+      max-width: none !important;
       flex: 1 1 auto;
       height: auto !important;
       min-height: 0;
+      margin: 0;
+      padding: 0 !important;
       border-radius: 0;
       border: 0;
       box-shadow: none;
+      background: transparent !important;
       display: flex;
       flex-direction: column;
+    }
+    .shell.is-phone-layout.is-phone-preview .mobile-preview-wrap {
+      justify-content: stretch;
+      align-items: stretch;
     }
     .shell.is-phone-layout.is-phone-preview .mobile-preview-notch,
     .shell.is-phone-layout.is-phone-preview .mobile-preview-status,
