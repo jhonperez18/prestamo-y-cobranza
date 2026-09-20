@@ -5939,7 +5939,25 @@
       gap: 6px !important;
       width: 100% !important;
       max-width: 100% !important;
+      min-width: 0 !important;
       align-items: stretch;
+      box-sizing: border-box;
+    }
+    /* Contiene el resumen: tablas anchas no deben estirar los chips fuera de pantalla. */
+    .shell.is-phone-layout .home-dashboard,
+    .shell.is-phone-layout .home-routes-dashboard {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      box-sizing: border-box;
+      overflow-x: clip;
+    }
+    .shell.is-phone-layout .home-dashboard > *,
+    .shell.is-phone-layout .home-routes-dashboard > *,
+    .shell.is-phone-layout .panel,
+    .shell.is-phone-layout .panel-surface {
+      min-width: 0 !important;
+      max-width: 100% !important;
       box-sizing: border-box;
     }
     .shell.is-phone-layout .home-strip-chip {
