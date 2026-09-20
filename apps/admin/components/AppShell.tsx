@@ -37,7 +37,7 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
 
   const [moduleId, setModuleId] = useState<ModuleId>(landing.moduleId);
   const [viewId, setViewId] = useState(landing.viewId);
-  const [asideOpen, setAsideOpen] = useState(!phoneLayout);
+  const [asideOpen, setAsideOpen] = useState(false);
   const { showToast, toastNode } = useActionToast();
   const adminProfile = readAdminProfile(session.userRef, session.name, session.username);
   const displayName = adminProfile.displayName || session.name;
