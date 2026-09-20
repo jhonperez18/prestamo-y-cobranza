@@ -208,12 +208,15 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
   }, [phoneLayout, asideOpen]);
 
   useEffect(() => {
-    if (!phoneLayout) {
+    if (!phoneLayout || phonePreview) {
       document.documentElement.style.removeProperty("--phone-rail-h");
       return;
     }
     const rail = railRef.current;
-    if (!rail) return;
+    if (!rail) {
+      document.documentElement.style.removeProperty("--phone-rail-h");
+      return;
+    }
     function applyHeight() {
       const node = railRef.current;
       if (!node) return;
@@ -231,7 +234,7 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
       window.removeEventListener("orientationchange", applyHeight);
       document.documentElement.style.removeProperty("--phone-rail-h");
     };
-  }, [phoneLayout]);
+  }, [phoneLayout, phonePreview]);
 
   function openProfile() {
     setUserMenuOpen(false);

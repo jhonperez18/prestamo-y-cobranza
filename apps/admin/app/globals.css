@@ -5749,26 +5749,31 @@
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-y: contain;
     }
-    /* Vista móvil embebida: sí usa viewport interno. */
+    /* Vista móvil embebida: mismo viewport absoluto (nunca height:0). */
     .shell.is-phone-layout.is-phone-preview {
-      display: flex;
-      flex-direction: column;
-      height: calc(100dvh - 56px);
-      min-height: calc(100dvh - 56px);
-      max-height: calc(100dvh - 56px);
-      overflow: hidden;
+      display: block !important;
+      height: calc(100dvh - 56px) !important;
+      min-height: 0 !important;
+      max-height: calc(100dvh - 56px) !important;
+      overflow: hidden !important;
     }
     .shell.is-phone-layout.is-phone-preview .aside {
       top: 56px;
     }
     .shell.is-phone-layout.is-phone-preview .workspace {
-      flex: 1 1 auto;
-      height: 0;
-      min-height: 0;
-      overflow-x: hidden;
-      overflow-y: auto;
+      position: absolute !important;
+      inset: 0 !important;
+      height: auto !important;
+      width: auto !important;
+      min-height: 0 !important;
+      max-height: none !important;
+      flex: none !important;
+      padding: 0 !important;
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
       -webkit-overflow-scrolling: touch;
-      background: transparent;
+      background: transparent !important;
+      touch-action: manipulation;
     }
 
     .phone-drawer-head {
@@ -5844,24 +5849,23 @@
     }
 
     /* Solo Vista móvil: app a pantalla completa (sin marco de teléfono) */
-    .shell.is-phone-layout.is-phone-preview .workspace {
-      padding: 0;
-    }
     .shell.is-phone-layout.is-phone-preview .collector-mobile-preview-panel.is-compact {
       padding: 0;
       border: 0;
       background: transparent;
       box-shadow: none;
-      min-height: calc(100dvh - 56px);
-      height: calc(100dvh - 56px);
+      min-height: 100%;
+      height: 100%;
+      box-sizing: border-box;
     }
     .shell.is-phone-layout.is-phone-preview .mobile-preview-layout {
       display: flex;
       flex-direction: column;
       grid-template-columns: none;
       gap: 0;
-      min-height: calc(100dvh - 56px);
-      height: calc(100dvh - 56px);
+      min-height: 100%;
+      height: 100%;
+      box-sizing: border-box;
     }
     .shell.is-phone-layout.is-phone-preview .mobile-preview-phone-switcher {
       display: block;
@@ -12769,11 +12773,4 @@
       right: auto !important;
       z-index: 1;
       box-shadow: none !important;
-    }
-    .shell.is-phone-layout.is-phone-preview .workspace {
-      flex: 1 1 auto !important;
-      height: 0 !important;
-      overflow-x: hidden !important;
-      overflow-y: auto !important;
-      touch-action: auto !important;
     }
