@@ -20,6 +20,24 @@ const PICKER_WIDTH = 280;
 const PICKER_MAX_HEIGHT = 420;
 const VIEWPORT_GAP = 8;
 
+/** Lee preferencias guardadas. Respeta columnas ocultas por el usuario (no reinyecta defaults). */
+function readSavedColumns(
+  storageKey: string,
+  columnOrder: string[],
+  fallback: string[],
+): string[] {
+  try {
+    const saved = window.localStorage.getItem(storageKey);
+    if (!saved) return fallback.filter((id) => columnOrder.includes(id));
+    const parsed = JSON.parse(saved) as unknown;
+    if (!Array.isArray(parsed)) return fallback.filter((id) => columnOrder.includes(id));
+    const valid = columnOrder.filter((id) => parsed.includes(id));
+    return valid.length ? valid : fallback.filter((id) => columnOrder.includes(id));
+  } catch {
+    return fallback.filter((id) => columnOrder.includes(id));
+  }
+}
+
 export function useColumnVisibility(
   columns: ColumnOption[],
   defaultVisible: string[],
@@ -27,34 +45,40 @@ export function useColumnVisibility(
 ) {
   const { storageKey, minVisible = 1 } = options;
   const columnOrder = useMemo(() => columns.map((col) => col.id), [columns]);
-  const [visibleCols, setVisibleCols] = useState<string[]>(defaultVisible);
+  const columnOrderKey = columnOrder.join("\0");
+  const defaultsRef = useRef(defaultVisible);
+  defaultsRef.current = defaultVisible;
+
+  const [visibleCols, setVisibleCols] = useState<string[]>(() => {
+    if (!storageKey || typeof window === "undefined") {
+      return defaultVisible.filter((id) => columns.some((col) => col.id === id));
+    }
+    return readSavedColumns(
+      storageKey,
+      columns.map((col) => col.id),
+      defaultVisible,
+    );
+  });
   const [ready, setReady] = useState(!storageKey);
 
   useEffect(() => {
-    if (!storageKey) return;
-    try {
-      const saved = window.localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved) as string[];
-        const valid = parsed.filter((id) => columnOrder.includes(id));
-        // Columnas nuevas del default que aún no estaban en lo guardado.
-        const missingDefaults = defaultVisible.filter(
-          (id) => columnOrder.includes(id) && !parsed.includes(id),
-        );
-        const merged = columnOrder.filter(
-          (id) => valid.includes(id) || missingDefaults.includes(id),
-        );
-        if (merged.length) setVisibleCols(merged);
-      }
-    } catch {
-      /* ignore */
+    if (!storageKey) {
+      setReady(true);
+      return;
     }
+    const order = columnOrderKey ? columnOrderKey.split("\0") : [];
+    const loaded = readSavedColumns(storageKey, order, defaultsRef.current);
+    setVisibleCols(loaded);
     setReady(true);
-  }, [storageKey, columnOrder, defaultVisible]);
+  }, [storageKey, columnOrderKey]);
 
   useEffect(() => {
     if (!storageKey || !ready) return;
-    window.localStorage.setItem(storageKey, JSON.stringify(visibleCols));
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(visibleCols));
+    } catch {
+      /* quota / private mode */
+    }
   }, [storageKey, ready, visibleCols]);
 
   function toggleColumn(id: string) {

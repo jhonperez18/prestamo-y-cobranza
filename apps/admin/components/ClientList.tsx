@@ -9,7 +9,12 @@ import {
   PlusIcon,
   SearchIcon,
 } from "@/components/icons";
-import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell } from "@/components/ColumnPicker";
+import {
+  ColumnPicker,
+  ColumnPickerBodyCell,
+  ColumnPickerHeadCell,
+  useColumnVisibility,
+} from "@/components/ColumnPicker";
 import { money, ROUTES, type ClientRow } from "@/lib/mock-data";
 import { clientStatusKind } from "@/lib/client-review";
 import { clientNeedsProfileCompletion } from "@/lib/profile-pending";
@@ -50,7 +55,24 @@ const DEFAULT_COLS: ColId[] = [
   "pending",
 ];
 const REVISION_COLS: ColId[] = ["name", "nickname", "document", "phone", "address", "city"];
-const STORAGE_KEY = "nexo.clientes.columns.v2";
+/** Preferencias de columnas del listado (no de revisión). */
+const STORAGE_KEY = "nexo.clientes.columns.v3";
+
+/** Migración nick → nickname desde v2, una sola vez. */
+function migrateClientColumnPrefs() {
+  if (typeof window === "undefined") return;
+  try {
+    if (window.localStorage.getItem(STORAGE_KEY)) return;
+    const legacy = window.localStorage.getItem("nexo.clientes.columns.v2");
+    if (!legacy) return;
+    const parsed = JSON.parse(legacy) as unknown;
+    if (!Array.isArray(parsed)) return;
+    const migrated = parsed.map((id) => (id === "nick" ? "nickname" : id));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+  } catch {
+    /* ignore */
+  }
+}
 
 type Filters = Record<ColId, string>;
 
@@ -97,50 +119,34 @@ export function ClientList({
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
   const [selected, setSelected] = useState<string[]>([]);
-  const [visibleCols, setVisibleCols] = useState<ColId[]>(DEFAULT_COLS);
-  const [ready, setReady] = useState(false);
+
+  migrateClientColumnPrefs();
+
+  const catalogColumns = useMemo(
+    () =>
+      CLIENT_COLUMNS.filter((col) => col.id !== "ref").map((col) => ({
+        id: col.id,
+        label: col.label,
+      })),
+    [],
+  );
+
+  const { visibleCols, toggleColumn } = useColumnVisibility(
+    catalogColumns,
+    isRevision ? [...REVISION_COLS] : [...DEFAULT_COLS],
+    { storageKey: isRevision ? undefined : STORAGE_KEY },
+  );
 
   const pickerColumns = useMemo(
-    () =>
-      CLIENT_COLUMNS.filter((col) => col.id !== "ref" && (!hideStatusColumn || col.id !== "status")).map(
-        (col) => ({ id: col.id, label: col.label }),
-      ),
-    [hideStatusColumn],
+    () => catalogColumns.filter((col) => !hideStatusColumn || col.id !== "status"),
+    [catalogColumns, hideStatusColumn],
   );
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect -- localStorage after mount */
-    try {
-      const saved = window.localStorage.getItem(STORAGE_KEY);
-      if (saved && !isRevision) {
-        const parsed = JSON.parse(saved) as string[];
-        const valid = parsed
-          .map((id) => (id === "nick" ? "nickname" : id))
-          .filter((id): id is ColId => CLIENT_COLUMNS.some((col) => col.id === id));
-        if (valid.length) setVisibleCols(valid);
-      } else if (isRevision) {
-        setVisibleCols(REVISION_COLS);
-      }
-    } catch {
-      if (isRevision) {
-        setVisibleCols(REVISION_COLS);
-      }
-    }
-    setReady(true);
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, [isRevision]);
-
-  useEffect(() => {
     if (!hideStatusColumn) return;
-    setVisibleCols((current) => current.filter((id) => id !== "status"));
     setFilters((current) => ({ ...current, status: "" }));
     setApplied((current) => ({ ...current, status: "" }));
   }, [hideStatusColumn]);
-
-  useEffect(() => {
-    if (!ready) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(visibleCols));
-  }, [ready, visibleCols]);
 
   const activeCols = CLIENT_COLUMNS.filter(
     (col) => visibleCols.includes(col.id) && (!hideStatusColumn || col.id !== "status"),
@@ -181,16 +187,6 @@ export function ClientList({
     setFilters(EMPTY_FILTERS);
     setApplied(EMPTY_FILTERS);
     setSelected([]);
-  }
-
-  function toggleColumn(id: ColId) {
-    setVisibleCols((current) => {
-      if (current.includes(id)) {
-        if (current.length === 1) return current;
-        return current.filter((col) => col !== id);
-      }
-      return CLIENT_COLUMNS.map((col) => col.id).filter((col) => col === id || current.includes(col));
-    });
   }
 
   function renderFilter(id: ColId) {
@@ -358,7 +354,7 @@ export function ClientList({
                 <ColumnPicker
                   columns={pickerColumns}
                   visibleCols={visibleCols}
-                  onToggle={(id) => toggleColumn(id as ColId)}
+                  onToggle={toggleColumn}
                 />
               </ColumnPickerHeadCell>
             </tr>

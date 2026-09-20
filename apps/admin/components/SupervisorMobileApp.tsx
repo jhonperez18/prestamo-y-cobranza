@@ -784,7 +784,6 @@ export function SupervisorMobileApp({
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [nuevoName, setNuevoName] = useState("");
   const [nuevoPhone, setNuevoPhone] = useState("");
-  const [nuevoPos, setNuevoPos] = useState("");
   const [nuevoMsg, setNuevoMsg] = useState("");
   const [nuevoClientSearch, setNuevoClientSearch] = useState("");
   const [nuevoLoanClientRef, setNuevoLoanClientRef] = useState<string | null>(null);
@@ -1470,7 +1469,6 @@ export function SupervisorMobileApp({
     });
     setNuevoName("");
     setNuevoPhone("");
-    setNuevoPos("");
     setNuevoMsg(`Listo: ${name} quedó en el catálogo de clientes.`);
     setNuevoMode("menu");
   }
@@ -2319,6 +2317,9 @@ export function SupervisorMobileApp({
                     submitStreetClient();
                   }}
                 >
+                  <p className="supervisor-mobile-subhead">
+                    Solo catálogo de clientes. La ruta se asigna al crear el préstamo.
+                  </p>
                   <label className="quick-loan-field">
                     <span>Nombre</span>
                     <input
