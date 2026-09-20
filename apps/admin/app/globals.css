@@ -5661,11 +5661,15 @@
       padding: 0;
       background: rgba(12, 18, 16, 0.48);
       cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
     }
 
     .shell.is-phone-layout {
       /* Flujo de página: el documento baja (no un viewport interno trabado). */
       display: block;
+      position: relative;
+      isolation: isolate;
       width: 100%;
       height: auto;
       min-height: calc(100dvh - 56px - var(--phone-rail-h, 52px));
@@ -5715,7 +5719,7 @@
       color: #14201b;
       position: relative;
       z-index: 1;
-      touch-action: auto;
+      touch-action: pan-x pan-y;
       -webkit-overflow-scrolling: touch;
     }
     /* Vista móvil embebida: sí usa viewport interno. */
@@ -5743,7 +5747,7 @@
     .phone-drawer-head {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-start;
       gap: 8px;
       padding: 12px 14px 8px;
       flex-shrink: 0;
@@ -5753,17 +5757,6 @@
       font-size: 14px;
       font-weight: 650;
       color: rgba(255, 255, 255, 0.92);
-    }
-    .phone-drawer-close {
-      border: 0;
-      background: rgba(255, 255, 255, 0.1);
-      color: #fff;
-      border-radius: 8px;
-      padding: 8px 12px;
-      font: inherit;
-      font-size: 13px !important;
-      cursor: pointer;
-      min-height: 36px;
     }
     .shell.is-phone-layout .aside-body {
       flex: 1;
@@ -5893,73 +5886,104 @@
       flex: 1 1 100%;
     }
     .shell.is-phone-layout .home-strip {
-      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-      gap: 4px;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 6px;
       width: 100%;
-      align-items: start;
+      max-width: 100%;
+      align-items: stretch;
+      box-sizing: border-box;
     }
     .shell.is-phone-layout .home-strip-chip {
       min-height: 0;
+      min-width: 0;
       height: auto;
-      padding: 4px 4px 5px;
-      gap: 1px;
-      border-radius: 7px;
-      justify-content: flex-start;
+      max-width: 100%;
+      padding: 8px 8px 9px;
+      gap: 2px;
+      border-radius: 8px;
+      justify-content: center;
+      overflow: hidden;
+      box-sizing: border-box;
     }
     .shell.is-phone-layout .home-strip-label {
-      font-size: 9px !important;
-      line-height: 1.1 !important;
+      font-size: 10px !important;
+      line-height: 1.15 !important;
       font-weight: 600;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .shell.is-phone-layout .home-strip-value {
-      font-size: 11px !important;
-      line-height: 1.15 !important;
+      font-size: 13px !important;
+      line-height: 1.2 !important;
       font-weight: 700;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .shell.is-phone-layout .home-strip-meta {
-      font-size: 8px !important;
-      line-height: 1.1 !important;
+      font-size: 9px !important;
+      line-height: 1.15 !important;
       margin-top: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     /* Todos los paneles KPI del sistema (mismo estilo compacto). */
     .shell.is-phone-layout .kpis,
     .shell.is-phone-layout .kpis.tone-kpis,
     .shell.is-phone-layout .kpis.zone-kpis,
     .shell.is-phone-layout .cobranza-report-kpis {
-      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-      gap: 4px !important;
-      margin-bottom: 6px !important;
-      align-items: start;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 6px !important;
+      margin-bottom: 8px !important;
+      align-items: stretch;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
     }
     .shell.is-phone-layout .kpi,
     .shell.is-phone-layout .kpis .kpi,
     .shell.is-phone-layout .kpis.zone-kpis .kpi {
       min-height: 0 !important;
+      min-width: 0;
       height: auto !important;
-      padding: 4px 4px 5px !important;
-      gap: 0;
-      border-radius: 7px !important;
+      max-width: 100%;
+      padding: 8px 8px 9px !important;
+      gap: 2px;
+      border-radius: 8px !important;
       animation: none !important;
       box-shadow: none !important;
-      justify-content: flex-start !important;
+      justify-content: center !important;
+      overflow: hidden;
+      box-sizing: border-box;
     }
     .shell.is-phone-layout .kpi s,
     .shell.is-phone-layout .kpis.zone-kpis .kpi s {
-      font-size: 9px !important;
-      line-height: 1.1 !important;
+      font-size: 10px !important;
+      line-height: 1.15 !important;
       margin-bottom: 0 !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .shell.is-phone-layout .kpi b,
     .shell.is-phone-layout .kpis.zone-kpis .kpi b {
-      font-size: 11px !important;
-      line-height: 1.15 !important;
+      font-size: 13px !important;
+      line-height: 1.2 !important;
       letter-spacing: 0 !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .shell.is-phone-layout .kpi em,
     .shell.is-phone-layout .kpis.zone-kpis .kpi em {
-      font-size: 8px !important;
-      line-height: 1.1 !important;
+      font-size: 9px !important;
+      line-height: 1.15 !important;
       margin-top: 0 !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .shell.is-phone-layout .grid-2,
     .shell.is-phone-layout .ficha,
@@ -5969,20 +5993,21 @@
       grid-template-columns: 1fr;
     }
     /*
-     * Hojas en celular: X nativo en la tabla; Y lo baja el workspace.
-     * Sin touch-action:pan-x (bloqueaba bajar la pantalla).
+     * Hojas en celular: pan X/Y nativo en la tabla; bajar página en el documento.
      */
     .shell.is-phone-layout .table-wrap,
     .shell.is-phone-layout .bank-table-wrap,
     .shell.is-phone-layout .route-clients-table-wrap,
     .shell.is-phone-layout .panel > .table-wrap {
-      margin-inline: -4px;
+      margin-inline: 0;
+      max-width: 100%;
+      width: 100%;
       max-height: none;
       overflow-x: auto;
       overflow-y: visible;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-x: contain;
-      touch-action: manipulation;
+      touch-action: pan-x pan-y;
       scrollbar-width: thin;
       scrollbar-color: #9bb0a6 transparent;
       border-radius: 10px;
@@ -5990,7 +6015,7 @@
     }
     .shell.is-phone-layout .panel-surface {
       overflow: visible;
-      touch-action: auto;
+      touch-action: pan-x pan-y;
       max-height: none;
       background: transparent;
     }
@@ -7176,16 +7201,17 @@
     .home-strip-chip.kpi-coral .home-strip-label { color: #9f1239; }
     @media (max-width: 900px) {
       .home-strip {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 6px;
       }
       .home-strip-chip {
         min-height: 0;
-        padding: 6px 6px 7px;
+        padding: 8px 8px 9px;
         gap: 2px;
+        overflow: hidden;
       }
       .home-strip-label { font-size: 10px; line-height: 1.15; }
-      .home-strip-value { font-size: 12px; line-height: 1.2; }
+      .home-strip-value { font-size: 13px; line-height: 1.2; }
       .home-strip-meta { font-size: 9px; line-height: 1.15; margin-top: 0; }
     }
     .home-today-split {
@@ -12644,8 +12670,7 @@
     }
 
     /*
-     * Celular: tablas con pan X nativo; Y lo maneja .workspace (bajar pantalla).
-     * No usar touch-action:pan-x — robaba el gesto vertical.
+     * Celular: tablas con pan X/Y nativo; el documento baja la pantalla.
      */
     .shell.is-phone-layout .table-wrap,
     .shell.is-phone-layout .bank-table-wrap,
@@ -12653,14 +12678,17 @@
     .shell.is-phone-layout .panel > .table-wrap,
     .shell.is-phone-layout .panel > .filters + .table-wrap,
     .shell.is-phone-layout .panel > .bank-table-wrap,
-    .shell.is-phone-layout .pay-box .table-wrap {
+    .shell.is-phone-layout .pay-box .table-wrap,
+    .shell.is-phone-layout .home-route-plantilla .table-wrap,
+    .shell.is-phone-layout .home-route-plantilla .route-clients-table-wrap {
       overflow-x: auto !important;
       overflow-y: visible !important;
       max-height: none !important;
+      max-width: 100% !important;
+      width: 100%;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-x: contain;
-      touch-action: manipulation;
-      max-width: 100%;
+      touch-action: pan-x pan-y;
       background: var(--panel-table-bg, #fff);
     }
     .shell.is-phone-layout .panel-surface,
@@ -12668,7 +12696,7 @@
     .shell.is-phone-layout .sheet {
       overflow: visible !important;
       max-height: none !important;
-      touch-action: auto;
+      touch-action: pan-x pan-y;
       max-width: 100%;
     }
     .shell.is-phone-layout .workspace {
@@ -12676,7 +12704,7 @@
       height: auto !important;
       min-height: 0 !important;
       flex: none !important;
-      touch-action: auto !important;
+      touch-action: pan-x pan-y !important;
       -webkit-overflow-scrolling: touch;
     }
     .shell.is-phone-layout.is-phone-preview .workspace {
@@ -12684,6 +12712,7 @@
       height: 0 !important;
       overflow-x: hidden !important;
       overflow-y: auto !important;
+      touch-action: pan-y !important;
     }
     html:has(.shell.is-phone-layout:not(.is-phone-preview)),
     body:has(.shell.is-phone-layout:not(.is-phone-preview)) {
@@ -12692,6 +12721,8 @@
       height: auto;
       min-height: 100%;
       -webkit-overflow-scrolling: touch;
+      overscroll-behavior-y: contain;
+      touch-action: pan-y;
     }
     .shell.is-phone-layout table.data,
     .shell.is-phone-layout table.data.list-grid,
@@ -12750,10 +12781,12 @@
       z-index: 1;
       box-shadow: none !important;
     }
-    /* Todos los paneles KPI / chips: al contenido, sin hueco vacío. */
+    /* Todos los paneles KPI / chips: 2 por fila, sin cortar. */
     .shell.is-phone-layout .home-routes-dashboard.is-unified {
-      gap: 6px;
-      padding: 2px 0 12px;
+      gap: 8px;
+      padding: 2px 0 16px;
+      max-width: 100%;
+      overflow: visible;
     }
     .shell.is-phone-layout .home-strip,
     .shell.is-phone-layout .kpis,
@@ -12761,11 +12794,13 @@
     .shell.is-phone-layout .kpis.zone-kpis,
     .shell.is-phone-layout .cobranza-report-kpis {
       display: grid !important;
-      grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-      gap: 4px !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      gap: 6px !important;
       width: 100%;
-      margin-bottom: 6px !important;
-      align-items: start;
+      max-width: 100%;
+      margin-bottom: 8px !important;
+      align-items: stretch;
+      box-sizing: border-box;
     }
     .shell.is-phone-layout .home-strip-chip,
     .shell.is-phone-layout .kpi,
@@ -12774,30 +12809,42 @@
       min-height: 0 !important;
       min-width: 0;
       height: auto !important;
-      padding: 4px 4px 5px !important;
-      gap: 1px !important;
-      border-radius: 7px !important;
+      max-width: 100%;
+      padding: 8px 8px 9px !important;
+      gap: 2px !important;
+      border-radius: 8px !important;
       animation: none !important;
-      justify-content: flex-start !important;
+      justify-content: center !important;
       align-items: center !important;
+      overflow: hidden;
+      box-sizing: border-box;
     }
     .shell.is-phone-layout .home-strip-label,
     .shell.is-phone-layout .kpi s,
     .shell.is-phone-layout .kpis.zone-kpis .kpi s {
-      font-size: 9px !important;
-      line-height: 1.1 !important;
+      font-size: 10px !important;
+      line-height: 1.15 !important;
       margin-bottom: 0 !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .shell.is-phone-layout .home-strip-value,
     .shell.is-phone-layout .kpi b,
     .shell.is-phone-layout .kpis.zone-kpis .kpi b {
-      font-size: 11px !important;
-      line-height: 1.15 !important;
+      font-size: 13px !important;
+      line-height: 1.2 !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .shell.is-phone-layout .home-strip-meta,
     .shell.is-phone-layout .kpi em,
     .shell.is-phone-layout .kpis.zone-kpis .kpi em {
-      font-size: 8px !important;
-      line-height: 1.1 !important;
+      font-size: 9px !important;
+      line-height: 1.15 !important;
       margin-top: 0 !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }

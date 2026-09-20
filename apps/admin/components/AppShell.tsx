@@ -377,28 +377,44 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
         </nav>
       ) : null}
 
-      {phoneLayout && asideOpen ? (
-        <button
-          type="button"
-          className="phone-nav-scrim"
-          aria-label="Cerrar menú"
-          onClick={() => setAsideOpen(false)}
-        />
-      ) : null}
-
       <div className={shellClass}>
-        <aside className="aside">
+        <main
+          className="workspace"
+          onPointerDown={
+            phoneLayout && asideOpen
+              ? () => {
+                  setAsideOpen(false);
+                }
+              : undefined
+          }
+        >
+          <Workspace
+            moduleId={moduleId}
+            viewId={viewId}
+            viewLabel={viewLabel}
+            moduleLabel={current.label}
+            onGo={go}
+            onToast={showDemoToast}
+            onNavBadges={setNavBadges}
+            adminName={displayName}
+            session={session}
+            onSessionChange={onSessionChange}
+            sessionUserRef={session.userRef}
+            sessionPermissions={session.permissions}
+          />
+        </main>
+        {phoneLayout && asideOpen ? (
+          <button
+            type="button"
+            className="phone-nav-scrim"
+            aria-label="Cerrar menú"
+            onClick={() => setAsideOpen(false)}
+          />
+        ) : null}
+        <aside className="aside" aria-hidden={phoneLayout && !asideOpen}>
           {phoneLayout ? (
             <div className="phone-drawer-head">
               <strong>Vistas</strong>
-              <button
-                type="button"
-                className="phone-drawer-close"
-                aria-label="Cerrar menú"
-                onClick={() => setAsideOpen(false)}
-              >
-                Cerrar
-              </button>
             </div>
           ) : null}
           <div className="aside-body">
@@ -466,22 +482,6 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
             </button>
           </div>
         </aside>
-        <main className="workspace">
-          <Workspace
-            moduleId={moduleId}
-            viewId={viewId}
-            viewLabel={viewLabel}
-            moduleLabel={current.label}
-            onGo={go}
-            onToast={showDemoToast}
-            onNavBadges={setNavBadges}
-            adminName={displayName}
-            session={session}
-            onSessionChange={onSessionChange}
-            sessionUserRef={session.userRef}
-            sessionPermissions={session.permissions}
-          />
-        </main>
       </div>
       {toastNode}
     </>
