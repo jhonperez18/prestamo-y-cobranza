@@ -176,12 +176,21 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
   }, [phoneLayout, asideOpen]);
 
   useEffect(() => {
-    if (!phoneLayout || !asideOpen) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    if (!phoneLayout) {
+      document.documentElement.classList.remove("is-phone-app");
+      document.body.classList.remove("phone-drawer-open");
+      return;
+    }
+    document.documentElement.classList.add("is-phone-app");
     return () => {
-      document.body.style.overflow = prev;
+      document.documentElement.classList.remove("is-phone-app");
+      document.body.classList.remove("phone-drawer-open");
     };
+  }, [phoneLayout]);
+
+  useEffect(() => {
+    if (!phoneLayout) return;
+    document.body.classList.toggle("phone-drawer-open", asideOpen);
   }, [phoneLayout, asideOpen]);
 
   useEffect(() => {

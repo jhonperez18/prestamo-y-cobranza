@@ -1,4 +1,4 @@
-    :root {
+﻿    :root {
       --ink: #0b1014;
       --ink-2: #141c24;
       --ink-3: #1c2732;
@@ -81,6 +81,26 @@
       background: var(--ink);
       color: var(--text);
       overflow: hidden;
+    }
+    /*
+     * CONTRATO CELULAR (sistema) — no re-parchear:
+     * El DOCUMENTO hace scroll vertical. body overflow:hidden es solo escritorio.
+     * Tablas: overflow-x auto + overflow-y hidden (visible se vuelve auto y atrapa el dedo en iOS).
+     * Drawer: class phone-drawer-open, nunca style inline suelto.
+     */
+    html.is-phone-app,
+    html.is-phone-app body {
+      height: auto !important;
+      min-height: 100% !important;
+      max-height: none !important;
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+      overscroll-behavior-y: auto;
+      touch-action: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    html.is-phone-app body.phone-drawer-open {
+      overflow: hidden !important;
     }
     button, input, select, textarea { font: inherit; }
     button { cursor: pointer; border: 0; background: none; color: inherit; }
@@ -5666,14 +5686,14 @@
     }
 
     .shell.is-phone-layout {
-      /* Flujo de página: el documento baja (no un viewport interno trabado). */
+      /* Documento hace scroll: shell crece con el contenido. */
       display: block;
       position: relative;
       isolation: isolate;
       width: 100%;
-      height: auto;
+      height: auto !important;
       min-height: calc(100dvh - 56px - var(--phone-rail-h, 52px));
-      max-height: none;
+      max-height: none !important;
       overflow: visible;
       background: var(--paper, #f2f9f9);
       grid-template-columns: none;
@@ -5710,16 +5730,17 @@
     .shell.is-phone-layout .workspace {
       display: block;
       width: 100%;
-      height: auto;
+      height: auto !important;
       min-height: 0;
+      max-height: none !important;
       max-width: none;
       padding: 12px 12px 48px;
-      overflow: visible;
+      overflow: visible !important;
       background: var(--paper, #f2f9f9);
       color: #14201b;
       position: relative;
       z-index: 1;
-      touch-action: pan-x pan-y;
+      touch-action: auto;
       -webkit-overflow-scrolling: touch;
     }
     /* Vista móvil embebida: sí usa viewport interno. */
@@ -5993,21 +6014,29 @@
       grid-template-columns: 1fr;
     }
     /*
-     * Hojas en celular: pan X/Y nativo en la tabla; bajar página en el documento.
+     * Tablas en celular: solo desplazamiento horizontal.
+     * overflow-y:hidden (NO visible): visible se calcula como auto y en iOS
+     * el gesto vertical queda atrapado sin mover la pagina.
      */
     .shell.is-phone-layout .table-wrap,
     .shell.is-phone-layout .bank-table-wrap,
     .shell.is-phone-layout .route-clients-table-wrap,
-    .shell.is-phone-layout .panel > .table-wrap {
+    .shell.is-phone-layout .panel > .table-wrap,
+    .shell.is-phone-layout .panel > .filters + .table-wrap,
+    .shell.is-phone-layout .panel > .bank-table-wrap,
+    .shell.is-phone-layout .pay-box .table-wrap,
+    .shell.is-phone-layout .home-route-plantilla .table-wrap,
+    .shell.is-phone-layout .home-route-plantilla .route-clients-table-wrap {
       margin-inline: 0;
       max-width: 100%;
       width: 100%;
       max-height: none;
       overflow-x: auto;
-      overflow-y: visible;
+      overflow-y: hidden;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior-x: contain;
-      touch-action: pan-x pan-y;
+      overscroll-behavior-y: auto;
+      touch-action: auto;
       scrollbar-width: thin;
       scrollbar-color: #9bb0a6 transparent;
       border-radius: 10px;
@@ -6015,7 +6044,7 @@
     }
     .shell.is-phone-layout .panel-surface {
       overflow: visible;
-      touch-action: pan-x pan-y;
+      touch-action: auto;
       max-height: none;
       background: transparent;
     }
@@ -12670,60 +12699,8 @@
     }
 
     /*
-     * Celular: tablas con pan X/Y nativo; el documento baja la pantalla.
+     * Tablas anchas en celular (refuerzo unico — no duplicar overflow aqui).
      */
-    .shell.is-phone-layout .table-wrap,
-    .shell.is-phone-layout .bank-table-wrap,
-    .shell.is-phone-layout .route-clients-table-wrap,
-    .shell.is-phone-layout .panel > .table-wrap,
-    .shell.is-phone-layout .panel > .filters + .table-wrap,
-    .shell.is-phone-layout .panel > .bank-table-wrap,
-    .shell.is-phone-layout .pay-box .table-wrap,
-    .shell.is-phone-layout .home-route-plantilla .table-wrap,
-    .shell.is-phone-layout .home-route-plantilla .route-clients-table-wrap {
-      overflow-x: auto !important;
-      overflow-y: visible !important;
-      max-height: none !important;
-      max-width: 100% !important;
-      width: 100%;
-      -webkit-overflow-scrolling: touch;
-      overscroll-behavior-x: contain;
-      touch-action: pan-x pan-y;
-      background: var(--panel-table-bg, #fff);
-    }
-    .shell.is-phone-layout .panel-surface,
-    .shell.is-phone-layout .panel > .sheet,
-    .shell.is-phone-layout .sheet {
-      overflow: visible !important;
-      max-height: none !important;
-      touch-action: pan-x pan-y;
-      max-width: 100%;
-    }
-    .shell.is-phone-layout .workspace {
-      overflow: visible !important;
-      height: auto !important;
-      min-height: 0 !important;
-      flex: none !important;
-      touch-action: pan-x pan-y !important;
-      -webkit-overflow-scrolling: touch;
-    }
-    .shell.is-phone-layout.is-phone-preview .workspace {
-      flex: 1 1 auto !important;
-      height: 0 !important;
-      overflow-x: hidden !important;
-      overflow-y: auto !important;
-      touch-action: pan-y !important;
-    }
-    html:has(.shell.is-phone-layout:not(.is-phone-preview)),
-    body:has(.shell.is-phone-layout:not(.is-phone-preview)) {
-      overflow-x: hidden;
-      overflow-y: auto;
-      height: auto;
-      min-height: 100%;
-      -webkit-overflow-scrolling: touch;
-      overscroll-behavior-y: contain;
-      touch-action: pan-y;
-    }
     .shell.is-phone-layout table.data,
     .shell.is-phone-layout table.data.list-grid,
     .shell.is-phone-layout table.data.list-data-table,
@@ -12772,7 +12749,6 @@
       right: auto !important;
       box-shadow: none !important;
     }
-    /* Encabezado de ruta: sticky vertical OK; nunca freeze horizontal. */
     .shell.is-phone-layout table.route-clients-table .col-titles th {
       position: sticky !important;
       top: 0;
@@ -12781,70 +12757,10 @@
       z-index: 1;
       box-shadow: none !important;
     }
-    /* Todos los paneles KPI / chips: 2 por fila, sin cortar. */
-    .shell.is-phone-layout .home-routes-dashboard.is-unified {
-      gap: 8px;
-      padding: 2px 0 16px;
-      max-width: 100%;
-      overflow: visible;
-    }
-    .shell.is-phone-layout .home-strip,
-    .shell.is-phone-layout .kpis,
-    .shell.is-phone-layout .kpis.tone-kpis,
-    .shell.is-phone-layout .kpis.zone-kpis,
-    .shell.is-phone-layout .cobranza-report-kpis {
-      display: grid !important;
-      grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-      gap: 6px !important;
-      width: 100%;
-      max-width: 100%;
-      margin-bottom: 8px !important;
-      align-items: stretch;
-      box-sizing: border-box;
-    }
-    .shell.is-phone-layout .home-strip-chip,
-    .shell.is-phone-layout .kpi,
-    .shell.is-phone-layout .kpis .kpi,
-    .shell.is-phone-layout .kpis.zone-kpis .kpi {
-      min-height: 0 !important;
-      min-width: 0;
-      height: auto !important;
-      max-width: 100%;
-      padding: 8px 8px 9px !important;
-      gap: 2px !important;
-      border-radius: 8px !important;
-      animation: none !important;
-      justify-content: center !important;
-      align-items: center !important;
-      overflow: hidden;
-      box-sizing: border-box;
-    }
-    .shell.is-phone-layout .home-strip-label,
-    .shell.is-phone-layout .kpi s,
-    .shell.is-phone-layout .kpis.zone-kpis .kpi s {
-      font-size: 10px !important;
-      line-height: 1.15 !important;
-      margin-bottom: 0 !important;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .shell.is-phone-layout .home-strip-value,
-    .shell.is-phone-layout .kpi b,
-    .shell.is-phone-layout .kpis.zone-kpis .kpi b {
-      font-size: 13px !important;
-      line-height: 1.2 !important;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .shell.is-phone-layout .home-strip-meta,
-    .shell.is-phone-layout .kpi em,
-    .shell.is-phone-layout .kpis.zone-kpis .kpi em {
-      font-size: 9px !important;
-      line-height: 1.15 !important;
-      margin-top: 0 !important;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
+    .shell.is-phone-layout.is-phone-preview .workspace {
+      flex: 1 1 auto !important;
+      height: 0 !important;
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+      touch-action: auto !important;
     }
