@@ -6177,6 +6177,52 @@
     .shell.is-phone-layout .btn {
       min-height: 40px;
     }
+    /*
+     * Cobranza (celular): título arriba; botones chicos abajo.
+     * Sin esto "Actualizar planillas" / "Cerrar día" tapan el h1.
+     */
+    .shell.is-phone-layout .panel.daily-collections > .head,
+    .shell.is-phone-layout .panel.cobranza-payments-view > .head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+    }
+    .shell.is-phone-layout .panel.daily-collections > .head .head-title {
+      flex: 1 0 100%;
+      min-width: 0;
+    }
+    .shell.is-phone-layout .panel.cobranza-payments-view > .head > h1 {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-size: 16px !important;
+      line-height: 1.2;
+    }
+    .shell.is-phone-layout .panel.cobranza-payments-view > .head > .count {
+      flex: 0 0 auto;
+    }
+    .shell.is-phone-layout .panel.daily-collections > .head .grow,
+    .shell.is-phone-layout .panel.cobranza-payments-view > .head .grow {
+      display: none;
+    }
+    .shell.is-phone-layout .panel.daily-collections > .head > .btn,
+    .shell.is-phone-layout .panel.cobranza-payments-view > .head > .btn {
+      flex: 1 1 calc(50% - 4px);
+      min-width: 0;
+      min-height: 30px;
+      max-height: 32px;
+      padding: 4px 6px;
+      font-size: 11px !important;
+      letter-spacing: 0.02em;
+      line-height: 1.15;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .shell.is-phone-layout .panel.daily-collections > .head .head-title h1 {
+      font-size: 16px !important;
+      line-height: 1.2;
+    }
     .shell.is-phone-layout .topbar-user-menu {
       right: 0;
       left: auto;
