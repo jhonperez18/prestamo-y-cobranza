@@ -404,33 +404,11 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
       ) : null}
 
       <div className={shellClass}>
-        <main className="workspace">
-          <Workspace
-            moduleId={moduleId}
-            viewId={viewId}
-            viewLabel={viewLabel}
-            moduleLabel={current.label}
-            onGo={go}
-            onToast={showDemoToast}
-            onNavBadges={setNavBadges}
-            adminName={displayName}
-            session={session}
-            onSessionChange={onSessionChange}
-            sessionUserRef={session.userRef}
-            sessionPermissions={session.permissions}
-          />
-        </main>
-        {phoneLayout && asideOpen ? (
-          <button
-            type="button"
-            className="phone-nav-scrim"
-            aria-label="Cerrar menú"
-            onPointerDown={(event) => {
-              event.preventDefault();
-              setAsideOpen(false);
-            }}
-          />
-        ) : null}
+        {/*
+          Orden fijo PC: aside → workspace.
+          El grid es `var(--sidebar) 1fr`; si workspace va primero, el resumen
+          queda aplastado ~300px y el menú se come la pantalla (regresión phone).
+        */}
         <aside className="aside" aria-hidden={phoneLayout && !asideOpen}>
           {phoneLayout ? (
             <div className="phone-drawer-head">
@@ -502,6 +480,33 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
             </button>
           </div>
         </aside>
+        {phoneLayout && asideOpen ? (
+          <button
+            type="button"
+            className="phone-nav-scrim"
+            aria-label="Cerrar menú"
+            onPointerDown={(event) => {
+              event.preventDefault();
+              setAsideOpen(false);
+            }}
+          />
+        ) : null}
+        <main className="workspace">
+          <Workspace
+            moduleId={moduleId}
+            viewId={viewId}
+            viewLabel={viewLabel}
+            moduleLabel={current.label}
+            onGo={go}
+            onToast={showDemoToast}
+            onNavBadges={setNavBadges}
+            adminName={displayName}
+            session={session}
+            onSessionChange={onSessionChange}
+            sessionUserRef={session.userRef}
+            sessionPermissions={session.permissions}
+          />
+        </main>
       </div>
       {toastNode}
     </>

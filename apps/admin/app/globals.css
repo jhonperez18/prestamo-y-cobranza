@@ -6562,9 +6562,10 @@
     .shell {
       height: calc(100% - var(--top));
       display: grid;
-      grid-template-columns: var(--sidebar) 1fr;
+      /* minmax(0,…) evita que el aside se coma el workspace si el contenido es ancho */
+      grid-template-columns: var(--sidebar) minmax(0, 1fr);
     }
-    .shell.aside-off { grid-template-columns: 0px 1fr; }
+    .shell.aside-off { grid-template-columns: 0px minmax(0, 1fr); }
     .shell.aside-off .aside { transform: translateX(-100%); opacity: 0; pointer-events: none; }
 
     .workspace {
@@ -10329,6 +10330,15 @@
       display: flex;
       flex-direction: column;
       transition: transform .22s ease, opacity .22s ease;
+      /* PC: anclar al track del grid; sin esto el contenido puede ensanchar la columna */
+      width: 100%;
+      max-width: var(--sidebar);
+      min-width: 0;
+      box-sizing: border-box;
+    }
+    .shell:not(.is-phone-layout) > .aside {
+      width: var(--sidebar);
+      max-width: var(--sidebar);
     }
     .aside-body { flex: 1; overflow: auto; min-height: 0; }
     .aside-footer {
