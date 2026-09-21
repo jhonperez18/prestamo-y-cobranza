@@ -27,6 +27,8 @@ function readSavedColumns(
   fallback: string[],
 ): string[] {
   try {
+    // Sin catálogo aún: no inventar defaults (evita pisar localStorage al montar).
+    if (!columnOrder.length) return [];
     const saved = window.localStorage.getItem(storageKey);
     if (!saved) return fallback.filter((id) => columnOrder.includes(id));
     const parsed = JSON.parse(saved) as unknown;
@@ -48,6 +50,8 @@ export function useColumnVisibility(
   const columnOrderKey = columnOrder.join("\0");
   const defaultsRef = useRef(defaultVisible);
   defaultsRef.current = defaultVisible;
+  /** Solo persiste después de hidratar; nunca en el primer paint vacío. */
+  const canPersistRef = useRef(!storageKey);
 
   const [visibleCols, setVisibleCols] = useState<string[]>(() => {
     if (!storageKey || typeof window === "undefined") {
@@ -63,17 +67,29 @@ export function useColumnVisibility(
 
   useEffect(() => {
     if (!storageKey) {
+      canPersistRef.current = true;
       setReady(true);
       return;
     }
     const order = columnOrderKey ? columnOrderKey.split("\0") : [];
+    if (!order.length) {
+      // Catálogo aún no listo: no marcar ready ni escribir.
+      canPersistRef.current = false;
+      return;
+    }
     const loaded = readSavedColumns(storageKey, order, defaultsRef.current);
+    canPersistRef.current = false;
     setVisibleCols(loaded);
     setReady(true);
+    // Permitir persistir en el siguiente ciclo (cambios del usuario).
+    queue Promise.resolve().then(() => {
+      canPersistRef.current = true;
+    });
   }, [storageKey, columnOrderKey]);
 
   useEffect(() => {
-    if (!storageKey || !ready) return;
+    if (!storageKey || !ready || !canPersistRef.current) return;
+    if (!visibleCols.length) return;
     try {
       window.localStorage.setItem(storageKey, JSON.stringify(visibleCols));
     } catch {
@@ -82,6 +98,7 @@ export function useColumnVisibility(
   }, [storageKey, ready, visibleCols]);
 
   function toggleColumn(id: string) {
+    canPersistRef.current = true;
     setVisibleCols((current) => {
       if (current.includes(id)) {
         if (current.length <= minVisible) return current;

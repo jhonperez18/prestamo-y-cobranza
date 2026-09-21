@@ -43,32 +43,41 @@ type ColId = (typeof CLIENT_COLUMNS)[number]["id"];
 
 type ClientListView = "listado" | "revision" | "activos" | "inactivos";
 
-const DEFAULT_COLS: ColId[] = [
-  "route",
-  "routeOrder",
-  "name",
-  "nickname",
-  "lastName",
-  "document",
-  "city",
-  "phone",
-  "pending",
-];
+/**
+ * Vista organizada del listado (la que ya se había dejado):
+ * # · Nombre · Apodo · Documento. El resto se enciende con el picker.
+ */
+const DEFAULT_COLS: ColId[] = ["routeOrder", "name", "nickname", "document"];
 const REVISION_COLS: ColId[] = ["name", "nickname", "document", "phone", "address", "city"];
 /** Preferencias de columnas del listado (no de revisión). */
-const STORAGE_KEY = "nexo.clientes.columns.v3";
+const STORAGE_KEY = "nexo.clientes.columns.v4";
 
-/** Migración nick → nickname desde v2, una sola vez. */
+/** Migración v2/v3 → v4. Garantiza la columna # si el listado quedó sin ella. */
 function migrateClientColumnPrefs() {
   if (typeof window === "undefined") return;
   try {
     if (window.localStorage.getItem(STORAGE_KEY)) return;
-    const legacy = window.localStorage.getItem("nexo.clientes.columns.v2");
+
+    const fromV3 = window.localStorage.getItem("nexo.clientes.columns.v3");
+    const fromV2 = window.localStorage.getItem("nexo.clientes.columns.v2");
+    const legacy = fromV3 || fromV2;
     if (!legacy) return;
+
     const parsed = JSON.parse(legacy) as unknown;
     if (!Array.isArray(parsed)) return;
-    const migrated = parsed.map((id) => (id === "nick" ? "nickname" : id));
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+
+    const migrated = parsed
+      .map((id) => (id === "nick" ? "nickname" : String(id)))
+      .filter((id) => CLIENT_COLUMNS.some((col) => col.id === id));
+
+    // Si faltaba "#", la reinserta al frente (era parte de la vista organizada).
+    if (migrated.includes("name") && !migrated.includes("routeOrder")) {
+      migrated.unshift("routeOrder");
+    }
+
+    if (migrated.length) {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+    }
   } catch {
     /* ignore */
   }
