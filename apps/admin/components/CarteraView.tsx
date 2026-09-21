@@ -305,8 +305,16 @@ export function CarteraView({
         )
       ) : (
         <>
-        <div className="cartera-mora-toolbar panel">
-          <div className="filters cobranza-report-filters cartera-mora-filters">
+          <section className="panel">
+            <div className="head">
+              <h1>Mora</h1>
+              <span className="count">{moraRows.length}</span>
+              <div className="grow" />
+              <button type="button" className="btn primary compact" onClick={() => setPdfPreviewOpen(true)}>
+                Vista previa PDF
+              </button>
+            </div>
+            <div className="filters cobranza-report-filters cartera-mora-filters">
               <select
                 className="cartera-mora-route-filter"
                 value={routeFilter}
@@ -320,18 +328,6 @@ export function CarteraView({
                   </option>
                 ))}
               </select>
-            <div className="cartera-mora-toolbar-actions">
-              <button type="button" className="btn primary" onClick={() => setPdfPreviewOpen(true)}>
-                Vista previa PDF
-              </button>
-            </div>
-          </div>
-        </div>
-
-          <section className="panel">
-            <div className="head">
-              <h1>Mora</h1>
-              <span className="count">{moraRows.length}</span>
             </div>
 
             <div className="table-wrap">

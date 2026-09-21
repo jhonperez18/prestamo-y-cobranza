@@ -48,24 +48,25 @@ export function PaymentFicha({
         <div className="payment-ficha-badges">
           <Pill label={paymentMethodLabel(method)} kind={paymentMethodKind(method)} />
         </div>
+        <div className="grow" />
+        <div className="payment-ficha-head-actions">
+          {loan && onOpenLoan ? (
+            <button type="button" className="btn-bar light" onClick={() => onOpenLoan(loan.ref)}>
+              Ver préstamo {loan.ref}
+            </button>
+          ) : null}
+          {clientRef && onOpenClient ? (
+            <button type="button" className="btn-bar light" onClick={() => onOpenClient(clientRef)}>
+              Ver cliente
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="payment-ficha-body">
         <div className="payment-ficha-evidence mini-block">
           <div className="mini-head payment-ficha-evidence-head">
             <h2>{evidenceTitle}</h2>
-            <div className="payment-ficha-head-actions">
-              {loan && onOpenLoan ? (
-                <button type="button" className="btn-bar light" onClick={() => onOpenLoan(loan.ref)}>
-                  Ver préstamo {loan.ref}
-                </button>
-              ) : null}
-              {clientRef && onOpenClient ? (
-                <button type="button" className="btn-bar light" onClick={() => onOpenClient(clientRef)}>
-                  Ver cliente
-                </button>
-              ) : null}
-            </div>
           </div>
           {item ? (
             <PaymentEvidenceThumb evidence={evidence} variant="panel" emptyLabel="—" />

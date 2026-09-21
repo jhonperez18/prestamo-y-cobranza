@@ -159,9 +159,10 @@ export function BankReconciledLedgerView({
       <div className="head">
         <h1>{title}</h1>
         <span className="count">{rows.length}</span>
-        <div className="grow" />
+      </div>
+      <div className="filters bank-ledger-filters">
         <label className="bank-ledger-filter">
-          Estado{" "}
+          Estado
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as BankHistoryScope)}
@@ -172,7 +173,7 @@ export function BankReconciledLedgerView({
           </select>
         </label>
         <label className="bank-ledger-filter">
-          Cuenta{" "}
+          Cuenta
           <select
             value={accountFilter}
             onChange={(event) => setAccountFilter(event.target.value)}
@@ -186,7 +187,7 @@ export function BankReconciledLedgerView({
           </select>
         </label>
         <label className="bank-ledger-filter">
-          Periodo{" "}
+          Periodo
           <select
             value={periodFilter}
             onChange={(event) => setPeriodFilter(event.target.value)}

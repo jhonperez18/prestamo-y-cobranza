@@ -87,7 +87,7 @@ export function LoanReportView({ loan, client, payments, assignments = [], onBac
             <button type="button" className="btn ghost" onClick={onBack}>
               Volver
             </button>
-            <button type="button" className="btn primary" onClick={() => setPdfPreviewOpen(true)}>
+            <button type="button" className="btn primary compact" onClick={() => setPdfPreviewOpen(true)}>
               Vista previa PDF
             </button>
           </div>

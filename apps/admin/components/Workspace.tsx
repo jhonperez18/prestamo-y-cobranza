@@ -2129,6 +2129,47 @@ export function Workspace({
           </nav>
           <div className="file-title">
             <h1>{fileTitle}</h1>
+            {fileTab === "ficha" ? (
+              <div className="file-toolbar-actions">
+                {confirmDelete ? (
+                  <>
+                    <p className="ficha-warn">¿Eliminar este cliente? Saldrá del listado.</p>
+                    <button type="button" className="btn-bar" onClick={() => setConfirmDelete(false)}>
+                      Cancelar
+                    </button>
+                    <button type="button" className="btn-bar" onClick={deleteClient}>
+                      Sí, eliminar
+                    </button>
+                  </>
+                ) : pendingReview && canApproveClient ? (
+                  <>
+                    <button type="button" className="btn-bar" onClick={() => startClientApproval([openClient.ref])}>
+                      Aprobar
+                    </button>
+                    <button type="button" className="btn-bar" onClick={() => rejectClients([openClient.ref])}>
+                      Rechazar
+                    </button>
+                    <button type="button" className="btn-bar" onClick={() => onGo("clientes", "editar")}>
+                      Modificar
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" className="btn-bar" onClick={() => onGo("clientes", "editar")}>
+                      Modificar
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-bar"
+                      disabled={!canDelete || pendingReview}
+                      onClick={() => canDelete && !pendingReview && setConfirmDelete(true)}
+                    >
+                      Eliminar
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : null}
           </div>
           <div className="ficha">
             <aside className="ficha-side">
@@ -2160,47 +2201,6 @@ export function Workspace({
             <div className="ficha-main">
               {fileTab === "ficha" ? (
                 <>
-                  <div className="file-toolbar">
-                    <div className="file-toolbar-actions">
-                      {confirmDelete ? (
-                        <>
-                          <p className="ficha-warn">¿Eliminar este cliente? Saldrá del listado.</p>
-                          <button type="button" className="btn-bar" onClick={() => setConfirmDelete(false)}>
-                            Cancelar
-                          </button>
-                          <button type="button" className="btn-bar" onClick={deleteClient}>
-                            Sí, eliminar
-                          </button>
-                        </>
-                      ) : pendingReview && canApproveClient ? (
-                        <>
-                          <button type="button" className="btn-bar" onClick={() => startClientApproval([openClient.ref])}>
-                            Aprobar
-                          </button>
-                          <button type="button" className="btn-bar" onClick={() => rejectClients([openClient.ref])}>
-                            Rechazar
-                          </button>
-                          <button type="button" className="btn-bar" onClick={() => onGo("clientes", "editar")}>
-                            Modificar
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button type="button" className="btn-bar" onClick={() => onGo("clientes", "editar")}>
-                            Modificar
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-bar"
-                            disabled={!canDelete || pendingReview}
-                            onClick={() => canDelete && !pendingReview && setConfirmDelete(true)}
-                          >
-                            Eliminar
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
                   <ClientDetailTable client={openClient} />
                   {pendingReview ? (
                     <p className="route-gps-note">

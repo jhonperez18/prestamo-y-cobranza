@@ -184,7 +184,7 @@ export function CobranzaPaymentsView({
           <h1>{title}</h1>
           <span className="count">{sorted.length}</span>
           <div className="grow" />
-          <button type="button" className="btn primary" onClick={() => setPdfPreviewOpen(true)}>
+          <button type="button" className="btn primary compact" onClick={() => setPdfPreviewOpen(true)}>
             Vista previa PDF
           </button>
         </div>
