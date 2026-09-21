@@ -238,6 +238,7 @@ export function dispatchSummary(
 export function paymentsForDay(payments: PaymentRow[], todayToken = todayDispatchToken(), now = new Date()) {
   const today = todayIso(now);
   return payments.filter((row) => {
+    if (row.voidedAt?.trim()) return false;
     if (row.paidDate) return row.paidDate === today;
     return row.when.startsWith(todayToken) || row.when.startsWith(isoToDispatchLabel(today));
   });
