@@ -1,0 +1,19 @@
+---
+description: Login fijo — no tocar usuario/contraseña ni pantalla de acceso
+alwaysApply: true
+---
+
+# Login — sellado
+
+Usuario, contraseña y pantalla de acceso son **fijos**. El cliente ya vio roturas: **no se tocan**.
+
+## Prohibido (salvo “arregla login” / “arregla usuario contraseña” explícito)
+
+- `LoginScreen.tsx`, `.login-screen`, `.login-card`, `.login-field`, `.login-action-btn`
+- AuthGate solo por estética o “de paso”
+- `body`/`html` flex o tipografía global que afecte inputs del login
+- BOM en `globals.css` (invalida `:root` → campos ilegibles)
+
+## Shell ≠ login
+
+Arreglos de barra/sidebar **nunca** pasan por el login.

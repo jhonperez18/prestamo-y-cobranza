@@ -114,7 +114,7 @@ export function synchronizeOperationalState(
   });
 
   const assignments = input.assignments?.length
-    ? reconcilePaymentsOntoPlanilla(input.assignments, payments)
+    ? reconcilePaymentsOntoPlanilla(input.assignments, payments, loans)
     : (input.assignments ?? []);
 
   const dailyLogs = alignDailyLogsCollected(

@@ -232,8 +232,8 @@ export function CollectorMobileApp({
   }, [menuOpen]);
 
   const routeOptions = useMemo(
-    () => collectorMobileRoutes(collector.ref, assignments, loans, clients, routes, dayCloses),
-    [assignments, clients, collector.ref, dayCloses, loans, routes],
+    () => collectorMobileRoutes(collector.ref, assignments, loans, clients, routes, dayCloses, payments),
+    [assignments, clients, collector.ref, dayCloses, loans, payments, routes],
   );
 
   const activeDate = useMemo(() => {
@@ -352,8 +352,9 @@ export function CollectorMobileApp({
         clients,
         routes,
         dayCloses,
+        payments,
       ),
-    [activeDate, assignments, clients, collector.ref, dayCloses, loans, routes],
+    [activeDate, assignments, clients, collector.ref, dayCloses, loans, payments, routes],
   );
   const dayWasClosedByCollector = queue.closed;
   const dayLocked = dayWasClosedByCollector;
@@ -942,11 +943,21 @@ export function CollectorMobileApp({
                 const isDoneView = listFilter === "done";
                 const identity = visitIdentity(item, clients, loans, payments, activeDate);
                 const paidPayment = item.paymentRef
-                  ? payments.find((row) => row.ref === item.paymentRef)
+                  ? payments.find(
+                      (row) =>
+                        row.ref === item.paymentRef &&
+                        !row.voidedAt?.trim() &&
+                        (!row.loanRef || !item.loanRef || row.loanRef === item.loanRef),
+                    )
                   : undefined;
                 const payMethod = paidPayment
                   ? normalizePaymentMethod(paidPayment.method)
                   : null;
+                const paymentVoided = Boolean(item.paymentRef) && !paidPayment;
+                const needsRecollect =
+                  paymentVoided ||
+                  (item.visitStatus === "cobrado" && !paidPayment) ||
+                  (item.visitStatus === "parcial" && !paidPayment);
                 const canLend =
                   identity.awaitingLoan &&
                   !collectionStopped &&
@@ -954,9 +965,9 @@ export function CollectorMobileApp({
                   Boolean(onCreateQuickLoan);
                 const canAct =
                   !identity.awaitingLoan &&
-                  item.visitStatus !== "cobrado" &&
                   item.visitStatus !== "omitido" &&
-                  !item.paymentRef &&
+                  (item.visitStatus !== "cobrado" || needsRecollect) &&
+                  (!item.paymentRef || needsRecollect) &&
                   !collectionStopped &&
                   canCollect &&
                   Boolean(identity.loanRef) &&

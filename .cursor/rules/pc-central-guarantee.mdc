@@ -1,0 +1,29 @@
+---
+description: Sistema central en este PC — garantía local primero
+alwaysApply: true
+---
+
+# Garantía: sistema central = este PC
+
+## Ley del dueño
+
+Lo que se crea / edita / borra / guarda en el **panel del sistema en este PC** debe quedar **montado aquí al instante**.
+
+1. Tras **Guardar**: ya está en `localStorage` (`nexo-demo-*` + `-bak`).
+2. La **nube / commit / push** es para que **otros** vean lo mismo después — no es la garantía primaria.
+3. Un pull **nunca** rebobina un edit fresco de este aparato.
+
+## Prioridad
+
+| Orden | Qué |
+| --- | --- |
+| 1 | Persistencia local en este PC (garantía) |
+| 2 | Cola + flush nube (proyección a otros) |
+| 3 | Deploy / verify:prod (cuando el dueño lo pida) |
+
+## Prohibido
+
+- Decir “listo” si el dato no quedó en local.
+- Vaciar clientes / usuarios / préstamos / pagos con `[]`.
+- Pull o seed que pise lo que el padre acaba de guardar en este PC.
+---

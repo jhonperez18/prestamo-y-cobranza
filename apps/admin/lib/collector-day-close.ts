@@ -576,7 +576,8 @@ export function upsertAndTrimCollectorDayClose(
 
 /**
  * Si ya hay CIE- del día pero la planilla no tiene dayClosedAt (cierre a medias),
- * sella las visitas para que la app muestre “Jornada cerrada”.
+ * sella las visitas que existían al cerrar.
+ * Visitas NUEVAS (p. ej. préstamo creado después del CIE) no se omiten: siguen pendientes.
  */
 export function applyDayCloseRecordsToAssignments(
   assignments: DailyCollectionAssignment[],
@@ -596,7 +597,27 @@ export function applyDayCloseRecordsToAssignments(
     const date = normalizeHistoryDate(row.dispatchDate);
     if (!date) return row;
     const close = byKey.get(`${row.collectorRef}::${date}`);
-    if (!close || row.dayClosedAt) return row;
+    if (!close) return row;
+
+    const closeMs = Date.parse(String(close.closedAt || ""));
+    const bornMs = Date.parse(String(row.assignedAt || row.dispatchedAt || ""));
+    const bornAfterClose =
+      Number.isFinite(closeMs) && Number.isFinite(bornMs) && bornMs > closeMs;
+
+    // Préstamo/visita nacida después del cierre → no sellar (y deshacer sello erróneo).
+    if (bornAfterClose) {
+      if (!row.dayClosedAt && row.visitStatus !== "omitido") return row;
+      if (row.paymentRef || row.visitStatus === "cobrado") return row;
+      return {
+        ...row,
+        dayClosedAt: undefined,
+        visitStatus: "pendiente" as const,
+        skipReason: undefined,
+        amountDue: Math.max(0, Number(row.amountDue) || 0),
+      };
+    }
+
+    if (row.dayClosedAt) return row;
 
     const closedAt =
       close.closedAt && !close.closedAt.includes("T") && close.closedAt.length <= 8

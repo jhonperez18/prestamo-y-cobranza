@@ -1,0 +1,36 @@
+---
+description: Solo lo pedido — prohibido tocar UI/shell/login no solicitados
+alwaysApply: true
+---
+
+# Alcance estricto — el cliente ya vio inestabilidad
+
+## Ley
+
+**Prohibido** cambiar, “mejorar”, refactorizar o tocar nada que el usuario **no pidió en ese mensaje**.
+
+Si pidió cuota en Nuevo préstamo → solo eso.  
+Si pidió un dato → no abrir `globals.css`, `AppShell`, login ni layout.
+
+## Zonas selladas (salvo pedido explícito con esas palabras)
+
+| Zona | Archivos típicos |
+| --- | --- |
+| Shell PC | `AppShell.tsx`, `.topbar`, `.shell`, `.aside`, `.brand-logo`, `--top` |
+| Login | `LoginScreen.tsx`, `.login-*`, AuthGate visual/boot salvo sync pedida |
+| Tema global | `body`/`html` flex, tipografía global de `input`, BOM en CSS |
+
+## Antes de editar
+
+1. ¿El usuario pidió **esto**?
+2. Si no → **no editar**.
+3. Si el arreglo “necesita” shell/login → **parar** y no improvisar.
+
+## CSS
+
+- Nunca guardar `globals.css` con BOM (rompe `:root` → login negro / sistema roto).
+- No tocar selectores de login para “arreglar” el shell.
+
+## Consecuencia
+
+Un cambio colateral = sistema inestable a ojos del cliente. Eso **no puede volver a pasar**.

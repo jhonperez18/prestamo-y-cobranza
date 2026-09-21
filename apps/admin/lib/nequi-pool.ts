@@ -49,13 +49,19 @@ export function loanFundedByBanco(loan: Pick<LoanRow, "fundedBy" | "notes">): bo
 }
 
 function withFundedMarker(notes: string | undefined, marker: string) {
-  const cleaned = (notes || "")
+  const cleaned = stripFundedMarkers(notes);
+  if (cleaned.includes(marker)) return cleaned;
+  return [cleaned, marker].filter(Boolean).join("\n");
+}
+
+/** Quita marcadores [[fb:…]] del cajón de observaciones (el origen va en fundedBy). */
+export function stripFundedMarkers(notes: string | undefined): string {
+  return (notes || "")
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line && !(FUNDED_MARKERS as readonly string[]).includes(line))
-    .join("\n");
-  if (cleaned.includes(marker)) return cleaned;
-  return [cleaned, marker].filter(Boolean).join("\n");
+    .join("\n")
+    .trim();
 }
 
 /** Marca desembolso financiado con Nequi (alta o renovación desde supervisor/admin). */

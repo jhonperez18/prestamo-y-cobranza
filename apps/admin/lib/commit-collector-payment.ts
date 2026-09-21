@@ -155,7 +155,7 @@ export function commitCollectorPayment(
     dispatchDate,
   };
 
-  const result = applyCollectorPaymentResult(loan, safeDraft, route);
+  const result = applyCollectorPaymentResult(loan, safeDraft, route, payments);
   if (!result.ok) return { ok: false, error: result.error };
 
   const paymentRef = nextPaymentCode(payments);

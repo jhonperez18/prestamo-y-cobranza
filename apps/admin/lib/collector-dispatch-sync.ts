@@ -74,20 +74,36 @@ export function hydrateAssignment(
   row: DailyCollectionAssignment,
   loans: LoanRow[],
   clients: ClientRow[],
-  payments?: CollectionPaymentTouch[],
+  payments?: (CollectionPaymentTouch & { ref?: string; voidedAt?: string })[],
 ): DailyCollectionAssignment {
   const loan = loans.find((entry) => entry.ref === row.loanRef);
   const client = clients.find((entry) => entry.ref === (row.clientRef || loan?.clientRef));
+  const linkedRef = (row.paymentRef || "").trim();
+  const hasPaymentList = Boolean(payments && payments.length > 0);
+  const linkedPay = linkedRef && hasPaymentList
+    ? payments!.find((entry) => entry.ref === linkedRef)
+    : undefined;
+  const paymentCounts = linkedRef
+    ? hasPaymentList
+      ? Boolean(linkedPay) &&
+        !String(linkedPay?.voidedAt || "").trim() &&
+        (!linkedPay?.loanRef || !row.loanRef || linkedPay.loanRef === row.loanRef)
+      : true
+    : false;
+  const sealedPaid = row.visitStatus === "omitido" || paymentCounts;
   const amountDue =
     row.awaitingLoan
       ? 0
-      : row.amountDue ??
-        (loan?.installment && loan.installment > 0
-          ? Math.min(loan.installment, loan.balance)
-          : loan?.balance ?? 0);
+      : sealedPaid
+        ? 0
+        : Number(row.amountDue) > 0
+          ? Number(row.amountDue)
+          : loan?.installment && loan.installment > 0
+            ? Math.min(loan.installment, loan.balance)
+            : loan?.balance ?? 0;
   const alertCount = row.awaitingLoan
     ? 0
-    : row.visitStatus === "cobrado" || row.visitStatus === "parcial" || Boolean(row.paymentRef)
+    : sealedPaid
       ? 0
       : loan
         ? liveLoanCollectionAlerts(loan, payments, row.dispatchDate || todayIso())
@@ -99,11 +115,17 @@ export function hydrateAssignment(
       : loan
         ? collectionChargeKind(alertCount)
         : row.kind ?? "cuota";
+  const visitStatus =
+    linkedRef && !paymentCounts && (row.visitStatus === "cobrado" || row.visitStatus === "parcial")
+      ? ("pendiente" as const)
+      : row.visitStatus ?? "pendiente";
   return {
     ...row,
     clientRef: row.clientRef ?? client?.ref ?? "",
-    clientName:
-      row.clientName ?? (client ? `${client.name} ${client.lastName}`.trim() : loan?.client ?? "—"),
+    // Catálogo manda: tras rename no dejar nombre viejo en la visita.
+    clientName: client
+      ? `${client.name} ${client.lastName}`.trim()
+      : row.clientName || loan?.client || "—",
     clientRoute: row.clientRoute ?? client?.route ?? "—",
     address: row.address ?? client?.address,
     amountDue,
@@ -114,7 +136,8 @@ export function hydrateAssignment(
       : alertCount === 0
         ? "Cuota"
         : collectionAlertLabel(alertCount) || row.chargeLabel || "Cuota",
-    visitStatus: row.visitStatus ?? "pendiente",
+    visitStatus,
+    paymentRef: paymentCounts ? row.paymentRef : visitStatus === "omitido" ? row.paymentRef : undefined,
     awaitingLoan: Boolean(row.awaitingLoan),
   };
 }

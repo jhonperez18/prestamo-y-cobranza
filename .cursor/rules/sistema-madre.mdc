@@ -16,10 +16,14 @@ No aplica solo a usuarios: **cualquier** alta/edición/baja del padre debe refle
 ## Cadena obligatoria
 
 1. Commit atómico en el módulo dueño (ej. `commitCollectorPayment`, `commit-people-catalog`).
-2. Persistir raíz + encolar mirror.
+2. **Persistir en este PC** (localStorage + `-bak`) — **esta es la garantía**.
 3. Proyectar hijos (nombres, planilla, banco, acceso).
-4. **Await** flush a la nube antes de “listo”.
+4. Encolar mirror; flush nube para que **otros** vean (secundario; si falla la red, el PC ya tiene el dato).
 5. Lectura/login: **local primero**; pull no borra lo fresco del padre.
+
+## Garantía del dueño
+
+Sistema central = este PC. Commit/push/deploy actualizan a otros; no sustituyen lo montado aquí.
 
 ## Prohibido
 

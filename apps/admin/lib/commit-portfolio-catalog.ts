@@ -3,7 +3,7 @@
  * cliente / préstamo → persistir raíz → planilla → cola nube → await flush.
  */
 import type { ModuleId } from "@/lib/navigation";
-import { placeClientOnRoute } from "@/lib/client-route-order";
+import { placeClientOnRoute, nextRouteOrder } from "@/lib/client-route-order";
 import {
   CLIENT_STATUS_ACTIVE,
   CLIENT_STATUS_REVIEW,
@@ -16,23 +16,27 @@ import {
   DEMO_CLIENTS_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_LOANS_KEY,
+  DEMO_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
   writeDemoJson,
 } from "@/lib/demo-persist";
-import { syncLoan } from "@/lib/loan-preview";
+import { mergeSchedulePaid, syncLoan } from "@/lib/loan-preview";
 import {
+  catalogRoutes,
   clientCreationDate,
   loansForClient,
   nextClientCode,
   nextLoanCode,
+  normalizeRouteNumber,
+  routeIsActive,
   type ClientRow,
   type CollectorRow,
   type LoanRow,
   type PaymentRow,
   type RouteRow,
 } from "@/lib/mock-data";
-import { markLoanFundedByBanco, markLoanFundedByNequi } from "@/lib/nequi-pool";
-import { syncPermanentRoutePlanilla } from "@/lib/route-planilla";
+import { markLoanFundedByBanco, markLoanFundedByEfectivo, markLoanFundedByNequi } from "@/lib/nequi-pool";
+import { resolvedLoanInstallment, syncPermanentRoutePlanilla } from "@/lib/route-planilla";
 import {
   flushCatalogMirrorQueues,
   queueClientMirror,
@@ -43,6 +47,45 @@ import {
   queueAssignmentsMirror,
   queueRoutesMirror,
 } from "@/lib/supabase/ops-mirror";
+import { queuePaymentMirror, flushPaymentMirrorQueue } from "@/lib/supabase/payment-mirror";
+
+/** El acuerdo del formulario manda: interés 0, # cuotas y cuota manual no se reescriben. */
+function pinLoanDraftAgreement(synced: LoanRow, draft: PortfolioLoanDraft): LoanRow {
+  const schedule =
+    draft.schedule && draft.schedule.length > 0
+      ? mergeSchedulePaid(
+          draft.schedule.map((line) => ({
+            date: line.date,
+            amount: line.amount,
+            kind: line.kind ?? "cuota",
+          })),
+          synced.schedule,
+        )
+      : synced.schedule;
+  const interest = Number.isFinite(draft.interest) ? Math.max(0, Math.trunc(draft.interest)) : 0;
+  const total =
+    Number.isFinite(draft.total) && draft.total > 0
+      ? Math.trunc(draft.total)
+      : Math.trunc(draft.capital) + interest;
+  const paid = synced.paid ?? 0;
+  return {
+    ...synced,
+    days: draft.days > 0 ? Math.trunc(draft.days) : synced.days,
+    interest,
+    total,
+    installment:
+      Number.isFinite(draft.installment) && draft.installment > 0
+        ? Math.trunc(draft.installment)
+        : synced.installment,
+    schedule,
+    due: draft.due || synced.due,
+    mode: "cuota_fija",
+    pact: "valor",
+    rate: draft.rate ?? 0,
+    frequency: draft.frequency ?? synced.frequency,
+    balance: Math.max(0, total - paid),
+  };
+}
 
 export type PortfolioClientDraft = {
   name: string;
@@ -74,7 +117,7 @@ export type PortfolioLoanDraft = {
   total: number;
   installment: number;
   schedule: LoanRow["schedule"];
-  fundedBy?: "nequi" | "banco";
+  fundedBy?: "nequi" | "banco" | "efectivo";
 };
 
 export type PortfolioCatalogState = {
@@ -102,6 +145,39 @@ function persistPortfolio(state: PortfolioCatalogState) {
   writeDemoJson(DEMO_LOANS_KEY, state.loans);
   writeDemoJson(DEMO_ROUTES_KEY, state.routes);
   writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, state.assignments);
+  writeDemoJson(DEMO_PAYMENTS_KEY, state.payments);
+}
+
+function clientDisplayName(client: Pick<ClientRow, "name" | "lastName">) {
+  return `${client.name} ${client.lastName}`.trim();
+}
+
+/**
+ * Renombrar cliente = proyectar identidad a préstamos, planilla y PG-.
+ * Sin esto el nombre queda viejo en cobros y un PG ajeno puede “pegarse”.
+ */
+function projectClientIdentity(
+  state: PortfolioCatalogState,
+  clientRef: string,
+  label: string,
+): PortfolioCatalogState {
+  const loanRefs = new Set(
+    state.loans.filter((row) => row.clientRef === clientRef).map((row) => row.ref),
+  );
+  const loans = state.loans.map((row) =>
+    row.clientRef === clientRef ? { ...row, client: label } : row,
+  );
+  const assignments = state.assignments.map((row) =>
+    row.clientRef === clientRef ? { ...row, clientName: label } : row,
+  );
+  const payments = state.payments.map((row) =>
+    row.loanRef && loanRefs.has(row.loanRef) ? { ...row, client: label } : row,
+  );
+  return { ...state, loans, assignments, payments };
+}
+
+function stampCatalogRow<T>(row: T): T {
+  return { ...row, updatedAt: new Date().toISOString() };
 }
 
 function projectPlanilla(
@@ -126,7 +202,12 @@ function projectPlanilla(
 
 function enqueuePortfolioMirrors(
   state: PortfolioCatalogState,
-  opts: { clientRefs?: string[]; loanRefs?: string[]; mirrorPlanilla?: boolean },
+  opts: {
+    clientRefs?: string[];
+    loanRefs?: string[];
+    paymentRefs?: string[];
+    mirrorPlanilla?: boolean;
+  },
 ) {
   for (const ref of opts.clientRefs ?? []) {
     const row = state.clients.find((entry) => entry.ref === ref);
@@ -135,6 +216,10 @@ function enqueuePortfolioMirrors(
   for (const ref of opts.loanRefs ?? []) {
     const row = state.loans.find((entry) => entry.ref === ref);
     if (row) queueLoanMirror(row);
+  }
+  for (const ref of opts.paymentRefs ?? []) {
+    const row = state.payments.find((entry) => entry.ref === ref);
+    if (row) void queuePaymentMirror(row);
   }
   if (opts.mirrorPlanilla) {
     queueRoutesMirror(state.routes);
@@ -145,6 +230,7 @@ function enqueuePortfolioMirrors(
 export async function flushPortfolioCatalogToCloud() {
   await flushCatalogMirrorQueues();
   await flushOpsMirrorQueues();
+  await flushPaymentMirrorQueue();
 }
 
 export function commitCreateClient(
@@ -161,7 +247,7 @@ export function commitCreateClient(
     : { status: CLIENT_STATUS_REVIEW, kind: clientStatusKind(CLIENT_STATUS_REVIEW) };
 
   const ref = nextClientCode(state.clients);
-  const row: ClientRow = {
+  const row = stampCatalogRow({
     ref,
     alta: clientCreationDate(),
     name,
@@ -182,7 +268,7 @@ export function commitCreateClient(
     status: review.status,
     kind: review.kind,
     createdBy: opts.createdBy,
-  };
+  } as ClientRow);
 
   const clients =
     review.status === CLIENT_STATUS_REVIEW
@@ -236,11 +322,11 @@ export function commitUpdateClient(
       draft.barrio.trim(),
   );
   const profileComplete = hasRealDoc && hasContactOrPlace;
-  const updated: ClientRow = {
+  const updated = stampCatalogRow({
     ...openClient,
-    name: draft.name,
-    lastName: draft.lastName,
-    nickname: draft.nickname,
+    name: draft.name.trim(),
+    lastName: draft.lastName.trim(),
+    nickname: draft.nickname.trim(),
     document: draft.document,
     city: draft.city,
     barrio: draft.barrio,
@@ -252,14 +338,28 @@ export function commitUpdateClient(
     ...(approving
       ? { status: CLIENT_STATUS_ACTIVE, kind: clientStatusKind(CLIENT_STATUS_ACTIVE) }
       : {}),
-  };
+  });
 
   const clients = placeClientOnRoute(state.clients, updated, draft.route, draft.routeOrder);
+  const label = clientDisplayName(updated);
+  const prevLabel = clientDisplayName(openClient);
   let next: PortfolioCatalogState = { ...state, clients };
+  // Siempre proyecta: corrige préstamos/planilla/PG con nombre viejo tras un rename.
+  next = projectClientIdentity(next, clientRef, label);
   next = projectPlanilla(next);
+
+  const loanRefs = next.loans
+    .filter((row) => row.clientRef === clientRef)
+    .map((row) => row.ref);
+  const paymentRefs = next.payments
+    .filter((row) => row.loanRef && loanRefs.includes(row.loanRef))
+    .map((row) => row.ref);
+
   persistPortfolio(next);
   enqueuePortfolioMirrors(next, {
     clientRefs: [clientRef],
+    loanRefs,
+    paymentRefs: label !== prevLabel || paymentRefs.length ? paymentRefs : [],
     mirrorPlanilla: true,
   });
 
@@ -370,19 +470,69 @@ export function commitCreateLoan(
     },
     state.payments,
   ) as LoanRow;
-  const row =
-    draft.fundedBy === "banco" ? markLoanFundedByBanco(synced) : markLoanFundedByNequi(synced);
-  const nextClient: ClientRow = {
+  const pinned = pinLoanDraftAgreement(synced, draft);
+  const installment = Math.max(
+    Number(pinned.installment) || 0,
+    resolvedLoanInstallment(pinned),
+    Number(draft.installment) || 0,
+  );
+  const loanReady = stampCatalogRow({
+    ...pinned,
+    installment: installment > 0 ? installment : pinned.installment,
+    balance: Math.max(0, Number(pinned.total) || Number(draft.total) || Number(draft.capital) || 0),
+  });
+  const row = stampCatalogRow(
+    draft.fundedBy === "banco"
+      ? markLoanFundedByBanco(loanReady)
+      : draft.fundedBy === "efectivo"
+        ? markLoanFundedByEfectivo(loanReady)
+        : markLoanFundedByNequi(loanReady),
+  );
+
+  // Asegura al cliente en su ruta (misma que el cobrador de esa ruta).
+  const routeName =
+    normalizeRouteNumber(client.route) || String(client.route || "").trim();
+  const catalogRoute = catalogRoutes(state.routes).find(
+    (entry) =>
+      routeIsActive(entry) &&
+      (normalizeRouteNumber(entry.name) === routeName || entry.name === client.route),
+  );
+  const routeForClient = catalogRoute?.name || routeName || client.route;
+  const order =
+    client.routeOrder > 0 &&
+    (normalizeRouteNumber(client.route) === normalizeRouteNumber(routeForClient) ||
+      client.route === routeForClient)
+      ? client.routeOrder
+      : nextRouteOrder(
+          state.clients.filter((entry) => entry.ref !== client.ref),
+          routeForClient,
+        );
+  const nextClientBase = stampCatalogRow({
     ...client,
     total: client.total + draft.total,
     pending: client.pending + draft.total,
-  };
-  const clients = state.clients.map((entry) =>
-    entry.ref === client.ref ? nextClient : entry,
-  );
+    awaitingLoan: false,
+  });
+  const clients = routeForClient
+    ? placeClientOnRoute(state.clients, nextClientBase, routeForClient, order)
+    : state.clients.map((entry) => (entry.ref === client.ref ? nextClientBase : entry));
+
   const loans = [row, ...state.loans];
   let next: PortfolioCatalogState = { ...state, clients, loans };
   next = projectPlanilla(next);
+
+  // Si aún no quedó en planilla de hoy, regenera una vez más (ruta/cobrador ya alineados).
+  const today = todayIso();
+  const onPlanilla = next.assignments.some(
+    (entry) =>
+      entry.loanRef === ref &&
+      entry.dispatchDate === today &&
+      !entry.dayClosedAt,
+  );
+  if (!onPlanilla) {
+    next = projectPlanilla(next, today);
+  }
+
   persistPortfolio(next);
   enqueuePortfolioMirrors(next, {
     clientRefs: [client.ref],
@@ -393,7 +543,9 @@ export function commitCreateLoan(
   return {
     ok: true,
     state: next,
-    message: "Préstamo creado y cargado a la planilla.",
+    message: onPlanilla || next.assignments.some((e) => e.loanRef === ref && e.dispatchDate === today)
+      ? "Préstamo creado y cargado a la planilla del cobrador."
+      : "Préstamo creado. Revise que la ruta del cliente tenga cobrador asignado.",
     focusClientRef: client.ref,
     focusLoanRef: ref,
     goTo: { moduleId: "prestamos", viewId: "cuenta" },
@@ -411,7 +563,7 @@ export function commitUpdateLoan(
   if (!client) return { ok: false, error: "Seleccione un cliente." };
 
   const oldTotal = openLoan.total ?? openLoan.capital;
-  const nextLoan = syncLoan(
+  const synced = syncLoan(
     {
       ...openLoan,
       clientRef: client.ref,
@@ -434,15 +586,52 @@ export function commitUpdateLoan(
     },
     state.payments,
   ) as LoanRow;
-  const nextClient: ClientRow = {
+  const pinned = pinLoanDraftAgreement(synced, draft);
+  const installment = Math.max(
+    Number(pinned.installment) || 0,
+    resolvedLoanInstallment(pinned),
+    Number(draft.installment) || 0,
+  );
+  const fundedBase = stampCatalogRow({
+    ...pinned,
+    installment: installment > 0 ? installment : pinned.installment,
+  });
+  const funded =
+    draft.fundedBy === "banco"
+      ? markLoanFundedByBanco(fundedBase)
+      : draft.fundedBy === "efectivo"
+        ? markLoanFundedByEfectivo(fundedBase)
+        : draft.fundedBy === "nequi"
+          ? markLoanFundedByNequi(fundedBase)
+          : fundedBase;
+  const nextLoan = stampCatalogRow(funded);
+  const nextClientBase = stampCatalogRow({
     ...client,
     total: Math.max(0, client.total - oldTotal + draft.total),
     pending: Math.max(0, client.pending - oldTotal + draft.total),
-  };
-  const loans = state.loans.map((row) => (row.ref === loanRef ? nextLoan : row));
-  const clients = state.clients.map((entry) =>
-    entry.ref === client.ref ? nextClient : entry,
+    awaitingLoan: false,
+  });
+  const routeName =
+    normalizeRouteNumber(client.route) || String(client.route || "").trim();
+  const catalogRoute = catalogRoutes(state.routes).find(
+    (entry) =>
+      routeIsActive(entry) &&
+      (normalizeRouteNumber(entry.name) === routeName || entry.name === client.route),
   );
+  const routeForClient = catalogRoute?.name || routeName || client.route;
+  const order =
+    client.routeOrder > 0 &&
+    (normalizeRouteNumber(client.route) === normalizeRouteNumber(routeForClient) ||
+      client.route === routeForClient)
+      ? client.routeOrder
+      : nextRouteOrder(
+          state.clients.filter((entry) => entry.ref !== client.ref),
+          routeForClient,
+        );
+  const loans = state.loans.map((row) => (row.ref === loanRef ? nextLoan : row));
+  const clients = routeForClient
+    ? placeClientOnRoute(state.clients, nextClientBase, routeForClient, order)
+    : state.clients.map((entry) => (entry.ref === client.ref ? nextClientBase : entry));
   let next: PortfolioCatalogState = { ...state, clients, loans };
   next = projectPlanilla(next);
   persistPortfolio(next);
@@ -457,7 +646,11 @@ export function commitUpdateLoan(
     state: next,
     message: openLoan.termsPending
       ? "Préstamo actualizado. Ya no aparece en alertas de revisión."
-      : "Préstamo actualizado.",
+      : next.assignments.some(
+            (entry) => entry.loanRef === loanRef && entry.dispatchDate === todayIso(),
+          )
+        ? "Préstamo actualizado y en planilla del cobrador."
+        : "Préstamo actualizado. Revise que la ruta tenga cobrador asignado.",
     focusClientRef: client.ref,
     focusLoanRef: loanRef,
     goTo: { moduleId: "prestamos", viewId: "cuenta" },

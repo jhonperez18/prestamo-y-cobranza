@@ -43,12 +43,15 @@ Toda área nueva del producto **debe** nacer con el mismo patrón: un commit, un
 
 ---
 
-## 3. Instantáneo
+## 3. Instantáneo (garantía de este PC)
 
-1. Tras Guardar: el aparato **ya** tiene el dato (síncrono).
-2. Flush a nube **antes** de decir “listo” / “acceso listo”.
-3. Login y lecturas: **local primero**; pull solo para completar, **nunca** para borrar altas/edits locales frescos.
-4. Cero pantallas con datos viejos por Auth, SQL espejo o seed mock.
+**La garantía primaria es el sistema central en este aparato**, no la nube ni el deploy.
+
+1. Tras Guardar: el PC **ya** tiene el dato (síncrono en `localStorage` + respaldo `-bak`).
+2. Nube / commit / push: para que **otros** vean lo mismo — se actualiza después; no sustituye la garantía local.
+3. Flush a nube cuando el flujo lo pide; si falla la red, **en este PC el dato sigue**.
+4. Login y lecturas: **local primero**; pull solo para completar, **nunca** para borrar altas/edits locales frescos.
+5. Cero pantallas con datos viejos por Auth, SQL espejo o seed mock.
 
 ---
 

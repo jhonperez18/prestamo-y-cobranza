@@ -1,25 +1,27 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
-import { CloseIcon, SearchIcon } from "@/components/icons";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { CloseIcon, PersonMiniIcon, SearchIcon } from "@/components/icons";
 import { money, nextLoanCode, type ClientRow, type LoanRow } from "@/lib/mock-data";
 import { isOperationalClient } from "@/lib/client-review";
 import {
   buildFlatLoanPreviewCards,
   displayToIso,
-  firstCollectionLabel,
-  inferTermMonths,
+  firstCollectionIso,
   isoToDisplay,
-  LOAN_TERM_OPTIONS,
   PAY_FREQUENCIES,
   previewLoanFlat,
+  suggestedInstallmentsForDays,
   syncLoan,
-  type LoanTermMonths,
   type PayFrequency,
   type ScheduleLine,
 } from "@/lib/loan-preview";
 import { todayIso } from "@/lib/daily-dispatch";
-import type { LoanDisbursementSource } from "@/lib/nequi-pool";
+import {
+  loanDisbursementSource,
+  stripFundedMarkers,
+  type LoanDisbursementSource,
+} from "@/lib/nequi-pool";
 
 export type LoanDraft = {
   clientRef: string;
@@ -36,8 +38,8 @@ export type LoanDraft = {
   total: number;
   installment: number;
   schedule: ScheduleLine[];
-  /** Origen del desembolso (admin/supervisor): nequi o banco. */
-  fundedBy?: Extract<LoanDisbursementSource, "nequi" | "banco">;
+  /** Origen del desembolso: Nequi/Banco (dueño) o Efectivo (caja del cobrador de la ruta). */
+  fundedBy?: LoanDisbursementSource;
 };
 
 type Props = {
@@ -58,6 +60,10 @@ function fold(value: string) {
     .trim();
 }
 
+function clientPickDisplayName(client: ClientRow) {
+  return `${client.name} ${client.lastName}`.trim();
+}
+
 function matchesClient(client: ClientRow, query: string) {
   const q = fold(query);
   if (!q) return true;
@@ -66,7 +72,8 @@ function matchesClient(client: ClientRow, query: string) {
       client.ref,
       client.name,
       client.lastName,
-      `${client.name} ${client.lastName}`,
+      clientPickDisplayName(client),
+      String(client.routeOrder || ""),
       client.document,
       client.phone,
       client.city,
@@ -76,14 +83,26 @@ function matchesClient(client: ClientRow, query: string) {
   return q.split(" ").every((part) => hay.includes(part));
 }
 
+function sortClientsLikeListado(a: ClientRow, b: ClientRow) {
+  const routeCmp = a.route.localeCompare(b.route, undefined, { numeric: true });
+  if (routeCmp !== 0) return routeCmp;
+  return (a.routeOrder || 0) - (b.routeOrder || 0);
+}
+
 function parseMoney(raw: string) {
   const digits = raw.replace(/[^\d]/g, "");
   return digits ? Number(digits) : 0;
 }
 
+function parsePositiveInt(raw: string) {
+  const digits = raw.replace(/[^\d]/g, "");
+  if (!digits) return 0;
+  return Math.trunc(Number(digits));
+}
+
 const INTEREST_PCT_OPTIONS = [5, 10, 15, 20] as const;
 type InterestPct = (typeof INTEREST_PCT_OPTIONS)[number];
-type InterestInputMode = "pct" | "amount" | null;
+type InterestInputMode = "pct" | "amount";
 
 function matchInterestPct(capital: number, interest: number): InterestPct | null {
   if (capital <= 0 || interest <= 0) return null;
@@ -94,12 +113,27 @@ function matchInterestPct(capital: number, interest: number): InterestPct | null
   return null;
 }
 
-function initialTermMonths(loan?: LoanRow | null): LoanTermMonths {
-  if (!loan) return 1;
+function initialTermDays(loan?: LoanRow | null): number {
+  if (!loan) return 30;
+  if (loan.days != null && loan.days > 0) return Math.trunc(loan.days);
   const start = displayToIso(loan.date);
   const due = displayToIso(loan.due);
-  if (start && due) return inferTermMonths(start, due);
-  return 1;
+  if (start && due) {
+    const startMs = Date.parse(`${start}T12:00:00Z`);
+    const dueMs = Date.parse(`${due}T12:00:00Z`);
+    if (Number.isFinite(startMs) && Number.isFinite(dueMs) && dueMs > startMs) {
+      return Math.max(1, Math.round((dueMs - startMs) / 86400000));
+    }
+  }
+  return 30;
+}
+
+function initialCuotas(loan?: LoanRow | null, termDays = 30, frequency: PayFrequency = "diario") {
+  if (loan?.schedule?.length) {
+    const count = loan.schedule.filter((line) => line.kind !== "capital").length;
+    if (count > 0) return count;
+  }
+  return suggestedInstallmentsForDays(frequency, termDays);
 }
 
 export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelete }: Props) {
@@ -107,10 +141,23 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
   const syncedLoan = useMemo(() => (loan ? syncLoan(loan, undefined) : null), [loan]);
   const code = loan?.ref ?? loanCode ?? nextLoanCode();
   const [query, setQuery] = useState("");
-  const [focused, setFocused] = useState(false);
   const [client, setClient] = useState<ClientRow | null>(
     () => (loan ? (clients.find((row) => row.ref === loan.clientRef) ?? null) : null),
   );
+
+  // Catálogo manda: si renombran el cliente, el picker ya seleccionado se actualiza.
+  useEffect(() => {
+    if (!client) return;
+    const fresh = clients.find((row) => row.ref === client.ref);
+    if (!fresh) return;
+    if (
+      fresh.name !== client.name ||
+      fresh.lastName !== client.lastName ||
+      fresh.routeOrder !== client.routeOrder
+    ) {
+      setClient(fresh);
+    }
+  }, [clients, client]);
   const [capitalRaw, setCapitalRaw] = useState(
     syncedLoan ? String(syncedLoan.capital) : loan ? String(loan.capital) : "",
   );
@@ -122,71 +169,239 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
         : 0;
   const seedCapital = syncedLoan?.capital ?? loan?.capital ?? 0;
   const seedPct = matchInterestPct(seedCapital, seedInterest);
-  const [interestMode, setInterestMode] = useState<InterestInputMode>(() => {
-    if (seedInterest <= 0) return null;
-    return seedPct != null ? "pct" : "amount";
-  });
+  // Interés 0 es valor válido y se guarda; nunca “Elegir…” vacío.
+  const [interestMode, setInterestMode] = useState<InterestInputMode>(() =>
+    seedPct != null ? "pct" : "amount",
+  );
   const [ratePct, setRatePct] = useState<InterestPct | null>(() => seedPct);
-  const [interestRaw, setInterestRaw] = useState(
-    seedInterest > 0 && seedPct == null ? String(seedInterest) : "",
+  const [interestRaw, setInterestRaw] = useState(() => {
+    if (seedPct != null) return "";
+    return String(Math.max(0, seedInterest));
+  });
+  const seedDays = initialTermDays(loan ?? null);
+  const seedFreq: PayFrequency = syncedLoan?.frequency ?? loan?.frequency ?? "diario";
+  const [termDaysRaw, setTermDaysRaw] = useState(String(seedDays));
+  const [frequency, setFrequency] = useState<PayFrequency>(seedFreq);
+  const seedCuotas = initialCuotas(loan ?? null, seedDays, seedFreq);
+  const [cuotasRaw, setCuotasRaw] = useState(String(seedCuotas));
+  /** # cuotas del acuerdo: en edición o si ya difiere de la sugerencia, no se recalcula. */
+  const cuotasTouchedRef = useRef(
+    Boolean(loan) ||
+      seedCuotas !== suggestedInstallmentsForDays(seedFreq, seedDays),
   );
-  const [termMonths, setTermMonths] = useState<LoanTermMonths>(() => initialTermMonths(loan ?? null));
-  const [startIso, setStartIso] = useState(
-    syncedLoan
-      ? displayToIso(syncedLoan.date) || todayIso()
-      : loan
-        ? displayToIso(loan.date) || todayIso()
-        : todayIso(),
+  const seedCuota =
+    syncedLoan?.installment && syncedLoan.installment > 0
+      ? syncedLoan.installment
+      : loan?.installment && loan.installment > 0
+        ? loan.installment
+        : 0;
+  const [cuotaRaw, setCuotaRaw] = useState(seedCuota > 0 ? String(seedCuota) : "");
+  /** Cuota manual del cliente: se respeta al guardar y al reabrir; no se recalcula sola. */
+  const cuotaTouchedRef = useRef(Boolean(loan && seedCuota > 0));
+  const seedStartIso = syncedLoan
+    ? displayToIso(syncedLoan.date) || todayIso()
+    : loan
+      ? displayToIso(loan.date) || todayIso()
+      : todayIso();
+  const seedFirstCobro = loan
+    ? displayToIso(loan.schedule?.[0]?.date || "") ||
+      firstCollectionIso(seedStartIso, loan.frequency ?? "diario")
+    : "";
+  const autoSeedFirstCobro = firstCollectionIso(seedStartIso, seedFreq);
+  const [cobroIso, setCobroIso] = useState(seedFirstCobro || autoSeedFirstCobro);
+  const cobroTouchedRef = useRef(
+    Boolean(seedFirstCobro && autoSeedFirstCobro && seedFirstCobro !== autoSeedFirstCobro),
   );
-  const [frequency, setFrequency] = useState<PayFrequency>(
-    syncedLoan?.frequency ?? loan?.frequency ?? "diario",
+  const [dueIso, setDueIso] = useState(
+    loan
+      ? displayToIso(loan.due) ||
+          displayToIso(loan.schedule?.[loan.schedule.length - 1]?.date || "") ||
+          ""
+      : "",
   );
-  const [notes, setNotes] = useState(syncedLoan?.notes ?? loan?.notes ?? "");
-  const [fundedBy, setFundedBy] = useState<"nequi" | "banco">(
-    loan?.fundedBy === "banco" ? "banco" : "nequi",
+  /** Vencimiento sigue el cronograma hasta que el usuario lo edite a mano. */
+  const dueTouchedRef = useRef(false);
+  const seedTotal =
+    syncedLoan?.total && syncedLoan.total > 0
+      ? syncedLoan.total
+      : loan?.total && loan.total > 0
+        ? loan.total
+        : 0;
+  const [totalRaw, setTotalRaw] = useState(seedTotal > 0 ? String(seedTotal) : "");
+  const totalTouchedRef = useRef(false);
+  const [startIso, setStartIso] = useState(seedStartIso);
+  const [notes, setNotes] = useState(() =>
+    stripFundedMarkers(syncedLoan?.notes ?? loan?.notes ?? ""),
   );
+  const [fundedBy, setFundedBy] = useState<LoanDisbursementSource>(() => {
+    if (loan) return loanDisbursementSource(loan) ?? "nequi";
+    return "nequi";
+  });
   const [askingDelete, setAskingDelete] = useState(false);
+  const driversReadyRef = useRef(false);
+  const scheduleDriversRef = useRef({
+    startIso: seedStartIso,
+    frequency: seedFreq,
+    termDays: seedDays,
+    cuotasCount: seedCuotas,
+    capital: seedCapital,
+    interest: seedInterest,
+  });
 
   const suggestions = useMemo(
-    () => clients.filter((row) => isOperationalClient(row) && matchesClient(row, query)),
+    () =>
+      clients
+        .filter((row) => isOperationalClient(row) && matchesClient(row, query))
+        .slice()
+        .sort(sortClientsLikeListado),
     [clients, query],
   );
-  const showList = !client && (focused || query.trim().length > 0);
+  const showList = !client;
   const capital = parseMoney(capitalRaw);
   const interestFromPct =
     interestMode === "pct" && ratePct != null && capital > 0
       ? Math.trunc((capital * ratePct) / 100)
       : 0;
   const interestFromAmount = interestMode === "amount" ? parseMoney(interestRaw) : 0;
-  const interest = interestMode === "pct" ? interestFromPct : interestFromAmount;
-  const totalDue = capital + interest;
-  const preview = previewLoanFlat({
+  const interestAuto = interestMode === "pct" ? interestFromPct : interestFromAmount;
+  const totalManual = parseMoney(totalRaw);
+  const interest =
+    totalTouchedRef.current && totalManual > capital
+      ? totalManual - capital
+      : interestAuto;
+  const totalDue =
+    totalTouchedRef.current && totalManual > 0 ? totalManual : capital + interestAuto;
+  const termDays = parsePositiveInt(termDaysRaw);
+  const cuotasCount = parsePositiveInt(cuotasRaw);
+  const cuotaManual = parseMoney(cuotaRaw);
+  const autoFirstCobroIso = firstCollectionIso(startIso, frequency);
+  // Lo que está en la casilla manda (hoy = cobro hoy); no solo si “tocó” el campo.
+  const firstCobroForPreview = cobroIso || undefined;
+  const dueForPreview = dueTouchedRef.current && dueIso ? dueIso : undefined;
+  const previewInput = {
     capital,
     interest,
     startIso,
     frequency,
-    termMonths,
-  });
+    installments: cuotasCount > 0 ? cuotasCount : undefined,
+    termDays: termDays > 0 ? termDays : undefined,
+    firstCollectionIso: firstCobroForPreview,
+    dueIso: dueForPreview,
+  };
+  const autoPreview = previewLoanFlat(previewInput);
+  const preview =
+    cuotaTouchedRef.current && cuotaManual > 0
+      ? previewLoanFlat({
+          ...previewInput,
+          installmentAmount: cuotaManual,
+        })
+      : autoPreview;
   const frequencyLabel =
     PAY_FREQUENCIES.find((item) => item.id === frequency)?.label ?? "Diario";
-  const termLabel = LOAN_TERM_OPTIONS.find((item) => item.id === termMonths)?.label ?? "1 mes";
-  const dueLabel = preview?.dates.length
-    ? isoToDisplay(preview.dates[preview.dates.length - 1])
-    : "—";
-  const cobroDayLabel = firstCollectionLabel(startIso, frequency);
+  const termLabel = termDays > 0 ? `${termDays} días` : "—";
+  const autoDueIso = preview?.dates.length ? preview.dates[preview.dates.length - 1] : "";
+  const dueLabel = dueTouchedRef.current
+    ? dueIso
+      ? isoToDisplay(dueIso)
+      : "—"
+    : autoDueIso
+      ? isoToDisplay(autoDueIso)
+      : "—";
   const interestSelectValue =
-    interestMode === "amount" ? "amount" : ratePct != null ? String(ratePct) : "";
+    interestMode === "amount"
+      ? parseMoney(interestRaw) === 0
+        ? "0"
+        : "amount"
+      : ratePct != null
+        ? String(ratePct)
+        : "";
+  const cuotaDisplay = cuotaTouchedRef.current
+    ? cuotaRaw
+    : autoPreview
+      ? String(autoPreview.installment)
+      : "";
+  const totalDisplay = totalTouchedRef.current
+    ? totalRaw
+    : totalDue > 0
+      ? String(totalDue)
+      : "";
+  const cobroDisplay = cobroTouchedRef.current ? cobroIso : cobroIso || autoFirstCobroIso;
+
+  useEffect(() => {
+    // En edición el # de cuotas guardado manda; en alta solo auto hasta que el usuario toque.
+    if (editing || cuotasTouchedRef.current) return;
+    if (termDays < 1) return;
+    setCuotasRaw(String(suggestedInstallmentsForDays(frequency, termDays)));
+  }, [editing, frequency, termDays]);
+
+  // Al cambiar desembolso / plazo / cuotas / montos: volver a cálculo automático
+  // (si el usuario editó a mano un campo hijo, solo se respeta hasta el próximo cambio de motor).
+  useEffect(() => {
+    const next = {
+      startIso,
+      frequency,
+      termDays,
+      cuotasCount,
+      capital,
+      interest: interestAuto,
+    };
+    if (!driversReadyRef.current) {
+      driversReadyRef.current = true;
+      scheduleDriversRef.current = next;
+      return;
+    }
+    const prev = scheduleDriversRef.current;
+    const desembolsoChanged = prev.startIso !== next.startIso || prev.frequency !== next.frequency;
+    const termChanged =
+      prev.termDays !== next.termDays ||
+      prev.cuotasCount !== next.cuotasCount ||
+      prev.frequency !== next.frequency;
+
+    if (desembolsoChanged) {
+      cobroTouchedRef.current = false;
+    }
+    if (termChanged || desembolsoChanged) {
+      dueTouchedRef.current = false;
+    }
+    // Valor cuota manual: NUNCA se limpia por cambio de motor (pedido del cliente).
+    scheduleDriversRef.current = next;
+  }, [startIso, frequency, termDays, cuotasCount, capital, interestAuto]);
+
+  useEffect(() => {
+    if (cuotaTouchedRef.current) return;
+    if (!autoPreview?.installment) return;
+    setCuotaRaw(String(autoPreview.installment));
+  }, [autoPreview?.installment]);
+
+  useEffect(() => {
+    if (cobroTouchedRef.current) return;
+    if (!autoFirstCobroIso) return;
+    setCobroIso(autoFirstCobroIso);
+  }, [autoFirstCobroIso]);
+
+  useEffect(() => {
+    if (dueTouchedRef.current) return;
+    if (!autoDueIso) return;
+    setDueIso(autoDueIso);
+  }, [autoDueIso]);
+
+  useEffect(() => {
+    if (totalTouchedRef.current) return;
+    const auto = capital + interestAuto;
+    if (auto > 0) setTotalRaw(String(auto));
+  }, [capital, interestAuto]);
 
   function onInterestSelect(value: string) {
-    if (!value) {
-      setInterestMode(null);
+    if (!value || value === "0") {
+      setInterestMode("amount");
       setRatePct(null);
-      setInterestRaw("");
+      setInterestRaw("0");
       return;
     }
     if (value === "amount") {
       setInterestMode("amount");
       setRatePct(null);
+      setInterestRaw((prev) => (prev.trim() ? prev : "0"));
       return;
     }
     const pct = Number(value) as InterestPct;
@@ -204,13 +419,11 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
   function pick(row: ClientRow) {
     setClient(row);
     setQuery("");
-    setFocused(false);
   }
 
   function clearClient() {
     setClient(null);
     setQuery("");
-    setFocused(true);
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -220,13 +433,14 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
       clientRef: client.ref,
       capital,
       date: isoToDisplay(startIso),
-      due: dueLabel,
-      notes: notes.trim(),
+      due: dueLabel === "—" ? isoToDisplay(preview.dates[preview.dates.length - 1] || "") : dueLabel,
+      notes: stripFundedMarkers(notes),
       rate: interestMode === "pct" ? ratePct ?? 0 : 0,
       frequency,
       mode: "cuota_fija",
       pact: "valor",
       days: preview.days,
+      // Incluye interés 0 y el cronograma exacto (# cuotas manual).
       interest: preview.interest,
       total: preview.total,
       installment: preview.installment,
@@ -254,47 +468,55 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
             <input
               id="loan-client-search"
               value={query}
-              placeholder="Buscar cliente creado: nombre, documento o código"
+              placeholder="Buscar: posición o nombre (igual que en Clientes)"
               autoComplete="off"
               onChange={(event) => setQuery(event.target.value)}
-              onFocus={() => setFocused(true)}
-              onBlur={() => window.setTimeout(() => setFocused(false), 180)}
             />
           </div>
           {showList ? (
-            <div className="client-suggest" role="listbox">
-              {suggestions.length === 0 ? (
-                <p>No hay clientes con ese dato. Créelo primero en Clientes.</p>
-              ) : (
-                suggestions.map((row) => (
-                  <button
-                    key={row.ref}
-                    type="button"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => pick(row)}
-                  >
-                    <span className="suggest-photo">
-                      {row.photo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={row.photo} alt="" />
-                      ) : (
-                        `${row.name.charAt(0)}${row.lastName.charAt(0)}`.toUpperCase()
-                      )}
-                    </span>
-                    <span className="suggest-meta">
-                      <b>
-                        {row.name} {row.lastName}
-                      </b>
-                      <span className="suggest-sep" aria-hidden>
-                        ·
-                      </span>
-                      <span className="suggest-detail">
-                        {row.ref} · {row.document || "Sin documento"} · {row.route || "Sin ruta"}
-                      </span>
-                    </span>
-                  </button>
-                ))
-              )}
+            <div className="table-wrap loan-client-pick-list" role="listbox">
+              <table className="data list-grid">
+                <thead>
+                  <tr className="col-titles">
+                    <th style={{ width: 52 }}>#</th>
+                    <th className="is-nombre">Nombre</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {suggestions.length === 0 ? (
+                    <tr>
+                      <td colSpan={2}>
+                        No hay clientes con ese dato. Créelo primero en Clientes.
+                      </td>
+                    </tr>
+                  ) : (
+                    suggestions.map((row) => (
+                      <tr
+                        key={row.ref}
+                        role="option"
+                        tabIndex={0}
+                        className="loan-client-pick-row"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => pick(row)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            pick(row);
+                          }
+                        }}
+                      >
+                        <td>{row.routeOrder || "—"}</td>
+                        <td className="is-nombre">
+                          <span className="cell-with-ico">
+                            <PersonMiniIcon />
+                            {clientPickDisplayName(row)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           ) : null}
         </div>
@@ -312,7 +534,7 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
               )}
             </div>
             <h2>
-              {client.name} {client.lastName}
+              {clientPickDisplayName(client)}
             </h2>
             <p>Cliente activo · {client.ref}</p>
             <div className="meta">
@@ -371,9 +593,9 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
                     className="loan-interest-select"
                     value={interestSelectValue}
                     onChange={(event) => onInterestSelect(event.target.value)}
-                    required
+                    title="Interés 0 es válido y se guarda"
                   >
-                    <option value="">Elegir…</option>
+                    <option value="0">0 (sin interés)</option>
                     {INTEREST_PCT_OPTIONS.map((pct) => (
                       <option key={pct} value={pct}>
                         {pct}%
@@ -384,30 +606,21 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
                   {interestMode === "pct" ? (
                     <input
                       className="loan-interest-result"
-                      value={capital > 0 && interestFromPct > 0 ? money(interestFromPct) : ""}
+                      value={money(interestFromPct)}
                       readOnly
                       tabIndex={-1}
                       aria-label="Valor del interés calculado"
                       placeholder="$ interés"
                     />
-                  ) : interestMode === "amount" ? (
+                  ) : (
                     <input
                       id="loan-interest"
                       className="loan-interest-amount-input"
                       value={interestRaw}
                       onChange={(event) => onAmountChange(event.target.value)}
-                      required
                       inputMode="numeric"
-                      placeholder="Valor fijo"
-                    />
-                  ) : (
-                    <input
-                      className="loan-interest-result"
-                      value=""
-                      readOnly
-                      tabIndex={-1}
-                      placeholder="—"
-                      aria-hidden
+                      placeholder="0"
+                      title="Monto de interés (0 permitido y se guarda)"
                     />
                   )}
                   <label className="sheet-label" htmlFor="loan-total">
@@ -416,10 +629,19 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
                   <input
                     id="loan-total"
                     className="loan-total-input"
-                    value={totalDue > 0 ? money(totalDue) : ""}
-                    readOnly
-                    tabIndex={-1}
-                    title="Monto a pagar (capital + interés)"
+                    value={totalDisplay}
+                    onChange={(event) => {
+                      const next = event.target.value.replace(/[^\d]/g, "");
+                      if (!next) {
+                        totalTouchedRef.current = false;
+                        setTotalRaw("");
+                        return;
+                      }
+                      totalTouchedRef.current = true;
+                      setTotalRaw(next);
+                    }}
+                    inputMode="numeric"
+                    title="Capital + interés (editable a mano)"
                     placeholder="Capital + interés"
                   />
                 </div>
@@ -435,20 +657,19 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
                     value={startIso}
                     onChange={(event) => setStartIso(event.target.value)}
                   />
-                  <label className="sheet-label" htmlFor="loan-term">
-                    Tiempo
+                  <label className="sheet-label" htmlFor="loan-term-days">
+                    Tiempo (días)
                   </label>
-                  <select
-                    id="loan-term"
-                    value={termMonths}
-                    onChange={(event) => setTermMonths(Number(event.target.value) as LoanTermMonths)}
-                  >
-                    {LOAN_TERM_OPTIONS.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label}
-                      </option>
-                    ))}
-                  </select>
+                  <input
+                    id="loan-term-days"
+                    value={termDaysRaw}
+                    onChange={(event) => setTermDaysRaw(event.target.value.replace(/[^\d]/g, ""))}
+                    required
+                    inputMode="numeric"
+                    min={1}
+                    placeholder="Ej. 30"
+                    title="Plazo del préstamo en días"
+                  />
                   <label className="sheet-label" htmlFor="loan-freq">
                     Frecuencia
                   </label>
@@ -471,75 +692,116 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
                   </label>
                   <input
                     id="loan-cuotas"
-                    value={preview ? String(preview.count) : ""}
-                    readOnly
-                    tabIndex={-1}
-                    placeholder="Según tiempo y frecuencia"
+                    value={cuotasRaw}
+                    onChange={(event) => {
+                      cuotasTouchedRef.current = true;
+                      setCuotasRaw(event.target.value.replace(/[^\d]/g, ""));
+                    }}
+                    required
+                    inputMode="numeric"
+                    min={1}
+                    placeholder="Ej. 26"
+                    title="Cantidad de cobros del acuerdo"
                   />
                   <label className="sheet-label" htmlFor="loan-cobro-dia">
                     Día de cobro
                   </label>
                   <input
                     id="loan-cobro-dia"
-                    value={cobroDayLabel}
-                    readOnly
-                    tabIndex={-1}
+                    type="date"
+                    value={cobroDisplay}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      if (!next) {
+                        cobroTouchedRef.current = false;
+                        setCobroIso("");
+                        return;
+                      }
+                      cobroTouchedRef.current = true;
+                      setCobroIso(next);
+                    }}
                     title={
                       frequency === "diario"
-                        ? "Lunes a sábado"
-                        : frequency === "semanal"
-                          ? "Cada 8 días desde el desembolso"
-                          : frequency === "quincenal"
-                            ? "Cada 15 días calendario desde el desembolso"
-                            : "Cada mes desde el desembolso"
+                        ? "Por defecto: mismo día del desembolso (lun–sáb). Editable a mano."
+                        : "Primer cobro automático según frecuencia; editable a mano"
                     }
-                    placeholder="Según frecuencia"
                   />
                   <label className="sheet-label" htmlFor="loan-cuota-valor">
                     Valor cuota
                   </label>
                   <input
                     id="loan-cuota-valor"
-                    value={preview ? money(preview.installment) : ""}
-                    readOnly
-                    tabIndex={-1}
+                    value={cuotaDisplay}
+                    onChange={(event) => {
+                      const next = event.target.value.replace(/[^\d]/g, "");
+                      if (!next) {
+                        cuotaTouchedRef.current = false;
+                        setCuotaRaw("");
+                        return;
+                      }
+                      cuotaTouchedRef.current = true;
+                      setCuotaRaw(next);
+                    }}
+                    inputMode="numeric"
                     placeholder="Monto ÷ cuotas"
+                    title="Se calcula solo; puede editarlo a mano"
                   />
                 </div>
 
-                <div className="sheet-row">
-                  <label className="sheet-label" htmlFor="loan-due">
-                    Vencimiento (última cuota)
-                  </label>
-                  <input id="loan-due" value={dueLabel === "—" ? "" : dueLabel} readOnly tabIndex={-1} />
-                </div>
-
-                <div className="sheet-row sheet-row-top">
-                  <label className="sheet-label" htmlFor="loan-funded-by">
-                    Origen del desembolso
-                  </label>
-                  <select
-                    id="loan-funded-by"
-                    value={fundedBy}
-                    onChange={(event) =>
-                      setFundedBy(event.target.value as "nequi" | "banco")
-                    }
-                  >
-                    <option value="nequi">Nequi</option>
-                    <option value="banco">Banco</option>
-                  </select>
-                </div>
-                <div className="sheet-row sheet-row-top">
-                  <label className="sheet-label" htmlFor="loan-notes">
-                    Observaciones
-                  </label>
-                  <textarea
-                    id="loan-notes"
-                    rows={3}
-                    placeholder="Nota interna, opcional"
-                    value={notes}
-                    onChange={(event) => setNotes(event.target.value)}
-                  />
+                <div className="sheet-row loan-meta-row">
+                  <div className="loan-meta-field">
+                    <label className="sheet-label" htmlFor="loan-due">
+                      Vencimiento
+                    </label>
+                    <input
+                      id="loan-due"
+                      type="date"
+                      value={dueTouchedRef.current ? dueIso : dueIso || autoDueIso}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        if (!next) {
+                          dueTouchedRef.current = false;
+                          setDueIso("");
+                          return;
+                        }
+                        dueTouchedRef.current = true;
+                        setDueIso(next);
+                      }}
+                      title="Última cuota (automática; editable a mano)"
+                    />
+                  </div>
+                  <div className="loan-meta-field">
+                    <label className="sheet-label" htmlFor="loan-funded-by">
+                      Origen
+                    </label>
+                    <select
+                      id="loan-funded-by"
+                      value={fundedBy}
+                      onChange={(event) =>
+                        setFundedBy(event.target.value as LoanDisbursementSource)
+                      }
+                      title={
+                        fundedBy === "efectivo"
+                          ? "Se descuenta del efectivo / En caja del cobrador de la ruta"
+                          : "Origen del desembolso"
+                      }
+                    >
+                      <option value="nequi">Nequi</option>
+                      <option value="banco">Banco</option>
+                      <option value="efectivo">Efectivo (caja cobrador)</option>
+                    </select>
+                  </div>
+                  <div className="loan-meta-field">
+                    <label className="sheet-label" htmlFor="loan-notes">
+                      Observaciones
+                    </label>
+                    <input
+                      id="loan-notes"
+                      placeholder="Nota interna, opcional"
+                      value={notes}
+                      onChange={(event) => setNotes(event.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -565,7 +827,7 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
               </div>
             ) : (
               <p className="loan-sim-hint">
-                Complete capital, interés, tiempo y frecuencia para ver el resumen.
+                Complete capital, interés, días y # de cuotas para ver el resumen.
               </p>
             )}
 

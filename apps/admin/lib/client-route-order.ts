@@ -1,4 +1,5 @@
 import type { ClientRow } from "@/lib/mock-data";
+import { normalizeRouteNumber } from "@/lib/mock-data";
 import { isPendingReview } from "@/lib/client-review";
 
 const LEGACY_ROUTE_MAP: Record<string, string> = {
@@ -16,6 +17,16 @@ export function migrateLegacyRouteName(route: string) {
   return LEGACY_ROUTE_MAP[key] ?? route;
 }
 
+function sameRoute(a: string | undefined, b: string | undefined) {
+  const left = migrateLegacyRouteName(String(a ?? "").trim());
+  const right = migrateLegacyRouteName(String(b ?? "").trim());
+  if (!left || !right) return false;
+  if (left === right) return true;
+  const nLeft = normalizeRouteNumber(left);
+  const nRight = normalizeRouteNumber(right);
+  return Boolean(nLeft) && nLeft === nRight;
+}
+
 /** Una sola fila por ref (limpia duplicados en localStorage / sync). */
 export function dedupeClientsByRef(clients: ClientRow[]): ClientRow[] {
   const byRef = new Map<string, ClientRow>();
@@ -29,7 +40,7 @@ export function dedupeClientsByRef(clients: ClientRow[]): ClientRow[] {
 /** Clientes de una ruta ordenados por posición (1…N). Sin pendientes de revisión. */
 export function clientsOnRouteSorted(clients: ClientRow[], routeName: string) {
   return dedupeClientsByRef(clients)
-    .filter((row) => row.route === routeName && !isPendingReview(row))
+    .filter((row) => sameRoute(row.route, routeName) && !isPendingReview(row))
     .slice()
     .sort((a, b) => {
       const orderCmp = (a.routeOrder || 0) - (b.routeOrder || 0);
@@ -103,7 +114,7 @@ export function placeClientOnRoute(
   const target = Math.min(Math.max(1, Math.trunc(routeOrder) || maxPos), maxPos);
 
   const shifted = without.map((row) => {
-    if (row.route !== route) return row;
+    if (!sameRoute(row.route, route)) return row;
     if (isPendingReview(row)) return row;
     if ((row.routeOrder || 0) < target) return row;
     return { ...row, routeOrder: (row.routeOrder || 0) + 1 };

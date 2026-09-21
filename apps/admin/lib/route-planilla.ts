@@ -40,6 +40,18 @@ function clientLabel(client: ClientRow) {
 export { isValidPlanillaAssignment, purgeInvalidPlanillaAssignments } from "@/lib/planilla-eligibility";
 export { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 
+/** Cuota pactada aunque `installment` se haya perdido en un pull. */
+export function resolvedLoanInstallment(loan: LoanRow): number {
+  const direct = Number(loan.installment) || 0;
+  if (direct > 0) return direct;
+  const lines = (loan.schedule ?? []).filter((line) => (line.kind ?? "cuota") !== "capital");
+  const fromLine = lines.find((line) => Number(line.amount) > 0);
+  if (fromLine) return Math.trunc(Number(fromLine.amount));
+  const total = Number(loan.total) || Number(loan.capital) || 0;
+  if (lines.length > 0 && total > 0) return Math.max(1, Math.trunc(total / lines.length));
+  return 0;
+}
+
 function loanItemsForClient(
   client: ClientRow,
   loans: LoanRow[],
@@ -52,7 +64,8 @@ function loanItemsForClient(
     if (isPendingReview(client)) continue;
     if (!loanIsCollectibleOn(loan, date)) continue;
 
-    const pactada = Math.min(Number(loan.installment) || 0, Number(loan.balance) || 0);
+    const installment = resolvedLoanInstallment(loan);
+    const pactada = Math.min(installment > 0 ? installment : Number(loan.balance) || 0, Number(loan.balance) || 0);
     if (pactada <= 0) continue;
 
     // Acumulado solo para etiquetas/alertas; el monto a cobrar es la cuota pactada.
@@ -93,21 +106,38 @@ function loanItemsForClient(
 function preserveProgress(
   next: DailyCollectionAssignment,
   previous: DailyCollectionAssignment | undefined,
+  livePaymentsByRef?: Map<string, { loanRef?: string }>,
 ): DailyCollectionAssignment {
   if (!previous) return next;
-  // paymentRef implica visita cobrada aunque visitStatus se haya perdido.
+  const linkedRef = (previous.paymentRef || "").trim();
+  const linkedPay = linkedRef ? livePaymentsByRef?.get(linkedRef) : undefined;
+  const paymentStillLive =
+    Boolean(linkedPay) &&
+    (!previous.loanRef ||
+      !linkedPay?.loanRef ||
+      linkedPay.loanRef === previous.loanRef ||
+      linkedPay.loanRef === next.loanRef);
+  // Solo conservar “cobrado” si el PG sigue vivo y es de este préstamo.
   const paid =
-    previous.visitStatus === "cobrado" ||
-    Boolean(previous.paymentRef?.trim());
+    paymentStillLive &&
+    (previous.visitStatus === "cobrado" || Boolean(linkedRef));
   const omitted = previous.visitStatus === "omitido";
+  const voidedPaid =
+    !paymentStillLive &&
+    (previous.visitStatus === "cobrado" || Boolean(linkedRef));
+
+  let visitStatus = previous.visitStatus ?? next.visitStatus;
+  if (paid) visitStatus = "cobrado";
+  else if (omitted) visitStatus = "omitido";
+  else if (voidedPaid) visitStatus = "pendiente";
+
   return {
     ...next,
     assignedAt: previous.assignedAt || next.assignedAt,
-    visitStatus: paid ? ("cobrado" as const) : omitted ? ("omitido" as const) : (previous.visitStatus ?? next.visitStatus),
+    visitStatus,
     skipReason: previous.skipReason,
     dayClosedAt: previous.dayClosedAt,
-    paymentRef: previous.paymentRef,
-    // Si ya cobró/omitió, no reabrir adeudo ni alertas al regenerar planilla.
+    paymentRef: paid ? previous.paymentRef : undefined,
     amountDue: paid || omitted ? 0 : next.amountDue,
     alertCount: paid || omitted ? 0 : next.alertCount,
     kind: paid || omitted ? ("cuota" as const) : next.kind,
@@ -176,6 +206,18 @@ export function syncPermanentRoutePlanilla(
       .filter((row) => row.dispatchDate === date && row.clientRef)
       .map((row) => [`${row.clientRef}:${row.loanRef || ""}`, row] as const),
   );
+  const livePaymentsByRef = new Map(
+    (payments ?? [])
+      .filter((row) => {
+        const voided = "voidedAt" in row ? String((row as PaymentRow).voidedAt || "").trim() : "";
+        return !voided;
+      })
+      .filter((row) => "ref" in row && Boolean((row as PaymentRow).ref))
+      .map((row) => {
+        const pay = row as PaymentRow;
+        return [String(pay.ref), { loanRef: pay.loanRef }] as const;
+      }),
+  );
 
   const builtMap = new Map<string, DailyCollectionAssignment>();
   const at = new Date().toISOString();
@@ -202,6 +244,7 @@ export function syncPermanentRoutePlanilla(
             previousByKey.get(item.id) ??
               previousByClientLoan.get(`${item.clientRef}:${item.loanRef}`) ??
               previousByClientLoan.get(`${item.clientRef}:`),
+            livePaymentsByRef,
           ),
         );
       }
@@ -210,14 +253,18 @@ export function syncPermanentRoutePlanilla(
 
   // Visitas ya cobradas/omitidas del día abierto: no se pierden si el préstamo
   // ya no genera cuota (saldo 0) o el itemId cambió al regenerar.
+  // Si el PG fue anulado, no se reinyecta como cobrado.
   for (const prev of existing) {
     if (prev.dispatchDate !== date) continue;
     if (prev.dayClosedAt) continue;
-    const sealed =
-      prev.visitStatus === "cobrado" ||
-      prev.visitStatus === "omitido" ||
-      Boolean(prev.paymentRef?.trim());
-    if (!sealed) continue;
+    const linkedRef = (prev.paymentRef || "").trim();
+    const linkedPay = linkedRef ? livePaymentsByRef.get(linkedRef) : undefined;
+    const paymentStillLive =
+      Boolean(linkedPay) &&
+      (!prev.loanRef || !linkedPay?.loanRef || linkedPay.loanRef === prev.loanRef);
+    const omitted = prev.visitStatus === "omitido";
+    const paid = paymentStillLive && (prev.visitStatus === "cobrado" || Boolean(linkedRef));
+    if (!paid && !omitted) continue;
     const inBuilt =
       builtMap.has(prev.itemId) ||
       [...builtMap.values()].some(
@@ -230,8 +277,8 @@ export function syncPermanentRoutePlanilla(
     builtMap.set(prev.itemId, {
       ...prev,
       amountDue: 0,
-      visitStatus:
-        prev.visitStatus === "omitido" ? ("omitido" as const) : ("cobrado" as const),
+      visitStatus: omitted ? ("omitido" as const) : ("cobrado" as const),
+      paymentRef: paid ? prev.paymentRef : undefined,
       dispatched: true,
       dispatchedAt: prev.dispatchedAt ?? at,
     });

@@ -118,11 +118,12 @@ export function CollectorMobilePreview({
         clients,
         routes,
         dayCloses,
+        payments,
       );
       map.set(row.ref, queue.closed);
     }
     return map;
-  }, [assignments, clients, dayCloses, loans, mobileCollectors, routes, today]);
+  }, [assignments, clients, dayCloses, loans, mobileCollectors, payments, routes, today]);
 
   const supervisors = useMemo(
     () =>

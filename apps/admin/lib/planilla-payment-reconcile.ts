@@ -1,61 +1,134 @@
 /**
  * Une cobros (PG) con visitas de planilla.
- * Regla: si existe pago del día para el préstamo/cliente, la visita queda cobrada.
+ * Regla: si existe pago vivo del día → visita cobrada.
+ * Si el PG se anula → la visita vuelve a pendiente (reversa).
  */
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
-import type { PaymentRow } from "@/lib/mock-data";
+import { accumulatedDueForLoan } from "@/lib/daily-collection-plan";
+import { isPaymentLive } from "@/lib/live-payments";
+import type { LoanRow, PaymentRow } from "@/lib/mock-data";
 
 function sameDay(a: string | undefined, b: string) {
   return (a || "").trim() === b.trim();
 }
 
+function normalizePersonName(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+/** Nombre exacto (EDUARDO ≠ EDUARDO P). Nunca usar startsWith entre fichas distintas. */
 function clientNamesMatch(payClient: string, visitClient: string) {
-  const a = payClient.trim().toLowerCase();
-  const b = visitClient.trim().toLowerCase();
+  const a = normalizePersonName(payClient);
+  const b = normalizePersonName(visitClient);
   if (!a || !b) return false;
-  return a === b || b.startsWith(a) || a.startsWith(b);
+  return a === b;
 }
 
 function paymentMatchesVisit(pay: PaymentRow, row: DailyCollectionAssignment) {
   if (pay.collectorRef && row.collectorRef && pay.collectorRef !== row.collectorRef) {
     return false;
   }
-  if (pay.loanRef && row.loanRef && pay.loanRef === row.loanRef) return true;
+  // Préstamo manda: un PG de P-0 no puede cerrar la visita de P-18.
+  if (pay.loanRef && row.loanRef) {
+    return pay.loanRef === row.loanRef;
+  }
+  if (pay.loanRef && !row.loanRef) return false;
+  if (!pay.loanRef && row.loanRef) {
+    return clientNamesMatch(pay.client || "", row.clientName || "");
+  }
   return clientNamesMatch(pay.client || "", row.clientName || "");
 }
 
+/** El PG enlazado pertenece a esta visita (mismo préstamo). */
+export function paymentBelongsToVisit(
+  pay: PaymentRow | undefined,
+  row: DailyCollectionAssignment,
+): boolean {
+  if (!pay || !isPaymentLive(pay)) return false;
+  return paymentMatchesVisit(pay, row);
+}
+
+function restoreAmountDue(
+  row: DailyCollectionAssignment,
+  loans: LoanRow[] | undefined,
+): number {
+  const loan = loans?.find((entry) => entry.ref === row.loanRef);
+  if (loan) {
+    const due = accumulatedDueForLoan(loan, row.dispatchDate);
+    if (due.amountDue > 0) return due.amountDue;
+    const installment = Number(loan.installment) || 0;
+    const balance = Number(loan.balance) || 0;
+    if (installment > 0) return Math.min(installment, balance > 0 ? balance : installment);
+    if (balance > 0) return balance;
+  }
+  return Math.max(0, Number(row.amountDue) || 0);
+}
+
 /**
- * Si ya hay PG del día para el préstamo/cliente, marca la visita cobrada.
- * Repara el desfase: banco/registros con dinero + planilla pendiente.
+ * Marca cobrado si hay PG vivo del día; si el PG apuntado fue anulado, revierte a pendiente.
  */
 export function reconcilePaymentsOntoPlanilla(
   assignments: DailyCollectionAssignment[],
   payments: PaymentRow[],
+  loans?: LoanRow[],
 ): DailyCollectionAssignment[] {
-  if (!assignments.length || !payments.length) return assignments;
+  if (!assignments.length) return assignments;
+
+  const live = payments.filter(isPaymentLive);
+  const liveByRef = new Map(live.map((row) => [row.ref, row] as const));
 
   return assignments.map((row) => {
     if (row.awaitingLoan) return row;
     if (row.visitStatus === "omitido") return row;
-    if (row.visitStatus === "cobrado" && row.paymentRef) return row;
+
+    const linkedRef = (row.paymentRef || "").trim();
+    const linkedPay = linkedRef ? liveByRef.get(linkedRef) : undefined;
+    const linkedOk = Boolean(linkedPay && paymentBelongsToVisit(linkedPay, row));
+
+    if (
+      linkedRef &&
+      (row.visitStatus === "cobrado" || row.visitStatus === "parcial") &&
+      !linkedOk
+    ) {
+      // PG anulado, ausente o de OTRO préstamo/cliente → vuelve a pendiente.
+      return {
+        ...row,
+        visitStatus: "pendiente" as const,
+        paymentRef: undefined,
+        dayClosedAt: undefined,
+        skipReason: undefined,
+        amountDue: restoreAmountDue(row, loans),
+      };
+    }
+
+    // Cobrado sin PG vivo (ref borrada o anulado): también reabrir.
+    if (
+      (row.visitStatus === "cobrado" || row.visitStatus === "parcial") &&
+      !linkedRef
+    ) {
+      return {
+        ...row,
+        visitStatus: "pendiente" as const,
+        paymentRef: undefined,
+        dayClosedAt: undefined,
+        skipReason: undefined,
+        amountDue: restoreAmountDue(row, loans),
+      };
+    }
+
+    if (row.visitStatus === "cobrado" && linkedOk) {
+      return row;
+    }
 
     const day = row.dispatchDate;
-    const match =
-      payments.find(
-        (pay) =>
-          sameDay(pay.paidDate, day) &&
-          Boolean(pay.loanRef) &&
-          Boolean(row.loanRef) &&
-          pay.loanRef === row.loanRef &&
-          (!pay.collectorRef || !row.collectorRef || pay.collectorRef === row.collectorRef),
-      ) ??
-      payments.find((pay) => {
-        if (!sameDay(pay.paidDate, day)) return false;
-        if (pay.collectorRef && row.collectorRef && pay.collectorRef !== row.collectorRef) {
-          return false;
-        }
-        return clientNamesMatch(pay.client || "", row.clientName || "");
-      });
+    const match = live.find(
+      (pay) => sameDay(pay.paidDate, day) && paymentMatchesVisit(pay, row),
+    );
 
     if (!match) return row;
     return {
@@ -80,6 +153,7 @@ export function sealOpenVisitsWithLaterPayments(
 ): DailyCollectionAssignment[] {
   if (!assignments.length || !payments.length) return assignments;
   const until = (opts?.untilDate || "").trim();
+  const live = payments.filter(isPaymentLive);
 
   return assignments.map((row) => {
     if (opts?.date && row.dispatchDate !== opts.date) return row;
@@ -87,12 +161,24 @@ export function sealOpenVisitsWithLaterPayments(
     if (row.awaitingLoan) return row;
     if (row.dayClosedAt) return row;
     if (row.visitStatus === "omitido") return row;
-    if (row.visitStatus === "cobrado" && row.paymentRef) return row;
+
+    const linkedRef = (row.paymentRef || "").trim();
+    if (row.visitStatus === "cobrado" && linkedRef) {
+      const linked = live.find((p) => p.ref === linkedRef);
+      if (!linked || !paymentBelongsToVisit(linked, row)) {
+        return {
+          ...row,
+          visitStatus: "pendiente" as const,
+          paymentRef: undefined,
+        };
+      }
+      return row;
+    }
 
     const day = (row.dispatchDate || "").trim();
     if (!day) return row;
 
-    const match = payments
+    const match = live
       .filter((pay) => {
         const paid = (pay.paidDate || "").trim();
         if (!paid || paid < day) return false;
@@ -128,6 +214,7 @@ export function dedupeDailyPaymentsByVisit(
   const removedRefs: string[] = [];
   const byLoanDay = new Map<string, PaymentRow[]>();
   for (const pay of payments) {
+    if (!isPaymentLive(pay)) continue;
     const day = (pay.paidDate || "").trim();
     const loan = pay.loanRef || "";
     if (!day || !loan) continue;

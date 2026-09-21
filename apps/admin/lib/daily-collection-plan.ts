@@ -34,21 +34,32 @@ export function firstScheduleCollectionIso(loan: LoanRow) {
 
 /**
  * ¿Ya puede entrar a planilla/cobro ese día?
- * Solo bloquea préstamo NUEVO el mismo día del desembolso si la 1.ª cuota es futura
- * (ej. prestó sábado → cobra lunes). No toca cartera ya operativa (Juan/Lina/etc.).
+ * - Si el cronograma trae cuota ese día → sí.
+ * - Si desembolsó HOY y tiene saldo → sí (aparece al crear el préstamo).
  */
 export function loanIsCollectibleOn(loan: LoanRow, selectedDate: string) {
   const day = scheduleDateToIso(selectedDate);
   if (!day) return true;
 
+  const balance = Number(loan.balance) || 0;
+  const disbursed = scheduleDateToIso(loan.date);
+
+  const lines = loan.schedule ?? [];
+  for (const line of lines) {
+    if ((line.kind ?? "cuota") === "capital") continue;
+    if (scheduleDateToIso(line.date) === day) return true;
+  }
+
+  // Desembolso del día + saldo: entra ya a la planilla (cuota se resuelve aparte).
+  if (disbursed && disbursed === day && balance > 0) {
+    return true;
+  }
+
   const first = firstScheduleCollectionIso(loan);
   if (!first || first <= day) return true;
 
-  // 1.ª cuota aún no llega: solo aplica el día del desembolso.
-  const disbursed = scheduleDateToIso(loan.date);
   if (disbursed && disbursed === day) return false;
 
-  // Desembolso anterior + cronograma raro/regenerado → sigue en cobro diario.
   return true;
 }
 

@@ -104,10 +104,15 @@ function matches(value: string, query: string) {
   return value.toLowerCase().includes(query.trim().toLowerCase());
 }
 
+function clientListDisplayName(row: ClientRow) {
+  return `${row.name} ${row.lastName}`.trim();
+}
+
 function fieldOf(row: ClientRow, id: ColId) {
   if (id === "pending") return String(row.pending);
   if (id === "routeOrder") return String(row.routeOrder || "");
   if (id === "nickname") return row.nickname ?? "";
+  if (id === "name") return clientListDisplayName(row);
   return String(row[id as keyof ClientRow] ?? "");
 }
 
@@ -231,7 +236,7 @@ export function ClientList({
       return (
         <span className="cell-with-ico">
           <PersonMiniIcon />
-          {row.name}
+          {clientListDisplayName(row)}
           {showCompletarBadge ? <Pill label="Completar" kind="warn" /> : null}
         </span>
       );

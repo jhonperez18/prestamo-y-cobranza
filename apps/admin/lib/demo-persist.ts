@@ -208,6 +208,14 @@ export function writeDemoJson(key: string, value: unknown) {
         window.localStorage.setItem(backupKey(key), prev);
         return;
       }
+      // Préstamos / cobros = raíces del sistema central en este PC.
+      if (
+        wipingArray &&
+        (key === DEMO_LOANS_KEY || key === DEMO_PAYMENTS_KEY)
+      ) {
+        window.localStorage.setItem(backupKey(key), prev);
+        return;
+      }
       // Nunca respaldar un [] encima de un bak con datos.
       if (!wipingArray) {
         window.localStorage.setItem(backupKey(key), prev);

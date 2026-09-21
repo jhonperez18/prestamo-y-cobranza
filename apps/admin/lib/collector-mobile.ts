@@ -58,6 +58,7 @@ export function collectorMobileQueue(
   clients: ClientRow[],
   routes: RouteRow[] = [],
   dayCloses: CollectorDayCloseRecord[] = [],
+  payments: PaymentRow[] = [],
 ): CollectorMobileQueue {
   const dayItems = assignmentsForCollectorDate(assignments, collectorRef, date, loans, clients);
   const closedByCie = hasDayCloseRecord(dayCloses, collectorRef, date);
@@ -66,25 +67,47 @@ export function collectorMobileQueue(
   const awaitingDispatch = closedByCie
     ? []
     : dayItems.filter((row) => !row.dispatched);
+  const liveByRef = new Map(
+    payments.filter((row) => !row.voidedAt?.trim()).map((row) => [row.ref, row] as const),
+  );
+  const isEffectivelyPaid = (row: DailyCollectionAssignment) => {
+    if (row.visitStatus === "omitido") return false;
+    const linked = (row.paymentRef || "").trim();
+    if (!linked) return false;
+    const pay = liveByRef.get(linked);
+    if (!pay) return false;
+    // PG de otro préstamo no cierra esta visita (EDUARDO ≠ EDUARDO P).
+    if (pay.loanRef && row.loanRef && pay.loanRef !== row.loanRef) return false;
+    return true;
+  };
+
+  // Pendientes reales (incl. préstamo nuevo tras CIE / pago anulado).
+  const pending = sheet.filter((row) => {
+    if (row.dayClosedAt && isEffectivelyPaid(row)) return false;
+    if (row.dayClosedAt && row.visitStatus === "omitido") return false;
+    // Tras anular: visita sellada sin PG vivo vuelve a pendiente cobrable.
+    if (row.dayClosedAt && !isEffectivelyPaid(row) && row.visitStatus !== "omitido") {
+      return true;
+    }
+    if (row.visitStatus === "omitido") return false;
+    if (isEffectivelyPaid(row)) return false;
+    return (
+      row.visitStatus === "pendiente" ||
+      row.visitStatus === "parcial" ||
+      row.visitStatus === "cobrado" ||
+      !row.visitStatus ||
+      Boolean(row.paymentRef?.trim())
+    );
+  });
+  const done = sheet.filter((row) => {
+    if (row.visitStatus === "omitido") return true;
+    if (isEffectivelyPaid(row)) return true;
+    return false;
+  });
   const closedByVisits =
     sheet.length > 0 && sheet.every((row) => Boolean(row.dayClosedAt));
-  const closed = closedByCie || closedByVisits;
-
-  const pending = closed
-    ? []
-    : sheet.filter((row) => {
-        if (row.visitStatus === "cobrado" || row.visitStatus === "omitido") return false;
-        if (row.visitStatus === "parcial" && row.paymentRef) return false;
-        return row.visitStatus === "pendiente" || row.visitStatus === "parcial" || !row.visitStatus;
-      });
-  const done = closed
-    ? sheet
-    : sheet.filter(
-        (row) =>
-          row.visitStatus === "cobrado" ||
-          row.visitStatus === "omitido" ||
-          (row.visitStatus === "parcial" && Boolean(row.paymentRef)),
-      );
+  // Jornada “cerrada” solo si no quedan pendientes abiertos (préstamo nuevo sigue cobrable).
+  const closed = (closedByCie || closedByVisits) && pending.length === 0;
   const routeRef = dispatchRouteRef(collectorRef, date);
   const route = routes.find((row) => row.ref === routeRef) ?? null;
   const allDone = closed || (sheet.length > 0 && pending.length === 0);
@@ -111,6 +134,7 @@ export function collectorMobileRoutes(
   clients: ClientRow[],
   routes: RouteRow[] = [],
   dayCloses: CollectorDayCloseRecord[] = [],
+  payments: PaymentRow[] = [],
 ): CollectorMobileRouteOption[] {
   const dispatchedRows = assignmentsForCollector(assignments, collectorRef, loans, clients).filter(
     (row) => row.dispatched || row.dayClosedAt,
@@ -134,6 +158,7 @@ export function collectorMobileRoutes(
       clients,
       routes,
       dayCloses,
+      payments,
     );
     return {
       date,

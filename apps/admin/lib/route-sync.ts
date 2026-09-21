@@ -1,5 +1,6 @@
 import { activeLoans, loansForClient, type LoanRow, type PaymentRow, type RouteRow, type RouteStop } from "@/lib/mock-data";
 import { applyPay, cuotaTarget, validatePay, type ApplyPaySuccess, type PayKind } from "@/lib/loan-pay";
+import { isPaymentLive } from "@/lib/live-payments";
 import type { PaymentMethod } from "@/lib/payment-method";
 import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
 import { validatePaymentEvidence } from "@/lib/payment-evidence";
@@ -71,8 +72,8 @@ export function findRouteStop(route: RouteRow, clientRef: string) {
 }
 
 /**
- * Regla de negocio: un cliente / préstamo = un solo cobro por día (único e irrepetible).
- * Devuelve el pago existente si ya hay registro ese día.
+ * Regla de negocio: un cliente / préstamo = un solo cobro vivo por día.
+ * PG anulados no cuentan: tras anular se puede volver a cobrar el mismo día.
  */
 export function findDailyClientPayment(
   payments: PaymentRow[],
@@ -93,6 +94,7 @@ export function findDailyClientPayment(
   }
   return (
     payments.find((row) => {
+      if (!isPaymentLive(row)) return false;
       if (!row.loanRef || !loanRefs.has(row.loanRef)) return false;
       const paid = (row.paidDate || "").trim();
       return paid === day;
@@ -100,7 +102,24 @@ export function findDailyClientPayment(
   );
 }
 
-/** True si la visita del día ya tiene cobro (planilla o pago). */
+function assignmentHasLivePaymentToday(
+  row: {
+    visitStatus?: string;
+    paymentRef?: string;
+  },
+  payments: PaymentRow[],
+): boolean {
+  const ref = (row.paymentRef || "").trim();
+  if (ref) {
+    const pay = payments.find((entry) => entry.ref === ref);
+    if (pay) return isPaymentLive(pay);
+    // Ref huérfana (anulado/ausente en lista) → no bloquea re-cobro.
+    return false;
+  }
+  return row.visitStatus === "cobrado" || row.visitStatus === "parcial";
+}
+
+/** True si la visita del día ya tiene cobro vivo (planilla o pago). */
 export function visitAlreadyPaidToday(
   assignments: {
     dispatchDate: string;
@@ -129,7 +148,7 @@ export function visitAlreadyPaidToday(
     const sameClient = row.clientRef === input.clientRef;
     const sameLoan = Boolean(row.loanRef) && row.loanRef === input.loanRef;
     if (!sameClient && !sameLoan) return false;
-    return row.visitStatus === "cobrado" || Boolean(row.paymentRef);
+    return assignmentHasLivePaymentToday(row, payments);
   });
   return visit ? ({ ref: visit.paymentRef || "COBRADO" } as PaymentRow) : null;
 }
@@ -167,7 +186,7 @@ export function validateCollectorPayment(
       };
     }
   }
-  if (stop.visitStatus === "cobrado" || stop.paymentRef) {
+  if (stopHasLivePayment(stop, payments)) {
     return {
       duplicate: true as const,
       error: "Esta visita ya tiene cobro hoy. Un cliente = un pago = un código.",
@@ -178,6 +197,16 @@ export function validateCollectorPayment(
   const evidenceError = validatePaymentEvidence(draft.method, draft.evidence);
   if (evidenceError) return { duplicate: false as const, error: evidenceError };
   return { duplicate: false as const, error: null, stop };
+}
+
+function stopHasLivePayment(stop: RouteStop, payments: PaymentRow[]) {
+  const ref = (stop.paymentRef || "").trim();
+  if (ref) {
+    const pay = payments.find((entry) => entry.ref === ref);
+    if (pay) return isPaymentLive(pay);
+    return false;
+  }
+  return stop.visitStatus === "cobrado" || stop.visitStatus === "parcial";
 }
 
 export function nextStopStatus(stop: RouteStop, amount: number) {
@@ -216,6 +245,7 @@ export function applyCollectorPaymentResult(
   loan: LoanRow,
   draft: CollectorPaymentDraft,
   route: RouteRow | null | undefined,
+  payments: PaymentRow[] = [],
 ): CollectorPaymentResult {
   const pay = applyPay(loan, draft.kind, draft.amount);
   if (!pay.ok) return { ok: false, error: pay.error };
@@ -269,7 +299,7 @@ export function applyCollectorPaymentResult(
     };
   }
 
-  if (stop.visitStatus === "cobrado" || stop.paymentRef) {
+  if (stopHasLivePayment(stop, payments)) {
     return {
       ok: false,
       error: "Esta visita ya tiene cobro hoy. Un cliente = un pago = un código.",

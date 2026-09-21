@@ -248,6 +248,7 @@ import {
   dayExpenseLineMovementRef,
   finalizeCollectorDayClose,
   findDayExpenseDraft,
+  appendCashDisbursementExpense,
   applyDayCloseRecordsToAssignments,
   recoverPaymentsFromAssignments,
   recoverPaymentsFromBankMovements,
@@ -882,7 +883,10 @@ export function Workspace({
     };
   }
 
-  async function applyPortfolioCommit(result: PortfolioCommitResult) {
+  async function applyPortfolioCommit(
+    result: PortfolioCommitResult,
+    opts?: { deferToast?: boolean },
+  ) {
     if (!result.ok) {
       onToast(result.error);
       return false;
@@ -891,6 +895,7 @@ export function Workspace({
     setLoans(result.state.loans);
     setRoutes(result.state.routes);
     setDailyAssignments(result.state.assignments);
+    setPayments(result.state.payments.map((row) => withPaymentEvidence(row)));
     if (result.focusClientRef) {
       setOpenRef(result.focusClientRef);
       setFileTab("ficha");
@@ -900,12 +905,14 @@ export function Workspace({
       setLoanTab("ficha");
     }
     if (result.goTo) onGo(result.goTo.moduleId, result.goTo.viewId);
-    onToast("Guardando en el sistema…");
+    if (!opts?.deferToast) onToast("Guardando en el sistema…");
     try {
       await flushPortfolioCatalogToCloud();
-      onToast(result.message);
+      if (!opts?.deferToast) onToast(result.message);
     } catch {
-      onToast(`${result.message} (sin nube; en este aparato ya está).`);
+      if (!opts?.deferToast) {
+        onToast(`${result.message} (sin nube; en este aparato ya está).`);
+      }
     }
     return true;
   }
@@ -947,7 +954,61 @@ export function Workspace({
   }
 
   function saveNewLoan(draft: LoanDraft) {
-    void applyPortfolioCommit(commitCreateLoan(draft, portfolioState()));
+    void (async () => {
+      const cash = draft.fundedBy === "efectivo";
+      const result = commitCreateLoan(draft, portfolioState());
+      const ok = await applyPortfolioCommit(result, { deferToast: cash });
+      if (!ok || !result.ok) return;
+      if (!cash) return;
+
+      const loan = result.focusLoanRef
+        ? result.state.loans.find((row) => row.ref === result.focusLoanRef)
+        : result.state.loans[0];
+      if (!loan) {
+        onToast(result.message);
+        return;
+      }
+
+      const client = result.state.clients.find((row) => row.ref === draft.clientRef);
+      const route = result.state.routes.find((row) => row.name === client?.route);
+      const collector = collectors.find((row) => row.ref === route?.collectorRef);
+      if (!collector || !route) {
+        onToast(
+          `${result.message} Origen efectivo: asigne cobrador a la ruta para descontar de su caja.`,
+        );
+        return;
+      }
+
+      const date = displayToIso(draft.date) || todayIso();
+      const nextDrafts = appendCashDisbursementExpense(dayExpenseDrafts, {
+        collectorRef: collector.ref,
+        collectorName: collector.name,
+        date,
+        routeRef: route.ref,
+        loan,
+      });
+      writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
+      setDayExpenseDrafts(nextDrafts);
+      const expenseDraft = nextDrafts.find(
+        (row) => row.ref === `GAS-${collector.ref}-${date}`,
+      );
+      if (expenseDraft) queueDayExpenseMirror(expenseDraft);
+      const accounts = ensureBankAccounts(bankAccounts);
+      if (!bankAccounts.length) setBankAccounts(accounts);
+      setBankMovements((rows) =>
+        applyBankLedgerSync(rows, {
+          payments,
+          accounts,
+          miscPayments,
+          dayExpenseDrafts: nextDrafts,
+          dayCloses,
+          loans: result.state.loans,
+        }),
+      );
+      onToast(
+        `Préstamo ${loan.ref}: capital ${money(loan.capital)} descontado del efectivo de ${collector.name}.`,
+      );
+    })();
   }
 
   function saveEditLoan(draft: LoanDraft) {
@@ -1535,6 +1596,8 @@ export function Workspace({
     setBankMovements(projected.bankMovements);
     writeDemoJson(DEMO_PAYMENTS_KEY, result.payments);
     writeDemoJson(DEMO_LOANS_KEY, projected.loans);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
+    queueAssignmentsMirror(projected.assignments);
     const mirror = await queuePaymentMirror(result.payment);
     if (!mirror.ok) {
       onToast(`Anulado en local · nube pendiente: ${mirror.error || "sin red"}`);
@@ -1542,6 +1605,7 @@ export function Workspace({
       return;
     }
     await flushPaymentMirrorQueue();
+    await flushOpsMirrorQueues().catch(() => undefined);
     onToast(`Pago ${result.payment.ref} anulado · sincronizado.`);
     onGo("cobranza", "anulaciones");
   }
@@ -2118,6 +2182,7 @@ export function Workspace({
             <h1>Modificar cliente</h1>
           </div>
           <NewClientForm
+            key={openClient.ref}
             client={openClient}
             routes={activeCatalogRoutes}
             clients={clients}

@@ -47,6 +47,8 @@ export type ClientRow = {
    * No bloquea cobros ni préstamos.
    */
   profilePending?: boolean;
+  /** ISO — evita que un pull obsoleto rebobine un edit fresco del padre. */
+  updatedAt?: string;
 };
 
 export type LoanRow = {
@@ -86,6 +88,8 @@ export type LoanRow = {
    * - efectivo = caja del cobrador
    */
   fundedBy?: "nequi" | "efectivo" | "banco";
+  /** ISO — evita que un pull obsoleto rebobine un edit fresco del padre. */
+  updatedAt?: string;
 };
 
 export type PaymentRow = {
@@ -737,7 +741,9 @@ export function paymentsForCollector(
   const collector = collectors.find((row) => row.ref === collectorRef);
   const name = collector?.name?.trim().toLowerCase() ?? "";
   // Prefer ref; si el cobro viejo solo tiene nombre, igual cuenta para historial.
+  // Anulados no cuentan (reversa del cobrador).
   return rows.filter((row) => {
+    if (row.voidedAt?.trim()) return false;
     if (row.collectorRef === collectorRef) return true;
     if (row.collectorRef) return false;
     if (!name) return false;

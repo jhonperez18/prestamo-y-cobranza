@@ -71,19 +71,35 @@ export function NewClientForm({
     setRouteOrder(append);
   }
 
+  function resolveRouteName(formRouteId: string): string | null {
+    const byId = routes.find((route) => route.id === formRouteId);
+    if (byId) return byId.name;
+    const byCurrent = routes.find((route) => route.name === client?.route);
+    if (byCurrent) return byCurrent.name;
+    const kept = client?.route?.trim();
+    return kept || null;
+  }
+
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const selected = routes.find((route) => route.id === String(form.get("ruta") ?? ""));
-    if (!selected) return;
+    const formRouteId = String(form.get("ruta") ?? routeId ?? "");
+    const routeNameResolved = resolveRouteName(formRouteId);
+    if (!routeNameResolved) {
+      window.alert("Seleccione la ruta del cliente antes de guardar.");
+      return;
+    }
     const maxPos = positionOptions.length;
-    const pos = Math.min(Math.max(1, Number(form.get("posicion")) || maxPos), maxPos);
+    const pos = Math.min(
+      Math.max(1, Number(form.get("posicion")) || routeOrder || maxPos),
+      Math.max(1, maxPos),
+    );
     onSave({
       name: String(form.get("nombre") ?? "").trim(),
       lastName: String(form.get("apellidos") ?? "").trim(),
       nickname: String(form.get("apodo") ?? "").trim(),
       document: String(form.get("documento") ?? "").trim(),
-      route: selected.name,
+      route: routeNameResolved,
       routeOrder: pos,
       email: String(form.get("correo") ?? "").trim(),
       city: String(form.get("ciudad") ?? "").trim(),

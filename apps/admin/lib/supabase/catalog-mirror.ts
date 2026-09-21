@@ -101,7 +101,7 @@ export function clientRowToMirror(row: ClientRow): ClientMirrorRow | null {
     created_by: row.createdBy || null,
     awaiting_loan: Boolean(row.awaitingLoan),
     profile_pending: Boolean(row.profilePending),
-    updated_at: new Date().toISOString(),
+    updated_at: row.updatedAt || new Date().toISOString(),
   };
 }
 
@@ -133,6 +133,7 @@ export function mirrorToClientRow(row: ClientMirrorRow): ClientRow | null {
     createdBy: row.created_by || undefined,
     awaitingLoan: Boolean(row.awaiting_loan),
     profilePending: Boolean(row.profile_pending),
+    updatedAt: row.updated_at || undefined,
   };
 }
 
@@ -163,7 +164,7 @@ export function loanRowToMirror(row: LoanRow): LoanMirrorRow | null {
     schedule: row.schedule ?? null,
     collection_alerts: Number(row.collectionAlerts) || 0,
     terms_pending: Boolean(row.termsPending),
-    updated_at: new Date().toISOString(),
+    updated_at: row.updatedAt || new Date().toISOString(),
   };
 }
 
@@ -194,6 +195,7 @@ export function mirrorToLoanRow(row: LoanMirrorRow): LoanRow | null {
     schedule: row.schedule || undefined,
     collectionAlerts: Number(row.collection_alerts) || 0,
     termsPending: Boolean(row.terms_pending),
+    updatedAt: row.updated_at || undefined,
     fundedBy: row.notes?.includes("[[fb:nequi]]")
       ? "nequi"
       : row.notes?.includes("[[fb:efectivo]]")
@@ -204,7 +206,7 @@ export function mirrorToLoanRow(row: LoanMirrorRow): LoanRow | null {
   };
 }
 
-function mergeByRefPreferPendingLocal<T extends { ref: string }>(
+function mergeByRefPreferPendingLocal<T extends { ref: string; updatedAt?: string }>(
   local: T[],
   remote: T[],
   pendingByRef: Map<string, T>,
@@ -239,8 +241,15 @@ function mergeByRefPreferPendingLocal<T extends { ref: string }>(
       localByRef.delete(ref);
       continue;
     }
+    if (signature(localRow) === signature(remoteRow)) {
+      merged.push(remoteRow);
+      localByRef.delete(ref);
+      continue;
+    }
+    // Firmas distintas: el padre en este PC manda (rename/completar no se rebobina).
+    // Reloj remoto no pisa un edit local; la cola pendiente ya cubre el flush.
     if (signature(localRow) !== signature(remoteRow)) changed = true;
-    merged.push(remoteRow);
+    merged.push(localRow);
     localByRef.delete(ref);
   }
   for (const row of localByRef.values()) {
@@ -275,6 +284,9 @@ function clientSignature(row: ClientRow) {
 }
 
 function loanSignature(row: LoanRow) {
+  const scheduleKey = (row.schedule ?? [])
+    .map((line) => `${line.date}:${Number(line.amount) || 0}`)
+    .join(",");
   return [
     row.ref,
     row.clientRef,
@@ -286,7 +298,13 @@ function loanSignature(row: LoanRow) {
     row.status,
     row.frequency ?? "",
     row.mode ?? "",
+    Number(row.days) || 0,
+    Number(row.interest) || 0,
+    Number(row.total) || 0,
     Number(row.installment) || 0,
+    scheduleKey,
+    row.notes ?? "",
+    row.fundedBy ?? "",
     row.termsPending ? 1 : 0,
     Number(row.collectionAlerts) || 0,
   ].join("|");
@@ -410,11 +428,18 @@ export async function persistLoanToSupabase(loan: LoanRow) {
 
 export function queueClientMirror(client: ClientRow) {
   if (typeof window === "undefined") return;
+  // Cola primero: un pull concurrente no rebobina el edit mientras sube.
+  const q = readQueue<ClientRow>(DEMO_CLIENT_MIRROR_QUEUE_KEY).filter((r) => r.ref !== client.ref);
+  q.push(client);
+  writeQueue(DEMO_CLIENT_MIRROR_QUEUE_KEY, q);
   void persistClientToSupabase(client);
 }
 
 export function queueLoanMirror(loan: LoanRow) {
   if (typeof window === "undefined") return;
+  const q = readQueue<LoanRow>(DEMO_LOAN_MIRROR_QUEUE_KEY).filter((r) => r.ref !== loan.ref);
+  q.push(loan);
+  writeQueue(DEMO_LOAN_MIRROR_QUEUE_KEY, q);
   void persistLoanToSupabase(loan);
 }
 

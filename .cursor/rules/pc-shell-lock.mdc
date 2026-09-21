@@ -1,0 +1,26 @@
+---
+description: Shell PC fijo — no tocar topbar/aside/workspace
+alwaysApply: true
+---
+
+# Shell PC — sellado
+
+El panel escritorio es **inmutable** salvo pedido explícito (“arregla el shell / barra / sidebar”).
+
+## Forma fija
+
+1. Topbar fina, una fila — logo **izquierda** (columna sidebar).
+2. Grid `aside | workspace`.
+3. Aside oscuro a altura completa (sin blanco debajo).
+4. Workspace sage hasta el borde inferior.
+
+## Prohibido
+
+- Abrir `AppShell.tsx` / `.topbar` / `.shell` / `.aside` / `.brand-logo` por Nuevo préstamo u otros formularios.
+- Media queries que aplasten PC sin `.is-phone-layout`.
+- Engordar logo o `--top`.
+- Cambios “de paso” que el cliente pueda notar como inestabilidad.
+
+## Celular
+
+Solo con `is-phone-layout` / `is-phone-app`.

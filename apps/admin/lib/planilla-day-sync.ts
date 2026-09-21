@@ -55,7 +55,10 @@ function inputKey(state: PlanillaDayState) {
     .sort()
     .join("|");
   const loans = state.loans
-    .map((row) => `${row.ref}:${row.balance}:${row.paid}:${row.status}`)
+    .map(
+      (row) =>
+        `${row.ref}:${row.balance}:${row.paid}:${row.status}:${Number(row.installment) || 0}:${(row.schedule ?? [])[0]?.date || ""}:${row.schedule?.length || 0}`,
+    )
     .sort()
     .join("|");
   const catalog = state.routes
@@ -92,7 +95,10 @@ function outputKey(state: {
     .sort()
     .join("|");
   const loans = state.loans
-    .map((row) => `${row.ref}:${row.balance}:${row.paid}:${row.status}`)
+    .map(
+      (row) =>
+        `${row.ref}:${row.balance}:${row.paid}:${row.status}:${Number(row.installment) || 0}:${(row.schedule ?? [])[0]?.date || ""}:${row.schedule?.length || 0}`,
+    )
     .sort()
     .join("|");
   const closes = state.dayCloses

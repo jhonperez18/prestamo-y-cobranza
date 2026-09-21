@@ -59,7 +59,12 @@ export function TodayMovementsTable({ payments, loans = [], onCreate, onOpenPaym
         />
       }
     >
-      {payments.map((row) => (
+      {payments.length === 0 ? (
+        <tr className="empty-row">
+          <td colSpan={Math.max(visibleCols.length, 1) + 1}>Sin movimientos hoy.</td>
+        </tr>
+      ) : (
+        payments.map((row) => (
         <tr key={row.ref}>
           {isVisible("ref") ? (
             <td className="ref">
@@ -87,7 +92,8 @@ export function TodayMovementsTable({ payments, loans = [], onCreate, onOpenPaym
           ) : null}
           <ColumnPickerBodyCell />
         </tr>
-      ))}
+        ))
+      )}
     </DataTable>
   );
 }

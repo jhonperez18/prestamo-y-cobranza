@@ -1,4 +1,4 @@
-﻿    :root {
+    :root {
       --ink: #0b1014;
       --ink-2: #141c24;
       --ink-3: #1c2732;
@@ -32,7 +32,8 @@
       --overdue: #dc3d3d;
       --ok: #1a7f5a;
       --sidebar: 300px;
-      --top: 70px;
+      /* PC topbar fijo — no subir (engorda la barra / deforma el logo). */
+      --top: 64px;
       /* Barras verdes — texto nítido sobre fondo oscuro */
       --bar-bg: #426650;
       --bar-bg-alt: #4d7560;
@@ -69,7 +70,16 @@
       --phone-rail-h: 52px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; }
+    /*
+     * SHELL PC — CONTRATO FIJO (imagen producción).
+     * Prohibido: apilar topbar, centrar logo a pantalla, dejar hueco blanco bajo aside.
+     * Flex de body SOLO con shell (nunca en login).
+     */
+    html, body {
+      height: 100%;
+      min-height: 100dvh;
+      background: var(--ink);
+    }
     html {
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
@@ -81,6 +91,11 @@
       background: var(--ink);
       color: var(--text);
       overflow: hidden;
+    }
+    body:has(.topbar),
+    body:has(.shell) {
+      display: flex;
+      flex-direction: column;
     }
     /*
      * CONTRATO CELULAR (sistema) — no re-parchear:
@@ -95,6 +110,7 @@
       overflow: hidden !important;
       overscroll-behavior: none;
       touch-action: manipulation;
+      display: block !important;
     }
     html.is-phone-app body.phone-drawer-open {
       overflow: hidden !important;
@@ -5695,6 +5711,7 @@
       position: sticky;
       top: 56px;
       z-index: 35;
+      flex-shrink: 0;
       display: flex;
       gap: 2px;
       padding: 5px 6px;
@@ -6377,8 +6394,11 @@
 
     .topbar {
       height: var(--top);
+      min-height: var(--top);
+      max-height: var(--top);
+      flex-shrink: 0;
       display: grid;
-      grid-template-columns: var(--sidebar) 1fr;
+      grid-template-columns: var(--sidebar) minmax(0, 1fr);
       align-items: stretch;
       padding: 0;
       gap: 0;
@@ -6386,17 +6406,32 @@
       border-bottom: 1px solid var(--line);
       position: relative;
       z-index: 20;
+      box-sizing: border-box;
+    }
+    /* PC: una sola fila — logo en columna sidebar (izquierda), módulos a la derecha. */
+    .topbar:not(.is-phone-layout) {
+      display: grid !important;
+      grid-template-columns: var(--sidebar) minmax(0, 1fr) !important;
+      grid-template-rows: var(--top);
     }
     .topbar.aside-off { grid-template-columns: 0px 1fr; }
+    .topbar:not(.is-phone-layout).aside-off {
+      grid-template-columns: 0px minmax(0, 1fr) !important;
+    }
     .topbar-brand {
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 0 14px;
+      padding: 0 10px;
       border-right: 1px solid var(--line);
       min-width: 0;
       overflow: hidden;
       background: transparent;
+    }
+    .topbar:not(.is-phone-layout) .topbar-brand {
+      display: flex !important;
+      grid-column: 1;
+      grid-row: 1;
     }
     .topbar.aside-off .topbar-brand {
       opacity: 0;
@@ -6410,11 +6445,12 @@
       justify-content: center;
       width: 100%;
       min-width: 0;
+      height: 100%;
     }
     .brand-logo {
-      height: auto;
-      max-height: 68px;
-      width: 100%;
+      height: 48px;
+      max-height: 48px;
+      width: auto;
       max-width: 100%;
       display: block;
       margin: 0 auto;
@@ -6426,6 +6462,16 @@
       align-items: stretch;
       min-width: 0;
       padding-right: 12px;
+    }
+    .topbar:not(.is-phone-layout) .topbar-main {
+      grid-column: 2;
+      grid-row: 1;
+      min-width: 0;
+    }
+    .topbar:not(.is-phone-layout) .modules {
+      display: flex !important;
+      visibility: visible !important;
+      opacity: 1 !important;
     }
 
     .modules {
@@ -6560,12 +6606,40 @@
     .topbar-user-menu-item:hover { background: rgba(255,255,255,.06); }
 
     .shell {
-      height: calc(100% - var(--top));
+      flex: 1 1 auto;
+      min-height: 0;
+      height: auto;
       display: grid;
-      /* minmax(0,…) evita que el aside se coma el workspace si el contenido es ancho */
+      /* PC fijo: aside | workspace. Nunca apilar fuera de is-phone-layout. */
       grid-template-columns: var(--sidebar) minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
+      align-items: stretch;
+    }
+    .shell:not(.is-phone-layout) {
+      display: grid !important;
+      grid-template-columns: var(--sidebar) minmax(0, 1fr) !important;
+      grid-template-rows: minmax(0, 1fr);
+    }
+    .shell:not(.is-phone-layout) > .aside {
+      grid-column: 1;
+      grid-row: 1;
+      height: 100%;
+      min-height: 0;
+      align-self: stretch;
+      background: var(--sidebar-bg);
+    }
+    .shell:not(.is-phone-layout) > .workspace {
+      grid-column: 2;
+      grid-row: 1;
+      min-width: 0;
+      min-height: 0;
+      height: 100%;
+      background: var(--sage);
     }
     .shell.aside-off { grid-template-columns: 0px minmax(0, 1fr); }
+    .shell:not(.is-phone-layout).aside-off {
+      grid-template-columns: 0px minmax(0, 1fr) !important;
+    }
     .shell.aside-off .aside { transform: translateX(-100%); opacity: 0; pointer-events: none; }
 
     .workspace {
@@ -9068,7 +9142,23 @@
       display: flex; align-items: center; gap: 6px;
       color: #0f766e; font-weight: 600; flex: none;
     }
-    .loan-create .client-pick { margin: 0; padding: 16px 20px 12px; border-bottom: 1px solid #e3ece7; width: min(100%, 560px); }
+    .loan-create .client-pick { margin: 0; padding: 16px 20px 12px; border-bottom: 1px solid #e3ece7; width: min(100%, 720px); }
+    .loan-client-pick-list {
+      margin-top: 10px;
+      max-height: min(58vh, 520px);
+      overflow: auto;
+      -webkit-overflow-scrolling: touch;
+      border: 1px solid #d5e3dc;
+      border-radius: 8px;
+      background: #fff;
+    }
+    .loan-client-pick-list table { margin: 0; }
+    .loan-client-pick-row { cursor: pointer; }
+    .loan-client-pick-row:hover,
+    .loan-client-pick-row:focus-visible {
+      background: var(--row-h);
+      outline: none;
+    }
     .route-create.sheet { padding-bottom: 0; }
     .route-stops-block {
       margin: 0 20px 16px;
@@ -10132,6 +10222,30 @@
     .loan-sheet .sheet-row.split .sheet-label {
       white-space: nowrap;
     }
+    /* Título pegado a su cuadro (Vencimiento / Origen / Observaciones). */
+    .loan-sheet .loan-meta-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px 18px;
+      align-items: center;
+    }
+    .loan-sheet .loan-meta-field {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 6px 8px;
+      align-items: center;
+      min-width: 0;
+    }
+    .loan-sheet .loan-meta-field .sheet-label {
+      margin: 0;
+      white-space: nowrap;
+      font-size: 14px;
+    }
+    .loan-sheet .loan-meta-field input,
+    .loan-sheet .loan-meta-field select {
+      width: 100%;
+      min-width: 0;
+    }
     .pay-dates { max-height: 240px; overflow: auto; }
     .loan-fechas-block .pay-dates {
       max-height: min(62vh, 520px);
@@ -10334,11 +10448,16 @@
       width: 100%;
       max-width: var(--sidebar);
       min-width: 0;
+      min-height: 0;
       box-sizing: border-box;
     }
     .shell:not(.is-phone-layout) > .aside {
+      display: flex !important;
+      flex-direction: column;
       width: var(--sidebar);
       max-width: var(--sidebar);
+      height: 100%;
+      background: var(--sidebar-bg);
     }
     .aside-body { flex: 1; overflow: auto; min-height: 0; }
     .aside-footer {
@@ -10605,21 +10724,25 @@
       :root { --sidebar: 230px; }
     }
     @media (max-width: 820px) {
-      .shell { grid-template-columns: 1fr; }
+      /* Celular: solo con is-phone-layout. PC de escritorio nunca se aplasta aquí. */
       .shell.is-phone-layout,
       .shell.is-phone-layout.aside-off {
         display: block !important;
         grid-template-columns: none;
       }
-      .topbar { grid-template-columns: 1fr; }
-      .topbar-brand { display: none; }
+      .topbar.is-phone-layout {
+        grid-template-columns: 1fr;
+      }
+      .topbar.is-phone-layout .topbar-brand {
+        display: none;
+      }
       .loan-split { grid-template-columns: 1fr; }
       .kpis.zone-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .aside {
-        position: fixed; top: var(--top); left: 0; bottom: 0; width: 260px; z-index: 25;
-      }
       .shell.is-phone-layout .aside {
+        position: fixed;
         top: calc(56px + var(--phone-rail-h, 52px));
+        left: 0;
+        bottom: 0;
         width: max-content;
         max-width: min(86vw, 260px);
         z-index: 50;
