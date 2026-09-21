@@ -70,15 +70,9 @@ export function AuthGate({ channel = "sistema" }: Props) {
         /* ignore */
       }
 
-      try {
-        await flushUserMirrorQueues();
-        await pullRemoteUsersIntoDemo();
-      } catch {
-        /* offline: sigue con caché local */
-      }
-
       if (cancelled) return;
 
+      // Local primero: login listo sin esperar la nube.
       const users = loadDemoUsers();
       writeDemoJson(DEMO_USERS_KEY, users);
       clearSession();
@@ -88,6 +82,19 @@ export function AuthGate({ channel = "sistema" }: Props) {
       syncPhone();
       mq.addEventListener("change", syncPhone);
       setReady(true);
+
+      // Sync personas en fondo (otro PC/celular).
+      void (async () => {
+        try {
+          await flushUserMirrorQueues();
+          await pullRemoteUsersIntoDemo();
+          if (cancelled) return;
+          writeDemoJson(DEMO_USERS_KEY, loadDemoUsers());
+          setUsersEpoch((n) => n + 1);
+        } catch {
+          /* offline */
+        }
+      })();
     }
 
     void boot();

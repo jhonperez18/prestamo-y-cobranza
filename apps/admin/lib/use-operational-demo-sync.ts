@@ -38,8 +38,8 @@ type Options = {
 };
 
 /**
- * Sync completo C5+C6:
- * flush colas → subir PG- locales huérfanos → pull → hidratar UNA vez (sin parpadeo).
+ * Sync C5+C6 — local primero (arranque rápido), luego flush/pull en fondo.
+ * Rehidrata al terminar el pull (sin dejar UI vacía: el local ya pintó).
  */
 export function useOperationalDemoSync(
   apply: (snapshot: OperationalDemoSnapshot) => void,
@@ -47,6 +47,7 @@ export function useOperationalDemoSync(
 ) {
   const { resyncActive = false, onEvidenceSync } = options;
   const [hydrated, setHydrated] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [epoch, setEpoch] = useState(0);
   const applyRef = useRef(apply);
   applyRef.current = apply;
@@ -66,6 +67,7 @@ export function useOperationalDemoSync(
   const runHydrateWithRemotePull = useCallback(async () => {
     if (pullInFlightRef.current) return;
     pullInFlightRef.current = true;
+    setSyncing(true);
     try {
       await flushPaymentMirrorQueue();
       await reconcileLocalPaymentsToRemote();
@@ -76,9 +78,11 @@ export function useOperationalDemoSync(
           failed: evidenceSync.failed,
         });
       }
-      await flushCatalogMirrorQueues();
-      await flushOpsMirrorQueues();
-      await flushUserMirrorQueues();
+      await Promise.all([
+        flushCatalogMirrorQueues(),
+        flushOpsMirrorQueues(),
+        flushUserMirrorQueues(),
+      ]);
       await reconcileLocalOpsToRemote();
       await Promise.all([
         pullRemotePaymentsIntoDemo(),
@@ -90,17 +94,20 @@ export function useOperationalDemoSync(
       if (!Array.isArray(localClients) || localClients.length === 0) {
         await pullRemoteCatalogIntoDemo();
       }
-      // Una sola pintura a la UI: evita saltos 0 → 81 → 0.
       commitHydrate();
     } finally {
       pullInFlightRef.current = false;
+      setSyncing(false);
       setHydrated(true);
     }
   }, [commitHydrate]);
 
   useEffect(() => {
+    // 1) Pintar local al instante (sistema madre: local primero).
+    commitHydrate();
+    // 2) Sync nube en segundo plano.
     void runHydrateWithRemotePull();
-  }, [runHydrateWithRemotePull]);
+  }, [commitHydrate, runHydrateWithRemotePull]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -116,7 +123,6 @@ export function useOperationalDemoSync(
   useEffect(() => {
     function onStorage(event: StorageEvent) {
       if (!event.key || !event.key.startsWith(OPERATIONAL_DEMO_STORAGE_PREFIX)) return;
-      // Otra pestaña: rehidratar sin pull remoto (evita rebobinar).
       commitHydrate();
     }
     function onVisible() {
@@ -124,7 +130,6 @@ export function useOperationalDemoSync(
       const now = Date.now();
       if (now - lastVisiblePullAtRef.current < 15_000) return;
       lastVisiblePullAtRef.current = now;
-      // Solo sube colas: un pull completo rebobinaba ediciones del Listado.
       void (async () => {
         try {
           await flushPaymentMirrorQueue();
@@ -143,5 +148,6 @@ export function useOperationalDemoSync(
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [commitHydrate]);
-  return { hydrated, epoch, reload: runHydrateWithRemotePull };
+
+  return { hydrated, syncing, epoch, reload: runHydrateWithRemotePull };
 }

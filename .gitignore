@@ -43,3 +43,7 @@ Thumbs.db
 
 # Supabase CLI local cache
 supabase/.temp/
+
+# Archivos locales de trabajo (no producto)
+hoja de ruta.jpg
+**/hoja de ruta.jpg
