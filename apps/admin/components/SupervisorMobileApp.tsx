@@ -1560,6 +1560,7 @@ export function SupervisorMobileApp({
               ? "supervisor-mobile-kpi is-inicio on"
               : "supervisor-mobile-kpi is-inicio"
           }
+          aria-current={view === "inicio" && !openRoute ? "page" : undefined}
           {...navButtonProps(navIntent, goHome)}
         >
           <b>INICIO</b>
@@ -1571,6 +1572,7 @@ export function SupervisorMobileApp({
               ? "supervisor-mobile-kpi is-ruta on"
               : "supervisor-mobile-kpi is-ruta"
           }
+          aria-current={view === "planilla" ? "page" : undefined}
           {...navButtonProps(navIntent, () => {
             if (view === "planilla" && !openRouteRef) return;
             setPlanillaRouteFilter(null);
@@ -1592,6 +1594,17 @@ export function SupervisorMobileApp({
               ? "supervisor-mobile-kpi is-caja on"
               : "supervisor-mobile-kpi is-caja"
           }
+          aria-current={
+            view === "caja" ||
+            (openRoute &&
+              (detailMode === "totales" ||
+                detailMode === "gastos" ||
+                detailMode === "cobros") &&
+              cobrosMethodFilter !== "nequi" &&
+              cobrosMethodFilter !== "banco")
+              ? "page"
+              : undefined
+          }
           {...navButtonProps(navIntent, () => {
             if (openRoute) {
               setCobrosMethodFilter(null);
@@ -1612,6 +1625,7 @@ export function SupervisorMobileApp({
               ? "supervisor-mobile-kpi is-nequi on"
               : "supervisor-mobile-kpi is-nequi"
           }
+          aria-current={view === "nequi" || cobrosMethodFilter === "nequi" ? "page" : undefined}
           {...navButtonProps(navIntent, () => {
             if (view === "nequi" && !openRouteRef) return;
             goToView("nequi");
@@ -1627,6 +1641,7 @@ export function SupervisorMobileApp({
               ? "supervisor-mobile-kpi is-banco on"
               : "supervisor-mobile-kpi is-banco"
           }
+          aria-current={view === "banco" || cobrosMethodFilter === "banco" ? "page" : undefined}
           {...navButtonProps(navIntent, () => {
             if (view === "banco" && !openRouteRef) return;
             goToView("banco");
@@ -1642,6 +1657,7 @@ export function SupervisorMobileApp({
               ? "supervisor-mobile-kpi is-nuevo on"
               : "supervisor-mobile-kpi is-nuevo"
           }
+          aria-current={view === "nuevo" || view === "prestamos" ? "page" : undefined}
           {...navButtonProps(navIntent, () => {
             if (view === "nuevo" && !openRouteRef) return;
             goToView("nuevo");
@@ -1656,6 +1672,7 @@ export function SupervisorMobileApp({
               ? "supervisor-mobile-kpi is-clientes on"
               : "supervisor-mobile-kpi is-clientes"
           }
+          aria-current={view === "clientes" ? "page" : undefined}
           {...navButtonProps(navIntent, () => {
             if (view === "clientes" && !openRouteRef) return;
             setClientesRouteFilter(null);

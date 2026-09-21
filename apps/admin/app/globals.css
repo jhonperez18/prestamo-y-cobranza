@@ -3376,6 +3376,7 @@
     }
     .supervisor-mobile-kpi {
       box-sizing: border-box;
+      position: relative;
       text-align: center;
       padding: 6px 5px;
       min-width: 0;
@@ -3391,7 +3392,7 @@
       box-shadow: none;
       transform: none;
       scale: 1;
-      transition: none;
+      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
       touch-action: manipulation;
       -webkit-user-select: none;
       user-select: none;
@@ -3435,6 +3436,11 @@
       border-color: #cfd8d4;
       color: #1f3a30;
     }
+    /* Inactivo: un poco atenuado para que el activo se lea sin gritar. */
+    .supervisor-mobile-kpi:not(.on) {
+      opacity: 0.62;
+      filter: saturate(0.78);
+    }
     .supervisor-mobile-kpi:hover,
     .supervisor-mobile-kpi:focus,
     .supervisor-mobile-kpi:focus-visible,
@@ -3444,14 +3450,78 @@
       transform: none;
       scale: 1;
       box-shadow: none;
+      opacity: 0.88;
     }
-    /* Activo: mismo tamaño; solo refuerza el borde por dentro. */
+    .supervisor-mobile-kpi.on:hover,
+    .supervisor-mobile-kpi.on:focus,
+    .supervisor-mobile-kpi.on:focus-visible,
+    .supervisor-mobile-kpi.on:active {
+      opacity: 1;
+      filter: none;
+    }
+    /*
+     * Activo: suave y profesional — tono un poco más lleno,
+     * borde del color, y rayita inferior discreta.
+     */
     .supervisor-mobile-kpi.on {
       outline: none;
       transform: none;
       scale: 1;
-      box-shadow: inset 0 0 0 1.5px currentColor;
+      opacity: 1;
       filter: none;
+      box-shadow: none;
+      border-width: 1.5px;
+      z-index: 1;
+    }
+    .supervisor-mobile-kpi.on::after {
+      content: "";
+      position: absolute;
+      left: 18%;
+      right: 18%;
+      bottom: 2px;
+      height: 2px;
+      border-radius: 2px;
+      background: currentColor;
+      opacity: 0.45;
+      pointer-events: none;
+    }
+    .supervisor-mobile-kpi.is-inicio.on {
+      background: #c8ebe4;
+      border-color: #0f766e;
+      color: #064e3b;
+    }
+    .supervisor-mobile-kpi.is-ruta.on {
+      background: #d7eadc;
+      border-color: #15803d;
+      color: #14532d;
+    }
+    .supervisor-mobile-kpi.is-caja.on {
+      background: #fdded9;
+      border-color: #be123c;
+      color: #9f1239;
+    }
+    .supervisor-mobile-kpi.is-nequi.on {
+      background: #e4d4f7;
+      border-color: #7c3aed;
+      color: #5b21b6;
+    }
+    .supervisor-mobile-kpi.is-banco.on {
+      background: #d4e4fc;
+      border-color: #2563eb;
+      color: #1e40af;
+    }
+    .supervisor-mobile-kpi.is-nuevo.on {
+      background: #fde0c4;
+      border-color: #c2410c;
+      color: #9a3412;
+    }
+    .supervisor-mobile-kpi.is-clientes.on {
+      background: #dde5e2;
+      border-color: #3f5f54;
+      color: #14201b;
+    }
+    .supervisor-mobile-kpi.on b {
+      font-weight: 800;
     }
     .supervisor-mobile-kpi b {
       display: block;
