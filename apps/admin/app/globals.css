@@ -6167,49 +6167,66 @@
     }
     .shell.is-phone-layout .panel > .head h1,
     .shell.is-phone-layout .panel > .head h2 {
-      font-size: 18px !important;
-      line-height: 1.25;
+      font-size: 16px !important;
+      line-height: 1.2;
     }
     .shell.is-phone-layout .panel {
       border-radius: 12px;
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
     }
     .shell.is-phone-layout .btn-bar,
     .shell.is-phone-layout .btn {
       min-height: 40px;
     }
     /*
-     * Cobranza (celular): título arriba; botones chicos abajo.
-     * Sin esto "Actualizar planillas" / "Cerrar día" tapan el h1.
+     * Cabeceras de panel (celular): título limpio arriba;
+     * acciones (botones, Ver, +) compactas en la fila de abajo.
+     * Aplica a Clientes, Préstamos, Cobranza, Banco, Reportes, Cartera…
      */
-    .shell.is-phone-layout .panel.daily-collections > .head,
-    .shell.is-phone-layout .panel.cobranza-payments-view > .head {
+    .shell.is-phone-layout .panel > .head,
+    .shell.is-phone-layout .mini-head {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       gap: 6px;
+      row-gap: 8px;
     }
-    .shell.is-phone-layout .panel.daily-collections > .head .head-title {
+    .shell.is-phone-layout .panel > .head .head-title {
       flex: 1 0 100%;
       min-width: 0;
     }
-    .shell.is-phone-layout .panel.cobranza-payments-view > .head > h1 {
+    .shell.is-phone-layout .panel > .head > h1,
+    .shell.is-phone-layout .panel > .head > h2,
+    .shell.is-phone-layout .mini-head > h2 {
       flex: 1 1 auto;
       min-width: 0;
-      font-size: 16px !important;
-      line-height: 1.2;
+      margin: 0;
     }
-    .shell.is-phone-layout .panel.cobranza-payments-view > .head > .count {
+    .shell.is-phone-layout .panel > .head > .count,
+    .shell.is-phone-layout .mini-head > .count {
       flex: 0 0 auto;
     }
-    .shell.is-phone-layout .panel.daily-collections > .head .grow,
-    .shell.is-phone-layout .panel.cobranza-payments-view > .head .grow {
-      display: none;
+    /* El .grow fuerza salto de línea: título arriba, controles abajo. */
+    .shell.is-phone-layout .panel > .head > .grow,
+    .shell.is-phone-layout .mini-head > .grow {
+      flex: 1 0 100%;
+      width: 100%;
+      height: 0;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      min-height: 0;
     }
-    .shell.is-phone-layout .panel.daily-collections > .head > .btn,
-    .shell.is-phone-layout .panel.cobranza-payments-view > .head > .btn {
+    .shell.is-phone-layout .panel > .head > .btn,
+    .shell.is-phone-layout .panel > .head > .btn-bar,
+    .shell.is-phone-layout .panel > .head .client-review-actions .btn,
+    .shell.is-phone-layout .mini-head > .btn,
+    .shell.is-phone-layout .mini-head > .btn-bar {
       flex: 1 1 calc(50% - 4px);
       min-width: 0;
-      min-height: 30px;
+      min-height: 30px !important;
       max-height: 32px;
       padding: 4px 6px;
       font-size: 11px !important;
@@ -6219,9 +6236,59 @@
       overflow: hidden;
       text-overflow: ellipsis;
     }
-    .shell.is-phone-layout .panel.daily-collections > .head .head-title h1 {
-      font-size: 16px !important;
-      line-height: 1.2;
+    .shell.is-phone-layout .panel > .head > .page-size,
+    .shell.is-phone-layout .mini-head > .page-size {
+      flex: 0 0 auto;
+      font-size: 12px !important;
+      gap: 4px;
+    }
+    .shell.is-phone-layout .panel > .head > .page-size select,
+    .shell.is-phone-layout .mini-head > .page-size select {
+      font-size: 12px !important;
+      padding: 3px 6px;
+      min-height: 28px;
+    }
+    .shell.is-phone-layout .panel > .head > .plus,
+    .shell.is-phone-layout .mini-head > .plus {
+      width: 30px;
+      height: 30px;
+      min-height: 30px;
+      flex: 0 0 30px;
+    }
+    .shell.is-phone-layout .panel > .head > .client-review-actions {
+      flex: 1 0 100%;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .shell.is-phone-layout .panel > .head .bank-ledger-filter,
+    .shell.is-phone-layout .panel > .head .bank-ledger-filter select {
+      flex: 1 1 calc(50% - 4px);
+      min-width: 0;
+      font-size: 12px !important;
+    }
+    .shell.is-phone-layout .panel > .head .bank-ledger-filter {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .shell.is-phone-layout .filters .btn,
+    .shell.is-phone-layout .filters .btn-bar {
+      min-height: 34px !important;
+      padding: 6px 10px;
+      font-size: 12px !important;
+      letter-spacing: 0.02em;
+    }
+    .shell.is-phone-layout .form-actions {
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .shell.is-phone-layout .form-actions .btn,
+    .shell.is-phone-layout .form-actions .btn-bar {
+      flex: 1 1 calc(50% - 4px);
+      min-height: 36px !important;
+      font-size: 12px !important;
+      padding: 6px 10px;
     }
     .shell.is-phone-layout .topbar-user-menu {
       right: 0;
