@@ -198,6 +198,17 @@ import {
   stripRemovedPaymentMovements,
 } from "@/lib/purge-unclosed-payments";
 import { commitCollectorPayment } from "@/lib/commit-collector-payment";
+import {
+  commitCreateClient,
+  commitCreateLoan,
+  commitDeleteClient,
+  commitRejectClients,
+  commitUpdateClient,
+  commitUpdateLoan,
+  flushPortfolioCatalogToCloud,
+  type PortfolioCatalogState,
+  type PortfolioCommitResult,
+} from "@/lib/commit-portfolio-catalog";
 import { runOperationalDayCycle } from "@/lib/collector-day-auto-close";
 import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
 import { dedupeDailyPaymentsByVisit, reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
@@ -860,121 +871,57 @@ export function Workspace({
     onGo("prestamos", "cuenta");
   }
 
+  function portfolioState(): PortfolioCatalogState {
+    return {
+      clients,
+      loans,
+      routes,
+      assignments: dailyAssignments,
+      collectors,
+      payments,
+    };
+  }
+
+  async function applyPortfolioCommit(result: PortfolioCommitResult) {
+    if (!result.ok) {
+      onToast(result.error);
+      return false;
+    }
+    setClients(result.state.clients);
+    setLoans(result.state.loans);
+    setRoutes(result.state.routes);
+    setDailyAssignments(result.state.assignments);
+    if (result.focusClientRef) {
+      setOpenRef(result.focusClientRef);
+      setFileTab("ficha");
+    }
+    if (result.focusLoanRef) {
+      setOpenLoanRef(result.focusLoanRef);
+      setLoanTab("ficha");
+    }
+    if (result.goTo) onGo(result.goTo.moduleId, result.goTo.viewId);
+    onToast("Guardando en el sistema…");
+    try {
+      await flushPortfolioCatalogToCloud();
+      onToast(result.message);
+    } catch {
+      onToast(`${result.message} (sin nube; en este aparato ya está).`);
+    }
+    return true;
+  }
+
   function saveEdit(draft: ClientDraft) {
     if (!openClient) return;
-    const approving = isPendingReview(openClient);
-    const doc = draft.document.trim();
-    const hasRealDoc = Boolean(doc) && !doc.toUpperCase().startsWith("S/");
-    const hasContactOrPlace = Boolean(
-      openClient.phone?.trim() ||
-        draft.address.trim() ||
-        draft.city.trim() ||
-        draft.barrio.trim(),
-    );
-    const profileComplete = hasRealDoc && hasContactOrPlace;
-    const updated: ClientRow = {
-      ...openClient,
-      name: draft.name,
-      lastName: draft.lastName,
-      nickname: draft.nickname,
-      document: draft.document,
-      city: draft.city,
-      barrio: draft.barrio,
-      email: draft.email,
-      address: draft.address,
-      notes: draft.notes,
-      photo: draft.photo,
-      profilePending: profileComplete ? false : openClient.profilePending,
-      ...(approving
-        ? { status: CLIENT_STATUS_ACTIVE, kind: clientStatusKind(CLIENT_STATUS_ACTIVE) }
-        : {}),
-    };
-    const nextClients = placeClientOnRoute(clients, updated, draft.route, draft.routeOrder);
-    setClients(nextClients);
-    const synced = syncPermanentRoutePlanilla(
-      todayIso(),
-      routes,
-      nextClients,
-      loans,
-      collectors,
-      dailyAssignments,
-      payments,
-    );
-    setRoutes(synced.routes);
-    setDailyAssignments(synced.assignments);
-    const mirrored = nextClients.find((row) => row.ref === updated.ref) ?? updated;
-    queueClientMirror(mirrored);
-    if (approving) {
-      onGo("clientes", "listado");
-      onToast(
-        draft.route
-          ? `Cliente aprobado en ruta ${draft.route} y cargado a la planilla.`
-          : "Cliente aprobado y agregado al listado.",
-      );
-      return;
-    }
-    onGo("clientes", "ficha");
-    onToast(
-      updated.profilePending
-        ? "Cliente actualizado. Aún faltan datos de ficha (alerta activa)."
-        : "Cliente actualizado.",
-    );
+    void applyPortfolioCommit(commitUpdateClient(openClient.ref, draft, portfolioState()));
   }
 
   function saveNew(draft: ClientDraft) {
-    const ref = nextClientCode(clients);
-    const review = canApproveClient
-      ? { status: CLIENT_STATUS_ACTIVE, kind: clientStatusKind(CLIENT_STATUS_ACTIVE) }
-      : { status: CLIENT_STATUS_REVIEW, kind: clientStatusKind(CLIENT_STATUS_REVIEW) };
-    const row: ClientRow = {
-      ref,
-      alta: clientCreationDate(),
-      name: draft.name,
-      lastName: draft.lastName,
-      nickname: draft.nickname,
-      document: draft.document,
-      city: draft.city,
-      barrio: draft.barrio,
-      route: review.status === CLIENT_STATUS_REVIEW ? "" : draft.route,
-      routeOrder: review.status === CLIENT_STATUS_REVIEW ? 0 : draft.routeOrder,
-      email: draft.email,
-      phone: "",
-      address: draft.address,
-      notes: draft.notes,
-      photo: draft.photo,
-      total: 0,
-      pending: 0,
-      status: review.status,
-      kind: review.kind,
-      createdBy: sessionUser?.name,
-    };
-    const nextClients =
-      review.status === CLIENT_STATUS_REVIEW
-        ? [...clients, row]
-        : placeClientOnRoute(clients, row, draft.route, draft.routeOrder);
-    setClients(nextClients);
-    setOpenRef(ref);
-    setFileTab("ficha");
-    const mirrored = nextClients.find((entry) => entry.ref === ref) ?? row;
-    queueClientMirror(mirrored);
-    if (review.status === CLIENT_STATUS_REVIEW) {
-      onGo("clientes", "revision");
-      onToast("Enviado a revisión. Aún no es cliente de ruta ni cobros.");
-      return;
-    }
-    const synced = syncPermanentRoutePlanilla(
-      todayIso(),
-      routes,
-      nextClients,
-      loans,
-      collectors,
-      dailyAssignments,
-      payments,
+    void applyPortfolioCommit(
+      commitCreateClient(draft, portfolioState(), {
+        canApprove: canApproveClient,
+        createdBy: sessionUser?.name,
+      }),
     );
-    setRoutes(synced.routes);
-    setDailyAssignments(synced.assignments);
-    onGo("clientes", "ficha");
-    onToast(`Cliente creado en ruta ${draft.route}, posición ${draft.routeOrder}.`);
   }
 
   function startClientApproval(refs: string[]) {
@@ -989,135 +936,23 @@ export function Workspace({
   }
 
   function rejectClients(refs: string[]) {
-    const pending = new Set(refs);
-    const remaining = clients.filter((row) => !pending.has(row.ref));
-    setClients(remaining);
-    setOpenRef(remaining[0]?.ref ?? "");
-    onGo("clientes", "revision");
-    onToast(
-      refs.length === 1
-        ? "Cliente rechazado y retirado de revisión."
-        : `${refs.length} clientes rechazados.`,
-    );
+    void applyPortfolioCommit(commitRejectClients(refs, portfolioState()));
   }
 
   function deleteClient() {
     if (!openClient) return;
-    if (loansForClient(openClient.ref, loans).length > 0) {
-      setConfirmDelete(false);
-      onToast("No se puede eliminar: el cliente tiene préstamos.");
-      return;
-    }
-    const remaining = clients.filter((row) => row.ref !== openClient.ref);
-    setClients(remaining);
-    setOpenRef(remaining[0]?.ref ?? "");
-    setConfirmDelete(false);
-    onGo("clientes", "listado");
-    onToast("Cliente eliminado del listado.");
+    void applyPortfolioCommit(commitDeleteClient(openClient.ref, portfolioState())).then((ok) => {
+      if (ok) setConfirmDelete(false);
+    });
   }
 
   function saveNewLoan(draft: LoanDraft) {
-    const client = clients.find((row) => row.ref === draft.clientRef);
-    if (!client) return;
-    if (isPendingReview(client)) {
-      onToast("No se puede prestar: el registro aún está en revisión.");
-      return;
-    }
-    const ref = nextLoanCode(loans);
-    const synced = syncLoan(
-      {
-        ref,
-        clientRef: client.ref,
-        client: `${client.name} ${client.lastName}`.trim(),
-        date: draft.date,
-        due: draft.due,
-        capital: draft.capital,
-        paid: 0,
-        balance: draft.total,
-        status: "Activo",
-        kind: "ok",
-        notes: draft.notes,
-        rate: draft.rate,
-        frequency: draft.frequency,
-        mode: draft.mode,
-        pact: draft.pact,
-        days: draft.days,
-        interest: draft.interest,
-        total: draft.total,
-        installment: draft.installment,
-        schedule: draft.schedule,
-      },
-      payments,
-    ) as LoanRow;
-    const row =
-      draft.fundedBy === "banco"
-        ? markLoanFundedByBanco(synced)
-        : markLoanFundedByNequi(synced);
-    const nextClient: ClientRow = {
-      ...client,
-      total: client.total + draft.total,
-      pending: client.pending + draft.total,
-    };
-    setLoans((current) => [row, ...current]);
-    setClients((current) =>
-      current.map((entry) => (entry.ref === client.ref ? nextClient : entry)),
-    );
-    queueLoanMirror(row);
-    queueClientMirror(nextClient);
-    setOpenLoanRef(ref);
-    setOpenRef(client.ref);
-    setLoanTab("ficha");
-    onGo("prestamos", "cuenta");
-    onToast("Préstamo creado.");
+    void applyPortfolioCommit(commitCreateLoan(draft, portfolioState()));
   }
 
   function saveEditLoan(draft: LoanDraft) {
     if (!openLoan) return;
-    const client = clients.find((row) => row.ref === draft.clientRef);
-    if (!client) return;
-    const oldTotal = openLoan.total ?? openLoan.capital;
-    const nextLoan = syncLoan(
-      {
-        ...openLoan,
-        clientRef: client.ref,
-        client: `${client.name} ${client.lastName}`.trim(),
-        date: draft.date,
-        due: draft.due,
-        capital: draft.capital,
-        paid: openLoan.paid,
-        notes: draft.notes,
-        rate: draft.rate,
-        frequency: draft.frequency,
-        mode: draft.mode,
-        pact: draft.pact,
-        days: draft.days,
-        interest: draft.interest,
-        total: draft.total,
-        installment: draft.installment,
-        schedule: draft.schedule,
-        termsPending: false,
-      },
-      payments,
-    ) as LoanRow;
-    const nextClient: ClientRow = {
-      ...client,
-      total: Math.max(0, client.total - oldTotal + draft.total),
-      pending: Math.max(0, client.pending - oldTotal + draft.total),
-    };
-    setLoans((current) =>
-      current.map((row) => (row.ref === openLoan.ref ? nextLoan : row)),
-    );
-    setClients((current) =>
-      current.map((entry) => (entry.ref === client.ref ? nextClient : entry)),
-    );
-    queueLoanMirror(nextLoan);
-    queueClientMirror(nextClient);
-    onGo("prestamos", "cuenta");
-    onToast(
-      openLoan.termsPending
-        ? "Préstamo actualizado. Ya no aparece en alertas de revisión."
-        : "Préstamo actualizado.",
-    );
+    void applyPortfolioCommit(commitUpdateLoan(openLoan.ref, draft, portfolioState()));
   }
 
   function openRouteEdit(ref: string) {
@@ -1262,6 +1097,8 @@ export function Workspace({
     );
     setRoutes(synced.routes);
     setDailyAssignments(synced.assignments);
+    queueRoutesMirror(synced.routes);
+    queueAssignmentsMirror(synced.assignments);
 
     if (!announce) return;
 
@@ -1999,38 +1836,54 @@ export function Workspace({
       openLoan,
       result,
     );
-    setPayments((current) => {
-      const nextPayments = [row, ...current];
-      setLoans((rows) =>
-        rows.map((loan) =>
-          loan.ref === openLoan!.ref ? loanRowAfterPay(loan, result, nextPayments) : loan,
-        ),
-      );
-      // Planilla / Cobranza hoy deben ver el cobro de caja (misma raíz PG-).
-      setDailyAssignments((assignments) =>
-        reconcilePaymentsOntoPlanilla(assignments, nextPayments),
-      );
-      return nextPayments;
-    });
-    setClients((current) =>
-      current.map((entry) =>
-        entry.ref === openLoan.clientRef
-          ? { ...entry, pending: Math.max(0, entry.pending - amount) }
-          : entry,
-      ),
+    const nextPayments = [row, ...payments];
+    const nextLoans = loans.map((loan) =>
+      loan.ref === openLoan.ref ? loanRowAfterPay(loan, result, nextPayments) : loan,
     );
+    const nextClients = clients.map((entry) =>
+      entry.ref === openLoan.clientRef
+        ? { ...entry, pending: Math.max(0, entry.pending - amount) }
+        : entry,
+    );
+    const nextAssignments = reconcilePaymentsOntoPlanilla(dailyAssignments, nextPayments);
+    const projected = projectOperationalMoney({
+      loans: nextLoans,
+      payments: nextPayments,
+      collectors,
+      clients: nextClients,
+      dayCloses,
+      dayExpenseDrafts,
+      bankAccounts,
+      bankMovements,
+      miscPayments,
+      assignments: nextAssignments,
+      dailyLogs,
+    });
+
+    setPayments(nextPayments);
+    setClients(nextClients);
+    setLoans(projected.loans);
+    setDayCloses(projected.dayCloses);
+    setDailyAssignments(projected.assignments);
+    setDailyLogs(projected.dailyLogs);
+    setBankMovements(projected.bankMovements);
+    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
+    writeDemoJson(DEMO_LOANS_KEY, projected.loans);
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, projected.dayCloses);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
+    writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
+
     setPayMode(null);
-    onToast(`${result.message} · guardado, subiendo a la nube…`);
+    onToast(`${result.message} · guardando en el sistema…`);
     queuePaymentMirror(row);
-    const nextLoan = loanRowAfterPay(openLoan, result, [row, ...payments]);
-    queueLoanMirror(nextLoan);
-    const cajaClient = clients.find((entry) => entry.ref === openLoan.clientRef);
-    if (cajaClient) {
-      queueClientMirror({
-        ...cajaClient,
-        pending: Math.max(0, cajaClient.pending - amount),
-      });
-    }
+    const nextLoan = projected.loans.find((loan) => loan.ref === openLoan.ref);
+    if (nextLoan) queueLoanMirror(nextLoan);
+    const cajaClient = nextClients.find((entry) => entry.ref === openLoan.clientRef);
+    if (cajaClient) queueClientMirror(cajaClient);
+    queueAssignmentsMirror(projected.assignments);
+    void Promise.all([flushCatalogMirrorQueues(), flushOpsMirrorQueues()])
+      .then(() => onToast(`${result.message} · listo.`))
+      .catch(() => onToast(`${result.message} (sin nube; en este aparato ya está).`));
   }
 
   function selectClientLoan(ref: string) {

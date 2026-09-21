@@ -37,6 +37,7 @@ Modelos de referencia:
 
 - Dinero: `docs/operational-money.md` + `commitCollectorPayment`
 - Personas: `docs/people-catalog.md` + `commit-people-catalog`
+- Cartera (cliente / préstamo → planilla): `commit-portfolio-catalog`
 
 Toda área nueva del producto **debe** nacer con el mismo patrón: un commit, una raíz, proyecciones, flush esperado.
 
