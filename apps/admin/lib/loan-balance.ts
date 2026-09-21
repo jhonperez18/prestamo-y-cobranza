@@ -101,7 +101,9 @@ function buildScheduleLines(
 
 /** Una sola fuente de verdad: plantilla + movimientos. Recaudado + saldo = monto del acuerdo. */
 export function computeLoanFinancials(loan: LoanRow, payments: PaymentRow[]): LoanFinancials {
-  const loanPayments = payments.filter((row) => row.loanRef === loan.ref);
+  const loanPayments = payments.filter(
+    (row) => row.loanRef === loan.ref && !row.voidedAt?.trim(),
+  );
   const paidTotal = loanPayments.reduce((sum, row) => sum + row.amount, 0);
   const preview = resolvePreview(loan);
   const schedule = buildScheduleLines(loan, loanPayments, preview);

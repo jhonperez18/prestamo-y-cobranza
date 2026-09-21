@@ -83,10 +83,12 @@ export function paymentRowToMirror(payment: PaymentRow): PaymentMirrorRow | null
     paid_date: paidDate,
     paid_time: payment.paidTime?.trim() || null,
     due_date: normalizeHistoryDate(payment.dueDate || "") || payment.dueDate || null,
-    charge_label: payment.chargeLabel?.trim() || null,
+    charge_label: payment.voidedAt
+      ? `ANULADO: ${payment.voidReason || "—"} · ${payment.voidedBy || "—"} · ${payment.voidedAt}`
+      : payment.chargeLabel?.trim() || null,
     method: normalizePaymentMethod(payment.method),
     source: payment.source || "ruta",
-    payment_type: payment.type || null,
+    payment_type: payment.voidedAt ? "Anulado" : payment.type || null,
     payment_kind: payment.kind || null,
     route_ref: payment.routeRef?.trim() || null,
     evidence: evidenceForMirror(payment.evidence) ?? null,
@@ -115,6 +117,22 @@ export function mirrorRowToPaymentRow(row: PaymentMirrorRow): PaymentRow | null 
   const paidTime = (row.paid_time || "").trim() || "00:00";
   const evidence = Array.isArray(row.evidence) && row.evidence.length ? row.evidence : undefined;
   if (evidence?.length) rememberPaymentEvidence(ref, evidence);
+
+  const paymentType = row.payment_type?.trim() || "Cuota";
+  const isVoided = paymentType === "Anulado" || (row.charge_label || "").startsWith("ANULADO:");
+  let voidReason: string | undefined;
+  let voidedBy: string | undefined;
+  let voidedAt: string | undefined;
+  if (isVoided && row.charge_label?.startsWith("ANULADO:")) {
+    const parts = row.charge_label.slice("ANULADO:".length).split(" · ").map((p) => p.trim());
+    voidReason = parts[0] || undefined;
+    voidedBy = parts[1] || undefined;
+    voidedAt = parts[2] || row.updated_at || undefined;
+  } else if (isVoided) {
+    voidedAt = row.updated_at || new Date().toISOString();
+    voidReason = "Anulado";
+  }
+
   return {
     ref,
     loanRef,
@@ -122,17 +140,20 @@ export function mirrorRowToPaymentRow(row: PaymentMirrorRow): PaymentRow | null 
     paidDate,
     paidTime,
     dueDate: row.due_date ? normalizeHistoryDate(row.due_date) || row.due_date : undefined,
-    chargeLabel: row.charge_label?.trim() || undefined,
+    chargeLabel: isVoided ? undefined : row.charge_label?.trim() || undefined,
     client: "",
     collector: row.collector_name?.trim() || "—",
     collectorRef: row.collector_ref?.trim() || undefined,
     routeRef: row.route_ref?.trim() || undefined,
     amount,
-    type: row.payment_type?.trim() || "Cuota",
+    type: isVoided ? "Anulado" : paymentType,
     kind: mapKind(row.payment_kind),
     method: normalizePaymentMethod(row.method),
     evidence,
     source: mapSource(row.source),
+    voidedAt,
+    voidReason,
+    voidedBy,
   };
 }
 

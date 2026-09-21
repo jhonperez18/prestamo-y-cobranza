@@ -76,13 +76,11 @@ import { usePlanillaDayRollover } from "@/lib/planilla-day-sync";
 import { AssignRouteCollectorView } from "@/components/AssignRouteCollectorView";
 import { PermissionsPanel, RolePanel } from "@/components/RolePanel";
 import { CarteraView } from "@/components/CarteraView";
+import { CarteraGroupView } from "@/components/CarteraGroupView";
 import { CobranzaPaymentsView } from "@/components/CobranzaPaymentsView";
-import { ComingSoonPanel } from "@/components/ComingSoonPanel";
-import {
-  CARTERA_POR_COBRADOR_COLUMNS,
-  CARTERA_POR_RUTA_COLUMNS,
-  REPORTES_GENERIC_COLUMNS,
-} from "@/components/ListDataTableShell";
+import { CollectorRecaudoReportView } from "@/components/CollectorRecaudoReportView";
+import { AnulacionesView } from "@/components/AnulacionesView";
+import { AuditoriaView } from "@/components/AuditoriaView";
 import { SystemSettingsView } from "@/components/SystemSettingsView";
 import { AdminProfileView } from "@/components/AdminProfileView";
 import { BankExtractView } from "@/components/BankExtractView";
@@ -113,6 +111,8 @@ import { loanStatusPill } from "@/lib/loan-status";
 import { chargeLabel, displayToIso, isoToDisplay, normalizeLoan, syncAllLoans, syncLoan } from "@/lib/loan-preview";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
 import { flushPaymentMirrorQueue, queuePaymentMirror } from "@/lib/supabase/payment-mirror";
+import { commitVoidPayment } from "@/lib/commit-void-payment";
+import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror, flushCatalogMirrorQueues } from "@/lib/supabase/catalog-mirror";
 import {
   commitUsersCatalog,
@@ -1504,6 +1504,48 @@ export function Workspace({
     onToast("Comprobante guardado · subiendo a la nube…");
   }
 
+  async function voidPayment(paymentRef: string, reason: string) {
+    const result = commitVoidPayment({
+      paymentRef,
+      reason,
+      voidedBy: adminName || session.name || session.username || "admin",
+      payments,
+      loans,
+    });
+    if (!result.ok) {
+      onToast(result.error);
+      return;
+    }
+    const projected = synchronizeOperationalState({
+      payments: result.payments,
+      loans: result.loans,
+      collectors,
+      clients,
+      dayCloses,
+      dayExpenseDrafts,
+      bankAccounts,
+      bankMovements,
+      miscPayments,
+      assignments: dailyAssignments,
+    });
+    setPayments(result.payments.map((row) => withPaymentEvidence(row)));
+    setLoans(projected.loans);
+    setDailyAssignments(projected.assignments);
+    setDayCloses(projected.dayCloses);
+    setBankMovements(projected.bankMovements);
+    writeDemoJson(DEMO_PAYMENTS_KEY, result.payments);
+    writeDemoJson(DEMO_LOANS_KEY, projected.loans);
+    const mirror = await queuePaymentMirror(result.payment);
+    if (!mirror.ok) {
+      onToast(`Anulado en local · nube pendiente: ${mirror.error || "sin red"}`);
+      onGo("cobranza", "anulaciones");
+      return;
+    }
+    await flushPaymentMirrorQueue();
+    onToast(`Pago ${result.payment.ref} anulado · sincronizado.`);
+    onGo("cobranza", "anulaciones");
+  }
+
   function skipCollectorVisit(draft: CollectorSkipVisitDraft) {
     const nextAssignments = skipAssignmentVisit(dailyAssignments, {
       collectorRef: draft.collectorRef,
@@ -2534,23 +2576,25 @@ export function Workspace({
     if (moduleId === "cartera") {
       if (viewId === "cobrador") {
         return (
-          <ComingSoonPanel
-            title="Cartera por cobrador"
-            purpose="Vista operativa: saldos y exposición agrupados por cobrador asignado, para supervisar en el día a día."
-            later="No es el informe imprimible de Reportes. Aquí se abrirá el detalle vivo; el informe formal con exportación irá en Reportes → Por cobrador."
-            tableColumns={CARTERA_POR_COBRADOR_COLUMNS}
-            tableTitle="Por cobrador"
+          <CarteraGroupView
+            mode="cobrador"
+            loans={loans}
+            payments={payments}
+            clients={clients}
+            collectors={collectors}
+            routes={catalogRouteList}
           />
         );
       }
       if (viewId === "ruta") {
         return (
-          <ComingSoonPanel
-            title="Cartera por ruta"
-            purpose="Vista operativa: saldos y clientes pendientes agrupados por ruta o zona."
-            later="Se activará cuando las rutas y asignaciones diarias estén conectadas al backend."
-            tableColumns={CARTERA_POR_RUTA_COLUMNS}
-            tableTitle="Por ruta"
+          <CarteraGroupView
+            mode="ruta"
+            loans={loans}
+            payments={payments}
+            clients={clients}
+            collectors={collectors}
+            routes={catalogRouteList}
           />
         );
       }
@@ -2636,16 +2680,17 @@ export function Workspace({
           clientRef={clientRef}
           onOpenClient={openFicha}
           onOpenLoan={openLoanAccount}
+          onVoidPayment={voidPayment}
         />
       );
     }
 
     if (moduleId === "cobranza" && viewId === "anulaciones") {
       return (
-        <ComingSoonPanel
-          title="Anulaciones"
-          purpose="Registro de pagos anulados: quién anuló, motivo, fecha y el pago original."
-          later="Requiere permisos de anulación y auditoría en el backend. Hoy no se anulan pagos en la demo."
+        <AnulacionesView
+          payments={payments}
+          loans={loans}
+          onOpenPayment={(ref) => openPaymentFicha(ref, "pagos")}
         />
       );
     }
@@ -3175,33 +3220,43 @@ export function Workspace({
           />
         );
       }
-      const reportCopy: Record<string, { purpose: string; later: string }> = {
-        "por-cobrador": {
-          purpose: "Informe de rendimiento y recaudo por cobrador en un rango de fechas.",
-          later: "Distinto de Cartera → Por cobrador (vista operativa). Este es el reporte imprimible.",
-        },
-        cartera: {
-          purpose: "Informe de cartera total: capital, saldos, activos y finalizados.",
-          later: "Distinto del módulo Cartera (operación diaria). Aquí: snapshot exportable.",
-        },
-        mora: {
-          purpose: "Informe de créditos en atraso con días de mora y saldos vencidos.",
-          later: "Distinto de Cartera → Mora (lista operativa). Aquí: reporte formal con filtros.",
-        },
-      };
-      const copy = reportCopy[viewId] ?? {
-        purpose: "Informe reservado para la fase de reportes con PostgreSQL.",
-        later: "Filtros de fecha, cobrador y ruta. Exportación a Excel/PDF.",
-      };
-      return (
-        <ComingSoonPanel
-          title={viewLabel}
-          purpose={copy.purpose}
-          later={copy.later}
-          tableColumns={REPORTES_GENERIC_COLUMNS}
-          tableTitle={viewLabel}
-        />
-      );
+      if (viewId === "por-cobrador") {
+        return (
+          <CollectorRecaudoReportView
+            payments={payments}
+            loans={loans}
+            clients={clients}
+            routes={routes}
+            assignments={dailyAssignments}
+          />
+        );
+      }
+      if (viewId === "cartera") {
+        return (
+          <CarteraView
+            viewId="resumen"
+            loans={loans}
+            payments={payments}
+            clients={clients}
+            onOpenClient={openFicha}
+            onOpenLoan={openLoanAccount}
+            onGo={onGo}
+          />
+        );
+      }
+      if (viewId === "mora") {
+        return (
+          <CarteraView
+            viewId="mora"
+            loans={loans}
+            payments={payments}
+            clients={clients}
+            onOpenClient={openFicha}
+            onOpenLoan={openLoanAccount}
+            onGo={onGo}
+          />
+        );
+      }
     }
 
     if (moduleId === "inicio" && viewId === "nuevo-usuario") {
@@ -3269,21 +3324,7 @@ export function Workspace({
     }
 
     if (moduleId === "inicio" && viewId === "auditoria") {
-      return (
-        <ComingSoonPanel
-          title="Auditoría"
-          purpose="Historial oficial de acciones: quién creó, modificó o anuló clientes, préstamos y pagos."
-          later="La línea de tiempo demo se reemplazará por el log de auditoría del servidor."
-          tableColumns={[
-            { id: "when", label: "Fecha" },
-            { id: "user", label: "Usuario" },
-            { id: "action", label: "Acción" },
-            { id: "entity", label: "Entidad" },
-            { id: "detail", label: "Detalle" },
-          ]}
-          tableTitle="Auditoría"
-        />
-      );
+      return <AuditoriaView payments={payments} users={users} />;
     }
 
     if (moduleId === "inicio" && viewId === "perfil") {

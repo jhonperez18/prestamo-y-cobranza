@@ -40,6 +40,7 @@ import {
   COBRANZA_PAYMENT_COLUMNS,
   COBRANZA_PAYMENT_DEFAULT_COLS,
 } from "@/lib/table-columns";
+import { livePayments } from "@/lib/live-payments";
 
 type Props = {
   kind: CobranzaPaymentsReportKind;
@@ -104,7 +105,9 @@ export function CobranzaPaymentsView({
 
   const title = kind === "abonos" ? "Abonos" : "Pagos";
   const source =
-    kind === "abonos" ? payments.filter((row) => row.type === "Abono") : payments;
+    kind === "abonos"
+      ? livePayments(payments).filter((row) => row.type === "Abono")
+      : livePayments(payments);
 
   const filtered = useMemo(() => {
     const ranged = filterPaymentsByRecaudoRange(source, fromIso, toIso);

@@ -110,6 +110,10 @@ export type PaymentRow = {
   evidence?: import("@/lib/payment-evidence").PaymentEvidenceRef[];
   source?: "pwa" | "caja";
   gps?: boolean;
+  /** ISO: si está, el PG- está anulado (sigue en raíz, no suma a saldos). */
+  voidedAt?: string;
+  voidReason?: string;
+  voidedBy?: string;
 };
 
 export type ActivityRow = {

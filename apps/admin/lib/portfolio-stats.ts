@@ -2,6 +2,7 @@ import { todayIso } from "@/lib/daily-dispatch";
 import { computeLoanFinancials } from "@/lib/loan-balance";
 import { loanStatusPill } from "@/lib/loan-status";
 import { syncLoan } from "@/lib/loan-preview";
+import { livePayments } from "@/lib/live-payments";
 import { activeLoans, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 
 export type PortfolioStats = {
@@ -16,7 +17,8 @@ export type PortfolioStats = {
 };
 
 function syncedActiveLoans(loans: LoanRow[], payments: PaymentRow[]) {
-  return activeLoans(loans.map((loan) => syncLoan(loan, payments) as LoanRow));
+  const live = livePayments(payments);
+  return activeLoans(loans.map((loan) => syncLoan(loan, live) as LoanRow));
 }
 
 function paymentMonthKey(payment: PaymentRow, fallbackYear: number) {
@@ -38,6 +40,7 @@ export function buildPortfolioStats(
   payments: PaymentRow[],
   now = new Date(),
 ): PortfolioStats {
+  const live = livePayments(payments);
   const currentMonth = todayIso(now).slice(0, 7);
   const monthRaw = now.toLocaleDateString("es-CO", { month: "long" });
   const monthLabel = monthRaw.charAt(0).toLowerCase() + monthRaw.slice(1);
@@ -49,8 +52,8 @@ export function buildPortfolioStats(
   let moraBalance = 0;
   let moraCount = 0;
 
-  for (const loan of syncedActiveLoans(loans, payments)) {
-    const balance = computeLoanFinancials(loan, payments).balancePending;
+  for (const loan of syncedActiveLoans(loans, live)) {
+    const balance = computeLoanFinancials(loan, live).balancePending;
     if (balance <= 0) continue;
 
     activeCount += 1;
@@ -65,7 +68,7 @@ export function buildPortfolioStats(
     }
   }
 
-  const collectedMonth = payments
+  const collectedMonth = live
     .filter((row) => paymentMonthKey(row, now.getFullYear()) === currentMonth)
     .reduce((sum, row) => sum + row.amount, 0);
 

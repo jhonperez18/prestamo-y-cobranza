@@ -22,6 +22,7 @@ import type {
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
+import { livePayments } from "@/lib/live-payments";
 
 export type OperationalSyncInput = {
   loans: LoanRow[];
@@ -92,7 +93,8 @@ function alignDailyLogsCollected(
 export function synchronizeOperationalState(
   input: OperationalSyncInput,
 ): OperationalSyncResult {
-  const payments = input.payments ?? [];
+  const paymentsAll = input.payments ?? [];
+  const payments = livePayments(paymentsAll);
   const collectors = input.collectors ?? [];
 
   const loans = syncAllLoans(input.loans, payments) as LoanRow[];

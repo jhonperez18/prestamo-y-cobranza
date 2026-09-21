@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { QuadDetailTable } from "@/components/QuadDetailTable";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { Pill } from "@/components/ui";
@@ -12,6 +13,7 @@ import {
 } from "@/lib/payment-method";
 import { paymentHasReceipt, paymentHasSignature, primaryPaymentEvidence } from "@/lib/payment-evidence";
 import { money, type LoanRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
+import { isPaymentLive } from "@/lib/live-payments";
 
 type Props = {
   payment: PaymentRow;
@@ -21,6 +23,7 @@ type Props = {
   clientRef?: string;
   onOpenClient?: (ref: string) => void;
   onOpenLoan?: (ref: string) => void;
+  onVoidPayment?: (paymentRef: string, reason: string) => void;
 };
 
 export function PaymentFicha({
@@ -31,6 +34,7 @@ export function PaymentFicha({
   clientRef,
   onOpenClient,
   onOpenLoan,
+  onVoidPayment,
 }: Props) {
   const method = normalizePaymentMethod(payment.method);
   const evidence = payment.evidence ?? movement.evidence;
@@ -38,6 +42,17 @@ export function PaymentFicha({
   const hasReceipt = paymentHasReceipt(evidence);
   const hasSignature = paymentHasSignature(evidence);
   const evidenceTitle = hasSignature && !hasReceipt ? "Firma del cliente" : "Comprobante de pago";
+  const live = isPaymentLive(payment);
+  const [voidOpen, setVoidOpen] = useState(false);
+  const [voidReason, setVoidReason] = useState("");
+
+  function confirmVoid() {
+    const reason = voidReason.trim();
+    if (!reason || !onVoidPayment) return;
+    onVoidPayment(payment.ref, reason);
+    setVoidOpen(false);
+    setVoidReason("");
+  }
 
   return (
     <section className="panel payment-ficha">
@@ -60,8 +75,42 @@ export function PaymentFicha({
               Ver cliente
             </button>
           ) : null}
+          {live && onVoidPayment ? (
+            <button type="button" className="btn-bar light" onClick={() => setVoidOpen((v) => !v)}>
+              Anular
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {voidOpen && live && onVoidPayment ? (
+        <div className="payment-void-box" style={{ margin: "0 0 12px", display: "grid", gap: 8, maxWidth: 420 }}>
+          <label>
+            Motivo de anulación
+            <input
+              value={voidReason}
+              onChange={(e) => setVoidReason(e.target.value)}
+              placeholder="Ej. cobro duplicado"
+              autoFocus
+            />
+          </label>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" className="btn" disabled={!voidReason.trim()} onClick={confirmVoid}>
+              Confirmar anulación
+            </button>
+            <button type="button" className="btn secondary" onClick={() => setVoidOpen(false)}>
+              Cancelar
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {!live ? (
+        <p className="ficha-empty" style={{ marginBottom: 10 }}>
+          Anulado {payment.voidedAt?.slice(0, 10) || ""} · {payment.voidReason || "—"} ·{" "}
+          {payment.voidedBy || "—"}
+        </p>
+      ) : null}
 
       <div className="payment-ficha-body">
         <div className="payment-ficha-evidence mini-block">
@@ -100,7 +149,12 @@ export function PaymentFicha({
                 value: paymentMethodLabel(method),
               },
               { label: "Tipo", value: payment.type },
-              { label: "Estado", value: movement.settlementLabel || (movement.kind === "partial" ? "Parcial" : "Pagada") },
+              {
+                label: "Estado",
+                value: live
+                  ? movement.settlementLabel || (movement.kind === "partial" ? "Parcial" : "Pagada")
+                  : "Anulado",
+              },
               { label: "Concepto", value: movement.chargeLabel },
               {
                 label: "Préstamo",
