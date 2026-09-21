@@ -29,7 +29,7 @@ export async function GET() {
     const mirror = createMirrorServerClient();
     const payments = mirror
       ? await mirror.from("payments").select("ref").limit(1)
-      : await supabase.from("payments").select("ref").limit(1);
+      : { error: { code: "service_role_missing", message: "service_role_missing" } };
     const tableMissing =
       payments.error?.code === "PGRST205" ||
       /Could not find the table/i.test(payments.error?.message ?? "");
@@ -39,11 +39,13 @@ export async function GET() {
       url,
       auth: "reachable",
       serviceRole: mirrorUsesServiceRole(),
-      payments: tableMissing
-        ? { ok: false, error: "payments_table_missing" }
-        : payments.error
-          ? { ok: false, error: payments.error.message }
-          : { ok: true },
+      payments: !mirror
+        ? { ok: false, error: "service_role_missing" }
+        : tableMissing
+          ? { ok: false, error: "payments_table_missing" }
+          : payments.error
+            ? { ok: false, error: payments.error.message }
+            : { ok: true },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";

@@ -64,9 +64,12 @@ npx supabase db push
 
 ## C6.1 (Auth + RLS — en curso)
 
-1. `SUPABASE_SERVICE_ROLE_KEY` solo en servidor (API mirrors)  
-2. Políticas `anon` eliminadas en tablas ops  
-3. `profiles` + login Auth (email) con upsert de perfil  
-4. Login corto (`juan.rios`) intenta Auth mapeado; si no, demo local  
+1. `SUPABASE_SERVICE_ROLE_KEY` solo en servidor (API mirrors) — **obligatorio**; sin fallback anon
+2. Políticas `anon` eliminadas en tablas ops
+3. `profiles` + login Auth (email) con upsert de perfil
+4. Login corto (`juan.rios`) intenta Auth mapeado; si no, demo local
+5. Pull de catálogo: cola pendiente gana (no rebobina altas/edits frescos)
+6. Cobro `PG-` / CIE: await flush de colas antes de “listo”
+7. `verify:prod` falla si `serviceRole` no está en Vercel
 
-Pendiente operativo: crear usuarios Auth en Dashboard y poner la service role en Vercel.
+Pendiente operativo: crear usuarios Auth en Dashboard y aplicar migración RLS en el proyecto Supabase.

@@ -2,7 +2,8 @@
  * C5: clientes y préstamos compartidos (Postgres raíz; local = caché + cola offline).
  * @see docs/demo-to-backend.md
  */
-import { createMirrorServerClient } from "@/lib/supabase/admin";
+import { createMirrorServerClient, mirrorUsesServiceRole } from "@/lib/supabase/admin";
+import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import type { ClientRow, LoanRow, StatusKind } from "@/lib/mock-data";
 import {
   DEMO_CLIENTS_KEY,
@@ -203,9 +204,10 @@ export function mirrorToLoanRow(row: LoanMirrorRow): LoanRow | null {
   };
 }
 
-function mergeByRefRemoteAuthority<T extends { ref: string }>(
+function mergeByRefPreferPendingLocal<T extends { ref: string }>(
   local: T[],
   remote: T[],
+  pendingByRef: Map<string, T>,
   signature: (row: T) => string,
 ): { merged: T[]; added: number; changed: boolean } {
   const localByRef = new Map<string, T>();
@@ -215,22 +217,43 @@ function mergeByRefRemoteAuthority<T extends { ref: string }>(
   const merged: T[] = [];
   let added = 0;
   let changed = false;
+  const seen = new Set<string>();
 
   for (const remoteRow of remote) {
     if (!remoteRow?.ref) continue;
-    const localRow = localByRef.get(remoteRow.ref);
+    const ref = remoteRow.ref;
+    seen.add(ref);
+    const pending = pendingByRef.get(ref);
+    const localRow = localByRef.get(ref);
+    if (pending) {
+      if (!localRow || signature(pending) !== signature(localRow)) changed = true;
+      if (signature(pending) !== signature(remoteRow)) changed = true;
+      merged.push(pending);
+      localByRef.delete(ref);
+      continue;
+    }
     if (!localRow) {
       merged.push(remoteRow);
       added += 1;
       changed = true;
-      localByRef.delete(remoteRow.ref);
+      localByRef.delete(ref);
       continue;
     }
     if (signature(localRow) !== signature(remoteRow)) changed = true;
     merged.push(remoteRow);
-    localByRef.delete(remoteRow.ref);
+    localByRef.delete(ref);
   }
-  for (const row of localByRef.values()) merged.push(row);
+  for (const row of localByRef.values()) {
+    if (!row?.ref || seen.has(row.ref)) continue;
+    const pending = pendingByRef.get(row.ref);
+    merged.push(pending ?? row);
+  }
+  for (const [ref, row] of pendingByRef) {
+    if (seen.has(ref) || localByRef.has(ref)) continue;
+    merged.push(row);
+    added += 1;
+    changed = true;
+  }
   return { merged, added, changed };
 }
 
@@ -269,11 +292,17 @@ function loanSignature(row: LoanRow) {
   ].join("|");
 }
 
+function mirrorSkipReason() {
+  const { configured: pub } = getSupabasePublicEnv();
+  if (pub && !mirrorUsesServiceRole()) return "service_role_missing";
+  return "supabase_not_configured";
+}
+
 export async function mirrorClientToSupabase(client: ClientRow) {
   const row = clientRowToMirror(client);
   if (!row) return { ok: true as const, skipped: true as const, reason: "invalid_client" };
   const supabase = createMirrorClient();
-  if (!supabase) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  if (!supabase) return { ok: true as const, skipped: true as const, reason: mirrorSkipReason() };
   const { error } = await supabase.from("clients").upsert(row, { onConflict: "ref" });
   if (error) return { ok: false as const, error: error.message };
   return { ok: true as const };
@@ -283,7 +312,7 @@ export async function mirrorLoanToSupabase(loan: LoanRow) {
   const row = loanRowToMirror(loan);
   if (!row) return { ok: true as const, skipped: true as const, reason: "invalid_loan" };
   const supabase = createMirrorClient();
-  if (!supabase) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  if (!supabase) return { ok: true as const, skipped: true as const, reason: mirrorSkipReason() };
   const { error } = await supabase.from("loans").upsert(row, { onConflict: "ref" });
   if (error) return { ok: false as const, error: error.message };
   return { ok: true as const };
@@ -291,7 +320,7 @@ export async function mirrorLoanToSupabase(loan: LoanRow) {
 
 export async function fetchClientsFromSupabase() {
   const supabase = createMirrorClient();
-  if (!supabase) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured", rows: [] as ClientMirrorRow[] };
+  if (!supabase) return { ok: true as const, skipped: true as const, reason: mirrorSkipReason(), rows: [] as ClientMirrorRow[] };
   const { data, error } = await supabase.from("clients").select("*").order("updated_at", { ascending: false }).limit(5000);
   if (error) return { ok: false as const, error: error.message, rows: [] as ClientMirrorRow[] };
   return { ok: true as const, rows: (data ?? []) as ClientMirrorRow[] };
@@ -299,7 +328,7 @@ export async function fetchClientsFromSupabase() {
 
 export async function fetchLoansFromSupabase() {
   const supabase = createMirrorClient();
-  if (!supabase) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured", rows: [] as LoanMirrorRow[] };
+  if (!supabase) return { ok: true as const, skipped: true as const, reason: mirrorSkipReason(), rows: [] as LoanMirrorRow[] };
   const { data, error } = await supabase.from("loans").select("*").order("updated_at", { ascending: false }).limit(5000);
   if (error) return { ok: false as const, error: error.message, rows: [] as LoanMirrorRow[] };
   return { ok: true as const, rows: (data ?? []) as LoanMirrorRow[] };
@@ -466,8 +495,12 @@ export async function pullRemoteCatalogIntoDemo(): Promise<PullCatalogResult> {
         .map(mirrorToClientRow)
         .filter((row): row is ClientRow => Boolean(row));
       const local = readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []);
-      // Si remoto trae catálogo y local está vacío, siempre escribe (clientes sagrados).
-      const merge = mergeByRefRemoteAuthority(local, remote, clientSignature);
+      const pendingClients = readDemoJson<ClientRow[]>(DEMO_CLIENT_MIRROR_QUEUE_KEY, []).filter(
+        (row) => row?.ref,
+      );
+      const pendingByRef = new Map(pendingClients.map((row) => [row.ref, row]));
+      // Cola pendiente gana: pull no rebobina altas/edits frescos del padre.
+      const merge = mergeByRefPreferPendingLocal(local, remote, pendingByRef, clientSignature);
       if (merge.changed || (local.length === 0 && remote.length > 0)) {
         writeDemoJson(DEMO_CLIENTS_KEY, merge.merged.length ? merge.merged : remote);
         changed = true;
@@ -482,7 +515,11 @@ export async function pullRemoteCatalogIntoDemo(): Promise<PullCatalogResult> {
         .map(mirrorToLoanRow)
         .filter((row): row is LoanRow => Boolean(row));
       const local = readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []);
-      const merge = mergeByRefRemoteAuthority(local, remote, loanSignature);
+      const pendingLoans = readDemoJson<LoanRow[]>(DEMO_LOAN_MIRROR_QUEUE_KEY, []).filter(
+        (row) => row?.ref,
+      );
+      const pendingByRef = new Map(pendingLoans.map((row) => [row.ref, row]));
+      const merge = mergeByRefPreferPendingLocal(local, remote, pendingByRef, loanSignature);
       if (merge.changed) {
         writeDemoJson(DEMO_LOANS_KEY, merge.merged);
         changed = true;

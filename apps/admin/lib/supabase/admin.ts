@@ -1,6 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServiceEnv } from "@/lib/supabase/service-env";
-import { getSupabasePublicEnv } from "@/lib/supabase/env";
 
 /**
  * Cliente admin (service role). Solo server / route handlers.
@@ -15,18 +14,11 @@ export function createSupabaseAdminClient(): SupabaseClient | null {
 }
 
 /**
- * Cliente para mirrors en server: prefiere service role; si no hay, anon (dev legacy).
- * En browser no se llama (los mirrors van por /api/*).
+ * Cliente para mirrors en server: **solo** service role (C6.1).
+ * Sin fallback anon: con RLS sin políticas anon, anon fallaría en silencio.
  */
 export function createMirrorServerClient(): SupabaseClient | null {
-  const admin = createSupabaseAdminClient();
-  if (admin) return admin;
-
-  const { url, anonKey, configured } = getSupabasePublicEnv();
-  if (!configured) return null;
-  return createClient(url, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  return createSupabaseAdminClient();
 }
 
 export function mirrorUsesServiceRole() {

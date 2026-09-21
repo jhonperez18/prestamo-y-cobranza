@@ -4,7 +4,8 @@
  * @see docs/demo-to-backend.md
  * @see docs/operational-money.md
  */
-import { createMirrorServerClient } from "@/lib/supabase/admin";
+import { createMirrorServerClient, mirrorUsesServiceRole } from "@/lib/supabase/admin";
+import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import type { LoanRow, PaymentRow, StatusKind } from "@/lib/mock-data";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
@@ -247,7 +248,14 @@ export async function mirrorPaymentToSupabase(
   }
 
   const client = createMirrorClient();
-  if (!client) return { ok: true, skipped: true, reason: "supabase_not_configured" };
+  if (!client) {
+    const { configured: pub } = getSupabasePublicEnv();
+    return {
+      ok: true,
+      skipped: true,
+      reason: pub && !mirrorUsesServiceRole() ? "service_role_missing" : "supabase_not_configured",
+    };
+  }
 
   const { error } = await client.from("payments").upsert(row, { onConflict: "ref" });
   if (error) {
@@ -284,7 +292,15 @@ export type FetchPaymentsResult =
 /** Lectura desde Supabase (servidor o cliente con anon key). */
 export async function fetchPaymentsFromSupabase(): Promise<FetchPaymentsResult> {
   const client = createMirrorClient();
-  if (!client) return { ok: true, skipped: true, reason: "supabase_not_configured", rows: [] };
+  if (!client) {
+    const { configured: pub } = getSupabasePublicEnv();
+    return {
+      ok: true,
+      skipped: true,
+      reason: pub && !mirrorUsesServiceRole() ? "service_role_missing" : "supabase_not_configured",
+      rows: [],
+    };
+  }
 
   const { data, error } = await client
     .from("payments")

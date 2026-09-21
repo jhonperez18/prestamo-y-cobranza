@@ -60,9 +60,15 @@ import {
 import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
 import { evidenceHasPreview } from "@/lib/payment-evidence";
-import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
-import { queueClientMirror, queueLoanMirror, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
+import { flushPaymentMirrorQueue, queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import {
+  flushCatalogMirrorQueues,
+  queueClientMirror,
+  queueLoanMirror,
+  queueLoansMirror,
+} from "@/lib/supabase/catalog-mirror";
+import {
+  flushOpsMirrorQueues,
   queueAssignmentsMirror,
   queueDayCloseMirror,
   queueDayExpenseMirror,
@@ -333,27 +339,40 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, projected.bankMovements);
 
     showToast(`Cobro ${committed.payment.ref} guardado · subiendo a la nube…`);
-    void queuePaymentMirror(committed.payment).then((mirror) => {
-      if (mirror.ok && !("skipped" in mirror && mirror.skipped)) {
-        if (evidenceHasPreview(committed.payment.evidence)) {
-          showToast(`Cobro ${committed.payment.ref} en la nube · evidencia OK`);
+    void (async () => {
+      const mirror = await queuePaymentMirror(committed.payment);
+      const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
+      if (paidLoan) queueLoanMirror(paidLoan);
+      const paidClient = committed.clients.find((row) =>
+        committed.loans.some(
+          (loan) => loan.ref === committed.payment.loanRef && loan.clientRef === row.ref,
+        ),
+      );
+      if (paidClient) queueClientMirror(paidClient);
+      queueAssignmentsMirror(projected.assignments);
+      try {
+        await flushPaymentMirrorQueue();
+        await flushCatalogMirrorQueues();
+        await flushOpsMirrorQueues();
+        if (mirror.ok && !("skipped" in mirror && mirror.skipped)) {
+          showToast(
+            evidenceHasPreview(committed.payment.evidence)
+              ? `Cobro ${committed.payment.ref} en la nube · evidencia OK`
+              : `Cobro ${committed.payment.ref} listo en la nube`,
+          );
+          return;
         }
-        return;
+        if (evidenceHasPreview(committed.payment.evidence)) {
+          showToast(
+            `Cobro ${committed.payment.ref} guardado · la evidencia se subirá al recuperar red`,
+          );
+          return;
+        }
+        showToast(`Cobro ${committed.payment.ref} listo.`);
+      } catch {
+        showToast(`Cobro ${committed.payment.ref} guardado (sin nube; en este aparato ya está).`);
       }
-      if (evidenceHasPreview(committed.payment.evidence)) {
-        showToast(
-          `Cobro ${committed.payment.ref} guardado · la evidencia se subirá al recuperar red`,
-        );
-      }
-    });
-    const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
-    if (paidLoan) queueLoanMirror(paidLoan);
-    const paidClient = committed.clients.find((row) =>
-      committed.loans.some(
-        (loan) => loan.ref === committed.payment.loanRef && loan.clientRef === row.ref,
-      ),
-    );
-    if (paidClient) queueClientMirror(paidClient);
+    })();
     return true;
   }
 
@@ -626,6 +645,9 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextCloses);
     setDayCloses(nextCloses);
     queueDayCloseMirror(record);
+    void flushOpsMirrorQueues().catch(() => {
+      /* cola offline reintenta */
+    });
 
     const nextDrafts = removeDayExpenseDraft(
       dayExpenseDrafts,

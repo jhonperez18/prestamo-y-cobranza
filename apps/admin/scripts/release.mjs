@@ -158,6 +158,24 @@ async function fetchJson(url) {
   return res.json();
 }
 
+async function assertServiceRole() {
+  console.log("Comprobando service role (C6.1)…");
+  let data;
+  try {
+    data = await fetchJson(`${DOMAIN}/api/health/supabase`);
+  } catch (err) {
+    console.error(`FALLO: health/supabase → ${err?.message || err}`);
+    process.exit(1);
+  }
+  if (!data.serviceRole) {
+    console.error(
+      "FALLO: falta SUPABASE_SERVICE_ROLE_KEY en Vercel. Sin eso los mirrors C6.1 no escriben (anon ya no basta).",
+    );
+    process.exit(1);
+  }
+  console.log("Service role OK");
+}
+
 async function assertLoginBuild(expectedSha) {
   console.log("Comprobando build servido…");
   let data;
@@ -234,8 +252,9 @@ if (mode === "verify") {
   }
   purgeCaches();
   await assertLoginBuild(expect);
+  await assertServiceRole();
   await assertCatalogHealth();
-  console.log(`\nListo de verdad. Login → build ${expect}. Catálogo SQL verificado.`);
+  console.log(`\nListo de verdad. Login → build ${expect}. Catálogo SQL + service role verificados.`);
   process.exit(0);
 }
 

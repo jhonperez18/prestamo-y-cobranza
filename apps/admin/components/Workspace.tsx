@@ -112,7 +112,7 @@ import {
 import { loanStatusPill } from "@/lib/loan-status";
 import { chargeLabel, displayToIso, isoToDisplay, normalizeLoan, syncAllLoans, syncLoan } from "@/lib/loan-preview";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
-import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
+import { flushPaymentMirrorQueue, queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror, flushCatalogMirrorQueues } from "@/lib/supabase/catalog-mirror";
 import {
   commitUsersCatalog,
@@ -1202,6 +1202,9 @@ export function Workspace({
     writeDemoJson(DEMO_ROUTES_KEY, result.routes);
     queueAssignmentsMirror(closedAssignments);
     queueRoutesMirror(result.routes);
+    void flushOpsMirrorQueues().catch(() => {
+      /* cola offline reintenta */
+    });
     setDailyLogs(result.logs);
     writeDemoJson(DEMO_DAILY_LOGS_KEY, result.logs);
     setDayCloses(nextCloses);
@@ -1340,6 +1343,9 @@ export function Workspace({
     writeDemoJson(DEMO_ROUTES_KEY, result.routes);
     queueAssignmentsMirror(closedAssignments);
     queueRoutesMirror(result.routes);
+    void flushOpsMirrorQueues().catch(() => {
+      /* cola offline reintenta */
+    });
     setDailyLogs(result.logs);
 
     const alertResult = bumpMissedCollectionAlerts(
@@ -1443,27 +1449,40 @@ export function Workspace({
     writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
 
     onToast(`Cobro ${committed.payment.ref} guardado · subiendo a la nube…`);
-    void queuePaymentMirror(committed.payment).then((mirror) => {
-      if (mirror.ok && !("skipped" in mirror && mirror.skipped)) {
-        if (evidenceHasPreview(committed.payment.evidence)) {
-          onToast(`Cobro ${committed.payment.ref} en la nube · evidencia OK`);
+    void (async () => {
+      const mirror = await queuePaymentMirror(committed.payment);
+      const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
+      if (paidLoan) queueLoanMirror(paidLoan);
+      const paidClient = committed.clients.find((row) =>
+        committed.loans.some(
+          (loan) => loan.ref === committed.payment.loanRef && loan.clientRef === row.ref,
+        ),
+      );
+      if (paidClient) queueClientMirror(paidClient);
+      queueAssignmentsMirror(projected.assignments);
+      try {
+        await flushPaymentMirrorQueue();
+        await flushCatalogMirrorQueues();
+        await flushOpsMirrorQueues();
+        if (mirror.ok && !("skipped" in mirror && mirror.skipped)) {
+          onToast(
+            evidenceHasPreview(committed.payment.evidence)
+              ? `Cobro ${committed.payment.ref} en la nube · evidencia OK`
+              : `Cobro ${committed.payment.ref} listo en la nube`,
+          );
+          return;
         }
-        return;
+        if (evidenceHasPreview(committed.payment.evidence)) {
+          onToast(
+            `Cobro ${committed.payment.ref} guardado · la evidencia se subirá al recuperar red`,
+          );
+          return;
+        }
+        onToast(`Cobro ${committed.payment.ref} listo.`);
+      } catch {
+        onToast(`Cobro ${committed.payment.ref} guardado (sin nube; en este aparato ya está).`);
       }
-      if (evidenceHasPreview(committed.payment.evidence)) {
-        onToast(
-          `Cobro ${committed.payment.ref} guardado · la evidencia se subirá al recuperar red`,
-        );
-      }
-    });
-    const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
-    if (paidLoan) queueLoanMirror(paidLoan);
-    const paidClient = committed.clients.find((row) =>
-      committed.loans.some(
-        (loan) => loan.ref === committed.payment.loanRef && loan.clientRef === row.ref,
-      ),
-    );
-    if (paidClient) queueClientMirror(paidClient);
+    })();
     return true;
   }
 
