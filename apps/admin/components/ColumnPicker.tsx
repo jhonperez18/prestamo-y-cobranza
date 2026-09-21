@@ -82,9 +82,10 @@ export function useColumnVisibility(
     setVisibleCols(loaded);
     setReady(true);
     // Permitir persistir en el siguiente ciclo (cambios del usuario).
-    queue Promise.resolve().then(() => {
+    const unlock = window.setTimeout(() => {
       canPersistRef.current = true;
-    });
+    }, 0);
+    return () => window.clearTimeout(unlock);
   }, [storageKey, columnOrderKey]);
 
   useEffect(() => {
