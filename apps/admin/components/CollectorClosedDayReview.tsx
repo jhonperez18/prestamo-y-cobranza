@@ -35,6 +35,15 @@ function paymentForVisit(item: DailyCollectionAssignment, payments: PaymentRow[]
   return payments.find((row) => row.ref === item.paymentRef);
 }
 
+/** Nombre de quien pagó: planilla primero, si no el PG- denormalizado. */
+function payerClientName(item: DailyCollectionAssignment, pay: PaymentRow | undefined) {
+  const fromVisit = item.clientName?.trim();
+  if (fromVisit && fromVisit !== "—") return fromVisit;
+  const fromPay = pay?.client?.trim();
+  if (fromPay) return fromPay;
+  return "—";
+}
+
 export function CollectorClosedDayReview({
   detail,
   dateLabel,
@@ -58,8 +67,6 @@ export function CollectorClosedDayReview({
     const pay = paymentForVisit(item, payments);
     return sum + (pay?.amount ?? item.amountDue);
   }, 0);
-  const showEvidenceCol =
-    methodFilter === "nequi" || methodFilter === "banco" || methodFilter == null;
 
   const title =
     detail === "cobros"
@@ -124,30 +131,18 @@ export function CollectorClosedDayReview({
               : "Sin cobros registrados."}
           </p>
         ) : (
-          <ul
-            className={`collector-closed-review-list is-cobros-cols${
-              showEvidenceCol ? " has-evidence is-nequi-day-ficha" : ""
-            }`}
-          >
+          <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-day-ficha">
             {cobros.map((item) => {
               const pay = paymentForVisit(item, payments);
               const method = pay ? normalizePaymentMethod(pay.method) : "efectivo";
               const amount = pay?.amount ?? item.amountDue;
               const loanRef = item.loanRef || "—";
               const when = pay?.paidTime?.trim() || "";
+              const clientName = payerClientName(item, pay);
               return (
                 <li key={item.itemId}>
-                  {showEvidenceCol ? (
-                    <>
-                      <strong className="is-name">{item.clientName}</strong>
-                      <span className="is-when">{when || "—"}</span>
-                    </>
-                  ) : (
-                    <div className="is-name-block">
-                      <strong className="is-name">{item.clientName}</strong>
-                      {when ? <span className="is-when">{when}</span> : null}
-                    </div>
-                  )}
+                  <strong className="is-name">{clientName}</strong>
+                  <span className="is-when">{when || "—"}</span>
                   <span className="is-loan">{loanRef}</span>
                   <em
                     className={`is-method ${paymentMethodToneClass(method)}`}
@@ -155,15 +150,13 @@ export function CollectorClosedDayReview({
                   >
                     {paymentMethodInitial(method)}
                   </em>
-                  {showEvidenceCol ? (
-                    <span className="is-evidence">
-                      {method && paymentMethodRequiresReceipt(method) ? (
-                        <PaymentEvidenceThumb evidence={pay?.evidence} size={28} />
-                      ) : (
-                        <span className="payment-evidence-empty">—</span>
-                      )}
-                    </span>
-                  ) : null}
+                  <span className="is-evidence">
+                    {method && paymentMethodRequiresReceipt(method) ? (
+                      <PaymentEvidenceThumb evidence={pay?.evidence} size={28} />
+                    ) : (
+                      <span className="payment-evidence-empty">—</span>
+                    )}
+                  </span>
                   <b className="is-cobro">{money(amount, { symbol: false })}</b>
                 </li>
               );

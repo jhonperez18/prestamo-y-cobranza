@@ -1608,16 +1608,23 @@
     .collector-mobile-home-cuadre-planilla:active {
       transform: scale(0.99);
     }
+    /* Hoja a lo ancho (misma franja que CLIENTES / Recaudo), sin marco reducido. */
     .collector-closed-review {
-      margin: 10px 10px 16px;
-      padding: 12px;
-      border-radius: 14px;
-      background: #fff;
-      border: 1px solid #cfe6dc;
-      box-shadow: 0 10px 28px rgba(15, 118, 110, 0.08);
+      margin: 0;
+      padding: 4px 0 12px;
+      border-radius: 0;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+    }
+    .supervisor-mobile-section:has(> .collector-closed-review) {
+      padding-left: 0;
+      padding-right: 0;
     }
     .collector-closed-review-head {
       margin-bottom: 12px;
+      padding-left: 10px;
+      padding-right: 10px;
     }
     .collector-closed-review-title-row {
       display: flex;
@@ -1645,7 +1652,7 @@
       color: #3d5349;
     }
     .collector-closed-review-section {
-      margin: 14px 0 8px;
+      margin: 14px 10px 8px;
       font-size: 12px;
       font-weight: 750;
       text-transform: uppercase;
@@ -1653,7 +1660,7 @@
       color: #5b7268;
     }
     .collector-closed-review-empty {
-      margin: 0;
+      margin: 0 10px;
       padding: 12px;
       border-radius: 8px;
       background: #f8fafc;
@@ -1667,6 +1674,10 @@
       padding: 0;
       display: grid;
       gap: 6px;
+    }
+    .collector-closed-review-list:not(.is-cobros-cols) {
+      padding-left: 10px;
+      padding-right: 10px;
     }
     .collector-closed-review-list li {
       display: flex;
