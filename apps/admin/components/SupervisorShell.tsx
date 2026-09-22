@@ -67,7 +67,12 @@ import {
   insertStreetClient,
   type QuickLoanDraft,
 } from "@/lib/street-client-loan";
-import { placeClientOnRoute } from "@/lib/client-route-order";
+import { clientRefsWithRouteOrderChange, placeClientOnRoute } from "@/lib/client-route-order";
+import {
+  flushOpsMirrorQueues,
+  queueAssignmentsMirror,
+  queueRoutesMirror,
+} from "@/lib/supabase/ops-mirror";
 
 type Props = {
   session: AppSession;
@@ -294,6 +299,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
     };
     const nextClients = placeClientOnRoute(clients, updated, draft.route, draft.routeOrder);
     setClients(nextClients);
+    writeDemoJson(DEMO_CLIENTS_KEY, nextClients);
     const synced = syncPermanentRoutePlanilla(
       todayIso(),
       routes,
@@ -305,13 +311,27 @@ export function SupervisorShell({ session, onLogout }: Props) {
     );
     setRoutes(synced.routes);
     setDailyAssignments(synced.assignments);
+    writeDemoJson(DEMO_ROUTES_KEY, synced.routes);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
     const mirrored = nextClients.find((row) => row.ref === updated.ref) ?? updated;
-    queueClientMirror(mirrored);
+    const touched = clientRefsWithRouteOrderChange(clients, nextClients);
+    for (const ref of Array.from(new Set([mirrored.ref, ...touched]))) {
+      const row = nextClients.find((entry) => entry.ref === ref);
+      if (row) queueClientMirror(row);
+    }
+    queueRoutesMirror(synced.routes);
+    queueAssignmentsMirror(synced.assignments);
     showToast(
       mirrored.profilePending
-        ? "Cliente actualizado. Aún faltan datos de ficha."
-        : `Cliente actualizado · ruta ${mirrored.route}, posición ${mirrored.routeOrder}.`,
+        ? `Cliente actualizado · posición ${mirrored.routeOrder}. Aún faltan datos de ficha.`
+        : `Cliente actualizado · ruta ${mirrored.route}, posición ${mirrored.routeOrder}. Planilla al día.`,
     );
+    void flushCatalogMirrorQueues().catch(() => {
+      /* offline: queda en cola local */
+    });
+    void flushOpsMirrorQueues().catch(() => {
+      /* offline: queda en cola local */
+    });
   }
 
   function createQuickLoanFromMobile(draft: QuickLoanDraft) {

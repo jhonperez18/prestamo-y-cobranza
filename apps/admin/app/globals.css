@@ -876,8 +876,8 @@
       border-color: #86c5a3;
     }
     .collector-close-confirm .collector-mobile-cuadre-grid div.is-pay-nequi {
-      background: #fdf2f8;
-      border-color: #f0abce;
+      background: #f1e9fb;
+      border-color: #d4c0ef;
     }
     .collector-close-confirm .collector-mobile-cuadre-grid div.is-pay-banco {
       background: #eff6ff;
@@ -1128,11 +1128,11 @@
       color: #065f46;
     }
     .collector-mobile-cuadre-grid div.is-pay-nequi {
-      background: #fce7f3;
-      border-color: #db2777;
+      background: #f1e9fb;
+      border-color: #d4c0ef;
     }
     .collector-mobile-cuadre-grid div.is-pay-nequi b {
-      color: #9d174d;
+      color: #5b3d8a;
     }
     .collector-mobile-cuadre-grid div.is-pay-banco {
       background: #dbeafe;
@@ -1149,8 +1149,8 @@
       border-color: #86c5a3;
     }
     .collector-mobile-card.is-pay-nequi {
-      background: #fdf5f9;
-      border-color: #f0abce;
+      background: #faf5ff;
+      border-color: #d4c0ef;
     }
     .collector-mobile-card.is-pay-banco {
       background: #eff6ff;
@@ -1178,7 +1178,7 @@
       color: #047857;
     }
     .collector-mobile-cuadre-grid div.is-pay-nequi em {
-      color: #be185d;
+      color: #5b3d8a;
     }
     .collector-mobile-cuadre-grid div.is-total em {
       color: #0f766e;
@@ -2147,7 +2147,7 @@
       background: #f3faf6;
     }
     .collector-mobile-list.compact > .collector-mobile-card.is-dense.is-pay-nequi {
-      background: #fdf5f9;
+      background: #faf5ff;
     }
     .collector-mobile-list.compact > .collector-mobile-card.is-dense.is-pay-banco {
       background: #eff6ff;
@@ -2170,11 +2170,7 @@
       line-height: normal;
       min-height: auto;
       padding-bottom: 8px;
-      background: #e7f4ee;
-    }
-    .collector-mobile-list.compact > .collector-mobile-card.is-open.is-dense:nth-child(odd),
-    .collector-mobile-list.compact > .collector-mobile-card.is-open.is-dense:nth-child(even) {
-      background: #e7f4ee;
+      /* Conserva renglones intercalados (--row-a / --row-b); no pinta verde fijo. */
     }
     /* Lista densa: # | nombre… | saldo | cuota | Cuotas | billete */
     .collector-mobile-dense-row {
@@ -2189,26 +2185,60 @@
       min-height: 0;
     }
     .collector-mobile-dense-row.is-paying {
-      grid-template-columns: 1.15rem minmax(0, 1fr) 5.2rem 4.4rem 3.4rem 1rem;
-      grid-template-areas: "ord who saldo cuota alert pay";
+      /* Al pagar: nombre completo arriba; saldos abajo (no tapan el nombre). */
+      grid-template-columns: 1.15rem minmax(0, 1fr) auto;
+      grid-template-areas:
+        "ord who pay"
+        ". money money";
       column-gap: 8px;
+      row-gap: 4px;
       padding: 6px 0 4px;
-      align-items: baseline;
+      align-items: start;
     }
     .collector-mobile-dense-row.is-paying .collector-mobile-visit-order {
       font-size: 16px;
       font-weight: 700;
-      line-height: 1.2;
+      line-height: 1.25;
+      padding-top: 1px;
+    }
+    .collector-mobile-dense-row.is-paying .collector-mobile-visit-who {
+      overflow: visible;
+      white-space: normal;
+      max-width: none;
+      align-items: flex-start;
     }
     .collector-mobile-dense-row.is-paying .collector-mobile-visit-who strong {
       font-size: 16px;
       font-weight: 700;
-      line-height: 1.2;
+      line-height: 1.25;
+      white-space: normal;
+      overflow: visible;
+      text-overflow: unset;
+      word-break: break-word;
+      max-width: none;
+    }
+    .collector-mobile-dense-row.is-paying .collector-mobile-dense-money {
+      display: flex;
+      grid-area: money;
+      justify-content: flex-end;
+      align-items: baseline;
+      gap: 14px;
+      min-width: 0;
+    }
+    .collector-mobile-dense-row.is-paying .collector-mobile-dense-money > span:first-child,
+    .collector-mobile-dense-row.is-paying .collector-mobile-dense-money > span:last-child {
+      grid-area: unset;
+      justify-self: unset;
+      text-align: right;
     }
     .collector-mobile-dense-row.is-paying .collector-mobile-dense-money b {
       font-size: 15px;
       font-weight: 700;
       line-height: 1.2;
+    }
+    .collector-mobile-dense-row.is-paying .collector-mobile-cuotas,
+    .collector-mobile-dense-row.is-paying .collector-mobile-alert-n {
+      display: none;
     }
     .collector-mobile-card.is-open.is-dense .collector-mobile-dense-row.is-paying {
       padding-bottom: 6px;
@@ -2747,6 +2777,9 @@
     .collector-mobile-card.is-open.is-dense .collector-mobile-dense-row.is-paying .collector-mobile-visit-who strong {
       font-size: 16px;
       font-weight: 700;
+      white-space: normal;
+      overflow: visible;
+      text-overflow: unset;
     }
     .collector-mobile-card.is-dense .collector-mobile-ref {
       color: #5b7268;
@@ -7153,7 +7186,7 @@
     .pill.warn { background: #fed7aa; color: #9a3412; }
     .pill.closed { background: #cbd5e1; color: #1e293b; }
     .pill.efectivo { background: #bbf7d0; color: #14532d; }
-    .pill.nequi { background: #fbcfe8; color: #9d174d; }
+    .pill.nequi { background: #e9d5ff; color: #5b3d8a; }
     .pill.banco { background: #bfdbfe; color: #1e40af; }
 
     .check { accent-color: #0f766e; }

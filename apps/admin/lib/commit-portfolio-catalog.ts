@@ -3,7 +3,7 @@
  * cliente / préstamo → persistir raíz → planilla → cola nube → await flush.
  */
 import type { ModuleId } from "@/lib/navigation";
-import { placeClientOnRoute, nextRouteOrder } from "@/lib/client-route-order";
+import { placeClientOnRoute, nextRouteOrder, clientRefsWithRouteOrderChange } from "@/lib/client-route-order";
 import {
   CLIENT_STATUS_ACTIVE,
   CLIENT_STATUS_REVIEW,
@@ -279,9 +279,15 @@ export function commitCreateClient(
   const mirrorPlanilla = review.status === CLIENT_STATUS_ACTIVE && Boolean(draft.route);
   if (mirrorPlanilla) next = projectPlanilla(next);
 
+  const routeTouchedRefs =
+    review.status === CLIENT_STATUS_REVIEW
+      ? [ref]
+      : clientRefsWithRouteOrderChange(state.clients, next.clients);
+  const clientRefs = Array.from(new Set([ref, ...routeTouchedRefs]));
+
   persistPortfolio(next);
   enqueuePortfolioMirrors(next, {
-    clientRefs: [ref],
+    clientRefs,
     mirrorPlanilla,
   });
 
@@ -341,6 +347,7 @@ export function commitUpdateClient(
   });
 
   const clients = placeClientOnRoute(state.clients, updated, draft.route, draft.routeOrder);
+  const placed = clients.find((row) => row.ref === clientRef) ?? updated;
   const label = clientDisplayName(updated);
   const prevLabel = clientDisplayName(openClient);
   let next: PortfolioCatalogState = { ...state, clients };
@@ -354,10 +361,13 @@ export function commitUpdateClient(
   const paymentRefs = next.payments
     .filter((row) => row.loanRef && loanRefs.includes(row.loanRef))
     .map((row) => row.ref);
+  // Toda la ruta cuya # cambió: mirror obligatorio (no solo el editado).
+  const routeTouchedRefs = clientRefsWithRouteOrderChange(state.clients, next.clients);
+  const clientRefs = Array.from(new Set([clientRef, ...routeTouchedRefs]));
 
   persistPortfolio(next);
   enqueuePortfolioMirrors(next, {
-    clientRefs: [clientRef],
+    clientRefs,
     loanRefs,
     paymentRefs: label !== prevLabel || paymentRefs.length ? paymentRefs : [],
     mirrorPlanilla: true,
@@ -368,7 +378,7 @@ export function commitUpdateClient(
       ok: true,
       state: next,
       message: draft.route
-        ? `Cliente aprobado en ruta ${draft.route} y cargado a la planilla.`
+        ? `Cliente aprobado en ruta ${draft.route}, posición ${placed.routeOrder}, planilla actualizada.`
         : "Cliente aprobado y agregado al listado.",
       focusClientRef: clientRef,
       goTo: { moduleId: "clientes", viewId: "listado" },
@@ -379,8 +389,8 @@ export function commitUpdateClient(
     ok: true,
     state: next,
     message: updated.profilePending
-      ? "Cliente actualizado. Aún faltan datos de ficha (alerta activa)."
-      : "Cliente actualizado.",
+      ? `Cliente actualizado · posición ${placed.routeOrder}. Aún faltan datos de ficha.`
+      : `Cliente actualizado · ruta ${placed.route || "—"}, posición ${placed.routeOrder}. Planilla al día.`,
     focusClientRef: clientRef,
     goTo: { moduleId: "clientes", viewId: "ficha" },
   };

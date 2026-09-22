@@ -3,7 +3,11 @@
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { CameraIcon } from "@/components/icons";
 import { nextClientCode, type ClientRow, type RouteRow } from "@/lib/mock-data";
-import { clientsOnRouteSorted, nextRouteOrder } from "@/lib/client-route-order";
+import {
+  clientsOnRouteSorted,
+  nextRouteOrder,
+  sameRoute,
+} from "@/lib/client-route-order";
 
 export type ClientDraft = {
   name: string;
@@ -29,6 +33,14 @@ type Props = {
   onSave: (draft: ClientDraft) => void;
 };
 
+function findRouteId(routes: RouteRow[], routeName: string | undefined) {
+  if (!routeName?.trim()) return "";
+  const exact = routes.find((route) => route.name === routeName);
+  if (exact) return exact.id;
+  const soft = routes.find((route) => sameRoute(route.name, routeName));
+  return soft?.id ?? "";
+}
+
 export function NewClientForm({
   client,
   code,
@@ -39,9 +51,7 @@ export function NewClientForm({
 }: Props) {
   const editing = Boolean(client);
   const clientCode = code ?? client?.ref ?? nextClientCode();
-  const initialRouteId = client
-    ? (routes.find((route) => route.name === client.route)?.id ?? "")
-    : "";
+  const initialRouteId = client ? findRouteId(routes, client.route) : "";
   const [photo, setPhoto] = useState<string | undefined>(client?.photo);
   const [routeId, setRouteId] = useState(initialRouteId);
   const selectedRoute = routes.find((route) => route.id === routeId);
@@ -74,7 +84,7 @@ export function NewClientForm({
   function resolveRouteName(formRouteId: string): string | null {
     const byId = routes.find((route) => route.id === formRouteId);
     if (byId) return byId.name;
-    const byCurrent = routes.find((route) => route.name === client?.route);
+    const byCurrent = routes.find((route) => sameRoute(route.name, client?.route));
     if (byCurrent) return byCurrent.name;
     const kept = client?.route?.trim();
     return kept || null;
@@ -89,13 +99,18 @@ export function NewClientForm({
       window.alert("Seleccione la ruta del cliente antes de guardar.");
       return;
     }
-    const maxPos = positionOptions.length;
-    const pos = Math.min(
-      Math.max(1, Number(form.get("posicion")) || routeOrder || maxPos),
-      Math.max(1, maxPos),
-    );
+    const maxPos = Math.max(1, positionOptions.length);
+    // Estado del select manda (FormData omite campos disabled).
+    const rawPos = Number(form.get("posicion"));
+    const fromForm = Number.isFinite(rawPos) && rawPos > 0 ? rawPos : 0;
+    const pos = Math.min(Math.max(1, fromForm || routeOrder || maxPos), maxPos);
+    const name = String(form.get("nombre") ?? "").trim();
+    if (!name) {
+      window.alert("El nombre del cliente es obligatorio.");
+      return;
+    }
     onSave({
-      name: String(form.get("nombre") ?? "").trim(),
+      name,
       lastName: String(form.get("apellidos") ?? "").trim(),
       nickname: String(form.get("apodo") ?? "").trim(),
       document: String(form.get("documento") ?? "").trim(),
@@ -210,7 +225,7 @@ export function NewClientForm({
             <span className="sheet-label sheet-label-hint">Consecutivo</span>
             <span className="sheet-hint">
               {routeId
-                ? `Si elige ${routeOrder}, los que estaban desde ahí se corren +1.`
+                ? `Quedará en #${routeOrder}; el resto de la ruta se reordena.`
                 : "Primero seleccione la ruta."}
             </span>
           </div>

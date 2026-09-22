@@ -17,7 +17,7 @@ export function migrateLegacyRouteName(route: string) {
   return LEGACY_ROUTE_MAP[key] ?? route;
 }
 
-function sameRoute(a: string | undefined, b: string | undefined) {
+export function sameRoute(a: string | undefined, b: string | undefined) {
   const left = migrateLegacyRouteName(String(a ?? "").trim());
   const right = migrateLegacyRouteName(String(b ?? "").trim());
   if (!left || !right) return false;
@@ -63,7 +63,7 @@ export function normalizeAllRouteOrders(clients: ClientRow[]): ClientRow[] {
   const byRoute = new Map<string, ClientRow[]>();
   for (const row of unique) {
     if (isPendingReview(row)) continue;
-    const key = row.route || "";
+    const key = migrateLegacyRouteName(row.route || "") || row.route || "";
     const list = byRoute.get(key) ?? [];
     list.push(row);
     byRoute.set(key, list);
@@ -92,9 +92,10 @@ export function normalizeAllRouteOrders(clients: ClientRow[]): ClientRow[] {
 }
 
 /**
- * Inserta o mueve un cliente a `route` en la posición `routeOrder`.
- * Si ya hay alguien en esa posición, corre hacia adelante (22 → 23, etc.).
- * Pendientes de revisión no ocupan cupo en la ruta.
+ * Inserta o mueve un cliente a `route` exactamente en la posición `routeOrder`.
+ *
+ * Algoritmo (lista ordenada + splice): quitar → insertar en índice → renumerar 1…N.
+ * El viejo “shift +1 + normalize” fallaba al bajar de posición (ej. 2→5 quedaba en 4).
  */
 export function placeClientOnRoute(
   clients: ClientRow[],
@@ -102,29 +103,66 @@ export function placeClientOnRoute(
   route: string,
   routeOrder: number,
 ): ClientRow[] {
-  const without = clients.filter((row) => row.ref !== client.ref);
+  const unique = dedupeClientsByRef(clients);
+  const others = unique.filter((row) => row.ref !== client.ref);
+
   if (isPendingReview(client)) {
     return normalizeAllRouteOrders([
-      ...without,
+      ...others,
       { ...client, route: "", routeOrder: 0 },
     ]);
   }
-  const onRoute = clientsOnRouteSorted(without, route);
+
+  const routeName = String(route || "").trim();
+  if (!routeName) {
+    return normalizeAllRouteOrders([
+      ...others,
+      { ...client, route: "", routeOrder: 0 },
+    ]);
+  }
+
+  const onRoute = clientsOnRouteSorted(others, routeName);
+  const offRoute = others.filter(
+    (row) => isPendingReview(row) || !sameRoute(row.route, routeName),
+  );
+
   const maxPos = onRoute.length + 1;
-  const target = Math.min(Math.max(1, Math.trunc(routeOrder) || maxPos), maxPos);
+  const target = Math.min(Math.max(1, Math.trunc(Number(routeOrder)) || maxPos), maxPos);
 
-  const shifted = without.map((row) => {
-    if (!sameRoute(row.route, route)) return row;
-    if (isPendingReview(row)) return row;
-    if ((row.routeOrder || 0) < target) return row;
-    return { ...row, routeOrder: (row.routeOrder || 0) + 1 };
-  });
-
+  const ordered = onRoute.slice();
   const placed: ClientRow = {
     ...client,
-    route,
+    route: routeName,
     routeOrder: target,
   };
+  ordered.splice(target - 1, 0, placed);
 
-  return normalizeAllRouteOrders([...shifted, placed]);
+  const withOrders = ordered.map((row, index) => ({
+    ...row,
+    route: routeName,
+    routeOrder: index + 1,
+  }));
+
+  return normalizeAllRouteOrders([...offRoute, ...withOrders]);
+}
+
+/** Refs cuya ruta o posición cambió (para mirror completo de la planilla). */
+export function clientRefsWithRouteOrderChange(
+  before: ClientRow[],
+  after: ClientRow[],
+): string[] {
+  const prevByRef = new Map(before.map((row) => [row.ref, row] as const));
+  const changed: string[] = [];
+  for (const row of after) {
+    if (!row?.ref) continue;
+    const prev = prevByRef.get(row.ref);
+    if (
+      !prev ||
+      String(prev.route || "") !== String(row.route || "") ||
+      (prev.routeOrder || 0) !== (row.routeOrder || 0)
+    ) {
+      changed.push(row.ref);
+    }
+  }
+  return changed;
 }
