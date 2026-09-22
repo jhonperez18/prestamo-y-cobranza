@@ -193,6 +193,12 @@ export function assignmentsForCollector(
   clients: ClientRow[],
   payments?: CollectionPaymentTouch[],
 ) {
+  const orderOf = (clientRef: string) => {
+    const client = clients.find((row) => row.ref === clientRef);
+    return client?.routeOrder && client.routeOrder > 0
+      ? client.routeOrder
+      : Number.MAX_SAFE_INTEGER;
+  };
   return dedupePlanillaAssignments(
     assignments
       .filter((row) => row.collectorRef === collectorRef)
@@ -201,7 +207,9 @@ export function assignmentsForCollector(
     .map((row) => hydrateAssignment(row, loans, clients, payments))
     .sort(
       (a, b) =>
-        b.dispatchDate.localeCompare(a.dispatchDate) || a.clientName.localeCompare(b.clientName),
+        b.dispatchDate.localeCompare(a.dispatchDate) ||
+        orderOf(a.clientRef) - orderOf(b.clientRef) ||
+        a.clientName.localeCompare(b.clientName, "es"),
     );
 }
 

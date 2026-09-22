@@ -1,0 +1,38 @@
+---
+description: Posición en ruta (#) es sagrada — Listado manda en todas las vistas
+alwaysApply: true
+---
+
+# Posición en ruta — sagrada
+
+## Ley
+
+La **posición** (`routeOrder` / `#` en Modificar cliente) es **intocable** una vez ubicada.
+
+| Acción | Resultado |
+| --- | --- |
+| Guardar en `#N` | Queda en `#N`; el resto de la ruta se corre 1…N |
+| Subir / bajar `#` | Se guarda y persiste (local + mirror nube) |
+| Alta sin `#` específica | Al **final** de la ruta |
+| Completar ficha (notas, dirección…) | **No** mueve la posición ni a vecinos |
+
+Fuente de verdad del orden: **Clientes → Listado** (ruta + `#`).
+
+## Obligatorio
+
+1. Mutar posición solo vía `placeClientOnRoute` / `commitUpdateClient` / `commitCreateClient`.
+2. Toda lista operativa ordena con `compareClientsByRoutePosition` o `clientsOnRouteSorted`.
+3. Planilla, app cobrador/supervisor y panel central muestran el **mismo** orden.
+4. Tras Guardar: persist local + cola/escudo mirror (no rebobinar pull).
+5. `normalizeAllRouteOrders` solo repara huecos/duplicados; si ya está 1…N limpio → **no tocar**.
+
+## Prohibido
+
+- Reordenar por nombre / Completar / alertas / “mejora” de UI.
+- `setClients` cambiando `routeOrder` sin commit + mirror.
+- Pull nube que pise un `#` fresco del padre.
+- Hydrate que renumere rutas ya correctas.
+
+## Si el `#` “vuelve atrás”
+
+No parchear la tabla. Revisar: ¿Guardar pasó por commit? ¿pull rebobinó? ¿lista ordena por nombre?

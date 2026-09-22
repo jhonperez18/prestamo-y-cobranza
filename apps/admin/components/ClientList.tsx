@@ -17,6 +17,7 @@ import {
 } from "@/components/ColumnPicker";
 import { money, ROUTES, type ClientRow } from "@/lib/mock-data";
 import { clientStatusKind } from "@/lib/client-review";
+import { compareClientsByRoutePosition } from "@/lib/client-route-order";
 import { clientNeedsProfileCompletion } from "@/lib/profile-pending";
 import { Pill } from "@/components/ui";
 
@@ -175,17 +176,8 @@ export function ClientList({
         return matches(fieldOf(row, col.id), query);
       }),
     );
-    // Orden sagrado = ruta + # (routeOrder). El badge Completar NO reordena:
-    // si no, al editar posición “vuelven al final” aunque el dato sí se guardó.
-    return filtered.slice().sort((a, b) => {
-      const routeCmp = String(a.route || "").localeCompare(String(b.route || ""), undefined, {
-        numeric: true,
-      });
-      if (routeCmp !== 0) return routeCmp;
-      const orderCmp = (a.routeOrder || 0) - (b.routeOrder || 0);
-      if (orderCmp !== 0) return orderCmp;
-      return String(a.ref || "").localeCompare(String(b.ref || ""));
-    });
+    // Orden sagrado = ruta + # (routeOrder). Misma ley en planilla/app/supervisor.
+    return filtered.slice().sort(compareClientsByRoutePosition);
   }, [applied, rows]);
 
   const allChecked = visible.length > 0 && visible.every((row) => selected.includes(row.ref));

@@ -3,7 +3,12 @@
  * cliente / préstamo → persistir raíz → planilla → cola nube → await flush.
  */
 import type { ModuleId } from "@/lib/navigation";
-import { placeClientOnRoute, nextRouteOrder, clientRefsWithRouteOrderChange } from "@/lib/client-route-order";
+import {
+  placeClientOnRoute,
+  nextRouteOrder,
+  clientRefsWithRouteOrderChange,
+  sameRoute,
+} from "@/lib/client-route-order";
 import {
   CLIENT_STATUS_ACTIVE,
   CLIENT_STATUS_REVIEW,
@@ -349,7 +354,25 @@ export function commitUpdateClient(
       : {}),
   });
 
-  const clients = placeClientOnRoute(state.clients, updated, draft.route, draft.routeOrder);
+  // Posición sagrada: si no cambia ruta/#, no reordenar vecinos (solo ficha).
+  const keepSlot =
+    !approving &&
+    !isPendingReview(openClient) &&
+    sameRoute(openClient.route, draft.route) &&
+    Number(openClient.routeOrder) > 0 &&
+    Number(openClient.routeOrder) === Number(draft.routeOrder);
+
+  const clients = keepSlot
+    ? state.clients.map((row) =>
+        row.ref === clientRef
+          ? stampCatalogRow({
+              ...updated,
+              route: openClient.route,
+              routeOrder: openClient.routeOrder,
+            })
+          : row,
+      )
+    : placeClientOnRoute(state.clients, updated, draft.route, draft.routeOrder);
   const placed = clients.find((row) => row.ref === clientRef) ?? updated;
   const label = clientDisplayName(updated);
   const prevLabel = clientDisplayName(openClient);

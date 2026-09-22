@@ -37,16 +37,28 @@ export function dedupeClientsByRef(clients: ClientRow[]): ClientRow[] {
   return [...byRef.values()];
 }
 
+/**
+ * Orden sagrado de cualquier lista de clientes: ruta → # → ref.
+ * Todas las vistas (Listado, planilla, app, supervisor) deben usar esto.
+ */
+export function compareClientsByRoutePosition(a: ClientRow, b: ClientRow): number {
+  const routeCmp = migrateLegacyRouteName(a.route || "").localeCompare(
+    migrateLegacyRouteName(b.route || ""),
+    undefined,
+    { numeric: true },
+  );
+  if (routeCmp !== 0) return routeCmp;
+  const orderCmp = (a.routeOrder || 0) - (b.routeOrder || 0);
+  if (orderCmp !== 0) return orderCmp;
+  return String(a.ref || "").localeCompare(String(b.ref || ""));
+}
+
 /** Clientes de una ruta ordenados por posición (1…N). Sin pendientes de revisión. */
 export function clientsOnRouteSorted(clients: ClientRow[], routeName: string) {
   return dedupeClientsByRef(clients)
     .filter((row) => sameRoute(row.route, routeName) && !isPendingReview(row))
     .slice()
-    .sort((a, b) => {
-      const orderCmp = (a.routeOrder || 0) - (b.routeOrder || 0);
-      if (orderCmp !== 0) return orderCmp;
-      return a.ref.localeCompare(b.ref);
-    });
+    .sort(compareClientsByRoutePosition);
 }
 
 /** Siguiente posición al final de la ruta (append). */
@@ -54,12 +66,46 @@ export function nextRouteOrder(clients: ClientRow[], routeName: string) {
   return clientsOnRouteSorted(clients, routeName).length + 1;
 }
 
+/** True si alguna ruta tiene huecos, ceros o # duplicados (hay que renumerar). */
+export function routeOrdersNeedNormalize(clients: ClientRow[]): boolean {
+  const unique = dedupeClientsByRef(clients);
+  const byRoute = new Map<string, ClientRow[]>();
+  for (const row of unique) {
+    if (isPendingReview(row)) {
+      if ((row.routeOrder || 0) !== 0) return true;
+      continue;
+    }
+    const key = migrateLegacyRouteName(row.route || "") || row.route || "";
+    if (!key) {
+      if ((row.routeOrder || 0) !== 0) return true;
+      continue;
+    }
+    const list = byRoute.get(key) ?? [];
+    list.push(row);
+    byRoute.set(key, list);
+  }
+  for (const list of byRoute.values()) {
+    const orders = list
+      .map((row) => row.routeOrder || 0)
+      .sort((a, b) => a - b);
+    if (orders.some((n) => n < 1)) return true;
+    if (new Set(orders).size !== orders.length) return true;
+    for (let i = 0; i < orders.length; i += 1) {
+      if (orders[i] !== i + 1) return true;
+    }
+  }
+  return false;
+}
+
 /**
- * Normaliza posiciones 1…N por cada ruta (rellena huecos / datos viejos).
- * Conserva el orden relativo actual. Ignora pendientes de revisión.
+ * Normaliza posiciones 1…N por cada ruta (rellena huecos / duplicados).
+ * Conserva el orden relativo actual. Si ya está 1…N limpio → no toca nada
+ * (no reescribe updatedAt ni “mueve” al cliente).
  */
 export function normalizeAllRouteOrders(clients: ClientRow[]): ClientRow[] {
   const unique = dedupeClientsByRef(clients);
+  if (!routeOrdersNeedNormalize(unique)) return unique;
+
   const byRoute = new Map<string, ClientRow[]>();
   for (const row of unique) {
     if (isPendingReview(row)) continue;
@@ -71,22 +117,22 @@ export function normalizeAllRouteOrders(clients: ClientRow[]): ClientRow[] {
 
   const orderByRef = new Map<string, number>();
   for (const [, list] of byRoute) {
-    const sorted = list.slice().sort((a, b) => {
-      const ao = a.routeOrder || Number.MAX_SAFE_INTEGER;
-      const bo = b.routeOrder || Number.MAX_SAFE_INTEGER;
-      if (ao !== bo) return ao - bo;
-      return a.ref.localeCompare(b.ref);
-    });
+    const sorted = list.slice().sort(compareClientsByRoutePosition);
     sorted.forEach((row, index) => orderByRef.set(row.ref, index + 1));
   }
 
+  const stampedAt = new Date().toISOString();
   return unique.map((row) => {
     if (isPendingReview(row)) {
-      return { ...row, routeOrder: 0 };
+      if ((row.routeOrder || 0) === 0) return row;
+      return { ...row, routeOrder: 0, updatedAt: stampedAt };
     }
+    const nextOrder = orderByRef.get(row.ref) ?? 1;
+    if ((row.routeOrder || 0) === nextOrder) return row;
     return {
       ...row,
-      routeOrder: orderByRef.get(row.ref) ?? 1,
+      routeOrder: nextOrder,
+      updatedAt: stampedAt,
     };
   });
 }
@@ -94,8 +140,10 @@ export function normalizeAllRouteOrders(clients: ClientRow[]): ClientRow[] {
 /**
  * Inserta o mueve un cliente a `route` exactamente en la posición `routeOrder`.
  *
- * Algoritmo (lista ordenada + splice): quitar → insertar en índice → renumerar 1…N.
- * El viejo “shift +1 + normalize” fallaba al bajar de posición (ej. 2→5 quedaba en 4).
+ * - Posición pedida → queda ahí; el resto de la ruta se corre 1…N.
+ * - Sin posición válida (0 / NaN) → al final.
+ *
+ * Algoritmo: quitar → insertar en índice → renumerar 1…N + sellar updatedAt.
  */
 export function placeClientOnRoute(
   clients: ClientRow[],
@@ -127,7 +175,9 @@ export function placeClientOnRoute(
   );
 
   const maxPos = onRoute.length + 1;
-  const target = Math.min(Math.max(1, Math.trunc(Number(routeOrder)) || maxPos), maxPos);
+  const raw = Math.trunc(Number(routeOrder));
+  // 0 / inválido → final (alta sin posición específica).
+  const target = Math.min(Math.max(1, raw > 0 ? raw : maxPos), maxPos);
 
   const ordered = onRoute.slice();
   const placed: ClientRow = {
