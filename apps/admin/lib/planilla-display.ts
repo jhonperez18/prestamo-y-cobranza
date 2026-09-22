@@ -13,18 +13,44 @@ import {
   computeLoanCuotasProgress,
   type CuotasProgress,
 } from "@/lib/loan-cuotas-progress";
+import { isPaymentLive } from "@/lib/live-payments";
 import type { LoanRow, PaymentRow } from "@/lib/mock-data";
 import { todayIso } from "@/lib/daily-dispatch";
 import {
   normalizePaymentMethod,
   type PaymentMethod,
 } from "@/lib/payment-method";
+import { paymentBelongsToVisit } from "@/lib/planilla-payment-reconcile";
 
 export function planillaVisitPaid(row: Pick<DailyCollectionAssignment, "visitStatus" | "paymentRef">) {
   return (
     row.visitStatus === "cobrado" ||
     row.visitStatus === "parcial" ||
     Boolean(row.paymentRef?.trim())
+  );
+}
+
+/**
+ * PG vivo del día para esta visita.
+ * E/N solo con pago vivo: PG anulado o de otro préstamo no pintan método.
+ */
+export function planillaLivePaymentForVisit(
+  row: DailyCollectionAssignment,
+  payments: PaymentRow[],
+  today = todayIso(),
+): PaymentRow | undefined {
+  const linkedRef = (row.paymentRef || "").trim();
+  if (linkedRef) {
+    const linked = payments.find((entry) => entry.ref === linkedRef);
+    if (linked && paymentBelongsToVisit(linked, row)) return linked;
+  }
+  const day = (row.dispatchDate || today || "").trim();
+  if (!day || !row.loanRef) return undefined;
+  return payments.find(
+    (entry) =>
+      isPaymentLive(entry) &&
+      (entry.paidDate || "").trim() === day &&
+      paymentBelongsToVisit(entry, row),
   );
 }
 
@@ -85,18 +111,17 @@ export function enrichSupervisorPlanillaRow(
   const cuotas = planillaLiveCuotasProgress(loan, payments, today);
   const cuota = planillaLiveCuota(row, loan, payments, today);
   const saldo = loan?.balance ?? 0;
-  const pay =
-    (row.paymentRef
-      ? payments.find((entry) => entry.ref === row.paymentRef)
-      : undefined) ??
-    payments.find(
-      (entry) =>
-        entry.loanRef === row.loanRef &&
-        (entry.paidDate === today || entry.paidDate === row.dispatchDate),
-    );
+  const pay = planillaLivePaymentForVisit(row, payments, today);
+  /** E/N solo con PG vivo; si hay pago, estado = cobrado (nunca E + Pend.). */
   const method: PaymentMethod | null = pay
     ? normalizePaymentMethod(pay.method)
     : null;
+  let visitStatus = row.visitStatus ?? "pendiente";
+  if (pay) {
+    visitStatus = row.visitStatus === "parcial" ? "parcial" : "cobrado";
+  } else if (visitStatus === "cobrado" || visitStatus === "parcial") {
+    visitStatus = "pendiente";
+  }
   return {
     key: `${row.itemId}-${row.collectorRef}-${row.dispatchDate}`,
     index,
@@ -105,6 +130,6 @@ export function enrichSupervisorPlanillaRow(
     cuota,
     method,
     cuotas,
-    visitStatus: row.visitStatus,
+    visitStatus,
   };
 }

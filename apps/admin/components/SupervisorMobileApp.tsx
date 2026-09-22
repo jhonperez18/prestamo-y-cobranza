@@ -424,7 +424,8 @@ function PlanillaTable({
                 </td>
                 <td className="is-num">{money(row.saldo, { symbol: false })}</td>
                     <td className="is-metodo">
-                  {method ? (
+                  {method &&
+                  (row.visitStatus === "cobrado" || row.visitStatus === "parcial") ? (
                     <em
                       className={`supervisor-planilla-method ${paymentMethodToneClass(method)}`}
                       title={paymentMethodLabel(method)}
