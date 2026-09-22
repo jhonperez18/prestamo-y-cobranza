@@ -334,7 +334,8 @@ export function commitUpdateClient(
       draft.city.trim() ||
       draft.barrio.trim(),
   );
-  const profileComplete = hasRealDoc && hasContactOrPlace;
+  // Documento/cédula es opcional: la ficha se completa con contacto o lugar.
+  const profileComplete = hasContactOrPlace || hasRealDoc;
   const updated = stampCatalogRow({
     ...openClient,
     name: draft.name.trim(),

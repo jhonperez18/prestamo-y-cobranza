@@ -176,8 +176,7 @@ export function NewClientForm({
             <input
               id="cli-documento"
               name="documento"
-              required
-              placeholder="Cédula"
+              placeholder="Opcional"
               defaultValue={client?.document}
             />
             <label className="sheet-label" htmlFor="cli-ruta">

@@ -14,10 +14,10 @@ export function isStreetPlaceholderDocument(document: string | undefined) {
 export function clientNeedsProfileCompletion(client: ClientRow) {
   if (!isOperationalClient(client)) return false;
   if (client.profilePending) return true;
-  const missingDoc = !client.document?.trim() || isStreetPlaceholderDocument(client.document);
   const missingContact = !client.phone?.trim() && !client.address?.trim();
   const missingPlace = !client.city?.trim() && !client.barrio?.trim();
-  return missingDoc && (missingContact || missingPlace);
+  // Documento/cédula opcional: solo pide completar si faltan contacto y lugar.
+  return missingContact && missingPlace;
 }
 
 export function clientsNeedingProfileCompletion(clients: ClientRow[]) {
