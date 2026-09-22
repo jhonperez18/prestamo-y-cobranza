@@ -205,6 +205,8 @@ import {
   commitCreateClient,
   commitCreateLoan,
   commitDeleteClient,
+  commitNormalizeAllClientNamesTitleCase,
+  DEMO_CLIENT_NAMES_TITLECASE_FLAG,
   commitRejectClients,
   commitUpdateClient,
   commitUpdateLoan,
@@ -425,6 +427,36 @@ export function Workspace({
       },
     },
   );
+
+  const namesTitleCaseDoneRef = useRef(false);
+  useEffect(() => {
+    if (!demoHydrated || namesTitleCaseDoneRef.current) return;
+    if (typeof window === "undefined") return;
+    try {
+      if (window.localStorage.getItem(DEMO_CLIENT_NAMES_TITLECASE_FLAG) === "1") {
+        namesTitleCaseDoneRef.current = true;
+        return;
+      }
+    } catch {
+      return;
+    }
+    namesTitleCaseDoneRef.current = true;
+    const result = commitNormalizeAllClientNamesTitleCase({
+      clients: readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []),
+      loans: readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []),
+      routes: readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, []),
+      assignments: readDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, []),
+      collectors: readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, []),
+      payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []),
+    });
+    try {
+      window.localStorage.setItem(DEMO_CLIENT_NAMES_TITLECASE_FLAG, "1");
+    } catch {
+      /* ignore */
+    }
+    if (!result.ok) return;
+    void applyPortfolioCommit(result);
+  }, [demoHydrated]);
 
   const applyPlanillaSync = useCallback(
     (next: {

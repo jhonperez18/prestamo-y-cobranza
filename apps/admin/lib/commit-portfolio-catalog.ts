@@ -9,6 +9,7 @@ import {
   clientRefsWithRouteOrderChange,
   sameRoute,
 } from "@/lib/client-route-order";
+import { clientNameFieldsTitleCase, toClientNameTitleCase } from "@/lib/client-name-case";
 import {
   CLIENT_STATUS_ACTIVE,
   CLIENT_STATUS_REVIEW,
@@ -245,8 +246,8 @@ export function commitCreateClient(
   state: PortfolioCatalogState,
   opts: { canApprove: boolean; createdBy?: string },
 ): PortfolioCommitResult {
-  const name = draft.name.trim();
-  const lastName = draft.lastName.trim();
+  const name = toClientNameTitleCase(draft.name.trim());
+  const lastName = toClientNameTitleCase(draft.lastName.trim());
   if (!name) return { ok: false, error: "El nombre del cliente es obligatorio." };
 
   const review = opts.canApprove
@@ -259,7 +260,7 @@ export function commitCreateClient(
     alta: clientCreationDate(),
     name,
     lastName,
-    nickname: draft.nickname,
+    nickname: toClientNameTitleCase(draft.nickname),
     document: draft.document,
     city: draft.city,
     barrio: draft.barrio,
@@ -338,9 +339,9 @@ export function commitUpdateClient(
   const profileComplete = hasContactOrPlace || hasRealDoc;
   const updated = stampCatalogRow({
     ...openClient,
-    name: draft.name.trim(),
-    lastName: draft.lastName.trim(),
-    nickname: draft.nickname.trim(),
+    name: toClientNameTitleCase(draft.name.trim()),
+    lastName: toClientNameTitleCase(draft.lastName.trim()),
+    nickname: toClientNameTitleCase(draft.nickname.trim()),
     document: draft.document,
     city: draft.city,
     barrio: draft.barrio,
@@ -691,5 +692,82 @@ export function commitUpdateLoan(
     focusClientRef: client.ref,
     focusLoanRef: loanRef,
     goTo: { moduleId: "prestamos", viewId: "cuenta" },
+  };
+}
+
+export const DEMO_CLIENT_NAMES_TITLECASE_FLAG = "nexo-demo-client-names-titlecase-v1";
+
+/**
+ * Una pasada: todos los clientes → Primera Mayúscula / resto minúsculas.
+ * Proyecta nombre a préstamos, planilla y PG-; encola mirror.
+ */
+export function commitNormalizeAllClientNamesTitleCase(
+  state: PortfolioCatalogState,
+): PortfolioCommitResult {
+  let changed = 0;
+  const clients = state.clients.map((row) => {
+    const next = clientNameFieldsTitleCase(row);
+    if (
+      next.name === row.name &&
+      next.lastName === row.lastName &&
+      (next.nickname ?? "") === (row.nickname ?? "")
+    ) {
+      return row;
+    }
+    changed += 1;
+    return stampCatalogRow(next);
+  });
+
+  if (!changed) {
+    return {
+      ok: true,
+      state,
+      message: "Nombres ya estaban en formato correcto.",
+    };
+  }
+
+  let next: PortfolioCatalogState = { ...state, clients };
+  for (const row of clients) {
+    const prev = state.clients.find((c) => c.ref === row.ref);
+    if (!prev) continue;
+    const label = clientDisplayName(row);
+    const prevLabel = clientDisplayName(prev);
+    if (label !== prevLabel) {
+      next = projectClientIdentity(next, row.ref, label);
+    }
+  }
+  next = projectPlanilla(next);
+
+  const clientRefs = clients
+    .filter((row) => {
+      const prev = state.clients.find((c) => c.ref === row.ref);
+      return (
+        !prev ||
+        prev.name !== row.name ||
+        prev.lastName !== row.lastName ||
+        (prev.nickname ?? "") !== (row.nickname ?? "")
+      );
+    })
+    .map((row) => row.ref);
+
+  const loanRefs = next.loans
+    .filter((row) => row.clientRef && clientRefs.includes(row.clientRef))
+    .map((row) => row.ref);
+  const paymentRefs = next.payments
+    .filter((row) => row.loanRef && loanRefs.includes(row.loanRef))
+    .map((row) => row.ref);
+
+  persistPortfolio(next);
+  enqueuePortfolioMirrors(next, {
+    clientRefs,
+    loanRefs,
+    paymentRefs,
+    mirrorPlanilla: true,
+  });
+
+  return {
+    ok: true,
+    state: next,
+    message: `Nombres normalizados: ${changed} cliente${changed === 1 ? "" : "s"} (Primera mayúscula).`,
   };
 }
