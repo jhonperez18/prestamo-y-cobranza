@@ -4153,9 +4153,9 @@
     }
     .supervisor-liq-table th,
     .supervisor-liq-table td {
-      padding: 2px 4px;
-      line-height: 1.15;
-      font-size: 11px;
+      padding: var(--table-row-pad-y) var(--table-row-pad-x);
+      line-height: var(--table-row-line);
+      font-size: var(--table-cell-size);
       border-bottom: 1px solid #e2ece7;
       vertical-align: middle;
     }
@@ -4167,8 +4167,8 @@
       text-transform: uppercase;
       letter-spacing: 0.02em;
       text-align: left;
-      padding-top: 4px;
-      padding-bottom: 4px;
+      padding-top: var(--table-head-pad-y);
+      padding-bottom: var(--table-head-pad-y);
     }
     .supervisor-liq-table tbody tr:nth-child(odd) {
       background: var(--row-a);
@@ -7055,25 +7055,44 @@
       margin-inline: auto;
     }
     /*
-     * Formato estándar de renglones — todas las tablas del sistema.
+     * Formato estándar de renglones — todas las tablas del sistema
+     * (mismo alto que Préstamos → Listado).
      * Clases: .data | .list-grid | .list-data-table | .bank-table | .mini-grid
-     * Tablas nuevas: usar esas clases; no subir padding ni line-height.
+     * + tablas nombradas del panel. No subir padding ni line-height.
      */
     table.data td,
     table.data tbody td,
     table.list-grid tbody td,
     table.list-data-table tbody td,
     table.mini-grid td,
+    table.mini-table td,
     .bank-table td,
-    .bank-records-table td:not(.col-picker-cell) {
+    .bank-records-table td:not(.col-picker-cell),
+    .bank-report-table td,
+    .loan-ficha-grid table.loan-ficha-table td,
+    .activity-table td,
+    .alerts-table td,
+    .daily-log-table td,
+    .cobranza-payments-grid td,
+    .cobranza-payments-grid td.cp-col,
+    .supervisor-liq-table td,
+    .supervisor-planilla-table td,
+    .supervisor-clientes-table td,
+    .cartera-mora-table td,
+    .cartera-resumen-table td,
+    .misc-payment-list-table td,
+    .loan-client-pick-list table td {
       padding: var(--table-row-pad-y) var(--table-row-pad-x) !important;
       line-height: var(--table-row-line) !important;
-      font-size: var(--table-cell-size);
+      font-size: var(--table-cell-size) !important;
       white-space: nowrap !important;
       overflow: hidden;
       text-overflow: ellipsis;
       vertical-align: middle;
       text-align: center !important;
+      height: auto;
+      min-height: 0;
+      box-sizing: border-box;
     }
     table.data th,
     table.data .col-titles th,
@@ -7122,11 +7141,28 @@
     table.data .pill,
     table.list-grid .pill,
     table.list-data-table .pill,
-    .bank-table .pill {
-      font-size: 12px;
-      padding: 1px 6px;
-      line-height: 1.2;
-      max-height: var(--table-pill-max-h);
+    .bank-table .pill,
+    .loan-ficha-grid table.loan-ficha-table .pill,
+    .cobranza-payments-grid .pill,
+    .activity-table .pill,
+    .supervisor-liq-table .pill,
+    .supervisor-planilla-table .pill {
+      font-size: 12px !important;
+      padding: 1px 6px !important;
+      line-height: 1.2 !important;
+      max-height: var(--table-pill-max-h) !important;
+      box-sizing: border-box;
+    }
+    table.data .cell-ico,
+    table.list-grid .cell-ico,
+    table.list-data-table .cell-ico {
+      width: 14px;
+      height: 14px;
+      flex: 0 0 14px;
+    }
+    table.data .cell-with-ico,
+    table.list-grid .cell-with-ico {
+      gap: 5px;
     }
     table.data tbody tr:nth-child(odd),
     table.list-grid tbody tr:nth-child(odd),
@@ -8269,7 +8305,10 @@
     }
     .loan-ficha-grid table.loan-ficha-table th,
     .loan-ficha-grid table.loan-ficha-table td {
-      padding: 6px 8px; font-size: 14px; vertical-align: middle;
+      padding: var(--table-row-pad-y) var(--table-row-pad-x);
+      font-size: var(--table-cell-size);
+      line-height: var(--table-row-line);
+      vertical-align: middle;
       overflow: hidden; text-overflow: ellipsis;
     }
     .loan-ficha-grid table.loan-ficha-table th {
@@ -8556,7 +8595,9 @@
     .cobranza-payments-grid td.cp-col {
       text-align: center;
       vertical-align: middle;
-      padding: 8px 6px;
+      padding: var(--table-row-pad-y) 6px;
+      line-height: var(--table-row-line);
+      font-size: var(--table-cell-size);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -8567,7 +8608,7 @@
     .cobranza-payments-grid th.cp-col.sortable .th-sort {
       justify-content: center;
       width: 100%;
-      padding: 8px 6px;
+      padding: var(--table-head-pad-y) 6px;
     }
     .cobranza-payments-grid td.cp-name {
       white-space: nowrap;
@@ -9325,7 +9366,9 @@
     }
     .activity-table th,
     .activity-table td {
-      padding: 5px 10px;
+      padding: var(--table-row-pad-y) var(--table-row-pad-x);
+      line-height: var(--table-row-line);
+      font-size: var(--table-cell-size);
       vertical-align: middle;
       white-space: nowrap;
       overflow: hidden;
@@ -10805,14 +10848,24 @@
     table.list-grid tbody td,
     table.list-data-table tbody td,
     table.mini-grid td,
+    table.mini-table td,
     .bank-table td,
-    .bank-records-table td:not(.col-picker-cell) {
+    .bank-records-table td:not(.col-picker-cell),
+    .loan-ficha-grid table.loan-ficha-table td,
+    .activity-table td,
+    .cobranza-payments-grid td,
+    .supervisor-liq-table td,
+    .alerts-table td,
+    .daily-log-table td {
       font-size: var(--table-cell-size) !important;
     }
     table.data .pill,
     table.list-grid .pill,
     table.list-data-table .pill,
-    .bank-table .pill {
+    .bank-table .pill,
+    .loan-ficha-grid .pill,
+    .cobranza-payments-grid .pill,
+    .activity-table .pill {
       font-size: 12px !important;
     }
     .tab {
