@@ -272,10 +272,10 @@ export function visitStatusLabel(status?: DailyCollectionAssignment["visitStatus
 
 /** Etiqueta corta para planillas densas (app supervisor / tablas compactas). */
 export function visitStatusLabelShort(status?: DailyCollectionAssignment["visitStatus"]) {
-  if (status === "cobrado") return "pago";
-  if (status === "parcial") return "Parc.";
+  if (status === "cobrado") return "pa";
+  if (status === "parcial") return "pa";
   if (status === "omitido") return "S/C";
-  return "Pend.";
+  return "pe";
 }
 
 export function visitStatusKind(status?: DailyCollectionAssignment["visitStatus"]) {

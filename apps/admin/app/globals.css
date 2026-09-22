@@ -1729,7 +1729,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 400;
       color: #111;
       white-space: nowrap;
     }
@@ -1738,13 +1738,13 @@
       flex: 0 0 auto;
       margin-left: auto;
       font-size: 11px;
-      font-weight: 700;
+      font-weight: 400;
       color: #111;
       white-space: nowrap;
     }
     .collector-closed-review-list.is-cobros-cols .is-loan {
       font-size: 11px;
-      font-weight: 700;
+      font-weight: 400;
       color: #334155;
       white-space: nowrap;
       text-align: center;
@@ -1871,7 +1871,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 400;
       color: #111;
       text-align: left;
     }
@@ -1879,7 +1879,7 @@
       display: block;
       min-width: 0;
       font-size: 11px;
-      font-weight: 700;
+      font-weight: 400;
       color: #111;
       white-space: nowrap;
       text-align: center;
@@ -2207,8 +2207,8 @@
       align-items: start;
     }
     .collector-mobile-dense-row.is-paying .collector-mobile-visit-order {
-      font-size: 16px;
-      font-weight: 700;
+      font-size: 11px;
+      font-weight: 400;
       line-height: 1.25;
       padding-top: 1px;
     }
@@ -2219,8 +2219,8 @@
       align-items: flex-start;
     }
     .collector-mobile-dense-row.is-paying .collector-mobile-visit-who strong {
-      font-size: 16px;
-      font-weight: 700;
+      font-size: 11px;
+      font-weight: 400;
       line-height: 1.25;
       white-space: normal;
       overflow: visible;
@@ -2257,8 +2257,8 @@
     .collector-mobile-dense-row .collector-mobile-visit-order {
       grid-area: ord;
       color: #111;
-      font-size: 12px;
-      font-weight: 700;
+      font-size: 10px;
+      font-weight: 400;
       text-align: left;
       line-height: 1.15;
     }
@@ -2281,7 +2281,8 @@
       text-overflow: ellipsis;
       white-space: nowrap;
       line-height: 1.15;
-      font-size: 12px;
+      font-size: 10px;
+      font-weight: 400;
       flex: 1 1 auto;
       min-width: 0;
       color: #111;
@@ -2781,13 +2782,13 @@
       box-shadow: none;
     }
     .collector-mobile-card.is-dense .collector-mobile-visit-who strong {
-      font-size: 12px;
-      font-weight: 650;
+      font-size: 10px;
+      font-weight: 400;
       color: #111;
     }
     .collector-mobile-card.is-open.is-dense .collector-mobile-dense-row.is-paying .collector-mobile-visit-who strong {
-      font-size: 16px;
-      font-weight: 700;
+      font-size: 11px;
+      font-weight: 400;
       white-space: normal;
       overflow: visible;
       text-overflow: unset;
@@ -4237,25 +4238,73 @@
     }
     .supervisor-planilla-table .is-ruta {
       width: 8%;
+      min-width: 1.5rem;
+      max-width: 2.25rem;
+      padding-left: 4px;
+      padding-right: 2px;
+      font-variant-numeric: tabular-nums;
+      overflow: visible !important;
+      text-overflow: clip !important;
     }
     .supervisor-planilla-table .is-nombre {
-      width: 32%;
+      width: 34%;
     }
     .supervisor-planilla-table .is-num {
-      width: 16%;
+      width: 18%;
+      padding-left: 4px;
+      padding-right: 6px;
+      font-variant-numeric: tabular-nums;
+      overflow: visible !important;
+      text-overflow: clip !important;
     }
     .supervisor-planilla-table .is-metodo {
-      width: 12%;
+      width: 10%;
       text-align: center;
       white-space: nowrap;
-      padding-left: 4px;
-      padding-right: 4px;
+      padding-left: 2px;
+      padding-right: 2px;
     }
     .supervisor-planilla-table tbody td,
     .supervisor-planilla-table tbody td.is-ruta,
     .supervisor-planilla-table tbody td.is-nombre,
     .supervisor-planilla-table tbody td.is-num {
       font-weight: 400;
+    }
+    /* Planilla móvil: nombre/#/saldo compactos (no se cortan en 1… / 95….). */
+    .supervisor-mobile .supervisor-planilla-table td,
+    .supervisor-mobile-app .supervisor-planilla-table td {
+      font-size: 10px !important;
+      padding-left: 3px !important;
+      padding-right: 3px !important;
+    }
+    .supervisor-mobile .supervisor-planilla-table td.is-ruta,
+    .supervisor-mobile-app .supervisor-planilla-table td.is-ruta {
+      font-size: 10px !important;
+      font-weight: 700;
+      text-align: center !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+    }
+    .supervisor-mobile .supervisor-planilla-table td.is-nombre,
+    .supervisor-mobile-app .supervisor-planilla-table td.is-nombre {
+      font-size: 10px !important;
+      text-align: left !important;
+    }
+    .supervisor-mobile .supervisor-planilla-table td.is-num,
+    .supervisor-mobile-app .supervisor-planilla-table td.is-num {
+      font-size: 10px !important;
+      font-weight: 650;
+      text-align: right !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+    }
+    .supervisor-mobile .supervisor-planilla-table .is-estado .pill,
+    .supervisor-mobile-app .supervisor-planilla-table .is-estado .pill {
+      font-size: 9px !important;
+      padding: 0 2px;
+      height: 12px;
+      line-height: 12px;
+      min-width: 1.1rem;
     }
     .supervisor-planilla-table .cuotas-progress,
     .supervisor-planilla-table .cuotas-progress-sep,

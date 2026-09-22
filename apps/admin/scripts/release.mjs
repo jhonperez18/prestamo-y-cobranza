@@ -25,6 +25,11 @@ const adminRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 /** Raíz del monorepo: Vercel Root Directory = apps/admin. */
 const repoRoot = join(adminRoot, "..", "..");
 
+/** BOM en globals.css invalida :root → fondo/colores/login rotos. */
+function assertGlobalsCssNoBom() {
+  run("node scripts/assert-no-bom.mjs", adminRoot);
+}
+
 function run(cmd, cwd = repoRoot) {
   return execSync(cmd, { encoding: "utf8", cwd, stdio: "inherit" });
 }
@@ -231,6 +236,7 @@ if (branch !== "main") {
 }
 
 void (async () => {
+  assertGlobalsCssNoBom();
 if (mode === "verify") {
   console.log("── Producción (contrato fijo) ──");
   console.log(`Proyecto Vercel : ${PROJECT}`);

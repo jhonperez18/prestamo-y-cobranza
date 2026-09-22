@@ -88,10 +88,10 @@ export function visitStatusLabel(status: RouteStop["visitStatus"]) {
 }
 
 export function visitStatusLabelShort(status: RouteStop["visitStatus"]) {
-  if (status === "cobrado") return "pago";
-  if (status === "parcial") return "Parc.";
+  if (status === "cobrado") return "pa";
+  if (status === "parcial") return "pa";
   if (status === "omitido") return "S/C";
-  return "Pend.";
+  return "pe";
 }
 
 export function visitStatusKind(status: RouteStop["visitStatus"]): StatusKind {
