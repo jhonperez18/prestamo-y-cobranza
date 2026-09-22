@@ -144,10 +144,7 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
   return markLoanFundedByNequi(loan);
 }
 
-export function interestFromPct(capital: number, pct: number) {
-  if (capital <= 0 || pct <= 0) return 0;
-  return Math.trunc((capital * pct) / 100);
-}
+export { interestFromPct } from "@/lib/finance";
 
 /** Cliente sin crédito abierto (puede volver a prestar). */
 export function clientHasOpenLoan(clientRef: string, loans: LoanRow[]) {

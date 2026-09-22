@@ -5,13 +5,13 @@
  */
 import { createMirrorServerClient } from "@/lib/supabase/admin";
 import type { CollectorRow, RouteRow, UserRow } from "@/lib/mock-data";
-import type {
-  CollectorDayCloseRecord,
-  CollectorDayExpenseDraft,
+import {
+  normalizeHistoryDate,
+  type CollectorDayCloseRecord,
+  type CollectorDayExpenseDraft,
 } from "@/lib/collector-day-close";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { MiscPayment } from "@/lib/misc-payments";
-import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import {
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
@@ -260,6 +260,10 @@ export function rowToDayClose(r: Record<string, unknown>): CollectorDayCloseReco
     expenses: Array.isArray(r.expenses) ? (r.expenses as CollectorDayCloseRecord["expenses"]) : [],
     expensesTotal: Number(r.expenses_total) || 0,
     cashFloat: Number(r.cash_float) || 0,
+    openingCash: r.opening_cash == null ? undefined : Number(r.opening_cash) || 0,
+    cashExpected: r.cash_expected == null ? undefined : Number(r.cash_expected) || 0,
+    cashDeclared: r.cash_declared == null ? undefined : Number(r.cash_declared) || 0,
+    cashVariance: r.cash_variance == null ? undefined : Number(r.cash_variance) || 0,
     closedAt: String(r.closed_at || new Date().toISOString()),
     movementRefs: Array.isArray(r.movement_refs) ? (r.movement_refs as string[]) : [],
   };
@@ -381,6 +385,54 @@ export function rowToAssignment(r: Record<string, unknown>): DailyCollectionAssi
 }
 
 // —— server upserts ——
+
+/** Guarda el descuadre en el CIE. Si la función aún no está en Supabase, no tumba el cierre. */
+export async function auditDayCloseInCloud(row: CollectorDayCloseRecord) {
+  const client = createMirrorClient();
+  if (!client || !row.ref) return { ok: true as const, skipped: true as const };
+  const opening = Number(row.openingCash) || 0;
+  const expenses = Number(row.expensesTotal) || 0;
+  const expected = Number(row.cashExpected ?? row.cashFloat) || 0;
+  const declared = Number(row.cashDeclared ?? row.cashFloat) || 0;
+  const collections = expected - opening + expenses;
+  const { error } = await client.rpc("verify_day_cash", {
+    p_ref: row.ref,
+    p_opening: opening,
+    p_collections: collections,
+    p_expenses: expenses,
+    p_declared: declared,
+  });
+  if (!error) return { ok: true as const };
+  const msg = error.message || "";
+  if (/verify_day_cash|schema cache|PGRST202|Could not find|cash_variance|opening_cash/i.test(msg)) {
+    return { ok: true as const, skipped: true as const };
+  }
+  return { ok: false as const, error: msg };
+}
+
+export async function upsertDayExpenseIdempotent(row: Record<string, unknown>) {
+  const client = createMirrorClient();
+  if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  const { data, error } = await client.rpc("register_day_expense", {
+    p_ref: row.ref,
+    p_collector_ref: row.collector_ref,
+    p_collector_name: row.collector_name,
+    p_expense_date: row.expense_date,
+    p_route_ref: row.route_ref,
+    p_expenses: row.expenses,
+    p_expenses_total: row.expenses_total,
+  });
+  if (!error) {
+    const body = data as { ok?: boolean; error?: string } | null;
+    if (body && body.ok === false) return { ok: false as const, error: body.error || "register_day_expense" };
+    return { ok: true as const };
+  }
+  const msg = error.message || "";
+  if (!/register_day_expense|schema cache|PGRST202|Could not find the function/i.test(msg)) {
+    return { ok: false as const, error: msg };
+  }
+  return upsertOpsRow("day_expenses", row, "ref");
+}
 
 export async function upsertOpsRow(
   table: string,

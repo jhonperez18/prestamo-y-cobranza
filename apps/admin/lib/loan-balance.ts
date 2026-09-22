@@ -1,3 +1,4 @@
+import { pendingBalance, pesos, sumPesos } from "@/lib/finance";
 import { lineStatus } from "@/lib/loan-pay";
 import {
   applyPaymentsToSchedule,
@@ -104,7 +105,7 @@ export function computeLoanFinancials(loan: LoanRow, payments: PaymentRow[]): Lo
   const loanPayments = payments.filter(
     (row) => row.loanRef === loan.ref && !row.voidedAt?.trim(),
   );
-  const paidTotal = loanPayments.reduce((sum, row) => sum + row.amount, 0);
+  const paidTotal = sumPesos(loanPayments.map((row) => row.amount));
   const preview = resolvePreview(loan);
   const schedule = buildScheduleLines(loan, loanPayments, preview);
   const flat = isFlatLoanTerms(loan);
@@ -130,7 +131,7 @@ export function computeLoanFinancials(loan: LoanRow, payments: PaymentRow[]): Lo
     : (capitalLine?.paid ?? 0);
   const capitalPending = Math.max(0, capitalTotal - capitalPaid);
 
-  const balancePending = Math.max(0, totalAgreement - paidTotal);
+  const balancePending = pendingBalance(pesos(totalAgreement), paidTotal);
 
   const installmentsTotal = flat
     ? interestLines.length || preview?.count || 0

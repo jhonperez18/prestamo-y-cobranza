@@ -48,6 +48,8 @@ import {
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
+import { refreshLabelsFromCatalog } from "@/lib/project-identity";
+import { omitDeleted } from "@/lib/deleted-ids";
 import { dedupeDailyPaymentsByVisit } from "@/lib/planilla-payment-reconcile";
 import { stripRemovedPaymentMovements } from "@/lib/purge-unclosed-payments";
 import { syncAllLoans } from "@/lib/loan-preview";
@@ -147,7 +149,8 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
       ),
     ),
   );
-  writeDemoJson(DEMO_CLIENTS_KEY, storedClients);
+  const liveClients = omitDeleted(storedClients);
+  writeDemoJson(DEMO_CLIENTS_KEY, liveClients);
 
   const storedMovementsEarly = loadDemoBankMovements<BankMovement>();
   // Virgen: no resucitar PG- desde planilla/banco viejos.
@@ -198,7 +201,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     storedAssignments,
     prunedCollectors,
     reconciledLoans,
-    storedClients,
+    liveClients,
   );
   const storedLogs = readDemoJson(DEMO_DAILY_LOGS_KEY, COLLECTOR_DAILY_LOGS_SEED);
   const storedExpenseDrafts = readDemoJson<CollectorDayExpenseDraft[]>(
@@ -214,7 +217,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     dayExpenseDrafts: storedExpenseDrafts,
     payments: nextPayments,
     loans: reconciledLoans,
-    clients: storedClients,
+    clients: liveClients,
     collectors: prunedCollectors,
   });
   const deduped = dedupeDailyPaymentsByVisit(cycle.payments, cycle.assignments);
@@ -232,7 +235,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     loans: cycle.loans,
     payments: nextPayments,
     collectors: prunedCollectors,
-    clients: storedClients,
+    clients: liveClients,
     dayCloses: cycle.dayCloses,
     dayExpenseDrafts: cycle.dayExpenseDrafts,
     bankAccounts: storedAccounts,
@@ -240,6 +243,15 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     miscPayments: misc,
     assignments: cycle.assignments,
     dailyLogs: cycle.logs,
+  });
+  const labeled = refreshLabelsFromCatalog({
+    clients: liveClients,
+    users: linked.users,
+    collectors: prunedCollectors,
+    loans: synced.loans,
+    payments: nextPayments,
+    routes: cycle.routes,
+    assignments: synced.assignments,
   });
 
   const storedReconciliations = readDemoJson<BankReconciliation[]>(
@@ -256,10 +268,13 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     [],
   );
 
-  writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
-  writeDemoJson(DEMO_ROUTES_KEY, cycle.routes);
-  writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
-  writeDemoJson(DEMO_LOANS_KEY, synced.loans);
+  const liveRoutes = omitDeleted(labeled.routes);
+  const livePayments = omitDeleted(labeled.payments);
+  const liveLoans = omitDeleted(labeled.loans);
+  writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, labeled.assignments);
+  writeDemoJson(DEMO_ROUTES_KEY, liveRoutes);
+  writeDemoJson(DEMO_PAYMENTS_KEY, livePayments);
+  writeDemoJson(DEMO_LOANS_KEY, liveLoans);
   writeDemoJson(DEMO_DAILY_LOGS_KEY, synced.dailyLogs);
   writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, synced.dayCloses);
   writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, cycle.dayExpenseDrafts);
@@ -268,17 +283,17 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
   writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, storedAccounts);
   writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, synced.bankMovements);
 
-  indexPaymentEvidenceFromPayments(nextPayments);
-  const paymentsWithEvidence = nextPayments.map(withPaymentEvidence);
+  indexPaymentEvidenceFromPayments(livePayments);
+  const paymentsWithEvidence = livePayments.map(withPaymentEvidence);
 
   return {
     users: linked.users,
     collectors: prunedCollectors,
-    clients: storedClients,
-    routes: cycle.routes,
-    loans: synced.loans,
+    clients: liveClients,
+    routes: liveRoutes,
+    loans: liveLoans,
     payments: paymentsWithEvidence,
-    assignments: synced.assignments,
+    assignments: labeled.assignments,
     dayCloses: synced.dayCloses,
     dayExpenseDrafts: cycle.dayExpenseDrafts,
     dailyLogs: synced.dailyLogs,

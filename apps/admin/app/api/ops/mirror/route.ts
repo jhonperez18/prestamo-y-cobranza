@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { createMirrorServerClient } from "@/lib/supabase/admin";
 import {
   assignmentToRow,
+  auditDayCloseInCloud,
   collectorToRow,
   dayCloseToRow,
   dayExpenseToRow,
   miscToRow,
   routeToRow,
+  upsertDayExpenseIdempotent,
   upsertOpsRow,
 } from "@/lib/supabase/ops-mirror";
 import type { CollectorRow, RouteRow } from "@/lib/mock-data";
@@ -90,11 +92,14 @@ export async function POST(request: Request) {
       case "day_close": {
         const mapped = dayCloseToRow(body.row as CollectorDayCloseRecord);
         result = await upsertOpsRow("day_closes", mapped, "ref");
+        if (result.ok && !("skipped" in result && result.skipped)) {
+          await auditDayCloseInCloud(body.row as CollectorDayCloseRecord);
+        }
         break;
       }
       case "day_expense": {
         const mapped = dayExpenseToRow(body.row as CollectorDayExpenseDraft);
-        result = await upsertOpsRow("day_expenses", mapped, "ref");
+        result = await upsertDayExpenseIdempotent(mapped);
         break;
       }
       case "misc_payment": {

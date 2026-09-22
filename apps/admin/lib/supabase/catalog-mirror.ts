@@ -11,6 +11,7 @@ import {
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
+import { isDeletedRef } from "@/lib/deleted-ids";
 
 export const DEMO_CLIENT_MIRROR_QUEUE_KEY = "nexo-demo-client-mirror-queue";
 export const DEMO_LOAN_MIRROR_QUEUE_KEY = "nexo-demo-loan-mirror-queue";
@@ -244,6 +245,11 @@ function mergeByRefPreferPendingLocal<T extends { ref: string; updatedAt?: strin
   for (const remoteRow of remote) {
     if (!remoteRow?.ref) continue;
     const ref = remoteRow.ref;
+    if (isDeletedRef(ref)) {
+      if (localByRef.delete(ref)) changed = true;
+      pendingByRef.delete(ref);
+      continue;
+    }
     seen.add(ref);
     const pending = pendingByRef.get(ref);
     const localRow = localByRef.get(ref);
@@ -282,7 +288,7 @@ function mergeByRefPreferPendingLocal<T extends { ref: string; updatedAt?: strin
     localByRef.delete(ref);
   }
   for (const row of localByRef.values()) {
-    if (!row?.ref || seen.has(row.ref)) continue;
+    if (!row?.ref || seen.has(row.ref) || isDeletedRef(row.ref)) continue;
     const pending = pendingByRef.get(row.ref);
     merged.push(pending ?? row);
   }

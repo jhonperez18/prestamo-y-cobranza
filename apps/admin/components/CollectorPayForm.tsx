@@ -14,6 +14,7 @@ import {
   type PaymentEvidenceRef,
 } from "@/lib/payment-evidence";
 import { newComboGroupId } from "@/lib/payment-combo";
+import { newIdempotencyKey } from "@/lib/finance";
 import { money } from "@/lib/mock-data";
 import type { PayKind } from "@/lib/loan-pay";
 import { isNavQuiet } from "@/lib/suppress-ghost-click";
@@ -79,13 +80,6 @@ function formatAmountInput(value: number | string) {
       : value.replace(/[^\d]/g, "");
   if (!digits) return "";
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-}
-
-function newIdempotencyKey(prefix: string) {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return `${prefix}-${crypto.randomUUID()}`;
-  }
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function emptyLeg(): ComboLeg {

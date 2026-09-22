@@ -119,6 +119,8 @@ export type PaymentRow = {
   evidence?: import("@/lib/payment-evidence").PaymentEvidenceRef[];
   source?: "pwa" | "caja";
   gps?: boolean;
+  /** ISO — un pull más viejo no pisa este cobro. */
+  updatedAt?: string;
   /** ISO: si está, el PG- está anulado (sigue en raíz, no suma a saldos). */
   voidedAt?: string;
   voidReason?: string;
@@ -235,6 +237,8 @@ export type RouteRow = {
   status: string;
   kind: StatusKind;
   scheduledDate?: string;
+  /** ISO — un pull más viejo no pisa esta ruta. */
+  updatedAt?: string;
 };
 
 export const COLLECTOR_ROLE_REF = "ROL-1";

@@ -146,6 +146,16 @@ import {
 import {
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
+import { refreshLabelsFromCatalog } from "@/lib/project-identity";
+import { omitDeleted, readDeletedIds, rememberDeletedId } from "@/lib/deleted-ids";
+import { mergeFresherByRef } from "@/lib/fresher-row";
+import {
+  applyWorkspaceRealtimeEvent,
+  REALTIME_WORKSPACE_TABLES,
+  type WorkspaceLiveSlice,
+} from "@/lib/realtime-workspace";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
 import { computeLoanFinancials, loanPaySummaryRows } from "@/lib/loan-balance";
 import { buildRenewalLoans } from "@/lib/loan-renew";
@@ -174,6 +184,7 @@ import {
   migrateLegacyRouteName,
   normalizeAllRouteOrders,
 } from "@/lib/client-route-order";
+import { newIdempotencyKey, pesos } from "@/lib/finance";
 import { applyPay, cuotaTarget, loanRowAfterPay, paymentRowKind, type PayKind } from "@/lib/loan-pay";
 import {
   bumpMissedCollectionAlerts,
@@ -244,7 +255,6 @@ import {
   loadDemoDayCloses,
   loadDemoBankMovements,
   readDemoJson,
-  rememberDeletedRouteRef,
   writeDemoJson,
 } from "@/lib/demo-persist";
 import {
@@ -347,13 +357,26 @@ export function useWorkspace({
     storageKey: "nexo.prestamos.listado.columns.v3",
   });
 
+  const [deletedIds, setDeletedIds] = useState<string[]>(() => readDeletedIds());
+  const deletedIdsRef = useRef(new Set(deletedIds));
+  deletedIdsRef.current = new Set(deletedIds);
+
+  function tombstone(ref: string) {
+    const next = rememberDeletedId(ref);
+    deletedIdsRef.current = new Set(next);
+    setDeletedIds(next);
+  }
+
   const applyOperationalSnapshot = useCallback((snap: OperationalDemoSnapshot) => {
-    setClients(snap.clients);
+    const gone = deletedIdsRef.current;
+    setClients((current) => mergeFresherByRef(current, omitDeleted(snap.clients, gone)));
     setUsers(snap.users);
     setCollectors(snap.collectors);
-    setRoutes(snap.routes);
-    setLoans(snap.loans);
-    setPayments(snap.payments.map((row) => withPaymentEvidence(row)));
+    setRoutes((current) => mergeFresherByRef(current, omitDeleted(snap.routes, gone)));
+    setLoans((current) => mergeFresherByRef(current, omitDeleted(snap.loans, gone)));
+    setPayments((current) =>
+      mergeFresherByRef(current, omitDeleted(snap.payments, gone)).map((row) => withPaymentEvidence(row)),
+    );
     setDailyAssignments(snap.assignments);
     setDayCloses(snap.dayCloses);
     setDayExpenseDrafts(snap.dayExpenseDrafts);
@@ -383,6 +406,81 @@ export function useWorkspace({
       },
     },
   );
+
+  const liveRef = useRef<WorkspaceLiveSlice | null>(null);
+  liveRef.current = {
+    clients,
+    users,
+    collectors,
+    loans,
+    payments,
+    routes,
+    assignments: dailyAssignments,
+    dayCloses,
+    dayExpenseDrafts,
+    bankAccounts,
+    bankMovements,
+    miscPayments,
+  };
+
+  useEffect(() => {
+    if (!demoHydrated || !getSupabasePublicEnv().configured) return;
+    let browser: ReturnType<typeof createSupabaseBrowserClient>;
+    try {
+      browser = createSupabaseBrowserClient();
+    } catch (error) {
+      console.error("realtime-workspace", error);
+      return;
+    }
+    const channel = browser.channel("realtime-workspace");
+    for (const table of REALTIME_WORKSPACE_TABLES) {
+      channel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
+        try {
+          const live = liveRef.current;
+          if (!live) return;
+          const eventType = payload.eventType;
+          if (eventType !== "INSERT" && eventType !== "UPDATE" && eventType !== "DELETE") return;
+          const raw = eventType === "DELETE" ? payload.old : payload.new;
+          const record =
+            raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
+          const next = applyWorkspaceRealtimeEvent(table, eventType, record, live);
+          if (!next) return;
+          if (eventType === "DELETE") {
+            const ref = String(record?.ref || "").trim();
+            if (ref) {
+              deletedIdsRef.current = new Set(readDeletedIds());
+              setDeletedIds(readDeletedIds());
+            }
+          }
+          liveRef.current = next;
+          setClients(next.clients);
+          setLoans(next.loans);
+          setPayments(next.payments.map((row) => withPaymentEvidence(row)));
+          setRoutes(next.routes);
+          setDailyAssignments(next.assignments);
+          setDayCloses(next.dayCloses);
+          setBankMovements(next.bankMovements);
+          writeDemoJson(DEMO_CLIENTS_KEY, next.clients);
+          writeDemoJson(DEMO_LOANS_KEY, next.loans);
+          writeDemoJson(DEMO_PAYMENTS_KEY, next.payments);
+          writeDemoJson(DEMO_ROUTES_KEY, next.routes);
+          writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
+          writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, next.dayCloses);
+          writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, next.bankMovements);
+        } catch (error) {
+          console.error("realtime-workspace", error);
+        }
+      });
+    }
+    channel.subscribe((status) => {
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        console.error("realtime-workspace", status);
+      }
+    });
+    return () => {
+      void browser.removeChannel(channel);
+    };
+  }, [demoHydrated]);
 
   const namesTitleCaseDoneRef = useRef(false);
   useEffect(() => {
@@ -502,7 +600,7 @@ export function useWorkspace({
 
   useEffect(() => {
     if (!demoHydrated) return;
-    writeDemoJson(DEMO_ROUTES_KEY, routes);
+    writeDemoJson(DEMO_ROUTES_KEY, omitDeleted(routes));
   }, [routes, demoHydrated]);
 
   useEffect(() => {
@@ -528,7 +626,7 @@ export function useWorkspace({
   useEffect(() => {
     if (!demoHydrated) return;
     if (clients.length === 0) return;
-    writeDemoJson(DEMO_CLIENTS_KEY, clients);
+    writeDemoJson(DEMO_CLIENTS_KEY, omitDeleted(clients));
   }, [clients, demoHydrated]);
 
   useEffect(() => {
@@ -547,12 +645,12 @@ export function useWorkspace({
 
   useEffect(() => {
     if (!demoHydrated) return;
-    writeDemoJson(DEMO_PAYMENTS_KEY, payments);
+    writeDemoJson(DEMO_PAYMENTS_KEY, omitDeleted(payments));
   }, [payments, demoHydrated]);
 
   useEffect(() => {
     if (!demoHydrated) return;
-    writeDemoJson(DEMO_LOANS_KEY, loans);
+    writeDemoJson(DEMO_LOANS_KEY, omitDeleted(loans));
   }, [loans, demoHydrated]);
 
   useEffect(() => {
@@ -882,11 +980,27 @@ export function useWorkspace({
       onToast(result.error);
       return false;
     }
+    const labeled = refreshLabelsFromCatalog({
+      clients: result.state.clients,
+      users,
+      collectors,
+      loans: result.state.loans,
+      payments: result.state.payments,
+      routes: result.state.routes,
+      assignments: result.state.assignments,
+    });
+    if (labeled.loans !== result.state.loans) writeDemoJson(DEMO_LOANS_KEY, labeled.loans);
+    if (labeled.routes !== result.state.routes) writeDemoJson(DEMO_ROUTES_KEY, labeled.routes);
+    if (labeled.payments !== result.state.payments) writeDemoJson(DEMO_PAYMENTS_KEY, labeled.payments);
+    if (labeled.assignments !== result.state.assignments) {
+      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, labeled.assignments);
+      queueAssignmentsMirror(labeled.assignments);
+    }
     setClients(result.state.clients);
-    setLoans(result.state.loans);
-    setRoutes(result.state.routes);
-    setDailyAssignments(result.state.assignments);
-    setPayments(result.state.payments.map((row) => withPaymentEvidence(row)));
+    setLoans(labeled.loans);
+    setRoutes(labeled.routes);
+    setDailyAssignments(labeled.assignments);
+    setPayments(labeled.payments.map((row) => withPaymentEvidence(row)));
     if (result.focusClientRef) {
       setOpenRef(result.focusClientRef);
       setFileTab("ficha");
@@ -939,7 +1053,14 @@ export function useWorkspace({
 
   function deleteClient() {
     if (!openClient) return;
-    void applyPortfolioCommit(commitDeleteClient(openClient.ref, portfolioState())).then((ok) => {
+    const ref = openClient.ref;
+    const result = commitDeleteClient(ref, portfolioState());
+    if (!result.ok) {
+      onToast(result.error);
+      return;
+    }
+    tombstone(ref);
+    void applyPortfolioCommit(result).then((ok) => {
       if (ok) setConfirmDelete(false);
     });
   }
@@ -1025,6 +1146,7 @@ export function useWorkspace({
       ...openRoute,
       id: routeSlug(name),
       name,
+      updatedAt: new Date().toISOString(),
     };
     setRoutes((current) =>
       current.map((row) => (row.ref === openRoute.ref ? updated : row)),
@@ -1063,7 +1185,7 @@ export function useWorkspace({
       setConfirmRouteDelete("");
       return;
     }
-    rememberDeletedRouteRef(ref);
+    tombstone(ref);
     setRoutes((current) => {
       const next = current.filter((row) => row.ref !== ref);
       writeDemoJson(DEMO_ROUTES_KEY, next);
@@ -1592,16 +1714,20 @@ export function useWorkspace({
       miscPayments,
       assignments: dailyAssignments,
     });
-    setPayments(result.payments.map((row) => withPaymentEvidence(row)));
+    const voidedAtStamp = new Date().toISOString();
+    const stampedPayments = result.payments.map((row) =>
+      row.ref === result.payment.ref ? { ...row, updatedAt: voidedAtStamp } : row,
+    );
+    setPayments(stampedPayments.map((row) => withPaymentEvidence(row)));
     setLoans(projected.loans);
     setDailyAssignments(projected.assignments);
     setDayCloses(projected.dayCloses);
     setBankMovements(projected.bankMovements);
-    writeDemoJson(DEMO_PAYMENTS_KEY, result.payments);
+    writeDemoJson(DEMO_PAYMENTS_KEY, stampedPayments);
     writeDemoJson(DEMO_LOANS_KEY, projected.loans);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
     queueAssignmentsMirror(projected.assignments);
-    const mirror = await queuePaymentMirror(result.payment);
+    const mirror = await queuePaymentMirror({ ...result.payment, updatedAt: voidedAtStamp });
     if (!mirror.ok) {
       onToast(`Anulado en local · nube pendiente: ${mirror.error || "sin red"}`);
       onGo("cobranza", "anulaciones");
@@ -1811,10 +1937,28 @@ export function useWorkspace({
       onToast(result.error);
       return false;
     }
+    const labeled = refreshLabelsFromCatalog({
+      clients,
+      users: result.state.users,
+      collectors: result.state.collectors,
+      loans,
+      payments: result.state.payments,
+      routes: result.state.routes,
+      assignments: dailyAssignments,
+    });
+    if (labeled.loans !== loans) writeDemoJson(DEMO_LOANS_KEY, labeled.loans);
+    if (labeled.routes !== result.state.routes) writeDemoJson(DEMO_ROUTES_KEY, labeled.routes);
+    if (labeled.payments !== result.state.payments) writeDemoJson(DEMO_PAYMENTS_KEY, labeled.payments);
+    if (labeled.assignments !== dailyAssignments) {
+      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, labeled.assignments);
+      queueAssignmentsMirror(labeled.assignments);
+    }
     setUsers(result.state.users);
     setCollectors(result.state.collectors);
-    setRoutes(result.state.routes);
-    setPayments(result.state.payments);
+    setLoans(labeled.loans);
+    setRoutes(labeled.routes);
+    setDailyAssignments(labeled.assignments);
+    setPayments(labeled.payments.map((row) => withPaymentEvidence(row)));
     if (options?.goListado) onGo("inicio", "listado");
     if (options?.openFicha && result.focusUserRef) openUserFicha(result.focusUserRef);
     onToast("Guardando acceso…");
@@ -1851,11 +1995,28 @@ export function useWorkspace({
       dailyAssignments,
       result.state.payments,
     );
+    const labeled = refreshLabelsFromCatalog({
+      clients,
+      users: result.state.users,
+      collectors: result.state.collectors,
+      loans,
+      payments: result.state.payments,
+      routes: synced.routes,
+      assignments: synced.assignments,
+    });
+    if (labeled.loans !== loans) writeDemoJson(DEMO_LOANS_KEY, labeled.loans);
+    if (labeled.assignments !== synced.assignments) {
+      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, labeled.assignments);
+      queueAssignmentsMirror(labeled.assignments);
+    }
+    if (labeled.routes !== synced.routes) writeDemoJson(DEMO_ROUTES_KEY, labeled.routes);
+    if (labeled.payments !== result.state.payments) writeDemoJson(DEMO_PAYMENTS_KEY, labeled.payments);
     setUsers(result.state.users);
     setCollectors(result.state.collectors);
-    setRoutes(synced.routes);
-    setDailyAssignments(synced.assignments);
-    setPayments(result.state.payments);
+    setLoans(labeled.loans);
+    setRoutes(labeled.routes);
+    setDailyAssignments(labeled.assignments);
+    setPayments(labeled.payments.map((row) => withPaymentEvidence(row)));
     setOpenUserRef(result.state.users[0]?.ref ?? "");
     setConfirmUserDelete(false);
     onGo("inicio", "listado");
@@ -1892,8 +2053,13 @@ export function useWorkspace({
   function deleteLoan() {
     if (!openLoan) return;
     const removed = openLoan;
+    tombstone(removed.ref);
     const delta = removed.total ?? removed.capital;
-    setLoans((current) => current.filter((row) => row.ref !== removed.ref));
+    setLoans((current) => {
+      const next = omitDeleted(current.filter((row) => row.ref !== removed.ref));
+      writeDemoJson(DEMO_LOANS_KEY, next);
+      return next;
+    });
     setClients((current) =>
       current.map((entry) =>
         entry.ref === removed.clientRef
@@ -1913,7 +2079,13 @@ export function useWorkspace({
 
   function registerPay(kind: PayKind, amount: number, method: PaymentMethod = "efectivo") {
     if (!openLoan) return;
-    const result = applyPay(openLoan, kind, amount);
+    const amountPesos = pesos(amount);
+    const idempotencyKey = newIdempotencyKey("caja");
+    if (payments.some((row) => row.idempotencyKey === idempotencyKey)) {
+      onToast("Pago ya sincronizado (sin duplicar).");
+      return;
+    }
+    const result = applyPay(openLoan, kind, amountPesos);
     if (!result.ok) {
       onToast(result.error);
       return;
@@ -1932,11 +2104,13 @@ export function useWorkspace({
         chargeLabel: target?.kind ? chargeLabel(target.kind) : result.type,
         client: openLoan.client,
         collector: "Caja / oficina",
-        amount,
+        idempotencyKey,
+        amount: amountPesos,
         type: result.type,
         kind: paymentRowKind(result),
         method: normalizePaymentMethod(method),
         source: "caja",
+        updatedAt: new Date().toISOString(),
       },
       openLoan,
       result,
@@ -1947,7 +2121,7 @@ export function useWorkspace({
     );
     const nextClients = clients.map((entry) =>
       entry.ref === openLoan.clientRef
-        ? { ...entry, pending: Math.max(0, entry.pending - amount) }
+        ? { ...entry, pending: Math.max(0, entry.pending - amountPesos) }
         : entry,
     );
     const nextAssignments = reconcilePaymentsOntoPlanilla(dailyAssignments, nextPayments);

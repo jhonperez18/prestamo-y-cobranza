@@ -4,6 +4,7 @@
  * Una sola fuente de verdad: el dinero y la planilla no pueden divergir.
  */
 import { isoToDispatchLabel, todayIso } from "@/lib/daily-dispatch";
+import { pesos } from "@/lib/finance";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
   applyPaymentToAssignments,
@@ -198,7 +199,7 @@ export function commitCollectorPayment(
       collectorRef: draft.collectorRef,
       routeRef: safeDraft.routeRef,
       idempotencyKey: draft.idempotencyKey,
-      amount: draft.amount,
+      amount: pesos(draft.amount),
       type: result.pay.type,
       kind: paymentRowKind(result.pay),
       method: normalizePaymentMethod(draft.method),

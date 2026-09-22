@@ -1,5 +1,6 @@
 import { isDailyCollectionDay } from "@/lib/colombia-holidays";
 import { reconcileLoanCollectionAlerts } from "@/lib/collection-alerts";
+import { pendingBalance, sumPesos } from "@/lib/finance";
 import { loanStatusPill } from "@/lib/loan-status";
 import type { LoanRow } from "@/lib/mock-data";
 
@@ -964,9 +965,11 @@ function paidFromPayments(
   payments: { loanRef?: string; amount: number; voidedAt?: string }[],
   loanRef: string,
 ) {
-  return payments
-    .filter((row) => row.loanRef === loanRef && !String(row.voidedAt || "").trim())
-    .reduce((sum, row) => sum + row.amount, 0);
+  return sumPesos(
+    payments
+      .filter((row) => row.loanRef === loanRef && !String(row.voidedAt || "").trim())
+      .map((row) => row.amount),
+  );
 }
 
 /** Recaudado y saldo alineados con movimientos reales cuando hay pagos. */
@@ -976,14 +979,12 @@ function resolveLoanLedger(
   payments?: LoanPaymentTouch[],
 ) {
   if (payments === undefined) {
-    const paid = terms.paid ?? 0;
-    const balance = Math.max(0, total - paid);
-    return { paid, balance };
+    const paid = pesos(terms.paid ?? 0);
+    return { paid, balance: pendingBalance(total, paid) };
   }
 
   const paid = terms.ref ? paidFromPayments(payments, terms.ref) : 0;
-  const balance = Math.max(0, total - paid);
-  return { paid, balance: balance <= 0 && total > 0 ? 0 : balance };
+  return { paid, balance: pendingBalance(total, paid) };
 }
 
 /**

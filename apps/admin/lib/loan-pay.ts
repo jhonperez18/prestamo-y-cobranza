@@ -1,5 +1,6 @@
 import type { LoanRow, StatusKind } from "@/lib/mock-data";
 import { todayIso } from "@/lib/daily-dispatch";
+import { pendingBalance, pesos } from "@/lib/finance";
 import { chargeLabel, isoToDisplay, syncLoan, type ChargeKind } from "@/lib/loan-preview";
 import { clearCollectionAlertsOnPay } from "@/lib/collection-alerts";
 
@@ -20,11 +21,11 @@ export type CuotaTarget = {
 };
 
 export function linePaid(line: ScheduleEntry) {
-  return line.paid ?? 0;
+  return pesos(line.paid ?? 0);
 }
 
 export function lineRemaining(line: ScheduleEntry) {
-  return Math.max(0, line.amount - linePaid(line));
+  return pendingBalance(line.amount, linePaid(line));
 }
 
 export type LineStatusKind = "paid" | "partial" | "pending" | "overdue";
@@ -104,7 +105,7 @@ export function payHint(loan: LoanRow, kind: PayKind, amount: number) {
 function applyToOpenCuotaOnly(schedule: ScheduleEntry[], targetIndex: number, amount: number) {
   const line = schedule[targetIndex];
   if (!line) return;
-  const take = Math.min(lineRemaining(line), amount);
+  const take = Math.min(lineRemaining(line), pesos(amount));
   if (take <= 0) return;
   line.paid = linePaid(line) + take;
 }
@@ -130,16 +131,22 @@ export function paymentRowKind(result: Pick<ApplyPaySuccess, "partial">): Status
 export function applyPay(loan: LoanRow, kind: PayKind, amount: number): ApplyPayResult {
   const error = validatePay(loan, kind, amount);
   if (error) return { ok: false, error };
+  const amountPesos = pesos(amount);
   const target = cuotaTarget(loan);
   const schedule = loan.schedule?.map((line) => ({ ...line }));
   const type: "Cuota" | "Abono" = kind === "cuota" ? "Cuota" : "Abono";
-  const partial = Boolean(target && amount < target.remaining);
+  const partial = Boolean(target && amountPesos < target.remaining);
   if (schedule && target && target.index >= 0) {
     // Solo marca lo pendiente de la cuota abierta; el excedente solo baja saldo.
-    applyToOpenCuotaOnly(schedule, target.index, amount);
+    applyToOpenCuotaOnly(schedule, target.index, amountPesos);
   }
-  const paid = loan.paid + amount;
-  const balance = Math.max(0, loan.balance - amount);
+  const paidBefore = pesos(loan.paid);
+  const paid = paidBefore + amountPesos;
+  const total =
+    loan.total != null && loan.total > 0
+      ? pesos(loan.total)
+      : paidBefore + pesos(loan.balance);
+  const balance = pendingBalance(total, paid);
   const settled = balance === 0;
   return {
     ok: true,

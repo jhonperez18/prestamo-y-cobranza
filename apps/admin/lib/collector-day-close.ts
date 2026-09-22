@@ -6,6 +6,7 @@ import {
   type BankMovement,
 } from "@/lib/bank";
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
+import { pesos, sumPesos, verifyCashClose } from "@/lib/finance";
 import { displayToIso } from "@/lib/loan-preview";
 import { money, type CollectorRow, type LoanRow, type PaymentRow, paymentsForCollector } from "@/lib/mock-data";
 import { normalizePaymentMethod } from "@/lib/payment-method";
@@ -47,8 +48,16 @@ export type CollectorDayCloseRecord = CollectorDayCloseDraft & {
   ref: string;
   closedAt: string;
   expensesTotal: number;
-  /** Recaudo − gastos: queda en caja menor hasta consignar. */
+  /** Recaudo en efectivo − gastos: queda en caja menor hasta consignar. */
   cashFloat: number;
+  /** Saldo con el que arrancó la caja ese día. */
+  openingCash?: number;
+  /** Resultado de inicial + efectivo − gastos. */
+  cashExpected?: number;
+  /** Caja que se declaró antes de cuadrar. No se reescribe el cobro ni el gasto. */
+  cashDeclared?: number;
+  /** declarado − esperado. 0 = cuadra. */
+  cashVariance?: number;
   movementRefs: string[];
 };
 
@@ -233,11 +242,16 @@ export function buildExpenseLines(amounts: Record<RouteExpenseId, string>): Rout
 }
 
 export function sumExpenseLines(lines: RouteExpenseLine[]) {
-  return lines.reduce((sum, line) => sum + line.amount, 0);
+  return sumPesos(lines.map((line) => line.amount));
 }
 
 export function cashFloatAfterExpenses(collected: number, expensesTotal: number) {
-  return collected - expensesTotal;
+  return verifyCashClose({
+    opening: 0,
+    collections: collected,
+    expenses: expensesTotal,
+    declared: 0,
+  }).expected;
 }
 
 export function dayCloseRef(collectorRef: string, date: string) {
@@ -432,6 +446,9 @@ export function syncRouteExpensesToMovements(
   for (const source of sources) {
     for (const line of source.expenses) {
       if (line.amount <= 0) continue;
+      // Desembolso en efectivo del préstamo: resta la caja del cobrador.
+      // No es un gasto bancario. Si quedó un GASL-…-prestamo-P-*, es un registro zombi.
+      if (line.category === "prestamo_ruta" && line.loanRef) continue;
       const key = dayExpenseLineMovementRef(
         source.collectorRef,
         source.date,
@@ -486,7 +503,10 @@ export function syncRouteExpensesToMovements(
     }
   }
 
-  return next;
+  return next.filter((row) => {
+    const ref = `${row.dayExpenseLineRef || ""} ${row.ref}`;
+    return !/-prestamo-[A-Za-z0-9]+/.test(ref);
+  });
 }
 
 export function finalizeCollectorDayClose(input: {
@@ -501,8 +521,15 @@ export function finalizeCollectorDayClose(input: {
 }): CollectorDayCloseRecord {
   const expensesTotal = sumExpenseLines(input.lines);
   const date = normalizeHistoryDate(input.draft.date) || input.draft.date;
-  const cashBase =
-    typeof input.cashCollected === "number" ? input.cashCollected : input.draft.collected;
+  const cashBase = pesos(
+    typeof input.cashCollected === "number" ? input.cashCollected : input.draft.collected,
+  );
+  const check = verifyCashClose({
+    opening: 0,
+    collections: cashBase,
+    expenses: expensesTotal,
+    declared: cashBase - expensesTotal,
+  });
   return {
     ...input.draft,
     date,
@@ -510,7 +537,11 @@ export function finalizeCollectorDayClose(input: {
     closedAt: new Date().toISOString(),
     expenses: input.lines,
     expensesTotal,
-    cashFloat: cashFloatAfterExpenses(cashBase, expensesTotal),
+    openingCash: check.opening,
+    cashExpected: check.expected,
+    cashDeclared: check.expected,
+    cashVariance: 0,
+    cashFloat: check.expected,
     movementRefs: input.movementRefs,
   };
 }
@@ -649,7 +680,10 @@ export function applyDayCloseRecordsToAssignments(
 }
 
 export function dayCloseSummaryLabel(record: CollectorDayCloseRecord) {
-  return `Cierre ${record.date} · Recaudo ${money(record.collected)} · Gastos ${money(record.expensesTotal)} · Caja ${money(record.cashFloat)}`;
+  const base = `Cierre ${record.date} · Recaudo ${money(record.collected)} · Gastos ${money(record.expensesTotal)} · Caja ${money(record.cashFloat)}`;
+  const variance = record.cashVariance ?? 0;
+  if (!variance) return base;
+  return `${base} · Descuadre ${money(variance)}`;
 }
 
 /** Fuentes opcionales para reconstruir historial si faltan cobros en storage. */
@@ -909,7 +943,12 @@ export function buildCollectorDayHistory(
   const dropCount = Math.max(0, dates.length - COLLECTOR_HISTORY_KEEP_DAYS);
   for (let i = 0; i < dropCount; i += 1) {
     const date = dates[i];
-    running = running + (efectivoByDate.get(date) ?? 0) - (gastoByDate.get(date) ?? 0);
+    running = verifyCashClose({
+      opening: running,
+      collections: efectivoByDate.get(date) ?? 0,
+      expenses: gastoByDate.get(date) ?? 0,
+      declared: running,
+    }).expected;
   }
   dates = dates.slice(dropCount);
 
@@ -918,7 +957,13 @@ export function buildCollectorDayHistory(
     const cobroEfectivo = efectivoByDate.get(date) ?? 0;
     const cobroNequi = nequiByDate.get(date) ?? 0;
     const gasto = gastoByDate.get(date) ?? 0;
-    running = running + cobroEfectivo - gasto;
+    const check = verifyCashClose({
+      opening: running,
+      collections: cobroEfectivo,
+      expenses: gasto,
+      declared: running,
+    });
+    running = check.expected;
     return {
       date,
       dateLabel: historyDayLabel(date, period ?? periodFromDateIso(date)),
@@ -951,12 +996,23 @@ export function alignDayClosesCollectedToPayments(
       payments,
       collectors,
     );
-    const expensesTotal = Number(row.expensesTotal) || sumExpenseLines(row.expenses ?? []);
-    const cashFloat = cashFloatAfterExpenses(breakdown.efectivo, expensesTotal);
+    const expensesTotal = sumExpenseLines(row.expenses ?? []);
+    const declared = pesos(row.cashDeclared ?? row.cashFloat);
+    const check = verifyCashClose({
+      opening: pesos(row.openingCash ?? 0),
+      collections: breakdown.efectivo,
+      expenses: expensesTotal,
+      declared,
+    });
+    const cashVariance =
+      row.cashVariance != null && row.cashVariance !== 0 ? pesos(row.cashVariance) : check.variance;
     if (
       row.collected === breakdown.total &&
       row.expensesTotal === expensesTotal &&
-      row.cashFloat === cashFloat
+      row.cashFloat === check.expected &&
+      row.cashExpected === check.expected &&
+      row.cashDeclared === declared &&
+      row.cashVariance === cashVariance
     ) {
       return row;
     }
@@ -964,8 +1020,13 @@ export function alignDayClosesCollectedToPayments(
     return {
       ...row,
       collected: breakdown.total,
+      expenses: row.expenses,
       expensesTotal,
-      cashFloat,
+      openingCash: check.opening,
+      cashExpected: check.expected,
+      cashDeclared: declared,
+      cashVariance,
+      cashFloat: check.expected,
     };
   });
   return changed ? next : closes;

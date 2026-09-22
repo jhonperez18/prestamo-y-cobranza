@@ -7,6 +7,8 @@ import {
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
 import { DEMO_CLIENTS_KEY, DEMO_BANK_ACCOUNTS_KEY, readDemoJson } from "@/lib/demo-persist";
+import { getSupabasePublicEnv } from "@/lib/supabase/env";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   flushPaymentMirrorQueue,
   pullRemotePaymentsIntoDemo,
@@ -162,6 +164,42 @@ export function useOperationalDemoSync(
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [commitHydrate]);
+
+  useEffect(() => {
+    if (!hydrated || !getSupabasePublicEnv().configured) return;
+    let client: ReturnType<typeof createSupabaseBrowserClient>;
+    try {
+      client = createSupabaseBrowserClient();
+    } catch {
+      return;
+    }
+    let timer = 0;
+    const schedule = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        void runHydrateWithRemotePull();
+      }, 500);
+    };
+    const tables = [
+      "clients",
+      "loans",
+      "payments",
+      "routes",
+      "collectors",
+      "day_closes",
+      "day_expenses",
+      "app_users",
+    ] as const;
+    const channel = client.channel("nexo-catalog-live");
+    for (const table of tables) {
+      channel.on("postgres_changes", { event: "*", schema: "public", table }, schedule);
+    }
+    channel.subscribe();
+    return () => {
+      window.clearTimeout(timer);
+      void client.removeChannel(channel);
+    };
+  }, [hydrated, runHydrateWithRemotePull]);
 
   return { hydrated, syncing, epoch, reload: runHydrateWithRemotePull };
 }

@@ -25,6 +25,7 @@ import {
 } from "@/lib/payment-evidence-store";
 import { normalizePaymentMethod, type PaymentMethod } from "@/lib/payment-method";
 import { parseComboChargeLabel } from "@/lib/payment-combo";
+import { isDeletedRef } from "@/lib/deleted-ids";
 
 export type PaymentMirrorRow = {
   ref: string;
@@ -226,6 +227,11 @@ export function mergePaymentsByRef(
 
   for (const remoteRow of remote) {
     if (!remoteRow?.ref) continue;
+    if (isDeletedRef(remoteRow.ref)) {
+      if (localByRef.delete(remoteRow.ref)) changed = true;
+      pendingByRef.delete(remoteRow.ref);
+      continue;
+    }
     const queued = pendingByRef.get(remoteRow.ref);
     const localRow = localByRef.get(remoteRow.ref);
     if (queued) {
@@ -274,10 +280,11 @@ export function mergePaymentsByRef(
   }
 
   for (const row of localByRef.values()) {
+    if (isDeletedRef(row.ref)) continue;
     merged.push(row);
   }
   for (const row of pendingByRef.values()) {
-    if (merged.some((entry) => entry.ref === row.ref)) continue;
+    if (isDeletedRef(row.ref) || merged.some((entry) => entry.ref === row.ref)) continue;
     merged.push(row);
     changed = true;
   }
@@ -313,6 +320,37 @@ export async function mirrorPaymentToSupabase(
       skipped: true,
       reason: pub && !mirrorUsesServiceRole() ? "service_role_missing" : "supabase_not_configured",
     };
+  }
+
+  const rpc = await client.rpc("register_collection", {
+    p_ref: row.ref,
+    p_loan_ref: row.loan_ref,
+    p_amount: row.amount,
+    p_paid_date: row.paid_date,
+    p_method: row.method,
+    p_idempotency_key: payment.idempotencyKey ?? null,
+    p_client_ref: row.client_ref,
+    p_collector_ref: row.collector_ref,
+    p_collector_name: row.collector_name,
+    p_paid_time: row.paid_time,
+    p_due_date: row.due_date,
+    p_charge_label: row.charge_label,
+    p_source: row.source,
+    p_payment_type: row.payment_type,
+    p_payment_kind: row.payment_kind,
+    p_route_ref: row.route_ref,
+    p_evidence: row.evidence ?? null,
+  });
+  if (!rpc.error) {
+    const body = rpc.data as { ok?: boolean; error?: string } | null;
+    if (body && body.ok === false) {
+      return { ok: false, error: body.error || "register_collection" };
+    }
+    return { ok: true };
+  }
+  const rpcMsg = rpc.error.message || "";
+  if (!/register_collection|schema cache|PGRST202|Could not find the function/i.test(rpcMsg)) {
+    return { ok: false, error: rpcMsg };
   }
 
   const { error } = await client.from("payments").upsert(row, { onConflict: "ref" });
