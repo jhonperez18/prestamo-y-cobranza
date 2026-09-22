@@ -449,11 +449,13 @@ export function currentPeriod() {
   return `${now.getFullYear()}-${month}`;
 }
 
+/** Periodo corto para tablas: 9/26 (mes/año). */
 export function periodLabel(period: string) {
   const [year, month] = period.split("-");
-  const idx = Number(month) - 1;
-  if (!year || idx < 0 || idx > 11) return period;
-  return `${MONTH_LABELS[idx]} ${year}`;
+  const m = Number(month);
+  const y = String(year || "");
+  if (!y || !Number.isFinite(m) || m < 1 || m > 12) return period;
+  return `${m}/${y.slice(-2)}`;
 }
 
 /** Periodo bancario en formato año-mes (YYYY-MM). */
