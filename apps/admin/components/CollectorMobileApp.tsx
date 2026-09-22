@@ -32,7 +32,7 @@ import { canRenewLoan } from "@/lib/loan-renew";
 import { syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import { dispatchRouteRef } from "@/lib/collector-dispatch-sync";
-import { suppressGhostClick } from "@/lib/suppress-ghost-click";
+import { suppressGhostClick, isNavQuiet } from "@/lib/suppress-ghost-click";
 import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import {
@@ -419,11 +419,16 @@ export function CollectorMobileApp({
   function togglePay(item: DailyCollectionAssignment) {
     if (!canCollect || collectionStopped || !onRegisterPayment) return;
     const key = itemKey(item);
-    suppressGhostClick(420);
-    setExpandedKey((current) => (current === key ? null : key));
+    // Billete = solo ABRIR. Cerrar es «cerrar» / confirmar.
+    // Si toggléa, el click fantasma tras el reflow cierra el panel al instante.
+    if (expandedKey === key) return;
+    suppressGhostClick(520);
+    setExpandedKey(key);
   }
 
   function closeCard() {
+    // Eco del billete suele caer en «cerrar» justo al abrir: ignorar.
+    if (isNavQuiet()) return;
     suppressGhostClick(420);
     setExpandedKey(null);
   }
@@ -1073,8 +1078,8 @@ export function CollectorMobileApp({
                               event.stopPropagation();
                               togglePay(item);
                             }}
-                            title={isOpen ? "Cerrar cobro" : "Pagar"}
-                            aria-label={isOpen ? "Cerrar cobro" : "Pagar"}
+                            title={isOpen ? "Cobro abierto" : "Pagar"}
+                            aria-label={isOpen ? "Cobro abierto" : "Pagar"}
                             aria-expanded={isOpen}
                           >
                             <svg viewBox="0 0 16 12" aria-hidden="true" focusable="false">
