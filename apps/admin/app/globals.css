@@ -509,6 +509,36 @@
       overflow-x: hidden;
       position: relative;
     }
+    /*
+     * Valores / saldos / precios: SIN negrilla (conserva color).
+     * Títulos / labels (span, em, h1–h2): mantienen peso.
+     */
+    .collector-mobile-app .collector-mobile-stat b,
+    .collector-mobile-app .collector-mobile-stat-meta,
+    .collector-mobile-app .collector-mobile-stat-close b,
+    .collector-mobile-app .collector-mobile-visit-money b,
+    .collector-mobile-app .collector-mobile-amount,
+    .collector-mobile-app .collector-mobile-cuadre-grid b,
+    .collector-mobile-app .collector-close-confirm .collector-mobile-cuadre-grid b,
+    .collector-mobile-app .collector-close-confirm-block b,
+    .collector-mobile-app .collector-mobile-day-history-row .is-money,
+    .collector-mobile-app .collector-mobile-day-history-row .is-saldo,
+    .collector-mobile-app .collector-mobile-dense-money b,
+    .collector-mobile-app .collector-mobile-home-cuadre-grid b,
+    .collector-mobile-app .collector-mobile-home-cuadre-progress,
+    .collector-mobile-app .collector-mobile-home-cuadre-means b,
+    .collector-mobile-app .is-money,
+    .collector-mobile-preview .collector-mobile-stat b,
+    .collector-mobile-preview .collector-mobile-cuadre-grid b,
+    .collector-mobile-preview .collector-mobile-dense-money b,
+    .collector-mobile-preview .collector-mobile-visit-money b,
+    .collector-mobile-preview .collector-mobile-amount,
+    .collector-mobile-preview .collector-mobile-home-cuadre-grid b,
+    .collector-mobile-preview .collector-mobile-home-cuadre-progress,
+    .collector-mobile-preview .collector-mobile-home-cuadre-means b,
+    .collector-mobile-preview .is-money {
+      font-weight: 400 !important;
+    }
     .collector-mobile-app.is-preview {
       min-height: 100%;
       height: 100%;
@@ -772,7 +802,7 @@
       display: block;
       font-size: 11px;
       line-height: 1.1;
-      font-weight: 700;
+      font-weight: 400;
       color: #111;
       margin-top: 1px;
       font-variant-numeric: tabular-nums;
@@ -789,7 +819,7 @@
       margin-top: 0;
       font-style: normal;
       font-size: 9px;
-      font-weight: 650;
+      font-weight: 400;
       font-variant-numeric: tabular-nums;
       color: #111;
       line-height: 1.1;
@@ -1156,6 +1186,14 @@
       background: #eff6ff;
       border-color: #93c5fd;
     }
+    .collector-mobile-card.is-pay-combinado {
+      background: #fff7ed;
+      border-color: #fdba74;
+    }
+    .collector-mobile-list.compact > .collector-mobile-card.is-dense.is-pay-combinado {
+      background: #fff7ed;
+      border-color: #fdba74;
+    }
     .collector-mobile-cuadre-grid em {
       font-style: normal;
       font-size: 9px;
@@ -1164,7 +1202,7 @@
     }
     .collector-mobile-cuadre-grid b {
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 400;
       font-variant-numeric: tabular-nums;
       color: #111;
       white-space: nowrap;
@@ -1354,7 +1392,7 @@
     .collector-mobile-day-history-row .is-money,
     .collector-mobile-day-history-row .is-saldo {
       font-size: 10px;
-      font-weight: 650;
+      font-weight: 400;
       color: #111;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -1362,6 +1400,7 @@
     }
     .collector-mobile-day-history-row .is-date {
       text-align: left;
+      font-weight: 650;
     }
     .collector-mobile-day-history-row .is-saldo.is-negative {
       color: #b91c1c;
@@ -1375,11 +1414,14 @@
     .collector-mobile-day-history-row.is-opening .is-money,
     .collector-mobile-day-history-row.is-opening .is-saldo {
       color: #111;
+      font-weight: 400;
+    }
+    .collector-mobile-day-history-row.is-opening .is-date {
       font-weight: 600;
     }
     .collector-mobile-day-history-row.is-opening .is-saldo {
       color: #0f766e;
-      font-weight: 700;
+      font-weight: 400;
     }
     .collector-mobile-day-history-empty {
       padding: 10px 12px;
@@ -1439,7 +1481,7 @@
     .collector-mobile-home-cuadre-progress {
       margin: 0 !important;
       font-size: 14px !important;
-      font-weight: 750 !important;
+      font-weight: 400 !important;
       font-variant-numeric: tabular-nums;
       color: #0f766e !important;
     }
@@ -1477,7 +1519,7 @@
     }
     .collector-mobile-home-cuadre-grid b {
       font-size: 16px;
-      font-weight: 750;
+      font-weight: 400;
       font-variant-numeric: tabular-nums;
       color: #111;
       line-height: 1.1;
@@ -1542,7 +1584,7 @@
     }
     .collector-mobile-home-cuadre-grid .is-cobrado-means .is-mean b {
       font-size: 14px;
-      font-weight: 750;
+      font-weight: 400;
       font-variant-numeric: tabular-nums;
       color: #111;
     }
@@ -1921,7 +1963,7 @@
       white-space: nowrap;
       text-align: right;
       font-size: 12px;
-      font-weight: 800;
+      font-weight: 400;
       color: #0f766e;
     }
     .collector-closed-review-list.is-cobros-cols > li.is-total {
@@ -1961,7 +2003,7 @@
     }
     .collector-closed-review-list b {
       font-size: 12px;
-      font-weight: 750;
+      font-weight: 400;
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
       line-height: 1.2;
@@ -2023,7 +2065,7 @@
     }
     .collector-mobile-home-cuadre-means b {
       font-size: 13px;
-      font-weight: 700;
+      font-weight: 400;
       font-variant-numeric: tabular-nums;
       color: #111;
     }
@@ -2248,7 +2290,7 @@
     }
     .collector-mobile-dense-row.is-paying .collector-mobile-dense-money b {
       font-size: 15px;
-      font-weight: 700;
+      font-weight: 400;
       line-height: 1.2;
     }
     .collector-mobile-dense-row.is-paying .collector-mobile-cuotas,
@@ -2514,7 +2556,7 @@
     .collector-mobile-dense-money b {
       display: block;
       font-size: 12px;
-      font-weight: 650;
+      font-weight: 400;
       font-variant-numeric: tabular-nums;
       font-feature-settings: "tnum" 1;
       color: #0f766e;
@@ -2697,6 +2739,89 @@
     .collector-pay-inline .pay-method.compact label.is-pay-banco.on {
       background: #bfdbfe;
       box-shadow: inset 0 0 0 1px #93c5fd;
+    }
+    .collector-pay-combo-toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 6px;
+      min-width: 0;
+    }
+    .collector-pay-combo-toggle {
+      appearance: none;
+      margin: 0;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid #fdba74;
+      background: #fff7ed;
+      color: #c2410c;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      line-height: 1.2;
+      cursor: pointer;
+    }
+    .collector-pay-combo-toggle.on {
+      background: #fb923c;
+      border-color: #ea580c;
+      color: #fff;
+    }
+    .collector-pay-combo-hint {
+      font-size: 10px;
+      font-weight: 600;
+      color: #9a3412;
+      white-space: nowrap;
+    }
+    .collector-pay-combo-legs {
+      display: grid;
+      gap: 6px;
+      margin: 0 0 6px;
+    }
+    .collector-pay-combo-leg {
+      display: grid;
+      gap: 4px;
+      padding: 6px;
+      border-radius: 8px;
+      border: 1px solid #fed7aa;
+      background: #fffbeb;
+    }
+    .collector-pay-combo-leg.is-disabled {
+      opacity: 0.45;
+      pointer-events: none;
+    }
+    .collector-pay-combo-leg.is-locked {
+      border-color: #86efac;
+      background: #f0fdf4;
+    }
+    .collector-pay-combo-leg-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 10px;
+      font-weight: 700;
+      color: #9a3412;
+    }
+    .collector-pay-combo-leg-head em {
+      font-style: normal;
+      color: #15803d;
+    }
+    .collector-pay-combo-methods label.is-blocked {
+      opacity: 0.35;
+      pointer-events: none;
+    }
+    .collector-pay-combo-lock {
+      justify-self: start;
+      font-size: 10px !important;
+    }
+    .collector-pay-combo-sum {
+      margin: 0;
+      font-size: 11px;
+      font-weight: 600;
+      color: #9a3412;
+      text-align: right;
+    }
+    .collector-pay-inline.is-combined .collector-pay-combo-legs {
+      margin-top: 2px;
     }
     .collector-pay-inline .pay-method.compact input[type="radio"] {
       width: 14px;
@@ -2900,7 +3025,7 @@
     }
     .collector-mobile-visit-money b {
       font-size: 15px;
-      font-weight: 700;
+      font-weight: 400;
       font-variant-numeric: tabular-nums;
       color: #0f766e;
     }
@@ -2928,7 +3053,7 @@
     }
     .collector-mobile-amount {
       font-size: 18px;
-      font-weight: 700;
+      font-weight: 400;
       font-variant-numeric: tabular-nums;
       color: #0f766e;
       white-space: nowrap;
@@ -3301,6 +3426,78 @@
       overflow-x: hidden;
       padding-bottom: max(28px, env(safe-area-inset-bottom, 0px));
     }
+    /*
+     * Supervisor móvil: montos/saldos/precios sin negrilla (conserva color).
+     * Títulos KPI (INICIO/RUTA/…) y th de tablas: sí negrilla.
+     */
+    .supervisor-mobile .supervisor-kpi-nb-sum b,
+    .supervisor-mobile-app .supervisor-kpi-nb-sum b,
+    .supervisor-mobile .supervisor-caja-hero b,
+    .supervisor-mobile-app .supervisor-caja-hero b,
+    .supervisor-mobile .supervisor-day-board.is-total-row b,
+    .supervisor-mobile-app .supervisor-day-board.is-total-row b,
+    .supervisor-mobile .supervisor-nequi-day-row .is-amount,
+    .supervisor-mobile-app .supervisor-nequi-day-row .is-amount,
+    .supervisor-mobile .supervisor-nequi-day-head b,
+    .supervisor-mobile-app .supervisor-nequi-day-head b,
+    .supervisor-mobile .supervisor-client-ficha-moves .is-amount,
+    .supervisor-mobile-app .supervisor-client-ficha-moves .is-amount,
+    .supervisor-mobile .supervisor-prestamo-hist-row .is-amount,
+    .supervisor-mobile-app .supervisor-prestamo-hist-row .is-amount,
+    .supervisor-mobile .supervisor-prestamo-hist-row .is-saldo,
+    .supervisor-mobile-app .supervisor-prestamo-hist-row .is-saldo,
+    .supervisor-mobile .supervisor-prestamo-hist-row b.is-amount,
+    .supervisor-mobile-app .supervisor-prestamo-hist-row b.is-amount,
+    .supervisor-mobile .supervisor-liq-table tbody td.is-num,
+    .supervisor-mobile-app .supervisor-liq-table tbody td.is-num,
+    .supervisor-mobile .supervisor-planilla-table tbody td.is-num,
+    .supervisor-mobile-app .supervisor-planilla-table tbody td.is-num,
+    .supervisor-mobile .supervisor-clientes-table tbody td.is-num,
+    .supervisor-mobile-app .supervisor-clientes-table tbody td.is-num,
+    .supervisor-mobile .collector-mobile-cuadre-grid b,
+    .supervisor-mobile-app .collector-mobile-cuadre-grid b,
+    .supervisor-mobile .collector-mobile-stat b,
+    .supervisor-mobile-app .collector-mobile-stat b,
+    .supervisor-mobile .collector-mobile-dense-money b,
+    .supervisor-mobile-app .collector-mobile-dense-money b,
+    .supervisor-mobile .collector-mobile-home-cuadre-grid b,
+    .supervisor-mobile-app .collector-mobile-home-cuadre-grid b,
+    .supervisor-mobile .collector-closed-review-list b,
+    .supervisor-mobile-app .collector-closed-review-list b,
+    .supervisor-mobile .collector-closed-review-list.is-nequi-day-ficha .is-cobro,
+    .supervisor-mobile-app .collector-closed-review-list.is-nequi-day-ficha .is-cobro,
+    .supervisor-mobile .supervisor-mobile-sheet-row b,
+    .supervisor-mobile-app .supervisor-mobile-sheet-row b,
+    .supervisor-mobile .supervisor-mobile-sheet-means b,
+    .supervisor-mobile-app .supervisor-mobile-sheet-means b,
+    .supervisor-mobile .supervisor-mobile-cuadre b,
+    .supervisor-mobile-app .supervisor-mobile-cuadre b,
+    .supervisor-mobile b.is-amount,
+    .supervisor-mobile-app b.is-amount,
+    .supervisor-mobile .supervisor-mobile-list .is-amount,
+    .supervisor-mobile-app .supervisor-mobile-list .is-amount,
+    .supervisor-mobile .supervisor-route-board .collector-mobile-cuadre-grid b,
+    .supervisor-mobile-app .supervisor-route-board .collector-mobile-cuadre-grid b {
+      font-weight: 400 !important;
+    }
+    .supervisor-mobile .supervisor-mobile-list.is-head .is-amount,
+    .supervisor-mobile-app .supervisor-mobile-list.is-head .is-amount,
+    .supervisor-mobile .supervisor-mobile-list > li.is-head .is-amount,
+    .supervisor-mobile-app .supervisor-mobile-list > li.is-head .is-amount,
+    .supervisor-mobile .supervisor-client-ficha-moves li.is-head .is-amount,
+    .supervisor-mobile-app .supervisor-client-ficha-moves li.is-head .is-amount {
+      font-weight: 700 !important;
+    }
+    .supervisor-mobile .supervisor-mobile-kpi b,
+    .supervisor-mobile-app .supervisor-mobile-kpi b,
+    .supervisor-mobile th.is-num,
+    .supervisor-mobile-app th.is-num,
+    .supervisor-mobile .collector-mobile-cuadre-grid em,
+    .supervisor-mobile-app .collector-mobile-cuadre-grid em,
+    .supervisor-mobile .collector-mobile-stat span,
+    .supervisor-mobile-app .collector-mobile-stat span {
+      font-weight: 700;
+    }
     .supervisor-mobile-header {
       align-items: center;
       padding: 6px 4px 2px !important;
@@ -3363,7 +3560,7 @@
     }
     .supervisor-mobile-nav-block .supervisor-kpi-nb-sum b {
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 400;
       font-variant-numeric: tabular-nums;
       letter-spacing: 0;
       color: #334155;
@@ -3954,7 +4151,7 @@
     }
     .supervisor-mobile-sheet-row b {
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 400;
       font-variant-numeric: tabular-nums;
       color: #111;
       text-align: right;
@@ -3978,8 +4175,65 @@
       gap: 3px;
       margin: 0 0 6px;
     }
+    .supervisor-mobile-actions.has-historial .btn.is-historial {
+      grid-column: 1 / -1;
+    }
     .supervisor-mobile-actions > .btn:nth-child(n + 3) {
       grid-column: auto;
+    }
+    .collector-mobile-day-history.is-supervisor-caja {
+      margin: 0;
+      border: 1px solid #dbe5df;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .collector-mobile-day-history.is-supervisor-caja .collector-mobile-day-history-list {
+      max-height: none;
+    }
+    .collector-mobile-home-cuadre.is-supervisor-caja-day {
+      margin: 0;
+      padding: 8px 8px 10px;
+    }
+    .collector-mobile-home-cuadre.is-supervisor-caja-day .collector-mobile-home-cuadre-head {
+      margin-bottom: 8px;
+      gap: 6px;
+    }
+    .collector-mobile-home-cuadre.is-supervisor-caja-day .collector-mobile-home-cuadre-head h2 {
+      font-size: 15px;
+    }
+    .collector-mobile-home-cuadre.is-supervisor-caja-day .collector-mobile-home-cuadre-progress {
+      font-size: 12px !important;
+    }
+    .collector-mobile-home-cuadre.is-supervisor-caja-day .collector-mobile-home-cuadre-grid {
+      gap: 6px;
+    }
+    .collector-mobile-home-cuadre.is-supervisor-caja-day .collector-mobile-home-cuadre-grid > div,
+    .collector-mobile-home-cuadre.is-supervisor-caja-day .collector-mobile-home-cuadre-grid > button {
+      padding: 8px 8px 7px;
+      border-radius: 8px;
+    }
+    .collector-mobile-home-cuadre.is-supervisor-caja-day .collector-mobile-home-cuadre-grid b {
+      font-size: 14px;
+      font-weight: 400;
+    }
+    .collector-mobile-home-cuadre.is-supervisor-caja-day .collector-mobile-home-cuadre-grid .is-cobrado-means {
+      gap: 6px;
+    }
+    .collector-mobile-home-cuadre.is-supervisor-caja-day .collector-mobile-home-cuadre-grid .is-cobrado-means .is-mean {
+      padding: 6px 6px;
+      border-radius: 6px;
+    }
+    .collector-mobile-home-cuadre.is-supervisor-caja-day .collector-mobile-home-cuadre-grid .is-cobrado-means .is-mean b {
+      font-size: 12px;
+      font-weight: 400;
+    }
+    .collector-mobile-home-cuadre.is-supervisor-caja-day .collector-mobile-home-cuadre-grid .is-saldo {
+      padding: 10px 10px 9px;
+    }
+    .collector-mobile-home-cuadre.is-supervisor-caja-day .collector-mobile-home-cuadre-grid .is-saldo b {
+      font-size: 20px;
+      font-weight: 400;
     }
     .supervisor-mobile-sheet-means {
       display: grid;
@@ -4038,7 +4292,7 @@
     }
     .supervisor-mobile-sheet-means b {
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 400;
       font-variant-numeric: tabular-nums;
       line-height: 1.15;
       color: #111;
@@ -4109,7 +4363,7 @@
     }
     .supervisor-mobile-cuadre > div:not(.supervisor-mobile-cuadre-title) b {
       font-size: 12px;
-      font-weight: 700;
+      font-weight: 400;
       color: #111;
       font-variant-numeric: tabular-nums;
       line-height: 1.15;
@@ -4134,7 +4388,7 @@
     }
     .supervisor-mobile-cuadre .is-final b {
       color: #0a5c4c;
-      font-weight: 800;
+      font-weight: 400;
     }
     .supervisor-mobile-sheet-row.is-primary-row b {
       font-size: 13px;
@@ -4228,7 +4482,7 @@
       text-align: right;
       font-variant-numeric: tabular-nums;
       font-feature-settings: "tnum" 1;
-      font-weight: 650;
+      font-weight: 400;
       color: #0f766e;
       white-space: nowrap;
     }
@@ -4313,7 +4567,7 @@
     .supervisor-mobile .supervisor-planilla-table td.is-num,
     .supervisor-mobile-app .supervisor-planilla-table td.is-num {
       font-size: 10px !important;
-      font-weight: 650;
+      font-weight: 400;
       text-align: right !important;
       overflow: visible !important;
       text-overflow: clip !important;
@@ -4358,6 +4612,11 @@
     .supervisor-planilla-method.is-pay-banco {
       color: #1d4ed8;
       background: #dbeafe;
+    }
+    .supervisor-planilla-method.is-pay-combinado {
+      color: #c2410c;
+      background: #ffedd5;
+      border: 1px solid #fdba74;
     }
     .supervisor-clientes-table .is-ruta {
       width: 8%;
@@ -4628,6 +4887,9 @@
       justify-self: start;
       line-height: 1.2;
       white-space: nowrap;
+    }
+    .supervisor-client-ficha-moves .is-amount {
+      font-weight: 400;
     }
     .supervisor-client-ficha-moves span {
       font-size: 11px;
@@ -4959,7 +5221,7 @@
     }
     .supervisor-day-board.is-nequi-hoy .supervisor-caja-hero.is-nequi b {
       font-size: 22px;
-      font-weight: 800;
+      font-weight: 400;
       letter-spacing: -0.02em;
       color: #111;
       line-height: 1;
@@ -5000,7 +5262,7 @@
     }
     .supervisor-day-board.is-banco-hoy .supervisor-caja-hero.is-banco b {
       font-size: 22px;
-      font-weight: 800;
+      font-weight: 400;
       letter-spacing: -0.02em;
       color: #111;
       line-height: 1;
@@ -5045,7 +5307,7 @@
     }
     .supervisor-nequi-day-head b {
       font-size: 13px;
-      font-weight: 800;
+      font-weight: 400;
       color: #5b3d8a;
       font-variant-numeric: tabular-nums;
     }
@@ -5099,7 +5361,7 @@
     }
     .supervisor-nequi-day-row .is-amount {
       font-size: 14px;
-      font-weight: 800;
+      font-weight: 400;
       color: #5b3d8a;
       font-variant-numeric: tabular-nums;
       text-align: right;
@@ -5125,7 +5387,7 @@
     .supervisor-day-board.is-total-row b {
       flex-shrink: 0;
       font-size: 26px;
-      font-weight: 800;
+      font-weight: 400;
       letter-spacing: -0.03em;
       color: #111;
       line-height: 1;
@@ -5148,7 +5410,7 @@
     }
     .supervisor-caja-hero b {
       font-size: 22px;
-      font-weight: 750;
+      font-weight: 400;
       color: #111;
       font-variant-numeric: tabular-nums;
       line-height: 1.1;
@@ -5462,7 +5724,7 @@
     }
     .supervisor-caja-hero.is-money-lg b {
       font-size: 22px;
-      font-weight: 800;
+      font-weight: 400;
       letter-spacing: -0.02em;
     }
     .supervisor-route-board.is-caja-mode {
@@ -5471,7 +5733,7 @@
     }
     .supervisor-route-board.is-caja-mode .supervisor-caja-hero.is-row b {
       font-size: 22px;
-      font-weight: 800;
+      font-weight: 400;
     }
     .supervisor-route-board.is-nequi-mode {
       gap: 0;
@@ -5496,14 +5758,14 @@
     .supervisor-route-board.is-nequi-mode .supervisor-caja-hero.is-row b {
       color: #111;
       font-size: 22px;
-      font-weight: 800;
+      font-weight: 400;
     }
     .supervisor-caja-hero.is-banco span,
     .supervisor-caja-hero.is-banco b,
     .supervisor-route-board.is-banco-mode .supervisor-caja-hero.is-row b {
       color: #111;
       font-size: 22px;
-      font-weight: 800;
+      font-weight: 400;
     }
     .supervisor-caja-hero.is-nequi span {
       font-size: 11px;

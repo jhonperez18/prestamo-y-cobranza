@@ -1236,6 +1236,7 @@ export function syncAllPaymentsToMovements(
 ) {
   const primary = accounts.find((row) => row.active) ?? accounts[0];
   if (!primary) return dedupeBankMovements(movements);
+  const nequiAccount = accounts.find((row) => row.accountType === "nequi");
 
   const existing = dedupeBankMovements(repairBankMovementsFromPayments(movements, payments));
   const byPayment = new Map<string, BankMovement>();
@@ -1253,9 +1254,13 @@ export function syncAllPaymentsToMovements(
     seenPayments.add(payment.ref);
     const prev = byPayment.get(payment.ref);
     const period = periodFromIso(payment.paidDate);
+    const method = normalizePaymentMethod(payment.method);
+    const accountRef =
+      prev?.accountRef ??
+      (method === "nequi" && nequiAccount ? nequiAccount.ref : primary.ref);
     paymentRows.push({
       ref: prev?.ref && !/^PG-/i.test(prev.ref) ? prev.ref : prev?.ref ?? nextBankMovementRef(),
-      accountRef: prev?.accountRef ?? primary.ref,
+      accountRef,
       period: prev?.reconciled ? prev.period : period,
       description: paymentMovementDescription(payment),
       valueDate: payment.paidDate ?? prev?.valueDate ?? displayToday(),

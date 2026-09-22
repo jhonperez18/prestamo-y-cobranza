@@ -13,7 +13,7 @@ export function loanStatusPill(loan: {
   collectionAlerts?: number;
 }): { label: string; kind: StatusKind } {
   const balance = loan.balance ?? 0;
-  if (loan.status === "Finalizado" || balance <= 0) {
+  if (balance <= 0) {
     return { label: "Finalizado", kind: "paid" };
   }
 

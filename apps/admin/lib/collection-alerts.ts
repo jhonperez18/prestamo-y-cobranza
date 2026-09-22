@@ -178,7 +178,7 @@ export function reconcileLoanCollectionAlerts<T extends LoanRow>(
       ? loanCollectionAlerts(loan)
       : liveLoanCollectionAlerts(loan, payments, today);
 
-  const finalized = loan.status === "Finalizado" || (loan.balance ?? 0) <= 0;
+  const finalized = (loan.balance ?? 0) <= 0;
   const { status: nextStatus, kind: nextKind } = statusFromAlerts(alerts, finalized);
 
   if (
@@ -246,8 +246,8 @@ export function clearCollectionAlertsOnPay(loan: LoanRow): LoanRow {
   return {
     ...loan,
     collectionAlerts: 0,
-    status: loan.status === "Finalizado" ? "Finalizado" : "Activo",
-    kind: loan.status === "Finalizado" || (loan.balance ?? 0) <= 0 ? "paid" : "ok",
+    status: (loan.balance ?? 0) <= 0 ? "Finalizado" : "Activo",
+    kind: (loan.balance ?? 0) <= 0 ? "paid" : "ok",
   };
 }
 

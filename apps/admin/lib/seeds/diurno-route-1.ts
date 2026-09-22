@@ -2,6 +2,8 @@
  * Hoja DIURNO — solo posición + nombre (ruta 1).
  * Alta: 17/09/2026 · createdBy: Truqui
  */
+import { toClientNameTitleCase } from "@/lib/client-name-case";
+
 export const DIURNO_ROUTE_NAMES: string[] = [
   "EDUARDO",
   "EDINSON",
@@ -97,7 +99,7 @@ export function buildDiurnoRoute1Clients() {
   return DIURNO_ROUTE_NAMES.map((name, index) => ({
     ref: `COD-${DIURNO_REF_START + index}`,
     alta: DIURNO_ALTA,
-    name,
+    name: toClientNameTitleCase(name),
     lastName: "",
     nickname: "",
     document: "",

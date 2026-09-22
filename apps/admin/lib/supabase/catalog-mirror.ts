@@ -14,11 +14,15 @@ import {
 
 export const DEMO_CLIENT_MIRROR_QUEUE_KEY = "nexo-demo-client-mirror-queue";
 export const DEMO_LOAN_MIRROR_QUEUE_KEY = "nexo-demo-loan-mirror-queue";
-/** Tras mirror OK: el pull no pisa este Guardar hasta que la nube coincida o expire. */
+/**
+ * Tras Guardar / mirror: el pull no pisa la ficha local hasta que la nube
+ * coincida en firma. Sin caducidad corta (antes 15 min → rebobinaba).
+ */
 export const DEMO_CLIENT_PULL_SHIELD_KEY = "nexo-demo-client-pull-shield";
-const CLIENT_PULL_SHIELD_MS = 15 * 60 * 1000;
+/** Solo válvula de seguridad: escudos huérfanos > 7 días. */
+const CLIENT_PULL_SHIELD_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-type ClientPullShieldEntry = { client: ClientRow; until: number };
+type ClientPullShieldEntry = { client: ClientRow; armedAt: number };
 
 export type ClientMirrorRow = {
   ref: string;
@@ -211,6 +215,17 @@ export function mirrorToLoanRow(row: LoanMirrorRow): LoanRow | null {
   };
 }
 
+function rowUpdatedAtMs(row: { updatedAt?: string }) {
+  return Date.parse(String(row.updatedAt || "")) || 0;
+}
+
+/**
+ * Merge local ← remoto (sistema madre).
+ * 1) Cola / escudo (= pendingSync) → siempre local pendiente.
+ * 2) Sin local → remoto (alta nueva en nube).
+ * 3) Misma firma → meta más nueva; empate → local.
+ * 4) Firma distinta → local si local.updatedAt >= remoto; si no, remoto (otro dispositivo).
+ */
 function mergeByRefPreferPendingLocal<T extends { ref: string; updatedAt?: string }>(
   local: T[],
   remote: T[],
@@ -246,21 +261,22 @@ function mergeByRefPreferPendingLocal<T extends { ref: string; updatedAt?: strin
       localByRef.delete(ref);
       continue;
     }
-    // Sistema madre: en empate o firma incompleta, este PC no se rebobina.
-    // Antes: firma igual → remoto siempre. Eso borraba notas/dirección/ciudad
-    // tras Guardar (campos de ficha no iban en la firma).
-    const localTs = Date.parse(String(localRow.updatedAt || "")) || 0;
-    const remoteTs = Date.parse(String(remoteRow.updatedAt || "")) || 0;
-    if (signature(localRow) === signature(remoteRow)) {
+
+    const localTs = rowUpdatedAtMs(localRow);
+    const remoteTs = rowUpdatedAtMs(remoteRow);
+    const sameSig = signature(localRow) === signature(remoteRow);
+
+    if (sameSig) {
       const winner = remoteTs > localTs ? remoteRow : localRow;
       if (winner !== localRow) changed = true;
       merged.push(winner);
       localByRef.delete(ref);
       continue;
     }
-    // Firmas distintas: gana el más reciente (updatedAt).
-    // Empate / sin reloj → local (no pisar este aparato con remoto opaco).
-    const winner = remoteTs > localTs ? remoteRow : localRow;
+
+    // Contenido distinto: no rebobinar edit fresco del padre.
+    // Empate de reloj → local. Remoto solo si es estrictamente más nuevo.
+    const winner = localTs >= remoteTs ? localRow : remoteRow;
     if (signature(winner) !== signature(localRow)) changed = true;
     merged.push(winner);
     localByRef.delete(ref);
@@ -388,8 +404,13 @@ function readClientPullShield(): Map<string, ClientRow> {
   const alive: ClientPullShieldEntry[] = [];
   const byRef = new Map<string, ClientRow>();
   for (const entry of raw) {
-    if (!entry?.client?.ref || !entry.until || entry.until <= now) continue;
-    alive.push(entry);
+    if (!entry?.client?.ref) continue;
+    const armedAt = Number(entry.armedAt) || 0;
+    // Compat: entradas viejas con `until` se tratan como armadas.
+    const legacyUntil = Number((entry as { until?: number }).until) || 0;
+    const ageBase = armedAt || (legacyUntil ? legacyUntil - 15 * 60 * 1000 : now);
+    if (ageBase && now - ageBase > CLIENT_PULL_SHIELD_MAX_AGE_MS) continue;
+    alive.push({ client: entry.client, armedAt: ageBase || now });
     byRef.set(entry.client.ref, entry.client);
   }
   if (alive.length !== raw.length) writeDemoJson(DEMO_CLIENT_PULL_SHIELD_KEY, alive);
@@ -399,20 +420,19 @@ function readClientPullShield(): Map<string, ClientRow> {
 function armClientPullShield(client: ClientRow) {
   if (!client?.ref) return;
   const raw = readDemoJson<ClientPullShieldEntry[]>(DEMO_CLIENT_PULL_SHIELD_KEY, []);
-  const until = Date.now() + CLIENT_PULL_SHIELD_MS;
   const next = raw.filter((entry) => entry?.client?.ref && entry.client.ref !== client.ref);
-  next.push({ client, until });
+  next.push({ client, armedAt: Date.now() });
   writeDemoJson(DEMO_CLIENT_PULL_SHIELD_KEY, next);
 }
 
 function pruneClientPullShieldAgainstRemote(remoteByRef: Map<string, ClientRow>) {
   const raw = readDemoJson<ClientPullShieldEntry[]>(DEMO_CLIENT_PULL_SHIELD_KEY, []);
-  const now = Date.now();
   const next = raw.filter((entry) => {
-    if (!entry?.client?.ref || !entry.until || entry.until <= now) return false;
+    if (!entry?.client?.ref) return false;
     const remote = remoteByRef.get(entry.client.ref);
+    // Sin remoto aún → mantener escudo.
     if (!remote) return true;
-    // Nube ya tiene la misma ficha → se puede soltar el escudo.
+    // Nube ya tiene la misma ficha → soltar.
     return clientSignature(entry.client) !== clientSignature(remote);
   });
   if (next.length !== raw.length) writeDemoJson(DEMO_CLIENT_PULL_SHIELD_KEY, next);
@@ -514,6 +534,7 @@ export async function flushCatalogMirrorQueues() {
   for (const client of clients) {
     try {
       const { res, json } = await postMirror("/api/clients/mirror", { client });
+      // Solo salir de la cola con confirmación real (200 OK + ok, no skipped).
       if (res.ok && json.ok && !json.skipped) {
         armClientPullShield(client);
         continue;

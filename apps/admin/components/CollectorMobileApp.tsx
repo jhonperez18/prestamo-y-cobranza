@@ -27,7 +27,7 @@ import {
   type PaymentRow,
   type RouteRow,
 } from "@/lib/mock-data";
-import type { CollectorPaymentDraft } from "@/lib/route-sync";
+import type { CollectorPaymentRegisterInput } from "@/lib/route-sync";
 import { canRenewLoan } from "@/lib/loan-renew";
 import { syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
@@ -39,6 +39,11 @@ import {
   planillaLiveCuota,
   planillaLiveCuotasProgress,
 } from "@/lib/planilla-display";
+import {
+  combinedMethodsLabel,
+  paymentComboGroupId,
+  visitHasCombinedPayment,
+} from "@/lib/payment-combo";
 import type {
   RouteExpenseLine,
   CollectorDayCloseRecord,
@@ -115,7 +120,7 @@ type Props = {
   date?: string;
   preview?: boolean;
   canRegister?: boolean;
-  onRegisterPayment?: (draft: CollectorPaymentDraft) => boolean | void;
+  onRegisterPayment?: (draft: CollectorPaymentRegisterInput) => boolean | void;
   /** @deprecated Ya no se usa en la lista: sin pago = sigue el saldo. */
   onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
   onRenewLoan?: (loanRef: string) => void;
@@ -957,14 +962,23 @@ export function CollectorMobileApp({
                         (!row.loanRef || !item.loanRef || row.loanRef === item.loanRef),
                     )
                   : undefined;
+                const isCombinedVisit = visitHasCombinedPayment(payments, {
+                  loanRef: item.loanRef || identity.loanRef,
+                  clientRef: item.clientRef,
+                  dispatchDate: item.dispatchDate || activeDate,
+                });
+                const comboSiblingPays = isCombinedVisit
+                  ? payments.filter(
+                      (row) =>
+                        !row.voidedAt?.trim() &&
+                        (row.paidDate || "").trim() === (item.dispatchDate || activeDate) &&
+                        row.loanRef === (item.loanRef || identity.loanRef) &&
+                        Boolean(paymentComboGroupId(row)),
+                    )
+                  : [];
                 const payMethod = paidPayment
                   ? normalizePaymentMethod(paidPayment.method)
                   : null;
-                const paymentVoided = Boolean(item.paymentRef) && !paidPayment;
-                const needsRecollect =
-                  paymentVoided ||
-                  (item.visitStatus === "cobrado" && !paidPayment) ||
-                  (item.visitStatus === "parcial" && !paidPayment);
                 const canLend =
                   identity.awaitingLoan &&
                   !collectionStopped &&
@@ -973,8 +987,6 @@ export function CollectorMobileApp({
                 const canAct =
                   !identity.awaitingLoan &&
                   item.visitStatus !== "omitido" &&
-                  (item.visitStatus !== "cobrado" || needsRecollect) &&
-                  (!item.paymentRef || needsRecollect) &&
                   !collectionStopped &&
                   canCollect &&
                   Boolean(identity.loanRef) &&
@@ -994,7 +1006,11 @@ export function CollectorMobileApp({
                           ? "collector-mobile-card is-open is-dense"
                           : "collector-mobile-card is-dense",
                       identity.awaitingLoan ? "is-awaiting-loan" : "",
-                      isDoneView && payMethod ? paymentMethodToneClass(payMethod) : "",
+                      isDoneView && isCombinedVisit
+                        ? "is-pay-combinado"
+                        : isDoneView && payMethod
+                          ? paymentMethodToneClass(payMethod)
+                          : "",
                     ]
                       .filter(Boolean)
                       .join(" ")}
@@ -1056,21 +1072,33 @@ export function CollectorMobileApp({
                       {!identity.awaitingLoan && isDoneView ? (
                         <Pill
                           label={
-                            payMethod
-                              ? paymentMethodInitial(payMethod)
-                              : visitStatusLabel(item.visitStatus)
+                            isCombinedVisit && comboSiblingPays.length >= 2
+                              ? combinedMethodsLabel(
+                                  comboSiblingPays.map((row) =>
+                                    normalizePaymentMethod(row.method),
+                                  ),
+                                )
+                              : payMethod
+                                ? paymentMethodInitial(payMethod)
+                                : visitStatusLabel(item.visitStatus)
                           }
                           kind={
-                            payMethod
-                              ? paymentMethodKind(payMethod)
-                              : visitStatusKind(item.visitStatus)
+                            isCombinedVisit
+                              ? "warn"
+                              : payMethod
+                                ? paymentMethodKind(payMethod)
+                                : visitStatusKind(item.visitStatus)
                           }
                           title={
-                            payMethod ? paymentMethodLabel(payMethod) : undefined
+                            isCombinedVisit
+                              ? "Cobro combinado (dos métodos)"
+                              : payMethod
+                                ? paymentMethodLabel(payMethod)
+                                : undefined
                           }
                         />
                       ) : null}
-                      {!identity.awaitingLoan && !isDoneView && canAct ? (
+                      {!identity.awaitingLoan && canAct ? (
                         <>
                           {!isOpen ? (
                             <CuotasProgressCell
@@ -1145,6 +1173,49 @@ export function CollectorMobileApp({
                               : undefined
                           }
                           onSubmit={(payload) => {
+                            if (payload.combined) {
+                              const ok = onRegisterPayment({
+                                combined: true,
+                                comboGroupId: payload.combined.comboGroupId,
+                                paidTime: payload.combined.paidTime,
+                                parts: [
+                                  {
+                                    idempotencyKey: payload.combined.parts[0].idempotencyKey,
+                                    routeRef,
+                                    clientRef: item.clientRef,
+                                    loanRef: identity.loanRef,
+                                    dispatchDate: item.dispatchDate || activeDate,
+                                    amount: payload.combined.parts[0].amount,
+                                    kind: payload.kind,
+                                    method: payload.combined.parts[0].method,
+                                    evidence: payload.combined.parts[0].evidence,
+                                    collectorRef: collector.ref,
+                                    collectorName: collector.name,
+                                    clientName: identity.fullName,
+                                    comboGroupId: payload.combined.comboGroupId,
+                                    paidTime: payload.combined.paidTime,
+                                  },
+                                  {
+                                    idempotencyKey: payload.combined.parts[1].idempotencyKey,
+                                    routeRef,
+                                    clientRef: item.clientRef,
+                                    loanRef: identity.loanRef,
+                                    dispatchDate: item.dispatchDate || activeDate,
+                                    amount: payload.combined.parts[1].amount,
+                                    kind: "abono",
+                                    method: payload.combined.parts[1].method,
+                                    evidence: payload.combined.parts[1].evidence,
+                                    collectorRef: collector.ref,
+                                    collectorName: collector.name,
+                                    clientName: identity.fullName,
+                                    comboGroupId: payload.combined.comboGroupId,
+                                    paidTime: payload.combined.paidTime,
+                                  },
+                                ],
+                              });
+                              if (ok !== false) closeCard();
+                              return;
+                            }
                             const ok = onRegisterPayment({
                               idempotencyKey: payload.idempotencyKey,
                               routeRef,

@@ -28,6 +28,7 @@ type Props = {
   reconciliations: BankReconciliation[];
   miscPayment?: MiscPayment | null;
   onSave: (movement: BankMovement) => void;
+  onDelete?: (movement: BankMovement) => void;
   onOpenMiscPayment?: (miscPaymentRef: string) => void;
   onToast: (message?: string) => void;
   onBack?: () => void;
@@ -47,6 +48,7 @@ export function BankExpenseFicha({
   reconciliations,
   miscPayment = null,
   onSave,
+  onDelete,
   onOpenMiscPayment,
   onToast,
   onBack,
@@ -55,7 +57,9 @@ export function BankExpenseFicha({
   const closed =
     isPeriodClosed(reconciliations, movement.accountRef, movement.period) || movement.reconciled;
   const linkedMisc = Boolean(miscPayment);
-  const canEditManual = movement.manual && !closed && !linkedMisc;
+  const isRouteExpense = Boolean(movement.dayExpenseLineRef);
+  const canEditManual = (movement.manual || isRouteExpense) && !closed && !linkedMisc;
+  const canDelete = Boolean(onDelete) && !closed && !linkedMisc && (movement.manual || isRouteExpense);
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<EditDraft>(() => ({
@@ -72,7 +76,11 @@ export function BankExpenseFicha({
       return;
     }
     if (!canEditManual) {
-      onToast(closed ? "Periodo conciliado · solo lectura." : "Este gasto se edita desde Pagos varios.");
+      onToast(
+        closed
+          ? "Periodo conciliado · solo lectura."
+          : "Este gasto no se puede editar aquí.",
+      );
       return;
     }
     setDraft({
@@ -83,6 +91,17 @@ export function BankExpenseFicha({
       category: movement.category ?? "otro",
     });
     setEditing(true);
+  }
+
+  function confirmDelete() {
+    if (!onDelete || !canDelete) return;
+    const ok = window.confirm(
+      isRouteExpense
+        ? "¿Eliminar este gasto de ruta? Se recalcula la caja del cobrador y el banco."
+        : "¿Eliminar este registro bancario?",
+    );
+    if (!ok) return;
+    onDelete(movement);
   }
 
   function saveEdit() {
@@ -99,7 +118,7 @@ export function BankExpenseFicha({
       credit: amount,
       valueDate: draft.valueDate,
       opDate: draft.valueDate,
-      category: draft.category,
+      category: isRouteExpense ? (movement.category ?? draft.category) : draft.category,
     });
     setEditing(false);
     onToast("Registro bancario actualizado.");
@@ -119,6 +138,11 @@ export function BankExpenseFicha({
         <span className="file-title-ref ref">{displayRef}</span>
         {closed ? <Pill label="Conciliado · solo lectura" kind="ok" /> : null}
         <div className="grow" />
+        {canDelete ? (
+          <button type="button" className="btn secondary compact" onClick={confirmDelete}>
+            Eliminar
+          </button>
+        ) : null}
         <button type="button" className="btn primary compact" onClick={startEdit}>
           Modificar
         </button>
@@ -211,7 +235,11 @@ export function BankExpenseFicha({
               },
               {
                 label: "Enlaces",
-                value: linkedMisc && miscPayment ? `Pago varios ${miscPayment.ref}` : "Gasto bancario",
+                value: linkedMisc && miscPayment
+                  ? `Pago varios ${miscPayment.ref}`
+                  : isRouteExpense
+                    ? "Gasto de ruta · cobrador"
+                    : "Gasto bancario",
               },
               { label: "Tipo", value: "Transferencia bancaria" },
               { label: "Periodo", value: periodLabel(movement.period) },

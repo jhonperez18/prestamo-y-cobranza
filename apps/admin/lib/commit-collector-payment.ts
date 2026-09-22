@@ -30,10 +30,12 @@ import { syncPermanentRoutePlanilla } from "@/lib/route-planilla";
 import {
   applyCollectorPaymentResult,
   resolveCollectorPaymentContext,
-  visitAlreadyPaidToday,
   type CollectorPaymentDraft,
 } from "@/lib/route-sync";
 import { isCollectorDayClosedForPayments } from "@/lib/collector-day-auto-close";
+import {
+  encodeComboChargeLabel,
+} from "@/lib/payment-combo";
 
 export type CollectorPaymentCommitInput = {
   draft: CollectorPaymentDraft;
@@ -43,6 +45,11 @@ export type CollectorPaymentCommitInput = {
   routes: RouteRow[];
   assignments: DailyCollectionAssignment[];
   collectors: CollectorRow[];
+  /**
+   * Segundo tramo de un cobro combinado: permite otro PG- el mismo día
+   * solo si ya existe un vivo con el mismo comboGroupId.
+   */
+  allowComboSibling?: boolean;
 };
 
 export type CollectorPaymentCommitResult =
@@ -50,6 +57,19 @@ export type CollectorPaymentCommitResult =
   | {
       ok: true;
       payment: PaymentRow;
+      payments: PaymentRow[];
+      loans: LoanRow[];
+      clients: ClientRow[];
+      routes: RouteRow[];
+      assignments: DailyCollectionAssignment[];
+    };
+
+export type CollectorCombinedPaymentCommitResult =
+  | { ok: false; error: string; duplicate?: boolean }
+  | {
+      ok: true;
+      payment: PaymentRow;
+      paymentsCreated: [PaymentRow, PaymentRow];
       payments: PaymentRow[];
       loans: LoanRow[];
       clients: ClientRow[];
@@ -105,7 +125,15 @@ function stampRouteStopPaid(
 export function commitCollectorPayment(
   input: CollectorPaymentCommitInput,
 ): CollectorPaymentCommitResult {
-  const { draft, payments, loans, clients, routes, assignments, collectors } = input;
+  const {
+    draft,
+    payments,
+    loans,
+    clients,
+    routes,
+    assignments,
+    collectors,
+  } = input;
 
   const keys = new Set(payments.map((row) => row.idempotencyKey).filter(Boolean) as string[]);
   if (draft.idempotencyKey && keys.has(draft.idempotencyKey)) {
@@ -121,24 +149,6 @@ export function commitCollectorPayment(
   const route = resolved.route;
   if (!loan || loan.balance <= 0) {
     return { ok: false, error: "No hay préstamo activo para este cliente. No se registró el cobro." };
-  }
-
-  const already = visitAlreadyPaidToday(assignments, payments, {
-    loanRef: loan.ref,
-    clientRef: draft.clientRef,
-    dispatchDate,
-    collectorRef: draft.collectorRef,
-    loans,
-  });
-  if (already) {
-    return {
-      ok: false,
-      duplicate: true,
-      error:
-        already.ref && already.ref !== "COBRADO"
-          ? `Ya existe el cobro ${already.ref} de este cliente hoy. Un cliente = un pago = un código.`
-          : "Este cliente ya tiene cobro hoy. Un cliente = un pago = un código.",
-    };
   }
 
   if (isCollectorDayClosedForPayments(dispatchDate)) {
@@ -159,7 +169,9 @@ export function commitCollectorPayment(
   if (!result.ok) return { ok: false, error: result.error };
 
   const paymentRef = nextPaymentCode(payments);
-  const paidTime = new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
+  const paidTime =
+    draft.paidTime?.trim() ||
+    new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
   const assignment = assignments.find(
     (row) =>
       row.collectorRef === draft.collectorRef &&
@@ -167,6 +179,9 @@ export function commitCollectorPayment(
       (row.loanRef === loan.ref || row.clientRef === draft.clientRef),
   );
   const payTarget = cuotaTarget(loan);
+  const baseChargeLabel =
+    assignment?.chargeLabel ?? (payTarget?.kind ? chargeLabel(payTarget.kind) : undefined);
+  const comboGroupId = draft.comboGroupId?.trim() || undefined;
   const payment = buildPaymentRow(
     {
       ref: paymentRef,
@@ -175,8 +190,9 @@ export function commitCollectorPayment(
       paidDate: dispatchDate,
       paidTime,
       dueDate: assignment?.chargeDate ?? payTarget?.date,
-      chargeLabel:
-        assignment?.chargeLabel ?? (payTarget?.kind ? chargeLabel(payTarget.kind) : undefined),
+      chargeLabel: comboGroupId
+        ? encodeComboChargeLabel(baseChargeLabel, comboGroupId)
+        : baseChargeLabel,
       client: draft.clientName,
       collector: draft.collectorName,
       collectorRef: draft.collectorRef,
@@ -189,6 +205,7 @@ export function commitCollectorPayment(
       evidence: draft.evidence?.length ? draft.evidence : undefined,
       source: "pwa",
       gps: true,
+      comboGroupId,
     },
     loan,
     result.pay,
@@ -271,5 +288,90 @@ export function commitCollectorPayment(
     clients: nextClients,
     routes: nextRoutes,
     assignments: nextAssignments,
+  };
+}
+
+/**
+ * Cobro combinado atómico: dos PG- misma fecha/hora, métodos distintos.
+ * El mismo día admite más abonos, con o sin este vínculo.
+ */
+export function commitCollectorCombinedPayment(input: {
+  parts: [CollectorPaymentDraft, CollectorPaymentDraft];
+  comboGroupId: string;
+  paidTime: string;
+  payments: PaymentRow[];
+  loans: LoanRow[];
+  clients: ClientRow[];
+  routes: RouteRow[];
+  assignments: DailyCollectionAssignment[];
+  collectors: CollectorRow[];
+}): CollectorCombinedPaymentCommitResult {
+  const [a, b] = input.parts;
+  const methodA = normalizePaymentMethod(a.method);
+  const methodB = normalizePaymentMethod(b.method);
+  if (methodA === methodB) {
+    return { ok: false, error: "Combinado requiere dos métodos distintos." };
+  }
+  if (!(a.amount > 0) || !(b.amount > 0)) {
+    return { ok: false, error: "Cada tramo del combinado debe tener valor." };
+  }
+  const comboGroupId = input.comboGroupId.trim();
+  if (!comboGroupId) {
+    return { ok: false, error: "Falta el vínculo del cobro combinado." };
+  }
+  const paidTime = input.paidTime.trim();
+  if (!paidTime) {
+    return { ok: false, error: "Falta la hora compartida del cobro combinado." };
+  }
+
+  const first = commitCollectorPayment({
+    draft: {
+      ...a,
+      method: methodA,
+      comboGroupId,
+      paidTime,
+    },
+    payments: input.payments,
+    loans: input.loans,
+    clients: input.clients,
+    routes: input.routes,
+    assignments: input.assignments,
+    collectors: input.collectors,
+  });
+  if (!first.ok) return first;
+
+  const second = commitCollectorPayment({
+    draft: {
+      ...b,
+      method: methodB,
+      comboGroupId,
+      paidTime,
+      // Tras el 1.er tramo el saldo/cuota ya bajó: el 2.º es abono del resto.
+      kind: "abono",
+    },
+    payments: first.payments,
+    loans: first.loans,
+    clients: first.clients,
+    routes: first.routes,
+    assignments: first.assignments,
+    collectors: input.collectors,
+    allowComboSibling: true,
+  });
+  if (!second.ok) {
+    return {
+      ok: false,
+      error: `Primer tramo ok, segundo falló: ${second.error}. Revisá el cobro ${first.payment.ref}.`,
+    };
+  }
+
+  return {
+    ok: true,
+    payment: first.payment,
+    paymentsCreated: [first.payment, second.payment],
+    payments: second.payments,
+    loans: second.loans,
+    clients: second.clients,
+    routes: second.routes,
+    assignments: second.assignments,
   };
 }

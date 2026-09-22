@@ -65,15 +65,29 @@ export type CollectorPaymentDraft = {
   collectorRef: string;
   collectorName: string;
   clientName: string;
+  /** Vínculo de cobro combinado (dos tramos). */
+  comboGroupId?: string;
+  /** Hora fija compartida entre tramos del combinado. */
+  paidTime?: string;
 };
+
+/** Registro atómico de cobro simple o combinado (2 métodos). */
+export type CollectorPaymentRegisterInput =
+  | CollectorPaymentDraft
+  | {
+      combined: true;
+      comboGroupId: string;
+      paidTime: string;
+      parts: [CollectorPaymentDraft, CollectorPaymentDraft];
+    };
 
 export function findRouteStop(route: RouteRow, clientRef: string) {
   return route.stops.find((stop) => stop.clientRef === clientRef) ?? null;
 }
 
 /**
- * Regla de negocio: un cliente / préstamo = un solo cobro vivo por día.
- * PG anulados no cuentan: tras anular se puede volver a cobrar el mismo día.
+ * Primer cobro vivo del préstamo en el día (si hay).
+ * No impide otro abono: el mismo día puede haber varios PG-.
  */
 export function findDailyClientPayment(
   payments: PaymentRow[],
@@ -140,10 +154,6 @@ function assignmentHasLivePaymentToday(
   return Boolean(livePaymentForRef(row.paymentRef, payments, row));
 }
 
-function stopHasLivePayment(stop: RouteStop, payments: PaymentRow[]) {
-  return Boolean(livePaymentForRef(stop.paymentRef, payments, stop));
-}
-
 /** True si la visita del día ya tiene cobro vivo (planilla o pago). */
 export function visitAlreadyPaidToday(
   assignments: {
@@ -183,7 +193,7 @@ export function validateCollectorPayment(
   route: RouteRow | undefined,
   loan: LoanRow | undefined,
   existingKeys: Set<string>,
-  payments: PaymentRow[] = [],
+  _payments: PaymentRow[] = [],
 ) {
   if (existingKeys.has(draft.idempotencyKey)) {
     return { duplicate: true as const, error: null };
@@ -196,26 +206,6 @@ export function validateCollectorPayment(
   }
   if (loan.balance <= 0) {
     return { duplicate: false as const, error: "Este préstamo ya no tiene saldo por cobrar." };
-  }
-  const day = draft.dispatchDate?.trim() || "";
-  if (day) {
-    const existing = findDailyClientPayment(payments, {
-      loanRef: draft.loanRef,
-      clientRef: draft.clientRef,
-      dispatchDate: day,
-    });
-    if (existing) {
-      return {
-        duplicate: true as const,
-        error: `Ya existe el cobro ${existing.ref} de este cliente hoy. Un cliente = un pago = un código.`,
-      };
-    }
-  }
-  if (stopHasLivePayment(stop, payments)) {
-    return {
-      duplicate: true as const,
-      error: "Esta visita ya tiene cobro hoy. Un cliente = un pago = un código.",
-    };
   }
   const payError = validatePay(loan, draft.kind, draft.amount);
   if (payError) return { duplicate: false as const, error: payError };
@@ -260,7 +250,7 @@ export function applyCollectorPaymentResult(
   loan: LoanRow,
   draft: CollectorPaymentDraft,
   route: RouteRow | null | undefined,
-  payments: PaymentRow[] = [],
+  _payments: PaymentRow[] = [],
 ): CollectorPaymentResult {
   const pay = applyPay(loan, draft.kind, draft.amount);
   if (!pay.ok) return { ok: false, error: pay.error };
@@ -311,13 +301,6 @@ export function applyCollectorPaymentResult(
         status: allDone ? "Cerrada" : "En curso",
         kind: allDone ? ("paid" as const) : "pending",
       },
-    };
-  }
-
-  if (stopHasLivePayment(stop, payments)) {
-    return {
-      ok: false,
-      error: "Esta visita ya tiene cobro hoy. Un cliente = un pago = un código.",
     };
   }
 

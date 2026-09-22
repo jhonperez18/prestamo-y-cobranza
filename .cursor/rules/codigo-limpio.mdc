@@ -1,0 +1,26 @@
+---
+description: Calidad, arquitectura local-first y estabilidad de sync
+alwaysApply: true
+---
+
+# REGLAS ESTRICTAS DE CALIDAD, ARQUITECTURA Y ESTABILIDAD
+
+## 1. PRINCIPIOS GENERALES Y MANEJO DE CÓDIGO
+- **TypeScript Estricto:** Prohibido el uso de `any`. Define interfaces o tipos explícitos para todas las propiedades, respuestas de API y estados.
+- **Sin Parches Superficiales:** No agregues condicionales `if` improvisados ni bloques de código redundante sobre funciones existentes. Si una función tiene un problema estructural, refactorízala para arreglar la causa raíz.
+- **Funciones Modulares:** Mantén los componentes de UI y las funciones de lógica cortos y enfocados en una sola responsabilidad.
+- **Manejo Estricto de Errores:** Toda llamada asíncrona (lecturas a Supabase, `fetch`, almacenamiento local) debe estar envuelta en bloques `try/catch` con manejo explícito de errores y alertas visibles o logs claros.
+
+## 2. ESTRATEGIA DE SINCRONIZACIÓN Y PERSISTENCIA (LOCAL-FIRST)
+- **Prioridad de Estado Local:** Al guardar o editar información, actualiza inmediatamente la interfaz y el almacenamiento local (`localStorage` / IndexedDB) asignando o actualizando siempre el campo `updated_at`.
+- **Prevención de Race Conditions:** Al hacer consultas de actualización/pull desde Supabase, compara siempre los timestamps o marcas de estado local (`pendingSync`). NUNCA permitas que una respuesta HTTP devuelva información vieja y sobrescriba cambios locales recientes.
+- **Garantía de Flush:** Las peticiones enviadas a la cola deben procesarse contra la API de Next.js / Supabase priorizando las modificaciones locales pendientes antes de revalidar la vista global.
+
+## 3. BORRADO DEFINITIVO Y LIMPIEZA DE CACHÉ (NO MÁS DATOS ZOMBI)
+- **Eliminación Local Inmediata:** Al ejecutar una acción de borrado (`DELETE`), remueve el registro del estado local de la pantalla y del almacenamiento sin esperar la respuesta del servidor.
+- **Lista de Exclusiones (Tombstones):** Mantén un registro temporal de IDs eliminados localmente (`deletedIds`). Toda función de consulta o refresco que traiga listas desde Supabase debe filtrar obligatoriamente los IDs que se encuentren en `deletedIds`.
+- **Invalidación de Caché:** Invalida de forma explícita las claves de caché de la vista o del estado global inmediatamente después de confirmar la orden de borrado en la nube.
+
+## 4. PRESERVACIÓN DEL PROYECTO Y DESPLIEGUE
+- Lee el contexto del archivo completo antes de proponer cambios para no romper funcionalidades existentes.
+- Garantiza que las variables de entorno para Vercel y Supabase permanezcan desacopladas y compatibles con entornos de producción y PWA móvil.

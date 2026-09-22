@@ -67,7 +67,7 @@ type Props = {
   onDelete: () => void;
   onToggleActive: () => void;
   onSavePermissions?: (permissions: string[]) => void;
-  onRegisterCollectorPayment?: (draft: CollectorPaymentDraft) => void;
+  onRegisterCollectorPayment?: (draft: import("@/lib/route-sync").CollectorPaymentRegisterInput) => void;
   /** Vista del propio cobrador (app móvil). Oculta acciones de administración. */
   selfService?: boolean;
   allowedTabs?: CollectorTab[];
@@ -685,6 +685,47 @@ export function CollectorFicha({
               chargeLabel={payContext.chargeLabel}
               onCancel={() => setPayContext(null)}
               onSubmit={(payload) => {
+                if (payload.combined) {
+                  onRegisterCollectorPayment({
+                    combined: true,
+                    comboGroupId: payload.combined.comboGroupId,
+                    paidTime: payload.combined.paidTime,
+                    parts: [
+                      {
+                        idempotencyKey: payload.combined.parts[0].idempotencyKey,
+                        routeRef: payContext.routeRef,
+                        clientRef: payContext.clientRef,
+                        loanRef: payContext.loanRef,
+                        amount: payload.combined.parts[0].amount,
+                        kind: payload.kind,
+                        method: payload.combined.parts[0].method,
+                        evidence: payload.combined.parts[0].evidence,
+                        collectorRef: collector.ref,
+                        collectorName: collector.name,
+                        clientName: payContext.clientName,
+                        comboGroupId: payload.combined.comboGroupId,
+                        paidTime: payload.combined.paidTime,
+                      },
+                      {
+                        idempotencyKey: payload.combined.parts[1].idempotencyKey,
+                        routeRef: payContext.routeRef,
+                        clientRef: payContext.clientRef,
+                        loanRef: payContext.loanRef,
+                        amount: payload.combined.parts[1].amount,
+                        kind: "abono",
+                        method: payload.combined.parts[1].method,
+                        evidence: payload.combined.parts[1].evidence,
+                        collectorRef: collector.ref,
+                        collectorName: collector.name,
+                        clientName: payContext.clientName,
+                        comboGroupId: payload.combined.comboGroupId,
+                        paidTime: payload.combined.paidTime,
+                      },
+                    ],
+                  });
+                  setPayContext(null);
+                  return;
+                }
                 onRegisterCollectorPayment({
                   idempotencyKey: payload.idempotencyKey,
                   routeRef: payContext.routeRef,

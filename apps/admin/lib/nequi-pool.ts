@@ -6,9 +6,12 @@
 import { displayToIso } from "@/lib/loan-preview";
 import {
   paymentsForCollector,
+  routesForCollector,
+  type ClientRow,
   type CollectorRow,
   type LoanRow,
   type PaymentRow,
+  type RouteRow,
 } from "@/lib/mock-data";
 import { normalizePaymentMethod } from "@/lib/payment-method";
 
@@ -119,6 +122,12 @@ export function sumNequiFundedDisbursements(loans: LoanRow[]): number {
   return sum;
 }
 
+/** Abono registrado en el panel (Caja / oficina), no en la ruta del cobrador. */
+function isOfficePayment(row: PaymentRow) {
+  if (row.source === "caja") return true;
+  return (row.collector || "").trim().toLowerCase() === "caja / oficina";
+}
+
 export function sumCollectorNequiIngresos(
   payments: PaymentRow[],
   collectors: CollectorRow[],
@@ -127,16 +136,74 @@ export function sumCollectorNequiIngresos(
   const refs = collectorRefs
     ? new Set([...collectorRefs].filter(Boolean))
     : new Set(collectors.map((row) => row.ref).filter(Boolean));
-  if (refs.size === 0) return 0;
+  const seen = new Set<string>();
   let sum = 0;
-  for (const ref of refs) {
-    for (const row of paymentsForCollector(ref, collectors, payments)) {
-      if (normalizePaymentMethod(row.method) !== "nequi") continue;
-      const amount = Number(row.amount) || 0;
-      if (amount > 0) sum += amount;
+  const add = (row: PaymentRow) => {
+    if (!row.ref || seen.has(row.ref) || row.voidedAt?.trim()) return;
+    if (normalizePaymentMethod(row.method) !== "nequi") return;
+    const amount = Number(row.amount) || 0;
+    if (amount <= 0) return;
+    seen.add(row.ref);
+    sum += amount;
+  };
+  if (refs.size > 0) {
+    for (const ref of refs) {
+      for (const row of paymentsForCollector(ref, collectors, payments)) add(row);
     }
   }
+  for (const row of payments) {
+    if (isOfficePayment(row)) add(row);
+  }
   return sum;
+}
+
+/**
+ * Cobros del cobrador más abonos Nequi hechos en el sistema
+ * a clientes de sus rutas (mismo día en la ficha Nequi).
+ */
+export function paymentsForCollectorIncludingOffice(
+  collectorRef: string,
+  collectors: CollectorRow[],
+  payments: PaymentRow[],
+  clients: ClientRow[],
+  loans: LoanRow[],
+  routes: RouteRow[],
+): PaymentRow[] {
+  const mine = paymentsForCollector(collectorRef, collectors, payments);
+  const seen = new Set(mine.map((row) => row.ref));
+  const routeNames = new Set(
+    routesForCollector(collectorRef, routes)
+      .map((row) => (row.name || "").trim().toLowerCase())
+      .filter(Boolean),
+  );
+  if (!routeNames.size) return mine;
+  const clientRefs = new Set(
+    clients
+      .filter((row) => routeNames.has((row.route || "").trim().toLowerCase()))
+      .map((row) => row.ref),
+  );
+  if (!clientRefs.size) return mine;
+  const loanRefs = new Set(
+    loans.filter((row) => row.clientRef && clientRefs.has(row.clientRef)).map((row) => row.ref),
+  );
+  const names = new Set(
+    clients
+      .filter((row) => clientRefs.has(row.ref))
+      .flatMap((row) => {
+        const full = `${row.name} ${row.lastName}`.trim().toLowerCase();
+        const nick = (row.name || "").trim().toLowerCase();
+        return [full, nick].filter(Boolean);
+      }),
+  );
+  const extra = payments.filter((row) => {
+    if (!row.ref || seen.has(row.ref) || row.voidedAt?.trim()) return false;
+    if (!isOfficePayment(row)) return false;
+    if (normalizePaymentMethod(row.method) !== "nequi") return false;
+    if (!((row.amount ?? 0) > 0)) return false;
+    if (row.loanRef && loanRefs.has(row.loanRef)) return true;
+    return names.has((row.client || "").trim().toLowerCase());
+  });
+  return extra.length ? [...mine, ...extra] : mine;
 }
 
 /** Total acumulado Nequi = cobros Nequi − capitales desembolsados desde Nequi. */

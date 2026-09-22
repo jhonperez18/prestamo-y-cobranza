@@ -40,7 +40,12 @@ import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
-import { nequiAcumuladoNet, loanDisbursementSource, loanDisbursementSourceLabel } from "@/lib/nequi-pool";
+import {
+  nequiAcumuladoNet,
+  loanDisbursementSource,
+  loanDisbursementSourceLabel,
+  paymentsForCollectorIncludingOffice,
+} from "@/lib/nequi-pool";
 import { suppressGhostClick } from "@/lib/suppress-ghost-click";
 import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import {
@@ -53,7 +58,6 @@ import {
 import {
   money,
   catalogRoutes,
-  paymentsForCollector,
   routeIsActive,
   type ClientRow,
   type CollectorRow,
@@ -137,6 +141,8 @@ type RouteDetailMode =
   | "prestamos"
   | "gastos"
   | "cobros"
+  | "historial"
+  | "historial-dia"
   | "nequi-historial"
   | "nequi-dia";
 
@@ -404,6 +410,12 @@ function PlanillaTable({
         <tbody>
           {rows.map((row) => {
             const method = row.method ?? null;
+            const methodLabel = row.methodLabel ?? (method ? paymentMethodInitial(method) : null);
+            const methodTone =
+              row.methodToneClass ||
+              (method ? paymentMethodToneClass(method) : "");
+            const methodTitle =
+              row.methodTitle ?? (method ? paymentMethodLabel(method) : undefined);
             const cuotas = row.cuotas ?? {
               label: "",
               intensity: 0,
@@ -423,14 +435,14 @@ function PlanillaTable({
                   {row.clientName}
                 </td>
                 <td className="is-num">{money(row.saldo, { symbol: false })}</td>
-                    <td className="is-metodo">
-                  {method &&
+                <td className="is-metodo">
+                  {methodLabel &&
                   (row.visitStatus === "cobrado" || row.visitStatus === "parcial") ? (
                     <em
-                      className={`supervisor-planilla-method ${paymentMethodToneClass(method)}`}
-                      title={paymentMethodLabel(method)}
+                      className={`supervisor-planilla-method ${methodTone}`}
+                      title={methodTitle}
                     >
-                      {paymentMethodInitial(method)}
+                      {methodLabel}
                     </em>
                   ) : (
                     "—"
@@ -781,6 +793,8 @@ export function SupervisorMobileApp({
   const [nequiDayBackTo, setNequiDayBackTo] = useState<"totales" | "nequi-historial">(
     "nequi-historial",
   );
+  /** Día ISO del historial de caja (últimos 5 días del cobrador). */
+  const [cajaHistoryDayIso, setCajaHistoryDayIso] = useState<string | null>(null);
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [nuevoName, setNuevoName] = useState("");
@@ -1106,10 +1120,13 @@ export function SupervisorMobileApp({
   );
   const openRouteNequiDays = useMemo(() => {
     if (!openRoute) return [];
-    const mine = paymentsForCollector(
+    const mine = paymentsForCollectorIncludingOffice(
       openRoute.collectorRef,
       collectors,
       paymentsWithEvidence,
+      clients,
+      loans,
+      routes,
     ).filter(
       (row) => normalizePaymentMethod(row.method) === "nequi" && (row.amount ?? 0) > 0,
     );
@@ -1131,13 +1148,20 @@ export function SupervisorMobileApp({
         amount: stats.amount,
       }))
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [openRoute, collectors, paymentsWithEvidence]);
+  }, [openRoute, collectors, paymentsWithEvidence, clients, loans, routes]);
   const openRouteNequiDayPays = useMemo(() => {
     if (!openRoute || !nequiDayIso) return [];
     const byRef = new Map(
       paymentsWithEvidence.filter((row) => row.ref).map((row) => [row.ref, row] as const),
     );
-    return paymentsForCollector(openRoute.collectorRef, collectors, paymentsWithEvidence)
+    return paymentsForCollectorIncludingOffice(
+      openRoute.collectorRef,
+      collectors,
+      paymentsWithEvidence,
+      clients,
+      loans,
+      routes,
+    )
       .filter(
         (row) =>
           normalizePaymentMethod(row.method) === "nequi" &&
@@ -1147,7 +1171,58 @@ export function SupervisorMobileApp({
       .map((row) => withPaymentEvidence(byRef.get(row.ref) ?? row))
       .slice()
       .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));
-  }, [openRoute, nequiDayIso, collectors, paymentsWithEvidence]);
+  }, [openRoute, nequiDayIso, collectors, paymentsWithEvidence, clients, loans, routes]);
+  const openRouteCajaHistory = useMemo(() => {
+    if (!openRoute) return [];
+    const collector = collectors.find((row) => row.ref === openRoute.collectorRef);
+    if (!collector) return [];
+    const period = periodFromDateIso(today);
+    const rows = buildCollectorDayHistory(
+      openRoute.collectorRef,
+      payments,
+      dayCloses,
+      [collector],
+      [today],
+      dayExpenseDrafts,
+      monthCloses,
+      period,
+      { assignments },
+    );
+    // Días anteriores al de hoy, máx. 5 (mismo tope que historial del cobrador).
+    return rows.filter((row) => row.date < today).slice(0, 5);
+  }, [
+    openRoute,
+    collectors,
+    payments,
+    dayCloses,
+    dayExpenseDrafts,
+    monthCloses,
+    assignments,
+    today,
+  ]);
+
+  const openRouteHistoryDayCuadre = useMemo(() => {
+    if (!openRoute || !cajaHistoryDayIso) return null;
+    const collector = collectors.find((row) => row.ref === openRoute.collectorRef);
+    if (!collector) return null;
+    return cajaDelDia(
+      collector,
+      cajaHistoryDayIso,
+      payments,
+      dayCloses,
+      dayExpenseDrafts,
+      monthCloses,
+    );
+  }, [
+    openRoute,
+    cajaHistoryDayIso,
+    collectors,
+    payments,
+    dayCloses,
+    dayExpenseDrafts,
+    monthCloses,
+  ]);
+
   const openRouteNequiDayTotal = openRouteNequiDayPays.reduce(
     (sum, row) => sum + (row.amount ?? 0),
     0,
@@ -1182,6 +1257,7 @@ export function SupervisorMobileApp({
     setCobrosMethodFilter(null);
     setNequiDayIso(null);
     setNequiDayBackTo("nequi-historial");
+    setCajaHistoryDayIso(null);
     setNuevoRouteRef(null);
     setNuevoMsg("");
     setNuevoMode("menu");
@@ -1214,6 +1290,7 @@ export function SupervisorMobileApp({
     setCobrosMethodFilter(null);
     setNequiDayIso(null);
     setNequiDayBackTo("nequi-historial");
+    setCajaHistoryDayIso(null);
     setNuevoRouteRef(null);
     setNuevoMsg("");
     setNuevoMode("menu");
@@ -1482,8 +1559,21 @@ export function SupervisorMobileApp({
     setCobrosMethodFilter(null);
     setNequiDayIso(null);
     setNequiDayBackTo("nequi-historial");
+    setCajaHistoryDayIso(null);
     setRouteReturnView("inicio");
     setView(backTo);
+  }
+
+  function openCajaHistorial() {
+    suppressGhostClick();
+    setCajaHistoryDayIso(null);
+    setDetailMode("historial");
+  }
+
+  function openCajaHistorialDay(dateIso: string) {
+    suppressGhostClick();
+    setCajaHistoryDayIso(dateIso);
+    setDetailMode("historial-dia");
   }
 
   function openRouteSummary(
@@ -1513,6 +1603,7 @@ export function SupervisorMobileApp({
     setRouteReturnView(backTo);
     setNequiDayIso(null);
     setNequiDayBackTo("nequi-historial");
+    setCajaHistoryDayIso(null);
     if (opts?.method === "nequi" && opts.returnView === "nequi") {
       setCobrosMethodFilter("nequi");
       setDetailMode("nequi-historial");
@@ -1589,7 +1680,9 @@ export function SupervisorMobileApp({
             (openRoute &&
               (detailMode === "totales" ||
                 detailMode === "gastos" ||
-                detailMode === "cobros") &&
+                detailMode === "cobros" ||
+                detailMode === "historial" ||
+                detailMode === "historial-dia") &&
               cobrosMethodFilter !== "nequi" &&
               cobrosMethodFilter !== "banco")
               ? "supervisor-mobile-kpi is-caja on"
@@ -1600,7 +1693,9 @@ export function SupervisorMobileApp({
             (openRoute &&
               (detailMode === "totales" ||
                 detailMode === "gastos" ||
-                detailMode === "cobros") &&
+                detailMode === "cobros" ||
+                detailMode === "historial" ||
+                detailMode === "historial-dia") &&
               cobrosMethodFilter !== "nequi" &&
               cobrosMethodFilter !== "banco")
               ? "page"
@@ -1609,6 +1704,7 @@ export function SupervisorMobileApp({
           {...navButtonProps(navIntent, () => {
             if (openRoute) {
               setCobrosMethodFilter(null);
+              setCajaHistoryDayIso(null);
               setDetailMode("totales");
               return;
             }
@@ -1706,6 +1802,15 @@ export function SupervisorMobileApp({
                     closeRouteDetail();
                     return;
                   }
+                  if (detailMode === "historial-dia") {
+                    setCajaHistoryDayIso(null);
+                    setDetailMode("historial");
+                    return;
+                  }
+                  if (detailMode === "historial") {
+                    setDetailMode("totales");
+                    return;
+                  }
                   if (detailMode !== "totales") setDetailMode("totales");
                   else closeRouteDetail();
                 }}
@@ -1740,6 +1845,98 @@ export function SupervisorMobileApp({
                 </ul>
               )}
             </>
+          ) : detailMode === "historial" ? (
+            <>
+              <p className="supervisor-mobile-detail-meta">
+                Historial de caja · {openRoute.collectorName}
+              </p>
+              <div className="collector-mobile-day-history is-supervisor-caja">
+                <div className="collector-mobile-day-history-head">
+                  <span>Día</span>
+                  <span>Cobro</span>
+                  <span>Gasto</span>
+                  <span>Saldo</span>
+                </div>
+                <ul className="collector-mobile-day-history-list">
+                  {openRouteCajaHistory.length === 0 ? (
+                    <li className="collector-mobile-day-history-empty">
+                      Sin cierres en los últimos 5 días.
+                    </li>
+                  ) : (
+                    openRouteCajaHistory.map((row) => (
+                      <li key={row.date}>
+                        <button
+                          type="button"
+                          className={
+                            row.date === cajaHistoryDayIso
+                              ? "collector-mobile-day-history-row on"
+                              : "collector-mobile-day-history-row"
+                          }
+                          onClick={() => openCajaHistorialDay(row.date)}
+                        >
+                          <span className="is-date">{row.dateLabel}</span>
+                          <span className="is-money">{money(row.cobro, { symbol: false })}</span>
+                          <span className="is-money">{money(row.gasto, { symbol: false })}</span>
+                          <span className={row.saldo < 0 ? "is-saldo is-negative" : "is-saldo"}>
+                            {money(row.saldo, { symbol: false })}
+                          </span>
+                        </button>
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </div>
+            </>
+          ) : detailMode === "historial-dia" && openRouteHistoryDayCuadre ? (
+            <section
+              className="collector-mobile-home-cuadre is-supervisor-caja-day"
+              aria-label={`Cierre ${cajaHistoryDayIso ? isoToDisplay(cajaHistoryDayIso) : ""}`}
+            >
+              <div className="collector-mobile-home-cuadre-head">
+                <Pill label="Cierre" kind="paid" />
+                <div className="collector-mobile-home-cuadre-title-row">
+                  <h2>Cierre del día</h2>
+                  <p className="collector-mobile-home-cuadre-progress">
+                    {cajaHistoryDayIso ? isoToDisplay(cajaHistoryDayIso) : ""}
+                  </p>
+                </div>
+              </div>
+              <div className="collector-mobile-home-cuadre-grid">
+                <div className="is-inicial">
+                  <span>Lo que inició</span>
+                  <b>{money(openRouteHistoryDayCuadre.saldoInicial)}</b>
+                </div>
+                <div className="is-gastos">
+                  <span>Lo que gastó</span>
+                  <b>{money(openRouteHistoryDayCuadre.gastosHoy)}</b>
+                </div>
+                <div className="is-cobrado">
+                  <div className="is-cobrado-head">
+                    <span>Lo que cobró</span>
+                  </div>
+                  <div className="is-cobrado-means" aria-label="Desglose de lo cobrado">
+                    <div className="is-mean is-pay-efectivo">
+                      <span>Efectivo</span>
+                      <b>{money(openRouteHistoryDayCuadre.cobradoEfectivo)}</b>
+                    </div>
+                    <div className="is-mean is-pay-nequi">
+                      <span>Nequi</span>
+                      <b>{money(openRouteHistoryDayCuadre.cobradoNequi)}</b>
+                    </div>
+                    <div className="is-mean is-pay-banco">
+                      <span>Banco</span>
+                      <b>{money(openRouteHistoryDayCuadre.cobradoBanco)}</b>
+                    </div>
+                  </div>
+                </div>
+                <div className="is-saldo">
+                  <span>Saldo en caja</span>
+                  <b>{money(openRouteHistoryDayCuadre.enCaja)}</b>
+                </div>
+              </div>
+            </section>
+          ) : detailMode === "historial-dia" ? (
+            <p className="ficha-empty">Sin datos de cierre para ese día.</p>
           ) : detailMode === "nequi-dia" ? (
             <>
               <p className="supervisor-mobile-detail-meta">
@@ -1923,7 +2120,14 @@ export function SupervisorMobileApp({
                 </div>
               </div>
 
-              <div className="supervisor-mobile-actions">
+              <div className="supervisor-mobile-actions has-historial">
+                <button
+                  type="button"
+                  className="btn compact ghost is-historial"
+                  onClick={openCajaHistorial}
+                >
+                  Historial
+                </button>
                 <button
                   type="button"
                   className="btn compact"

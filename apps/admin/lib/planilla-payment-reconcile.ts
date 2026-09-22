@@ -201,44 +201,13 @@ export function sealOpenVisitsWithLaterPayments(
   });
 }
 
-/** Tras reconciliar, deja un solo PG por préstamo/día (el de la visita). */
+/**
+ * Varios abonos el mismo día son válidos. No se borra ningún PG-
+ * por repetir préstamo y fecha.
+ */
 export function dedupeDailyPaymentsByVisit(
   payments: PaymentRow[],
-  assignments: DailyCollectionAssignment[],
+  _assignments: DailyCollectionAssignment[],
 ): { payments: PaymentRow[]; removedRefs: string[] } {
-  const keep = new Set<string>();
-  for (const row of assignments) {
-    if (row.paymentRef) keep.add(row.paymentRef);
-  }
-
-  const removedRefs: string[] = [];
-  const byLoanDay = new Map<string, PaymentRow[]>();
-  for (const pay of payments) {
-    if (!isPaymentLive(pay)) continue;
-    const day = (pay.paidDate || "").trim();
-    const loan = pay.loanRef || "";
-    if (!day || !loan) continue;
-    const key = `${loan}::${day}`;
-    const list = byLoanDay.get(key) ?? [];
-    list.push(pay);
-    byLoanDay.set(key, list);
-  }
-
-  const drop = new Set<string>();
-  for (const [, list] of byLoanDay) {
-    if (list.length <= 1) continue;
-    const preferred =
-      list.find((row) => keep.has(row.ref)) ??
-      list.slice().sort((a, b) => b.ref.localeCompare(a.ref))[0];
-    for (const row of list) {
-      if (row.ref !== preferred?.ref) drop.add(row.ref);
-    }
-  }
-
-  const next: PaymentRow[] = [];
-  for (const pay of payments) {
-    if (drop.has(pay.ref)) removedRefs.push(pay.ref);
-    else next.push(pay);
-  }
-  return { payments: next, removedRefs };
+  return { payments, removedRefs: [] };
 }

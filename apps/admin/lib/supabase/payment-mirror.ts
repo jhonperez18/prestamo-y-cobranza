@@ -24,6 +24,7 @@ import {
   withPaymentEvidence,
 } from "@/lib/payment-evidence-store";
 import { normalizePaymentMethod, type PaymentMethod } from "@/lib/payment-method";
+import { parseComboChargeLabel } from "@/lib/payment-combo";
 
 export type PaymentMirrorRow = {
   ref: string;
@@ -133,6 +134,10 @@ export function mirrorRowToPaymentRow(row: PaymentMirrorRow): PaymentRow | null 
     voidReason = "Anulado";
   }
 
+  const comboParsed = isVoided
+    ? { chargeLabel: undefined as string | undefined, comboGroupId: undefined as string | undefined }
+    : parseComboChargeLabel(row.charge_label);
+
   return {
     ref,
     loanRef,
@@ -140,7 +145,8 @@ export function mirrorRowToPaymentRow(row: PaymentMirrorRow): PaymentRow | null 
     paidDate,
     paidTime,
     dueDate: row.due_date ? normalizeHistoryDate(row.due_date) || row.due_date : undefined,
-    chargeLabel: isVoided ? undefined : row.charge_label?.trim() || undefined,
+    chargeLabel: isVoided ? undefined : comboParsed.chargeLabel,
+    comboGroupId: comboParsed.comboGroupId,
     client: "",
     collector: row.collector_name?.trim() || "—",
     collectorRef: row.collector_ref?.trim() || undefined,
@@ -187,11 +193,20 @@ function preferDisplay(remote: string | undefined, local: string | undefined) {
   return l || "—";
 }
 
+function paymentIsVoided(row: PaymentRow) {
+  return Boolean(row.voidedAt?.trim()) || row.type === "Anulado";
+}
+
 /**
- * C4: remoto manda en campos de dinero; local-only (offline) se conserva;
- * extras de UI local (evidencia, gps, cliente rico) se preservan.
+ * Merge de cobros. La cola local (pendingSync) y una anulación de este PC
+ * ganan sobre un remoto viejo. Un PG- que solo existe aquí no se borra.
+ * Un anulado no vuelve a vivo porque la nube todavía no se enteró.
  */
-export function mergePaymentsByRef(local: PaymentRow[], remote: PaymentRow[]): {
+export function mergePaymentsByRef(
+  local: PaymentRow[],
+  remote: PaymentRow[],
+  pending: PaymentRow[] = [],
+): {
   merged: PaymentRow[];
   added: number;
   changed: boolean;
@@ -200,6 +215,10 @@ export function mergePaymentsByRef(local: PaymentRow[], remote: PaymentRow[]): {
   for (const row of local) {
     if (row?.ref) localByRef.set(row.ref, row);
   }
+  const pendingByRef = new Map<string, PaymentRow>();
+  for (const row of pending) {
+    if (row?.ref) pendingByRef.set(row.ref, row);
+  }
 
   const merged: PaymentRow[] = [];
   let added = 0;
@@ -207,17 +226,29 @@ export function mergePaymentsByRef(local: PaymentRow[], remote: PaymentRow[]): {
 
   for (const remoteRow of remote) {
     if (!remoteRow?.ref) continue;
+    const queued = pendingByRef.get(remoteRow.ref);
     const localRow = localByRef.get(remoteRow.ref);
+    if (queued) {
+      if (!localRow || moneySignature(queued) !== moneySignature(localRow)) changed = true;
+      if (moneySignature(queued) !== moneySignature(remoteRow)) changed = true;
+      merged.push(queued);
+      localByRef.delete(remoteRow.ref);
+      pendingByRef.delete(remoteRow.ref);
+      continue;
+    }
     if (!localRow) {
       merged.push(remoteRow);
       added += 1;
       changed = true;
+      continue;
+    }
+    if (paymentIsVoided(localRow) && !paymentIsVoided(remoteRow)) {
+      merged.push(localRow);
       localByRef.delete(remoteRow.ref);
       continue;
     }
     const next: PaymentRow = {
       ...remoteRow,
-      // Método del cobrador: remoto manda; si falta, se conserva el local. Nunca se infiere.
       method: normalizePaymentMethod(remoteRow.method ?? localRow.method),
       client: preferDisplay(remoteRow.client, localRow.client),
       collector: preferDisplay(remoteRow.collector, localRow.collector),
@@ -228,13 +259,14 @@ export function mergePaymentsByRef(local: PaymentRow[], remote: PaymentRow[]): {
         localRow.evidence,
       gps: localRow.gps ?? remoteRow.gps,
       idempotencyKey: localRow.idempotencyKey ?? remoteRow.idempotencyKey,
+      voidedAt: paymentIsVoided(remoteRow) ? remoteRow.voidedAt ?? localRow.voidedAt : localRow.voidedAt,
+      voidReason: paymentIsVoided(remoteRow) ? remoteRow.voidReason ?? localRow.voidReason : localRow.voidReason,
+      voidedBy: paymentIsVoided(remoteRow) ? remoteRow.voidedBy ?? localRow.voidedBy : localRow.voidedBy,
     };
+    if (paymentIsVoided(next)) next.type = "Anulado";
     if (next.evidence?.length) rememberPaymentEvidence(next.ref, next.evidence);
     if (moneySignature(localRow) !== moneySignature(next)) changed = true;
-    if (
-      evidenceHasPreview(next.evidence) &&
-      !evidenceHasPreview(remoteRow.evidence)
-    ) {
+    if (evidenceHasPreview(next.evidence) && !evidenceHasPreview(remoteRow.evidence)) {
       changed = true;
     }
     merged.push(next);
@@ -243,6 +275,11 @@ export function mergePaymentsByRef(local: PaymentRow[], remote: PaymentRow[]): {
 
   for (const row of localByRef.values()) {
     merged.push(row);
+  }
+  for (const row of pendingByRef.values()) {
+    if (merged.some((entry) => entry.ref === row.ref)) continue;
+    merged.push(row);
+    changed = true;
   }
 
   return { merged, added, changed };
@@ -634,7 +671,7 @@ export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> 
         reason: "virgin_hold_empty",
       };
     }
-    const { merged, added, changed } = mergePaymentsByRef(local, remote);
+    const { merged, added, changed } = mergePaymentsByRef(local, remote, readMirrorQueue());
     if (changed) {
       writeDemoJson(DEMO_PAYMENTS_KEY, merged);
     }

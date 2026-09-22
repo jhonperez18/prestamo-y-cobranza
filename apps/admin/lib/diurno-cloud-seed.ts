@@ -5,17 +5,32 @@ import {
   DIURNO_ROUTE_NAMES,
 } from "@/lib/seeds/diurno-route-1";
 
-/** Upsert de la hoja DIURNO en Postgres (solo nombre + orden; sin datos privados). */
+/**
+ * Siembra DIURNO en Postgres: solo altas faltantes.
+ * Nunca hace upsert masivo de fichas ya existentes (eso rebobinaba
+ * nombres/edits del padre con MAYÚSCULAS + updated_at fresco).
+ */
 export async function seedDiurnoClientsInCloud() {
   const client = createSupabaseAdminClient();
   if (!client) return { ok: false as const, error: "service_role_missing" };
 
-  const rows = buildDiurnoRoute1Clients()
+  const planned = buildDiurnoRoute1Clients();
+  const plannedRefs = planned.map((row) => row.ref);
+
+  const { data: existing, error: existErr } = await client
+    .from("clients")
+    .select("ref")
+    .in("ref", plannedRefs);
+  if (existErr) return { ok: false as const, error: existErr.message };
+
+  const have = new Set((existing ?? []).map((row) => String(row.ref || "").trim()).filter(Boolean));
+  const toInsert = planned
+    .filter((row) => !have.has(row.ref))
     .map(clientRowToMirror)
     .filter((row): row is NonNullable<typeof row> => Boolean(row));
 
-  for (let i = 0; i < rows.length; i += 50) {
-    const chunk = rows.slice(i, i + 50);
+  for (let i = 0; i < toInsert.length; i += 50) {
+    const chunk = toInsert.slice(i, i + 50);
     const { error } = await client.from("clients").upsert(chunk, { onConflict: "ref" });
     if (error) return { ok: false as const, error: error.message };
   }
@@ -30,12 +45,17 @@ export async function seedDiurnoClientsInCloud() {
   if (routeErr) {
     return {
       ok: true as const,
-      seeded: rows.length,
+      seeded: toInsert.length,
+      skippedExisting: planned.length - toInsert.length,
       routeWarn: routeErr.message,
     };
   }
 
-  return { ok: true as const, seeded: rows.length };
+  return {
+    ok: true as const,
+    seeded: toInsert.length,
+    skippedExisting: planned.length - toInsert.length,
+  };
 }
 
 export async function catalogClientsCount() {

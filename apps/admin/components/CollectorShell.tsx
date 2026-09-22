@@ -59,7 +59,6 @@ import {
 } from "@/lib/bank";
 import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
-import { evidenceHasPreview } from "@/lib/payment-evidence";
 import { flushPaymentMirrorQueue, queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import {
   flushCatalogMirrorQueues,
@@ -74,7 +73,7 @@ import {
   queueDayExpenseMirror,
   queueRoutesMirror,
 } from "@/lib/supabase/ops-mirror";
-import { commitCollectorPayment } from "@/lib/commit-collector-payment";
+import { commitCollectorPayment, commitCollectorCombinedPayment } from "@/lib/commit-collector-payment";
 import { type OperationalDemoSnapshot } from "@/lib/hydrate-operational-demo";
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
 import {
@@ -100,7 +99,7 @@ import {
   assertOwnCollectorPayment,
   routesForMobileCollector,
 } from "@/lib/mobile-sync";
-import type { CollectorPaymentDraft } from "@/lib/route-sync";
+import type { CollectorPaymentRegisterInput } from "@/lib/route-sync";
 
 type Props = {
   session: AppSession;
@@ -271,35 +270,62 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_DAILY_LOGS_KEY, dailyLogs);
   }, [dailyLogs, hydrated]);
 
-  function registerCollectorPayment(draft: CollectorPaymentDraft) {
-    const ownershipError = assertOwnCollectorPayment(session.collectorRef, draft.collectorRef);
+  function registerCollectorPayment(input: CollectorPaymentRegisterInput) {
+    const ownershipRef =
+      "combined" in input && input.combined
+        ? input.parts[0].collectorRef
+        : input.collectorRef;
+    const ownershipError = assertOwnCollectorPayment(session.collectorRef, ownershipRef);
     if (ownershipError) {
       showToast(ownershipError);
       return false;
     }
 
-    const committed = commitCollectorPayment({
-      draft,
-      payments,
-      loans,
-      clients,
-      routes,
-      assignments: dailyAssignments,
-      collectors,
-    });
+    const committed =
+      "combined" in input && input.combined
+        ? commitCollectorCombinedPayment({
+            parts: input.parts,
+            comboGroupId: input.comboGroupId,
+            paidTime: input.paidTime,
+            payments,
+            loans,
+            clients,
+            routes,
+            assignments: dailyAssignments,
+            collectors,
+          })
+        : commitCollectorPayment({
+            draft: input,
+            payments,
+            loans,
+            clients,
+            routes,
+            assignments: dailyAssignments,
+            collectors,
+          });
     if (!committed.ok) {
       showToast(committed.error);
       return false;
     }
 
+    const primaryDraft =
+      "combined" in input && input.combined ? input.parts[0] : input;
+    const paymentsCreated =
+      "paymentsCreated" in committed && committed.paymentsCreated
+        ? committed.paymentsCreated
+        : [committed.payment];
+
     const paidRoute = committed.routes.find(
       (row) =>
-        row.ref.startsWith(`RUT-D-${draft.collectorRef}-`) &&
+        row.ref.startsWith(`RUT-D-${primaryDraft.collectorRef}-`) &&
         committed.payment.routeRef === row.ref,
     );
-    const logsAfterPay = paidRoute
-      ? upsertDailyLogPayment(dailyLogs, committed.payment, paidRoute)
-      : dailyLogs;
+    let logsAfterPay = dailyLogs;
+    if (paidRoute) {
+      for (const pay of paymentsCreated) {
+        logsAfterPay = upsertDailyLogPayment(logsAfterPay, pay, paidRoute);
+      }
+    }
 
     const accounts = ensureBankAccounts(
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
@@ -338,9 +364,12 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
     writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, projected.bankMovements);
 
-    showToast(`Cobro ${committed.payment.ref} guardado · subiendo a la nube…`);
+    const toastRefs = paymentsCreated.map((row) => row.ref).join(" + ");
+    showToast(`Cobro ${toastRefs} guardado · subiendo a la nube…`);
     void (async () => {
-      const mirror = await queuePaymentMirror(committed.payment);
+      for (const pay of paymentsCreated) {
+        await queuePaymentMirror(pay);
+      }
       const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
       if (paidLoan) queueLoanMirror(paidLoan);
       const paidClient = committed.clients.find((row) =>
@@ -354,23 +383,9 @@ export function CollectorShell({ session, onLogout }: Props) {
         await flushPaymentMirrorQueue();
         await flushCatalogMirrorQueues();
         await flushOpsMirrorQueues();
-        if (mirror.ok && !("skipped" in mirror && mirror.skipped)) {
-          showToast(
-            evidenceHasPreview(committed.payment.evidence)
-              ? `Cobro ${committed.payment.ref} en la nube · evidencia OK`
-              : `Cobro ${committed.payment.ref} listo en la nube`,
-          );
-          return;
-        }
-        if (evidenceHasPreview(committed.payment.evidence)) {
-          showToast(
-            `Cobro ${committed.payment.ref} guardado · la evidencia se subirá al recuperar red`,
-          );
-          return;
-        }
-        showToast(`Cobro ${committed.payment.ref} listo.`);
+        showToast(`Cobro ${toastRefs} listo en la nube`);
       } catch {
-        showToast(`Cobro ${committed.payment.ref} guardado (sin nube; en este aparato ya está).`);
+        showToast(`Cobro ${toastRefs} guardado (sin nube; en este aparato ya está).`);
       }
     })();
     return true;

@@ -18,8 +18,16 @@ import type { LoanRow, PaymentRow } from "@/lib/mock-data";
 import { todayIso } from "@/lib/daily-dispatch";
 import {
   normalizePaymentMethod,
+  paymentMethodInitial,
+  paymentMethodLabel,
+  paymentMethodToneClass,
   type PaymentMethod,
 } from "@/lib/payment-method";
+import {
+  combinedMethodsLabel,
+  paymentComboGroupId,
+  visitHasCombinedPayment,
+} from "@/lib/payment-combo";
 import { paymentBelongsToVisit } from "@/lib/planilla-payment-reconcile";
 
 export function planillaVisitPaid(row: Pick<DailyCollectionAssignment, "visitStatus" | "paymentRef">) {
@@ -112,6 +120,20 @@ export function enrichSupervisorPlanillaRow(
   const cuota = planillaLiveCuota(row, loan, payments, today);
   const saldo = loan?.balance ?? 0;
   const pay = planillaLivePaymentForVisit(row, payments, today);
+  const isCombined = visitHasCombinedPayment(payments, {
+    loanRef: row.loanRef,
+    clientRef: row.clientRef,
+    dispatchDate: row.dispatchDate,
+  });
+  const comboPays = isCombined
+    ? payments.filter(
+        (entry) =>
+          !entry.voidedAt?.trim() &&
+          (entry.paidDate || "").trim() === row.dispatchDate &&
+          entry.loanRef === row.loanRef &&
+          Boolean(paymentComboGroupId(entry)),
+      )
+    : [];
   /** E/N solo con PG vivo; si hay pago, estado = cobrado (nunca E + Pend.). */
   const method: PaymentMethod | null = pay
     ? normalizePaymentMethod(pay.method)
@@ -129,6 +151,21 @@ export function enrichSupervisorPlanillaRow(
     saldo,
     cuota,
     method,
+    methodLabel: isCombined && comboPays.length >= 2
+      ? combinedMethodsLabel(comboPays.map((entry) => normalizePaymentMethod(entry.method)))
+      : method
+        ? paymentMethodInitial(method)
+        : null,
+    methodToneClass: isCombined
+      ? "is-pay-combinado"
+      : method
+        ? paymentMethodToneClass(method)
+        : "",
+    methodTitle: isCombined
+      ? "Cobro combinado (dos métodos)"
+      : method
+        ? paymentMethodLabel(method)
+        : undefined,
     cuotas,
     visitStatus,
   };

@@ -977,7 +977,7 @@ function resolveLoanLedger(
 ) {
   if (payments === undefined) {
     const paid = terms.paid ?? 0;
-    const balance = terms.status === "Finalizado" ? 0 : Math.max(0, total - paid);
+    const balance = Math.max(0, total - paid);
     return { paid, balance };
   }
 

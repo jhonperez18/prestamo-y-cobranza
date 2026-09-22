@@ -695,7 +695,7 @@ export function commitUpdateLoan(
   };
 }
 
-export const DEMO_CLIENT_NAMES_TITLECASE_FLAG = "nexo-demo-client-names-titlecase-v1";
+export const DEMO_CLIENT_NAMES_TITLECASE_FLAG = "nexo-demo-client-names-titlecase-v2";
 
 /**
  * Una pasada: todos los clientes → Primera Mayúscula / resto minúsculas.

@@ -110,6 +110,11 @@ export type PaymentRow = {
   kind: StatusKind;
   /** Efectivo, Nequi o Banco (consignación). */
   method?: PaymentMethod;
+  /**
+   * Cobro combinado: dos PG- del mismo cliente/día (misma hora).
+   * También viaja en charge_label (`CMB:id|…`) para la nube.
+   */
+  comboGroupId?: string;
   /** Comprobantes, firmas u otras evidencias (referencias ligeras). */
   evidence?: import("@/lib/payment-evidence").PaymentEvidenceRef[];
   source?: "pwa" | "caja";
