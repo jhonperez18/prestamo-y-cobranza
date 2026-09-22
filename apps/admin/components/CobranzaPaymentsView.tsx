@@ -265,6 +265,8 @@ export function CobranzaPaymentsView({
                   const active = "sortKey" in header && header.sortKey === paymentSortKey;
                   const className = [
                     "cp-col",
+                    header.id === "cliente" || header.id === "cobrador" ? "is-nombre" : undefined,
+                    "right" in header && header.right ? "right" : undefined,
                     "sortKey" in header && header.sortKey ? "sortable" : undefined,
                     active ? "sorted" : undefined,
                   ]
@@ -274,7 +276,7 @@ export function CobranzaPaymentsView({
                     "sortKey" in header && header.sortKey ? (
                       <button
                         type="button"
-                        className="th-sort"
+                        className={"right" in header && header.right ? "th-sort th-sort-right" : "th-sort"}
                         onClick={() => togglePaymentSort(header.sortKey as PaymentSortKey)}
                       >
                         <span className="th-sort-arrow" aria-hidden>
@@ -331,13 +333,13 @@ export function CobranzaPaymentsView({
                       <td className="cp-col">{paymentTimeLabel(row)}</td>
                     ) : null}
                     {columnVisibility.isVisible("cliente") ? (
-                      <td className="cp-col cp-name">{row.client}</td>
+                      <td className="cp-col cp-name is-nombre">{row.client}</td>
                     ) : null}
                     {columnVisibility.isVisible("cobrador") ? (
-                      <td className="cp-col cp-name">{row.collector}</td>
+                      <td className="cp-col cp-name is-nombre">{row.collector}</td>
                     ) : null}
                     {columnVisibility.isVisible("cuota") ? (
-                      <td className="cp-col money">
+                      <td className="cp-col money right">
                         {(() => {
                           const loan = row.loanRef ? loanMap.get(row.loanRef) : undefined;
                           const cuota = loan?.installment ?? 0;
@@ -346,7 +348,7 @@ export function CobranzaPaymentsView({
                       </td>
                     ) : null}
                     {columnVisibility.isVisible("valor") ? (
-                      <td className="cp-col money">{money(row.amount)}</td>
+                      <td className="cp-col money right">{money(row.amount)}</td>
                     ) : null}
                     {columnVisibility.isVisible("method") ? (
                       <td className="cp-col cp-method-cell">

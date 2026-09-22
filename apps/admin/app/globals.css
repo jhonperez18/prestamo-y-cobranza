@@ -7341,10 +7341,26 @@
     table.data td.money,
     table.list-grid th.right,
     table.list-grid td.right,
+    table.list-grid td.money,
     table.list-data-table th.right,
     table.list-data-table td.right,
+    table.list-data-table td.money,
     .bank-table th.right,
-    .bank-table td.right {
+    .bank-table td.right,
+    .bank-table td.money,
+    .bank-records-table th.right,
+    .bank-records-table td.right,
+    .bank-records-table td.bank-num,
+    .bank-records-table th.bank-num,
+    table.data.list-grid.bank-extract-table th.right,
+    table.data.list-grid.bank-extract-table td.right,
+    table.data.list-grid.bank-extract-table td.money,
+    .supervisor-liq-table th.is-num,
+    .supervisor-liq-table td.is-num,
+    .supervisor-planilla-table th.is-num,
+    .supervisor-planilla-table td.is-num,
+    .supervisor-clientes-table th.is-num,
+    .supervisor-clientes-table td.is-num {
       text-align: right !important;
     }
     table.data th.right.sortable .th-sort,
@@ -8836,8 +8852,20 @@
       width: 100%;
       padding: var(--table-head-pad-y) 6px;
     }
-    .cobranza-payments-grid td.cp-name {
+    .cobranza-payments-grid th.cp-col.sortable.right .th-sort,
+    .cobranza-payments-grid th.cp-col.sortable .th-sort-right {
+      justify-content: flex-end !important;
+      text-align: right !important;
+    }
+    .cobranza-payments-grid td.cp-name,
+    .cobranza-payments-grid td.is-nombre {
       white-space: nowrap;
+      text-align: left !important;
+    }
+    .cobranza-payments-grid td.money,
+    .cobranza-payments-grid td.right,
+    .cobranza-payments-grid th.right {
+      text-align: right !important;
     }
     .cobranza-payments-grid td.cp-method-cell,
     .cobranza-payments-grid td.pay-evidence-cell {
@@ -11998,8 +12026,22 @@
       letter-spacing: 0;
     }
     .bank-num {
-      text-align: center !important;
+      text-align: right !important;
       font-variant-numeric: tabular-nums;
+    }
+    .th-sort.th-sort-right {
+      justify-content: flex-end !important;
+      text-align: right !important;
+      width: 100%;
+    }
+    .bank-records-table th.sortable.right .th-sort,
+    .bank-records-table th.sortable .th-sort-right,
+    .bank-table th.sortable.right .th-sort,
+    .bank-table th.sortable .th-sort-right,
+    table.data.list-grid.bank-extract-table th.sortable.right .th-sort,
+    table.data.list-grid.bank-extract-table th.sortable .th-sort-right {
+      justify-content: flex-end !important;
+      text-align: right !important;
     }
     .bank-row-income {
       background: var(--row-income);

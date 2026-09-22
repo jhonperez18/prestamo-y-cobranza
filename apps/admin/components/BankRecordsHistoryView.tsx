@@ -362,7 +362,7 @@ export function BankRecordsHistoryView({
                 />
               ) : null}
               {isVisible("account") ? <th>Cuenta</th> : null}
-              {isVisible("thirdParty") ? <th>Tercero</th> : null}
+              {isVisible("thirdParty") ? <th className="is-nombre">Tercero</th> : null}
               {isVisible("debit") ? (
                 <BankSortTh
                   label="Debe"
@@ -469,14 +469,18 @@ export function BankRecordsHistoryView({
                         {accountMap.get(row.accountRef) ?? row.accountRef}
                       </td>
                     ) : null}
-                    {isVisible("thirdParty") ? <td>{row.thirdParty}</td> : null}
+                    {isVisible("thirdParty") ? (
+                      <td className="is-nombre" title={row.thirdParty || undefined}>
+                        {row.thirdParty || "—"}
+                      </td>
+                    ) : null}
                     {isVisible("debit") ? (
-                      <td className="bank-num bank-debit">
+                      <td className="bank-num bank-debit right">
                         {row.debit > 0 ? formatBankAmount(row.debit) : "—"}
                       </td>
                     ) : null}
                     {isVisible("credit") ? (
-                      <td className="bank-num bank-credit">
+                      <td className="bank-num bank-credit right">
                         {row.credit > 0 ? formatBankAmount(row.credit) : "—"}
                       </td>
                     ) : null}
@@ -502,10 +506,10 @@ export function BankRecordsHistoryView({
                     : ""}
                 </td>
                 {isVisible("debit") ? (
-                  <td className="bank-num">{formatBankAmount(summary.totalDebit)}</td>
+                  <td className="bank-num right">{formatBankAmount(summary.totalDebit)}</td>
                 ) : null}
                 {isVisible("credit") ? (
-                  <td className="bank-num">{formatBankAmount(summary.totalCredit)}</td>
+                  <td className="bank-num right">{formatBankAmount(summary.totalCredit)}</td>
                 ) : null}
                 <ColumnPickerBodyCell />
               </tr>

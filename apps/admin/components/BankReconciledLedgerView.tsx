@@ -232,7 +232,7 @@ export function BankReconciledLedgerView({
               ) : null}
               {isVisible("period") ? <th>Periodo</th> : null}
               {isVisible("account") ? <th>Cuenta</th> : null}
-              {isVisible("thirdParty") ? <th>Tercero</th> : null}
+              {isVisible("thirdParty") ? <th className="is-nombre">Tercero</th> : null}
               {isVisible("category") ? <th>Categoría</th> : null}
               {isVisible(amountColId) ? (
                 <BankSortTh
@@ -285,9 +285,11 @@ export function BankReconciledLedgerView({
                             ? "ref"
                             : col.id === "account"
                               ? "bank-account-cell"
-                              : col.id === amountColId
-                                ? `bank-num ${isIncome ? "bank-debit" : "bank-credit"}`
-                                : undefined
+                              : col.id === "thirdParty"
+                                ? "is-nombre"
+                                : col.id === amountColId
+                                  ? `bank-num right ${isIncome ? "bank-debit" : "bank-credit"}`
+                                  : undefined
                         }
                         title={col.id === "account" ? cellText : undefined}
                       >
@@ -304,7 +306,7 @@ export function BankReconciledLedgerView({
             <tfoot>
               <tr className="bank-total-row">
                 <td colSpan={Math.max(labelColSpan, 1)}>Total</td>
-                <td className={`bank-num ${isIncome ? "bank-debit" : "bank-credit"}`}>
+                <td className={`bank-num right ${isIncome ? "bank-debit" : "bank-credit"}`}>
                   {formatBankAmount(total)}
                 </td>
               </tr>

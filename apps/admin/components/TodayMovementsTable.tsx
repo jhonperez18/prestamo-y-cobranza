@@ -78,8 +78,8 @@ export function TodayMovementsTable({ payments, loans = [], onCreate, onOpenPaym
             </td>
           ) : null}
           {isVisible("when") ? <td>{paymentTimeLabel(row)}</td> : null}
-          {isVisible("client") ? <td>{row.client}</td> : null}
-          {isVisible("collector") ? <td>{row.collector}</td> : null}
+          {isVisible("client") ? <td className="is-nombre">{row.client}</td> : null}
+          {isVisible("collector") ? <td className="is-nombre">{row.collector}</td> : null}
           {isVisible("amount") ? <td className="money right">{money(row.amount)}</td> : null}
           {isVisible("type") ? <td>{row.type}</td> : null}
           {isVisible("status") ? (

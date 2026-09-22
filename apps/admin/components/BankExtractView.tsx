@@ -547,7 +547,7 @@ export function BankExtractView({
                   onSort={toggleSort}
                 />
               ) : null}
-              {isVisible("thirdParty") ? <th>Tercero</th> : null}
+              {isVisible("thirdParty") ? <th className="is-nombre">Tercero</th> : null}
               {isVisible("debit") ? (
                 <BankSortTh
                   label="Debe"
@@ -627,14 +627,18 @@ export function BankExtractView({
                       </td>
                     ) : null}
                     {isVisible("valueDate") ? <td>{isoToDisplay(row.valueDate)}</td> : null}
-                    {isVisible("thirdParty") ? <td>{row.thirdParty}</td> : null}
+                    {isVisible("thirdParty") ? (
+                      <td className="is-nombre" title={row.thirdParty || undefined}>
+                        {row.thirdParty || "—"}
+                      </td>
+                    ) : null}
                     {isVisible("debit") ? (
-                      <td className="right bank-debit">
+                      <td className="right bank-num bank-debit">
                         {row.debit > 0 ? formatBankAmount(row.debit) : "—"}
                       </td>
                     ) : null}
                     {isVisible("credit") ? (
-                      <td className="right bank-credit">
+                      <td className="right bank-num bank-credit">
                         {row.credit > 0 ? formatBankAmount(row.credit) : "—"}
                       </td>
                     ) : null}
