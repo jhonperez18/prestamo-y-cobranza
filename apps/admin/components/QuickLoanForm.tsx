@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   interestFromPct,
   QUICK_INTEREST_PCT,
@@ -64,10 +64,14 @@ export function QuickLoanForm({
   const [termMonths, setTermMonths] = useState<LoanTermMonths>(1);
   const [frequency, setFrequency] = useState<PayFrequency>("diario");
   const [fundedBy, setFundedBy] = useState<LoanDisbursementSource>(initial);
+  const [cuotaRaw, setCuotaRaw] = useState("");
+  const cuotaTouchedRef = useRef(false);
 
   const capital = parseMoney(capitalRaw);
   const interest = interestFromPct(capital, ratePct);
-  const preview = useMemo(
+  const cuotaManual = parseMoney(cuotaRaw);
+
+  const autoPreview = useMemo(
     () =>
       previewLoanFlat({
         capital,
@@ -79,12 +83,36 @@ export function QuickLoanForm({
     [capital, interest, frequency, termMonths],
   );
 
+  const preview = useMemo(
+    () =>
+      previewLoanFlat({
+        capital,
+        interest,
+        startIso: todayIso(),
+        frequency,
+        termMonths,
+        installmentAmount:
+          cuotaTouchedRef.current && cuotaManual > 0 ? cuotaManual : undefined,
+      }),
+    [capital, interest, frequency, termMonths, cuotaManual, cuotaRaw],
+  );
+
+  // Cuota automática al cambiar capital / interés / plazo / frecuencia (si el usuario no la fijó a mano).
+  useEffect(() => {
+    if (cuotaTouchedRef.current) return;
+    if (!autoPreview?.installment) {
+      setCuotaRaw("");
+      return;
+    }
+    setCuotaRaw(formatMiles(String(autoPreview.installment)));
+  }, [autoPreview?.installment]);
+
   const canSave = Boolean(preview && capital > 0 && interest >= 0);
   const showOriginPicker = options.length > 1;
 
   return (
     <form
-      className="quick-loan-form"
+      className="quick-loan-form is-compact"
       aria-label={`Préstamo para ${clientName}`}
       onSubmit={(event) => {
         event.preventDefault();
@@ -97,6 +125,8 @@ export function QuickLoanForm({
           frequency,
           termMonths,
           fundedBy,
+          installmentAmount:
+            cuotaManual > 0 ? cuotaManual : preview.installment > 0 ? preview.installment : undefined,
         });
       }}
     >
@@ -106,7 +136,10 @@ export function QuickLoanForm({
           <input
             inputMode="numeric"
             value={capitalRaw}
-            onChange={(event) => setCapitalRaw(formatMiles(event.target.value))}
+            onChange={(event) => {
+              cuotaTouchedRef.current = false;
+              setCapitalRaw(formatMiles(event.target.value));
+            }}
             placeholder="0"
             autoFocus
           />
@@ -116,9 +149,10 @@ export function QuickLoanForm({
           <span>Interés</span>
           <select
             value={ratePct}
-            onChange={(event) =>
-              setRatePct(Number(event.target.value) as (typeof QUICK_INTEREST_PCT)[number])
-            }
+            onChange={(event) => {
+              cuotaTouchedRef.current = false;
+              setRatePct(Number(event.target.value) as (typeof QUICK_INTEREST_PCT)[number]);
+            }}
           >
             {QUICK_INTEREST_PCT.map((pct) => (
               <option key={pct} value={pct}>
@@ -134,7 +168,10 @@ export function QuickLoanForm({
           <span>Tiempo</span>
           <select
             value={termMonths}
-            onChange={(event) => setTermMonths(Number(event.target.value) as LoanTermMonths)}
+            onChange={(event) => {
+              cuotaTouchedRef.current = false;
+              setTermMonths(Number(event.target.value) as LoanTermMonths);
+            }}
           >
             {LOAN_TERM_OPTIONS.map((option) => (
               <option key={option.id} value={option.id}>
@@ -148,7 +185,10 @@ export function QuickLoanForm({
           <span>Frecuencia</span>
           <select
             value={frequency}
-            onChange={(event) => setFrequency(event.target.value as PayFrequency)}
+            onChange={(event) => {
+              cuotaTouchedRef.current = false;
+              setFrequency(event.target.value as PayFrequency);
+            }}
           >
             {PAY_FREQUENCIES.map((option) => (
               <option key={option.id} value={option.id}>
@@ -157,6 +197,27 @@ export function QuickLoanForm({
             ))}
           </select>
         </label>
+      </div>
+
+      <div className="quick-loan-row">
+        <label className="quick-loan-field">
+          <span>Cuota</span>
+          <input
+            inputMode="numeric"
+            value={cuotaRaw}
+            onChange={(event) => {
+              const next = formatMiles(event.target.value);
+              cuotaTouchedRef.current = Boolean(next);
+              setCuotaRaw(next);
+            }}
+            placeholder="0"
+            aria-label="Valor de la cuota"
+          />
+        </label>
+        <div className="quick-loan-field is-summary-cell" aria-hidden={!preview}>
+          <span>Total</span>
+          <em>{preview ? money(preview.total, { symbol: false }) : "—"}</em>
+        </div>
       </div>
 
       {showOriginPicker ? (
@@ -183,8 +244,7 @@ export function QuickLoanForm({
 
       {preview ? (
         <p className="quick-loan-summary">
-          Total {money(preview.total, { symbol: false })} · Cuota{" "}
-          {money(preview.installment, { symbol: false })} · {preview.count} cobros
+          {preview.count} cobros · cuota {money(preview.installment, { symbol: false })}
         </p>
       ) : (
         <p className="quick-loan-summary is-muted">Ingrese el capital para ver la cuota.</p>

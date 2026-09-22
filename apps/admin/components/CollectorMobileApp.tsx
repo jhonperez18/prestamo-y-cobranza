@@ -1015,11 +1015,27 @@ export function CollectorMobileApp({
                       {identity.awaitingLoan && !isDoneView && !isOpen ? (
                         <button
                           type="button"
-                          className="collector-mobile-pay-link"
+                          className="collector-mobile-pay-sticker is-lend-check"
                           disabled={!canLend}
-                          onClick={() => togglePay(item)}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            togglePay(item);
+                          }}
+                          title="Crear préstamo"
+                          aria-label="Crear préstamo"
                         >
-                          Completar
+                          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                            <circle cx="8" cy="8" r="7" fill="#dbeafe" stroke="#2563eb" strokeWidth="1.25" />
+                            <path
+                              d="M4.6 8.2l2.2 2.2 4.6-4.8"
+                              fill="none"
+                              stroke="#2563eb"
+                              strokeWidth="1.6"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
                         </button>
                       ) : null}
                       {!identity.awaitingLoan && isDoneView ? (

@@ -1795,10 +1795,14 @@
       padding-left: 4px;
     }
     .collector-closed-review-list.is-cobros-cols.has-evidence.is-nequi-register > li:not(.is-total) {
-      grid-template-columns: 1.35fr 1.15fr 0.55fr 0.85fr 32px 0.95fr;
-      column-gap: 6px;
+      grid-template-columns: minmax(0, 1.7fr) minmax(0, 1.1fr) auto 32px minmax(0, 1fr);
+      column-gap: 8px;
       padding-left: 10px;
       padding-right: 10px;
+    }
+    .collector-closed-review-list.is-nequi-register .is-loan,
+    .collector-closed-review-list.is-nequi-day-ficha .is-loan {
+      display: none !important;
     }
     /* Formato fijo del sistema: intercalado + misma altura (Nequi, Banco, cobros). */
     .collector-closed-review-list.is-cobros-cols.has-evidence {
@@ -1841,8 +1845,8 @@
     .collector-closed-review-list.is-cobros-cols.has-evidence.is-nequi-day-ficha > li:not(.is-total),
     .collector-closed-review-list.is-cobros-cols.has-evidence.is-nequi-register.is-nequi-day-ficha > li:not(.is-total) {
       display: grid;
-      grid-template-columns: 1.35fr 1.15fr 0.55fr 0.85fr 32px 0.95fr;
-      column-gap: 6px;
+      grid-template-columns: minmax(0, 1.7fr) minmax(0, 1.1fr) auto 32px minmax(0, 1fr);
+      column-gap: 8px;
       row-gap: 0;
       align-items: center;
       width: 100%;
@@ -2348,6 +2352,17 @@
     }
     .collector-mobile-pay-sticker:not(:disabled):hover svg rect {
       fill: #bbf7d0;
+    }
+    .collector-mobile-pay-sticker.is-lend-check {
+      width: 16px;
+      height: 16px;
+    }
+    .collector-mobile-pay-sticker.is-lend-check svg {
+      width: 16px;
+      height: 16px;
+    }
+    .collector-mobile-pay-sticker.is-lend-check:not(:disabled):hover svg circle {
+      fill: #bfdbfe;
     }
     .collector-mobile-dense-row .collector-mobile-pay-link {
       font-size: 11px;
@@ -3968,9 +3983,10 @@
     }
     .supervisor-mobile-sheet-means {
       display: grid;
-      grid-template-columns: minmax(64px, 0.9fr) repeat(5, minmax(0, 1fr));
-      align-items: center;
-      gap: 6px 6px;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      align-items: start;
+      column-gap: 6px;
+      row-gap: 6px;
       padding: 8px 10px 9px;
       border-bottom: 1px solid #e8efeb;
       background: #f7faf8;
@@ -3981,6 +3997,7 @@
       gap: 2px;
       min-width: 0;
       text-align: center;
+      justify-items: center;
       margin: 0;
       padding: 2px 0;
       border: 0;
@@ -3990,43 +4007,45 @@
       border-radius: 4px;
     }
     .supervisor-mobile-sheet-means > div.is-means-spacer {
-      display: block;
-      padding: 0;
-      pointer-events: none;
+      display: none;
     }
     .supervisor-mobile-sheet-means > div.is-title-means {
+      grid-column: 1 / -1;
       display: flex;
       flex-direction: column;
       align-items: flex-start;
       justify-content: center;
-      align-self: center;
-      justify-self: start;
-      width: max-content;
-      max-width: 100%;
+      width: 100%;
+      max-width: none;
       text-align: left;
+      justify-items: start;
       cursor: default;
-      padding-top: 0;
-      transform: translateY(1px);
+      padding: 0;
+      transform: none;
     }
     .supervisor-mobile-sheet-means > button.is-tap-means:active {
       background: #e8f1ec;
     }
     .supervisor-mobile-sheet-means > button.is-tap-means:last-child {
-      text-align: right;
-      justify-items: end;
+      text-align: center;
+      justify-items: center;
     }
     .supervisor-mobile-sheet-means span {
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 700;
       color: #111;
       letter-spacing: 0.01em;
     }
     .supervisor-mobile-sheet-means b {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
       line-height: 1.15;
       color: #111;
+      white-space: nowrap;
+      overflow: visible;
+      text-overflow: clip;
+      max-width: none;
     }
     .supervisor-mobile-sheet-means .is-title-means .is-primary-title {
       font-size: 13px;
@@ -4051,24 +4070,25 @@
     }
     .supervisor-mobile-cuadre {
       display: grid;
-      grid-template-columns: auto minmax(0, 1.15fr) minmax(0, 0.75fr) minmax(0, 0.7fr) minmax(0, 1.2fr);
-      align-items: center;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      align-items: start;
       column-gap: 6px;
-      row-gap: 0;
-      padding: 8px 8px 9px;
+      row-gap: 6px;
+      padding: 8px 10px 9px;
       border-bottom: 1px solid #e8efeb;
       background: #f7faf8;
     }
     .supervisor-mobile-cuadre-title,
     .supervisor-mobile-cuadre-title.is-primary-title {
+      grid-column: 1 / -1;
       margin: 0;
-      padding-right: 4px;
-      font-size: 12px;
+      padding: 0;
+      font-size: 13px;
       font-weight: 800;
       color: #111;
       letter-spacing: 0.01em;
       line-height: 1.15;
-      align-self: center;
+      align-self: start;
       justify-self: start;
       white-space: nowrap;
     }
@@ -4094,16 +4114,16 @@
       font-variant-numeric: tabular-nums;
       line-height: 1.15;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      max-width: 100%;
+      overflow: visible;
+      text-overflow: clip;
+      max-width: none;
       word-break: normal;
     }
     .supervisor-mobile-cuadre .is-final {
       text-align: center;
       justify-items: center;
-      margin: -2px -2px -2px 0;
-      padding: 5px 6px;
+      margin: 0;
+      padding: 5px 4px;
       border-radius: 8px;
       background: #cfe8df;
       box-shadow: inset 0 0 0 1px #9ecbb8;
@@ -5345,6 +5365,48 @@
       border-radius: 8px;
       background: #fff;
     }
+    .quick-loan-form.is-compact {
+      gap: 6px;
+      padding: 4px 2px 2px;
+    }
+    .quick-loan-form.is-compact .quick-loan-row {
+      gap: 6px;
+    }
+    .quick-loan-form.is-compact .quick-loan-field {
+      font-size: 10px;
+      gap: 2px;
+    }
+    .quick-loan-form.is-compact .quick-loan-field input,
+    .quick-loan-form.is-compact .quick-loan-field select {
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 6px;
+      min-height: 28px;
+      height: 28px;
+      border-radius: 5px;
+      border-width: 1px;
+      box-sizing: border-box;
+    }
+    .quick-loan-form.is-compact .quick-loan-field.is-summary-cell em {
+      display: flex;
+      align-items: center;
+      min-height: 28px;
+      height: 28px;
+      padding: 0 6px;
+      font-size: 12px;
+      font-weight: 500;
+      font-style: normal;
+      font-variant-numeric: tabular-nums;
+      color: #0f766e;
+      box-sizing: border-box;
+    }
+    .quick-loan-form.is-compact .quick-loan-summary {
+      font-size: 11px;
+      margin: 0;
+    }
+    .quick-loan-form.is-compact .quick-loan-actions {
+      margin-top: 2px;
+    }
     .quick-loan-summary {
       margin: 2px 0 0;
       font-size: 12px;
@@ -5679,6 +5741,63 @@
     }
     .supervisor-mobile-list li:last-child {
       border-bottom: 0;
+    }
+    /* Préstamos generados hoy: Nombre | valor | Nu/Re */
+    .supervisor-mobile-list.is-loans-today li {
+      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto;
+      column-gap: 8px;
+      background: var(--row-b);
+    }
+    .supervisor-mobile-list.is-loans-today li:nth-child(odd) {
+      background: var(--row-a);
+    }
+    .supervisor-mobile-list.is-loans-today li > div {
+      display: contents;
+    }
+    .supervisor-mobile-list.is-loans-today .is-name {
+      display: block;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      font-weight: 400;
+      color: #111;
+      text-align: left;
+    }
+    .supervisor-mobile-list.is-loans-today .is-amount {
+      display: block;
+      font-size: 12px;
+      font-weight: 400;
+      font-variant-numeric: tabular-nums;
+      color: #0f766e;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .supervisor-mobile-list.is-loans-today .is-kind {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.6rem;
+      padding: 1px 5px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 400;
+      letter-spacing: 0.02em;
+      color: #111;
+      background: #e8f5ef;
+      line-height: 1.2;
+    }
+    .supervisor-mobile-list.is-loans-today .is-kind.is-renov {
+      background: #f5f0e6;
+    }
+    .supervisor-mobile-list.is-loans-today .is-kind.is-count {
+      min-width: 1.5rem;
+      background: transparent;
+      color: #111;
+      font-variant-numeric: tabular-nums;
+      font-weight: 400;
+      padding: 0;
     }
     .supervisor-mobile-list li > div {
       min-width: 0;

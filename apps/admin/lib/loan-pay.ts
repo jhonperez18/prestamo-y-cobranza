@@ -77,26 +77,18 @@ export function targetLabel(target: CuotaTarget | null) {
 export function validatePay(loan: LoanRow, kind: PayKind, amount: number) {
   if (!Number.isFinite(amount) || amount <= 0) return "Indique un valor.";
   if (loan.balance <= 0) return "Este préstamo ya no tiene saldo pendiente.";
+  // Tope único: saldo del préstamo. Cuota de referencia se puede pagar de menos o de más.
   if (amount > loan.balance) return "El valor no puede ser mayor a lo pendiente del préstamo.";
-  const target = cuotaTarget(loan);
   if (kind === "cuota") {
+    const target = cuotaTarget(loan);
     if (!target) return "Este préstamo no tiene una cuota pendiente.";
-    return null;
-  }
-  if (!target) {
-    return null;
-  }
-  if (amount > target.remaining) {
-    return "Un abono no puede ser mayor a lo pendiente de la cuota.";
   }
   return null;
 }
 
 export function payHint(loan: LoanRow, kind: PayKind, amount: number) {
   if (amount <= 0) {
-    return kind === "cuota"
-      ? "Registre el valor de la cuota, menos o más (hasta el saldo del préstamo)."
-      : "Indique un valor menor o igual a la cuota.";
+    return "Registre el valor: menos o más que la cuota (hasta el saldo del préstamo).";
   }
   const error = validatePay(loan, kind, amount);
   if (error) return error;
@@ -105,7 +97,6 @@ export function payHint(loan: LoanRow, kind: PayKind, amount: number) {
   if (amount === loan.balance) return "Se cancela el total del préstamo a la fecha.";
   if (amount < target.remaining) return "Queda pendiente parcial en esta cuota.";
   if (amount === target.remaining) return "Se registra la cuota completa.";
-  if (kind === "abono") return "Un abono no puede ser mayor a lo pendiente de la cuota.";
   return "El excedente baja el saldo. La cuota diaria sigue igual.";
 }
 
@@ -144,13 +135,8 @@ export function applyPay(loan: LoanRow, kind: PayKind, amount: number): ApplyPay
   const type: "Cuota" | "Abono" = kind === "cuota" ? "Cuota" : "Abono";
   const partial = Boolean(target && amount < target.remaining);
   if (schedule && target && target.index >= 0) {
-    if (kind === "cuota") {
-      // Solo marca la cuota del día; el excedente reduce saldo, no mueve cuotas siguientes.
-      applyToOpenCuotaOnly(schedule, target.index, amount);
-    } else {
-      const line = schedule[target.index];
-      line.paid = linePaid(line) + amount;
-    }
+    // Solo marca lo pendiente de la cuota abierta; el excedente solo baja saldo.
+    applyToOpenCuotaOnly(schedule, target.index, amount);
   }
   const paid = loan.paid + amount;
   const balance = Math.max(0, loan.balance - amount);

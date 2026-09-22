@@ -1767,7 +1767,6 @@ export function SupervisorMobileApp({
                     <li key={pay.ref}>
                       <strong className="is-name">{pay.client}</strong>
                       <span className="is-when">{pay.paidTime || "—"}</span>
-                      <span className="is-loan">{pay.loanRef || "—"}</span>
                       <em
                         className={`is-method ${paymentMethodToneClass("nequi")}`}
                         title={paymentMethodLabel("nequi")}
@@ -1847,7 +1846,6 @@ export function SupervisorMobileApp({
                   <div className="is-title-means">
                     <span className="is-primary-title">Cobrado hoy</span>
                   </div>
-                  <div className="is-means-spacer" aria-hidden />
                   <button
                     type="button"
                     className="is-pay-efectivo is-tap-means"
@@ -1987,25 +1985,21 @@ export function SupervisorMobileApp({
           ) : (
             <>
               <p className="supervisor-mobile-detail-meta">
-                Préstamos generados hoy (incluye renovación al liquidar).
+                Préstamos generados hoy · {openRoute.newLoans.length + openRoute.renewals.length}
               </p>
               {openRoute.newLoans.length + openRoute.renewals.length === 0 ? (
                 <p className="ficha-empty">Sin préstamos nuevos ni renovaciones hoy.</p>
               ) : (
-                <ul className="supervisor-mobile-list">
-                  {[...openRoute.renewals, ...openRoute.newLoans].map((loan) => (
+                <ul className="supervisor-mobile-list is-loans-today">
+                  {[...openRoute.renewals, ...openRoute.newLoans].map((loan, index) => (
                     <li key={loan.ref}>
-                      <div>
-                        <strong>{loan.client}</strong>
-                        <span>
-                          {loan.ref} · {isRenewalLoan(loan) ? "Renovación" : "Nuevo"} ·{" "}
-                          {money(loan.balance || loan.total || 0, { symbol: false })}
-                        </span>
-                      </div>
-                      <Pill
-                        label={isRenewalLoan(loan) ? "Renovación" : "Nuevo"}
-                        kind={isRenewalLoan(loan) ? "partial" : "ok"}
-                      />
+                      <strong className="is-name">{loan.client}</strong>
+                      <b className="is-amount">
+                        {money(loan.balance || loan.total || 0, { symbol: false })}
+                      </b>
+                      <span className="is-kind is-count" title="Préstamos iniciados hoy">
+                        {index + 1}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -2151,7 +2145,6 @@ export function SupervisorMobileApp({
                     <li key={pay.ref}>
                       <strong className="is-name">{pay.client}</strong>
                       <span className="is-when">{pay.paidTime || "—"}</span>
-                      <span className="is-loan">{pay.loanRef || "—"}</span>
                       <em
                         className={`is-method ${paymentMethodToneClass("nequi")}`}
                         title={paymentMethodLabel("nequi")}
@@ -2241,7 +2234,6 @@ export function SupervisorMobileApp({
                     <li key={pay.ref}>
                       <strong className="is-name">{pay.client}</strong>
                       <span className="is-when">{pay.paidTime || "—"}</span>
-                      <span className="is-loan">{pay.loanRef || "—"}</span>
                       <em
                         className={`is-method ${paymentMethodToneClass("banco")}`}
                         title={paymentMethodLabel("banco")}

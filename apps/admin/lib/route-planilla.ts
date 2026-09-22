@@ -10,7 +10,7 @@ import {
   type CollectionPaymentTouch,
   liveLoanCollectionAlerts,
 } from "@/lib/collection-alerts";
-import { isPendingReview } from "@/lib/client-review";
+import { isPendingReview, isOperationalClient } from "@/lib/client-review";
 import { isColombiaHoliday, isDailyCollectionDay, weekdayLabel } from "@/lib/colombia-holidays";
 import {
   accumulatedDueForLoan,
@@ -101,6 +101,27 @@ function loanItemsForClient(
     });
   }
   return items;
+}
+
+/** Cliente de la ruta sin cobro cobrable hoy → sigue en planilla (Completar). */
+function awaitingLoanItemForClient(client: ClientRow, date: string): DailyCollectionItem {
+  return {
+    id: `${date}:${client.ref}:prestar`,
+    loanRef: "",
+    clientRef: client.ref,
+    clientName: clientLabel(client),
+    clientRoute: client.route,
+    address: client.address,
+    phone: client.phone,
+    chargeDate: date,
+    chargeLabel: "Completar",
+    amountDue: 0,
+    cuotaAmount: 0,
+    moraAmount: 0,
+    alertCount: 0,
+    kind: "cuota",
+    statusKind: "pending",
+  };
 }
 
 function preserveProgress(
@@ -227,13 +248,26 @@ export function syncPermanentRoutePlanilla(
     if (!collector) continue;
 
     for (const client of clientsOnRouteSorted(clients, route.name)) {
-      // Solo cobros reales: sin préstamo cobrable hoy → no entra a planilla del cobrador.
-      // Alta / awaitingLoan se gestiona en Clientes; no genera visita "Completar".
+      if (!isOperationalClient(client)) continue;
+      // Toda la ruta diaria: cobrables + sin préstamo (Completar).
+      // Quien ya pagó/omitió hoy no vuelve a pendiente como Completar.
       const items = loanItemsForClient(client, loans, date, payments);
-      if (!items.length) continue;
-      for (const item of items) {
+      let dayItems = items;
+      if (!dayItems.length) {
+        const settledToday = existing.some((prev) => {
+          if (prev.dispatchDate !== date) return false;
+          if (prev.collectorRef !== collector.ref) return false;
+          if (prev.clientRef !== client.ref) return false;
+          if (prev.visitStatus === "omitido") return true;
+          const linked = (prev.paymentRef || "").trim();
+          return Boolean(linked && livePaymentsByRef.has(linked));
+        });
+        if (!settledToday) dayItems = [awaitingLoanItemForClient(client, date)];
+      }
+      for (const item of dayItems) {
         const base = {
           ...assignmentFromItem(item, collector, date),
+          awaitingLoan: !String(item.loanRef || "").trim() || item.id.includes(":prestar"),
           dispatched: true,
           dispatchedAt: at,
         };

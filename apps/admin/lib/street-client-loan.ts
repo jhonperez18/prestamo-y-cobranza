@@ -39,6 +39,8 @@ export type QuickLoanDraft = {
   rate?: number;
   frequency: PayFrequency;
   termMonths: LoanTermMonths;
+  /** Cuota pactada a mano; si falta, se calcula sola. */
+  installmentAmount?: number;
   /** Al prestar: el cliente queda en esta ruta (planilla). */
   routeName?: string;
   /** Origen del desembolso. Por defecto Nequi (supervisor/admin). */
@@ -95,6 +97,10 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
     startIso,
     frequency: draft.frequency,
     termMonths: draft.termMonths,
+    installmentAmount:
+      draft.installmentAmount != null && draft.installmentAmount > 0
+        ? draft.installmentAmount
+        : undefined,
   });
   if (!preview) return null;
 
