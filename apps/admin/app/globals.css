@@ -7090,12 +7090,8 @@
       line-height: 1.3;
       vertical-align: middle;
     }
-    table.data th.right,
-    table.data td.right,
     table.data th.center,
-    table.data td.center,
-    table.data td,
-    table.data tbody td {
+    table.data td.center {
       text-align: center;
     }
     table.data th.sortable {
@@ -7196,7 +7192,7 @@
     .bank-records-table th:not(.col-picker-cell) {
       text-align: center !important;
     }
-    /* Única excepción del sistema: columna Nombre a la izquierda. */
+    /* Excepciones de alineación: nombre izquierda; montos derecha (no fechas). */
     table.data th.is-nombre,
     table.data td.is-nombre,
     table.list-grid th.is-nombre,
@@ -7220,6 +7216,23 @@
     table.list-data-table th.is-nombre.sortable .th-sort {
       justify-content: flex-start;
       text-align: left;
+    }
+    table.data th.right,
+    table.data td.right,
+    table.data td.money,
+    table.list-grid th.right,
+    table.list-grid td.right,
+    table.list-data-table th.right,
+    table.list-data-table td.right,
+    .bank-table th.right,
+    .bank-table td.right {
+      text-align: right !important;
+    }
+    table.data th.right.sortable .th-sort,
+    table.list-grid th.right.sortable .th-sort,
+    table.list-data-table th.right.sortable .th-sort {
+      justify-content: flex-end;
+      text-align: right;
     }
     table.data td {
       border-bottom: 1px solid #dce8e2;

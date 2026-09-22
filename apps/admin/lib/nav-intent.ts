@@ -3,11 +3,11 @@
  * `click` sintético cae en B (p. ej. INICIO). Solo aceptamos navegación si
  * el mismo elemento recibió pointerdown y luego click.
  *
- * También limpia la ventana anti-eco para que un toque nuevo en el menú
- * no quede bloqueado tras cambiar de pestaña.
+ * No limpiar anti-eco durante la ventana quiet: un pointerdown fantasma
+ * sobre KPI/menú no debe anular la protección ni armar un click falso.
  */
 import type { PointerEvent as ReactPointerEvent, SyntheticEvent } from "react";
-import { clearNavQuiet } from "@/lib/suppress-ghost-click";
+import { clearNavQuiet, isNavQuiet } from "@/lib/suppress-ghost-click";
 
 type NavIntentHandlers = {
   onPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
@@ -20,7 +20,9 @@ export function createNavIntent(): NavIntentHandlers {
   return {
     onPointerDown(event) {
       if (!event.isPrimary) return;
-      // Nuevo gesto en menú = intención real; no heredar el quiet del panel anterior.
+      // Eco tras abrir cobro: no armar ni borrar quiet (si no, el panel se cierra).
+      if (isNavQuiet()) return;
+      // Nuevo gesto real en menú = intención; no heredar quiet viejo.
       clearNavQuiet();
       armed = event.currentTarget;
     },

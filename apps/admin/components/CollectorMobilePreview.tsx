@@ -30,8 +30,6 @@ type Props = {
   users?: UserRow[];
   selectedRef: string;
   onSelect: (ref: string) => void;
-  /** Cambia cuando Workspace relee storage → remount del teléfono. */
-  dataEpoch?: number;
   assignments: DailyCollectionAssignment[];
   routes: RouteRow[];
   loans: LoanRow[];
@@ -76,7 +74,6 @@ export function CollectorMobilePreview({
   users = [],
   selectedRef,
   onSelect,
-  dataEpoch = 0,
   assignments,
   routes,
   loans,
@@ -175,8 +172,10 @@ export function CollectorMobilePreview({
       ? `${supervisor?.name ?? "Supervisor"} · app`
       : `${collector?.name ?? "Cobrador"} · app`;
 
-  const collectorPanelKey = `cob-${collector?.ref ?? "x"}-${panelEpoch}-${dataEpoch}`;
-  const supervisorPanelKey = `sup-${supervisor?.ref ?? "x"}-${panelEpoch}-${dataEpoch}`;
+  // Solo remount al cambiar persona (panelEpoch). Nunca meter sync/hydrate epoch:
+  // eso cerraba el panel Pagar al refrescar datos.
+  const collectorPanelKey = `cob-${collector?.ref ?? "x"}-${panelEpoch}`;
+  const supervisorPanelKey = `sup-${supervisor?.ref ?? "x"}-${panelEpoch}`;
 
   return (
     <section className="panel collector-mobile-preview-panel is-compact">

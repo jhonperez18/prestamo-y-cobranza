@@ -404,7 +404,7 @@ export function Workspace({
     setBankAccountRef((current) => current || snap.bankAccounts[0]?.ref || "");
   }, []);
 
-  const { hydrated: demoHydrated, epoch: storageReloadNonce } = useOperationalDemoSync(
+  const { hydrated: demoHydrated } = useOperationalDemoSync(
     applyOperationalSnapshot,
     {
       resyncActive: moduleId === "inicio" && viewId === "vista-movil",
@@ -2571,9 +2571,9 @@ export function Workspace({
             />
           }
           headers={[
-            { t: "Ref", width: "9%" },
-            { t: "Cliente", width: "22%" },
-            { t: "Desembolso", width: "12%" },
+            { t: "Ref", width: "9%", center: true },
+            { t: "Cliente", width: "22%", left: true },
+            { t: "Desembolso", width: "12%", center: true },
             { t: "Capital", right: true, width: "13%" },
             { t: "Valor cuota", right: true, width: "13%" },
             { t: "Saldo", right: true, width: "13%" },
@@ -2590,7 +2590,9 @@ export function Workspace({
             return (
             <tr key={row.ref} onClick={() => openLoanAccount(row.ref)}>
               {prestamoListColumns.isVisible("ref") ? <td className="ref">{row.ref}</td> : null}
-              {prestamoListColumns.isVisible("client") ? <td>{row.client}</td> : null}
+              {prestamoListColumns.isVisible("client") ? (
+                <td className="is-nombre">{row.client}</td>
+              ) : null}
               {prestamoListColumns.isVisible("date") ? <td>{row.date}</td> : null}
               {prestamoListColumns.isVisible("capital") ? (
                 <td className="money right">{money(row.capital)}</td>
@@ -3341,7 +3343,6 @@ export function Workspace({
           users={users}
           selectedRef={mobilePreviewCollectorRef}
           onSelect={setMobilePreviewCollectorRef}
-          dataEpoch={storageReloadNonce}
           assignments={dailyAssignments}
           routes={routes}
           loans={loans}

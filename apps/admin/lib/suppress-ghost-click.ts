@@ -53,12 +53,15 @@ export function suppressGhostClick(ms = 520): void {
   // Armar YA (no en el siguiente tick): el eco llega en el mismo gesto tras el
   // reflow del panel. En onClick (bubble) el capture del click actual ya pasó,
   // así que no comemos el toque que abrió el panel.
+  // pointerdown también: si no, un eco en KPI llamaba clearNavQuiet y mataba la ventana.
+  document.addEventListener("pointerdown", block, opts);
   document.addEventListener("click", block, opts);
   document.addEventListener("pointerup", block, opts);
   document.addEventListener("touchend", block, opts);
 
   const left = Math.max(0, quietUntil - Date.now());
   window.setTimeout(() => {
+    document.removeEventListener("pointerdown", block, opts);
     document.removeEventListener("click", block, opts);
     document.removeEventListener("pointerup", block, opts);
     document.removeEventListener("touchend", block, opts);

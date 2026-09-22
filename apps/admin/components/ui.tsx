@@ -20,7 +20,15 @@ export function Pill({
   );
 }
 
-type Header = { t: string; right?: boolean; center?: boolean; width?: string; sortKey?: string };
+type Header = {
+  t: string;
+  /** Columna de nombre/cliente — alineada a la izquierda. */
+  left?: boolean;
+  right?: boolean;
+  center?: boolean;
+  width?: string;
+  sortKey?: string;
+};
 
 export type DataTableFilterOptions = {
   collectors?: { ref: string; name: string }[];
@@ -160,6 +168,7 @@ export function DataTable({
                     : "descending"
                   : undefined;
                 const className = [
+                  header.left ? "is-nombre" : undefined,
                   header.center ? "center" : header.right ? "right" : undefined,
                   header.sortKey && onSort ? "sortable" : undefined,
                   active ? "sorted" : undefined,

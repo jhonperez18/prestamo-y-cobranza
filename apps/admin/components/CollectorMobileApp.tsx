@@ -422,7 +422,7 @@ export function CollectorMobileApp({
     // Billete = solo ABRIR. Cerrar es «cerrar» / confirmar.
     // Si toggléa, el click fantasma tras el reflow cierra el panel al instante.
     if (expandedKey === key) return;
-    suppressGhostClick(520);
+    suppressGhostClick(720);
     setExpandedKey(key);
   }
 
@@ -434,6 +434,7 @@ export function CollectorMobileApp({
   }
 
   function selectFilter(next: ListFilter) {
+    if (isNavQuiet()) return;
     setEditingExpenses(false);
     setConfirmingClose(false);
     // Misma pestaña: no resetear (evita que un click fantasma al abrir cobro cierre el panel).
@@ -444,6 +445,7 @@ export function CollectorMobileApp({
   }
 
   function openExpenses() {
+    if (isNavQuiet()) return;
     // Jornada cerrada: solo lectura, sin acceso a listas ni edición.
     if (dayLocked) return;
     if (!onSaveExpenses) return;

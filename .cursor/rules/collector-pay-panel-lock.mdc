@@ -1,0 +1,30 @@
+---
+description: Panel Pagar del cobrador — no se cierra solo
+alwaysApply: true
+---
+
+# Cobro móvil — panel Pagar sellado
+
+Al tocar el billete / **Pagar**, el formulario **debe permanecer abierto** hasta «cerrar» o «confirmar».
+
+## Prohibido
+
+- Remontar `CollectorMobileApp` / `SupervisorMobileApp` por sync, `dataEpoch`, `storageReloadNonce` u otro epoch de pull.
+- `key={...-${dataEpoch}}` o cualquier `key` que cambie en cada hydrate.
+- `clearNavQuiet()` durante la ventana anti-eco (rompe la protección y el panel se cierra).
+- Toggle billete = abrir+cerrar: billete **solo abre**; cierra solo «cerrar» / confirmar OK.
+- `setExpandedKey(null)` desde KPI / filtro / gastos si `isNavQuiet()`.
+
+## Contrato
+
+| Pieza | Regla |
+| --- | --- |
+| `CollectorMobilePreview` key | Solo `cobrador/supervisor ref` + `panelEpoch` (cambio de persona) |
+| Datos sync | Entran por **props**; no remount |
+| `suppressGhostClick` | Al abrir cobro; no anular con pointerdown fantasma en KPI |
+| `nav-intent` | Si `isNavQuiet()` → no armar, no `clearNavQuiet` |
+| `closeCard` / «cerrar» | Ignorar si `isNavQuiet()` |
+
+## Si vuelve el síntoma
+
+No parchear el botón. Revisar: ¿hubo remount? ¿se limpió quiet? ¿filtro/KPI cerró el panel?

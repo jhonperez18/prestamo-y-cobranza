@@ -15,6 +15,7 @@ import {
 } from "@/lib/payment-evidence";
 import { money } from "@/lib/mock-data";
 import type { PayKind } from "@/lib/loan-pay";
+import { isNavQuiet } from "@/lib/suppress-ghost-click";
 
 export type CollectorPaySubmit = {
   amount: number;
@@ -236,7 +237,10 @@ export function CollectorPayForm({
         <button
           type="button"
           className={inline ? "collector-mobile-pay-link" : "btn compact"}
-          onClick={onCancel}
+          onClick={() => {
+            if (isNavQuiet()) return;
+            onCancel();
+          }}
         >
           {inline ? "cerrar" : "Cancelar"}
         </button>
