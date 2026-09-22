@@ -177,6 +177,7 @@ import { withPaymentEvidence, rememberPaymentEvidence } from "@/lib/payment-evid
 import { preferRicherEvidence, evidenceHasPreview, type PaymentEvidenceRef } from "@/lib/payment-evidence";
 import {
   buildRouteStop,
+  isCombinedCollectorPayment,
   type CollectorPaymentRegisterInput,
 } from "@/lib/route-sync";
 import {
@@ -211,7 +212,11 @@ import { applyBankLedgerSync, syncBankLedger } from "@/lib/bank-ledger-sync";
 import {
   stripRemovedPaymentMovements,
 } from "@/lib/purge-unclosed-payments";
-import { commitCollectorPayment, commitCollectorCombinedPayment } from "@/lib/commit-collector-payment";
+import {
+  commitCollectorPayment,
+  commitCollectorCombinedPayment,
+  paymentsFromCollectorCommit,
+} from "@/lib/commit-collector-payment";
 import {
   commitCreateClient,
   commitCreateLoan,
@@ -1570,39 +1575,34 @@ export function useWorkspace({
   }
 
   function registerCollectorPayment(input: CollectorPaymentRegisterInput) {
-    const committed =
-      "combined" in input && input.combined
-        ? commitCollectorCombinedPayment({
-            parts: input.parts,
-            comboGroupId: input.comboGroupId,
-            paidTime: input.paidTime,
-            payments,
-            loans,
-            clients,
-            routes,
-            assignments: dailyAssignments,
-            collectors,
-          })
-        : commitCollectorPayment({
-            draft: input,
-            payments,
-            loans,
-            clients,
-            routes,
-            assignments: dailyAssignments,
-            collectors,
-          });
+    const committed = isCombinedCollectorPayment(input)
+      ? commitCollectorCombinedPayment({
+          parts: input.parts,
+          comboGroupId: input.comboGroupId,
+          paidTime: input.paidTime,
+          payments,
+          loans,
+          clients,
+          routes,
+          assignments: dailyAssignments,
+          collectors,
+        })
+      : commitCollectorPayment({
+          draft: input,
+          payments,
+          loans,
+          clients,
+          routes,
+          assignments: dailyAssignments,
+          collectors,
+        });
     if (!committed.ok) {
       onToast(committed.error);
       return false;
     }
 
-    const primaryDraft =
-      "combined" in input && input.combined ? input.parts[0] : input;
-    const paymentsCreated =
-      "paymentsCreated" in committed && committed.paymentsCreated
-        ? committed.paymentsCreated
-        : [committed.payment];
+    const primaryDraft = isCombinedCollectorPayment(input) ? input.parts[0] : input;
+    const paymentsCreated = paymentsFromCollectorCommit(committed);
 
     const paidRoute =
       committed.routes.find((row) => row.ref === committed.payment.routeRef) ??

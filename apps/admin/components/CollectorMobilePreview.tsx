@@ -19,7 +19,7 @@ import type {
 } from "@/lib/collector-day-close";
 import { todayIso } from "@/lib/daily-dispatch";
 import type { ClientRow, CollectorRow, LoanRow, PaymentRow, RouteRow, UserRow } from "@/lib/mock-data";
-import type { CollectorPaymentDraft } from "@/lib/route-sync";
+import type { CollectorPaymentRegisterInput } from "@/lib/route-sync";
 
 const SUPERVISOR_ROLE_REF = "ROL-2";
 
@@ -38,7 +38,7 @@ type Props = {
   dayCloses?: CollectorDayCloseRecord[];
   dayExpenseDrafts?: CollectorDayExpenseDraft[];
   monthCloses?: CollectorMonthCloseRecord[];
-  onRegisterPayment?: (draft: CollectorPaymentDraft) => boolean | void;
+  onRegisterPayment?: (draft: CollectorPaymentRegisterInput) => boolean | void;
   onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
   onRenewLoan?: (loanRef: string) => void;
   onSaveExpenses?: (payload: CollectorSaveExpensesPayload) => void;

@@ -72,14 +72,22 @@ export type CollectorPaymentDraft = {
 };
 
 /** Registro atómico de cobro simple o combinado (2 métodos). */
+export type CollectorCombinedPaymentInput = {
+  combined: true;
+  comboGroupId: string;
+  paidTime: string;
+  parts: [CollectorPaymentDraft, CollectorPaymentDraft];
+};
+
 export type CollectorPaymentRegisterInput =
   | CollectorPaymentDraft
-  | {
-      combined: true;
-      comboGroupId: string;
-      paidTime: string;
-      parts: [CollectorPaymentDraft, CollectorPaymentDraft];
-    };
+  | CollectorCombinedPaymentInput;
+
+export function isCombinedCollectorPayment(
+  input: CollectorPaymentRegisterInput,
+): input is CollectorCombinedPaymentInput {
+  return "combined" in input && input.combined === true;
+}
 
 export function findRouteStop(route: RouteRow, clientRef: string) {
   return route.stops.find((stop) => stop.clientRef === clientRef) ?? null;

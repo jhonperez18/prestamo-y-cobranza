@@ -73,7 +73,11 @@ import {
   queueDayExpenseMirror,
   queueRoutesMirror,
 } from "@/lib/supabase/ops-mirror";
-import { commitCollectorPayment, commitCollectorCombinedPayment } from "@/lib/commit-collector-payment";
+import {
+  commitCollectorPayment,
+  commitCollectorCombinedPayment,
+  paymentsFromCollectorCommit,
+} from "@/lib/commit-collector-payment";
 import { type OperationalDemoSnapshot } from "@/lib/hydrate-operational-demo";
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
 import {
@@ -99,7 +103,10 @@ import {
   assertOwnCollectorPayment,
   routesForMobileCollector,
 } from "@/lib/mobile-sync";
-import type { CollectorPaymentRegisterInput } from "@/lib/route-sync";
+import {
+  isCombinedCollectorPayment,
+  type CollectorPaymentRegisterInput,
+} from "@/lib/route-sync";
 
 type Props = {
   session: AppSession;
@@ -271,49 +278,43 @@ export function CollectorShell({ session, onLogout }: Props) {
   }, [dailyLogs, hydrated]);
 
   function registerCollectorPayment(input: CollectorPaymentRegisterInput) {
-    const ownershipRef =
-      "combined" in input && input.combined
-        ? input.parts[0].collectorRef
-        : input.collectorRef;
+    const ownershipRef = isCombinedCollectorPayment(input)
+      ? input.parts[0].collectorRef
+      : input.collectorRef;
     const ownershipError = assertOwnCollectorPayment(session.collectorRef, ownershipRef);
     if (ownershipError) {
       showToast(ownershipError);
       return false;
     }
 
-    const committed =
-      "combined" in input && input.combined
-        ? commitCollectorCombinedPayment({
-            parts: input.parts,
-            comboGroupId: input.comboGroupId,
-            paidTime: input.paidTime,
-            payments,
-            loans,
-            clients,
-            routes,
-            assignments: dailyAssignments,
-            collectors,
-          })
-        : commitCollectorPayment({
-            draft: input,
-            payments,
-            loans,
-            clients,
-            routes,
-            assignments: dailyAssignments,
-            collectors,
-          });
+    const committed = isCombinedCollectorPayment(input)
+      ? commitCollectorCombinedPayment({
+          parts: input.parts,
+          comboGroupId: input.comboGroupId,
+          paidTime: input.paidTime,
+          payments,
+          loans,
+          clients,
+          routes,
+          assignments: dailyAssignments,
+          collectors,
+        })
+      : commitCollectorPayment({
+          draft: input,
+          payments,
+          loans,
+          clients,
+          routes,
+          assignments: dailyAssignments,
+          collectors,
+        });
     if (!committed.ok) {
       showToast(committed.error);
       return false;
     }
 
-    const primaryDraft =
-      "combined" in input && input.combined ? input.parts[0] : input;
-    const paymentsCreated =
-      "paymentsCreated" in committed && committed.paymentsCreated
-        ? committed.paymentsCreated
-        : [committed.payment];
+    const primaryDraft = isCombinedCollectorPayment(input) ? input.parts[0] : input;
+    const paymentsCreated = paymentsFromCollectorCommit(committed);
 
     const paidRoute = committed.routes.find(
       (row) =>

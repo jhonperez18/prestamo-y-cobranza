@@ -384,15 +384,7 @@ function RouteBoardCard({
 function PlanillaTable({
   rows,
 }: {
-  rows: Array<{
-    key: string;
-    index: number;
-    clientName: string;
-    saldo: number;
-    method?: PaymentMethod | null;
-    cuotas?: ReturnType<typeof computeLoanCuotasProgress>;
-    visitStatus?: DailyCollectionAssignment["visitStatus"];
-  }>;
+  rows: Array<ReturnType<typeof enrichSupervisorPlanillaRow>>;
 }) {
   return (
     <div className="supervisor-liq-wrap">

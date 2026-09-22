@@ -66,10 +66,25 @@ function deploymentSha(row) {
   ).slice(0, 7);
 }
 
+function parseCliJson(raw) {
+  const startObj = raw.indexOf("{");
+  const startArr = raw.indexOf("[");
+  const start =
+    startObj < 0 ? startArr : startArr < 0 ? startObj : Math.min(startObj, startArr);
+  if (start < 0) throw new Error("sin json");
+  const slice = raw.slice(start);
+  try {
+    return JSON.parse(slice);
+  } catch (err) {
+    const at = String(err?.message || "").match(/position (\d+)/);
+    if (!at) throw err;
+    return JSON.parse(slice.slice(0, Number(at[1])));
+  }
+}
+
 function listProductionDeployments() {
   const raw = capture(`npx vercel ls ${PROJECT} --json`, repoRoot);
-  const jsonStart = Math.max(raw.indexOf("{"), raw.indexOf("["));
-  const data = JSON.parse(jsonStart >= 0 ? raw.slice(jsonStart) : raw);
+  const data = parseCliJson(raw);
   return Array.isArray(data?.deployments) ? data.deployments : [];
 }
 
@@ -98,11 +113,9 @@ function latestProductionDeployUrl(expectedSha = "") {
       }
     }
   } catch (err) {
-    console.warn("Aviso: vercel ls --json falló, uso texto.", err?.message || err);
+    console.warn("Aviso: vercel ls --json falló.", err?.message || err);
   }
-  const out = capture(`npx vercel ls ${PROJECT}`, repoRoot);
-  const match = out.replace(/\s+/g, " ").match(DEPLOY_URL_RE);
-  return match?.[0] || "";
+  return "";
 }
 
 /** Espera Ready del commit esperado (no aliasar deploy viejo ni ERROR). */

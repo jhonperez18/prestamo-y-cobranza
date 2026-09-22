@@ -78,6 +78,18 @@ export type CollectorCombinedPaymentCommitResult =
       assignments: DailyCollectionAssignment[];
     };
 
+export function paymentsFromCollectorCommit(
+  committed: Extract<
+    CollectorPaymentCommitResult | CollectorCombinedPaymentCommitResult,
+    { ok: true }
+  >,
+): PaymentRow[] {
+  if ("paymentsCreated" in committed) {
+    return [committed.paymentsCreated[0], committed.paymentsCreated[1]];
+  }
+  return [committed.payment];
+}
+
 export {
   reconcilePaymentsOntoPlanilla,
   dedupeDailyPaymentsByVisit,
