@@ -72,13 +72,15 @@ export function NewClientForm({
   const [routeOrder, setRouteOrder] = useState(defaultPosition);
 
   function onRouteChange(nextId: string) {
+    const prevName = routes.find((route) => route.id === routeId)?.name ?? "";
     setRouteId(nextId);
     const nextName = routes.find((route) => route.id === nextId)?.name ?? "";
+    // Misma ruta: no resetear posición (solo al cambiar de ruta → al final).
+    if (sameRoute(prevName, nextName)) return;
     const onRoute = clientsOnRouteSorted(clients, nextName).filter(
       (row) => row.ref !== client?.ref,
     );
-    const append = onRoute.length + 1;
-    setRouteOrder(append);
+    setRouteOrder(onRoute.length + 1);
   }
 
   function resolveRouteName(formRouteId: string): string | null {
@@ -100,10 +102,10 @@ export function NewClientForm({
       return;
     }
     const maxPos = Math.max(1, positionOptions.length);
-    // Estado del select manda (FormData omite campos disabled).
+    // Estado React manda: FormData omite select disabled y a veces falla el value.
     const rawPos = Number(form.get("posicion"));
     const fromForm = Number.isFinite(rawPos) && rawPos > 0 ? rawPos : 0;
-    const pos = Math.min(Math.max(1, fromForm || routeOrder || maxPos), maxPos);
+    const pos = Math.min(Math.max(1, routeOrder || fromForm || maxPos), maxPos);
     const name = String(form.get("nombre") ?? "").trim();
     if (!name) {
       window.alert("El nombre del cliente es obligatorio.");

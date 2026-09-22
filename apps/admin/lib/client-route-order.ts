@@ -137,10 +137,14 @@ export function placeClientOnRoute(
   };
   ordered.splice(target - 1, 0, placed);
 
+  // Sellar updatedAt en toda la ruta renumerada: si no, el pull nube
+  // rebobina vecinos (mismo reloj viejo + firma distinta → gana remoto).
+  const stampedAt = new Date().toISOString();
   const withOrders = ordered.map((row, index) => ({
     ...row,
     route: routeName,
     routeOrder: index + 1,
+    updatedAt: stampedAt,
   }));
 
   return normalizeAllRouteOrders([...offRoute, ...withOrders]);

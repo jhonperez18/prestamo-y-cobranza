@@ -102,21 +102,46 @@ export function findDailyClientPayment(
   );
 }
 
+function paymentMatchesStopLoan(
+  pay: PaymentRow,
+  stop: { loanRef?: string; clientRef?: string },
+) {
+  if (stop.loanRef && pay.loanRef && stop.loanRef !== pay.loanRef) return false;
+  return true;
+}
+
+/**
+ * Cobro vivo = solo PG- vigente ligado a la parada/visita.
+ * Nunca confiar en visitStatus solo: eso reabre el falso “ya tiene cobro”
+ * (cobrado fantasma sin PG, o PG anulado/huérfano).
+ */
+function livePaymentForRef(
+  paymentRef: string | undefined,
+  payments: PaymentRow[],
+  stop?: { loanRef?: string; clientRef?: string },
+): PaymentRow | null {
+  const ref = (paymentRef || "").trim();
+  if (!ref) return null;
+  const pay = payments.find((entry) => entry.ref === ref);
+  if (!pay || !isPaymentLive(pay)) return null;
+  if (stop && !paymentMatchesStopLoan(pay, stop)) return null;
+  return pay;
+}
+
 function assignmentHasLivePaymentToday(
   row: {
     visitStatus?: string;
     paymentRef?: string;
+    loanRef?: string;
+    clientRef?: string;
   },
   payments: PaymentRow[],
 ): boolean {
-  const ref = (row.paymentRef || "").trim();
-  if (ref) {
-    const pay = payments.find((entry) => entry.ref === ref);
-    if (pay) return isPaymentLive(pay);
-    // Ref huérfana (anulado/ausente en lista) → no bloquea re-cobro.
-    return false;
-  }
-  return row.visitStatus === "cobrado" || row.visitStatus === "parcial";
+  return Boolean(livePaymentForRef(row.paymentRef, payments, row));
+}
+
+function stopHasLivePayment(stop: RouteStop, payments: PaymentRow[]) {
+  return Boolean(livePaymentForRef(stop.paymentRef, payments, stop));
 }
 
 /** True si la visita del día ya tiene cobro vivo (planilla o pago). */
@@ -197,16 +222,6 @@ export function validateCollectorPayment(
   const evidenceError = validatePaymentEvidence(draft.method, draft.evidence);
   if (evidenceError) return { duplicate: false as const, error: evidenceError };
   return { duplicate: false as const, error: null, stop };
-}
-
-function stopHasLivePayment(stop: RouteStop, payments: PaymentRow[]) {
-  const ref = (stop.paymentRef || "").trim();
-  if (ref) {
-    const pay = payments.find((entry) => entry.ref === ref);
-    if (pay) return isPaymentLive(pay);
-    return false;
-  }
-  return stop.visitStatus === "cobrado" || stop.visitStatus === "parcial";
 }
 
 export function nextStopStatus(stop: RouteStop, amount: number) {

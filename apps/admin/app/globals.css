@@ -4291,13 +4291,19 @@
       background: #dbeafe;
     }
     .supervisor-clientes-table .is-ruta {
-      width: 10%;
+      width: 8%;
+      min-width: 1.75rem;
+      max-width: 2.25rem;
+      padding-left: 4px;
+      padding-right: 2px;
+      font-variant-numeric: tabular-nums;
+      text-overflow: clip;
     }
     .supervisor-clientes-table .is-nombre {
-      width: 36%;
+      width: 34%;
     }
     .supervisor-clientes-table .is-tel {
-      width: 24%;
+      width: 20%;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -4312,7 +4318,7 @@
       text-align: center;
     }
     .supervisor-clientes-table .is-cuotas {
-      width: 14%;
+      width: 12%;
       text-align: center;
       padding-left: 2px;
       padding-right: 2px;
@@ -4327,7 +4333,35 @@
       vertical-align: middle;
     }
     .supervisor-clientes-table .is-num {
-      width: 22%;
+      width: 26%;
+      padding-left: 4px;
+      padding-right: 6px;
+      font-variant-numeric: tabular-nums;
+      text-overflow: clip;
+    }
+    /* Letra compacta y clara en celular: # y saldo no se cortan. */
+    .supervisor-mobile .supervisor-clientes-table td,
+    .supervisor-mobile-app .supervisor-clientes-table td {
+      font-size: 11px !important;
+      padding-left: 4px !important;
+      padding-right: 4px !important;
+    }
+    .supervisor-mobile .supervisor-clientes-table td.is-ruta,
+    .supervisor-mobile-app .supervisor-clientes-table td.is-ruta {
+      font-size: 11px !important;
+      font-weight: 700;
+      text-align: center !important;
+    }
+    .supervisor-mobile .supervisor-clientes-table td.is-num,
+    .supervisor-mobile-app .supervisor-clientes-table td.is-num {
+      font-size: 11px !important;
+      font-weight: 650;
+      text-align: right !important;
+    }
+    .supervisor-mobile .supervisor-clientes-table td.is-nombre,
+    .supervisor-mobile-app .supervisor-clientes-table td.is-nombre {
+      font-size: 11px !important;
+      text-align: left !important;
     }
     .supervisor-clientes-table tbody tr.is-clickable {
       cursor: pointer;

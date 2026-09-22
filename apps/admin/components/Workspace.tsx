@@ -166,11 +166,9 @@ import {
   type CollectorPaymentDraft,
 } from "@/lib/route-sync";
 import {
-  clientRefsWithRouteOrderChange,
   dedupeClientsByRef,
   migrateLegacyRouteName,
   normalizeAllRouteOrders,
-  placeClientOnRoute,
 } from "@/lib/client-route-order";
 import { applyPay, cuotaTarget, loanRowAfterPay, paymentRowKind, type PayKind } from "@/lib/loan-pay";
 import {
@@ -1728,65 +1726,27 @@ export function Workspace({
       onToast("Cliente no encontrado.");
       return;
     }
-    const doc = draft.document.trim();
-    const hasRealDoc = Boolean(doc) && !doc.toUpperCase().startsWith("S/");
-    const hasContactOrPlace = Boolean(
-      draft.phone.trim() ||
-        draft.address.trim() ||
-        draft.city.trim() ||
-        draft.barrio.trim(),
+    void applyPortfolioCommit(
+      commitUpdateClient(
+        draft.ref,
+        {
+          name: draft.name,
+          lastName: draft.lastName,
+          nickname: openClient.nickname ?? "",
+          document: draft.document,
+          route: draft.route,
+          routeOrder: draft.routeOrder,
+          email: openClient.email ?? "",
+          city: draft.city,
+          barrio: draft.barrio,
+          address: draft.address,
+          notes: draft.notes,
+          photo: openClient.photo,
+          phone: draft.phone,
+        },
+        portfolioState(),
+      ),
     );
-    const profileComplete = hasRealDoc && hasContactOrPlace;
-    const updated: ClientRow = {
-      ...openClient,
-      name: draft.name.trim(),
-      lastName: draft.lastName.trim(),
-      document: draft.document.trim(),
-      phone: draft.phone.trim(),
-      address: draft.address.trim(),
-      city: draft.city.trim(),
-      barrio: draft.barrio.trim(),
-      notes: draft.notes.trim(),
-      profilePending: profileComplete ? false : openClient.profilePending,
-      ...(isPendingReview(openClient)
-        ? { status: CLIENT_STATUS_ACTIVE, kind: clientStatusKind(CLIENT_STATUS_ACTIVE) }
-        : {}),
-    };
-    const nextClients = placeClientOnRoute(clients, updated, draft.route, draft.routeOrder);
-    setClients(nextClients);
-    writeDemoJson(DEMO_CLIENTS_KEY, nextClients);
-    const synced = syncPermanentRoutePlanilla(
-      todayIso(),
-      routes,
-      nextClients,
-      loans,
-      collectors,
-      dailyAssignments,
-      payments,
-    );
-    setRoutes(synced.routes);
-    setDailyAssignments(synced.assignments);
-    writeDemoJson(DEMO_ROUTES_KEY, synced.routes);
-    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, synced.assignments);
-    const mirrored = nextClients.find((row) => row.ref === updated.ref) ?? updated;
-    const touched = clientRefsWithRouteOrderChange(clients, nextClients);
-    for (const ref of Array.from(new Set([mirrored.ref, ...touched]))) {
-      const row = nextClients.find((entry) => entry.ref === ref);
-      if (row) queueClientMirror(row);
-    }
-    queueRoutesMirror(synced.routes);
-    queueAssignmentsMirror(synced.assignments);
-    onToast(
-      mirrored.profilePending
-        ? `Cliente actualizado · posición ${mirrored.routeOrder}. Aún faltan datos de ficha.`
-        : `Cliente actualizado · ruta ${mirrored.route}, posición ${mirrored.routeOrder}. Planilla al día.`,
-    );
-    void flushCatalogMirrorQueues().catch(() => {
-      /* offline: queda en cola local */
-    });
-    void flushOpsMirrorQueues().catch(() => {
-      /* offline: queda en cola local */
-    });
   }
 
   function createQuickLoanFromMobile(draft: QuickLoanDraft) {

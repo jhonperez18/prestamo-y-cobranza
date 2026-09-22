@@ -116,9 +116,17 @@ export function hydrateAssignment(
         ? collectionChargeKind(alertCount)
         : row.kind ?? "cuota";
   const visitStatus =
-    linkedRef && !paymentCounts && (row.visitStatus === "cobrado" || row.visitStatus === "parcial")
-      ? ("pendiente" as const)
-      : row.visitStatus ?? "pendiente";
+    row.visitStatus === "omitido"
+      ? ("omitido" as const)
+      : paymentCounts
+        ? row.visitStatus === "parcial"
+          ? ("parcial" as const)
+          : ("cobrado" as const)
+        : row.visitStatus === "cobrado" ||
+            row.visitStatus === "parcial" ||
+            Boolean(linkedRef)
+          ? ("pendiente" as const)
+          : row.visitStatus ?? "pendiente";
   return {
     ...row,
     clientRef: row.clientRef ?? client?.ref ?? "",
@@ -137,7 +145,11 @@ export function hydrateAssignment(
         ? "Cuota"
         : collectionAlertLabel(alertCount) || row.chargeLabel || "Cuota",
     visitStatus,
-    paymentRef: paymentCounts ? row.paymentRef : visitStatus === "omitido" ? row.paymentRef : undefined,
+    paymentRef: paymentCounts
+      ? row.paymentRef
+      : visitStatus === "omitido"
+        ? row.paymentRef
+        : undefined,
     awaitingLoan: Boolean(row.awaitingLoan),
   };
 }
@@ -217,9 +229,9 @@ export function buildDispatchRoute(
         stop.clientRef === item.clientRef &&
         (!stop.loanRef || !item.loanRef || stop.loanRef === item.loanRef),
     );
-    // Preferir estado de la asignación (cobrado al pagar); no resucitar pendiente del stop viejo.
-    const visitStatus = item.visitStatus ?? existing?.visitStatus ?? "pendiente";
-    const paymentRef = item.paymentRef ?? existing?.paymentRef;
+    // Planilla manda: no resucitar cobrado/paymentRef fantasma del stop viejo.
+    const visitStatus = item.visitStatus ?? "pendiente";
+    const paymentRef = item.paymentRef;
     return {
       clientRef: item.clientRef,
       visitOrder: index + 1,

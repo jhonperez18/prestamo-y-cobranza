@@ -246,10 +246,15 @@ function mergeByRefPreferPendingLocal<T extends { ref: string; updatedAt?: strin
       localByRef.delete(ref);
       continue;
     }
-    // Firmas distintas: el padre en este PC manda (rename/completar no se rebobina).
-    // Reloj remoto no pisa un edit local; la cola pendiente ya cubre el flush.
-    if (signature(localRow) !== signature(remoteRow)) changed = true;
-    merged.push(localRow);
+    // Firmas distintas: gana el más reciente (updatedAt).
+    // Celular supervisor recibe posiciones del PC; edit fresco local no se rebobina.
+    // Sin reloj en ambos → local (no pisar este aparato con remoto opaco).
+    const localTs = Date.parse(String(localRow.updatedAt || "")) || 0;
+    const remoteTs = Date.parse(String(remoteRow.updatedAt || "")) || 0;
+    const winner =
+      remoteTs > localTs ? remoteRow : localTs > remoteTs ? localRow : localRow;
+    if (signature(winner) !== signature(localRow)) changed = true;
+    merged.push(winner);
     localByRef.delete(ref);
   }
   for (const row of localByRef.values()) {

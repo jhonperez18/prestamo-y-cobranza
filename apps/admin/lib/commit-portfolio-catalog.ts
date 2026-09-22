@@ -100,6 +100,8 @@ export type PortfolioClientDraft = {
   address: string;
   notes: string;
   photo?: string;
+  /** Celular / contacto (supervisor móvil y ficha). */
+  phone?: string;
 };
 
 export type PortfolioLoanDraft = {
@@ -322,7 +324,7 @@ export function commitUpdateClient(
   const doc = draft.document.trim();
   const hasRealDoc = Boolean(doc) && !doc.toUpperCase().startsWith("S/");
   const hasContactOrPlace = Boolean(
-    openClient.phone?.trim() ||
+    (draft.phone !== undefined ? draft.phone.trim() : openClient.phone?.trim()) ||
       draft.address.trim() ||
       draft.city.trim() ||
       draft.barrio.trim(),
@@ -340,6 +342,7 @@ export function commitUpdateClient(
     address: draft.address,
     notes: draft.notes,
     photo: draft.photo,
+    ...(draft.phone !== undefined ? { phone: draft.phone.trim() } : {}),
     profilePending: profileComplete ? false : openClient.profilePending,
     ...(approving
       ? { status: CLIENT_STATUS_ACTIVE, kind: clientStatusKind(CLIENT_STATUS_ACTIVE) }

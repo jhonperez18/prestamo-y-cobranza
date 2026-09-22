@@ -101,29 +101,33 @@ export function visitStatusKind(status: RouteStop["visitStatus"]): StatusKind {
   return "pending";
 }
 
-/** Recalcula montos del día desde préstamos activos (mantiene visitas ya cobradas). */
+/** Recalcula montos del día desde préstamos activos (mantiene visitas con PG vivo). */
 export function refreshRouteStops(
   route: RouteRow,
   loans: LoanRow[],
   clients: ClientRow[],
 ): RouteRow {
   const stops = route.stops.map((stop) => {
-    if (stop.visitStatus === "cobrado") return stop;
+    // Solo conservar cobrado si hay paymentRef (PG). “Cobrado” fantasma sin PG
+    // se regenera; si no, el cobrador ve Pend. pero confirma falla “ya tiene cobro”.
+    const linkedRef = (stop.paymentRef || "").trim();
+    if (stop.visitStatus === "cobrado" && linkedRef) return stop;
     const client = clients.find((row) => row.ref === stop.clientRef);
     const fresh = buildRouteStop(stop.clientRef, stop.visitOrder, loans, {
       lat: client ? undefined : stop.lat,
       lng: client ? undefined : stop.lng,
     });
     const loan = primaryLoanForClient(stop.clientRef, loans);
+    const keepPartial = stop.visitStatus === "parcial" && linkedRef;
     return {
       ...fresh,
       visitOrder: stop.visitOrder,
-      visitStatus: stop.visitStatus === "parcial" ? stop.visitStatus : fresh.visitStatus,
+      visitStatus: keepPartial ? stop.visitStatus : fresh.visitStatus,
       loanRef: loan?.ref ?? fresh.loanRef,
-      amountDue:
-        stop.visitStatus === "parcial"
-          ? stop.amountDue
-          : amountDueForClient(stop.clientRef, loans),
+      amountDue: keepPartial
+        ? stop.amountDue
+        : amountDueForClient(stop.clientRef, loans),
+      paymentRef: keepPartial ? stop.paymentRef : undefined,
     };
   });
   const pending = routePendingCount(stops);

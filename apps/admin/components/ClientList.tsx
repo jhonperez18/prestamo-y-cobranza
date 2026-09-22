@@ -175,14 +175,16 @@ export function ClientList({
         return matches(fieldOf(row, col.id), query);
       }),
     );
+    // Orden sagrado = ruta + # (routeOrder). El badge Completar NO reordena:
+    // si no, al editar posición “vuelven al final” aunque el dato sí se guardó.
     return filtered.slice().sort((a, b) => {
-      // Ficha incompleta (alerta Completar) primero, tono naranja en la fila.
-      const aPending = clientNeedsProfileCompletion(a) ? 0 : 1;
-      const bPending = clientNeedsProfileCompletion(b) ? 0 : 1;
-      if (aPending !== bPending) return aPending - bPending;
-      const routeCmp = a.route.localeCompare(b.route, undefined, { numeric: true });
+      const routeCmp = String(a.route || "").localeCompare(String(b.route || ""), undefined, {
+        numeric: true,
+      });
       if (routeCmp !== 0) return routeCmp;
-      return (a.routeOrder || 0) - (b.routeOrder || 0);
+      const orderCmp = (a.routeOrder || 0) - (b.routeOrder || 0);
+      if (orderCmp !== 0) return orderCmp;
+      return String(a.ref || "").localeCompare(String(b.ref || ""));
     });
   }, [applied, rows]);
 
