@@ -1,0 +1,28 @@
+---
+description: Cuentas bancarias espejadas — localhost y Vercel mismo catálogo
+alwaysApply: true
+---
+
+# Banco cuentas — mismo catálogo en todos lados
+
+## Ley
+
+**Push de código ≠ sincronizar datos.**  
+Las cuentas (etiqueta, tipo, banco, número) son catálogo del padre: Guardar → local + mirror nube.
+
+| Qué | Dónde |
+| --- | --- |
+| Catálogo cuentas | Storage `bank-accounts.json` + local |
+| Movimientos / saldo | Proyección desde `PG-` (+ gastos); no inventar ledger aparte |
+
+## Obligatorio
+
+1. Alta/edición de cuenta → `queueBankAccountMirror` + flush.
+2. Sync arranque: reconcile local→nube → pull (cola/escudo no rebobina).
+3. No declarar “actualizado” si localhost y Vercel muestran cuentas distintas.
+
+## Prohibido
+
+- Dejar cuentas solo en `localStorage` de un dominio.
+- `setBankAccounts` sin cola nube.
+- Confundir deploy (`verify:prod`) con sync de saldos/cuentas.

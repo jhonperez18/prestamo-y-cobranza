@@ -21,8 +21,10 @@
 | Planilla | `daily_assignments` | `(fecha, item_id)` |
 | Oficina PV- | `misc_payments` | `PV-` |
 | Auth bridge | `profiles` | `auth.users.id` |
+| **Cuentas banco** | Storage `app-catalog/bank-accounts.json` | `BCA-` / refs |
 
-**Proyección en app (no segunda raíz):** banco + logs diarios ← `PG-` + CIE + PV-.
+**Proyección en app (no segunda raíz de plata):** movimientos banco + logs diarios ← `PG-` + CIE + PV-.  
+**Catálogo de cuentas** sí se espeja (igual que usuarios): localhost y Vercel deben ver las mismas etiquetas/tipos.
 
 ---
 
@@ -50,6 +52,7 @@
 | Cobros | `lib/supabase/payment-mirror.ts` |
 | Clientes/préstamos | `lib/supabase/catalog-mirror.ts` |
 | Ops | `lib/supabase/ops-mirror.ts` + `/api/ops/*` |
+| Cuentas banco | `lib/supabase/bank-accounts-mirror.ts` + `/api/bank-accounts/*` |
 | Orquesta | `lib/use-operational-demo-sync.ts` |
 
 Migraciones: `supabase/migrations/20260912*.sql`

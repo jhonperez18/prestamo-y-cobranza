@@ -6,7 +6,7 @@ import {
   OPERATIONAL_DEMO_STORAGE_PREFIX,
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
-import { DEMO_CLIENTS_KEY, readDemoJson } from "@/lib/demo-persist";
+import { DEMO_CLIENTS_KEY, DEMO_BANK_ACCOUNTS_KEY, readDemoJson } from "@/lib/demo-persist";
 import {
   flushPaymentMirrorQueue,
   pullRemotePaymentsIntoDemo,
@@ -26,6 +26,12 @@ import {
   flushUserMirrorQueues,
   pullRemoteUsersIntoDemo,
 } from "@/lib/supabase/user-mirror";
+import {
+  flushBankAccountMirrorQueues,
+  pullRemoteBankAccountsIntoDemo,
+  reconcileLocalBankAccountsToRemote,
+} from "@/lib/supabase/bank-accounts-mirror";
+import type { BankAccount } from "@/lib/bank";
 
 type Options = {
   /**
@@ -82,17 +88,24 @@ export function useOperationalDemoSync(
         flushCatalogMirrorQueues(),
         flushOpsMirrorQueues(),
         flushUserMirrorQueues(),
+        flushBankAccountMirrorQueues(),
       ]);
       await reconcileLocalOpsToRemote();
+      await reconcileLocalBankAccountsToRemote();
       await Promise.all([
         pullRemotePaymentsIntoDemo(),
         pullRemoteCatalogIntoDemo(),
         pullRemoteOpsIntoDemo(),
         pullRemoteUsersIntoDemo(),
+        pullRemoteBankAccountsIntoDemo(),
       ]);
       const localClients = readDemoJson(DEMO_CLIENTS_KEY, [] as unknown[]);
       if (!Array.isArray(localClients) || localClients.length === 0) {
         await pullRemoteCatalogIntoDemo();
+      }
+      const localBanks = readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []);
+      if (!Array.isArray(localBanks) || localBanks.length === 0) {
+        await pullRemoteBankAccountsIntoDemo();
       }
       commitHydrate();
     } finally {
@@ -136,6 +149,7 @@ export function useOperationalDemoSync(
           await flushCatalogMirrorQueues();
           await flushOpsMirrorQueues();
           await flushUserMirrorQueues();
+          await flushBankAccountMirrorQueues();
         } catch {
           /* offline */
         }

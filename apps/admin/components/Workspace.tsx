@@ -115,6 +115,10 @@ import { commitVoidPayment } from "@/lib/commit-void-payment";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror, flushCatalogMirrorQueues } from "@/lib/supabase/catalog-mirror";
 import {
+  queueBankAccountMirror,
+  flushBankAccountMirrorQueues,
+} from "@/lib/supabase/bank-accounts-mirror";
+import {
   commitUsersCatalog,
 } from "@/lib/users-catalog";
 import {
@@ -3145,18 +3149,37 @@ export function Workspace({
           accounts={bankAccounts}
           initialAccount={editingAccount}
           onSave={(account) => {
+            const stamped = {
+              ...account,
+              updatedAt: new Date().toISOString(),
+            };
             setBankAccounts((rows) => {
-              const idx = rows.findIndex((row) => row.ref === account.ref);
+              const idx = rows.findIndex((row) => row.ref === stamped.ref);
               if (idx >= 0) {
                 const next = rows.slice();
-                next[idx] = account;
+                next[idx] = stamped;
                 return next;
               }
-              return [...rows, account];
+              return [...rows, stamped];
             });
-            setBankAccountRef(account.ref);
+            writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, (() => {
+              const current = readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []);
+              const idx = current.findIndex((row) => row.ref === stamped.ref);
+              if (idx >= 0) {
+                const next = current.slice();
+                next[idx] = stamped;
+                return next;
+              }
+              return [...current, stamped];
+            })());
+            queueBankAccountMirror(stamped);
+            void flushBankAccountMirrorQueues().catch(() => {
+              /* offline: local + cola ya montados */
+            });
+            setBankAccountRef(stamped.ref);
             setEditBankAccountRef(null);
             onGo("banco", "listado");
+            onToast("Cuenta guardada en este PC y en cola a la nube.");
           }}
           onCancel={() => {
             setEditBankAccountRef(null);

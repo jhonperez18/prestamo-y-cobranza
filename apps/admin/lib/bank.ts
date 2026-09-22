@@ -88,6 +88,8 @@ export type BankAccount = {
   address: string;
   active: boolean;
   openingBalance: number;
+  /** Sello para merge nube (PC padre no se rebobina). */
+  updatedAt?: string;
 };
 
 export function bankAccountTypeLabel(type: BankAccountType) {
@@ -111,6 +113,7 @@ export function normalizeBankAccount(row: Partial<BankAccount> & Pick<BankAccoun
     address: row.address ?? "",
     active: row.active !== false,
     openingBalance: Number(row.openingBalance) || 0,
+    updatedAt: row.updatedAt?.trim() || undefined,
   };
 }
 
