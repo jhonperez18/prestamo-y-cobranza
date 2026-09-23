@@ -67,6 +67,7 @@ type Props = {
     paymentRef: string,
     evidence: import("@/lib/payment-evidence").PaymentEvidenceRef[],
   ) => void;
+  onPreviewKindChange?: (kind: PreviewKind) => void;
 };
 
 export function CollectorMobilePreview({
@@ -92,8 +93,12 @@ export function CollectorMobilePreview({
   onCreateQuickLoan,
   onUpdateClient,
   onAttachPaymentEvidence,
+  onPreviewKindChange,
 }: Props) {
   const [kind, setKind] = useState<PreviewKind>("collector");
+  useEffect(() => {
+    onPreviewKindChange?.(kind);
+  }, [kind, onPreviewKindChange]);
   const [supervisorRef, setSupervisorRef] = useState("");
   /** Sube al cambiar persona → remount total (no hereda Recaudo/Historial). */
   const [panelEpoch, setPanelEpoch] = useState(0);

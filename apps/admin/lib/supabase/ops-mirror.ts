@@ -4,7 +4,8 @@
  * @see docs/supabase-schema.md
  */
 import { createMirrorServerClient } from "@/lib/supabase/admin";
-import type { CollectorRow, RouteRow, UserRow } from "@/lib/mock-data";
+import type { CollectorRow, PaymentRow, RouteRow, UserRow } from "@/lib/mock-data";
+import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
 import {
   normalizeHistoryDate,
   type CollectorDayCloseRecord,
@@ -18,6 +19,7 @@ import {
   DEMO_COLLECTORS_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_MISC_PAYMENTS_KEY,
+  DEMO_PAYMENTS_KEY,
   DEMO_ROUTES_KEY,
   DEMO_USERS_KEY,
   isVirginRemoteHoldActive,
@@ -870,18 +872,31 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       assignMap.set(`${row.dispatchDate}::${row.itemId}`, row);
     }
     let assignChanged = false;
+    const sig = (a: DailyCollectionAssignment) =>
+      `${a.visitStatus}|${a.paymentRef}|${a.amountDue}|${a.dayClosedAt}|${a.skipReason}`;
     for (const row of remoteAssign) {
       const key = `${row.dispatchDate}::${row.itemId}`;
       const prev = assignMap.get(key);
-      const sig = (a: DailyCollectionAssignment) =>
-        `${a.visitStatus}|${a.paymentRef}|${a.amountDue}|${a.dayClosedAt}|${a.skipReason}`;
       if (!prev || sig(prev) !== sig(row)) {
         assignMap.set(key, row);
         assignChanged = true;
       }
     }
+    const stamped = reconcilePaymentsOntoPlanilla(
+      [...assignMap.values()],
+      readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []),
+    );
+    const stampedSig = stamped
+      .map((row) => `${row.dispatchDate}::${row.itemId}|${sig(row)}`)
+      .sort()
+      .join("\n");
+    const prevSig = [...assignMap.values()]
+      .map((row) => `${row.dispatchDate}::${row.itemId}|${sig(row)}`)
+      .sort()
+      .join("\n");
+    if (stampedSig !== prevSig) assignChanged = true;
     if (assignChanged) {
-      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, [...assignMap.values()]);
+      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, stamped);
       changed = true;
     }
 

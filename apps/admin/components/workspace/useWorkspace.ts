@@ -110,7 +110,12 @@ import {
 import { loanStatusPill } from "@/lib/loan-status";
 import { chargeLabel, displayToIso, isoToDisplay, normalizeLoan, syncAllLoans, syncLoan } from "@/lib/loan-preview";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
-import { flushPaymentMirrorQueue, queuePaymentMirror } from "@/lib/supabase/payment-mirror";
+import {
+  flushPaymentMirrorQueue,
+  mergePaymentsByRef,
+  pullRemotePaymentsIntoDemo,
+  queuePaymentMirror,
+} from "@/lib/supabase/payment-mirror";
 import { commitVoidPayment } from "@/lib/commit-void-payment";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror, flushCatalogMirrorQueues } from "@/lib/supabase/catalog-mirror";
@@ -133,6 +138,7 @@ import {
 } from "@/lib/commit-people-catalog";
 import {
   flushOpsMirrorQueues,
+  pullRemoteOpsIntoDemo,
   queueAssignmentsMirror,
   queueCollectorMirror,
   queueCollectorsMirror,
@@ -154,6 +160,7 @@ import {
   REALTIME_WORKSPACE_TABLES,
   type WorkspaceLiveSlice,
 } from "@/lib/realtime-workspace";
+import { bindMoneyRealtime, moneyRealtimeFilter } from "@/lib/realtime-money";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
@@ -333,6 +340,7 @@ export function useWorkspace({
   const navigationKey = `${moduleId}:${viewId}:${openRef}:${fileTab}:${openUserRef}:${openCollectorRef}:${openRouteRef}:${collectorTab}:${userTab}`;
   const [seenKey, setSeenKey] = useState(navigationKey);
   const [mobilePreviewCollectorRef, setMobilePreviewCollectorRef] = useState(COLLECTORS[0]?.ref ?? "");
+  const [previewKind, setPreviewKind] = useState<"collector" | "supervisor">("collector");
   const [openPaymentRef, setOpenPaymentRef] = useState(PAYMENTS[0]?.ref ?? "");
   const [paymentReturnView, setPaymentReturnView] = useState<"pagos" | "abonos">("pagos");
   const [paymentFichaReturn, setPaymentFichaReturn] = useState<{ moduleId: ModuleId; viewId: string } | null>(
@@ -439,6 +447,7 @@ export function useWorkspace({
     }
     const channel = browser.channel("realtime-workspace");
     for (const table of REALTIME_WORKSPACE_TABLES) {
+      if (table === "payments") continue;
       channel.on("postgres_changes", { event: "*", schema: "public", table }, (payload) => {
         try {
           const live = liveRef.current;
@@ -517,6 +526,117 @@ export function useWorkspace({
     void applyPortfolioCommit(result);
   }, [demoHydrated]);
 
+  /**
+   * Antes de guardar o subir desde el panel: pull de payments y fusión por UUID / ref.
+   * Un cobro que solo está en Supabase entra al estado. No se reemplaza por la lista local.
+   */
+  const pullChainRef = useRef<Promise<PaymentRow[]>>(Promise.resolve([]));
+  const syncPaymentsFromCloud = useCallback((localOverride?: PaymentRow[]) => {
+    const job = pullChainRef.current.catch(() => [] as PaymentRow[]).then(async () => {
+      await pullRemotePaymentsIntoDemo();
+      const stored = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []);
+      const local = omitDeleted(localOverride ?? liveRef.current?.payments ?? []);
+      const { merged } = mergePaymentsByRef(local, omitDeleted(stored));
+      const live = merged.map((row) => withPaymentEvidence(row));
+      if (liveRef.current) {
+        liveRef.current = { ...liveRef.current, payments: live };
+      }
+      setPayments(live);
+      writeDemoJson(DEMO_PAYMENTS_KEY, live);
+      return live;
+    });
+    pullChainRef.current = job;
+    return job;
+  }, []);
+
+  /**
+   * Pull de cobros, gastos y cierres antes de pintar o encolar.
+   * El merge por UUID integra el PG- que llegó desde Vercel.
+   */
+  const paintMoneyFromCloud = useCallback(async () => {
+    const live = await syncPaymentsFromCloud();
+    let opsOk = false;
+    try {
+      const ops = await pullRemoteOpsIntoDemo();
+      opsOk = ops.ok;
+    } catch (error) {
+      console.error("realtime-money", error);
+    }
+    const storedAssignments = readDemoJson<DailyCollectionAssignment[]>(
+      DEMO_DAILY_ASSIGNMENTS_KEY,
+      [],
+    );
+    const base = storedAssignments.length
+      ? storedAssignments
+      : (liveRef.current?.assignments ?? []);
+    const assignments = reconcilePaymentsOntoPlanilla(base, live);
+    if (liveRef.current) {
+      liveRef.current = { ...liveRef.current, assignments, payments: live };
+    }
+    setDailyAssignments(assignments);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
+    if (!opsOk) return;
+    const expenses = readDemoJson<CollectorDayExpenseDraft[]>(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []);
+    const closes = readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []);
+    setDayExpenseDrafts(expenses);
+    setDayCloses(closes);
+    if (liveRef.current) {
+      liveRef.current = {
+        ...liveRef.current,
+        dayExpenseDrafts: expenses,
+        dayCloses: closes,
+      };
+    }
+  }, [syncPaymentsFromCloud]);
+
+  useEffect(() => {
+    if (!demoHydrated) return;
+    void paintMoneyFromCloud();
+  }, [
+    demoHydrated,
+    moduleId,
+    viewId,
+    previewKind,
+    mobilePreviewCollectorRef,
+    session?.roleRef,
+    paintMoneyFromCloud,
+  ]);
+
+  useEffect(() => {
+    if (!demoHydrated || !getSupabasePublicEnv().configured) return;
+    let browser: ReturnType<typeof createSupabaseBrowserClient>;
+    try {
+      browser = createSupabaseBrowserClient();
+    } catch (error) {
+      console.error("realtime-money", error);
+      return;
+    }
+    const filter = moneyRealtimeFilter(session?.roleRef, session?.collectorRef);
+    const scope =
+      session?.roleRef === COLLECTOR_ROLE_REF && session.collectorRef
+        ? session.collectorRef
+        : "global";
+    let timer = 0;
+    const schedule = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        void paintMoneyFromCloud();
+      }, 250);
+    };
+    const channel = browser.channel(`realtime-money-${scope}`);
+    bindMoneyRealtime(channel, schedule, filter);
+    channel.subscribe((status) => {
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        console.error("realtime-money", status);
+        schedule();
+      }
+    });
+    return () => {
+      window.clearTimeout(timer);
+      void browser.removeChannel(channel);
+    };
+  }, [demoHydrated, session?.roleRef, session?.collectorRef, paintMoneyFromCloud]);
+
   const applyPlanillaSync = useCallback(
     (next: {
       assignments: typeof dailyAssignments;
@@ -527,13 +647,17 @@ export function useWorkspace({
       dayExpenseDrafts: typeof dayExpenseDrafts;
       autoClosedCount: number;
     }) => {
-      setDailyAssignments(next.assignments);
+      void (async () => {
+      const livePayments = await syncPaymentsFromCloud();
+      const assignments = reconcilePaymentsOntoPlanilla(next.assignments, livePayments);
+      setDailyAssignments(assignments);
       setRoutes(next.routes);
       setLoans(next.loans);
       setDailyLogs(next.logs);
       setDayCloses(next.dayCloses);
       setDayExpenseDrafts(next.dayExpenseDrafts);
-      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
+      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
+      queueAssignmentsMirror(assignments);
       writeDemoJson(DEMO_ROUTES_KEY, next.routes);
       writeDemoJson(DEMO_LOANS_KEY, next.loans);
       writeDemoJson(DEMO_DAILY_LOGS_KEY, next.logs);
@@ -552,8 +676,9 @@ export function useWorkspace({
           }),
         );
       }
+      })();
     },
-    [bankAccounts],
+    [bankAccounts, syncPaymentsFromCloud],
   );
 
   usePlanillaDayRollover(
@@ -650,7 +775,10 @@ export function useWorkspace({
 
   useEffect(() => {
     if (!demoHydrated) return;
-    writeDemoJson(DEMO_PAYMENTS_KEY, omitDeleted(payments));
+    const stored = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []);
+    const { merged, added } = mergePaymentsByRef(omitDeleted(payments), omitDeleted(stored));
+    writeDemoJson(DEMO_PAYMENTS_KEY, merged);
+    if (added > 0) setPayments(merged.map((row) => withPaymentEvidence(row)));
   }, [payments, demoHydrated]);
 
   useEffect(() => {
@@ -1639,7 +1767,6 @@ export function useWorkspace({
     setDailyAssignments(projected.assignments);
     setDailyLogs(projected.dailyLogs);
     setBankMovements(projected.bankMovements);
-    writeDemoJson(DEMO_PAYMENTS_KEY, committed.payments);
     writeDemoJson(DEMO_LOANS_KEY, projected.loans);
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, projected.dayCloses);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
@@ -1648,6 +1775,10 @@ export function useWorkspace({
     const toastRefs = paymentsCreated.map((row) => row.ref).join(" + ");
     onToast(`Cobro ${toastRefs} guardado · subiendo a la nube…`);
     void (async () => {
+      const live = await syncPaymentsFromCloud(committed.payments);
+      const assignments = reconcilePaymentsOntoPlanilla(projected.assignments, live);
+      setDailyAssignments(assignments);
+      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
       for (const pay of paymentsCreated) {
         await queuePaymentMirror(pay);
       }
@@ -1659,7 +1790,7 @@ export function useWorkspace({
         ),
       );
       if (paidClient) queueClientMirror(paidClient);
-      queueAssignmentsMirror(projected.assignments);
+      queueAssignmentsMirror(assignments);
       try {
         await flushPaymentMirrorQueue();
         await flushCatalogMirrorQueues();
@@ -1691,11 +1822,12 @@ export function useWorkspace({
   }
 
   async function voidPayment(paymentRef: string, reason: string) {
+    const currentPayments = await syncPaymentsFromCloud();
     const result = commitVoidPayment({
       paymentRef,
       reason,
       voidedBy: adminName || session.name || session.username || "admin",
-      payments,
+      payments: currentPayments,
       loans,
     });
     if (!result.ok) {
@@ -1723,10 +1855,12 @@ export function useWorkspace({
     setDailyAssignments(projected.assignments);
     setDayCloses(projected.dayCloses);
     setBankMovements(projected.bankMovements);
-    writeDemoJson(DEMO_PAYMENTS_KEY, stampedPayments);
+    const livePayments = await syncPaymentsFromCloud(stampedPayments);
+    const assignments = reconcilePaymentsOntoPlanilla(projected.assignments, livePayments);
+    setDailyAssignments(assignments);
     writeDemoJson(DEMO_LOANS_KEY, projected.loans);
-    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
-    queueAssignmentsMirror(projected.assignments);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
+    queueAssignmentsMirror(assignments);
     const mirror = await queuePaymentMirror({ ...result.payment, updatedAt: voidedAtStamp });
     if (!mirror.ok) {
       onToast(`Anulado en local · nube pendiente: ${mirror.error || "sin red"}`);
@@ -2079,30 +2213,33 @@ export function useWorkspace({
 
   function registerPay(kind: PayKind, amount: number, method: PaymentMethod = "efectivo") {
     if (!openLoan) return;
+    const loan = openLoan;
     const amountPesos = pesos(amount);
     const idempotencyKey = newIdempotencyKey("caja");
-    if (payments.some((row) => row.idempotencyKey === idempotencyKey)) {
+    void (async () => {
+    const base = await syncPaymentsFromCloud();
+    if (base.some((row) => row.idempotencyKey === idempotencyKey)) {
       onToast("Pago ya sincronizado (sin duplicar).");
       return;
     }
-    const result = applyPay(openLoan, kind, amountPesos);
+    const result = applyPay(loan, kind, amountPesos);
     if (!result.ok) {
       onToast(result.error);
       return;
     }
-    const target = cuotaTarget(openLoan);
+    const target = cuotaTarget(loan);
     const paidTime = new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
     const paidDay = todayIso();
     const row = buildPaymentRow(
       {
-        ref: nextPaymentCode(payments),
-        loanRef: openLoan.ref,
+        ref: nextPaymentCode(base),
+        loanRef: loan.ref,
         when: `${isoToDispatchLabel(paidDay)} · ${paidTime}`,
         paidDate: paidDay,
         paidTime,
         dueDate: target?.date,
         chargeLabel: target?.kind ? chargeLabel(target.kind) : result.type,
-        client: openLoan.client,
+        client: loan.client,
         collector: "Caja / oficina",
         idempotencyKey,
         amount: amountPesos,
@@ -2112,22 +2249,23 @@ export function useWorkspace({
         source: "caja",
         updatedAt: new Date().toISOString(),
       },
-      openLoan,
+      loan,
       result,
     );
-    const nextPayments = [row, ...payments];
-    const nextLoans = loans.map((loan) =>
-      loan.ref === openLoan.ref ? loanRowAfterPay(loan, result, nextPayments) : loan,
+    const drafted = [row, ...base];
+    const livePayments = await syncPaymentsFromCloud(drafted);
+    const nextLoans = loans.map((entry) =>
+      entry.ref === loan.ref ? loanRowAfterPay(entry, result, livePayments) : entry,
     );
     const nextClients = clients.map((entry) =>
-      entry.ref === openLoan.clientRef
+      entry.ref === loan.clientRef
         ? { ...entry, pending: Math.max(0, entry.pending - amountPesos) }
         : entry,
     );
-    const nextAssignments = reconcilePaymentsOntoPlanilla(dailyAssignments, nextPayments);
+    const nextAssignments = reconcilePaymentsOntoPlanilla(dailyAssignments, livePayments);
     const projected = projectOperationalMoney({
       loans: nextLoans,
-      payments: nextPayments,
+      payments: livePayments,
       collectors,
       clients: nextClients,
       dayCloses,
@@ -2139,14 +2277,13 @@ export function useWorkspace({
       dailyLogs,
     });
 
-    setPayments(nextPayments);
+    setPayments(livePayments);
     setClients(nextClients);
     setLoans(projected.loans);
     setDayCloses(projected.dayCloses);
     setDailyAssignments(projected.assignments);
     setDailyLogs(projected.dailyLogs);
     setBankMovements(projected.bankMovements);
-    writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
     writeDemoJson(DEMO_LOANS_KEY, projected.loans);
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, projected.dayCloses);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
@@ -2155,14 +2292,19 @@ export function useWorkspace({
     setPayMode(null);
     onToast(`${result.message} · guardando en el sistema…`);
     queuePaymentMirror(row);
-    const nextLoan = projected.loans.find((loan) => loan.ref === openLoan.ref);
+    const nextLoan = projected.loans.find((entry) => entry.ref === loan.ref);
     if (nextLoan) queueLoanMirror(nextLoan);
-    const cajaClient = nextClients.find((entry) => entry.ref === openLoan.clientRef);
+    const cajaClient = nextClients.find((entry) => entry.ref === loan.clientRef);
     if (cajaClient) queueClientMirror(cajaClient);
     queueAssignmentsMirror(projected.assignments);
-    void Promise.all([flushCatalogMirrorQueues(), flushOpsMirrorQueues()])
-      .then(() => onToast(`${result.message} · listo.`))
-      .catch(() => onToast(`${result.message} (sin nube; en este aparato ya está).`));
+    try {
+      await flushPaymentMirrorQueue();
+      await Promise.all([flushCatalogMirrorQueues(), flushOpsMirrorQueues()]);
+      onToast(`${result.message} · listo.`);
+    } catch {
+      onToast(`${result.message} (sin nube; en este aparato ya está).`);
+    }
+    })();
   }
 
   function selectClientLoan(ref: string) {
@@ -2250,6 +2392,7 @@ export function useWorkspace({
     setSeenKey,
     mobilePreviewCollectorRef,
     setMobilePreviewCollectorRef,
+    onPreviewKindChange: setPreviewKind,
     openPaymentRef,
     setOpenPaymentRef,
     paymentReturnView,

@@ -378,6 +378,7 @@ export function Workspace(props: WorkspaceProps) {
     setSeenKey,
     mobilePreviewCollectorRef,
     setMobilePreviewCollectorRef,
+    onPreviewKindChange,
     openPaymentRef,
     setOpenPaymentRef,
     paymentReturnView,
@@ -1875,6 +1876,7 @@ export function Workspace(props: WorkspaceProps) {
           onCreateQuickLoan={createQuickLoanFromMobile}
           onUpdateClient={updateClientFromMobile}
           onAttachPaymentEvidence={attachPaymentEvidence}
+          onPreviewKindChange={onPreviewKindChange}
         />
       );
     }

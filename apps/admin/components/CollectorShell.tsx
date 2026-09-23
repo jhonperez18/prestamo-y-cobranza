@@ -188,6 +188,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       setDayCloses(next.dayCloses);
       setDayExpenseDrafts(next.dayExpenseDrafts);
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
+      queueAssignmentsMirror(next.assignments);
       writeDemoJson(DEMO_ROUTES_KEY, next.routes);
       writeDemoJson(DEMO_LOANS_KEY, next.loans);
       writeDemoJson(DEMO_DAILY_LOGS_KEY, next.logs);

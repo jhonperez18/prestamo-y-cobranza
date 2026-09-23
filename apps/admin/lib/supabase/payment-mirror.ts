@@ -28,6 +28,7 @@ import { parseComboChargeLabel } from "@/lib/payment-combo";
 import { isDeletedRef } from "@/lib/deleted-ids";
 
 export type PaymentMirrorRow = {
+  id?: string;
   ref: string;
   loan_ref: string;
   client_ref: string | null;
@@ -140,6 +141,7 @@ export function mirrorRowToPaymentRow(row: PaymentMirrorRow): PaymentRow | null 
     : parseComboChargeLabel(row.charge_label);
 
   return {
+    id: row.id?.trim() || undefined,
     ref,
     loanRef,
     when: `${isoToDispatchLabel(paidDate)} · ${paidTime}`,
@@ -158,6 +160,7 @@ export function mirrorRowToPaymentRow(row: PaymentMirrorRow): PaymentRow | null 
     method: normalizePaymentMethod(row.method),
     evidence,
     source: mapSource(row.source),
+    updatedAt: row.updated_at || undefined,
     voidedAt,
     voidReason,
     voidedBy,
@@ -198,9 +201,22 @@ function paymentIsVoided(row: PaymentRow) {
   return Boolean(row.voidedAt?.trim()) || row.type === "Anulado";
 }
 
+function paymentUuid(row: PaymentRow) {
+  return (row.id || "").trim();
+}
+
+/** Misma fila si comparte UUID o la misma ref PG-. */
+function samePaymentIdentity(a: PaymentRow, b: PaymentRow) {
+  const aId = paymentUuid(a);
+  const bId = paymentUuid(b);
+  if (aId && bId && aId === bId) return true;
+  return Boolean(a.ref && b.ref && a.ref === b.ref);
+}
+
 /**
  * Merge de cobros. La cola local (pendingSync) y una anulación de este PC
  * ganan sobre un remoto viejo. Un PG- que solo existe aquí no se borra.
+ * Un pago que solo está en Supabase (otro id / UUID) se integra: no se pisa.
  * Un anulado no vuelve a vivo porque la nube todavía no se enteró.
  */
 export function mergePaymentsByRef(
@@ -232,13 +248,19 @@ export function mergePaymentsByRef(
       pendingByRef.delete(remoteRow.ref);
       continue;
     }
-    const queued = pendingByRef.get(remoteRow.ref);
-    const localRow = localByRef.get(remoteRow.ref);
+    const queued =
+      pendingByRef.get(remoteRow.ref) ??
+      [...pendingByRef.values()].find((row) => samePaymentIdentity(row, remoteRow));
+    const localRow =
+      localByRef.get(remoteRow.ref) ??
+      [...localByRef.values()].find((row) => samePaymentIdentity(row, remoteRow));
     if (queued) {
       if (!localRow || moneySignature(queued) !== moneySignature(localRow)) changed = true;
       if (moneySignature(queued) !== moneySignature(remoteRow)) changed = true;
-      merged.push(queued);
+      merged.push(queued.id ? queued : { ...queued, id: remoteRow.id });
+      if (localRow?.ref) localByRef.delete(localRow.ref);
       localByRef.delete(remoteRow.ref);
+      if (queued.ref) pendingByRef.delete(queued.ref);
       pendingByRef.delete(remoteRow.ref);
       continue;
     }
@@ -249,12 +271,14 @@ export function mergePaymentsByRef(
       continue;
     }
     if (paymentIsVoided(localRow) && !paymentIsVoided(remoteRow)) {
-      merged.push(localRow);
+      merged.push(localRow.id ? localRow : { ...localRow, id: remoteRow.id });
+      if (localRow.ref) localByRef.delete(localRow.ref);
       localByRef.delete(remoteRow.ref);
       continue;
     }
     const next: PaymentRow = {
       ...remoteRow,
+      id: localRow.id || remoteRow.id,
       method: normalizePaymentMethod(remoteRow.method ?? localRow.method),
       client: preferDisplay(remoteRow.client, localRow.client),
       collector: preferDisplay(remoteRow.collector, localRow.collector),
@@ -276,6 +300,7 @@ export function mergePaymentsByRef(
       changed = true;
     }
     merged.push(next);
+    if (localRow.ref) localByRef.delete(localRow.ref);
     localByRef.delete(remoteRow.ref);
   }
 
@@ -401,7 +426,7 @@ export async function fetchPaymentsFromSupabase(): Promise<FetchPaymentsResult> 
   const { data, error } = await client
     .from("payments")
     .select(
-      "ref,loan_ref,client_ref,collector_ref,collector_name,amount,paid_date,paid_time,due_date,charge_label,method,source,payment_type,payment_kind,route_ref,evidence,updated_at",
+      "id,ref,loan_ref,client_ref,collector_ref,collector_name,amount,paid_date,paid_time,due_date,charge_label,method,source,payment_type,payment_kind,route_ref,evidence,updated_at",
     )
     .order("paid_date", { ascending: false })
     .limit(3000);
@@ -410,7 +435,7 @@ export async function fetchPaymentsFromSupabase(): Promise<FetchPaymentsResult> 
     const fallback = await client
       .from("payments")
       .select(
-        "ref,loan_ref,client_ref,collector_ref,collector_name,amount,paid_date,paid_time,due_date,charge_label,method,source,payment_type,payment_kind,route_ref,updated_at",
+        "id,ref,loan_ref,client_ref,collector_ref,collector_name,amount,paid_date,paid_time,due_date,charge_label,method,source,payment_type,payment_kind,route_ref,updated_at",
       )
       .order("paid_date", { ascending: false })
       .limit(3000);

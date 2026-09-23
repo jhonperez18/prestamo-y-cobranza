@@ -9,6 +9,7 @@ import {
 import { DEMO_CLIENTS_KEY, DEMO_BANK_ACCOUNTS_KEY, readDemoJson } from "@/lib/demo-persist";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { bindMoneyRealtime } from "@/lib/realtime-money";
 import {
   flushPaymentMirrorQueue,
   pullRemotePaymentsIntoDemo,
@@ -77,25 +78,10 @@ export function useOperationalDemoSync(
     pullInFlightRef.current = true;
     setSyncing(true);
     try {
-      await flushPaymentMirrorQueue();
-      await reconcileLocalPaymentsToRemote();
-      const evidenceSync = await reconcilePaymentEvidenceToRemote();
-      if (evidenceSync.pushed > 0 || evidenceSync.failed > 0) {
-        onEvidenceSyncRef.current?.({
-          pushed: evidenceSync.pushed,
-          failed: evidenceSync.failed,
-        });
-      }
+      // Primero bajar cobros y planilla, y pintar. Si el flush va antes y falla,
+      // el panel se queda con los gastos y nunca muestra el cobro del cobrador.
+      await pullRemotePaymentsIntoDemo();
       await Promise.all([
-        flushCatalogMirrorQueues(),
-        flushOpsMirrorQueues(),
-        flushUserMirrorQueues(),
-        flushBankAccountMirrorQueues(),
-      ]);
-      await reconcileLocalOpsToRemote();
-      await reconcileLocalBankAccountsToRemote();
-      await Promise.all([
-        pullRemotePaymentsIntoDemo(),
         pullRemoteCatalogIntoDemo(),
         pullRemoteOpsIntoDemo(),
         pullRemoteUsersIntoDemo(),
@@ -109,6 +95,29 @@ export function useOperationalDemoSync(
       if (!Array.isArray(localBanks) || localBanks.length === 0) {
         await pullRemoteBankAccountsIntoDemo();
       }
+      commitHydrate();
+      try {
+        await flushPaymentMirrorQueue();
+        await reconcileLocalPaymentsToRemote();
+        const evidenceSync = await reconcilePaymentEvidenceToRemote();
+        if (evidenceSync.pushed > 0 || evidenceSync.failed > 0) {
+          onEvidenceSyncRef.current?.({
+            pushed: evidenceSync.pushed,
+            failed: evidenceSync.failed,
+          });
+        }
+        await Promise.all([
+          flushCatalogMirrorQueues(),
+          flushOpsMirrorQueues(),
+          flushUserMirrorQueues(),
+          flushBankAccountMirrorQueues(),
+        ]);
+        await reconcileLocalOpsToRemote();
+        await reconcileLocalBankAccountsToRemote();
+      } catch {
+        /* la pantalla ya tiene el dato; la nube reintenta en el siguiente ciclo */
+      }
+    } catch {
       commitHydrate();
     } finally {
       pullInFlightRef.current = false;
@@ -140,30 +149,24 @@ export function useOperationalDemoSync(
       if (!event.key || !event.key.startsWith(OPERATIONAL_DEMO_STORAGE_PREFIX)) return;
       commitHydrate();
     }
-    function onVisible() {
+    function refreshFromCloud() {
       if (document.visibilityState !== "visible") return;
       const now = Date.now();
       if (now - lastVisiblePullAtRef.current < 15_000) return;
       lastVisiblePullAtRef.current = now;
-      void (async () => {
-        try {
-          await flushPaymentMirrorQueue();
-          await flushCatalogMirrorQueues();
-          await flushOpsMirrorQueues();
-          await flushUserMirrorQueues();
-          await flushBankAccountMirrorQueues();
-        } catch {
-          /* offline */
-        }
-      })();
+      void runHydrateWithRemotePull();
     }
+    const poll = window.setInterval(refreshFromCloud, 15_000);
     window.addEventListener("storage", onStorage);
-    document.addEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", refreshFromCloud);
+    window.addEventListener("focus", refreshFromCloud);
     return () => {
+      window.clearInterval(poll);
       window.removeEventListener("storage", onStorage);
-      document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("visibilitychange", refreshFromCloud);
+      window.removeEventListener("focus", refreshFromCloud);
     };
-  }, [commitHydrate]);
+  }, [commitHydrate, runHydrateWithRemotePull]);
 
   useEffect(() => {
     if (!hydrated || !getSupabasePublicEnv().configured) return;
@@ -180,21 +183,19 @@ export function useOperationalDemoSync(
         void runHydrateWithRemotePull();
       }, 500);
     };
-    const tables = [
-      "clients",
-      "loans",
-      "payments",
-      "routes",
-      "collectors",
-      "day_closes",
-      "day_expenses",
-      "app_users",
-    ] as const;
+    const tables = ["clients", "loans", "routes", "collectors"] as const;
     const channel = client.channel("nexo-catalog-live");
     for (const table of tables) {
       channel.on("postgres_changes", { event: "*", schema: "public", table }, schedule);
     }
-    channel.subscribe();
+    // payments, day_expenses y day_closes: INSERT, UPDATE y DELETE explícitos.
+    // Este canal no se filtra por rol: admin y supervisor no pierden el global.
+    bindMoneyRealtime(channel, schedule);
+    channel.subscribe((status) => {
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        void runHydrateWithRemotePull();
+      }
+    });
     return () => {
       window.clearTimeout(timer);
       void client.removeChannel(channel);

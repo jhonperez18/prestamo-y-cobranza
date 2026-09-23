@@ -563,7 +563,7 @@ export function DailyCollectionsView({
                             {item.clientName}
                           </button>
                         ) : (
-                          <strong>{item.clientName}</strong>
+                          <span className="daily-client-link">{item.clientName}</span>
                         )}
                       </td>
                     ) : null}

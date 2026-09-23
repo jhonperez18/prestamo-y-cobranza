@@ -31,8 +31,22 @@ type Props = {
 };
 
 function paymentForVisit(item: DailyCollectionAssignment, payments: PaymentRow[]) {
-  if (!item.paymentRef) return undefined;
-  return payments.find((row) => row.ref === item.paymentRef);
+  if (item.paymentRef) {
+    const linked = payments.find((row) => row.ref === item.paymentRef);
+    if (linked && !linked.voidedAt?.trim() && linked.type !== "Anulado") return linked;
+  }
+  const day = (item.dispatchDate || "").trim();
+  const loanRef = (item.loanRef || "").trim();
+  if (!day || !loanRef) return undefined;
+  return payments.find(
+    (row) =>
+      !row.voidedAt?.trim() &&
+      row.type !== "Anulado" &&
+      (row.paidDate || "").trim() === day &&
+      (row.loanRef || "") === loanRef &&
+      (!row.collectorRef || !item.collectorRef || row.collectorRef === item.collectorRef) &&
+      (Number(row.amount) || 0) > 0,
+  );
 }
 
 /** Nombre de quien pagó: planilla primero, si no el PG- denormalizado. */
@@ -56,9 +70,9 @@ export function CollectorClosedDayReview({
   onBack,
 }: Props) {
   const cobros = visits.filter((row) => {
-    if (!(row.visitStatus === "cobrado" || Boolean(row.paymentRef))) return false;
-    if (!methodFilter) return true;
     const pay = paymentForVisit(row, payments);
+    if (!(row.visitStatus === "cobrado" || row.paymentRef || pay)) return false;
+    if (!methodFilter) return true;
     if (!pay) return methodFilter === "efectivo";
     return normalizePaymentMethod(pay.method) === methodFilter;
   });

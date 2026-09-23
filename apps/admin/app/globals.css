@@ -10451,7 +10451,7 @@
     .btn-link:hover { text-decoration: underline; }
     .daily-client-link {
       display: block;
-      font-weight: 700;
+      font-weight: 400;
       font-size: inherit;
       text-align: left;
       color: #14201b;
@@ -10935,6 +10935,13 @@
       font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline;
     }
     .btn-link:hover { color: #0d4f45; }
+    .daily-collection-grid .btn-link.daily-client-link,
+    .daily-collection-grid .btn-link.ref,
+    .daily-collection-grid td .ref,
+    .daily-collection-grid td.money,
+    .daily-collection-grid .pill {
+      font-weight: 400;
+    }
     .daily-log-detail-row td {
       padding: 8px 12px; border-bottom: 1px solid #e3ece7; white-space: normal;
       background: #f8fbf9; text-align: left; vertical-align: top;

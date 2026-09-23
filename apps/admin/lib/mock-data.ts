@@ -93,6 +93,8 @@ export type LoanRow = {
 };
 
 export type PaymentRow = {
+  /** UUID de `public.payments`. El merge con Supabase no pisa una fila que solo está en la nube. */
+  id?: string;
   ref: string;
   loanRef?: string;
   when: string;

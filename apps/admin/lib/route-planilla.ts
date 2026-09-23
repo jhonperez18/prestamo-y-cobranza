@@ -22,6 +22,7 @@ import {
   purgeInvalidPlanillaAssignments,
 } from "@/lib/planilla-eligibility";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
+import { pendingBalance, pesos } from "@/lib/finance";
 import {
   catalogRoutes,
   routeIsActive,
@@ -52,6 +53,61 @@ export function resolvedLoanInstallment(loan: LoanRow): number {
   return 0;
 }
 
+function paymentIsLive(pay: CollectionPaymentTouch) {
+  const row = pay as CollectionPaymentTouch & { voidedAt?: string; type?: string };
+  if (String(row.voidedAt || "").trim()) return false;
+  if (String(row.type || "") === "Anulado") return false;
+  return true;
+}
+
+function collectedForLoan(loanRef: string, payments?: CollectionPaymentTouch[]) {
+  let sum = 0;
+  for (const pay of payments ?? []) {
+    if ((pay.loanRef || "") !== loanRef || !paymentIsLive(pay)) continue;
+    sum += pesos(pay.amount ?? 0);
+  }
+  return sum;
+}
+
+/** Saldo = total − PG vivos. Un Nequi ya registrado no vuelve como deuda. */
+function loanOwes(loan: LoanRow, payments?: CollectionPaymentTouch[]) {
+  const collected = collectedForLoan(loan.ref, payments);
+  const total = pesos(loan.total ?? 0) || pesos(loan.capital) + pesos(loan.interest ?? 0);
+  if (total > 0) return pendingBalance(total, collected);
+  return pendingBalance(pesos(loan.balance) + collected, collected);
+}
+
+function paymentTouchesLoanOnDate(
+  pay: CollectionPaymentTouch,
+  loanRef: string,
+  date: string,
+) {
+  return (
+    paymentIsLive(pay) &&
+    (pay.loanRef || "") === loanRef &&
+    (pay.paidDate || "").trim() === date.trim() &&
+    pesos(pay.amount ?? 0) > 0
+  );
+}
+
+function loanPaidOnDate(loanRef: string, date: string, payments?: CollectionPaymentTouch[]) {
+  if (!loanRef || !date.trim()) return false;
+  return (payments ?? []).some((pay) => paymentTouchesLoanOnDate(pay, loanRef, date));
+}
+
+function paymentRefOnDate(
+  loanRef: string,
+  date: string,
+  payments?: CollectionPaymentTouch[],
+) {
+  for (const pay of payments ?? []) {
+    if (!paymentTouchesLoanOnDate(pay, loanRef, date)) continue;
+    const ref = "ref" in pay ? String((pay as PaymentRow).ref || "").trim() : "";
+    if (ref) return ref;
+  }
+  return "";
+}
+
 function loanItemsForClient(
   client: ClientRow,
   loans: LoanRow[],
@@ -60,13 +116,16 @@ function loanItemsForClient(
 ): DailyCollectionItem[] {
   const items: DailyCollectionItem[] = [];
   for (const loan of activeLoans(loans)) {
-    if (loan.clientRef !== client.ref || loan.balance <= 0) continue;
+    const owes = loanOwes(loan, payments);
+    const paidToday = loanPaidOnDate(loan.ref, date, payments);
+    // Saldo 0 de un día anterior no vuelve a la ruta. El cobro de hoy sí queda.
+    if (loan.clientRef !== client.ref || (owes <= 0 && !paidToday)) continue;
     if (isPendingReview(client)) continue;
     if (!loanIsCollectibleOn(loan, date)) continue;
 
     const installment = resolvedLoanInstallment(loan);
-    const pactada = Math.min(installment > 0 ? installment : Number(loan.balance) || 0, Number(loan.balance) || 0);
-    if (pactada <= 0) continue;
+    const pactada = paidToday && owes <= 0 ? 0 : Math.min(installment > 0 ? installment : owes, owes);
+    if (pactada <= 0 && !paidToday) continue;
 
     // Acumulado solo para etiquetas/alertas; el monto a cobrar es la cuota pactada.
     const { cuotaAmount, moraAmount, oldestOverdue, alertCount } =
@@ -252,6 +311,8 @@ export function syncPermanentRoutePlanilla(
       // Toda la ruta diaria: cobrables + sin préstamo (Completar).
       // Quien ya pagó/omitió hoy no vuelve a pendiente como Completar.
       const items = loanItemsForClient(client, loans, date, payments);
+      // Cada préstamo de hoy se queda en la ruta. El ya cobrado sale en cobrado,
+      // no se borra: si se borra, el recaudo desaparece y solo quedan los gastos.
       let dayItems = items;
       if (!dayItems.length) {
         const settledToday = existing.some((prev) => {
@@ -271,15 +332,24 @@ export function syncPermanentRoutePlanilla(
           dispatched: true,
           dispatchedAt: at,
         };
+        const progressed = preserveProgress(
+          base,
+          previousByKey.get(item.id) ??
+            previousByClientLoan.get(`${item.clientRef}:${item.loanRef}`) ??
+            previousByClientLoan.get(`${item.clientRef}:`),
+          livePaymentsByRef,
+        );
+        const paidTodayRef = paymentRefOnDate(item.loanRef, date, payments);
         builtMap.set(
           item.id,
-          preserveProgress(
-            base,
-            previousByKey.get(item.id) ??
-              previousByClientLoan.get(`${item.clientRef}:${item.loanRef}`) ??
-              previousByClientLoan.get(`${item.clientRef}:`),
-            livePaymentsByRef,
-          ),
+          paidTodayRef
+            ? {
+                ...progressed,
+                amountDue: 0,
+                visitStatus: "cobrado" as const,
+                paymentRef: progressed.paymentRef || paidTodayRef,
+              }
+            : progressed,
         );
       }
     }
@@ -299,6 +369,15 @@ export function syncPermanentRoutePlanilla(
     const omitted = prev.visitStatus === "omitido";
     const paid = paymentStillLive && (prev.visitStatus === "cobrado" || Boolean(linkedRef));
     if (!paid && !omitted) continue;
+    const prevLoan = loans.find((entry) => entry.ref === prev.loanRef);
+    const paidOffEarlier =
+      Boolean(prev.loanRef && prevLoan && loanOwes(prevLoan, payments) <= 0) &&
+      !loanPaidOnDate(prev.loanRef, date, payments);
+    if (paidOffEarlier) continue;
+    const clientAlreadyListed = [...builtMap.values()].some(
+      (row) => row.clientRef === prev.clientRef && row.collectorRef === prev.collectorRef,
+    );
+    if (clientAlreadyListed && loanPaidOnDate(prev.loanRef, date, payments)) continue;
     const inBuilt =
       builtMap.has(prev.itemId) ||
       [...builtMap.values()].some(
