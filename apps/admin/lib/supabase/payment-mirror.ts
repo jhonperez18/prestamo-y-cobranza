@@ -688,6 +688,22 @@ export type PullPaymentsResult = {
  * C4: trae cobros remotos (raíz), fusiona con caché local / offline.
  * `changed` incluye refs nuevos o dinero remoto distinto.
  */
+let livePaymentCache: PaymentRow[] | null = null;
+
+/** Cobros de la base. Sobrevive a un remount del panel. */
+export async function loadLivePaymentRows(): Promise<PaymentRow[]> {
+  if (typeof window === "undefined") return [];
+  if (livePaymentCache?.length) return livePaymentCache;
+  const res = await fetch("/api/payments", { cache: "no-store" });
+  const body = (await res.json()) as { ok?: boolean; payments?: PaymentMirrorRow[] };
+  if (!res.ok || !body.ok) return livePaymentCache ?? [];
+  const rows = (body.payments ?? [])
+    .map(mirrorRowToPaymentRow)
+    .filter((row): row is PaymentRow => Boolean(row));
+  if (rows.length > 0) livePaymentCache = rows;
+  return rows;
+}
+
 export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> {
   if (typeof window === "undefined") {
     return { ok: true, added: 0, changed: false, skipped: true, reason: "ssr" };

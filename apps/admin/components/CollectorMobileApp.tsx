@@ -33,10 +33,9 @@ import { syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import { dispatchRouteRef } from "@/lib/collector-dispatch-sync";
 import {
+  loadLivePaymentRows,
   mergePaymentsByRef,
-  mirrorRowToPaymentRow,
   pullRemotePaymentsIntoDemo,
-  type PaymentMirrorRow,
 } from "@/lib/supabase/payment-mirror";
 import { suppressGhostClick, isNavQuiet } from "@/lib/suppress-ghost-click";
 import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
@@ -214,6 +213,7 @@ export function CollectorMobileApp({
   const [menuOpen, setMenuOpen] = useState(false);
   const [apiPayments, setApiPayments] = useState<PaymentRow[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
+  const showedCobros = useRef(false);
   const livePayments = useMemo(() => {
     if (!apiPayments.length) return payments;
     if (!payments.length) return apiPayments;
@@ -224,12 +224,7 @@ export function CollectorMobileApp({
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/payments", { cache: "no-store" });
-        const body = (await res.json()) as { ok?: boolean; payments?: PaymentMirrorRow[] };
-        if (!res.ok || !body.ok) return;
-        const rows = (body.payments ?? [])
-          .map(mirrorRowToPaymentRow)
-          .filter((row): row is PaymentRow => Boolean(row));
+        const rows = await loadLivePaymentRows();
         if (!cancelled && rows.length > 0) setApiPayments(rows);
         await pullRemotePaymentsIntoDemo();
       } catch (error) {
@@ -240,6 +235,12 @@ export function CollectorMobileApp({
       cancelled = true;
     };
   }, [collector.ref]);
+
+  useEffect(() => {
+    if (showedCobros.current || apiPayments.length === 0) return;
+    showedCobros.current = true;
+    setListFilter("done");
+  }, [apiPayments.length]);
   const navIntent = useMemo(() => createNavIntent(), []);
 
   /** Cada cobrador es independiente: al cambiar, vuelve a su propio inicio (antes del paint). */
@@ -1089,7 +1090,7 @@ export function CollectorMobileApp({
                       ) : null}
                       {!identity.awaitingLoan && isDoneView ? (
                         <span className="collector-mobile-ref is-done-col">
-                          {item.paymentRef ? `- ${item.paymentRef}` : "—"}
+                          {paidPayment ? money(paidPayment.amount, { symbol: false }) : "—"}
                         </span>
                       ) : null}
                       {!identity.awaitingLoan && !isDoneView ? (
