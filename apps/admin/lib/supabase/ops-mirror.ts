@@ -463,18 +463,19 @@ async function persistKind(
   pathBody: { kind: string; row: unknown },
   ref: string,
 ) {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") return false;
   // Cola primero: el pull no debe pisar una edición en vuelo.
   enqueue(queueKey, { ref, ...(pathBody.row as object) } as { ref: string });
   try {
     const { res, json } = await postMirror("/api/ops/mirror", pathBody);
     if (res.ok && json.ok) {
       dequeue(queueKey, ref);
-      return;
+      return true;
     }
   } catch {
     /* queda en cola */
   }
+  return false;
 }
 
 export function queueCollectorMirror(c: CollectorRow) {
@@ -549,9 +550,28 @@ export function queueDayExpenseMirror(d: CollectorDayExpenseDraft) {
 export function queueMiscPaymentMirror(m: MiscPayment) {
   void persistKind(Q_MISC, { kind: "misc_payment", row: m }, m.ref);
 }
+/** Firma operativa. Si no cambia, no se vuelve a subir la fila. */
+function assignmentMirrorSig(a: DailyCollectionAssignment) {
+  return [
+    a.visitStatus || "",
+    a.paymentRef || "",
+    a.amountDue,
+    a.dayClosedAt || "",
+    a.skipReason || "",
+    a.dispatched ? 1 : 0,
+  ].join("|");
+}
+
+const sentAssignmentSig = new Map<string, string>();
+
 export function queueAssignmentMirror(a: DailyCollectionAssignment) {
   const ref = `${a.dispatchDate}::${a.itemId}`;
-  void persistKind(Q_ASSIGN, { kind: "assignment", row: a }, ref);
+  const sig = assignmentMirrorSig(a);
+  if (sentAssignmentSig.get(ref) === sig) return;
+  sentAssignmentSig.set(ref, sig);
+  void persistKind(Q_ASSIGN, { kind: "assignment", row: a }, ref).then((ok) => {
+    if (!ok) sentAssignmentSig.delete(ref);
+  });
 }
 
 export function queueAssignmentsMirror(rows: DailyCollectionAssignment[]) {
@@ -661,7 +681,10 @@ export async function reconcileLocalOpsToRemote(): Promise<{
     const remoteExpense = new Set((body.day_expenses ?? []).map((r) => r.ref).filter(Boolean));
     const remoteMisc = new Set((body.misc_payments ?? []).map((r) => r.ref).filter(Boolean));
     const remoteAssign = new Set(
-      (body.daily_assignments ?? []).map((r) => `${r.dispatch_date}::${r.item_id}`),
+      (body.daily_assignments ?? []).map((r) => {
+        const date = normalizeHistoryDate(String(r.dispatch_date || "")) || String(r.dispatch_date || "");
+        return `${date}::${r.item_id}`;
+      }),
     );
     const deletedRoutes = new Set(listDeletedRouteRefs());
     const catalogUsers = readDemoJson<UserRow[]>(DEMO_USERS_KEY, []);
@@ -724,8 +747,9 @@ export async function reconcileLocalOpsToRemote(): Promise<{
       }
     }
     for (const row of readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, [])) {
-      const key = `${row.dispatchDate}::${row.itemId}`;
-      if (row?.itemId && row?.dispatchDate && !remoteAssign.has(key)) {
+      const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
+      const key = `${date}::${row.itemId}`;
+      if (row?.itemId && date && !remoteAssign.has(key)) {
         jobs.push({ kind: "assignment", row, key });
       }
     }
@@ -871,16 +895,26 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
     for (const row of localAssign) {
       assignMap.set(`${row.dispatchDate}::${row.itemId}`, row);
     }
+    const pendingAssign = new Set(
+      readDemoJson<{ ref: string }[]>(Q_ASSIGN, []).map((row) => row.ref),
+    );
     let assignChanged = false;
     const sig = (a: DailyCollectionAssignment) =>
       `${a.visitStatus}|${a.paymentRef}|${a.amountDue}|${a.dayClosedAt}|${a.skipReason}`;
     for (const row of remoteAssign) {
       const key = `${row.dispatchDate}::${row.itemId}`;
       const prev = assignMap.get(key);
-      if (!prev || sig(prev) !== sig(row)) {
+      if (!prev) {
         assignMap.set(key, row);
         assignChanged = true;
+        continue;
       }
+      if (sig(prev) === sig(row)) continue;
+      if (pendingAssign.has(key)) continue;
+      // La hoja abierta de la nube no reabre un cierre de este PC. El resto sí entra, para que el otro aparato se vea igual.
+      if (prev.dayClosedAt && !row.dayClosedAt) continue;
+      assignMap.set(key, row);
+      assignChanged = true;
     }
     const stamped = reconcilePaymentsOntoPlanilla(
       [...assignMap.values()],

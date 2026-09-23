@@ -2,10 +2,13 @@
  * Evidencia de pago (comprobante/firma) aparte del array de pagos.
  * Evita perder la foto cuando el mirror remoto no trae `evidence`.
  */
+import { readDemoJson } from "@/lib/demo-persist";
 import {
-  readDemoJson,
-  writeDemoJson,
-} from "@/lib/demo-persist";
+  parkLocalBlobs,
+  readEvidenceMapFromIdb,
+  writeEvidenceMapToIdb,
+  type EvidenceMap,
+} from "@/lib/evidence-idb";
 import {
   preferRicherEvidence,
   type PaymentEvidenceRef,
@@ -14,14 +17,28 @@ import type { PaymentRow } from "@/lib/mock-data";
 
 export const DEMO_PAYMENT_EVIDENCE_KEY = "nexo-demo-payment-evidence";
 
-type EvidenceMap = Record<string, PaymentEvidenceRef[]>;
+let memory: EvidenceMap | null = null;
 
 function readMap(): EvidenceMap {
-  return readDemoJson<EvidenceMap>(DEMO_PAYMENT_EVIDENCE_KEY, {});
+  if (!memory) {
+    memory = readDemoJson<EvidenceMap>(DEMO_PAYMENT_EVIDENCE_KEY, {});
+  }
+  return memory;
 }
 
 function writeMap(map: EvidenceMap) {
-  writeDemoJson(DEMO_PAYMENT_EVIDENCE_KEY, map);
+  memory = map;
+  void writeEvidenceMapToIdb(map).catch((error) => {
+    console.error("evidence-idb", error);
+  });
+}
+
+/** Carga fotos desde IndexedDB y saca de localStorage las que todavía estén ahí. */
+export async function loadPaymentEvidenceStore() {
+  await parkLocalBlobs();
+  const stored = await readEvidenceMapFromIdb();
+  const legacy = readDemoJson<EvidenceMap>(DEMO_PAYMENT_EVIDENCE_KEY, {});
+  memory = { ...legacy, ...stored };
 }
 
 /** Guarda evidencia por ref de pago (PG-…). No pisa una foto real con metadata sola. */

@@ -276,11 +276,33 @@ export function writeDemoJson(key: string, value: unknown) {
   }
 }
 
+/** La foto no entra a localStorage. El cobro sí: monto, fecha, método, ref. */
+function storageJson(value: unknown) {
+  return JSON.stringify(value, (key, entry) => {
+    if (key === "previewUrl" && typeof entry === "string" && entry.startsWith("data:")) {
+      return undefined;
+    }
+    return entry;
+  });
+}
+
+function backupPayload(raw: string) {
+  if (!raw.includes("data:")) return raw;
+  const parsed = parseJson<unknown>(raw);
+  if (parsed === null || parsed === undefined) return raw;
+  return storageJson(parsed);
+}
+
+function writeBackup(key: string, raw: string) {
+  if ((MIRROR_QUEUE_KEYS as readonly string[]).includes(key)) return;
+  window.localStorage.setItem(backupKey(key), backupPayload(raw));
+}
+
 function writeDemoJsonOnce(key: string, value: unknown) {
   if (typeof window === "undefined") return;
   try {
     const prev = readRaw(key);
-    const next = JSON.stringify(value);
+    const next = storageJson(value);
     if (prev && prev !== next) {
       const prevParsed = parseJson<unknown>(prev);
       const wipingArray =
@@ -290,12 +312,12 @@ function writeDemoJsonOnce(key: string, value: unknown) {
         prevParsed.length > 0;
       // Clientes = catálogo sagrado: jamás vaciar desde React/state (ni en virgen).
       if (wipingArray && key === DEMO_CLIENTS_KEY) {
-        window.localStorage.setItem(backupKey(key), prev);
+        writeBackup(key, prev);
         return;
       }
       // Usuarios = misma regla (listado/login compartidos vía SQL).
       if (wipingArray && key === DEMO_USERS_KEY) {
-        window.localStorage.setItem(backupKey(key), prev);
+        writeBackup(key, prev);
         return;
       }
       // Préstamos / cobros = raíces del sistema central en este PC.
@@ -303,20 +325,20 @@ function writeDemoJsonOnce(key: string, value: unknown) {
         wipingArray &&
         (key === DEMO_LOANS_KEY || key === DEMO_PAYMENTS_KEY)
       ) {
-        window.localStorage.setItem(backupKey(key), prev);
+        writeBackup(key, prev);
         return;
       }
       // Nunca respaldar un [] encima de un bak con datos.
       if (!wipingArray) {
-        window.localStorage.setItem(backupKey(key), prev);
+        writeBackup(key, prev);
       } else if (isVirginOpsMode()) {
         // Paquete virgen: [] es intencional (cobros/historial/banco vacíos).
-        window.localStorage.setItem(backupKey(key), next);
+        writeBackup(key, next);
         window.localStorage.setItem(key, next);
         return;
       } else {
         // Intento de vaciar: conservar prev en -bak y NO escribir [] si hay datos.
-        window.localStorage.setItem(backupKey(key), prev);
+        writeBackup(key, prev);
         return;
       }
     }

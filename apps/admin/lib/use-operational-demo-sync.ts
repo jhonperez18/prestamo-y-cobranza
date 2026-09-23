@@ -7,6 +7,7 @@ import {
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
 import { DEMO_CLIENTS_KEY, DEMO_BANK_ACCOUNTS_KEY, readDemoJson } from "@/lib/demo-persist";
+import { loadPaymentEvidenceStore } from "@/lib/payment-evidence-store";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { bindMoneyRealtime } from "@/lib/realtime-money";
@@ -80,22 +81,26 @@ export function useOperationalDemoSync(
     try {
       // Primero bajar cobros y planilla, y pintar. Si el flush va antes y falla,
       // el panel se queda con los gastos y nunca muestra el cobro del cobrador.
-      await pullRemotePaymentsIntoDemo();
-      await Promise.all([
+      const payments = await pullRemotePaymentsIntoDemo();
+      const [catalog, ops, users, banks] = await Promise.all([
         pullRemoteCatalogIntoDemo(),
         pullRemoteOpsIntoDemo(),
         pullRemoteUsersIntoDemo(),
         pullRemoteBankAccountsIntoDemo(),
       ]);
+      let changed = Boolean(payments.changed || catalog.changed || ops.changed || users.changed || banks.changed);
       const localClients = readDemoJson(DEMO_CLIENTS_KEY, [] as unknown[]);
       if (!Array.isArray(localClients) || localClients.length === 0) {
-        await pullRemoteCatalogIntoDemo();
+        const again = await pullRemoteCatalogIntoDemo();
+        changed = changed || again.changed;
       }
       const localBanks = readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []);
       if (!Array.isArray(localBanks) || localBanks.length === 0) {
-        await pullRemoteBankAccountsIntoDemo();
+        const again = await pullRemoteBankAccountsIntoDemo();
+        changed = changed || again.changed;
       }
-      commitHydrate();
+      // Sin cambios no se rehace toda la pantalla. Eso era la lentitud en reposo.
+      if (changed) commitHydrate();
       try {
         await flushPaymentMirrorQueue();
         await reconcileLocalPaymentsToRemote();
@@ -127,10 +132,22 @@ export function useOperationalDemoSync(
   }, [commitHydrate]);
 
   useEffect(() => {
-    // 1) Pintar local al instante (sistema madre: local primero).
-    commitHydrate();
-    // 2) Sync nube en segundo plano.
-    void runHydrateWithRemotePull();
+    let cancel = false;
+    void (async () => {
+      try {
+        await loadPaymentEvidenceStore();
+      } catch (error) {
+        console.error("evidence-store", error);
+      }
+      if (cancel) return;
+      // 1) Pintar local al instante (sistema madre: local primero).
+      commitHydrate();
+      // 2) Sync nube en segundo plano.
+      void runHydrateWithRemotePull();
+    })();
+    return () => {
+      cancel = true;
+    };
   }, [commitHydrate, runHydrateWithRemotePull]);
 
   useEffect(() => {

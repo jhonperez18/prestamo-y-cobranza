@@ -1,0 +1,22 @@
+---
+description: El taller en localhost:3000 permanece encendido. No se apaga al terminar una tarea.
+alwaysApply: true
+---
+
+# Localhost — siempre encendido
+
+## Ley
+
+`http://localhost:3000` es el taller de este PC. El usuario lo pidió encendido siempre.
+
+## Obligatorio
+
+1. Si el puerto 3000 no responde, arrancar `npm run dev` en `apps/admin` y dejarlo en segundo plano.
+2. Comprobar que `http://127.0.0.1:3000` contesta antes de seguir.
+3. No usar `HOSTINGER_STATIC_EXPORT=1` en ese proceso. Con eso las rutas `/api` quedan en 404.
+
+## Prohibido
+
+- Matar, reiniciar o cerrar ese proceso al terminar un cambio, un commit o un push.
+- Dar por cerrado el día apagando el servidor.
+- Sustituir el taller por el link de Vercel cuando el usuario está trabajando en este PC.

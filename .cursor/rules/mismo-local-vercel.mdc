@@ -1,0 +1,35 @@
+---
+description: Local y Vercel muestran lo mismo; las fotos no llenan el navegador ni rompen el login
+alwaysApply: true
+---
+
+# Local y Vercel — el mismo dato, sin el error de hoy
+
+## Ley
+
+Lo que se ve en este PC y en el link de Vercel es el mismo cobro, la misma planilla y el mismo usuario. El programa no se “actualiza” con el push: el push sube el código. El dato ya está en este PC y se proyecta a la nube.
+
+## Lo que hoy rompió el login — prohibido que vuelva
+
+La clave sí coincidía. `localStorage` estaba lleno de fotos (`previewUrl` con `data:`) y de copias `-bak` y colas. `setItem` de la sesión (`nexo-admin-session`) tiraba `QuotaExceededError` y el aviso rojo. No era la contraseña.
+
+| Qué | Dónde vive |
+| --- | --- |
+| Cobro `PG-` (monto, fecha, método, ref) | `localStorage` `nexo-demo-payments` |
+| Foto / firma | IndexedDB `nexo-evidence`. Nunca `localStorage` |
+| Sesión | `nexo-admin-session` (cabe porque la foto no está ahí) |
+
+## Obligatorio
+
+1. Al arrancar, `parkLocalBlobs` saca las fotos de `localStorage` antes de pintar el login.
+2. `writeDemoJson` no persiste `data:`. La copia `-bak` tampoco. Las colas de mirror no tienen `-bak`.
+3. Un cierre de este PC no lo reabre la hoja abierta de la nube. Un cambio real del otro aparato sí entra.
+4. No rehidratar la pantalla ni volver a subir la fila de planilla si la firma no cambió.
+5. Un solo manifest: `app/manifest.ts`. `public/manifest.webmanifest` choca y deja el aviso rojo. No se commitea.
+
+## Prohibido
+
+- Parchear el login con otro mensaje si el disco está lleno. Se saca la foto del cupo.
+- Guardar la constancia otra vez en `localStorage` “por si acaso”.
+- Borrar cobros, clientes, usuarios o préstamos para hacer espacio.
+- Tratar un pull que no cambió nada como si hubiera que reconstruir toda la pantalla.

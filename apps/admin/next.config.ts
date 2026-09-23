@@ -181,6 +181,11 @@ if (hostingerExport && publicSupabaseEnv) {
   }
 }
 if (hostingerExport) publishStaticManifest(projectRoot);
+else {
+  // app/manifest.ts es el único. Un archivo en public choca y deja el aviso rojo.
+  const stray = path.join(projectRoot, "public", "manifest.webmanifest");
+  if (fs.existsSync(stray)) fs.rmSync(stray);
+}
 syncCanalPageForExport(projectRoot);
 
 const nextConfig: NextConfig = {
