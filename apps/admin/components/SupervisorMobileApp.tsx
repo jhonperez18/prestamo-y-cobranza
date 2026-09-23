@@ -766,9 +766,11 @@ function snSkipLabel(row: DailyCollectionAssignment) {
 function SnPeople({
   rows,
   empty,
+  dateLabel,
 }: {
   rows: DailyCollectionAssignment[];
   empty: string;
+  dateLabel: string;
 }) {
   if (rows.length === 0) return <p className="ficha-empty">{empty}</p>;
   return (
@@ -777,7 +779,7 @@ function SnPeople({
         <li key={`${item.dispatchDate}-${item.itemId}`}>
           <span>
             <b>{item.clientName || "Cliente"}</b>
-            <small>{item.clientRoute || item.collector}</small>
+            <small>{dateLabel}</small>
           </span>
           <em>{snSkipLabel(item)}</em>
         </li>
@@ -1098,6 +1100,8 @@ export function SupervisorMobileApp({
       .map((date) => ({ date, rows: byName(groups.get(date) ?? []) }));
     return { todayRows: byName(groups.get(today) ?? []), past };
   }, [assignments, today]);
+  const snHistoryLead = snByDay.todayRows.length === 0 ? (snByDay.past[0] ?? null) : null;
+  const snOlderDays = snHistoryLead ? snByDay.past.slice(1) : snByDay.past;
 
   /** Registro Nequi solo del día (se limpia solo al cambiar de fecha). */
   const nequiRegisterToday = useMemo(() => {
@@ -2361,14 +2365,36 @@ export function SupervisorMobileApp({
                         </button>
                         {snOpen ? (
                           <div className="supervisor-sn-panel">
-                            <p className="supervisor-sn-label">Hoy</p>
-                            <SnPeople rows={snByDay.todayRows} empty="Nadie dijo que no hoy" />
-                            {snByDay.past.length > 0 ? (
+                            {snByDay.todayRows.length > 0 ? (
+                              <>
+                                <p className="supervisor-sn-label">Hoy</p>
+                                <SnPeople
+                                  rows={snByDay.todayRows}
+                                  empty="Nadie dijo que no hoy"
+                                  dateLabel={todayDisplay}
+                                />
+                              </>
+                            ) : snHistoryLead ? (
+                              <>
+                                <p className="supervisor-sn-label">
+                                  Registro {isoToDisplay(snHistoryLead.date)}
+                                </p>
+                                <SnPeople
+                                  rows={snHistoryLead.rows}
+                                  empty="Nadie ese día"
+                                  dateLabel={isoToDisplay(snHistoryLead.date)}
+                                />
+                              </>
+                            ) : (
+                              <p className="ficha-empty">Sin registro</p>
+                            )}
+                            {snOlderDays.length > 0 ? (
                               <>
                                 <p className="supervisor-sn-label">Días anteriores</p>
                                 <ul className="supervisor-sn-days" aria-label="Historial S/N por día">
-                                  {snByDay.past.map((day) => {
+                                  {snOlderDays.map((day) => {
                                     const open = snDay === day.date;
+                                    const label = isoToDisplay(day.date);
                                     return (
                                       <li key={day.date}>
                                         <button
@@ -2377,11 +2403,15 @@ export function SupervisorMobileApp({
                                           aria-expanded={open}
                                           onClick={() => setSnDay(open ? null : day.date)}
                                         >
-                                          <span>{isoToDisplay(day.date)}</span>
+                                          <span>{label}</span>
                                           <b>{day.rows.length}</b>
                                         </button>
                                         {open ? (
-                                          <SnPeople rows={day.rows} empty="Nadie ese día" />
+                                          <SnPeople
+                                            rows={day.rows}
+                                            empty="Nadie ese día"
+                                            dateLabel={label}
+                                          />
                                         ) : null}
                                       </li>
                                     );
