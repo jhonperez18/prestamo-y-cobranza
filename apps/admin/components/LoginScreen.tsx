@@ -190,6 +190,9 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
       }
 
       setError("Usuario o contraseña incorrectos.");
+    } catch (error) {
+      console.error("login", error);
+      setError("La clave es correcta, pero el navegador está lleno y no pudo guardar la entrada. Recarga e intenta otra vez.");
     } finally {
       setBusy(false);
     }

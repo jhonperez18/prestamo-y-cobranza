@@ -186,7 +186,97 @@ export function readDemoJson<T>(key: string, fallback: T): T {
  * Escribe JSON guardando antes una copia en -bak (no pisa un bak bueno con []).
  * Así un fallo o una limpieza accidental no destruye el último estado válido.
  */
+const MIRROR_QUEUE_KEYS = [
+  "nexo-demo-payment-mirror-queue",
+  "nexo-demo-client-mirror-queue",
+  "nexo-demo-loan-mirror-queue",
+  "nexo-demo-user-mirror-queue",
+  "nexo-demo-user-delete-queue",
+  "nexo-demo-ops-collectors-queue",
+  "nexo-demo-ops-collector-deletes-queue",
+  "nexo-demo-ops-routes-queue",
+  "nexo-demo-ops-route-deletes-queue",
+  "nexo-demo-ops-day-closes-queue",
+  "nexo-demo-ops-day-expenses-queue",
+  "nexo-demo-ops-misc-queue",
+  "nexo-demo-ops-assignments-queue",
+  "nexo-demo-bank-account-mirror-queue",
+] as const;
+
+function isQuotaError(error: unknown) {
+  return error instanceof DOMException && error.name === "QuotaExceededError";
+}
+
+function stripDataPreviews(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stripDataPreviews);
+  if (!value || typeof value !== "object") return value;
+  const next: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (key === "previewUrl" && typeof entry === "string" && entry.startsWith("data:")) continue;
+    next[key] = stripDataPreviews(entry);
+  }
+  return next;
+}
+
+function rewriteWithoutDataPreviews(key: string) {
+  const raw = readRaw(key);
+  if (!raw || !raw.includes("data:")) return;
+  const parsed = parseJson<unknown>(raw);
+  if (parsed === null || parsed === undefined) return;
+  window.localStorage.setItem(key, JSON.stringify(stripDataPreviews(parsed)));
+}
+
+/**
+ * Solo cuando el navegador ya no acepta ni la sesión.
+ * Quita colas y copias. Los cobros, clientes, usuarios y préstamos quedan en su clave principal.
+ */
+export function freeDemoStorageQuota() {
+  if (typeof window === "undefined") return;
+  for (const key of MIRROR_QUEUE_KEYS) {
+    window.localStorage.removeItem(key);
+    window.localStorage.removeItem(backupKey(key));
+  }
+  const copyKeys = [
+    DEMO_DAILY_ASSIGNMENTS_KEY,
+    DEMO_DAILY_LOGS_KEY,
+    DEMO_ROUTES_KEY,
+    DEMO_BANK_MOVEMENTS_KEY,
+    DEMO_BANK_RECONCILIATIONS_KEY,
+    DEMO_COLLECTOR_DAY_CLOSES_KEY,
+    DEMO_COLLECTOR_DAY_EXPENSES_KEY,
+    "nexo-demo-payment-evidence",
+  ];
+  for (const key of copyKeys) {
+    window.localStorage.removeItem(backupKey(key));
+  }
+  try {
+    rewriteWithoutDataPreviews(DEMO_PAYMENTS_KEY);
+    rewriteWithoutDataPreviews("nexo-demo-payment-evidence");
+  } catch {
+    /* si la foto no cabe, la copia -bak de cobros se suelta; la clave principal sigue */
+    window.localStorage.removeItem(backupKey(DEMO_PAYMENTS_KEY));
+    window.localStorage.removeItem(backupKey(DEMO_LOANS_KEY));
+    window.localStorage.removeItem(backupKey(DEMO_CLIENTS_KEY));
+    window.localStorage.removeItem(backupKey(DEMO_USERS_KEY));
+  }
+}
+
 export function writeDemoJson(key: string, value: unknown) {
+  if (typeof window === "undefined") return;
+  try {
+    writeDemoJsonOnce(key, value);
+  } catch (error) {
+    if (!isQuotaError(error)) return;
+    freeDemoStorageQuota();
+    try {
+      writeDemoJsonOnce(key, value);
+    } catch {
+      /* sigue sin espacio */
+    }
+  }
+}
+
+function writeDemoJsonOnce(key: string, value: unknown) {
   if (typeof window === "undefined") return;
   try {
     const prev = readRaw(key);
@@ -231,8 +321,8 @@ export function writeDemoJson(key: string, value: unknown) {
       }
     }
     window.localStorage.setItem(key, next);
-  } catch {
-    /* ignore quota / private mode */
+  } catch (error) {
+    if (isQuotaError(error)) throw error;
   }
 }
 

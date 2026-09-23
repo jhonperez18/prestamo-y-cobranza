@@ -1,3 +1,4 @@
+import { freeDemoStorageQuota } from "@/lib/demo-persist";
 import { roleByRef, ROLES, type UserRow } from "@/lib/mock-data";
 
 export const AUTH_SESSION_KEY = "nexo-admin-session";
@@ -114,7 +115,16 @@ export function readSession(): AppSession | null {
 }
 
 export function writeSession(session: AppSession) {
-  window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+  const raw = JSON.stringify(session);
+  try {
+    window.localStorage.setItem(AUTH_SESSION_KEY, raw);
+  } catch (error) {
+    const quota =
+      error instanceof DOMException && error.name === "QuotaExceededError";
+    if (!quota) throw error;
+    freeDemoStorageQuota();
+    window.localStorage.setItem(AUTH_SESSION_KEY, raw);
+  }
 }
 
 export function clearSession() {
