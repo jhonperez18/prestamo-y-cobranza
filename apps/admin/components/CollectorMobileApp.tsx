@@ -30,7 +30,7 @@ import type { CollectorPaymentRegisterInput } from "@/lib/route-sync";
 import { canRenewLoan } from "@/lib/loan-renew";
 import { syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
-import { dispatchRouteRef } from "@/lib/collector-dispatch-sync";
+import { dispatchRouteRef, NO_PAY_TODAY_REASON } from "@/lib/collector-dispatch-sync";
 import {
   loadLivePaymentRows,
   mergePaymentsByRef,
@@ -120,7 +120,7 @@ type Props = {
   preview?: boolean;
   canRegister?: boolean;
   onRegisterPayment?: (draft: CollectorPaymentRegisterInput) => boolean | void;
-  /** @deprecated Ya no se usa en la lista: sin pago = sigue el saldo. */
+  /** N/P: hoy no tiene plata. Sale de por cobrar y entra a S/N. */
   onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
   onRenewLoan?: (loanRef: string) => void;
   onCreateQuickLoan?: (draft: QuickLoanDraft) => void;
@@ -205,6 +205,7 @@ export function CollectorMobileApp({
   preview = false,
   canRegister = true,
   onRegisterPayment,
+  onSkipVisit,
   onRenewLoan,
   onCreateQuickLoan,
   onSaveExpenses,
@@ -213,6 +214,7 @@ export function CollectorMobileApp({
   onLogout,
 }: Props) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [payCombo, setPayCombo] = useState(false);
   const [listFilter, setListFilter] = useState<ListFilter>("pending");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editingExpenses, setEditingExpenses] = useState(false);
@@ -479,6 +481,7 @@ export function CollectorMobileApp({
     // Si toggléa, el click fantasma tras el reflow cierra el panel al instante.
     if (expandedKey === key) return;
     suppressGhostClick(720);
+    setPayCombo(false);
     setExpandedKey(key);
   }
 
@@ -1074,8 +1077,31 @@ export function CollectorMobileApp({
                       <span className="collector-mobile-visit-order" aria-label="Orden de visita">
                         {identity.order ?? "—"}
                       </span>
-                      <div className="collector-mobile-visit-who">
+                      <div
+                        className={
+                          isOpen
+                            ? "collector-mobile-visit-who is-with-combo"
+                            : "collector-mobile-visit-who"
+                        }
+                      >
                         <strong title={identity.fullName}>{identity.fullName}</strong>
+                        {isOpen && canAct ? (
+                          <button
+                            type="button"
+                            className={
+                              payCombo
+                                ? "collector-pay-combo-toggle is-by-name on"
+                                : "collector-pay-combo-toggle is-by-name"
+                            }
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              setPayCombo((current) => !current);
+                            }}
+                          >
+                            Combinado
+                          </button>
+                        ) : null}
                       </div>
                       {identity.awaitingLoan && !isOpen ? (
                         <button
@@ -1178,6 +1204,24 @@ export function CollectorMobileApp({
                           amountDue={cuotaShown}
                           balance={identity.balance}
                           canRenew={renewEnabled}
+                          combined={payCombo}
+                          onCombinedChange={setPayCombo}
+                          comboInHeader
+                          onNoPay={
+                            onSkipVisit
+                              ? () => {
+                                  onSkipVisit({
+                                    routeRef,
+                                    clientRef: item.clientRef,
+                                    loanRef: identity.loanRef,
+                                    dispatchDate: item.dispatchDate || activeDate,
+                                    collectorRef: collector.ref,
+                                    reason: NO_PAY_TODAY_REASON,
+                                  });
+                                  closeCard();
+                                }
+                              : undefined
+                          }
                           onCancel={closeCard}
                           onRenew={
                             onRenewLoan && loanForRenew

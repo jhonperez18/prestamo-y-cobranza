@@ -33,6 +33,7 @@ import { COLLECTOR_DAILY_LOGS_SEED, upsertDailyLogPayment } from "@/lib/collecto
 import {
   applySkipToRoute,
   closeDispatchDay,
+  NO_PAY_TODAY_REASON,
   skipAssignmentVisit,
 } from "@/lib/collector-dispatch-sync";
 import {
@@ -577,18 +578,23 @@ export function CollectorShell({ session, onLogout }: Props) {
       clientRef: draft.clientRef,
       reason: draft.reason,
     });
-    setDailyAssignments(nextAssignments);
-    setRoutes((current) =>
-      current.map((row) =>
-        row.ref === draft.routeRef
-          ? applySkipToRoute(row, draft.loanRef, draft.clientRef)
-          : row,
-      ),
+    const nextRoutes = routes.map((row) =>
+      row.ref === draft.routeRef
+        ? applySkipToRoute(row, draft.loanRef, draft.clientRef)
+        : row,
     );
+    setDailyAssignments(nextAssignments);
+    setRoutes(nextRoutes);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, nextAssignments);
+    writeDemoJson(DEMO_ROUTES_KEY, nextRoutes);
+    queueAssignmentsMirror(nextAssignments);
+    queueRoutesMirror(nextRoutes);
     showToast(
-      draft.reason
-        ? `Visita omitida · ${draft.reason}. Queda para reprogramar.`
-        : "Visita omitida. Queda para reprogramar.",
+      draft.reason === NO_PAY_TODAY_REASON
+        ? "Sale de por cobrar. Quedó en S/N."
+        : draft.reason
+          ? `Visita omitida · ${draft.reason}.`
+          : "Visita omitida.",
     );
   }
 

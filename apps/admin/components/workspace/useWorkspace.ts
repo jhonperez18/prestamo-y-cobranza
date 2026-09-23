@@ -43,6 +43,7 @@ import {
   closeDispatchDay,
   dispatchRouteRef,
   markAssignmentsDispatched,
+  NO_PAY_TODAY_REASON,
   rebuildDispatchRoutes,
   skipAssignmentVisit,
   upsertDispatchDailyLog,
@@ -1881,18 +1882,23 @@ export function useWorkspace({
       clientRef: draft.clientRef,
       reason: draft.reason,
     });
-    setDailyAssignments(nextAssignments);
-    setRoutes((current) =>
-      current.map((row) =>
-        row.ref === draft.routeRef
-          ? applySkipToRoute(row, draft.loanRef, draft.clientRef)
-          : row,
-      ),
+    const nextRoutes = routes.map((row) =>
+      row.ref === draft.routeRef
+        ? applySkipToRoute(row, draft.loanRef, draft.clientRef)
+        : row,
     );
+    setDailyAssignments(nextAssignments);
+    setRoutes(nextRoutes);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, nextAssignments);
+    writeDemoJson(DEMO_ROUTES_KEY, nextRoutes);
+    queueAssignmentsMirror(nextAssignments);
+    queueRoutesMirror(nextRoutes);
     onToast(
-      draft.reason
-        ? `Visita omitida · ${draft.reason}. Queda para reprogramar.`
-        : "Visita omitida. Queda para reprogramar.",
+      draft.reason === NO_PAY_TODAY_REASON
+        ? "Sale de por cobrar. Quedó en S/N."
+        : draft.reason
+          ? `Visita omitida · ${draft.reason}.`
+          : "Visita omitida.",
     );
   }
 

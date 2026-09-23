@@ -8,6 +8,11 @@ import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { buildLoanReport } from "@/lib/loan-report";
 import { shareLoanFichaCapture } from "@/lib/loan-ficha-share";
 import { routeCoverageSummaries } from "@/lib/collector-preview";
+import {
+  DAY_CLOSE_SKIP_REASON,
+  isNoPayListRow,
+  NO_PAY_TODAY_REASON,
+} from "@/lib/collector-dispatch-sync";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 import { isValidPlanillaAssignment } from "@/lib/planilla-eligibility";
@@ -787,6 +792,7 @@ export function SupervisorMobileApp({
   );
   /** Día ISO del historial de caja (últimos 5 días del cobrador). */
   const [cajaHistoryDayIso, setCajaHistoryDayIso] = useState<string | null>(null);
+  const [snOpen, setSnOpen] = useState(false);
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [nuevoName, setNuevoName] = useState("");
@@ -1027,6 +1033,35 @@ export function SupervisorMobileApp({
       prestamosHoy,
     };
   }, [liquidaciones, todayAssignments.length]);
+
+  const snAfterRouteRef = useMemo(() => {
+    const named = liquidaciones.find((row) => {
+      const slot = row.routeName.trim().toLowerCase().replace(/^ruta\s+/, "");
+      return slot === "2";
+    });
+    if (named) return named.routeRef;
+    return liquidaciones[1]?.routeRef ?? liquidaciones[0]?.routeRef ?? null;
+  }, [liquidaciones]);
+
+  const snRows = useMemo(() => {
+    const dates = [
+      ...new Set(
+        assignments
+          .map((row) => row.dispatchDate)
+          .filter((date) => Boolean(date) && date <= today),
+      ),
+    ].sort();
+    const recent = new Set(dates.slice(-2));
+    return assignments
+      .filter(
+        (row) =>
+          recent.has(row.dispatchDate) &&
+          isNoPayListRow(row),
+      )
+      .sort((a, b) =>
+        `${a.clientRoute}|${a.clientName}`.localeCompare(`${b.clientRoute}|${b.clientName}`, "es"),
+      );
+  }, [assignments, today]);
 
   /** Registro Nequi solo del día (se limpia solo al cambiar de fecha). */
   const nequiRegisterToday = useMemo(() => {
@@ -2264,16 +2299,59 @@ export function SupervisorMobileApp({
             <p className="ficha-empty">No hay rutas con cobrador.</p>
           ) : (
             <div className="supervisor-route-boards">
-              {liquidaciones.map((row, index) => (
-                <RouteBoardCard
-                  key={row.routeRef}
-                  row={row}
-                  accent={index}
-                  mode="caja"
-                  unreadCount={unreadByCollector[row.collectorRef] || 0}
-                  onOpen={(ref) => openRouteSummary(ref, { returnView: "caja" })}
-                />
-              ))}
+              {liquidaciones.map((row, index) => {
+                const underRuta2 = row.routeRef === snAfterRouteRef;
+                return (
+                  <div key={row.routeRef} className="supervisor-route-stack">
+                    <RouteBoardCard
+                      row={row}
+                      accent={index}
+                      mode="caja"
+                      unreadCount={unreadByCollector[row.collectorRef] || 0}
+                      onOpen={(ref) => openRouteSummary(ref, { returnView: "caja" })}
+                    />
+                    {underRuta2 ? (
+                      <div className="supervisor-sn-block">
+                        <button
+                          type="button"
+                          className={snOpen ? "supervisor-sn-open on" : "supervisor-sn-open"}
+                          onClick={() => setSnOpen((current) => !current)}
+                          aria-expanded={snOpen}
+                        >
+                          S/N
+                        </button>
+                        {snOpen ? (
+                          snRows.length === 0 ? (
+                            <p className="ficha-empty">Nadie en S/N todavía.</p>
+                          ) : (
+                            <ul className="supervisor-sn-list" aria-label="No pagan">
+                              {snRows.map((item) => (
+                                <li key={`${item.dispatchDate}-${item.itemId}`}>
+                                  <span>
+                                    <b>{item.clientName || "Cliente"}</b>
+                                    <small>
+                                      {item.clientRoute || item.collector}
+                                      {" · "}
+                                      {item.dispatchDate}
+                                    </small>
+                                  </span>
+                                  <em>
+                                    {item.skipReason === NO_PAY_TODAY_REASON
+                                      ? "Hoy no tiene plata"
+                                      : item.skipReason === DAY_CLOSE_SKIP_REASON
+                                        ? "Quedó al cierre"
+                                        : "Sin pago"}
+                                  </em>
+                                </li>
+                              ))}
+                            </ul>
+                          )
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           )}
         </section>

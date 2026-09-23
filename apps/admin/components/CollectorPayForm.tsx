@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { ReceiptCapture } from "@/components/ReceiptCapture";
 import { SignaturePad } from "@/components/SignaturePad";
 import {
@@ -56,6 +56,12 @@ type Props = {
   formId?: string;
   /** Solo activo cuando el plazo del préstamo ya venció. */
   canRenew?: boolean;
+  /** Combinado lo pinta la fila del nombre (antes del billete). */
+  combined?: boolean;
+  onCombinedChange?: (next: boolean) => void;
+  comboInHeader?: boolean;
+  /** N/P: hoy no tiene plata. No crea cobro. */
+  onNoPay?: () => void;
   onCancel: () => void;
   onSubmit: (payload: CollectorPaySubmit) => void;
   onRenew?: () => void;
@@ -94,12 +100,18 @@ export function CollectorPayForm({
   variant = "sheet",
   formId = "default",
   canRenew = false,
+  combined: combinedProp,
+  onCombinedChange,
+  comboInHeader = false,
+  onNoPay,
   onCancel,
   onSubmit,
   onRenew,
 }: Props) {
   const maxAmount = balance != null && balance > 0 ? balance : 0;
-  const [combined, setCombined] = useState(false);
+  const [internalCombined, setInternalCombined] = useState(false);
+  const combined = combinedProp ?? internalCombined;
+  const [noPay, setNoPay] = useState(false);
   const [method, setMethod] = useState<PaymentMethod | null>(null);
   const [rawAmount, setRawAmount] = useState(
     amountDue > 0 ? formatAmountInput(amountDue) : "",
@@ -110,6 +122,21 @@ export function CollectorPayForm({
   /** Tras firma/foto del 1.er tramo, se habilita el 2.º. */
   const [legALocked, setLegALocked] = useState(false);
   const [attempted, setAttempted] = useState(false);
+
+  useEffect(() => {
+    if (combined) {
+      setNoPay(false);
+      setMethod(null);
+      setEvidenceItem(undefined);
+      setLegA(emptyLeg());
+      setLegB(emptyLeg());
+      setLegALocked(false);
+      return;
+    }
+    setLegA(emptyLeg());
+    setLegB(emptyLeg());
+    setLegALocked(false);
+  }, [combined]);
 
   const amount = parseAmount(rawAmount);
   const evidence = useMemo(() => (evidenceItem ? [evidenceItem] : []), [evidenceItem]);
@@ -124,17 +151,18 @@ export function CollectorPayForm({
     [legB.evidenceItem],
   );
 
-  const methodError = !combined && !method ? "Seleccione la forma de pago." : null;
+  const methodError = !combined && !noPay && !method ? "Seleccione la forma de pago." : null;
   const evidenceError =
-    !combined && method ? validatePaymentEvidence(method, evidence) : null;
+    !combined && !noPay && method ? validatePaymentEvidence(method, evidence) : null;
   const overBalance = maxAmount > 0 && amount > maxAmount;
-  const amountError = !combined
-    ? amount <= 0
-      ? "Indique el valor recibido."
-      : overBalance
-        ? "El valor no puede superar el saldo."
-        : null
-    : null;
+  const amountError =
+    !combined && !noPay
+      ? amount <= 0
+        ? "Indique el valor recibido."
+        : overBalance
+          ? "El valor no puede superar el saldo."
+          : null
+      : null;
 
   const comboTotal = amountA + amountB;
   const comboMethodError = combined
@@ -174,9 +202,23 @@ export function CollectorPayForm({
     setRawAmount(formatAmountInput(raw));
   }
 
+  function setCombined(next: boolean) {
+    if (combinedProp === undefined) setInternalCombined(next);
+    onCombinedChange?.(next);
+    if (next) setNoPay(false);
+  }
+
   function selectMethod(next: PaymentMethod) {
+    setNoPay(false);
     setMethod(next);
     setEvidenceItem(undefined);
+  }
+
+  function selectNoPay() {
+    setNoPay(true);
+    setMethod(null);
+    setEvidenceItem(undefined);
+    setCombined(false);
   }
 
   function enableCombined() {
@@ -213,6 +255,10 @@ export function CollectorPayForm({
     event.preventDefault();
     setAttempted(true);
     if (!canSubmit) return;
+    if (noPay) {
+      onNoPay?.();
+      return;
+    }
 
     if (combined && legA.method && legB.method) {
       const total = amountA + amountB;
@@ -274,7 +320,7 @@ export function CollectorPayForm({
 
   const methodPicker = (
     <div
-      className={`pay-choice pay-method collector-pay-methods${inline ? " compact" : ""}`}
+      className={`pay-choice pay-method collector-pay-methods${inline ? " compact" : ""}${onNoPay && !combined ? " has-np" : ""}`}
       role="radiogroup"
       aria-label="Forma de pago"
     >
@@ -288,12 +334,23 @@ export function CollectorPayForm({
           <input
             type="radio"
             name={methodName}
-            checked={method === entry.id}
+            checked={method === entry.id && !noPay}
             onChange={() => selectMethod(entry.id)}
           />
           <span>{entry.label}</span>
         </label>
       ))}
+      {onNoPay && !combined ? (
+        <label className={noPay ? "on is-pay-np" : "is-pay-np"}>
+          <input
+            type="radio"
+            name={methodName}
+            checked={noPay}
+            onChange={selectNoPay}
+          />
+          <span>N/P</span>
+        </label>
+      ) : null}
     </div>
   );
 
@@ -477,6 +534,7 @@ export function CollectorPayForm({
         </>
       ) : null}
 
+      {comboInHeader ? null : (
       <div className="collector-pay-combo-toggle-row">
         {combined ? (
           <button
@@ -484,17 +542,18 @@ export function CollectorPayForm({
             className="collector-pay-combo-toggle on"
             onClick={disableCombined}
           >
-            combinado
+            Combinado
           </button>
         ) : (
           <button type="button" className="collector-pay-combo-toggle" onClick={enableCombined}>
-            combinado
+            Combinado
           </button>
         )}
         {combined ? (
           <span className="collector-pay-combo-hint">Dos métodos · misma hora</span>
         ) : null}
       </div>
+      )}
 
       {combined ? (
         <div className="collector-pay-combo-legs">
@@ -522,6 +581,8 @@ export function CollectorPayForm({
             </p>
           ) : null}
         </div>
+      ) : noPay ? (
+        methodPicker
       ) : (
         <>
           {methodPicker}

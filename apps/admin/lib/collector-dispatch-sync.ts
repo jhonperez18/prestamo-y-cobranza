@@ -456,6 +456,19 @@ export function applyPaymentToAssignments(
   });
 }
 
+/** El cobrador marcó N/P: hoy el cliente no tiene plata. */
+export const NO_PAY_TODAY_REASON = "Hoy no tiene plata";
+/** Lo que el cierre automático deja en la lista S/N. */
+export const DAY_CLOSE_SKIP_REASON = "Cierre de jornada";
+
+/** Fila de la lista S/N: el cobrador la envió, o quedó sin pagar al cerrar el día. */
+export function isNoPayListRow(row: DailyCollectionAssignment) {
+  if (row.visitStatus !== "omitido") return false;
+  if (row.awaitingLoan || !String(row.loanRef || "").trim()) return false;
+  if (row.skipReason === NO_PAY_TODAY_REASON) return true;
+  return Boolean(row.dayClosedAt) && (row.skipReason === DAY_CLOSE_SKIP_REASON || !row.skipReason);
+}
+
 /** Marca una visita no realizada (no localizado, enfermo, etc.). */
 export function skipAssignmentVisit(
   assignments: DailyCollectionAssignment[],
@@ -583,7 +596,7 @@ export function closeDispatchDay(
         ...next,
         amountDue: 0,
         visitStatus: "omitido" as const,
-        skipReason: row.skipReason || "Cierre de jornada",
+        skipReason: row.skipReason || DAY_CLOSE_SKIP_REASON,
       };
     } else if (row.visitStatus === "cobrado" || row.paymentRef) {
       next = { ...next, amountDue: 0, visitStatus: "cobrado" as const };
