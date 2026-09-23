@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CollectorCloseDayConfirm } from "@/components/CollectorCloseDayConfirm";
 import { CollectorCloseDaySheet } from "@/components/CollectorCloseDaySheet";
 import { CollectorPayForm } from "@/components/CollectorPayForm";
+import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import type { QuickLoanDraft } from "@/lib/street-client-loan";
 import { Pill } from "@/components/ui";
@@ -15,7 +16,6 @@ import {
   collectorRecaudoBreakdown,
   defaultMobileRouteDate,
 } from "@/lib/collector-mobile";
-import { periodLabel } from "@/lib/bank";
 import { todayIso } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
@@ -50,6 +50,7 @@ import type {
   CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
 import {
+  COLLECTOR_HISTORY_KEEP_DAYS,
   buildCollectorDayHistory,
   expensesForCollectorDay,
   findMonthClose,
@@ -62,6 +63,8 @@ import {
   periodHadCollectorActivity,
   previousPeriod,
 } from "@/lib/collector-day-close";
+import { withPaymentEvidence } from "@/lib/payment-evidence-store";
+import { paymentTimeLabel } from "@/lib/payment-detail";
 import {
   normalizePaymentMethod,
   paymentMethodInitial,
@@ -150,6 +153,37 @@ function itemKey(item: DailyCollectionAssignment) {
   return `${item.itemId}-${item.dispatchDate}`;
 }
 
+type HistoryPayMethod = "efectivo" | "nequi" | "banco" | "doble" | "np" | "vacio";
+
+function isHistoryFiller(row: DailyCollectionAssignment) {
+  return Boolean(
+    row.awaitingLoan || row.itemId.includes(":prestar") || !String(row.loanRef || "").trim(),
+  );
+}
+
+function historyPayMethod(pays: PaymentRow[]): HistoryPayMethod {
+  const methods = new Set(pays.map((row) => normalizePaymentMethod(row.method)));
+  const combo = pays.some((row) => row.comboGroupId) && pays.length > 1;
+  if (methods.size > 1 || combo) return "doble";
+  return [...methods][0] ?? "efectivo";
+}
+
+function historyMethodLabel(method: HistoryPayMethod) {
+  if (method === "nequi") return "Nequi";
+  if (method === "banco") return "Banco";
+  if (method === "doble") return "Doble";
+  if (method === "np") return "N/P";
+  if (method === "vacio") return "—";
+  return "Efectivo";
+}
+
+function historyClock(pays: PaymentRow[]) {
+  const label = pays
+    .map((pay) => paymentTimeLabel(pay).trim())
+    .find((value) => value && value !== "00:00" && value !== "0:00");
+  return label || "—";
+}
+
 /** Vista compacta: #, nombre completo, apodo, saldo, cuota. */
 function visitIdentity(
   item: DailyCollectionAssignment,
@@ -221,6 +255,8 @@ export function CollectorMobileApp({
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [planillaSearchOpen, setPlanillaSearchOpen] = useState(false);
+  const [planillaQuery, setPlanillaQuery] = useState("");
   const [apiPayments, setApiPayments] = useState<PaymentRow[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
   const showedCobros = useRef(false);
@@ -291,6 +327,11 @@ export function CollectorMobileApp({
     return defaultMobileRouteDate(routeOptions, fallback);
   }, [date, routeOptions, selectedDate]);
 
+  useEffect(() => {
+    setPlanillaQuery("");
+    setPlanillaSearchOpen(false);
+  }, [activeDate]);
+
   const viewPeriod = periodFromDateIso(activeDate);
 
   const dayHistory = useMemo(() => {
@@ -308,7 +349,7 @@ export function CollectorMobileApp({
       dayExpenseDrafts,
       monthCloses,
       viewPeriod,
-      { assignments },
+      { assignments, rolling: true },
     );
   }, [
     activeDate,
@@ -580,6 +621,106 @@ export function CollectorMobileApp({
     !collectorHasOpenPlanillaWork(queue);
   const chromeLocked = dayLocked || showHomeCuadre;
 
+  const closedPlanilla = useMemo(() => {
+    const pays = dayPays
+      .filter((row) => !row.voidedAt?.trim())
+      .map((row) => withPaymentEvidence(row));
+    const used = new Set<string>();
+    const rows: Array<{
+      key: string;
+      order: number | null;
+      name: string;
+      amount: number | null;
+      time: string;
+      evidence: NonNullable<PaymentRow["evidence"]>;
+      method: HistoryPayMethod;
+    }> = [];
+
+    const visitClientRefs = new Set(
+      queue.dispatched.filter((item) => !isHistoryFiller(item)).map((item) => item.clientRef),
+    );
+    const paidClientRefs = new Set(
+      pays.map((pay) => loans.find((row) => row.ref === pay.loanRef)?.clientRef || ""),
+    );
+
+    for (const item of queue.dispatched) {
+      if (
+        isHistoryFiller(item) &&
+        (visitClientRefs.has(item.clientRef) || paidClientRefs.has(item.clientRef))
+      ) {
+        continue;
+      }
+      const identity = visitIdentity(item, clients, loans, livePayments, activeDate);
+      const sinCuota = isHistoryFiller(item) || !(identity.cuota > 0);
+      const matched = pays.filter((pay) => {
+        if (used.has(pay.ref)) return false;
+        if (item.paymentRef && pay.ref === item.paymentRef) return true;
+        return Boolean(item.loanRef && pay.loanRef && pay.loanRef === item.loanRef);
+      });
+      if (matched.length === 0 && item.paymentRef && used.has(item.paymentRef)) continue;
+      const comboIds = new Set(
+        matched.map((pay) => pay.comboGroupId).filter((id): id is string => Boolean(id)),
+      );
+      const grouped = pays.filter((pay) => {
+        if (matched.some((row) => row.ref === pay.ref)) return true;
+        return Boolean(pay.comboGroupId && comboIds.has(pay.comboGroupId));
+      });
+      for (const pay of grouped) used.add(pay.ref);
+      rows.push({
+        key: itemKey(item),
+        order: identity.order,
+        name: identity.fullName,
+        amount: grouped.length
+          ? grouped.reduce((sum, pay) => sum + (Number(pay.amount) || 0), 0)
+          : sinCuota
+            ? null
+            : identity.cuota,
+        time: grouped.length ? historyClock(grouped) : "—",
+        evidence: grouped.length ? grouped.flatMap((pay) => pay.evidence ?? []) : [],
+        method: grouped.length ? historyPayMethod(grouped) : sinCuota ? "vacio" : "np",
+      });
+    }
+
+    for (const pay of pays) {
+      if (used.has(pay.ref)) continue;
+      const siblings = pay.comboGroupId
+        ? pays.filter((row) => row.comboGroupId === pay.comboGroupId)
+        : [pay];
+      if (siblings.some((row) => row.ref !== pay.ref && used.has(row.ref))) {
+        used.add(pay.ref);
+        continue;
+      }
+      for (const row of siblings) used.add(row.ref);
+      const loan = loans.find((row) => row.ref === pay.loanRef);
+      const client = clients.find((row) => row.ref === loan?.clientRef);
+      rows.push({
+        key: siblings.map((row) => row.ref).join("|"),
+        order: client?.routeOrder && client.routeOrder > 0 ? client.routeOrder : null,
+        name: payerName(pay, loans, clients),
+        amount: siblings.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
+        time: historyClock(siblings),
+        evidence: siblings.flatMap((row) => row.evidence ?? []),
+        method: historyPayMethod(siblings),
+      });
+    }
+
+    return rows.sort((a, b) => {
+      const ao = a.order ?? 9999;
+      const bo = b.order ?? 9999;
+      if (ao !== bo) return ao - bo;
+      return a.name.localeCompare(b.name, "es");
+    });
+  }, [activeDate, clients, dayPays, livePayments, loans, queue.dispatched]);
+
+  const planillaQueryNorm = planillaQuery.trim().toLocaleLowerCase("es");
+  const planillaRows =
+    planillaSearchOpen && planillaQueryNorm
+      ? closedPlanilla.filter((row) => {
+          const name = row.name.toLocaleLowerCase("es");
+          return name.includes(planillaQueryNorm) || String(row.order ?? "").includes(planillaQueryNorm);
+        })
+      : closedPlanilla;
+
   /** Totales = pagos reales del día (mismo número que banco Debe / “Lo que cobró”). */
   const topRecaudo = recaudo.total;
   const topGastos = savedExpensesTotal;
@@ -666,7 +807,7 @@ export function CollectorMobileApp({
           <header className="collector-mobile-history-panel-head">
             <div>
               <h2 id="collector-history-title">Historial</h2>
-              <span>{periodLabel(viewPeriod)}</span>
+              <span>Últimos {COLLECTOR_HISTORY_KEEP_DAYS} días</span>
             </div>
             <button
               type="button"
@@ -685,7 +826,8 @@ export function CollectorMobileApp({
               <span>Saldo</span>
             </div>
             <ul className="collector-mobile-day-history-list">
-              {carriedOpening > 0 ? (
+              {carriedOpening > 0 &&
+              dayHistory.every((row) => periodFromDateIso(row.date) === viewPeriod) ? (
                 <li>
                   <div className="collector-mobile-day-history-row is-opening">
                     <span className="is-date">Ant.</span>
@@ -705,7 +847,9 @@ export function CollectorMobileApp({
                   openPlanillaDates.has(row.date) ||
                   closedHistoryDates.has(row.date),
               ).length === 0 ? (
-                <li className="collector-mobile-day-history-empty">Sin movimientos este mes.</li>
+                <li className="collector-mobile-day-history-empty">
+                  Sin movimientos en los últimos {COLLECTOR_HISTORY_KEEP_DAYS} días.
+                </li>
               ) : (
                 dayHistory
                   .filter(
@@ -922,6 +1066,70 @@ export function CollectorMobileApp({
               <b>{money(dayCuadre.saldo)}</b>
             </div>
           </div>
+          {closedPlanilla.length > 0 ? (
+            <div className="collector-history-planilla" aria-label={`Planilla cobrada ${queue.dateLabel}`}>
+              <p className="collector-history-planilla-title">
+                <strong>Planilla {queue.dateLabel}</strong>
+                <button
+                  type="button"
+                  className={planillaSearchOpen ? "collector-history-planilla-search on" : "collector-history-planilla-search"}
+                  aria-label="Buscar cliente"
+                  aria-expanded={planillaSearchOpen}
+                  onClick={() => setPlanillaSearchOpen((open) => !open)}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="10.5" cy="10.5" r="6.25" fill="none" stroke="currentColor" strokeWidth="2" />
+                    <path d="M15.2 15.2 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </p>
+              {planillaSearchOpen ? (
+                <input
+                  className="collector-history-planilla-query"
+                  type="search"
+                  value={planillaQuery}
+                  placeholder="Buscar cliente"
+                  aria-label="Buscar cliente en la planilla"
+                  autoFocus
+                  onChange={(event) => setPlanillaQuery(event.target.value)}
+                />
+              ) : null}
+              <div className="collector-history-planilla-head">
+                <span>#</span>
+                <span>Nombre</span>
+                <span>Cuota</span>
+                <span>Hora</span>
+                <span>Foto</span>
+                <span>Método</span>
+              </div>
+              <ul>
+                {planillaRows.length === 0 ? (
+                  <li className="is-empty-search">Sin coincidencias</li>
+                ) : (
+                  planillaRows.map((row) => (
+                    <li key={row.key} className={row.method === "vacio" ? "is-vacio" : undefined}>
+                      <span className="is-ord">{row.order ?? "—"}</span>
+                      <span className="is-name">{row.name}</span>
+                      <span className="is-cuota">
+                        {row.amount == null ? "—" : money(row.amount, { symbol: false })}
+                      </span>
+                      <span className="is-time">{row.time}</span>
+                      <span className="is-photo">
+                        {row.evidence.length > 0 ? (
+                          <PaymentEvidenceThumb evidence={row.evidence} size={22} emptyLabel="—" />
+                        ) : (
+                          "—"
+                        )}
+                      </span>
+                      <span className={row.method === "vacio" ? "is-method" : `is-method is-pay-${row.method}`}>
+                        {historyMethodLabel(row.method)}
+                      </span>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          ) : null}
           <p className="collector-mobile-home-cuadre-hint is-ok">
             Este saldo es el que llevas hasta el próximo cobro. Historial para ver otros días.
           </p>

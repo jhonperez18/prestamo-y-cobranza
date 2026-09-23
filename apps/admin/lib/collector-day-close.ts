@@ -5,7 +5,7 @@ import {
   type BankExpenseCategory,
   type BankMovement,
 } from "@/lib/bank";
-import { isoToDispatchLabel } from "@/lib/daily-dispatch";
+import { isoToDispatchLabel, todayIso } from "@/lib/daily-dispatch";
 import { pesos, sumPesos, verifyCashClose } from "@/lib/finance";
 import { displayToIso } from "@/lib/loan-preview";
 import { money, type CollectorRow, type LoanRow, type PaymentRow, paymentsForCollector } from "@/lib/mock-data";
@@ -546,12 +546,23 @@ export function finalizeCollectorDayClose(input: {
   };
 }
 
-/** Historial visible/guardado del cobrador: solo los últimos N días cerrados. */
-export const COLLECTOR_HISTORY_KEEP_DAYS = 5;
+/** Historial visible/guardado del cobrador: siempre los últimos 30 días. */
+export const COLLECTOR_HISTORY_KEEP_DAYS = 30;
+
+/** Día más antiguo que entra en la ventana (hoy inclusive). Al día 31 cae este. */
+export function historyKeepCutoffIso(today = todayIso(), days = COLLECTOR_HISTORY_KEEP_DAYS) {
+  const [y, m, d] = today.split("-").map(Number);
+  const dt = new Date(y, (m || 1) - 1, d || 1);
+  dt.setDate(dt.getDate() - (days - 1));
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
 
 /**
  * Por cobrador: conserva solo los N cierres más recientes (por fecha).
- * Al guardar el día 6, cae el más antiguo.
+ * Al guardar el día 31, cae el más antiguo.
  */
 export function trimCollectorDayClosesHistory(
   closes: CollectorDayCloseRecord[],
@@ -690,6 +701,8 @@ export function dayCloseSummaryLabel(record: CollectorDayCloseRecord) {
 export type CollectorHistoryExtras = {
   dailyLogs?: CollectorDailyLogRow[];
   assignments?: DailyCollectionAssignment[];
+  /** Últimos N días corridos, aunque crucen de mes. El día 31 suelta el más antiguo. */
+  rolling?: boolean;
 };
 
 /**
@@ -928,6 +941,43 @@ export function buildCollectorDayHistory(
       ...extraDates.map(normalizeHistoryDate).filter(Boolean),
     ]),
   ].sort((a, b) => a.localeCompare(b));
+
+  if (extras.rolling) {
+    const cutoff = historyKeepCutoffIso();
+    const byPeriod = new Map<string, string[]>();
+    for (const date of dates) {
+      const bucketPeriod = periodFromDateIso(date);
+      const bucket = byPeriod.get(bucketPeriod);
+      if (bucket) bucket.push(date);
+      else byPeriod.set(bucketPeriod, [date]);
+    }
+    const ascending: CollectorDayHistoryRow[] = [];
+    for (const bucketPeriod of [...byPeriod.keys()].sort()) {
+      let running = openingSaldoForPeriod(collectorRef, bucketPeriod, monthCloses);
+      const labelPeriod = viewPeriod || bucketPeriod;
+      for (const date of byPeriod.get(bucketPeriod) ?? []) {
+        const cobroEfectivo = efectivoByDate.get(date) ?? 0;
+        const gasto = gastoByDate.get(date) ?? 0;
+        running = verifyCashClose({
+          opening: running,
+          collections: cobroEfectivo,
+          expenses: gasto,
+          declared: running,
+        }).expected;
+        if (date < cutoff) continue;
+        ascending.push({
+          date,
+          dateLabel: historyDayLabel(date, labelPeriod),
+          cobro: cobroByDate.get(date) ?? 0,
+          cobroEfectivo,
+          cobroNequi: nequiByDate.get(date) ?? 0,
+          gasto,
+          saldo: running,
+        });
+      }
+    }
+    return ascending.slice(-COLLECTOR_HISTORY_KEEP_DAYS).reverse();
+  }
 
   const period =
     viewPeriod ??

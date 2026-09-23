@@ -2092,6 +2092,147 @@
       border-color: #a7f3d0;
       color: #065f46;
     }
+    .collector-history-planilla {
+      margin-top: 8px;
+    }
+    .collector-history-planilla-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin: 0 0 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #14201b;
+    }
+    .collector-history-planilla-title strong {
+      font-weight: 700;
+    }
+    .collector-history-planilla-search {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      min-height: 0 !important;
+      margin: 0;
+      padding: 0 !important;
+      border: 0;
+      border-radius: 4px;
+      background: transparent;
+      color: #14201b;
+      cursor: pointer;
+    }
+    .collector-history-planilla-search svg {
+      width: 14px;
+      height: 14px;
+    }
+    .collector-history-planilla-search.on {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+    .collector-history-planilla-query {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      margin: 0 0 4px;
+      height: 28px;
+      min-height: 0 !important;
+      padding: 4px 8px !important;
+      border: 1px solid #93c5fd;
+      border-radius: 6px;
+      background: #fff;
+      color: #14201b;
+      font-size: 13px !important;
+      font-weight: 400;
+    }
+    .collector-history-planilla li.is-vacio,
+    .collector-history-planilla li.is-vacio:nth-child(odd),
+    .collector-history-planilla li.is-vacio:nth-child(even) {
+      background: #dbeafe;
+    }
+    .collector-history-planilla li.is-empty-search {
+      display: block;
+      grid-template-columns: none;
+      color: #5b7268;
+      background: #fff;
+    }
+    .collector-history-planilla-head,
+    .collector-history-planilla li {
+      display: grid;
+      grid-template-columns: 1.15rem minmax(0, 1.2fr) 3.15rem 3.5rem 1.35rem minmax(2.9rem, auto);
+      align-items: center;
+      column-gap: 4px;
+      padding: 3px 4px;
+      font-size: 10px;
+      font-weight: 400;
+      color: #14201b;
+    }
+    .collector-history-planilla-head {
+      color: #14201b;
+      font-weight: 700;
+    }
+    .collector-history-planilla-head span {
+      font-weight: 700;
+    }
+    .collector-history-planilla ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      border: 1px solid #d5e6df;
+    }
+    .collector-history-planilla li:nth-child(odd) {
+      background: var(--row-a);
+    }
+    .collector-history-planilla li:nth-child(even) {
+      background: var(--row-b);
+    }
+    .collector-history-planilla .is-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .collector-history-planilla .is-ord,
+    .collector-history-planilla .is-cuota,
+    .collector-history-planilla .is-time {
+      text-align: center;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .collector-history-planilla .is-photo {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .collector-history-planilla .is-method {
+      justify-self: end;
+      padding: 1px 4px;
+      border-radius: 4px;
+      font-size: 9px;
+      font-weight: 400;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .collector-history-planilla .is-method.is-pay-efectivo {
+      color: #1f6b45;
+      background: #e7f6ee;
+    }
+    .collector-history-planilla .is-method.is-pay-nequi {
+      color: #5b3d8a;
+      background: #f1e9fb;
+    }
+    .collector-history-planilla .is-method.is-pay-banco {
+      color: #1d4ed8;
+      background: #dbeafe;
+    }
+    .collector-history-planilla .is-method.is-pay-doble {
+      color: #c2410c;
+      background: #ffedd5;
+    }
+    .collector-history-planilla .is-method.is-pay-np {
+      color: #dc2626;
+      background: #fee2e2;
+    }
     .collector-mobile-list-hint {
       margin: 0 16px 8px;
       font-size: 13px;
@@ -5155,6 +5296,28 @@
       opacity: 0.45;
       cursor: not-allowed;
     }
+    /* Lupa Clientes: seguido de MODIFICAR, misma altura del chip. */
+    .supervisor-clientes-search {
+      width: 20px;
+      height: 20px;
+      min-height: 0 !important;
+      max-height: 20px;
+      padding: 0 !important;
+      border: 1px solid #c4b5a0;
+      border-radius: 4px;
+      background: #f7efe4;
+      color: #7a4e1d;
+      flex: 0 0 auto;
+    }
+    .supervisor-clientes-search svg {
+      width: 12px;
+      height: 12px;
+    }
+    .supervisor-clientes-search.on {
+      background: #dbeafe;
+      border-color: #93c5fd;
+      color: #1d4ed8;
+    }
     .supervisor-planilla-route-btns {
       display: flex;
       align-items: center;
@@ -5853,6 +6016,70 @@
       display: flex;
       flex-direction: column;
       gap: 10px;
+    }
+    .supervisor-route-boards.is-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      align-items: start;
+    }
+    .supervisor-route-boards.is-pair .supervisor-route-stack:has(.supervisor-sn-block) {
+      display: contents;
+    }
+    .supervisor-route-boards.is-pair .supervisor-route-board.is-caja-mode {
+      min-width: 0;
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+    .supervisor-route-boards.is-pair .supervisor-caja-row {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+    }
+    .supervisor-route-boards.is-pair .supervisor-route-board-id {
+      flex-direction: row;
+      align-items: baseline;
+      gap: 6px;
+      min-width: 0;
+    }
+    .supervisor-route-boards.is-pair .supervisor-route-board-ruta {
+      flex-shrink: 0;
+    }
+    .supervisor-route-boards.is-pair .supervisor-caja-hero.is-row {
+      min-width: 0;
+      width: 100%;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 6px 8px;
+      box-sizing: border-box;
+    }
+    .supervisor-route-boards.is-pair .supervisor-route-board.is-caja-mode .supervisor-caja-hero.is-row b {
+      font-size: 16px;
+      text-align: center;
+      width: 100%;
+    }
+    .supervisor-route-boards.is-pair .supervisor-route-board-name {
+      font-size: 14px;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .supervisor-route-boards.is-pair .supervisor-sn-block {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      column-gap: 8px;
+      align-items: start;
+    }
+    .supervisor-route-boards.is-pair .supervisor-sn-open {
+      grid-column: 2;
+      justify-self: start;
+    }
+    .supervisor-route-boards.is-pair .supervisor-sn-panel {
+      grid-column: 1 / -1;
     }
     .supervisor-route-stack {
       display: flex;

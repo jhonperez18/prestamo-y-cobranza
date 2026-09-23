@@ -838,6 +838,8 @@ export function SupervisorMobileApp({
   const [clientesModifyMode, setClientesModifyMode] = useState(false);
   const [clientesEditRef, setClientesEditRef] = useState<string | null>(null);
   const [clientesEditSearch, setClientesEditSearch] = useState("");
+  /** Lupa de Clientes: abre el buscador sin entrar a Modificar. */
+  const [clientesSearchOpen, setClientesSearchOpen] = useState(false);
   const [editName, setEditName] = useState("");
   const [editLastName, setEditLastName] = useState("");
   const [editPhone, setEditPhone] = useState("");
@@ -1098,8 +1100,6 @@ export function SupervisorMobileApp({
       .map((date) => ({ date, rows: byName(groups.get(date) ?? []) }));
     return { todayRows: byName(groups.get(today) ?? []), past };
   }, [assignments, today]);
-  const snHistoryLead = snByDay.todayRows.length === 0 ? (snByDay.past[0] ?? null) : null;
-  const snOlderDays = snHistoryLead ? snByDay.past.slice(1) : snByDay.past;
 
   /** Registro Nequi solo del día (se limpia solo al cambiar de fecha). */
   const nequiRegisterToday = useMemo(() => {
@@ -1312,6 +1312,16 @@ export function SupervisorMobileApp({
     setDetailMode("nequi-dia");
   }
 
+  function foldSnHistory() {
+    setSnOpen(false);
+    setSnDay(null);
+  }
+
+  function foldClientesSearch() {
+    setClientesSearchOpen(false);
+    if (!clientesModifyMode) setClientesEditSearch("");
+  }
+
   function goToView(next: SupervisorView) {
     // Misma pestaña sin detalle de ruta: no resetear (evita click fantasma).
     if (next === view && !openRouteRef) return;
@@ -1335,11 +1345,13 @@ export function SupervisorMobileApp({
       setClientesRouteFilter(null);
       setClientesLoanClientRef(null);
       resetClientesModify();
+      setClientesSearchOpen(false);
     }
     if (next !== "prestamos") {
       setPrestamoFichaRef(null);
       setPrestamosSearch("");
     }
+    foldSnHistory();
     setView(next);
   }
 
@@ -1367,8 +1379,10 @@ export function SupervisorMobileApp({
     setClientesRouteFilter(null);
     setClientesLoanClientRef(null);
     resetClientesModify();
+    setClientesSearchOpen(false);
     setPrestamoFichaRef(null);
     setPrestamosSearch("");
+    foldSnHistory();
     setView("inicio");
   }
 
@@ -1503,6 +1517,7 @@ export function SupervisorMobileApp({
     });
   }, [clients, clientesRouteFilter, loans, payments, today]);
 
+  const clientesSearchActive = clientesModifyMode || clientesSearchOpen;
   const clientesModifyRows = useMemo(() => {
     const q = clientesEditSearch.trim().toLowerCase();
     if (!q) return supervisorClientRows;
@@ -1512,6 +1527,7 @@ export function SupervisorMobileApp({
       return hay.includes(q);
     });
   }, [supervisorClientRows, clientesEditSearch, clients]);
+  const clientesListRows = clientesSearchActive ? clientesModifyRows : supervisorClientRows;
 
   const clientesEditClient =
     clients.find((row) => row.ref === clientesEditRef) ?? null;
@@ -1625,6 +1641,7 @@ export function SupervisorMobileApp({
     setNequiDayIso(null);
     setNequiDayBackTo("nequi-historial");
     setCajaHistoryDayIso(null);
+    foldSnHistory();
     setRouteReturnView("inicio");
     setView(backTo);
   }
@@ -1669,6 +1686,7 @@ export function SupervisorMobileApp({
     setNequiDayIso(null);
     setNequiDayBackTo("nequi-historial");
     setCajaHistoryDayIso(null);
+    foldSnHistory();
     if (opts?.method === "nequi" && opts.returnView === "nequi") {
       setCobrosMethodFilter("nequi");
       setDetailMode("nequi-historial");
@@ -2332,11 +2350,10 @@ export function SupervisorMobileApp({
             </div>
           </div>
 
-          <h3>Por cobrador</h3>
           {liquidaciones.length === 0 ? (
             <p className="ficha-empty">No hay rutas con cobrador.</p>
           ) : (
-            <div className="supervisor-route-boards">
+            <div className="supervisor-route-boards is-pair">
               {liquidaciones.map((row, index) => {
                 const underRuta2 = row.routeRef === snAfterRouteRef;
                 return (
@@ -2354,8 +2371,16 @@ export function SupervisorMobileApp({
                           type="button"
                           className={snOpen ? "supervisor-sn-open on" : "supervisor-sn-open"}
                           onClick={() => {
-                            setSnOpen((current) => !current);
-                            setSnDay(null);
+                            if (!snOpen) {
+                              setSnOpen(true);
+                              setSnDay(null);
+                              return;
+                            }
+                            if (snDay) {
+                              setSnDay(null);
+                              return;
+                            }
+                            setSnOpen(false);
                           }}
                           aria-expanded={snOpen}
                         >
@@ -2363,36 +2388,19 @@ export function SupervisorMobileApp({
                         </button>
                         {snOpen ? (
                           <div className="supervisor-sn-panel">
-                            {snByDay.todayRows.length > 0 ? (
-                              <>
-                                <p className="supervisor-sn-label">Hoy</p>
-                                <SnPeople
-                                  rows={snByDay.todayRows}
-                                  empty="Nadie dijo que no hoy"
-                                  dateLabel={todayDisplay}
-                                />
-                              </>
-                            ) : snHistoryLead ? (
-                              <>
-                                <p className="supervisor-sn-label">
-                                  Registro {isoToDisplay(snHistoryLead.date)}
-                                </p>
-                                <SnPeople
-                                  rows={snHistoryLead.rows}
-                                  empty="Nadie ese día"
-                                  dateLabel={isoToDisplay(snHistoryLead.date)}
-                                />
-                              </>
-                            ) : (
+                            {snByDay.todayRows.length === 0 && snByDay.past.length === 0 ? (
                               <p className="ficha-empty">Sin registro</p>
-                            )}
-                            {snOlderDays.length > 0 ? (
-                              <>
-                                <p className="supervisor-sn-label">Días anteriores</p>
-                                <ul className="supervisor-sn-days" aria-label="Historial N/P por día">
-                                  {snOlderDays.map((day) => {
+                            ) : (
+                              <ul className="supervisor-sn-days" aria-label="Historial N/P por día">
+                                {(snByDay.todayRows.length > 0
+                                  ? [{ date: today, rows: snByDay.todayRows }]
+                                  : []
+                                )
+                                  .concat(snByDay.past)
+                                  .map((day) => {
                                     const open = snDay === day.date;
-                                    const label = isoToDisplay(day.date);
+                                    const label =
+                                      day.date === today ? "Hoy" : isoToDisplay(day.date);
                                     return (
                                       <li key={day.date}>
                                         <button
@@ -2408,15 +2416,16 @@ export function SupervisorMobileApp({
                                           <SnPeople
                                             rows={day.rows}
                                             empty="Nadie ese día"
-                                            dateLabel={label}
+                                            dateLabel={
+                                              day.date === today ? todayDisplay : label
+                                            }
                                           />
                                         ) : null}
                                       </li>
                                     );
                                   })}
-                                </ul>
-                              </>
-                            ) : null}
+                              </ul>
+                            )}
                           </div>
                         ) : null}
                       </div>
@@ -3132,6 +3141,30 @@ export function SupervisorMobileApp({
                   >
                     <b>{clientesModifyMode ? "CANCELAR" : "MODIFICAR"}</b>
                   </button>
+                  <button
+                    type="button"
+                    className={
+                      clientesSearchOpen
+                        ? "collector-history-planilla-search supervisor-clientes-search on"
+                        : "collector-history-planilla-search supervisor-clientes-search"
+                    }
+                    aria-label="Buscar cliente"
+                    aria-pressed={clientesSearchOpen}
+                    onClick={() => {
+                      suppressGhostClick();
+                      if (clientesSearchOpen) {
+                        foldClientesSearch();
+                        return;
+                      }
+                      setClientesSearchOpen(true);
+                      if (!clientesModifyMode) setClientesEditSearch("");
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                      <circle cx="10.5" cy="10.5" r="6.5" />
+                      <line x1="15.5" y1="15.5" x2="21" y2="21" />
+                    </svg>
+                  </button>
                 </div>
                 {planillaRoutePins.length > 0 ? (
                   <div
@@ -3160,10 +3193,11 @@ export function SupervisorMobileApp({
                   </div>
                 ) : null}
               </div>
-              {clientesModifyMode ? (
+              {clientesSearchActive ? (
                 <label className="quick-loan-field supervisor-nuevo-search">
                   <span className="sr-only">Buscar cliente</span>
                   <input
+                    type="search"
                     value={clientesEditSearch}
                     onChange={(event) => setClientesEditSearch(event.target.value)}
                     placeholder="Nombre, cédula o celular"
@@ -3171,9 +3205,9 @@ export function SupervisorMobileApp({
                   />
                 </label>
               ) : null}
-              {(clientesModifyMode ? clientesModifyRows : supervisorClientRows).length === 0 ? (
+              {clientesListRows.length === 0 ? (
                 <p className="ficha-empty">
-                  {clientesModifyMode && clientesEditSearch.trim()
+                  {clientesSearchActive && clientesEditSearch.trim()
                     ? "No hay clientes con ese filtro."
                     : clientesRouteFilter
                       ? `No hay clientes en la ruta ${clientesRouteFilter}.`
@@ -3181,7 +3215,7 @@ export function SupervisorMobileApp({
                 </p>
               ) : (
                 <ClientesTable
-                  rows={clientesModifyMode ? clientesModifyRows : supervisorClientRows}
+                  rows={clientesListRows}
                   onOpen={(ref) => {
                     suppressGhostClick();
                     if (clientesModifyMode) {
