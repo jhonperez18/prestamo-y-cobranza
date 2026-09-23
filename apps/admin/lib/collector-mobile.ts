@@ -50,10 +50,69 @@ function hasDayCloseRecord(
   );
 }
 
-/** Cobros del día. Completar / sin cuota (planilla completa) no entra al cobrador. */
-function isCollectorDayCollection(row: DailyCollectionAssignment) {
-  if (row.awaitingLoan || row.itemId.includes(":prestar")) return false;
-  return Boolean((row.loanRef || "").trim());
+/** Fila de ruta sin cuota (Completar). No es un cobro. */
+function isRouteFiller(row: DailyCollectionAssignment) {
+  return Boolean(
+    row.awaitingLoan || row.itemId.includes(":prestar") || !String(row.loanRef || "").trim(),
+  );
+}
+
+/**
+ * Recaudo = cada PG vivo del día. Si la planilla no tiene la visita, el cobro igual se muestra.
+ */
+function recaudoFromDayPayments(
+  collectorRef: string,
+  date: string,
+  sheet: DailyCollectionAssignment[],
+  payments: PaymentRow[],
+  loans: LoanRow[],
+  clients: ClientRow[],
+): DailyCollectionAssignment[] {
+  const norm = normalizeHistoryDate(date) || date;
+  const pays = paymentsForCollector(collectorRef, [], payments).filter(
+    (row) => (normalizeHistoryDate(row.paidDate || "") || row.paidDate || "") === norm,
+  );
+  const used = new Set<string>();
+  return pays.map((pay) => {
+    const visit = sheet.find((row) => {
+      if (used.has(row.itemId)) return false;
+      if ((row.paymentRef || "").trim() === pay.ref) return true;
+      return Boolean(pay.loanRef && row.loanRef === pay.loanRef);
+    });
+    if (visit) used.add(visit.itemId);
+    if (visit && String(visit.loanRef || "").trim()) {
+      return {
+        ...visit,
+        visitStatus: "cobrado" as const,
+        paymentRef: pay.ref,
+        amountDue: 0,
+        dispatched: true,
+      };
+    }
+    const loan = loans.find((row) => row.ref === pay.loanRef);
+    const client = clients.find((row) => row.ref === (loan?.clientRef || ""));
+    const clientName = client
+      ? `${client.name} ${client.lastName}`.trim()
+      : pay.client;
+    return {
+      itemId: `pay:${pay.ref}`,
+      dispatchDate: norm,
+      loanRef: pay.loanRef || loan?.ref || "",
+      clientRef: client?.ref || loan?.clientRef || "",
+      clientName,
+      clientRoute: client?.route || visit?.clientRoute || "",
+      address: client?.address || visit?.address,
+      amountDue: 0,
+      chargeLabel: pay.chargeLabel || "Cuota",
+      kind: "cuota",
+      collectorRef,
+      collector: pay.collector,
+      assignedAt: pay.paidDate || norm,
+      dispatched: true,
+      visitStatus: "cobrado",
+      paymentRef: pay.ref,
+    };
+  });
 }
 
 export function collectorMobileQueue(
@@ -72,7 +131,8 @@ export function collectorMobileQueue(
     date,
     loans,
     clients,
-  ).filter(isCollectorDayCollection);
+    payments,
+  );
   const closedByCie = hasDayCloseRecord(dayCloses, collectorRef, date);
   // Si el CIE ya existe, toda la hoja del día cuenta aunque falte flag dispatched.
   const sheet = closedByCie ? dayItems : dayItems.filter((row) => row.dispatched);
@@ -95,6 +155,7 @@ export function collectorMobileQueue(
 
   // Pendientes reales (incl. préstamo nuevo tras CIE / pago anulado).
   const pending = sheet.filter((row) => {
+    if (isRouteFiller(row)) return false;
     if (row.dayClosedAt && isEffectivelyPaid(row)) return false;
     if (row.dayClosedAt && row.visitStatus === "omitido") return false;
     // Tras anular: visita sellada sin PG vivo vuelve a pendiente cobrable.
@@ -111,11 +172,14 @@ export function collectorMobileQueue(
       Boolean(row.paymentRef?.trim())
     );
   });
-  const done = sheet.filter((row) => {
-    if (row.visitStatus === "omitido") return true;
-    if (isEffectivelyPaid(row)) return true;
-    return false;
-  });
+  const done = recaudoFromDayPayments(
+    collectorRef,
+    date,
+    sheet,
+    payments,
+    loans,
+    clients,
+  );
   const closedByVisits =
     sheet.length > 0 && sheet.every((row) => Boolean(row.dayClosedAt));
   // Jornada “cerrada” solo si no quedan pendientes abiertos (préstamo nuevo sigue cobrable).
