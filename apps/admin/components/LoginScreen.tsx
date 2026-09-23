@@ -15,8 +15,14 @@ import {
   loginWithSupabaseAuth,
   shouldTrySupabaseLogin,
 } from "@/lib/supabase/auth-login";
-import { readUsersCatalog } from "@/lib/users-catalog";
-import { flushUserMirrorQueues, pullRemoteUsersIntoDemo } from "@/lib/supabase/user-mirror";
+import { commitUsersCatalog, readUsersCatalog } from "@/lib/users-catalog";
+import {
+  flushUserMirrorQueues,
+  mirrorToUserRow,
+  pullRemoteUsersIntoDemo,
+  type UserMirrorRow,
+} from "@/lib/supabase/user-mirror";
+import type { UserRow } from "@/lib/mock-data";
 
 type Props = {
   onSuccess: (session: AppSession) => void;
@@ -121,21 +127,19 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
     setError("");
     setBusy(true);
     try {
-      // 1) Sube altas/edits del Listado.
-      try {
-        await flushUserMirrorQueues();
-      } catch {
+      // La subida del listado no bloquea la entrada.
+      void flushUserMirrorQueues().catch(() => {
         /* offline */
-      }
+      });
 
-      // 2) Local primero = acceso inmediato tras crear/modificar en este aparato.
+      // 1) Local primero = acceso inmediato tras crear/modificar en este aparato.
       let catalogSession = validateLogin(username, password, readUsersCatalog());
       if (catalogSession) {
         acceptSession(catalogSession);
         return;
       }
 
-      // 3) Si no está en local, trae nube (otro PC/celular) y reintenta.
+      // 2) Si no está en local, trae nube (otro PC/celular) y reintenta.
       try {
         await pullRemoteUsersIntoDemo();
       } catch {
@@ -145,6 +149,30 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
       if (catalogSession) {
         acceptSession(catalogSession);
         return;
+      }
+
+      // 3) Este navegador puede tener otra clave vieja. Si la nube coincide, esa entra.
+      try {
+        const res = await fetch("/api/users", { cache: "no-store" });
+        const body = (await res.json()) as { ok?: boolean; users?: UserMirrorRow[] };
+        if (res.ok && body.ok) {
+          const remote = (body.users ?? [])
+            .map(mirrorToUserRow)
+            .filter((row): row is UserRow => Boolean(row));
+          catalogSession = validateLogin(username, password, remote);
+          const match = remote.find((row) => row.ref === catalogSession?.userRef);
+          if (catalogSession && match) {
+            const current = readUsersCatalog();
+            const next = current.some((row) => row.ref === match.ref)
+              ? current.map((row) => (row.ref === match.ref ? match : row))
+              : [...current, match];
+            commitUsersCatalog(next);
+            acceptSession(catalogSession);
+            return;
+          }
+        }
+      } catch {
+        /* offline */
       }
 
       // 4) Respaldo Auth (email SSO).

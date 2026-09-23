@@ -52,8 +52,6 @@ export function AuthGate({ channel = "sistema" }: Props) {
   const [session, setSession] = useState<AppSession | null>(null);
   const [ready, setReady] = useState(false);
   const [isPhone, setIsPhone] = useState(false);
-  const [usersEpoch, setUsersEpoch] = useState(0);
-
   useEffect(() => {
     let cancelled = false;
     let mq: MediaQueryList | null = null;
@@ -77,7 +75,6 @@ export function AuthGate({ channel = "sistema" }: Props) {
       writeDemoJson(DEMO_USERS_KEY, users);
       clearSession();
       setSession(null);
-      setUsersEpoch((n) => n + 1);
       mq = window.matchMedia("(max-width: 900px)");
       syncPhone();
       mq.addEventListener("change", syncPhone);
@@ -90,7 +87,6 @@ export function AuthGate({ channel = "sistema" }: Props) {
           await pullRemoteUsersIntoDemo();
           if (cancelled) return;
           writeDemoJson(DEMO_USERS_KEY, loadDemoUsers());
-          setUsersEpoch((n) => n + 1);
         } catch {
           /* offline */
         }
@@ -119,7 +115,7 @@ export function AuthGate({ channel = "sistema" }: Props) {
   if (!session || !sessionAllowedOnChannel(session, channel)) {
     return (
       <LoginScreen
-        key={`login-${channel}-${usersEpoch}`}
+        key={`login-${channel}`}
         channel={channel}
         onSuccess={(next) => {
           if (!sessionAllowedOnChannel(next, channel)) return;
@@ -140,7 +136,6 @@ export function AuthGate({ channel = "sistema" }: Props) {
       }
       void signOutSupabaseAuth();
       clearSession();
-      setUsersEpoch((n) => n + 1);
       setSession(null);
     })();
   };
