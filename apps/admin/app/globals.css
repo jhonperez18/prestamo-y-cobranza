@@ -5865,21 +5865,26 @@
     }
     .supervisor-sn-open {
       appearance: none;
-      width: 100%;
+      justify-self: start;
+      width: auto;
       margin: 0;
-      padding: 7px 10px;
-      border-radius: 10px;
-      border: 1px solid #cbd5e1;
-      background: #f8fafc;
-      color: #334155;
-      font-size: 13px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
+      height: 18px;
+      min-height: 0 !important;
+      padding: 0 8px !important;
+      border-radius: 4px;
+      border: 1px solid #fca5a5;
+      background: #fff;
+      color: #dc2626 !important;
+      font-size: 11px !important;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+      line-height: 1;
       cursor: pointer;
     }
     .supervisor-sn-open.on {
-      background: #e2e8f0;
-      border-color: #94a3b8;
+      background: #fee2e2;
+      border-color: #fca5a5;
+      color: #b91c1c !important;
     }
     .supervisor-sn-panel {
       display: grid;
