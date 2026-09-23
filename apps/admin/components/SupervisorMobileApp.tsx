@@ -2150,13 +2150,6 @@ export function SupervisorMobileApp({
               <div className="supervisor-mobile-actions has-historial">
                 <button
                   type="button"
-                  className="btn compact ghost is-historial"
-                  onClick={openCajaHistorial}
-                >
-                  Historial
-                </button>
-                <button
-                  type="button"
                   className="btn compact"
                   disabled={openAssignments.length === 0}
                   onClick={() => setDetailMode("planilla")}
@@ -2185,6 +2178,13 @@ export function SupervisorMobileApp({
                   onClick={() => setDetailMode("prestamos")}
                 >
                   Préstamos
+                </button>
+                <button
+                  type="button"
+                  className="btn compact ghost is-historial"
+                  onClick={openCajaHistorial}
+                >
+                  Historial
                 </button>
               </div>
             </>

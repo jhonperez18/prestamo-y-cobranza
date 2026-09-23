@@ -4206,7 +4206,16 @@
       margin: 0 0 6px;
     }
     .supervisor-mobile-actions.has-historial .btn.is-historial {
-      grid-column: 1 / -1;
+      grid-column: 1;
+      justify-self: start;
+      width: auto;
+      height: 16px;
+      min-height: 0 !important;
+      padding: 0 6px !important;
+      font-size: 8px !important;
+      font-weight: 650;
+      line-height: 1;
+      letter-spacing: 0.02em;
     }
     .supervisor-mobile-actions > .btn:nth-child(n + 3) {
       grid-column: auto;
