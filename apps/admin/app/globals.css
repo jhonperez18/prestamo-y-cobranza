@@ -5942,11 +5942,10 @@
       border: 1px solid #d5e6df;
     }
     .supervisor-sn-list li {
-      display: flex;
-      flex-wrap: nowrap;
-      justify-content: space-between;
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) 6.6rem minmax(0, 1.1fr);
       align-items: center;
-      gap: 8px;
+      column-gap: 8px;
       padding: 4px 8px;
       border-radius: 0;
       border: 0;
@@ -5964,15 +5963,8 @@
     .supervisor-sn-list li:last-child {
       border-bottom: 0;
     }
-    .supervisor-sn-list li span {
-      display: flex;
-      flex-direction: row;
-      flex-wrap: nowrap;
-      align-items: baseline;
-      gap: 8px;
-      min-width: 0;
-    }
     .supervisor-sn-list li b {
+      text-align: left;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -5984,7 +5976,12 @@
       font-style: normal;
       font-weight: 400;
       white-space: nowrap;
-      flex: 0 0 auto;
+    }
+    .supervisor-sn-list small {
+      text-align: center;
+    }
+    .supervisor-sn-list em {
+      text-align: right;
     }
     .supervisor-route-board {
       display: flex;

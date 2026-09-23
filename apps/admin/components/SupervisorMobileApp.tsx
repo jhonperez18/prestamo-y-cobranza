@@ -777,10 +777,8 @@ function SnPeople({
     <ul className="supervisor-sn-list" aria-label="No pagan">
       {rows.map((item) => (
         <li key={`${item.dispatchDate}-${item.itemId}`}>
-          <span>
-            <b>{item.clientName || "Cliente"}</b>
-            <small>{dateLabel}</small>
-          </span>
+          <b>{item.clientName || "Cliente"}</b>
+          <small>{dateLabel}</small>
           <em>{snSkipLabel(item)}</em>
         </li>
       ))}
