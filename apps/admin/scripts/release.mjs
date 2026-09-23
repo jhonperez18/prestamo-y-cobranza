@@ -15,7 +15,8 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const PROJECT = "prestamo-y-cobranza";
-const CANONICAL_HOST = "prestamo-y-cobranza.vercel.app";
+const CANONICAL_HOST = "cobros.smokecompany.shop";
+const VERCEL_HOST = "prestamo-y-cobranza.vercel.app";
 const LEGACY_HOST = "admin-jhon-fredy-perezs-projects.vercel.app";
 const DOMAIN = `https://${CANONICAL_HOST}`;
 const DEPLOY_URL_RE =
@@ -52,12 +53,6 @@ function ensureLinked() {
   // Siempre el proyecto canónico. Nunca "admin" u otro.
   run(`npx vercel link --yes --project ${PROJECT}`, repoRoot);
   run(`npx vercel link --yes --project ${PROJECT}`, adminRoot);
-  // `vercel link` a veces vuelve a appendear `.vercel` / `.env*` al .gitignore.
-  try {
-    capture("git checkout -- .gitignore", repoRoot);
-  } catch {
-    /* ignore */
-  }
 }
 
 function deploymentSha(row) {
@@ -154,8 +149,13 @@ function syncAliases(deploymentUrl) {
     console.error("No hay URL de deploy Ready para sincronizar aliases.");
     process.exit(1);
   }
-  run(`npx vercel alias set ${deploymentUrl} ${CANONICAL_HOST}`, repoRoot);
-  run(`npx vercel alias set ${deploymentUrl} ${LEGACY_HOST}`, repoRoot);
+  for (const host of [CANONICAL_HOST, VERCEL_HOST, LEGACY_HOST]) {
+    try {
+      run(`npx vercel alias set ${deploymentUrl} ${host}`, repoRoot);
+    } catch (err) {
+      console.warn(`Aviso: alias ${host} no se pudo fijar. La caché se purga igual.`, err?.message || err);
+    }
+  }
 }
 
 /** Obligatorio: sin esto el celular/CDN arrastra HTML/JS viejo. */
@@ -250,6 +250,13 @@ if (branch !== "main") {
 
 void (async () => {
   assertGlobalsCssNoBom();
+if (mode === "purge") {
+  console.log("Purgando caché CDN + data. No toca cobros, clientes ni usuarios.");
+  ensureLinked();
+  purgeCaches();
+  process.exit(0);
+}
+
 if (mode === "verify") {
   console.log("── Producción (contrato fijo) ──");
   console.log(`Proyecto Vercel : ${PROJECT}`);
@@ -299,7 +306,7 @@ if (mode === "force") {
   process.exit(0);
 }
 
-console.error(`Modo desconocido: ${mode}. Usa verify | force`);
+console.error(`Modo desconocido: ${mode}. Usa verify | force | purge`);
 process.exit(1);
 })().catch((err) => {
   console.error(err);

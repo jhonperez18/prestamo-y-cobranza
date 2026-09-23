@@ -12,6 +12,7 @@
     "assert:css": "node scripts/assert-no-bom.mjs",
     "verify:prod": "node scripts/release.mjs verify",
     "release:force": "node scripts/release.mjs force",
+    "purge:cache": "node scripts/release.mjs purge",
     "pwa:icons": "node scripts/generate-pwa-icons.mjs",
     "db:push": "npx supabase db push --workdir ../.."
   },

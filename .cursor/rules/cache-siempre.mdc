@@ -1,0 +1,28 @@
+---
+description: La caché de páginas se borra siempre. Lo nuevo tiene que cargar en el PC y en el celular.
+alwaysApply: true
+---
+
+# Caché — siempre se elimina
+
+## Ley
+
+Cada publicación y cada “versión vieja” **purga la caché**. Sin eso el celular sigue con el HTML/JS anterior.
+
+| Qué se borra | Dónde |
+| --- | --- |
+| CDN + Data | Vercel, proyecto `prestamo-y-cobranza` |
+| Service worker y Cache Storage | El navegador, al abrir la app |
+
+## Obligatorio
+
+1. Tras Ready: `cd apps/admin && npm run verify:prod` (ya purga al final).
+2. Si el alias de `cobros.smokecompany.shop` falla, **igual** se purga. El fallo no cancela la limpieza.
+3. Si el usuario dice que el celular no actualiza: `cd apps/admin && npm run purge:cache` en el momento, sin esperar otro pedido.
+4. El navegador suelta service worker y Cache Storage en cada arranque. Si había algo guardado, recarga una vez.
+
+## Prohibido
+
+- Declarar listo sin purge de CDN.
+- Borrar `localStorage` (`nexo-demo-*` y `-bak`) como si fuera caché. Ahí viven cobros, clientes y usuarios.
+- Un reload en bucle: una recarga por sesión alcanza.

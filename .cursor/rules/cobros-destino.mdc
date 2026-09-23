@@ -1,0 +1,24 @@
+---
+description: El sistema se publica y se abre solo en cobros.smokecompany.shop.
+alwaysApply: true
+---
+
+# Destino — cobros.smokecompany.shop
+
+## Ley
+
+Todo lo que el cliente usa va a **https://cobros.smokecompany.shop**.
+
+Esa es la única dirección que se abre y la única que se le dice al usuario.
+
+## Publicar
+
+1. El proyecto sigue siendo uno: `prestamo-y-cobranza`, raíz `apps/admin`, rama `main`.
+2. Al quedar Ready, el alias de producción es `cobros.smokecompany.shop`.
+3. No mandar al usuario a localhost ni a `prestamo-y-cobranza.vercel.app` para trabajar.
+
+## Prohibido
+
+- Tratar la carpeta estática de Hostinger como el sistema. Ahí no están los cobros ni la vista móvil.
+- Crear otro proyecto para este dominio.
+- Decir que ya está en cobros si el login de https://cobros.smokecompany.shop no muestra el `build` del commit.

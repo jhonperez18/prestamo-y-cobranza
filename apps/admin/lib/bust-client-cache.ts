@@ -1,14 +1,18 @@
 const LAST_BUILD_KEY = "nexo-last-served-build";
+const RELOAD_GUARD = "nexo-browser-cache-cleared";
 
 /**
- * Limpia SW + Cache Storage del navegador.
- * Solo cuando el build servido cambió (no en cada foco / pestaña).
+ * Limpia service worker y Cache Storage.
+ * No toca localStorage: ahí están cobros, clientes y usuarios.
+ * Devuelve true si había algo que soltar.
  */
 export async function bustClientCaches() {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") return false;
+  let removed = false;
   try {
     if ("serviceWorker" in navigator) {
       const regs = await navigator.serviceWorker.getRegistrations();
+      if (regs.length > 0) removed = true;
       await Promise.all(regs.map((reg) => reg.unregister()));
     }
   } catch {
@@ -17,20 +21,29 @@ export async function bustClientCaches() {
   try {
     if ("caches" in window) {
       const keys = await caches.keys();
+      if (keys.length > 0) removed = true;
       await Promise.all(keys.map((key) => caches.delete(key)));
     }
   } catch {
     /* ignore */
   }
+  return removed;
 }
 
 /**
- * Lee el build servido desde la API dueña.
- * - Misma SHA → no toca caché ni recarga.
- * - SHA nueva vs sello de sesión → limpia caché una vez y recarga.
+ * En cada arranque suelta service worker y Cache Storage.
+ * Si había algo guardado, recarga una sola vez en la sesión.
+ * Si el build servido cambió, recarga de nuevo.
  */
 export async function refreshServedBuildOrReload(): Promise<string | null> {
   if (typeof window === "undefined") return null;
+  const removed = await bustClientCaches();
+  const alreadyReloaded = window.sessionStorage.getItem(RELOAD_GUARD) === "1";
+  if (removed && !alreadyReloaded) {
+    window.sessionStorage.setItem(RELOAD_GUARD, "1");
+    window.location.reload();
+    return null;
+  }
   try {
     const res = await fetch("/api/ops/build-health", { cache: "no-store" });
     if (!res.ok) return null;

@@ -10,7 +10,10 @@ node_modules/
 
 # Next.js / build
 .next/
+.next-hostinger/
 out/
+.hostinger-canal-hold/
+apps/admin/tsconfig.hostinger.json
 build/
 dist/
 
@@ -47,3 +50,5 @@ supabase/.temp/
 # Archivos locales de trabajo (no producto)
 hoja de ruta.jpg
 **/hoja de ruta.jpg
+.vercel
+.env*

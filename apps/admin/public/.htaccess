@@ -1,0 +1,12 @@
+DirectoryIndex index.html
+
+RewriteEngine On
+
+# /cobrador/ -> cobrador.html (la carpeta no tiene index)
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^(.+)/$ /$1.html [L]
+
+# /cobrador -> cobrador.html cuando el HTML existe al lado de la carpeta
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME}.html -f
+RewriteRule ^(.+?)/?$ /$1.html [L]
