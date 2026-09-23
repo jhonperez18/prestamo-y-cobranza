@@ -50,6 +50,12 @@ function hasDayCloseRecord(
   );
 }
 
+/** Cobros del día. Completar / sin cuota (planilla completa) no entra al cobrador. */
+function isCollectorDayCollection(row: DailyCollectionAssignment) {
+  if (row.awaitingLoan || row.itemId.includes(":prestar")) return false;
+  return Boolean((row.loanRef || "").trim());
+}
+
 export function collectorMobileQueue(
   collectorRef: string,
   date: string,
@@ -60,7 +66,13 @@ export function collectorMobileQueue(
   dayCloses: CollectorDayCloseRecord[] = [],
   payments: PaymentRow[] = [],
 ): CollectorMobileQueue {
-  const dayItems = assignmentsForCollectorDate(assignments, collectorRef, date, loans, clients);
+  const dayItems = assignmentsForCollectorDate(
+    assignments,
+    collectorRef,
+    date,
+    loans,
+    clients,
+  ).filter(isCollectorDayCollection);
   const closedByCie = hasDayCloseRecord(dayCloses, collectorRef, date);
   // Si el CIE ya existe, toda la hoja del día cuenta aunque falte flag dispatched.
   const sheet = closedByCie ? dayItems : dayItems.filter((row) => row.dispatched);

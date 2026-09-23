@@ -940,8 +940,8 @@ export function CollectorMobileApp({
               <li className="collector-mobile-empty-inline">
                 {listFilter === "done"
                   ? recaudo.total > 0
-                    ? "El cuadre arriba es para tus cuentas (efectivo / Nequi). Abajo van las visitas de la ruta."
-                    : "Aún no hay cobros. Al pagar, el cuadre suma efectivo y Nequi por separado."
+                    ? "El cuadre arriba es el recaudo del día (efectivo / Nequi / banco)."
+                    : "Aún no hay cobros del día. Al pagar, el cuadre suma efectivo, Nequi y banco."
                   : dayLocked
                     ? "Jornada cerrada. Elige otra fecha en Historial si tienes más."
                     : queue.allDone
