@@ -32,6 +32,12 @@ import { canRenewLoan } from "@/lib/loan-renew";
 import { syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import { dispatchRouteRef } from "@/lib/collector-dispatch-sync";
+import {
+  mergePaymentsByRef,
+  mirrorRowToPaymentRow,
+  pullRemotePaymentsIntoDemo,
+  type PaymentMirrorRow,
+} from "@/lib/supabase/payment-mirror";
 import { suppressGhostClick, isNavQuiet } from "@/lib/suppress-ghost-click";
 import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
@@ -206,7 +212,34 @@ export function CollectorMobileApp({
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [apiPayments, setApiPayments] = useState<PaymentRow[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
+  const livePayments = useMemo(() => {
+    if (!apiPayments.length) return payments;
+    if (!payments.length) return apiPayments;
+    return mergePaymentsByRef(payments, apiPayments).merged;
+  }, [apiPayments, payments]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/payments", { cache: "no-store" });
+        const body = (await res.json()) as { ok?: boolean; payments?: PaymentMirrorRow[] };
+        if (!res.ok || !body.ok) return;
+        const rows = (body.payments ?? [])
+          .map(mirrorRowToPaymentRow)
+          .filter((row): row is PaymentRow => Boolean(row));
+        if (!cancelled && rows.length > 0) setApiPayments(rows);
+        await pullRemotePaymentsIntoDemo();
+      } catch (error) {
+        console.error("collector-recaudo", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [collector.ref]);
   const navIntent = useMemo(() => createNavIntent(), []);
 
   /** Cada cobrador es independiente: al cambiar, vuelve a su propio inicio (antes del paint). */
@@ -237,8 +270,8 @@ export function CollectorMobileApp({
   }, [menuOpen]);
 
   const routeOptions = useMemo(
-    () => collectorMobileRoutes(collector.ref, assignments, loans, clients, routes, dayCloses, payments),
-    [assignments, clients, collector.ref, dayCloses, loans, payments, routes],
+    () => collectorMobileRoutes(collector.ref, assignments, loans, clients, routes, dayCloses, livePayments),
+    [assignments, clients, collector.ref, dayCloses, loans, livePayments, routes],
   );
 
   const activeDate = useMemo(() => {
@@ -257,7 +290,7 @@ export function CollectorMobileApp({
     ];
     return buildCollectorDayHistory(
       collector.ref,
-      payments,
+      livePayments,
       dayCloses,
       [collector],
       extraDates,
@@ -274,7 +307,7 @@ export function CollectorMobileApp({
     dayCloses,
     dayExpenseDrafts,
     monthCloses,
-    payments,
+    livePayments,
     routeOptions,
     viewPeriod,
   ]);
@@ -299,7 +332,7 @@ export function CollectorMobileApp({
   const priorMonthHadActivity = periodHadCollectorActivity(
     collector.ref,
     previousMonth,
-    payments,
+    livePayments,
     dayCloses,
     dayExpenseDrafts,
     [collector],
@@ -325,7 +358,7 @@ export function CollectorMobileApp({
   const priorMonthClosingSaldo = useMemo(() => {
     const rows = buildCollectorDayHistory(
       collector.ref,
-      payments,
+      livePayments,
       dayCloses,
       [collector],
       [],
@@ -338,7 +371,7 @@ export function CollectorMobileApp({
       rows,
       openingSaldoForPeriod(collector.ref, previousMonth, monthCloses),
     );
-  }, [assignments, collector, dayCloses, dayExpenseDrafts, monthCloses, payments, previousMonth]);
+  }, [assignments, collector, dayCloses, dayExpenseDrafts, livePayments, monthCloses, previousMonth]);
 
   const carriedOpening = openingSaldoForPeriod(collector.ref, viewPeriod, monthCloses);
 
@@ -357,9 +390,9 @@ export function CollectorMobileApp({
         clients,
         routes,
         dayCloses,
-        payments,
+        livePayments,
       ),
-    [activeDate, assignments, clients, collector.ref, dayCloses, loans, payments, routes],
+    [activeDate, assignments, clients, collector.ref, dayCloses, livePayments, loans, routes],
   );
   const dayWasClosedByCollector = queue.closed;
   const dayLocked = dayWasClosedByCollector;
@@ -372,8 +405,8 @@ export function CollectorMobileApp({
   const routeRef = queue.routeRef ?? dispatchRouteRef(collector.ref, activeDate);
   const visibleItems = listFilter === "done" ? queue.done : queue.pending;
   const recaudo = useMemo(
-    () => collectorRecaudoBreakdown(collector.ref, activeDate, payments, [collector]),
-    [activeDate, collector, payments],
+    () => collectorRecaudoBreakdown(collector.ref, activeDate, livePayments, [collector]),
+    [activeDate, collector, livePayments],
   );
 
   const savedExpenses = useMemo(
@@ -953,22 +986,22 @@ export function CollectorMobileApp({
                 const key = itemKey(item);
                 const isOpen = expandedKey === key;
                 const isDoneView = listFilter === "done";
-                const identity = visitIdentity(item, clients, loans, payments, activeDate);
+                const identity = visitIdentity(item, clients, loans, livePayments, activeDate);
                 const paidPayment = item.paymentRef
-                  ? payments.find(
+                  ? livePayments.find(
                       (row) =>
                         row.ref === item.paymentRef &&
                         !row.voidedAt?.trim() &&
                         (!row.loanRef || !item.loanRef || row.loanRef === item.loanRef),
                     )
                   : undefined;
-                const isCombinedVisit = visitHasCombinedPayment(payments, {
+                const isCombinedVisit = visitHasCombinedPayment(livePayments, {
                   loanRef: item.loanRef || identity.loanRef,
                   clientRef: item.clientRef,
                   dispatchDate: item.dispatchDate || activeDate,
                 });
                 const comboSiblingPays = isCombinedVisit
-                  ? payments.filter(
+                  ? livePayments.filter(
                       (row) =>
                         !row.voidedAt?.trim() &&
                         (row.paidDate || "").trim() === (item.dispatchDate || activeDate) &&

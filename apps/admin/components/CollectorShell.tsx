@@ -259,6 +259,12 @@ export function CollectorShell({ session, onLogout }: Props) {
 
   useEffect(() => {
     if (!hydrated) return;
+    // El arranque nace en []. No pisar cobros ya guardados con esa lista vacía.
+    if (payments.length === 0) {
+      const stored = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []);
+      if (stored.length > 0) setPayments(stored);
+      return;
+    }
     writeDemoJson(DEMO_PAYMENTS_KEY, payments);
   }, [payments, hydrated]);
 

@@ -680,6 +680,8 @@ export type PullPaymentsResult = {
   changed: boolean;
   skipped?: boolean;
   reason?: string;
+  /** Lista fusionada. El cobrador la pinta aunque el estado del panel venga vacío. */
+  rows?: PaymentRow[];
 };
 
 /**
@@ -735,10 +737,10 @@ export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> 
       };
     }
     const { merged, added, changed } = mergePaymentsByRef(local, remote, readMirrorQueue());
-    if (changed) {
+    if (changed || merged.length !== local.length) {
       writeDemoJson(DEMO_PAYMENTS_KEY, merged);
     }
-    return { ok: true, added, changed };
+    return { ok: true, added, changed: changed || merged.length !== local.length, rows: merged };
   } catch (err) {
     const message = err instanceof Error ? err.message : "pull_failed";
     return { ok: false, added: 0, changed: false, reason: message };
