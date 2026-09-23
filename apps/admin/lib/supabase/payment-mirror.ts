@@ -296,7 +296,12 @@ export function mergePaymentsByRef(
     if (paymentIsVoided(next)) next.type = "Anulado";
     if (next.evidence?.length) rememberPaymentEvidence(next.ref, next.evidence);
     if (moneySignature(localRow) !== moneySignature(next)) changed = true;
-    if (evidenceHasPreview(next.evidence) && !evidenceHasPreview(remoteRow.evidence)) {
+    // Sin columna evidence en la lista, el remoto no “perdió” la foto.
+    if (
+      remoteRow.evidence !== undefined &&
+      evidenceHasPreview(next.evidence) &&
+      !evidenceHasPreview(remoteRow.evidence)
+    ) {
       changed = true;
     }
     merged.push(next);
@@ -410,8 +415,17 @@ export type FetchPaymentsResult =
   | { ok: true; skipped: true; reason: string; rows: [] }
   | { ok: false; error: string; rows: [] };
 
-/** Lectura desde Supabase (servidor o cliente con anon key). */
-export async function fetchPaymentsFromSupabase(): Promise<FetchPaymentsResult> {
+const PAYMENT_MONEY_COLUMNS =
+  "id,ref,loan_ref,client_ref,collector_ref,collector_name,amount,paid_date,paid_time,due_date,charge_label,method,source,payment_type,payment_kind,route_ref,updated_at";
+
+/**
+ * Lectura desde Supabase.
+ * La lista de cobros no trae la foto: eso es 1,6 MB que traban la pantalla en reposo.
+ * `evidence: true` solo cuando hay que subir una constancia que este aparato tiene y la nube no.
+ */
+export async function fetchPaymentsFromSupabase(options?: {
+  evidence?: boolean;
+}): Promise<FetchPaymentsResult> {
   const client = createMirrorClient();
   if (!client) {
     const { configured: pub } = getSupabasePublicEnv();
@@ -423,13 +437,18 @@ export async function fetchPaymentsFromSupabase(): Promise<FetchPaymentsResult> 
     };
   }
 
-  const { data, error } = await client
-    .from("payments")
-    .select(
-      "id,ref,loan_ref,client_ref,collector_ref,collector_name,amount,paid_date,paid_time,due_date,charge_label,method,source,payment_type,payment_kind,route_ref,evidence,updated_at",
-    )
-    .order("paid_date", { ascending: false })
-    .limit(3000);
+  const query = options?.evidence
+    ? client
+        .from("payments")
+        .select(`${PAYMENT_MONEY_COLUMNS},evidence`)
+        .order("paid_date", { ascending: false })
+        .limit(3000)
+    : client
+        .from("payments")
+        .select(PAYMENT_MONEY_COLUMNS)
+        .order("paid_date", { ascending: false })
+        .limit(3000);
+  const { data, error } = await query;
 
   if (error && /evidence/i.test(error.message || "")) {
     const fallback = await client
@@ -549,7 +568,9 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
  * C4.1 — crítico negocio: todo `PG-` que exista solo en este navegador
  * debe subir a Postgres. Sin esto, PC y celular divergen (alerta distinta).
  */
-export async function reconcileLocalPaymentsToRemote(): Promise<{
+export async function reconcileLocalPaymentsToRemote(
+  knownRemoteRefs?: string[],
+): Promise<{
   pushed: number;
   failed: number;
   missing: number;
@@ -562,19 +583,15 @@ export async function reconcileLocalPaymentsToRemote(): Promise<{
   if (!local.length) return { pushed: 0, failed: 0, missing: 0 };
 
   try {
-    const res = await fetch("/api/payments", { method: "GET", cache: "no-store" });
-    const body = (await res.json()) as {
-      ok?: boolean;
-      payments?: PaymentMirrorRow[];
-      skipped?: boolean;
-      error?: string;
-    };
-    if (!res.ok || !body.ok || body.skipped) {
+    const remoteRows = knownRemoteRefs
+      ? null
+      : await fetchPaymentList();
+    if (!knownRemoteRefs && !remoteRows) {
       return { pushed: 0, failed: 0, missing: local.length };
     }
 
     const remoteRefs = new Set(
-      (body.payments ?? []).map((row) => row.ref).filter(Boolean),
+      knownRemoteRefs ?? (remoteRows ?? []).map((row) => row.ref).filter(Boolean),
     );
     const missing = local.filter((row) => !remoteRefs.has(row.ref));
     if (!missing.length) return { pushed: 0, failed: 0, missing: 0 };
@@ -616,7 +633,7 @@ export async function reconcilePaymentEvidenceToRemote(): Promise<{
   if (!local.length) return { pushed: 0, failed: 0, pending: 0, errors: [] };
 
   try {
-    const res = await fetch("/api/payments", { method: "GET", cache: "no-store" });
+    const res = await fetch("/api/payments?evidence=1", { method: "GET", cache: "no-store" });
     const body = (await res.json()) as {
       ok?: boolean;
       payments?: PaymentMirrorRow[];
@@ -682,6 +699,8 @@ export type PullPaymentsResult = {
   reason?: string;
   /** Lista fusionada. El cobrador la pinta aunque el estado del panel venga vacío. */
   rows?: PaymentRow[];
+  /** Refs que ya vinieron en esta bajada. El reconcile no vuelve a pedir la lista. */
+  remoteRefs?: string[];
 };
 
 /**
@@ -689,15 +708,33 @@ export type PullPaymentsResult = {
  * `changed` incluye refs nuevos o dinero remoto distinto.
  */
 let livePaymentCache: PaymentRow[] | null = null;
+let paymentListFlight: Promise<PaymentMirrorRow[] | null> | null = null;
+
+/** Una sola bajada de la lista. Las llamadas que coinciden esperan la misma. */
+function fetchPaymentList(): Promise<PaymentMirrorRow[] | null> {
+  if (paymentListFlight) return paymentListFlight;
+  paymentListFlight = (async () => {
+    const res = await fetch("/api/payments", { cache: "no-store" });
+    const body = (await res.json()) as {
+      ok?: boolean;
+      payments?: PaymentMirrorRow[];
+      skipped?: boolean;
+    };
+    if (!res.ok || !body.ok || body.skipped) return null;
+    return body.payments ?? [];
+  })().finally(() => {
+    paymentListFlight = null;
+  });
+  return paymentListFlight;
+}
 
 /** Cobros de la base. Sobrevive a un remount del panel. */
 export async function loadLivePaymentRows(): Promise<PaymentRow[]> {
   if (typeof window === "undefined") return [];
   if (livePaymentCache?.length) return livePaymentCache;
-  const res = await fetch("/api/payments", { cache: "no-store" });
-  const body = (await res.json()) as { ok?: boolean; payments?: PaymentMirrorRow[] };
-  if (!res.ok || !body.ok) return livePaymentCache ?? [];
-  const rows = (body.payments ?? [])
+  const payments = await fetchPaymentList();
+  if (!payments) return livePaymentCache ?? [];
+  const rows = payments
     .map(mirrorRowToPaymentRow)
     .filter((row): row is PaymentRow => Boolean(row));
   if (rows.length > 0) livePaymentCache = rows;
@@ -710,34 +747,18 @@ export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> 
   }
 
   try {
-    const res = await fetch("/api/payments", { method: "GET", cache: "no-store" });
-    const body = (await res.json()) as {
-      ok?: boolean;
-      payments?: PaymentMirrorRow[];
-      error?: string;
-      skipped?: boolean;
-      reason?: string;
-    };
-    if (!res.ok || !body.ok) {
+    const listed = await fetchPaymentList();
+    if (!listed) {
       return {
         ok: false,
         added: 0,
         changed: false,
-        reason: body.error || body.reason || `http_${res.status}`,
-      };
-    }
-    if (body.skipped) {
-      return {
-        ok: true,
-        added: 0,
-        changed: false,
-        skipped: true,
-        reason: body.reason,
+        reason: "payments_list_failed",
       };
     }
 
     const remote = enrichClientNames(
-      (body.payments ?? [])
+      listed
         .map(mirrorRowToPaymentRow)
         .filter((row): row is PaymentRow => Boolean(row)),
     );
@@ -756,7 +777,13 @@ export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> 
     if (changed || merged.length !== local.length) {
       writeDemoJson(DEMO_PAYMENTS_KEY, merged);
     }
-    return { ok: true, added, changed: changed || merged.length !== local.length, rows: merged };
+    return {
+      ok: true,
+      added,
+      changed: changed || merged.length !== local.length,
+      rows: merged,
+      remoteRefs: remote.map((row) => row.ref),
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : "pull_failed";
     return { ok: false, added: 0, changed: false, reason: message };

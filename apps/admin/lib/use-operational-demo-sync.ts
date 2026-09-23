@@ -57,8 +57,7 @@ export function useOperationalDemoSync(
 ) {
   const { resyncActive = false, onEvidenceSync } = options;
   const [hydrated, setHydrated] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [epoch, setEpoch] = useState(0);
+  const evidenceOnceRef = useRef(false);
   const applyRef = useRef(apply);
   applyRef.current = apply;
   const onEvidenceSyncRef = useRef(onEvidenceSync);
@@ -71,13 +70,11 @@ export function useOperationalDemoSync(
     const snapshot = hydrateOperationalDemo();
     applyRef.current(snapshot);
     setHydrated(true);
-    setEpoch((n) => n + 1);
   }, []);
 
   const runHydrateWithRemotePull = useCallback(async () => {
     if (pullInFlightRef.current) return;
     pullInFlightRef.current = true;
-    setSyncing(true);
     try {
       // Primero bajar cobros y planilla, y pintar. Si el flush va antes y falla,
       // el panel se queda con los gastos y nunca muestra el cobro del cobrador.
@@ -103,13 +100,16 @@ export function useOperationalDemoSync(
       if (changed) commitHydrate();
       try {
         await flushPaymentMirrorQueue();
-        await reconcileLocalPaymentsToRemote();
-        const evidenceSync = await reconcilePaymentEvidenceToRemote();
-        if (evidenceSync.pushed > 0 || evidenceSync.failed > 0) {
-          onEvidenceSyncRef.current?.({
-            pushed: evidenceSync.pushed,
-            failed: evidenceSync.failed,
-          });
+        await reconcileLocalPaymentsToRemote(payments.remoteRefs);
+        if (!evidenceOnceRef.current) {
+          evidenceOnceRef.current = true;
+          const evidenceSync = await reconcilePaymentEvidenceToRemote();
+          if (evidenceSync.pushed > 0 || evidenceSync.failed > 0) {
+            onEvidenceSyncRef.current?.({
+              pushed: evidenceSync.pushed,
+              failed: evidenceSync.failed,
+            });
+          }
         }
         await Promise.all([
           flushCatalogMirrorQueues(),
@@ -122,11 +122,10 @@ export function useOperationalDemoSync(
       } catch {
         /* la pantalla ya tiene el dato; la nube reintenta en el siguiente ciclo */
       }
-    } catch {
-      commitHydrate();
+    } catch (error) {
+      console.error("ops-sync", error);
     } finally {
       pullInFlightRef.current = false;
-      setSyncing(false);
       setHydrated(true);
     }
   }, [commitHydrate]);
@@ -219,5 +218,5 @@ export function useOperationalDemoSync(
     };
   }, [hydrated, runHydrateWithRemotePull]);
 
-  return { hydrated, syncing, epoch, reload: runHydrateWithRemotePull };
+  return { hydrated, reload: runHydrateWithRemotePull };
 }

@@ -4,9 +4,10 @@ import { fetchPaymentsFromSupabase } from "@/lib/supabase/payment-mirror";
 /**
  * C3: lista cobros en public.payments para fusionar en el demo local.
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const result = await fetchPaymentsFromSupabase();
+    const evidence = new URL(request.url).searchParams.get("evidence") === "1";
+    const result = await fetchPaymentsFromSupabase({ evidence });
     if ("skipped" in result && result.skipped) {
       return NextResponse.json({
         ok: true,

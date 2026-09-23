@@ -25,7 +25,8 @@ La clave sí coincidía. `localStorage` estaba lleno de fotos (`previewUrl` con 
 2. `writeDemoJson` no persiste `data:`. La copia `-bak` tampoco. Las colas de mirror no tienen `-bak`.
 3. Un cierre de este PC no lo reabre la hoja abierta de la nube. Un cambio real del otro aparato sí entra.
 4. No rehidratar la pantalla ni volver a subir la fila de planilla si la firma no cambió.
-5. Un solo manifest: `app/manifest.ts`. `public/manifest.webmanifest` choca y deja el aviso rojo. No se commitea.
+5. `GET /api/payments` es la lista de dinero, sin la foto. La constancia no se vuelve a bajar en el ciclo de reposo.
+6. Un solo manifest: `app/manifest.ts`. `public/manifest.webmanifest` choca y deja el aviso rojo. No se commitea.
 
 ## Prohibido
 
