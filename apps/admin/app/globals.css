@@ -5965,6 +5965,7 @@
     }
     .supervisor-sn-list li b {
       text-align: left;
+      font-weight: 400;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
