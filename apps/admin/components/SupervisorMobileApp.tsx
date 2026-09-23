@@ -2361,7 +2361,7 @@ export function SupervisorMobileApp({
                           }}
                           aria-expanded={snOpen}
                         >
-                          S/N
+                          N/P
                         </button>
                         {snOpen ? (
                           <div className="supervisor-sn-panel">
@@ -2391,7 +2391,7 @@ export function SupervisorMobileApp({
                             {snOlderDays.length > 0 ? (
                               <>
                                 <p className="supervisor-sn-label">Días anteriores</p>
-                                <ul className="supervisor-sn-days" aria-label="Historial S/N por día">
+                                <ul className="supervisor-sn-days" aria-label="Historial N/P por día">
                                   {snOlderDays.map((day) => {
                                     const open = snDay === day.date;
                                     const label = isoToDisplay(day.date);
