@@ -5881,6 +5881,52 @@
       background: #e2e8f0;
       border-color: #94a3b8;
     }
+    .supervisor-sn-panel {
+      display: grid;
+      gap: 6px;
+    }
+    .supervisor-sn-label {
+      margin: 2px 0 0;
+      font-size: 11px;
+      font-weight: 650;
+      color: #334155;
+    }
+    .supervisor-sn-days {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 4px;
+    }
+    .supervisor-sn-days > li {
+      display: grid;
+      gap: 4px;
+    }
+    .supervisor-sn-days button {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+      margin: 0;
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #cbd5e1;
+      background: #fff;
+      color: #14201b;
+      font-size: 12px !important;
+      font-weight: 600;
+      min-height: 0 !important;
+      line-height: 1.2;
+      cursor: pointer;
+    }
+    .supervisor-sn-days button.on {
+      background: #eef2f6;
+      border-color: #94a3b8;
+    }
+    .supervisor-sn-days button b {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+    }
     .supervisor-sn-list {
       list-style: none;
       margin: 0;

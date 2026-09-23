@@ -757,6 +757,35 @@ function cajaDelDia(
   };
 }
 
+function snSkipLabel(row: DailyCollectionAssignment) {
+  if (row.skipReason === NO_PAY_TODAY_REASON) return "Hoy no tiene plata";
+  if (row.skipReason === DAY_CLOSE_SKIP_REASON) return "Quedó al cierre";
+  return "Sin pago";
+}
+
+function SnPeople({
+  rows,
+  empty,
+}: {
+  rows: DailyCollectionAssignment[];
+  empty: string;
+}) {
+  if (rows.length === 0) return <p className="ficha-empty">{empty}</p>;
+  return (
+    <ul className="supervisor-sn-list" aria-label="No pagan">
+      {rows.map((item) => (
+        <li key={`${item.dispatchDate}-${item.itemId}`}>
+          <span>
+            <b>{item.clientName || "Cliente"}</b>
+            <small>{item.clientRoute || item.collector}</small>
+          </span>
+          <em>{snSkipLabel(item)}</em>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** App móvil del supervisor: caja + planilla + préstamos/renovaciones en vivo. */
 export function SupervisorMobileApp({
   supervisor,
@@ -793,6 +822,7 @@ export function SupervisorMobileApp({
   /** Día ISO del historial de caja (últimos 5 días del cobrador). */
   const [cajaHistoryDayIso, setCajaHistoryDayIso] = useState<string | null>(null);
   const [snOpen, setSnOpen] = useState(false);
+  const [snDay, setSnDay] = useState<string | null>(null);
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [nuevoName, setNuevoName] = useState("");
@@ -1043,24 +1073,30 @@ export function SupervisorMobileApp({
     return liquidaciones[1]?.routeRef ?? liquidaciones[0]?.routeRef ?? null;
   }, [liquidaciones]);
 
-  const snRows = useMemo(() => {
-    const dates = [
-      ...new Set(
-        assignments
-          .map((row) => row.dispatchDate)
-          .filter((date) => Boolean(date) && date <= today),
-      ),
-    ].sort();
-    const recent = new Set(dates.slice(-2));
-    return assignments
-      .filter(
-        (row) =>
-          recent.has(row.dispatchDate) &&
-          isNoPayListRow(row),
-      )
-      .sort((a, b) =>
-        `${a.clientRoute}|${a.clientName}`.localeCompare(`${b.clientRoute}|${b.clientName}`, "es"),
-      );
+  const snByDay = useMemo(() => {
+    const groups = new Map<string, DailyCollectionAssignment[]>();
+    for (const row of assignments) {
+      if (!isNoPayListRow(row)) continue;
+      const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
+      if (!date || date > today) continue;
+      const list = groups.get(date) ?? [];
+      list.push(row);
+      groups.set(date, list);
+    }
+    const byName = (rows: DailyCollectionAssignment[]) =>
+      rows
+        .slice()
+        .sort((a, b) =>
+          `${a.clientRoute}|${a.clientName}`.localeCompare(
+            `${b.clientRoute}|${b.clientName}`,
+            "es",
+          ),
+        );
+    const past = [...groups.keys()]
+      .filter((date) => date < today)
+      .sort((a, b) => b.localeCompare(a))
+      .map((date) => ({ date, rows: byName(groups.get(date) ?? []) }));
+    return { todayRows: byName(groups.get(today) ?? []), past };
   }, [assignments, today]);
 
   /** Registro Nequi solo del día (se limpia solo al cambiar de fecha). */
@@ -2315,37 +2351,45 @@ export function SupervisorMobileApp({
                         <button
                           type="button"
                           className={snOpen ? "supervisor-sn-open on" : "supervisor-sn-open"}
-                          onClick={() => setSnOpen((current) => !current)}
+                          onClick={() => {
+                            setSnOpen((current) => !current);
+                            setSnDay(null);
+                          }}
                           aria-expanded={snOpen}
                         >
                           S/N
                         </button>
                         {snOpen ? (
-                          snRows.length === 0 ? (
-                            <p className="ficha-empty">Nadie en S/N todavía.</p>
-                          ) : (
-                            <ul className="supervisor-sn-list" aria-label="No pagan">
-                              {snRows.map((item) => (
-                                <li key={`${item.dispatchDate}-${item.itemId}`}>
-                                  <span>
-                                    <b>{item.clientName || "Cliente"}</b>
-                                    <small>
-                                      {item.clientRoute || item.collector}
-                                      {" · "}
-                                      {item.dispatchDate}
-                                    </small>
-                                  </span>
-                                  <em>
-                                    {item.skipReason === NO_PAY_TODAY_REASON
-                                      ? "Hoy no tiene plata"
-                                      : item.skipReason === DAY_CLOSE_SKIP_REASON
-                                        ? "Quedó al cierre"
-                                        : "Sin pago"}
-                                  </em>
-                                </li>
-                              ))}
-                            </ul>
-                          )
+                          <div className="supervisor-sn-panel">
+                            <p className="supervisor-sn-label">Hoy</p>
+                            <SnPeople rows={snByDay.todayRows} empty="Nadie dijo que no hoy" />
+                            {snByDay.past.length > 0 ? (
+                              <>
+                                <p className="supervisor-sn-label">Días anteriores</p>
+                                <ul className="supervisor-sn-days" aria-label="Historial S/N por día">
+                                  {snByDay.past.map((day) => {
+                                    const open = snDay === day.date;
+                                    return (
+                                      <li key={day.date}>
+                                        <button
+                                          type="button"
+                                          className={open ? "on" : undefined}
+                                          aria-expanded={open}
+                                          onClick={() => setSnDay(open ? null : day.date)}
+                                        >
+                                          <span>{isoToDisplay(day.date)}</span>
+                                          <b>{day.rows.length}</b>
+                                        </button>
+                                        {open ? (
+                                          <SnPeople rows={day.rows} empty="Nadie ese día" />
+                                        ) : null}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </>
+                            ) : null}
+                          </div>
                         ) : null}
                       </div>
                     ) : null}
