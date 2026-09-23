@@ -11,10 +11,9 @@ import {
   collectorHasOpenPlanillaWork,
   collectorMobileQueue,
   collectorMobileRoutes,
+  collectorDayPayments,
   collectorRecaudoBreakdown,
   defaultMobileRouteDate,
-  visitStatusKind,
-  visitStatusLabel,
 } from "@/lib/collector-mobile";
 import { periodLabel } from "@/lib/bank";
 import { todayIso } from "@/lib/daily-dispatch";
@@ -44,11 +43,6 @@ import {
   planillaLiveCuota,
   planillaLiveCuotasProgress,
 } from "@/lib/planilla-display";
-import {
-  combinedMethodsLabel,
-  paymentComboGroupId,
-  visitHasCombinedPayment,
-} from "@/lib/payment-combo";
 import type {
   RouteExpenseLine,
   CollectorDayCloseRecord,
@@ -137,6 +131,20 @@ type Props = {
 };
 
 type ListFilter = "pending" | "done";
+
+function payerName(pay: PaymentRow, loans: LoanRow[], clients: ClientRow[]) {
+  const direct = pay.client?.trim();
+  if (direct && direct !== "—") return direct;
+  const loan = loans.find((row) => row.ref === pay.loanRef);
+  const fromLoan = loan?.client?.trim();
+  if (fromLoan && fromLoan !== "—") return fromLoan;
+  const client = clients.find((row) => row.ref === loan?.clientRef);
+  if (client) {
+    const name = `${client.name} ${client.lastName}`.trim();
+    if (name) return name;
+  }
+  return "Cliente";
+}
 
 function itemKey(item: DailyCollectionAssignment) {
   return `${item.itemId}-${item.dispatchDate}`;
@@ -408,6 +416,15 @@ export function CollectorMobileApp({
   const recaudo = useMemo(
     () => collectorRecaudoBreakdown(collector.ref, activeDate, livePayments, [collector]),
     [activeDate, collector, livePayments],
+  );
+  const dayPays = useMemo(
+    () =>
+      collectorDayPayments(collector.ref, activeDate, livePayments, [collector])
+        .slice()
+        .sort((a, b) =>
+          payerName(a, loans, clients).localeCompare(payerName(b, loans, clients), "es"),
+        ),
+    [activeDate, clients, collector, livePayments, loans],
   );
 
   const savedExpenses = useMemo(
@@ -962,57 +979,62 @@ export function CollectorMobileApp({
         </section>
       ) : null}
 
-      {queue.awaitingDispatch.length > 0 && !queue.dispatched.length ? (
+      {listFilter === "done" ? (
+        <ul className="collector-mobile-list compact" aria-label="Quienes pagaron">
+          {dayPays.length === 0 ? (
+            <li className="collector-mobile-empty-inline">Aún no hay cobros del día.</li>
+          ) : (
+            dayPays.map((pay) => {
+              const method = normalizePaymentMethod(pay.method);
+              return (
+                <li
+                  key={pay.ref}
+                  className={["collector-mobile-card", "is-done", "is-dense", paymentMethodToneClass(method)]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  <div className="collector-mobile-dense-row">
+                    <div className="collector-mobile-visit-who">
+                      <strong>{payerName(pay, loans, clients)}</strong>
+                    </div>
+                    <span className="collector-mobile-ref is-done-col">
+                      {money(pay.amount, { symbol: false })}
+                    </span>
+                    <Pill
+                      label={paymentMethodInitial(method)}
+                      kind={paymentMethodKind(method)}
+                      title={paymentMethodLabel(method)}
+                    />
+                  </div>
+                </li>
+              );
+            })
+          )}
+        </ul>
+      ) : null}
+
+      {listFilter !== "done" && queue.awaitingDispatch.length > 0 && !queue.dispatched.length ? (
         <p className="collector-mobile-note warn">
           Tienes {queue.awaitingDispatch.length} cobro(s) asignados. La planilla permanente se envía
           sola; si ves este aviso, vuelve a abrir la app o pide a oficina revisar la ruta.
         </p>
       ) : null}
 
-          <ul className={listFilter === "done" ? "collector-mobile-list compact" : "collector-mobile-list compact"}>
+          {listFilter !== "done" ? (
+          <ul className="collector-mobile-list compact">
             {visibleItems.length === 0 ? (
               <li className="collector-mobile-empty-inline">
-                {listFilter === "done"
-                  ? recaudo.total > 0
-                    ? "El cuadre arriba es el recaudo del día (efectivo / Nequi / banco)."
-                    : "Aún no hay cobros del día. Al pagar, el cuadre suma efectivo, Nequi y banco."
-                  : dayLocked
-                    ? "Jornada cerrada. Elige otra fecha en Historial si tienes más."
-                    : queue.allDone
-                      ? "Listo: ya no hay pendientes. Cierra el día en el menú para archivar la jornada."
-                      : "¡Listo! No quedan cobros pendientes en esta ruta."}
+                {dayLocked
+                  ? "Jornada cerrada. Elige otra fecha en Historial si tienes más."
+                  : queue.allDone
+                    ? "Listo: ya no hay pendientes. Cierra el día en el menú para archivar la jornada."
+                    : "¡Listo! No quedan cobros pendientes en esta ruta."}
               </li>
             ) : (
               visibleItems.map((item) => {
                 const key = itemKey(item);
                 const isOpen = expandedKey === key;
-                const isDoneView = listFilter === "done";
                 const identity = visitIdentity(item, clients, loans, livePayments, activeDate);
-                const paidPayment = item.paymentRef
-                  ? livePayments.find(
-                      (row) =>
-                        row.ref === item.paymentRef &&
-                        !row.voidedAt?.trim() &&
-                        (!row.loanRef || !item.loanRef || row.loanRef === item.loanRef),
-                    )
-                  : undefined;
-                const isCombinedVisit = visitHasCombinedPayment(livePayments, {
-                  loanRef: item.loanRef || identity.loanRef,
-                  clientRef: item.clientRef,
-                  dispatchDate: item.dispatchDate || activeDate,
-                });
-                const comboSiblingPays = isCombinedVisit
-                  ? livePayments.filter(
-                      (row) =>
-                        !row.voidedAt?.trim() &&
-                        (row.paidDate || "").trim() === (item.dispatchDate || activeDate) &&
-                        row.loanRef === (item.loanRef || identity.loanRef) &&
-                        Boolean(paymentComboGroupId(row)),
-                    )
-                  : [];
-                const payMethod = paidPayment
-                  ? normalizePaymentMethod(paidPayment.method)
-                  : null;
                 const canLend =
                   identity.awaitingLoan &&
                   !collectionStopped &&
@@ -1034,17 +1056,10 @@ export function CollectorMobileApp({
                     key={key}
                     id={`collector-pay-card-${key}`}
                     className={[
-                      isDoneView
-                        ? "collector-mobile-card is-done is-dense"
-                        : isOpen
-                          ? "collector-mobile-card is-open is-dense"
-                          : "collector-mobile-card is-dense",
+                      isOpen
+                        ? "collector-mobile-card is-open is-dense"
+                        : "collector-mobile-card is-dense",
                       identity.awaitingLoan ? "is-awaiting-loan" : "",
-                      isDoneView && isCombinedVisit
-                        ? "is-pay-combinado"
-                        : isDoneView && payMethod
-                          ? paymentMethodToneClass(payMethod)
-                          : "",
                     ]
                       .filter(Boolean)
                       .join(" ")}
@@ -1062,7 +1077,7 @@ export function CollectorMobileApp({
                       <div className="collector-mobile-visit-who">
                         <strong title={identity.fullName}>{identity.fullName}</strong>
                       </div>
-                      {identity.awaitingLoan && !isDoneView && !isOpen ? (
+                      {identity.awaitingLoan && !isOpen ? (
                         <button
                           type="button"
                           className="collector-mobile-pay-sticker is-lend-check"
@@ -1088,12 +1103,7 @@ export function CollectorMobileApp({
                           </svg>
                         </button>
                       ) : null}
-                      {!identity.awaitingLoan && isDoneView ? (
-                        <span className="collector-mobile-ref is-done-col">
-                          {paidPayment ? money(paidPayment.amount, { symbol: false }) : "—"}
-                        </span>
-                      ) : null}
-                      {!identity.awaitingLoan && !isDoneView ? (
+                      {!identity.awaitingLoan ? (
                         <div className="collector-mobile-dense-money">
                           <span>
                             <b>{money(identity.balance, { symbol: false })}</b>
@@ -1102,35 +1112,6 @@ export function CollectorMobileApp({
                             <b>{cuotaShown > 0 ? money(cuotaShown, { symbol: false }) : "—"}</b>
                           </span>
                         </div>
-                      ) : null}
-                      {!identity.awaitingLoan && isDoneView ? (
-                        <Pill
-                          label={
-                            isCombinedVisit && comboSiblingPays.length >= 2
-                              ? combinedMethodsLabel(
-                                  comboSiblingPays.map((row) =>
-                                    normalizePaymentMethod(row.method),
-                                  ),
-                                )
-                              : payMethod
-                                ? paymentMethodInitial(payMethod)
-                                : visitStatusLabel(item.visitStatus)
-                          }
-                          kind={
-                            isCombinedVisit
-                              ? "warn"
-                              : payMethod
-                                ? paymentMethodKind(payMethod)
-                                : visitStatusKind(item.visitStatus)
-                          }
-                          title={
-                            isCombinedVisit
-                              ? "Cobro combinado (dos métodos)"
-                              : payMethod
-                                ? paymentMethodLabel(payMethod)
-                                : undefined
-                          }
-                        />
                       ) : null}
                       {!identity.awaitingLoan && canAct ? (
                         <>
@@ -1275,6 +1256,7 @@ export function CollectorMobileApp({
               })
             )}
           </ul>
+          ) : null}
 
           {routeOptions.length > 1 && activeRoute?.closed ? (
             <p className="collector-mobile-next-route">

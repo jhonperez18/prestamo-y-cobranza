@@ -69,9 +69,7 @@ function recaudoFromDayPayments(
   clients: ClientRow[],
 ): DailyCollectionAssignment[] {
   const norm = normalizeHistoryDate(date) || date;
-  const pays = paymentsForCollector(collectorRef, [], payments).filter(
-    (row) => (normalizeHistoryDate(row.paidDate || "") || row.paidDate || "") === norm,
-  );
+  const pays = collectorDayPayments(collectorRef, date, payments);
   const used = new Set<string>();
   return pays.map((pay) => {
     const visit = sheet.find((row) => {
@@ -299,6 +297,20 @@ export function defaultMobileRouteDate(
   return fallback || options[0]!.date;
 }
 
+/** Los PG del día que arman el recaudo. La lista y el total salen de aquí. */
+export function collectorDayPayments(
+  collectorRef: string,
+  date: string,
+  payments: PaymentRow[],
+  collectors: CollectorRow[] = [],
+) {
+  const norm = normalizeHistoryDate(date) || date;
+  return paymentsForCollector(collectorRef, collectors, payments).filter((row) => {
+    const paid = normalizeHistoryDate(row.paidDate || "");
+    return Boolean(paid) && paid === norm;
+  });
+}
+
 /** Suma de cobros del día por medio (efectivo / Nequi / Banco) para que el cobrador cuadre su caja. */
 export function collectorRecaudoBreakdown(
   collectorRef: string,
@@ -310,9 +322,7 @@ export function collectorRecaudoBreakdown(
   let nequi = 0;
   let banco = 0;
   let count = 0;
-  const norm = normalizeHistoryDate(date) || date;
-  for (const row of paymentsForCollector(collectorRef, collectors, payments)) {
-    if (normalizeHistoryDate(row.paidDate || "") !== norm) continue;
+  for (const row of collectorDayPayments(collectorRef, date, payments, collectors)) {
     count += 1;
     const method = normalizePaymentMethod(row.method);
     if (method === "nequi") nequi += row.amount;
