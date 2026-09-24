@@ -12,6 +12,7 @@ import {
   type CollectorDayExpenseDraft,
 } from "@/lib/collector-day-close";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import { DAY_CLOSE_SKIP_REASON } from "@/lib/collector-dispatch-sync";
 import type { MiscPayment } from "@/lib/misc-payments";
 import {
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
@@ -434,6 +435,35 @@ export async function upsertDayExpenseIdempotent(row: Record<string, unknown>) {
     return { ok: false as const, error: msg };
   }
   return upsertOpsRow("day_expenses", row, "ref");
+}
+
+/**
+ * Espejo de planilla (servidor). Una fila «pendiente» sin PG- no pisa un N/P u omisión
+ * del cobrador que ya está en la nube: ese estado solo lo cambia un cobro o el cierre
+ * de jornada, y de vuelta a pendiente solo el reabrir un «Cierre de jornada».
+ * Vale para cualquier aparato, aunque todavía corra código viejo.
+ */
+export async function upsertAssignmentRow(row: Record<string, unknown>) {
+  const client = createMirrorClient();
+  if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  const incomingStatus = String(row.visit_status ?? "pendiente");
+  if (incomingStatus === "pendiente" && !row.payment_ref) {
+    const { data, error } = await client
+      .from("daily_assignments")
+      .select("visit_status, skip_reason")
+      .eq("dispatch_date", row.dispatch_date)
+      .eq("item_id", row.item_id)
+      .maybeSingle();
+    const current = (data ?? null) as { visit_status?: string; skip_reason?: string | null } | null;
+    if (
+      !error &&
+      current?.visit_status === "omitido" &&
+      current.skip_reason !== DAY_CLOSE_SKIP_REASON
+    ) {
+      return { ok: true as const, kept: true as const };
+    }
+  }
+  return upsertOpsRow("daily_assignments", row, "dispatch_date,item_id");
 }
 
 export async function upsertOpsRow(

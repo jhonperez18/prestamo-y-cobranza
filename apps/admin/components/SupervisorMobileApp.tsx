@@ -883,6 +883,8 @@ export function SupervisorMobileApp({
   const [cajaHistoryDayIso, setCajaHistoryDayIso] = useState<string | null>(null);
   const [snOpen, setSnOpen] = useState(false);
   const [snDay, setSnDay] = useState<string | null>(null);
+  /** Día anterior abierto en el Registro Nequi (hoy siempre va abierto). */
+  const [nequiHistDay, setNequiHistDay] = useState<string | null>(null);
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [nuevoName, setNuevoName] = useState("");
@@ -1181,20 +1183,65 @@ export function SupervisorMobileApp({
     return { todayRows: byName(groups.get(today) ?? []), past };
   }, [assignments, today]);
 
-  /** Registro Nequi solo del día (se limpia solo al cambiar de fecha). */
-  const nequiRegisterToday = useMemo(() => {
-    const items = paymentsWithEvidence
-      .filter(
-        (row) =>
-          normalizePaymentMethod(row.method) === "nequi" &&
-          (row.amount ?? 0) > 0 &&
-          normalizeHistoryDate(row.paidDate ?? "") === today,
-      )
-      .slice()
-      .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));
-    const total = items.reduce((sum, row) => sum + (row.amount ?? 0), 0);
-    return { date: todayDisplay, items, total };
-  }, [paymentsWithEvidence, today, todayDisplay]);
+  /**
+   * Registro Nequi por día: hoy abierto; los días anteriores recogidos, uno por fila.
+   * Al cambiar la fecha, el día de hoy pasa solo al historial y el nuevo arranca vacío.
+   */
+  const nequiRegisterByDay = useMemo(() => {
+    const groups = new Map<string, typeof paymentsWithEvidence>();
+    for (const row of paymentsWithEvidence) {
+      if (normalizePaymentMethod(row.method) !== "nequi") continue;
+      if (!((row.amount ?? 0) > 0)) continue;
+      const date = normalizeHistoryDate(row.paidDate ?? "");
+      if (!date || date > today) continue;
+      const list = groups.get(date) ?? [];
+      list.push(row);
+      groups.set(date, list);
+    }
+    const dayOf = (date: string) => {
+      const items = (groups.get(date) ?? [])
+        .slice()
+        .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));
+      const total = items.reduce((sum, row) => sum + (row.amount ?? 0), 0);
+      return { date, items, total };
+    };
+    const past = [...groups.keys()]
+      .filter((date) => date < today)
+      .sort((a, b) => b.localeCompare(a))
+      .map(dayOf);
+    return { today: dayOf(today), past };
+  }, [paymentsWithEvidence, today]);
+  const nequiRegisterToday = nequiRegisterByDay.today;
+
+  /** Ficha de un día del Registro Nequi (misma fila para hoy y para el historial). */
+  const renderNequiDayList = (items: typeof paymentsWithEvidence) => (
+    <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-register is-nequi-day-ficha">
+      {items.map((pay) => (
+        <li key={pay.ref}>
+          <strong className="is-name">{pay.client}</strong>
+          <span className="is-when">{pay.paidTime || "—"}</span>
+          <em
+            className={`is-method ${paymentMethodToneClass("nequi")}`}
+            title={paymentMethodLabel("nequi")}
+          >
+            {paymentMethodInitial("nequi")}
+          </em>
+          <span className="is-evidence">
+            <PaymentEvidenceThumb
+              evidence={pay.evidence}
+              size={28}
+              onAttach={
+                onAttachPaymentEvidence
+                  ? (piece) => onAttachPaymentEvidence(pay.ref, [piece])
+                  : undefined
+              }
+            />
+          </span>
+          <b className="is-cobro">{money(pay.amount, { symbol: false })}</b>
+        </li>
+      ))}
+    </ul>
+  );
 
   /** Total Nequi acumulado = cobros Nequi − capitales desembolsados (préstamo/renovación). */
   const nequiAcumulado = useMemo(() => {
@@ -2623,42 +2670,59 @@ export function SupervisorMobileApp({
           </div>
 
           <h3>Registro Nequi</h3>
-          {nequiRegisterToday.items.length === 0 ? (
-            <p className="ficha-empty">Sin cobros Nequi hoy.</p>
+          {nequiRegisterToday.items.length === 0 && nequiRegisterByDay.past.length === 0 ? (
+            <p className="ficha-empty">Sin cobros Nequi.</p>
           ) : (
             <div className="supervisor-nequi-register is-today-only">
-              <div className="supervisor-nequi-day">
-                <div className="supervisor-nequi-day-head">
-                  <strong>Hoy · {nequiRegisterToday.date}</strong>
-                  <b>{money(nequiRegisterToday.total, { symbol: false })}</b>
+              {nequiRegisterToday.items.length === 0 ? (
+                <p className="ficha-empty">Sin cobros Nequi hoy.</p>
+              ) : (
+                <div className="supervisor-nequi-day">
+                  <div className="supervisor-nequi-day-head">
+                    <strong>Hoy · {todayDisplay}</strong>
+                    <b>{money(nequiRegisterToday.total, { symbol: false })}</b>
+                  </div>
+                  {renderNequiDayList(nequiRegisterToday.items)}
                 </div>
-                <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-register is-nequi-day-ficha">
-                  {nequiRegisterToday.items.map((pay) => (
-                    <li key={pay.ref}>
-                      <strong className="is-name">{pay.client}</strong>
-                      <span className="is-when">{pay.paidTime || "—"}</span>
-                      <em
-                        className={`is-method ${paymentMethodToneClass("nequi")}`}
-                        title={paymentMethodLabel("nequi")}
-                      >
-                        {paymentMethodInitial("nequi")}
-                      </em>
-                      <span className="is-evidence">
-                        <PaymentEvidenceThumb
-                          evidence={pay.evidence}
-                          size={28}
-                          onAttach={
-                            onAttachPaymentEvidence
-                              ? (piece) => onAttachPaymentEvidence(pay.ref, [piece])
-                              : undefined
-                          }
-                        />
-                      </span>
-                      <b className="is-cobro">{money(pay.amount, { symbol: false })}</b>
-                    </li>
-                  ))}
+              )}
+              {nequiRegisterByDay.past.length > 0 ? (
+                <ul className="supervisor-nequi-day-list" aria-label="Registro Nequi de días anteriores">
+                  {nequiRegisterByDay.past.map((day) => {
+                    const open = nequiHistDay === day.date;
+                    return (
+                      <li key={day.date}>
+                        {open ? (
+                          <div className="supervisor-nequi-day">
+                            <button
+                              type="button"
+                              className="supervisor-nequi-day-head is-toggle"
+                              aria-expanded
+                              onClick={() => setNequiHistDay(null)}
+                            >
+                              <strong>{isoToDisplay(day.date)}</strong>
+                              <b>{money(day.total, { symbol: false })}</b>
+                            </button>
+                            {renderNequiDayList(day.items)}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="supervisor-nequi-day-row"
+                            aria-expanded={false}
+                            onClick={() => setNequiHistDay(day.date)}
+                          >
+                            <span className="is-date">{isoToDisplay(day.date)}</span>
+                            <span className="is-count">
+                              {day.items.length} cobro{day.items.length === 1 ? "" : "s"}
+                            </span>
+                            <b className="is-amount">{money(day.total, { symbol: false })}</b>
+                          </button>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
-              </div>
+              ) : null}
             </div>
           )}
         </section>

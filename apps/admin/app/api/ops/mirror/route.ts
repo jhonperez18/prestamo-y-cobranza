@@ -8,6 +8,7 @@ import {
   dayExpenseToRow,
   miscToRow,
   routeToRow,
+  upsertAssignmentRow,
   upsertDayExpenseIdempotent,
   upsertOpsRow,
 } from "@/lib/supabase/ops-mirror";
@@ -46,7 +47,9 @@ export async function POST(request: Request) {
       return NextResponse.json(virginWriteLockPayload());
     }
 
-    let result: Awaited<ReturnType<typeof upsertOpsRow>>;
+    let result:
+      | Awaited<ReturnType<typeof upsertOpsRow>>
+      | Awaited<ReturnType<typeof upsertAssignmentRow>>;
 
     switch (kind) {
       case "collector": {
@@ -110,7 +113,8 @@ export async function POST(request: Request) {
       case "assignment": {
         const raw = body.row as DailyCollectionAssignment & { ref?: string };
         const mapped = assignmentToRow(raw);
-        result = await upsertOpsRow("daily_assignments", mapped, "dispatch_date,item_id");
+        // Un N/P del cobrador no lo pisa una fila «pendiente» vieja de otro aparato.
+        result = await upsertAssignmentRow(mapped);
         break;
       }
       default:

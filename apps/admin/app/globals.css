@@ -5528,6 +5528,16 @@
       color: #5b3d8a;
       font-variant-numeric: tabular-nums;
     }
+    /* Cabecera de un día anterior abierto: botón que lo vuelve a recoger. */
+    .supervisor-nequi-day-head.is-toggle {
+      width: 100%;
+      border: 0;
+      border-bottom: 1px solid #e4dcf3;
+      border-radius: 0;
+      font: inherit;
+      cursor: pointer;
+      text-align: left;
+    }
     .supervisor-nequi-day .collector-closed-review-list {
       margin: 0;
       border: 0;
