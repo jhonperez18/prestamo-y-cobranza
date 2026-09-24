@@ -351,7 +351,6 @@ export function CollectorMobileApp({
   useEffect(() => {
     setPlanillaQuery("");
     setPlanillaSearchOpen(false);
-    setPreferCobroPlanilla(false);
   }, [activeDate]);
 
   const viewPeriod = periodFromDateIso(activeDate);
@@ -792,6 +791,7 @@ export function CollectorMobileApp({
     setConfirmingClose(false);
     // Queda en el home de cierre (mismo panel para todos).
     setListFilter("pending");
+    setPreferCobroPlanilla(false);
     setSelectedDate(null);
   }
 
@@ -1109,6 +1109,7 @@ export function CollectorMobileApp({
                       }
                       onClick={() => {
                         setSelectedDate(row.date);
+                        setPreferCobroPlanilla(false);
                         setListFilter("pending");
                         setEditingExpenses(false);
                         setConfirmingClose(false);
@@ -1279,16 +1280,26 @@ export function CollectorMobileApp({
             <button
               type="button"
               className="collector-mobile-home-inicio-btn"
-              title="Ir a la planilla de cobro"
-              aria-label="Inicio · ir a cobro"
+              title="Ir a la planilla del día"
+              aria-label="Inicio · planilla del día"
               onClick={() => {
                 suppressGhostClick(420);
+                const day = date ?? todayIso();
+                setSelectedDate(day);
                 setPreferCobroPlanilla(true);
                 setListFilter("pending");
                 setEditingExpenses(false);
                 setReviewingLoans(false);
                 setConfirmingClose(false);
+                setHistoryOpen(false);
                 setExpandedKey(null);
+                setReloanPayRef(null);
+                if (planillaRoutePins.length > 1) {
+                  setPlanillaRouteFilter(
+                    planillaRoutePins.find((name) => sameRoute(name, "1")) ??
+                      planillaRoutePins[0],
+                  );
+                }
               }}
             >
               Inicio

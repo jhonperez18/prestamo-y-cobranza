@@ -2866,12 +2866,14 @@ export function SupervisorMobileApp({
                     key={name}
                     type="button"
                     className={
-                      planillaRouteFilter === name
-                        ? "supervisor-planilla-route-btn on"
-                        : "supervisor-planilla-route-btn"
+                      planillaRouteFilter && sameRoute(planillaRouteFilter, name)
+                        ? "collector-mobile-route-pin on"
+                        : "collector-mobile-route-pin"
                     }
                     onClick={() =>
-                      setPlanillaRouteFilter((prev) => (prev === name ? null : name))
+                      setPlanillaRouteFilter((prev) =>
+                        prev && sameRoute(prev, name) ? null : name,
+                      )
                     }
                     title={`Ruta ${name}`}
                     aria-label={`Ruta ${name}`}
@@ -3785,12 +3787,14 @@ export function SupervisorMobileApp({
                         key={name}
                         type="button"
                         className={
-                          clientesRouteFilter === name
+                          clientesRouteFilter && sameRoute(clientesRouteFilter, name)
                             ? "collector-mobile-route-pin on"
                             : "collector-mobile-route-pin"
                         }
                         onClick={() =>
-                          setClientesRouteFilter((prev) => (prev === name ? null : name))
+                          setClientesRouteFilter((prev) =>
+                            prev && sameRoute(prev, name) ? null : name,
+                          )
                         }
                         title={`Ruta ${name}`}
                         aria-label={`Ruta ${name}`}
