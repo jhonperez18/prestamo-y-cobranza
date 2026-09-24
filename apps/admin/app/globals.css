@@ -4538,10 +4538,13 @@
       text-align: left;
     }
     .supervisor-mobile-list.is-prestamos-hist > li.is-head .is-date,
-    .supervisor-mobile-list.is-prestamos-hist > li.is-head .is-origin,
+    .supervisor-mobile-list.is-prestamos-hist > li.is-head .is-origin {
+      text-align: center;
+      justify-self: stretch;
+    }
     .supervisor-mobile-list.is-prestamos-hist > li.is-head .is-amount,
     .supervisor-mobile-list.is-prestamos-hist > li.is-head .is-saldo {
-      text-align: center;
+      text-align: right;
       justify-self: stretch;
     }
     .supervisor-prestamo-hist-row {
@@ -4627,7 +4630,7 @@
     .supervisor-prestamo-hist-row b.is-amount,
     .supervisor-prestamo-hist-row b.is-saldo {
       justify-self: stretch;
-      text-align: center;
+      text-align: right;
       font-size: 11px;
       font-weight: 400;
       font-variant-numeric: tabular-nums;
