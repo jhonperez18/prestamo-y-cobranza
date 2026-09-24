@@ -685,7 +685,15 @@ export function CollectorMobileApp({
   }, [activeDate]);
 
   function togglePay(item: DailyCollectionAssignment) {
-    if (!canCollect || collectionStopped || !onRegisterPayment) return;
+    if (dayLocked || !canCollect) return;
+    const awaitingLoan = isAssignmentAwaitingLoan(item);
+    // Cobros: si ya no hay pendientes de cuota, no abrir billete.
+    // Préstamo nuevo (Prestar): sigue activo aunque no queden cobros.
+    if (awaitingLoan) {
+      if (!onCreateQuickLoan) return;
+    } else if (collectionStopped || !onRegisterPayment) {
+      return;
+    }
     const key = itemKey(item);
     // Billete = solo ABRIR. Cerrar es «cerrar» / confirmar.
     // Si toggléa, el click fantasma tras el reflow cierra el panel al instante.
@@ -1585,7 +1593,7 @@ export function CollectorMobileApp({
                 const identity = visitIdentity(item, clients, loans, livePayments, activeDate);
                 const canLend =
                   identity.awaitingLoan &&
-                  !collectionStopped &&
+                  !dayLocked &&
                   canCollect &&
                   Boolean(onCreateQuickLoan);
                 const lentToday = lentClientRefs.has(item.clientRef);
@@ -1689,9 +1697,7 @@ export function CollectorMobileApp({
                             <button
                               type="button"
                               className="collector-mobile-pay-sticker is-decline-lend-check"
-                              disabled={
-                                collectionStopped || !canCollect || !onSkipVisit
-                              }
+                              disabled={dayLocked || !canCollect || !onSkipVisit}
                               onClick={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
