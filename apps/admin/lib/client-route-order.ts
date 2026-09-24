@@ -74,7 +74,7 @@ export function compareClientsByRoutePosition(a: ClientRow, b: ClientRow): numbe
 
 /**
  * Bloques por ruta en una lista ya ordenada (ruta → #): `true` en la fila que
- * abre una ruta distinta a la anterior. Ahí va la raya gris que separa
+ * abre una ruta distinta a la anterior. Ahí va la raya verde oscura que separa
  * «Ruta 1» de «Ruta 1.1» en planilla, app del cobrador y supervisor.
  */
 export function routeBlockStarts<T>(rows: T[], routeOf: (row: T) => string | undefined): boolean[] {

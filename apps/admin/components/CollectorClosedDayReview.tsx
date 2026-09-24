@@ -5,6 +5,7 @@ import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
 import { money, type PaymentRow } from "@/lib/mock-data";
+import { routeBlockStarts } from "@/lib/client-route-order";
 import {
   normalizePaymentMethod,
   paymentMethodInitial,
@@ -102,6 +103,9 @@ export function CollectorClosedDayReview({
         ? `${dateLabel} · ${cobros.length} cobro${cobros.length === 1 ? "" : "s"}`
         : `${dateLabel} · ${cobradoCount}/${visitTotal} cobros`;
 
+  /** Raya verde entre Ruta 1 y Ruta 1.1 en la planilla cerrada. */
+  const visitRouteStarts = routeBlockStarts(visits, (row) => row.clientRoute);
+
   return (
     <section className="collector-closed-review" aria-label={title}>
       <div className="collector-closed-review-head">
@@ -193,7 +197,7 @@ export function CollectorClosedDayReview({
             <p className="collector-closed-review-empty">Sin visitas en planilla.</p>
           ) : (
             <ul className="collector-closed-review-list">
-              {visits.map((item) => {
+              {visits.map((item, index) => {
                 const pay = paymentForVisit(item, payments);
                 const method = pay ? normalizePaymentMethod(pay.method) : null;
                 const amount = pay?.amount ?? (item.amountDue > 0 ? item.amountDue : 0);
@@ -201,7 +205,10 @@ export function CollectorClosedDayReview({
                 const loanRef = item.loanRef || (item.awaitingLoan ? "Completar" : "—");
                 const methodLabel = method ? paymentMethodLabel(method).toLowerCase() : "";
                 return (
-                  <li key={item.itemId}>
+                  <li
+                    key={item.itemId}
+                    className={visitRouteStarts[index] ? "is-route-start" : undefined}
+                  >
                     <div className="collector-closed-review-line">
                       <strong>{item.clientName}</strong>
                       <span>

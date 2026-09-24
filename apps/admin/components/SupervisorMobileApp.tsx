@@ -397,7 +397,7 @@ function RouteBoardCard({
 }
 
 /**
- * Fila de planilla con su ruta (raya gris donde cambia: Ruta 1 → Ruta 1.1) y el
+ * Fila de planilla con su ruta (raya verde donde cambia: Ruta 1 → Ruta 1.1) y el
  * estado «Préstamo al terminar» (terminó hoy → botón; ya prestado → renglón azul).
  */
 type PlanillaTableRow = ReturnType<typeof enrichSupervisorPlanillaRow> & {
@@ -1290,7 +1290,7 @@ export function SupervisorMobileApp({
     return { date: todayDisplay, items, total };
   }, [paymentsWithEvidence, today, todayDisplay]);
 
-  /** Filas de planilla: `#` = posición del cliente en su ruta; `route` para la raya gris. */
+  /** Filas de planilla: `#` = posición del cliente en su ruta; `route` para la raya verde. */
   const planillaTableRows = (rows: DailyCollectionAssignment[]): PlanillaTableRow[] =>
     rows.map((row, index) => {
       const client = clients.find((entry) => entry.ref === row.clientRef);

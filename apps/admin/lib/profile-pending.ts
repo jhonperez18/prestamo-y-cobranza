@@ -1,4 +1,3 @@
-import { isOperationalClient } from "@/lib/client-review";
 import type { ClientRow, LoanRow } from "@/lib/mock-data";
 import { activeLoans } from "@/lib/mock-data";
 
@@ -8,16 +7,13 @@ export function isStreetPlaceholderDocument(document: string | undefined) {
 }
 
 /**
- * Cliente operativo con ficha incompleta (calle u omitidos).
- * No bloquea ruta, cobro ni préstamo.
+ * Alerta «Completar» del listado / Inicio / Alertas: retirada.
+ * Faltar teléfono o barrio es normal en calle; no pinta el renglón ni cuenta
+ * pendientes. No bloquea ruta, cobro ni préstamo. La ficha se sigue editando
+ * en oficina cuando haga falta.
  */
-export function clientNeedsProfileCompletion(client: ClientRow) {
-  if (!isOperationalClient(client)) return false;
-  if (client.profilePending) return true;
-  const missingContact = !client.phone?.trim() && !client.address?.trim();
-  const missingPlace = !client.city?.trim() && !client.barrio?.trim();
-  // Documento/cédula opcional: solo pide completar si faltan contacto y lugar.
-  return missingContact && missingPlace;
+export function clientNeedsProfileCompletion(_client: ClientRow) {
+  return false;
 }
 
 export function clientsNeedingProfileCompletion(clients: ClientRow[]) {

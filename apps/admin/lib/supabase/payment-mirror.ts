@@ -613,6 +613,39 @@ export async function reconcileLocalPaymentsToRemote(
 }
 
 /**
+ * Baja constancias (firma / Nequi) de la nube a IndexedDB **una sola vez**.
+ * No entra al ciclo de 15 s ni a localStorage: la lista de cobros sigue ligera.
+ * Así el panel refleja la foto sin frenar el sistema.
+ */
+export async function pullRemoteEvidenceIntoIdb(): Promise<{
+  parked: number;
+  failed: boolean;
+}> {
+  if (typeof window === "undefined") return { parked: 0, failed: false };
+  try {
+    const res = await fetch("/api/payments?evidence=1", { method: "GET", cache: "no-store" });
+    const body = (await res.json()) as {
+      ok?: boolean;
+      payments?: PaymentMirrorRow[];
+      skipped?: boolean;
+    };
+    if (!res.ok || !body.ok || body.skipped) return { parked: 0, failed: true };
+
+    let parked = 0;
+    for (const row of body.payments ?? []) {
+      const ref = String(row.ref || "").trim();
+      const evidence = Array.isArray(row.evidence) ? row.evidence : undefined;
+      if (!ref || !evidenceHasPreview(evidence)) continue;
+      rememberPaymentEvidence(ref, evidence);
+      parked += 1;
+    }
+    return { parked, failed: false };
+  } catch {
+    return { parked: 0, failed: true };
+  }
+}
+
+/**
  * Sube constancias (previewUrl) que quedaron solo en este dispositivo.
  * Sin esto el celular ve la foto Nequi y el PC no (mismo link Vercel).
  */

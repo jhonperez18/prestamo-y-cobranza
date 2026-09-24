@@ -14224,16 +14224,20 @@
       box-shadow: none !important;
     }
 
-    /* Raya gris entre rutas del mismo cobrador (Ruta 1 → Ruta 1.1):
-       app cobrador (por cobrar + planilla historial), supervisor (planilla + clientes)
-       y Clientes total del panel. Banco y gastos no la usan. */
+    /* Raya verde oscura (barra de títulos) donde cambian las dos hojas
+       del mismo cobrador: Ruta 1 → Ruta 1.1. Vale en cobrador, supervisor,
+       historial, clientes y listado del panel. Banco y gastos no la usan. */
+    .is-route-start,
     .collector-mobile-list.compact > .collector-mobile-card.is-dense.is-route-start,
-    .collector-history-planilla li.is-route-start {
-      border-top: 4px solid #9aa6a0;
+    .collector-mobile-card.is-dense.is-route-start,
+    .collector-history-planilla li.is-route-start,
+    .collector-closed-review-list > li.is-route-start {
+      border-top: 4px solid var(--bar-bg) !important;
     }
     .supervisor-liq-table tbody tr.is-route-start > td,
-    table.data.list-grid tbody tr.is-route-start > td {
-      border-top: 4px solid #9aa6a0;
+    table.data.list-grid tbody tr.is-route-start > td,
+    table.data tbody tr.is-route-start > td {
+      border-top: 4px solid var(--bar-bg) !important;
     }
 
     /* Préstamo al terminar: el cliente pagó todo el saldo hoy.

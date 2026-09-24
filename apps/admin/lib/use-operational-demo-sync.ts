@@ -14,6 +14,7 @@ import { bindMoneyRealtime } from "@/lib/realtime-money";
 import {
   flushPaymentMirrorQueue,
   pullRemotePaymentsIntoDemo,
+  pullRemoteEvidenceIntoIdb,
   reconcileLocalPaymentsToRemote,
   reconcilePaymentEvidenceToRemote,
 } from "@/lib/supabase/payment-mirror";
@@ -103,6 +104,9 @@ export function useOperationalDemoSync(
         await reconcileLocalPaymentsToRemote(payments.remoteRefs);
         if (!evidenceOnceRef.current) {
           evidenceOnceRef.current = true;
+          // Primero bajar fotos a IndexedDB (sin meterlas en el poll de cobros).
+          const parked = await pullRemoteEvidenceIntoIdb();
+          if (parked.parked > 0) commitHydrate();
           const evidenceSync = await reconcilePaymentEvidenceToRemote();
           if (evidenceSync.pushed > 0 || evidenceSync.failed > 0) {
             onEvidenceSyncRef.current?.({

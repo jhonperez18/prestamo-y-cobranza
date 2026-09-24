@@ -22,7 +22,6 @@ import {
   routeBlockStarts,
   sameRoute,
 } from "@/lib/client-route-order";
-import { clientNeedsProfileCompletion } from "@/lib/profile-pending";
 import { Pill } from "@/components/ui";
 
 export const CLIENT_COLUMNS = [
@@ -222,7 +221,7 @@ export function ClientList({
     // Orden sagrado = ruta + # (routeOrder). Misma ley en planilla/app/supervisor.
     return filtered.slice().sort(compareClientsByRoutePosition);
   }, [activeRoute, applied, rows]);
-  /** Vista total: raya gris donde arranca cada ruta (1 → 1.1 → 2). */
+  /** Vista total: raya verde oscura donde arranca cada ruta (1 → 1.1 → 2). */
   const routeStarts = useMemo(() => routeBlockStarts(visible, (row) => row.route), [visible]);
 
   function pickRoute(name: string) {
@@ -276,13 +275,10 @@ export function ClientList({
     if (id === "ref") return <span className="ref">{row.ref}</span>;
     if (id === "alta") return row.alta || "—";
     if (id === "name") {
-      const showCompletarBadge =
-        clientNeedsProfileCompletion(row) && !visibleCols.includes("status");
       return (
         <span className="cell-with-ico">
           <PersonMiniIcon />
           {clientListDisplayName(row)}
-          {showCompletarBadge ? <Pill label="Completar" kind="warn" /> : null}
         </span>
       );
     }
@@ -310,9 +306,6 @@ export function ClientList({
     if (id === "routeOrder") return row.routeOrder || "—";
     if (id === "nickname") return row.nickname?.trim() || "—";
     if (id === "status") {
-      if (clientNeedsProfileCompletion(row)) {
-        return <Pill label="Completar" kind="warn" />;
-      }
       return <Pill label={row.status} kind={clientStatusKind(row.status)} />;
     }
     return fieldOf(row, id) || "—";
@@ -441,10 +434,8 @@ export function ClientList({
               </tr>
             ) : (
               visible.map((row, index) => {
-                const incomplete = clientNeedsProfileCompletion(row);
                 const rowClass = [
                   isRevision ? "client-review-row" : "clickable",
-                  incomplete ? "is-profile-incomplete" : "",
                   routeStarts[index] ? "is-route-start" : "",
                 ]
                   .filter(Boolean)
@@ -453,7 +444,6 @@ export function ClientList({
                 <tr
                   key={row.ref}
                   className={rowClass}
-                  title={incomplete ? "Ficha incompleta (alta en calle) — completar en oficina" : undefined}
                   onClick={isRevision ? undefined : () => onOpen(row.ref)}
                 >
                   {activeCols.map((col) => (

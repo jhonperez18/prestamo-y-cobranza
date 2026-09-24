@@ -739,11 +739,35 @@ export function CollectorMobileApp({
           return name.includes(planillaQueryNorm) || String(row.order ?? "").includes(planillaQueryNorm);
         })
       : closedPlanilla;
-  /** Raya gris donde cambia la ruta (Ruta 1 → Ruta 1.1). */
+  /** Raya verde oscura donde cambia la ruta (Ruta 1 → Ruta 1.1). */
   const planillaRouteStarts = routeBlockStarts(planillaRows, (row) => row.route);
   const pendingRouteStarts = routeBlockStarts(visibleItems, (item) =>
     assignmentRouteName(item, clients),
   );
+  /** Mismos cobros del día, orden ruta → #, para la raya entre las dos hojas. */
+  const dayPaysByRoute = useMemo(() => {
+    return dayPays
+      .slice()
+      .sort((a, b) => {
+        const loanA = loans.find((row) => row.ref === a.loanRef);
+        const loanB = loans.find((row) => row.ref === b.loanRef);
+        const clientA = clients.find((row) => row.ref === loanA?.clientRef);
+        const clientB = clients.find((row) => row.ref === loanB?.clientRef);
+        return (
+          compareRoutePosition(
+            clientA?.route,
+            clientA?.routeOrder,
+            clientB?.route,
+            clientB?.routeOrder,
+          ) ||
+          payerName(a, loans, clients).localeCompare(payerName(b, loans, clients), "es")
+        );
+      });
+  }, [clients, dayPays, loans]);
+  const doneRouteStarts = routeBlockStarts(dayPaysByRoute, (pay) => {
+    const loan = loans.find((row) => row.ref === pay.loanRef);
+    return clients.find((row) => row.ref === loan?.clientRef)?.route;
+  });
 
   /** Totales = pagos reales del día (mismo número que banco Debe / “Lo que cobró”). */
   const topRecaudo = recaudo.total;
@@ -1247,10 +1271,10 @@ export function CollectorMobileApp({
 
       {listFilter === "done" ? (
         <ul className="collector-mobile-list compact" aria-label="Quienes pagaron">
-          {dayPays.length === 0 ? (
+          {dayPaysByRoute.length === 0 ? (
             <li className="collector-mobile-empty-inline">Aún no hay cobros del día.</li>
           ) : (
-            dayPays.map((pay) => {
+            dayPaysByRoute.map((pay, index) => {
               const method = normalizePaymentMethod(pay.method);
               const payLoan = loans.find((row) => row.ref === pay.loanRef);
               const payClient = payLoan
@@ -1284,6 +1308,7 @@ export function CollectorMobileApp({
                     paymentMethodToneClass(method),
                     reloan.granted ? "is-reloan" : "",
                     reloanOpen ? "is-open" : "",
+                    doneRouteStarts[index] ? "is-route-start" : "",
                   ]
                     .filter(Boolean)
                     .join(" ")}
