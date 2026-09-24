@@ -24,7 +24,7 @@ import type {
   RouteStop,
 } from "@/lib/mock-data";
 import { paymentsForCollector } from "@/lib/mock-data";
-import { compareRoutePosition } from "@/lib/client-route-order";
+import { compareRoutePosition, sameRoute } from "@/lib/client-route-order";
 
 function recaudoFromPayments(
   collectorRef: string,
@@ -606,8 +606,26 @@ export type CloseDayResult = {
   collectorRefs: string[];
 };
 
+/** ¿Todas las visitas despachadas del cobrador ese día ya tienen dayClosedAt? */
+export function collectorDayVisitsFullyClosed(
+  assignments: DailyCollectionAssignment[],
+  collectorRef: string,
+  date: string,
+): boolean {
+  const normDate = normalizeHistoryDate(date) || date;
+  const day = assignments.filter(
+    (row) =>
+      row.collectorRef === collectorRef &&
+      normalizeHistoryDate(row.dispatchDate) === normDate &&
+      (row.dispatched || Boolean(row.dayClosedAt)),
+  );
+  return day.length > 0 && day.every((row) => Boolean(row.dayClosedAt));
+}
+
 /**
  * Cierre de jornada: pendientes → omitido; rutas → Cerrada; log con closedAt.
+ * Con `planillaRoute` solo sella esa hoja (1 / 1.1); el CIE completo queda para cuando
+ * no queden visitas abiertas del cobrador ese día.
  * No envía a mora de una: las faltas se contabilizan como alertas (1–3) y mora al 4.º día hábil.
  */
 export function closeDispatchDay(
@@ -621,6 +639,8 @@ export function closeDispatchDay(
   collectorRef?: string,
   /** Si hay PG del día, sella visita cobrada antes de marcar omitidos. */
   payments: PaymentRow[] = [],
+  /** Si viene, solo cierra visitas de esa ruta de planilla. */
+  planillaRoute?: string,
 ): CloseDayResult {
   const closedAt = new Date().toLocaleTimeString("es-CO", {
     hour: "2-digit",
@@ -659,6 +679,12 @@ export function closeDispatchDay(
   const nextAssignments = sealed.map((row) => {
     if (normalizeHistoryDate(row.dispatchDate) !== normDate) return row;
     if (collectorRef && row.collectorRef !== collectorRef) return row;
+    if (
+      planillaRoute &&
+      !sameRoute(assignmentRouteName(row, clients), planillaRoute)
+    ) {
+      return row;
+    }
     // Cierra aunque falte el flag dispatched (planillas viejas / recuperadas).
     let next: DailyCollectionAssignment = {
       ...row,
@@ -702,16 +728,22 @@ export function closeDispatchDay(
       clients,
       existing,
     );
-    const closedRoute: RouteRow = {
-      ...rebuilt,
-      status: "Cerrada",
-      kind: "paid",
-    };
+    const fullyClosed = collectorDayVisitsFullyClosed(nextAssignments, ref, normDate);
+    const closedRoute: RouteRow = fullyClosed
+      ? {
+          ...rebuilt,
+          status: "Cerrada",
+          kind: "paid",
+        }
+      : rebuilt;
     nextRoutes = upsertDispatchRoute(nextRoutes, closedRoute);
 
     const visitsSkipped = closedRoute.stops.filter((s) => s.visitStatus === "omitido").length;
     const visitsDone = closedRoute.stops.filter((s) => s.visitStatus === "cobrado").length;
     const visitsPartial = closedRoute.stops.filter((s) => s.visitStatus === "parcial").length;
+    const visitsPending = closedRoute.stops.filter(
+      (s) => s.visitStatus === "pendiente" || s.visitStatus === "parcial",
+    ).length;
     const logRef = dailyLogRef(ref, normDate);
     const existingLog = nextLogs.find((row) => row.ref === logRef);
     const recaudo = payments.length
@@ -733,25 +765,29 @@ export function closeDispatchDay(
       visitsPlanned: closedRoute.stops.length,
       visitsDone,
       visitsPartial,
-      visitsPending: 0,
+      visitsPending: fullyClosed ? 0 : visitsPending,
       collected: recaudo.total,
       paymentsCount: recaudo.count,
       startedAt: existingLog?.startedAt ?? closedAt,
-      closedAt,
-      status: "Cerrada",
-      kind: "paid",
-      summary: [
-        recaudo.count
-          ? `${recaudo.count} cobro${recaudo.count === 1 ? "" : "s"}`
-          : null,
-        visitsDone ? `${visitsDone} cobrado${visitsDone === 1 ? "" : "s"}` : null,
-        visitsPartial ? `${visitsPartial} parcial${visitsPartial === 1 ? "" : "es"}` : null,
-        visitsSkipped
-          ? `${visitsSkipped} sin cobro → alerta`
-          : null,
-      ]
-        .filter(Boolean)
-        .join(" · ") || "Jornada cerrada",
+      closedAt: fullyClosed ? closedAt : existingLog?.closedAt,
+      status: fullyClosed ? "Cerrada" : rebuilt.status,
+      kind: fullyClosed ? "paid" : rebuilt.kind,
+      summary: fullyClosed
+        ? [
+            recaudo.count
+              ? `${recaudo.count} cobro${recaudo.count === 1 ? "" : "s"}`
+              : null,
+            visitsDone ? `${visitsDone} cobrado${visitsDone === 1 ? "" : "s"}` : null,
+            visitsPartial ? `${visitsPartial} parcial${visitsPartial === 1 ? "" : "es"}` : null,
+            visitsSkipped
+              ? `${visitsSkipped} sin cobro → alerta`
+              : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || "Jornada cerrada"
+        : planillaRoute
+          ? `Planilla ${planillaRoute} cerrada · sigue otra hoja`
+          : existingLog?.summary || "Jornada en curso",
     };
     nextLogs = [closedLog, ...nextLogs.filter((row) => row.ref !== logRef)].sort((a, b) =>
       b.date.localeCompare(a.date),

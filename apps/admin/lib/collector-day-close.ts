@@ -414,6 +414,7 @@ type RouteExpenseSource = {
 
 /**
  * Sube gastos de ruta (borradores + cierres) a Banco → Registros / Gastos.
+ * Incluye préstamos en efectivo (azul) y gastos operativos (rojo).
  * Idempotente: actualiza o crea por dayExpenseLineRef.
  */
 export function syncRouteExpensesToMovements(
@@ -446,9 +447,6 @@ export function syncRouteExpensesToMovements(
   for (const source of sources) {
     for (const line of source.expenses) {
       if (line.amount <= 0) continue;
-      // Desembolso en efectivo del préstamo: resta la caja del cobrador.
-      // No es un gasto bancario. Si quedó un GASL-…-prestamo-P-*, es un registro zombi.
-      if (line.category === "prestamo_ruta" && line.loanRef) continue;
       const key = dayExpenseLineMovementRef(
         source.collectorRef,
         source.date,
@@ -503,10 +501,7 @@ export function syncRouteExpensesToMovements(
     }
   }
 
-  return next.filter((row) => {
-    const ref = `${row.dayExpenseLineRef || ""} ${row.ref}`;
-    return !/-prestamo-[A-Za-z0-9]+/.test(ref);
-  });
+  return next;
 }
 
 export function finalizeCollectorDayClose(input: {
@@ -703,6 +698,14 @@ export type CollectorHistoryExtras = {
   assignments?: DailyCollectionAssignment[];
   /** Últimos N días corridos, aunque crucen de mes. El día 31 suelta el más antiguo. */
   rolling?: boolean;
+  /**
+   * Planilla activa (1 / 1.1): solo cuenta PG- y desembolsos de estos clientes.
+   * Sin inventar montos de otra hoja.
+   */
+  clientRefs?: ReadonlySet<string>;
+  loans?: LoanRow[];
+  /** false = no suma gastos operativos (caja); solo préstamos de la ruta. */
+  includeOperatingExpenses?: boolean;
 };
 
 /**
@@ -886,11 +889,41 @@ export function buildCollectorDayHistory(
   viewPeriod?: string,
   extras: CollectorHistoryExtras = {},
 ): CollectorDayHistoryRow[] {
+  const scopeRefs = extras.clientRefs;
+  const scopeLoans = extras.loans ?? [];
+  const includeOperating = extras.includeOperatingExpenses !== false;
+  const loanClientRef = (loanRef: string | undefined) => {
+    if (!loanRef) return "";
+    return scopeLoans.find((row) => row.ref === loanRef)?.clientRef ?? "";
+  };
+  const paymentInScope = (loanRef: string | undefined) => {
+    if (!scopeRefs) return true;
+    const clientRef = loanClientRef(loanRef);
+    return Boolean(clientRef && scopeRefs.has(clientRef));
+  };
+  const expensesTotalInScope = (expenses: RouteExpenseLine[]) => {
+    let total = 0;
+    for (const line of expenses) {
+      const amount = Number(line.amount) || 0;
+      if (!(amount > 0)) continue;
+      const isPrestamo = line.category === "prestamo_ruta" || line.id === "prestamo";
+      if (isPrestamo) {
+        if (!paymentInScope(line.loanRef)) continue;
+        total += amount;
+        continue;
+      }
+      if (!includeOperating) continue;
+      total += amount;
+    }
+    return total;
+  };
+
   const mine = paymentsForCollector(collectorRef, collectors, payments);
   const cobroByDate = new Map<string, number>();
   const efectivoByDate = new Map<string, number>();
   const nequiByDate = new Map<string, number>();
   for (const row of mine) {
+    if (!paymentInScope(row.loanRef)) continue;
     const date = normalizeHistoryDate(row.paidDate ?? "");
     if (!date) continue;
     const amount = Number(row.amount) || 0;
@@ -912,17 +945,24 @@ export function buildCollectorDayHistory(
     const date = normalizeHistoryDate(row.date);
     if (!date) continue;
     closedDates.add(date);
-    gastoByDate.set(date, (gastoByDate.get(date) ?? 0) + row.expensesTotal);
+    const gasto = scopeRefs
+      ? expensesTotalInScope(row.expenses ?? [])
+      : row.expensesTotal;
+    gastoByDate.set(date, (gastoByDate.get(date) ?? 0) + gasto);
   }
   for (const row of expenseDrafts) {
     if (row.collectorRef !== collectorRef) continue;
     const date = normalizeHistoryDate(row.date);
     if (!date || closedDates.has(date)) continue;
-    gastoByDate.set(date, row.expensesTotal);
+    const gasto = scopeRefs
+      ? expensesTotalInScope(row.expenses ?? [])
+      : row.expensesTotal;
+    gastoByDate.set(date, gasto);
   }
 
   for (const row of extras.assignments ?? []) {
     if (row.collectorRef !== collectorRef || !row.dayClosedAt) continue;
+    if (scopeRefs && row.clientRef && !scopeRefs.has(row.clientRef)) continue;
     const date = normalizeHistoryDate(row.dispatchDate);
     if (date) closedDates.add(date);
   }

@@ -30,6 +30,8 @@ import { todayIso } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
   money,
+  catalogRoutes,
+  routeIsActive,
   type ClientRow,
   type CollectorRow,
   type LoanRow,
@@ -46,7 +48,12 @@ import {
   dispatchRouteRef,
   NO_PAY_TODAY_REASON,
 } from "@/lib/collector-dispatch-sync";
-import { compareRoutePosition, routeBlockStarts } from "@/lib/client-route-order";
+import {
+  compareRouteNames,
+  compareRoutePosition,
+  routeBlockStarts,
+  sameRoute,
+} from "@/lib/client-route-order";
 import {
   loadLivePaymentRows,
   mergePaymentsByRef,
@@ -107,6 +114,8 @@ export type CollectorCloseDayPayload = {
   /** Solo efectivo → caja menor del cobrador. */
   collectedEfectivo: number;
   expenses: RouteExpenseLine[];
+  /** Si hay varias hojas (1 / 1.1), cierra solo esa planilla. */
+  planillaRoute?: string;
 };
 
 export type CollectorSaveExpensesPayload = {
@@ -244,6 +253,8 @@ export function CollectorMobileApp({
   const [menuOpen, setMenuOpen] = useState(false);
   const [planillaSearchOpen, setPlanillaSearchOpen] = useState(false);
   const [planillaQuery, setPlanillaQuery] = useState("");
+  /** Planilla activa cuando el cobrador tiene más de una ruta (ej. 1 y 1.1). */
+  const [planillaRouteFilter, setPlanillaRouteFilter] = useState<string | null>(null);
   const [apiPayments, setApiPayments] = useState<PaymentRow[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
   const livePayments = useMemo(() => {
@@ -281,6 +292,7 @@ export function CollectorMobileApp({
     setConfirmingClose(false);
     setHistoryOpen(false);
     setMenuOpen(false);
+    setPlanillaRouteFilter(null);
   }, [collector.ref]);
 
   useEffect(() => {
@@ -304,6 +316,29 @@ export function CollectorMobileApp({
     [assignments, clients, collector.ref, dayCloses, loans, livePayments, routes],
   );
 
+  /** Pines 1 / 1.1…: rutas del catálogo asignadas a ESTE cobrador. */
+  const planillaRoutePins = useMemo(
+    () =>
+      catalogRoutes(routes)
+        .filter((row) => routeIsActive(row) && row.collectorRef === collector.ref)
+        .slice()
+        .sort((a, b) => compareRouteNames(a.name, b.name))
+        .map((row) => row.name)
+        .filter(Boolean),
+    [routes, collector.ref],
+  );
+
+  useEffect(() => {
+    if (planillaRoutePins.length <= 1) {
+      setPlanillaRouteFilter(null);
+      return;
+    }
+    setPlanillaRouteFilter((prev) => {
+      if (prev && planillaRoutePins.some((name) => sameRoute(name, prev))) return prev;
+      return planillaRoutePins[0];
+    });
+  }, [planillaRoutePins]);
+
   const activeDate = useMemo(() => {
     const fallback = date ?? todayIso();
     if (selectedDate) return selectedDate;
@@ -323,6 +358,20 @@ export function CollectorMobileApp({
       date ?? todayIso(),
       activeDate,
     ];
+    const routeForHistory =
+      planillaRoutePins.length > 1
+        ? planillaRouteFilter ?? planillaRoutePins[0]
+        : null;
+    const scopedClients = routeForHistory
+      ? new Set(
+          clients
+            .filter((row) => sameRoute(row.route, routeForHistory))
+            .map((row) => row.ref),
+        )
+      : undefined;
+    const isPrimaryHistory =
+      !routeForHistory ||
+      sameRoute(routeForHistory, planillaRoutePins[0] || "");
     return buildCollectorDayHistory(
       collector.ref,
       livePayments,
@@ -332,23 +381,35 @@ export function CollectorMobileApp({
       dayExpenseDrafts,
       monthCloses,
       viewPeriod,
-      { assignments, rolling: true },
+      {
+        assignments,
+        rolling: true,
+        clientRefs: scopedClients,
+        loans: scopedClients ? loans : undefined,
+        includeOperatingExpenses: isPrimaryHistory,
+      },
     );
   }, [
     activeDate,
     assignments,
+    clients,
     collector,
     date,
     dayCloses,
     dayExpenseDrafts,
+    loans,
     monthCloses,
     livePayments,
+    planillaRouteFilter,
+    planillaRoutePins,
     routeOptions,
     viewPeriod,
   ]);
 
   const closedHistoryDates = useMemo(() => {
     const set = new Set<string>();
+    const routeScope =
+      planillaRoutePins.length > 1 ? planillaRouteFilter : null;
     for (const row of dayCloses) {
       if (row.collectorRef !== collector.ref) continue;
       const d = normalizeHistoryDate(row.date);
@@ -356,11 +417,24 @@ export function CollectorMobileApp({
     }
     for (const row of assignments) {
       if (row.collectorRef !== collector.ref || !row.dayClosedAt) continue;
+      if (
+        routeScope &&
+        !sameRoute(assignmentRouteName(row, clients), routeScope)
+      ) {
+        continue;
+      }
       const d = normalizeHistoryDate(row.dispatchDate);
       if (d) set.add(d);
     }
     return set;
-  }, [assignments, collector.ref, dayCloses]);
+  }, [
+    assignments,
+    clients,
+    collector.ref,
+    dayCloses,
+    planillaRouteFilter,
+    planillaRoutePins.length,
+  ]);
 
   const activePeriod = viewPeriod;
   const previousMonth = previousPeriod(activePeriod);
@@ -429,16 +503,66 @@ export function CollectorMobileApp({
       ),
     [activeDate, assignments, clients, collector.ref, dayCloses, livePayments, loans, routes],
   );
-  const dayWasClosedByCollector = queue.closed;
+
+  /** Ruta de planilla seleccionada (null = una sola ruta / sin pines). */
+  const activePlanillaRoute =
+    planillaRoutePins.length > 1 ? planillaRouteFilter : null;
+  const isPrimaryPlanilla =
+    !activePlanillaRoute || sameRoute(activePlanillaRoute, planillaRoutePins[0] || "");
+
+  const routeClientRefs = useMemo(() => {
+    if (!activePlanillaRoute) return null as Set<string> | null;
+    const refs = new Set(
+      clients
+        .filter((row) => sameRoute(row.route, activePlanillaRoute))
+        .map((row) => row.ref),
+    );
+    for (const row of queue.dispatched) {
+      if (
+        row.clientRef &&
+        sameRoute(assignmentRouteName(row, clients), activePlanillaRoute)
+      ) {
+        refs.add(row.clientRef);
+      }
+    }
+    return refs;
+  }, [activePlanillaRoute, clients, queue.dispatched]);
+
+  const onActivePlanilla = (item: DailyCollectionAssignment) => {
+    if (!activePlanillaRoute) return true;
+    return sameRoute(assignmentRouteName(item, clients), activePlanillaRoute);
+  };
+
+  const routeDispatched = useMemo(
+    () => queue.dispatched.filter(onActivePlanilla),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onActivePlanilla cierra sobre activePlanillaRoute/clients
+    [queue.dispatched, activePlanillaRoute, clients],
+  );
+  const routePending = useMemo(
+    () => queue.pending.filter(onActivePlanilla),
+    [queue.pending, activePlanillaRoute, clients],
+  );
+  const routePendingCollectCount = routePending.filter(
+    (row) => !isAssignmentAwaitingLoan(row),
+  ).length;
+
+  const planillaLocked =
+    routeDispatched.length > 0 &&
+    routeDispatched.every((row) => Boolean(row.dayClosedAt));
+  const dayWasClosedByCollector = activePlanillaRoute
+    ? planillaLocked
+    : queue.closed;
   const dayLocked = dayWasClosedByCollector;
   const today = date ?? todayIso();
   const isPastOpenDay = !dayLocked && activeDate < today;
-  const canCloseDay = Boolean(onCloseDay) && !dayLocked && queue.dispatched.length > 0;
-  /** No más cobros si la jornada cerró o ya no hay pendientes. */
-  const collectionStopped = dayLocked || queue.allDone;
+  const canCloseDay =
+    Boolean(onCloseDay) && !dayLocked && routeDispatched.length > 0;
+  /** No más cobros si la planilla cerró o ya no hay pendientes en esta hoja. */
+  const collectionStopped =
+    dayLocked || (routeDispatched.length > 0 && routePendingCollectCount === 0);
 
   const routeRef = queue.routeRef ?? dispatchRouteRef(collector.ref, activeDate);
-  const visibleItems = listFilter === "done" ? queue.done : queue.pending;
+  const visibleItems = listFilter === "done" ? queue.done : routePending;
   const recaudo = useMemo(
     () => collectorRecaudoBreakdown(collector.ref, activeDate, livePayments, [collector]),
     [activeDate, collector, livePayments],
@@ -452,6 +576,35 @@ export function CollectorMobileApp({
         ),
     [activeDate, clients, collector, livePayments, loans],
   );
+  const routeDayPays = useMemo(() => {
+    if (!routeClientRefs) return dayPays;
+    return dayPays.filter((pay) => {
+      const loan = loans.find((row) => row.ref === pay.loanRef);
+      return Boolean(loan?.clientRef && routeClientRefs.has(loan.clientRef));
+    });
+  }, [dayPays, loans, routeClientRefs]);
+  /** Recaudo de la planilla activa (ruta 1.1 sin PG- = ceros, sin inventar). */
+  const planillaRecaudo = useMemo(() => {
+    if (!activePlanillaRoute) return recaudo;
+    let efectivo = 0;
+    let nequi = 0;
+    let banco = 0;
+    for (const row of routeDayPays) {
+      const amount = Number(row.amount) || 0;
+      const method = normalizePaymentMethod(row.method);
+      if (method === "nequi") nequi += amount;
+      else if (method === "banco") banco += amount;
+      else efectivo += amount;
+    }
+    return {
+      efectivo,
+      nequi,
+      banco,
+      digital: nequi + banco,
+      total: efectivo + nequi + banco,
+      count: routeDayPays.length,
+    };
+  }, [activePlanillaRoute, routeDayPays, recaudo]);
   /** Primer PG- del día por crédito: ahí va el botón / etiqueta «Préstamo». */
   const reloanAnchorByLoan = useMemo(() => {
     const anchor = new Map<string, string>();
@@ -465,10 +618,16 @@ export function CollectorMobileApp({
     () => expensesForCollectorDay(collector.ref, activeDate, dayCloses, dayExpenseDrafts),
     [activeDate, collector.ref, dayCloses, dayExpenseDrafts],
   );
-  const loanScope = useMemo(
-    () => ({ collectorRef: collector.ref, assignments }),
-    [assignments, collector.ref],
-  );
+  const loanScope = useMemo(() => {
+    const scoped = activePlanillaRoute
+      ? assignments.filter(
+          (row) =>
+            row.collectorRef === collector.ref &&
+            sameRoute(assignmentRouteName(row, clients), activePlanillaRoute),
+        )
+      : assignments;
+    return { collectorRef: collector.ref, assignments: scoped };
+  }, [assignments, collector.ref, activePlanillaRoute, clients]);
   /** Gastos + desembolsos en efectivo del día (reconstruye si el cierre perdió la línea). */
   const savedExpenses = useMemo(
     () =>
@@ -557,6 +716,7 @@ export function CollectorMobileApp({
     if (isNavQuiet()) return;
     // Jornada cerrada: solo lectura, sin acceso a listas ni edición.
     if (dayLocked) return;
+    if (!isPrimaryPlanilla) return;
     if (!onSaveExpenses) return;
     setExpandedKey(null);
     setConfirmingClose(false);
@@ -596,6 +756,7 @@ export function CollectorMobileApp({
 
   function openCloseConfirm() {
     if (!onCloseDay || dayLocked) return;
+    if (!routeDispatched.length) return;
     setMenuOpen(false);
     setExpandedKey(null);
     setEditingExpenses(false);
@@ -615,9 +776,14 @@ export function CollectorMobileApp({
       routeRef,
       collectorRef: collector.ref,
       collectorName: collector.name,
-      collected: recaudo.total,
-      collectedEfectivo: recaudo.efectivo,
-      expenses: savedExpenses,
+      collected: planillaRecaudo.total,
+      collectedEfectivo: planillaRecaudo.efectivo,
+      expenses: isPrimaryPlanilla
+        ? savedExpenses
+        : savedExpenses.filter(
+            (row) => row.category === "prestamo_ruta" || row.id === "prestamo",
+          ),
+      planillaRoute: activePlanillaRoute ?? undefined,
     });
     setConfirmingClose(false);
     // Queda en el home de cierre (mismo panel para todos).
@@ -642,7 +808,12 @@ export function CollectorMobileApp({
     !editingExpenses &&
     !reviewingLoans &&
     !confirmingClose &&
-    !collectorHasOpenPlanillaWork(queue);
+    (activePlanillaRoute
+      ? planillaLocked ||
+        (routeDispatched.length === 0 &&
+          !collectorHasOpenPlanillaWork(queue) &&
+          queue.closed)
+      : !collectorHasOpenPlanillaWork(queue));
   const chromeLocked = dayLocked || showHomeCuadre;
 
   const dayExpenseSplit = useMemo(
@@ -658,13 +829,13 @@ export function CollectorMobileApp({
     () =>
       buildCollectorHistoryPlanillaRows({
         dateIso: activeDate,
-        dispatched: queue.dispatched,
-        payments: dayPays,
+        dispatched: routeDispatched,
+        payments: routeDayPays,
         loans,
         clients,
         expenses: savedExpenses,
       }),
-    [activeDate, clients, dayPays, loans, queue.dispatched, savedExpenses],
+    [activeDate, clients, routeDayPays, loans, routeDispatched, savedExpenses],
   );
 
   const pendingRouteStarts = routeBlockStarts(visibleItems, (item) =>
@@ -672,7 +843,7 @@ export function CollectorMobileApp({
   );
   /** Mismos cobros del día, orden ruta → #, para la raya entre las dos hojas. */
   const dayPaysByRoute = useMemo(() => {
-    return dayPays
+    return routeDayPays
       .slice()
       .sort((a, b) => {
         const loanA = loans.find((row) => row.ref === a.loanRef);
@@ -689,20 +860,25 @@ export function CollectorMobileApp({
           payerName(a, loans, clients).localeCompare(payerName(b, loans, clients), "es")
         );
       });
-  }, [clients, dayPays, loans]);
+  }, [clients, routeDayPays, loans]);
   const doneRouteStarts = routeBlockStarts(dayPaysByRoute, (pay) => {
     const loan = loans.find((row) => row.ref === pay.loanRef);
     return clients.find((row) => row.ref === loan?.clientRef)?.route;
   });
 
-  /** Totales = pagos reales del día (mismo número que banco Debe / “Lo que cobró”). */
-  const topRecaudo = recaudo.total;
+  /** Totales de la planilla activa (ruta 1.1 sin datos = ceros reales). */
+  const topRecaudo = planillaRecaudo.total;
   const dayLoanRows = useMemo(
     () => dayLoanDisbursementRows(activeDate, savedExpensesRaw, loans, clients, loanScope),
     [activeDate, savedExpensesRaw, loans, clients, loanScope],
   );
-  const topGastos = dayExpenseSplit.otrosTotal;
+  const topGastos = isPrimaryPlanilla ? dayExpenseSplit.otrosTotal : 0;
   const topPrestamos = dayLoanDisbursementTotal(dayLoanRows);
+  const headerInicial = isPrimaryPlanilla ? dayCuadre.saldoInicial : 0;
+  const pendingCollectShown = activePlanillaRoute
+    ? routePendingCollectCount
+    : queue.pendingCollectCount;
+  const planillaPrestadoEfectivo = isPrimaryPlanilla || topPrestamos > 0 ? prestadoEfectivo : 0;
 
   const openPlanillaDates = useMemo(
     () => new Set(routeOptions.filter((row) => !row.closed).map((row) => row.date)),
@@ -722,81 +898,133 @@ export function CollectorMobileApp({
       )}
 
       <header className="collector-mobile-header">
-        <div className="collector-mobile-brand">
-          <div className="collector-mobile-logo-col">
-            <img src="/logo-ca-prestamo.png" alt="CA préstamo" className="brand-logo" />
+        <div className="collector-mobile-header-top">
+          <div className="collector-mobile-brand">
+            <div className="collector-mobile-logo-col">
+              <img src="/logo-ca-prestamo.png" alt="CA préstamo" className="brand-logo" />
+            </div>
+            <div className="collector-mobile-user-meta">
+              <div className="collector-mobile-greet-line">
+                <p className="collector-mobile-greet">
+                  Hola, {collector.name.split(" ")[0]}
+                </p>
+                <span className="collector-mobile-date">{queue.dateLabel}</span>
+              </div>
+            </div>
           </div>
-          <div className="collector-mobile-user-meta">
-            <p className="collector-mobile-greet">Hola, {collector.name.split(" ")[0]}</p>
-            <span className="collector-mobile-date">{queue.dateLabel}</span>
-          </div>
-        </div>
-        {!chromeLocked ? (
-          <div
-            className="collector-mobile-header-inicial"
-            title="Saldo en caja al iniciar el día (cierre del día anterior)"
-          >
-            <span>Inicial</span>
-            <b>{money(dayCuadre.saldoInicial)}</b>
-          </div>
-        ) : null}
-        <div className="collector-mobile-menu" ref={menuRef}>
-          <button
-            type="button"
-            className={
-              menuOpen
-                ? "collector-mobile-menu-trigger is-open"
-                : "collector-mobile-menu-trigger"
-            }
-            aria-expanded={menuOpen}
-            aria-haspopup="menu"
-            aria-label="Menú"
-            title="Menú"
-            onClick={() => setMenuOpen((open) => !open)}
-          >
-            <span className="collector-mobile-menu-bars" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-          </button>
-          {menuOpen ? (
-            <div className="collector-mobile-menu-panel" role="menu">
-              <button
-                type="button"
-                role="menuitem"
-                className="collector-mobile-menu-item"
-                onClick={openHistory}
-              >
-                Historial
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                className="collector-mobile-menu-item"
-                disabled={!canCloseDay}
-                title="Revisar y confirmar cierre del día"
-                onClick={openCloseConfirm}
-              >
-                {confirmingClose ? "Revisando…" : "Cerrar día"}
-              </button>
-              {onLogout && !preview ? (
+          <div className="collector-mobile-menu" ref={menuRef}>
+            <button
+              type="button"
+              className={
+                menuOpen
+                  ? "collector-mobile-menu-trigger is-open"
+                  : "collector-mobile-menu-trigger"
+              }
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+              aria-label="Menú"
+              title="Menú"
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <span className="collector-mobile-menu-bars" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+            </button>
+            {menuOpen ? (
+              <div className="collector-mobile-menu-panel" role="menu">
                 <button
                   type="button"
                   role="menuitem"
-                  className="collector-mobile-menu-item is-exit"
-                  title="Salir de la app"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onLogout();
-                  }}
+                  className="collector-mobile-menu-item"
+                  onClick={openHistory}
                 >
-                  Salir
+                  Historial
                 </button>
-              ) : null}
-            </div>
-          ) : null}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="collector-mobile-menu-item"
+                  disabled={!canCloseDay}
+                  title={
+                    activePlanillaRoute
+                      ? `Revisar y cerrar planilla ${activePlanillaRoute}`
+                      : "Revisar y confirmar cierre del día"
+                  }
+                  onClick={openCloseConfirm}
+                >
+                  {confirmingClose
+                    ? "Revisando…"
+                    : activePlanillaRoute
+                      ? `Cerrar planilla ${activePlanillaRoute}`
+                      : "Cerrar día"}
+                </button>
+                {onLogout && !preview ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="collector-mobile-menu-item is-exit"
+                    title="Salir de la app"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onLogout();
+                    }}
+                  >
+                    Salir
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div>
+        {!chromeLocked || (planillaRoutePins.length > 1 && !showHomeCuadre) ? (
+          <div className="collector-mobile-header-bar">
+            {!chromeLocked ? (
+              <div
+                className="collector-mobile-header-inicial"
+                title="Saldo en caja al iniciar el día (cierre del día anterior)"
+              >
+                <span>Inicial</span>
+                <b>{money(headerInicial)}</b>
+              </div>
+            ) : null}
+            {planillaRoutePins.length > 1 && !showHomeCuadre ? (
+              <div
+                className="collector-mobile-route-pins"
+                role="group"
+                aria-label="Planilla por ruta"
+              >
+                {planillaRoutePins.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className={
+                      activePlanillaRoute && sameRoute(activePlanillaRoute, name)
+                        ? "collector-mobile-route-pin on"
+                        : "collector-mobile-route-pin"
+                    }
+                    title={`Planilla ruta ${name}`}
+                    aria-label={`Planilla ruta ${name}`}
+                    aria-pressed={Boolean(
+                      activePlanillaRoute && sameRoute(activePlanillaRoute, name),
+                    )}
+                    onClick={() => {
+                      setExpandedKey(null);
+                      setReviewingLoans(false);
+                      setEditingExpenses(false);
+                      setConfirmingClose(false);
+                      setListFilter("pending");
+                      setPlanillaRouteFilter(name);
+                    }}
+                  >
+                    <b>{name}</b>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </header>
 
       {historyOpen ? (
@@ -808,7 +1036,10 @@ export function CollectorMobileApp({
         >
           <header className="collector-mobile-history-panel-head">
             <div>
-              <h2 id="collector-history-title">Historial</h2>
+              <h2 id="collector-history-title">
+                Historial
+                {activePlanillaRoute ? ` · ${activePlanillaRoute}` : ""}
+              </h2>
               <span>Últimos {COLLECTOR_HISTORY_KEEP_DAYS} días</span>
             </div>
             <button
@@ -950,7 +1181,7 @@ export function CollectorMobileApp({
           })}
         >
           <span>Por cobrar</span>
-          <b>{queue.pendingCollectCount}</b>
+          <b>{pendingCollectShown}</b>
         </button>
         <button
           type="button"
@@ -999,13 +1230,19 @@ export function CollectorMobileApp({
                 ? "collector-mobile-stat on collector-mobile-stat-close is-gastos"
                 : "collector-mobile-stat collector-mobile-stat-close is-gastos"
           }
-          disabled={chromeLocked ? true : !onSaveExpenses || !queue.dispatched.length}
+          disabled={
+            chromeLocked
+              ? true
+              : !onSaveExpenses || !isPrimaryPlanilla || !queue.dispatched.length
+          }
           title={
             chromeLocked
               ? "Jornada cerrada"
               : !onSaveExpenses
                 ? "Sin permiso para gastos"
-                : !queue.dispatched.length
+                : !isPrimaryPlanilla
+                  ? "Gastos en la planilla principal"
+                  : !queue.dispatched.length
                   ? "Sin planilla"
                   : "Gastos del día"
           }
@@ -1046,7 +1283,7 @@ export function CollectorMobileApp({
           <div className="collector-mobile-home-cuadre-grid is-inicio-triple">
             <div className="is-inicial">
               <span>Lo que inició</span>
-              <b>{money(dayCuadre.saldoInicial)}</b>
+              <b>{money(headerInicial)}</b>
             </div>
             <div className="is-prestamos">
               <span>Lo que prestó</span>
@@ -1064,30 +1301,40 @@ export function CollectorMobileApp({
               <div className="is-cobrado-means" aria-label="Desglose de lo cobrado">
                 <div className="is-mean is-pay-efectivo">
                   <span>Efectivo</span>
-                  <b>{money(dayCuadre.cobradoEfectivo)}</b>
+                  <b>{money(planillaRecaudo.efectivo)}</b>
                 </div>
                 <div className="is-mean is-pay-nequi">
                   <span>Nequi</span>
-                  <b>{money(dayCuadre.cobradoNequi)}</b>
+                  <b>{money(planillaRecaudo.nequi)}</b>
                 </div>
                 <div className="is-mean is-pay-banco">
                   <span>Banco</span>
-                  <b>{money(dayCuadre.cobradoBanco)}</b>
+                  <b>{money(planillaRecaudo.banco)}</b>
                 </div>
               </div>
             </div>
 
             <div className="is-saldo">
               <span>Caja (efectivo − gastos − préstamos)</span>
-              <b>{money(dayCuadre.saldo)}</b>
+              <b>
+                {money(
+                  isPrimaryPlanilla
+                    ? dayCuadre.saldo
+                    : planillaRecaudo.efectivo - topPrestamos,
+                )}
+              </b>
             </div>
           </div>
           <CollectorDayCloseExtras
-            dateLabel={queue.dateLabel}
+            dateLabel={
+              activePlanillaRoute
+                ? `${queue.dateLabel} · ${activePlanillaRoute}`
+                : queue.dateLabel
+            }
             planillaRows={closedPlanilla}
             prestamos={dayExpenseSplit.prestamos}
             prestamosTotal={topPrestamos}
-            otrosGastos={dayExpenseSplit.otros}
+            otrosGastos={isPrimaryPlanilla ? dayExpenseSplit.otros : []}
             otrosTotal={topGastos}
             searchOpen={planillaSearchOpen}
             searchQuery={planillaQuery}
@@ -1128,13 +1375,24 @@ export function CollectorMobileApp({
         />
       ) : confirmingClose && onCloseDay ? (
         <CollectorCloseDayConfirm
-          dateLabel={queue.dateLabel}
-          collected={recaudo.total}
-          efectivo={recaudo.efectivo}
-          nequi={recaudo.nequi}
-          banco={recaudo.banco}
-          expenses={savedExpenses}
-          pendingCount={queue.pendingCollectCount}
+          dateLabel={
+            activePlanillaRoute
+              ? `${queue.dateLabel} · planilla ${activePlanillaRoute}`
+              : queue.dateLabel
+          }
+          collected={planillaRecaudo.total}
+          efectivo={planillaRecaudo.efectivo}
+          nequi={planillaRecaudo.nequi}
+          banco={planillaRecaudo.banco}
+          expenses={
+            isPrimaryPlanilla
+              ? savedExpenses
+              : savedExpenses.filter(
+                  (row) =>
+                    row.category === "prestamo_ruta" || row.id === "prestamo",
+                )
+          }
+          pendingCount={pendingCollectShown}
           onCancel={() => setConfirmingClose(false)}
           onConfirm={confirmCloseDay}
         />
@@ -1146,27 +1404,27 @@ export function CollectorMobileApp({
           <div className="collector-mobile-cuadre-grid">
             <div className="is-pay-efectivo">
               <em>Efectivo</em>
-              <b>{money(recaudo.efectivo)}</b>
+              <b>{money(planillaRecaudo.efectivo)}</b>
             </div>
             <div className="is-pay-nequi">
               <em>Nequi</em>
-              <b>{money(recaudo.nequi)}</b>
+              <b>{money(planillaRecaudo.nequi)}</b>
             </div>
             <div className="is-pay-banco">
               <em>Banco</em>
-              <b>{money(recaudo.banco)}</b>
+              <b>{money(planillaRecaudo.banco)}</b>
             </div>
             <div className="is-total">
               <em>Total</em>
-              <b>{money(recaudo.total)}</b>
+              <b>{money(planillaRecaudo.total)}</b>
             </div>
-            {prestadoEfectivo > 0 ? (
+            {planillaPrestadoEfectivo > 0 ? (
               <div
                 className="is-prestado"
                 title="Capital prestado hoy en efectivo: sale del efectivo cobrado"
               >
                 <em>Prestado</em>
-                <b>−{money(prestadoEfectivo)}</b>
+                <b>−{money(planillaPrestadoEfectivo)}</b>
               </div>
             ) : null}
           </div>

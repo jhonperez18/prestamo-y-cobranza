@@ -31,7 +31,6 @@ export function CollectorDayCloseExtras({
   dateLabel,
   planillaRows,
   prestamos,
-  prestamosTotal,
   otrosGastos = [],
   otrosTotal = 0,
   searchOpen = false,
@@ -52,11 +51,7 @@ export function CollectorDayCloseExtras({
   return (
     <>
       {prestamos.length > 0 ? (
-        <div className="collector-history-loans" aria-label={`Préstamos nuevos ${dateLabel}`}>
-          <p className="collector-history-loans-title">
-            <strong>Préstamos nuevos</strong>
-            <span>{money(prestamosTotal, { symbol: false })}</span>
-          </p>
+        <div className="collector-history-loans" aria-label={`Préstamos ${dateLabel}`}>
           <ul>
             {prestamos.map((line) => (
               <li key={`${line.id}:${line.loanRef || line.label}`}>
@@ -65,9 +60,6 @@ export function CollectorDayCloseExtras({
               </li>
             ))}
           </ul>
-          <p className="collector-history-loans-note">
-            Sale de caja del cobrador · va aparte del gasto operativo
-          </p>
         </div>
       ) : null}
 

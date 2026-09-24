@@ -34,6 +34,7 @@ import {
   applyDeclineLoanOfferToRoute,
   applySkipToRoute,
   closeDispatchDay,
+  collectorDayVisitsFullyClosed,
   DECLINED_LOAN_OFFER_TODAY_REASON,
   declineLoanOfferToday,
   NO_PAY_TODAY_REASON,
@@ -45,6 +46,7 @@ import {
   buildDayExpenseDraft,
   buildMonthCloseRecord,
   dayExpenseLineMovementRef,
+  expensesForCollectorDay,
   finalizeCollectorDayClose,
   removeDayExpenseDraft,
   upsertAndTrimCollectorDayClose,
@@ -53,6 +55,7 @@ import {
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
+import { collectorRecaudoBreakdown } from "@/lib/collector-mobile";
 import type { MiscPayment } from "@/lib/misc-payments";
 import {
   ensureBankAccounts,
@@ -664,54 +667,6 @@ export function CollectorShell({ session, onLogout }: Props) {
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
     );
     writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, accounts);
-    const lines = payload.expenses.filter((row) => row.amount > 0);
-
-    const record = finalizeCollectorDayClose({
-      draft: {
-        collectorRef: payload.collectorRef,
-        collectorName: payload.collectorName,
-        date: payload.date,
-        routeRef: payload.routeRef,
-        collected: payload.collected,
-        expenses: lines,
-      },
-      lines,
-      cashCollected: payload.collectedEfectivo,
-      movementRefs: lines.map((line) =>
-        dayExpenseLineMovementRef(payload.collectorRef, payload.date, line.id, line.loanRef),
-      ),
-    });
-    const closes = loadDemoDayCloses<CollectorDayCloseRecord>();
-    const nextCloses = upsertAndTrimCollectorDayClose(closes, record);
-    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextCloses);
-    setDayCloses(nextCloses);
-    queueDayCloseMirror(record);
-    void flushOpsMirrorQueues().catch(() => {
-      /* cola offline reintenta */
-    });
-
-    const nextDrafts = removeDayExpenseDraft(
-      dayExpenseDrafts,
-      payload.collectorRef,
-      payload.date,
-    );
-    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
-    setDayExpenseDrafts(nextDrafts);
-
-    writeDemoJson(
-      DEMO_BANK_MOVEMENTS_KEY,
-      syncBankLedger({
-        payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, payments),
-        movements: normalizeBankMovements(
-          readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
-        ),
-        accounts,
-        miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-        dayExpenseDrafts: nextDrafts,
-        dayCloses: nextCloses,
-        loans,
-      }),
-    );
 
     const result = closeDispatchDay(
       dailyAssignments,
@@ -723,7 +678,89 @@ export function CollectorShell({ session, onLogout }: Props) {
       clients,
       payload.collectorRef,
       payments,
+      payload.planillaRoute,
     );
+
+    const fullyClosed = collectorDayVisitsFullyClosed(
+      result.assignments,
+      payload.collectorRef,
+      payload.date,
+    );
+
+    const closes = loadDemoDayCloses<CollectorDayCloseRecord>();
+    let nextCloses = closes;
+    let nextDrafts = dayExpenseDrafts;
+    let record: CollectorDayCloseRecord | null = null;
+
+    if (fullyClosed) {
+      const dayExpenses = expensesForCollectorDay(
+        payload.collectorRef,
+        payload.date,
+        closes,
+        dayExpenseDrafts,
+      );
+      const lines = (dayExpenses.length ? dayExpenses : payload.expenses).filter(
+        (row) => row.amount > 0,
+      );
+      const breakdown = collectorRecaudoBreakdown(
+        payload.collectorRef,
+        payload.date,
+        payments,
+        collectors,
+      );
+      record = finalizeCollectorDayClose({
+        draft: {
+          collectorRef: payload.collectorRef,
+          collectorName: payload.collectorName,
+          date: payload.date,
+          routeRef: payload.routeRef,
+          collected: breakdown.total,
+          expenses: lines,
+        },
+        lines,
+        cashCollected: breakdown.efectivo,
+        movementRefs: lines.map((line) =>
+          dayExpenseLineMovementRef(
+            payload.collectorRef,
+            payload.date,
+            line.id,
+            line.loanRef,
+          ),
+        ),
+      });
+      nextCloses = upsertAndTrimCollectorDayClose(closes, record);
+      writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextCloses);
+      setDayCloses(nextCloses);
+      queueDayCloseMirror(record);
+
+      nextDrafts = removeDayExpenseDraft(
+        dayExpenseDrafts,
+        payload.collectorRef,
+        payload.date,
+      );
+      writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
+      setDayExpenseDrafts(nextDrafts);
+
+      writeDemoJson(
+        DEMO_BANK_MOVEMENTS_KEY,
+        syncBankLedger({
+          payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, payments),
+          movements: normalizeBankMovements(
+            readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
+          ),
+          accounts,
+          miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
+          dayExpenseDrafts: nextDrafts,
+          dayCloses: nextCloses,
+          loans,
+        }),
+      );
+    }
+
+    void flushOpsMirrorQueues().catch(() => {
+      /* cola offline reintenta */
+    });
+
     const closedAssignments = applyDayCloseRecordsToAssignments(
       result.assignments,
       nextCloses,
@@ -745,11 +782,25 @@ export function CollectorShell({ session, onLogout }: Props) {
     setLoans(alertResult.loans);
     writeDemoJson(DEMO_LOANS_KEY, alertResult.loans);
 
+    if (!fullyClosed) {
+      const label = payload.planillaRoute
+        ? `Planilla ${payload.planillaRoute} cerrada`
+        : "Planilla cerrada";
+      showToast(
+        `${label} · sigue otra hoja abierta. ${formatCloseDayAlertSummary(alertResult.alerted, alertResult.toMora) || ""}`.trim(),
+      );
+      return;
+    }
+
     const parts = [
-      `caja menor ${money(record.cashFloat)}`,
-      record.expensesTotal > 0 ? `gastos ${money(record.expensesTotal)} (Haber)` : null,
+      record ? `caja menor ${money(record.cashFloat)}` : null,
+      record && record.expensesTotal > 0
+        ? `gastos ${money(record.expensesTotal)} (Haber)`
+        : null,
       formatCloseDayAlertSummary(alertResult.alerted, alertResult.toMora),
-      !accounts.length && lines.length ? "sin cuenta banco: gastos quedan en cierre" : null,
+      !accounts.length && record && record.expensesTotal > 0
+        ? "sin cuenta banco: gastos quedan en cierre"
+        : null,
     ].filter(Boolean);
     showToast(`Día cerrado · ${parts.join(" · ")}.`);
   }
