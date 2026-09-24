@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Pill } from "@/components/ui";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import { CollectorClosedDayReview } from "@/components/CollectorClosedDayReview";
+import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { buildLoanReport } from "@/lib/loan-report";
 import { shareLoanFichaCapture } from "@/lib/loan-ficha-share";
@@ -16,6 +17,18 @@ import {
   NO_PAY_TODAY_REASON,
 } from "@/lib/collector-dispatch-sync";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import {
+  buildCollectorHistoryPlanillaRows,
+  splitDayExpenses,
+} from "@/lib/collector-history-planilla";
+import {
+  collectorDayPayments,
+  collectorRecaudoBreakdown,
+  visitStatusKind,
+  visitStatusLabel,
+  visitStatusLabelShort,
+} from "@/lib/collector-mobile";
+import { todayIso } from "@/lib/daily-dispatch";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 import { isValidPlanillaAssignment } from "@/lib/planilla-eligibility";
 import {
@@ -34,19 +47,13 @@ import {
 import {
   buildCollectorDayHistory,
   expensesForCollectorDay,
+  normalizeHistoryDate,
   openingSaldoForPeriod,
   periodFromDateIso,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
-import {
-  collectorRecaudoBreakdown,
-  visitStatusKind,
-  visitStatusLabel,
-  visitStatusLabelShort,
-} from "@/lib/collector-mobile";
-import { todayIso } from "@/lib/daily-dispatch";
 import {
   enrichSupervisorPlanillaRow,
 } from "@/lib/planilla-display";
@@ -82,7 +89,6 @@ import {
   type StatusKind,
   type UserRow,
 } from "@/lib/mock-data";
-import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import {
   ensureCollectorDayBaseline,
   markCollectorDaySeen,
@@ -556,11 +562,16 @@ function ClientesTable({
         </thead>
         <tbody>
           {rows.map((row, index) => {
+            const awaitingLoan = !row.hasLoan;
             return (
               <tr
                 key={row.ref}
                 className={
-                  [onOpen ? "is-clickable" : "", routeStarts[index] ? "is-route-start" : ""]
+                  [
+                    onOpen ? "is-clickable" : "",
+                    routeStarts[index] ? "is-route-start" : "",
+                    awaitingLoan ? "is-awaiting-loan" : "",
+                  ]
                     .filter(Boolean)
                     .join(" ") || undefined
                 }
@@ -574,12 +585,20 @@ function ClientesTable({
                   {row.phone}
                 </td>
                 <td className="is-cuotas">
-                  {row.hasLoan ? <CuotasProgressCell progress={row.cuotas} /> : "—"}
+                  {awaitingLoan ? (
+                    <span className="supervisor-prestar-tag" title="Sin préstamo · listo para prestar">
+                      Prestar
+                    </span>
+                  ) : (
+                    <CuotasProgressCell progress={row.cuotas} />
+                  )}
                 </td>
                 <td className="is-num">
-                  {row.hasLoan && row.saldo != null
-                    ? money(row.saldo, { symbol: false })
-                    : "—"}
+                  {awaitingLoan
+                    ? "—"
+                    : row.saldo != null
+                      ? money(row.saldo, { symbol: false })
+                      : "—"}
                 </td>
               </tr>
             );
@@ -1449,6 +1468,53 @@ export function SupervisorMobileApp({
     monthCloses,
   ]);
 
+  const openRouteHistoryDayExpenses = useMemo(() => {
+    if (!openRoute || !cajaHistoryDayIso) return [];
+    return expensesForCollectorDay(
+      openRoute.collectorRef,
+      cajaHistoryDayIso,
+      dayCloses,
+      dayExpenseDrafts,
+    );
+  }, [openRoute, cajaHistoryDayIso, dayCloses, dayExpenseDrafts]);
+
+  const openRouteHistoryDayExpenseSplit = useMemo(
+    () => splitDayExpenses(openRouteHistoryDayExpenses),
+    [openRouteHistoryDayExpenses],
+  );
+
+  const openRouteHistoryDayPlanilla = useMemo(() => {
+    if (!openRoute || !cajaHistoryDayIso) return [];
+    const dayVisits = assignments.filter(
+      (row) =>
+        row.collectorRef === openRoute.collectorRef &&
+        normalizeHistoryDate(row.dispatchDate) === cajaHistoryDayIso,
+    );
+    const dayPays = collectorDayPayments(
+      openRoute.collectorRef,
+      cajaHistoryDayIso,
+      payments,
+      collectors,
+    );
+    return buildCollectorHistoryPlanillaRows({
+      dateIso: cajaHistoryDayIso,
+      dispatched: dayVisits,
+      payments: dayPays,
+      loans,
+      clients,
+      expenses: openRouteHistoryDayExpenses,
+    });
+  }, [
+    openRoute,
+    cajaHistoryDayIso,
+    assignments,
+    payments,
+    collectors,
+    loans,
+    clients,
+    openRouteHistoryDayExpenses,
+  ]);
+
   const openRouteNequiDayTotal = openRouteNequiDayPays.reduce(
     (sum, row) => sum + (row.amount ?? 0),
     0,
@@ -2152,6 +2218,19 @@ export function SupervisorMobileApp({
                 <div className="is-gastos">
                   <span>Lo que gastó</span>
                   <b>{money(openRouteHistoryDayCuadre.gastosHoy)}</b>
+                  {openRouteHistoryDayExpenseSplit.total > 0 ? (
+                    <small className="collector-cuadre-gasto-split">
+                      Préstamos{" "}
+                      {money(openRouteHistoryDayExpenseSplit.prestamosTotal, {
+                        symbol: false,
+                      })}
+                      {openRouteHistoryDayExpenseSplit.otrosTotal > 0
+                        ? ` · Otros ${money(openRouteHistoryDayExpenseSplit.otrosTotal, {
+                            symbol: false,
+                          })}`
+                        : ""}
+                    </small>
+                  ) : null}
                 </div>
                 <div className="is-cobrado">
                   <div className="is-cobrado-head">
@@ -2177,6 +2256,14 @@ export function SupervisorMobileApp({
                   <b>{money(openRouteHistoryDayCuadre.enCaja)}</b>
                 </div>
               </div>
+              <CollectorDayCloseExtras
+                dateLabel={cajaHistoryDayIso ? isoToDisplay(cajaHistoryDayIso) : ""}
+                planillaRows={openRouteHistoryDayPlanilla}
+                prestamos={openRouteHistoryDayExpenseSplit.prestamos}
+                prestamosTotal={openRouteHistoryDayExpenseSplit.prestamosTotal}
+                otrosGastos={openRouteHistoryDayExpenseSplit.otros}
+                otrosTotal={openRouteHistoryDayExpenseSplit.otrosTotal}
+              />
             </section>
           ) : detailMode === "historial-dia" ? (
             <p className="ficha-empty">Sin datos de cierre para ese día.</p>
@@ -3428,6 +3515,20 @@ export function SupervisorMobileApp({
                     suppressGhostClick();
                     if (clientesModifyMode) {
                       openClientesEdit(ref);
+                      return;
+                    }
+                    const row = clientesListRows.find((entry) => entry.ref === ref);
+                    if (row && !row.hasLoan && onCreateQuickLoan) {
+                      const client = clients.find((entry) => entry.ref === ref);
+                      const routeName = String(client?.route || row.route || "").trim();
+                      const board = liquidaciones.find((entry) =>
+                        sameRoute(entry.routeName, routeName),
+                      );
+                      setNuevoMode("prestamo");
+                      setNuevoRouteRef(board?.routeRef ?? null);
+                      setNuevoLoanClientRef(ref);
+                      setNuevoClientSearch("");
+                      goToView("nuevo");
                       return;
                     }
                     setClientesLoanClientRef(ref);

@@ -37,10 +37,13 @@ import {
 } from "@/lib/daily-dispatch";
 import { buildDailyCollectionList, type DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
+  applyDeclineLoanOfferToRoute,
   applySkipToRoute,
   assignmentFromItem,
   buildDispatchRoute,
   closeDispatchDay,
+  DECLINED_LOAN_OFFER_TODAY_REASON,
+  declineLoanOfferToday,
   dispatchRouteRef,
   markAssignmentsDispatched,
   NO_PAY_TODAY_REASON,
@@ -1874,16 +1877,25 @@ export function useWorkspace({
   }
 
   function skipCollectorVisit(draft: CollectorSkipVisitDraft) {
-    const nextAssignments = skipAssignmentVisit(dailyAssignments, {
-      collectorRef: draft.collectorRef,
-      dispatchDate: draft.dispatchDate,
-      loanRef: draft.loanRef,
-      clientRef: draft.clientRef,
-      reason: draft.reason,
-    });
+    const declinedOffer = draft.reason === DECLINED_LOAN_OFFER_TODAY_REASON;
+    const nextAssignments = declinedOffer
+      ? declineLoanOfferToday(dailyAssignments, {
+          collectorRef: draft.collectorRef,
+          dispatchDate: draft.dispatchDate,
+          clientRef: draft.clientRef,
+        })
+      : skipAssignmentVisit(dailyAssignments, {
+          collectorRef: draft.collectorRef,
+          dispatchDate: draft.dispatchDate,
+          loanRef: draft.loanRef,
+          clientRef: draft.clientRef,
+          reason: draft.reason,
+        });
     const nextRoutes = routes.map((row) =>
       row.ref === draft.routeRef
-        ? applySkipToRoute(row, draft.loanRef, draft.clientRef)
+        ? declinedOffer
+          ? applyDeclineLoanOfferToRoute(row, draft.clientRef)
+          : applySkipToRoute(row, draft.loanRef, draft.clientRef)
         : row,
     );
     setDailyAssignments(nextAssignments);
@@ -1893,11 +1905,13 @@ export function useWorkspace({
     queueAssignmentsMirror(nextAssignments);
     queueRoutesMirror(nextRoutes);
     onToast(
-      draft.reason === NO_PAY_TODAY_REASON
-        ? "Sale de por cobrar. Quedó en S/N."
-        : draft.reason
-          ? `Visita omitida · ${draft.reason}.`
-          : "Visita omitida.",
+      declinedOffer
+        ? "Sale de por cobrar. Prestar sigue disponible si cambia de opinión."
+        : draft.reason === NO_PAY_TODAY_REASON
+          ? "Sale de por cobrar. Quedó en S/N."
+          : draft.reason
+            ? `Visita omitida · ${draft.reason}.`
+            : "Visita omitida.",
     );
   }
 

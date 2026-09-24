@@ -485,9 +485,17 @@ export const NO_PAY_TODAY_REASON = "Hoy no tiene plata";
 /** Lo que el cierre automático deja en la lista S/N. */
 export const DAY_CLOSE_SKIP_REASON = "Cierre de jornada";
 
+/**
+ * Oferta de préstamo declinada hoy (visto rojo junto a Prestar).
+ * Sale de por cobrar; no quita capacidad de prestar después ni entra a S/N de cobros.
+ */
+export const DECLINED_LOAN_OFFER_TODAY_REASON = "Hoy no quiere préstamo";
+
 /** Fila de la lista S/N: el cobrador la envió, o quedó sin pagar al cerrar el día. */
 export function isNoPayListRow(row: DailyCollectionAssignment) {
   if (row.visitStatus !== "omitido") return false;
+  // Declinar Prestar no es «sin pago»: proceso aparte.
+  if (row.skipReason === DECLINED_LOAN_OFFER_TODAY_REASON) return false;
   if (row.awaitingLoan || !String(row.loanRef || "").trim()) return false;
   if (row.skipReason === NO_PAY_TODAY_REASON) return true;
   return Boolean(row.dayClosedAt) && (row.skipReason === DAY_CLOSE_SKIP_REASON || !row.skipReason);
@@ -518,10 +526,59 @@ export function skipAssignmentVisit(
   });
 }
 
+/**
+ * Visto rojo: cliente habilitado para prestar dijo que no hoy.
+ * Solo filas awaitingLoan del clientRef; no toca cobros N/P.
+ */
+export function declineLoanOfferToday(
+  assignments: DailyCollectionAssignment[],
+  input: {
+    collectorRef: string;
+    dispatchDate: string;
+    clientRef: string;
+  },
+): DailyCollectionAssignment[] {
+  const clientRef = input.clientRef.trim();
+  if (!clientRef) return assignments;
+  return assignments.map((row) => {
+    if (row.dispatchDate !== input.dispatchDate) return row;
+    if (row.collectorRef !== input.collectorRef) return row;
+    if (row.clientRef !== clientRef) return row;
+    if (!isAssignmentAwaitingLoan(row)) return row;
+    if (row.visitStatus === "cobrado") return row;
+    return {
+      ...row,
+      visitStatus: "omitido" as const,
+      skipReason: DECLINED_LOAN_OFFER_TODAY_REASON,
+    };
+  });
+}
+
 export function applySkipToRoute(route: RouteRow, loanRef: string, clientRef?: string): RouteRow {
   const stops = route.stops.map((stop) => {
     if (stop.loanRef !== loanRef) return stop;
     if (clientRef && stop.clientRef !== clientRef) return stop;
+    if (stop.visitStatus === "cobrado") return stop;
+    return { ...stop, visitStatus: "omitido" as const };
+  });
+  const pending = stops.filter(
+    (stop) => stop.visitStatus === "pendiente" || stop.visitStatus === "parcial",
+  ).length;
+  return {
+    ...route,
+    stops,
+    status: pending > 0 ? route.status : "Cerrada",
+    kind: pending > 0 ? route.kind : "paid",
+  };
+}
+
+/** Misma omisión en la ruta despachada: solo paradas sin préstamo de ese cliente. */
+export function applyDeclineLoanOfferToRoute(route: RouteRow, clientRef: string): RouteRow {
+  const ref = clientRef.trim();
+  if (!ref) return route;
+  const stops = route.stops.map((stop) => {
+    if (stop.clientRef !== ref) return stop;
+    if (String(stop.loanRef || "").trim()) return stop;
     if (stop.visitStatus === "cobrado") return stop;
     return { ...stop, visitStatus: "omitido" as const };
   });

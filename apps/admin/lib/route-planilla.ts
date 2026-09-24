@@ -2,8 +2,10 @@ import { clientsOnRouteSorted } from "@/lib/client-route-order";
 import {
   assignmentFromItem,
   buildDispatchRoute,
+  DECLINED_LOAN_OFFER_TODAY_REASON,
   upsertDispatchRoute,
 } from "@/lib/collector-dispatch-sync";
+import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
 import {
   collectionAlertLabel,
   collectionChargeKind,
@@ -336,16 +338,34 @@ export function syncPermanentRoutePlanilla(
       // Cada préstamo de hoy se queda en la ruta. El ya cobrado sale en cobrado,
       // no se borra: si se borra, el recaudo desaparece y solo quedan los gastos.
       let dayItems = items;
-      if (!dayItems.length) {
-        const settledToday = existing.some((prev) => {
-          if (prev.dispatchDate !== date) return false;
-          if (prev.collectorRef !== collector.ref) return false;
-          if (prev.clientRef !== client.ref) return false;
-          if (prev.visitStatus === "omitido") return true;
-          const linked = (prev.paymentRef || "").trim();
-          return Boolean(linked && livePaymentsByRef.has(linked));
-        });
-        if (!settledToday) dayItems = [awaitingLoanItemForClient(client, date)];
+      const owesOpen = activeLoans(loans).some(
+        (loan) => loan.clientRef === client.ref && loanOwes(loan, payments) > 0,
+      );
+      const finishedToday = items.some((item) => {
+        if (!item.loanRef) return false;
+        const loan = loans.find((row) => row.ref === item.loanRef);
+        if (!loan) return false;
+        return loanPaidOnDate(loan.ref, date, payments) && loanOwes(loan, payments) <= 0;
+      });
+      const declinedPrestarToday = existing.some((prev) => {
+        if (prev.dispatchDate !== date) return false;
+        if (prev.collectorRef !== collector.ref) return false;
+        if (prev.clientRef !== client.ref) return false;
+        if (prev.visitStatus !== "omitido") return false;
+        return (
+          prev.skipReason === DECLINED_LOAN_OFFER_TODAY_REASON ||
+          isAssignmentAwaitingLoan(prev)
+        );
+      });
+      // Sin crédito abierto: oferta Prestar (azul). Terminar hoy no la quita;
+      // solo el visto rojo (declinar) saca de la lista del día.
+      if (!owesOpen && !declinedPrestarToday) {
+        const offer = awaitingLoanItemForClient(client, date);
+        if (!dayItems.length) {
+          dayItems = [offer];
+        } else if (finishedToday && !dayItems.some((item) => item.id.includes(":prestar"))) {
+          dayItems = [...dayItems, offer];
+        }
       }
       for (const item of dayItems) {
         const base = {

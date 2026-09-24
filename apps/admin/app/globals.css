@@ -2166,6 +2166,89 @@
     .collector-history-planilla li.is-vacio:nth-child(even) {
       background: #dbeafe;
     }
+    .collector-history-planilla li.is-lent,
+    .collector-history-planilla li.is-lent:nth-child(odd),
+    .collector-history-planilla li.is-lent:nth-child(even) {
+      background: #e5e7eb;
+      color: #4b5563;
+    }
+    .collector-history-planilla .is-method.is-pay-prestamo {
+      color: #4b5563;
+      font-weight: 700;
+    }
+    .collector-history-loans {
+      margin: 12px 0 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #f3f4f6;
+      border: 1px solid #d1d5db;
+    }
+    .collector-history-loans.is-otros {
+      background: #fff7ed;
+      border-color: #fed7aa;
+    }
+    .collector-history-loans-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 0 0 8px;
+      font-size: 12px;
+    }
+    .collector-history-loans-title strong {
+      font-size: 13px;
+      color: #111827;
+    }
+    .collector-history-loans-title span {
+      font-weight: 700;
+      color: #374151;
+    }
+    .collector-history-loans ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 4px;
+    }
+    .collector-history-loans li {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .collector-history-loans .is-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .collector-history-loans .is-amount {
+      flex: 0 0 auto;
+      font-weight: 700;
+    }
+    .collector-history-loans-note {
+      margin: 8px 0 0;
+      font-size: 10px;
+      color: #6b7280;
+    }
+    .collector-cuadre-gasto-split {
+      display: block;
+      margin-top: 2px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #6b7280;
+      line-height: 1.2;
+    }
+    .collector-mobile-card.is-lent-today {
+      background: #e5e7eb !important;
+      border-color: #9ca3af;
+      border-left: 3px solid #6b7280;
+    }
+    .collector-mobile-list.compact > .collector-mobile-card.is-dense.is-lent-today:nth-child(odd),
+    .collector-mobile-list.compact > .collector-mobile-card.is-dense.is-lent-today:nth-child(even) {
+      background: #e5e7eb;
+    }
     .collector-history-planilla li.is-empty-search {
       display: block;
       grid-template-columns: none;
@@ -2531,6 +2614,15 @@
       align-items: center;
       gap: 3px;
     }
+    .collector-mobile-card.is-awaiting-loan .collector-mobile-dense-row {
+      grid-template-columns: 1.05rem minmax(0, 1fr) 4.6rem 3.9rem 2.6rem;
+      grid-template-areas: "ord who saldo cuota pay";
+    }
+    .collector-mobile-card.is-awaiting-loan .collector-mobile-dense-actions.is-lend-pair {
+      grid-area: pay;
+      justify-self: end;
+      gap: 5px;
+    }
     .collector-mobile-pay-sticker {
       appearance: none;
       border: 0;
@@ -2568,6 +2660,17 @@
     }
     .collector-mobile-pay-sticker.is-lend-check:not(:disabled):hover svg circle {
       fill: #bfdbfe;
+    }
+    .collector-mobile-pay-sticker.is-decline-lend-check {
+      width: 16px;
+      height: 16px;
+    }
+    .collector-mobile-pay-sticker.is-decline-lend-check svg {
+      width: 16px;
+      height: 16px;
+    }
+    .collector-mobile-pay-sticker.is-decline-lend-check:not(:disabled):hover svg circle {
+      fill: #fecaca;
     }
     .collector-mobile-dense-row .collector-mobile-pay-link {
       font-size: 11px;
@@ -5943,6 +6046,12 @@
     }
     .supervisor-liq-table tbody tr.is-awaiting-loan > td {
       background: #eff6ff;
+    }
+    .supervisor-liq-table tbody tr.is-awaiting-loan > td:first-child {
+      box-shadow: inset 3px 0 0 #2563eb;
+    }
+    .supervisor-clientes-table tbody tr.is-awaiting-loan > td.is-cuotas {
+      color: #1d4ed8;
     }
     .supervisor-prestar-tag {
       display: inline-flex;
