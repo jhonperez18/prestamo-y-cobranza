@@ -1,6 +1,7 @@
 "use client";
 
 import { cashFloatAfterExpenses, sumExpenseLines, type RouteExpenseLine } from "@/lib/collector-day-close";
+import { splitDayExpenses } from "@/lib/collector-history-planilla";
 import { money } from "@/lib/mock-data";
 
 type Props = {
@@ -26,6 +27,7 @@ export function CollectorCloseDayConfirm({
   onCancel,
   onConfirm,
 }: Props) {
+  const split = splitDayExpenses(expenses);
   const expensesTotal = sumExpenseLines(expenses);
   const cashFloat = cashFloatAfterExpenses(efectivo, expensesTotal);
 
@@ -58,28 +60,43 @@ export function CollectorCloseDayConfirm({
       </div>
 
       <div className="collector-close-confirm-block">
+        <div className="is-prestamos">
+          <em>Préstamos</em>
+          <b>{money(split.prestamosTotal)}</b>
+        </div>
         <div>
           <em>Gastos</em>
-          <b>{money(expensesTotal)}</b>
+          <b>{money(split.otrosTotal)}</b>
         </div>
         <div className="is-float">
-          <em>Caja (efectivo − gastos)</em>
+          <em>Caja (efectivo − gastos − préstamos)</em>
           <b>{money(cashFloat)}</b>
         </div>
       </div>
 
-      {expenses.length > 0 ? (
-        <ul className="collector-close-confirm-expenses">
-          {expenses.map((line) => (
-            <li key={line.id}>
+      {split.prestamos.length > 0 ? (
+        <ul className="collector-close-confirm-expenses is-prestamos" aria-label="Préstamos del día">
+          {split.prestamos.map((line) => (
+            <li key={`${line.id}:${line.loanRef || line.label}`} className="is-prestamo">
               <span>{line.label}</span>
               <b>{money(line.amount)}</b>
             </li>
           ))}
         </ul>
-      ) : (
-        <p className="collector-close-confirm-empty">Sin gastos registrados.</p>
-      )}
+      ) : null}
+
+      {split.otros.length > 0 ? (
+        <ul className="collector-close-confirm-expenses" aria-label="Gastos del día">
+          {split.otros.map((line) => (
+            <li key={`${line.id}:${line.label}`}>
+              <span>{line.label}</span>
+              <b>{money(line.amount)}</b>
+            </li>
+          ))}
+        </ul>
+      ) : split.prestamos.length === 0 ? (
+        <p className="collector-close-confirm-empty">Sin gastos ni préstamos registrados.</p>
+      ) : null}
 
       {pendingCount > 0 ? (
         <p className="receipt-error" role="alert">

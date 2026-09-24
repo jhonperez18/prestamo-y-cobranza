@@ -613,7 +613,12 @@ export function BankExtractView({
                 return (
                   <tr
                     key={row.ref}
-                    className={isExpense ? "bank-row-expense" : "bank-row-income"}
+                    className={[
+                      isExpense ? "bank-row-expense" : "bank-row-income",
+                      isExpense && row.category === "prestamo_ruta" ? "is-prestamo-ruta" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
                     onClick={() => openRowTarget(row)}
                     style={{ cursor: "pointer" }}
                   >

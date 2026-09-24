@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { CollectorCloseDayConfirm } from "@/components/CollectorCloseDayConfirm";
 import { CollectorCloseDaySheet } from "@/components/CollectorCloseDaySheet";
 import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
+import { CollectorDayLoansPanel } from "@/components/CollectorDayLoansPanel";
 import { CollectorPayForm } from "@/components/CollectorPayForm";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
@@ -20,6 +21,9 @@ import {
 import {
   buildCollectorHistoryPlanillaRows,
   clientRefsLentOnDate,
+  dayLoanDisbursementRows,
+  dayLoanDisbursementTotal,
+  expensesWithDayLoans,
   splitDayExpenses,
 } from "@/lib/collector-history-planilla";
 import { todayIso } from "@/lib/daily-dispatch";
@@ -234,6 +238,7 @@ export function CollectorMobileApp({
   const [reloanPayRef, setReloanPayRef] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editingExpenses, setEditingExpenses] = useState(false);
+  const [reviewingLoans, setReviewingLoans] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -456,15 +461,26 @@ export function CollectorMobileApp({
     return anchor;
   }, [dayPays]);
 
-  const savedExpenses = useMemo(
+  const savedExpensesRaw = useMemo(
     () => expensesForCollectorDay(collector.ref, activeDate, dayCloses, dayExpenseDrafts),
     [activeDate, collector.ref, dayCloses, dayExpenseDrafts],
   );
+  const loanScope = useMemo(
+    () => ({ collectorRef: collector.ref, assignments }),
+    [assignments, collector.ref],
+  );
+  /** Gastos + desembolsos en efectivo del día (reconstruye si el cierre perdió la línea). */
+  const savedExpenses = useMemo(
+    () =>
+      expensesWithDayLoans(activeDate, savedExpensesRaw, loans, clients, loanScope),
+    [activeDate, savedExpensesRaw, loans, clients, loanScope],
+  );
   const savedExpensesTotal = savedExpenses.reduce((sum, row) => sum + row.amount, 0);
-  /** Capital prestado hoy en efectivo (sale del efectivo cobrado; ya va dentro de Gastos). */
-  const prestadoEfectivo = savedExpenses
-    .filter((row) => row.category === "prestamo_ruta")
-    .reduce((sum, row) => sum + row.amount, 0);
+  /** Capital prestado hoy en efectivo (sale del efectivo cobrado). */
+  const prestadoEfectivo = useMemo(
+    () => dayLoanDisbursementTotal(dayLoanDisbursementRows(activeDate, savedExpensesRaw, loans, clients, loanScope)),
+    [activeDate, savedExpensesRaw, loans, clients, loanScope],
+  );
 
   const dayCuadre = useMemo(() => {
     const periodOpening = openingSaldoForPeriod(collector.ref, viewPeriod, monthCloses);
@@ -502,6 +518,7 @@ export function CollectorMobileApp({
   useEffect(() => {
     setExpandedKey(null);
     setEditingExpenses(false);
+    setReviewingLoans(false);
     setConfirmingClose(false);
   }, [activeDate]);
 
@@ -513,6 +530,7 @@ export function CollectorMobileApp({
     if (expandedKey === key) return;
     suppressGhostClick(720);
     setPayCombo(false);
+    setReviewingLoans(false);
     setExpandedKey(key);
   }
 
@@ -526,6 +544,7 @@ export function CollectorMobileApp({
   function selectFilter(next: ListFilter) {
     if (isNavQuiet()) return;
     setEditingExpenses(false);
+    setReviewingLoans(false);
     setConfirmingClose(false);
     // Misma pestaña: no resetear (evita que un click fantasma al abrir cobro cierre el panel).
     if (next === listFilter) return;
@@ -541,7 +560,17 @@ export function CollectorMobileApp({
     if (!onSaveExpenses) return;
     setExpandedKey(null);
     setConfirmingClose(false);
+    setReviewingLoans(false);
     setEditingExpenses(true);
+  }
+
+  function openLoansDetail() {
+    if (isNavQuiet()) return;
+    if (dayLocked) return;
+    setExpandedKey(null);
+    setConfirmingClose(false);
+    setEditingExpenses(false);
+    setReviewingLoans(true);
   }
 
   function openRecaudoDetail() {
@@ -552,12 +581,15 @@ export function CollectorMobileApp({
 
   function saveExpenses(expenses: RouteExpenseLine[]) {
     if (!onSaveExpenses) return;
+    // Conservar desembolsos de préstamo (no se editan en el sheet de gastos).
+    const prestamos = savedExpenses.filter((row) => row.category === "prestamo_ruta");
+    const operativos = expenses.filter((row) => row.category !== "prestamo_ruta");
     onSaveExpenses({
       date: activeDate,
       routeRef,
       collectorRef: collector.ref,
       collectorName: collector.name,
-      expenses,
+      expenses: [...prestamos, ...operativos],
     });
     setEditingExpenses(false);
   }
@@ -567,6 +599,7 @@ export function CollectorMobileApp({
     setMenuOpen(false);
     setExpandedKey(null);
     setEditingExpenses(false);
+    setReviewingLoans(false);
     setConfirmingClose(true);
   }
 
@@ -602,11 +635,12 @@ export function CollectorMobileApp({
     });
   }
 
-  const reviewingPanel = editingExpenses || confirmingClose;
+  const reviewingPanel = editingExpenses || confirmingClose || reviewingLoans;
   /** Sin planilla abierta → mismo inicio (último cierre + saldo) para todos los cobradores. */
   const showHomeCuadre =
     listFilter === "pending" &&
     !editingExpenses &&
+    !reviewingLoans &&
     !confirmingClose &&
     !collectorHasOpenPlanillaWork(queue);
   const chromeLocked = dayLocked || showHomeCuadre;
@@ -616,8 +650,8 @@ export function CollectorMobileApp({
     [savedExpenses],
   );
   const lentClientRefs = useMemo(
-    () => clientRefsLentOnDate(activeDate, savedExpenses, loans),
-    [activeDate, savedExpenses, loans],
+    () => clientRefsLentOnDate(activeDate, savedExpensesRaw, loans, clients, loanScope),
+    [activeDate, savedExpensesRaw, loans, clients, loanScope],
   );
 
   const closedPlanilla = useMemo(
@@ -663,7 +697,12 @@ export function CollectorMobileApp({
 
   /** Totales = pagos reales del día (mismo número que banco Debe / “Lo que cobró”). */
   const topRecaudo = recaudo.total;
-  const topGastos = savedExpensesTotal;
+  const dayLoanRows = useMemo(
+    () => dayLoanDisbursementRows(activeDate, savedExpensesRaw, loans, clients, loanScope),
+    [activeDate, savedExpensesRaw, loans, clients, loanScope],
+  );
+  const topGastos = dayExpenseSplit.otrosTotal;
+  const topPrestamos = dayLoanDisbursementTotal(dayLoanRows);
 
   const openPlanillaDates = useMemo(
     () => new Set(routeOptions.filter((row) => !row.closed).map((row) => row.date)),
@@ -692,6 +731,15 @@ export function CollectorMobileApp({
             <span className="collector-mobile-date">{queue.dateLabel}</span>
           </div>
         </div>
+        {!chromeLocked ? (
+          <div
+            className="collector-mobile-header-inicial"
+            title="Saldo en caja al iniciar el día (cierre del día anterior)"
+          >
+            <span>Inicial</span>
+            <b>{money(dayCuadre.saldoInicial)}</b>
+          </div>
+        ) : null}
         <div className="collector-mobile-menu" ref={menuRef}>
           <button
             type="button"
@@ -884,16 +932,7 @@ export function CollectorMobileApp({
         </div>
       ) : null}
 
-      <div className={chromeLocked ? "collector-mobile-stats" : "collector-mobile-stats has-inicial"}>
-        {!chromeLocked ? (
-          <div
-            className="collector-mobile-stat is-inicial readonly"
-            title="Saldo en caja al iniciar el día (cierre del día anterior)"
-          >
-            <span>Inicial</span>
-            <b>{money(dayCuadre.saldoInicial)}</b>
-          </div>
-        ) : null}
+      <div className="collector-mobile-stats has-prestamos">
         <button
           type="button"
           className={
@@ -936,6 +975,25 @@ export function CollectorMobileApp({
           type="button"
           className={
             chromeLocked
+              ? "collector-mobile-stat is-prestamos is-off"
+              : reviewingLoans
+                ? "collector-mobile-stat is-prestamos on"
+                : "collector-mobile-stat is-prestamos"
+          }
+          disabled={chromeLocked}
+          title={chromeLocked ? "Jornada cerrada" : "Préstamos del día"}
+          {...navButtonProps(navIntent, () => {
+            if (chromeLocked) return;
+            openLoansDetail();
+          })}
+        >
+          <span>Préstamos</span>
+          <b>{topPrestamos > 0 ? money(topPrestamos) : "—"}</b>
+        </button>
+        <button
+          type="button"
+          className={
+            chromeLocked
               ? "collector-mobile-stat collector-mobile-stat-close is-gastos is-off"
               : editingExpenses
                 ? "collector-mobile-stat on collector-mobile-stat-close is-gastos"
@@ -961,7 +1019,7 @@ export function CollectorMobileApp({
         </button>
       </div>
 
-      {isPastOpenDay && canCloseDay && !confirmingClose && !editingExpenses ? (
+      {isPastOpenDay && canCloseDay && !confirmingClose && !editingExpenses && !reviewingLoans ? (
         <div className="collector-mobile-month-alert" role="status">
           <p>
             El día {queue.dateLabel} sigue abierto. Los cobros ya hechos quedan registrados; cierra
@@ -985,22 +1043,18 @@ export function CollectorMobileApp({
             </div>
           </div>
 
-          <div className="collector-mobile-home-cuadre-grid">
+          <div className="collector-mobile-home-cuadre-grid is-inicio-triple">
             <div className="is-inicial">
               <span>Lo que inició</span>
               <b>{money(dayCuadre.saldoInicial)}</b>
             </div>
+            <div className="is-prestamos">
+              <span>Lo que prestó</span>
+              <b>{money(topPrestamos)}</b>
+            </div>
             <div className="is-gastos">
               <span>Lo que gastó</span>
-              <b>{money(dayCuadre.gastos)}</b>
-              {dayExpenseSplit.total > 0 ? (
-                <small className="collector-cuadre-gasto-split">
-                  Préstamos {money(dayExpenseSplit.prestamosTotal, { symbol: false })}
-                  {dayExpenseSplit.otrosTotal > 0
-                    ? ` · Otros ${money(dayExpenseSplit.otrosTotal, { symbol: false })}`
-                    : ""}
-                </small>
-              ) : null}
+              <b>{money(topGastos)}</b>
             </div>
 
             <div className="is-cobrado">
@@ -1024,7 +1078,7 @@ export function CollectorMobileApp({
             </div>
 
             <div className="is-saldo">
-              <span>Saldo en caja</span>
+              <span>Caja (efectivo − gastos − préstamos)</span>
               <b>{money(dayCuadre.saldo)}</b>
             </div>
           </div>
@@ -1032,9 +1086,9 @@ export function CollectorMobileApp({
             dateLabel={queue.dateLabel}
             planillaRows={closedPlanilla}
             prestamos={dayExpenseSplit.prestamos}
-            prestamosTotal={dayExpenseSplit.prestamosTotal}
+            prestamosTotal={topPrestamos}
             otrosGastos={dayExpenseSplit.otros}
-            otrosTotal={dayExpenseSplit.otrosTotal}
+            otrosTotal={topGastos}
             searchOpen={planillaSearchOpen}
             searchQuery={planillaQuery}
             onToggleSearch={() => setPlanillaSearchOpen((open) => !open)}
@@ -1050,17 +1104,27 @@ export function CollectorMobileApp({
       <>
       {editingExpenses && onSaveExpenses ? (
         <CollectorCloseDaySheet
-          key={`${collector.ref}-${activeDate}-${savedExpenses.map((r) => `${r.id}:${r.amount}`).join("|")}`}
+          key={`${collector.ref}-${activeDate}-${savedExpenses
+            .filter((r) => r.category !== "prestamo_ruta")
+            .map((r) => `${r.id}:${r.amount}`)
+            .join("|")}`}
           draft={{
             collectorRef: collector.ref,
             collectorName: collector.name,
             date: activeDate,
             routeRef,
             collected: recaudo.total,
-            expenses: savedExpenses,
+            expenses: savedExpenses.filter((row) => row.category !== "prestamo_ruta"),
           }}
           onCancel={() => setEditingExpenses(false)}
           onSave={saveExpenses}
+        />
+      ) : reviewingLoans ? (
+        <CollectorDayLoansPanel
+          dateLabel={queue.dateLabel}
+          rows={dayLoanRows}
+          total={topPrestamos}
+          onBack={() => setReviewingLoans(false)}
         />
       ) : confirmingClose && onCloseDay ? (
         <CollectorCloseDayConfirm

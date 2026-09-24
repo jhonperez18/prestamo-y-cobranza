@@ -25,6 +25,7 @@ import {
 } from "@/lib/planilla-eligibility";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 import { pendingBalance, pesos } from "@/lib/finance";
+import { displayToIso } from "@/lib/loan-preview";
 import {
   catalogRoutes,
   routeIsActive,
@@ -123,6 +124,9 @@ function loanItemsForClient(
     // Saldo 0 de un día anterior no vuelve a la ruta. El cobro de hoy sí queda.
     if (loan.clientRef !== client.ref || (owes <= 0 && !paidToday)) continue;
     if (isPendingReview(client)) continue;
+    // Crédito prestado hoy: la cuota entra a hoja de ruta al día siguiente.
+    const startedIso = displayToIso(String(loan.date || "").trim());
+    if (startedIso === date && !paidToday) continue;
     if (!loanIsCollectibleOn(loan, date)) continue;
 
     const installment = resolvedLoanInstallment(loan);

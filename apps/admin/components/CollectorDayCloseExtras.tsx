@@ -150,13 +150,13 @@ export function CollectorDayCloseExtras({
               visibleRows.map((row, index) => (
                 <li
                   key={row.key}
-                  className={[
-                    row.method === "vacio" ? "is-vacio" : "",
-                    row.lentToday || row.method === "prestamo" ? "is-lent" : "",
-                    routeStarts[index] ? "is-route-start" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ") || undefined}
+                    className={[
+                      row.method === "vacio" ? "is-vacio" : "",
+                      row.method === "prestamo" ? "is-lent" : "",
+                      routeStarts[index] ? "is-route-start" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ") || undefined}
                 >
                   <span className="is-ord">{row.order ?? "—"}</span>
                   <span className="is-name">{row.name}</span>

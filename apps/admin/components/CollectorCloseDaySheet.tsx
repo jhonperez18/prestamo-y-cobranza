@@ -112,7 +112,9 @@ export function CollectorCloseDaySheet({ draft, onCancel, onSave }: Props) {
           {rows.map((row, index) => {
             const taken = usedExpenseIds(row.key);
             const options = ROUTE_EXPENSE_ITEMS.filter(
-              (item) => !taken.has(item.id) || item.id === row.expenseId,
+              (item) =>
+                item.category !== "prestamo_ruta" &&
+                (!taken.has(item.id) || item.id === row.expenseId),
             );
             return (
               <li key={row.key} className="collector-close-expense-row">

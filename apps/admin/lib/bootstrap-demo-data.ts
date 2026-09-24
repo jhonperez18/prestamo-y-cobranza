@@ -190,9 +190,20 @@ function purgeOrphanDemoKeys() {
   }
 }
 
-function requestCloudCatalogRepair() {
+const SEED_DIURNO_ONCE_KEY = "nexo-seed-diurno-session";
+
+/**
+ * Repara catálogo DIURNO en SQL una sola vez por pestaña.
+ * Si se fuerza (hoja local incompleta) vuelve a pedir.
+ * Arranque limpio: no martillar seed-diurno en cada refresh.
+ */
+function requestCloudCatalogRepair(force = false) {
   if (typeof window === "undefined") return;
   try {
+    if (!force && window.sessionStorage.getItem(SEED_DIURNO_ONCE_KEY) === "1") {
+      return;
+    }
+    window.sessionStorage.setItem(SEED_DIURNO_ONCE_KEY, "1");
     // Nunca wipe desde login: solo siembra/repara DIURNO en SQL.
     void fetch("/api/ops/seed-diurno", {
       method: "POST",
@@ -249,24 +260,19 @@ export function bootstrapProtectedDemoData() {
 
   if (isCanonicalPackageInstalled()) {
     // Paquete marcado sin clientes = caché rota; reparar hoja DIURNO local.
+    let clientsShort = false;
     try {
       const local = JSON.parse(window.localStorage.getItem(DEMO_CLIENTS_KEY) || "[]");
       if (!Array.isArray(local) || local.length < DIURNO_ROUTE_NAMES.length) {
+        clientsShort = true;
         forceInstallJson(DEMO_CLIENTS_KEY, buildDiurnoRoute1Clients());
       }
     } catch {
+      clientsShort = true;
       forceInstallJson(DEMO_CLIENTS_KEY, buildDiurnoRoute1Clients());
     }
-    // Solo repara SQL si faltan; nunca wipe desde login.
-    try {
-      void fetch("/api/ops/seed-diurno", {
-        method: "POST",
-        headers: { "x-nexo-wipe-gen": DEMO_VIRGIN_WIPE_GEN },
-        cache: "no-store",
-      });
-    } catch {
-      /* ignore */
-    }
+    // Solo repara SQL si faltan; una vez por pestaña (no en cada F5).
+    requestCloudCatalogRepair(clientsShort);
     scrubLegacyMockDemoRows();
     return { restored: false, retention: applyDataRetention() };
   }

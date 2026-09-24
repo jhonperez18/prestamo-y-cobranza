@@ -578,6 +578,34 @@
       gap: 8px;
       align-items: flex-start;
       min-width: 0;
+      flex: 1 1 auto;
+    }
+    .collector-mobile-header-inicial {
+      flex: 0 0 auto;
+      display: grid;
+      gap: 1px;
+      align-content: center;
+      text-align: right;
+      padding: 3px 8px;
+      margin-top: 1px;
+      border-radius: 8px;
+      border: 1px solid #bfdbfe;
+      background: #eff6ff;
+      line-height: 1.1;
+      min-width: 4.6rem;
+    }
+    .collector-mobile-header-inicial span {
+      display: block;
+      font-size: 9px;
+      font-weight: 650;
+      color: #1e3a8a;
+    }
+    .collector-mobile-header-inicial b {
+      display: block;
+      font-size: 13px;
+      font-weight: 700;
+      color: #1d4ed8;
+      font-variant-numeric: tabular-nums;
     }
     .collector-mobile-logo-col {
       display: flex;
@@ -744,11 +772,29 @@
       background: #fff;
       border-bottom: 1px solid #dbe5df;
     }
+    .collector-mobile-stats.has-prestamos {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 3px;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+    .collector-mobile-stats.has-prestamos .collector-mobile-stat span {
+      font-size: 9px;
+    }
+    .collector-mobile-stats.has-prestamos .collector-mobile-stat b {
+      font-size: 10px;
+    }
     .collector-mobile-stats.has-inicial {
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 3px;
       padding-left: 8px;
       padding-right: 8px;
+    }
+    .collector-mobile-stats.has-inicial.has-prestamos {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 2px;
+      padding-left: 6px;
+      padding-right: 6px;
     }
     .collector-mobile-stat {
       text-align: center;
@@ -769,8 +815,14 @@
     .collector-mobile-stats.has-inicial .collector-mobile-stat span {
       font-size: 9px;
     }
+    .collector-mobile-stats.has-inicial.has-prestamos .collector-mobile-stat span {
+      font-size: 8px;
+    }
     .collector-mobile-stats.has-inicial .collector-mobile-stat b {
       font-size: 10px;
+    }
+    .collector-mobile-stats.has-inicial.has-prestamos .collector-mobile-stat b {
+      font-size: 9px;
     }
     .collector-mobile-stats.has-inicial .collector-mobile-stat-meta {
       font-size: 8px;
@@ -795,6 +847,13 @@
       background: #fee2e2;
       border-color: #fca5a5;
     }
+    .collector-mobile-stat.is-prestamos {
+      background: #e5e7eb;
+      border-color: #9ca3af;
+    }
+    .collector-mobile-stat.is-prestamos b {
+      color: #374151;
+    }
     .collector-mobile-stat.readonly {
       cursor: default;
     }
@@ -812,6 +871,10 @@
     .collector-mobile-stat.is-gastos.on {
       border-color: #dc2626;
       color: #991b1b;
+    }
+    .collector-mobile-stat.is-prestamos.on {
+      border-color: #4b5563;
+      color: #1f2937;
     }
     .collector-mobile-stat b {
       display: block;
@@ -968,9 +1031,101 @@
     .collector-close-confirm-block .is-float {
       background: #eef8f4;
       border-color: #b7e0d2;
+      grid-column: 1 / -1;
     }
     .collector-close-confirm-block .is-float b {
       color: #111;
+    }
+    .collector-close-confirm-block .is-prestamos {
+      background: #e5e7eb;
+      border-color: #9ca3af;
+    }
+    .collector-close-confirm-block .is-prestamos b {
+      color: #374151;
+    }
+    .collector-close-confirm-expenses.is-prestamos li,
+    .collector-close-confirm-expenses li.is-prestamo {
+      background: #e5e7eb;
+      border-radius: 4px;
+      padding: 4px 6px;
+    }
+    .collector-day-loans-panel {
+      padding: 10px 12px 16px;
+    }
+    .collector-day-loans-panel-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .collector-day-loans-panel-head h2 {
+      margin: 0;
+      font-size: 15px;
+    }
+    .collector-day-loans-panel-head p {
+      margin: 2px 0 0;
+      font-size: 12px;
+      color: #5b7268;
+    }
+    .collector-day-loans-empty {
+      margin: 12px 0;
+      font-size: 13px;
+      color: #5b7268;
+    }
+    .collector-day-loans-head,
+    .collector-day-loans-list li {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) 4.2rem 4.2rem;
+      gap: 6px;
+      align-items: baseline;
+      font-size: 12px;
+    }
+    .collector-day-loans-head {
+      font-weight: 700;
+      color: #374151;
+      padding: 0 4px 6px;
+      border-bottom: 1px solid #d1d5db;
+    }
+    .collector-day-loans-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    .collector-day-loans-list li {
+      padding: 7px 4px;
+      border-bottom: 1px solid #e5e7eb;
+      background: #f3f4f6;
+    }
+    .collector-day-loans-list li:nth-child(even) {
+      background: #e5e7eb;
+    }
+    .collector-day-loans-list .is-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .collector-day-loans-list .is-capital,
+    .collector-day-loans-list .is-cuota {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .collector-day-loans-list li.is-total {
+      background: #d1d5db;
+      font-weight: 700;
+      border-bottom: none;
+      margin-top: 4px;
+    }
+    .bank-table tbody tr.bank-row-expense.is-prestamo-ruta,
+    .bank-records-table tbody tr.bank-row-expense.is-prestamo-ruta,
+    table.data.list-grid.bank-extract-table tbody tr.bank-row-expense.is-prestamo-ruta {
+      background: #e5e7eb;
+    }
+    .bank-table tbody tr.bank-row-expense.is-prestamo-ruta:nth-child(even),
+    .bank-records-table tbody tr.bank-row-expense.is-prestamo-ruta:nth-child(even),
+    table.data.list-grid.bank-extract-table tbody tr.bank-row-expense.is-prestamo-ruta:nth-child(even) {
+      background: #d1d5db;
     }
     .collector-close-confirm-expenses {
       list-style: none;
@@ -1505,6 +1660,28 @@
       grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
+    .collector-mobile-home-cuadre-grid.is-inicio-triple {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .collector-mobile-home-cuadre-grid.is-inicio-triple .is-inicial,
+    .collector-mobile-home-cuadre-grid.is-inicio-triple .is-prestamos,
+    .collector-mobile-home-cuadre-grid.is-inicio-triple .is-gastos {
+      padding: 8px 6px;
+    }
+    .collector-mobile-home-cuadre-grid.is-inicio-triple .is-inicial span,
+    .collector-mobile-home-cuadre-grid.is-inicio-triple .is-prestamos span,
+    .collector-mobile-home-cuadre-grid.is-inicio-triple .is-gastos span {
+      font-size: 10px;
+    }
+    .collector-mobile-home-cuadre-grid.is-inicio-triple .is-inicial b,
+    .collector-mobile-home-cuadre-grid.is-inicio-triple .is-prestamos b,
+    .collector-mobile-home-cuadre-grid.is-inicio-triple .is-gastos b {
+      font-size: 13px;
+    }
+    .collector-mobile-home-cuadre-grid.is-inicio-triple .is-cobrado,
+    .collector-mobile-home-cuadre-grid.is-inicio-triple .is-saldo {
+      grid-column: 1 / -1;
+    }
     .collector-mobile-home-cuadre-grid > div,
     .collector-mobile-home-cuadre-grid > button {
       display: grid;
@@ -1624,6 +1801,13 @@
     }
     .collector-mobile-home-cuadre-grid .is-gastos b {
       color: #111;
+    }
+    .collector-mobile-home-cuadre-grid .is-prestamos {
+      border-color: #9ca3af;
+      background: #e5e7eb;
+    }
+    .collector-mobile-home-cuadre-grid .is-prestamos b {
+      color: #374151;
     }
     .collector-mobile-home-cuadre-grid .is-tap em {
       font-style: normal;
@@ -2416,7 +2600,7 @@
       box-sizing: border-box;
     }
     .collector-mobile-card.is-dense {
-      padding: var(--table-row-pad-y) var(--table-row-pad-x);
+      padding: var(--table-row-pad-y) 12px var(--table-row-pad-y) var(--table-row-pad-x);
       border-radius: 0;
       box-shadow: none;
       overflow: hidden;
@@ -2424,7 +2608,7 @@
       border-left: 0;
       border-right: 0;
       border-top: 0;
-      border-bottom: 1px solid #e2ece7;
+      border-bottom: 1px solid #cfdad4;
       background: var(--row-b);
       align-self: start;
       height: auto;
@@ -2452,7 +2636,7 @@
       border-bottom: 0;
     }
     .collector-mobile-card.is-done.is-dense {
-      padding: var(--table-row-pad-y) var(--table-row-pad-x);
+      padding: var(--table-row-pad-y) 12px var(--table-row-pad-y) var(--table-row-pad-x);
       border-radius: 0;
     }
     .collector-mobile-card.is-open {
@@ -2471,7 +2655,7 @@
     /* Lista densa: # | nombre… | saldo | cuota | Cuotas | billete */
     .collector-mobile-dense-row {
       display: grid;
-      grid-template-columns: 1.05rem minmax(0, 1fr) 4.6rem 3.9rem 3.4rem 1rem;
+      grid-template-columns: 1.05rem minmax(0, 1fr) 4.6rem 3.9rem 3.4rem 1.35rem;
       grid-template-areas: "ord who saldo cuota alert pay";
       column-gap: 4px;
       row-gap: 0;
@@ -2573,7 +2757,7 @@
       text-overflow: ellipsis;
       white-space: nowrap;
       line-height: 1.15;
-      font-size: 10px;
+      font-size: 12px;
       font-weight: 400;
       flex: 1 1 auto;
       min-width: 0;
@@ -2615,7 +2799,7 @@
       gap: 3px;
     }
     .collector-mobile-card.is-awaiting-loan .collector-mobile-dense-row {
-      grid-template-columns: 1.05rem minmax(0, 1fr) 4.6rem 3.9rem 2.6rem;
+      grid-template-columns: 1.05rem minmax(0, 1fr) 4.6rem 3.9rem 2.9rem;
       grid-template-areas: "ord who saldo cuota pay";
     }
     .collector-mobile-card.is-awaiting-loan .collector-mobile-dense-actions.is-lend-pair {
@@ -3201,7 +3385,7 @@
       align-content: start;
     }
     .collector-mobile-card.is-done.is-dense {
-      padding: var(--table-row-pad-y) var(--table-row-pad-x);
+      padding: var(--table-row-pad-y) 12px var(--table-row-pad-y) var(--table-row-pad-x);
       border-radius: 0;
       box-shadow: none;
     }
@@ -3211,7 +3395,7 @@
       box-shadow: none;
     }
     .collector-mobile-card.is-dense .collector-mobile-visit-who strong {
-      font-size: 10px;
+      font-size: 12px;
       font-weight: 400;
       color: #111;
     }

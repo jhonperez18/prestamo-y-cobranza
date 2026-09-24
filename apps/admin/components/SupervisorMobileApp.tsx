@@ -19,6 +19,7 @@ import {
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
   buildCollectorHistoryPlanillaRows,
+  expensesWithDayLoans,
   splitDayExpenses,
 } from "@/lib/collector-history-planilla";
 import {
@@ -1470,13 +1471,25 @@ export function SupervisorMobileApp({
 
   const openRouteHistoryDayExpenses = useMemo(() => {
     if (!openRoute || !cajaHistoryDayIso) return [];
-    return expensesForCollectorDay(
+    const raw = expensesForCollectorDay(
       openRoute.collectorRef,
       cajaHistoryDayIso,
       dayCloses,
       dayExpenseDrafts,
     );
-  }, [openRoute, cajaHistoryDayIso, dayCloses, dayExpenseDrafts]);
+    return expensesWithDayLoans(cajaHistoryDayIso, raw, loans, clients, {
+      collectorRef: openRoute.collectorRef,
+      assignments,
+    });
+  }, [
+    openRoute,
+    cajaHistoryDayIso,
+    dayCloses,
+    dayExpenseDrafts,
+    loans,
+    clients,
+    assignments,
+  ]);
 
   const openRouteHistoryDayExpenseSplit = useMemo(
     () => splitDayExpenses(openRouteHistoryDayExpenses),
@@ -2210,27 +2223,18 @@ export function SupervisorMobileApp({
                   </p>
                 </div>
               </div>
-              <div className="collector-mobile-home-cuadre-grid">
+              <div className="collector-mobile-home-cuadre-grid is-inicio-triple">
                 <div className="is-inicial">
                   <span>Lo que inició</span>
                   <b>{money(openRouteHistoryDayCuadre.saldoInicial)}</b>
                 </div>
+                <div className="is-prestamos">
+                  <span>Lo que prestó</span>
+                  <b>{money(openRouteHistoryDayExpenseSplit.prestamosTotal)}</b>
+                </div>
                 <div className="is-gastos">
                   <span>Lo que gastó</span>
-                  <b>{money(openRouteHistoryDayCuadre.gastosHoy)}</b>
-                  {openRouteHistoryDayExpenseSplit.total > 0 ? (
-                    <small className="collector-cuadre-gasto-split">
-                      Préstamos{" "}
-                      {money(openRouteHistoryDayExpenseSplit.prestamosTotal, {
-                        symbol: false,
-                      })}
-                      {openRouteHistoryDayExpenseSplit.otrosTotal > 0
-                        ? ` · Otros ${money(openRouteHistoryDayExpenseSplit.otrosTotal, {
-                            symbol: false,
-                          })}`
-                        : ""}
-                    </small>
-                  ) : null}
+                  <b>{money(openRouteHistoryDayExpenseSplit.otrosTotal)}</b>
                 </div>
                 <div className="is-cobrado">
                   <div className="is-cobrado-head">
@@ -2252,7 +2256,7 @@ export function SupervisorMobileApp({
                   </div>
                 </div>
                 <div className="is-saldo">
-                  <span>Saldo en caja</span>
+                  <span>Caja (efectivo − gastos − préstamos)</span>
                   <b>{money(openRouteHistoryDayCuadre.enCaja)}</b>
                 </div>
               </div>
