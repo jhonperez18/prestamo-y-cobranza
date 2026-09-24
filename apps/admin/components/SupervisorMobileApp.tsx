@@ -958,6 +958,8 @@ export function SupervisorMobileApp({
   /** Ficha de un préstamo concreto desde historial «Ver préstamos». */
   const [prestamoFichaRef, setPrestamoFichaRef] = useState<string | null>(null);
   const [prestamosSearch, setPrestamosSearch] = useState("");
+  /** Pin de ruta en Préstamos actuales (1 / 1.1 / 2). */
+  const [prestamosRouteFilter, setPrestamosRouteFilter] = useState<string | null>(null);
 
   useEffect(() => {
     writeSupervisorNav(view, openRouteRef);
@@ -991,6 +993,7 @@ export function SupervisorMobileApp({
     setPlanillaRouteFilter(null);
     setPrestamoFichaRef(null);
     setPrestamosSearch("");
+    setPrestamosRouteFilter(null);
     writeSupervisorNav("inicio", null);
   }, [supervisor.ref]);
 
@@ -1385,6 +1388,16 @@ export function SupervisorMobileApp({
   useEffect(() => {
     if (view !== "clientes") return;
     setClientesRouteFilter((prev) => {
+      if (planillaRoutePins.length === 0) return null;
+      if (prev && planillaRoutePins.some((name) => sameRoute(name, prev))) {
+        return prev;
+      }
+      return pickDefaultRoutePin(planillaRoutePins);
+    });
+  }, [view, planillaRoutePins]);
+  useEffect(() => {
+    if (view !== "prestamos") return;
+    setPrestamosRouteFilter((prev) => {
       if (planillaRoutePins.length === 0) return null;
       if (prev && planillaRoutePins.some((name) => sameRoute(name, prev))) {
         return prev;
@@ -1857,9 +1870,12 @@ export function SupervisorMobileApp({
     if (next === "banco") {
       setBancoRegistroRoute(pickDefaultRoutePin(nequiRegistroRoutePins));
     }
-    if (next !== "prestamos") {
+    if (next === "prestamos") {
+      setPrestamosRouteFilter(pickDefaultRoutePin(planillaRoutePins));
+    } else {
       setPrestamoFichaRef(null);
       setPrestamosSearch("");
+      setPrestamosRouteFilter(null);
     }
     foldSnHistory();
     setView(next);
@@ -1894,6 +1910,7 @@ export function SupervisorMobileApp({
     setClientesSearchOpen(false);
     setPrestamoFichaRef(null);
     setPrestamosSearch("");
+    setPrestamosRouteFilter(null);
     foldSnHistory();
     setView("inicio");
   }
@@ -2050,19 +2067,48 @@ export function SupervisorMobileApp({
   }, [assignments, clientesLoanClient, clientesLoanSynced, paymentsWithEvidence]);
   const clientesDetailOpen = Boolean(clientesLoanClientRef);
 
-  const prestamosHistorial = useMemo(() => {
-    const sorted = [...loans].sort((a, b) => {
-      const da = displayToIso(a.date) || a.date || "";
-      const db = displayToIso(b.date) || b.date || "";
-      return db.localeCompare(da) || b.ref.localeCompare(a.ref);
-    });
+  /** Préstamos actuales (saldo vivo): uno por cliente, el activo a la fecha. */
+  const prestamosActuales = useMemo(() => {
+    const byClient = new Map<string, LoanRow>();
+    for (const loan of loans) {
+      if (!loan.clientRef) continue;
+      const synced = syncLoan(loan, payments) as LoanRow;
+      if (synced.status === "Finalizado") continue;
+      if (!(Number(synced.balance) > 0)) continue;
+      const prev = byClient.get(loan.clientRef);
+      if (!prev) {
+        byClient.set(loan.clientRef, synced);
+        continue;
+      }
+      const da = displayToIso(synced.date) || synced.date || "";
+      const db = displayToIso(prev.date) || prev.date || "";
+      if (da.localeCompare(db) > 0 || (da === db && synced.ref.localeCompare(prev.ref) > 0)) {
+        byClient.set(loan.clientRef, synced);
+      }
+    }
+    let rows = [...byClient.values()];
+    if (prestamosRouteFilter) {
+      rows = rows.filter((loan) => {
+        const client = clients.find((row) => row.ref === loan.clientRef);
+        return sameRoute(client?.route, prestamosRouteFilter);
+      });
+    }
     const q = prestamosSearch.trim().toLowerCase();
-    if (!q) return sorted;
-    return sorted.filter((loan) => {
-      const hay = `${loan.client} ${loan.ref} ${loan.date} ${loan.clientRef || ""}`.toLowerCase();
-      return hay.includes(q);
+    if (q) {
+      rows = rows.filter((loan) => {
+        const hay = `${loan.client} ${loan.ref} ${loan.date} ${loan.clientRef || ""}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
+    return rows.sort((a, b) => {
+      const clientA = clients.find((row) => row.ref === a.clientRef);
+      const clientB = clients.find((row) => row.ref === b.clientRef);
+      const byRoute = compareRouteNames(clientA?.route || "", clientB?.route || "");
+      if (byRoute) return byRoute;
+      if (clientA && clientB) return compareClientsByRoutePosition(clientA, clientB);
+      return (a.client || "").localeCompare(b.client || "", "es");
     });
-  }, [loans, prestamosSearch]);
+  }, [clients, loans, payments, prestamosRouteFilter, prestamosSearch]);
 
   const prestamoFichaLoan = prestamoFichaRef
     ? loans.find((row) => row.ref === prestamoFichaRef) ?? null
@@ -3482,16 +3528,46 @@ export function SupervisorMobileApp({
             <>
               <div className="supervisor-mobile-detail-head">
                 <h3>Préstamos</h3>
-                <button
-                  type="button"
-                  className="collector-mobile-pay-link is-back"
-                  onClick={() => goToView("nuevo")}
-                >
-                  volver
-                </button>
+                <div className="supervisor-prestamos-head-actions">
+                  {planillaRoutePins.length > 0 ? (
+                    <div
+                      className="supervisor-planilla-route-btns"
+                      role="group"
+                      aria-label="Filtrar préstamos por ruta"
+                    >
+                      {planillaRoutePins.map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          className={
+                            prestamosRouteFilter && sameRoute(prestamosRouteFilter, name)
+                              ? "collector-mobile-route-pin on"
+                              : "collector-mobile-route-pin"
+                          }
+                          onClick={() =>
+                            setPrestamosRouteFilter((prev) =>
+                              prev && sameRoute(prev, name) ? null : name,
+                            )
+                          }
+                          title={`Ruta ${name}`}
+                          aria-label={`Ruta ${name}`}
+                        >
+                          <b>{name}</b>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="collector-mobile-pay-link is-back"
+                    onClick={() => goToView("nuevo")}
+                  >
+                    volver
+                  </button>
+                </div>
               </div>
               <label className="quick-loan-field supervisor-nuevo-search supervisor-prestamos-search">
-                <span className="sr-only">Buscar cliente</span>
+                <span className="sr-only">Buscar préstamo</span>
                 <input
                   value={prestamosSearch}
                   onChange={(event) => setPrestamosSearch(event.target.value)}
@@ -3499,16 +3575,18 @@ export function SupervisorMobileApp({
                   autoFocus
                 />
               </label>
-              {prestamosHistorial.length === 0 ? (
+              {prestamosActuales.length === 0 ? (
                 <p className="ficha-empty">
                   {prestamosSearch.trim()
-                    ? "No hay préstamos con ese filtro."
-                    : "Sin préstamos registrados."}
+                    ? "No hay préstamos activos con ese filtro."
+                    : prestamosRouteFilter
+                      ? `Sin préstamos activos en ruta ${prestamosRouteFilter}.`
+                      : "Sin préstamos activos."}
                 </p>
               ) : (
                 <ul
                   className="supervisor-mobile-list is-prestamos-hist"
-                  aria-label="Historial de préstamos"
+                  aria-label="Préstamos actuales"
                 >
                   <li className="is-head" aria-hidden>
                     <span className="is-client">Cliente</span>
@@ -3517,7 +3595,7 @@ export function SupervisorMobileApp({
                     <span className="is-amount">Total</span>
                     <span className="is-saldo">Saldo</span>
                   </li>
-                  {prestamosHistorial.map((loan) => {
+                  {prestamosActuales.map((loan) => {
                     const origin = loanDisbursementSource(loan);
                     const originClass =
                       origin === "nequi"
@@ -3527,7 +3605,6 @@ export function SupervisorMobileApp({
                           : origin === "banco"
                             ? "is-banco"
                             : "is-unknown";
-                    const synced = syncLoan(loan, payments) as LoanRow;
                     const dateShort = formatLoanListDate(loan.date);
                     const totalCobrar =
                       Number(loan.total) > 0
@@ -3553,7 +3630,7 @@ export function SupervisorMobileApp({
                             {money(totalCobrar, { symbol: false })}
                           </b>
                           <b className="is-saldo">
-                            {money(Math.max(0, synced.balance ?? 0), { symbol: false })}
+                            {money(Math.max(0, loan.balance ?? 0), { symbol: false })}
                           </b>
                         </button>
                       </li>
