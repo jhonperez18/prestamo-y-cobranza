@@ -17,6 +17,7 @@ import {
   type UserRow,
 } from "@/lib/mock-data";
 import { isOperationalClient } from "@/lib/client-review";
+import { compareRouteNames } from "@/lib/client-route-order";
 import {
   collectorProgramDays,
   dispatchRouteRef,
@@ -110,14 +111,26 @@ export function CollectorFicha({
   allowedTabs,
 }: Props) {
   const [payContext, setPayContext] = useState<PayContext | null>(null);
-  const permanentRoute = useMemo(
-    () => catalogRoutes(routes).find((row) => row.collectorRef === collector.ref) ?? null,
+  // Un cobrador puede tener varias rutas («1» mañana + «1.1» tarde).
+  const permanentRoutes = useMemo(
+    () =>
+      catalogRoutes(routes)
+        .filter((row) => row.collectorRef === collector.ref)
+        .sort((a, b) => compareRouteNames(a.name, b.name)),
     [routes, collector.ref],
   );
-  const routeClientCount = useMemo(() => {
-    if (!permanentRoute) return 0;
-    return clientsOnRouteListed(permanentRoute.name, clients).filter(isOperationalClient).length;
-  }, [permanentRoute, clients]);
+  const permanentRoute = permanentRoutes.length
+    ? { ...permanentRoutes[0], name: permanentRoutes.map((row) => row.name).join(" · ") }
+    : null;
+  const routeClientCount = useMemo(
+    () =>
+      permanentRoutes.reduce(
+        (sum, route) =>
+          sum + clientsOnRouteListed(route.name, clients).filter(isOperationalClient).length,
+        0,
+      ),
+    [permanentRoutes, clients],
+  );
   const programDays = collectorProgramDays(
     collector.ref,
     collector.name,

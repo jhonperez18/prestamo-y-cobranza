@@ -37,20 +37,54 @@ export function dedupeClientsByRef(clients: ClientRow[]): ClientRow[] {
   return [...byRef.values()];
 }
 
+/** Orden de rutas: "1" → "1.1" → "2" (la sub-planilla va detrás de su ruta madre). */
+export function compareRouteNames(a: string | undefined, b: string | undefined): number {
+  return migrateLegacyRouteName(String(a ?? "").trim()).localeCompare(
+    migrateLegacyRouteName(String(b ?? "").trim()),
+    undefined,
+    { numeric: true },
+  );
+}
+
+/** Ruta → # (posición). Base de toda lista operativa (planilla, app, supervisor). */
+export function compareRoutePosition(
+  aRoute: string | undefined,
+  aOrder: number | null | undefined,
+  bRoute: string | undefined,
+  bOrder: number | null | undefined,
+): number {
+  const routeCmp = compareRouteNames(aRoute, bRoute);
+  if (routeCmp !== 0) return routeCmp;
+  const ao = aOrder && aOrder > 0 ? aOrder : Number.MAX_SAFE_INTEGER;
+  const bo = bOrder && bOrder > 0 ? bOrder : Number.MAX_SAFE_INTEGER;
+  return ao - bo;
+}
+
 /**
  * Orden sagrado de cualquier lista de clientes: ruta → # → ref.
  * Todas las vistas (Listado, planilla, app, supervisor) deben usar esto.
  */
 export function compareClientsByRoutePosition(a: ClientRow, b: ClientRow): number {
-  const routeCmp = migrateLegacyRouteName(a.route || "").localeCompare(
-    migrateLegacyRouteName(b.route || ""),
-    undefined,
-    { numeric: true },
-  );
+  const routeCmp = compareRouteNames(a.route || "", b.route || "");
   if (routeCmp !== 0) return routeCmp;
   const orderCmp = (a.routeOrder || 0) - (b.routeOrder || 0);
   if (orderCmp !== 0) return orderCmp;
   return String(a.ref || "").localeCompare(String(b.ref || ""));
+}
+
+/**
+ * Bloques por ruta en una lista ya ordenada (ruta → #): `true` en la fila que
+ * abre una ruta distinta a la anterior. Ahí va la raya gris que separa
+ * «Ruta 1» de «Ruta 1.1» en planilla, app del cobrador y supervisor.
+ */
+export function routeBlockStarts<T>(rows: T[], routeOf: (row: T) => string | undefined): boolean[] {
+  let previous: string | null = null;
+  return rows.map((row) => {
+    const current = migrateLegacyRouteName(String(routeOf(row) ?? "").trim());
+    const starts = previous !== null && current !== previous;
+    previous = current;
+    return starts;
+  });
 }
 
 /** Clientes de una ruta ordenados por posición (1…N). Sin pendientes de revisión. */

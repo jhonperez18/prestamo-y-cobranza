@@ -23,6 +23,7 @@ import type {
   RouteStop,
 } from "@/lib/mock-data";
 import { paymentsForCollector } from "@/lib/mock-data";
+import { compareRoutePosition } from "@/lib/client-route-order";
 
 function recaudoFromPayments(
   collectorRef: string,
@@ -162,12 +163,7 @@ export function assignmentsForCollectorDate(
   clients: ClientRow[],
   payments?: CollectionPaymentTouch[],
 ) {
-  const orderOf = (clientRef: string) => {
-    const client = clients.find((row) => row.ref === clientRef);
-    return client?.routeOrder && client.routeOrder > 0
-      ? client.routeOrder
-      : Number.MAX_SAFE_INTEGER;
-  };
+  const compare = assignmentRoutePositionComparator(clients);
   return dedupePlanillaAssignments(
     assignments
       .filter(
@@ -180,10 +176,40 @@ export function assignmentsForCollectorDate(
     .map((row) => hydrateAssignment(row, loans, clients, payments))
     .sort(
       (a, b) =>
-        orderOf(a.clientRef) - orderOf(b.clientRef) ||
+        compare(a, b) ||
         a.clientName.localeCompare(b.clientName, "es") ||
         a.loanRef.localeCompare(b.loanRef),
     );
+}
+
+/** Ruta real de la fila de planilla: la del cliente (padre) y, si no, la sellada en la fila. */
+export function assignmentRouteName(
+  row: Pick<DailyCollectionAssignment, "clientRef" | "clientRoute">,
+  clients: ClientRow[],
+) {
+  const client = clients.find((entry) => entry.ref === row.clientRef);
+  return String(client?.route || row.clientRoute || "").trim();
+}
+
+/**
+ * Orden de una jornada con varias rutas del mismo cobrador:
+ * Ruta 1 (# 1…N) → Ruta 1.1 (# 1…N). Misma ley en app, supervisor y planilla.
+ */
+export function assignmentRoutePositionComparator(clients: ClientRow[]) {
+  const byRef = new Map(clients.map((row) => [row.ref, row]));
+  return (
+    a: Pick<DailyCollectionAssignment, "clientRef" | "clientRoute">,
+    b: Pick<DailyCollectionAssignment, "clientRef" | "clientRoute">,
+  ) => {
+    const ca = byRef.get(a.clientRef);
+    const cb = byRef.get(b.clientRef);
+    return compareRoutePosition(
+      ca?.route || a.clientRoute,
+      ca?.routeOrder,
+      cb?.route || b.clientRoute,
+      cb?.routeOrder,
+    );
+  };
 }
 
 export function assignmentsForCollector(
@@ -193,12 +219,7 @@ export function assignmentsForCollector(
   clients: ClientRow[],
   payments?: CollectionPaymentTouch[],
 ) {
-  const orderOf = (clientRef: string) => {
-    const client = clients.find((row) => row.ref === clientRef);
-    return client?.routeOrder && client.routeOrder > 0
-      ? client.routeOrder
-      : Number.MAX_SAFE_INTEGER;
-  };
+  const compare = assignmentRoutePositionComparator(clients);
   return dedupePlanillaAssignments(
     assignments
       .filter((row) => row.collectorRef === collectorRef)
@@ -208,7 +229,7 @@ export function assignmentsForCollector(
     .sort(
       (a, b) =>
         b.dispatchDate.localeCompare(a.dispatchDate) ||
-        orderOf(a.clientRef) - orderOf(b.clientRef) ||
+        compare(a, b) ||
         a.clientName.localeCompare(b.clientName, "es"),
     );
 }

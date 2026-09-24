@@ -442,7 +442,10 @@ export function syncPermanentRoutePlanilla(
   return { assignments, routes: nextRoutes };
 }
 
-/** Un cobrador = una ruta de catálogo (al reasignar, se libera la anterior). */
+/**
+ * Asigna el cobrador a una ruta de catálogo. Un cobrador puede tener varias
+ * rutas (ej. «1» mañana y «1.1» tarde): la planilla del día las une en ese orden.
+ */
 export function assignCollectorToCatalogRoute(
   routes: RouteRow[],
   routeRef: string,
@@ -451,16 +454,11 @@ export function assignCollectorToCatalogRoute(
 ): RouteRow[] {
   return routes.map((row) => {
     if (row.ref.startsWith("RUT-D-")) return row;
-    if (row.ref === routeRef) {
-      return {
-        ...row,
-        collectorRef: collectorRef || "",
-        collector: collectorRef ? collectorName : "—",
-      };
-    }
-    if (collectorRef && row.collectorRef === collectorRef) {
-      return { ...row, collectorRef: "", collector: "—" };
-    }
-    return row;
+    if (row.ref !== routeRef) return row;
+    return {
+      ...row,
+      collectorRef: collectorRef || "",
+      collector: collectorRef ? collectorName : "—",
+    };
   });
 }

@@ -19,6 +19,7 @@ import {
   type UserRow,
 } from "@/lib/mock-data";
 import { isOperationalClient } from "@/lib/client-review";
+import { compareRouteNames, sameRoute } from "@/lib/client-route-order";
 import { mobileAccessLabel } from "@/lib/access-preview";
 import { paymentsForDay, todayDispatchToken, todayIso } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
@@ -93,21 +94,24 @@ export function routeCoverageSummaries(
       const clientRows = clientsOnRouteListed(route.name, clients).filter(isOperationalClient);
       const clientRefs = new Set(clientRows.map((row) => row.ref));
 
+      // Cada ruta cuenta lo suyo: si el cobrador tiene «1» y «1.1», la fila
+      // se asigna por cliente/ruta y solo cae al cobrador si no se puede ubicar.
       const planillaToday = dedupePlanillaAssignments(
         assignments.filter((row) => {
           if (!row.dispatched || row.dispatchDate !== day) return false;
           if (clientRefs.has(row.clientRef)) return true;
+          if (row.clientRoute) return sameRoute(row.clientRoute, route.name);
           return Boolean(route.collectorRef && row.collectorRef === route.collectorRef);
         }),
       ).length;
 
       const collectedToday = todayPayments
         .filter((row) => {
-          if (route.collectorRef && row.collectorRef === route.collectorRef) return true;
           const payClientRef = clients.find(
             (c) => `${c.name} ${c.lastName}`.trim() === row.client,
           )?.ref;
-          return payClientRef ? clientRefs.has(payClientRef) : false;
+          if (payClientRef) return clientRefs.has(payClientRef);
+          return Boolean(route.collectorRef && row.collectorRef === route.collectorRef);
         })
         .reduce((sum, row) => sum + row.amount, 0);
 
@@ -164,13 +168,20 @@ export function enrichCollector(
   users: UserRow[] = [],
   roles: RoleRow[] = [],
 ): CollectorListItem {
-  const route = routesForCollector(collector.ref, routes)[0];
+  const ownedRoutes = routesForCollector(collector.ref, routes)
+    .slice()
+    .sort((a, b) => compareRouteNames(a.name, b.name));
   const status = collectorFieldStatus(collector, routes);
   const user = userForCollector(collector.ref, users);
   const role = user ? roleByRef(user.roleRef, roles) : roleByRef("ROL-1", roles);
   return {
     ...collector,
-    routeLabel: route ? `${route.name} · ${route.clients}` : "—",
+    routeLabel: ownedRoutes.length
+      ? `${ownedRoutes.map((route) => route.name).join(" · ")} · ${ownedRoutes.reduce(
+          (sum, route) => sum + (route.clients || 0),
+          0,
+        )}`
+      : "—",
     collected: collectedByCollectorRef(collector.ref, allCollectors, payments),
     statusLabel: status.label,
     statusKind: status.kind,

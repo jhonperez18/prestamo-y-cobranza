@@ -1,4 +1,5 @@
 import { pendingReviewClients } from "@/lib/client-review";
+import { sameRoute } from "@/lib/client-route-order";
 import {
   clientsNeedingProfileCompletion,
   loansNeedingOfficeReview,
@@ -205,13 +206,18 @@ function routeCard(
   assignments: DailyCollectionAssignment[],
   today: string,
 ): HomeRouteCard {
-  const catalogCount = clientsOnRouteListed(route.name, clients).length;
+  const catalogClients = clientsOnRouteListed(route.name, clients);
+  const catalogCount = catalogClients.length;
+  const routeClientRefs = new Set(catalogClients.map((row) => row.ref));
+  // Cada tarjeta cuenta solo su ruta: si el cobrador tiene «1» y «1.1»,
+  // las filas se reparten por el cliente/ruta, no por el cobrador.
   const dayRows = assignments.filter((row) => {
     if (!row.dispatched) return false;
     const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
     if (date !== today) return false;
-    if (route.collectorRef && row.collectorRef === route.collectorRef) return true;
-    return row.clientRoute === route.name;
+    if (routeClientRefs.has(row.clientRef)) return true;
+    if (row.clientRoute) return sameRoute(row.clientRoute, route.name);
+    return Boolean(route.collectorRef && row.collectorRef === route.collectorRef);
   });
   // En campo = solo planilla/cobros del día (nunca el catálogo CLIENTES).
   // Si no hay visitas cobrables, total 0 — no “saltar” a 81 del catálogo.

@@ -454,17 +454,37 @@ export const ROUTES: RouteRow[] = [
 ];
 
 
-export function nextRouteCode(rows: RouteRow[] = ROUTES) {
-  const nums = rows
-    .map((row) => Number(row.ref.replace(/^RUT-/i, "")))
+/**
+ * Siguiente `RUT-n` libre. `reservedRefs` = refs borradas/retiradas: un ref con
+ * lápida en otros aparatos no se reutiliza (el pull lo filtraría y la ruta no
+ * aparecería allí).
+ */
+export function nextRouteCode(rows: RouteRow[] = ROUTES, reservedRefs: readonly string[] = []) {
+  const nums = [...rows.map((row) => row.ref), ...reservedRefs]
+    .map((ref) => Number(String(ref).replace(/^RUT-/i, "")))
     .filter((value) => Number.isFinite(value));
   const next = nums.length ? Math.max(...nums) + 1 : 1;
   return `RUT-${next}`;
 }
 
-/** Nombre de ruta = solo dígitos ("1", "2"). */
+/**
+ * Nombre de ruta = número ("1", "2") o sub-planilla del mismo cobrador ("1.1").
+ * "1" y "1.1" son rutas distintas, cada una con su # 1…N.
+ */
 export function normalizeRouteNumber(input: string) {
-  return String(input ?? "").replace(/\D/g, "").replace(/^0+(?=\d)/, "");
+  const match = String(input ?? "").match(/\d+(?:\.\d+)?/);
+  if (!match) return "";
+  const [whole, sub] = match[0].split(".");
+  const main = whole.replace(/^0+(?=\d)/, "");
+  return sub !== undefined ? `${main}.${sub}` : main;
+}
+
+/** Texto permitido mientras se escribe el número de ruta: dígitos y un solo punto. */
+export function sanitizeRouteNumberInput(input: string) {
+  const cleaned = String(input ?? "").replace(/[^\d.]/g, "");
+  const firstDot = cleaned.indexOf(".");
+  if (firstDot === -1) return cleaned;
+  return cleaned.slice(0, firstDot + 1) + cleaned.slice(firstDot + 1).replace(/\./g, "");
 }
 
 /** Siguiente número libre entre rutas de catálogo. */

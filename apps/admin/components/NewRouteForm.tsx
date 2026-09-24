@@ -4,6 +4,7 @@ import { type FormEvent, useMemo, useState } from "react";
 import {
   normalizeRouteNumber,
   nextRouteNumber,
+  sanitizeRouteNumberInput,
   type RouteRow,
 } from "@/lib/mock-data";
 
@@ -34,7 +35,7 @@ export function NewRouteForm({ route, existingRoutes = [], onCancel, onSave }: P
     event.preventDefault();
     const value = normalizeRouteNumber(number);
     if (!value) {
-      setError("Indique el número de la ruta (solo dígitos).");
+      setError("Indique el número de la ruta (ej. 1, 2 o 1.1).");
       return;
     }
     const taken = existingRoutes.some(
@@ -67,20 +68,22 @@ export function NewRouteForm({ route, existingRoutes = [], onCancel, onSave }: P
               <input
                 id="route-number"
                 name="numero"
-                inputMode="numeric"
-                pattern="[0-9]*"
+                inputMode="decimal"
+                pattern="[0-9]+(\.[0-9]+)?"
                 required
                 autoFocus
                 placeholder="Ej. 1"
                 value={number}
                 onChange={(event) => {
-                  setNumber(normalizeRouteNumber(event.target.value));
+                  setNumber(sanitizeRouteNumberInput(event.target.value));
                   if (error) setError("");
                 }}
               />
             </div>
             {error ? <p className="form-error">{error}</p> : null}
-            <p className="form-hint">Solo números: 1, 2, 3…</p>
+            <p className="form-hint">
+              Números: 1, 2, 3… Una segunda planilla del mismo cobrador va como 1.1, 2.1…
+            </p>
           </div>
         </div>
 

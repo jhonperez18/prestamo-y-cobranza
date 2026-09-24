@@ -17,7 +17,11 @@ import {
 } from "@/components/ColumnPicker";
 import { money, ROUTES, type ClientRow } from "@/lib/mock-data";
 import { clientStatusKind } from "@/lib/client-review";
-import { compareClientsByRoutePosition } from "@/lib/client-route-order";
+import {
+  compareClientsByRoutePosition,
+  routeBlockStarts,
+  sameRoute,
+} from "@/lib/client-route-order";
 import { clientNeedsProfileCompletion } from "@/lib/profile-pending";
 import { Pill } from "@/components/ui";
 
@@ -95,11 +99,22 @@ type Props = {
   variant?: "default" | "revision";
   clientView?: ClientListView;
   canApprove?: boolean;
+  /**
+   * Rutas del catálogo (Listado): botones «Ruta 1» / «Ruta 2».
+   * Cada ruta tiene su propia # 1…N; separadas se organizan sin chocar.
+   */
+  routeTabs?: string[];
   onCreate: () => void;
   onOpen: (ref: string) => void;
   onApprove?: (refs: string[]) => void;
   onReject?: (refs: string[]) => void;
 };
+
+function sortRouteNames(names: string[]) {
+  return Array.from(new Set(names.map((name) => name.trim()).filter(Boolean))).sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true }),
+  );
+}
 
 function matches(value: string, query: string) {
   return value.toLowerCase().includes(query.trim().toLowerCase());
@@ -124,6 +139,7 @@ export function ClientList({
   variant = "default",
   clientView = "listado",
   canApprove = false,
+  routeTabs,
   onCreate,
   onOpen,
   onApprove,
@@ -134,6 +150,32 @@ export function ClientList({
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
   const [selected, setSelected] = useState<string[]>([]);
+
+  // Botones de ruta: catálogo + cualquier ruta que aún tenga clientes.
+  const routeNames = useMemo(
+    () =>
+      routeTabs
+        ? sortRouteNames([...routeTabs, ...rows.map((row) => row.route || "")])
+        : [],
+    [routeTabs, rows],
+  );
+  const [routeTab, setRouteTab] = useState<string | null>(null);
+  // Arranca en la primera ruta; si la ruta elegida desaparece, vuelve a la primera.
+  const activeRoute =
+    routeNames.length === 0
+      ? null
+      : routeTab === ""
+        ? null
+        : routeTab && routeNames.includes(routeTab)
+          ? routeTab
+          : routeNames[0] ?? null;
+  const routeCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const name of routeNames) {
+      counts.set(name, rows.filter((row) => sameRoute(row.route, name)).length);
+    }
+    return counts;
+  }, [routeNames, rows]);
 
   migrateClientColumnPrefs();
 
@@ -168,7 +210,8 @@ export function ClientList({
   );
 
   const visible = useMemo(() => {
-    const filtered = rows.filter((row) =>
+    const onRoute = activeRoute ? rows.filter((row) => sameRoute(row.route, activeRoute)) : rows;
+    const filtered = onRoute.filter((row) =>
       CLIENT_COLUMNS.every((col) => {
         const query = applied[col.id];
         if (!query) return true;
@@ -178,7 +221,15 @@ export function ClientList({
     );
     // Orden sagrado = ruta + # (routeOrder). Misma ley en planilla/app/supervisor.
     return filtered.slice().sort(compareClientsByRoutePosition);
-  }, [applied, rows]);
+  }, [activeRoute, applied, rows]);
+  /** Vista total: raya gris donde arranca cada ruta (1 → 1.1 → 2). */
+  const routeStarts = useMemo(() => routeBlockStarts(visible, (row) => row.route), [visible]);
+
+  function pickRoute(name: string) {
+    // Volver a tocar la ruta activa muestra el total (ambas rutas, una tras otra).
+    setRouteTab(activeRoute === name ? "" : name);
+    setSelected([]);
+  }
 
   const allChecked = visible.length > 0 && visible.every((row) => selected.includes(row.ref));
 
@@ -290,6 +341,22 @@ export function ClientList({
       <div className="head">
         <h1>{title}</h1>
         <span className="count">{count}</span>
+        {routeNames.length > 0 ? (
+          <div className="client-route-tabs" role="group" aria-label="Filtrar por ruta">
+            {routeNames.map((name) => (
+              <button
+                key={name}
+                type="button"
+                className={`client-route-tab${activeRoute === name ? " on" : ""}`}
+                aria-pressed={activeRoute === name}
+                onClick={() => pickRoute(name)}
+              >
+                Ruta {name}
+                <span className="client-route-tab-count">{routeCounts.get(name) ?? 0}</span>
+              </button>
+            ))}
+          </div>
+        ) : null}
         {isRevision && selected.length > 0 ? (
           <div className="client-review-actions">
             <button
@@ -373,11 +440,12 @@ export function ClientList({
                 <td colSpan={activeCols.length + 1}>No hay clientes con esos filtros</td>
               </tr>
             ) : (
-              visible.map((row) => {
+              visible.map((row, index) => {
                 const incomplete = clientNeedsProfileCompletion(row);
                 const rowClass = [
                   isRevision ? "client-review-row" : "clickable",
                   incomplete ? "is-profile-incomplete" : "",
+                  routeStarts[index] ? "is-route-start" : "",
                 ]
                   .filter(Boolean)
                   .join(" ");

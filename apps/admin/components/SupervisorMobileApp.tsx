@@ -9,6 +9,8 @@ import { buildLoanReport } from "@/lib/loan-report";
 import { shareLoanFichaCapture } from "@/lib/loan-ficha-share";
 import { routeCoverageSummaries } from "@/lib/collector-preview";
 import {
+  assignmentRouteName,
+  assignmentRoutePositionComparator,
   DAY_CLOSE_SKIP_REASON,
   isNoPayListRow,
   NO_PAY_TODAY_REASON,
@@ -16,7 +18,14 @@ import {
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 import { isValidPlanillaAssignment } from "@/lib/planilla-eligibility";
-import { clientsOnRouteSorted, nextRouteOrder } from "@/lib/client-route-order";
+import {
+  clientsOnRouteSorted,
+  compareClientsByRoutePosition,
+  compareRouteNames,
+  nextRouteOrder,
+  routeBlockStarts,
+  sameRoute,
+} from "@/lib/client-route-order";
 import { isOperationalClient } from "@/lib/client-review";
 import {
   clientsEligibleForNewLoan,
@@ -41,6 +50,7 @@ import { todayIso } from "@/lib/daily-dispatch";
 import {
   enrichSupervisorPlanillaRow,
 } from "@/lib/planilla-display";
+import { reloanStateForVisit, type ReloanState } from "@/lib/loan-reloan";
 import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
@@ -386,11 +396,27 @@ function RouteBoardCard({
   );
 }
 
+/**
+ * Fila de planilla con su ruta (raya gris donde cambia: Ruta 1 → Ruta 1.1) y el
+ * estado «Préstamo al terminar» (terminó hoy → botón; ya prestado → renglón azul).
+ */
+type PlanillaTableRow = ReturnType<typeof enrichSupervisorPlanillaRow> & {
+  route: string;
+  clientRef: string;
+  reloan: ReloanState;
+};
+
 function PlanillaTable({
   rows,
+  onReloan,
+  reloanClientRef,
 }: {
-  rows: Array<ReturnType<typeof enrichSupervisorPlanillaRow>>;
+  rows: PlanillaTableRow[];
+  /** Presente solo donde el supervisor puede prestar (Caja → ruta → planilla). */
+  onReloan?: (clientRef: string) => void;
+  reloanClientRef?: string | null;
 }) {
+  const routeStarts = routeBlockStarts(rows, (row) => row.route);
   return (
     <div className="supervisor-liq-wrap">
       <table className="supervisor-liq-table supervisor-planilla-table">
@@ -405,7 +431,7 @@ function PlanillaTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => {
+          {rows.map((row, index) => {
             const method = row.method ?? null;
             const methodLabel = row.methodLabel ?? (method ? paymentMethodInitial(method) : null);
             const methodTone =
@@ -425,8 +451,15 @@ function PlanillaTable({
               installment: 0,
               lagDays: 0,
             };
+            const reloanOpen = Boolean(reloanClientRef) && reloanClientRef === row.clientRef;
+            const rowClass = [
+              routeStarts[index] ? "is-route-start" : "",
+              row.reloan.granted ? "is-reloan" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
             return (
-              <tr key={row.key}>
+              <tr key={row.key} className={rowClass || undefined}>
                 <td className="is-ruta">{row.index}</td>
                 <td className="is-nombre" title={row.clientName}>
                   {row.clientName}
@@ -449,12 +482,31 @@ function PlanillaTable({
                   <CuotasProgressCell progress={cuotas} />
                 </td>
                 <td className="is-estado">
-                  <span title={visitStatusLabel(row.visitStatus)}>
-                    <Pill
-                      label={visitStatusLabelShort(row.visitStatus)}
-                      kind={visitStatusKind(row.visitStatus)}
-                    />
-                  </span>
+                  {onReloan && row.reloan.canReloan ? (
+                    <button
+                      type="button"
+                      className={reloanOpen ? "supervisor-reloan-btn on" : "supervisor-reloan-btn"}
+                      title="Terminó su crédito: prestarle ahora (Nequi / Banco)"
+                      aria-expanded={reloanOpen}
+                      onClick={() => onReloan(row.clientRef)}
+                    >
+                      Préstamo
+                    </button>
+                  ) : row.reloan.granted ? (
+                    <span
+                      className="supervisor-reloan-tag"
+                      title={`Préstamo ${row.reloan.granted.ref} · capital ${money(row.reloan.granted.capital)}`}
+                    >
+                      Préstamo {money(row.reloan.granted.capital, { symbol: false })}
+                    </span>
+                  ) : (
+                    <span title={visitStatusLabel(row.visitStatus)}>
+                      <Pill
+                        label={visitStatusLabelShort(row.visitStatus)}
+                        kind={visitStatusKind(row.visitStatus)}
+                      />
+                    </span>
+                  )}
                 </td>
               </tr>
             );
@@ -472,6 +524,7 @@ function ClientesTable({
 }: {
   rows: Array<{
     ref: string;
+    route: string;
     routeOrder: number;
     name: string;
     phone: string;
@@ -481,6 +534,7 @@ function ClientesTable({
   }>;
   onOpen?: (clientRef: string) => void;
 }) {
+  const routeStarts = routeBlockStarts(rows, (row) => row.route);
   return (
     <div className="supervisor-liq-wrap">
       <table className="supervisor-liq-table supervisor-clientes-table">
@@ -498,10 +552,14 @@ function ClientesTable({
             return (
               <tr
                 key={row.ref}
-                className={onOpen ? "is-clickable" : undefined}
+                className={
+                  [onOpen ? "is-clickable" : "", routeStarts[index] ? "is-route-start" : ""]
+                    .filter(Boolean)
+                    .join(" ") || undefined
+                }
                 onClick={onOpen ? () => onOpen(row.ref) : undefined}
               >
-                <td className="is-ruta">{index + 1}</td>
+                <td className="is-ruta">{row.routeOrder > 0 ? row.routeOrder : index + 1}</td>
                 <td className="is-nombre" title={row.name}>
                   {row.name}
                 </td>
@@ -810,6 +868,8 @@ export function SupervisorMobileApp({
   /** Regla: al ingresar siempre INICIO (no restaurar otra pestaña). */
   const [view, setView] = useState<SupervisorView>("inicio");
   const [openRouteRef, setOpenRouteRef] = useState<string | null>(null);
+  /** Cliente que terminó hoy con el formulario «Préstamo» abierto (Caja → ruta → planilla). */
+  const [reloanClientRef, setReloanClientRef] = useState<string | null>(null);
   /** Panel al que vuelve al salir del detalle de ruta (inicio / caja / nequi). */
   const [routeReturnView, setRouteReturnView] = useState<SupervisorView>("inicio");
   const [detailMode, setDetailMode] = useState<RouteDetailMode>("totales");
@@ -917,7 +977,25 @@ export function SupervisorMobileApp({
   );
 
   const liquidaciones = useMemo((): RouteLiquidacion[] => {
-    return assignedCoverage.map((route) => {
+    // Una liquidación por cobrador: si tiene «1» y «1.1», caja y planilla se
+    // cuentan una sola vez (la tarjeta muestra «1 · 1.1»).
+    const byCollector = new Map<string, typeof assignedCoverage>();
+    for (const route of assignedCoverage) {
+      const key = route.collector?.ref || route.collectorRef || route.routeRef;
+      const group = byCollector.get(key);
+      if (group) group.push(route);
+      else byCollector.set(key, [route]);
+    }
+    return Array.from(byCollector.values()).map((group) => {
+      const routeGroup = group
+        .slice()
+        .sort((a, b) => compareRouteNames(a.routeName, b.routeName));
+      const route = {
+        ...routeGroup[0],
+        routeName: routeGroup.map((entry) => entry.routeName).join(" · "),
+        clients: routeGroup.reduce((sum, entry) => sum + entry.clients, 0),
+      };
+      const routeNames = routeGroup.map((entry) => entry.routeName);
       const collector = route.collector;
       const collectorRef = collector?.ref || route.collectorRef || "";
       const mine = todayAssignments.filter((row) => row.collectorRef === collectorRef);
@@ -925,7 +1003,9 @@ export function SupervisorMobileApp({
       const done = mine.filter((row) => row.visitStatus === "cobrado").length;
 
       const clientRefs = new Set(
-        clients.filter((row) => row.route === route.routeName).map((row) => row.ref),
+        clients
+          .filter((row) => routeNames.some((name) => sameRoute(row.route, name)))
+          .map((row) => row.ref),
       );
       // También clientes que aparecen hoy en planilla de este cobrador.
       for (const row of mine) clientRefs.add(row.clientRef);
@@ -1054,7 +1134,7 @@ export function SupervisorMobileApp({
       0,
     );
     return {
-      routes: liquidaciones.length,
+      routes: assignedCoverage.length,
       planilla: todayAssignments.length,
       cobradoHoy: liquidaciones.reduce((sum, row) => sum + row.cobradoHoy, 0),
       cobradoNequi: liquidaciones.reduce((sum, row) => sum + row.cobradoNequi, 0),
@@ -1064,7 +1144,7 @@ export function SupervisorMobileApp({
       saldoInicial: liquidaciones.reduce((sum, row) => sum + row.saldoInicial, 0),
       prestamosHoy,
     };
-  }, [liquidaciones, todayAssignments.length]);
+  }, [assignedCoverage.length, liquidaciones, todayAssignments.length]);
 
   const snAfterRouteRef = useMemo(() => {
     const named = liquidaciones.find((row) => {
@@ -1163,13 +1243,40 @@ export function SupervisorMobileApp({
     return { date: todayDisplay, items, total };
   }, [paymentsWithEvidence, today, todayDisplay]);
 
+  /** Filas de planilla: `#` = posición del cliente en su ruta; `route` para la raya gris. */
+  const planillaTableRows = (rows: DailyCollectionAssignment[]): PlanillaTableRow[] =>
+    rows.map((row, index) => {
+      const client = clients.find((entry) => entry.ref === row.clientRef);
+      const position =
+        client?.routeOrder && client.routeOrder > 0 ? client.routeOrder : index + 1;
+      return {
+        ...enrichSupervisorPlanillaRow(row, position, loans, payments, today),
+        route: assignmentRouteName(row, clients),
+        clientRef: row.clientRef,
+        reloan: reloanStateForVisit({
+          clientRef: row.clientRef,
+          loanRef: row.loanRef,
+          loans,
+          payments,
+          date: today,
+        }),
+      };
+    });
+
   const openRoute = liquidaciones.find((row) => row.routeRef === openRouteRef) ?? null;
+  /** Cliente de la planilla abierta al que el supervisor le va a prestar (terminó hoy). */
+  const reloanClient =
+    openRoute && reloanClientRef
+      ? clients.find((row) => row.ref === reloanClientRef) ?? null
+      : null;
   const openAssignments = useMemo(
     () =>
       openRoute
-        ? todayAssignments.filter((row) => row.collectorRef === openRoute.collectorRef)
+        ? todayAssignments
+            .filter((row) => row.collectorRef === openRoute.collectorRef)
+            .sort(assignmentRoutePositionComparator(clients))
         : [],
-    [todayAssignments, openRoute],
+    [clients, todayAssignments, openRoute],
   );
   const openRouteExpenses = useMemo(
     () =>
@@ -1476,37 +1583,34 @@ export function SupervisorMobileApp({
   );
 
   const planillaAssignments = useMemo(() => {
-    if (!planillaRouteFilter) return todayAssignments;
-    const fromLiq = liquidaciones.find((row) => row.routeName === planillaRouteFilter);
-    const fromCatalog = catalogRoutes(routes).find((row) => row.name === planillaRouteFilter);
-    const collectorRef = fromLiq?.collectorRef || fromCatalog?.collectorRef || "";
-    return todayAssignments.filter(
-      (row) =>
-        row.clientRoute === planillaRouteFilter ||
-        (collectorRef ? row.collectorRef === collectorRef : false),
+    const compare = assignmentRoutePositionComparator(clients);
+    if (!planillaRouteFilter) return todayAssignments.slice().sort(compare);
+    // Filtro por ruta = solo esa ruta (Ruta 1 no arrastra a Ruta 1.1 del mismo cobrador).
+    const onRoute = todayAssignments.filter((row) =>
+      sameRoute(assignmentRouteName(row, clients), planillaRouteFilter),
     );
-  }, [todayAssignments, planillaRouteFilter, liquidaciones, routes]);
+    if (onRoute.length > 0) return onRoute.sort(compare);
+    const fromCatalog = catalogRoutes(routes).find((row) =>
+      sameRoute(row.name, planillaRouteFilter),
+    );
+    const collectorRef = fromCatalog?.collectorRef || "";
+    return collectorRef
+      ? todayAssignments.filter((row) => row.collectorRef === collectorRef).sort(compare)
+      : [];
+  }, [clients, todayAssignments, planillaRouteFilter, routes]);
 
   const supervisorClientRows = useMemo(() => {
     // Lista = todos los clientes operativos del sistema (filtro de ruta opcional).
     const base = clientesRouteFilter
       ? clientsOnRouteSorted(clients, clientesRouteFilter).filter(isOperationalClient)
-      : clients
-          .filter(isOperationalClient)
-          .slice()
-          .sort((a, b) => {
-            const routeCmp = String(a.route || "").localeCompare(String(b.route || ""), undefined, {
-              numeric: true,
-            });
-            if (routeCmp) return routeCmp;
-            return (a.routeOrder || 0) - (b.routeOrder || 0);
-          });
+      : clients.filter(isOperationalClient).slice().sort(compareClientsByRoutePosition);
 
     return base.map((row) => {
       const loan = currentActiveLoan(row.ref, loans, payments);
       const cuotas = computeLoanCuotasProgress(loan, payments, today);
       return {
         ref: row.ref,
+        route: String(row.route || "").trim(),
         routeOrder: row.routeOrder || 0,
         name: `${row.name} ${row.lastName}`.trim(),
         phone: row.phone?.trim() || "—",
@@ -1599,6 +1703,7 @@ export function SupervisorMobileApp({
         const cuotas = computeLoanCuotasProgress(loan, payments, today);
         return {
           ref: row.ref,
+          route: String(row.route || "").trim(),
           routeOrder: row.routeOrder || 0,
           name: `${row.name} ${row.lastName}`.trim(),
           phone: row.phone?.trim() || "—",
@@ -1682,6 +1787,7 @@ export function SupervisorMobileApp({
     const backTo = opts?.returnView ?? "inicio";
     suppressGhostClick();
     setOpenRouteRef(ref);
+    setReloanClientRef(null);
     setRouteReturnView(backTo);
     setNequiDayIso(null);
     setNequiDayBackTo("nequi-historial");
@@ -2259,13 +2365,48 @@ export function SupervisorMobileApp({
                 </span>
                 <span>En caja {money(openRoute.enCaja, { symbol: false })}</span>
               </p>
+              {reloanClient && onCreateQuickLoan ? (
+                <div className="supervisor-reloan-panel" aria-label="Préstamo al terminar">
+                  <div className="supervisor-mobile-detail-head">
+                    <h3>{`${reloanClient.name} ${reloanClient.lastName}`.trim()}</h3>
+                    <button
+                      type="button"
+                      className="collector-mobile-pay-link"
+                      onClick={() => setReloanClientRef(null)}
+                    >
+                      cerrar
+                    </button>
+                  </div>
+                  <p className="supervisor-mobile-subhead">
+                    Terminó su crédito hoy · Ruta {reloanClient.route || openRoute.routeName} ·{" "}
+                    {openRoute.collectorName}
+                  </p>
+                  <QuickLoanForm
+                    key={reloanClient.ref}
+                    clientName={`${reloanClient.name} ${reloanClient.lastName}`.trim()}
+                    clientRef={reloanClient.ref}
+                    fundedByOptions={["nequi", "banco"]}
+                    defaultFundedBy="nequi"
+                    onCancel={() => setReloanClientRef(null)}
+                    onSave={(draft) => {
+                      onCreateQuickLoan({ ...draft, routeName: reloanClient.route });
+                      setReloanClientRef(null);
+                    }}
+                  />
+                </div>
+              ) : null}
               {openAssignments.length === 0 ? (
                 <p className="ficha-empty">Sin planilla enviada hoy.</p>
               ) : (
                 <PlanillaTable
-                  rows={openAssignments.map((row, index) =>
-                    enrichSupervisorPlanillaRow(row, index + 1, loans, payments, today),
-                  )}
+                  rows={planillaTableRows(openAssignments)}
+                  onReloan={
+                    onCreateQuickLoan
+                      ? (clientRef) =>
+                          setReloanClientRef((prev) => (prev === clientRef ? null : clientRef))
+                      : undefined
+                  }
+                  reloanClientRef={reloanClientRef}
                 />
               )}
             </>
@@ -2328,11 +2469,7 @@ export function SupervisorMobileApp({
           {planillaAssignments.length === 0 ? (
             <p className="ficha-empty">No hay cobros en planilla hoy.</p>
           ) : (
-            <PlanillaTable
-              rows={planillaAssignments.map((row, index) =>
-                enrichSupervisorPlanillaRow(row, index + 1, loans, payments, today),
-              )}
-            />
+            <PlanillaTable rows={planillaTableRows(planillaAssignments)} />
           )}
         </section>
       ) : view === "caja" ? (

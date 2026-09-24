@@ -758,7 +758,7 @@ export function CollectorShell({ session, onLogout }: Props) {
               Este usuario no tiene un cobrador asociado. Pide al administrador que revise tu ficha.
             </p>
             <button type="button" className="btn aside-logout" onClick={onLogout}>
-              Cerrar sesión
+              Salir
             </button>
           </section>
         </main>

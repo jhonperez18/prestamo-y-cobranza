@@ -1255,9 +1255,13 @@ export function syncAllPaymentsToMovements(
     const prev = byPayment.get(payment.ref);
     const period = periodFromIso(payment.paidDate);
     const method = normalizePaymentMethod(payment.method);
+    // Cuenta = proyección del método del PG-: Nequi → cuenta Nequi, resto → principal.
+    // Aunque el cobro haya entrado antes de crear la cuenta Nequi, se reubica; solo
+    // una fila ya conciliada conserva su cuenta.
+    const projectedAccountRef =
+      method === "nequi" && nequiAccount ? nequiAccount.ref : primary.ref;
     const accountRef =
-      prev?.accountRef ??
-      (method === "nequi" && nequiAccount ? nequiAccount.ref : primary.ref);
+      prev?.reconciled && prev.accountRef ? prev.accountRef : projectedAccountRef;
     paymentRows.push({
       ref: prev?.ref && !/^PG-/i.test(prev.ref) ? prev.ref : prev?.ref ?? nextBankMovementRef(),
       accountRef,

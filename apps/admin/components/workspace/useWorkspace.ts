@@ -261,7 +261,7 @@ import {
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
   DEMO_COLLECTOR_MONTH_CLOSES_KEY,
-  forgetDeletedRouteRef,
+  listDeletedRouteRefs,
   loadDemoPaymentsBundle,
   loadDemoUsers,
   loadDemoClients,
@@ -1341,8 +1341,8 @@ export function useWorkspace({
       onToast(`Ya existe la ruta ${name}. Asígnele cobrador o clientes a esa ruta.`);
       return;
     }
-    const ref = nextRouteCode(catalogRouteList);
-    forgetDeletedRouteRef(ref);
+    // Nunca reutilizar un ref con lápida (otros aparatos lo filtrarían del pull).
+    const ref = nextRouteCode(catalogRouteList, listDeletedRouteRefs());
     const row: RouteRow = {
       ref,
       id: routeSlug(name),

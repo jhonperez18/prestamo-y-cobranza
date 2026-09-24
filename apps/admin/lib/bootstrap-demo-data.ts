@@ -24,6 +24,7 @@ import {
   DEMO_USERS_KEY,
   DEMO_VIRGIN_HOLD_UNTIL_KEY,
   DEMO_VIRGIN_OPS_KEY,
+  RETIRED_ROUTE_REFS,
   scrubLegacyMockDemoRows,
   type DemoSnapshot,
 } from "@/lib/demo-persist";
@@ -293,7 +294,7 @@ export function bootstrapProtectedDemoData() {
   });
   forceInstallJson(DEMO_ROUTES_KEY, routes);
   // RUT-3.. duplicados viejos: quedan marcados borrados para que el pull no los reviva.
-  forceInstallJson(DEMO_DELETED_ROUTES_KEY, ["RUT-3", "RUT-4", "RUT-5", "RUT-6"]);
+  forceInstallJson(DEMO_DELETED_ROUTES_KEY, [...RETIRED_ROUTE_REFS]);
   forceInstallJson(DEMO_MISC_PAYMENTS_KEY, []);
   forceInstallJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []);
   forceInstallJson(DEMO_COLLECTOR_MONTH_CLOSES_KEY, []);

@@ -543,6 +543,10 @@
       min-height: 100%;
       height: 100%;
     }
+    /* Margen derecha fija: la lista no se ensancha cuando no hay barra de desplazamiento. */
+    .collector-shell-mobile > .collector-mobile-app {
+      scrollbar-gutter: stable;
+    }
     .collector-mobile-preview-banner {
       padding: 8px 12px;
       background: #0f766e;
@@ -670,6 +674,17 @@
     .collector-mobile-menu-item:disabled {
       opacity: 0.4;
       cursor: not-allowed;
+    }
+    /* «Salir»: única salida del cobrador; va última en el menú, separada. */
+    .collector-mobile-menu-item.is-exit {
+      margin-top: 2px;
+      border-top: 1px solid #dbe5df;
+      border-radius: 0 0 7px 7px;
+      color: #7f1d1d;
+    }
+    .collector-mobile-menu-item.is-exit:hover:not(:disabled),
+    .collector-mobile-menu-item.is-exit:focus-visible {
+      background: #fef2f2;
     }
     .collector-mobile-brand .brand-logo {
       height: 28px;
@@ -7675,6 +7690,44 @@
       background: #dce8e1; padding: 2px 8px; border-radius: 999px;
     }
     .head .grow, .loan-line .grow { flex: 1; }
+    /* Listado de clientes: una ruta a la vez (cada ruta tiene su # 1…N). */
+    .client-route-tabs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 6px;
+    }
+    .client-route-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border: 1px solid #c5d4cc;
+      border-radius: 999px;
+      background: #fff;
+      color: #4a5f56;
+      font-size: 14px !important;
+      font-weight: 600;
+      line-height: 1.2;
+    }
+    .client-route-tab:hover { border-color: #0f766e; color: #0f766e; }
+    .client-route-tab.on {
+      background: #0f766e;
+      border-color: #0f766e;
+      color: #fff;
+    }
+    .client-route-tab-count {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 0 6px;
+      border-radius: 999px;
+      background: #dce8e1;
+      color: #5b7268;
+    }
+    .client-route-tab.on .client-route-tab-count {
+      background: rgba(255, 255, 255, 0.22);
+      color: #fff;
+    }
     .page-size {
       font-size: 16px; color: #4a5f56;
       display: flex; align-items: center; gap: 6px;
@@ -14159,4 +14212,87 @@
       right: auto !important;
       z-index: 1;
       box-shadow: none !important;
+    }
+
+    /* Raya gris entre rutas del mismo cobrador (Ruta 1 → Ruta 1.1):
+       app cobrador (por cobrar + planilla historial), supervisor (planilla + clientes)
+       y Clientes total del panel. Banco y gastos no la usan. */
+    .collector-mobile-list.compact > .collector-mobile-card.is-dense.is-route-start,
+    .collector-history-planilla li.is-route-start {
+      border-top: 4px solid #9aa6a0;
+    }
+    .supervisor-liq-table tbody tr.is-route-start > td,
+    table.data.list-grid tbody tr.is-route-start > td {
+      border-top: 4px solid #9aa6a0;
+    }
+
+    /* Préstamo al terminar: el cliente pagó todo el saldo hoy.
+       Botón azul «Préstamo» en la mitad del renglón (cobrador: efectivo del día;
+       supervisor: Nequi / Banco). Ya prestado → renglón azul. */
+    .collector-reloan-btn,
+    .supervisor-reloan-btn {
+      appearance: none;
+      border: 1px solid #60a5fa;
+      background: #dbeafe;
+      color: #1e40af;
+      font: inherit;
+      /* El tema global fija 16px !important en todo <button>; aquí va compacto. */
+      font-size: 10px !important;
+      font-weight: 700;
+      line-height: 1.2;
+      min-height: 0;
+      height: 18px;
+      padding: 0 8px;
+      border-radius: 999px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .collector-reloan-btn {
+      margin: 0 auto;
+    }
+    .collector-reloan-btn.on,
+    .supervisor-reloan-btn.on {
+      background: #2563eb;
+      border-color: #1d4ed8;
+      color: #fff;
+    }
+    .collector-reloan-tag {
+      margin: 0 auto;
+      font-size: 10px;
+      font-weight: 700;
+      color: #1e40af;
+      white-space: nowrap;
+    }
+    .collector-mobile-list.compact > .collector-mobile-card.is-dense.is-reloan,
+    .collector-mobile-card.is-done.is-reloan {
+      background: #dbeafe;
+      border-left-color: #2563eb;
+    }
+    .collector-mobile-cuadre-grid div.is-prestado {
+      background: #dbeafe;
+      border-color: #3b82f6;
+    }
+    .collector-mobile-cuadre-grid div.is-prestado b {
+      color: #1e3a8a;
+    }
+    .supervisor-liq-table tbody tr.is-reloan > td {
+      background: #dbeafe;
+    }
+    .supervisor-liq-table .supervisor-reloan-tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      color: #1e40af;
+      white-space: nowrap;
+    }
+    .supervisor-reloan-panel {
+      margin: 0 0 10px;
+      padding: 10px;
+      border: 1px solid #93c5fd;
+      border-left: 4px solid #2563eb;
+      border-radius: 10px;
+      background: #eff6ff;
+    }
+    .supervisor-reloan-panel .supervisor-mobile-subhead {
+      margin: 0 0 6px;
     }

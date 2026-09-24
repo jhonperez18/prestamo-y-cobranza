@@ -642,9 +642,16 @@ export function loadDemoDailyAssignments<T>(fallback: T[] = []): T[] {
   return readDemoJson<T[]>(DEMO_DAILY_ASSIGNMENTS_KEY, fallback);
 }
 
+/**
+ * Refs de ruta retiradas en todos los aparatos (duplicados viejos del seed).
+ * El pull las filtra en cada celular/PC: **nunca** se reutilizan para una ruta nueva.
+ */
+export const RETIRED_ROUTE_REFS = ["RUT-3", "RUT-4", "RUT-5", "RUT-6"] as const;
+
 export function listDeletedRouteRefs(): string[] {
   const rows = readDemoJson<string[]>(DEMO_DELETED_ROUTES_KEY, []);
-  return Array.isArray(rows) ? rows.filter(Boolean) : [];
+  const local = Array.isArray(rows) ? rows.filter(Boolean) : [];
+  return Array.from(new Set([...RETIRED_ROUTE_REFS, ...local]));
 }
 
 export function rememberDeletedRouteRef(ref: string) {

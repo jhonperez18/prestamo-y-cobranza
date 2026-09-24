@@ -598,7 +598,7 @@ export function Workspace(props: WorkspaceProps) {
       ["listado", "revision", "activos", "inactivos"].includes(viewId)
     ) {
       const titles: Record<string, string> = {
-        listado: "Clientes",
+        listado: "Clientes total",
         revision: "Pendientes de revisión",
         activos: "Clientes activos",
         inactivos: "Clientes cerrados",
@@ -612,6 +612,9 @@ export function Workspace(props: WorkspaceProps) {
           variant={viewId === "revision" ? "revision" : "default"}
           clientView={viewId as "listado" | "revision" | "activos" | "inactivos"}
           canApprove={viewId === "revision" ? canApproveClient : false}
+          routeTabs={
+            viewId === "listado" ? activeCatalogRoutes.map((route) => route.name) : undefined
+          }
           onCreate={() => onGo("clientes", "nuevo")}
           onOpen={openFicha}
           onApprove={viewId === "revision" ? startClientApproval : undefined}

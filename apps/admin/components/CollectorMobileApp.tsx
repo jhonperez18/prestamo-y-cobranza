@@ -28,9 +28,15 @@ import {
 } from "@/lib/mock-data";
 import type { CollectorPaymentRegisterInput } from "@/lib/route-sync";
 import { canRenewLoan } from "@/lib/loan-renew";
+import { reloanStateForVisit } from "@/lib/loan-reloan";
 import { syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
-import { dispatchRouteRef, NO_PAY_TODAY_REASON } from "@/lib/collector-dispatch-sync";
+import {
+  assignmentRouteName,
+  dispatchRouteRef,
+  NO_PAY_TODAY_REASON,
+} from "@/lib/collector-dispatch-sync";
+import { compareRoutePosition, routeBlockStarts } from "@/lib/client-route-order";
 import {
   loadLivePaymentRows,
   mergePaymentsByRef,
@@ -250,6 +256,8 @@ export function CollectorMobileApp({
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [payCombo, setPayCombo] = useState(false);
   const [listFilter, setListFilter] = useState<ListFilter>("pending");
+  /** Cobro (PG-) cuyo cliente terminó hoy y tiene abierto el formulario «Préstamo». */
+  const [reloanPayRef, setReloanPayRef] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editingExpenses, setEditingExpenses] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
@@ -259,7 +267,6 @@ export function CollectorMobileApp({
   const [planillaQuery, setPlanillaQuery] = useState("");
   const [apiPayments, setApiPayments] = useState<PaymentRow[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
-  const showedCobros = useRef(false);
   const livePayments = useMemo(() => {
     if (!apiPayments.length) return payments;
     if (!payments.length) return apiPayments;
@@ -282,11 +289,8 @@ export function CollectorMobileApp({
     };
   }, [collector.ref]);
 
-  useEffect(() => {
-    if (showedCobros.current || apiPayments.length === 0) return;
-    showedCobros.current = true;
-    setListFilter("done");
-  }, [apiPayments.length]);
+  // Inicio fijo en «Por cobrar»: con hoja de ruta abierta arranca en la lista de pendientes;
+  // con la jornada cerrada esa misma pestaña muestra el cierre. Recaudo solo si el cobrador lo toca.
   const navIntent = useMemo(() => createNavIntent(), []);
 
   /** Cada cobrador es independiente: al cambiar, vuelve a su propio inicio (antes del paint). */
@@ -469,12 +473,24 @@ export function CollectorMobileApp({
         ),
     [activeDate, clients, collector, livePayments, loans],
   );
+  /** Primer PG- del día por crédito: ahí va el botón / etiqueta «Préstamo». */
+  const reloanAnchorByLoan = useMemo(() => {
+    const anchor = new Map<string, string>();
+    for (const pay of dayPays) {
+      if (pay.loanRef && !anchor.has(pay.loanRef)) anchor.set(pay.loanRef, pay.ref);
+    }
+    return anchor;
+  }, [dayPays]);
 
   const savedExpenses = useMemo(
     () => expensesForCollectorDay(collector.ref, activeDate, dayCloses, dayExpenseDrafts),
     [activeDate, collector.ref, dayCloses, dayExpenseDrafts],
   );
   const savedExpensesTotal = savedExpenses.reduce((sum, row) => sum + row.amount, 0);
+  /** Capital prestado hoy en efectivo (sale del efectivo cobrado; ya va dentro de Gastos). */
+  const prestadoEfectivo = savedExpenses
+    .filter((row) => row.category === "prestamo_ruta")
+    .reduce((sum, row) => sum + row.amount, 0);
 
   const dayCuadre = useMemo(() => {
     const periodOpening = openingSaldoForPeriod(collector.ref, viewPeriod, monthCloses);
@@ -628,6 +644,7 @@ export function CollectorMobileApp({
     const used = new Set<string>();
     const rows: Array<{
       key: string;
+      route: string;
       order: number | null;
       name: string;
       amount: number | null;
@@ -668,6 +685,7 @@ export function CollectorMobileApp({
       for (const pay of grouped) used.add(pay.ref);
       rows.push({
         key: itemKey(item),
+        route: assignmentRouteName(item, clients),
         order: identity.order,
         name: identity.fullName,
         amount: grouped.length
@@ -695,6 +713,7 @@ export function CollectorMobileApp({
       const client = clients.find((row) => row.ref === loan?.clientRef);
       rows.push({
         key: siblings.map((row) => row.ref).join("|"),
+        route: String(client?.route || "").trim(),
         order: client?.routeOrder && client.routeOrder > 0 ? client.routeOrder : null,
         name: payerName(pay, loans, clients),
         amount: siblings.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
@@ -704,12 +723,12 @@ export function CollectorMobileApp({
       });
     }
 
-    return rows.sort((a, b) => {
-      const ao = a.order ?? 9999;
-      const bo = b.order ?? 9999;
-      if (ao !== bo) return ao - bo;
-      return a.name.localeCompare(b.name, "es");
-    });
+    // Ruta 1 (# 1…N) → Ruta 1.1 (# 1…N): mismo orden que la planilla y el supervisor.
+    return rows.sort(
+      (a, b) =>
+        compareRoutePosition(a.route, a.order, b.route, b.order) ||
+        a.name.localeCompare(b.name, "es"),
+    );
   }, [activeDate, clients, dayPays, livePayments, loans, queue.dispatched]);
 
   const planillaQueryNorm = planillaQuery.trim().toLocaleLowerCase("es");
@@ -720,6 +739,11 @@ export function CollectorMobileApp({
           return name.includes(planillaQueryNorm) || String(row.order ?? "").includes(planillaQueryNorm);
         })
       : closedPlanilla;
+  /** Raya gris donde cambia la ruta (Ruta 1 → Ruta 1.1). */
+  const planillaRouteStarts = routeBlockStarts(planillaRows, (row) => row.route);
+  const pendingRouteStarts = routeBlockStarts(visibleItems, (item) =>
+    assignmentRouteName(item, clients),
+  );
 
   /** Totales = pagos reales del día (mismo número que banco Debe / “Lo que cobró”). */
   const topRecaudo = recaudo.total;
@@ -792,6 +816,20 @@ export function CollectorMobileApp({
               >
                 {confirmingClose ? "Revisando…" : "Cerrar día"}
               </button>
+              {onLogout && !preview ? (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="collector-mobile-menu-item is-exit"
+                  title="Salir de la app"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onLogout();
+                  }}
+                >
+                  Salir
+                </button>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -1106,8 +1144,16 @@ export function CollectorMobileApp({
                 {planillaRows.length === 0 ? (
                   <li className="is-empty-search">Sin coincidencias</li>
                 ) : (
-                  planillaRows.map((row) => (
-                    <li key={row.key} className={row.method === "vacio" ? "is-vacio" : undefined}>
+                  planillaRows.map((row, index) => (
+                    <li
+                      key={row.key}
+                      className={[
+                        row.method === "vacio" ? "is-vacio" : "",
+                        planillaRouteStarts[index] ? "is-route-start" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ") || undefined}
+                    >
                       <span className="is-ord">{row.order ?? "—"}</span>
                       <span className="is-name">{row.name}</span>
                       <span className="is-cuota">
@@ -1186,6 +1232,15 @@ export function CollectorMobileApp({
               <em>Total</em>
               <b>{money(recaudo.total)}</b>
             </div>
+            {prestadoEfectivo > 0 ? (
+              <div
+                className="is-prestado"
+                title="Capital prestado hoy en efectivo: sale del efectivo cobrado"
+              >
+                <em>Prestado</em>
+                <b>−{money(prestadoEfectivo)}</b>
+              </div>
+            ) : null}
           </div>
         </section>
       ) : null}
@@ -1197,16 +1252,63 @@ export function CollectorMobileApp({
           ) : (
             dayPays.map((pay) => {
               const method = normalizePaymentMethod(pay.method);
+              const payLoan = loans.find((row) => row.ref === pay.loanRef);
+              const payClient = payLoan
+                ? clients.find((row) => row.ref === payLoan.clientRef)
+                : undefined;
+              // Terminó hoy (saldo en cero) → botón «Préstamo»; ya se le prestó → renglón azul.
+              const reloan = reloanStateForVisit({
+                clientRef: payLoan?.clientRef ?? "",
+                loanRef: pay.loanRef,
+                loans,
+                payments: livePayments,
+                date: activeDate,
+              });
+              const reloanOpen = reloanPayRef === pay.ref;
+              // Un solo botón por crédito aunque haya pagado en dos partes (E + N).
+              const isReloanAnchor =
+                !pay.loanRef || reloanAnchorByLoan.get(pay.loanRef) === pay.ref;
+              const canOfferReloan =
+                isReloanAnchor &&
+                reloan.canReloan &&
+                Boolean(payClient) &&
+                Boolean(onCreateQuickLoan) &&
+                !dayLocked;
               return (
                 <li
                   key={pay.ref}
-                  className={["collector-mobile-card", "is-done", "is-dense", paymentMethodToneClass(method)]
+                  className={[
+                    "collector-mobile-card",
+                    "is-done",
+                    "is-dense",
+                    paymentMethodToneClass(method),
+                    reloan.granted ? "is-reloan" : "",
+                    reloanOpen ? "is-open" : "",
+                  ]
                     .filter(Boolean)
                     .join(" ")}
                 >
                   <div className="collector-mobile-dense-row">
                     <div className="collector-mobile-visit-who">
                       <strong>{payerName(pay, loans, clients)}</strong>
+                      {canOfferReloan ? (
+                        <button
+                          type="button"
+                          className={reloanOpen ? "collector-reloan-btn on" : "collector-reloan-btn"}
+                          title="Terminó su crédito: prestarle ahora (sale del efectivo del día)"
+                          aria-expanded={reloanOpen}
+                          onClick={() => setReloanPayRef(reloanOpen ? null : pay.ref)}
+                        >
+                          Préstamo
+                        </button>
+                      ) : reloan.granted && isReloanAnchor ? (
+                        <span
+                          className="collector-reloan-tag"
+                          title={`Préstamo ${reloan.granted.ref} · capital ${money(reloan.granted.capital)}`}
+                        >
+                          Préstamo {money(reloan.granted.capital, { symbol: false })}
+                        </span>
+                      ) : null}
                     </div>
                     <span className="collector-mobile-ref is-done-col">
                       {money(pay.amount, { symbol: false })}
@@ -1217,6 +1319,21 @@ export function CollectorMobileApp({
                       title={paymentMethodLabel(method)}
                     />
                   </div>
+                  {reloanOpen && canOfferReloan && payClient && onCreateQuickLoan ? (
+                    <div className="collector-mobile-pay-inline">
+                      <QuickLoanForm
+                        clientName={payerName(pay, loans, clients)}
+                        clientRef={payClient.ref}
+                        fundedByOptions={["efectivo"]}
+                        defaultFundedBy="efectivo"
+                        onCancel={() => setReloanPayRef(null)}
+                        onSave={(draft) => {
+                          onCreateQuickLoan({ ...draft, routeName: payClient.route });
+                          setReloanPayRef(null);
+                        }}
+                      />
+                    </div>
+                  ) : null}
                 </li>
               );
             })
@@ -1242,9 +1359,10 @@ export function CollectorMobileApp({
                     : "¡Listo! No quedan cobros pendientes en esta ruta."}
               </li>
             ) : (
-              visibleItems.map((item) => {
+              visibleItems.map((item, index) => {
                 const key = itemKey(item);
                 const isOpen = expandedKey === key;
+                const routeStart = pendingRouteStarts[index];
                 const identity = visitIdentity(item, clients, loans, livePayments, activeDate);
                 const canLend =
                   identity.awaitingLoan &&
@@ -1271,6 +1389,7 @@ export function CollectorMobileApp({
                         ? "collector-mobile-card is-open is-dense"
                         : "collector-mobile-card is-dense",
                       identity.awaitingLoan ? "is-awaiting-loan" : "",
+                      routeStart ? "is-route-start" : "",
                     ]
                       .filter(Boolean)
                       .join(" ")}
@@ -1523,13 +1642,6 @@ export function CollectorMobileApp({
       </>
       ) : null}
 
-      {onLogout && !preview ? (
-        <footer className="collector-mobile-foot mobile-app-logout-foot">
-          <button type="button" className="btn aside-logout" onClick={onLogout}>
-            Cerrar sesión
-          </button>
-        </footer>
-      ) : null}
     </div>
   );
 }

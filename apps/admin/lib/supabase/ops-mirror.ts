@@ -903,6 +903,10 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       `${a.visitStatus}|${a.paymentRef}|${a.amountDue}|${a.dayClosedAt}|${a.skipReason}`;
     for (const row of remoteAssign) {
       const key = `${row.dispatchDate}::${row.itemId}`;
+      // La nube ya tiene esta firma: un push posterior solo sube filas que cambien de verdad.
+      // Sin esto, cada "Actualizar planillas" encolaba toda la hoja, la cola escudaba filas
+      // sin cambios contra el N/P del cobrador y luego las pisaba en la nube.
+      sentAssignmentSig.set(key, assignmentMirrorSig(row));
       const prev = assignMap.get(key);
       if (!prev) {
         assignMap.set(key, row);
@@ -913,6 +917,16 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       if (pendingAssign.has(key)) continue;
       // La hoja abierta de la nube no reabre un cierre de este PC. El resto sí entra, para que el otro aparato se vea igual.
       if (prev.dayClosedAt && !row.dayClosedAt) continue;
+      // Un N/P / omisión marcada en este aparato no la reabre una fila "pendiente" vieja de otro aparato.
+      // Solo un cobro (PG-) o un cierre de jornada cambian ese estado desde afuera.
+      if (
+        prev.visitStatus === "omitido" &&
+        (row.visitStatus ?? "pendiente") === "pendiente" &&
+        !row.paymentRef &&
+        !row.dayClosedAt
+      ) {
+        continue;
+      }
       assignMap.set(key, row);
       assignChanged = true;
     }
