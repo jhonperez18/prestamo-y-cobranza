@@ -255,6 +255,8 @@ export function CollectorMobileApp({
   const [planillaQuery, setPlanillaQuery] = useState("");
   /** Planilla activa cuando el cobrador tiene más de una ruta (ej. 1 y 1.1). */
   const [planillaRouteFilter, setPlanillaRouteFilter] = useState<string | null>(null);
+  /** Desde «Inicio» del cuadre → ir a la hoja de cobro (Por cobrar). */
+  const [preferCobroPlanilla, setPreferCobroPlanilla] = useState(false);
   const [apiPayments, setApiPayments] = useState<PaymentRow[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
   const livePayments = useMemo(() => {
@@ -293,6 +295,7 @@ export function CollectorMobileApp({
     setHistoryOpen(false);
     setMenuOpen(false);
     setPlanillaRouteFilter(null);
+    setPreferCobroPlanilla(false);
   }, [collector.ref]);
 
   useEffect(() => {
@@ -348,6 +351,7 @@ export function CollectorMobileApp({
   useEffect(() => {
     setPlanillaQuery("");
     setPlanillaSearchOpen(false);
+    setPreferCobroPlanilla(false);
   }, [activeDate]);
 
   const viewPeriod = periodFromDateIso(activeDate);
@@ -804,6 +808,7 @@ export function CollectorMobileApp({
   const reviewingPanel = editingExpenses || confirmingClose || reviewingLoans;
   /** Sin planilla abierta → mismo inicio (último cierre + saldo) para todos los cobradores. */
   const showHomeCuadre =
+    !preferCobroPlanilla &&
     listFilter === "pending" &&
     !editingExpenses &&
     !reviewingLoans &&
@@ -1271,7 +1276,23 @@ export function CollectorMobileApp({
       {showHomeCuadre ? (
         <section className="collector-mobile-home-cuadre" aria-label="Último cierre">
           <div className="collector-mobile-home-cuadre-head">
-            <Pill label="Inicio" kind="paid" />
+            <button
+              type="button"
+              className="collector-mobile-home-inicio-btn"
+              title="Ir a la planilla de cobro"
+              aria-label="Inicio · ir a cobro"
+              onClick={() => {
+                suppressGhostClick(420);
+                setPreferCobroPlanilla(true);
+                setListFilter("pending");
+                setEditingExpenses(false);
+                setReviewingLoans(false);
+                setConfirmingClose(false);
+                setExpandedKey(null);
+              }}
+            >
+              Inicio
+            </button>
             <div className="collector-mobile-home-cuadre-title-row">
               <h2>Tu último cierre</h2>
               {queue.closed ? (

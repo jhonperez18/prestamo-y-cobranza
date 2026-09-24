@@ -210,6 +210,12 @@ function writeSupervisorNav(view: SupervisorView, openRouteRef: string | null) {
   }
 }
 
+/** Al entrar a un panel con pins: siempre ruta 1 (o la primera si no hay 1). */
+function pickDefaultRoutePin(pins: string[]): string | null {
+  if (!pins.length) return null;
+  return pins.find((name) => sameRoute(name, "1")) ?? pins[0];
+}
+
 type RouteLiquidacion = {
   routeRef: string;
   routeName: string;
@@ -224,7 +230,10 @@ type RouteLiquidacion = {
   cobradoEfectivo: number;
   cobradoNequi: number;
   cobradoBanco: number;
+  /** Gastos operativos (sin préstamos de ruta). */
   gastosHoy: number;
+  /** Capital prestado hoy en esta ruta (efectivo). */
+  prestamosHoy: number;
   enCaja: number;
   closed: boolean;
   newLoans: LoanRow[];
@@ -383,7 +392,7 @@ function RouteBoardCard({
             </div>
           ) : null}
 
-          <div className="supervisor-route-board-metrics">
+          <div className="supervisor-route-board-metrics is-four">
             <div>
               <span>Inicial</span>
               <b>{money(row.saldoInicial, { symbol: false })}</b>
@@ -395,6 +404,10 @@ function RouteBoardCard({
             <div>
               <span>Gasto</span>
               <b>{money(row.gastosHoy, { symbol: false })}</b>
+            </div>
+            <div className="is-metric-prestamo">
+              <span>Préstamo</span>
+              <b>{money(row.prestamosHoy, { symbol: false })}</b>
             </div>
           </div>
         </>
@@ -910,8 +923,10 @@ export function SupervisorMobileApp({
   const [cajaHistoryDayIso, setCajaHistoryDayIso] = useState<string | null>(null);
   const [snOpen, setSnOpen] = useState(false);
   const [snDay, setSnDay] = useState<string | null>(null);
-  /** Día anterior abierto en el Registro Nequi (hoy siempre va abierto). */
-  const [nequiHistDay, setNequiHistDay] = useState<string | null>(null);
+  /** Registro Nequi de hoy filtrado por ruta (1 / 1.1 / 2). */
+  const [nequiRegistroRoute, setNequiRegistroRoute] = useState<string | null>(null);
+  /** Registro Banco de hoy filtrado por ruta (1 / 1.1 / 2). */
+  const [bancoRegistroRoute, setBancoRegistroRoute] = useState<string | null>(null);
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [nuevoName, setNuevoName] = useState("");
@@ -956,6 +971,10 @@ export function SupervisorMobileApp({
     setDetailMode("totales");
     setCobrosMethodFilter(null);
     setNequiDayIso(null);
+    setNequiDayBackTo("nequi-historial");
+    setCajaHistoryDayIso(null);
+    setNequiRegistroRoute(null);
+    setBancoRegistroRoute(null);
     setNuevoMode("menu");
     setNuevoRouteRef(null);
     setNuevoMsg("");
@@ -966,6 +985,7 @@ export function SupervisorMobileApp({
     setClientesModifyMode(false);
     setClientesEditRef(null);
     setClientesEditSearch("");
+    setClientesSearchOpen(false);
     setClientesRouteFilter(null);
     setClientesLoanClientRef(null);
     setPlanillaRouteFilter(null);
@@ -1006,38 +1026,43 @@ export function SupervisorMobileApp({
   );
 
   const liquidaciones = useMemo((): RouteLiquidacion[] => {
-    // Una liquidación por cobrador: si tiene «1» y «1.1», caja y planilla se
-    // cuentan una sola vez (la tarjeta muestra «1 · 1.1»).
-    const byCollector = new Map<string, typeof assignedCoverage>();
-    for (const route of assignedCoverage) {
-      const key = route.collector?.ref || route.collectorRef || route.routeRef;
-      const group = byCollector.get(key);
-      if (group) group.push(route);
-      else byCollector.set(key, [route]);
+    // Una tarjeta por ruta de catálogo (1, 1.1, 2…): no juntar hojas del mismo cobrador.
+    const sorted = assignedCoverage
+      .slice()
+      .sort((a, b) => compareRouteNames(a.routeName, b.routeName));
+
+    const primaryByCollector = new Map<string, string>();
+    for (const route of sorted) {
+      const collectorRef = route.collector?.ref || route.collectorRef || "";
+      if (!collectorRef || primaryByCollector.has(collectorRef)) continue;
+      primaryByCollector.set(collectorRef, route.routeName);
     }
-    return Array.from(byCollector.values()).map((group) => {
-      const routeGroup = group
-        .slice()
-        .sort((a, b) => compareRouteNames(a.routeName, b.routeName));
-      const route = {
-        ...routeGroup[0],
-        routeName: routeGroup.map((entry) => entry.routeName).join(" · "),
-        clients: routeGroup.reduce((sum, entry) => sum + entry.clients, 0),
-      };
-      const routeNames = routeGroup.map((entry) => entry.routeName);
+
+    return sorted.map((route) => {
       const collector = route.collector;
       const collectorRef = collector?.ref || route.collectorRef || "";
-      const mine = todayAssignments.filter((row) => row.collectorRef === collectorRef);
-      const pending = mine.filter((row) => !row.visitStatus || row.visitStatus === "pendiente").length;
+      const isPrimary =
+        Boolean(collectorRef) &&
+        sameRoute(primaryByCollector.get(collectorRef), route.routeName);
+
+      const mine = todayAssignments.filter(
+        (row) =>
+          row.collectorRef === collectorRef &&
+          sameRoute(assignmentRouteName(row, clients), route.routeName),
+      );
+      const pending = mine.filter(
+        (row) => !row.visitStatus || row.visitStatus === "pendiente",
+      ).length;
       const done = mine.filter((row) => row.visitStatus === "cobrado").length;
 
       const clientRefs = new Set(
         clients
-          .filter((row) => routeNames.some((name) => sameRoute(row.route, name)))
+          .filter((row) => sameRoute(row.route, route.routeName))
           .map((row) => row.ref),
       );
-      // También clientes que aparecen hoy en planilla de este cobrador.
-      for (const row of mine) clientRefs.add(row.clientRef);
+      for (const row of mine) {
+        if (row.clientRef) clientRefs.add(row.clientRef);
+      }
 
       const loansToday = loans.filter(
         (loan) => clientRefs.has(loan.clientRef) && loan.date === todayDisplay,
@@ -1045,7 +1070,7 @@ export function SupervisorMobileApp({
       const renewals = loansToday.filter(isRenewalLoan);
       const newLoans = loansToday.filter((loan) => !isRenewalLoan(loan));
 
-      const caja = collector
+      const fullCaja = collector
         ? cajaDelDia(collector, today, payments, dayCloses, dayExpenseDrafts, monthCloses)
         : {
             saldoInicial: 0,
@@ -1057,16 +1082,64 @@ export function SupervisorMobileApp({
             enCaja: 0,
           };
 
+      let cobradoEfectivo = 0;
+      let cobradoNequi = 0;
+      let cobradoBanco = 0;
+      if (collector) {
+        for (const pay of collectorDayPayments(
+          collector.ref,
+          today,
+          payments,
+          [collector],
+        )) {
+          const loan = loans.find((row) => row.ref === pay.loanRef);
+          if (!loan?.clientRef || !clientRefs.has(loan.clientRef)) continue;
+          const amount = Number(pay.amount) || 0;
+          if (!(amount > 0)) continue;
+          const method = normalizePaymentMethod(pay.method);
+          if (method === "nequi") cobradoNequi += amount;
+          else if (method === "banco") cobradoBanco += amount;
+          else cobradoEfectivo += amount;
+        }
+      }
+      const cobradoHoy = cobradoEfectivo + cobradoNequi + cobradoBanco;
+
+      const rawExpenses = expensesForCollectorDay(
+        collectorRef,
+        today,
+        dayCloses,
+        dayExpenseDrafts,
+      );
+      let gastosHoy = 0;
+      let prestamosHoy = 0;
+      for (const line of rawExpenses) {
+        const amount = Number(line.amount) || 0;
+        if (!(amount > 0)) continue;
+        const isPrestamo =
+          line.category === "prestamo_ruta" || line.id === "prestamo";
+        if (isPrestamo) {
+          const loan = line.loanRef
+            ? loans.find((row) => row.ref === line.loanRef)
+            : undefined;
+          if (loan?.clientRef && clientRefs.has(loan.clientRef)) {
+            prestamosHoy += amount;
+          }
+          continue;
+        }
+        if (isPrimary) gastosHoy += amount;
+      }
+
       const closeRecord = dayCloses.find(
         (row) => row.collectorRef === collectorRef && row.date === today,
       );
-      const planillaClosed = mine.length > 0 && mine.every((row) => Boolean(row.dayClosedAt));
-      const closed = Boolean(closeRecord) || planillaClosed;
+      const planillaClosed =
+        mine.length > 0 && mine.every((row) => Boolean(row.dayClosedAt));
+      const closed = Boolean(closeRecord && isPrimary) || planillaClosed;
 
-      const cobradoHoy = caja.cobradoHoy;
-      const gastosHoy = closeRecord ? closeRecord.expensesTotal : caja.gastosHoy;
-      /** Dinero en mano del cobrador (arrastre + efectivo − gastos; sin Nequi). */
-      const enCaja = caja.enCaja;
+      const saldoInicial = isPrimary ? fullCaja.saldoInicial : 0;
+      const enCaja = isPrimary
+        ? fullCaja.enCaja
+        : cobradoEfectivo - gastosHoy - prestamosHoy;
 
       let statusLabel = "Sin planilla";
       let statusKind: StatusKind = "draft";
@@ -1084,7 +1157,7 @@ export function SupervisorMobileApp({
           statusLabel = "";
           statusKind = "draft";
         }
-      } else {
+      } else if (isPrimary) {
         const lastClose = dayCloses
           .filter((row) => row.collectorRef === collectorRef)
           .slice()
@@ -1095,7 +1168,10 @@ export function SupervisorMobileApp({
         }
       }
       if (!closed && loansToday.length > 0 && statusKind !== "ok") {
-        statusLabel = loansToday.length === 1 ? "1 préstamo hoy" : `${loansToday.length} préstamos hoy`;
+        statusLabel =
+          loansToday.length === 1
+            ? "1 préstamo hoy"
+            : `${loansToday.length} préstamos hoy`;
         statusKind = "partial";
       }
 
@@ -1108,12 +1184,13 @@ export function SupervisorMobileApp({
         planilla: mine.length,
         pending,
         done,
-        saldoInicial: caja.saldoInicial,
+        saldoInicial,
         cobradoHoy,
-        cobradoEfectivo: caja.cobradoEfectivo,
-        cobradoNequi: caja.cobradoNequi,
-        cobradoBanco: caja.cobradoBanco,
+        cobradoEfectivo,
+        cobradoNequi,
+        cobradoBanco,
         gastosHoy,
+        prestamosHoy,
         enCaja,
         closed,
         newLoans,
@@ -1162,6 +1239,17 @@ export function SupervisorMobileApp({
       (sum, row) => sum + row.newLoans.length + row.renewals.length,
       0,
     );
+    /** Caja e inicial: una sola vez por cobrador (ruta madre), sin sumar 1 + 1.1. */
+    const cajaOwners = liquidaciones.filter((row) => {
+      const siblings = liquidaciones.filter(
+        (entry) => entry.collectorRef === row.collectorRef,
+      );
+      const primaryName = siblings
+        .map((entry) => entry.routeName)
+        .slice()
+        .sort(compareRouteNames)[0];
+      return sameRoute(row.routeName, primaryName);
+    });
     return {
       routes: assignedCoverage.length,
       planilla: todayAssignments.length,
@@ -1169,8 +1257,8 @@ export function SupervisorMobileApp({
       cobradoNequi: liquidaciones.reduce((sum, row) => sum + row.cobradoNequi, 0),
       cobradoBanco: liquidaciones.reduce((sum, row) => sum + row.cobradoBanco, 0),
       gastosHoy: liquidaciones.reduce((sum, row) => sum + row.gastosHoy, 0),
-      enCaja: liquidaciones.reduce((sum, row) => sum + row.enCaja, 0),
-      saldoInicial: liquidaciones.reduce((sum, row) => sum + row.saldoInicial, 0),
+      enCaja: cajaOwners.reduce((sum, row) => sum + row.enCaja, 0),
+      saldoInicial: cajaOwners.reduce((sum, row) => sum + row.saldoInicial, 0),
       prestamosHoy,
     };
   }, [assignedCoverage.length, liquidaciones, todayAssignments.length]);
@@ -1214,31 +1302,96 @@ export function SupervisorMobileApp({
    * Registro Nequi por día: hoy abierto; los días anteriores recogidos, uno por fila.
    * Al cambiar la fecha, el día de hoy pasa solo al historial y el nuevo arranca vacío.
    */
-  const nequiRegisterByDay = useMemo(() => {
-    const groups = new Map<string, typeof paymentsWithEvidence>();
-    for (const row of paymentsWithEvidence) {
-      if (normalizePaymentMethod(row.method) !== "nequi") continue;
-      if (!((row.amount ?? 0) > 0)) continue;
-      const date = normalizeHistoryDate(row.paidDate ?? "");
-      if (!date || date > today) continue;
-      const list = groups.get(date) ?? [];
-      list.push(row);
-      groups.set(date, list);
-    }
-    const dayOf = (date: string) => {
-      const items = (groups.get(date) ?? [])
-        .slice()
-        .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));
-      const total = items.reduce((sum, row) => sum + (row.amount ?? 0), 0);
-      return { date, items, total };
-    };
-    const past = [...groups.keys()]
-      .filter((date) => date < today)
-      .sort((a, b) => b.localeCompare(a))
-      .map(dayOf);
-    return { today: dayOf(today), past };
+  /**
+   * Registro Nequi de hoy (días anteriores van por Caja → Historial de cada ruta).
+   */
+  const nequiRegisterTodayAll = useMemo(() => {
+    const items = paymentsWithEvidence
+      .filter((row) => {
+        if (normalizePaymentMethod(row.method) !== "nequi") return false;
+        if (!((row.amount ?? 0) > 0)) return false;
+        return normalizeHistoryDate(row.paidDate ?? "") === today;
+      })
+      .slice()
+      .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));
+    const total = items.reduce((sum, row) => sum + (row.amount ?? 0), 0);
+    return { date: today, items, total };
   }, [paymentsWithEvidence, today]);
-  const nequiRegisterToday = nequiRegisterByDay.today;
+  const nequiRegistroRoutePins = useMemo(
+    () =>
+      liquidaciones
+        .map((row) => row.routeName)
+        .filter(Boolean)
+        .slice()
+        .sort(compareRouteNames),
+    [liquidaciones],
+  );
+  /** Pins 1, 1.1, 2…: rutas activas con cobrador (Ruta / Clientes). */
+  const planillaRoutePins = useMemo(
+    () =>
+      catalogRoutes(routes)
+        .filter((row) => routeIsActive(row) && Boolean(row.collectorRef))
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+        .map((row) => row.name)
+        .filter(Boolean),
+    [routes],
+  );
+  const nequiRegisterToday = useMemo(() => {
+    const base = nequiRegisterTodayAll;
+    if (!nequiRegistroRoute) {
+      return base;
+    }
+    const items = base.items.filter((pay) => {
+      const loan = loans.find((row) => row.ref === pay.loanRef);
+      const client = clients.find((row) => row.ref === (loan?.clientRef || ""));
+      return sameRoute(client?.route, nequiRegistroRoute);
+    });
+    const total = items.reduce((sum, row) => sum + (row.amount ?? 0), 0);
+    return { date: base.date, items, total };
+  }, [nequiRegisterTodayAll, nequiRegistroRoute, loans, clients]);
+
+  /** Si los pins llegan después de entrar al panel, arrancar en ruta 1. */
+  useEffect(() => {
+    if (view !== "nequi") return;
+    setNequiRegistroRoute((prev) => {
+      if (nequiRegistroRoutePins.length === 0) return null;
+      if (prev && nequiRegistroRoutePins.some((name) => sameRoute(name, prev))) {
+        return prev;
+      }
+      return pickDefaultRoutePin(nequiRegistroRoutePins);
+    });
+  }, [view, nequiRegistroRoutePins]);
+  useEffect(() => {
+    if (view !== "banco") return;
+    setBancoRegistroRoute((prev) => {
+      if (nequiRegistroRoutePins.length === 0) return null;
+      if (prev && nequiRegistroRoutePins.some((name) => sameRoute(name, prev))) {
+        return prev;
+      }
+      return pickDefaultRoutePin(nequiRegistroRoutePins);
+    });
+  }, [view, nequiRegistroRoutePins]);
+  useEffect(() => {
+    if (view !== "planilla") return;
+    setPlanillaRouteFilter((prev) => {
+      if (planillaRoutePins.length === 0) return null;
+      if (prev && planillaRoutePins.some((name) => sameRoute(name, prev))) {
+        return prev;
+      }
+      return pickDefaultRoutePin(planillaRoutePins);
+    });
+  }, [view, planillaRoutePins]);
+  useEffect(() => {
+    if (view !== "clientes") return;
+    setClientesRouteFilter((prev) => {
+      if (planillaRoutePins.length === 0) return null;
+      if (prev && planillaRoutePins.some((name) => sameRoute(name, prev))) {
+        return prev;
+      }
+      return pickDefaultRoutePin(planillaRoutePins);
+    });
+  }, [view, planillaRoutePins]);
 
   /** Ficha de un día del Registro Nequi (misma fila para hoy y para el historial). */
   const renderNequiDayList = (items: typeof paymentsWithEvidence) => (
@@ -1303,7 +1456,7 @@ export function SupervisorMobileApp({
   /** Cabecera: saldo Nequi + saldo Banco (totales acumulados de ambos paneles). */
   const nequiBancoSaldoTotal = nequiAcumulado + bancoAcumulado;
 
-  const bancoRegisterToday = useMemo(() => {
+  const bancoRegisterTodayAll = useMemo(() => {
     const items = paymentsWithEvidence
       .filter(
         (row) =>
@@ -1316,6 +1469,19 @@ export function SupervisorMobileApp({
     const total = items.reduce((sum, row) => sum + (row.amount ?? 0), 0);
     return { date: todayDisplay, items, total };
   }, [paymentsWithEvidence, today, todayDisplay]);
+  const bancoRegisterToday = useMemo(() => {
+    const base = bancoRegisterTodayAll;
+    if (!bancoRegistroRoute) {
+      return base;
+    }
+    const items = base.items.filter((pay) => {
+      const loan = loans.find((row) => row.ref === pay.loanRef);
+      const client = clients.find((row) => row.ref === (loan?.clientRef || ""));
+      return sameRoute(client?.route, bancoRegistroRoute);
+    });
+    const total = items.reduce((sum, row) => sum + (row.amount ?? 0), 0);
+    return { date: base.date, items, total };
+  }, [bancoRegisterTodayAll, bancoRegistroRoute, loans, clients]);
 
   /** Filas de planilla: `#` = posición del cliente en su ruta; `route` para la raya verde. */
   const planillaTableRows = (rows: DailyCollectionAssignment[]): PlanillaTableRow[] =>
@@ -1343,29 +1509,78 @@ export function SupervisorMobileApp({
     openRoute && reloanClientRef
       ? clients.find((row) => row.ref === reloanClientRef) ?? null
       : null;
+  const openRouteScope = useMemo(() => {
+    if (!openRoute) return null;
+    const clientRefs = new Set(
+      clients
+        .filter((row) => sameRoute(row.route, openRoute.routeName))
+        .map((row) => row.ref),
+    );
+    for (const row of todayAssignments) {
+      if (
+        row.collectorRef === openRoute.collectorRef &&
+        row.clientRef &&
+        sameRoute(assignmentRouteName(row, clients), openRoute.routeName)
+      ) {
+        clientRefs.add(row.clientRef);
+      }
+    }
+    const siblings = liquidaciones.filter(
+      (row) => row.collectorRef === openRoute.collectorRef,
+    );
+    const primaryName = siblings
+      .map((row) => row.routeName)
+      .slice()
+      .sort(compareRouteNames)[0];
+    return {
+      clientRefs,
+      isPrimary: sameRoute(openRoute.routeName, primaryName),
+    };
+  }, [openRoute, clients, todayAssignments, liquidaciones]);
   const openAssignments = useMemo(
     () =>
       openRoute
         ? todayAssignments
-            .filter((row) => row.collectorRef === openRoute.collectorRef)
+            .filter(
+              (row) =>
+                row.collectorRef === openRoute.collectorRef &&
+                sameRoute(assignmentRouteName(row, clients), openRoute.routeName),
+            )
             .sort(assignmentRoutePositionComparator(clients))
         : [],
     [clients, todayAssignments, openRoute],
   );
-  const openRouteExpenses = useMemo(
-    () =>
-      openRoute
-        ? expensesForCollectorDay(
-            openRoute.collectorRef,
-            today,
-            dayCloses,
-            dayExpenseDrafts,
-          )
-        : [],
-    [openRoute, today, dayCloses, dayExpenseDrafts],
-  );
+  const openRouteExpenses = useMemo(() => {
+    if (!openRoute || !openRouteScope) return [];
+    const raw = expensesForCollectorDay(
+      openRoute.collectorRef,
+      today,
+      dayCloses,
+      dayExpenseDrafts,
+    );
+    return raw.filter((line) => {
+      const isPrestamo =
+        line.category === "prestamo_ruta" || line.id === "prestamo";
+      if (isPrestamo) {
+        const loan = line.loanRef
+          ? loans.find((row) => row.ref === line.loanRef)
+          : undefined;
+        return Boolean(
+          loan?.clientRef && openRouteScope.clientRefs.has(loan.clientRef),
+        );
+      }
+      return openRouteScope.isPrimary;
+    });
+  }, [
+    openRoute,
+    openRouteScope,
+    today,
+    dayCloses,
+    dayExpenseDrafts,
+    loans,
+  ]);
   const openRouteNequiDays = useMemo(() => {
-    if (!openRoute) return [];
+    if (!openRoute || !openRouteScope) return [];
     const mine = paymentsForCollectorIncludingOffice(
       openRoute.collectorRef,
       collectors,
@@ -1373,9 +1588,15 @@ export function SupervisorMobileApp({
       clients,
       loans,
       routes,
-    ).filter(
-      (row) => normalizePaymentMethod(row.method) === "nequi" && (row.amount ?? 0) > 0,
-    );
+    ).filter((row) => {
+      if (normalizePaymentMethod(row.method) !== "nequi" || !((row.amount ?? 0) > 0)) {
+        return false;
+      }
+      const loan = loans.find((entry) => entry.ref === row.loanRef);
+      if (loan?.clientRef && openRouteScope.clientRefs.has(loan.clientRef)) return true;
+      if (row.routeRef && row.routeRef === openRoute.routeRef) return true;
+      return false;
+    });
     const byDate = new Map<string, { count: number; amount: number }>();
     for (const row of mine) {
       const date = normalizeHistoryDate(row.paidDate ?? "");
@@ -1394,9 +1615,17 @@ export function SupervisorMobileApp({
         amount: stats.amount,
       }))
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [openRoute, collectors, paymentsWithEvidence, clients, loans, routes]);
+  }, [
+    openRoute,
+    openRouteScope,
+    collectors,
+    paymentsWithEvidence,
+    clients,
+    loans,
+    routes,
+  ]);
   const openRouteNequiDayPays = useMemo(() => {
-    if (!openRoute || !nequiDayIso) return [];
+    if (!openRoute || !openRouteScope || !nequiDayIso) return [];
     const byRef = new Map(
       paymentsWithEvidence.filter((row) => row.ref).map((row) => [row.ref, row] as const),
     );
@@ -1408,18 +1637,35 @@ export function SupervisorMobileApp({
       loans,
       routes,
     )
-      .filter(
-        (row) =>
-          normalizePaymentMethod(row.method) === "nequi" &&
-          (row.amount ?? 0) > 0 &&
-          normalizeHistoryDate(row.paidDate ?? "") === nequiDayIso,
-      )
+      .filter((row) => {
+        if (
+          normalizePaymentMethod(row.method) !== "nequi" ||
+          !((row.amount ?? 0) > 0) ||
+          normalizeHistoryDate(row.paidDate ?? "") !== nequiDayIso
+        ) {
+          return false;
+        }
+        const loan = loans.find((entry) => entry.ref === row.loanRef);
+        if (loan?.clientRef && openRouteScope.clientRefs.has(loan.clientRef)) return true;
+        if (row.routeRef && row.routeRef === openRoute.routeRef) return true;
+        return false;
+      })
       .map((row) => withPaymentEvidence(byRef.get(row.ref) ?? row))
       .slice()
       .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));
-  }, [openRoute, nequiDayIso, collectors, paymentsWithEvidence, clients, loans, routes]);
+  }, [
+    openRoute,
+    openRouteScope,
+    nequiDayIso,
+    collectors,
+    paymentsWithEvidence,
+    clients,
+    loans,
+    routes,
+  ]);
+
   const openRouteCajaHistory = useMemo(() => {
-    if (!openRoute) return [];
+    if (!openRoute || !openRouteScope) return [];
     const collector = collectors.find((row) => row.ref === openRoute.collectorRef);
     if (!collector) return [];
     const period = periodFromDateIso(today);
@@ -1432,18 +1678,25 @@ export function SupervisorMobileApp({
       dayExpenseDrafts,
       monthCloses,
       period,
-      { assignments },
+      {
+        assignments,
+        clientRefs: openRouteScope.clientRefs,
+        loans,
+        includeOperatingExpenses: openRouteScope.isPrimary,
+      },
     );
     // Días anteriores al de hoy, máx. 5 (mismo tope que historial del cobrador).
     return rows.filter((row) => row.date < today).slice(0, 5);
   }, [
     openRoute,
+    openRouteScope,
     collectors,
     payments,
     dayCloses,
     dayExpenseDrafts,
     monthCloses,
     assignments,
+    loans,
     today,
   ]);
 
@@ -1497,18 +1750,22 @@ export function SupervisorMobileApp({
   );
 
   const openRouteHistoryDayPlanilla = useMemo(() => {
-    if (!openRoute || !cajaHistoryDayIso) return [];
+    if (!openRoute || !cajaHistoryDayIso || !openRouteScope) return [];
     const dayVisits = assignments.filter(
       (row) =>
         row.collectorRef === openRoute.collectorRef &&
-        normalizeHistoryDate(row.dispatchDate) === cajaHistoryDayIso,
+        normalizeHistoryDate(row.dispatchDate) === cajaHistoryDayIso &&
+        sameRoute(assignmentRouteName(row, clients), openRoute.routeName),
     );
     const dayPays = collectorDayPayments(
       openRoute.collectorRef,
       cajaHistoryDayIso,
       payments,
       collectors,
-    );
+    ).filter((pay) => {
+      const loan = loans.find((row) => row.ref === pay.loanRef);
+      return Boolean(loan?.clientRef && openRouteScope.clientRefs.has(loan.clientRef));
+    });
     return buildCollectorHistoryPlanillaRows({
       dateIso: cajaHistoryDayIso,
       dispatched: dayVisits,
@@ -1519,6 +1776,7 @@ export function SupervisorMobileApp({
     });
   }, [
     openRoute,
+    openRouteScope,
     cajaHistoryDayIso,
     assignments,
     payments,
@@ -1580,12 +1838,24 @@ export function SupervisorMobileApp({
     setNuevoLoanClientRef(null);
     setNuevoName("");
     setNuevoPhone("");
-    if (next !== "planilla") setPlanillaRouteFilter(null);
-    if (next !== "clientes") {
+    if (next === "planilla") {
+      setPlanillaRouteFilter(pickDefaultRoutePin(planillaRoutePins));
+    } else {
+      setPlanillaRouteFilter(null);
+    }
+    if (next === "clientes") {
+      setClientesRouteFilter(pickDefaultRoutePin(planillaRoutePins));
+    } else {
       setClientesRouteFilter(null);
       setClientesLoanClientRef(null);
       resetClientesModify();
       setClientesSearchOpen(false);
+    }
+    if (next === "nequi") {
+      setNequiRegistroRoute(pickDefaultRoutePin(nequiRegistroRoutePins));
+    }
+    if (next === "banco") {
+      setBancoRegistroRoute(pickDefaultRoutePin(nequiRegistroRoutePins));
     }
     if (next !== "prestamos") {
       setPrestamoFichaRef(null);
@@ -1618,6 +1888,8 @@ export function SupervisorMobileApp({
     setPlanillaRouteFilter(null);
     setClientesRouteFilter(null);
     setClientesLoanClientRef(null);
+    setNequiRegistroRoute(null);
+    setBancoRegistroRoute(null);
     resetClientesModify();
     setClientesSearchOpen(false);
     setPrestamoFichaRef(null);
@@ -1702,18 +1974,6 @@ export function SupervisorMobileApp({
     setNuevoName("");
     setNuevoPhone("");
   }
-
-  /** Pins 1, 2, 3, 4…: toda ruta activa con cobrador asignado (aparece al asignar). */
-  const planillaRoutePins = useMemo(
-    () =>
-      catalogRoutes(routes)
-        .filter((row) => routeIsActive(row) && Boolean(row.collectorRef))
-        .slice()
-        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
-        .map((row) => row.name)
-        .filter(Boolean),
-    [routes],
-  );
 
   const planillaAssignments = useMemo(() => {
     const compare = assignmentRoutePositionComparator(clients);
@@ -1989,7 +2249,6 @@ export function SupervisorMobileApp({
           aria-current={view === "planilla" ? "page" : undefined}
           {...navButtonProps(navIntent, () => {
             if (view === "planilla" && !openRouteRef) return;
-            setPlanillaRouteFilter(null);
             goToView("planilla");
           })}
         >
@@ -2094,7 +2353,6 @@ export function SupervisorMobileApp({
           aria-current={view === "clientes" ? "page" : undefined}
           {...navButtonProps(navIntent, () => {
             if (view === "clientes" && !openRouteRef) return;
-            setClientesRouteFilter(null);
             setClientesLoanClientRef(null);
             goToView("clientes");
           })}
@@ -2170,7 +2428,7 @@ export function SupervisorMobileApp({
           ) : detailMode === "historial" ? (
             <>
               <p className="supervisor-mobile-detail-meta">
-                Historial de caja · {openRoute.collectorName}
+                Historial · Ruta {openRoute.routeName} · {openRoute.collectorName}
               </p>
               <div className="collector-mobile-day-history is-supervisor-caja">
                 <div className="collector-mobile-day-history-head">
@@ -2406,7 +2664,7 @@ export function SupervisorMobileApp({
                   </button>
                   <button
                     type="button"
-                    className="is-total-means is-tap-means"
+                    className="is-total-means is-tap-means is-final-box"
                     onClick={() => openCobrosReport(null)}
                     aria-label="Ver todos los cobros"
                   >
@@ -2423,7 +2681,20 @@ export function SupervisorMobileApp({
                   <span className="is-primary-title">Gasto</span>
                   <b>{money(openRoute.gastosHoy, { symbol: false })}</b>
                 </button>
-                <div className="supervisor-mobile-cuadre" aria-label="Cuadre de caja">
+                <button
+                  type="button"
+                  className="supervisor-mobile-sheet-row is-tap is-prestamo-ruta is-primary-row"
+                  disabled={openRoute.prestamosHoy <= 0}
+                  onClick={() => {
+                    if (openRoute.prestamosHoy <= 0) return;
+                    setDetailMode("prestamos");
+                  }}
+                  aria-label="Ver préstamos del día en esta ruta"
+                >
+                  <span className="is-primary-title">Préstamo</span>
+                  <b>{money(openRoute.prestamosHoy, { symbol: false })}</b>
+                </button>
+                <div className="supervisor-mobile-cuadre is-four" aria-label="Cuadre de caja">
                   <div className="supervisor-mobile-cuadre-title is-primary-title">Cuadre</div>
                   <div>
                     <span>Inicial</span>
@@ -2437,6 +2708,10 @@ export function SupervisorMobileApp({
                     <span>Gasto</span>
                     <b>{money(openRoute.gastosHoy, { symbol: false })}</b>
                   </div>
+                  <div className="is-cuadre-prestamo">
+                    <span>Préstamo</span>
+                    <b>{money(openRoute.prestamosHoy, { symbol: false })}</b>
+                  </div>
                   <div className="is-final">
                     <span>Final</span>
                     <b>{money(openRoute.enCaja, { symbol: false })}</b>
@@ -2447,10 +2722,6 @@ export function SupervisorMobileApp({
                   <b>
                     {openRoute.done}/{openRoute.planilla || 0}
                   </b>
-                </div>
-                <div className="supervisor-mobile-sheet-row is-muted">
-                  <span>Préstamos / renovaciones hoy</span>
-                  <b>{openRoute.newLoans.length + openRoute.renewals.length}</b>
                 </div>
               </div>
 
@@ -2488,7 +2759,7 @@ export function SupervisorMobileApp({
                 </button>
                 <button
                   type="button"
-                  className="btn compact ghost is-historial"
+                  className="btn compact is-historial"
                   onClick={openCajaHistorial}
                 >
                   Historial
@@ -2767,60 +3038,58 @@ export function SupervisorMobileApp({
             </div>
           </div>
 
-          <h3>Registro Nequi</h3>
-          {nequiRegisterToday.items.length === 0 && nequiRegisterByDay.past.length === 0 ? (
-            <p className="ficha-empty">Sin cobros Nequi.</p>
+          <div className="supervisor-nequi-registro-head">
+            <h3>Registro Nequi</h3>
+            {nequiRegistroRoutePins.length > 0 ? (
+              <div
+                className="supervisor-nequi-route-pins"
+                role="group"
+                aria-label="Registro Nequi del día por ruta"
+              >
+                {nequiRegistroRoutePins.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className={
+                      nequiRegistroRoute && sameRoute(nequiRegistroRoute, name)
+                        ? "supervisor-nequi-route-pin on"
+                        : "supervisor-nequi-route-pin"
+                    }
+                    title={`Nequi hoy · ruta ${name}`}
+                    aria-label={`Nequi hoy ruta ${name}`}
+                    aria-pressed={Boolean(
+                      nequiRegistroRoute && sameRoute(nequiRegistroRoute, name),
+                    )}
+                    onClick={() =>
+                      setNequiRegistroRoute((prev) =>
+                        prev && sameRoute(prev, name) ? null : name,
+                      )
+                    }
+                  >
+                    <b>{name}</b>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+          {nequiRegisterToday.items.length === 0 ? (
+            <p className="ficha-empty">
+              {nequiRegistroRoute
+                ? `Sin cobros Nequi hoy en ruta ${nequiRegistroRoute}.`
+                : "Sin cobros Nequi hoy."}
+            </p>
           ) : (
             <div className="supervisor-nequi-register is-today-only">
-              {nequiRegisterToday.items.length === 0 ? (
-                <p className="ficha-empty">Sin cobros Nequi hoy.</p>
-              ) : (
-                <div className="supervisor-nequi-day">
-                  <div className="supervisor-nequi-day-head">
-                    <strong>Hoy · {todayDisplay}</strong>
-                    <b>{money(nequiRegisterToday.total, { symbol: false })}</b>
-                  </div>
-                  {renderNequiDayList(nequiRegisterToday.items)}
+              <div className="supervisor-nequi-day">
+                <div className="supervisor-nequi-day-head">
+                  <strong>
+                    Hoy · {todayDisplay}
+                    {nequiRegistroRoute ? ` · Ruta ${nequiRegistroRoute}` : ""}
+                  </strong>
+                  <b>{money(nequiRegisterToday.total, { symbol: false })}</b>
                 </div>
-              )}
-              {nequiRegisterByDay.past.length > 0 ? (
-                <ul className="supervisor-nequi-day-list" aria-label="Registro Nequi de días anteriores">
-                  {nequiRegisterByDay.past.map((day) => {
-                    const open = nequiHistDay === day.date;
-                    return (
-                      <li key={day.date}>
-                        {open ? (
-                          <div className="supervisor-nequi-day">
-                            <button
-                              type="button"
-                              className="supervisor-nequi-day-head is-toggle"
-                              aria-expanded
-                              onClick={() => setNequiHistDay(null)}
-                            >
-                              <strong>{isoToDisplay(day.date)}</strong>
-                              <b>{money(day.total, { symbol: false })}</b>
-                            </button>
-                            {renderNequiDayList(day.items)}
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            className="supervisor-nequi-day-row"
-                            aria-expanded={false}
-                            onClick={() => setNequiHistDay(day.date)}
-                          >
-                            <span className="is-date">{isoToDisplay(day.date)}</span>
-                            <span className="is-count">
-                              {day.items.length} cobro{day.items.length === 1 ? "" : "s"}
-                            </span>
-                            <b className="is-amount">{money(day.total, { symbol: false })}</b>
-                          </button>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              ) : null}
+                {renderNequiDayList(nequiRegisterToday.items)}
+              </div>
             </div>
           )}
         </section>
@@ -2873,14 +3142,54 @@ export function SupervisorMobileApp({
             </div>
           </div>
 
-          <h3>Registro Banco</h3>
+          <div className="supervisor-nequi-registro-head">
+            <h3>Registro Banco</h3>
+            {nequiRegistroRoutePins.length > 0 ? (
+              <div
+                className="supervisor-nequi-route-pins"
+                role="group"
+                aria-label="Registro Banco del día por ruta"
+              >
+                {nequiRegistroRoutePins.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    className={
+                      bancoRegistroRoute && sameRoute(bancoRegistroRoute, name)
+                        ? "supervisor-nequi-route-pin is-banco on"
+                        : "supervisor-nequi-route-pin is-banco"
+                    }
+                    title={`Banco hoy · ruta ${name}`}
+                    aria-label={`Banco hoy ruta ${name}`}
+                    aria-pressed={Boolean(
+                      bancoRegistroRoute && sameRoute(bancoRegistroRoute, name),
+                    )}
+                    onClick={() =>
+                      setBancoRegistroRoute((prev) =>
+                        prev && sameRoute(prev, name) ? null : name,
+                      )
+                    }
+                  >
+                    <b>{name}</b>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
           {bancoRegisterToday.items.length === 0 ? (
-            <p className="ficha-empty">Sin cobros Banco hoy.</p>
+            <p className="ficha-empty">
+              {bancoRegistroRoute
+                ? `Sin cobros Banco hoy en ruta ${bancoRegistroRoute}.`
+                : "Sin cobros Banco hoy."}
+            </p>
           ) : (
             <div className="supervisor-nequi-register is-today-only">
               <div className="supervisor-nequi-day">
                 <div className="supervisor-nequi-day-head">
-                  <strong>Hoy · {bancoRegisterToday.date}</strong>
+                  <strong>
+                    Hoy · {bancoRegisterToday.date}
+                    {bancoRegistroRoute ? ` · Ruta ${bancoRegistroRoute}` : ""}
+                  </strong>
                   <b>{money(bancoRegisterToday.total, { symbol: false })}</b>
                 </div>
                 <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-register is-nequi-day-ficha">
@@ -3477,8 +3786,8 @@ export function SupervisorMobileApp({
                         type="button"
                         className={
                           clientesRouteFilter === name
-                            ? "supervisor-planilla-route-btn on"
-                            : "supervisor-planilla-route-btn"
+                            ? "collector-mobile-route-pin on"
+                            : "collector-mobile-route-pin"
                         }
                         onClick={() =>
                           setClientesRouteFilter((prev) => (prev === name ? null : name))

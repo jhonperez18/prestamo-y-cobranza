@@ -599,7 +599,8 @@
       display: inline-grid;
       gap: 1px;
       align-content: center;
-      text-align: left;
+      justify-items: center;
+      text-align: center;
       padding: 4px 10px;
       border-radius: 8px;
       border: 1px solid #bfdbfe;
@@ -609,9 +610,11 @@
     }
     .collector-mobile-header-inicial span {
       display: block;
+      width: 100%;
       font-size: 9px;
       font-weight: 650;
-      color: #1e3a8a;
+      color: #111;
+      text-align: center;
     }
     .collector-mobile-header-inicial b {
       display: block;
@@ -619,6 +622,7 @@
       font-weight: 700;
       color: #1d4ed8;
       font-variant-numeric: tabular-nums;
+      text-align: center;
     }
     .collector-mobile-logo-col {
       display: flex;
@@ -742,7 +746,7 @@
     .collector-mobile-greet {
       margin: 0;
       font-size: 12px;
-      color: #5b7268;
+      color: #111;
       font-weight: 600;
       line-height: 1.2;
       white-space: nowrap;
@@ -754,7 +758,7 @@
     }
     .collector-mobile-date {
       font-size: 12px;
-      color: #5b7268;
+      color: #111;
       font-weight: 600;
       line-height: 1.2;
       white-space: nowrap;
@@ -1717,6 +1721,29 @@
     .collector-mobile-home-cuadre-head {
       text-align: center;
       margin-bottom: 12px;
+    }
+    .collector-mobile-home-inicio-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 4.5rem;
+      padding: 6px 16px;
+      border: 0;
+      border-radius: 4px;
+      background: #cfd6d8;
+      color: #111;
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      text-align: center;
+    }
+    .collector-mobile-home-inicio-btn:hover,
+    .collector-mobile-home-inicio-btn:focus-visible {
+      background: #b8c0c4;
+      outline: none;
     }
     .collector-mobile-home-cuadre-title-row {
       display: flex;
@@ -4761,16 +4788,9 @@
       margin: 0 0 6px;
     }
     .supervisor-mobile-actions.has-historial .btn.is-historial {
-      grid-column: 1;
-      justify-self: start;
-      width: auto;
-      height: 16px;
-      min-height: 0 !important;
-      padding: 0 6px !important;
-      font-size: 8px !important;
-      font-weight: 650;
-      line-height: 1;
-      letter-spacing: 0.02em;
+      grid-column: 1 / -1;
+      justify-self: stretch;
+      width: 100%;
     }
     .supervisor-mobile-actions > .btn:nth-child(n + 3) {
       grid-column: auto;
@@ -4881,6 +4901,23 @@
       justify-items: center;
       padding-top: 4px;
     }
+    .supervisor-mobile-sheet-means > button.is-total-means.is-final-box {
+      margin: 2px 0 0;
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: #cfe8df;
+      box-shadow: inset 0 0 0 1px #9ecbb8;
+    }
+    .supervisor-mobile-sheet-means > button.is-total-means.is-final-box span {
+      font-size: 11px;
+      font-weight: 800;
+      color: #14532d;
+    }
+    .supervisor-mobile-sheet-means > button.is-total-means.is-final-box b {
+      font-size: 16px;
+      font-weight: 700;
+      color: #14532d;
+    }
     .supervisor-mobile-sheet-means span {
       font-size: 10px;
       font-weight: 700;
@@ -4928,6 +4965,17 @@
       padding: 8px 10px 9px;
       border-bottom: 1px solid #e8efeb;
       background: #f7faf8;
+    }
+    .supervisor-mobile-cuadre.is-four {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+    .supervisor-mobile-cuadre.is-four .is-cuadre-prestamo span,
+    .supervisor-mobile-cuadre.is-four .is-cuadre-prestamo b {
+      color: #111;
+    }
+    .supervisor-mobile-sheet-row.is-prestamo-ruta .is-primary-title,
+    .supervisor-mobile-sheet-row.is-prestamo-ruta b {
+      color: #111;
     }
     .supervisor-mobile-cuadre-title,
     .supervisor-mobile-cuadre-title.is-primary-title {
@@ -5893,6 +5941,76 @@
       gap: 10px;
       margin-top: 4px;
     }
+    .supervisor-nequi-registro-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+    .supervisor-nequi-registro-head h3 {
+      margin: 0;
+    }
+    .supervisor-nequi-route-pins {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .supervisor-nequi-route-pin {
+      min-width: 30px;
+      height: 28px;
+      padding: 0 10px;
+      border: 1.5px solid #d8b4fe;
+      border-radius: 999px;
+      background: #f3e8ff;
+      color: #6b21a8;
+      cursor: pointer;
+      font: inherit;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease,
+        box-shadow 0.15s ease,
+        transform 0.15s ease;
+    }
+    .supervisor-nequi-route-pin b {
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: 0.02em;
+      color: inherit;
+    }
+    .supervisor-nequi-route-pin.on {
+      background: #7e22ce;
+      border-color: #6b21a8;
+      color: #fff;
+      box-shadow:
+        0 0 0 3px rgba(126, 34, 206, 0.28),
+        0 2px 6px rgba(107, 33, 168, 0.22);
+      transform: scale(1.1);
+    }
+    .supervisor-nequi-route-pin.on b {
+      color: #fff;
+      font-weight: 800;
+    }
+    .supervisor-nequi-route-pin.is-banco {
+      border-color: #93c5fd;
+      background: #eff6ff;
+      color: #1d4ed8;
+    }
+    .supervisor-nequi-route-pin.is-banco.on {
+      background: #1d4ed8;
+      border-color: #1e40af;
+      color: #fff;
+      box-shadow:
+        0 0 0 3px rgba(29, 78, 216, 0.28),
+        0 2px 6px rgba(30, 64, 175, 0.22);
+    }
     /* En celular el scroll es de toda la pantalla Nequi, no un cajón truncado. */
     .supervisor-nequi-register.is-today-only {
       max-height: none;
@@ -6818,6 +6936,10 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 6px;
     }
+    .supervisor-route-board-metrics.is-four {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 4px;
+    }
     .supervisor-route-board-metrics > div {
       display: flex;
       flex-direction: column;
@@ -6836,6 +6958,13 @@
       font-weight: 750;
       color: #14201b;
       font-variant-numeric: tabular-nums;
+    }
+    .supervisor-route-board-metrics.is-four b {
+      font-size: 12px;
+    }
+    .supervisor-route-board-metrics .is-metric-prestamo span,
+    .supervisor-route-board-metrics .is-metric-prestamo b {
+      color: #111;
     }
     .supervisor-mobile-list {
       list-style: none;
