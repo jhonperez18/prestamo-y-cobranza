@@ -30,6 +30,16 @@ import {
 } from "@/lib/payment-combo";
 import { paymentBelongsToVisit } from "@/lib/planilla-payment-reconcile";
 
+/** Visita de planilla sin crédito cobrable: listo para prestar, no para cobrar. */
+export function isAssignmentAwaitingLoan(
+  row: Pick<DailyCollectionAssignment, "awaitingLoan" | "itemId" | "loanRef">,
+) {
+  if (row.awaitingLoan) return true;
+  if (String(row.itemId || "").includes(":prestar")) return true;
+  if (!String(row.loanRef || "").trim()) return true;
+  return false;
+}
+
 export function planillaVisitPaid(row: Pick<DailyCollectionAssignment, "visitStatus" | "paymentRef">) {
   return (
     row.visitStatus === "cobrado" ||
@@ -94,7 +104,8 @@ export function planillaLiveCuota(
   _payments: PaymentRow[] = [],
   _today = todayIso(),
 ): number {
-  if (row.awaitingLoan) return 0;
+  // Sin préstamo cobrable no hay cuota: el monto inventado no debe aparecer.
+  if (isAssignmentAwaitingLoan(row) || !loan) return 0;
   return planillaCuotaPactada(loan);
 }
 
@@ -103,7 +114,7 @@ export function planillaSyncedLoan(
   loanRef: string | undefined,
   payments: PaymentRow[],
 ): LoanRow | null {
-  if (!loanRef) return null;
+  if (!loanRef?.trim()) return null;
   const raw = loans.find((row) => row.ref === loanRef);
   return raw ? (syncLoan(raw, payments) as LoanRow) : null;
 }
@@ -115,12 +126,13 @@ export function enrichSupervisorPlanillaRow(
   payments: PaymentRow[],
   today = todayIso(),
 ) {
-  const loan = planillaSyncedLoan(loans, row.loanRef, payments);
+  const awaitingLoan = isAssignmentAwaitingLoan(row);
+  const loan = awaitingLoan ? null : planillaSyncedLoan(loans, row.loanRef, payments);
   const cuotas = planillaLiveCuotasProgress(loan, payments, today);
   const cuota = planillaLiveCuota(row, loan, payments, today);
-  const saldo = loan?.balance ?? 0;
-  const pay = planillaLivePaymentForVisit(row, payments, today);
-  const isCombined = visitHasCombinedPayment(payments, {
+  const saldo = awaitingLoan ? 0 : loan?.balance ?? 0;
+  const pay = awaitingLoan ? undefined : planillaLivePaymentForVisit(row, payments, today);
+  const isCombined = !awaitingLoan && visitHasCombinedPayment(payments, {
     loanRef: row.loanRef,
     clientRef: row.clientRef,
     dispatchDate: row.dispatchDate,
@@ -168,5 +180,6 @@ export function enrichSupervisorPlanillaRow(
         : undefined,
     cuotas,
     visitStatus,
+    awaitingLoan,
   };
 }

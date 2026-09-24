@@ -1,31 +1,14 @@
 import { NextResponse } from "next/server";
-import { fetchLoansFromSupabase } from "@/lib/supabase/catalog-mirror";
-import { isVirginWriteLocked, virginWriteLockPayload } from "@/lib/virgin-lock";
-import { processCollectorPayApi } from "@/lib/supabase/process-collector-pay-api";
 import type { CollectorPayApiBody } from "@/lib/collector-pay-submit";
 import type { PaymentRow } from "@/lib/mock-data";
+import { paymentComboGroupId } from "@/lib/payment-combo";
+import { isVirginWriteLocked, virginWriteLockPayload } from "@/lib/virgin-lock";
+import { processCollectorPayApi } from "@/lib/supabase/process-collector-pay-api";
 import {
   registerCombinedLoanPaymentInSupabase,
   registerLoanPaymentInSupabase,
   validatePayAmount,
 } from "@/lib/supabase/register-loan-payment";
-import { paymentComboGroupId } from "@/lib/payment-combo";
-
-export async function GET() {
-  try {
-    const result = await fetchLoansFromSupabase();
-    if ("skipped" in result && result.skipped) {
-      return NextResponse.json({ ok: true, skipped: true, reason: result.reason, loans: [] });
-    }
-    if (!result.ok) {
-      return NextResponse.json({ ok: false, error: result.error, loans: [] }, { status: 502 });
-    }
-    return NextResponse.json({ ok: true, loans: result.rows });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "unknown_error";
-    return NextResponse.json({ ok: false, error: message, loans: [] }, { status: 500 });
-  }
-}
 
 type LegacyPayBody = {
   payment?: PaymentRow;
@@ -46,17 +29,42 @@ function isCollectorPayBody(body: unknown): body is CollectorPayApiBody {
   );
 }
 
+function duplicatedOk(payload: {
+  payments: PaymentRow[];
+  balance?: number;
+  paid?: number;
+}) {
+  return NextResponse.json(
+    {
+      ok: true,
+      duplicated: true,
+      message: "Pago procesado previamente",
+      payment: payload.payments[0],
+      payments: payload.payments,
+      balance: payload.balance,
+      paid: payload.paid,
+    },
+    { status: 200 },
+  );
+}
+
 /**
- * POST /api/loans — mismo contrato que /api/loans/pay (CollectorPaySubmit + loanRef).
- * GET permanece: listado de préstamos desde Supabase.
+ * POST /api/loans/pay
+ *
+ * Cobros desde CollectorPayForm (simple o combined).
+ * - Idempotencia por idempotencyKey → 200 duplicated (sin fila nueva).
+ * - Evidencia: solo paths Storage / refs livianas en Postgres (nunca Base64).
+ * - Combinado: RPC atómica register_combined_collection.
+ *
+ * No sustituye el commit local del padre (sistema-madre).
  */
-export async function POST(req: Request) {
+export async function POST(request: Request) {
   if (isVirginWriteLocked()) {
     return NextResponse.json(virginWriteLockPayload(), { status: 423 });
   }
 
   try {
-    const body = (await req.json()) as CollectorPayApiBody | LegacyPayBody;
+    const body = (await request.json()) as CollectorPayApiBody | LegacyPayBody;
 
     if (isCollectorPayBody(body)) {
       const result = await processCollectorPayApi(body);
@@ -64,15 +72,15 @@ export async function POST(req: Request) {
     }
 
     const legacy = body as LegacyPayBody;
+
     if (legacy.combined?.parts && Array.isArray(legacy.combined.parts)) {
-      const parts = legacy.combined.parts;
-      if (parts.length !== 2) {
+      if (legacy.combined.parts.length !== 2) {
         return NextResponse.json(
           { ok: false, error: "Combinado requiere exactamente dos tramos." },
           { status: 400 },
         );
       }
-      const [a, b] = parts as [PaymentRow, PaymentRow];
+      const [a, b] = legacy.combined.parts as [PaymentRow, PaymentRow];
       const combo =
         legacy.combined.comboGroupId?.trim() ||
         paymentComboGroupId(a) ||
@@ -94,17 +102,7 @@ export async function POST(req: Request) {
         );
       }
       if (result.duplicate) {
-        return NextResponse.json(
-          {
-            ok: true,
-            duplicated: true,
-            message: "Pago procesado previamente",
-            payments: result.payments,
-            balance: result.balance,
-            paid: result.paid,
-          },
-          { status: 200 },
-        );
+        return duplicatedOk(result);
       }
       return NextResponse.json(
         {
@@ -123,7 +121,7 @@ export async function POST(req: Request) {
         {
           ok: false,
           error:
-            "Payload inválido. Envíe CollectorPaySubmit con loanRef e idempotencyKey, o { payment }.",
+            "Payload inválido. Envíe CollectorPaySubmit con loanRef e idempotencyKey.",
         },
         { status: 400 },
       );
@@ -145,18 +143,7 @@ export async function POST(req: Request) {
       );
     }
     if (result.duplicate) {
-      return NextResponse.json(
-        {
-          ok: true,
-          duplicated: true,
-          message: "Pago procesado previamente",
-          payment: result.payments[0],
-          payments: result.payments,
-          balance: result.balance,
-          paid: result.paid,
-        },
-        { status: 200 },
-      );
+      return duplicatedOk(result);
     }
     return NextResponse.json(
       {

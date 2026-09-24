@@ -7,6 +7,7 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { accumulatedDueForLoan } from "@/lib/daily-collection-plan";
 import { isPaymentLive } from "@/lib/live-payments";
 import type { LoanRow, PaymentRow } from "@/lib/mock-data";
+import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
 
 function sameDay(a: string | undefined, b: string) {
   return (a || "").trim() === b.trim();
@@ -83,7 +84,7 @@ export function reconcilePaymentsOntoPlanilla(
   const liveByRef = new Map(live.map((row) => [row.ref, row] as const));
 
   return assignments.map((row) => {
-    if (row.awaitingLoan) return row;
+    if (isAssignmentAwaitingLoan(row)) return row;
     if (row.visitStatus === "omitido") return row;
 
     const linkedRef = (row.paymentRef || "").trim();
@@ -158,7 +159,7 @@ export function sealOpenVisitsWithLaterPayments(
   return assignments.map((row) => {
     if (opts?.date && row.dispatchDate !== opts.date) return row;
     if (opts?.collectorRef && row.collectorRef !== opts.collectorRef) return row;
-    if (row.awaitingLoan) return row;
+    if (isAssignmentAwaitingLoan(row)) return row;
     if (row.dayClosedAt) return row;
     if (row.visitStatus === "omitido") return row;
 

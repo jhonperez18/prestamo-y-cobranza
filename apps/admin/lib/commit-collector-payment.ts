@@ -63,6 +63,8 @@ export type CollectorPaymentCommitResult =
       clients: ClientRow[];
       routes: RouteRow[];
       assignments: DailyCollectionAssignment[];
+      /** Reintento con la misma idempotencyKey: no se creó otro PG-. */
+      duplicate?: boolean;
     };
 
 export type CollectorCombinedPaymentCommitResult =
@@ -76,6 +78,7 @@ export type CollectorCombinedPaymentCommitResult =
       clients: ClientRow[];
       routes: RouteRow[];
       assignments: DailyCollectionAssignment[];
+      duplicate?: boolean;
     };
 
 export function paymentsFromCollectorCommit(
@@ -148,8 +151,29 @@ export function commitCollectorPayment(
     collectors,
   } = input;
 
+  const amountPesos = pesos(draft.amount);
+  if (!Number.isFinite(draft.amount) || Number.isNaN(draft.amount) || amountPesos <= 0) {
+    return { ok: false, error: "El monto debe ser un entero mayor a cero." };
+  }
+  if (Math.trunc(draft.amount) !== draft.amount) {
+    return { ok: false, error: "El monto debe ser un entero en pesos (COP)." };
+  }
+
   const keys = new Set(payments.map((row) => row.idempotencyKey).filter(Boolean) as string[]);
   if (draft.idempotencyKey && keys.has(draft.idempotencyKey)) {
+    const existing = payments.find((row) => row.idempotencyKey === draft.idempotencyKey);
+    if (existing) {
+      return {
+        ok: true,
+        duplicate: true,
+        payment: existing,
+        payments,
+        loans,
+        clients,
+        routes,
+        assignments,
+      };
+    }
     return { ok: false, duplicate: true, error: "Pago ya sincronizado (sin duplicar)." };
   }
 
@@ -306,7 +330,8 @@ export function commitCollectorPayment(
 
 /**
  * Cobro combinado atómico: dos PG- misma fecha/hora, métodos distintos.
- * El mismo día admite más abonos, con o sin este vínculo.
+ * Valida ambos tramos (monto, evidencia, saldo total) antes de mutar.
+ * Si el 2.º falla tras el 1.º, no se entrega estado parcial al caller.
  */
 export function commitCollectorCombinedPayment(input: {
   parts: [CollectorPaymentDraft, CollectorPaymentDraft];
@@ -325,8 +350,13 @@ export function commitCollectorCombinedPayment(input: {
   if (methodA === methodB) {
     return { ok: false, error: "Combinado requiere dos métodos distintos." };
   }
-  if (!(a.amount > 0) || !(b.amount > 0)) {
+  const amountA = pesos(a.amount);
+  const amountB = pesos(b.amount);
+  if (!(amountA > 0) || !(amountB > 0)) {
     return { ok: false, error: "Cada tramo del combinado debe tener valor." };
+  }
+  if (Math.trunc(a.amount) !== a.amount || Math.trunc(b.amount) !== b.amount) {
+    return { ok: false, error: "Cada tramo debe ser un entero en pesos (COP)." };
   }
   const comboGroupId = input.comboGroupId.trim();
   if (!comboGroupId) {
@@ -337,10 +367,84 @@ export function commitCollectorCombinedPayment(input: {
     return { ok: false, error: "Falta la hora compartida del cobro combinado." };
   }
 
+  const evidenceA = validatePaymentEvidence(methodA, a.evidence);
+  if (evidenceA) return { ok: false, error: `1.er tramo: ${evidenceA}` };
+  const evidenceB = validatePaymentEvidence(methodB, b.evidence);
+  if (evidenceB) return { ok: false, error: `2.º tramo: ${evidenceB}` };
+
+  const keyA = a.idempotencyKey?.trim();
+  const keyB = b.idempotencyKey?.trim();
+  if (keyA && keyB && keyA === keyB) {
+    return { ok: false, error: "Cada tramo del combinado necesita su propia clave de idempotencia." };
+  }
+
+  const existingA = keyA
+    ? input.payments.find((row) => row.idempotencyKey === keyA)
+    : undefined;
+  const existingB = keyB
+    ? input.payments.find((row) => row.idempotencyKey === keyB)
+    : undefined;
+  if (existingA && existingB) {
+    return {
+      ok: true,
+      duplicate: true,
+      payment: existingA,
+      paymentsCreated: [existingA, existingB],
+      payments: input.payments,
+      loans: input.loans,
+      clients: input.clients,
+      routes: input.routes,
+      assignments: input.assignments,
+    };
+  }
+  if (existingA || existingB) {
+    return {
+      ok: false,
+      duplicate: true,
+      error: "Combinado a medias en este aparato. No se duplica; reintente con ambas claves nuevas.",
+    };
+  }
+
+  const dispatchDate = a.dispatchDate?.trim() || todayIso();
+  const resolved = resolveCollectorPaymentContext(a, input.loans, input.routes, dispatchDate);
+  const loan = resolved.loan ? (syncLoan(resolved.loan, input.payments) as LoanRow) : null;
+  if (!loan || loan.balance <= 0) {
+    return { ok: false, error: "No hay préstamo activo para este cliente. No se registró el cobro." };
+  }
+  const total = amountA + amountB;
+  if (total > pesos(loan.balance)) {
+    return { ok: false, error: "La suma del combinado no puede superar el saldo del préstamo." };
+  }
+
+  // Simulación: ambos tramos deben poder aplicar antes de mutar estado.
+  const simFirst = applyCollectorPaymentResult(
+    loan,
+    { ...a, method: methodA, amount: amountA, comboGroupId, paidTime },
+    resolved.route,
+    input.payments,
+  );
+  if (!simFirst.ok) return { ok: false, error: simFirst.error };
+  const loanAfterFirst = loanRowAfterPay(loan, simFirst.pay, input.payments);
+  const simSecond = applyCollectorPaymentResult(
+    loanAfterFirst,
+    {
+      ...b,
+      method: methodB,
+      amount: amountB,
+      comboGroupId,
+      paidTime,
+      kind: "abono",
+    },
+    resolved.route,
+    input.payments,
+  );
+  if (!simSecond.ok) return { ok: false, error: simSecond.error };
+
   const first = commitCollectorPayment({
     draft: {
       ...a,
       method: methodA,
+      amount: amountA,
       comboGroupId,
       paidTime,
     },
@@ -357,6 +461,7 @@ export function commitCollectorCombinedPayment(input: {
     draft: {
       ...b,
       method: methodB,
+      amount: amountB,
       comboGroupId,
       paidTime,
       // Tras el 1.er tramo el saldo/cuota ya bajó: el 2.º es abono del resto.
@@ -371,9 +476,10 @@ export function commitCollectorCombinedPayment(input: {
     allowComboSibling: true,
   });
   if (!second.ok) {
+    // No entregar el 1.er tramo: el caller solo aplica si ok === true.
     return {
       ok: false,
-      error: `Primer tramo ok, segundo falló: ${second.error}. Revisá el cobro ${first.payment.ref}.`,
+      error: `No se pudo cerrar el combinado (${second.error}). No se aplicó el cobro.`,
     };
   }
 

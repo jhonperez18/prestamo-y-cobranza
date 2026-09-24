@@ -455,6 +455,7 @@ function PlanillaTable({
             const rowClass = [
               routeStarts[index] ? "is-route-start" : "",
               row.reloan.granted ? "is-reloan" : "",
+              row.awaitingLoan ? "is-awaiting-loan" : "",
             ]
               .filter(Boolean)
               .join(" ");
@@ -464,7 +465,9 @@ function PlanillaTable({
                 <td className="is-nombre" title={row.clientName}>
                   {row.clientName}
                 </td>
-                <td className="is-num">{money(row.saldo, { symbol: false })}</td>
+                <td className="is-num">
+                  {row.awaitingLoan ? "—" : money(row.saldo, { symbol: false })}
+                </td>
                 <td className="is-metodo">
                   {methodLabel &&
                   (row.visitStatus === "cobrado" || row.visitStatus === "parcial") ? (
@@ -479,10 +482,14 @@ function PlanillaTable({
                   )}
                 </td>
                 <td className="is-cuotas">
-                  <CuotasProgressCell progress={cuotas} />
+                  {row.awaitingLoan ? "—" : <CuotasProgressCell progress={cuotas} />}
                 </td>
                 <td className="is-estado">
-                  {onReloan && row.reloan.canReloan ? (
+                  {row.awaitingLoan ? (
+                    <span className="supervisor-prestar-tag" title="Sin préstamo · listo para prestar">
+                      Prestar
+                    </span>
+                  ) : onReloan && row.reloan.canReloan ? (
                     <button
                       type="button"
                       className={reloanOpen ? "supervisor-reloan-btn on" : "supervisor-reloan-btn"}

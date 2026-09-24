@@ -116,6 +116,7 @@ import {
   mergePaymentsByRef,
   pullRemotePaymentsIntoDemo,
   queuePaymentMirror,
+  queuePaymentsMirror,
 } from "@/lib/supabase/payment-mirror";
 import { commitVoidPayment } from "@/lib/commit-void-payment";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
@@ -1780,9 +1781,7 @@ export function useWorkspace({
       const assignments = reconcilePaymentsOntoPlanilla(projected.assignments, live);
       setDailyAssignments(assignments);
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
-      for (const pay of paymentsCreated) {
-        await queuePaymentMirror(pay);
-      }
+      await queuePaymentsMirror(paymentsCreated);
       const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
       if (paidLoan) queueLoanMirror(paidLoan);
       const paidClient = committed.clients.find((row) =>

@@ -6,6 +6,7 @@ import {
 import { normalizeHistoryDate, type CollectorDayCloseRecord } from "@/lib/collector-day-close";
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
 import type { ClientRow, CollectorRow, LoanRow, PaymentRow, RouteRow } from "@/lib/mock-data";
 import { paymentsForCollector } from "@/lib/mock-data";
 import { normalizePaymentMethod, paymentMethodIsCash } from "@/lib/payment-method";
@@ -17,13 +18,19 @@ export type CollectorMobileQueue = {
   routeName: string;
   /** Cobros ya enviados al móvil */
   dispatched: DailyCollectionAssignment[];
+  /**
+   * Hoja del día en orden de ruta: cobrables + sin préstamo (listos para prestar).
+   * Los sin crédito van en azul, sin billete.
+   */
   pending: DailyCollectionAssignment[];
+  /** Solo visitas con cuota por cobrar (KPI «Por cobrar»). */
+  pendingCollectCount: number;
   done: DailyCollectionAssignment[];
   /** Asignados pero aún no enviados desde Cobranza */
   awaitingDispatch: DailyCollectionAssignment[];
   /** Cierre formal del cobrador/oficina (dayClosedAt o CIE-). */
   closed: boolean;
-  /** Ya no quedan visitas pendientes (puede faltar el cierre formal). */
+  /** Ya no quedan visitas con cuota por cobrar (puede faltar el cierre formal). */
   allDone: boolean;
 };
 
@@ -50,11 +57,9 @@ function hasDayCloseRecord(
   );
 }
 
-/** Fila de ruta sin cuota (Completar). No es un cobro. */
+/** Fila de ruta sin crédito cobrable: listo para prestar, no es un cobro. */
 function isRouteFiller(row: DailyCollectionAssignment) {
-  return Boolean(
-    row.awaitingLoan || row.itemId.includes(":prestar") || !String(row.loanRef || "").trim(),
-  );
+  return isAssignmentAwaitingLoan(row);
 }
 
 /**
@@ -151,11 +156,20 @@ export function collectorMobileQueue(
     return true;
   };
 
-  // Pendientes reales (incl. préstamo nuevo tras CIE / pago anulado).
+  // Pendientes de la hoja: cobrables + sin préstamo (Prestar), en el orden de la ruta.
+  // Los «filler» ya no se ocultan: van en azul, sin billete.
   const pending = sheet.filter((row) => {
-    if (isRouteFiller(row)) return false;
     if (row.dayClosedAt && isEffectivelyPaid(row)) return false;
     if (row.dayClosedAt && row.visitStatus === "omitido") return false;
+    if (isRouteFiller(row)) {
+      // Sin crédito: sigue en hoja hasta prestar u omitir.
+      if (row.visitStatus === "omitido") return false;
+      return (
+        row.visitStatus === "pendiente" ||
+        !row.visitStatus ||
+        Boolean(row.awaitingLoan)
+      );
+    }
     // Tras anular: visita sellada sin PG vivo vuelve a pendiente cobrable.
     if (row.dayClosedAt && !isEffectivelyPaid(row) && row.visitStatus !== "omitido") {
       return true;
@@ -170,6 +184,8 @@ export function collectorMobileQueue(
       Boolean(row.paymentRef?.trim())
     );
   });
+  /** KPI: solo los que tienen cuota por cobrar (no los «Prestar»). */
+  const pendingCollectCount = pending.filter((row) => !isRouteFiller(row)).length;
   const done = recaudoFromDayPayments(
     collectorRef,
     date,
@@ -180,11 +196,11 @@ export function collectorMobileQueue(
   );
   const closedByVisits =
     sheet.length > 0 && sheet.every((row) => Boolean(row.dayClosedAt));
-  // Jornada “cerrada” solo si no quedan pendientes abiertos (préstamo nuevo sigue cobrable).
-  const closed = (closedByCie || closedByVisits) && pending.length === 0;
+  // Cierre / «listo» según cobros, no según filas Prestar.
+  const closed = (closedByCie || closedByVisits) && pendingCollectCount === 0;
   const routeRef = dispatchRouteRef(collectorRef, date);
   const route = routes.find((row) => row.ref === routeRef) ?? null;
-  const allDone = closed || (sheet.length > 0 && pending.length === 0);
+  const allDone = closed || (sheet.length > 0 && pendingCollectCount === 0);
 
   return {
     date,
@@ -193,6 +209,7 @@ export function collectorMobileQueue(
     routeName: route?.name ?? `Cobros · ${isoToDispatchLabel(date)}`,
     dispatched: sheet,
     pending,
+    pendingCollectCount,
     done,
     awaitingDispatch,
     closed,
@@ -239,7 +256,7 @@ export function collectorMobileRoutes(
       dateLabel: queue.dateLabel,
       routeRef: queue.routeRef ?? dispatchRouteRef(collectorRef, date),
       routeName: queue.routeName,
-      pending: queue.pending.length,
+      pending: queue.pendingCollectCount,
       done: queue.done.length,
       total: queue.dispatched.length,
       closed: queue.closed,
@@ -255,6 +272,7 @@ export function collectorMobileRoutes(
  */
 export function collectorHasOpenPlanillaWork(queue: CollectorMobileQueue): boolean {
   if (queue.closed) return false;
+  // Incluye filas «Prestar»: la hoja sigue abierta aunque no haya cuota por cobrar.
   if (queue.pending.length > 0) return true;
   // Hoja enviada aún abierta (aunque ya no haya pendientes): falta cerrar jornada.
   if (queue.dispatched.length > 0) return true;

@@ -18,33 +18,9 @@ import { newIdempotencyKey } from "@/lib/finance";
 import { money } from "@/lib/mock-data";
 import type { PayKind } from "@/lib/loan-pay";
 import { isNavQuiet } from "@/lib/suppress-ghost-click";
+import type { CollectorPaySubmit } from "@/lib/collector-pay-submit";
 
-export type CollectorPaySubmit = {
-  amount: number;
-  kind: PayKind;
-  method: PaymentMethod;
-  evidence: PaymentEvidenceRef[];
-  idempotencyKey: string;
-  /** Cobro en dos métodos (efectivo + nequi/banco, etc.). */
-  combined?: {
-    comboGroupId: string;
-    paidTime: string;
-    parts: [
-      {
-        amount: number;
-        method: PaymentMethod;
-        evidence: PaymentEvidenceRef[];
-        idempotencyKey: string;
-      },
-      {
-        amount: number;
-        method: PaymentMethod;
-        evidence: PaymentEvidenceRef[];
-        idempotencyKey: string;
-      },
-    ];
-  };
-};
+export type { CollectorPaySubmit } from "@/lib/collector-pay-submit";
 
 type Props = {
   clientName: string;
@@ -63,8 +39,9 @@ type Props = {
   /** N/P: hoy no tiene plata. No crea cobro. */
   onNoPay?: () => void;
   onCancel: () => void;
-  onSubmit: (payload: CollectorPaySubmit) => void;
-  onRenew?: () => void;
+  /** Puede devolver Promise: el formulario espera y bloquea doble envío. */
+  onSubmit: (payload: CollectorPaySubmit) => void | Promise<void>;
+  onRenew?: () => void | Promise<void>;
 };
 
 type ComboLeg = {
@@ -73,19 +50,63 @@ type ComboLeg = {
   evidenceItem: PaymentEvidenceRef | undefined;
 };
 
-function parseAmount(raw: string) {
-  const digits = raw.replace(/[^\d]/g, "");
-  return digits ? Number(digits) : 0;
+/**
+ * Monto COP entero. Acepta pegado con puntos/comas (miles o decimales)
+ * y siempre trunca a enteros positivos.
+ */
+function parseAmount(raw: string): number {
+  const text = String(raw ?? "").trim().replace(/\s/g, "");
+  if (!text) return 0;
+
+  let normalized = text;
+  const lastDot = normalized.lastIndexOf(".");
+  const lastComma = normalized.lastIndexOf(",");
+
+  if (lastDot >= 0 && lastComma >= 0) {
+    // El último separador es decimal; el otro, miles.
+    if (lastComma > lastDot) {
+      normalized = normalized.replace(/\./g, "").replace(",", ".");
+    } else {
+      normalized = normalized.replace(/,/g, "");
+    }
+  } else if (lastComma >= 0) {
+    const parts = normalized.split(",");
+    if (parts.length === 2 && /^\d{1,2}$/.test(parts[1] ?? "")) {
+      normalized = `${parts[0]}.${parts[1]}`;
+    } else {
+      normalized = normalized.replace(/,/g, "");
+    }
+  } else if (lastDot >= 0) {
+    const parts = normalized.split(".");
+    // Un solo punto con 1–2 decimales → decimal; si no, puntos de miles (CO).
+    if (parts.length === 2 && /^\d{1,2}$/.test(parts[1] ?? "")) {
+      normalized = `${parts[0]}.${parts[1]}`;
+    } else {
+      normalized = normalized.replace(/\./g, "");
+    }
+  }
+
+  normalized = normalized.replace(/[^\d.]/g, "");
+  if (!normalized || normalized === ".") return 0;
+  const value = Number(normalized);
+  if (Number.isNaN(value) || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.trunc(value));
 }
 
 /** Miles con punto (CO): 360000 → 360.000 */
-function formatAmountInput(value: number | string) {
+function formatAmountInput(value: number | string): string {
   const digits =
     typeof value === "number"
-      ? Math.trunc(Math.abs(value)).toString()
-      : value.replace(/[^\d]/g, "");
+      ? Number.isFinite(value)
+        ? Math.trunc(Math.abs(value)).toString()
+        : ""
+      : String(value ?? "").replace(/[^\d]/g, "");
   if (!digits) return "";
-  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const asNumber = Number(digits);
+  if (Number.isNaN(asNumber) || !Number.isFinite(asNumber)) return "";
+  return Math.trunc(asNumber)
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
 function emptyLeg(): ComboLeg {
@@ -122,6 +143,8 @@ export function CollectorPayForm({
   /** Tras firma/foto del 1.er tramo, se habilita el 2.º. */
   const [legALocked, setLegALocked] = useState(false);
   const [attempted, setAttempted] = useState(false);
+  /** Bloquea Confirmar / Renovar / N/P mientras corre el commit. */
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (combined) {
@@ -164,7 +187,6 @@ export function CollectorPayForm({
           : null
       : null;
 
-  const comboTotal = amountA + amountB;
   const comboMethodError = combined
     ? !legA.method || !legB.method
       ? "Elegí dos métodos de pago."
@@ -172,6 +194,7 @@ export function CollectorPayForm({
         ? "Los dos métodos deben ser distintos."
         : null
     : null;
+  const comboTotal = amountA + amountB;
   const comboAmountError = combined
     ? amountA <= 0 || amountB <= 0
       ? "Indicá el valor de cada método."
@@ -191,7 +214,7 @@ export function CollectorPayForm({
   const blockReason = combined
     ? comboMethodError || comboAmountError || comboEvidenceAError || comboEvidenceBError
     : methodError || amountError || evidenceError;
-  const canSubmit = !blockReason;
+  const canSubmit = !blockReason && !isSubmitting;
   const inline = variant === "inline";
   const amountId = `collector-pay-amount-${formId}`;
   const methodName = `collector-pay-method-${formId}`;
@@ -239,24 +262,50 @@ export function CollectorPayForm({
     setAttempted(false);
   }
 
+  /**
+   * Cierra el 1.er tramo del combinado.
+   * Siempre marca `attempted` antes de validar: si falta foto/firma, el error
+   * se ve al instante (el botón ya no se deshabilita en silencio).
+   */
   function lockFirstLeg() {
+    if (isSubmitting) return;
     setAttempted(true);
     if (!legA.method || amountA <= 0) return;
     const err = validatePaymentEvidence(legA.method, evidenceA);
     if (err) return;
-    if (legB.method && normalizePaymentMethod(legB.method) === normalizePaymentMethod(legA.method)) {
+    if (
+      legB.method &&
+      normalizePaymentMethod(legB.method) === normalizePaymentMethod(legA.method)
+    ) {
       return;
     }
     setLegALocked(true);
     setAttempted(false);
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function runSubmit(payload: CollectorPaySubmit) {
+    setIsSubmitting(true);
+    try {
+      await onSubmit(payload);
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSubmitting) return;
     setAttempted(true);
-    if (!canSubmit) return;
+    if (blockReason) return;
+
     if (noPay) {
-      onNoPay?.();
+      if (!onNoPay) return;
+      setIsSubmitting(true);
+      try {
+        await onNoPay();
+      } finally {
+        setIsSubmitting(false);
+      }
       return;
     }
 
@@ -268,7 +317,7 @@ export function CollectorPayForm({
         hour: "2-digit",
         minute: "2-digit",
       });
-      onSubmit({
+      await runSubmit({
         amount: total,
         kind,
         method: normalizePaymentMethod(legA.method),
@@ -298,7 +347,7 @@ export function CollectorPayForm({
 
     if (!method) return;
     const kind: PayKind = amount >= amountDue && amountDue > 0 ? "cuota" : "abono";
-    onSubmit({
+    await runSubmit({
       amount,
       kind,
       method: normalizePaymentMethod(method),
@@ -307,9 +356,20 @@ export function CollectorPayForm({
     });
   }
 
-  /** Siempre clickeable: si falta firma/valor, muestra el error en vez de “no hacer nada”. */
+  /** Marca intento aunque el form aún no pueda enviarse (muestra el motivo). */
   function handleConfirmClick() {
+    if (isSubmitting) return;
     setAttempted(true);
+  }
+
+  async function handleRenewClick() {
+    if (!onRenew || !canRenew || isSubmitting || combined) return;
+    setIsSubmitting(true);
+    try {
+      await onRenew();
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   function methodTone(id: PaymentMethod) {
@@ -335,6 +395,7 @@ export function CollectorPayForm({
             type="radio"
             name={methodName}
             checked={method === entry.id && !noPay}
+            disabled={isSubmitting}
             onChange={() => selectMethod(entry.id)}
           />
           <span>{entry.label}</span>
@@ -346,6 +407,7 @@ export function CollectorPayForm({
             type="radio"
             name={methodName}
             checked={noPay}
+            disabled={isSubmitting}
             onChange={selectNoPay}
           />
           <span>N/P</span>
@@ -363,7 +425,7 @@ export function CollectorPayForm({
         onChange={(event) => setAmountFromInput(event.target.value)}
         inputMode="numeric"
         placeholder="0"
-        disabled={!method}
+        disabled={!method || isSubmitting}
         aria-label="Valor recibido"
       />
     </label>
@@ -403,7 +465,6 @@ export function CollectorPayForm({
     },
   ) {
     const needsPhoto = leg.method ? paymentMethodRequiresReceipt(leg.method) : false;
-    const evidenceList = leg.evidenceItem ? [leg.evidenceItem] : [];
     return (
       <div
         className={`collector-pay-combo-leg${opts.locked ? " is-locked" : ""}${opts.disabled ? " is-disabled" : ""}`}
@@ -413,7 +474,7 @@ export function CollectorPayForm({
           {opts.locked ? <em>listo</em> : null}
         </div>
         <div
-          className={`pay-choice pay-method collector-pay-methods compact collector-pay-combo-methods`}
+          className="pay-choice pay-method collector-pay-methods compact collector-pay-combo-methods"
           role="radiogroup"
           aria-label={opts.label}
         >
@@ -436,7 +497,7 @@ export function CollectorPayForm({
                   type="radio"
                   name={`${methodName}-${opts.label}`}
                   checked={leg.method === entry.id}
-                  disabled={opts.disabled || opts.locked || blocked}
+                  disabled={opts.disabled || opts.locked || blocked || isSubmitting}
                   onChange={() =>
                     setLeg({ method: entry.id, rawAmount: leg.rawAmount, evidenceItem: undefined })
                   }
@@ -459,7 +520,7 @@ export function CollectorPayForm({
             }
             inputMode="numeric"
             placeholder="0"
-            disabled={opts.disabled || opts.locked || !leg.method}
+            disabled={opts.disabled || opts.locked || !leg.method || isSubmitting}
             aria-label={`Valor ${opts.label}`}
           />
         </label>
@@ -492,7 +553,15 @@ export function CollectorPayForm({
           <button
             type="button"
             className="collector-mobile-pay-link collector-pay-combo-lock"
-            disabled={Boolean(validatePaymentEvidence(leg.method, evidenceList))}
+            disabled={isSubmitting}
+            aria-label={needsPhoto ? "Guardar foto y seguir" : "Guardar firma y seguir"}
+            title={
+              comboEvidenceAError && attempted
+                ? comboEvidenceAError
+                : needsPhoto
+                  ? "Guarda la foto del comprobante y pasa al 2.º método"
+                  : "Guarda la firma y pasa al 2.º método"
+            }
             onClick={lockFirstLeg}
           >
             {needsPhoto ? "guardar foto · seguir" : "guardar firma · seguir"}
@@ -502,6 +571,14 @@ export function CollectorPayForm({
     );
   }
 
+  const confirmTitle = isSubmitting
+    ? "Guardando cobro…"
+    : blockReason
+      ? blockReason
+      : inline
+        ? "Confirmar cobro"
+        : "Confirmar";
+
   return (
     <form
       className={
@@ -509,7 +586,10 @@ export function CollectorPayForm({
           ? `collector-pay-form collector-pay-inline${combined ? " is-combined" : ""}`
           : `collector-pay-form${combined ? " is-combined" : ""}`
       }
-      onSubmit={handleSubmit}
+      onSubmit={(event) => {
+        void handleSubmit(event);
+      }}
+      aria-busy={isSubmitting}
     >
       {!inline ? (
         <>
@@ -535,24 +615,30 @@ export function CollectorPayForm({
       ) : null}
 
       {comboInHeader ? null : (
-      <div className="collector-pay-combo-toggle-row">
-        {combined ? (
-          <button
-            type="button"
-            className="collector-pay-combo-toggle on"
-            onClick={disableCombined}
-          >
-            Combinado
-          </button>
-        ) : (
-          <button type="button" className="collector-pay-combo-toggle" onClick={enableCombined}>
-            Combinado
-          </button>
-        )}
-        {combined ? (
-          <span className="collector-pay-combo-hint">Dos métodos · misma hora</span>
-        ) : null}
-      </div>
+        <div className="collector-pay-combo-toggle-row">
+          {combined ? (
+            <button
+              type="button"
+              className="collector-pay-combo-toggle on"
+              disabled={isSubmitting}
+              onClick={disableCombined}
+            >
+              Combinado
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="collector-pay-combo-toggle"
+              disabled={isSubmitting}
+              onClick={enableCombined}
+            >
+              Combinado
+            </button>
+          )}
+          {combined ? (
+            <span className="collector-pay-combo-hint">Dos métodos · misma hora</span>
+          ) : null}
+        </div>
       )}
 
       {combined ? (
@@ -598,7 +684,7 @@ export function CollectorPayForm({
       )}
 
       {attempted && blockReason ? (
-        <p className="receipt-error" role="alert">
+        <p className="receipt-error" role="alert" aria-live="assertive">
           {blockReason}
         </p>
       ) : null}
@@ -607,6 +693,7 @@ export function CollectorPayForm({
         <button
           type="button"
           className={inline ? "collector-mobile-pay-link" : "btn compact"}
+          disabled={isSubmitting}
           onClick={() => {
             if (isNavQuiet()) return;
             onCancel();
@@ -624,11 +711,12 @@ export function CollectorPayForm({
               : "btn compact primary"
           }
           aria-disabled={!canSubmit}
-          disabled={!canSubmit}
-          title={blockReason ?? undefined}
+          aria-label={confirmTitle}
+          disabled={isSubmitting}
+          title={confirmTitle}
           onClick={handleConfirmClick}
         >
-          {inline ? "confirmar" : "Confirmar"}
+          {isSubmitting ? (inline ? "guardando…" : "Guardando…") : inline ? "confirmar" : "Confirmar"}
         </button>
         {onRenew && !combined ? (
           <button
@@ -638,13 +726,18 @@ export function CollectorPayForm({
                 ? "collector-mobile-pay-link collector-pay-renew-link"
                 : "btn compact secondary"
             }
-            disabled={!canRenew}
+            disabled={!canRenew || isSubmitting}
+            aria-disabled={!canRenew || isSubmitting}
             title={
-              canRenew
-                ? "Renueva el saldo + 20% a 1 mes · capital sale de efectivo (caja)"
-                : "Disponible cuando se cumpla el plazo del préstamo"
+              isSubmitting
+                ? "Guardando…"
+                : canRenew
+                  ? "Renueva el saldo + 20% a 1 mes · capital sale de efectivo (caja)"
+                  : "Disponible cuando se cumpla el plazo del préstamo"
             }
-            onClick={onRenew}
+            onClick={() => {
+              void handleRenewClick();
+            }}
           >
             {inline ? "renovar" : "Renovar"}
           </button>

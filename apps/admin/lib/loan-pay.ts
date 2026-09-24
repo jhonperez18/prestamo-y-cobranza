@@ -76,10 +76,17 @@ export function targetLabel(target: CuotaTarget | null) {
 }
 
 export function validatePay(loan: LoanRow, kind: PayKind, amount: number) {
-  if (!Number.isFinite(amount) || amount <= 0) return "Indique un valor.";
+  if (!Number.isFinite(amount) || Number.isNaN(amount)) return "Indique un valor.";
+  if (Math.trunc(amount) !== amount) {
+    return "El valor debe ser un entero en pesos (COP).";
+  }
+  const amountPesos = pesos(amount);
+  if (amountPesos <= 0) return "Indique un valor.";
   if (loan.balance <= 0) return "Este préstamo ya no tiene saldo pendiente.";
   // Tope único: saldo del préstamo. Cuota de referencia se puede pagar de menos o de más.
-  if (amount > loan.balance) return "El valor no puede ser mayor a lo pendiente del préstamo.";
+  if (amountPesos > pesos(loan.balance)) {
+    return "El valor no puede ser mayor a lo pendiente del préstamo.";
+  }
   if (kind === "cuota") {
     const target = cuotaTarget(loan);
     if (!target) return "Este préstamo no tiene una cuota pendiente.";

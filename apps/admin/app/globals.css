@@ -5928,8 +5928,34 @@
       justify-content: center;
     }
     .collector-mobile-card.is-awaiting-loan {
-      background: #fff;
-      border-color: #c5d0cb;
+      background: #eff6ff;
+      border-color: #bfdbfe;
+      border-left: 3px solid #2563eb;
+    }
+    .collector-mobile-list.compact > .collector-mobile-card.is-dense.is-awaiting-loan:nth-child(odd),
+    .collector-mobile-list.compact > .collector-mobile-card.is-dense.is-awaiting-loan:nth-child(even) {
+      background: #eff6ff;
+    }
+    .collector-mobile-dense-money.is-prestar .is-prestar-label {
+      color: #1d4ed8;
+      font-weight: 700;
+      font-size: 11px;
+    }
+    .supervisor-liq-table tbody tr.is-awaiting-loan > td {
+      background: #eff6ff;
+    }
+    .supervisor-prestar-tag {
+      display: inline-flex;
+      align-items: center;
+      height: 18px;
+      padding: 0 8px;
+      border-radius: 999px;
+      border: 1px solid #93c5fd;
+      background: #dbeafe;
+      color: #1e40af;
+      font-size: 10px;
+      font-weight: 700;
+      white-space: nowrap;
     }
     .supervisor-caja-row .supervisor-route-board-id {
       min-width: 0;

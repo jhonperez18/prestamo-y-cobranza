@@ -13,6 +13,7 @@ import {
   reconcilePaymentsOntoPlanilla,
   sealOpenVisitsWithLaterPayments,
 } from "@/lib/planilla-payment-reconcile";
+import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import type {
   ClientRow,
@@ -91,9 +92,10 @@ export function hydrateAssignment(
         (!linkedPay?.loanRef || !row.loanRef || linkedPay.loanRef === row.loanRef)
       : true
     : false;
+  const awaitingLoan = isAssignmentAwaitingLoan(row);
   const sealedPaid = row.visitStatus === "omitido" || paymentCounts;
   const amountDue =
-    row.awaitingLoan
+    awaitingLoan
       ? 0
       : sealedPaid
         ? 0
@@ -102,14 +104,14 @@ export function hydrateAssignment(
           : loan?.installment && loan.installment > 0
             ? Math.min(loan.installment, loan.balance)
             : loan?.balance ?? 0;
-  const alertCount = row.awaitingLoan
+  const alertCount = awaitingLoan
     ? 0
     : sealedPaid
       ? 0
       : loan
         ? liveLoanCollectionAlerts(loan, payments, row.dispatchDate || todayIso())
         : Number(row.alertCount) || 0;
-  const kind = row.awaitingLoan
+  const kind = awaitingLoan
     ? "cuota"
     : alertCount === 0
       ? "cuota"
@@ -140,8 +142,8 @@ export function hydrateAssignment(
     amountDue,
     alertCount,
     kind,
-    chargeLabel: row.awaitingLoan
-      ? "Completar"
+    chargeLabel: awaitingLoan
+      ? "Prestar"
       : alertCount === 0
         ? "Cuota"
         : collectionAlertLabel(alertCount) || row.chargeLabel || "Cuota",
@@ -151,7 +153,8 @@ export function hydrateAssignment(
       : visitStatus === "omitido"
         ? row.paymentRef
         : undefined,
-    awaitingLoan: Boolean(row.awaitingLoan),
+    awaitingLoan,
+    loanRef: awaitingLoan ? "" : row.loanRef,
   };
 }
 

@@ -30,7 +30,6 @@ import type { CollectorPaymentRegisterInput } from "@/lib/route-sync";
 import { canRenewLoan } from "@/lib/loan-renew";
 import { reloanStateForVisit } from "@/lib/loan-reloan";
 import { syncLoan } from "@/lib/loan-preview";
-import { primaryLoanForClient } from "@/lib/route-sync";
 import {
   assignmentRouteName,
   dispatchRouteRef,
@@ -46,6 +45,7 @@ import { suppressGhostClick, isNavQuiet } from "@/lib/suppress-ghost-click";
 import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import {
+  isAssignmentAwaitingLoan,
   planillaLiveCuota,
   planillaLiveCuotasProgress,
 } from "@/lib/planilla-display";
@@ -162,9 +162,7 @@ function itemKey(item: DailyCollectionAssignment) {
 type HistoryPayMethod = "efectivo" | "nequi" | "banco" | "doble" | "np" | "vacio";
 
 function isHistoryFiller(row: DailyCollectionAssignment) {
-  return Boolean(
-    row.awaitingLoan || row.itemId.includes(":prestar") || !String(row.loanRef || "").trim(),
-  );
+  return isAssignmentAwaitingLoan(row);
 }
 
 function historyPayMethod(pays: PaymentRow[]): HistoryPayMethod {
@@ -199,13 +197,13 @@ function visitIdentity(
   today = todayIso(),
 ) {
   const client = clients.find((row) => row.ref === item.clientRef);
-  const awaitingLoan = Boolean(
-    (item.awaitingLoan || item.itemId.includes(":prestar")) && !item.loanRef,
-  );
+  // Sin préstamo cobrable = listo para prestar: sin cuota inventada ni billete.
+  const awaitingLoan = isAssignmentAwaitingLoan(item);
   const rawLoan = awaitingLoan
     ? null
-    : (item.loanRef ? loans.find((row) => row.ref === item.loanRef) : null) ??
-      primaryLoanForClient(item.clientRef, loans);
+    : item.loanRef
+      ? loans.find((row) => row.ref === item.loanRef) ?? null
+      : null;
   const loan = rawLoan ? (syncLoan(rawLoan, payments) as LoanRow) : null;
   const cuota = awaitingLoan ? 0 : planillaLiveCuota(item, loan, payments, today);
   const balance = awaitingLoan ? 0 : loan?.balance ?? 0;
@@ -225,7 +223,7 @@ function visitIdentity(
     balance,
     cuota,
     loan,
-    loanRef: loan?.ref ?? item.loanRef ?? "",
+    loanRef: awaitingLoan ? "" : loan?.ref ?? item.loanRef ?? "",
     awaitingLoan,
     cuotas,
   };
@@ -1019,7 +1017,7 @@ export function CollectorMobileApp({
           })}
         >
           <span>Por cobrar</span>
-          <b>{queue.pending.length}</b>
+          <b>{queue.pendingCollectCount}</b>
         </button>
         <button
           type="button"
@@ -1230,7 +1228,7 @@ export function CollectorMobileApp({
           nequi={recaudo.nequi}
           banco={recaudo.banco}
           expenses={savedExpenses}
-          pendingCount={queue.pending.length}
+          pendingCount={queue.pendingCollectCount}
           onCancel={() => setConfirmingClose(false)}
           onConfirm={confirmCloseDay}
         />
@@ -1456,30 +1454,40 @@ export function CollectorMobileApp({
                         ) : null}
                       </div>
                       {identity.awaitingLoan && !isOpen ? (
-                        <button
-                          type="button"
-                          className="collector-mobile-pay-sticker is-lend-check"
-                          disabled={!canLend}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            togglePay(item);
-                          }}
-                          title="Crear préstamo"
-                          aria-label="Crear préstamo"
-                        >
-                          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                            <circle cx="8" cy="8" r="7" fill="#dbeafe" stroke="#2563eb" strokeWidth="1.25" />
-                            <path
-                              d="M4.6 8.2l2.2 2.2 4.6-4.8"
-                              fill="none"
-                              stroke="#2563eb"
-                              strokeWidth="1.6"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                        </button>
+                        <>
+                          <div className="collector-mobile-dense-money is-prestar">
+                            <span>
+                              <b>—</b>
+                            </span>
+                            <span>
+                              <b className="is-prestar-label">Prestar</b>
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="collector-mobile-pay-sticker is-lend-check"
+                            disabled={!canLend}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              togglePay(item);
+                            }}
+                            title="Crear préstamo"
+                            aria-label="Crear préstamo"
+                          >
+                            <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                              <circle cx="8" cy="8" r="7" fill="#dbeafe" stroke="#2563eb" strokeWidth="1.25" />
+                              <path
+                                d="M4.6 8.2l2.2 2.2 4.6-4.8"
+                                fill="none"
+                                stroke="#2563eb"
+                                strokeWidth="1.6"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </button>
+                        </>
                       ) : null}
                       {!identity.awaitingLoan ? (
                         <div className="collector-mobile-dense-money">

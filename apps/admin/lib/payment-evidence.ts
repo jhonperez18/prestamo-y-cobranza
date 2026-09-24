@@ -257,18 +257,22 @@ export function preferRicherEvidence(
 }
 
 /**
- * Evidencia para mirror/DB.
- * Hasta tener bucket Storage, se incluye `previewUrl` (JPEG comprimido)
- * para que PC y celular vean la misma constancia Nequi.
+ * Evidencia para mirror/DB (Postgres).
+ * Nunca inserta Base64 (`data:`): satura la fila a 300–500 cobros/día.
+ * Solo refs livianas: fileId / path de Storage, o URL https del bucket.
+ * La foto/firma en el aparato vive en IndexedDB (`nexo-evidence`).
  */
 export function evidenceForMirror(evidence?: PaymentEvidenceRef[]): PaymentEvidenceRef[] | undefined {
   if (!evidence?.length) return undefined;
-  return evidence.map((row) => {
-    const previewUrl = row.previewUrl?.trim() || undefined;
+  const rows = evidence.map((row) => {
+    const rawPreview = row.previewUrl?.trim() || undefined;
+    const previewUrl =
+      rawPreview && /^https?:\/\//i.test(rawPreview) ? rawPreview : undefined;
+    const fileId = (row.fileId || row.id || "").trim() || undefined;
     return {
       id: row.id,
       kind: row.kind,
-      fileId: row.fileId || row.id,
+      ...(fileId ? { fileId } : {}),
       ...(previewUrl ? { previewUrl } : {}),
       mime: row.mime,
       byteSize: row.byteSize,
@@ -277,4 +281,27 @@ export function evidenceForMirror(evidence?: PaymentEvidenceRef[]): PaymentEvide
       capturedAt: row.capturedAt,
     };
   });
+  return rows.length ? rows : undefined;
+}
+
+/** True si ya hay referencia durable en nube (path Storage o URL https). */
+export function evidenceHasDurableRef(evidence?: PaymentEvidenceRef[]) {
+  return Boolean(
+    evidence?.some((row) => {
+      const fileId = row.fileId?.trim();
+      if (fileId && !fileId.startsWith("data:")) return true;
+      const url = row.previewUrl?.trim();
+      return Boolean(url && /^https?:\/\//i.test(url));
+    }),
+  );
+}
+
+/** True si el payload aún trae Base64 pesado (solo cliente / cola local). */
+export function evidenceHasInlineDataUrl(evidence?: PaymentEvidenceRef[]) {
+  return Boolean(
+    evidence?.some((row) => {
+      const url = row.previewUrl?.trim();
+      return Boolean(url && url.startsWith("data:"));
+    }),
+  );
 }

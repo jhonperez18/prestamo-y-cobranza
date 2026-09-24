@@ -16,7 +16,7 @@ import {
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
-import { evidenceForMirror, evidenceHasPreview } from "@/lib/payment-evidence";
+import { evidenceForMirror, evidenceHasDurableRef, evidenceHasPreview } from "@/lib/payment-evidence";
 import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
 import {
   rememberPaymentEvidence,
@@ -45,6 +45,7 @@ export type PaymentMirrorRow = {
   payment_kind: string | null;
   route_ref: string | null;
   evidence: PaymentEvidenceRef[] | null;
+  idempotency_key?: string | null;
   updated_at: string;
 };
 
@@ -95,6 +96,7 @@ export function paymentRowToMirror(payment: PaymentRow): PaymentMirrorRow | null
     payment_kind: payment.kind || null,
     route_ref: payment.routeRef?.trim() || null,
     evidence: evidenceForMirror(payment.evidence) ?? null,
+    idempotency_key: payment.idempotencyKey?.trim() || null,
     updated_at: new Date().toISOString(),
   };
 }
@@ -161,6 +163,7 @@ export function mirrorRowToPaymentRow(row: PaymentMirrorRow): PaymentRow | null 
     evidence,
     source: mapSource(row.source),
     updatedAt: row.updated_at || undefined,
+    idempotencyKey: row.idempotency_key?.trim() || undefined,
     voidedAt,
     voidReason,
     voidedBy,
@@ -327,7 +330,7 @@ function createMirrorClient() {
 }
 
 export type MirrorPaymentResult =
-  | { ok: true; skipped?: false }
+  | { ok: true; skipped?: false; duplicate?: boolean; payment?: PaymentRow }
   | { ok: true; skipped: true; reason: string }
   | { ok: false; error: string };
 
@@ -342,72 +345,112 @@ export async function mirrorPaymentToSupabase(
     rememberPaymentEvidence(payment.ref, payment.evidence);
   }
 
-  const client = createMirrorClient();
-  if (!client) {
-    const { configured: pub } = getSupabasePublicEnv();
+  const {
+    registerLoanPaymentInSupabase,
+  } = await import("@/lib/supabase/register-loan-payment");
+  const registered = await registerLoanPaymentInSupabase(payment);
+  if (registered.ok) {
     return {
       ok: true,
-      skipped: true,
-      reason: pub && !mirrorUsesServiceRole() ? "service_role_missing" : "supabase_not_configured",
+      duplicate: registered.duplicate,
+      payment: registered.payments[0],
     };
   }
 
-  const rpc = await client.rpc("register_collection", {
-    p_ref: row.ref,
-    p_loan_ref: row.loan_ref,
-    p_amount: row.amount,
-    p_paid_date: row.paid_date,
-    p_method: row.method,
-    p_idempotency_key: payment.idempotencyKey ?? null,
-    p_client_ref: row.client_ref,
-    p_collector_ref: row.collector_ref,
-    p_collector_name: row.collector_name,
-    p_paid_time: row.paid_time,
-    p_due_date: row.due_date,
-    p_charge_label: row.charge_label,
-    p_source: row.source,
-    p_payment_type: row.payment_type,
-    p_payment_kind: row.payment_kind,
-    p_route_ref: row.route_ref,
-    p_evidence: row.evidence ?? null,
-  });
-  if (!rpc.error) {
-    const body = rpc.data as { ok?: boolean; error?: string } | null;
-    if (body && body.ok === false) {
-      return { ok: false, error: body.error || "register_collection" };
+  // Sin service role / sin Supabase: no tumbar el cobro local.
+  if (
+    registered.error === "service_role_missing" ||
+    registered.error === "supabase_not_configured"
+  ) {
+    return { ok: true, skipped: true, reason: registered.error };
+  }
+
+  // RPC ausente o error de red: fallback upsert por ref (migración vieja).
+  if (registered.status === 502) {
+    const client = createMirrorClient();
+    if (!client) {
+      return { ok: true, skipped: true, reason: "supabase_not_configured" };
+    }
+
+    const { error } = await client.from("payments").upsert(row, { onConflict: "ref" });
+    if (error) {
+      const msg = error.message || "";
+      if (/evidence/i.test(msg)) {
+        const hadPreview = evidenceHasPreview(payment.evidence);
+        const { evidence: _drop, ...withoutEvidence } = row;
+        const retry = await client.from("payments").upsert(withoutEvidence, { onConflict: "ref" });
+        if (retry.error) return { ok: false, error: retry.error.message };
+        if (hadPreview) {
+          return { ok: false, error: `evidence_upsert_failed: ${msg}` };
+        }
+        return { ok: true };
+      }
+      if (/method/i.test(msg) && /banco|check|constraint/i.test(msg)) {
+        return {
+          ok: false,
+          error: `payments_method_ok necesita 'banco' — aplicar migración 20260916200000_payments_method_banco.sql (${msg})`,
+        };
+      }
+      // Idempotencia por índice único: reintento = éxito.
+      if (/idempotency|duplicate|unique/i.test(msg)) {
+        return { ok: true, duplicate: true, payment };
+      }
+      return { ok: false, error: msg };
     }
     return { ok: true };
   }
-  const rpcMsg = rpc.error.message || "";
-  if (!/register_collection|schema cache|PGRST202|Could not find the function/i.test(rpcMsg)) {
-    return { ok: false, error: rpcMsg };
+
+  return { ok: false, error: registered.error };
+}
+
+/** Dos tramos combinados en una sola RPC (rollback total si falla uno). */
+export async function mirrorCombinedPaymentsToSupabase(
+  parts: [PaymentRow, PaymentRow],
+): Promise<MirrorPaymentResult> {
+  const {
+    registerCombinedLoanPaymentInSupabase,
+    registerLoanPaymentInSupabase,
+  } = await import("@/lib/supabase/register-loan-payment");
+
+  const combined = await registerCombinedLoanPaymentInSupabase(parts);
+  if (combined.ok) {
+    return {
+      ok: true,
+      duplicate: combined.duplicate,
+      payment: combined.payments[0],
+    };
   }
 
-  const { error } = await client.from("payments").upsert(row, { onConflict: "ref" });
-  if (error) {
-    const msg = error.message || "";
-    // Columna evidence ausente (migración vieja): guarda el cobro sin foto.
-    // Si ya hay foto y falla evidence, NO fingir éxito: la cola debe reintentar.
-    if (/evidence/i.test(msg)) {
-      const hadPreview = evidenceHasPreview(payment.evidence);
-      const { evidence: _drop, ...withoutEvidence } = row;
-      const retry = await client.from("payments").upsert(withoutEvidence, { onConflict: "ref" });
-      if (retry.error) return { ok: false, error: retry.error.message };
-      if (hadPreview) {
-        return { ok: false, error: `evidence_upsert_failed: ${msg}` };
+  if (
+    combined.error === "service_role_missing" ||
+    combined.error === "supabase_not_configured"
+  ) {
+    return { ok: true, skipped: true, reason: combined.error };
+  }
+
+  // Migración aún no aplicada: no dejar un solo tramo en la nube.
+  if (combined.error === "register_combined_collection_missing") {
+    const first = await registerLoanPaymentInSupabase(parts[0]);
+    if (!first.ok) {
+      if (
+        first.error === "service_role_missing" ||
+        first.error === "supabase_not_configured"
+      ) {
+        return { ok: true, skipped: true, reason: first.error };
       }
-      return { ok: true };
+      return { ok: false, error: first.error };
     }
-    // Constraint viejo sin 'banco': no tumbar el cobro local; cola reintenta tras migración.
-    if (/method/i.test(msg) && /banco|check|constraint/i.test(msg)) {
+    const second = await registerLoanPaymentInSupabase(parts[1]);
+    if (!second.ok) {
       return {
         ok: false,
-        error: `payments_method_ok necesita 'banco' — aplicar migración 20260916200000_payments_method_banco.sql (${msg})`,
+        error: `combinado_parcial: ${parts[0].ref} ok, ${parts[1].ref} falló (${second.error})`,
       };
     }
-    return { ok: false, error: msg };
+    return { ok: true, duplicate: first.duplicate && second.duplicate, payment: first.payments[0] };
   }
-  return { ok: true };
+
+  return { ok: false, error: combined.error };
 }
 
 export type FetchPaymentsResult =
@@ -692,7 +735,7 @@ export async function reconcilePaymentEvidenceToRemote(): Promise<{
     for (const payment of local) {
       const remote = remoteByRef.get(payment.ref);
       const remoteEvidence = Array.isArray(remote?.evidence) ? remote.evidence : undefined;
-      if (evidenceHasPreview(remoteEvidence)) continue;
+      if (evidenceHasPreview(remoteEvidence) || evidenceHasDurableRef(remoteEvidence)) continue;
 
       const result = await persistPaymentToSupabase(payment);
       if (result.ok && !("skipped" in result && result.skipped)) {
@@ -722,6 +765,66 @@ export function queuePaymentMirror(payment: PaymentRow): Promise<MirrorPaymentRe
     return Promise.resolve({ ok: true, skipped: true, reason: "ssr" });
   }
   return persistPaymentToSupabase(payment);
+}
+
+/**
+ * Sube un combinado de forma atómica (una sola petición).
+ * Si la RPC combinada no existe, el server intenta ambos tramos y reporta parcial.
+ */
+export async function queueCombinedPaymentMirror(
+  parts: [PaymentRow, PaymentRow],
+): Promise<MirrorPaymentResult> {
+  if (typeof window === "undefined") {
+    return { ok: true, skipped: true, reason: "ssr" };
+  }
+  const payload: [PaymentRow, PaymentRow] = [
+    withPaymentEvidence(parts[0]),
+    withPaymentEvidence(parts[1]),
+  ];
+  for (const payment of payload) {
+    if (evidenceHasPreview(payment.evidence)) {
+      enqueueMirrorPayment(payment);
+    }
+  }
+  try {
+    const res = await fetch("/api/payments/mirror", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ combined: { parts: payload } }),
+    });
+    const result = (await res.json()) as MirrorPaymentResult & { error?: string };
+    if (!res.ok || !result.ok) {
+      for (const payment of payload) enqueueMirrorPayment(payment);
+      return { ok: false, error: result.error || `http_${res.status}` };
+    }
+    if (!result.skipped) {
+      dequeueMirrorPayment(payload[0].ref);
+      dequeueMirrorPayment(payload[1].ref);
+    }
+    return result;
+  } catch (err) {
+    for (const payment of payload) enqueueMirrorPayment(payment);
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "mirror_network_error",
+    };
+  }
+}
+
+/** Un cobro o un par combinado → espejo nube. */
+export async function queuePaymentsMirror(payments: PaymentRow[]): Promise<void> {
+  if (payments.length === 2) {
+    const [a, b] = payments;
+    const comboA = a.comboGroupId?.trim();
+    const comboB = b.comboGroupId?.trim();
+    if (comboA && comboB && comboA === comboB) {
+      await queueCombinedPaymentMirror([a, b]);
+      return;
+    }
+  }
+  for (const pay of payments) {
+    await queuePaymentMirror(pay);
+  }
 }
 
 export type PullPaymentsResult = {

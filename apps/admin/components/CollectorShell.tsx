@@ -60,7 +60,7 @@ import {
 } from "@/lib/bank";
 import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
-import { flushPaymentMirrorQueue, queuePaymentMirror } from "@/lib/supabase/payment-mirror";
+import { flushPaymentMirrorQueue, queuePaymentsMirror } from "@/lib/supabase/payment-mirror";
 import {
   flushCatalogMirrorQueues,
   queueClientMirror,
@@ -376,9 +376,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     const toastRefs = paymentsCreated.map((row) => row.ref).join(" + ");
     showToast(`Cobro ${toastRefs} guardado · subiendo a la nube…`);
     void (async () => {
-      for (const pay of paymentsCreated) {
-        await queuePaymentMirror(pay);
-      }
+      await queuePaymentsMirror(paymentsCreated);
       const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
       if (paidLoan) queueLoanMirror(paidLoan);
       const paidClient = committed.clients.find((row) =>

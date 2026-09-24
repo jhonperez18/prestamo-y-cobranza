@@ -173,7 +173,7 @@ function awaitingLoanItemForClient(client: ClientRow, date: string): DailyCollec
     address: client.address,
     phone: client.phone,
     chargeDate: date,
-    chargeLabel: "Completar",
+    chargeLabel: "Prestar",
     amountDue: 0,
     cuotaAmount: 0,
     moraAmount: 0,
@@ -188,6 +188,28 @@ function preserveProgress(
   previous: DailyCollectionAssignment | undefined,
   livePaymentsByRef?: Map<string, { loanRef?: string }>,
 ): DailyCollectionAssignment {
+  // Visita «prestar»: nunca heredar loanRef / monto de una fila vieja.
+  const nextAwaiting =
+    Boolean(next.awaitingLoan) ||
+    String(next.itemId || "").includes(":prestar") ||
+    !String(next.loanRef || "").trim();
+  if (nextAwaiting) {
+    return {
+      ...next,
+      loanRef: "",
+      amountDue: 0,
+      alertCount: 0,
+      awaitingLoan: true,
+      chargeLabel: "Prestar",
+      assignedAt: previous?.assignedAt || next.assignedAt,
+      visitStatus: previous?.visitStatus === "omitido" ? "omitido" : next.visitStatus,
+      skipReason: previous?.visitStatus === "omitido" ? previous.skipReason : undefined,
+      dayClosedAt: previous?.dayClosedAt,
+      paymentRef: undefined,
+      dispatched: true,
+      dispatchedAt: previous?.dispatchedAt ?? next.dispatchedAt,
+    };
+  }
   if (!previous) return next;
   const linkedRef = (previous.paymentRef || "").trim();
   const linkedPay = linkedRef ? livePaymentsByRef?.get(linkedRef) : undefined;
