@@ -15,8 +15,8 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const PROJECT = "prestamo-y-cobranza";
-const CANONICAL_HOST = "cobros.smokecompany.shop";
-const VERCEL_HOST = "prestamo-y-cobranza.vercel.app";
+/** URL de trabajo (sin dominio cobros: API/DNS fallidos). */
+const CANONICAL_HOST = "prestamo-y-cobranza.vercel.app";
 const LEGACY_HOST = "admin-jhon-fredy-perezs-projects.vercel.app";
 const DOMAIN = `https://${CANONICAL_HOST}`;
 const DEPLOY_URL_RE =
@@ -149,7 +149,7 @@ function syncAliases(deploymentUrl) {
     console.error("No hay URL de deploy Ready para sincronizar aliases.");
     process.exit(1);
   }
-  for (const host of [CANONICAL_HOST, VERCEL_HOST, LEGACY_HOST]) {
+  for (const host of [CANONICAL_HOST, LEGACY_HOST]) {
     try {
       run(`npx vercel alias set ${deploymentUrl} ${host}`, repoRoot);
     } catch (err) {

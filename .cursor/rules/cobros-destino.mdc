@@ -1,24 +1,25 @@
 ---
-description: El sistema se publica y se abre solo en cobros.smokecompany.shop.
+description: Destino de producción — Vercel del proyecto prestamo-y-cobranza.
 alwaysApply: true
 ---
 
-# Destino — cobros.smokecompany.shop
+# Destino — producción Vercel
 
 ## Ley
 
-Todo lo que el cliente usa va a **https://cobros.smokecompany.shop**.
+Todo lo que el cliente usa va a **https://prestamo-y-cobranza.vercel.app**.
 
-Esa es la única dirección que se abre y la única que se le dice al usuario.
+Esa es la dirección de trabajo. El dominio `cobros.smokecompany.shop` quedó fuera (DNS/API no sirvieron).
 
 ## Publicar
 
 1. El proyecto sigue siendo uno: `prestamo-y-cobranza`, raíz `apps/admin`, rama `main`.
-2. Al quedar Ready, el alias de producción es `cobros.smokecompany.shop`.
-3. No mandar al usuario a localhost ni a `prestamo-y-cobranza.vercel.app` para trabajar.
+2. Al quedar Ready, el alias de producción es `prestamo-y-cobranza.vercel.app`.
+3. En el taller de este PC: `http://localhost:3000`.
 
 ## Prohibido
 
-- Tratar la carpeta estática de Hostinger como el sistema. Ahí no están los cobros ni la vista móvil.
-- Crear otro proyecto para este dominio.
-- Decir que ya está en cobros si el login de https://cobros.smokecompany.shop no muestra el `build` del commit.
+- Tratar la carpeta estática de Hostinger como el sistema.
+- Crear otro proyecto Vercel para este admin.
+- Volver a colgar `cobros.smokecompany.shop` sin pedido explícito del dueño.
+- Decir que ya está en prod si el login no muestra el `build` del commit.

@@ -17,7 +17,7 @@ Cada publicación y cada “versión vieja” **purga la caché**. Sin eso el ce
 ## Obligatorio
 
 1. Tras Ready: `cd apps/admin && npm run verify:prod` (ya purga al final).
-2. Si el alias de `cobros.smokecompany.shop` falla, **igual** se purga. El fallo no cancela la limpieza.
+2. Si un alias falla, **igual** se purga. El fallo no cancela la limpieza.
 3. Si el usuario dice que el celular no actualiza: `cd apps/admin && npm run purge:cache` en el momento, sin esperar otro pedido.
 4. El navegador suelta service worker y Cache Storage en cada arranque. Si había algo guardado, recarga una vez.
 

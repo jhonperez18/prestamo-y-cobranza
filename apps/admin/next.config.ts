@@ -16,7 +16,7 @@ function resolveBuildId() {
 
 const APP_BUILD = resolveBuildId();
 
-/** Solo el build de Hostinger (cobros.smokecompany.shop). Vercel sigue en servidor. */
+/** Export estático Hostinger (opcional). Vercel sigue en servidor. */
 const hostingerExport = process.env.HOSTINGER_STATIC_EXPORT === "1";
 
 function adminRoot() {
