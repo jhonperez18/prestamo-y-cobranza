@@ -4499,12 +4499,12 @@
       border-bottom: 1px solid #e2ece7;
       border-radius: 0;
     }
-    .supervisor-mobile-list.is-prestamos-hist > li:not(.is-head):nth-child(even) {
-      background: #8ec8f0;
+    .supervisor-mobile-list.is-prestamos-hist > li:not(.is-head):nth-child(odd) {
+      background: var(--row-a);
       color: #111;
     }
-    .supervisor-mobile-list.is-prestamos-hist > li:not(.is-head):nth-child(odd) {
-      background: #8ec8f0;
+    .supervisor-mobile-list.is-prestamos-hist > li:not(.is-head):nth-child(even) {
+      background: var(--row-b);
       color: #111;
     }
     .supervisor-mobile-list.is-prestamos-hist > li:last-child {
@@ -4526,12 +4526,12 @@
       padding: var(--table-row-pad-y) 8px;
       min-height: 0;
       box-sizing: border-box;
-      background: var(--table-head-bg, #dceeee);
+      background: var(--table-head-bg, #426650);
       font-size: 10px;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.02em;
-      color: #14201b;
+      color: #fff;
       line-height: var(--table-row-line);
     }
     .supervisor-mobile-list.is-prestamos-hist > li.is-head .is-client {
@@ -4578,7 +4578,7 @@
       font-size: 11px;
       font-weight: 400;
       line-height: var(--table-row-line);
-      color: #475569;
+      color: #111;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -4635,16 +4635,12 @@
       line-height: var(--table-row-line);
     }
     .supervisor-prestamo-hist-row .is-amount {
-      color: #14201b;
+      color: #111;
     }
-    .supervisor-prestamo-hist-row .is-amount.is-nequi {
-      color: #5b3d8a;
-    }
-    .supervisor-prestamo-hist-row .is-amount.is-efectivo {
-      color: #0f766e;
-    }
+    .supervisor-prestamo-hist-row .is-amount.is-nequi,
+    .supervisor-prestamo-hist-row .is-amount.is-efectivo,
     .supervisor-prestamo-hist-row .is-amount.is-banco {
-      color: #1d4ed8;
+      color: #111;
     }
     .supervisor-prestamo-hist-row .is-saldo {
       color: #111;
