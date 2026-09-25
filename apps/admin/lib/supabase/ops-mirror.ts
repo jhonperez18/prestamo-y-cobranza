@@ -161,13 +161,13 @@ function pruneOpenAssignmentQueueAgainstLocalCloses() {
     { ref: string; dayClosedAt?: string; collectorRef?: string; dispatchDate?: string }[]
   >(Q_ASSIGN, []);
   if (!queued.length) return;
-  const localByKey = new Map(
+  const localByKey = new Map<string, DailyCollectionAssignment>(
     readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []).map((row) => {
       const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
-      return [`${date}::${row.itemId}`, row] as const;
+      return [`${date}::${row.itemId}`, row];
     }),
   );
-  const closedCollectorDays = new Set(
+  const closedCollectorDays = new Set<string>(
     readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []).map((row) => {
       const date = normalizeHistoryDate(row.date) || row.date;
       return `${row.collectorRef}::${date}`;
@@ -704,10 +704,10 @@ export async function flushOpsMirrorQueues() {
     { key: Q_MISC, kind: "misc_payment", rows: readDemoJson(Q_MISC, []) },
     { key: Q_ASSIGN, kind: "assignment", rows: readDemoJson(Q_ASSIGN, []) },
   ];
-  const localAssignByKey = new Map(
+  const localAssignByKey = new Map<string, DailyCollectionAssignment>(
     readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []).map((row) => {
       const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
-      return [`${date}::${row.itemId}`, row] as const;
+      return [`${date}::${row.itemId}`, row];
     }),
   );
   for (const job of jobs) {
