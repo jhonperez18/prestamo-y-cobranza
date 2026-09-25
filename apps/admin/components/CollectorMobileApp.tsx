@@ -1257,7 +1257,6 @@ export function CollectorMobileApp({
                 setConfirmingClose(false);
                 setHistoryOpen(false);
                 setExpandedKey(null);
-                setReloanPayRef(null);
                 if (planillaRoutePins.length > 1) {
                   setPlanillaRouteFilter(
                     planillaRoutePins.find((name) => sameRoute(name, "1")) ??
