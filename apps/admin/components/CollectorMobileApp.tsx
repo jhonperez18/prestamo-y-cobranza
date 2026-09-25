@@ -1,15 +1,9 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { CollectorCloseDayConfirm } from "@/components/CollectorCloseDayConfirm";
-import { CollectorCloseDaySheet } from "@/components/CollectorCloseDaySheet";
-import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
-import { CollectorDayLoansPanel } from "@/components/CollectorDayLoansPanel";
 import { CollectorPayForm } from "@/components/CollectorPayForm";
-import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import type { QuickLoanDraft } from "@/lib/street-client-loan";
-import { Pill } from "@/components/ui";
 import {
   collectorHasOpenPlanillaWork,
   collectorMobileQueue,
@@ -40,7 +34,6 @@ import {
 } from "@/lib/mock-data";
 import type { CollectorPaymentRegisterInput } from "@/lib/route-sync";
 import { canRenewLoan } from "@/lib/loan-renew";
-import { reloanStateForVisit } from "@/lib/loan-reloan";
 import { syncLoan } from "@/lib/loan-preview";
 import {
   assignmentRouteName,
@@ -50,7 +43,6 @@ import {
 } from "@/lib/collector-dispatch-sync";
 import {
   compareRouteNames,
-  compareRoutePosition,
   routeBlockStarts,
   sameRoute,
 } from "@/lib/client-route-order";
@@ -87,13 +79,11 @@ import {
   periodHadCollectorActivity,
   previousPeriod,
 } from "@/lib/collector-day-close";
-import {
-  normalizePaymentMethod,
-  paymentMethodInitial,
-  paymentMethodKind,
-  paymentMethodLabel,
-  paymentMethodToneClass,
-} from "@/lib/payment-method";
+import { normalizePaymentMethod } from "@/lib/payment-method";
+import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
+import { CollectorDayLoansPanel } from "@/components/CollectorDayLoansPanel";
+import { CollectorCloseDayConfirm } from "@/components/CollectorCloseDayConfirm";
+import { CollectorCloseDaySheet } from "@/components/CollectorCloseDaySheet";
 
 export type CollectorSkipVisitDraft = {
   routeRef: string;
@@ -243,8 +233,6 @@ export function CollectorMobileApp({
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [payCombo, setPayCombo] = useState(false);
   const [listFilter, setListFilter] = useState<ListFilter>("pending");
-  /** Cobro (PG-) cuyo cliente terminó hoy y tiene abierto el formulario «Préstamo». */
-  const [reloanPayRef, setReloanPayRef] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [editingExpenses, setEditingExpenses] = useState(false);
   const [reviewingLoans, setReviewingLoans] = useState(false);
@@ -608,14 +596,6 @@ export function CollectorMobileApp({
       count: routeDayPays.length,
     };
   }, [activePlanillaRoute, routeDayPays, recaudo]);
-  /** Primer PG- del día por crédito: ahí va el botón / etiqueta «Préstamo». */
-  const reloanAnchorByLoan = useMemo(() => {
-    const anchor = new Map<string, string>();
-    for (const pay of dayPays) {
-      if (pay.loanRef && !anchor.has(pay.loanRef)) anchor.set(pay.loanRef, pay.ref);
-    }
-    return anchor;
-  }, [dayPays]);
 
   const savedExpensesRaw = useMemo(
     () => expensesForCollectorDay(collector.ref, activeDate, dayCloses, dayExpenseDrafts),
@@ -854,30 +834,6 @@ export function CollectorMobileApp({
   const pendingRouteStarts = routeBlockStarts(visibleItems, (item) =>
     assignmentRouteName(item, clients),
   );
-  /** Mismos cobros del día, orden ruta → #, para la raya entre las dos hojas. */
-  const dayPaysByRoute = useMemo(() => {
-    return routeDayPays
-      .slice()
-      .sort((a, b) => {
-        const loanA = loans.find((row) => row.ref === a.loanRef);
-        const loanB = loans.find((row) => row.ref === b.loanRef);
-        const clientA = clients.find((row) => row.ref === loanA?.clientRef);
-        const clientB = clients.find((row) => row.ref === loanB?.clientRef);
-        return (
-          compareRoutePosition(
-            clientA?.route,
-            clientA?.routeOrder,
-            clientB?.route,
-            clientB?.routeOrder,
-          ) ||
-          payerName(a, loans, clients).localeCompare(payerName(b, loans, clients), "es")
-        );
-      });
-  }, [clients, routeDayPays, loans]);
-  const doneRouteStarts = routeBlockStarts(dayPaysByRoute, (pay) => {
-    const loan = loans.find((row) => row.ref === pay.loanRef);
-    return clients.find((row) => row.ref === loan?.clientRef)?.route;
-  });
 
   /** Totales de la planilla activa (ruta 1.1 sin datos = ceros reales). */
   const topRecaudo = planillaRecaudo.total;
@@ -1472,100 +1428,29 @@ export function CollectorMobileApp({
       ) : null}
 
       {listFilter === "done" ? (
-        <ul className="collector-mobile-list compact" aria-label="Quienes pagaron">
-          {dayPaysByRoute.length === 0 ? (
-            <li className="collector-mobile-empty-inline">Aún no hay cobros del día.</li>
-          ) : (
-            dayPaysByRoute.map((pay, index) => {
-              const method = normalizePaymentMethod(pay.method);
-              const payLoan = loans.find((row) => row.ref === pay.loanRef);
-              const payClient = payLoan
-                ? clients.find((row) => row.ref === payLoan.clientRef)
-                : undefined;
-              // Terminó hoy (saldo en cero) → botón «Préstamo»; ya se le prestó → renglón azul.
-              const reloan = reloanStateForVisit({
-                clientRef: payLoan?.clientRef ?? "",
-                loanRef: pay.loanRef,
-                loans,
-                payments: livePayments,
-                date: activeDate,
-              });
-              const reloanOpen = reloanPayRef === pay.ref;
-              // Un solo botón por crédito aunque haya pagado en dos partes (E + N).
-              const isReloanAnchor =
-                !pay.loanRef || reloanAnchorByLoan.get(pay.loanRef) === pay.ref;
-              const canOfferReloan =
-                isReloanAnchor &&
-                reloan.canReloan &&
-                Boolean(payClient) &&
-                Boolean(onCreateQuickLoan) &&
-                !dayLocked;
-              return (
-                <li
-                  key={pay.ref}
-                  className={[
-                    "collector-mobile-card",
-                    "is-done",
-                    "is-dense",
-                    paymentMethodToneClass(method),
-                    reloan.granted ? "is-reloan" : "",
-                    reloanOpen ? "is-open" : "",
-                    doneRouteStarts[index] ? "is-route-start" : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
-                >
-                  <div className="collector-mobile-dense-row">
-                    <div className="collector-mobile-visit-who">
-                      <strong>{payerName(pay, loans, clients)}</strong>
-                      {canOfferReloan ? (
-                        <button
-                          type="button"
-                          className={reloanOpen ? "collector-reloan-btn on" : "collector-reloan-btn"}
-                          title="Terminó su crédito: prestarle ahora (sale del efectivo del día)"
-                          aria-expanded={reloanOpen}
-                          onClick={() => setReloanPayRef(reloanOpen ? null : pay.ref)}
-                        >
-                          Préstamo
-                        </button>
-                      ) : reloan.granted && isReloanAnchor ? (
-                        <span
-                          className="collector-reloan-tag"
-                          title={`Préstamo ${reloan.granted.ref} · capital ${money(reloan.granted.capital)}`}
-                        >
-                          Préstamo {money(reloan.granted.capital, { symbol: false })}
-                        </span>
-                      ) : null}
-                    </div>
-                    <span className="collector-mobile-ref is-done-col">
-                      {money(pay.amount, { symbol: false })}
-                    </span>
-                    <Pill
-                      label={paymentMethodInitial(method)}
-                      kind={paymentMethodKind(method)}
-                      title={paymentMethodLabel(method)}
-                    />
-                  </div>
-                  {reloanOpen && canOfferReloan && payClient && onCreateQuickLoan ? (
-                    <div className="collector-mobile-pay-inline">
-                      <QuickLoanForm
-                        clientName={payerName(pay, loans, clients)}
-                        clientRef={payClient.ref}
-                        fundedByOptions={["efectivo"]}
-                        defaultFundedBy="efectivo"
-                        onCancel={() => setReloanPayRef(null)}
-                        onSave={(draft) => {
-                          onCreateQuickLoan({ ...draft, routeName: payClient.route });
-                          setReloanPayRef(null);
-                        }}
-                      />
-                    </div>
-                  ) : null}
-                </li>
-              );
-            })
-          )}
-        </ul>
+        closedPlanilla.length === 0 && dayExpenseSplit.prestamos.length === 0 ? (
+          <p className="collector-mobile-empty-inline">
+            Aún no hay planilla del día. Cuando haya visitas, aquí se ve completa (cobros, N/P y
+            préstamos).
+          </p>
+        ) : (
+          <CollectorDayCloseExtras
+            dateLabel={
+              activePlanillaRoute
+                ? `${queue.dateLabel} · ${activePlanillaRoute}`
+                : queue.dateLabel
+            }
+            planillaRows={closedPlanilla}
+            prestamos={dayExpenseSplit.prestamos}
+            prestamosTotal={topPrestamos}
+            otrosGastos={isPrimaryPlanilla ? dayExpenseSplit.otros : []}
+            otrosTotal={topGastos}
+            searchOpen={planillaSearchOpen}
+            searchQuery={planillaQuery}
+            onToggleSearch={() => setPlanillaSearchOpen((open) => !open)}
+            onSearchChange={setPlanillaQuery}
+          />
+        )
       ) : null}
 
       {listFilter !== "done" && queue.awaitingDispatch.length > 0 && !queue.dispatched.length ? (
