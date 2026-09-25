@@ -1669,7 +1669,7 @@
     }
     .collector-mobile-day-history-row .is-date {
       text-align: left;
-      font-weight: 650;
+      font-weight: 400;
     }
     .collector-mobile-day-history-row .is-saldo.is-negative {
       color: #b91c1c;
@@ -12816,11 +12816,13 @@
       border-style: solid;
       padding: 0;
       min-height: 0;
+      background: #0f1a16;
     }
     .receipt-upload img {
       width: 100%;
-      max-height: 180px;
-      object-fit: cover;
+      max-height: 240px;
+      object-fit: contain;
+      object-position: center;
       display: block;
     }
     .receipt-actions {

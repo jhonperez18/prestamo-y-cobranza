@@ -1411,10 +1411,10 @@ export function CollectorMobileApp({
           >
             <div className="collector-mobile-day-history-head">
               <span>Día</span>
-              <span>Cobro</span>
-              <span>Gasto</span>
-              <span>Préstamo</span>
               {showMInicialColumn ? <span>Inicial</span> : null}
+              <span>Cobros</span>
+              <span>Préstamo</span>
+              <span>Gasto</span>
               <span>Saldo</span>
             </div>
             <ul className="collector-mobile-day-history-list">
@@ -1457,12 +1457,12 @@ export function CollectorMobileApp({
                       }}
                     >
                       <span className="is-date">{row.dateLabel}</span>
-                      <span className="is-money">{money(row.cobro, { symbol: false })}</span>
-                      <span className="is-money">{money(row.gasto, { symbol: false })}</span>
-                      <span className="is-money">{money(row.prestamo, { symbol: false })}</span>
                       <span className="is-money is-inicial-col">
                         {row.inicial == null ? "—" : money(row.inicial, { symbol: false })}
                       </span>
+                      <span className="is-money">{money(row.cobro, { symbol: false })}</span>
+                      <span className="is-money">{money(row.prestamo, { symbol: false })}</span>
+                      <span className="is-money">{money(row.gasto, { symbol: false })}</span>
                       <span
                         className={
                           row.saldoShown != null && row.saldoShown < 0
@@ -1498,8 +1498,8 @@ export function CollectorMobileApp({
                     >
                       <span className="is-date">{row.dateLabel}</span>
                       <span className="is-money">{money(row.cobro, { symbol: false })}</span>
-                      <span className="is-money">{money(row.gasto, { symbol: false })}</span>
                       <span className="is-money">{money(row.prestamo, { symbol: false })}</span>
+                      <span className="is-money">{money(row.gasto, { symbol: false })}</span>
                       <span
                         className={
                           row.saldo < 0 ? "is-saldo is-negative is-saldo-strong" : "is-saldo is-saldo-strong"
@@ -1530,8 +1530,8 @@ export function CollectorMobileApp({
             </div>
           ) : null}
         </div>
-      ) : null}
-
+      ) : (
+        <>
       {monthBlock ? (
         <div className="collector-mobile-month-alert" role="alert">
           <p>{monthBlock.message}</p>
@@ -2294,6 +2294,8 @@ export function CollectorMobileApp({
       )}
       </>
       ) : null}
+        </>
+      )}
 
     </div>
   );

@@ -2703,10 +2703,10 @@ export function SupervisorMobileApp({
               >
                 <div className="collector-mobile-day-history-head">
                   <span>Día</span>
-                  <span>Cobro</span>
-                  <span>Gasto</span>
-                  <span>Préstamo</span>
                   {openRouteCajaHistoryIsM ? <span>Inicial</span> : null}
+                  <span>Cobros</span>
+                  <span>Préstamo</span>
+                  <span>Gasto</span>
                   <span>Saldo</span>
                 </div>
                 <ul className="collector-mobile-day-history-list">
@@ -2737,19 +2737,19 @@ export function SupervisorMobileApp({
                             onClick={() => openCajaHistorialDay(extract.date)}
                           >
                             <span className="is-date">{extract.dateLabel}</span>
-                            <span className="is-money">
-                              {money(extract.cobro, { symbol: false })}
-                            </span>
-                            <span className="is-money">
-                              {money(extract.gasto, { symbol: false })}
-                            </span>
-                            <span className="is-money">
-                              {money(extract.prestamo, { symbol: false })}
-                            </span>
                             <span className="is-money is-inicial-col">
                               {extract.inicial == null
                                 ? "—"
                                 : money(extract.inicial, { symbol: false })}
+                            </span>
+                            <span className="is-money">
+                              {money(extract.cobro, { symbol: false })}
+                            </span>
+                            <span className="is-money">
+                              {money(extract.prestamo, { symbol: false })}
+                            </span>
+                            <span className="is-money">
+                              {money(extract.gasto, { symbol: false })}
                             </span>
                             <span
                               className={
@@ -2792,10 +2792,10 @@ export function SupervisorMobileApp({
                               {money(plain.cobro, { symbol: false })}
                             </span>
                             <span className="is-money">
-                              {money(plain.gasto, { symbol: false })}
+                              {money(plain.prestamo, { symbol: false })}
                             </span>
                             <span className="is-money">
-                              {money(plain.prestamo, { symbol: false })}
+                              {money(plain.gasto, { symbol: false })}
                             </span>
                             <span
                               className={

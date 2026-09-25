@@ -519,7 +519,7 @@ export function applyCollectorCashHandSaldos<
 }
 
 /**
- * Extracto M (como banco): Día · Cobro · Gasto · Préstamo · Inicial · Saldo.
+ * Extracto M (como banco): Día · Inicial · Cobros · Préstamo · Gasto · Saldo.
  *
  * Arranque claro (día época):
  * - Saldo del día previo = caja real (efectivo − gasto − préstamo).

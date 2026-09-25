@@ -139,6 +139,25 @@ function loadImageFromFile(file: File) {
   });
 }
 
+/**
+ * Bitmap ya orientado (EXIF del celular). Sin esto el canvas dibuja el JPEG crudo
+ * y la foto queda girada o “recortada” antes de confirmar el cobro.
+ */
+async function loadOrientedBitmap(file: File): Promise<ImageBitmap | HTMLImageElement> {
+  if (typeof createImageBitmap === "function") {
+    try {
+      return await createImageBitmap(file, { imageOrientation: "from-image" });
+    } catch {
+      try {
+        return await createImageBitmap(file);
+      } catch {
+        /* cae al Image() */
+      }
+    }
+  }
+  return loadImageFromFile(file);
+}
+
 function canvasToBlob(canvas: HTMLCanvasElement, mime: string, quality: number) {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
@@ -159,24 +178,34 @@ function blobToDataUrl(blob: Blob) {
   });
 }
 
-/** Comprime la foto antes de guardarla — menos memoria en la app y menos peso al subir. */
+/** Comprime la foto entera (sin recortar). Solo escala el lado largo. */
 export async function compressReceiptImage(file: File) {
   if (!file.type.startsWith("image/")) {
     throw new Error("Solo se admiten imágenes JPG o PNG.");
   }
 
-  const img = await loadImageFromFile(file);
-  const longest = Math.max(img.width, img.height);
+  const source = await loadOrientedBitmap(file);
+  const srcW = "naturalWidth" in source && source.naturalWidth
+    ? source.naturalWidth
+    : source.width;
+  const srcH = "naturalHeight" in source && source.naturalHeight
+    ? source.naturalHeight
+    : source.height;
+  const longest = Math.max(srcW, srcH);
   const scale = longest > RECEIPT_MAX_EDGE_PX ? RECEIPT_MAX_EDGE_PX / longest : 1;
-  const width = Math.max(1, Math.round(img.width * scale));
-  const height = Math.max(1, Math.round(img.height * scale));
+  const width = Math.max(1, Math.round(srcW * scale));
+  const height = Math.max(1, Math.round(srcH * scale));
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("No se pudo procesar la imagen.");
-  ctx.drawImage(img, 0, 0, width, height);
+  // Foto completa → canvas. Nunca source-rect parcial (eso era el “recorte”).
+  ctx.drawImage(source, 0, 0, srcW, srcH, 0, 0, width, height);
+  if (typeof (source as ImageBitmap).close === "function") {
+    (source as ImageBitmap).close();
+  }
 
   let quality = RECEIPT_JPEG_QUALITY;
   let blob = await canvasToBlob(canvas, "image/jpeg", quality);
@@ -187,7 +216,7 @@ export async function compressReceiptImage(file: File) {
   }
 
   if (blob.size > RECEIPT_MAX_BYTES) {
-    throw new Error("La imagen sigue siendo muy pesada. Acerca más el comprobante o recorta la foto.");
+    throw new Error("La imagen sigue siendo muy pesada. Acerca más el comprobante.");
   }
 
   const dataUrl = await blobToDataUrl(blob);
