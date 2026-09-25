@@ -1834,11 +1834,7 @@ export function useWorkspace({
 
     const toastRefs = paymentsCreated.map((row) => row.ref).join(" + ");
     onToast(`Cobro ${toastRefs} guardado · subiendo a la nube…`);
-    // Nube operativa: await flush antes de OK (mismo contrato que CollectorShell).
-    const live = await syncPaymentsFromCloud(committed.payments);
-    const assignments = reconcilePaymentsOntoPlanilla(projected.assignments, live);
-    setDailyAssignments(assignments);
-    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
+    // Sin pull completo aquí: ya tenemos el PG- local. Solo subir el cobro (rápido).
     await queuePaymentsMirror(paymentsCreated);
     const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
     if (paidLoan) queueLoanMirror(paidLoan);
@@ -1848,12 +1844,13 @@ export function useWorkspace({
       ),
     );
     if (paidClient) queueClientMirror(paidClient);
-    queueAssignmentsMirror(assignments);
+    queueAssignmentsMirror(projected.assignments);
     try {
       let payFlush = await flushPaymentMirrorQueue();
       if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();
-      await flushCatalogMirrorQueues();
-      await flushOpsMirrorQueues();
+      void Promise.all([flushCatalogMirrorQueues(), flushOpsMirrorQueues()]).catch(() => {
+        /* reintenta el poll / siguiente cobro */
+      });
       if (payFlush.left > 0) {
         onToast(`Cobro ${toastRefs} guardado (sin nube; reintenta solo).`);
       } else {

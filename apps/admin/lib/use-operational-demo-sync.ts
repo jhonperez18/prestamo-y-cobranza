@@ -49,11 +49,11 @@ type Options = {
 };
 
 /** Realtime es la vía viva; el poll solo respalda si el canal se cae. */
-const CLOUD_POLL_MS = 30_000;
+const CLOUD_POLL_MS = 45_000;
 /** Evita doble pull al volver foco + visibility a la vez. */
-const VISIBLE_PULL_MIN_MS = 4_000;
+const VISIBLE_PULL_MIN_MS = 3_000;
 /** Agrupa ráfagas de postgres_changes en un solo hydrate. */
-const REALTIME_DEBOUNCE_MS = 450;
+const REALTIME_DEBOUNCE_MS = 280;
 
 /**
  * Sync C5+C6 — local primero (arranque rápido), luego flush/pull en fondo.

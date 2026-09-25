@@ -418,7 +418,7 @@ export function CollectorShell({ session, onLogout }: Props) {
 
     const toastRefs = paymentsCreated.map((row) => row.ref).join(" + ");
     showToast(`Cobro ${toastRefs} guardado · subiendo a la nube…`);
-    // Nube operativa: no devolver OK al UI hasta intentar flush (supervisor lo ve en segundos).
+    // Crítico para el supervisor: solo el PG-. Catálogo/ops van en fondo (más velocidad).
     await queuePaymentsMirror(paymentsCreated);
     const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
     if (paidLoan) queueLoanMirror(paidLoan);
@@ -432,8 +432,9 @@ export function CollectorShell({ session, onLogout }: Props) {
     try {
       let payFlush = await flushPaymentMirrorQueue();
       if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();
-      await flushCatalogMirrorQueues();
-      await flushOpsMirrorQueues();
+      void Promise.all([flushCatalogMirrorQueues(), flushOpsMirrorQueues()]).catch(() => {
+        /* reintenta el poll / siguiente cobro */
+      });
       if (payFlush.left > 0) {
         showToast(`Cobro ${toastRefs} guardado (sin nube; reintenta solo).`);
       } else {
