@@ -1423,6 +1423,24 @@ export function CollectorMobileApp({
               </div>
             ) : null}
           </div>
+          {canCloseDay && !confirmingClose ? (
+            <div className="collector-recaudo-close-bar">
+              <p>
+                {pendingCollectShown > 0
+                  ? `Quedan ${pendingCollectShown} por cobrar. Puedes cerrar cuando termines la hoja.`
+                  : "Planilla lista: revisa cobros, N/P y préstamos, luego cierra."}
+              </p>
+              <button
+                type="button"
+                className="collector-mobile-pay-link is-close-day"
+                onClick={openCloseConfirm}
+              >
+                {activePlanillaRoute
+                  ? `Cerrar planilla ${activePlanillaRoute}`
+                  : "Cerrar día"}
+              </button>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
