@@ -4522,10 +4522,49 @@
       background: #fff;
     }
     .supervisor-prestamos-search {
-      margin: 0 0 8px;
+      margin: 0;
+      flex: 1 1 auto;
+      min-width: 0;
+      max-width: calc(100% - 7.5rem);
     }
     .supervisor-prestamos-search input {
       width: 100%;
+    }
+    .supervisor-prestamos-search-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 8px;
+    }
+    .supervisor-prestamos-saldo-sum {
+      flex: 0 0 auto;
+      min-width: 6.5rem;
+      max-width: 7.2rem;
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid #c5e0cb;
+      background: #eef6ef;
+      display: grid;
+      gap: 1px;
+      justify-items: end;
+      text-align: right;
+      box-sizing: border-box;
+    }
+    .supervisor-prestamos-saldo-sum span {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: #3f6b4c;
+      line-height: 1.1;
+    }
+    .supervisor-prestamos-saldo-sum b {
+      font-size: 13px;
+      font-weight: 700;
+      color: #111;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.15;
+      white-space: nowrap;
     }
     .supervisor-mobile-list.is-prestamos-hist > li {
       display: block;

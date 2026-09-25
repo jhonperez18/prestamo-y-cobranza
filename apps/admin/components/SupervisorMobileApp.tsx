@@ -2068,7 +2068,7 @@ export function SupervisorMobileApp({
   const clientesDetailOpen = Boolean(clientesLoanClientRef);
 
   /** Préstamos actuales (saldo vivo): uno por cliente, el activo a la fecha. */
-  const prestamosActuales = useMemo(() => {
+  const prestamosEnRuta = useMemo(() => {
     const byClient = new Map<string, LoanRow>();
     for (const loan of loans) {
       if (!loan.clientRef) continue;
@@ -2093,13 +2093,6 @@ export function SupervisorMobileApp({
         return sameRoute(client?.route, prestamosRouteFilter);
       });
     }
-    const q = prestamosSearch.trim().toLowerCase();
-    if (q) {
-      rows = rows.filter((loan) => {
-        const hay = `${loan.client} ${loan.ref} ${loan.date} ${loan.clientRef || ""}`.toLowerCase();
-        return hay.includes(q);
-      });
-    }
     return rows.sort((a, b) => {
       const clientA = clients.find((row) => row.ref === a.clientRef);
       const clientB = clients.find((row) => row.ref === b.clientRef);
@@ -2108,7 +2101,23 @@ export function SupervisorMobileApp({
       if (clientA && clientB) return compareClientsByRoutePosition(clientA, clientB);
       return (a.client || "").localeCompare(b.client || "", "es");
     });
-  }, [clients, loans, payments, prestamosRouteFilter, prestamosSearch]);
+  }, [clients, loans, payments, prestamosRouteFilter]);
+
+  /** Suma de saldos de la ruta del pin activo (1 / 1.1 / 2). */
+  const prestamosSaldoRuta = useMemo(
+    () =>
+      prestamosEnRuta.reduce((sum, loan) => sum + Math.max(0, Number(loan.balance) || 0), 0),
+    [prestamosEnRuta],
+  );
+
+  const prestamosActuales = useMemo(() => {
+    const q = prestamosSearch.trim().toLowerCase();
+    if (!q) return prestamosEnRuta;
+    return prestamosEnRuta.filter((loan) => {
+      const hay = `${loan.client} ${loan.ref} ${loan.date} ${loan.clientRef || ""}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [prestamosEnRuta, prestamosSearch]);
 
   const prestamoFichaLoan = prestamoFichaRef
     ? loans.find((row) => row.ref === prestamoFichaRef) ?? null
@@ -3566,15 +3575,33 @@ export function SupervisorMobileApp({
                   </button>
                 </div>
               </div>
-              <label className="quick-loan-field supervisor-nuevo-search supervisor-prestamos-search">
-                <span className="sr-only">Buscar préstamo</span>
-                <input
-                  value={prestamosSearch}
-                  onChange={(event) => setPrestamosSearch(event.target.value)}
-                  placeholder="Buscar cliente o fecha"
-                  autoFocus
-                />
-              </label>
+              <div className="supervisor-prestamos-search-row">
+                <label className="quick-loan-field supervisor-nuevo-search supervisor-prestamos-search">
+                  <span className="sr-only">Buscar préstamo</span>
+                  <input
+                    value={prestamosSearch}
+                    onChange={(event) => setPrestamosSearch(event.target.value)}
+                    placeholder="Buscar cliente o fecha"
+                    autoFocus
+                  />
+                </label>
+                <div
+                  className="supervisor-prestamos-saldo-sum"
+                  title={
+                    prestamosRouteFilter
+                      ? `Saldo ruta ${prestamosRouteFilter}`
+                      : "Saldo de préstamos actuales"
+                  }
+                  aria-label={
+                    prestamosRouteFilter
+                      ? `Saldo ruta ${prestamosRouteFilter}: ${money(prestamosSaldoRuta, { symbol: false })}`
+                      : `Saldo total: ${money(prestamosSaldoRuta, { symbol: false })}`
+                  }
+                >
+                  <span>Saldo</span>
+                  <b>{money(prestamosSaldoRuta, { symbol: false })}</b>
+                </div>
+              </div>
               {prestamosActuales.length === 0 ? (
                 <p className="ficha-empty">
                   {prestamosSearch.trim()
