@@ -30,6 +30,7 @@ import {
   DEMO_LOANS_KEY,
   DEMO_MISC_PAYMENTS_KEY,
   DEMO_PAYMENTS_KEY,
+  DEMO_PLANILLA_CASH_CLOSES_KEY,
   DEMO_ROUTES_KEY,
   DEMO_USERS_KEY,
   dedupeCatalogRoutesByName,
@@ -37,6 +38,7 @@ import {
   listDeletedRouteRefs,
 } from "@/lib/demo-persist";
 import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
+import { ensureManualTLaunchClose } from "@/lib/planilla-cash-chain";
 import { runOperationalDayCycle } from "@/lib/collector-day-auto-close";
 import { rebuildDispatchRoutes } from "@/lib/collector-dispatch-sync";
 import {
@@ -208,6 +210,15 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     DEMO_COLLECTOR_DAY_EXPENSES_KEY,
     [],
   );
+  const storedPlanillaCash = ensureManualTLaunchClose(
+    readDemoJson<
+      import("@/lib/planilla-cash-chain").PlanillaCashCloseRecord[]
+    >(DEMO_PLANILLA_CASH_CLOSES_KEY, []),
+  );
+  const monthClosesEarly = readDemoJson<CollectorMonthCloseRecord[]>(
+    DEMO_COLLECTOR_MONTH_CLOSES_KEY,
+    [],
+  );
 
   const cycle = runOperationalDayCycle({
     assignments: storedAssignments,
@@ -219,6 +230,8 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     loans: reconciledLoans,
     clients: liveClients,
     collectors: prunedCollectors,
+    planillaCashCloses: storedPlanillaCash,
+    monthCloses: monthClosesEarly,
   });
   const deduped = dedupeDailyPaymentsByVisit(cycle.payments, cycle.assignments);
   nextPayments = deduped.payments;
@@ -263,10 +276,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     sidesVersion < 2
       ? swapReconciliationDebitCredit(storedReconciliations)
       : storedReconciliations;
-  const monthCloses = readDemoJson<CollectorMonthCloseRecord[]>(
-    DEMO_COLLECTOR_MONTH_CLOSES_KEY,
-    [],
-  );
+  const monthCloses = monthClosesEarly;
 
   const liveRoutes = omitDeleted(labeled.routes);
   const livePayments = omitDeleted(labeled.payments);
@@ -278,6 +288,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
   writeDemoJson(DEMO_DAILY_LOGS_KEY, synced.dailyLogs);
   writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, synced.dayCloses);
   writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, cycle.dayExpenseDrafts);
+  writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, ensureManualTLaunchClose(cycle.planillaCashCloses));
   writeDemoJson(DEMO_BANK_SIDES_VERSION_KEY, 2);
   writeDemoJson(DEMO_BANK_RECONCILIATIONS_KEY, nextReconciliations);
   writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, storedAccounts);

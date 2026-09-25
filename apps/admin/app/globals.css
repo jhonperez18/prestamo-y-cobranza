@@ -1596,14 +1596,18 @@
     .collector-mobile-day-history-head,
     .collector-mobile-day-history-row {
       display: grid;
-      grid-template-columns: 2.25rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr);
-      column-gap: 10px;
+      grid-template-columns: 1.9rem minmax(0, 1fr) minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 1.1fr);
+      column-gap: 6px;
       row-gap: 0;
       align-items: center;
       width: 100%;
-      padding: 4px 10px;
+      padding: 4px 8px;
       font-variant-numeric: tabular-nums;
       box-sizing: border-box;
+    }
+    .collector-mobile-day-history.is-chain-m .collector-mobile-day-history-head,
+    .collector-mobile-day-history.is-chain-m .collector-mobile-day-history-row {
+      grid-template-columns: 1.7rem minmax(0, 0.85fr) minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 0.95fr) minmax(0, 1fr);
     }
     .collector-mobile-day-history-head {
       border-bottom: 1px solid #e5e7eb;
@@ -1668,6 +1672,14 @@
       font-weight: 650;
     }
     .collector-mobile-day-history-row .is-saldo.is-negative {
+      color: #b91c1c;
+    }
+    .collector-mobile-day-history-row .is-saldo.is-saldo-strong {
+      font-weight: 800;
+      color: #0f3d2e;
+      letter-spacing: -0.01em;
+    }
+    .collector-mobile-day-history-row .is-saldo.is-saldo-strong.is-negative {
       color: #b91c1c;
     }
     .collector-mobile-day-history-row.is-opening {
@@ -4506,6 +4518,9 @@
       gap: 8px;
       margin: 0 0 8px;
     }
+    .supervisor-prestamos-search-row.is-saldo-only {
+      justify-content: flex-end;
+    }
     .supervisor-prestamos-saldo-sum {
       flex: 0 0 auto;
       min-width: 6.5rem;
@@ -6224,18 +6239,20 @@
     .supervisor-nuevo-menu {
       display: flex;
       flex-direction: column;
+      align-items: flex-start;
       gap: 4px;
       margin-top: 4px;
     }
     .supervisor-nuevo-menu-btn {
-      display: flex;
+      display: inline-flex;
       flex-direction: row;
       align-items: center;
       justify-content: center;
       gap: 0;
-      width: 100%;
+      width: auto;
+      max-width: 100%;
       margin: 0;
-      padding: 5px 8px;
+      padding: 5px 12px;
       min-height: 0;
       height: 28px;
       border: 1px solid #c5e0cb;
@@ -6257,6 +6274,11 @@
       background: #8ec8f0;
       border-color: #5ba3d4;
       color: #111;
+    }
+    .supervisor-nuevo-menu-btn.is-gasto {
+      background: #fde8e8;
+      border-color: #f0b4b4;
+      color: #7f1d1d;
     }
     .supervisor-nuevo-menu-btn:disabled {
       opacity: 0.45;
@@ -11463,6 +11485,22 @@
     }
     .supervisor-mobile-app .collector-mobile-pay-link.is-back {
       padding: 0 7px 0 5px;
+    }
+    /* Pines de ruta (M T A N): un poco más chicos en todo el supervisor. */
+    .supervisor-mobile-app .collector-mobile-route-pin {
+      min-width: 22px;
+      height: 20px;
+      padding: 0 6px;
+      border-width: 1px;
+    }
+    .supervisor-mobile-app .collector-mobile-route-pin b {
+      font-size: 10px;
+    }
+    .supervisor-mobile-app .collector-mobile-route-pin.on {
+      box-shadow:
+        0 0 0 2px rgba(20, 83, 45, 0.24),
+        0 1px 4px rgba(15, 61, 33, 0.18);
+      transform: scale(1.06);
     }
     .supervisor-mobile-app .supervisor-planilla-route-btn {
       min-width: 24px;

@@ -37,13 +37,25 @@ export function dedupeClientsByRef(clients: ClientRow[]): ClientRow[] {
   return [...byRef.values()];
 }
 
-/** Orden de rutas: "1" → "1.1" → "2" (la sub-planilla va detrás de su ruta madre). */
+/**
+ * Orden fijo de pines operativos (Listado / planilla / móvil).
+ * Cualquier otra etiqueta va después, con orden numérico natural.
+ */
+const ROUTE_PIN_ORDER = ["M", "T", "A", "N"] as const;
+
+function routePinRank(route: string): number {
+  const key = migrateLegacyRouteName(route.trim());
+  const idx = (ROUTE_PIN_ORDER as readonly string[]).indexOf(key);
+  return idx >= 0 ? idx : ROUTE_PIN_ORDER.length;
+}
+
+/** Orden de rutas: M → T → A → N; el resto después (numérico). */
 export function compareRouteNames(a: string | undefined, b: string | undefined): number {
-  return migrateLegacyRouteName(String(a ?? "").trim()).localeCompare(
-    migrateLegacyRouteName(String(b ?? "").trim()),
-    undefined,
-    { numeric: true },
-  );
+  const left = migrateLegacyRouteName(String(a ?? "").trim());
+  const right = migrateLegacyRouteName(String(b ?? "").trim());
+  const rankCmp = routePinRank(left) - routePinRank(right);
+  if (rankCmp !== 0) return rankCmp;
+  return left.localeCompare(right, undefined, { numeric: true });
 }
 
 /** Ruta → # (posición). Base de toda lista operativa (planilla, app, supervisor). */

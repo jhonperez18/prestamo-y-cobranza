@@ -26,6 +26,7 @@ import {
   DEMO_LOANS_KEY,
   DEMO_MISC_PAYMENTS_KEY,
   DEMO_PAYMENTS_KEY,
+  DEMO_PLANILLA_CASH_CLOSES_KEY,
   DEMO_ROUTES_KEY,
   readDemoJson,
   writeDemoJson,
@@ -74,8 +75,10 @@ import {
 import {
   flushOpsMirrorQueues,
   queueAssignmentsMirror,
+  queueMiscPaymentMirror,
   queueRoutesMirror,
 } from "@/lib/supabase/ops-mirror";
+import type { MiscPayment } from "@/lib/misc-payments";
 
 type Props = {
   session: AppSession;
@@ -94,6 +97,8 @@ export function SupervisorShell({ session, onLogout }: Props) {
   const [dayCloses, setDayCloses] = useState<CollectorDayCloseRecord[]>([]);
   const [dayExpenseDrafts, setDayExpenseDrafts] = useState<CollectorDayExpenseDraft[]>([]);
   const [monthCloses, setMonthCloses] = useState<CollectorMonthCloseRecord[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [miscPayments, setMiscPayments] = useState<MiscPayment[]>([]);
   const { showToast, toastNode } = useActionToast();
 
   const supervisor = useMemo(
@@ -113,6 +118,12 @@ export function SupervisorShell({ session, onLogout }: Props) {
     setDayExpenseDrafts(snap.dayExpenseDrafts);
     setDailyLogs(snap.dailyLogs);
     setMonthCloses(snap.monthCloses);
+    setBankAccounts(
+      ensureBankAccounts(
+        readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
+      ),
+    );
+    setMiscPayments(readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []));
   }, []);
 
   const { hydrated } = useOperationalDemoSync(applyOperationalSnapshot, {
@@ -137,6 +148,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
       logs: typeof dailyLogs;
       dayCloses: typeof dayCloses;
       dayExpenseDrafts: typeof dayExpenseDrafts;
+      planillaCashCloses?: import("@/lib/planilla-cash-chain").PlanillaCashCloseRecord[];
       autoClosedCount: number;
     }) => {
       setDailyAssignments(next.assignments);
@@ -145,6 +157,9 @@ export function SupervisorShell({ session, onLogout }: Props) {
       setDailyLogs(next.logs);
       setDayCloses(next.dayCloses);
       setDayExpenseDrafts(next.dayExpenseDrafts);
+      if (next.planillaCashCloses) {
+        writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, next.planillaCashCloses);
+      }
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
       queueAssignmentsMirror(next.assignments);
       writeDemoJson(DEMO_ROUTES_KEY, next.routes);
@@ -186,6 +201,8 @@ export function SupervisorShell({ session, onLogout }: Props) {
       dayCloses,
       dayExpenseDrafts,
       logs: dailyLogs,
+      planillaCashCloses: readDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, []),
+      monthCloses,
     },
     applyPlanillaSync,
   );
@@ -382,6 +399,39 @@ export function SupervisorShell({ session, onLogout }: Props) {
     );
   }
 
+  function saveMiscPaymentFromMobile(payment: MiscPayment) {
+    const nextMisc = [
+      ...miscPayments.filter((row) => row.ref !== payment.ref),
+      payment,
+    ];
+    setMiscPayments(nextMisc);
+    writeDemoJson(DEMO_MISC_PAYMENTS_KEY, nextMisc);
+    const accounts = ensureBankAccounts(
+      bankAccounts.length
+        ? bankAccounts
+        : readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
+    );
+    writeDemoJson(
+      DEMO_BANK_MOVEMENTS_KEY,
+      syncBankLedger({
+        payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, payments),
+        movements: normalizeBankMovements(
+          readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
+        ),
+        accounts,
+        miscPayments: nextMisc,
+        dayExpenseDrafts,
+        dayCloses,
+        loans,
+      }),
+    );
+    queueMiscPaymentMirror(payment);
+    void flushOpsMirrorQueues().catch(() => {
+      /* offline: queda en cola */
+    });
+    showToast(`Gasto ${payment.ref} guardado en registros.`);
+  }
+
   function attachPaymentEvidence(paymentRef: string, evidence: PaymentEvidenceRef[]) {
     const ref = paymentRef.trim();
     if (!ref || !evidence.length) return;
@@ -437,10 +487,13 @@ export function SupervisorShell({ session, onLogout }: Props) {
         dayExpenseDrafts={dayExpenseDrafts}
         dayCloses={dayCloses}
         monthCloses={monthCloses}
+        bankAccounts={bankAccounts}
+        miscPayments={miscPayments}
         onCreateStreetClient={createStreetClientFromMobile}
         onCreateQuickLoan={createQuickLoanFromMobile}
         onUpdateClient={updateClientFromMobile}
         onAttachPaymentEvidence={attachPaymentEvidence}
+        onSaveMiscPayment={saveMiscPaymentFromMobile}
         onLogout={onLogout}
       />
       {toastNode}

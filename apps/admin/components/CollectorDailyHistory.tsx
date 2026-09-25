@@ -62,7 +62,7 @@ export function CollectorDailyHistory({
       monthCloses,
       period,
       { assignments, dailyLogs },
-    ).filter((row) => row.cobro > 0 || row.gasto > 0);
+    ).filter((row) => row.cobro > 0 || row.gasto > 0 || row.prestamo > 0);
   }, [
     assignments,
     collector,
@@ -91,6 +91,7 @@ export function CollectorDailyHistory({
               <th>Día</th>
               <th className="right">Cobro</th>
               <th className="right">Gasto</th>
+              <th className="right">Préstamo</th>
               <th className="right">Saldo</th>
             </tr>
           </thead>
@@ -100,6 +101,7 @@ export function CollectorDailyHistory({
                 <td>{row.dateLabel}</td>
                 <td className="money right">{row.cobro > 0 ? money(row.cobro) : "—"}</td>
                 <td className="money right">{row.gasto > 0 ? money(row.gasto) : "—"}</td>
+                <td className="money right">{row.prestamo > 0 ? money(row.prestamo) : "—"}</td>
                 <td className="money right">{money(row.saldo)}</td>
               </tr>
             ))}

@@ -82,8 +82,11 @@ export type CollectorDayHistoryRow = {
   cobroEfectivo: number;
   /** Nequi: pago directo a cuenta del dueño; no suma a caja del cobrador. */
   cobroNequi: number;
+  /** Gastos operativos del día (sin desembolsos de préstamo). */
   gasto: number;
-  /** Saldo en mano al cierre del día (arrastre: inicial + efectivo − gastos). */
+  /** Capital prestado en efectivo ese día (sale de caja). */
+  prestamo: number;
+  /** Saldo en mano al cierre del día (arrastre: inicial + efectivo − gasto − préstamo). */
   saldo: number;
 };
 
@@ -624,6 +627,8 @@ export function applyDayCloseRecordsToAssignments(
 
   const byKey = new Map<string, CollectorDayCloseRecord>();
   for (const row of dayCloses) {
+    // Eslabones M/T (PCE-) no sellan toda la jornada: solo fijan saldo.
+    if (String(row.ref || "").startsWith("PCE-")) continue;
     const date = normalizeHistoryDate(row.date);
     if (!date || !row.collectorRef) continue;
     byKey.set(`${row.collectorRef}::${date}`, row);
@@ -872,9 +877,10 @@ export function synthesizeDayClosesFromAssignments(
 }
 
 /**
- * Historial por día: cobro, gasto y saldo en mano.
+ * Historial por día: cobro, gasto, préstamo y saldo en mano.
  * - `cobro` = total (efectivo + Nequi) para informar recaudo.
- * - Saldo en mano solo suma **efectivo** (Nequi va a cuenta del dueño).
+ * - `gasto` = solo operativos; `prestamo` = desembolsos en efectivo.
+ * - Saldo en mano solo suma **efectivo** (Nequi va a cuenta del dueño) y resta gasto + préstamo.
  * Gastos: cierre definitivo si existe; si no, borrador del día.
  * Arrastra saldo del cierre de mes anterior. Más reciente primero.
  */
@@ -901,21 +907,22 @@ export function buildCollectorDayHistory(
     const clientRef = loanClientRef(loanRef);
     return Boolean(clientRef && scopeRefs.has(clientRef));
   };
-  const expensesTotalInScope = (expenses: RouteExpenseLine[]) => {
-    let total = 0;
+  const expenseBuckets = (expenses: RouteExpenseLine[]) => {
+    let gasto = 0;
+    let prestamo = 0;
     for (const line of expenses) {
       const amount = Number(line.amount) || 0;
       if (!(amount > 0)) continue;
       const isPrestamo = line.category === "prestamo_ruta" || line.id === "prestamo";
       if (isPrestamo) {
         if (!paymentInScope(line.loanRef)) continue;
-        total += amount;
+        prestamo += amount;
         continue;
       }
       if (!includeOperating) continue;
-      total += amount;
+      gasto += amount;
     }
-    return total;
+    return { gasto, prestamo };
   };
 
   const mine = paymentsForCollector(collectorRef, collectors, payments);
@@ -940,24 +947,27 @@ export function buildCollectorDayHistory(
 
   const closedDates = new Set<string>();
   const gastoByDate = new Map<string, number>();
+  const prestamoByDate = new Map<string, number>();
+  const applyExpenseSource = (date: string, expenses: RouteExpenseLine[]) => {
+    const buckets = expenseBuckets(expenses);
+    gastoByDate.set(date, (gastoByDate.get(date) ?? 0) + buckets.gasto);
+    prestamoByDate.set(date, (prestamoByDate.get(date) ?? 0) + buckets.prestamo);
+  };
   for (const row of closes) {
     if (row.collectorRef !== collectorRef) continue;
     const date = normalizeHistoryDate(row.date);
     if (!date) continue;
     closedDates.add(date);
-    const gasto = scopeRefs
-      ? expensesTotalInScope(row.expenses ?? [])
-      : row.expensesTotal;
-    gastoByDate.set(date, (gastoByDate.get(date) ?? 0) + gasto);
+    applyExpenseSource(date, row.expenses ?? []);
   }
   for (const row of expenseDrafts) {
     if (row.collectorRef !== collectorRef) continue;
     const date = normalizeHistoryDate(row.date);
     if (!date || closedDates.has(date)) continue;
-    const gasto = scopeRefs
-      ? expensesTotalInScope(row.expenses ?? [])
-      : row.expensesTotal;
-    gastoByDate.set(date, gasto);
+    // Borrador: reemplaza (un draft por cobrador+día), no acumula.
+    const buckets = expenseBuckets(row.expenses ?? []);
+    gastoByDate.set(date, buckets.gasto);
+    prestamoByDate.set(date, buckets.prestamo);
   }
 
   for (const row of extras.assignments ?? []) {
@@ -977,6 +987,7 @@ export function buildCollectorDayHistory(
     ...new Set([
       ...cobroByDate.keys(),
       ...gastoByDate.keys(),
+      ...prestamoByDate.keys(),
       ...closedDates,
       ...extraDates.map(normalizeHistoryDate).filter(Boolean),
     ]),
@@ -998,10 +1009,11 @@ export function buildCollectorDayHistory(
       for (const date of byPeriod.get(bucketPeriod) ?? []) {
         const cobroEfectivo = efectivoByDate.get(date) ?? 0;
         const gasto = gastoByDate.get(date) ?? 0;
+        const prestamo = prestamoByDate.get(date) ?? 0;
         running = verifyCashClose({
           opening: running,
           collections: cobroEfectivo,
-          expenses: gasto,
+          expenses: gasto + prestamo,
           declared: running,
         }).expected;
         if (date < cutoff) continue;
@@ -1012,6 +1024,7 @@ export function buildCollectorDayHistory(
           cobroEfectivo,
           cobroNequi: nequiByDate.get(date) ?? 0,
           gasto,
+          prestamo,
           saldo: running,
         });
       }
@@ -1036,7 +1049,7 @@ export function buildCollectorDayHistory(
     running = verifyCashClose({
       opening: running,
       collections: efectivoByDate.get(date) ?? 0,
-      expenses: gastoByDate.get(date) ?? 0,
+      expenses: (gastoByDate.get(date) ?? 0) + (prestamoByDate.get(date) ?? 0),
       declared: running,
     }).expected;
   }
@@ -1047,10 +1060,11 @@ export function buildCollectorDayHistory(
     const cobroEfectivo = efectivoByDate.get(date) ?? 0;
     const cobroNequi = nequiByDate.get(date) ?? 0;
     const gasto = gastoByDate.get(date) ?? 0;
+    const prestamo = prestamoByDate.get(date) ?? 0;
     const check = verifyCashClose({
       opening: running,
       collections: cobroEfectivo,
-      expenses: gasto,
+      expenses: gasto + prestamo,
       declared: running,
     });
     running = check.expected;
@@ -1061,6 +1075,7 @@ export function buildCollectorDayHistory(
       cobroEfectivo,
       cobroNequi,
       gasto,
+      prestamo,
       saldo: running,
     };
   });

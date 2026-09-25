@@ -19,6 +19,7 @@ import { money, ROUTES, type ClientRow } from "@/lib/mock-data";
 import { clientStatusKind } from "@/lib/client-review";
 import {
   compareClientsByRoutePosition,
+  compareRouteNames,
   routeBlockStarts,
   sameRoute,
 } from "@/lib/client-route-order";
@@ -110,8 +111,8 @@ type Props = {
 };
 
 function sortRouteNames(names: string[]) {
-  return Array.from(new Set(names.map((name) => name.trim()).filter(Boolean))).sort((a, b) =>
-    a.localeCompare(b, undefined, { numeric: true }),
+  return Array.from(new Set(names.map((name) => name.trim()).filter(Boolean))).sort(
+    compareRouteNames,
   );
 }
 

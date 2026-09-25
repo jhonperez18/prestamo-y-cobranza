@@ -29,6 +29,7 @@ export type PlanillaDayApply = (next: {
   logs: CollectorDailyLogRow[];
   dayCloses: CollectorDayCloseRecord[];
   dayExpenseDrafts: CollectorDayExpenseDraft[];
+  planillaCashCloses?: import("@/lib/planilla-cash-chain").PlanillaCashCloseRecord[];
   autoClosedCount: number;
 }) => void;
 
@@ -42,6 +43,10 @@ function inputKey(state: PlanillaDayState) {
     .map((row) => row.ref)
     .sort()
     .join(",");
+  const cashChain = (state.planillaCashCloses ?? [])
+    .map((row) => `${row.ref}:${row.closingCash}`)
+    .sort()
+    .join("|");
   const expenses = state.dayExpenseDrafts
     .map((row) => `${row.collectorRef}:${row.date}:${row.expenses?.length ?? 0}`)
     .sort()
@@ -66,7 +71,7 @@ function inputKey(state: PlanillaDayState) {
     .map((row) => `${row.ref}:${row.collectorRef || ""}:${routeIsActive(row) ? 1 : 0}`)
     .sort()
     .join("|");
-  return [payments, closes, expenses, clients, collectors, loans, catalog].join("::");
+  return [payments, closes, cashChain, expenses, clients, collectors, loans, catalog].join("::");
 }
 
 /** Salida operativa: decide si hace falta setState. */
@@ -77,6 +82,7 @@ function outputKey(state: {
   logs: CollectorDailyLogRow[];
   dayCloses: CollectorDayCloseRecord[];
   dayExpenseDrafts: CollectorDayExpenseDraft[];
+  planillaCashCloses?: import("@/lib/planilla-cash-chain").PlanillaCashCloseRecord[];
 }) {
   const assignments = state.assignments
     .map(
@@ -105,11 +111,15 @@ function outputKey(state: {
     .map((row) => row.ref)
     .sort()
     .join(",");
+  const cashChain = (state.planillaCashCloses ?? [])
+    .map((row) => `${row.ref}:${row.closingCash}`)
+    .sort()
+    .join("|");
   const expenses = state.dayExpenseDrafts
     .map((row) => `${row.collectorRef}:${row.date}:${row.expenses?.length ?? 0}`)
     .sort()
     .join("|");
-  return [assignments, routes, loans, closes, expenses, state.logs.length].join("::");
+  return [assignments, routes, loans, closes, cashChain, expenses, state.logs.length].join("::");
 }
 
 /**
@@ -150,6 +160,7 @@ export function usePlanillaDayRollover(
         logs: next.logs,
         dayCloses: next.dayCloses,
         dayExpenseDrafts: next.dayExpenseDrafts,
+        planillaCashCloses: next.planillaCashCloses,
         autoClosedCount: next.autoClosed.length,
       });
     }

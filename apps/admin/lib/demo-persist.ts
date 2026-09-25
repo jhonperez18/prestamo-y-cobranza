@@ -45,6 +45,8 @@ export const DEMO_MISC_PAYMENTS_KEY = "nexo-demo-pagos-varios";
 export const DEMO_COLLECTOR_MONTH_CLOSES_KEY = "nexo-demo-collector-month-closes";
 export const DEMO_COLLECTOR_DAY_EXPENSES_KEY = "nexo-demo-collector-day-expenses";
 export const DEMO_COLLECTOR_DAY_CLOSES_KEY = "nexo-demo-collector-day-closes";
+/** Cierres de saldo M↔T (PCE-): no cruzar con CIE del día ni con planilla A. */
+export const DEMO_PLANILLA_CASH_CLOSES_KEY = "nexo-demo-planilla-cash-closes";
 
 /** Banderas legadas (ya no borran datos; solo se marcan para no reactivar limpiezas viejas). */
 export const DEMO_LOANS_CLEARED_KEY = "nexo-demo-loans-cleared-v2";
@@ -243,6 +245,7 @@ export function freeDemoStorageQuota() {
     DEMO_BANK_MOVEMENTS_KEY,
     DEMO_BANK_RECONCILIATIONS_KEY,
     DEMO_COLLECTOR_DAY_CLOSES_KEY,
+    DEMO_PLANILLA_CASH_CLOSES_KEY,
     DEMO_COLLECTOR_DAY_EXPENSES_KEY,
     "nexo-demo-payment-evidence",
   ];
@@ -717,6 +720,7 @@ const DEMO_SNAPSHOT_KEYS = [
   DEMO_COLLECTOR_MONTH_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
+  DEMO_PLANILLA_CASH_CLOSES_KEY,
 ] as const;
 
 export type DemoSnapshot = {

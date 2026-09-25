@@ -332,6 +332,7 @@ export function Workspace(props: WorkspaceProps) {
     setDayExpenseDrafts,
     monthCloses,
     setMonthCloses,
+    planillaCashCloses,
     cobranzaPagosToday,
     setCobranzaPagosToday,
     activities,
@@ -1869,6 +1870,9 @@ export function Workspace(props: WorkspaceProps) {
           dayCloses={dayCloses}
           dayExpenseDrafts={dayExpenseDrafts}
           monthCloses={monthCloses}
+          planillaCashCloses={planillaCashCloses}
+          bankAccounts={bankAccounts}
+          miscPayments={miscPayments}
           onRegisterPayment={registerCollectorPayment}
           onSkipVisit={skipCollectorVisit}
           onRenewLoan={renewLoan}
@@ -1879,6 +1883,14 @@ export function Workspace(props: WorkspaceProps) {
           onCreateQuickLoan={createQuickLoanFromMobile}
           onUpdateClient={updateClientFromMobile}
           onAttachPaymentEvidence={attachPaymentEvidence}
+          onSaveMiscPayment={(payment) => {
+            setMiscPayments((rows) => [...rows.filter((row) => row.ref !== payment.ref), payment]);
+            queueMiscPaymentMirror(payment);
+            void flushOpsMirrorQueues().catch(() => {
+              /* offline: cola */
+            });
+            onToast(`Gasto ${payment.ref} guardado en registros.`);
+          }}
           onPreviewKindChange={onPreviewKindChange}
         />
       );

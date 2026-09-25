@@ -38,6 +38,7 @@ type Props = {
   dayCloses?: CollectorDayCloseRecord[];
   dayExpenseDrafts?: CollectorDayExpenseDraft[];
   monthCloses?: CollectorMonthCloseRecord[];
+  planillaCashCloses?: import("@/lib/planilla-cash-chain").PlanillaCashCloseRecord[];
   onRegisterPayment?: (draft: CollectorPaymentRegisterInput) => boolean | void;
   onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
   onRenewLoan?: (loanRef: string) => void;
@@ -67,6 +68,9 @@ type Props = {
     paymentRef: string,
     evidence: import("@/lib/payment-evidence").PaymentEvidenceRef[],
   ) => void;
+  bankAccounts?: import("@/lib/bank").BankAccount[];
+  miscPayments?: import("@/lib/misc-payments").MiscPayment[];
+  onSaveMiscPayment?: (payment: import("@/lib/misc-payments").MiscPayment) => void;
   onPreviewKindChange?: (kind: PreviewKind) => void;
 };
 
@@ -83,6 +87,7 @@ export function CollectorMobilePreview({
   dayCloses = [],
   dayExpenseDrafts = [],
   monthCloses = [],
+  planillaCashCloses = [],
   onRegisterPayment,
   onSkipVisit,
   onRenewLoan,
@@ -93,6 +98,9 @@ export function CollectorMobilePreview({
   onCreateQuickLoan,
   onUpdateClient,
   onAttachPaymentEvidence,
+  bankAccounts = [],
+  miscPayments = [],
+  onSaveMiscPayment,
   onPreviewKindChange,
 }: Props) {
   const [kind, setKind] = useState<PreviewKind>("collector");
@@ -287,10 +295,14 @@ export function CollectorMobilePreview({
                   dayExpenseDrafts={dayExpenseDrafts}
                   dayCloses={dayCloses}
                   monthCloses={monthCloses}
+                  planillaCashCloses={planillaCashCloses}
+                  bankAccounts={bankAccounts}
+                  miscPayments={miscPayments}
                   onCreateStreetClient={onCreateStreetClient}
                   onCreateQuickLoan={onCreateQuickLoan}
                   onUpdateClient={onUpdateClient}
                   onAttachPaymentEvidence={onAttachPaymentEvidence}
+                  onSaveMiscPayment={onSaveMiscPayment}
                 />
               ) : collector ? (
                 <CollectorMobileApp
@@ -304,6 +316,7 @@ export function CollectorMobilePreview({
                   dayCloses={dayCloses}
                   dayExpenseDrafts={dayExpenseDrafts}
                   monthCloses={monthCloses}
+                  planillaCashCloses={planillaCashCloses}
                   preview
                   canRegister
                   onRegisterPayment={onRegisterPayment}

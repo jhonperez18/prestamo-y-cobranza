@@ -9,6 +9,7 @@ import { todayIso } from "@/lib/daily-dispatch";
 import { buildHomeDashboard } from "@/lib/home-dashboard";
 import type { ModuleId } from "@/lib/navigation";
 import { planillaAssignmentsForRoute } from "@/lib/planilla-day-sync";
+import { compareRouteNames } from "@/lib/client-route-order";
 import {
   catalogRoutes,
   clientsOnRouteListed,
@@ -22,6 +23,14 @@ import {
   type RouteRow,
 } from "@/lib/mock-data";
 import type { KpiTone } from "@/lib/kpi-tones";
+
+/** Color fijo por ruta: al reordenar paletas no cambia el tono de cada cuadro. */
+const ROUTE_CHIP_TONE: Record<string, KpiTone> = {
+  A: "amber",
+  M: "teal",
+  N: "coral",
+  T: "sage",
+};
 
 type Props = {
   clients: ClientRow[];
@@ -86,7 +95,7 @@ export function HomeDashboard({
     return catalogRoutes(routes)
       .filter(routeIsActive)
       .slice()
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+      .sort((a, b) => compareRouteNames(a.name, b.name))
       .map((route, index) => {
         const catalogCount = clientsOnRouteListed(route.name, clients).length;
         const planillaCount = planillaAssignmentsForRoute(
@@ -106,7 +115,7 @@ export function HomeDashboard({
           collector,
           catalogCount,
           count: planillaCount,
-          tone: TONES[index % TONES.length]!,
+          tone: ROUTE_CHIP_TONE[route.name] ?? TONES[index % TONES.length]!,
         };
       });
   }, [clients, routes, assignments, today]);

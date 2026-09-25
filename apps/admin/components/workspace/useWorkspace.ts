@@ -266,6 +266,7 @@ import {
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
   DEMO_COLLECTOR_MONTH_CLOSES_KEY,
+  DEMO_PLANILLA_CASH_CLOSES_KEY,
   listDeletedRouteRefs,
   loadDemoPaymentsBundle,
   loadDemoUsers,
@@ -294,6 +295,16 @@ import {
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
+import {
+  assertCanCloseChainedPlanilla,
+  buildPlanillaCashClose,
+  ensureManualTLaunchClose,
+  isPlanillaCashChainRoute,
+  planillaCashCloseAsDayClose,
+  splitDayClosesAndPlanillaCash,
+  upsertPlanillaCashClose,
+  type PlanillaCashCloseRecord,
+} from "@/lib/planilla-cash-chain";
 
 import type { FileTab, LoanTab, WorkspaceProps } from "./types";
 
@@ -323,6 +334,7 @@ export function useWorkspace({
   const [dayCloses, setDayCloses] = useState<CollectorDayCloseRecord[]>([]);
   const [dayExpenseDrafts, setDayExpenseDrafts] = useState<CollectorDayExpenseDraft[]>([]);
   const [monthCloses, setMonthCloses] = useState<CollectorMonthCloseRecord[]>([]);
+  const [planillaCashCloses, setPlanillaCashCloses] = useState<PlanillaCashCloseRecord[]>([]);
   const [cobranzaPagosToday, setCobranzaPagosToday] = useState(false);
   const [activities] = useState(ACTIVITY);
   const [openRef, setOpenRef] = useState(CLIENTS[0]?.ref ?? "");
@@ -398,10 +410,23 @@ export function useWorkspace({
       mergeFresherByRef(current, omitDeleted(snap.payments, gone)).map((row) => withPaymentEvidence(row)),
     );
     setDailyAssignments(snap.assignments);
-    setDayCloses(snap.dayCloses);
+    const split = splitDayClosesAndPlanillaCash(snap.dayCloses);
+    setDayCloses(split.dayCloses);
     setDayExpenseDrafts(snap.dayExpenseDrafts);
     setDailyLogs(snap.dailyLogs);
     setMonthCloses(snap.monthCloses);
+    const storedCash = ensureManualTLaunchClose(
+      readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, []),
+    );
+    const mergedCash = [...storedCash];
+    for (const row of split.planillaCash) {
+      const idx = mergedCash.findIndex((entry) => entry.ref === row.ref);
+      if (idx >= 0) mergedCash[idx] = row;
+      else mergedCash.push(row);
+    }
+    const withLaunch = ensureManualTLaunchClose(mergedCash);
+    setPlanillaCashCloses(withLaunch);
+    writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, withLaunch);
     setBankAccounts(snap.bankAccounts);
     setBankMovements(snap.bankMovements);
     setBankReconciliations(snap.bankReconciliations);
@@ -479,14 +504,27 @@ export function useWorkspace({
           setPayments(next.payments.map((row) => withPaymentEvidence(row)));
           setRoutes(next.routes);
           setDailyAssignments(next.assignments);
-          setDayCloses(next.dayCloses);
+          const split = splitDayClosesAndPlanillaCash(next.dayCloses);
+          setDayCloses(split.dayCloses);
+          if (split.planillaCash.length > 0) {
+            setPlanillaCashCloses((prev) => {
+              const merged = [...prev];
+              for (const row of split.planillaCash) {
+                const idx = merged.findIndex((entry) => entry.ref === row.ref);
+                if (idx >= 0) merged[idx] = row;
+                else merged.push(row);
+              }
+              writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, merged);
+              return merged;
+            });
+          }
           setBankMovements(next.bankMovements);
           writeDemoJson(DEMO_CLIENTS_KEY, next.clients);
           writeDemoJson(DEMO_LOANS_KEY, next.loans);
           writeDemoJson(DEMO_PAYMENTS_KEY, next.payments);
           writeDemoJson(DEMO_ROUTES_KEY, next.routes);
           writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
-          writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, next.dayCloses);
+          writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, split.dayCloses);
           writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, next.bankMovements);
         } catch (error) {
           console.error("realtime-workspace", error);
@@ -570,7 +608,18 @@ export function useWorkspace({
       console.error("realtime-money", error);
     }
     const expenses = readDemoJson<CollectorDayExpenseDraft[]>(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []);
-    const closes = readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []);
+    const closesRaw = readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []);
+    const { dayCloses: closes, planillaCash } = splitDayClosesAndPlanillaCash(closesRaw);
+    const storedCash = ensureManualTLaunchClose(
+      readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, []),
+    );
+    const mergedCash = [...storedCash];
+    for (const row of planillaCash) {
+      const idx = mergedCash.findIndex((entry) => entry.ref === row.ref);
+      if (idx >= 0) mergedCash[idx] = row;
+      else mergedCash.push(row);
+    }
+    const withLaunch = ensureManualTLaunchClose(mergedCash);
     const storedAssignments = readDemoJson<DailyCollectionAssignment[]>(
       DEMO_DAILY_ASSIGNMENTS_KEY,
       [],
@@ -580,6 +629,7 @@ export function useWorkspace({
       : (liveRef.current?.assignments ?? []);
     const reconciled = reconcilePaymentsOntoPlanilla(base, live);
     // Cierre del otro celular: CIE- sella planilla aunque el pull de filas venga a medias.
+    // PCE- (saldo M↔T) no sella visitas: applyDayClose los ignora.
     const assignments = applyDayCloseRecordsToAssignments(reconciled, closes);
     if (liveRef.current) {
       liveRef.current = {
@@ -594,6 +644,9 @@ export function useWorkspace({
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
     setDayExpenseDrafts(expenses);
     setDayCloses(closes);
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, closes);
+    setPlanillaCashCloses(withLaunch);
+    writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, withLaunch);
     if (!opsOk) return;
   }, [syncPaymentsFromCloud]);
 
@@ -653,6 +706,7 @@ export function useWorkspace({
       logs: typeof dailyLogs;
       dayCloses: typeof dayCloses;
       dayExpenseDrafts: typeof dayExpenseDrafts;
+      planillaCashCloses?: PlanillaCashCloseRecord[];
       autoClosedCount: number;
     }) => {
       void (async () => {
@@ -662,14 +716,32 @@ export function useWorkspace({
       setRoutes(next.routes);
       setLoans(next.loans);
       setDailyLogs(next.logs);
-      setDayCloses(next.dayCloses);
+      const split = splitDayClosesAndPlanillaCash(next.dayCloses);
+      setDayCloses(split.dayCloses);
+      setPlanillaCashCloses((prev) => {
+        const merged = [...(next.planillaCashCloses?.length ? next.planillaCashCloses : prev)];
+        for (const row of split.planillaCash) {
+          const idx = merged.findIndex((entry) => entry.ref === row.ref);
+          if (idx >= 0) merged[idx] = row;
+          else merged.push(row);
+        }
+        if (next.planillaCashCloses?.length) {
+          for (const row of next.planillaCashCloses) {
+            const idx = merged.findIndex((entry) => entry.ref === row.ref);
+            if (idx >= 0) merged[idx] = row;
+            else merged.push(row);
+          }
+        }
+        writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, merged);
+        return merged;
+      });
       setDayExpenseDrafts(next.dayExpenseDrafts);
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
       queueAssignmentsMirror(assignments);
       writeDemoJson(DEMO_ROUTES_KEY, next.routes);
       writeDemoJson(DEMO_LOANS_KEY, next.loans);
       writeDemoJson(DEMO_DAILY_LOGS_KEY, next.logs);
-      writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, next.dayCloses);
+      writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, split.dayCloses);
       writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, next.dayExpenseDrafts);
       // Cierre auto 23:30: proyectar gastos/CIE al banco de inmediato (misma raíz que cobrador).
       if (next.autoClosedCount > 0) {
@@ -679,7 +751,7 @@ export function useWorkspace({
             accounts: bankAccounts,
             miscPayments: readDemoJson(DEMO_MISC_PAYMENTS_KEY, []),
             dayExpenseDrafts: next.dayExpenseDrafts,
-            dayCloses: next.dayCloses,
+            dayCloses: split.dayCloses,
             loans: next.loans,
           }),
         );
@@ -701,6 +773,8 @@ export function useWorkspace({
       dayCloses,
       dayExpenseDrafts,
       logs: dailyLogs,
+      planillaCashCloses,
+      monthCloses,
     },
     applyPlanillaSync,
   );
@@ -750,6 +824,11 @@ export function useWorkspace({
     if (!demoHydrated) return;
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, dayCloses);
   }, [dayCloses, demoHydrated]);
+
+  useEffect(() => {
+    if (!demoHydrated) return;
+    writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, planillaCashCloses);
+  }, [planillaCashCloses, demoHydrated]);
 
   useEffect(() => {
     if (!demoHydrated) return;
@@ -1595,6 +1674,17 @@ export function useWorkspace({
   }
 
   async function closeCollectorDayFromMobile(payload: CollectorCloseDayPayload) {
+    const chainGuard = assertCanCloseChainedPlanilla({
+      collectorRef: payload.collectorRef,
+      routeName: payload.planillaRoute,
+      date: payload.date,
+      records: planillaCashCloses,
+    });
+    if (!chainGuard.ok) {
+      onToast(chainGuard.error);
+      return;
+    }
+
     const accounts = ensureBankAccounts(bankAccounts);
     if (!bankAccounts.length) setBankAccounts(accounts);
 
@@ -1617,10 +1707,29 @@ export function useWorkspace({
       payload.date,
     );
 
-    const closes = loadDemoDayCloses<CollectorDayCloseRecord>();
+    const closes = loadDemoDayCloses<CollectorDayCloseRecord>().filter(
+      (row) => !String(row.ref || "").startsWith("PCE-"),
+    );
     let nextCloses = closes;
     let nextDrafts = dayExpenseDrafts;
     let record: CollectorDayCloseRecord | null = null;
+
+    // Cadena M↔T: solo saldos. A no entra.
+    if (isPlanillaCashChainRoute(payload.planillaRoute)) {
+      const cashLink = buildPlanillaCashClose({
+        collectorRef: payload.collectorRef,
+        collectorName: payload.collectorName,
+        date: payload.date,
+        routeName: String(payload.planillaRoute),
+        openingCash: Number(payload.openingCash) || 0,
+        cashCollected: Number(payload.collectedEfectivo) || 0,
+        cashOut: Number(payload.cashOut) || 0,
+      });
+      const nextCash = upsertPlanillaCashClose(planillaCashCloses, cashLink);
+      setPlanillaCashCloses(nextCash);
+      writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, nextCash);
+      queueDayCloseMirror(planillaCashCloseAsDayClose(cashLink));
+    }
 
     if (fullyClosed) {
       const dayExpenses = expensesForCollectorDay(
@@ -2418,6 +2527,8 @@ export function useWorkspace({
     setDayExpenseDrafts,
     monthCloses,
     setMonthCloses,
+    planillaCashCloses,
+    setPlanillaCashCloses,
     cobranzaPagosToday,
     setCobranzaPagosToday,
     activities,

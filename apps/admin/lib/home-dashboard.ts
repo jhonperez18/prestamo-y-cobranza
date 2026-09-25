@@ -1,5 +1,5 @@
 import { pendingReviewClients } from "@/lib/client-review";
-import { sameRoute } from "@/lib/client-route-order";
+import { compareRouteNames, sameRoute } from "@/lib/client-route-order";
 import {
   clientsNeedingProfileCompletion,
   loansNeedingOfficeReview,
@@ -264,7 +264,7 @@ export function buildHomeDashboard(
   const catalog = catalogRoutes(routes)
     .filter(routeIsActive)
     .slice()
-    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    .sort((a, b) => compareRouteNames(a.name, b.name));
 
   return {
     greeting: homeGreeting(now),

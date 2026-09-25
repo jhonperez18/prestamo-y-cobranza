@@ -4,6 +4,8 @@
  * - A las 00:00 nace la planilla del día siguiente ya sin arrastre de abiertas.
  * - Quien no pagó a esa hora queda omitido; gastos no cargados no se inventan.
  * - “Cerrar día” manual se respeta: no se reabre solo antes de las 23:30.
+ * - Cadena M↔T: al auto-cerrar se sellan PCE- de M y T (aunque T no tenga cobros)
+ *   para que el día siguiente abra con saldos reales.
  */
 import {
   alignDayClosesCollectedToPayments,
@@ -12,10 +14,13 @@ import {
   finalizeCollectorDayClose,
   findDayExpenseDraft,
   normalizeHistoryDate,
+  openingSaldoForPeriod,
+  periodFromDateIso,
   removeDayExpenseDraft,
   upsertAndTrimCollectorDayClose,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
+  type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
 import { closeDispatchDay } from "@/lib/collector-dispatch-sync";
@@ -23,6 +28,8 @@ import { bumpMissedCollectionAlerts } from "@/lib/collection-alerts";
 import { collectorRecaudoBreakdown, collectorRecaudoForDate } from "@/lib/collector-mobile";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { todayIso } from "@/lib/daily-dispatch";
+import { pesos } from "@/lib/finance";
+import { sameRoute } from "@/lib/client-route-order";
 import type {
   ClientRow,
   CollectorRow,
@@ -30,6 +37,14 @@ import type {
   PaymentRow,
   RouteRow,
 } from "@/lib/mock-data";
+import { normalizePaymentMethod } from "@/lib/payment-method";
+import {
+  isPlanillaCashCloseRef,
+  PLANILLA_CASH_CHAIN_PRIMARY,
+  PLANILLA_CASH_CHAIN_SECONDARY,
+  sealMAndTCashChainForDay,
+  type PlanillaCashCloseRecord,
+} from "@/lib/planilla-cash-chain";
 import {
   reconcilePaymentsOntoPlanilla,
   sealOpenVisitsWithLaterPayments,
@@ -49,11 +64,15 @@ export type OperationalDayState = {
   loans: LoanRow[];
   clients: ClientRow[];
   collectors: CollectorRow[];
+  /** Saldos M↔T (PCE-). */
+  planillaCashCloses?: PlanillaCashCloseRecord[];
+  monthCloses?: CollectorMonthCloseRecord[];
 };
 
 export type OperationalDayResult = OperationalDayState & {
   /** Pares cobrador+fecha cerrados en este ciclo. */
   autoClosed: Array<{ collectorRef: string; date: string }>;
+  planillaCashCloses: PlanillaCashCloseRecord[];
 };
 
 /** Día calendario anterior (ISO). */
@@ -119,10 +138,87 @@ function openCollectorDatePairs(
   );
 }
 
+function clientRefsOnRoute(clients: ClientRow[], routeName: string) {
+  return new Set(
+    clients.filter((row) => sameRoute(row.route, routeName)).map((row) => row.ref),
+  );
+}
+
+function cashCollectedOnRoute(
+  collectorRef: string,
+  date: string,
+  payments: PaymentRow[],
+  loans: LoanRow[],
+  clientRefs: Set<string>,
+) {
+  let efectivo = 0;
+  for (const pay of payments) {
+    if (pay.collectorRef !== collectorRef) continue;
+    if ((normalizeHistoryDate(pay.paidDate ?? "") || pay.paidDate) !== date) continue;
+    const loan = loans.find((row) => row.ref === pay.loanRef);
+    if (!loan?.clientRef || !clientRefs.has(loan.clientRef)) continue;
+    const method = normalizePaymentMethod(pay.method);
+    if (method === "nequi" || method === "banco") continue;
+    efectivo += Number(pay.amount) || 0;
+  }
+  return pesos(efectivo);
+}
+
+function cashOutOnRoute(
+  collectorRef: string,
+  date: string,
+  dayCloses: CollectorDayCloseRecord[],
+  dayExpenseDrafts: CollectorDayExpenseDraft[],
+  loans: LoanRow[],
+  clientRefs: Set<string>,
+  includeOperating: boolean,
+) {
+  const draft = findDayExpenseDraft(dayExpenseDrafts, collectorRef, date);
+  const fromClose = dayCloses.find(
+    (row) =>
+      row.collectorRef === collectorRef &&
+      (normalizeHistoryDate(row.date) || row.date) === date &&
+      !isPlanillaCashCloseRef(row.ref),
+  );
+  const lines = (draft?.expenses?.length ? draft.expenses : fromClose?.expenses) ?? [];
+  let gastos = 0;
+  let prestamos = 0;
+  for (const line of lines) {
+    const amount = Number(line.amount) || 0;
+    if (!(amount > 0)) continue;
+    if (line.category === "prestamo_ruta" || line.id === "prestamo") {
+      const loan = line.loanRef ? loans.find((row) => row.ref === line.loanRef) : undefined;
+      if (loan?.clientRef && clientRefs.has(loan.clientRef)) prestamos += amount;
+      continue;
+    }
+    if (includeOperating) gastos += amount;
+  }
+  return pesos(gastos + prestamos);
+}
+
+function carriedOpeningFallback(
+  collectorRef: string,
+  date: string,
+  dayCloses: CollectorDayCloseRecord[],
+  monthCloses: CollectorMonthCloseRecord[],
+) {
+  let best: CollectorDayCloseRecord | null = null;
+  for (const row of dayCloses) {
+    if (row.collectorRef !== collectorRef) continue;
+    if (isPlanillaCashCloseRef(row.ref)) continue;
+    const d = normalizeHistoryDate(row.date) || row.date;
+    if (!d || d >= date) continue;
+    if (!best || d > (normalizeHistoryDate(best.date) || best.date)) best = row;
+  }
+  if (best) return pesos(best.cashFloat ?? best.cashExpected ?? 0);
+  return pesos(openingSaldoForPeriod(collectorRef, periodFromDateIso(date), monthCloses));
+}
+
 /**
  * Cierra jornadas vencidas (23:30 / días previos) y luego arma la planilla de hoy.
  * Una sola pasada operativa: sin arrastre de planillas abiertas al día nuevo.
  * El cierre manual (“Cerrar día”) se conserva hasta el rollover del día siguiente.
+ * Sella M→T (PCE-) aunque T no tenga cobros, para iniciar el día siguiente con saldos reales.
  */
 export function runOperationalDayCycle(
   state: OperationalDayState,
@@ -139,6 +235,8 @@ export function runOperationalDayCycle(
   let dayCloses = state.dayCloses;
   let dayExpenseDrafts = state.dayExpenseDrafts;
   let loans = state.loans;
+  let planillaCashCloses = state.planillaCashCloses ?? [];
+  const monthCloses = state.monthCloses ?? [];
   const autoClosed: Array<{ collectorRef: string; date: string }> = [];
 
   const pairs = openCollectorDatePairs(assignments, dayCloses, now);
@@ -205,6 +303,56 @@ export function runOperationalDayCycle(
       state.payments,
     );
     loans = alerted.loans;
+
+    // Cadena M↔T: sella saldos aunque T no tenga cobros (arrastre puro).
+    const mClients = clientRefsOnRoute(state.clients, PLANILLA_CASH_CHAIN_PRIMARY);
+    const tClients = clientRefsOnRoute(state.clients, PLANILLA_CASH_CHAIN_SECONDARY);
+    planillaCashCloses = sealMAndTCashChainForDay({
+      collectorRef: pair.collectorRef,
+      collectorName: collector.name,
+      date: pair.date,
+      records: planillaCashCloses,
+      monthCloses,
+      fallbackOpening: carriedOpeningFallback(
+        pair.collectorRef,
+        pair.date,
+        dayCloses,
+        monthCloses,
+      ),
+      primaryCashCollected: cashCollectedOnRoute(
+        pair.collectorRef,
+        pair.date,
+        state.payments,
+        loans,
+        mClients,
+      ),
+      primaryCashOut: cashOutOnRoute(
+        pair.collectorRef,
+        pair.date,
+        dayCloses,
+        dayExpenseDrafts,
+        loans,
+        mClients,
+        true,
+      ),
+      secondaryCashCollected: cashCollectedOnRoute(
+        pair.collectorRef,
+        pair.date,
+        state.payments,
+        loans,
+        tClients,
+      ),
+      secondaryCashOut: cashOutOnRoute(
+        pair.collectorRef,
+        pair.date,
+        dayCloses,
+        dayExpenseDrafts,
+        loans,
+        tClients,
+        false,
+      ),
+    });
+
     autoClosed.push(pair);
   }
 
@@ -242,6 +390,8 @@ export function runOperationalDayCycle(
     loans,
     clients: state.clients,
     collectors: state.collectors,
+    planillaCashCloses,
+    monthCloses,
     autoClosed,
   };
 }

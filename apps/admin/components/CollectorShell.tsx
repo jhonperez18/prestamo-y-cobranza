@@ -23,11 +23,22 @@ import {
   DEMO_LOANS_KEY,
   DEMO_MISC_PAYMENTS_KEY,
   DEMO_PAYMENTS_KEY,
+  DEMO_PLANILLA_CASH_CLOSES_KEY,
   DEMO_ROUTES_KEY,
   loadDemoDayCloses,
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
+import {
+  assertCanCloseChainedPlanilla,
+  buildPlanillaCashClose,
+  ensureManualTLaunchClose,
+  isPlanillaCashChainRoute,
+  planillaCashCloseAsDayClose,
+  splitDayClosesAndPlanillaCash,
+  upsertPlanillaCashClose,
+  type PlanillaCashCloseRecord,
+} from "@/lib/planilla-cash-chain";
 import { buildQuickLoan, type QuickLoanDraft } from "@/lib/street-client-loan";
 import { COLLECTOR_DAILY_LOGS_SEED, upsertDailyLogPayment } from "@/lib/collector-daily-log";
 import {
@@ -131,6 +142,7 @@ export function CollectorShell({ session, onLogout }: Props) {
   const [dayCloses, setDayCloses] = useState<CollectorDayCloseRecord[]>([]);
   const [dayExpenseDrafts, setDayExpenseDrafts] = useState<CollectorDayExpenseDraft[]>([]);
   const [monthCloses, setMonthCloses] = useState<CollectorMonthCloseRecord[]>([]);
+  const [planillaCashCloses, setPlanillaCashCloses] = useState<PlanillaCashCloseRecord[]>([]);
   const { showToast, toastNode } = useActionToast();
 
   const collector = useMemo(() => {
@@ -158,10 +170,23 @@ export function CollectorShell({ session, onLogout }: Props) {
     setLoans(snap.loans);
     setPayments(snap.payments);
     setDailyAssignments(snap.assignments);
-    setDayCloses(snap.dayCloses);
+    const split = splitDayClosesAndPlanillaCash(snap.dayCloses);
+    setDayCloses(split.dayCloses);
     setDayExpenseDrafts(snap.dayExpenseDrafts);
     setDailyLogs(snap.dailyLogs);
     setMonthCloses(snap.monthCloses);
+    const storedCash = ensureManualTLaunchClose(
+      readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, []),
+    );
+    const mergedCash = [...storedCash];
+    for (const row of split.planillaCash) {
+      const idx = mergedCash.findIndex((entry) => entry.ref === row.ref);
+      if (idx >= 0) mergedCash[idx] = row;
+      else mergedCash.push(row);
+    }
+    const withLaunch = ensureManualTLaunchClose(mergedCash);
+    setPlanillaCashCloses(withLaunch);
+    writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, withLaunch);
   }, []);
 
   const { hydrated } = useOperationalDemoSync(applyOperationalSnapshot, {
@@ -186,6 +211,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       logs: typeof dailyLogs;
       dayCloses: typeof dayCloses;
       dayExpenseDrafts: typeof dayExpenseDrafts;
+      planillaCashCloses?: PlanillaCashCloseRecord[];
       autoClosedCount: number;
     }) => {
       setDailyAssignments(next.assignments);
@@ -194,6 +220,10 @@ export function CollectorShell({ session, onLogout }: Props) {
       setDailyLogs(next.logs);
       setDayCloses(next.dayCloses);
       setDayExpenseDrafts(next.dayExpenseDrafts);
+      if (next.planillaCashCloses) {
+        setPlanillaCashCloses(next.planillaCashCloses);
+        writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, next.planillaCashCloses);
+      }
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
       queueAssignmentsMirror(next.assignments);
       writeDemoJson(DEMO_ROUTES_KEY, next.routes);
@@ -235,6 +265,8 @@ export function CollectorShell({ session, onLogout }: Props) {
       dayCloses,
       dayExpenseDrafts,
       logs: dailyLogs,
+      planillaCashCloses,
+      monthCloses,
     },
     applyPlanillaSync,
   );
@@ -248,6 +280,11 @@ export function CollectorShell({ session, onLogout }: Props) {
     if (!hydrated) return;
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, dayCloses);
   }, [dayCloses, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, planillaCashCloses);
+  }, [planillaCashCloses, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -663,6 +700,17 @@ export function CollectorShell({ session, onLogout }: Props) {
   }
 
   async function closeCollectorDay(payload: CollectorCloseDayPayload) {
+    const chainGuard = assertCanCloseChainedPlanilla({
+      collectorRef: payload.collectorRef,
+      routeName: payload.planillaRoute,
+      date: payload.date,
+      records: planillaCashCloses,
+    });
+    if (!chainGuard.ok) {
+      showToast(chainGuard.error);
+      return;
+    }
+
     const accounts = ensureBankAccounts(
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
     );
@@ -687,10 +735,30 @@ export function CollectorShell({ session, onLogout }: Props) {
       payload.date,
     );
 
-    const closes = loadDemoDayCloses<CollectorDayCloseRecord>();
+    const closes = loadDemoDayCloses<CollectorDayCloseRecord>().filter(
+      (row) => !String(row.ref || "").startsWith("PCE-"),
+    );
     let nextCloses = closes;
     let nextDrafts = dayExpenseDrafts;
     let record: CollectorDayCloseRecord | null = null;
+
+    // Cadena M↔T: fijar saldo de la hoja (A no entra).
+    if (isPlanillaCashChainRoute(payload.planillaRoute)) {
+      const cashLink = buildPlanillaCashClose({
+        collectorRef: payload.collectorRef,
+        collectorName: payload.collectorName,
+        date: payload.date,
+        routeName: String(payload.planillaRoute),
+        openingCash: Number(payload.openingCash) || 0,
+        cashCollected: Number(payload.collectedEfectivo) || 0,
+        cashOut: Number(payload.cashOut) || 0,
+      });
+      const nextCash = upsertPlanillaCashClose(planillaCashCloses, cashLink);
+      setPlanillaCashCloses(nextCash);
+      writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, nextCash);
+      const mirrored = planillaCashCloseAsDayClose(cashLink);
+      queueDayCloseMirror(mirrored);
+    }
 
     if (fullyClosed) {
       const dayExpenses = expensesForCollectorDay(
@@ -844,6 +912,7 @@ export function CollectorShell({ session, onLogout }: Props) {
         dayCloses={dayCloses}
         dayExpenseDrafts={dayExpenseDrafts}
         monthCloses={monthCloses}
+        planillaCashCloses={planillaCashCloses}
         canRegister={hasPermission(session, "cobros.registrar")}
         onRegisterPayment={
           hasPermission(session, "cobros.registrar") ? registerCollectorPayment : undefined

@@ -72,6 +72,7 @@ import {
 import { suppressGhostClick } from "@/lib/suppress-ghost-click";
 import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import {
+  PAYMENT_METHODS,
   normalizePaymentMethod,
   paymentMethodInitial,
   paymentMethodLabel,
@@ -101,6 +102,19 @@ import {
   withPaymentEvidence,
 } from "@/lib/payment-evidence-store";
 import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
+import type { BankAccount } from "@/lib/bank";
+import { displayToday } from "@/lib/bank";
+import { createMiscPayment, type MiscPayment } from "@/lib/misc-payments";
+import {
+  annotateMHistoryExtractRows,
+  applyCollectorCashHandSaldos,
+  openingCashForChainedPlanilla,
+  livePrimaryClosingCash,
+  PLANILLA_CASH_CHAIN_PRIMARY,
+  isPlanillaCashChainPrimary,
+  isPlanillaCashChainSecondary,
+  type PlanillaCashCloseRecord,
+} from "@/lib/planilla-cash-chain";
 
 /** Fecha corta para listados: 05/09/2026 → 5/9 */
 function formatLoanListDate(raw?: string | null) {
@@ -122,6 +136,12 @@ type Props = {
   dayExpenseDrafts?: CollectorDayExpenseDraft[];
   dayCloses?: CollectorDayCloseRecord[];
   monthCloses?: CollectorMonthCloseRecord[];
+  /** Saldos M↔T (PCE-). A no entra. */
+  planillaCashCloses?: PlanillaCashCloseRecord[];
+  /** Cuentas activas para Nuevo gasto → Banco registros. */
+  bankAccounts?: BankAccount[];
+  /** Pagos varios ya montados (para el siguiente PV-). */
+  miscPayments?: MiscPayment[];
   onCreateStreetClient?: (draft: {
     name: string;
     lastName?: string;
@@ -144,6 +164,8 @@ type Props = {
   }) => void;
   /** Adjuntar constancia a un PG- que quedó sin foto en la nube. */
   onAttachPaymentEvidence?: (paymentRef: string, evidence: PaymentEvidenceRef[]) => void;
+  /** Alta de gasto (pago varios) → local + registros banco. */
+  onSaveMiscPayment?: (payment: MiscPayment) => void;
   onLogout?: () => void;
 };
 
@@ -156,7 +178,7 @@ type SupervisorView =
   | "nuevo"
   | "clientes"
   | "prestamos";
-type NuevoMode = "menu" | "cliente" | "prestamo";
+type NuevoMode = "menu" | "cliente" | "prestamo" | "gasto";
 type RouteDetailMode =
   | "totales"
   | "planilla"
@@ -896,10 +918,14 @@ export function SupervisorMobileApp({
   dayExpenseDrafts = [],
   dayCloses = [],
   monthCloses = [],
+  planillaCashCloses = [],
+  bankAccounts = [],
+  miscPayments = [],
   onCreateStreetClient,
   onCreateQuickLoan,
   onUpdateClient,
   onAttachPaymentEvidence,
+  onSaveMiscPayment,
   onLogout,
 }: Props) {
   const today = todayIso();
@@ -931,6 +957,11 @@ export function SupervisorMobileApp({
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [nuevoName, setNuevoName] = useState("");
   const [nuevoPhone, setNuevoPhone] = useState("");
+  const [gastoLabel, setGastoLabel] = useState("Gasto");
+  const [gastoAmount, setGastoAmount] = useState("");
+  const [gastoAccountRef, setGastoAccountRef] = useState("");
+  const [gastoMethod, setGastoMethod] = useState<PaymentMethod>("efectivo");
+  const [gastoDate, setGastoDate] = useState(() => displayToday());
   const [nuevoMsg, setNuevoMsg] = useState("");
   const [nuevoClientSearch, setNuevoClientSearch] = useState("");
   const [nuevoLoanClientRef, setNuevoLoanClientRef] = useState<string | null>(null);
@@ -958,7 +989,8 @@ export function SupervisorMobileApp({
   /** Ficha de un préstamo concreto desde historial «Ver préstamos». */
   const [prestamoFichaRef, setPrestamoFichaRef] = useState<string | null>(null);
   const [prestamosSearch, setPrestamosSearch] = useState("");
-  /** Pin de ruta en Préstamos actuales (1 / 1.1 / 2). */
+  const [prestamosSearchOpen, setPrestamosSearchOpen] = useState(false);
+  /** Pin de ruta en Préstamos actuales (M / T / A / N). */
   const [prestamosRouteFilter, setPrestamosRouteFilter] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1039,6 +1071,72 @@ export function SupervisorMobileApp({
       const collectorRef = route.collector?.ref || route.collectorRef || "";
       if (!collectorRef || primaryByCollector.has(collectorRef)) continue;
       primaryByCollector.set(collectorRef, route.routeName);
+    }
+
+    /** Caja viva de M por cobrador → Inicial momentáneo de T hasta que M cierre. */
+    const primaryLiveByCollector = new Map<string, number>();
+    const collectorRefsForLive = new Set(
+      sorted
+        .map((route) => route.collector?.ref || route.collectorRef || "")
+        .filter(Boolean),
+    );
+    for (const collectorRef of collectorRefsForLive) {
+      const collector = collectors.find((row) => row.ref === collectorRef);
+      if (!collector) continue;
+      const mOpen = openingCashForChainedPlanilla({
+        collectorRef,
+        routeName: PLANILLA_CASH_CHAIN_PRIMARY,
+        date: today,
+        records: planillaCashCloses,
+        monthCloses,
+        fallbackOpening: cajaDelDia(
+          collector,
+          today,
+          payments,
+          dayCloses,
+          dayExpenseDrafts,
+          monthCloses,
+        ).saldoInicial,
+      });
+      const mClients = new Set(
+        clients
+          .filter((row) => sameRoute(row.route, PLANILLA_CASH_CHAIN_PRIMARY))
+          .map((row) => row.ref),
+      );
+      let efectivo = 0;
+      for (const pay of collectorDayPayments(collectorRef, today, payments, [collector])) {
+        const loan = loans.find((row) => row.ref === pay.loanRef);
+        if (!loan?.clientRef || !mClients.has(loan.clientRef)) continue;
+        const method = normalizePaymentMethod(pay.method);
+        if (method === "nequi" || method === "banco") continue;
+        efectivo += Number(pay.amount) || 0;
+      }
+      const rawExpenses = expensesForCollectorDay(
+        collectorRef,
+        today,
+        dayCloses,
+        dayExpenseDrafts,
+      );
+      let gastos = 0;
+      let prestamos = 0;
+      for (const line of rawExpenses) {
+        const amount = Number(line.amount) || 0;
+        if (!(amount > 0)) continue;
+        if (line.category === "prestamo_ruta" || line.id === "prestamo") {
+          const loan = line.loanRef ? loans.find((row) => row.ref === line.loanRef) : undefined;
+          if (loan?.clientRef && mClients.has(loan.clientRef)) prestamos += amount;
+          continue;
+        }
+        gastos += amount;
+      }
+      primaryLiveByCollector.set(
+        collectorRef,
+        livePrimaryClosingCash({
+          opening: mOpen.kind === "chain" ? mOpen.opening : 0,
+          cashCollected: efectivo,
+          cashOut: gastos + prestamos,
+        }),
+      );
     }
 
     return sorted.map((route) => {
@@ -1139,10 +1237,33 @@ export function SupervisorMobileApp({
         mine.length > 0 && mine.every((row) => Boolean(row.dayClosedAt));
       const closed = Boolean(closeRecord && isPrimary) || planillaClosed;
 
-      const saldoInicial = isPrimary ? fullCaja.saldoInicial : 0;
-      const enCaja = isPrimary
-        ? fullCaja.enCaja
-        : cobradoEfectivo - gastosHoy - prestamosHoy;
+      const chainOpen =
+        collectorRef
+          ? openingCashForChainedPlanilla({
+              collectorRef,
+              routeName: route.routeName,
+              date: today,
+              records: planillaCashCloses,
+              monthCloses,
+              primaryLiveClosing: isPlanillaCashChainSecondary(route.routeName)
+                ? primaryLiveByCollector.get(collectorRef)
+                : undefined,
+              fallbackOpening: fullCaja.saldoInicial,
+            })
+          : ({ kind: "independent" } as const);
+
+      const saldoInicial =
+        chainOpen.kind === "chain"
+          ? chainOpen.opening
+          : isPrimary
+            ? fullCaja.saldoInicial
+            : 0;
+      const enCaja =
+        chainOpen.kind === "chain"
+          ? chainOpen.opening + cobradoEfectivo - gastosHoy - prestamosHoy
+          : isPrimary
+            ? fullCaja.enCaja
+            : cobradoEfectivo - gastosHoy - prestamosHoy;
 
       let statusLabel = "Sin planilla";
       let statusKind: StatusKind = "draft";
@@ -1211,7 +1332,9 @@ export function SupervisorMobileApp({
     dayCloses,
     dayExpenseDrafts,
     monthCloses,
+    planillaCashCloses,
     clients,
+    collectors,
     loans,
   ]);
 
@@ -1329,13 +1452,13 @@ export function SupervisorMobileApp({
         .sort(compareRouteNames),
     [liquidaciones],
   );
-  /** Pins 1, 1.1, 2…: rutas activas con cobrador (Ruta / Clientes). */
+  /** Pins M → T → A → N: rutas activas con cobrador (Ruta / Clientes / Nequi / Banco). */
   const planillaRoutePins = useMemo(
     () =>
       catalogRoutes(routes)
         .filter((row) => routeIsActive(row) && Boolean(row.collectorRef))
         .slice()
-        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+        .sort((a, b) => compareRouteNames(a.name, b.name))
         .map((row) => row.name)
         .filter(Boolean),
     [routes],
@@ -1682,6 +1805,7 @@ export function SupervisorMobileApp({
     const collector = collectors.find((row) => row.ref === openRoute.collectorRef);
     if (!collector) return [];
     const period = periodFromDateIso(today);
+    const isM = isPlanillaCashChainPrimary(openRoute.routeName);
     const rows = buildCollectorDayHistory(
       openRoute.collectorRef,
       payments,
@@ -1698,8 +1822,43 @@ export function SupervisorMobileApp({
         includeOperatingExpenses: openRouteScope.isPrimary,
       },
     );
-    // Días anteriores al de hoy, máx. 5 (mismo tope que historial del cobrador).
-    return rows.filter((row) => row.date < today).slice(0, 5);
+    if (!isM) {
+      return rows.filter((row) => row.date < today).slice(0, 5);
+    }
+
+    // Saldo = caja real (efectivo − gasto − préstamo), misma base que Cierre del día.
+    const cashHand = buildCollectorDayHistory(
+      openRoute.collectorRef,
+      payments,
+      dayCloses,
+      [collector],
+      [today],
+      dayExpenseDrafts,
+      monthCloses,
+      period,
+      {
+        assignments,
+        includeOperatingExpenses: true,
+      },
+    );
+    const cashByDate = new Map(cashHand.map((row) => [row.date, row.saldo]));
+    const withCashHand = applyCollectorCashHandSaldos(rows, cashByDate);
+
+    // M: extracto con hoy incluido (Inicial lleno, Saldo — si aún no cerró).
+    const visible = withCashHand
+      .filter((row) => row.date <= today)
+      .slice(0, 6);
+    return annotateMHistoryExtractRows({
+      rows: visible,
+      collectorRef: openRoute.collectorRef,
+      records: planillaCashCloses,
+      epochBootstrapOpening: openingSaldoForPeriod(
+        openRoute.collectorRef,
+        period,
+        monthCloses,
+      ),
+      todayIso: today,
+    });
   }, [
     openRoute,
     openRouteScope,
@@ -1711,7 +1870,12 @@ export function SupervisorMobileApp({
     assignments,
     loans,
     today,
+    planillaCashCloses,
   ]);
+
+  const openRouteCajaHistoryIsM = Boolean(
+    openRoute && isPlanillaCashChainPrimary(openRoute.routeName),
+  );
 
   const openRouteHistoryDayCuadre = useMemo(() => {
     if (!openRoute || !cajaHistoryDayIso) return null;
@@ -1851,6 +2015,11 @@ export function SupervisorMobileApp({
     setNuevoLoanClientRef(null);
     setNuevoName("");
     setNuevoPhone("");
+    setGastoLabel("Gasto");
+    setGastoAmount("");
+    setGastoAccountRef("");
+    setGastoMethod("efectivo");
+    setGastoDate(displayToday());
     if (next === "planilla") {
       setPlanillaRouteFilter(pickDefaultRoutePin(planillaRoutePins));
     } else {
@@ -1875,6 +2044,7 @@ export function SupervisorMobileApp({
     } else {
       setPrestamoFichaRef(null);
       setPrestamosSearch("");
+      setPrestamosSearchOpen(false);
       setPrestamosRouteFilter(null);
     }
     foldSnHistory();
@@ -1990,6 +2160,45 @@ export function SupervisorMobileApp({
     setNuevoLoanClientRef(null);
     setNuevoName("");
     setNuevoPhone("");
+    setGastoLabel("Gasto");
+    setGastoAmount("");
+    setGastoAccountRef("");
+    setGastoMethod("efectivo");
+    setGastoDate(displayToday());
+  }
+
+  const activeBankAccounts = useMemo(
+    () => bankAccounts.filter((row) => row.active),
+    [bankAccounts],
+  );
+
+  function submitNuevoGasto() {
+    if (!onSaveMiscPayment) {
+      setNuevoMsg("No hay permiso para registrar gastos.");
+      return;
+    }
+    const amount = Number(String(gastoAmount).replace(/\D/g, ""));
+    if (!(amount > 0)) {
+      setNuevoMsg("Indique el importe del gasto.");
+      return;
+    }
+    const accountRef = gastoAccountRef || activeBankAccounts[0]?.ref || "";
+    if (!accountRef) {
+      setNuevoMsg("No hay cuenta bancaria activa.");
+      return;
+    }
+    const payment = createMiscPayment({
+      paidDate: gastoDate || displayToday(),
+      label: gastoLabel.trim() || "Gasto",
+      amount,
+      bankAccountRef: accountRef,
+      method: normalizePaymentMethod(gastoMethod),
+      existing: miscPayments,
+    });
+    onSaveMiscPayment(payment);
+    resetNuevoFlow();
+    setNuevoMode("menu");
+    setNuevoMsg(`Gasto ${payment.ref} registrado en Banco.`);
   }
 
   const planillaAssignments = useMemo(() => {
@@ -2485,11 +2694,19 @@ export function SupervisorMobileApp({
               <p className="supervisor-mobile-detail-meta">
                 Historial · Ruta {openRoute.routeName} · {openRoute.collectorName}
               </p>
-              <div className="collector-mobile-day-history is-supervisor-caja">
+              <div
+                className={
+                  openRouteCajaHistoryIsM
+                    ? "collector-mobile-day-history is-supervisor-caja is-chain-m"
+                    : "collector-mobile-day-history is-supervisor-caja"
+                }
+              >
                 <div className="collector-mobile-day-history-head">
                   <span>Día</span>
                   <span>Cobro</span>
                   <span>Gasto</span>
+                  <span>Préstamo</span>
+                  {openRouteCajaHistoryIsM ? <span>Inicial</span> : null}
                   <span>Saldo</span>
                 </div>
                 <ul className="collector-mobile-day-history-list">
@@ -2497,27 +2714,102 @@ export function SupervisorMobileApp({
                     <li className="collector-mobile-day-history-empty">
                       Sin cierres en los últimos 5 días.
                     </li>
+                  ) : openRouteCajaHistoryIsM ? (
+                    openRouteCajaHistory.map((row) => {
+                      const extract = row as {
+                        date: string;
+                        dateLabel: string;
+                        cobro: number;
+                        gasto: number;
+                        prestamo: number;
+                        inicial: number | null;
+                        saldoShown: number | null;
+                      };
+                      return (
+                        <li key={extract.date}>
+                          <button
+                            type="button"
+                            className={
+                              extract.date === cajaHistoryDayIso
+                                ? "collector-mobile-day-history-row on"
+                                : "collector-mobile-day-history-row"
+                            }
+                            onClick={() => openCajaHistorialDay(extract.date)}
+                          >
+                            <span className="is-date">{extract.dateLabel}</span>
+                            <span className="is-money">
+                              {money(extract.cobro, { symbol: false })}
+                            </span>
+                            <span className="is-money">
+                              {money(extract.gasto, { symbol: false })}
+                            </span>
+                            <span className="is-money">
+                              {money(extract.prestamo, { symbol: false })}
+                            </span>
+                            <span className="is-money is-inicial-col">
+                              {extract.inicial == null
+                                ? "—"
+                                : money(extract.inicial, { symbol: false })}
+                            </span>
+                            <span
+                              className={
+                                extract.saldoShown != null && extract.saldoShown < 0
+                                  ? "is-saldo is-negative is-saldo-strong"
+                                  : "is-saldo is-saldo-strong"
+                              }
+                            >
+                              {extract.saldoShown == null
+                                ? "—"
+                                : money(extract.saldoShown, { symbol: false })}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })
                   ) : (
-                    openRouteCajaHistory.map((row) => (
-                      <li key={row.date}>
-                        <button
-                          type="button"
-                          className={
-                            row.date === cajaHistoryDayIso
-                              ? "collector-mobile-day-history-row on"
-                              : "collector-mobile-day-history-row"
-                          }
-                          onClick={() => openCajaHistorialDay(row.date)}
-                        >
-                          <span className="is-date">{row.dateLabel}</span>
-                          <span className="is-money">{money(row.cobro, { symbol: false })}</span>
-                          <span className="is-money">{money(row.gasto, { symbol: false })}</span>
-                          <span className={row.saldo < 0 ? "is-saldo is-negative" : "is-saldo"}>
-                            {money(row.saldo, { symbol: false })}
-                          </span>
-                        </button>
-                      </li>
-                    ))
+                    openRouteCajaHistory.map((row) => {
+                      const plain = row as {
+                        date: string;
+                        dateLabel: string;
+                        cobro: number;
+                        gasto: number;
+                        prestamo: number;
+                        saldo: number;
+                      };
+                      return (
+                        <li key={plain.date}>
+                          <button
+                            type="button"
+                            className={
+                              plain.date === cajaHistoryDayIso
+                                ? "collector-mobile-day-history-row on"
+                                : "collector-mobile-day-history-row"
+                            }
+                            onClick={() => openCajaHistorialDay(plain.date)}
+                          >
+                            <span className="is-date">{plain.dateLabel}</span>
+                            <span className="is-money">
+                              {money(plain.cobro, { symbol: false })}
+                            </span>
+                            <span className="is-money">
+                              {money(plain.gasto, { symbol: false })}
+                            </span>
+                            <span className="is-money">
+                              {money(plain.prestamo, { symbol: false })}
+                            </span>
+                            <span
+                              className={
+                                plain.saldo < 0
+                                  ? "is-saldo is-negative is-saldo-strong"
+                                  : "is-saldo is-saldo-strong"
+                              }
+                            >
+                              {money(plain.saldo, { symbol: false })}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })
                   )}
                 </ul>
               </div>
@@ -3317,10 +3609,118 @@ export function SupervisorMobileApp({
                 >
                   <b>Nuevo préstamo</b>
                 </button>
+                <button
+                  type="button"
+                  className="supervisor-nuevo-menu-btn is-gasto"
+                  disabled={!onSaveMiscPayment || activeBankAccounts.length === 0}
+                  onClick={() => {
+                    resetNuevoFlow();
+                    setGastoAccountRef(activeBankAccounts[0]?.ref ?? "");
+                    setNuevoMode("gasto");
+                  }}
+                >
+                  <b>Nuevo gasto</b>
+                </button>
               </div>
-              {!onCreateStreetClient && !onCreateQuickLoan ? (
+              {!onCreateStreetClient && !onCreateQuickLoan && !onSaveMiscPayment ? (
                 <p className="ficha-empty">No hay permiso para crear desde esta vista.</p>
               ) : null}
+            </>
+          ) : nuevoMode === "gasto" ? (
+            <>
+              <div className="supervisor-mobile-detail-head">
+                <h3>Nuevo gasto</h3>
+                <button
+                  type="button"
+                  className="collector-mobile-pay-link is-back"
+                  onClick={() => {
+                    resetNuevoFlow();
+                    setNuevoMode("menu");
+                  }}
+                >
+                  atrás
+                </button>
+              </div>
+              {!onSaveMiscPayment ? (
+                <p className="ficha-empty">No hay permiso para registrar gastos.</p>
+              ) : activeBankAccounts.length === 0 ? (
+                <p className="ficha-empty">No hay cuentas bancarias activas.</p>
+              ) : (
+                <form
+                  className="supervisor-nuevo-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    submitNuevoGasto();
+                  }}
+                >
+                  <p className="supervisor-mobile-subhead">
+                    Queda en Banco → Registros (mismo flujo de pagos varios).
+                  </p>
+                  {nuevoMsg ? <p className="supervisor-nuevo-msg">{nuevoMsg}</p> : null}
+                  <label className="quick-loan-field">
+                    <span>Concepto</span>
+                    <input
+                      value={gastoLabel}
+                      onChange={(event) => setGastoLabel(event.target.value)}
+                      placeholder="Gasto"
+                      autoFocus
+                    />
+                  </label>
+                  <label className="quick-loan-field">
+                    <span>Importe</span>
+                    <input
+                      inputMode="numeric"
+                      value={gastoAmount}
+                      onChange={(event) => setGastoAmount(event.target.value)}
+                      placeholder="0"
+                      required
+                    />
+                  </label>
+                  <label className="quick-loan-field">
+                    <span>Fecha</span>
+                    <input
+                      type="date"
+                      value={gastoDate}
+                      onChange={(event) => setGastoDate(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label className="quick-loan-field">
+                    <span>Cuenta</span>
+                    <select
+                      value={gastoAccountRef || activeBankAccounts[0]?.ref || ""}
+                      onChange={(event) => setGastoAccountRef(event.target.value)}
+                      required
+                    >
+                      {activeBankAccounts.map((account) => (
+                        <option key={account.ref} value={account.ref}>
+                          {account.name} · {account.bankName}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="quick-loan-field">
+                    <span>Forma de pago</span>
+                    <select
+                      value={gastoMethod}
+                      onChange={(event) =>
+                        setGastoMethod(normalizePaymentMethod(event.target.value))
+                      }
+                    >
+                      {PAYMENT_METHODS.map((row) => (
+                        <option key={row.id} value={row.id}>
+                          {row.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <div className="quick-loan-actions">
+                    <button type="submit" className="btn">
+                      Guardar gasto
+                    </button>
+                  </div>
+                </form>
+              )}
             </>
           ) : nuevoMode === "cliente" ? (
             <>
@@ -3536,7 +3936,33 @@ export function SupervisorMobileApp({
           ) : (
             <>
               <div className="supervisor-mobile-detail-head">
-                <h3>Préstamos</h3>
+                <div className="supervisor-planilla-head-start">
+                  <h3>Préstamos</h3>
+                  <button
+                    type="button"
+                    className={
+                      prestamosSearchOpen
+                        ? "collector-history-planilla-search supervisor-clientes-search on"
+                        : "collector-history-planilla-search supervisor-clientes-search"
+                    }
+                    aria-label="Buscar préstamo"
+                    aria-pressed={prestamosSearchOpen}
+                    onClick={() => {
+                      suppressGhostClick();
+                      if (prestamosSearchOpen) {
+                        setPrestamosSearchOpen(false);
+                        setPrestamosSearch("");
+                        return;
+                      }
+                      setPrestamosSearchOpen(true);
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                      <circle cx="10.5" cy="10.5" r="6.5" />
+                      <line x1="15.5" y1="15.5" x2="21" y2="21" />
+                    </svg>
+                  </button>
+                </div>
                 <div className="supervisor-prestamos-head-actions">
                   {planillaRoutePins.length > 0 ? (
                     <div
@@ -3575,16 +4001,24 @@ export function SupervisorMobileApp({
                   </button>
                 </div>
               </div>
-              <div className="supervisor-prestamos-search-row">
-                <label className="quick-loan-field supervisor-nuevo-search supervisor-prestamos-search">
-                  <span className="sr-only">Buscar préstamo</span>
-                  <input
-                    value={prestamosSearch}
-                    onChange={(event) => setPrestamosSearch(event.target.value)}
-                    placeholder="Buscar cliente o fecha"
-                    autoFocus
-                  />
-                </label>
+              <div
+                className={
+                  prestamosSearchOpen
+                    ? "supervisor-prestamos-search-row"
+                    : "supervisor-prestamos-search-row is-saldo-only"
+                }
+              >
+                {prestamosSearchOpen ? (
+                  <label className="quick-loan-field supervisor-nuevo-search supervisor-prestamos-search">
+                    <span className="sr-only">Buscar préstamo</span>
+                    <input
+                      value={prestamosSearch}
+                      onChange={(event) => setPrestamosSearch(event.target.value)}
+                      placeholder="Buscar cliente o fecha"
+                      autoFocus
+                    />
+                  </label>
+                ) : null}
                 <div
                   className="supervisor-prestamos-saldo-sum"
                   title={
