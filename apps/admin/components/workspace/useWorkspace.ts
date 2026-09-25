@@ -1489,6 +1489,7 @@ export function useWorkspace({
     queueRoutesMirror(result.routes);
     try {
       await flushOpsMirrorQueues();
+      await flushOpsMirrorQueues();
     } catch {
       /* cola offline reintenta */
     }
@@ -1696,6 +1697,7 @@ export function useWorkspace({
     try {
       // Sin esto el cobrador se ve cerrado y el dueño nunca recibe el CIE/planilla.
       await flushOpsMirrorQueues();
+      await flushOpsMirrorQueues();
     } catch {
       /* cola offline reintenta */
     }
@@ -1832,6 +1834,7 @@ export function useWorkspace({
 
     const toastRefs = paymentsCreated.map((row) => row.ref).join(" + ");
     onToast(`Cobro ${toastRefs} guardado · subiendo a la nube…`);
+    // Nube operativa: await flush antes de OK (mismo contrato que CollectorShell).
     const live = await syncPaymentsFromCloud(committed.payments);
     const assignments = reconcilePaymentsOntoPlanilla(projected.assignments, live);
     setDailyAssignments(assignments);
@@ -1847,14 +1850,17 @@ export function useWorkspace({
     if (paidClient) queueClientMirror(paidClient);
     queueAssignmentsMirror(assignments);
     try {
-      await flushPaymentMirrorQueue();
+      let payFlush = await flushPaymentMirrorQueue();
+      if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
-      onToast(`Cobro ${toastRefs} listo en la nube`);
+      if (payFlush.left > 0) {
+        onToast(`Cobro ${toastRefs} guardado (sin nube; reintenta solo).`);
+      } else {
+        onToast(`Cobro ${toastRefs} listo en la nube`);
+      }
     } catch {
-      onToast(
-        `Cobro ${toastRefs} en cola · sin red ahora; se sube solo al reconectar.`,
-      );
+      onToast(`Cobro ${toastRefs} guardado (sin nube; en este aparato ya está).`);
     }
     return true;
   }

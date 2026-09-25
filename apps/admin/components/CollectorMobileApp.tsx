@@ -2271,7 +2271,7 @@ export function CollectorMobileApp({
                               collectorName: collector.name,
                               clientName: identity.fullName,
                             });
-                            // Cierra cuando el commit local + flush nube terminaron (o cola offline).
+                            // Solo cerrar si el cobro quedó registrado (o el handler no reporta fallo).
                             if (ok !== false) closeCard();
                           }}
                         />

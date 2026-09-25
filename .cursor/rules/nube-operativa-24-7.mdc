@@ -1,0 +1,28 @@
+---
+description: Negocio 24/7 en Vercel+Supabase sin PC; sync cobros/cierres primero
+alwaysApply: true
+---
+
+# Nube operativa 24/7
+
+## Directriz del dueño (vigente)
+
+1. El negocio corre **24/7 en Vercel + Supabase** sin este PC encendido.
+2. Celular cobra/cierra → supervisor y dueño lo ven solos, en segundos.
+3. Este PC es **solo taller** (cambios, commit, push cuando el dueño lo pida).
+4. Prioridad: sync nube fiable (`PG-`, CIE-, planilla).
+5. Si choca con “padre = solo este PC”, **gana la nube operativa**.
+6. Sin parches UI: raíz en commit + cola + servidor + pull.
+7. **No** eliminar, reemplazar ni migrar funcionalidades, tablas, datos, rutas o lógica sin identificar impacto y **pedir autorización**. Reutilizar y corregir lo existente antes que reconstruir.
+
+## Criterio de listo
+
+Apagar este PC ~1 h → cobrar/cerrar en celular → verlo en supervisor y en Vercel **sin** tocar Git.
+
+## Alcance de trabajo
+
+- Endurecer flush/await de mirror (cobros, cierres, planilla).
+- Pull que no reabra cierres ni pierda `PG-`.
+- Taller local sigue para editar código; no es el servidor del negocio.
+- INICIO / shell / login: intocables salvo pedido explícito.
+---

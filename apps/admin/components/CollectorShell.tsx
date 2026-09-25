@@ -418,6 +418,7 @@ export function CollectorShell({ session, onLogout }: Props) {
 
     const toastRefs = paymentsCreated.map((row) => row.ref).join(" + ");
     showToast(`Cobro ${toastRefs} guardado · subiendo a la nube…`);
+    // Nube operativa: no devolver OK al UI hasta intentar flush (supervisor lo ve en segundos).
     await queuePaymentsMirror(paymentsCreated);
     const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
     if (paidLoan) queueLoanMirror(paidLoan);
@@ -429,15 +430,17 @@ export function CollectorShell({ session, onLogout }: Props) {
     if (paidClient) queueClientMirror(paidClient);
     queueAssignmentsMirror(projected.assignments);
     try {
-      // Nube operativa: el supervisor solo ve el cobro cuando Supabase ya lo tiene.
-      await flushPaymentMirrorQueue();
+      let payFlush = await flushPaymentMirrorQueue();
+      if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
-      showToast(`Cobro ${toastRefs} listo en la nube`);
+      if (payFlush.left > 0) {
+        showToast(`Cobro ${toastRefs} guardado (sin nube; reintenta solo).`);
+      } else {
+        showToast(`Cobro ${toastRefs} listo en la nube`);
+      }
     } catch {
-      showToast(
-        `Cobro ${toastRefs} en cola · sin red ahora; se sube solo al reconectar.`,
-      );
+      showToast(`Cobro ${toastRefs} guardado (sin nube; en este aparato ya está).`);
     }
     return true;
   }
@@ -837,7 +840,8 @@ export function CollectorShell({ session, onLogout }: Props) {
     queueAssignmentsMirror(closedAssignments);
     queueRoutesMirror(result.routes);
     try {
-      // Encolar primero, luego flush: si flush va antes, el cierre no sale a la nube.
+      // Encolar primero, luego flush (con un reintento): el cierre debe salir a la nube.
+      await flushOpsMirrorQueues();
       await flushOpsMirrorQueues();
     } catch {
       /* cola offline reintenta */
