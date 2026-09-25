@@ -1,0 +1,35 @@
+---
+description: Cierre de jornada multi-dispositivo — nunca reabrir desde otro celular.
+alwaysApply: true
+---
+
+# Cierre de jornada — multi-dispositivo
+
+## Ley
+
+Un cierre hecho en **cualquier** celular (cobrador) debe verse cerrado en **todos** (supervisor, dueño, otros).  
+Misma fuerza que un cobro `PG-`: local primero, luego nube; el pull no reabre.
+
+## Causa que ya rompió al dueño (prohibido que vuelva)
+
+1. Cierre solo en `localStorage` del cobrador (mismo teléfono cobrador→supervisor se ve bien).
+2. Otro aparato con planilla **abierta** subía filas sin `dayClosedAt` y **pisaba** el cierre en Postgres.
+3. Flush **antes** de encolar el cierre, o flush fire-and-forget que no termina.
+
+## Obligatorio
+
+1. Tras cerrar: `queueDayCloseMirror` + `queueAssignmentsMirror` (selladas) → **await** `flushOpsMirrorQueues`.
+2. Servidor (`upsertAssignmentRow`): si la nube ya tiene `day_closed_at` (o CIE- del día), **no** aceptar hoja abierta.
+3. Pull: cierre remoto gana sobre cola local abierta; CIE- sella planilla (`applyDayCloseRecordsToAssignments`).
+4. `reconcilePaymentsOntoPlanilla` **no** borra `dayClosedAt`.
+5. No encolar assignment abierta si ya hay CIE- local de ese cobrador+día.
+
+## Prohibido
+
+- `flushOpsMirrorQueues` antes de encolar el cierre.
+- Parche de UI «muéstralo cerrado» sin pasar por commit + cola + servidor.
+- Subir toda la planilla abierta «por si acaso» encima de un día con CIE-.
+
+## INICIO
+
+No tocar regla INICIO del supervisor ni remount por sync (`panelEpoch` solo al cambiar persona).

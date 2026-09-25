@@ -85,6 +85,17 @@ Banco también puede proyectarse solo con `syncBankLedger` / `applyBankLedgerSyn
 
 Prohibido: cerrar solo la planilla sin CIE, o meter plata al banco sin `PG-`.
 
+### Cierre multi-dispositivo (no reabrir)
+
+| Regla | Detalle |
+| --- | --- |
+| Flush | Encolar CIE + planilla sellada → **await** `flushOpsMirrorQueues` (nunca flush antes de encolar) |
+| Servidor | `upsertAssignmentRow` no acepta hoja abierta si ya hay `day_closed_at` o CIE- del día |
+| Pull | Cierre remoto gana; CIE- sella visitas (`applyDayCloseRecordsToAssignments`) |
+| Local | No borrar `dayClosedAt` en reconcile de pagos; no encolar abierta si hay CIE- local |
+
+Ver `.cursor/rules/day-close-sync.mdc`.
+
 ---
 
 ## 4. Orígenes (demo)

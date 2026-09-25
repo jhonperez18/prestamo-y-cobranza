@@ -662,7 +662,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     );
   }
 
-  function closeCollectorDay(payload: CollectorCloseDayPayload) {
+  async function closeCollectorDay(payload: CollectorCloseDayPayload) {
     const accounts = ensureBankAccounts(
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
     );
@@ -757,10 +757,6 @@ export function CollectorShell({ session, onLogout }: Props) {
       );
     }
 
-    void flushOpsMirrorQueues().catch(() => {
-      /* cola offline reintenta */
-    });
-
     const closedAssignments = applyDayCloseRecordsToAssignments(
       result.assignments,
       nextCloses,
@@ -771,6 +767,12 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_ROUTES_KEY, result.routes);
     queueAssignmentsMirror(closedAssignments);
     queueRoutesMirror(result.routes);
+    try {
+      // Encolar primero, luego flush: si flush va antes, el cierre no sale a la nube.
+      await flushOpsMirrorQueues();
+    } catch {
+      /* cola offline reintenta */
+    }
     setDailyLogs(result.logs);
 
     const alertResult = bumpMissedCollectionAlerts(

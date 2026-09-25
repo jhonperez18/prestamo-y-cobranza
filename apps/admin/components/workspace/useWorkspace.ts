@@ -1455,7 +1455,7 @@ export function useWorkspace({
     syncDailyPlanillaFromRoutes(date, true);
   }
 
-  function closeDailyCollections(date: string) {
+  async function closeDailyCollections(date: string) {
     const result = closeDispatchDay(
       dailyAssignments,
       routes,
@@ -1517,9 +1517,11 @@ export function useWorkspace({
     writeDemoJson(DEMO_ROUTES_KEY, result.routes);
     queueAssignmentsMirror(closedAssignments);
     queueRoutesMirror(result.routes);
-    void flushOpsMirrorQueues().catch(() => {
+    try {
+      await flushOpsMirrorQueues();
+    } catch {
       /* cola offline reintenta */
-    });
+    }
     setDailyLogs(result.logs);
     writeDemoJson(DEMO_DAILY_LOGS_KEY, result.logs);
     setDayCloses(nextCloses);

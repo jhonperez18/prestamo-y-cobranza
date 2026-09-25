@@ -476,18 +476,18 @@ export async function upsertDayExpenseIdempotent(row: Record<string, unknown>) {
 }
 
 /**
- * Espejo de planilla (servidor). Una fila «pendiente» sin PG- no pisa un N/P u omisión
- * del cobrador que ya está en la nube: ese estado solo lo cambia un cobro o el cierre
- * de jornada, y de vuelta a pendiente solo el reabrir un «Cierre de jornada».
- * Un cierre (day_closed_at) en la nube no lo reabre la hoja abierta de otro celular.
- * Vale para cualquier aparato, aunque todavía corra código viejo.
+ * Espejo de planilla (servidor). Invariantes (no romper nunca):
+ * 1) day_closed_at en nube no lo borra una fila abierta de otro celular.
+ * 2) omitido (N/P) no lo pisa un «pendiente» sin PG-.
+ * 3) Reabrir jornada a propósito exige flujo explícito (hoy: no hay UI);
+ *    un upsert normal nunca limpia day_closed_at.
  */
 export async function upsertAssignmentRow(row: Record<string, unknown>) {
   const client = createMirrorClient();
   if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
   const { data, error } = await client
     .from("daily_assignments")
-    .select("visit_status, skip_reason, day_closed_at")
+    .select("visit_status, skip_reason, day_closed_at, collector_ref, dispatch_date")
     .eq("dispatch_date", row.dispatch_date)
     .eq("item_id", row.item_id)
     .maybeSingle();
@@ -495,10 +495,28 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
     visit_status?: string;
     skip_reason?: string | null;
     day_closed_at?: string | null;
+    collector_ref?: string | null;
+    dispatch_date?: string | null;
   } | null;
-  // El cierre del cobrador en la nube gana: otro celular con planilla abierta no lo borra.
+  // Cierre en nube gana siempre frente a hoja abierta (dueño / otro celular / código viejo).
   if (!error && current?.day_closed_at && !row.day_closed_at) {
     return { ok: true as const, kept: true as const };
+  }
+  // Si ya hay CIE- del día, tampoco aceptar una fila que limpie el sello.
+  if (!error && !row.day_closed_at) {
+    const collectorRef = String(row.collector_ref || current?.collector_ref || "").trim();
+    const closeDate = String(row.dispatch_date || current?.dispatch_date || "").trim();
+    if (collectorRef && closeDate) {
+      const { data: cie } = await client
+        .from("day_closes")
+        .select("ref")
+        .eq("collector_ref", collectorRef)
+        .eq("close_date", closeDate)
+        .maybeSingle();
+      if (cie && typeof cie === "object" && "ref" in cie && cie.ref) {
+        return { ok: true as const, kept: true as const };
+      }
+    }
   }
   const incomingStatus = String(row.visit_status ?? "pendiente");
   if (incomingStatus === "pendiente" && !row.payment_ref) {
@@ -641,7 +659,21 @@ function assignmentMirrorSig(a: DailyCollectionAssignment) {
 
 const sentAssignmentSig = new Map<string, string>();
 
+/** ¿Hay CIE- local de ese cobrador+día? No subir hoja abierta encima. */
+function localCieCoversAssignment(a: DailyCollectionAssignment): boolean {
+  if (a.dayClosedAt) return false;
+  const date = normalizeHistoryDate(a.dispatchDate) || a.dispatchDate;
+  if (!date || !a.collectorRef) return false;
+  return readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []).some(
+    (row) =>
+      row.collectorRef === a.collectorRef &&
+      (normalizeHistoryDate(row.date) || row.date) === date,
+  );
+}
+
 export function queueAssignmentMirror(a: DailyCollectionAssignment) {
+  // No encolar planilla abierta si este PC ya tiene el CIE- del día (evita reabrir en nube).
+  if (localCieCoversAssignment(a)) return;
   const ref = `${a.dispatchDate}::${a.itemId}`;
   const sig = assignmentMirrorSig(a);
   if (sentAssignmentSig.get(ref) === sig) return;
@@ -844,6 +876,8 @@ export async function reconcileLocalOpsToRemote(): Promise<{
     for (const row of readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, [])) {
       const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
       const key = `${date}::${row.itemId}`;
+      // No subir hoja abierta «huérfana» si ya hay CIE- local: reabriría el día en la nube.
+      if (localCieCoversAssignment(row)) continue;
       if (row?.itemId && date && !remoteAssign.has(key)) {
         jobs.push({ kind: "assignment", row, key });
       }

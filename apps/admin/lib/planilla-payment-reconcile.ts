@@ -86,6 +86,8 @@ export function reconcilePaymentsOntoPlanilla(
   return assignments.map((row) => {
     if (isAssignmentAwaitingLoan(row)) return row;
     if (row.visitStatus === "omitido") return row;
+    // Jornada/planilla ya cerrada: no reabrir por PG anulado o ausente (otro celular lo vería abierto).
+    if (row.dayClosedAt) return row;
 
     const linkedRef = (row.paymentRef || "").trim();
     const linkedPay = linkedRef ? liveByRef.get(linkedRef) : undefined;
@@ -101,7 +103,6 @@ export function reconcilePaymentsOntoPlanilla(
         ...row,
         visitStatus: "pendiente" as const,
         paymentRef: undefined,
-        dayClosedAt: undefined,
         skipReason: undefined,
         amountDue: restoreAmountDue(row, loans),
       };
@@ -116,7 +117,6 @@ export function reconcilePaymentsOntoPlanilla(
         ...row,
         visitStatus: "pendiente" as const,
         paymentRef: undefined,
-        dayClosedAt: undefined,
         skipReason: undefined,
         amountDue: restoreAmountDue(row, loans),
       };
