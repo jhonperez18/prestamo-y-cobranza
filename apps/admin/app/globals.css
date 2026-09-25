@@ -2426,6 +2426,8 @@
     }
     .collector-history-planilla {
       margin-top: 8px;
+      width: 100%;
+      box-sizing: border-box;
     }
     .collector-history-planilla-title {
       display: flex;
@@ -2591,13 +2593,21 @@
     .collector-history-planilla-head,
     .collector-history-planilla li {
       display: grid;
-      grid-template-columns: 1.15rem minmax(0, 1.2fr) 3.15rem 3.5rem 1.35rem minmax(2.9rem, auto);
+      grid-template-columns:
+        1.35rem
+        minmax(0, 1.35fr)
+        minmax(0, 0.9fr)
+        minmax(0, 0.75fr)
+        1.55rem
+        minmax(0, 1fr);
       align-items: center;
-      column-gap: 4px;
-      padding: 3px 4px;
+      column-gap: 6px;
+      padding: 3px 6px;
       font-size: 10px;
       font-weight: 400;
       color: #14201b;
+      width: 100%;
+      box-sizing: border-box;
     }
     .collector-history-planilla-head {
       color: #14201b;
@@ -2629,6 +2639,7 @@
       text-align: center;
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
+      min-width: 0;
     }
     .collector-history-planilla .is-photo {
       display: flex;
@@ -2636,9 +2647,11 @@
       align-items: center;
     }
     .collector-history-planilla .is-method {
-      justify-self: end;
+      justify-self: stretch;
+      text-align: center;
       padding: 1px 4px;
       border-radius: 4px;
+      min-width: 0;
       font-size: 9px;
       font-weight: 400;
       line-height: 1.2;
@@ -13067,8 +13080,9 @@
       cursor: grabbing;
     }
     .evidence-lightbox-stage img {
-      width: 100%;
+      max-width: min(100%, 100vw);
       max-height: min(72dvh, 760px);
+      width: auto;
       height: auto;
       object-fit: contain;
       display: block;
@@ -13100,7 +13114,10 @@
         border-radius: 0;
       }
       .evidence-lightbox-stage img {
+        max-width: 100%;
         max-height: calc(100dvh - 96px);
+        width: auto;
+        height: auto;
       }
     }
 

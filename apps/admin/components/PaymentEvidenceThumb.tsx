@@ -314,7 +314,7 @@ function EvidenceLightbox({
           />
         </div>
         <p className="evidence-lightbox-hint">
-          Pellizcá o usá + / − para aumentar · doble toque para zoom
+          Empieza completa y pequeña · + / − o pellizcá para tamaño · doble toque para zoom
         </p>
       </div>
     </div>
@@ -334,10 +334,12 @@ export function PaymentEvidenceThumb({
   const [openUrl, setOpenUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputId = useId();
-  const item = primaryPaymentEvidence(evidence);
-  const previewUrl = item ? resolvePaymentEvidencePreview(item) : null;
+  const item = primaryPaymentEvidence(evidence) ?? evidence?.[0] ?? null;
+  const directPreview = item ? resolvePaymentEvidencePreview(item) : null;
+  const previewUrl = resolvedUrl || directPreview;
   const isSignature = item?.kind === "firma";
   const label = isSignature ? "Firma del cliente" : "Comprobante de pago";
 
@@ -349,6 +351,43 @@ export function PaymentEvidenceThumb({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    let cancel = false;
+    const direct = item ? resolvePaymentEvidencePreview(item) : null;
+    if (direct) {
+      setResolvedUrl(direct);
+      return () => {
+        cancel = true;
+      };
+    }
+
+    const path = item?.fileId?.trim() || "";
+    if (!path || path.startsWith("data:") || !path.includes("/")) {
+      setResolvedUrl(null);
+      return () => {
+        cancel = true;
+      };
+    }
+
+    setResolvedUrl(null);
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/payments/evidence-url?path=${encodeURIComponent(path)}`,
+          { method: "GET", cache: "no-store" },
+        );
+        const body = (await res.json()) as { ok?: boolean; url?: string };
+        if (!cancel && body.ok && body.url) setResolvedUrl(body.url);
+      } catch {
+        if (!cancel) setResolvedUrl(null);
+      }
+    })();
+
+    return () => {
+      cancel = true;
+    };
+  }, [item?.id, item?.fileId, item?.previewUrl]);
 
   async function onPhoto(file: File | undefined) {
     if (!file || !onAttach) return;

@@ -77,12 +77,16 @@ export function paymentHasSignature(evidence?: PaymentEvidenceRef[]) {
 
 /** Comprobante (Nequi/Banco) o firma de efectivo, el que esté disponible. */
 export function primaryPaymentEvidence(evidence?: PaymentEvidenceRef[]) {
-  const receipt = paymentEvidenceOfKind(evidence, "comprobante").find((row) =>
-    Boolean(resolvePaymentEvidencePreview(row)),
+  const receipt = paymentEvidenceOfKind(evidence, "comprobante").find(
+    (row) =>
+      Boolean(resolvePaymentEvidencePreview(row)) ||
+      Boolean(row.fileId?.trim() && row.fileId.includes("/")),
   );
   if (receipt) return receipt;
-  return paymentEvidenceOfKind(evidence, "firma").find((row) =>
-    Boolean(resolvePaymentEvidencePreview(row)),
+  return paymentEvidenceOfKind(evidence, "firma").find(
+    (row) =>
+      Boolean(resolvePaymentEvidencePreview(row)) ||
+      Boolean(row.fileId?.trim() && row.fileId.includes("/")),
   );
 }
 

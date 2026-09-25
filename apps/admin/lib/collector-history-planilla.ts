@@ -52,7 +52,39 @@ function historyClock(pays: PaymentRow[]) {
   const label = pays
     .map((pay) => paymentTimeLabel(pay).trim())
     .find((value) => value && value !== "00:00" && value !== "0:00");
-  return label || "—";
+  return label ? formatHistoryMilitaryTime(label) : "—";
+}
+
+/**
+ * Hora militar sin cero delante (planilla historial cobrador / supervisor).
+ * Ej.: 8:25 · 15:38 (no 05:53 p. m.).
+ */
+export function formatHistoryMilitaryTime(raw: string): string {
+  const text = String(raw || "").trim();
+  if (!text || text === "—") return "—";
+
+  const plain = text.match(/^(\d{1,2}):(\d{2})$/);
+  if (plain) {
+    const hour = Number(plain[1]);
+    if (Number.isFinite(hour) && hour >= 0 && hour <= 23) {
+      return `${hour}:${plain[2]}`;
+    }
+  }
+
+  const ampm = text.match(
+    /^(\d{1,2}):(\d{2})\s*(a\.?\s*m\.?|p\.?\s*m\.?|am|pm)\.?$/i,
+  );
+  if (ampm) {
+    let hour = Number(ampm[1]);
+    const minute = ampm[2];
+    const meridiem = ampm[3].replace(/\s|\./g, "").toLowerCase();
+    const isPm = meridiem.startsWith("p");
+    if (isPm && hour < 12) hour += 12;
+    if (!isPm && hour === 12) hour = 0;
+    return `${hour}:${minute}`;
+  }
+
+  return text;
 }
 
 function payerName(pay: PaymentRow, loans: LoanRow[], clients: ClientRow[]) {

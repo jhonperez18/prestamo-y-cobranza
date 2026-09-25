@@ -657,8 +657,8 @@ export async function reconcileLocalPaymentsToRemote(
 
 /**
  * Baja constancias (firma / Nequi) de la nube a IndexedDB **una sola vez**.
- * No entra al ciclo de 15 s ni a localStorage: la lista de cobros sigue ligera.
- * Así el panel refleja la foto sin frenar el sistema.
+ * Acepta previewUrl (data/https) o fileId del bucket — sin meter Base64 en localStorage.
+ * Así Cobranza ve la foto aunque Postgres solo guarde el path liviano.
  */
 export async function pullRemoteEvidenceIntoIdb(): Promise<{
   parked: number;
@@ -678,7 +678,8 @@ export async function pullRemoteEvidenceIntoIdb(): Promise<{
     for (const row of body.payments ?? []) {
       const ref = String(row.ref || "").trim();
       const evidence = Array.isArray(row.evidence) ? row.evidence : undefined;
-      if (!ref || !evidenceHasPreview(evidence)) continue;
+      if (!ref || !evidence?.length) continue;
+      if (!evidenceHasPreview(evidence) && !evidenceHasDurableRef(evidence)) continue;
       rememberPaymentEvidence(ref, evidence);
       parked += 1;
     }
