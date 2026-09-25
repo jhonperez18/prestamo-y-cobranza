@@ -914,6 +914,8 @@ export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> 
     if (changed || merged.length !== local.length) {
       writeDemoJson(DEMO_PAYMENTS_KEY, merged);
     }
+    // Misma lista que acaba de bajar: loadLivePaymentRows no re-fetcha en el mismo ciclo.
+    livePaymentCache = merged.length > 0 ? merged : livePaymentCache;
     return {
       ok: true,
       added,

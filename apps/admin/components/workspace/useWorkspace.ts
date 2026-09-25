@@ -144,7 +144,6 @@ import {
 } from "@/lib/commit-people-catalog";
 import {
   flushOpsMirrorQueues,
-  pullRemoteOpsIntoDemo,
   queueAssignmentsMirror,
   queueCollectorMirror,
   queueCollectorsMirror,
@@ -166,7 +165,6 @@ import {
   REALTIME_WORKSPACE_TABLES,
   type WorkspaceLiveSlice,
 } from "@/lib/realtime-workspace";
-import { bindMoneyRealtime, moneyRealtimeFilter } from "@/lib/realtime-money";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
@@ -222,9 +220,6 @@ import {
   type BankReconciliation,
 } from "@/lib/bank";
 import { applyBankLedgerSync, syncBankLedger } from "@/lib/bank-ledger-sync";
-import {
-  stripRemovedPaymentMovements,
-} from "@/lib/purge-unclosed-payments";
 import {
   commitCollectorPayment,
   commitCollectorCombinedPayment,
@@ -593,110 +588,6 @@ export function useWorkspace({
     pullChainRef.current = job;
     return job;
   }, []);
-
-  /**
-   * Pull de cobros, gastos y cierres antes de pintar o encolar.
-   * El merge por UUID integra el PG- que llegó desde Vercel.
-   */
-  const paintMoneyFromCloud = useCallback(async () => {
-    const live = await syncPaymentsFromCloud();
-    let opsOk = false;
-    try {
-      const ops = await pullRemoteOpsIntoDemo();
-      opsOk = ops.ok;
-    } catch (error) {
-      console.error("realtime-money", error);
-    }
-    const expenses = readDemoJson<CollectorDayExpenseDraft[]>(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []);
-    const closesRaw = readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []);
-    const { dayCloses: closes, planillaCash } = splitDayClosesAndPlanillaCash(closesRaw);
-    const storedCash = ensureManualTLaunchClose(
-      readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, []),
-    );
-    const mergedCash = [...storedCash];
-    for (const row of planillaCash) {
-      const idx = mergedCash.findIndex((entry) => entry.ref === row.ref);
-      if (idx >= 0) mergedCash[idx] = row;
-      else mergedCash.push(row);
-    }
-    const withLaunch = ensureManualTLaunchClose(mergedCash);
-    const storedAssignments = readDemoJson<DailyCollectionAssignment[]>(
-      DEMO_DAILY_ASSIGNMENTS_KEY,
-      [],
-    );
-    const base = storedAssignments.length
-      ? storedAssignments
-      : (liveRef.current?.assignments ?? []);
-    const reconciled = reconcilePaymentsOntoPlanilla(base, live);
-    // Cierre del otro celular: CIE- sella planilla aunque el pull de filas venga a medias.
-    // PCE- (saldo M↔T) no sella visitas: applyDayClose los ignora.
-    const assignments = applyDayCloseRecordsToAssignments(reconciled, closes);
-    if (liveRef.current) {
-      liveRef.current = {
-        ...liveRef.current,
-        assignments,
-        payments: live,
-        dayExpenseDrafts: expenses,
-        dayCloses: closes,
-      };
-    }
-    setDailyAssignments(assignments);
-    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
-    setDayExpenseDrafts(expenses);
-    setDayCloses(closes);
-    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, closes);
-    setPlanillaCashCloses(withLaunch);
-    writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, withLaunch);
-    if (!opsOk) return;
-  }, [syncPaymentsFromCloud]);
-
-  useEffect(() => {
-    if (!demoHydrated) return;
-    void paintMoneyFromCloud();
-  }, [
-    demoHydrated,
-    moduleId,
-    viewId,
-    previewKind,
-    mobilePreviewCollectorRef,
-    session?.roleRef,
-    paintMoneyFromCloud,
-  ]);
-
-  useEffect(() => {
-    if (!demoHydrated || !getSupabasePublicEnv().configured) return;
-    let browser: ReturnType<typeof createSupabaseBrowserClient>;
-    try {
-      browser = createSupabaseBrowserClient();
-    } catch (error) {
-      console.error("realtime-money", error);
-      return;
-    }
-    const filter = moneyRealtimeFilter(session?.roleRef, session?.collectorRef);
-    const scope =
-      session?.roleRef === COLLECTOR_ROLE_REF && session.collectorRef
-        ? session.collectorRef
-        : "global";
-    let timer = 0;
-    const schedule = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        void paintMoneyFromCloud();
-      }, 120);
-    };
-    const channel = browser.channel(`realtime-money-${scope}`);
-    bindMoneyRealtime(channel, schedule, filter);
-    channel.subscribe((status) => {
-      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-        console.error("realtime-money", status);
-        schedule();
-      }
-    });
-    return () => {
-      window.clearTimeout(timer);
-      void browser.removeChannel(channel);
-    };
-  }, [demoHydrated, session?.roleRef, session?.collectorRef, paintMoneyFromCloud]);
 
   const applyPlanillaSync = useCallback(
     (next: {

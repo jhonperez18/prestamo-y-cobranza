@@ -143,10 +143,6 @@ import {
   queueRouteDeleteMirror,
   queueRoutesMirror,
 } from "@/lib/supabase/ops-mirror";
-import {
-  type OperationalDemoSnapshot,
-} from "@/lib/hydrate-operational-demo";
-import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
 import { computeLoanFinancials, loanPaySummaryRows } from "@/lib/loan-balance";
 import { buildRenewalLoans } from "@/lib/loan-renew";
 import { markLoanFundedByBanco, markLoanFundedByNequi } from "@/lib/nequi-pool";
@@ -197,9 +193,6 @@ import {
   type BankReconciliation,
 } from "@/lib/bank";
 import { applyBankLedgerSync, syncBankLedger } from "@/lib/bank-ledger-sync";
-import {
-  stripRemovedPaymentMovements,
-} from "@/lib/purge-unclosed-payments";
 import { commitCollectorPayment, commitCollectorCombinedPayment } from "@/lib/commit-collector-payment";
 import {
   commitCreateClient,

@@ -48,6 +48,13 @@ type Options = {
   onEvidenceSync?: (result: { pushed: number; failed: number }) => void;
 };
 
+/** Realtime es la vía viva; el poll solo respalda si el canal se cae. */
+const CLOUD_POLL_MS = 30_000;
+/** Evita doble pull al volver foco + visibility a la vez. */
+const VISIBLE_PULL_MIN_MS = 4_000;
+/** Agrupa ráfagas de postgres_changes en un solo hydrate. */
+const REALTIME_DEBOUNCE_MS = 450;
+
 /**
  * Sync C5+C6 — local primero (arranque rápido), luego flush/pull en fondo.
  * Rehidrata al terminar el pull (sin dejar UI vacía: el local ya pintó).
@@ -172,12 +179,12 @@ export function useOperationalDemoSync(
     function refreshFromCloud() {
       if (document.visibilityState !== "visible") return;
       const now = Date.now();
-      // Cobrador ↔ supervisor: al volver a la app, bajar planilla/cierre sin esperar 15s.
-      if (now - lastVisiblePullAtRef.current < 4_000) return;
+      // Cobrador ↔ supervisor: al volver a la app, bajar planilla/cierre sin esperar el poll.
+      if (now - lastVisiblePullAtRef.current < VISIBLE_PULL_MIN_MS) return;
       lastVisiblePullAtRef.current = now;
       void runHydrateWithRemotePull();
     }
-    const poll = window.setInterval(refreshFromCloud, 8_000);
+    const poll = window.setInterval(refreshFromCloud, CLOUD_POLL_MS);
     window.addEventListener("storage", onStorage);
     document.addEventListener("visibilitychange", refreshFromCloud);
     window.addEventListener("focus", refreshFromCloud);
@@ -202,7 +209,7 @@ export function useOperationalDemoSync(
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         void runHydrateWithRemotePull();
-      }, 120);
+      }, REALTIME_DEBOUNCE_MS);
     };
     const tables = ["clients", "loans", "routes", "collectors"] as const;
     const channel = client.channel("nexo-catalog-live");
