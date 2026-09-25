@@ -569,6 +569,8 @@ export function useWorkspace({
     } catch (error) {
       console.error("realtime-money", error);
     }
+    const expenses = readDemoJson<CollectorDayExpenseDraft[]>(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []);
+    const closes = readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []);
     const storedAssignments = readDemoJson<DailyCollectionAssignment[]>(
       DEMO_DAILY_ASSIGNMENTS_KEY,
       [],
@@ -576,24 +578,23 @@ export function useWorkspace({
     const base = storedAssignments.length
       ? storedAssignments
       : (liveRef.current?.assignments ?? []);
-    const assignments = reconcilePaymentsOntoPlanilla(base, live);
-    if (liveRef.current) {
-      liveRef.current = { ...liveRef.current, assignments, payments: live };
-    }
-    setDailyAssignments(assignments);
-    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
-    if (!opsOk) return;
-    const expenses = readDemoJson<CollectorDayExpenseDraft[]>(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []);
-    const closes = readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []);
-    setDayExpenseDrafts(expenses);
-    setDayCloses(closes);
+    const reconciled = reconcilePaymentsOntoPlanilla(base, live);
+    // Cierre del otro celular: CIE- sella planilla aunque el pull de filas venga a medias.
+    const assignments = applyDayCloseRecordsToAssignments(reconciled, closes);
     if (liveRef.current) {
       liveRef.current = {
         ...liveRef.current,
+        assignments,
+        payments: live,
         dayExpenseDrafts: expenses,
         dayCloses: closes,
       };
     }
+    setDailyAssignments(assignments);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
+    setDayExpenseDrafts(expenses);
+    setDayCloses(closes);
+    if (!opsOk) return;
   }, [syncPaymentsFromCloud]);
 
   useEffect(() => {
@@ -628,7 +629,7 @@ export function useWorkspace({
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         void paintMoneyFromCloud();
-      }, 250);
+      }, 120);
     };
     const channel = browser.channel(`realtime-money-${scope}`);
     bindMoneyRealtime(channel, schedule, filter);

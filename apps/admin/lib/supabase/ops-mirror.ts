@@ -7,6 +7,7 @@ import { createMirrorServerClient } from "@/lib/supabase/admin";
 import type { CollectorRow, PaymentRow, RouteRow, UserRow } from "@/lib/mock-data";
 import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
 import {
+  applyDayCloseRecordsToAssignments,
   normalizeHistoryDate,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
@@ -147,6 +148,43 @@ function dequeue(key: string, ref: string) {
     key,
     readDemoJson<{ ref: string }[]>(key, []).filter((r) => r.ref !== ref),
   );
+}
+
+/**
+ * Cola de planilla abierta no debe sobrevivir a un cierre ya montado en este PC
+ * (CIE- o dayClosedAt). Sin esto, al actualizar el código el flush reabre la hoja
+ * del amigo en la nube.
+ */
+function pruneOpenAssignmentQueueAgainstLocalCloses() {
+  if (typeof window === "undefined") return;
+  const queued = readDemoJson<
+    { ref: string; dayClosedAt?: string; collectorRef?: string; dispatchDate?: string }[]
+  >(Q_ASSIGN, []);
+  if (!queued.length) return;
+  const localByKey = new Map(
+    readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []).map((row) => {
+      const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
+      return [`${date}::${row.itemId}`, row] as const;
+    }),
+  );
+  const closedCollectorDays = new Set(
+    readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []).map((row) => {
+      const date = normalizeHistoryDate(row.date) || row.date;
+      return `${row.collectorRef}::${date}`;
+    }),
+  );
+  const kept = queued.filter((row) => {
+    if (row.dayClosedAt) return true;
+    const live = localByKey.get(row.ref);
+    if (live?.dayClosedAt) return false;
+    const date =
+      normalizeHistoryDate(String(row.dispatchDate || live?.dispatchDate || "")) ||
+      String(row.dispatchDate || live?.dispatchDate || "");
+    const collector = String(row.collectorRef || live?.collectorRef || "").trim();
+    if (collector && date && closedCollectorDays.has(`${collector}::${date}`)) return false;
+    return true;
+  });
+  if (kept.length !== queued.length) writeDemoJson(Q_ASSIGN, kept);
 }
 
 const Q_COLLECTORS = "nexo-demo-ops-collectors-queue";
@@ -611,6 +649,8 @@ export function queueAssignmentsMirror(rows: DailyCollectionAssignment[]) {
 export async function flushOpsMirrorQueues() {
   if (typeof window === "undefined") return;
 
+  pruneOpenAssignmentQueueAgainstLocalCloses();
+
   // Primero deletes (si no, un upsert viejo las revive).
   const routeDeletes = readDemoJson<{ ref: string }[]>(Q_ROUTE_DELETES, []);
   const routeDeletesLeft: { ref: string }[] = [];
@@ -664,11 +704,27 @@ export async function flushOpsMirrorQueues() {
     { key: Q_MISC, kind: "misc_payment", rows: readDemoJson(Q_MISC, []) },
     { key: Q_ASSIGN, kind: "assignment", rows: readDemoJson(Q_ASSIGN, []) },
   ];
+  const localAssignByKey = new Map(
+    readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []).map((row) => {
+      const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
+      return [`${date}::${row.itemId}`, row] as const;
+    }),
+  );
   for (const job of jobs) {
     const left: { ref: string }[] = [];
     for (const row of job.rows) {
       try {
-        const { res, json } = await postMirror("/api/ops/mirror", { kind: job.kind, row });
+        let payload: unknown = row;
+        if (job.kind === "assignment") {
+          const queued = row as { ref: string; dayClosedAt?: string };
+          const live = localAssignByKey.get(queued.ref);
+          // No subir hoja abierta si este aparato ya tiene el cierre (pull del amigo).
+          if (live?.dayClosedAt) payload = live;
+        }
+        const { res, json } = await postMirror("/api/ops/mirror", {
+          kind: job.kind,
+          row: payload,
+        });
         if (!(res.ok && json.ok)) left.push(row);
       } catch {
         left.push(row);
@@ -944,7 +1000,14 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
         continue;
       }
       if (sig(prev) === sig(row)) continue;
-      if (pendingAssign.has(key)) continue;
+      // Cierre hecho en otro celular: gana siempre. La cola local de hoja "abierta"
+      // no puede escudar ese cierre ni volver a subirlo al flush (amigo cerrado / yo abierto).
+      const remoteClosedLocalOpen = Boolean(row.dayClosedAt) && !prev.dayClosedAt;
+      if (pendingAssign.has(key) && !remoteClosedLocalOpen) continue;
+      if (remoteClosedLocalOpen && pendingAssign.has(key)) {
+        dequeue(Q_ASSIGN, key);
+        pendingAssign.delete(key);
+      }
       // La hoja abierta de la nube no reabre un cierre de este PC. El resto sí entra, para que el otro aparato se vea igual.
       if (prev.dayClosedAt && !row.dayClosedAt) continue;
       // Un N/P / omisión marcada en este aparato no la reabre una fila "pendiente" vieja de otro aparato.
@@ -964,17 +1027,32 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       [...assignMap.values()],
       readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []),
     );
-    const stampedSig = stamped
+    // Si el CIE- ya llegó y la planilla local sigue abierta (cola / flush a medias), sellar.
+    const closesNow = readDemoJson<CollectorDayCloseRecord[]>(
+      DEMO_COLLECTOR_DAY_CLOSES_KEY,
+      [],
+    );
+    const healed = applyDayCloseRecordsToAssignments(stamped, closesNow);
+    for (const row of healed) {
+      if (!row.dayClosedAt) continue;
+      const key = `${row.dispatchDate}::${row.itemId}`;
+      if (pendingAssign.has(key)) {
+        dequeue(Q_ASSIGN, key);
+        pendingAssign.delete(key);
+      }
+    }
+    pruneOpenAssignmentQueueAgainstLocalCloses();
+    const stampedSig = healed
       .map((row) => `${row.dispatchDate}::${row.itemId}|${sig(row)}`)
       .sort()
       .join("\n");
-    const prevSig = [...assignMap.values()]
+    const prevSig = localAssign
       .map((row) => `${row.dispatchDate}::${row.itemId}|${sig(row)}`)
       .sort()
       .join("\n");
     if (stampedSig !== prevSig) assignChanged = true;
     if (assignChanged) {
-      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, stamped);
+      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, healed);
       changed = true;
     }
 

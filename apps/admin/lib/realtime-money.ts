@@ -1,11 +1,17 @@
 /**
  * Canal Realtime del dinero.
  * En Supabase los gastos son `day_expenses` y los cierres son `day_closes`.
+ * La planilla es `daily_assignments` (N/P, cobro, dayClosedAt).
  * No existe una tabla `expenses` ni `closures`: suscribir esos nombres tumba el canal.
  */
 import { ADMIN_ROLE_REF, COLLECTOR_ROLE_REF, SUPERVISOR_ROLE_REF } from "@/lib/mock-data";
 
-export const REALTIME_MONEY_TABLES = ["payments", "day_expenses", "day_closes"] as const;
+export const REALTIME_MONEY_TABLES = [
+  "payments",
+  "day_expenses",
+  "day_closes",
+  "daily_assignments",
+] as const;
 export const REALTIME_MONEY_EVENTS = ["INSERT", "UPDATE", "DELETE"] as const;
 
 type MoneyChannel = {

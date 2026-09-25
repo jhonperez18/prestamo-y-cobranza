@@ -172,11 +172,12 @@ export function useOperationalDemoSync(
     function refreshFromCloud() {
       if (document.visibilityState !== "visible") return;
       const now = Date.now();
-      if (now - lastVisiblePullAtRef.current < 15_000) return;
+      // Cobrador ↔ supervisor: al volver a la app, bajar planilla/cierre sin esperar 15s.
+      if (now - lastVisiblePullAtRef.current < 4_000) return;
       lastVisiblePullAtRef.current = now;
       void runHydrateWithRemotePull();
     }
-    const poll = window.setInterval(refreshFromCloud, 15_000);
+    const poll = window.setInterval(refreshFromCloud, 8_000);
     window.addEventListener("storage", onStorage);
     document.addEventListener("visibilitychange", refreshFromCloud);
     window.addEventListener("focus", refreshFromCloud);
@@ -201,14 +202,14 @@ export function useOperationalDemoSync(
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         void runHydrateWithRemotePull();
-      }, 500);
+      }, 120);
     };
     const tables = ["clients", "loans", "routes", "collectors"] as const;
     const channel = client.channel("nexo-catalog-live");
     for (const table of tables) {
       channel.on("postgres_changes", { event: "*", schema: "public", table }, schedule);
     }
-    // payments, day_expenses y day_closes: INSERT, UPDATE y DELETE explícitos.
+    // payments, day_expenses, day_closes, daily_assignments: INSERT/UPDATE/DELETE.
     // Este canal no se filtra por rol: admin y supervisor no pierden el global.
     bindMoneyRealtime(channel, schedule);
     channel.subscribe((status) => {
