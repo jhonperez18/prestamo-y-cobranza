@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import {
   buildReceiptEvidence,
   compressReceiptImage,
+  DEMO_RECEIPT_PREVIEW,
   formatEvidenceSize,
   primaryPaymentEvidence,
   resolvePaymentEvidencePreview,
@@ -23,9 +24,10 @@ type Props = {
   onAttach?: (evidence: PaymentEvidenceRef) => void;
 };
 
-const MIN_ZOOM = 1;
-const MAX_ZOOM = 4;
-const ZOOM_STEP = 0.5;
+const MIN_ZOOM = 0.35;
+const MAX_ZOOM = 5;
+const ZOOM_STEP = 0.25;
+const FIT_ZOOM = 1;
 
 type ViewState = { scale: number; x: number; y: number };
 
@@ -46,9 +48,10 @@ function EvidenceLightbox({
   title: string;
   onClose: () => void;
 }) {
-  const canOpenExternal = /^https?:\/\//i.test(openUrl);
+  const canOpenExternal =
+    /^https?:\/\//i.test(openUrl) || openUrl.startsWith("data:image/");
   const stageRef = useRef<HTMLDivElement>(null);
-  const [view, setView] = useState<ViewState>({ scale: 1, x: 0, y: 0 });
+  const [view, setView] = useState<ViewState>({ scale: FIT_ZOOM, x: 0, y: 0 });
   const viewRef = useRef(view);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinchStart = useRef<{ dist: number; scale: number } | null>(null);
@@ -62,7 +65,7 @@ function EvidenceLightbox({
   }
 
   function resetView() {
-    commitView({ scale: 1, x: 0, y: 0 });
+    commitView({ scale: FIT_ZOOM, x: 0, y: 0 });
   }
 
   useEffect(() => {
@@ -84,13 +87,11 @@ function EvidenceLightbox({
       }
       if (event.key === "+" || event.key === "=") {
         event.preventDefault();
-        const scale = clampZoom(viewRef.current.scale + ZOOM_STEP);
-        commitView({ ...viewRef.current, scale });
+        zoomBy(ZOOM_STEP);
       }
       if (event.key === "-" || event.key === "_") {
         event.preventDefault();
-        const scale = clampZoom(viewRef.current.scale - ZOOM_STEP);
-        commitView(scale <= 1 ? { scale: 1, x: 0, y: 0 } : { ...viewRef.current, scale });
+        zoomBy(-ZOOM_STEP);
       }
       if (event.key === "0") {
         event.preventDefault();
@@ -106,12 +107,16 @@ function EvidenceLightbox({
 
   function zoomBy(delta: number) {
     const scale = clampZoom(viewRef.current.scale + delta);
-    commitView(scale <= 1 ? { scale: 1, x: 0, y: 0 } : { ...viewRef.current, scale });
+    commitView(
+      Math.abs(scale - FIT_ZOOM) < 0.02
+        ? { scale: FIT_ZOOM, x: 0, y: 0 }
+        : { ...viewRef.current, scale },
+    );
   }
 
   function beginPanFromPointer(pointerId: number) {
     const point = pointers.current.get(pointerId);
-    if (!point || viewRef.current.scale <= 1) {
+    if (!point || viewRef.current.scale <= FIT_ZOOM) {
       panStart.current = null;
       return;
     }
@@ -152,8 +157,8 @@ function EvidenceLightbox({
       const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
       const nextScale = clampZoom(pinch.scale * (dist / pinch.dist));
       didDrag.current = true;
-      if (nextScale <= 1) {
-        commitView({ scale: 1, x: 0, y: 0 });
+      if (Math.abs(nextScale - FIT_ZOOM) < 0.02) {
+        commitView({ scale: FIT_ZOOM, x: 0, y: 0 });
       } else {
         commitView({ ...viewRef.current, scale: nextScale });
       }
@@ -161,8 +166,7 @@ function EvidenceLightbox({
     }
 
     const pan = panStart.current;
-    if (pointers.current.size === 1 && pan && viewRef.current.scale > 1) {
-      // Snapshot local: nunca leer panStart dentro de un updater de React.
+    if (pointers.current.size === 1 && pan && viewRef.current.scale > FIT_ZOOM) {
       const x = pan.ox + (event.clientX - pan.x);
       const y = pan.oy + (event.clientY - pan.y);
       if (Math.abs(event.clientX - pan.x) > 2 || Math.abs(event.clientY - pan.y) > 2) {
@@ -196,8 +200,8 @@ function EvidenceLightbox({
   function onDoubleActivate(event: React.MouseEvent | React.PointerEvent) {
     event.preventDefault();
     event.stopPropagation();
-    if (viewRef.current.scale > 1.05) resetView();
-    else commitView({ scale: 2.2, x: 0, y: 0 });
+    if (viewRef.current.scale > FIT_ZOOM + 0.05) resetView();
+    else commitView({ scale: 2, x: 0, y: 0 });
   }
 
   function onStageClick(event: React.MouseEvent<HTMLDivElement>) {
@@ -218,9 +222,12 @@ function EvidenceLightbox({
 
   function onWheel(event: React.WheelEvent<HTMLDivElement>) {
     event.preventDefault();
-    const delta = event.deltaY < 0 ? ZOOM_STEP * 0.4 : -ZOOM_STEP * 0.4;
+    const delta = event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
     zoomBy(delta);
   }
+
+  const zoomLabel = `${Math.round(view.scale * 100)}%`;
+  const isZoomed = Math.abs(view.scale - FIT_ZOOM) > 0.02;
 
   const node = (
     <div
@@ -239,62 +246,83 @@ function EvidenceLightbox({
         onClick={(event) => event.stopPropagation()}
         onTouchMove={(event) => event.stopPropagation()}
       >
-        <header>
-          <strong>{title}</strong>
-          {sizeHint !== "—" ? <span className="evidence-lightbox-meta">{sizeHint}</span> : null}
-          {isDemoPreview ? <span className="evidence-demo-tag">Demo</span> : null}
-          <div className="evidence-lightbox-zoom" role="group" aria-label="Ampliar comprobante">
+        <header className="evidence-lightbox-toolbar">
+          <div className="evidence-lightbox-title">
+            <strong>{title}</strong>
+            <div className="evidence-lightbox-meta-row">
+              {sizeHint !== "—" ? <span className="evidence-lightbox-meta">{sizeHint}</span> : null}
+              {isDemoPreview ? <span className="evidence-demo-tag">Demo</span> : null}
+            </div>
+          </div>
+          <div className="evidence-lightbox-actions">
+            <div className="evidence-lightbox-zoom" role="group" aria-label="Zoom del comprobante">
+              <button
+                type="button"
+                className="evidence-lightbox-zoom-btn"
+                aria-label="Alejar"
+                disabled={view.scale <= MIN_ZOOM}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  zoomBy(-ZOOM_STEP);
+                }}
+              >
+                −
+              </button>
+              <span className="evidence-lightbox-zoom-pct" aria-live="polite">
+                {zoomLabel}
+              </span>
+              <button
+                type="button"
+                className="evidence-lightbox-zoom-btn"
+                aria-label="Acercar"
+                disabled={view.scale >= MAX_ZOOM}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  zoomBy(ZOOM_STEP);
+                }}
+              >
+                +
+              </button>
+              <button
+                type="button"
+                className="evidence-lightbox-zoom-btn is-reset"
+                aria-label="Ver foto completa"
+                disabled={!isZoomed}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  resetView();
+                }}
+              >
+                Completa
+              </button>
+            </div>
+            {canOpenExternal ? (
+              <a
+                className="evidence-lightbox-open"
+                href={openUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(event) => event.stopPropagation()}
+              >
+                Abrir
+              </a>
+            ) : null}
             <button
               type="button"
-              className="evidence-lightbox-zoom-btn"
-              aria-label="Alejar"
-              disabled={view.scale <= MIN_ZOOM}
+              className="evidence-lightbox-close"
+              aria-label="Cerrar"
               onClick={(event) => {
                 event.stopPropagation();
-                zoomBy(-ZOOM_STEP);
+                onClose();
               }}
             >
-              −
-            </button>
-            <button
-              type="button"
-              className="evidence-lightbox-zoom-btn"
-              aria-label="Acercar"
-              disabled={view.scale >= MAX_ZOOM}
-              onClick={(event) => {
-                event.stopPropagation();
-                zoomBy(ZOOM_STEP);
-              }}
-            >
-              +
+              ×
             </button>
           </div>
-          {canOpenExternal ? (
-            <a
-              className="btn ghost compact"
-              href={openUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(event) => event.stopPropagation()}
-            >
-              Abrir
-            </a>
-          ) : null}
-          <button
-            type="button"
-            className="evidence-lightbox-close"
-            aria-label="Cerrar ampliación"
-            onClick={(event) => {
-              event.stopPropagation();
-              onClose();
-            }}
-          >
-            ×
-          </button>
         </header>
         <div
           ref={stageRef}
-          className={`evidence-lightbox-stage${view.scale > 1 ? " is-zoomed" : ""}`}
+          className={`evidence-lightbox-stage${isZoomed ? " is-zoomed" : ""}`}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
@@ -303,18 +331,22 @@ function EvidenceLightbox({
           onDoubleClick={onDoubleActivate}
           onWheel={onWheel}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={openUrl}
-            alt={`${title} ampliado`}
-            draggable={false}
-            style={{
-              transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
-            }}
-          />
+          <div
+            className="evidence-lightbox-zoom-layer"
+            style={
+              isZoomed || view.x !== 0 || view.y !== 0
+                ? {
+                    transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+                  }
+                : undefined
+            }
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={openUrl} alt={`${title} ampliado`} draggable={false} />
+          </div>
         </div>
         <p className="evidence-lightbox-hint">
-          Empieza completa y pequeña · + / − o pellizcá para tamaño · doble toque para zoom
+          Si aún se ve incompleta, tocá Abrir: ahí ves el archivo real sin marco. − / + solo acercan.
         </p>
       </div>
     </div>
@@ -445,7 +477,8 @@ export function PaymentEvidenceThumb({
   }
 
   const sizeHint = formatEvidenceSize(item.byteSize);
-  const isDemoPreview = !item.previewUrl?.trim();
+  const isDemoPreview =
+    item.previewUrl === DEMO_RECEIPT_PREVIEW || previewUrl === DEMO_RECEIPT_PREVIEW;
   const title = `Ver ${isSignature ? "firma" : "comprobante"} ampliado${sizeHint !== "—" ? ` · ${sizeHint}` : ""}`;
 
   const lightbox =

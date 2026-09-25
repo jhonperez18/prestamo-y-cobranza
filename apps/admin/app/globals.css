@@ -12962,7 +12962,9 @@
       display: grid;
       place-items: center;
       padding: max(12px, env(safe-area-inset-top, 0px)) 12px max(12px, env(safe-area-inset-bottom, 0px));
-      background: rgba(8, 12, 10, 0.72);
+      background: rgba(6, 10, 14, 0.78);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
       touch-action: none;
@@ -12970,54 +12972,90 @@
     .evidence-lightbox-panel {
       position: relative;
       z-index: 1;
-      width: min(720px, 100%);
-      max-height: min(92dvh, 920px);
+      width: min(920px, calc(100vw - 20px));
+      height: min(90dvh, 880px);
+      max-height: min(90dvh, 880px);
       display: flex;
       flex-direction: column;
-      background: #fff;
-      border-radius: 12px;
+      background: #0f1720;
+      color: #f1f5f9;
+      border-radius: 16px;
       overflow: hidden;
-      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
     }
-    .evidence-lightbox-panel header {
+    .evidence-lightbox-toolbar {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 10px 12px;
-      border-bottom: 1px solid #e3ece7;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      background: #121a24;
       flex-shrink: 0;
       min-width: 0;
     }
-    .evidence-lightbox-panel header strong {
-      flex: 1;
+    .evidence-lightbox-title {
       min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .evidence-lightbox-title strong {
       font-size: 14px;
-      color: #111;
+      font-weight: 650;
+      color: #f8fafc;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
+    .evidence-lightbox-meta-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
     .evidence-lightbox-meta {
       flex-shrink: 0;
       font-size: 11px;
-      color: #5b7268;
+      color: #94a3b8;
       font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .evidence-lightbox-actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
     }
     .evidence-lightbox-zoom {
       display: inline-flex;
+      align-items: center;
       gap: 4px;
-      flex-shrink: 0;
+      padding: 3px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .evidence-lightbox-zoom-pct {
+      min-width: 3.2rem;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 700;
+      color: #cbd5e1;
+      font-variant-numeric: tabular-nums;
     }
     .evidence-lightbox-zoom-btn {
-      width: 36px;
-      height: 36px;
+      width: 34px;
+      height: 34px;
       margin: 0;
       padding: 0;
-      border: 1px solid #d5e2db;
+      border: 0;
       border-radius: 999px;
-      background: #f4f8f6;
-      color: #111;
-      font-size: 22px;
+      background: transparent;
+      color: #f8fafc;
+      font-size: 20px;
       font-weight: 600;
       line-height: 1;
       display: inline-flex;
@@ -13025,24 +13063,58 @@
       justify-content: center;
       cursor: pointer;
     }
+    .evidence-lightbox-zoom-btn.is-reset {
+      width: auto;
+      padding: 0 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: #cbd5e1;
+      background: rgba(255, 255, 255, 0.06);
+    }
     .evidence-lightbox-zoom-btn:disabled {
       opacity: 0.35;
       cursor: default;
     }
+    .evidence-lightbox-zoom-btn:not(:disabled):hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
     .evidence-lightbox-zoom-btn:not(:disabled):active {
-      background: #e7eee9;
+      background: rgba(255, 255, 255, 0.16);
+    }
+    .evidence-lightbox-open {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 34px;
+      padding: 0 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.06);
+      color: #e2e8f0;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      text-decoration: none;
+    }
+    .evidence-lightbox-open:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
     }
     .evidence-lightbox-close {
       flex-shrink: 0;
-      width: 36px;
-      height: 36px;
+      width: 34px;
+      height: 34px;
       margin: 0;
       padding: 0;
-      border: 1px solid #d5e2db;
+      border: 1px solid rgba(255, 255, 255, 0.12);
       border-radius: 999px;
-      background: #f4f8f6;
-      color: #111;
-      font-size: 26px;
+      background: rgba(255, 255, 255, 0.06);
+      color: #f8fafc;
+      font-size: 22px;
       font-weight: 500;
       line-height: 1;
       display: inline-flex;
@@ -13050,23 +13122,32 @@
       justify-content: center;
       cursor: pointer;
     }
+    .evidence-lightbox-close:hover {
+      background: rgba(248, 113, 113, 0.18);
+      border-color: rgba(248, 113, 113, 0.35);
+    }
     .evidence-lightbox-close:active {
-      background: #e7eee9;
+      background: rgba(248, 113, 113, 0.28);
     }
     .evidence-demo-tag {
-      font-size: 11px;
-      color: #0f766e;
-      background: #e6f4ef;
+      font-size: 10px;
+      color: #99f6e4;
+      background: rgba(15, 118, 110, 0.35);
       border-radius: 999px;
       padding: 2px 8px;
-      font-weight: 600;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
     }
     .evidence-lightbox-stage {
-      flex: 1;
+      position: relative;
+      flex: 1 1 auto;
       min-height: 0;
-      display: grid;
-      place-items: center;
-      background: #0f1412;
+      display: block;
+      padding: 0;
+      background:
+        radial-gradient(ellipse at center, rgba(30, 41, 59, 0.55), transparent 70%),
+        #0b1220;
       overflow: hidden;
       touch-action: none;
       cursor: zoom-in;
@@ -13079,27 +13160,35 @@
     .evidence-lightbox-stage.is-zoomed:active {
       cursor: grabbing;
     }
-    .evidence-lightbox-stage img {
-      max-width: min(100%, 100vw);
-      max-height: min(72dvh, 760px);
-      width: auto;
-      height: auto;
-      object-fit: contain;
+    /* Capa con tamaño fijo del escenario: la foto SIEMPRE cabe entera (contain). */
+    .evidence-lightbox-zoom-layer {
+      position: absolute;
+      inset: 16px;
       display: block;
-      user-select: none;
-      -webkit-user-drag: none;
       transform-origin: center center;
       will-change: transform;
       pointer-events: none;
+      box-sizing: border-box;
+    }
+    .evidence-lightbox-zoom-layer img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      object-position: center center;
+      image-orientation: from-image;
+      border-radius: 4px;
+      user-select: none;
+      -webkit-user-drag: none;
     }
     .evidence-lightbox-hint {
       margin: 0;
-      padding: 8px 12px 10px;
+      padding: 9px 14px 11px;
       font-size: 11px;
-      color: #5b7268;
+      color: #94a3b8;
       text-align: center;
-      background: #f7faf8;
-      border-top: 1px solid #e3ece7;
+      background: #121a24;
+      border-top: 1px solid rgba(255, 255, 255, 0.06);
       flex-shrink: 0;
     }
     @media (max-width: 640px) {
@@ -13109,15 +13198,21 @@
       }
       .evidence-lightbox-panel {
         width: 100%;
-        max-height: none;
         height: 100%;
+        max-height: none;
         border-radius: 0;
+        border: 0;
       }
-      .evidence-lightbox-stage img {
-        max-width: 100%;
-        max-height: calc(100dvh - 96px);
-        width: auto;
-        height: auto;
+      .evidence-lightbox-toolbar {
+        padding: 10px 12px;
+        gap: 8px;
+      }
+      .evidence-lightbox-zoom-layer {
+        inset: 10px;
+      }
+      .evidence-lightbox-zoom-btn.is-reset {
+        padding: 0 8px;
+        font-size: 10px;
       }
     }
 
