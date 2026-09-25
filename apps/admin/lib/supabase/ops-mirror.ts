@@ -479,20 +479,29 @@ export async function upsertDayExpenseIdempotent(row: Record<string, unknown>) {
  * Espejo de planilla (servidor). Una fila «pendiente» sin PG- no pisa un N/P u omisión
  * del cobrador que ya está en la nube: ese estado solo lo cambia un cobro o el cierre
  * de jornada, y de vuelta a pendiente solo el reabrir un «Cierre de jornada».
+ * Un cierre (day_closed_at) en la nube no lo reabre la hoja abierta de otro celular.
  * Vale para cualquier aparato, aunque todavía corra código viejo.
  */
 export async function upsertAssignmentRow(row: Record<string, unknown>) {
   const client = createMirrorClient();
   if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  const { data, error } = await client
+    .from("daily_assignments")
+    .select("visit_status, skip_reason, day_closed_at")
+    .eq("dispatch_date", row.dispatch_date)
+    .eq("item_id", row.item_id)
+    .maybeSingle();
+  const current = (data ?? null) as {
+    visit_status?: string;
+    skip_reason?: string | null;
+    day_closed_at?: string | null;
+  } | null;
+  // El cierre del cobrador en la nube gana: otro celular con planilla abierta no lo borra.
+  if (!error && current?.day_closed_at && !row.day_closed_at) {
+    return { ok: true as const, kept: true as const };
+  }
   const incomingStatus = String(row.visit_status ?? "pendiente");
   if (incomingStatus === "pendiente" && !row.payment_ref) {
-    const { data, error } = await client
-      .from("daily_assignments")
-      .select("visit_status, skip_reason")
-      .eq("dispatch_date", row.dispatch_date)
-      .eq("item_id", row.item_id)
-      .maybeSingle();
-    const current = (data ?? null) as { visit_status?: string; skip_reason?: string | null } | null;
     if (
       !error &&
       current?.visit_status === "omitido" &&

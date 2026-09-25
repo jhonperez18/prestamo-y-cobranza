@@ -1570,36 +1570,6 @@
       color: #9a3412;
       line-height: 1.35;
     }
-    .collector-recaudo-close-bar {
-      margin-top: 10px;
-      padding: 10px 12px;
-      border-radius: 10px;
-      background: #ecfdf5;
-      border: 1px solid #86efac;
-      display: grid;
-      gap: 8px;
-      justify-items: stretch;
-    }
-    .collector-recaudo-close-bar p {
-      margin: 0;
-      font-size: 12px;
-      font-weight: 600;
-      color: #14532d;
-      line-height: 1.35;
-    }
-    .collector-recaudo-close-bar .collector-mobile-pay-link.is-close-day {
-      justify-self: center;
-      min-width: 11rem;
-      padding: 8px 16px;
-      border-radius: 8px;
-      background: #14532d;
-      color: #fff;
-      font-weight: 750;
-      border: 0;
-    }
-    .collector-recaudo-close-bar .collector-mobile-pay-link.is-close-day:active {
-      background: #0f3d21;
-    }
     .collector-mobile-day-history {
       margin: 8px 16px 0;
       border: 1px solid #b7e0d2;

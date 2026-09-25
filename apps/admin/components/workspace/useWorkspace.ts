@@ -1592,7 +1592,7 @@ export function useWorkspace({
     );
   }
 
-  function closeCollectorDayFromMobile(payload: CollectorCloseDayPayload) {
+  async function closeCollectorDayFromMobile(payload: CollectorCloseDayPayload) {
     const accounts = ensureBankAccounts(bankAccounts);
     if (!bankAccounts.length) setBankAccounts(accounts);
 
@@ -1691,9 +1691,12 @@ export function useWorkspace({
     writeDemoJson(DEMO_ROUTES_KEY, result.routes);
     queueAssignmentsMirror(closedAssignments);
     queueRoutesMirror(result.routes);
-    void flushOpsMirrorQueues().catch(() => {
+    try {
+      // Sin esto el cobrador se ve cerrado y el dueño nunca recibe el CIE/planilla.
+      await flushOpsMirrorQueues();
+    } catch {
       /* cola offline reintenta */
-    });
+    }
     setDailyLogs(result.logs);
 
     const alertResult = bumpMissedCollectionAlerts(
