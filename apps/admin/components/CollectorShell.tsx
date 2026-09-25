@@ -328,7 +328,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_DAILY_LOGS_KEY, dailyLogs);
   }, [dailyLogs, hydrated]);
 
-  function registerCollectorPayment(input: CollectorPaymentRegisterInput) {
+  async function registerCollectorPayment(input: CollectorPaymentRegisterInput) {
     const ownershipRef = isCombinedCollectorPayment(input)
       ? input.parts[0].collectorRef
       : input.collectorRef;
@@ -418,26 +418,27 @@ export function CollectorShell({ session, onLogout }: Props) {
 
     const toastRefs = paymentsCreated.map((row) => row.ref).join(" + ");
     showToast(`Cobro ${toastRefs} guardado · subiendo a la nube…`);
-    void (async () => {
-      await queuePaymentsMirror(paymentsCreated);
-      const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
-      if (paidLoan) queueLoanMirror(paidLoan);
-      const paidClient = committed.clients.find((row) =>
-        committed.loans.some(
-          (loan) => loan.ref === committed.payment.loanRef && loan.clientRef === row.ref,
-        ),
+    await queuePaymentsMirror(paymentsCreated);
+    const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
+    if (paidLoan) queueLoanMirror(paidLoan);
+    const paidClient = committed.clients.find((row) =>
+      committed.loans.some(
+        (loan) => loan.ref === committed.payment.loanRef && loan.clientRef === row.ref,
+      ),
+    );
+    if (paidClient) queueClientMirror(paidClient);
+    queueAssignmentsMirror(projected.assignments);
+    try {
+      // Nube operativa: el supervisor solo ve el cobro cuando Supabase ya lo tiene.
+      await flushPaymentMirrorQueue();
+      await flushCatalogMirrorQueues();
+      await flushOpsMirrorQueues();
+      showToast(`Cobro ${toastRefs} listo en la nube`);
+    } catch {
+      showToast(
+        `Cobro ${toastRefs} en cola · sin red ahora; se sube solo al reconectar.`,
       );
-      if (paidClient) queueClientMirror(paidClient);
-      queueAssignmentsMirror(projected.assignments);
-      try {
-        await flushPaymentMirrorQueue();
-        await flushCatalogMirrorQueues();
-        await flushOpsMirrorQueues();
-        showToast(`Cobro ${toastRefs} listo en la nube`);
-      } catch {
-        showToast(`Cobro ${toastRefs} guardado (sin nube; en este aparato ya está).`);
-      }
-    })();
+    }
     return true;
   }
 

@@ -39,7 +39,9 @@ type Props = {
   dayExpenseDrafts?: CollectorDayExpenseDraft[];
   monthCloses?: CollectorMonthCloseRecord[];
   planillaCashCloses?: import("@/lib/planilla-cash-chain").PlanillaCashCloseRecord[];
-  onRegisterPayment?: (draft: CollectorPaymentRegisterInput) => boolean | void;
+  onRegisterPayment?: (
+    draft: CollectorPaymentRegisterInput,
+  ) => boolean | void | Promise<boolean | void>;
   onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
   onRenewLoan?: (loanRef: string) => void;
   onSaveExpenses?: (payload: CollectorSaveExpensesPayload) => void;

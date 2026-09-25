@@ -22,6 +22,7 @@
 Dinero operativo (demo): ver `docs/operational-money.md`.  
 Personas / Listado (demo): ver `docs/people-catalog.md`.  
 **Sistema madre** (ley del producto): ver `docs/sistema-madre.md`.  
+**Nube operativa:** Supabase = datos; Git = código; Vercel = app; este PC = taller (`.cursor/rules/nube-operativa.mdc`).  
 Camino a backend: `docs/demo-to-backend.md`.
 
 ## Prohibido

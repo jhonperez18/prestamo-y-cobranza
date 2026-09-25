@@ -1,5 +1,5 @@
 ---
-description: Sistema madre — el panel manda; mutaciones instantáneas; cero datos viejos; estructura de producto vendible.
+description: Sistema madre — panel manda; datos en Supabase; PC taller; sync instantáneo.
 alwaysApply: true
 ---
 
@@ -7,30 +7,32 @@ alwaysApply: true
 
 ## Ley
 
-El **panel del sistema** (admin) es el **padre de todo**.  
+El **panel del sistema** (admin en Vercel) es el **padre de producto**.  
 Cobrador, supervisor, login y reportes son **proyecciones**.  
-Detalle: `docs/sistema-madre.md`.
+Detalle: `docs/sistema-madre.md` + `.cursor/rules/nube-operativa.mdc`.
 
-No aplica solo a usuarios: **cualquier** alta/edición/baja del padre debe reflejarse al instante (misma fuerza que un cobro `PG-`).
+**Datos operativos:** Supabase es la fuente única de verdad.  
+**Este PC:** taller. El negocio no depende de que esté encendido.
 
 ## Cadena obligatoria
 
 1. Commit atómico en el módulo dueño (ej. `commitCollectorPayment`, `commit-people-catalog`).
-2. **Persistir en este PC** (localStorage + `-bak`) — **esta es la garantía**.
+2. Persistir caché local (`localStorage` + `-bak`) **y** encolar mirror.
 3. Proyectar hijos (nombres, planilla, banco, acceso).
-4. Encolar mirror; flush nube para que **otros** vean (secundario; si falla la red, el PC ya tiene el dato).
-5. Lectura/login: **local primero**; pull no borra lo fresco del padre.
+4. **`await` flush nube** — sin eso, otros aparatos no ven el dato.
+5. Pull / Realtime: la nube operativa gana frente a caché vieja; no rebobinar cola pendiente de flush.
 
 ## Garantía del dueño
 
-Sistema central = este PC. Commit/push/deploy actualizan a otros; no sustituyen lo montado aquí.
+Negocio 24/7 = Vercel + Supabase.  
+Commit/push actualizan **código**. Los cobros/cierres viven en la nube.
 
 ## Prohibido
 
 - Parches UI / “ignora si falla” (ver `no-patch-cycle`).
-- Segunda fuente de verdad (seed, Auth, SQL espejo) que rebobine al padre.
-- `setState` sin commit + cola.
-- Declarar listo sin build SHA + raíz verificada.
+- Segunda fuente de verdad que rebobine lo ya en nube.
+- `setState` sin commit + cola + flush.
+- Decir listo si el flush falló en silencio o si hace falta el PC del dueño para que el supervisor vea un cobro.
 
 ## Objetivo de producto
 

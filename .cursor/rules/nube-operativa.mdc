@@ -1,0 +1,45 @@
+---
+description: Nube operativa — Supabase verdad de datos; PC solo taller
+alwaysApply: true
+---
+
+# Nube operativa — directriz del dueño (2026-09-25)
+
+## Ley
+
+| Pieza | Fuente de verdad |
+| --- | --- |
+| Datos operativos (PG-, CIE-, planilla, clientes, usuarios…) | **Supabase** |
+| Código | Git / GitHub (`main`) |
+| Ejecución de la app | **Vercel** (no guarda el estado del negocio) |
+| Este PC | **Taller** (cambios → commit/push cuando el dueño lo pida). No es el servidor del negocio. |
+
+El negocio corre **24/7 sin este PC encendido**.  
+Celular cobra/cierra → supervisor y dueño lo ven **solos, en segundos**.
+
+## Cuando choque con “padre = solo este PC”
+
+**Gana la nube operativa.**  
+Local sigue siendo caché rápida y cola offline; no es la garantía del negocio frente a otros aparatos.
+
+## Cadena obligatoria (sin atajos)
+
+1. Commit atómico en el módulo dueño.
+2. Persist local (caché + cola) **y** `await` flush a Supabase.
+3. Pull / Realtime en otros aparatos; si la nube es más fresca en lo operativo, **entra**.
+4. Cero “listo” si el flush falló en silencio.
+
+## Criterio de listo
+
+Apagar este PC ~1 h → cobrar/cerrar en celular → verlo en supervisor y en Vercel **sin** tocar Git ni este PC.
+
+## Prohibido
+
+- Depender del PC del dueño para que el supervisor vea un cobro.
+- Parches UI (“muéstralo sync”) sin commit + cola + servidor + pull.
+- Declarar estable si hace falta “actualizar” desde el taller cada vez que alguien cobra.
+
+## Talleres / mejoras
+
+Columnas, textos, features: igual que siempre en este PC → commit + push a pedido.  
+Eso **no** sustituye el sync de datos.

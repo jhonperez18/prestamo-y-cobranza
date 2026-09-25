@@ -1760,7 +1760,7 @@ export function useWorkspace({
     onToast(`Asignado a ${collector.name} · ${isoToDispatchLabel(date)}.`);
   }
 
-  function registerCollectorPayment(input: CollectorPaymentRegisterInput) {
+  async function registerCollectorPayment(input: CollectorPaymentRegisterInput) {
     const committed = isCombinedCollectorPayment(input)
       ? commitCollectorCombinedPayment({
           parts: input.parts,
@@ -1832,30 +1832,30 @@ export function useWorkspace({
 
     const toastRefs = paymentsCreated.map((row) => row.ref).join(" + ");
     onToast(`Cobro ${toastRefs} guardado · subiendo a la nube…`);
-    void (async () => {
-      const live = await syncPaymentsFromCloud(committed.payments);
-      const assignments = reconcilePaymentsOntoPlanilla(projected.assignments, live);
-      setDailyAssignments(assignments);
-      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
-      await queuePaymentsMirror(paymentsCreated);
-      const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
-      if (paidLoan) queueLoanMirror(paidLoan);
-      const paidClient = committed.clients.find((row) =>
-        committed.loans.some(
-          (loan) => loan.ref === committed.payment.loanRef && loan.clientRef === row.ref,
-        ),
+    const live = await syncPaymentsFromCloud(committed.payments);
+    const assignments = reconcilePaymentsOntoPlanilla(projected.assignments, live);
+    setDailyAssignments(assignments);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
+    await queuePaymentsMirror(paymentsCreated);
+    const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
+    if (paidLoan) queueLoanMirror(paidLoan);
+    const paidClient = committed.clients.find((row) =>
+      committed.loans.some(
+        (loan) => loan.ref === committed.payment.loanRef && loan.clientRef === row.ref,
+      ),
+    );
+    if (paidClient) queueClientMirror(paidClient);
+    queueAssignmentsMirror(assignments);
+    try {
+      await flushPaymentMirrorQueue();
+      await flushCatalogMirrorQueues();
+      await flushOpsMirrorQueues();
+      onToast(`Cobro ${toastRefs} listo en la nube`);
+    } catch {
+      onToast(
+        `Cobro ${toastRefs} en cola · sin red ahora; se sube solo al reconectar.`,
       );
-      if (paidClient) queueClientMirror(paidClient);
-      queueAssignmentsMirror(assignments);
-      try {
-        await flushPaymentMirrorQueue();
-        await flushCatalogMirrorQueues();
-        await flushOpsMirrorQueues();
-        onToast(`Cobro ${toastRefs} listo en la nube`);
-      } catch {
-        onToast(`Cobro ${toastRefs} guardado (sin nube; en este aparato ya está).`);
-      }
-    })();
+    }
     return true;
   }
 

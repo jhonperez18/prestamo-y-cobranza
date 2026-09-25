@@ -165,7 +165,9 @@ type Props = {
   date?: string;
   preview?: boolean;
   canRegister?: boolean;
-  onRegisterPayment?: (draft: CollectorPaymentRegisterInput) => boolean | void;
+  onRegisterPayment?: (
+    draft: CollectorPaymentRegisterInput,
+  ) => boolean | void | Promise<boolean | void>;
   /** N/P: hoy no tiene plata. Sale de por cobrar y entra a S/N. */
   onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
   onRenewLoan?: (loanRef: string) => void;
@@ -2211,9 +2213,9 @@ export function CollectorMobileApp({
                                 }
                               : undefined
                           }
-                          onSubmit={(payload) => {
+                          onSubmit={async (payload) => {
                             if (payload.combined) {
-                              const ok = onRegisterPayment({
+                              const ok = await onRegisterPayment({
                                 combined: true,
                                 comboGroupId: payload.combined.comboGroupId,
                                 paidTime: payload.combined.paidTime,
@@ -2255,7 +2257,7 @@ export function CollectorMobileApp({
                               if (ok !== false) closeCard();
                               return;
                             }
-                            const ok = onRegisterPayment({
+                            const ok = await onRegisterPayment({
                               idempotencyKey: payload.idempotencyKey,
                               routeRef,
                               clientRef: item.clientRef,
@@ -2269,7 +2271,7 @@ export function CollectorMobileApp({
                               collectorName: collector.name,
                               clientName: identity.fullName,
                             });
-                            // Solo cerrar si el cobro quedó registrado (o el handler no reporta fallo).
+                            // Cierra cuando el commit local + flush nube terminaron (o cola offline).
                             if (ok !== false) closeCard();
                           }}
                         />

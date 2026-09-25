@@ -1,29 +1,30 @@
 ---
-description: Sistema central en este PC — garantía local primero
+description: Este PC es taller — la nube operativa es la garantía del negocio
 alwaysApply: true
 ---
 
-# Garantía: sistema central = este PC
+# Garantía del negocio = nube (este PC = taller)
 
-## Ley del dueño
+## Ley del dueño (directriz 2026-09-25)
 
-Lo que se crea / edita / borra / guarda en el **panel del sistema en este PC** debe quedar **montado aquí al instante**.
+Supabase es la fuente única de verdad de los **datos operativos**.  
+Este PC es **taller**: cambios de código → commit/push a pedido. **No** debe estar encendido para que el negocio ruede.
 
-1. Tras **Guardar**: ya está en `localStorage` (`nexo-demo-*` + `-bak`).
-2. La **nube / commit / push** es para que **otros** vean lo mismo después — no es la garantía primaria.
-3. Un pull **nunca** rebobina un edit fresco de este aparato.
+1. Tras Guardar / cobrar / cerrar: caché local **y** `await` flush a Supabase.
+2. Otros aparatos ven por pull / Realtime desde la nube — no porque este PC esté prendido.
+3. Un pull **no** rebobina una cola local pendiente de flush; lo ya en nube gana frente a caché vieja de otro aparato.
 
 ## Prioridad
 
 | Orden | Qué |
 | --- | --- |
-| 1 | Persistencia local en este PC (garantía) |
-| 2 | Cola + flush nube (proyección a otros) |
-| 3 | Deploy / verify:prod (cuando el dueño lo pida) |
+| 1 | Flush nube operativo (garantía del negocio) |
+| 2 | Caché local + cola (rápido / offline) |
+| 3 | Deploy / verify:prod (cuando el dueño pida cambio de código) |
 
 ## Prohibido
 
-- Decir “listo” si el dato no quedó en local.
+- Decir “listo” si el flush a nube falló en silencio.
 - Vaciar clientes / usuarios / préstamos / pagos con `[]`.
-- Pull o seed que pise lo que el padre acaba de guardar en este PC.
+- Depender de este PC para que el supervisor vea un cobro o un cierre.
 ---
