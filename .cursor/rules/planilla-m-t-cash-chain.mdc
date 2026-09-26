@@ -33,7 +33,7 @@ Detalle: `apps/admin/lib/planilla-cash-chain.ts`.
 
 1. Cerrar M antes de T (`assertCanCloseChainedPlanilla`).
 2. Al cerrar T: Inicial = final real de M; `closingCash` de T = saldo final del día.
-3. Historial · T, INICIO, CAJA y registros leen **la misma** cifra (`dayFinalClosingCash` / PCE-T).
+3. Historial · T, INICIO y registros leen **la misma** cifra (`dayFinalClosingCash` / PCE-T).
 4. Préstamos del día se reconstruyen con `dayLoanDisbursementRows` (viven en M).
 
 ## Prohibido
@@ -42,4 +42,15 @@ Detalle: `apps/admin/lib/planilla-cash-chain.ts`.
 - Que T herede préstamos de M o un PCE hinchado.
 - Que el Inicial de M mañana salga de M en vez del cierre de T.
 - Parches de UI «muéstralo igual» sin pasar por la cadena.
+
+## N/P por ruta (INICIO)
+
+Cada ruta tiene su propio **N/P** (junto a Historial en la ficha).
+
+| Camino | Resultado |
+| --- | --- |
+| INICIO → panel ruta → N/P | Solo «no pagan» de **esa** ruta |
+| Día en N/P | Lista del día; al rollover el día pasa al historial |
+
+**Prohibido:** juntar N/P de M con T/A/N en la misma hoja.
 ---

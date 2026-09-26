@@ -4371,6 +4371,67 @@
       border-color: #b8e4dc;
       color: #0a3d38;
     }
+    .supervisor-mobile-kpi.is-salir,
+    .supervisor-mobile-kpi.is-salir.on {
+      background: #c8efe6;
+      border-color: #7dcebf;
+      color: #064e3b;
+      opacity: 1;
+      filter: none;
+    }
+    .supervisor-mobile-kpi.is-salir:hover,
+    .supervisor-mobile-kpi.is-salir:active,
+    .supervisor-mobile-kpi.is-salir.on:hover,
+    .supervisor-mobile-kpi.is-salir.on:active {
+      background: #b5e8dc;
+      border-color: #5fbfad;
+      opacity: 1;
+      filter: none;
+    }
+    .supervisor-mobile-salir-foot {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+      gap: 10px;
+      padding: 14px 16px 18px;
+    }
+    .supervisor-mobile-salir-spacer {
+      flex: 0 0 auto;
+      min-width: 0;
+    }
+    .supervisor-mobile-salir-foot .supervisor-mobile-kpi.is-salir {
+      width: auto;
+      min-width: 108px;
+      max-width: 46%;
+      min-height: 40px;
+      padding: 8px 16px;
+      border-radius: 10px;
+      border-width: 1px;
+      border-style: solid;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      box-shadow: none;
+      flex-shrink: 0;
+    }
+    .supervisor-mobile-salir-foot .supervisor-inicio-total {
+      margin-left: auto;
+      flex-shrink: 0;
+      min-width: 7.5rem;
+      padding: 8px 12px;
+      border-radius: 8px;
+      background: #ecfdf5;
+      border: 1px solid #a7f3d0;
+      text-align: right;
+    }
+    .supervisor-mobile-salir-foot .supervisor-inicio-total b {
+      font-size: 18px;
+      font-weight: 400;
+      color: #111;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.02em;
+    }
     .supervisor-mobile-kpi.is-ruta {
       background: #eef6ef;
       border-color: #c5e0cb;
@@ -4913,16 +4974,92 @@
     .supervisor-mobile-actions {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 3px;
-      margin: 0 0 6px;
+      gap: 6px;
+      margin: 0 0 8px;
     }
+    .supervisor-mobile-actions.has-historial .supervisor-route-act.is-historial,
     .supervisor-mobile-actions.has-historial .btn.is-historial {
-      grid-column: 1 / -1;
+      grid-column: auto;
       justify-self: stretch;
       width: 100%;
     }
+    .supervisor-mobile-actions.has-np .supervisor-route-act.is-np,
+    .supervisor-mobile-actions.has-np .btn.is-np {
+      grid-column: auto;
+      justify-self: stretch;
+      width: 100%;
+    }
+    .supervisor-sn-panel.is-under-actions {
+      margin: 0 0 8px;
+      padding: 6px 4px 4px;
+      border: 1px solid #e8d4d4;
+      border-radius: 8px;
+      background: #fffafa;
+    }
+    .supervisor-mobile-actions > .supervisor-route-act:nth-child(n + 3),
     .supervisor-mobile-actions > .btn:nth-child(n + 3) {
       grid-column: auto;
+    }
+    .supervisor-route-act {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 34px;
+      padding: 7px 8px;
+      border: 1px solid transparent;
+      border-radius: 8px;
+      background: #fff;
+      cursor: pointer;
+      font: inherit;
+      line-height: 1.1;
+      text-align: center;
+      box-shadow: none;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+    }
+    .supervisor-route-act b {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+    }
+    .supervisor-route-act:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .supervisor-route-act.is-planilla {
+      background: #eef6ef;
+      border-color: #c5e0cb;
+      color: #14532d;
+    }
+    .supervisor-route-act.is-gastos {
+      background: #fff0ee;
+      border-color: #f5c4bc;
+      color: #881337;
+    }
+    .supervisor-route-act.is-cobros {
+      background: #e8f0fe;
+      border-color: #bfdbfe;
+      color: #1d4ed8;
+    }
+    .supervisor-route-act.is-prestamos {
+      background: #fff4e8;
+      border-color: #f0d0a8;
+      color: #9a3412;
+    }
+    .supervisor-route-act.is-historial {
+      background: #e6f7f3;
+      border-color: #b8e4dc;
+      color: #0a3d38;
+    }
+    .supervisor-route-act.is-np {
+      background: #fff8f8;
+      border-color: #e8b4b4;
+      color: #8b3a3a;
+    }
+    .supervisor-route-act:hover:not(:disabled),
+    .supervisor-route-act:active:not(:disabled) {
+      filter: saturate(1.05);
+      opacity: 0.95;
     }
     .collector-mobile-day-history.is-supervisor-caja {
       margin: 0;
@@ -5171,14 +5308,14 @@
     }
     .supervisor-mobile-actions .btn.compact {
       width: 100%;
-      min-height: 0;
-      height: 22px;
-      padding: 0 4px;
-      font-size: 9px;
-      font-weight: 750;
-      letter-spacing: 0;
-      border-radius: 4px;
-      line-height: 1;
+      min-height: 34px;
+      height: auto;
+      padding: 7px 8px;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      border-radius: 8px;
+      line-height: 1.1;
       box-shadow: none;
     }
     .supervisor-mobile-actions .btn.compact.ghost {
@@ -11651,20 +11788,20 @@
       margin-top: 2px;
     }
     .btn.compact { padding: 6px 12px; font-size: 13px; }
-    /* Supervisor phone: chips compactos (misma escala que INICIO/RUTA). */
+    /* Supervisor phone: acciones de ruta = cajitas pastel (misma familia que INICIO/SALIR). */
     .supervisor-mobile-app .supervisor-mobile-actions {
-      gap: 3px;
-      margin-bottom: 6px;
+      gap: 6px;
+      margin-bottom: 8px;
     }
     .supervisor-mobile-app .supervisor-mobile-actions .btn.compact {
-      min-height: 0 !important;
-      height: 22px;
-      padding: 0 4px !important;
-      font-size: 9px !important;
-      font-weight: 750;
-      letter-spacing: 0;
-      border-radius: 4px;
-      line-height: 1;
+      min-height: 34px !important;
+      height: auto;
+      padding: 7px 8px !important;
+      font-size: 11px !important;
+      font-weight: 500;
+      letter-spacing: 0.04em;
+      border-radius: 8px;
+      line-height: 1.1;
       box-shadow: none;
     }
     .supervisor-mobile-app .quick-loan-actions .btn,

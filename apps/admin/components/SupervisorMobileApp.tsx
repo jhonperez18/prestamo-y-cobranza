@@ -114,6 +114,7 @@ import {
   applyCollectorCashHandSaldos,
   openingCashForChainedPlanilla,
   livePrimaryClosingCash,
+  PLANILLA_CASH_CHAIN_HISTORY_EPOCH,
   PLANILLA_CASH_CHAIN_PRIMARY,
   isPlanillaCashChainPrimary,
   isPlanillaCashChainSecondary,
@@ -177,7 +178,7 @@ type Props = {
 type SupervisorView =
   | "inicio"
   | "planilla"
-  | "caja"
+  | "informe"
   | "nequi"
   | "banco"
   | "nuevo"
@@ -192,6 +193,8 @@ type RouteDetailMode =
   | "cobros"
   | "historial"
   | "historial-dia"
+  | "np"
+  | "np-dia"
   | "nequi-historial"
   | "nequi-dia";
 
@@ -199,11 +202,11 @@ const SUPERVISOR_NAV_KEY = "nexo-supervisor-mobile-nav";
 const SUPERVISOR_VIEWS: SupervisorView[] = [
   "inicio",
   "planilla",
-  "caja",
   "nequi",
   "banco",
   "nuevo",
   "clientes",
+  "informe",
   "prestamos",
 ];
 
@@ -213,8 +216,9 @@ function readSupervisorNav(): { view: SupervisorView; openRouteRef: string | nul
     const raw = sessionStorage.getItem(SUPERVISOR_NAV_KEY);
     if (!raw) return { view: "inicio", openRouteRef: null };
     const parsed = JSON.parse(raw) as { view?: string; openRouteRef?: string | null };
-    const view = SUPERVISOR_VIEWS.includes(parsed.view as SupervisorView)
-      ? (parsed.view as SupervisorView)
+    const rawView = parsed.view === "caja" ? "informe" : parsed.view;
+    const view = SUPERVISOR_VIEWS.includes(rawView as SupervisorView)
+      ? (rawView as SupervisorView)
       : "inicio";
     return {
       view,
@@ -430,13 +434,13 @@ function RouteBoardCard({
               <span>Cobrado</span>
               <b>{money(row.cobradoHoy, { symbol: false })}</b>
             </div>
-            <div>
-              <span>Gasto</span>
-              <b>{money(row.gastosHoy, { symbol: false })}</b>
-            </div>
             <div className="is-metric-prestamo">
               <span>Préstamo</span>
               <b>{money(row.prestamosHoy, { symbol: false })}</b>
+            </div>
+            <div>
+              <span>Gasto</span>
+              <b>{money(row.gastosHoy, { symbol: false })}</b>
             </div>
           </div>
         </>
@@ -950,7 +954,6 @@ export function SupervisorMobileApp({
   );
   /** Día ISO del historial de caja (últimos 5 días del cobrador). */
   const [cajaHistoryDayIso, setCajaHistoryDayIso] = useState<string | null>(null);
-  const [snOpen, setSnOpen] = useState(false);
   const [snDay, setSnDay] = useState<string | null>(null);
   /** Registro Nequi de hoy filtrado por ruta (1 / 1.1 / 2). */
   const [nequiRegistroRoute, setNequiRegistroRoute] = useState<string | null>(null);
@@ -1439,41 +1442,6 @@ export function SupervisorMobileApp({
     };
   }, [assignedCoverage.length, liquidaciones, todayAssignments.length]);
 
-  const snAfterRouteRef = useMemo(() => {
-    const named = liquidaciones.find((row) => {
-      const slot = row.routeName.trim().toLowerCase().replace(/^ruta\s+/, "");
-      return slot === "2";
-    });
-    if (named) return named.routeRef;
-    return liquidaciones[1]?.routeRef ?? liquidaciones[0]?.routeRef ?? null;
-  }, [liquidaciones]);
-
-  const snByDay = useMemo(() => {
-    const groups = new Map<string, DailyCollectionAssignment[]>();
-    for (const row of assignments) {
-      if (!isNoPayListRow(row)) continue;
-      const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
-      if (!date || date > today) continue;
-      const list = groups.get(date) ?? [];
-      list.push(row);
-      groups.set(date, list);
-    }
-    const byName = (rows: DailyCollectionAssignment[]) =>
-      rows
-        .slice()
-        .sort((a, b) =>
-          `${a.clientRoute}|${a.clientName}`.localeCompare(
-            `${b.clientRoute}|${b.clientName}`,
-            "es",
-          ),
-        );
-    const past = [...groups.keys()]
-      .filter((date) => date < today)
-      .sort((a, b) => b.localeCompare(a))
-      .map((date) => ({ date, rows: byName(groups.get(date) ?? []) }));
-    return { todayRows: byName(groups.get(today) ?? []), past };
-  }, [assignments, today]);
-
   /**
    * Registro Nequi por día: hoy abierto; los días anteriores recogidos, uno por fila.
    * Al cambiar la fecha, el día de hoy pasa solo al historial y el nuevo arranca vacío.
@@ -1642,6 +1610,14 @@ export function SupervisorMobileApp({
   /** Cabecera: saldo Nequi + saldo Banco (totales acumulados de ambos paneles). */
   const nequiBancoSaldoTotal = nequiAcumulado + bancoAcumulado;
 
+  /** INICIO pie: caja viva de T + Nequi + Banco (misma cifra de arriba). */
+  const inicioTotalConT = useMemo(() => {
+    const routeT = liquidaciones.find((row) =>
+      isPlanillaCashChainSecondary(row.routeName),
+    );
+    return (routeT?.enCaja ?? 0) + nequiBancoSaldoTotal;
+  }, [liquidaciones, nequiBancoSaldoTotal]);
+
   const bancoRegisterTodayAll = useMemo(() => {
     const items = paymentsWithEvidence
       .filter(
@@ -1690,6 +1666,48 @@ export function SupervisorMobileApp({
     });
 
   const openRoute = liquidaciones.find((row) => row.routeRef === openRouteRef) ?? null;
+
+  /** N/P solo de la ruta abierta (nunca mezclar M con T/A/N). */
+  const openRouteNpByDay = useMemo(() => {
+    if (!openRoute) {
+      return {
+        todayRows: [] as DailyCollectionAssignment[],
+        past: [] as Array<{ date: string; rows: DailyCollectionAssignment[] }>,
+      };
+    }
+    const groups = new Map<string, DailyCollectionAssignment[]>();
+    for (const row of assignments) {
+      if (!isNoPayListRow(row)) continue;
+      if (row.collectorRef !== openRoute.collectorRef) continue;
+      if (!sameRoute(assignmentRouteName(row, clients), openRoute.routeName)) continue;
+      const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
+      if (!date || date > today) continue;
+      const list = groups.get(date) ?? [];
+      list.push(row);
+      groups.set(date, list);
+    }
+    const byName = (rows: DailyCollectionAssignment[]) =>
+      rows
+        .slice()
+        .sort((a, b) =>
+          `${a.clientRoute}|${a.clientName}`.localeCompare(
+            `${b.clientRoute}|${b.clientName}`,
+            "es",
+          ),
+        );
+    const past = [...groups.keys()]
+      .filter((date) => date < today)
+      .sort((a, b) => b.localeCompare(a))
+      .map((date) => ({ date, rows: byName(groups.get(date) ?? []) }));
+    return { todayRows: byName(groups.get(today) ?? []), past };
+  }, [assignments, clients, openRoute, today]);
+
+  const openRouteNpDayRows = useMemo(() => {
+    if (!snDay) return [] as DailyCollectionAssignment[];
+    if (snDay === today) return openRouteNpByDay.todayRows;
+    return openRouteNpByDay.past.find((day) => day.date === snDay)?.rows ?? [];
+  }, [openRouteNpByDay, snDay, today]);
+
   /** Cliente de la planilla abierta al que el supervisor le va a prestar (terminó hoy). */
   const reloanClient =
     openRoute && reloanClientRef
@@ -1846,6 +1864,9 @@ export function SupervisorMobileApp({
     const period = periodFromDateIso(today);
     const isM = isPlanillaCashChainPrimary(openRoute.routeName);
     const isT = isPlanillaCashChainSecondary(openRoute.routeName);
+    const epoch = PLANILLA_CASH_CHAIN_HISTORY_EPOCH;
+
+    // Actividad solo de ESTA ruta (T/A/N no heredan préstamos de M).
     const rows = buildCollectorDayHistory(
       openRoute.collectorRef,
       payments,
@@ -1863,6 +1884,82 @@ export function SupervisorMobileApp({
         includeOperatingExpenses: isM,
       },
     );
+
+    if (isT) {
+      // Saldo de T = cierre real de M ese día (+ movimiento propio de T, si hubo).
+      // Nunca el rolling global del cobrador (mezcla rutas → saldos falsos).
+      const mRows = buildCollectorDayHistory(
+        openRoute.collectorRef,
+        payments,
+        dayCloses,
+        [collector],
+        [today],
+        dayExpenseDrafts,
+        monthCloses,
+        period,
+        {
+          assignments,
+          loans,
+          clients,
+          includeOperatingExpenses: true,
+        },
+      );
+      const mAnnotated = annotateMHistoryExtractRows({
+        rows: mRows,
+        collectorRef: openRoute.collectorRef,
+        records: planillaCashCloses,
+        epochBootstrapOpening: openingSaldoForPeriod(
+          openRoute.collectorRef,
+          period,
+          monthCloses,
+        ),
+        todayIso: today,
+        epoch,
+      });
+      const mStamped = stampHistoryWithPlanillaCashChain({
+        collectorRef: openRoute.collectorRef,
+        routeName: PLANILLA_CASH_CHAIN_PRIMARY,
+        rows: mRows,
+        records: planillaCashCloses,
+        monthCloses,
+        fallbackOpening: openingSaldoForPeriod(
+          openRoute.collectorRef,
+          period,
+          monthCloses,
+        ),
+      });
+      const primaryClosingByDate = new Map<string, number>();
+      for (const row of mAnnotated) {
+        if (row.saldoShown != null && Number.isFinite(row.saldoShown)) {
+          primaryClosingByDate.set(row.date, row.saldoShown);
+        }
+      }
+      for (const row of mStamped) {
+        if (!primaryClosingByDate.has(row.date) && Number.isFinite(row.saldo)) {
+          primaryClosingByDate.set(row.date, row.saldo);
+        }
+      }
+      const tRows = rows
+        .filter((row) => row.date >= epoch && row.date <= today)
+        .map((row) => ({
+          ...row,
+          // Columnas de T: solo lo suyo (cobro/gasto/préstamo ya vienen filtrados).
+          saldo: primaryClosingByDate.get(row.date) ?? 0,
+        }));
+      const stamped = stampHistoryWithPlanillaCashChain({
+        collectorRef: openRoute.collectorRef,
+        routeName: openRoute.routeName,
+        rows: tRows,
+        records: planillaCashCloses,
+        monthCloses,
+        primaryClosingByDate,
+      });
+      return stamped.slice(0, 6);
+    }
+
+    if (!isM) {
+      return rows.filter((row) => row.date < today).slice(0, 5);
+    }
 
     // Saldo = caja real de M (efectivo − gasto − préstamo), misma base que la ruta.
     const cashHand = buildCollectorDayHistory(
@@ -1882,23 +1979,6 @@ export function SupervisorMobileApp({
       },
     );
     const cashByDate = new Map(cashHand.map((row) => [row.date, row.saldo]));
-
-    if (isT) {
-      const stamped = stampHistoryWithPlanillaCashChain({
-        collectorRef: openRoute.collectorRef,
-        routeName: openRoute.routeName,
-        rows,
-        records: planillaCashCloses,
-        monthCloses,
-        primaryClosingByDate: cashByDate,
-      });
-      return stamped.filter((row) => row.date <= today).slice(0, 6);
-    }
-
-    if (!isM) {
-      return rows.filter((row) => row.date < today).slice(0, 5);
-    }
-
     const withCashHand = applyCollectorCashHandSaldos(rows, cashByDate);
 
     // M: extracto con hoy incluido (Inicial lleno, Saldo — si aún no cerró).
@@ -1915,6 +1995,7 @@ export function SupervisorMobileApp({
         monthCloses,
       ),
       todayIso: today,
+      epoch,
     });
   }, [
     openRoute,
@@ -1926,6 +2007,7 @@ export function SupervisorMobileApp({
     monthCloses,
     assignments,
     loans,
+    clients,
     today,
     planillaCashCloses,
   ]);
@@ -2045,8 +2127,19 @@ export function SupervisorMobileApp({
   }
 
   function foldSnHistory() {
-    setSnOpen(false);
     setSnDay(null);
+  }
+
+  function openRouteNpSheet() {
+    suppressGhostClick();
+    setSnDay(null);
+    setDetailMode("np");
+  }
+
+  function openRouteNpDay(dateIso: string) {
+    suppressGhostClick();
+    setSnDay(dateIso);
+    setDetailMode("np-dia");
   }
 
   function foldClientesSearch() {
@@ -2536,7 +2629,12 @@ export function SupervisorMobileApp({
         );
       }
     }
-    const backTo = opts?.returnView ?? "inicio";
+    // Ficha de ruta (totales / planilla / historial / N/P) vive bajo INICIO.
+    // Nequi/Banco siguen volviendo a su panel. INFORME no captura esa ficha.
+    const backTo =
+      opts?.returnView === "nequi" || opts?.returnView === "banco"
+        ? opts.returnView
+        : "inicio";
     suppressGhostClick();
     setOpenRouteRef(ref);
     setReloanClientRef(null);
@@ -2555,8 +2653,6 @@ export function SupervisorMobileApp({
       setCobrosMethodFilter(null);
       setDetailMode("totales");
     }
-    // Mantener el panel de origen (caja/nequi/banco). Antes forzaba "inicio"
-    // y cualquier cierre accidental dejaba al usuario en el home.
     setView(backTo);
   }
 
@@ -2589,11 +2685,19 @@ export function SupervisorMobileApp({
         <button
           type="button"
           className={
-            view === "inicio" && !openRoute
+            view === "inicio" &&
+            (!openRoute ||
+              (cobrosMethodFilter !== "nequi" && cobrosMethodFilter !== "banco"))
               ? "supervisor-mobile-kpi is-inicio on"
               : "supervisor-mobile-kpi is-inicio"
           }
-          aria-current={view === "inicio" && !openRoute ? "page" : undefined}
+          aria-current={
+            view === "inicio" &&
+            (!openRoute ||
+              (cobrosMethodFilter !== "nequi" && cobrosMethodFilter !== "banco"))
+              ? "page"
+              : undefined
+          }
           {...navButtonProps(navIntent, goHome)}
         >
           <b>INICIO</b>
@@ -2612,48 +2716,6 @@ export function SupervisorMobileApp({
           })}
         >
           <b>RUTA</b>
-        </button>
-        <button
-          type="button"
-          className={
-            view === "caja" ||
-            (openRoute &&
-              (detailMode === "totales" ||
-                detailMode === "gastos" ||
-                detailMode === "cobros" ||
-                detailMode === "historial" ||
-                detailMode === "historial-dia") &&
-              cobrosMethodFilter !== "nequi" &&
-              cobrosMethodFilter !== "banco")
-              ? "supervisor-mobile-kpi is-caja on"
-              : "supervisor-mobile-kpi is-caja"
-          }
-          aria-current={
-            view === "caja" ||
-            (openRoute &&
-              (detailMode === "totales" ||
-                detailMode === "gastos" ||
-                detailMode === "cobros" ||
-                detailMode === "historial" ||
-                detailMode === "historial-dia") &&
-              cobrosMethodFilter !== "nequi" &&
-              cobrosMethodFilter !== "banco")
-              ? "page"
-              : undefined
-          }
-          {...navButtonProps(navIntent, () => {
-            if (openRoute) {
-              setCobrosMethodFilter(null);
-              setCajaHistoryDayIso(null);
-              setDetailMode("totales");
-              return;
-            }
-            if (view === "caja") return;
-            goToView("caja");
-          })}
-          title={openRoute ? `Caja · ${openRoute.collectorName}` : "Caja del día"}
-        >
-          <b>CAJA</b>
         </button>
         <button
           type="button"
@@ -2718,6 +2780,31 @@ export function SupervisorMobileApp({
         >
           <b>CLIENTES</b>
         </button>
+        <button
+          type="button"
+          className={
+            view === "informe" && !openRoute
+              ? "supervisor-mobile-kpi is-caja on"
+              : "supervisor-mobile-kpi is-caja"
+          }
+          aria-current={view === "informe" && !openRoute ? "page" : undefined}
+          {...navButtonProps(navIntent, () => {
+            if (openRoute) {
+              setOpenRouteRef(null);
+              setDetailMode("totales");
+              setCobrosMethodFilter(null);
+              setCajaHistoryDayIso(null);
+              setRouteReturnView("inicio");
+              goToView("informe");
+              return;
+            }
+            if (view === "informe") return;
+            goToView("informe");
+          })}
+          title="Informe"
+        >
+          <b>INFORME</b>
+        </button>
       </div>
       </div>
 
@@ -2747,6 +2834,15 @@ export function SupervisorMobileApp({
                     return;
                   }
                   if (detailMode === "historial") {
+                    setDetailMode("totales");
+                    return;
+                  }
+                  if (detailMode === "np-dia") {
+                    setSnDay(null);
+                    setDetailMode("np");
+                    return;
+                  }
+                  if (detailMode === "np") {
                     setDetailMode("totales");
                     return;
                   }
@@ -3168,46 +3264,122 @@ export function SupervisorMobileApp({
                 </div>
               </div>
 
-              <div className="supervisor-mobile-actions has-historial">
+              <div className="supervisor-mobile-actions has-historial has-np">
                 <button
                   type="button"
-                  className="btn compact"
+                  className="supervisor-route-act is-planilla"
                   disabled={openAssignments.length === 0}
-                  onClick={() => setDetailMode("planilla")}
+                  onClick={() => {
+                    foldSnHistory();
+                    setDetailMode("planilla");
+                  }}
                 >
-                  Planilla
+                  <b>PLANILLA</b>
                 </button>
                 <button
                   type="button"
-                  className="btn compact"
-                  onClick={() => setDetailMode("gastos")}
+                  className="supervisor-route-act is-gastos"
+                  onClick={() => {
+                    foldSnHistory();
+                    setDetailMode("gastos");
+                  }}
                 >
-                  Gastos
+                  <b>GASTOS</b>
                 </button>
                 <button
                   type="button"
-                  className="btn compact"
+                  className="supervisor-route-act is-cobros"
                   disabled={openRoute.cobradoHoy <= 0}
-                  onClick={() => openCobrosReport(null)}
+                  onClick={() => {
+                    foldSnHistory();
+                    openCobrosReport(null);
+                  }}
                 >
-                  Cobros
+                  <b>COBROS</b>
                 </button>
                 <button
                   type="button"
-                  className="btn compact"
+                  className="supervisor-route-act is-prestamos"
                   disabled={openRoute.newLoans.length + openRoute.renewals.length === 0}
-                  onClick={() => setDetailMode("prestamos")}
+                  onClick={() => {
+                    foldSnHistory();
+                    setDetailMode("prestamos");
+                  }}
                 >
-                  Préstamos
+                  <b>PRÉSTAMOS</b>
                 </button>
                 <button
                   type="button"
-                  className="btn compact is-historial"
-                  onClick={openCajaHistorial}
+                  className="supervisor-route-act is-historial"
+                  onClick={() => {
+                    foldSnHistory();
+                    openCajaHistorial();
+                  }}
                 >
-                  Historial
+                  <b>HISTORIAL</b>
+                </button>
+                <button
+                  type="button"
+                  className="supervisor-route-act is-np"
+                  onClick={openRouteNpSheet}
+                  title={`No pagan · Ruta ${openRoute.routeName}`}
+                >
+                  <b>N/P</b>
                 </button>
               </div>
+            </>
+          ) : detailMode === "np" ? (
+            <>
+              <p className="supervisor-mobile-detail-meta">
+                N/P · Ruta {openRoute.routeName} · {openRoute.collectorName}
+              </p>
+              {openRouteNpByDay.todayRows.length === 0 &&
+              openRouteNpByDay.past.length === 0 ? (
+                <p className="ficha-empty">Sin registro N/P en esta ruta.</p>
+              ) : (
+                <ul className="supervisor-nequi-day-list" aria-label={`N/P por día · Ruta ${openRoute.routeName}`}>
+                  {(openRouteNpByDay.todayRows.length > 0
+                    ? [{ date: today, rows: openRouteNpByDay.todayRows }]
+                    : []
+                  )
+                    .concat(openRouteNpByDay.past)
+                    .map((day) => {
+                      const label =
+                        day.date === today ? "Hoy" : isoToDisplay(day.date);
+                      return (
+                        <li key={day.date}>
+                          <button
+                            type="button"
+                            className="supervisor-nequi-day-row"
+                            onClick={() => openRouteNpDay(day.date)}
+                          >
+                            <span className="is-date">{label}</span>
+                            <span className="is-count">
+                              {day.rows.length} cliente
+                              {day.rows.length === 1 ? "" : "s"}
+                            </span>
+                            <b className="is-amount">{day.rows.length}</b>
+                          </button>
+                        </li>
+                      );
+                    })}
+                </ul>
+              )}
+            </>
+          ) : detailMode === "np-dia" && snDay ? (
+            <>
+              <p className="supervisor-mobile-detail-meta">
+                N/P ·{" "}
+                {snDay === today ? "Hoy" : isoToDisplay(snDay)} · Ruta{" "}
+                {openRoute.routeName}
+              </p>
+              <SnPeople
+                rows={openRouteNpDayRows}
+                empty="Nadie ese día en esta ruta"
+                dateLabel={
+                  snDay === today ? todayDisplay : isoToDisplay(snDay)
+                }
+              />
             </>
           ) : detailMode === "planilla" ? (
             <>
@@ -3336,106 +3508,9 @@ export function SupervisorMobileApp({
             <PlanillaTable rows={planillaTableRows(planillaAssignments)} />
           )}
         </section>
-      ) : view === "caja" ? (
+      ) : view === "informe" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
-          <div className="supervisor-day-boards" aria-label="Total en caja">
-            <div className="supervisor-day-board is-caja supervisor-day-board-wide is-total-row">
-              <div className="supervisor-day-board-copy">
-                <span>Total en caja</span>
-                <em>
-                  {liquidaciones.length} cobrador
-                  {liquidaciones.length === 1 ? "" : "es"}
-                </em>
-              </div>
-              <b>{money(totals.enCaja, { symbol: false })}</b>
-            </div>
-          </div>
-
-          {liquidaciones.length === 0 ? (
-            <p className="ficha-empty">No hay rutas con cobrador.</p>
-          ) : (
-            <div className="supervisor-route-boards is-pair">
-              {liquidaciones.map((row, index) => {
-                const underRuta2 = row.routeRef === snAfterRouteRef;
-                return (
-                  <div key={row.routeRef} className="supervisor-route-stack">
-                    <RouteBoardCard
-                      row={row}
-                      accent={index}
-                      mode="caja"
-                      unreadCount={unreadByRoute[row.routeRef] || 0}
-                      onOpen={(ref) => openRouteSummary(ref, { returnView: "caja" })}
-                    />
-                    {underRuta2 ? (
-                      <div className="supervisor-sn-block">
-                        <button
-                          type="button"
-                          className={snOpen ? "supervisor-sn-open on" : "supervisor-sn-open"}
-                          onClick={() => {
-                            if (!snOpen) {
-                              setSnOpen(true);
-                              setSnDay(null);
-                              return;
-                            }
-                            if (snDay) {
-                              setSnDay(null);
-                              return;
-                            }
-                            setSnOpen(false);
-                          }}
-                          aria-expanded={snOpen}
-                        >
-                          N/P
-                        </button>
-                        {snOpen ? (
-                          <div className="supervisor-sn-panel">
-                            {snByDay.todayRows.length === 0 && snByDay.past.length === 0 ? (
-                              <p className="ficha-empty">Sin registro</p>
-                            ) : (
-                              <ul className="supervisor-sn-days" aria-label="Historial N/P por día">
-                                {(snByDay.todayRows.length > 0
-                                  ? [{ date: today, rows: snByDay.todayRows }]
-                                  : []
-                                )
-                                  .concat(snByDay.past)
-                                  .map((day) => {
-                                    const open = snDay === day.date;
-                                    const label =
-                                      day.date === today ? "Hoy" : isoToDisplay(day.date);
-                                    return (
-                                      <li key={day.date}>
-                                        <button
-                                          type="button"
-                                          className={open ? "on" : undefined}
-                                          aria-expanded={open}
-                                          onClick={() => setSnDay(open ? null : day.date)}
-                                        >
-                                          <span>{label}</span>
-                                          <b>{day.rows.length}</b>
-                                        </button>
-                                        {open ? (
-                                          <SnPeople
-                                            rows={day.rows}
-                                            empty="Nadie ese día"
-                                            dateLabel={
-                                              day.date === today ? todayDisplay : label
-                                            }
-                                          />
-                                        ) : null}
-                                      </li>
-                                    );
-                                  })}
-                              </ul>
-                            )}
-                          </div>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <p className="ficha-empty">Informe · próximamente</p>
         </section>
       ) : view === "nequi" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
@@ -4511,16 +4586,29 @@ export function SupervisorMobileApp({
               ))}
             </div>
           )}
+          <footer className="supervisor-mobile-salir-foot">
+            {onLogout ? (
+              <button
+                type="button"
+                className="supervisor-mobile-kpi is-salir on"
+                onClick={onLogout}
+                title="Salir del sistema"
+              >
+                <b>SALIR</b>
+              </button>
+            ) : (
+              <span className="supervisor-mobile-salir-spacer" aria-hidden />
+            )}
+            <div
+              className="supervisor-caja-hero is-row is-money-lg supervisor-inicio-total"
+              title="Saldo ruta T + Nequi + Banco"
+              aria-label={`Total ruta T más Nequi y Banco: ${money(inicioTotalConT, { symbol: false })}`}
+            >
+              <b>{money(inicioTotalConT, { symbol: false })}</b>
+            </div>
+          </footer>
         </section>
       )}
-
-      {onLogout && view === "inicio" && !openRoute ? (
-        <footer className="collector-mobile-foot mobile-app-logout-foot">
-          <button type="button" className="btn aside-logout" onClick={onLogout}>
-            Cerrar sesión
-          </button>
-        </footer>
-      ) : null}
     </div>
   );
 }
