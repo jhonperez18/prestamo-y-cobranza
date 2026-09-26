@@ -6496,6 +6496,22 @@
       grid-template-columns: 1fr 1fr;
       gap: 8px;
     }
+    .quick-loan-row.is-capital-terms {
+      grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.55fr) minmax(0, 0.72fr);
+    }
+    .quick-loan-field.is-tight .quick-loan-input-with-suffix input {
+      padding-left: 6px;
+      padding-right: 2px;
+      text-align: center;
+    }
+    .quick-loan-field.is-tight .quick-loan-input-with-suffix em {
+      padding-left: 0;
+      padding-right: 6px;
+    }
+    .quick-loan-field.is-term .quick-loan-input-with-suffix em {
+      padding-right: 5px;
+      font-size: 11px;
+    }
     .quick-loan-field input,
     .quick-loan-field select {
       font: inherit;
@@ -6509,12 +6525,49 @@
       border-radius: 8px;
       background: #fff;
     }
+    .quick-loan-input-with-suffix {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      border: 1px solid #9bb5ab;
+      border-radius: 8px;
+      background: #fff;
+      overflow: hidden;
+    }
+    .quick-loan-input-with-suffix input {
+      flex: 1 1 auto;
+      min-width: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      padding-right: 4px;
+    }
+    .quick-loan-input-with-suffix em {
+      flex: 0 0 auto;
+      margin: 0;
+      padding: 0 8px 0 2px;
+      font-style: normal;
+      font-size: 12px;
+      font-weight: 650;
+      color: #5b7268;
+      text-transform: none;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
     .quick-loan-form.is-compact {
       gap: 6px;
       padding: 4px 2px 2px;
     }
     .quick-loan-form.is-compact .quick-loan-row {
       gap: 6px;
+    }
+    .quick-loan-form.is-compact .quick-loan-row.is-capital-terms {
+      grid-template-columns: minmax(0, 1.45fr) minmax(0, 0.5fr) minmax(0, 0.7fr);
+      gap: 5px;
+    }
+    .quick-loan-form.is-compact .quick-loan-field.is-tight .quick-loan-input-with-suffix em {
+      font-size: 10px;
+      padding-right: 4px;
     }
     .quick-loan-form.is-compact .quick-loan-field {
       font-size: 10px;
@@ -6530,6 +6583,22 @@
       border-radius: 5px;
       border-width: 1px;
       box-sizing: border-box;
+    }
+    .quick-loan-form.is-compact .quick-loan-input-with-suffix {
+      min-height: 28px;
+      height: 28px;
+      border-radius: 5px;
+      box-sizing: border-box;
+    }
+    .quick-loan-form.is-compact .quick-loan-input-with-suffix input {
+      height: 100%;
+      min-height: 0;
+      border: 0;
+      border-radius: 0;
+    }
+    .quick-loan-form.is-compact .quick-loan-input-with-suffix em {
+      font-size: 11px;
+      padding-right: 6px;
     }
     .quick-loan-form.is-compact .quick-loan-field.is-summary-cell em {
       display: flex;

@@ -110,7 +110,8 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
   const freqLabel =
     PAY_FREQUENCIES.find((item) => item.id === draft.frequency)?.label ?? draft.frequency;
   const termLabel =
-    LOAN_TERM_OPTIONS.find((item) => item.id === draft.termMonths)?.label ?? `${draft.termMonths} mes`;
+    LOAN_TERM_OPTIONS.find((item) => item.id === draft.termMonths)?.label ??
+    (draft.termMonths === 1 ? "1 mes" : `${draft.termMonths} meses`);
 
   const loan = syncLoan(
     {

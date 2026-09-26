@@ -92,10 +92,10 @@ import {
   type UserRow,
 } from "@/lib/mock-data";
 import {
-  ensureCollectorDayBaseline,
-  markCollectorDaySeen,
+  ensureRouteDayBaseline,
+  markRouteDaySeen,
   playSupervisorPaymentChime,
-  unreadPaymentCountForCollector,
+  unreadPaymentCountForRoute,
 } from "@/lib/supervisor-route-alerts";
 import {
   indexPaymentEvidenceFromPayments,
@@ -1334,18 +1334,48 @@ export function SupervisorMobileApp({
     loans,
   ]);
 
-  const [unreadByCollector, setUnreadByCollector] = useState<Record<string, number>>({});
+  const [unreadByRoute, setUnreadByRoute] = useState<Record<string, number>>({});
+  const [unreadByRouteNequi, setUnreadByRouteNequi] = useState<Record<string, number>>({});
+  const [unreadByRouteBanco, setUnreadByRouteBanco] = useState<Record<string, number>>({});
   const unreadTotalRef = useRef(0);
 
   useEffect(() => {
     const next: Record<string, number> = {};
+    const nextNequi: Record<string, number> = {};
+    const nextBanco: Record<string, number> = {};
     for (const row of liquidaciones) {
-      ensureCollectorDayBaseline(row.collectorRef, today);
-      next[row.collectorRef] = unreadPaymentCountForCollector(
+      ensureRouteDayBaseline(row.collectorRef, row.routeName, today);
+      next[row.routeRef] = unreadPaymentCountForRoute(
         row.collectorRef,
+        row.routeRef,
+        row.routeName,
         today,
         collectors,
         paymentsWithEvidence,
+        loans,
+        clients,
+      );
+      nextNequi[row.routeRef] = unreadPaymentCountForRoute(
+        row.collectorRef,
+        row.routeRef,
+        row.routeName,
+        today,
+        collectors,
+        paymentsWithEvidence,
+        loans,
+        clients,
+        "nequi",
+      );
+      nextBanco[row.routeRef] = unreadPaymentCountForRoute(
+        row.collectorRef,
+        row.routeRef,
+        row.routeName,
+        today,
+        collectors,
+        paymentsWithEvidence,
+        loans,
+        clients,
+        "banco",
       );
     }
     const total = Object.values(next).reduce((sum, n) => sum + n, 0);
@@ -1353,8 +1383,10 @@ export function SupervisorMobileApp({
       playSupervisorPaymentChime();
     }
     unreadTotalRef.current = total;
-    setUnreadByCollector(next);
-  }, [liquidaciones, collectors, paymentsWithEvidence, today]);
+    setUnreadByRoute(next);
+    setUnreadByRouteNequi(nextNequi);
+    setUnreadByRouteBanco(nextBanco);
+  }, [liquidaciones, collectors, paymentsWithEvidence, loans, clients, today]);
 
   const totals = useMemo(() => {
     const prestamosHoy = liquidaciones.reduce(
@@ -2422,20 +2454,58 @@ export function SupervisorMobileApp({
   ) {
     const route = liquidaciones.find((row) => row.routeRef === ref);
     if (route?.collectorRef) {
-      markCollectorDaySeen(
+      const methodFilter =
+        opts?.method === "nequi" || opts?.method === "banco" ? opts.method : undefined;
+      markRouteDaySeen(
         route.collectorRef,
+        route.routeRef,
+        route.routeName,
         today,
         collectors,
         paymentsWithEvidence,
+        loans,
+        clients,
+        methodFilter,
       );
-      setUnreadByCollector((current) => ({
-        ...current,
-        [route.collectorRef]: 0,
-      }));
-      unreadTotalRef.current = Math.max(
-        0,
-        unreadTotalRef.current - (unreadByCollector[route.collectorRef] || 0),
-      );
+      if (methodFilter === "nequi") {
+        setUnreadByRouteNequi((current) => ({ ...current, [route.routeRef]: 0 }));
+        setUnreadByRoute((current) => ({
+          ...current,
+          [route.routeRef]: unreadPaymentCountForRoute(
+            route.collectorRef,
+            route.routeRef,
+            route.routeName,
+            today,
+            collectors,
+            paymentsWithEvidence,
+            loans,
+            clients,
+          ),
+        }));
+      } else if (methodFilter === "banco") {
+        setUnreadByRouteBanco((current) => ({ ...current, [route.routeRef]: 0 }));
+        setUnreadByRoute((current) => ({
+          ...current,
+          [route.routeRef]: unreadPaymentCountForRoute(
+            route.collectorRef,
+            route.routeRef,
+            route.routeName,
+            today,
+            collectors,
+            paymentsWithEvidence,
+            loans,
+            clients,
+          ),
+        }));
+      } else {
+        setUnreadByRoute((current) => ({ ...current, [route.routeRef]: 0 }));
+        setUnreadByRouteNequi((current) => ({ ...current, [route.routeRef]: 0 }));
+        setUnreadByRouteBanco((current) => ({ ...current, [route.routeRef]: 0 }));
+        unreadTotalRef.current = Math.max(
+          0,
+          unreadTotalRef.current - (unreadByRoute[route.routeRef] || 0),
+        );
+      }
     }
     const backTo = opts?.returnView ?? "inicio";
     suppressGhostClick();
@@ -3260,7 +3330,7 @@ export function SupervisorMobileApp({
                       row={row}
                       accent={index}
                       mode="caja"
-                      unreadCount={unreadByCollector[row.collectorRef] || 0}
+                      unreadCount={unreadByRoute[row.routeRef] || 0}
                       onOpen={(ref) => openRouteSummary(ref, { returnView: "caja" })}
                     />
                     {underRuta2 ? (
@@ -3356,7 +3426,7 @@ export function SupervisorMobileApp({
                   row={row}
                   accent={index}
                   mode="nequi"
-                  unreadCount={unreadByCollector[row.collectorRef] || 0}
+                  unreadCount={unreadByRouteNequi[row.routeRef] || 0}
                   onOpen={(ref) =>
                     openRouteSummary(ref, { method: "nequi", returnView: "nequi" })
                   }
@@ -3460,7 +3530,7 @@ export function SupervisorMobileApp({
                   row={row}
                   accent={index}
                   mode="banco"
-                  unreadCount={unreadByCollector[row.collectorRef] || 0}
+                  unreadCount={unreadByRouteBanco[row.routeRef] || 0}
                   onOpen={(ref) =>
                     openRouteSummary(ref, { method: "banco", returnView: "banco" })
                   }
@@ -4400,7 +4470,7 @@ export function SupervisorMobileApp({
                   key={row.routeRef}
                   row={row}
                   accent={index}
-                  unreadCount={unreadByCollector[row.collectorRef] || 0}
+                  unreadCount={unreadByRoute[row.routeRef] || 0}
                   onOpen={openRouteSummary}
                 />
               ))}

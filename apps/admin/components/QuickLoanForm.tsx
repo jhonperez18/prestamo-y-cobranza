@@ -11,7 +11,6 @@ import {
   LOAN_TERM_OPTIONS,
   PAY_FREQUENCIES,
   previewLoanFlat,
-  type LoanTermMonths,
   type PayFrequency,
 } from "@/lib/loan-preview";
 import { todayIso } from "@/lib/daily-dispatch";
@@ -41,6 +40,12 @@ function formatMiles(raw: string) {
   return Number(digits).toLocaleString("es-CO");
 }
 
+/** Tasa % o plazo en meses: acepta coma/punto y decimales. */
+function parseDecimal(raw: string): number {
+  const n = Number(String(raw).trim().replace(",", ".").replace(/[^\d.]/g, ""));
+  return Number.isFinite(n) ? n : NaN;
+}
+
 const ORIGIN_LABEL: Record<LoanDisbursementSource, string> = {
   nequi: "Nequi",
   banco: "Banco",
@@ -60,40 +65,47 @@ export function QuickLoanForm({
   const initial =
     defaultFundedBy && options.includes(defaultFundedBy) ? defaultFundedBy : options[0];
   const [capitalRaw, setCapitalRaw] = useState("");
-  const [ratePct, setRatePct] = useState<(typeof QUICK_INTEREST_PCT)[number]>(20);
-  const [termMonths, setTermMonths] = useState<LoanTermMonths>(1);
+  const [rateRaw, setRateRaw] = useState("20");
+  const [termRaw, setTermRaw] = useState("1");
   const [frequency, setFrequency] = useState<PayFrequency>("diario");
   const [fundedBy, setFundedBy] = useState<LoanDisbursementSource>(initial);
   const [cuotaRaw, setCuotaRaw] = useState("");
   const cuotaTouchedRef = useRef(false);
 
   const capital = parseMoney(capitalRaw);
-  const interest = interestFromPct(capital, ratePct);
+  const ratePct = parseDecimal(rateRaw);
+  const termMonths = parseDecimal(termRaw);
+  const interest =
+    Number.isFinite(ratePct) && ratePct >= 0 ? interestFromPct(capital, ratePct) : 0;
   const cuotaManual = parseMoney(cuotaRaw);
 
   const autoPreview = useMemo(
     () =>
-      previewLoanFlat({
-        capital,
-        interest,
-        startIso: todayIso(),
-        frequency,
-        termMonths,
-      }),
+      Number.isFinite(termMonths) && termMonths > 0
+        ? previewLoanFlat({
+            capital,
+            interest,
+            startIso: todayIso(),
+            frequency,
+            termMonths,
+          })
+        : null,
     [capital, interest, frequency, termMonths],
   );
 
   const preview = useMemo(
     () =>
-      previewLoanFlat({
-        capital,
-        interest,
-        startIso: todayIso(),
-        frequency,
-        termMonths,
-        installmentAmount:
-          cuotaTouchedRef.current && cuotaManual > 0 ? cuotaManual : undefined,
-      }),
+      Number.isFinite(termMonths) && termMonths > 0
+        ? previewLoanFlat({
+            capital,
+            interest,
+            startIso: todayIso(),
+            frequency,
+            termMonths,
+            installmentAmount:
+              cuotaTouchedRef.current && cuotaManual > 0 ? cuotaManual : undefined,
+          })
+        : null,
     [capital, interest, frequency, termMonths, cuotaManual, cuotaRaw],
   );
 
@@ -107,7 +119,15 @@ export function QuickLoanForm({
     setCuotaRaw(formatMiles(String(autoPreview.installment)));
   }, [autoPreview?.installment]);
 
-  const canSave = Boolean(preview && capital > 0 && interest >= 0);
+  const canSave = Boolean(
+    preview &&
+      capital > 0 &&
+      interest >= 0 &&
+      Number.isFinite(ratePct) &&
+      ratePct >= 0 &&
+      Number.isFinite(termMonths) &&
+      termMonths > 0,
+  );
   const showOriginPicker = options.length > 1;
 
   return (
@@ -130,7 +150,7 @@ export function QuickLoanForm({
         });
       }}
     >
-      <div className="quick-loan-row">
+      <div className="quick-loan-row is-capital-terms">
         <label className="quick-loan-field">
           <span>Capital</span>
           <input
@@ -145,42 +165,58 @@ export function QuickLoanForm({
           />
         </label>
 
-        <label className="quick-loan-field">
+        <label className="quick-loan-field is-tight">
           <span>Interés</span>
-          <select
-            value={ratePct}
-            onChange={(event) => {
-              cuotaTouchedRef.current = false;
-              setRatePct(Number(event.target.value) as (typeof QUICK_INTEREST_PCT)[number]);
-            }}
-          >
+          <span className="quick-loan-input-with-suffix">
+            <input
+              list="quick-loan-interest-pct"
+              inputMode="decimal"
+              value={rateRaw}
+              onChange={(event) => {
+                cuotaTouchedRef.current = false;
+                setRateRaw(event.target.value);
+              }}
+              placeholder="20"
+              aria-label="Interés en porcentaje"
+            />
+            <em aria-hidden>%</em>
+          </span>
+          <datalist id="quick-loan-interest-pct">
             {QUICK_INTEREST_PCT.map((pct) => (
               <option key={pct} value={pct}>
                 {pct}% ({money(interestFromPct(capital, pct), { symbol: false })})
               </option>
             ))}
-          </select>
+          </datalist>
         </label>
-      </div>
 
-      <div className="quick-loan-row">
-        <label className="quick-loan-field">
+        <label className="quick-loan-field is-tight is-term">
           <span>Tiempo</span>
-          <select
-            value={termMonths}
-            onChange={(event) => {
-              cuotaTouchedRef.current = false;
-              setTermMonths(Number(event.target.value) as LoanTermMonths);
-            }}
-          >
+          <span className="quick-loan-input-with-suffix">
+            <input
+              list="quick-loan-term-months"
+              inputMode="decimal"
+              value={termRaw}
+              onChange={(event) => {
+                cuotaTouchedRef.current = false;
+                setTermRaw(event.target.value);
+              }}
+              placeholder="1"
+              aria-label="Tiempo en meses"
+            />
+            <em aria-hidden>mes</em>
+          </span>
+          <datalist id="quick-loan-term-months">
             {LOAN_TERM_OPTIONS.map((option) => (
               <option key={option.id} value={option.id}>
                 {option.label}
               </option>
             ))}
-          </select>
+          </datalist>
         </label>
+      </div>
 
+      <div className="quick-loan-row">
         <label className="quick-loan-field">
           <span>Frecuencia</span>
           <select

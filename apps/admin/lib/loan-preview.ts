@@ -5,7 +5,8 @@ import { loanStatusPill } from "@/lib/loan-status";
 import type { LoanRow } from "@/lib/mock-data";
 
 export type PayFrequency = "diario" | "semanal" | "quincenal" | "mensual";
-export type LoanTermMonths = 1 | 2 | 3;
+/** Plazo en meses (presets 1–3; también manual p.ej. 3.5). */
+export type LoanTermMonths = number;
 
 export type ChargeKind = "interes" | "capital" | "cuota";
 
@@ -465,10 +466,12 @@ export function installmentDates(startIso: string, frequency: PayFrequency, coun
  * Semanal: 4 por mes (cada 8 días). Quincenal: 2 por mes. Mensual: 1 por mes.
  */
 export function installmentCountForTerm(frequency: PayFrequency, termMonths: LoanTermMonths) {
-  if (frequency === "diario") return termMonths * 30;
-  if (frequency === "semanal") return termMonths * 4;
-  if (frequency === "quincenal") return termMonths * 2;
-  return termMonths;
+  const months = Number(termMonths);
+  if (!Number.isFinite(months) || months <= 0) return 0;
+  if (frequency === "diario") return Math.max(1, Math.round(months * 30));
+  if (frequency === "semanal") return Math.max(1, Math.round(months * 4));
+  if (frequency === "quincenal") return Math.max(1, Math.round(months * 2));
+  return Math.max(1, Math.round(months));
 }
 
 /** Fechas de cobro para un número exacto de cuotas (respeta lun–sáb en diario).
@@ -543,7 +546,7 @@ export function collectionDatesForTerm(
   frequency: PayFrequency,
   termMonths: LoanTermMonths,
 ): string[] {
-  if (!startIso || termMonths < 1) return [];
+  if (!startIso || !(Number(termMonths) > 0)) return [];
   return collectionDatesForCount(
     startIso,
     frequency,
