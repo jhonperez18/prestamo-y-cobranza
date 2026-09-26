@@ -335,7 +335,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
       .catch(() => showToast(`${result.message} (sin nube; en este aparato ya está).`));
   }
 
-  function createQuickLoanFromMobile(draft: QuickLoanDraft) {
+  async function createQuickLoanFromMobile(draft: QuickLoanDraft) {
     const client = clients.find((row) => row.ref === draft.clientRef);
     if (!client) {
       showToast("Cliente no encontrado.");
@@ -364,6 +364,8 @@ export function SupervisorShell({ session, onLogout }: Props) {
     });
     setLoans(nextLoans);
     setClients(nextClients);
+    writeDemoJson(DEMO_LOANS_KEY, nextLoans);
+    writeDemoJson(DEMO_CLIENTS_KEY, nextClients);
     const planilla = syncPermanentRoutePlanilla(
       todayIso(),
       routes,
@@ -375,9 +377,13 @@ export function SupervisorShell({ session, onLogout }: Props) {
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, planilla.assignments);
+    writeDemoJson(DEMO_ROUTES_KEY, planilla.routes);
     queueLoanMirror(loan);
     const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
     if (mirroredClient) queueClientMirror(mirroredClient);
+    queueAssignmentsMirror(planilla.assignments);
+    queueRoutesMirror(planilla.routes);
     writeDemoJson(
       DEMO_BANK_MOVEMENTS_KEY,
       syncBankLedger({
@@ -395,8 +401,20 @@ export function SupervisorShell({ session, onLogout }: Props) {
       }),
     );
     showToast(
-      `Préstamo ${loan.ref} · origen ${loan.fundedBy === "banco" ? "Banco" : "Nequi"} · cuota ${money(loan.installment ?? 0)}.`,
+      `Préstamo ${loan.ref} · origen ${loan.fundedBy === "banco" ? "Banco" : "Nequi"} · subiendo…`,
     );
+    try {
+      await flushCatalogMirrorQueues();
+      await flushOpsMirrorQueues();
+      await flushOpsMirrorQueues();
+      showToast(
+        `Préstamo ${loan.ref} listo · cuota ${money(loan.installment ?? 0)}.`,
+      );
+    } catch {
+      showToast(
+        `Préstamo ${loan.ref} guardado (sin nube; en este aparato ya está).`,
+      );
+    }
   }
 
   function saveMiscPaymentFromMobile(payment: MiscPayment) {

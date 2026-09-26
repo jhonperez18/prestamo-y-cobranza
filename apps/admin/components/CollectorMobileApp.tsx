@@ -61,7 +61,6 @@ import {
   paymentMethodInitial,
   paymentMethodKind,
   paymentMethodLabel,
-  paymentMethodToneClass,
 } from "@/lib/payment-method";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import {
@@ -1856,7 +1855,7 @@ export function CollectorMobileApp({
       ) : null}
 
       {listFilter === "done" ? (
-        <ul className="collector-mobile-list compact" aria-label="Quienes pagaron">
+        <ul className="collector-mobile-list compact is-recaudo-sheet" aria-label="Quienes pagaron">
           {dayPaysByRoute.length === 0 ? (
             <li className="collector-mobile-empty-inline">Aún no hay cobros del día.</li>
           ) : (
@@ -1889,17 +1888,15 @@ export function CollectorMobileApp({
                     "collector-mobile-card",
                     "is-done",
                     "is-dense",
-                    paymentMethodToneClass(method),
-                    reloan.granted ? "is-reloan" : "",
                     reloanOpen ? "is-open" : "",
                     doneRouteStarts[index] ? "is-route-start" : "",
                   ]
                     .filter(Boolean)
                     .join(" ")}
                 >
-                  <div className="collector-mobile-dense-row">
-                    <div className="collector-mobile-visit-who">
-                      <strong>{payerName(pay, loans, clients)}</strong>
+                  <div className="collector-mobile-dense-row is-recaudo-row">
+                    <strong className="is-recaudo-name">{payerName(pay, loans, clients)}</strong>
+                    <span className="is-recaudo-loan">
                       {canOfferReloan ? (
                         <button
                           type="button"
@@ -1918,8 +1915,8 @@ export function CollectorMobileApp({
                           Préstamo {money(reloan.granted.capital, { symbol: false })}
                         </span>
                       ) : null}
-                    </div>
-                    <span className="collector-mobile-ref is-done-col">
+                    </span>
+                    <span className="is-recaudo-amount">
                       {money(pay.amount, { symbol: false })}
                     </span>
                     <Pill

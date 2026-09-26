@@ -3,12 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   interestFromPct,
-  QUICK_INTEREST_PCT,
   type QuickLoanDraft,
 } from "@/lib/street-client-loan";
 import type { LoanDisbursementSource } from "@/lib/nequi-pool";
 import {
-  LOAN_TERM_OPTIONS,
   PAY_FREQUENCIES,
   previewLoanFlat,
   type PayFrequency,
@@ -169,7 +167,6 @@ export function QuickLoanForm({
           <span>Interés</span>
           <span className="quick-loan-input-with-suffix">
             <input
-              list="quick-loan-interest-pct"
               inputMode="decimal"
               value={rateRaw}
               onChange={(event) => {
@@ -181,20 +178,12 @@ export function QuickLoanForm({
             />
             <em aria-hidden>%</em>
           </span>
-          <datalist id="quick-loan-interest-pct">
-            {QUICK_INTEREST_PCT.map((pct) => (
-              <option key={pct} value={pct}>
-                {pct}% ({money(interestFromPct(capital, pct), { symbol: false })})
-              </option>
-            ))}
-          </datalist>
         </label>
 
         <label className="quick-loan-field is-tight is-term">
           <span>Tiempo</span>
           <span className="quick-loan-input-with-suffix">
             <input
-              list="quick-loan-term-months"
               inputMode="decimal"
               value={termRaw}
               onChange={(event) => {
@@ -206,13 +195,6 @@ export function QuickLoanForm({
             />
             <em aria-hidden>mes</em>
           </span>
-          <datalist id="quick-loan-term-months">
-            {LOAN_TERM_OPTIONS.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </datalist>
         </label>
       </div>
 

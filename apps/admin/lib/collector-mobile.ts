@@ -3,7 +3,11 @@ import {
   assignmentsForCollectorDate,
   dispatchRouteRef,
 } from "@/lib/collector-dispatch-sync";
-import { normalizeHistoryDate, type CollectorDayCloseRecord } from "@/lib/collector-day-close";
+import {
+  applyDayCloseRecordsToAssignments,
+  normalizeHistoryDate,
+  type CollectorDayCloseRecord,
+} from "@/lib/collector-day-close";
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
@@ -53,7 +57,11 @@ function hasDayCloseRecord(
 ) {
   const norm = normalizeHistoryDate(date);
   return dayCloses.some(
-    (row) => row.collectorRef === collectorRef && normalizeHistoryDate(row.date) === norm,
+    (row) =>
+      // PCE- = eslabón de caja M/T; no es cierre de jornada (CIE-).
+      !String(row.ref || "").startsWith("PCE-") &&
+      row.collectorRef === collectorRef &&
+      normalizeHistoryDate(row.date) === norm,
   );
 }
 
@@ -128,8 +136,11 @@ export function collectorMobileQueue(
   dayCloses: CollectorDayCloseRecord[] = [],
   payments: PaymentRow[] = [],
 ): CollectorMobileQueue {
+  // CIE en este aparato debe sellar la hoja antes de contar «por cobrar»
+  // (si no, otro celular ve pendientes fantasma aunque la jornada ya cerró).
+  const sealedAssignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
   const dayItems = assignmentsForCollectorDate(
-    assignments,
+    sealedAssignments,
     collectorRef,
     date,
     loans,
@@ -159,8 +170,10 @@ export function collectorMobileQueue(
   // Pendientes de la hoja: cobrables + sin préstamo (Prestar), en el orden de la ruta.
   // Los «filler» ya no se ocultan: van en azul, sin billete.
   const pending = sheet.filter((row) => {
-    if (row.dayClosedAt && isEffectivelyPaid(row)) return false;
-    if (row.dayClosedAt && row.visitStatus === "omitido") return false;
+    // Sello de cierre (dayClosedAt): fuera de «por cobrar».
+    // No reabrir por PG ausente en este celular — contradecía reconcile (cierre manda).
+    if (row.dayClosedAt) return false;
+
     if (isRouteFiller(row)) {
       // Sin crédito: sigue en hoja hasta prestar u omitir.
       if (row.visitStatus === "omitido") return false;
@@ -169,10 +182,6 @@ export function collectorMobileQueue(
         !row.visitStatus ||
         Boolean(row.awaitingLoan)
       );
-    }
-    // Tras anular: visita sellada sin PG vivo vuelve a pendiente cobrable.
-    if (row.dayClosedAt && !isEffectivelyPaid(row) && row.visitStatus !== "omitido") {
-      return true;
     }
     if (row.visitStatus === "omitido") return false;
     if (isEffectivelyPaid(row)) return false;

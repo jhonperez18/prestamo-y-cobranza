@@ -3125,6 +3125,64 @@
       grid-template-areas: "ord who ref pay";
       column-gap: 8px;
     }
+    .collector-mobile-list.is-recaudo-sheet {
+      gap: 0;
+      border: 1px solid #c3d4cc;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .collector-mobile-list.is-recaudo-sheet > .collector-mobile-card.is-dense.is-done {
+      border-bottom: 1px solid #e2ece7;
+      background: var(--row-b);
+    }
+    .collector-mobile-list.is-recaudo-sheet > .collector-mobile-card.is-dense.is-done:nth-child(odd) {
+      background: var(--row-a);
+    }
+    .collector-mobile-list.is-recaudo-sheet > .collector-mobile-card.is-dense.is-done:nth-child(even) {
+      background: var(--row-b);
+    }
+    .collector-mobile-list.is-recaudo-sheet > .collector-mobile-card.is-dense.is-done:last-child {
+      border-bottom: 0;
+    }
+    .collector-mobile-dense-row.is-recaudo-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.55fr) minmax(0, 1.15fr) minmax(4.2rem, auto) auto;
+      grid-template-areas: none;
+      column-gap: 10px;
+      align-items: center;
+      width: 100%;
+      min-width: 0;
+    }
+    .collector-mobile-dense-row.is-recaudo-row .is-recaudo-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      font-weight: 400;
+      color: #111;
+      text-align: left;
+    }
+    .collector-mobile-dense-row.is-recaudo-row .is-recaudo-loan {
+      min-width: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+    }
+    .collector-mobile-dense-row.is-recaudo-row .is-recaudo-amount {
+      justify-self: end;
+      font-size: 12px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #14201b;
+      white-space: nowrap;
+    }
+    .collector-mobile-dense-row.is-recaudo-row > .pill {
+      justify-self: end;
+      margin: 0;
+    }
     .collector-mobile-card.is-done .collector-mobile-ref.is-done-col {
       grid-area: ref;
       justify-self: end;
@@ -6497,7 +6555,7 @@
       gap: 8px;
     }
     .quick-loan-row.is-capital-terms {
-      grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.55fr) minmax(0, 0.72fr);
+      grid-template-columns: minmax(0, 1.28fr) minmax(0, 0.78fr) minmax(0, 0.72fr);
     }
     .quick-loan-field.is-tight .quick-loan-input-with-suffix input {
       padding-left: 6px;
@@ -6562,7 +6620,7 @@
       gap: 6px;
     }
     .quick-loan-form.is-compact .quick-loan-row.is-capital-terms {
-      grid-template-columns: minmax(0, 1.45fr) minmax(0, 0.5fr) minmax(0, 0.7fr);
+      grid-template-columns: minmax(0, 1.22fr) minmax(0, 0.8fr) minmax(0, 0.7fr);
       gap: 5px;
     }
     .quick-loan-form.is-compact .quick-loan-field.is-tight .quick-loan-input-with-suffix em {

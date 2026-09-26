@@ -534,7 +534,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     );
   }
 
-  function createQuickLoanFromMobile(draft: QuickLoanDraft) {
+  async function createQuickLoanFromMobile(draft: QuickLoanDraft) {
     if (!collector) return;
     const client = clients.find((row) => row.ref === draft.clientRef);
     if (!client) {
@@ -559,6 +559,8 @@ export function CollectorShell({ session, onLogout }: Props) {
     );
     setLoans(nextLoans);
     setClients(nextClients);
+    writeDemoJson(DEMO_LOANS_KEY, nextLoans);
+    writeDemoJson(DEMO_CLIENTS_KEY, nextClients);
     const planilla = syncPermanentRoutePlanilla(
       todayIso(),
       routes,
@@ -570,9 +572,13 @@ export function CollectorShell({ session, onLogout }: Props) {
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, planilla.assignments);
+    writeDemoJson(DEMO_ROUTES_KEY, planilla.routes);
     queueLoanMirror(loan);
     const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
     if (mirroredClient) queueClientMirror(mirroredClient);
+    queueAssignmentsMirror(planilla.assignments);
+    queueRoutesMirror(planilla.routes);
     const routeRef =
       myRoutes.find((row) => row.name === client.route)?.ref ||
       myRoutes[0]?.ref ||
@@ -607,8 +613,20 @@ export function CollectorShell({ session, onLogout }: Props) {
       }),
     );
     showToast(
-      `Préstamo ${loan.ref} · capital ${money(loan.capital)} descontado de caja · cuota ${money(loan.installment ?? 0)}.`,
+      `Préstamo ${loan.ref} · capital ${money(loan.capital)} descontado de caja · subiendo…`,
     );
+    try {
+      await flushCatalogMirrorQueues();
+      await flushOpsMirrorQueues();
+      await flushOpsMirrorQueues();
+      showToast(
+        `Préstamo ${loan.ref} listo · cuota ${money(loan.installment ?? 0)}.`,
+      );
+    } catch {
+      showToast(
+        `Préstamo ${loan.ref} guardado (sin nube; en este aparato ya está).`,
+      );
+    }
   }
 
   function skipCollectorVisit(draft: CollectorSkipVisitDraft) {
