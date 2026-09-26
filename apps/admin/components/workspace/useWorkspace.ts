@@ -242,13 +242,8 @@ import {
 import { runOperationalDayCycle } from "@/lib/collector-day-auto-close";
 import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
 import { dedupeDailyPaymentsByVisit, reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
-import {
-  collectorDayPayments,
-  collectorRecaudoBreakdown,
-  collectorRecaudoForDate,
-} from "@/lib/collector-mobile";
-import { assignmentRouteName } from "@/lib/collector-dispatch-sync";
-import { sameRoute } from "@/lib/client-route-order";
+import { sealCollectorDay } from "@/lib/collector-day-close-seal";
+import { alignChainLinksToLedger, buildDayCashLedger } from "@/lib/day-cash-ledger";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement, miscPaymentRefForMovement } from "@/lib/misc-payments";
 import {
@@ -281,18 +276,13 @@ import {
 import {
   buildDayExpenseDraft,
   buildMonthCloseRecord,
-  dayExpenseLineMovementRef,
-  expensesForCollectorDay,
-  finalizeCollectorDayClose,
   findDayExpenseDraft,
   appendCashDisbursementExpense,
   applyDayCloseRecordsToAssignments,
   normalizeHistoryDate,
   recoverPaymentsFromAssignments,
   recoverPaymentsFromBankMovements,
-  removeDayExpenseDraft,
   synthesizeDayClosesFromAssignments,
-  upsertAndTrimCollectorDayClose,
   upsertDayExpenseDraft,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
@@ -300,24 +290,10 @@ import {
 } from "@/lib/collector-day-close";
 import {
   assertCanCloseChainedPlanilla,
-  alignPlanillaCashChainToPrimaryClosing,
-  buildPlanillaCashClose,
   ensureManualTLaunchClose,
-  findPlanillaCashClose,
-  isPlanillaCashChainRoute,
-  isPlanillaCashChainSecondary,
-  livePrimaryClosingCash,
-  planillaCashCloseAsDayClose,
-  PLANILLA_CASH_CHAIN_PRIMARY,
-  PLANILLA_CASH_CHAIN_SECONDARY,
   splitDayClosesAndPlanillaCash,
-  upsertPlanillaCashClose,
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
-import {
-  dayLoanDisbursementRows,
-  dayLoanDisbursementTotal,
-} from "@/lib/collector-history-planilla";
 
 import type { FileTab, LoanTab, WorkspaceProps } from "./types";
 
@@ -765,8 +741,8 @@ export function useWorkspace({
   }, [planillaCashCloses, demoHydrated]);
 
   /**
-   * Una sola pasada tras hidratar: alinea PCE de hoy si el cierre viejo
-   * no descontó préstamos. No corre en cada pull/pago (eso dejaba el panel ralentizado).
+   * Una sola pasada tras hidratar: eslabones PCE- de hoy = libro de caja del día
+   * (cobros / préstamos cargados después del cierre de la hoja).
    */
   const cashChainRepairedRef = useRef(false);
   useEffect(() => {
@@ -775,97 +751,27 @@ export function useWorkspace({
     cashChainRepairedRef.current = true;
     const today = todayIso();
     let next = planillaCashCloses;
-    let changed = false;
     const seen = new Set<string>();
     for (const row of planillaCashCloses) {
-      if (!sameRoute(row.routeName, PLANILLA_CASH_CHAIN_PRIMARY)) continue;
       if ((normalizeHistoryDate(row.date) || row.date) !== today) continue;
-      const key = `${row.collectorRef}|${row.date}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      const collector = collectors.find((entry) => entry.ref === row.collectorRef);
-      if (!collector) continue;
-      const mClients = new Set(
-        clients
-          .filter((entry) => sameRoute(entry.route, PLANILLA_CASH_CHAIN_PRIMARY))
-          .map((entry) => entry.ref),
-      );
-      for (const assignment of dailyAssignments) {
-        if (
-          assignment.collectorRef === row.collectorRef &&
-          assignment.clientRef &&
-          sameRoute(assignmentRouteName(assignment, clients), PLANILLA_CASH_CHAIN_PRIMARY)
-        ) {
-          mClients.add(assignment.clientRef);
-        }
-      }
-      let efectivo = 0;
-      for (const pay of collectorDayPayments(
-        row.collectorRef,
-        row.date,
+      if (seen.has(row.collectorRef)) continue;
+      seen.add(row.collectorRef);
+      const ledger = buildDayCashLedger({
+        collectorRef: row.collectorRef,
+        date: today,
         payments,
-        [collector],
-      )) {
-        const loan = loans.find((entry) => entry.ref === pay.loanRef);
-        if (!loan?.clientRef || !mClients.has(loan.clientRef)) continue;
-        const method = normalizePaymentMethod(pay.method);
-        if (method === "nequi" || method === "banco") continue;
-        efectivo += Number(pay.amount) || 0;
-      }
-      const rawExpenses = expensesForCollectorDay(
-        row.collectorRef,
-        row.date,
+        loans,
+        clients,
+        collectors,
+        assignments: dailyAssignments,
         dayCloses,
         dayExpenseDrafts,
-      );
-      let gastos = 0;
-      for (const line of rawExpenses) {
-        const amount = Number(line.amount) || 0;
-        if (!(amount > 0)) continue;
-        if (line.category === "prestamo_ruta" || line.id === "prestamo") continue;
-        gastos += amount;
-      }
-      const prestamos = dayLoanDisbursementTotal(
-        dayLoanDisbursementRows(row.date, rawExpenses, loans, clients, {
-          collectorRef: row.collectorRef,
-          assignments: dailyAssignments,
-        }),
-      );
-      const trueClosing = livePrimaryClosingCash({
-        opening: row.openingCash,
-        cashCollected: efectivo,
-        cashOut: gastos + prestamos,
+        planillaCashCloses: next,
+        monthCloses,
       });
-      const mClose = findPlanillaCashClose(
-        next,
-        row.collectorRef,
-        row.date,
-        PLANILLA_CASH_CHAIN_PRIMARY,
-      );
-      if (mClose && pesos(mClose.closingCash) === pesos(trueClosing)) continue;
-      next = alignPlanillaCashChainToPrimaryClosing(
-        next,
-        row.collectorRef,
-        row.date,
-        trueClosing,
-      );
-      changed = true;
-      const mFixed = findPlanillaCashClose(
-        next,
-        row.collectorRef,
-        row.date,
-        PLANILLA_CASH_CHAIN_PRIMARY,
-      );
-      if (mFixed) queueDayCloseMirror(planillaCashCloseAsDayClose(mFixed));
-      const tFixed = findPlanillaCashClose(
-        next,
-        row.collectorRef,
-        row.date,
-        PLANILLA_CASH_CHAIN_SECONDARY,
-      );
-      if (tFixed) queueDayCloseMirror(planillaCashCloseAsDayClose(tFixed));
+      next = alignChainLinksToLedger(next, ledger);
     }
-    if (!changed) return;
+    if (next === planillaCashCloses) return;
     setPlanillaCashCloses(next);
     writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, next);
   }, [
@@ -876,6 +782,7 @@ export function useWorkspace({
     dayExpenseDrafts,
     demoHydrated,
     loans,
+    monthCloses,
     payments,
     planillaCashCloses,
   ]);
@@ -1604,36 +1511,37 @@ export function useWorkspace({
     // Misma raíz que cierre móvil / 23:30: CIE + gastos → banco, no solo planilla.
     let nextCloses = dayCloses;
     let nextDrafts = dayExpenseDrafts;
+    let nextCash = planillaCashCloses;
     for (const collectorRef of result.collectorRefs) {
       const collector = collectors.find((row) => row.ref === collectorRef);
       if (!collector) continue;
       const draft = findDayExpenseDraft(nextDrafts, collectorRef, date);
-      const lines = (draft?.expenses ?? []).filter((row) => row.amount > 0);
-      const collected = collectorRecaudoForDate(collectorRef, date, payments, collectors);
-      const cashCollected = collectorRecaudoBreakdown(
+      const sealed = sealCollectorDay({
         collectorRef,
+        collectorName: collector.name,
         date,
+        routeRef: draft?.routeRef || `RUT-D-${collectorRef}-${date}`,
+        expensesFallback: [],
+        fullyClosed: true,
+        assignments: result.assignments,
+        dayCloses: nextCloses,
+        dayExpenseDrafts: nextDrafts,
+        planillaCashCloses: nextCash,
+        monthCloses,
         payments,
+        loans,
+        clients,
         collectors,
-      ).efectivo;
-      const record = finalizeCollectorDayClose({
-        draft: {
-          collectorRef,
-          collectorName: collector.name,
-          date,
-          routeRef: draft?.routeRef || `RUT-D-${collectorRef}-${date}`,
-          collected,
-          expenses: lines,
-        },
-        lines,
-        cashCollected,
-        movementRefs: lines.map((line) =>
-          dayExpenseLineMovementRef(collectorRef, date, line.id, line.loanRef),
-        ),
       });
-      nextCloses = upsertAndTrimCollectorDayClose(nextCloses, record);
-      nextDrafts = removeDayExpenseDraft(nextDrafts, collectorRef, date);
-      queueDayCloseMirror(record);
+      if (!sealed.record) continue;
+      nextCloses = sealed.dayCloses;
+      nextDrafts = sealed.dayExpenseDrafts;
+      nextCash = sealed.planillaCashCloses;
+      queueDayCloseMirror(sealed.record);
+    }
+    if (nextCash !== planillaCashCloses) {
+      setPlanillaCashCloses(nextCash);
+      writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, nextCash);
     }
 
     const closedAssignments = applyDayCloseRecordsToAssignments(
@@ -1758,174 +1666,39 @@ export function useWorkspace({
       payload.date,
     );
 
-    const closes = loadDemoDayCloses<CollectorDayCloseRecord>().filter(
-      (row) => !String(row.ref || "").startsWith("PCE-"),
-    );
-    let nextCloses = closes;
-    let nextDrafts = dayExpenseDrafts;
-    let record: CollectorDayCloseRecord | null = null;
+    const sealed = sealCollectorDay({
+      collectorRef: payload.collectorRef,
+      collectorName: payload.collectorName,
+      date: payload.date,
+      routeRef: payload.routeRef,
+      planillaRoute: payload.planillaRoute,
+      openingCashHint: payload.openingCash,
+      expensesFallback: payload.expenses,
+      fullyClosed,
+      assignments: result.assignments,
+      dayCloses: loadDemoDayCloses<CollectorDayCloseRecord>(),
+      dayExpenseDrafts,
+      planillaCashCloses,
+      monthCloses,
+      payments,
+      loans,
+      clients,
+      collectors,
+    });
+    const record = sealed.record;
+    const nextCloses = sealed.dayCloses;
 
-    // Cadena M↔T: solo saldos. A no entra.
-    if (isPlanillaCashChainRoute(payload.planillaRoute)) {
-      const cashLink = buildPlanillaCashClose({
-        collectorRef: payload.collectorRef,
-        collectorName: payload.collectorName,
-        date: payload.date,
-        routeName: String(payload.planillaRoute),
-        openingCash: Number(payload.openingCash) || 0,
-        cashCollected: Number(payload.collectedEfectivo) || 0,
-        cashOut: Number(payload.cashOut) || 0,
-      });
-      let nextCash = upsertPlanillaCashClose(planillaCashCloses, cashLink);
-
-      // Saldo final real de M (con todos los préstamos) → Inicial de T / próximo M.
-      const collector = collectors.find((row) => row.ref === payload.collectorRef);
-      const mClose = nextCash.find(
-        (row) =>
-          row.collectorRef === payload.collectorRef &&
-          row.date === payload.date &&
-          sameRoute(row.routeName, PLANILLA_CASH_CHAIN_PRIMARY),
-      );
-      if (collector && mClose) {
-        const mClients = new Set(
-          clients
-            .filter((row) => sameRoute(row.route, PLANILLA_CASH_CHAIN_PRIMARY))
-            .map((row) => row.ref),
-        );
-        for (const row of result.assignments) {
-          if (
-            row.collectorRef === payload.collectorRef &&
-            row.clientRef &&
-            sameRoute(assignmentRouteName(row, clients), PLANILLA_CASH_CHAIN_PRIMARY)
-          ) {
-            mClients.add(row.clientRef);
-          }
-        }
-        let efectivo = 0;
-        for (const pay of collectorDayPayments(
-          payload.collectorRef,
-          payload.date,
-          payments,
-          [collector],
-        )) {
-          const loan = loans.find((row) => row.ref === pay.loanRef);
-          if (!loan?.clientRef || !mClients.has(loan.clientRef)) continue;
-          const method = normalizePaymentMethod(pay.method);
-          if (method === "nequi" || method === "banco") continue;
-          efectivo += Number(pay.amount) || 0;
-        }
-        const rawExpenses = expensesForCollectorDay(
-          payload.collectorRef,
-          payload.date,
-          closes,
-          dayExpenseDrafts,
-        );
-        let gastos = 0;
-        for (const line of rawExpenses) {
-          const amount = Number(line.amount) || 0;
-          if (!(amount > 0)) continue;
-          if (line.category === "prestamo_ruta" || line.id === "prestamo") continue;
-          gastos += amount;
-        }
-        const prestamos = dayLoanDisbursementTotal(
-          dayLoanDisbursementRows(payload.date, rawExpenses, loans, clients, {
-            collectorRef: payload.collectorRef,
-            assignments: result.assignments,
-          }),
-        );
-        const trueMClosing = livePrimaryClosingCash({
-          opening: mClose.openingCash,
-          cashCollected: efectivo,
-          cashOut: gastos + prestamos,
-        });
-        nextCash = alignPlanillaCashChainToPrimaryClosing(
-          nextCash,
-          payload.collectorRef,
-          payload.date,
-          trueMClosing,
-        );
-        // T cierra última: su closingCash (M final + movimiento T) = saldo final del día.
-        if (isPlanillaCashChainSecondary(payload.planillaRoute)) {
-          const tLink = buildPlanillaCashClose({
-            collectorRef: payload.collectorRef,
-            collectorName: payload.collectorName,
-            date: payload.date,
-            routeName: PLANILLA_CASH_CHAIN_SECONDARY,
-            openingCash: trueMClosing,
-            cashCollected: Number(payload.collectedEfectivo) || 0,
-            cashOut: Number(payload.cashOut) || 0,
-          });
-          nextCash = upsertPlanillaCashClose(nextCash, tLink);
-        }
-      }
-
-      setPlanillaCashCloses(nextCash);
-      writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, nextCash);
-      const mirroredM = nextCash.find(
-        (row) =>
-          row.collectorRef === payload.collectorRef &&
-          row.date === payload.date &&
-          sameRoute(row.routeName, PLANILLA_CASH_CHAIN_PRIMARY),
-      );
-      const mirroredT = nextCash.find(
-        (row) =>
-          row.collectorRef === payload.collectorRef &&
-          row.date === payload.date &&
-          sameRoute(row.routeName, PLANILLA_CASH_CHAIN_SECONDARY),
-      );
-      if (mirroredM) queueDayCloseMirror(planillaCashCloseAsDayClose(mirroredM));
-      if (mirroredT) queueDayCloseMirror(planillaCashCloseAsDayClose(mirroredT));
-      if (!mirroredM && !mirroredT) {
-        queueDayCloseMirror(planillaCashCloseAsDayClose(cashLink));
-      }
+    if (sealed.sealedLinks.length) {
+      setPlanillaCashCloses(sealed.planillaCashCloses);
+      writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, sealed.planillaCashCloses);
     }
 
-    if (fullyClosed) {
-      const dayExpenses = expensesForCollectorDay(
-        payload.collectorRef,
-        payload.date,
-        closes,
-        dayExpenseDrafts,
-      );
-      const lines = (dayExpenses.length ? dayExpenses : payload.expenses).filter(
-        (row) => row.amount > 0,
-      );
-      const breakdown = collectorRecaudoBreakdown(
-        payload.collectorRef,
-        payload.date,
-        payments,
-        collectors,
-      );
-      record = finalizeCollectorDayClose({
-        draft: {
-          collectorRef: payload.collectorRef,
-          collectorName: payload.collectorName,
-          date: payload.date,
-          routeRef: payload.routeRef,
-          collected: breakdown.total,
-          expenses: lines,
-        },
-        lines,
-        cashCollected: breakdown.efectivo,
-        movementRefs: lines.map((line) =>
-          dayExpenseLineMovementRef(
-            payload.collectorRef,
-            payload.date,
-            line.id,
-            line.loanRef,
-          ),
-        ),
-      });
-      nextCloses = upsertAndTrimCollectorDayClose(closes, record);
+    if (record) {
       writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextCloses);
       setDayCloses(nextCloses);
       queueDayCloseMirror(record);
 
-      nextDrafts = removeDayExpenseDraft(
-        dayExpenseDrafts,
-        payload.collectorRef,
-        payload.date,
-      );
+      const nextDrafts = sealed.dayExpenseDrafts;
       writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
       setDayExpenseDrafts(nextDrafts);
 
@@ -1979,7 +1752,7 @@ export function useWorkspace({
     }
 
     const parts = [
-      record ? `caja menor ${money(record.cashFloat)}` : null,
+      record ? `saldo final ${money(record.cashFloat)}` : null,
       record && record.expensesTotal > 0
         ? `gastos ${money(record.expensesTotal)} (Haber)`
         : null,

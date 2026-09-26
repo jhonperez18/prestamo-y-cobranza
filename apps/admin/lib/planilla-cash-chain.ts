@@ -6,6 +6,9 @@
  * 3. CIE- (`cash_float`) = saldo final del día en nube. Manda siempre.
  * 4. Inicial M mañana = CIE de ayer. PCE local nunca pisa al CIE.
  * 5. Ayer y atrás inmóviles: no recalcular saldos viejos.
+ *
+ * La caja viva de M, el Inicial de T y el `cash_float` que sella el CIE- se
+ * calculan SOLO en `day-cash-ledger.ts`. Aquí no se suman cobros ni préstamos.
  */
 import {
   dayCloseRef,
@@ -155,15 +158,6 @@ export function findLatestPlanillaCashCloseBefore(
   return best;
 }
 
-/** Caja viva de M: inicial + efectivo − salidas (lo que T ve momentáneo). */
-export function livePrimaryClosingCash(input: {
-  opening: number;
-  cashCollected: number;
-  cashOut: number;
-}) {
-  return pesos(input.opening + pesos(input.cashCollected) - pesos(input.cashOut));
-}
-
 /**
  * Saldo final del día (única cifra para historial / registros / próximo Inicial M).
  *
@@ -224,7 +218,7 @@ export function findFullDayCieClose(
   for (const row of dayCloses) {
     if (row.collectorRef !== collectorRef) continue;
     if (isPlanillaCashCloseRef(row.ref)) continue;
-    if (!String(row.ref || "").startsWith("CIE-")) continue;
+    if (!String(row.ref || "").startsWith("CIE-") || row.provisional) continue;
     const d = normalizeHistoryDate(row.date) || row.date;
     if (d !== target) continue;
     best = row;
@@ -243,7 +237,7 @@ export function findLatestFullDayCieBefore(
   for (const row of dayCloses) {
     if (row.collectorRef !== collectorRef) continue;
     if (isPlanillaCashCloseRef(row.ref)) continue;
-    if (!String(row.ref || "").startsWith("CIE-")) continue;
+    if (!String(row.ref || "").startsWith("CIE-") || row.provisional) continue;
     const d = normalizeHistoryDate(row.date) || row.date;
     if (!d || d >= before) continue;
     if (!best || d > (normalizeHistoryDate(best.date) || best.date)) best = row;
@@ -261,7 +255,7 @@ export function projectPceTFromDayCloses(
 ): PlanillaCashCloseRecord[] {
   let next = records.filter((row) => !isStaleManualLaunchAmount(row));
   for (const cie of dayCloses) {
-    if (!String(cie.ref || "").startsWith("CIE-")) continue;
+    if (!String(cie.ref || "").startsWith("CIE-") || cie.provisional) continue;
     if (isPlanillaCashCloseRef(cie.ref)) continue;
     const date = normalizeHistoryDate(cie.date) || cie.date;
     if (!date || !cie.collectorRef) continue;
@@ -435,33 +429,6 @@ export function assertCanCloseChainedPlanilla(input: {
   return {
     ok: false,
     error: `No se puede cerrar ${PLANILLA_CASH_CHAIN_SECONDARY} sin cerrar antes ${PLANILLA_CASH_CHAIN_PRIMARY}.`,
-  };
-}
-
-export function buildPlanillaCashClose(input: {
-  collectorRef: string;
-  collectorName: string;
-  date: string;
-  routeName: string;
-  openingCash: number;
-  /** Efectivo cobrado en esa planilla. */
-  cashCollected: number;
-  /** Gasto operativo + préstamos en efectivo de esa planilla. */
-  cashOut: number;
-}): PlanillaCashCloseRecord {
-  const date = normalizeHistoryDate(input.date) || input.date;
-  const routeName = String(input.routeName || "").trim();
-  const opening = pesos(input.openingCash);
-  const closing = pesos(opening + pesos(input.cashCollected) - pesos(input.cashOut));
-  return {
-    ref: planillaCashCloseRef(input.collectorRef, date, routeName),
-    collectorRef: input.collectorRef,
-    collectorName: input.collectorName,
-    date,
-    routeName,
-    openingCash: opening,
-    closingCash: closing,
-    closedAt: new Date().toISOString(),
   };
 }
 
@@ -645,110 +612,6 @@ export function stampHistoryWithPlanillaCashChain<
     ...row,
     saldo: byDate.get(row.date) ?? row.saldo,
   }));
-}
-
-/**
- * Cierra eslabones M y T del día (aunque T no tenga cobros).
- * Orden firme: primero M, luego T con inicial = cierre de M.
- * Usado en cierre manual por hoja y en auto-cierre 23:30.
- */
-export function sealMAndTCashChainForDay(input: {
-  collectorRef: string;
-  collectorName: string;
-  date: string;
-  records: PlanillaCashCloseRecord[];
-  monthCloses: CollectorMonthCloseRecord[];
-  fallbackOpening: number;
-  primaryCashCollected: number;
-  primaryCashOut: number;
-  secondaryCashCollected: number;
-  secondaryCashOut: number;
-}): PlanillaCashCloseRecord[] {
-  const date = normalizeHistoryDate(input.date) || input.date;
-  let next = input.records;
-
-  const mOpen = openingCashForChainedPlanilla({
-    collectorRef: input.collectorRef,
-    routeName: PLANILLA_CASH_CHAIN_PRIMARY,
-    date,
-    records: next,
-    monthCloses: input.monthCloses,
-    fallbackOpening: input.fallbackOpening,
-  });
-  const mOpening =
-    mOpen.kind === "chain" ? mOpen.opening : pesos(input.fallbackOpening);
-
-  const mClose = buildPlanillaCashClose({
-    collectorRef: input.collectorRef,
-    collectorName: input.collectorName,
-    date,
-    routeName: PLANILLA_CASH_CHAIN_PRIMARY,
-    openingCash: mOpening,
-    cashCollected: input.primaryCashCollected,
-    cashOut: input.primaryCashOut,
-  });
-  next = upsertPlanillaCashClose(next, mClose);
-
-  const tClose = buildPlanillaCashClose({
-    collectorRef: input.collectorRef,
-    collectorName: input.collectorName,
-    date,
-    routeName: PLANILLA_CASH_CHAIN_SECONDARY,
-    openingCash: mClose.closingCash,
-    cashCollected: input.secondaryCashCollected,
-    cashOut: input.secondaryCashOut,
-  });
-  return upsertPlanillaCashClose(next, tClose);
-}
-
-/**
- * Alinea PCE-M/T al saldo final real de M (Inicial + efectivo − gasto − préstamo).
- * Evita que un cierre viejo sin descontar préstamos hinche el Inicial de T
- * y, al cerrar T, el Inicial de M del día siguiente.
- */
-export function alignPlanillaCashChainToPrimaryClosing(
-  records: PlanillaCashCloseRecord[],
-  collectorRef: string,
-  date: string,
-  primaryClosingCash: number,
-): PlanillaCashCloseRecord[] {
-  const d = normalizeHistoryDate(date) || date;
-  const closing = pesos(primaryClosingCash);
-  const mClose = findPlanillaCashClose(
-    records,
-    collectorRef,
-    d,
-    PLANILLA_CASH_CHAIN_PRIMARY,
-  );
-  if (!mClose) return records;
-
-  let next = records;
-  if (pesos(mClose.closingCash) !== closing) {
-    next = upsertPlanillaCashClose(next, { ...mClose, closingCash: closing });
-  }
-
-  const tClose = findPlanillaCashClose(
-    next,
-    collectorRef,
-    d,
-    PLANILLA_CASH_CHAIN_SECONDARY,
-  );
-  if (!tClose) return next;
-
-  // Conserva el movimiento propio de T (cobros − salidas); solo corrige el arrastre.
-  const tDelta = pesos(tClose.closingCash) - pesos(tClose.openingCash);
-  const nextT: PlanillaCashCloseRecord = {
-    ...tClose,
-    openingCash: closing,
-    closingCash: pesos(closing + tDelta),
-  };
-  if (
-    pesos(tClose.openingCash) === nextT.openingCash &&
-    pesos(tClose.closingCash) === nextT.closingCash
-  ) {
-    return next;
-  }
-  return upsertPlanillaCashClose(next, nextT);
 }
 
 export type PlanillaChainHistoryRow = {

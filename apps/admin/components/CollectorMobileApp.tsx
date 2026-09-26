@@ -97,13 +97,13 @@ import {
   isPlanillaCashChainPrimary,
   isPlanillaCashChainRoute,
   isPlanillaCashChainSecondary,
-  livePrimaryClosingCash,
   openingCashForChainedPlanilla,
   PLANILLA_CASH_CHAIN_HISTORY_EPOCH,
   PLANILLA_CASH_CHAIN_PRIMARY,
   stampHistoryWithPlanillaCashChain,
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
+import { buildDayCashLedger } from "@/lib/day-cash-ledger";
 import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
 import { CollectorDayLoansPanel } from "@/components/CollectorDayLoansPanel";
 import { CollectorCloseDayConfirm } from "@/components/CollectorCloseDayConfirm";
@@ -692,103 +692,45 @@ export function CollectorMobileApp({
   const isPrimaryPlanilla =
     !activePlanillaRoute || sameRoute(activePlanillaRoute, planillaRoutePins[0] || "");
 
-  /** Cadena M↔T: M fija desde T de ayer; día época arrastra saldo final de ayer. */
-  const primaryChainOpening = useMemo(
+  /**
+   * Libro de caja del día (único dueño del saldo): Inicial M = CIE de ayer;
+   * caja viva de M = Inicial de T. Misma cifra que supervisor, panel y cierre.
+   */
+  const dayLedger = useMemo(
     () =>
-      openingCashForChainedPlanilla({
+      buildDayCashLedger({
         collectorRef: collector.ref,
-        routeName: PLANILLA_CASH_CHAIN_PRIMARY,
+        collectorName: collector.name,
         date: activeDate,
-        records: planillaCashCloses,
-        monthCloses,
+        payments: livePayments,
+        loans,
+        clients,
+        collectors: [collector],
+        assignments,
         dayCloses,
+        dayExpenseDrafts,
+        planillaCashCloses,
+        monthCloses,
         fallbackOpening:
           activeDate === PLANILLA_CASH_CHAIN_HISTORY_EPOCH
             ? mCarriedFallbackOpening
             : undefined,
       }),
-    [activeDate, collector.ref, dayCloses, mCarriedFallbackOpening, monthCloses, planillaCashCloses],
-  );
-
-  const primaryClientRefs = useMemo(() => {
-    const refs = new Set(
-      clients
-        .filter((row) => sameRoute(row.route, PLANILLA_CASH_CHAIN_PRIMARY))
-        .map((row) => row.ref),
-    );
-    for (const row of queue.dispatched) {
-      if (
-        row.clientRef &&
-        sameRoute(assignmentRouteName(row, clients), PLANILLA_CASH_CHAIN_PRIMARY)
-      ) {
-        refs.add(row.clientRef);
-      }
-    }
-    return refs;
-  }, [clients, queue.dispatched]);
-
-  const primaryLiveClosing = useMemo(() => {
-    const pays = collectorDayPayments(
-      collector.ref,
+    [
       activeDate,
-      livePayments,
-      [collector],
-    );
-    let efectivo = 0;
-    for (const pay of pays) {
-      const loan = loans.find((row) => row.ref === pay.loanRef);
-      if (!loan?.clientRef || !primaryClientRefs.has(loan.clientRef)) continue;
-      const method = normalizePaymentMethod(pay.method);
-      if (method === "nequi" || method === "banco") continue;
-      efectivo += Number(pay.amount) || 0;
-    }
-    const mScope = {
-      collectorRef: collector.ref,
-      assignments: assignments.filter((row) => row.collectorRef === collector.ref),
-    };
-    const mExpenses = expensesWithDayLoans(
-      activeDate,
-      expensesForCollectorDay(collector.ref, activeDate, dayCloses, dayExpenseDrafts),
-      loans,
+      assignments,
       clients,
-      mScope,
-    );
-    let gastos = 0;
-    for (const line of mExpenses) {
-      const amount = Number(line.amount) || 0;
-      if (!(amount > 0)) continue;
-      if (line.category === "prestamo_ruta" || line.id === "prestamo") continue;
-      gastos += amount;
-    }
-    // Préstamos del día salen de M (misma cifra que el KPI); T solo arrastra el saldo.
-    const prestamos = dayLoanDisbursementTotal(
-      dayLoanDisbursementRows(
-        activeDate,
-        expensesForCollectorDay(collector.ref, activeDate, dayCloses, dayExpenseDrafts),
-        loans,
-        clients,
-        mScope,
-      ),
-    );
-    const opening =
-      primaryChainOpening.kind === "chain" ? primaryChainOpening.opening : 0;
-    return livePrimaryClosingCash({
-      opening,
-      cashCollected: efectivo,
-      cashOut: gastos + prestamos,
-    });
-  }, [
-    activeDate,
-    assignments,
-    clients,
-    collector,
-    dayCloses,
-    dayExpenseDrafts,
-    livePayments,
-    loans,
-    primaryChainOpening,
-    primaryClientRefs,
-  ]);
+      collector,
+      dayCloses,
+      dayExpenseDrafts,
+      livePayments,
+      loans,
+      mCarriedFallbackOpening,
+      monthCloses,
+      planillaCashCloses,
+    ],
+  );
+  const primaryLiveClosing = dayLedger.mClosing;
 
   const chainOpening = useMemo(
     () =>

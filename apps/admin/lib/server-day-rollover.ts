@@ -42,7 +42,7 @@ export type ServerDayRolloverResult = {
   errors?: string[];
 };
 
-async function loadOperationalStateFromCloud(): Promise<
+export async function loadOperationalStateFromCloud(): Promise<
   | { ok: true; state: OperationalDayState }
   | { ok: false; error: string }
 > {

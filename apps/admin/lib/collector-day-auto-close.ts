@@ -13,6 +13,7 @@ import {
   dayExpenseLineMovementRef,
   finalizeCollectorDayClose,
   findDayExpenseDraft,
+  keepSealedCashFloat,
   normalizeHistoryDate,
   openingSaldoForPeriod,
   periodFromDateIso,
@@ -29,8 +30,13 @@ import { collectorRecaudoBreakdown, collectorRecaudoForDate } from "@/lib/collec
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { todayIso } from "@/lib/daily-dispatch";
 import { businessClockParts, businessTodayIso } from "@/lib/business-timezone";
+import {
+  buildDayCashLedger,
+  sealChainLinksFromLedger,
+  sealedDayCash,
+  type DayCashSources,
+} from "@/lib/day-cash-ledger";
 import { pesos } from "@/lib/finance";
-import { sameRoute } from "@/lib/client-route-order";
 import type {
   ClientRow,
   CollectorRow,
@@ -38,18 +44,7 @@ import type {
   PaymentRow,
   RouteRow,
 } from "@/lib/mock-data";
-import { normalizePaymentMethod } from "@/lib/payment-method";
-import {
-  dayLoanDisbursementRows,
-  dayLoanDisbursementTotal,
-} from "@/lib/collector-history-planilla";
-import {
-  isPlanillaCashCloseRef,
-  PLANILLA_CASH_CHAIN_PRIMARY,
-  PLANILLA_CASH_CHAIN_SECONDARY,
-  sealMAndTCashChainForDay,
-  type PlanillaCashCloseRecord,
-} from "@/lib/planilla-cash-chain";
+import type { PlanillaCashCloseRecord } from "@/lib/planilla-cash-chain";
 import {
   reconcilePaymentsOntoPlanilla,
   sealOpenVisitsWithLaterPayments,
@@ -142,91 +137,15 @@ function openCollectorDatePairs(
   );
 }
 
-function clientRefsOnRoute(clients: ClientRow[], routeName: string) {
-  return new Set(
-    clients.filter((row) => sameRoute(row.route, routeName)).map((row) => row.ref),
-  );
-}
-
-function cashCollectedOnRoute(
-  collectorRef: string,
-  date: string,
-  payments: PaymentRow[],
-  loans: LoanRow[],
-  clientRefs: Set<string>,
-) {
-  let efectivo = 0;
-  for (const pay of payments) {
-    if (pay.collectorRef !== collectorRef) continue;
-    if ((normalizeHistoryDate(pay.paidDate ?? "") || pay.paidDate) !== date) continue;
-    const loan = loans.find((row) => row.ref === pay.loanRef);
-    if (!loan?.clientRef || !clientRefs.has(loan.clientRef)) continue;
-    const method = normalizePaymentMethod(pay.method);
-    if (method === "nequi" || method === "banco") continue;
-    efectivo += Number(pay.amount) || 0;
-  }
-  return pesos(efectivo);
-}
-
-function cashOutOnRoute(
-  collectorRef: string,
-  date: string,
-  dayCloses: CollectorDayCloseRecord[],
-  dayExpenseDrafts: CollectorDayExpenseDraft[],
-  loans: LoanRow[],
-  clients: ClientRow[],
-  assignments: DailyCollectionAssignment[],
-  clientRefs: Set<string>,
-  includeOperating: boolean,
-  /** M: incluye todos los desembolsos del día (T solo arrastra saldo). */
-  includeAllDayLoans: boolean,
-) {
-  const draft = findDayExpenseDraft(dayExpenseDrafts, collectorRef, date);
-  const fromClose = dayCloses.find(
-    (row) =>
-      row.collectorRef === collectorRef &&
-      (normalizeHistoryDate(row.date) || row.date) === date &&
-      !isPlanillaCashCloseRef(row.ref),
-  );
-  const lines = (draft?.expenses?.length ? draft.expenses : fromClose?.expenses) ?? [];
-  let gastos = 0;
-  for (const line of lines) {
-    const amount = Number(line.amount) || 0;
-    if (!(amount > 0)) continue;
-    if (line.category === "prestamo_ruta" || line.id === "prestamo") continue;
-    if (includeOperating) gastos += amount;
-  }
-  const prestamos = includeAllDayLoans
-    ? dayLoanDisbursementTotal(
-        dayLoanDisbursementRows(date, lines, loans, clients, {
-          collectorRef,
-          assignments,
-        }),
-      )
-    : dayLoanDisbursementTotal(
-        dayLoanDisbursementRows(date, lines, loans, clients, {
-          collectorRef,
-          assignments,
-        }).filter((row) => clientRefs.has(row.clientRef)),
-      );
-  return pesos(gastos + (includeOperating || includeAllDayLoans ? prestamos : 0));
-}
-
+/**
+ * Solo si no hay CIE- previo ni PCE-T previo: saldo arrastrado del mes.
+ * Con CIE- de ayer manda `openingCashForChainedPlanilla` (regla de inicio).
+ */
 function carriedOpeningFallback(
   collectorRef: string,
   date: string,
-  dayCloses: CollectorDayCloseRecord[],
   monthCloses: CollectorMonthCloseRecord[],
 ) {
-  let best: CollectorDayCloseRecord | null = null;
-  for (const row of dayCloses) {
-    if (row.collectorRef !== collectorRef) continue;
-    if (isPlanillaCashCloseRef(row.ref)) continue;
-    const d = normalizeHistoryDate(row.date) || row.date;
-    if (!d || d >= date) continue;
-    if (!best || d > (normalizeHistoryDate(best.date) || best.date)) best = row;
-  }
-  if (best) return pesos(best.cashFloat ?? best.cashExpected ?? 0);
   return pesos(openingSaldoForPeriod(collectorRef, periodFromDateIso(date), monthCloses));
 }
 
@@ -274,6 +193,22 @@ export function runOperationalDayCycle(
       state.payments,
       state.collectors,
     ).efectivo;
+    const ledgerSources: DayCashSources = {
+      collectorRef: pair.collectorRef,
+      collectorName: collector.name,
+      date: pair.date,
+      payments: state.payments,
+      loans,
+      clients: state.clients,
+      collectors: state.collectors,
+      assignments,
+      dayCloses,
+      dayExpenseDrafts,
+      planillaCashCloses,
+      monthCloses,
+      fallbackOpening: carriedOpeningFallback(pair.collectorRef, pair.date, monthCloses),
+    };
+    const ledger = buildDayCashLedger(ledgerSources);
     const record = finalizeCollectorDayClose({
       draft: {
         collectorRef: pair.collectorRef,
@@ -284,7 +219,7 @@ export function runOperationalDayCycle(
         expenses: lines,
       },
       lines,
-      cashCollected,
+      sealed: sealedDayCash(ledgerSources, cashCollected),
       movementRefs: lines.map((line) =>
         dayExpenseLineMovementRef(pair.collectorRef, pair.date, line.id, line.loanRef),
       ),
@@ -320,60 +255,16 @@ export function runOperationalDayCycle(
     );
     loans = alerted.loans;
 
-    // Cadena M↔T: sella saldos aunque T no tenga cobros (arrastre puro).
-    const mClients = clientRefsOnRoute(state.clients, PLANILLA_CASH_CHAIN_PRIMARY);
-    const tClients = clientRefsOnRoute(state.clients, PLANILLA_CASH_CHAIN_SECONDARY);
-    planillaCashCloses = sealMAndTCashChainForDay({
-      collectorRef: pair.collectorRef,
-      collectorName: collector.name,
-      date: pair.date,
-      records: planillaCashCloses,
-      monthCloses,
-      fallbackOpening: carriedOpeningFallback(
-        pair.collectorRef,
-        pair.date,
-        dayCloses,
-        monthCloses,
-      ),
-      primaryCashCollected: cashCollectedOnRoute(
-        pair.collectorRef,
-        pair.date,
-        state.payments,
-        loans,
-        mClients,
-      ),
-      primaryCashOut: cashOutOnRoute(
-        pair.collectorRef,
-        pair.date,
-        dayCloses,
-        dayExpenseDrafts,
-        loans,
-        state.clients,
-        assignments,
-        mClients,
-        true,
-        true,
-      ),
-      secondaryCashCollected: cashCollectedOnRoute(
-        pair.collectorRef,
-        pair.date,
-        state.payments,
-        loans,
-        tClients,
-      ),
-      secondaryCashOut: cashOutOnRoute(
-        pair.collectorRef,
-        pair.date,
-        dayCloses,
-        dayExpenseDrafts,
-        loans,
-        state.clients,
-        assignments,
-        tClients,
-        false,
-        false,
-      ),
-    });
+    // Cadena M↔T: sella M y T (aunque T no tenga cobros) con el mismo libro del CIE-.
+    if (ledger.chain) {
+      planillaCashCloses = sealChainLinksFromLedger(
+        planillaCashCloses,
+        ledger,
+        collector.name,
+        { m: true, t: true },
+        record.closedAt,
+      );
+    }
 
     autoClosed.push(pair);
   }
@@ -396,10 +287,10 @@ export function runOperationalDayCycle(
   );
   assignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
 
-  dayCloses = alignDayClosesCollectedToPayments(
+  dayCloses = keepSealedCashFloat(
     dayCloses,
-    state.payments,
-    state.collectors,
+    alignDayClosesCollectedToPayments(dayCloses, state.payments, state.collectors),
+    "alignDayClosesCollectedToPayments",
   );
 
   return {

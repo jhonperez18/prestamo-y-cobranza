@@ -1,0 +1,293 @@
+/**
+ * Libro de caja del día — ÚNICO dueño del saldo del cobrador (regla de inicio).
+ *
+ * Nadie más calcula «caja viva de M», «Inicial de T» ni el `cash_float` del CIE-.
+ * Cobrador, supervisor, panel, cierre manual, auto-cierre 23:30 y cron servidor
+ * leen de aquí. Una sola fórmula ⇒ una sola cifra en todos los aparatos.
+ *
+ *   Inicial M   = CIE- de ayer (`cash_float`)            → openingCashForChainedPlanilla
+ *   Caja viva M = Inicial M + efectivo M − gastos − préstamos del día
+ *   Inicial T   = Caja viva M (misma cifra, sin arrastrar préstamos ni gastos)
+ *   Saldo final = Inicial T + efectivo T                  → `cash_float` del CIE- de hoy
+ *
+ * Planilla A (y cualquier ruta fuera de la cadena) no entra al saldo.
+ */
+import {
+  expensesForCollectorDay,
+  normalizeHistoryDate,
+  sumExpenseLines,
+  type CollectorDayCloseRecord,
+  type CollectorDayExpenseDraft,
+  type CollectorMonthCloseRecord,
+  type RouteExpenseLine,
+} from "@/lib/collector-day-close";
+import {
+  dayLoanDisbursementRows,
+  dayLoanDisbursementTotal,
+} from "@/lib/collector-history-planilla";
+import { assignmentRouteName } from "@/lib/collector-dispatch-sync";
+import { collectorDayPayments } from "@/lib/collector-mobile";
+import { sameRoute } from "@/lib/client-route-order";
+import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import { isPrestamoRutaExpense } from "@/lib/expense-lines";
+import { pesos } from "@/lib/finance";
+import type { ClientRow, CollectorRow, LoanRow, PaymentRow } from "@/lib/mock-data";
+import { normalizePaymentMethod } from "@/lib/payment-method";
+import {
+  isPlanillaCashChainRoute,
+  openingCashForChainedPlanilla,
+  planillaCashCloseRef,
+  PLANILLA_CASH_CHAIN_PRIMARY,
+  PLANILLA_CASH_CHAIN_SECONDARY,
+  upsertPlanillaCashClose,
+  type ChainOpeningResult,
+  type PlanillaCashCloseRecord,
+} from "@/lib/planilla-cash-chain";
+
+/** Todo lo que el libro necesita leer. Mismos datos en cualquier aparato ⇒ misma cifra. */
+export type DayCashSources = {
+  collectorRef: string;
+  collectorName?: string;
+  date: string;
+  payments: PaymentRow[];
+  loans: LoanRow[];
+  clients: ClientRow[];
+  collectors: CollectorRow[];
+  assignments: DailyCollectionAssignment[];
+  dayCloses: CollectorDayCloseRecord[];
+  dayExpenseDrafts: CollectorDayExpenseDraft[];
+  planillaCashCloses: PlanillaCashCloseRecord[];
+  monthCloses: CollectorMonthCloseRecord[];
+  /** Solo si no existe CIE- previo ni PCE-T previo (día época / cobrador nuevo). */
+  fallbackOpening?: number;
+};
+
+export type RouteCashDay = {
+  efectivo: number;
+  gastos: number;
+  prestamos: number;
+};
+
+export type DayCashLedger = {
+  collectorRef: string;
+  date: string;
+  /** Cobrador con planillas M/T ese día (o eslabones PCE- previos). */
+  chain: boolean;
+  mOpening: ChainOpeningResult;
+  m: RouteCashDay;
+  /** Caja viva / final de M = Inicial de T. */
+  mClosing: number;
+  t: RouteCashDay;
+  /** Saldo final del día = Inicial M de mañana. */
+  dayFinal: number;
+};
+
+function dateIsoOf(raw: string) {
+  return normalizeHistoryDate(raw) || raw;
+}
+
+function dayExpenseLines(src: DayCashSources): RouteExpenseLine[] {
+  return expensesForCollectorDay(src.collectorRef, src.date, src.dayCloses, src.dayExpenseDrafts);
+}
+
+/** Clientes de la ruta: catálogo + visitas del cobrador ese día en esa ruta. */
+export function routeClientRefsForDay(src: DayCashSources, routeName: string): Set<string> {
+  const date = dateIsoOf(src.date);
+  const refs = new Set(
+    src.clients.filter((row) => sameRoute(row.route, routeName)).map((row) => row.ref),
+  );
+  for (const row of src.assignments) {
+    if (row.collectorRef !== src.collectorRef || !row.clientRef) continue;
+    if (dateIsoOf(row.dispatchDate) !== date) continue;
+    if (sameRoute(assignmentRouteName(row, src.clients), routeName)) refs.add(row.clientRef);
+  }
+  return refs;
+}
+
+/** Efectivo cobrado a clientes de la ruta (Nequi / banco no entran a la mano). */
+export function routeCashCollected(src: DayCashSources, routeName: string): number {
+  const refs = routeClientRefsForDay(src, routeName);
+  let efectivo = 0;
+  for (const pay of collectorDayPayments(src.collectorRef, src.date, src.payments, src.collectors)) {
+    const loan = src.loans.find((row) => row.ref === pay.loanRef);
+    if (!loan?.clientRef || !refs.has(loan.clientRef)) continue;
+    const method = normalizePaymentMethod(pay.method);
+    if (method === "nequi" || method === "banco") continue;
+    efectivo += Number(pay.amount) || 0;
+  }
+  return pesos(efectivo);
+}
+
+/** Gastos operativos del día (sin préstamos). Viven en M. */
+export function dayOperativeExpenses(src: DayCashSources): number {
+  let gastos = 0;
+  for (const line of dayExpenseLines(src)) {
+    const amount = Number(line.amount) || 0;
+    if (!(amount > 0) || isPrestamoRutaExpense(line)) continue;
+    gastos += amount;
+  }
+  return pesos(gastos);
+}
+
+/** Capital prestado en efectivo ese día (KPI Préstamo). Vive en M. */
+export function dayCashLoans(src: DayCashSources): number {
+  return pesos(
+    dayLoanDisbursementTotal(
+      dayLoanDisbursementRows(dateIsoOf(src.date), dayExpenseLines(src), src.loans, src.clients, {
+        collectorRef: src.collectorRef,
+        assignments: src.assignments,
+      }),
+    ),
+  );
+}
+
+/** ¿El cobrador trabaja la cadena M↔T ese día? */
+export function isChainCollectorDay(src: DayCashSources): boolean {
+  const date = dateIsoOf(src.date);
+  const onChainSheet = src.assignments.some(
+    (row) =>
+      row.collectorRef === src.collectorRef &&
+      dateIsoOf(row.dispatchDate) === date &&
+      isPlanillaCashChainRoute(assignmentRouteName(row, src.clients)),
+  );
+  if (onChainSheet) return true;
+  return src.planillaCashCloses.some((row) => row.collectorRef === src.collectorRef);
+}
+
+/** Inicial de M: CIE- de ayer manda (ver `openingCashForChainedPlanilla`). */
+export function primaryOpeningForDay(src: DayCashSources): ChainOpeningResult {
+  return openingCashForChainedPlanilla({
+    collectorRef: src.collectorRef,
+    routeName: PLANILLA_CASH_CHAIN_PRIMARY,
+    date: dateIsoOf(src.date),
+    records: src.planillaCashCloses,
+    monthCloses: src.monthCloses,
+    dayCloses: src.dayCloses,
+    fallbackOpening: src.fallbackOpening,
+  });
+}
+
+export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
+  const date = dateIsoOf(src.date);
+  const mOpening = primaryOpeningForDay(src);
+  const opening = mOpening.kind === "chain" ? mOpening.opening : 0;
+  const m: RouteCashDay = {
+    efectivo: routeCashCollected(src, PLANILLA_CASH_CHAIN_PRIMARY),
+    gastos: dayOperativeExpenses(src),
+    prestamos: dayCashLoans(src),
+  };
+  const mClosing = pesos(opening + m.efectivo - m.gastos - m.prestamos);
+  const t: RouteCashDay = {
+    efectivo: routeCashCollected(src, PLANILLA_CASH_CHAIN_SECONDARY),
+    gastos: 0,
+    prestamos: 0,
+  };
+  return {
+    collectorRef: src.collectorRef,
+    date,
+    chain: isChainCollectorDay(src),
+    mOpening,
+    m,
+    mClosing,
+    t,
+    dayFinal: pesos(mClosing + t.efectivo),
+  };
+}
+
+/** Saldo que sella el CIE- (`cash_float`) al cerrar la jornada. */
+export type SealedDayCash = {
+  openingCash: number;
+  cashFloat: number;
+};
+
+/**
+ * Cadena M↔T: saldo final del día (Inicial M de mañana).
+ * Fuera de la cadena: caja menor del día (efectivo − gastos), como siempre;
+ * su Inicial lo arrastra el historial, no el CIE-.
+ */
+export function sealedDayCash(src: DayCashSources, cashCollectedAllRoutes: number): SealedDayCash {
+  const ledger = buildDayCashLedger(src);
+  if (ledger.chain) {
+    return {
+      openingCash: ledger.mOpening.kind === "chain" ? ledger.mOpening.opening : 0,
+      cashFloat: ledger.dayFinal,
+    };
+  }
+  return {
+    openingCash: 0,
+    cashFloat: pesos(pesos(cashCollectedAllRoutes) - sumExpenseLines(dayExpenseLines(src))),
+  };
+}
+
+/**
+ * Eslabones PCE-M / PCE-T del día desde el libro (nunca desde el payload de la UI).
+ * `routes`: qué hojas quedan selladas (M al cerrar M; M y T al cerrar T / 23:30).
+ */
+export function sealChainLinksFromLedger(
+  records: PlanillaCashCloseRecord[],
+  ledger: DayCashLedger,
+  collectorName: string,
+  routes: { m: boolean; t: boolean },
+  closedAt = new Date().toISOString(),
+): PlanillaCashCloseRecord[] {
+  const opening = ledger.mOpening.kind === "chain" ? ledger.mOpening.opening : 0;
+  let next = records;
+  if (routes.m) {
+    next = upsertPlanillaCashClose(next, {
+      ref: planillaCashCloseRef(ledger.collectorRef, ledger.date, PLANILLA_CASH_CHAIN_PRIMARY),
+      collectorRef: ledger.collectorRef,
+      collectorName,
+      date: ledger.date,
+      routeName: PLANILLA_CASH_CHAIN_PRIMARY,
+      openingCash: pesos(opening),
+      closingCash: ledger.mClosing,
+      closedAt,
+    });
+  }
+  if (routes.t) {
+    next = upsertPlanillaCashClose(next, {
+      ref: planillaCashCloseRef(ledger.collectorRef, ledger.date, PLANILLA_CASH_CHAIN_SECONDARY),
+      collectorRef: ledger.collectorRef,
+      collectorName,
+      date: ledger.date,
+      routeName: PLANILLA_CASH_CHAIN_SECONDARY,
+      openingCash: ledger.mClosing,
+      closingCash: ledger.dayFinal,
+      closedAt,
+    });
+  }
+  return next;
+}
+
+/**
+ * Eslabones ya sellados de ese día → misma cifra que el libro (cobros tardíos,
+ * préstamo cargado después). No crea eslabones nuevos ni toca otros días.
+ */
+export function alignChainLinksToLedger(
+  records: PlanillaCashCloseRecord[],
+  ledger: DayCashLedger,
+): PlanillaCashCloseRecord[] {
+  const opening = ledger.mOpening.kind === "chain" ? pesos(ledger.mOpening.opening) : null;
+  const mRef = planillaCashCloseRef(ledger.collectorRef, ledger.date, PLANILLA_CASH_CHAIN_PRIMARY);
+  const tRef = planillaCashCloseRef(ledger.collectorRef, ledger.date, PLANILLA_CASH_CHAIN_SECONDARY);
+  let changed = false;
+  const next = records.map((row) => {
+    if (row.ref === mRef) {
+      const openingCash = opening ?? pesos(row.openingCash);
+      if (pesos(row.openingCash) === openingCash && pesos(row.closingCash) === ledger.mClosing) {
+        return row;
+      }
+      changed = true;
+      return { ...row, openingCash, closingCash: ledger.mClosing };
+    }
+    if (row.ref === tRef) {
+      if (pesos(row.openingCash) === ledger.mClosing && pesos(row.closingCash) === ledger.dayFinal) {
+        return row;
+      }
+      changed = true;
+      return { ...row, openingCash: ledger.mClosing, closingCash: ledger.dayFinal };
+    }
+    return row;
+  });
+  return changed ? next : records;
+}

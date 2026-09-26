@@ -113,7 +113,6 @@ import {
   annotateMHistoryExtractRows,
   applyCollectorCashHandSaldos,
   openingCashForChainedPlanilla,
-  livePrimaryClosingCash,
   PLANILLA_CASH_CHAIN_HISTORY_EPOCH,
   PLANILLA_CASH_CHAIN_PRIMARY,
   isPlanillaCashChainPrimary,
@@ -121,6 +120,7 @@ import {
   stampHistoryWithPlanillaCashChain,
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
+import { buildDayCashLedger, type DayCashLedger } from "@/lib/day-cash-ledger";
 
 /** Fecha corta para listados: 05/09/2026 → 5/9 */
 function formatLoanListDate(raw?: string | null) {
@@ -1079,16 +1079,24 @@ export function SupervisorMobileApp({
         .map((route) => route.collector?.ref || route.collectorRef || "")
         .filter(Boolean),
     );
+    /** Libro de caja del día por cobrador: misma cifra que la app del cobrador y el cierre. */
+    const ledgerByCollector = new Map<string, DayCashLedger>();
     for (const collectorRef of collectorRefsForLive) {
       const collector = collectors.find((row) => row.ref === collectorRef);
       if (!collector) continue;
-      const mOpen = openingCashForChainedPlanilla({
+      const ledger = buildDayCashLedger({
         collectorRef,
-        routeName: PLANILLA_CASH_CHAIN_PRIMARY,
+        collectorName: collector.name,
         date: today,
-        records: planillaCashCloses,
-        monthCloses,
+        payments,
+        loans,
+        clients,
+        collectors: [collector],
+        assignments: todayAssignments,
         dayCloses,
+        dayExpenseDrafts,
+        planillaCashCloses,
+        monthCloses,
         fallbackOpening: cajaDelDia(
           collector,
           today,
@@ -1098,57 +1106,8 @@ export function SupervisorMobileApp({
           monthCloses,
         ).saldoInicial,
       });
-      const mClients = new Set(
-        clients
-          .filter((row) => sameRoute(row.route, PLANILLA_CASH_CHAIN_PRIMARY))
-          .map((row) => row.ref),
-      );
-      for (const row of todayAssignments) {
-        if (
-          row.collectorRef === collectorRef &&
-          row.clientRef &&
-          sameRoute(assignmentRouteName(row, clients), PLANILLA_CASH_CHAIN_PRIMARY)
-        ) {
-          mClients.add(row.clientRef);
-        }
-      }
-      let efectivo = 0;
-      for (const pay of collectorDayPayments(collectorRef, today, payments, [collector])) {
-        const loan = loans.find((row) => row.ref === pay.loanRef);
-        if (!loan?.clientRef || !mClients.has(loan.clientRef)) continue;
-        const method = normalizePaymentMethod(pay.method);
-        if (method === "nequi" || method === "banco") continue;
-        efectivo += Number(pay.amount) || 0;
-      }
-      const rawExpenses = expensesForCollectorDay(
-        collectorRef,
-        today,
-        dayCloses,
-        dayExpenseDrafts,
-      );
-      let gastos = 0;
-      for (const line of rawExpenses) {
-        const amount = Number(line.amount) || 0;
-        if (!(amount > 0)) continue;
-        if (line.category === "prestamo_ruta" || line.id === "prestamo") continue;
-        gastos += amount;
-      }
-      // Misma fuente que el KPI Préstamo de M: desembolsos en efectivo del día.
-      // T solo arrastra el saldo; los préstamos salen de la caja de M.
-      const prestamos = dayLoanDisbursementTotal(
-        dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
-          collectorRef,
-          assignments: todayAssignments,
-        }),
-      );
-      primaryLiveByCollector.set(
-        collectorRef,
-        livePrimaryClosingCash({
-          opening: mOpen.kind === "chain" ? mOpen.opening : 0,
-          cashCollected: efectivo,
-          cashOut: gastos + prestamos,
-        }),
-      );
+      ledgerByCollector.set(collectorRef, ledger);
+      primaryLiveByCollector.set(collectorRef, ledger.mClosing);
     }
 
     const built = sorted.map((route) => {
@@ -1268,8 +1227,13 @@ export function SupervisorMobileApp({
           : isPrimary
             ? fullCaja.saldoInicial
             : 0;
-      // Cuadre de ruta: siempre Inicial + efectivo − gasto − préstamo (misma cifra del botón).
-      const enCaja = saldoInicial + cobradoEfectivo - gastosHoy - prestamosHoy;
+      // Cuadre de ruta: Inicial + efectivo − gasto − préstamo. M de la cadena = libro del día
+      // (la misma cifra que recibe T como Inicial).
+      const chainLedger =
+        isPrimary && chainOpen.kind === "chain" ? ledgerByCollector.get(collectorRef) : undefined;
+      const enCaja = chainLedger
+        ? chainLedger.mClosing
+        : saldoInicial + cobradoEfectivo - gastosHoy - prestamosHoy;
 
       let statusLabel = "Sin planilla";
       let statusKind: StatusKind = "draft";

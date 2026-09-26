@@ -231,6 +231,27 @@ async function assertCatalogHealth() {
   console.log(`Catálogo OK → ${data.clients} clientes (mín ${data.expectedMin})`);
 }
 
+async function assertCashChain() {
+  console.log("Comprobando regla de inicio en la nube (Inicial M hoy = CIE ayer)…");
+  let data;
+  try {
+    data = await fetchJson(`${DOMAIN}/api/ops/chain-audit`);
+  } catch (err) {
+    console.error(`FALLO: chain-audit → ${err?.message || err}`);
+    process.exit(1);
+  }
+  for (const row of data.rows ?? []) {
+    console.log(
+      `  ${row.ok ? "OK   " : "FALLA"} ${row.collectorName || row.collectorRef}: CIE ${row.yesterday} = ${row.yesterdayCieFloat} · Inicial hoy = ${row.todayOpening ?? "—"} · Inicial T = ${row.todayMClosing ?? "—"} · saldo final = ${row.todayFinal ?? "—"}`,
+    );
+  }
+  if (!data.ok) {
+    console.error(`FALLO: regla de inicio rota en ${data.businessDate ?? "hoy"}.${data.error ? ` ${data.error}` : ""}`);
+    process.exit(1);
+  }
+  console.log("Regla de inicio OK");
+}
+
 const mode = process.argv[2] || "verify";
 
 const branch = capture("git rev-parse --abbrev-ref HEAD");
@@ -280,7 +301,10 @@ if (mode === "verify") {
   await assertLoginBuild(expect);
   await assertServiceRole();
   await assertCatalogHealth();
-  console.log(`\nListo de verdad. Login → build ${expect}. Catálogo SQL + service role verificados.`);
+  await assertCashChain();
+  console.log(
+    `\nListo de verdad. Login → build ${expect}. Catálogo SQL + service role + regla de inicio verificados.`,
+  );
   process.exit(0);
 }
 
@@ -301,6 +325,7 @@ if (mode === "force") {
   purgeCaches();
   await assertLoginBuild(sha);
   await assertCatalogHealth();
+  await assertCashChain();
   console.log(`\nListo → ${DOMAIN}`);
   console.log(`Login debe mostrar: Código en este sitio: ${sha}`);
   process.exit(0);

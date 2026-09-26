@@ -20,7 +20,7 @@ import {
   projectPceTFromDayCloses,
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
-import { businessDaysAgoIso } from "@/lib/business-timezone";
+import { businessDaysAgoIso, businessTodayIso } from "@/lib/business-timezone";
 import {
   emitMirrorQueueChanged,
   shouldDropFromMirrorQueue,
@@ -628,14 +628,25 @@ export async function upsertDayCloseIdempotent(
   const ref = String(row.ref || "");
   const force = Boolean(options?.force);
   if (ref.startsWith("CIE-") && !force) {
-    const { data: existing } = await client
+    const { data: existing, error: readError } = await client
       .from("day_closes")
-      .select("cash_float,closed_at,updated_at")
+      .select("cash_float,close_date,closed_at,updated_at")
       .eq("ref", ref)
       .maybeSingle();
+    if (readError) return { ok: false as const, error: readError.message };
     if (existing) {
       const cloudFloat = Number(existing.cash_float) || 0;
       const incomingFloat = Number(row.cash_float) || 0;
+      // Candado de días pasados: el saldo de ayer y antes ya es el Inicial de otro día.
+      // Solo el botón de taller (force) puede corregirlo.
+      const closeDate = String(existing.close_date || row.close_date || "");
+      if (cloudFloat !== incomingFloat && closeDate && closeDate < businessTodayIso()) {
+        return {
+          ok: true as const,
+          skipped: true as const,
+          reason: "cloud_cie_past_day_sealed",
+        };
+      }
       if (cloudFloat !== incomingFloat) {
         const cloudTs = Date.parse(
           String(existing.closed_at || existing.updated_at || ""),
@@ -861,6 +872,8 @@ export function queueRouteDeleteMirror(ref: string) {
 export function queueDayCloseMirror(c: CollectorDayCloseRecord) {
   // PCE- no cabe en day_closes (check ^CIE-). Encolarlos solo genera 502 y tapa el flush.
   if (String(c.ref || "").startsWith("PCE-")) return;
+  // Reconstruido desde planilla: no es saldo sellado, nunca sube.
+  if (c.provisional) return;
   void persistKind(Q_CLOSES, { kind: "day_close", row: c }, c.ref);
 }
 export function queueDayExpenseMirror(d: CollectorDayExpenseDraft) {
@@ -1142,11 +1155,10 @@ export async function reconcileLocalOpsToRemote(
     for (const row of readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, [])) {
       if (!row?.ref) continue;
       // PCE- aún no caben en day_closes (check ^CIE-) hasta migración.
-      if (String(row.ref).startsWith("PCE-")) continue;
-      const remoteFloat = remoteClose.get(row.ref);
-      const localFloat = Number(row.cashFloat) || 0;
-      // Huérfano O saldo distinto: reintentar upsert (servidor decide CIE quién gana).
-      if (remoteFloat === undefined || remoteFloat !== localFloat) {
+      if (String(row.ref).startsWith("PCE-") || row.provisional) continue;
+      // Solo huérfanos. Si la nube ya tiene el CIE-, su saldo manda y entra por pull;
+      // un saldo local distinto nunca se re-sube solo (así volvía el 2.090.000).
+      if (!remoteClose.has(row.ref)) {
         jobs.push({ kind: "day_close", row, key: row.ref });
       }
     }
@@ -1508,7 +1520,7 @@ export async function forcePushLocalDayClosesToCloud(): Promise<ForceCloudSyncRe
   }
 
   const local = readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, [])
-    .filter((row) => row?.ref && String(row.ref).startsWith("CIE-") && !String(row.ref).startsWith("PCE-"));
+    .filter((row) => row?.ref && String(row.ref).startsWith("CIE-") && !row.provisional);
 
   if (!local.length) {
     return {

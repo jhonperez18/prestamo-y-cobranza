@@ -6,6 +6,7 @@ import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import type { BankAccount, BankMovement } from "@/lib/bank";
 import {
   alignDayClosesCollectedToPayments,
+  keepSealedCashFloat,
   normalizeHistoryDate,
   trimCollectorDayClosesHistory,
   type CollectorDayCloseRecord,
@@ -100,7 +101,11 @@ export function synchronizeOperationalState(
   const loans = syncAllLoans(input.loans, payments) as LoanRow[];
 
   const dayCloses = trimCollectorDayClosesHistory(
-    alignDayClosesCollectedToPayments(input.dayCloses, payments, collectors),
+    keepSealedCashFloat(
+      input.dayCloses,
+      alignDayClosesCollectedToPayments(input.dayCloses, payments, collectors),
+      "alignDayClosesCollectedToPayments",
+    ),
   );
 
   const bankMovements = syncBankLedger({

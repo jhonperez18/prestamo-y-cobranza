@@ -39,17 +39,39 @@ Planilla **A** no entra en la cadena.
 - Seed / montos fijos inventados como Inicial del día.
 - Una cifra en el taller y otra en Vercel para el mismo Inicial.
 - Parches UI «muéstralo igual» sin leer CIE.
+- CIE- con `cash_float` = efectivo − gastos (Inicial 0). Así nacía el 2.090.000.
+- Inicial de T distinto del saldo de M del mismo día.
 
-## Fuente de verdad (resumen)
+## Un solo dueño del saldo: `day-cash-ledger.ts`
 
 | Pieza | Función / dato |
 | --- | --- |
-| Caja viva de M | `livePrimaryClosingCash` / KPI M |
-| Inicial T | `openingCashForChainedPlanilla` + `primaryLiveClosing` |
-| Saldo final del día | `dayFinalClosingCash` → **CIE primero** |
+| Caja viva de M | `buildDayCashLedger().mClosing` |
+| Inicial T | **la misma** `mClosing` (T no puede tener otra cifra) |
+| Saldo final del día | `buildDayCashLedger().dayFinal` = `mClosing` + efectivo T |
+| `cash_float` del CIE- | `sealedDayCash()` — único que lo escribe (cierre manual, 23:30, cron) |
 | Inicial M mañana | CIE ayer (`cash_float`) vía `openingCashForChainedPlanilla` |
 
-Detalle: `apps/admin/lib/planilla-cash-chain.ts`.
+Cobrador, supervisor, panel, `sealCollectorDay` (`collector-day-close-seal.ts`) y
+`runOperationalDayCycle` leen del libro. **Nadie más suma cobros/gastos/préstamos
+para un saldo.** Una fórmula paralela = dos cifras = el error del 2.090.000.
+
+### Ninguna proyección escribe `cash_float`
+
+- `alignDayClosesCollectedToPayments` solo toca `collected` / `expensesTotal`.
+- `keepSealedCashFloat` revierte cualquier proyección que cambie un CIE- sellado.
+- `synthesizeDayClosesFromAssignments` crea CIE `provisional`: no sube, no ancla Inicial.
+- `finalizeCollectorDayClose` NO calcula saldo: recibe `sealed` del libro.
+
+### Candados que frenan la regresión
+
+1. `npm run build` → `prebuild` corre `scripts/assert-cash-chain.mjs` (caso Cristian
+   2.704.000 / 2.090.000). Si falla, **no se publica**.
+2. Servidor: CIE- de día pasado con otro saldo → `cloud_cie_past_day_sealed` (solo
+   el botón de taller *force* lo corrige). Reconcile solo sube CIE- **huérfanos**.
+3. `verify:prod` llama `/api/ops/chain-audit`: Inicial M hoy (nube) = CIE de ayer.
+
+Detalle: `apps/admin/lib/day-cash-ledger.ts`, `apps/admin/lib/planilla-cash-chain.ts`.
 
 ## Obligatorio (cierre de hojas)
 

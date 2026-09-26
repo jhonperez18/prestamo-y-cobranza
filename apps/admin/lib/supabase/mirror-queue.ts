@@ -22,6 +22,8 @@ const DROP_ON_SKIP_REASON = new Set([
   "invalid_client",
   "invalid_loan",
   "cloud_cie_keeps_cash_float",
+  "cloud_cie_past_day_sealed",
+  "provisional_day_close",
 ]);
 
 export type MirrorApiJson = {

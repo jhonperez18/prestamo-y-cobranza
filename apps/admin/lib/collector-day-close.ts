@@ -52,8 +52,16 @@ export type CollectorDayCloseRecord = CollectorDayCloseDraft & {
   ref: string;
   closedAt: string;
   expensesTotal: number;
-  /** Recaudo en efectivo − gastos: queda en caja menor hasta consignar. */
+  /**
+   * Saldo sellado al cerrar la jornada. Cadena M↔T: saldo final del día = Inicial M
+   * de mañana. Solo lo escribe el cierre (`sealedDayCash` en `day-cash-ledger`).
+   */
   cashFloat: number;
+  /**
+   * Reconstruido localmente desde la planilla (sin cierre real). No sube a la nube
+   * ni cuenta como ancla de Inicial; el CIE- real lo reemplaza al llegar.
+   */
+  provisional?: boolean;
   /** Saldo con el que arrancó la caja ese día. */
   openingCash?: number;
   /** Resultado de inicial + efectivo − gastos. */
@@ -511,27 +519,19 @@ export function syncRouteExpensesToMovements(
   return next;
 }
 
+/**
+ * Arma el CIE- de la jornada. El saldo NO se calcula aquí: llega sellado desde
+ * `sealedDayCash` (libro de caja del día), único dueño de `cashFloat`.
+ */
 export function finalizeCollectorDayClose(input: {
   draft: CollectorDayCloseDraft;
   lines: RouteExpenseLine[];
   movementRefs: string[];
-  /**
-   * Efectivo del día para caja menor.
-   * Nequi no entra: va a cuenta del dueño. Si falta, usa draft.collected (legado).
-   */
-  cashCollected?: number;
+  sealed: { openingCash: number; cashFloat: number };
 }): CollectorDayCloseRecord {
   const expensesTotal = sumExpenseLines(input.lines);
   const date = normalizeHistoryDate(input.draft.date) || input.draft.date;
-  const cashBase = pesos(
-    typeof input.cashCollected === "number" ? input.cashCollected : input.draft.collected,
-  );
-  const check = verifyCashClose({
-    opening: 0,
-    collections: cashBase,
-    expenses: expensesTotal,
-    declared: cashBase - expensesTotal,
-  });
+  const cashFloat = pesos(input.sealed.cashFloat);
   return {
     ...input.draft,
     date,
@@ -539,13 +539,55 @@ export function finalizeCollectorDayClose(input: {
     closedAt: new Date().toISOString(),
     expenses: input.lines,
     expensesTotal,
-    openingCash: check.opening,
-    cashExpected: check.expected,
-    cashDeclared: check.expected,
+    openingCash: pesos(input.sealed.openingCash),
+    cashExpected: cashFloat,
+    cashDeclared: cashFloat,
     cashVariance: 0,
-    cashFloat: check.expected,
+    cashFloat,
     movementRefs: input.movementRefs,
   };
+}
+
+/**
+ * Candado de proyecciones: ninguna proyección (alinear pagos, hidratar, sintetizar)
+ * puede cambiar el saldo de un CIE- ya sellado. Si lo intenta, se conserva el sellado
+ * y queda el aviso con el nombre de la proyección culpable.
+ */
+export function keepSealedCashFloat(
+  before: CollectorDayCloseRecord[],
+  after: CollectorDayCloseRecord[],
+  projection: string,
+): CollectorDayCloseRecord[] {
+  const sealed = new Map<string, CollectorDayCloseRecord>();
+  for (const row of before) {
+    if (!row.provisional && String(row.ref || "").startsWith("CIE-")) sealed.set(row.ref, row);
+  }
+  if (!sealed.size) return after;
+  let changed = false;
+  const next = after.map((row) => {
+    const prev = sealed.get(row.ref);
+    if (!prev) return row;
+    const same =
+      pesos(row.cashFloat) === pesos(prev.cashFloat) &&
+      pesos(row.openingCash ?? 0) === pesos(prev.openingCash ?? 0) &&
+      pesos(row.cashExpected ?? 0) === pesos(prev.cashExpected ?? 0) &&
+      Boolean(row.provisional) === false;
+    if (same) return row;
+    changed = true;
+    console.error(
+      `[saldo-sellado] ${projection} intentó cambiar ${row.ref}: ${prev.cashFloat} → ${row.cashFloat}. Se conserva el sellado.`,
+    );
+    return {
+      ...row,
+      provisional: undefined,
+      cashFloat: prev.cashFloat,
+      openingCash: prev.openingCash,
+      cashExpected: prev.cashExpected,
+      cashDeclared: prev.cashDeclared,
+      cashVariance: prev.cashVariance,
+    };
+  });
+  return changed ? next : after;
 }
 
 /** Historial visible/guardado del cobrador: siempre los últimos 30 días. */
@@ -808,7 +850,8 @@ export function recoverPaymentsFromBankMovements(
 
 /**
  * Si la jornada quedó cerrada en planilla pero no hay registro CIE-, lo sintetiza
- * para que el historial muestre el día con su recaudo.
+ * para que el historial muestre el día con su recaudo. Queda `provisional`: no es
+ * saldo sellado, no sube a la nube y no ancla el Inicial de mañana.
  */
 export function synthesizeDayClosesFromAssignments(
   assignments: DailyCollectionAssignment[],
@@ -859,6 +902,7 @@ export function synthesizeDayClosesFromAssignments(
       expenses: [],
       expensesTotal: 0,
       cashFloat: collected,
+      provisional: true,
       closedAt,
       movementRefs: [],
     });
