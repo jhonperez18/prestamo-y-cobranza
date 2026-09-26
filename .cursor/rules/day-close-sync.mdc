@@ -15,18 +15,22 @@ Misma fuerza que un cobro `PG-`: local primero, luego nube; el pull no reabre.
 1. Cierre solo en `localStorage` del cobrador (mismo teléfono cobrador→supervisor se ve bien).
 2. Otro aparato con planilla **abierta** subía filas sin `dayClosedAt` y **pisaba** el cierre en Postgres.
 3. Flush **antes** de encolar el cierre, o flush fire-and-forget que no termina.
+4. Auto-cierre 23:30 que solo escribía local y **no** encolaba CIE/PCE ni hacía await flush → cada mañana otro aparato reabría.
 
 ## Obligatorio
 
 1. Tras cerrar: `queueDayCloseMirror` + `queueAssignmentsMirror` (selladas) → **await** `flushOpsMirrorQueues`.
-2. Servidor (`upsertAssignmentRow`): si la nube ya tiene `day_closed_at` (o CIE- del día), **no** aceptar hoja abierta.
-3. Pull: cierre remoto gana sobre cola local abierta; CIE- sella planilla (`applyDayCloseRecordsToAssignments`).
-4. `reconcilePaymentsOntoPlanilla` **no** borra `dayClosedAt`.
-5. No encolar assignment abierta si ya hay CIE- local de ese cobrador+día.
+2. Auto-cierre 23:30 / rollover (`autoClosedCount > 0`): `mirrorAutoDayCloseToCloud` (CIE + PCE + planilla sellada + await flush).
+3. Servidor (`upsertAssignmentRow`): si la nube ya tiene `day_closed_at` (o CIE- del día), **no** aceptar hoja abierta.
+4. Pull: cierre remoto gana sobre cola local abierta; CIE- sella planilla (`applyDayCloseRecordsToAssignments`).
+5. `reconcilePaymentsOntoPlanilla` **no** borra `dayClosedAt`.
+6. No encolar assignment abierta si ya hay CIE- local de ese cobrador+día.
+7. Reconcile local→nube: subir PCE- huérfanos y planilla sellada sobre abierta remota.
 
 ## Prohibido
 
 - `flushOpsMirrorQueues` antes de encolar el cierre.
+- Auto-cierre que solo escribe `localStorage` sin cola + flush.
 - Parche de UI «muéstralo cerrado» sin pasar por commit + cola + servidor.
 - Subir toda la planilla abierta «por si acaso» encima de un día con CIE-.
 

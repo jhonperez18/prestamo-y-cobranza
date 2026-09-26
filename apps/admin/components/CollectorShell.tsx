@@ -91,6 +91,7 @@ import {
   queueDayExpenseMirror,
   queueRoutesMirror,
 } from "@/lib/supabase/ops-mirror";
+import { mirrorAutoDayCloseToCloud } from "@/lib/mirror-auto-day-close";
 import {
   commitCollectorPayment,
   commitCollectorCombinedPayment,
@@ -248,6 +249,14 @@ export function CollectorShell({ session, onLogout }: Props) {
             loans: next.loans,
           }),
         );
+        // Misma cadena que cierre manual: CIE + PCE + planilla sellada → nube.
+        void mirrorAutoDayCloseToCloud({
+          dayCloses: next.dayCloses,
+          planillaCashCloses: next.planillaCashCloses,
+          assignments: next.assignments,
+        }).catch((error) => {
+          console.error("auto-day-close-mirror", error);
+        });
       }
     },
     [],

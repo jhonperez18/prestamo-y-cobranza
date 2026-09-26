@@ -78,6 +78,7 @@ import {
   queueMiscPaymentMirror,
   queueRoutesMirror,
 } from "@/lib/supabase/ops-mirror";
+import { mirrorAutoDayCloseToCloud } from "@/lib/mirror-auto-day-close";
 import type { MiscPayment } from "@/lib/misc-payments";
 
 type Props = {
@@ -184,6 +185,18 @@ export function SupervisorShell({ session, onLogout }: Props) {
             loans: next.loans,
           }),
         );
+        void mirrorAutoDayCloseToCloud({
+          dayCloses: next.dayCloses,
+          planillaCashCloses:
+            next.planillaCashCloses ??
+            readDemoJson<import("@/lib/planilla-cash-chain").PlanillaCashCloseRecord[]>(
+              DEMO_PLANILLA_CASH_CLOSES_KEY,
+              [],
+            ),
+          assignments: next.assignments,
+        }).catch((error) => {
+          console.error("auto-day-close-mirror", error);
+        });
       }
     },
     [],

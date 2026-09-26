@@ -16,12 +16,17 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { DAY_CLOSE_SKIP_REASON } from "@/lib/collector-dispatch-sync";
 import type { MiscPayment } from "@/lib/misc-payments";
 import {
+  planillaCashCloseAsDayClose,
+  type PlanillaCashCloseRecord,
+} from "@/lib/planilla-cash-chain";
+import {
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
   DEMO_COLLECTORS_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_MISC_PAYMENTS_KEY,
   DEMO_PAYMENTS_KEY,
+  DEMO_PLANILLA_CASH_CLOSES_KEY,
   DEMO_ROUTES_KEY,
   DEMO_USERS_KEY,
   isVirginRemoteHoldActive,
@@ -873,7 +878,11 @@ export async function reconcileLocalOpsToRemote(): Promise<{
       day_closes?: { ref?: string }[];
       day_expenses?: { ref?: string }[];
       misc_payments?: { ref?: string }[];
-      daily_assignments?: { dispatch_date?: string; item_id?: string }[];
+      daily_assignments?: {
+        dispatch_date?: string;
+        item_id?: string;
+        day_closed_at?: string | null;
+      }[];
     };
     if (!res.ok || !body.ok || body.skipped) return { pushed: 0, failed: 0 };
 
@@ -882,12 +891,14 @@ export async function reconcileLocalOpsToRemote(): Promise<{
     const remoteClose = new Set((body.day_closes ?? []).map((r) => r.ref).filter(Boolean));
     const remoteExpense = new Set((body.day_expenses ?? []).map((r) => r.ref).filter(Boolean));
     const remoteMisc = new Set((body.misc_payments ?? []).map((r) => r.ref).filter(Boolean));
-    const remoteAssign = new Set(
-      (body.daily_assignments ?? []).map((r) => {
-        const date = normalizeHistoryDate(String(r.dispatch_date || "")) || String(r.dispatch_date || "");
-        return `${date}::${r.item_id}`;
-      }),
-    );
+    const remoteAssignMeta = new Map<string, { closed: boolean }>();
+    for (const r of body.daily_assignments ?? []) {
+      const date =
+        normalizeHistoryDate(String(r.dispatch_date || "")) || String(r.dispatch_date || "");
+      remoteAssignMeta.set(`${date}::${r.item_id}`, {
+        closed: Boolean(r.day_closed_at),
+      });
+    }
     const deletedRoutes = new Set(listDeletedRouteRefs());
     const catalogUsers = readDemoJson<UserRow[]>(DEMO_USERS_KEY, []);
     const linkedCollectorRefs = new Set(
@@ -935,6 +946,15 @@ export async function reconcileLocalOpsToRemote(): Promise<{
         jobs.push({ kind: "day_close", row, key: row.ref });
       }
     }
+    // PCE- viven en clave aparte: sin esto el Inicial de mañana no llega a la nube.
+    for (const row of readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, [])) {
+      if (!row?.ref || remoteClose.has(row.ref)) continue;
+      jobs.push({
+        kind: "day_close",
+        row: planillaCashCloseAsDayClose(row),
+        key: row.ref,
+      });
+    }
     for (const row of readDemoJson<CollectorDayExpenseDraft[]>(
       DEMO_COLLECTOR_DAY_EXPENSES_KEY,
       [],
@@ -953,7 +973,11 @@ export async function reconcileLocalOpsToRemote(): Promise<{
       const key = `${date}::${row.itemId}`;
       // No subir hoja abierta «huérfana» si ya hay CIE- local: reabriría el día en la nube.
       if (localCieCoversAssignment(row)) continue;
-      if (row?.itemId && date && !remoteAssign.has(key)) {
+      if (!row?.itemId || !date) continue;
+      const remote = remoteAssignMeta.get(key);
+      const localSealed = Boolean(row.dayClosedAt);
+      // Subir si no está en nube, o si este PC ya selló y la nube sigue abierta.
+      if (!remote || (localSealed && !remote.closed)) {
         jobs.push({ kind: "assignment", row, key });
       }
     }

@@ -154,6 +154,7 @@ import {
   queueRouteDeleteMirror,
   queueRoutesMirror,
 } from "@/lib/supabase/ops-mirror";
+import { mirrorAutoDayCloseToCloud } from "@/lib/mirror-auto-day-close";
 import {
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
@@ -663,6 +664,19 @@ export function useWorkspace({
             loans: next.loans,
           }),
         );
+        const cashMerged =
+          next.planillaCashCloses?.length
+            ? next.planillaCashCloses
+            : readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, []);
+        try {
+          await mirrorAutoDayCloseToCloud({
+            dayCloses: split.dayCloses,
+            planillaCashCloses: cashMerged,
+            assignments,
+          });
+        } catch (error) {
+          console.error("auto-day-close-mirror", error);
+        }
       }
       })();
     },
