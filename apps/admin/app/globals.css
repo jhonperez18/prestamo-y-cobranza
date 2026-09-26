@@ -5230,9 +5230,9 @@
       text-decoration: underline;
     }
     .supervisor-planilla-table .is-ruta {
-      width: 8%;
-      min-width: 1.5rem;
-      max-width: 2.25rem;
+      width: 6%;
+      min-width: 1.4rem;
+      max-width: 1.85rem;
       padding-left: 4px;
       padding-right: 2px;
       font-variant-numeric: tabular-nums;
@@ -5240,10 +5240,10 @@
       text-overflow: clip !important;
     }
     .supervisor-planilla-table .is-nombre {
-      width: 34%;
+      width: 30%;
     }
     .supervisor-planilla-table .is-num {
-      width: 18%;
+      width: 17%;
       padding-left: 4px;
       padding-right: 6px;
       font-variant-numeric: tabular-nums;
@@ -5251,7 +5251,7 @@
       text-overflow: clip !important;
     }
     .supervisor-planilla-table .is-metodo {
-      width: 10%;
+      width: 11%;
       text-align: center;
       white-space: nowrap;
       padding-left: 2px;
@@ -5263,12 +5263,50 @@
     .supervisor-planilla-table tbody td.is-num {
       font-weight: 400;
     }
-    /* Planilla móvil: nombre/#/saldo compactos (no se cortan en 1… / 95….). */
+    /* Planilla móvil: columnas repartidas (# Nombre Saldo Método Mora Estado). */
+    .supervisor-mobile .supervisor-planilla-table,
+    .supervisor-mobile-app .supervisor-planilla-table {
+      table-layout: fixed;
+      width: 100%;
+    }
+    .supervisor-mobile .supervisor-planilla-table th,
+    .supervisor-mobile-app .supervisor-planilla-table th {
+      font-size: 9px !important;
+      letter-spacing: 0.01em;
+      padding-left: 2px !important;
+      padding-right: 2px !important;
+    }
     .supervisor-mobile .supervisor-planilla-table td,
     .supervisor-mobile-app .supervisor-planilla-table td {
       font-size: 10px !important;
-      padding-left: 3px !important;
-      padding-right: 3px !important;
+      padding-left: 2px !important;
+      padding-right: 2px !important;
+    }
+    .supervisor-mobile .supervisor-planilla-table .is-ruta,
+    .supervisor-mobile-app .supervisor-planilla-table .is-ruta {
+      width: 1.45rem;
+      min-width: 1.45rem;
+      max-width: 1.65rem;
+    }
+    .supervisor-mobile .supervisor-planilla-table .is-nombre,
+    .supervisor-mobile-app .supervisor-planilla-table .is-nombre {
+      width: 28%;
+    }
+    .supervisor-mobile .supervisor-planilla-table .is-num,
+    .supervisor-mobile-app .supervisor-planilla-table .is-num {
+      width: 18%;
+    }
+    .supervisor-mobile .supervisor-planilla-table .is-metodo,
+    .supervisor-mobile-app .supervisor-planilla-table .is-metodo {
+      width: 12%;
+    }
+    .supervisor-mobile .supervisor-planilla-table .is-cuotas,
+    .supervisor-mobile-app .supervisor-planilla-table .is-cuotas {
+      width: 15%;
+    }
+    .supervisor-mobile .supervisor-planilla-table .is-estado,
+    .supervisor-mobile-app .supervisor-planilla-table .is-estado {
+      width: 24%;
     }
     .supervisor-mobile .supervisor-planilla-table td.is-ruta,
     .supervisor-mobile-app .supervisor-planilla-table td.is-ruta {
@@ -5282,6 +5320,8 @@
     .supervisor-mobile-app .supervisor-planilla-table td.is-nombre {
       font-size: 10px !important;
       text-align: left !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .supervisor-mobile .supervisor-planilla-table td.is-num,
     .supervisor-mobile-app .supervisor-planilla-table td.is-num {
@@ -5290,13 +5330,14 @@
       text-align: right !important;
       overflow: visible !important;
       text-overflow: clip !important;
+      white-space: nowrap !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-estado .pill,
     .supervisor-mobile-app .supervisor-planilla-table .is-estado .pill {
       font-size: 9px !important;
-      padding: 0 2px;
-      height: 12px;
-      line-height: 12px;
+      padding: 0 3px;
+      height: 13px;
+      line-height: 13px;
       min-width: 1.1rem;
     }
     .supervisor-planilla-table .cuotas-progress,
@@ -5703,7 +5744,7 @@
       text-align: right;
     }
     .supervisor-planilla-table .is-cuotas {
-      width: 16%;
+      width: 14%;
       text-align: center;
       padding-left: 2px;
       padding-right: 2px;
@@ -5718,7 +5759,7 @@
       text-align: center;
     }
     .supervisor-planilla-table .is-estado {
-      width: 16%;
+      width: 22%;
       text-align: center;
       white-space: nowrap;
       overflow: visible;
