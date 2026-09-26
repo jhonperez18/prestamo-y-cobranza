@@ -286,6 +286,7 @@ import {
   findDayExpenseDraft,
   appendCashDisbursementExpense,
   applyDayCloseRecordsToAssignments,
+  normalizeHistoryDate,
   recoverPaymentsFromAssignments,
   recoverPaymentsFromBankMovements,
   removeDayExpenseDraft,
@@ -736,14 +737,22 @@ export function useWorkspace({
     writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, planillaCashCloses);
   }, [planillaCashCloses, demoHydrated]);
 
-  /** Repara PCE-M/T si el cierre no descontó todos los préstamos (T no hincha el próximo M). */
+  /**
+   * Una sola pasada tras hidratar: alinea PCE de hoy si el cierre viejo
+   * no descontó préstamos. No corre en cada pull/pago (eso dejaba el panel ralentizado).
+   */
+  const cashChainRepairedRef = useRef(false);
   useEffect(() => {
-    if (!demoHydrated || planillaCashCloses.length === 0) return;
+    if (!demoHydrated || cashChainRepairedRef.current) return;
+    if (planillaCashCloses.length === 0 || clients.length === 0) return;
+    cashChainRepairedRef.current = true;
+    const today = todayIso();
     let next = planillaCashCloses;
     let changed = false;
     const seen = new Set<string>();
     for (const row of planillaCashCloses) {
       if (!sameRoute(row.routeName, PLANILLA_CASH_CHAIN_PRIMARY)) continue;
+      if ((normalizeHistoryDate(row.date) || row.date) !== today) continue;
       const key = `${row.collectorRef}|${row.date}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -814,19 +823,24 @@ export function useWorkspace({
         trueClosing,
       );
       changed = true;
+      const mFixed = findPlanillaCashClose(
+        next,
+        row.collectorRef,
+        row.date,
+        PLANILLA_CASH_CHAIN_PRIMARY,
+      );
+      if (mFixed) queueDayCloseMirror(planillaCashCloseAsDayClose(mFixed));
+      const tFixed = findPlanillaCashClose(
+        next,
+        row.collectorRef,
+        row.date,
+        PLANILLA_CASH_CHAIN_SECONDARY,
+      );
+      if (tFixed) queueDayCloseMirror(planillaCashCloseAsDayClose(tFixed));
     }
     if (!changed) return;
     setPlanillaCashCloses(next);
     writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, next);
-    for (const row of next) {
-      if (
-        !sameRoute(row.routeName, PLANILLA_CASH_CHAIN_PRIMARY) &&
-        !sameRoute(row.routeName, PLANILLA_CASH_CHAIN_SECONDARY)
-      ) {
-        continue;
-      }
-      queueDayCloseMirror(planillaCashCloseAsDayClose(row));
-    }
   }, [
     clients,
     collectors,
