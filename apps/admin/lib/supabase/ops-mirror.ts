@@ -16,17 +16,12 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { DAY_CLOSE_SKIP_REASON } from "@/lib/collector-dispatch-sync";
 import type { MiscPayment } from "@/lib/misc-payments";
 import {
-  planillaCashCloseAsDayClose,
-  type PlanillaCashCloseRecord,
-} from "@/lib/planilla-cash-chain";
-import {
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
   DEMO_COLLECTORS_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_MISC_PAYMENTS_KEY,
   DEMO_PAYMENTS_KEY,
-  DEMO_PLANILLA_CASH_CLOSES_KEY,
   DEMO_ROUTES_KEY,
   DEMO_USERS_KEY,
   isVirginRemoteHoldActive,
@@ -598,6 +593,48 @@ export async function upsertOpsRow(
   return { ok: true as const };
 }
 
+/**
+ * CIE-/PCE- a day_closes. Si ya hay otro CIE- del mismo cobrador+día (ref distinta),
+ * lo reemplaza para no chocar con el unique parcial.
+ */
+export async function upsertDayCloseIdempotent(row: Record<string, unknown>) {
+  const client = createMirrorClient();
+  if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+
+  const first = await client.from("day_closes").upsert(row, { onConflict: "ref" });
+  if (!first.error) return { ok: true as const };
+
+  const msg = first.error.message || "";
+  const isCie = String(row.ref || "").startsWith("CIE-");
+  const isUniqueClash =
+    msg.includes("day_closes_collector_date") ||
+    msg.includes("day_closes_cie_collector_date") ||
+    msg.includes("duplicate key");
+
+  if (!isCie || !isUniqueClash) {
+    return { ok: false as const, error: msg };
+  }
+
+  const collectorRef = String(row.collector_ref || "");
+  const closeDate = String(row.close_date || "");
+  if (!collectorRef || !closeDate) {
+    return { ok: false as const, error: msg };
+  }
+
+  const { error: delError } = await client
+    .from("day_closes")
+    .delete()
+    .eq("collector_ref", collectorRef)
+    .eq("close_date", closeDate)
+    .neq("ref", String(row.ref))
+    .like("ref", "CIE-%");
+  if (delError) return { ok: false as const, error: delError.message };
+
+  const second = await client.from("day_closes").upsert(row, { onConflict: "ref" });
+  if (second.error) return { ok: false as const, error: second.error.message };
+  return { ok: true as const };
+}
+
 /** PostgREST/Supabase suele topear en 1000 filas aunque pidas limit mayor. */
 const OPS_FETCH_PAGE = 1000;
 
@@ -942,19 +979,13 @@ export async function reconcileLocalOpsToRemote(): Promise<{
       }
     }
     for (const row of readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, [])) {
-      if (row?.ref && !remoteClose.has(row.ref)) {
-        jobs.push({ kind: "day_close", row, key: row.ref });
-      }
-    }
-    // PCE- viven en clave aparte: sin esto el Inicial de mañana no llega a la nube.
-    for (const row of readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, [])) {
       if (!row?.ref || remoteClose.has(row.ref)) continue;
-      jobs.push({
-        kind: "day_close",
-        row: planillaCashCloseAsDayClose(row),
-        key: row.ref,
-      });
+      // PCE- aún no caben en day_closes (check ^CIE-) hasta migración.
+      if (String(row.ref).startsWith("PCE-")) continue;
+      jobs.push({ kind: "day_close", row, key: row.ref });
     }
+    // PCE- locales: solo cuando el esquema acepte ref ^(CIE|PCE)-.
+    // Mientras tanto no encolar (evita 502 day_closes_ref_format).
     for (const row of readDemoJson<CollectorDayExpenseDraft[]>(
       DEMO_COLLECTOR_DAY_EXPENSES_KEY,
       [],

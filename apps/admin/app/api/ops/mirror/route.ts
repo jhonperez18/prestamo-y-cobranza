@@ -9,6 +9,7 @@ import {
   miscToRow,
   routeToRow,
   upsertAssignmentRow,
+  upsertDayCloseIdempotent,
   upsertDayExpenseIdempotent,
   upsertOpsRow,
 } from "@/lib/supabase/ops-mirror";
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
       }
       case "day_close": {
         const mapped = dayCloseToRow(body.row as CollectorDayCloseRecord);
-        result = await upsertOpsRow("day_closes", mapped, "ref");
+        result = await upsertDayCloseIdempotent(mapped);
         if (result.ok && !("skipped" in result && result.skipped)) {
           await auditDayCloseInCloud(body.row as CollectorDayCloseRecord);
         }
