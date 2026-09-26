@@ -1088,6 +1088,7 @@ export function SupervisorMobileApp({
         date: today,
         records: planillaCashCloses,
         monthCloses,
+        dayCloses,
         fallbackOpening: cajaDelDia(
           collector,
           today,
@@ -1253,6 +1254,7 @@ export function SupervisorMobileApp({
               date: today,
               records: planillaCashCloses,
               monthCloses,
+              dayCloses,
               primaryLiveClosing: isPlanillaCashChainSecondary(route.routeName)
                 ? primaryLiveByCollector.get(collectorRef)
                 : undefined,

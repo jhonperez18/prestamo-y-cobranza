@@ -699,12 +699,13 @@ export function CollectorMobileApp({
         date: activeDate,
         records: planillaCashCloses,
         monthCloses,
+        dayCloses,
         fallbackOpening:
           activeDate === PLANILLA_CASH_CHAIN_HISTORY_EPOCH
             ? mCarriedFallbackOpening
             : undefined,
       }),
-    [activeDate, collector.ref, mCarriedFallbackOpening, monthCloses, planillaCashCloses],
+    [activeDate, collector.ref, dayCloses, mCarriedFallbackOpening, monthCloses, planillaCashCloses],
   );
 
   const primaryClientRefs = useMemo(() => {
@@ -795,6 +796,7 @@ export function CollectorMobileApp({
         date: activeDate,
         records: planillaCashCloses,
         monthCloses,
+        dayCloses,
         primaryLiveClosing: isPlanillaCashChainSecondary(activePlanillaRoute ?? undefined)
           ? primaryLiveClosing
           : undefined,
@@ -807,6 +809,7 @@ export function CollectorMobileApp({
       activeDate,
       activePlanillaRoute,
       collector.ref,
+      dayCloses,
       mCarriedFallbackOpening,
       monthCloses,
       planillaCashCloses,

@@ -16,12 +16,18 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { DAY_CLOSE_SKIP_REASON } from "@/lib/collector-dispatch-sync";
 import type { MiscPayment } from "@/lib/misc-payments";
 import {
+  ensureManualTLaunchClose,
+  projectPceTFromDayCloses,
+  type PlanillaCashCloseRecord,
+} from "@/lib/planilla-cash-chain";
+import {
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
   DEMO_COLLECTORS_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_MISC_PAYMENTS_KEY,
   DEMO_PAYMENTS_KEY,
+  DEMO_PLANILLA_CASH_CLOSES_KEY,
   DEMO_ROUTES_KEY,
   DEMO_USERS_KEY,
   isVirginRemoteHoldActive,
@@ -1120,6 +1126,20 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
     if (clMerge.changed) {
       writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, clMerge.merged);
       changed = true;
+    }
+    // CIE- de nube → PCE-T local (Inicial M = misma cifra en todos los aparatos).
+    {
+      const before = readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, []);
+      const projected = projectPceTFromDayCloses(
+        ensureManualTLaunchClose(before),
+        clMerge.merged,
+      );
+      const beforeSig = before.map((r) => `${r.ref}:${r.closingCash}`).sort().join("|");
+      const afterSig = projected.map((r) => `${r.ref}:${r.closingCash}`).sort().join("|");
+      if (beforeSig !== afterSig) {
+        writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, projected);
+        changed = true;
+      }
     }
 
     const expenses = (body.day_expenses ?? [])
