@@ -397,6 +397,8 @@ export function CollectorMobileApp({
       {
         assignments,
         rolling: true,
+        loans,
+        clients,
         includeOperatingExpenses: true,
       },
     );
@@ -407,17 +409,19 @@ export function CollectorMobileApp({
   }, [
     activeDate,
     assignments,
+    clients,
     collector,
     date,
     dayCloses,
     dayExpenseDrafts,
     livePayments,
+    loans,
     monthCloses,
     routeOptions,
     viewPeriod,
   ]);
 
-  /** Mapa fecha → Saldo en caja real (para extracto M: no inflar con filtro de ruta). */
+  /** Mapa fecha → Saldo en caja real (misma fuente que KPI Préstamo / ruta). */
   const collectorCashHandByDate = useMemo(() => {
     const extraDates = [
       ...routeOptions.map((row) => row.date),
@@ -436,6 +440,8 @@ export function CollectorMobileApp({
       {
         assignments,
         rolling: true,
+        loans,
+        clients,
         includeOperatingExpenses: true,
       },
     );
@@ -443,11 +449,13 @@ export function CollectorMobileApp({
   }, [
     activeDate,
     assignments,
+    clients,
     collector,
     date,
     dayCloses,
     dayExpenseDrafts,
     livePayments,
+    loans,
     monthCloses,
     routeOptions,
     viewPeriod,
@@ -495,6 +503,7 @@ export function CollectorMobileApp({
     );
 
     // Saldo final de M por día = misma cifra que Historial · M / ruta (T solo arrastra eso).
+    // No pisar con cash-hand viejo: mBase ya trae préstamos reconstruidos.
     let primaryClosingByDate: Map<string, number> | undefined;
     if (isPlanillaCashChainSecondary(routeForHistory ?? undefined)) {
       const mBase = buildCollectorDayHistory(
@@ -514,18 +523,30 @@ export function CollectorMobileApp({
           includeOperatingExpenses: true,
         },
       );
-      const mForChain = applyCollectorCashHandSaldos(mBase, collectorCashHandByDate);
+      const mAnnotated = annotateMHistoryExtractRows({
+        rows: mBase,
+        collectorRef: collector.ref,
+        records: planillaCashCloses,
+        epochBootstrapOpening: mCarriedFallbackOpening,
+        todayIso: date ?? todayIso(),
+      });
       const mStamped = stampHistoryWithPlanillaCashChain({
         collectorRef: collector.ref,
         routeName: PLANILLA_CASH_CHAIN_PRIMARY,
-        rows: mForChain,
+        rows: mBase,
         records: planillaCashCloses,
         monthCloses,
         fallbackOpening: mCarriedFallbackOpening,
       });
-      primaryClosingByDate = new Map(
-        mStamped.map((row) => [row.date, row.saldo]),
-      );
+      primaryClosingByDate = new Map();
+      for (const row of mStamped) {
+        const annotated = mAnnotated.find((entry) => entry.date === row.date);
+        const saldo =
+          annotated?.saldoShown != null && Number.isFinite(annotated.saldoShown)
+            ? annotated.saldoShown
+            : row.saldo;
+        primaryClosingByDate.set(row.date, Number(saldo) || 0);
+      }
     }
 
     const forChain = isPlanillaCashChainPrimary(routeForHistory ?? undefined)
