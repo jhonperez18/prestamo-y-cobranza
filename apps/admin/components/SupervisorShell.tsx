@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useActionToast } from "@/hooks/useActionToast";
 import { SupervisorMobileApp } from "@/components/SupervisorMobileApp";
 import type { AppSession } from "@/lib/auth";
@@ -127,6 +127,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
     setMiscPayments(readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []));
   }, []);
 
+  const pendingToastAtRef = useRef(0);
   const { hydrated } = useOperationalDemoSync(applyOperationalSnapshot, {
     onEvidenceSync: ({ pushed, failed }) => {
       if (pushed > 0) {
@@ -138,6 +139,17 @@ export function SupervisorShell({ session, onLogout }: Props) {
       } else if (failed > 0) {
         showToast("No se pudo subir el comprobante a la nube. Revisá la conexión.");
       }
+    },
+    onMirrorPending: (pending) => {
+      if (pending.total <= 0) return;
+      const now = Date.now();
+      if (now - pendingToastAtRef.current < 60_000) return;
+      pendingToastAtRef.current = now;
+      showToast(
+        pending.total === 1
+          ? "1 cambio pendiente de subir a la nube…"
+          : `${pending.total} cambios pendientes de subir a la nube…`,
+      );
     },
   });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useActionToast } from "@/hooks/useActionToast";
 import {
   COLLECTORS,
@@ -190,6 +190,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, withLaunch);
   }, []);
 
+  const pendingToastAtRef = useRef(0);
   const { hydrated } = useOperationalDemoSync(applyOperationalSnapshot, {
     onEvidenceSync: ({ pushed, failed }) => {
       if (pushed > 0) {
@@ -201,6 +202,17 @@ export function CollectorShell({ session, onLogout }: Props) {
       } else if (failed > 0) {
         showToast("No se pudo subir el comprobante a la nube. Revisá la conexión.");
       }
+    },
+    onMirrorPending: (pending) => {
+      if (pending.total <= 0) return;
+      const now = Date.now();
+      if (now - pendingToastAtRef.current < 60_000) return;
+      pendingToastAtRef.current = now;
+      showToast(
+        pending.total === 1
+          ? "1 cambio pendiente de subir a la nube…"
+          : `${pending.total} cambios pendientes de subir a la nube…`,
+      );
     },
   });
 
@@ -287,6 +299,15 @@ export function CollectorShell({ session, onLogout }: Props) {
 
   useEffect(() => {
     if (!hydrated) return;
+    // No pisar CIE/cierres ya en disco con [] del arranque (mismo fallo que pagos).
+    if (dayCloses.length === 0) {
+      const stored = loadDemoDayCloses<CollectorDayCloseRecord>();
+      if (stored.length > 0) {
+        const split = splitDayClosesAndPlanillaCash(stored);
+        setDayCloses(split.dayCloses);
+        return;
+      }
+    }
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, dayCloses);
   }, [dayCloses, hydrated]);
 

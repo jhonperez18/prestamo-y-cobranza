@@ -22,6 +22,11 @@ import {
 } from "@/lib/planilla-cash-chain";
 import { businessDaysAgoIso } from "@/lib/business-timezone";
 import {
+  emitMirrorQueueChanged,
+  shouldDropFromMirrorQueue,
+  type MirrorApiJson,
+} from "@/lib/supabase/mirror-queue";
+import {
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
   DEMO_COLLECTORS_KEY,
@@ -190,7 +195,7 @@ async function postMirror(path: string, body: unknown) {
     body: JSON.stringify(body),
     keepalive: true,
   });
-  const json = (await res.json()) as { ok?: boolean; error?: string };
+  const json = (await res.json()) as MirrorApiJson;
   return { res, json };
 }
 
@@ -198,6 +203,7 @@ function enqueue<T extends { ref: string }>(key: string, row: T) {
   const q = readDemoJson<T[]>(key, []).filter((r) => r.ref !== row.ref);
   q.push(row);
   writeDemoJson(key, q);
+  emitMirrorQueueChanged();
 }
 
 function dequeue(key: string, ref: string) {
@@ -205,6 +211,7 @@ function dequeue(key: string, ref: string) {
     key,
     readDemoJson<{ ref: string }[]>(key, []).filter((r) => r.ref !== ref),
   );
+  emitMirrorQueueChanged();
 }
 
 /**
@@ -765,9 +772,11 @@ async function persistKind(
   enqueue(queueKey, { ref, ...(pathBody.row as object) } as { ref: string });
   try {
     const { res, json } = await postMirror("/api/ops/mirror", pathBody);
-    if (res.ok && json.ok) {
+    // Solo sacar de cola si escribió de verdad (o skip irrecuperable / CIE nube gana).
+    // Antes: ok+skipped (sin service role / virgin) vaciaba la cola y el dato nunca subía.
+    if (res.ok && shouldDropFromMirrorQueue(json)) {
       dequeue(queueKey, ref);
-      return true;
+      return !json.skipped;
     }
   } catch {
     /* queda en cola */
@@ -839,6 +848,8 @@ export function queueRouteDeleteMirror(ref: string) {
 }
 
 export function queueDayCloseMirror(c: CollectorDayCloseRecord) {
+  // PCE- no cabe en day_closes (check ^CIE-). Encolarlos solo genera 502 y tapa el flush.
+  if (String(c.ref || "").startsWith("PCE-")) return;
   void persistKind(Q_CLOSES, { kind: "day_close", row: c }, c.ref);
 }
 export function queueDayExpenseMirror(d: CollectorDayExpenseDraft) {
@@ -889,10 +900,21 @@ export function queueAssignmentsMirror(rows: DailyCollectionAssignment[]) {
   for (const row of rows) queueAssignmentMirror(row);
 }
 
-export async function flushOpsMirrorQueues() {
-  if (typeof window === "undefined") return;
+export async function flushOpsMirrorQueues(): Promise<{ flushed: number; left: number }> {
+  if (typeof window === "undefined") return { flushed: 0, left: 0 };
 
   pruneOpenAssignmentQueueAgainstLocalCloses();
+
+  // PCE- colados en la cola de cierres: basura irrecuperable (schema solo CIE-).
+  {
+    const closes = readDemoJson<{ ref: string }[]>(Q_CLOSES, []);
+    const withoutPce = closes.filter((row) => !String(row.ref || "").startsWith("PCE-"));
+    if (withoutPce.length !== closes.length) {
+      writeDemoJson(Q_CLOSES, withoutPce);
+    }
+  }
+
+  let flushed = 0;
 
   // Primero deletes (si no, un upsert viejo las revive).
   const routeDeletes = readDemoJson<{ ref: string }[]>(Q_ROUTE_DELETES, []);
@@ -903,7 +925,8 @@ export async function flushOpsMirrorQueues() {
         kind: "route_delete",
         row: { ref: row.ref },
       });
-      if (!(res.ok && json.ok)) routeDeletesLeft.push(row);
+      if (res.ok && shouldDropFromMirrorQueue(json)) flushed += 1;
+      else routeDeletesLeft.push(row);
     } catch {
       routeDeletesLeft.push(row);
     }
@@ -918,7 +941,8 @@ export async function flushOpsMirrorQueues() {
         kind: "collector_delete",
         row: { ref: row.ref },
       });
-      if (!(res.ok && json.ok)) collectorDeletesLeft.push(row);
+      if (res.ok && shouldDropFromMirrorQueue(json)) flushed += 1;
+      else collectorDeletesLeft.push(row);
     } catch {
       collectorDeletesLeft.push(row);
     }
@@ -968,13 +992,23 @@ export async function flushOpsMirrorQueues() {
           kind: job.kind,
           row: payload,
         });
-        if (!(res.ok && json.ok)) left.push(row);
+        if (res.ok && shouldDropFromMirrorQueue(json)) flushed += 1;
+        else left.push(row);
       } catch {
         left.push(row);
       }
     }
     writeDemoJson(job.key, left);
   }
+  emitMirrorQueueChanged();
+  const left =
+    routeDeletesLeft.length +
+    collectorDeletesLeft.length +
+    jobs.reduce(
+      (sum, job) => sum + readDemoJson<{ ref: string }[]>(job.key, []).length,
+      0,
+    );
+  return { flushed, left };
 }
 
 export type OpsBundleBody = {
@@ -1030,9 +1064,12 @@ export async function reconcileLocalOpsToRemote(
     const remoteRoute = new Set(
       (body.routes ?? []).map((r) => String(r.ref || "")).filter(Boolean),
     );
-    const remoteClose = new Set(
-      (body.day_closes ?? []).map((r) => String(r.ref || "")).filter(Boolean),
-    );
+    const remoteClose = new Map<string, number>();
+    for (const r of body.day_closes ?? []) {
+      const ref = String(r.ref || "").trim();
+      if (!ref) continue;
+      remoteClose.set(ref, Number(r.cash_float) || 0);
+    }
     const remoteExpense = new Set(
       (body.day_expenses ?? []).map((r) => String(r.ref || "")).filter(Boolean),
     );
@@ -1092,10 +1129,15 @@ export async function reconcileLocalOpsToRemote(
       }
     }
     for (const row of readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, [])) {
-      if (!row?.ref || remoteClose.has(row.ref)) continue;
+      if (!row?.ref) continue;
       // PCE- aún no caben en day_closes (check ^CIE-) hasta migración.
       if (String(row.ref).startsWith("PCE-")) continue;
-      jobs.push({ kind: "day_close", row, key: row.ref });
+      const remoteFloat = remoteClose.get(row.ref);
+      const localFloat = Number(row.cashFloat) || 0;
+      // Huérfano O saldo distinto: reintentar upsert (servidor decide CIE quién gana).
+      if (remoteFloat === undefined || remoteFloat !== localFloat) {
+        jobs.push({ kind: "day_close", row, key: row.ref });
+      }
     }
     // PCE- locales: solo cuando el esquema acepte ref ^(CIE|PCE)-.
     // Mientras tanto no encolar (evita 502 day_closes_ref_format).
@@ -1140,12 +1182,32 @@ export async function reconcileLocalOpsToRemote(
           kind: job.kind,
           row: job.row,
         });
-        if (mirrorRes.ok && json.ok) pushed += 1;
-        else failed += 1;
+        if (mirrorRes.ok && shouldDropFromMirrorQueue(json) && !json.skipped) {
+          pushed += 1;
+        } else if (mirrorRes.ok && shouldDropFromMirrorQueue(json) && json.skipped) {
+          // Skip intencional (CIE nube gana): no es fallo de red.
+        } else {
+          // Dejar en cola para el flush de fondo.
+          if (job.kind === "day_close") {
+            enqueue(Q_CLOSES, { ref: job.key, ...(job.row as object) } as { ref: string });
+          } else if (job.kind === "day_expense") {
+            enqueue(Q_EXPENSES, { ref: job.key, ...(job.row as object) } as { ref: string });
+          } else if (job.kind === "misc_payment") {
+            enqueue(Q_MISC, { ref: job.key, ...(job.row as object) } as { ref: string });
+          } else if (job.kind === "assignment") {
+            enqueue(Q_ASSIGN, { ref: job.key, ...(job.row as object) } as { ref: string });
+          } else if (job.kind === "collector") {
+            enqueue(Q_COLLECTORS, { ref: job.key, ...(job.row as object) } as { ref: string });
+          } else if (job.kind === "route") {
+            enqueue(Q_ROUTES, { ref: job.key, ...(job.row as object) } as { ref: string });
+          }
+          failed += 1;
+        }
       } catch {
         failed += 1;
       }
     }
+    emitMirrorQueueChanged();
     return { pushed, failed };
   } catch {
     return { pushed: 0, failed: 0 };

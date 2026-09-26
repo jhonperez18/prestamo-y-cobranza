@@ -26,6 +26,11 @@ import {
 import { normalizePaymentMethod, type PaymentMethod } from "@/lib/payment-method";
 import { parseComboChargeLabel } from "@/lib/payment-combo";
 import { isDeletedRef } from "@/lib/deleted-ids";
+import {
+  emitMirrorQueueChanged,
+  shouldDropFromMirrorQueue,
+  type MirrorApiJson,
+} from "@/lib/supabase/mirror-queue";
 
 export type PaymentMirrorRow = {
   id?: string;
@@ -515,6 +520,7 @@ function readMirrorQueue(): PaymentRow[] {
 
 function writeMirrorQueue(rows: PaymentRow[]) {
   writeDemoJson(DEMO_PAYMENT_MIRROR_QUEUE_KEY, rows);
+  emitMirrorQueueChanged();
 }
 
 function enqueueMirrorPayment(payment: PaymentRow) {
@@ -557,6 +563,11 @@ export async function persistPaymentToSupabase(
     }
     if (!result.skipped) {
       dequeueMirrorPayment(payload.ref);
+    } else if (!shouldDropFromMirrorQueue(result)) {
+      // skipped sin escritura real (p. ej. service_role_missing): queda pendiente.
+      enqueueMirrorPayment(payload);
+    } else {
+      dequeueMirrorPayment(payload.ref);
     }
     return result;
   } catch (err) {
@@ -568,7 +579,7 @@ export async function persistPaymentToSupabase(
   }
 }
 
-/** C4: intenta subir la cola offline (no tumba la UX). */
+/** C4: intenta subir la cola offline (no tumba la UX). Reintentable. */
 export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left: number }> {
   if (typeof window === "undefined") return { flushed: 0, left: 0 };
   const queue = readMirrorQueue();
@@ -584,17 +595,12 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ payment: payload }),
       });
-      const body = (await res.json()) as {
-        ok?: boolean;
-        skipped?: boolean;
-        reason?: string;
-      };
-      // Solo sacar de cola si realmente escribió en Postgres.
-      // `skipped` (sin service role / inválido) NO cuenta como éxito.
-      if (res.ok && body.ok && !body.skipped) {
+      const body = (await res.json()) as MirrorApiJson;
+      // Solo sacar de cola si realmente escribió en Postgres (o skip irrecuperable).
+      if (res.ok && shouldDropFromMirrorQueue(body) && !body.skipped) {
         flushed += 1;
-      } else if (res.ok && body.ok && body.skipped && body.reason === "invalid_payment") {
-        // Basura irrecuperable: no reintentar.
+      } else if (res.ok && shouldDropFromMirrorQueue(body) && body.skipped) {
+        // invalid_payment u otro drop intencional
         flushed += 1;
       } else {
         left.push(payload);

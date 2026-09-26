@@ -12,30 +12,25 @@ import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { bindMoneyRealtime } from "@/lib/realtime-money";
 import {
-  flushPaymentMirrorQueue,
   pullRemotePaymentsIntoDemo,
   pullRemoteEvidenceIntoIdb,
   reconcileLocalPaymentsToRemote,
   reconcilePaymentEvidenceToRemote,
 } from "@/lib/supabase/payment-mirror";
+import { pullRemoteCatalogIntoDemo } from "@/lib/supabase/catalog-mirror";
+import { pullRemoteOpsIntoDemo, reconcileLocalOpsToRemote } from "@/lib/supabase/ops-mirror";
+import { pullRemoteUsersIntoDemo } from "@/lib/supabase/user-mirror";
 import {
-  flushCatalogMirrorQueues,
-  pullRemoteCatalogIntoDemo,
-} from "@/lib/supabase/catalog-mirror";
-import {
-  flushOpsMirrorQueues,
-  pullRemoteOpsIntoDemo,
-  reconcileLocalOpsToRemote,
-} from "@/lib/supabase/ops-mirror";
-import {
-  flushUserMirrorQueues,
-  pullRemoteUsersIntoDemo,
-} from "@/lib/supabase/user-mirror";
-import {
-  flushBankAccountMirrorQueues,
   pullRemoteBankAccountsIntoDemo,
   reconcileLocalBankAccountsToRemote,
 } from "@/lib/supabase/bank-accounts-mirror";
+import {
+  countPendingMirrorQueues,
+  emitMirrorQueueChanged,
+  flushAllMirrorQueues,
+  MIRROR_QUEUE_CHANGED_EVENT,
+  type MirrorPendingBreakdown,
+} from "@/lib/supabase/mirror-queue";
 import type { BankAccount } from "@/lib/bank";
 
 type Options = {
@@ -46,10 +41,14 @@ type Options = {
   resyncActive?: boolean;
   /** Aviso cuando este aparato sube constancias que solo tenía en local. */
   onEvidenceSync?: (result: { pushed: number; failed: number }) => void;
+  /** Aviso cuando hay cola pendiente de subir a la nube. */
+  onMirrorPending?: (pending: MirrorPendingBreakdown) => void;
 };
 
 /** Realtime es la vía viva; el poll solo respalda si el canal se cae. */
 const CLOUD_POLL_MS = 45_000;
+/** Flush de colas independiente del pull (cobros/CIE no se quedan atrapados). */
+const MIRROR_FLUSH_MS = 8_000;
 /** Evita doble pull al volver foco + visibility a la vez. */
 const VISIBLE_PULL_MIN_MS = 3_000;
 /** Agrupa ráfagas de postgres_changes en un solo hydrate. */
@@ -58,20 +57,29 @@ const REALTIME_DEBOUNCE_MS = 280;
 /**
  * Sync C5+C6 — local primero (arranque rápido), luego flush/pull en fondo.
  * Rehidrata al terminar el pull (sin dejar UI vacía: el local ya pintó).
+ *
+ * Invariante: el flush de colas mirror NO depende del pull.
+ * Si el pull falla o tarda, igual se sube lo pendiente a Supabase.
  */
 export function useOperationalDemoSync(
   apply: (snapshot: OperationalDemoSnapshot) => void,
   options: Options = {},
 ) {
-  const { resyncActive = false, onEvidenceSync } = options;
+  const { resyncActive = false, onEvidenceSync, onMirrorPending } = options;
   const [hydrated, setHydrated] = useState(false);
+  const [pendingMirror, setPendingMirror] = useState<MirrorPendingBreakdown>(() =>
+    countPendingMirrorQueues(),
+  );
   const evidenceOnceRef = useRef(false);
   const applyRef = useRef(apply);
   applyRef.current = apply;
   const onEvidenceSyncRef = useRef(onEvidenceSync);
   onEvidenceSyncRef.current = onEvidenceSync;
+  const onMirrorPendingRef = useRef(onMirrorPending);
+  onMirrorPendingRef.current = onMirrorPending;
   const resyncGateRef = useRef(false);
   const pullInFlightRef = useRef(false);
+  const flushInFlightRef = useRef(false);
   const lastVisiblePullAtRef = useRef(0);
 
   const commitHydrate = useCallback(() => {
@@ -80,12 +88,35 @@ export function useOperationalDemoSync(
     setHydrated(true);
   }, []);
 
+  const refreshPending = useCallback(() => {
+    const pending = emitMirrorQueueChanged();
+    setPendingMirror(pending);
+    onMirrorPendingRef.current?.(pending);
+    return pending;
+  }, []);
+
+  const runMirrorFlush = useCallback(async () => {
+    if (typeof window === "undefined") return;
+    if (flushInFlightRef.current) return;
+    flushInFlightRef.current = true;
+    try {
+      await flushAllMirrorQueues({ attempts: 3 });
+      refreshPending();
+    } catch (error) {
+      console.error("mirror-flush", error);
+      refreshPending();
+    } finally {
+      flushInFlightRef.current = false;
+    }
+  }, [refreshPending]);
+
   const runHydrateWithRemotePull = useCallback(async () => {
     if (pullInFlightRef.current) return;
     pullInFlightRef.current = true;
     try {
-      // Primero bajar cobros y planilla, y pintar. Si el flush va antes y falla,
-      // el panel se queda con los gastos y nunca muestra el cobro del cobrador.
+      // Flush primero: lo pendiente en este PC sube aunque el pull tarde o falle.
+      await runMirrorFlush();
+
       const payments = await pullRemotePaymentsIntoDemo();
       const [catalog, ops, users, banks] = await Promise.all([
         pullRemoteCatalogIntoDemo(),
@@ -93,7 +124,9 @@ export function useOperationalDemoSync(
         pullRemoteUsersIntoDemo(),
         pullRemoteBankAccountsIntoDemo(),
       ]);
-      let changed = Boolean(payments.changed || catalog.changed || ops.changed || users.changed || banks.changed);
+      let changed = Boolean(
+        payments.changed || catalog.changed || ops.changed || users.changed || banks.changed,
+      );
       const localClients = readDemoJson(DEMO_CLIENTS_KEY, [] as unknown[]);
       if (!Array.isArray(localClients) || localClients.length === 0) {
         const again = await pullRemoteCatalogIntoDemo();
@@ -107,7 +140,6 @@ export function useOperationalDemoSync(
       // Sin cambios no se rehace toda la pantalla. Eso era la lentitud en reposo.
       if (changed) commitHydrate();
       try {
-        await flushPaymentMirrorQueue();
         await reconcileLocalPaymentsToRemote(payments.remoteRefs);
         if (!evidenceOnceRef.current) {
           evidenceOnceRef.current = true;
@@ -122,25 +154,25 @@ export function useOperationalDemoSync(
             });
           }
         }
-        await Promise.all([
-          flushCatalogMirrorQueues(),
-          flushOpsMirrorQueues(),
-          flushUserMirrorQueues(),
-          flushBankAccountMirrorQueues(),
-        ]);
         // Reusa el bundle del pull: no bajar /api/ops/bundle otra vez (latencia PC).
         await reconcileLocalOpsToRemote(ops.bundle);
         await reconcileLocalBankAccountsToRemote();
+        // Tras reconcile, vaciar cola otra vez (huérfanos recién encolados).
+        await runMirrorFlush();
       } catch {
         /* la pantalla ya tiene el dato; la nube reintenta en el siguiente ciclo */
+        await runMirrorFlush();
       }
     } catch (error) {
       console.error("ops-sync", error);
+      // Pull falló: igual intentar subir lo pendiente.
+      await runMirrorFlush();
     } finally {
       pullInFlightRef.current = false;
       setHydrated(true);
+      refreshPending();
     }
-  }, [commitHydrate]);
+  }, [commitHydrate, refreshPending, runMirrorFlush]);
 
   useEffect(() => {
     let cancel = false;
@@ -153,13 +185,14 @@ export function useOperationalDemoSync(
       if (cancel) return;
       // 1) Pintar local al instante (sistema madre: local primero).
       commitHydrate();
+      refreshPending();
       // 2) Sync nube en segundo plano.
       void runHydrateWithRemotePull();
     })();
     return () => {
       cancel = true;
     };
-  }, [commitHydrate, runHydrateWithRemotePull]);
+  }, [commitHydrate, refreshPending, runHydrateWithRemotePull]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -176,26 +209,51 @@ export function useOperationalDemoSync(
     function onStorage(event: StorageEvent) {
       if (!event.key || !event.key.startsWith(OPERATIONAL_DEMO_STORAGE_PREFIX)) return;
       commitHydrate();
+      refreshPending();
     }
     function refreshFromCloud() {
       if (document.visibilityState !== "visible") return;
       const now = Date.now();
       // Cobrador ↔ supervisor: al volver a la app, bajar planilla/cierre sin esperar el poll.
-      if (now - lastVisiblePullAtRef.current < VISIBLE_PULL_MIN_MS) return;
+      if (now - lastVisiblePullAtRef.current < VISIBLE_PULL_MIN_MS) {
+        void runMirrorFlush();
+        return;
+      }
       lastVisiblePullAtRef.current = now;
       void runHydrateWithRemotePull();
     }
+    function onOnline() {
+      void runMirrorFlush();
+    }
+    function onQueueEvent(event: Event) {
+      const detail = (event as CustomEvent<MirrorPendingBreakdown>).detail;
+      if (detail && typeof detail.total === "number") {
+        setPendingMirror(detail);
+        onMirrorPendingRef.current?.(detail);
+      } else {
+        refreshPending();
+      }
+    }
     const poll = window.setInterval(refreshFromCloud, CLOUD_POLL_MS);
+    const flushPoll = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void runMirrorFlush();
+    }, MIRROR_FLUSH_MS);
     window.addEventListener("storage", onStorage);
     document.addEventListener("visibilitychange", refreshFromCloud);
     window.addEventListener("focus", refreshFromCloud);
+    window.addEventListener("online", onOnline);
+    window.addEventListener(MIRROR_QUEUE_CHANGED_EVENT, onQueueEvent);
     return () => {
       window.clearInterval(poll);
+      window.clearInterval(flushPoll);
       window.removeEventListener("storage", onStorage);
       document.removeEventListener("visibilitychange", refreshFromCloud);
       window.removeEventListener("focus", refreshFromCloud);
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener(MIRROR_QUEUE_CHANGED_EVENT, onQueueEvent);
     };
-  }, [commitHydrate, runHydrateWithRemotePull]);
+  }, [commitHydrate, refreshPending, runHydrateWithRemotePull, runMirrorFlush]);
 
   useEffect(() => {
     if (!hydrated || !getSupabasePublicEnv().configured) return;
@@ -231,5 +289,10 @@ export function useOperationalDemoSync(
     };
   }, [hydrated, runHydrateWithRemotePull]);
 
-  return { hydrated, reload: runHydrateWithRemotePull };
+  return {
+    hydrated,
+    reload: runHydrateWithRemotePull,
+    flushPending: runMirrorFlush,
+    pendingMirror,
+  };
 }

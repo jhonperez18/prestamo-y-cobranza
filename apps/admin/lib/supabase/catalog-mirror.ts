@@ -12,6 +12,11 @@ import {
   writeDemoJson,
 } from "@/lib/demo-persist";
 import { isDeletedRef } from "@/lib/deleted-ids";
+import {
+  emitMirrorQueueChanged,
+  shouldDropFromMirrorQueue,
+  type MirrorApiJson,
+} from "@/lib/supabase/mirror-queue";
 
 export const DEMO_CLIENT_MIRROR_QUEUE_KEY = "nexo-demo-client-mirror-queue";
 export const DEMO_LOAN_MIRROR_QUEUE_KEY = "nexo-demo-loan-mirror-queue";
@@ -402,6 +407,7 @@ function readQueue<T extends { ref: string }>(key: string) {
 
 function writeQueue<T>(key: string, rows: T[]) {
   writeDemoJson(key, rows);
+  emitMirrorQueueChanged();
 }
 
 function readClientPullShield(): Map<string, ClientRow> {
@@ -540,12 +546,12 @@ export async function flushCatalogMirrorQueues() {
   for (const client of clients) {
     try {
       const { res, json } = await postMirror("/api/clients/mirror", { client });
-      // Solo salir de la cola con confirmación real (200 OK + ok, no skipped).
-      if (res.ok && json.ok && !json.skipped) {
+      const body = json as MirrorApiJson;
+      if (res.ok && shouldDropFromMirrorQueue(body) && !body.skipped) {
         armClientPullShield(client);
         continue;
       }
-      if (res.ok && json.ok && json.skipped && json.reason === "invalid_client") continue;
+      if (res.ok && shouldDropFromMirrorQueue(body)) continue;
       leftClients.push(client);
     } catch {
       leftClients.push(client);
@@ -558,8 +564,8 @@ export async function flushCatalogMirrorQueues() {
   for (const loan of loans) {
     try {
       const { res, json } = await postMirror("/api/loans/mirror", { loan });
-      if (res.ok && json.ok && !json.skipped) continue;
-      if (res.ok && json.ok && json.skipped && json.reason === "invalid_loan") continue;
+      const body = json as MirrorApiJson;
+      if (res.ok && shouldDropFromMirrorQueue(body)) continue;
       leftLoans.push(loan);
     } catch {
       leftLoans.push(loan);

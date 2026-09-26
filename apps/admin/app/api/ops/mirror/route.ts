@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { createMirrorServerClient } from "@/lib/supabase/admin";
 import {
   assignmentToRow,
@@ -21,6 +20,8 @@ import type {
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { isVirginWriteLocked, virginWriteLockPayload } from "@/lib/virgin-lock";
+import { jsonNoStore } from "@/lib/api-no-store";
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as Body;
     const kind = body.kind;
     if (!kind || !body.row) {
-      return NextResponse.json({ ok: false, error: "missing_kind_or_row" }, { status: 400 });
+      return jsonNoStore({ ok: false, error: "missing_kind_or_row" }, { status: 400 });
     }
 
     // Candado virgen: no dejar que un celular viejo rellene CIE/gastos/planilla.
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
         kind === "assignment" ||
         kind === "route")
     ) {
-      return NextResponse.json(virginWriteLockPayload());
+      return jsonNoStore(virginWriteLockPayload());
     }
 
     let result:
@@ -69,32 +70,32 @@ export async function POST(request: Request) {
       case "route_delete": {
         const ref = String((body.row as { ref?: string })?.ref || "").trim();
         if (!ref) {
-          return NextResponse.json({ ok: false, error: "missing_ref" }, { status: 400 });
+          return jsonNoStore({ ok: false, error: "missing_ref" }, { status: 400 });
         }
         const client = createMirrorServerClient();
         if (!client) {
-          return NextResponse.json({ ok: true, skipped: true, reason: "supabase_not_configured" });
+          return jsonNoStore({ ok: true, skipped: true, reason: "supabase_not_configured" });
         }
         const { error } = await client.from("routes").delete().eq("ref", ref);
         if (error) {
-          return NextResponse.json({ ok: false, error: error.message }, { status: 502 });
+          return jsonNoStore({ ok: false, error: error.message }, { status: 502 });
         }
-        return NextResponse.json({ ok: true, deleted: ref });
+        return jsonNoStore({ ok: true, deleted: ref });
       }
       case "collector_delete": {
         const ref = String((body.row as { ref?: string })?.ref || "").trim();
         if (!ref) {
-          return NextResponse.json({ ok: false, error: "missing_ref" }, { status: 400 });
+          return jsonNoStore({ ok: false, error: "missing_ref" }, { status: 400 });
         }
         const client = createMirrorServerClient();
         if (!client) {
-          return NextResponse.json({ ok: true, skipped: true, reason: "supabase_not_configured" });
+          return jsonNoStore({ ok: true, skipped: true, reason: "supabase_not_configured" });
         }
         const { error } = await client.from("collectors").delete().eq("ref", ref);
         if (error) {
-          return NextResponse.json({ ok: false, error: error.message }, { status: 502 });
+          return jsonNoStore({ ok: false, error: error.message }, { status: 502 });
         }
-        return NextResponse.json({ ok: true, deleted: ref });
+        return jsonNoStore({ ok: true, deleted: ref });
       }
       case "day_close": {
         const mapped = dayCloseToRow(body.row as CollectorDayCloseRecord);
@@ -117,20 +118,21 @@ export async function POST(request: Request) {
       case "assignment": {
         const raw = body.row as DailyCollectionAssignment & { ref?: string };
         const mapped = assignmentToRow(raw);
-        // Un N/P del cobrador no lo pisa una fila «pendiente» vieja de otro aparato.
+        // Un N/P del cobrador no lo pisa una fila «pendiente» sin PG-.
         result = await upsertAssignmentRow(mapped);
         break;
       }
       default:
-        return NextResponse.json({ ok: false, error: "unknown_kind" }, { status: 400 });
+        return jsonNoStore({ ok: false, error: "unknown_kind" }, { status: 400 });
     }
 
     if (!result.ok) {
-      return NextResponse.json(result, { status: 502 });
+      return jsonNoStore(result, { status: 502 });
     }
-    return NextResponse.json(result);
+    return jsonNoStore(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return jsonNoStore({ ok: false, error: message }, { status: 500 });
   }
 }
+

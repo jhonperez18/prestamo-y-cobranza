@@ -447,6 +447,7 @@ export function useWorkspace({
     setBankAccountRef((current) => current || snap.bankAccounts[0]?.ref || "");
   }, []);
 
+  const pendingMirrorToastAtRef = useRef(0);
   const { hydrated: demoHydrated } = useOperationalDemoSync(
     applyOperationalSnapshot,
     {
@@ -461,6 +462,17 @@ export function useWorkspace({
         } else if (failed > 0) {
           onToast("No se pudo subir un comprobante a la nube.");
         }
+      },
+      onMirrorPending: (pending) => {
+        if (pending.total <= 0) return;
+        const now = Date.now();
+        if (now - pendingMirrorToastAtRef.current < 60_000) return;
+        pendingMirrorToastAtRef.current = now;
+        onToast(
+          pending.total === 1
+            ? "1 cambio de esta PC pendiente de subir a la nube…"
+            : `${pending.total} cambios de esta PC pendientes de subir a la nube…`,
+        );
       },
     },
   );
