@@ -5379,34 +5379,22 @@
       border: 1px solid #fdba74;
     }
     .supervisor-clientes-table .is-ruta {
-      width: 8%;
-      min-width: 1.75rem;
-      max-width: 2.25rem;
+      width: 7%;
+      min-width: 1.5rem;
+      max-width: 1.85rem;
       padding-left: 4px;
       padding-right: 2px;
       font-variant-numeric: tabular-nums;
       text-overflow: clip;
     }
     .supervisor-clientes-table .is-nombre {
-      width: 34%;
+      width: 42%;
     }
     .supervisor-clientes-table .is-tel {
-      width: 20%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-variant-numeric: tabular-nums;
-    }
-    .supervisor-clientes-table th.is-tel {
-      color: #fff;
-      font-weight: 700;
-    }
-    .supervisor-clientes-table td.is-tel {
-      color: #3d5249;
-      text-align: center;
+      display: none;
     }
     .supervisor-clientes-table .is-cuotas {
-      width: 12%;
+      width: 24%;
       text-align: center;
       padding-left: 2px;
       padding-right: 2px;
@@ -5421,13 +5409,18 @@
       vertical-align: middle;
     }
     .supervisor-clientes-table .is-num {
-      width: 26%;
+      width: 27%;
       padding-left: 4px;
       padding-right: 6px;
       font-variant-numeric: tabular-nums;
       text-overflow: clip;
     }
     /* Letra compacta y clara en celular: # y saldo no se cortan. */
+    .supervisor-mobile .supervisor-clientes-table,
+    .supervisor-mobile-app .supervisor-clientes-table {
+      table-layout: fixed;
+      width: 100%;
+    }
     .supervisor-mobile .supervisor-clientes-table td,
     .supervisor-mobile-app .supervisor-clientes-table td {
       font-size: 11px !important;
@@ -5450,6 +5443,26 @@
     .supervisor-mobile-app .supervisor-clientes-table td.is-nombre {
       font-size: 11px !important;
       text-align: left !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .supervisor-mobile .supervisor-clientes-table .is-ruta,
+    .supervisor-mobile-app .supervisor-clientes-table .is-ruta {
+      width: 1.5rem;
+      min-width: 1.5rem;
+      max-width: 1.75rem;
+    }
+    .supervisor-mobile .supervisor-clientes-table .is-nombre,
+    .supervisor-mobile-app .supervisor-clientes-table .is-nombre {
+      width: 44%;
+    }
+    .supervisor-mobile .supervisor-clientes-table .is-cuotas,
+    .supervisor-mobile-app .supervisor-clientes-table .is-cuotas {
+      width: 26%;
+    }
+    .supervisor-mobile .supervisor-clientes-table .is-num,
+    .supervisor-mobile-app .supervisor-clientes-table .is-num {
+      width: 28%;
     }
     .supervisor-clientes-table tbody tr.is-clickable {
       cursor: pointer;
@@ -6591,6 +6604,20 @@
     }
     .supervisor-clientes-table tbody tr.is-awaiting-loan > td.is-cuotas {
       color: #1d4ed8;
+    }
+    /* Lista clientes: solo la palabra, sin pastilla/borde. */
+    .supervisor-clientes-table .supervisor-prestar-text {
+      display: inline;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: none;
+      border-radius: 0;
+      color: #1d4ed8;
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
     }
     .supervisor-prestar-tag {
       display: inline-flex;

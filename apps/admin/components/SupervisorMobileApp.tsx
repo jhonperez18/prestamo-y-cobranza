@@ -566,7 +566,7 @@ function PlanillaTable({
   );
 }
 
-/** Lista de clientes para app supervisor: # (ruta), nombre, teléfono, saldo vivo. */
+/** Lista de clientes para app supervisor: # (ruta), nombre, mora, saldo vivo. */
 function ClientesTable({
   rows,
   onOpen,
@@ -591,7 +591,6 @@ function ClientesTable({
           <tr>
             <th className="is-ruta">#</th>
             <th className="is-nombre">Nombre</th>
-            <th className="is-tel">Teléfono</th>
             <th className="is-cuotas">Mora</th>
             <th className="is-num">Saldo</th>
           </tr>
@@ -617,13 +616,10 @@ function ClientesTable({
                 <td className="is-nombre" title={row.name}>
                   {row.name}
                 </td>
-                <td className="is-tel" title={row.phone}>
-                  {row.phone}
-                </td>
                 <td className="is-cuotas">
                   {awaitingLoan ? (
-                    <span className="supervisor-prestar-tag" title="Sin préstamo · listo para prestar">
-                      Prestar
+                    <span className="supervisor-prestar-text" title="Sin préstamo · listo para prestar">
+                      Préstamo
                     </span>
                   ) : (
                     <CuotasProgressCell progress={row.cuotas} />
