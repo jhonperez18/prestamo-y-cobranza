@@ -1,7 +1,7 @@
 import { assignmentRouteName } from "@/lib/collector-dispatch-sync";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
-import { compareRoutePosition } from "@/lib/client-route-order";
+import { compareRoutePosition, sameRoute } from "@/lib/client-route-order";
 import { syncLoan, displayToIso } from "@/lib/loan-preview";
 import { loanDisbursementSource } from "@/lib/nequi-pool";
 import { isAssignmentAwaitingLoan, planillaLiveCuota } from "@/lib/planilla-display";
@@ -145,9 +145,12 @@ export type DayLoanDisbursementScope = {
 /**
  * Desembolsos que salen de caja de UN cobrador ese día.
  * Regla de oro: nunca mezclar cobradores. Solo:
- * 1) líneas de gasto ya guardadas en SU día (expenses ya vienen filtradas), y
- * 2) créditos en efectivo cuyo cliente estuvo en SU hoja ese día.
- * Sin hoja / sin collectorRef → no se inventan préstamos desde el catálogo global.
+ * 1) líneas de gasto ya guardadas en SU día (GAS-/CIE ya filtrados por cobrador), y
+ * 2) créditos en efectivo de clientes de SU hoja ese día.
+ *
+ * Crédito prestado hoy sale de la planilla de cobro (cuota = mañana). No filtrar
+ * la línea GAS-/CIE por dayClientRefs: si no, el botón Préstamos queda en 0
+ * aunque el desembolso ya está en caja del cobrador.
  */
 export function dayLoanDisbursementRows(
   dateIso: string,
@@ -165,17 +168,13 @@ export function dayLoanDisbursementRows(
     if (row.clientRef) dayClientRefs.add(row.clientRef);
   }
 
-  // 1) Gastos del cobrador (ya vienen de su CIE / borrador).
+  // 1) Gastos del cobrador (ya vienen de su CIE / borrador) — fuente primaria.
   for (const line of expenses) {
     if (!isPrestamoRutaExpense(line)) continue;
     const loanRef = String(line.loanRef || "").trim();
     if (!loanRef || byLoan.has(loanRef)) continue;
     const loan = loans.find((row) => row.ref === loanRef);
     const clientRef = loan?.clientRef || "";
-    // Si hay hoja del día, el desembolso debe ser de un cliente de ESA hoja.
-    if (collectorRef && dayClientRefs.size > 0 && clientRef && !dayClientRefs.has(clientRef)) {
-      continue;
-    }
     const client = clients.find((row) => row.ref === clientRef);
     const clientName = client
       ? `${client.name} ${client.lastName}`.trim()
@@ -187,21 +186,35 @@ export function dayLoanDisbursementRows(
       capital: Number(line.amount) || Math.trunc(Number(loan?.capital) || 0),
       installment: Math.trunc(Number(loan?.installment) || 0),
     });
+    if (clientRef) dayClientRefs.add(clientRef);
   }
 
-  // 2) Reconstrucción solo con scope firme: cobrador + cliente en su planilla del día.
-  if (!collectorRef || dayClientRefs.size === 0) {
+  // Rutas que este cobrador tocó hoy (planilla) — por si faltó GAS- en el pull.
+  const collectorRoutes = new Set<string>();
+  for (const row of scope.assignments ?? []) {
+    if (collectorRef && row.collectorRef !== collectorRef) continue;
+    if ((normalizeHistoryDateSafe(row.dispatchDate) || row.dispatchDate) !== dateIso) continue;
+    const route = assignmentRouteName(row, clients).trim();
+    if (route) collectorRoutes.add(route);
+  }
+
+  // 2) Reconstrucción: créditos en efectivo de hoy de clientes de SU hoja o SU ruta.
+  if (!collectorRef) {
     return [...byLoan.values()].sort((a, b) => a.clientName.localeCompare(b.clientName, "es"));
   }
 
   for (const loan of loans) {
     const started = displayToIso(String(loan.date || "").trim());
     if (started !== dateIso || byLoan.has(loan.ref)) continue;
-    if (!dayClientRefs.has(loan.clientRef)) continue;
     const source = loanDisbursementSource(loan);
     // Nequi/banco del sistema ≠ caja del cobrador.
     if (source === "nequi" || source === "banco") continue;
     const client = clients.find((row) => row.ref === loan.clientRef);
+    const onSheet = dayClientRefs.has(loan.clientRef);
+    const onRoute =
+      Boolean(client?.route) &&
+      [...collectorRoutes].some((route) => sameRoute(route, client?.route));
+    if (!onSheet && !onRoute) continue;
     byLoan.set(loan.ref, {
       loanRef: loan.ref,
       clientRef: loan.clientRef,

@@ -446,7 +446,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     return true;
   }
 
-  function renewCollectorLoan(loanRef: string) {
+  async function renewCollectorLoan(loanRef: string) {
     if (!collector) return;
     const loan = loans.find((row) => row.ref === loanRef);
     if (!loan) {
@@ -461,21 +461,22 @@ export function CollectorShell({ session, onLogout }: Props) {
       return;
     }
     const nextLoans = [result.created, ...loans.map((row) => (row.ref === loanRef ? result.closed : row))];
+    const nextClients = clients.map((entry) => {
+      if (entry.ref !== loan.clientRef) return entry;
+      return {
+        ...entry,
+        total: entry.total + (result.created.total ?? 0),
+        pending: Math.max(0, entry.pending - loan.balance + (result.created.total ?? 0)),
+      };
+    });
     setLoans(nextLoans);
-    setClients((current) =>
-      current.map((entry) => {
-        if (entry.ref !== loan.clientRef) return entry;
-        return {
-          ...entry,
-          total: entry.total + (result.created.total ?? 0),
-          pending: Math.max(0, entry.pending - loan.balance + (result.created.total ?? 0)),
-        };
-      }),
-    );
+    setClients(nextClients);
+    writeDemoJson(DEMO_LOANS_KEY, nextLoans);
+    writeDemoJson(DEMO_CLIENTS_KEY, nextClients);
     const planilla = syncPermanentRoutePlanilla(
       todayIso(),
       routes,
-      clients,
+      nextClients,
       nextLoans,
       collectors,
       dailyAssignments,
@@ -483,19 +484,14 @@ export function CollectorShell({ session, onLogout }: Props) {
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, planilla.assignments);
+    writeDemoJson(DEMO_ROUTES_KEY, planilla.routes);
     queueLoansMirror([result.created, result.closed]);
-    const renewedClient = clients.find((entry) => entry.ref === loan.clientRef);
-    if (renewedClient) {
-      queueClientMirror({
-        ...renewedClient,
-        total: renewedClient.total + (result.created.total ?? 0),
-        pending: Math.max(
-          0,
-          renewedClient.pending - loan.balance + (result.created.total ?? 0),
-        ),
-      });
-    }
-    const clientRow = clients.find((c) => c.ref === loan.clientRef);
+    const renewedClient = nextClients.find((entry) => entry.ref === loan.clientRef);
+    if (renewedClient) queueClientMirror(renewedClient);
+    queueAssignmentsMirror(planilla.assignments);
+    queueRoutesMirror(planilla.routes);
+    const clientRow = nextClients.find((c) => c.ref === loan.clientRef);
     const routeRef =
       myRoutes.find((row) => row.name === clientRow?.route)?.ref ||
       myRoutes[0]?.ref ||
@@ -530,8 +526,20 @@ export function CollectorShell({ session, onLogout }: Props) {
       }),
     );
     showToast(
-      `Renovación ${newRef}: capital ${money(result.created.capital)} sale de efectivo · total ${money(result.created.total ?? 0)}.`,
+      `Renovación ${newRef}: capital ${money(result.created.capital)} sale de efectivo · subiendo…`,
     );
+    try {
+      await flushCatalogMirrorQueues();
+      await flushOpsMirrorQueues();
+      await flushOpsMirrorQueues();
+      showToast(
+        `Renovación ${newRef} lista · capital ${money(result.created.capital)}.`,
+      );
+    } catch {
+      showToast(
+        `Renovación ${newRef} guardada (sin nube; en este aparato ya está).`,
+      );
+    }
   }
 
   async function createQuickLoanFromMobile(draft: QuickLoanDraft) {

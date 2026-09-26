@@ -169,7 +169,10 @@ export function collectorMobileQueue(
 
   // Pendientes de la hoja: cobrables + sin préstamo (Prestar), en el orden de la ruta.
   // Los «filler» ya no se ocultan: van en azul, sin billete.
-  const pending = sheet.filter((row) => {
+  // CIE- del día: cero pendientes (el ciclo no puede reabrir «por cobrar»).
+  const pending = closedByCie
+    ? []
+    : sheet.filter((row) => {
     // Sello de cierre (dayClosedAt): fuera de «por cobrar».
     // No reabrir por PG ausente en este celular — contradecía reconcile (cierre manda).
     if (row.dayClosedAt) return false;
@@ -205,8 +208,10 @@ export function collectorMobileQueue(
   );
   const closedByVisits =
     sheet.length > 0 && sheet.every((row) => Boolean(row.dayClosedAt));
-  // Cierre / «listo» según cobros, no según filas Prestar.
-  const closed = (closedByCie || closedByVisits) && pendingCollectCount === 0;
+  // CIE- manda: la jornada está cerrada aunque el ciclo regenere filas fantasma.
+  // Sin CIE, hace falta sello en todas las visitas y cero cobros por cobrar.
+  const closed =
+    closedByCie || (closedByVisits && pendingCollectCount === 0);
   const routeRef = dispatchRouteRef(collectorRef, date);
   const route = routes.find((row) => row.ref === routeRef) ?? null;
   const allDone = closed || (sheet.length > 0 && pendingCollectCount === 0);

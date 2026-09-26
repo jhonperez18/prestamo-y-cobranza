@@ -616,8 +616,11 @@ export function upsertAndTrimCollectorDayClose(
 
 /**
  * Si ya hay CIE- del día pero la planilla no tiene dayClosedAt (cierre a medias),
- * sella las visitas que existían al cerrar.
- * Visitas NUEVAS (p. ej. préstamo creado después del CIE) no se omiten: siguen pendientes.
+ * sella TODA la hoja de ese cobrador+día.
+ *
+ * El ciclo (`syncPermanentRoutePlanilla`) regenera filas con `dispatchedAt` fresco;
+ * no pueden quedar como «por cobrar» después del CIE (fantasma multi-dispositivo).
+ * Un préstamo tras el cierre entra al día siguiente — no reabre la jornada.
  */
 export function applyDayCloseRecordsToAssignments(
   assignments: DailyCollectionAssignment[],
@@ -640,24 +643,6 @@ export function applyDayCloseRecordsToAssignments(
     if (!date) return row;
     const close = byKey.get(`${row.collectorRef}::${date}`);
     if (!close) return row;
-
-    const closeMs = Date.parse(String(close.closedAt || ""));
-    const bornMs = Date.parse(String(row.assignedAt || row.dispatchedAt || ""));
-    const bornAfterClose =
-      Number.isFinite(closeMs) && Number.isFinite(bornMs) && bornMs > closeMs;
-
-    // Préstamo/visita nacida después del cierre → no sellar (y deshacer sello erróneo).
-    if (bornAfterClose) {
-      if (!row.dayClosedAt && row.visitStatus !== "omitido") return row;
-      if (row.paymentRef || row.visitStatus === "cobrado") return row;
-      return {
-        ...row,
-        dayClosedAt: undefined,
-        visitStatus: "pendiente" as const,
-        skipReason: undefined,
-        amountDue: Math.max(0, Number(row.amountDue) || 0),
-      };
-    }
 
     if (row.dayClosedAt) return row;
 

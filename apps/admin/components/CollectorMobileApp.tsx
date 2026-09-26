@@ -875,15 +875,10 @@ export function CollectorMobileApp({
     [activeDate, collector.ref, dayCloses, dayExpenseDrafts],
   );
   const loanScope = useMemo(() => {
-    const scoped = activePlanillaRoute
-      ? assignments.filter(
-          (row) =>
-            row.collectorRef === collector.ref &&
-            sameRoute(assignmentRouteName(row, clients), activePlanillaRoute),
-        )
-      : assignments;
-    return { collectorRef: collector.ref, assignments: scoped };
-  }, [assignments, collector.ref, activePlanillaRoute, clients]);
+    // KPI Préstamos / desembolsos: TODA la jornada del cobrador (M+T+A), no solo el pin activo.
+    const dayRows = assignments.filter((row) => row.collectorRef === collector.ref);
+    return { collectorRef: collector.ref, assignments: dayRows };
+  }, [assignments, collector.ref]);
   /** Gastos + desembolsos en efectivo del día (reconstruye si el cierre perdió la línea). */
   const savedExpenses = useMemo(
     () =>
@@ -1894,9 +1889,11 @@ export function CollectorMobileApp({
                     .filter(Boolean)
                     .join(" ")}
                 >
-                  <div className="collector-mobile-dense-row">
+                  <div className="collector-mobile-dense-row is-recaudo-row">
                     <div className="collector-mobile-visit-who">
                       <strong>{payerName(pay, loans, clients)}</strong>
+                    </div>
+                    <span className="is-done-loan">
                       {canOfferReloan ? (
                         <button
                           type="button"
@@ -1915,7 +1912,7 @@ export function CollectorMobileApp({
                           Préstamo {money(reloan.granted.capital, { symbol: false })}
                         </span>
                       ) : null}
-                    </div>
+                    </span>
                     <span className="collector-mobile-ref is-done-col">
                       {money(pay.amount, { symbol: false })}
                     </span>

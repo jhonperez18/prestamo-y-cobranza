@@ -56,6 +56,56 @@ function mergeByRefRemote<T extends { ref: string }>(
   return { merged: [...map.values()], changed };
 }
 
+/**
+ * Gastos del día: no dejar que un pull viejo/vacío borre desembolsos locales
+ * (botón Préstamos en 0 aunque el crédito sí está en el sistema).
+ */
+function mergeDayExpensesPreferRicher(
+  local: CollectorDayExpenseDraft[],
+  remote: CollectorDayExpenseDraft[],
+): { merged: CollectorDayExpenseDraft[]; changed: boolean } {
+  const map = new Map<string, CollectorDayExpenseDraft>();
+  for (const row of local) if (row?.ref) map.set(row.ref, row);
+  let changed = false;
+  const richness = (row: CollectorDayExpenseDraft) => {
+    const total = Number(row.expensesTotal) || 0;
+    const lines = Array.isArray(row.expenses) ? row.expenses.length : 0;
+    const prestamos = Array.isArray(row.expenses)
+      ? row.expenses.filter(
+          (line) => line.category === "prestamo_ruta" || line.id === "prestamo",
+        ).length
+      : 0;
+    const at = Date.parse(String(row.updatedAt || "")) || 0;
+    return { total, lines, prestamos, at };
+  };
+  const preferRemote = (prev: CollectorDayExpenseDraft, next: CollectorDayExpenseDraft) => {
+    const a = richness(prev);
+    const b = richness(next);
+    if (b.prestamos !== a.prestamos) return b.prestamos > a.prestamos;
+    if (b.total !== a.total) return b.total > a.total;
+    if (b.lines !== a.lines) return b.lines > a.lines;
+    return b.at >= a.at;
+  };
+  for (const row of remote) {
+    if (!row?.ref) continue;
+    const prev = map.get(row.ref);
+    if (!prev) {
+      map.set(row.ref, row);
+      changed = true;
+      continue;
+    }
+    if (!preferRemote(prev, row)) continue;
+    if (
+      `${prev.ref}|${prev.expensesTotal}|${prev.updatedAt}` !==
+      `${row.ref}|${row.expensesTotal}|${row.updatedAt}`
+    ) {
+      changed = true;
+    }
+    map.set(row.ref, row);
+  }
+  return { merged: [...map.values()], changed };
+}
+
 /** Remoto manda: dropea locales que no están en remoto (salvo cola pendiente). */
 function mergeRemoteAuthority<T extends { ref: string }>(
   local: T[],
@@ -993,10 +1043,9 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
     const expenses = (body.day_expenses ?? [])
       .map(rowToDayExpense)
       .filter((r): r is CollectorDayExpenseDraft => Boolean(r));
-    const eMerge = mergeByRefRemote(
+    const eMerge = mergeDayExpensesPreferRicher(
       readDemoJson<CollectorDayExpenseDraft[]>(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),
       expenses,
-      (r) => `${r.ref}|${r.expensesTotal}|${r.updatedAt}`,
     );
     if (eMerge.changed) {
       writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, eMerge.merged);

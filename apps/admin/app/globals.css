@@ -2765,8 +2765,9 @@
       padding: 6px 12px 6px var(--table-row-pad-x);
       border-radius: 0;
       box-shadow: none;
-      overflow: hidden;
-      line-height: var(--table-row-line);
+      overflow-x: hidden;
+      overflow-y: visible;
+      line-height: 1.25;
       border-left: 0;
       border-right: 0;
       border-top: 0;
@@ -2774,7 +2775,8 @@
       background: var(--row-b);
       align-self: start;
       height: auto;
-      min-height: 0;
+      min-height: 32px;
+      box-sizing: border-box;
     }
     /* Mismo intercalado del sistema (--row-a / --row-b) */
     .collector-mobile-list.compact > .collector-mobile-card.is-dense:nth-child(odd),
@@ -2800,6 +2802,7 @@
     .collector-mobile-card.is-done.is-dense {
       padding: 6px 12px 6px var(--table-row-pad-x);
       border-radius: 0;
+      min-height: 32px;
     }
     .collector-mobile-card.is-open {
       border-color: #0f766e;
@@ -2824,7 +2827,7 @@
       align-items: center;
       width: 100%;
       min-width: 0;
-      min-height: 0;
+      min-height: 20px;
     }
     .collector-mobile-dense-row.is-paying {
       /* Al pagar: nombre completo arriba; saldos abajo (no tapan el nombre). */
@@ -2911,6 +2914,7 @@
       max-width: 100%;
       overflow: hidden;
       white-space: nowrap;
+      line-height: 1.3;
     }
     .collector-mobile-dense-row .collector-mobile-visit-who strong {
       display: block;
@@ -2918,7 +2922,7 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      line-height: 1.15;
+      line-height: 1.3;
       font-size: 12px;
       font-weight: 400;
       flex: 1 1 auto;
@@ -3121,10 +3125,32 @@
       justify-self: end;
     }
     .collector-mobile-card.is-done .collector-mobile-dense-row {
-      /* nombre (+ préstamo) · monto · medio — tipografía igual que el resto */
-      grid-template-columns: minmax(0, 1fr) max-content auto;
-      grid-template-areas: "who ref pay";
+      /* nombre · préstamo · monto · medio */
+      grid-template-columns: minmax(0, 1.5fr) max-content max-content auto;
+      grid-template-areas: "who loan ref pay";
       column-gap: 8px;
+    }
+    .collector-mobile-dense-row.is-recaudo-row .collector-mobile-visit-who {
+      grid-area: who;
+    }
+    .collector-mobile-dense-row.is-recaudo-row .is-done-loan {
+      grid-area: loan;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      flex-shrink: 0;
+    }
+    .collector-mobile-dense-row.is-recaudo-row .is-done-loan:empty {
+      width: 0;
+      min-width: 0;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+    .collector-mobile-dense-row.is-recaudo-row .collector-reloan-btn,
+    .collector-mobile-dense-row.is-recaudo-row .collector-reloan-tag {
+      margin: 0;
     }
     .collector-mobile-list.is-recaudo-sheet {
       gap: 0;
@@ -3136,6 +3162,11 @@
     .collector-mobile-list.is-recaudo-sheet > .collector-mobile-card.is-dense.is-done {
       border-bottom: 1px solid #e2ece7;
       background: var(--row-b);
+      padding: 6px 12px 6px var(--table-row-pad-x);
+      min-height: 32px;
+      overflow-x: hidden;
+      overflow-y: visible;
+      box-sizing: border-box;
     }
     .collector-mobile-list.is-recaudo-sheet > .collector-mobile-card.is-dense.is-done:nth-child(odd) {
       background: var(--row-a);
@@ -3150,12 +3181,16 @@
       grid-area: ref;
       justify-self: end;
       align-self: center;
-      margin-right: 4px;
+      margin-right: 2px;
       font-size: 10px;
       font-weight: 600;
       color: #5b7268;
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
+    }
+    .collector-mobile-dense-row.is-recaudo-row > .pill {
+      grid-area: pay;
+      justify-self: end;
     }
     .collector-mobile-dense-row > .pill {
       grid-area: pay;
@@ -3571,6 +3606,7 @@
       padding: 6px 12px 6px var(--table-row-pad-x);
       border-radius: 0;
       box-shadow: none;
+      min-height: 32px;
     }
     .collector-mobile-card.is-done:not(.is-dense) {
       padding: var(--table-row-pad-y) 8px;
