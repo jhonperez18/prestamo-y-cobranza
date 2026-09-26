@@ -304,6 +304,7 @@ import {
   ensureManualTLaunchClose,
   findPlanillaCashClose,
   isPlanillaCashChainRoute,
+  isPlanillaCashChainSecondary,
   livePrimaryClosingCash,
   planillaCashCloseAsDayClose,
   PLANILLA_CASH_CHAIN_PRIMARY,
@@ -1817,6 +1818,19 @@ export function useWorkspace({
           payload.date,
           trueMClosing,
         );
+        // T cierra última: su closingCash (M final + movimiento T) = saldo final del día.
+        if (isPlanillaCashChainSecondary(payload.planillaRoute)) {
+          const tLink = buildPlanillaCashClose({
+            collectorRef: payload.collectorRef,
+            collectorName: payload.collectorName,
+            date: payload.date,
+            routeName: PLANILLA_CASH_CHAIN_SECONDARY,
+            openingCash: trueMClosing,
+            cashCollected: Number(payload.collectedEfectivo) || 0,
+            cashOut: Number(payload.cashOut) || 0,
+          });
+          nextCash = upsertPlanillaCashClose(nextCash, tLink);
+        }
       }
 
       setPlanillaCashCloses(nextCash);

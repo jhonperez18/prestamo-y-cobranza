@@ -1,0 +1,45 @@
+---
+description: Cadena de caja M→T — saldo final del día
+alwaysApply: true
+---
+
+# Cadena M ↔ T — reglas de inicio (sagradas)
+
+## Ley
+
+| Orden | Qué |
+| --- | --- |
+| 1 | **M** trabaja el día (cobros, gastos, préstamos en caja). |
+| 2 | **T** es la **última** que cierra. Su Inicial = saldo final de M (solo saldo). |
+| 3 | El saldo que arroja **T** al cerrar es el **saldo final del día**. |
+| 4 | Ese mismo número manda en historial, registros e **Inicial de M del día siguiente**. |
+
+T **no** arrastra préstamos ni gastos de M — solo el saldo.
+
+Planilla **A** no entra en la cadena.
+
+## Fuente de verdad
+
+| Pieza | Función / dato |
+| --- | --- |
+| Caja viva de M | `livePrimaryClosingCash` / KPI M |
+| Inicial T | `openingCashForChainedPlanilla` + `primaryLiveClosing` |
+| Saldo final del día | `dayFinalClosingCash` → PCE-T si existe; si no, caja de M |
+| Inicial M mañana | cierre T anoche (`prevT.closingCash`) |
+
+Detalle: `apps/admin/lib/planilla-cash-chain.ts`.
+
+## Obligatorio
+
+1. Cerrar M antes de T (`assertCanCloseChainedPlanilla`).
+2. Al cerrar T: Inicial = final real de M; `closingCash` de T = saldo final del día.
+3. Historial · T, INICIO, CAJA y registros leen **la misma** cifra (`dayFinalClosingCash` / PCE-T).
+4. Préstamos del día se reconstruyen con `dayLoanDisbursementRows` (viven en M).
+
+## Prohibido
+
+- Una cifra en la ruta y otra en el historial del cobrador.
+- Que T herede préstamos de M o un PCE hinchado.
+- Que el Inicial de M mañana salga de M en vez del cierre de T.
+- Parches de UI «muéstralo igual» sin pasar por la cadena.
+---

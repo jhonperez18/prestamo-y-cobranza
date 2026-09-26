@@ -1,11 +1,13 @@
 /**
- * Cadena de caja entre planillas M y T (solo saldos).
- * Rollover 00:00: ambas planillas abren nuevas.
- * - M Inicial = cierre de T del día anterior (fijo al abrir).
- * - T Inicial = momentáneo = caja viva de M durante el día; al cerrar M queda fijo.
- * - M solo conoce su próximo Inicial cuando T cierra en la noche.
- * - No se puede cerrar T sin haber cerrado M el mismo día.
- * - Planilla A no participa.
+ * Cadena de caja entre planillas M y T (solo saldos). Regla de inicio:
+ *
+ * 1. M trabaja el día (cobros / gastos / préstamos en caja).
+ * 2. T es la última que cierra: su Inicial = saldo final de M (solo saldo, sin
+ *    arrastrar préstamos ni gastos de M).
+ * 3. El saldo que arroja T al cerrar es el saldo final del día: manda en
+ *    historial, registros y en el Inicial de M del día siguiente.
+ * 4. No se puede cerrar T sin M cerrada el mismo día. Planilla A no participa.
+ * 5. Rollover 00:00: ambas planillas abren nuevas.
  */
 import {
   dayCloseRef,
@@ -155,11 +157,46 @@ export function livePrimaryClosingCash(input: {
 }
 
 /**
+ * Saldo final del día (única cifra para historial / registros / próximo Inicial M).
+ *
+ * T cierra última jalando M:
+ * - Si hay PCE-T → `closingCash` de T (ya incluye el arrastre de M + movimiento de T).
+ * - Si no, caja de M (`primaryLiveClosing` o PCE-M).
+ */
+export function dayFinalClosingCash(input: {
+  collectorRef: string;
+  date: string;
+  records: PlanillaCashCloseRecord[];
+  /** Caja viva / final real de M del mismo día (mientras T no cierra). */
+  primaryLiveClosing?: number;
+}): number | null {
+  const date = normalizeHistoryDate(input.date) || input.date;
+  const tClose = findPlanillaCashClose(
+    input.records,
+    input.collectorRef,
+    date,
+    PLANILLA_CASH_CHAIN_SECONDARY,
+  );
+  if (tClose) return pesos(tClose.closingCash);
+
+  if (input.primaryLiveClosing != null && Number.isFinite(input.primaryLiveClosing)) {
+    return pesos(input.primaryLiveClosing);
+  }
+
+  const mClose = findPlanillaCashClose(
+    input.records,
+    input.collectorRef,
+    date,
+    PLANILLA_CASH_CHAIN_PRIMARY,
+  );
+  if (mClose) return pesos(mClose.closingCash);
+  return null;
+}
+
+/**
  * Saldo inicial de una planilla de la cadena.
- * - M: 1) cierre T del día anterior (cadena firme).
- *       2) si aún no hay T cerrada: arrastre real de caja (`fallbackOpening` / mes).
- *          Así Cristian ve Inicial hoy sin esperar el primer ciclo T→M.
- * - T: si M cerró → fijo; si no → momentáneo desde `primaryLiveClosing` (caja viva de M).
+ * - M: cierre T del día anterior (= dayFinalClosingCash de ayer).
+ * - T: caja viva / final de M del mismo día (solo saldo).
  * - A y resto: independent.
  */
 export function openingCashForChainedPlanilla(input: {
@@ -418,6 +455,24 @@ export function stampHistoryWithPlanillaCashChain<
           row.date,
           PLANILLA_CASH_CHAIN_PRIMARY,
         );
+        const tClose = findPlanillaCashClose(
+          input.records,
+          input.collectorRef,
+          row.date,
+          PLANILLA_CASH_CHAIN_SECONDARY,
+        );
+        // T cerró: el saldo final del día es el de T (jaló M). Una sola cifra.
+        if (tClose) {
+          const mFinal =
+            fromPrimary != null && Number.isFinite(fromPrimary)
+              ? pesos(fromPrimary)
+              : mClose
+                ? pesos(mClose.closingCash)
+                : pesos(tClose.openingCash);
+          const tDelta = pesos(tClose.closingCash) - pesos(tClose.openingCash);
+          running = pesos(mFinal + tDelta);
+          return { ...row, saldo: running };
+        }
         const opening =
           fromPrimary != null && Number.isFinite(fromPrimary)
             ? pesos(fromPrimary)
