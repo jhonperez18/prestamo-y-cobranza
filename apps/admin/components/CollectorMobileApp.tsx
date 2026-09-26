@@ -19,6 +19,8 @@ import {
   dayLoanDisbursementRows,
   dayLoanDisbursementTotal,
   expensesWithDayLoans,
+  isPrestamoRutaExpense,
+  operativeExpenseLines,
   splitDayExpenses,
 } from "@/lib/collector-history-planilla";
 import { todayIso } from "@/lib/daily-dispatch";
@@ -1004,8 +1006,8 @@ export function CollectorMobileApp({
   function saveExpenses(expenses: RouteExpenseLine[]) {
     if (!onSaveExpenses) return;
     // Conservar desembolsos de préstamo (no se editan en el sheet de gastos).
-    const prestamos = savedExpenses.filter((row) => row.category === "prestamo_ruta");
-    const operativos = expenses.filter((row) => row.category !== "prestamo_ruta");
+    const prestamos = savedExpenses.filter((row) => isPrestamoRutaExpense(row));
+    const operativos = operativeExpenseLines(expenses);
     onSaveExpenses({
       date: activeDate,
       routeRef,
@@ -1769,8 +1771,7 @@ export function CollectorMobileApp({
       <>
       {editingExpenses && onSaveExpenses ? (
         <CollectorCloseDaySheet
-          key={`${collector.ref}-${activeDate}-${savedExpenses
-            .filter((r) => r.category !== "prestamo_ruta")
+          key={`${collector.ref}-${activeDate}-${operativeExpenseLines(savedExpenses)
             .map((r) => `${r.id}:${r.amount}`)
             .join("|")}`}
           draft={{
@@ -1779,7 +1780,7 @@ export function CollectorMobileApp({
             date: activeDate,
             routeRef,
             collected: recaudo.total,
-            expenses: savedExpenses.filter((row) => row.category !== "prestamo_ruta"),
+            expenses: operativeExpenseLines(savedExpenses),
           }}
           onCancel={() => setEditingExpenses(false)}
           onSave={saveExpenses}

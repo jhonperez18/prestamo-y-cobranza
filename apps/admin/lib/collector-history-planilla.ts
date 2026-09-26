@@ -4,15 +4,14 @@ import type { RouteExpenseLine } from "@/lib/collector-day-close";
 import { compareRoutePosition, sameRoute } from "@/lib/client-route-order";
 import { syncLoan, displayToIso } from "@/lib/loan-preview";
 import { loanDisbursementSource } from "@/lib/nequi-pool";
+import { isPrestamoRutaExpense } from "@/lib/expense-lines";
 import { isAssignmentAwaitingLoan, planillaLiveCuota } from "@/lib/planilla-display";
 import { withPaymentEvidence } from "@/lib/payment-evidence-store";
 import { paymentTimeLabel } from "@/lib/payment-detail";
 import { normalizePaymentMethod } from "@/lib/payment-method";
 import type { ClientRow, LoanRow, PaymentRow } from "@/lib/mock-data";
 
-function isPrestamoRutaExpense(line: RouteExpenseLine) {
-  return line.category === "prestamo_ruta" || line.id === "prestamo";
-}
+export { isPrestamoRutaExpense, operativeExpenseLines } from "@/lib/expense-lines";
 
 export type HistoryPayMethod =
   | "efectivo"

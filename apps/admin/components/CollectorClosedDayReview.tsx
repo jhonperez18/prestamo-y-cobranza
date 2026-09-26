@@ -4,6 +4,7 @@ import { Pill } from "@/components/ui";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
+import { operativeExpenseLines } from "@/lib/expense-lines";
 import { money, type PaymentRow } from "@/lib/mock-data";
 import { routeBlockStarts } from "@/lib/client-route-order";
 import {
@@ -77,7 +78,8 @@ export function CollectorClosedDayReview({
     if (!pay) return methodFilter === "efectivo";
     return normalizePaymentMethod(pay.method) === methodFilter;
   });
-  const expensesTotal = expenses.reduce((sum, row) => sum + row.amount, 0);
+  const gastoLines = operativeExpenseLines(expenses);
+  const expensesTotal = gastoLines.reduce((sum, row) => sum + row.amount, 0);
   const cobrosTotal = cobros.reduce((sum, item) => {
     const pay = paymentForVisit(item, payments);
     return sum + (pay?.amount ?? item.amountDue);
@@ -121,12 +123,12 @@ export function CollectorClosedDayReview({
       </div>
 
       {detail === "gastos" ? (
-        expenses.length === 0 ? (
+        gastoLines.length === 0 ? (
           <p className="collector-closed-review-empty">Sin gastos registrados.</p>
         ) : (
           <ul className="collector-closed-review-list">
-            {expenses.map((line) => (
-              <li key={line.id}>
+            {gastoLines.map((line, index) => (
+              <li key={`${line.id}:${line.label}:${index}`}>
                 <div className="collector-closed-review-line">
                   <strong>{line.label}</strong>
                 </div>

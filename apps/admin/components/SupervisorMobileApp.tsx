@@ -22,6 +22,7 @@ import {
   dayLoanDisbursementRows,
   dayLoanDisbursementTotal,
   expensesWithDayLoans,
+  operativeExpenseLines,
   splitDayExpenses,
   type DayLoanDisbursementRow,
 } from "@/lib/collector-history-planilla";
@@ -1716,32 +1717,21 @@ export function SupervisorMobileApp({
   );
   const openRouteExpenses = useMemo(() => {
     if (!openRoute || !openRouteScope) return [];
+    // Solo gastos operativos. Los préstamos van al botón Préstamo, no a Gastos.
+    if (!openRouteScope.isPrimary) return [];
     const raw = expensesForCollectorDay(
       openRoute.collectorRef,
       today,
       dayCloses,
       dayExpenseDrafts,
     );
-    return raw.filter((line) => {
-      const isPrestamo =
-        line.category === "prestamo_ruta" || line.id === "prestamo";
-      if (isPrestamo) {
-        const loan = line.loanRef
-          ? loans.find((row) => row.ref === line.loanRef)
-          : undefined;
-        return Boolean(
-          loan?.clientRef && openRouteScope.clientRefs.has(loan.clientRef),
-        );
-      }
-      return openRouteScope.isPrimary;
-    });
+    return operativeExpenseLines(raw);
   }, [
     openRoute,
     openRouteScope,
     today,
     dayCloses,
     dayExpenseDrafts,
-    loans,
   ]);
   const openRouteNequiDays = useMemo(() => {
     if (!openRoute || !openRouteScope) return [];

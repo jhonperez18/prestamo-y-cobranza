@@ -1,0 +1,26 @@
+---
+description: Gastos del día nunca incluyen préstamos
+alwaysApply: true
+---
+
+# Gastos ≠ Préstamos
+
+## Ley
+
+En **Gastos del día** (supervisor / cobrador / cierre) solo van gastos operativos:
+almuerzo, gasolina, otros, etc.
+
+Los desembolsos `prestamo_ruta` / `id === "prestamo"` van al KPI **Préstamo** y al botón Préstamo.
+
+## Obligatorio
+
+1. Filtrar con `operativeExpenseLines` / `isPrestamoRutaExpense` (`lib/expense-lines.ts`).
+2. Total de «Gastos» = suma de esas líneas, sin capital prestado.
+3. KPI Préstamo = `dayLoanDisbursementRows` / capital en efectivo (misma fuente cobrador y supervisor).
+
+## Prohibido
+
+- Meter filas «Préstamo · P-…» en el reporte de gastos.
+- Sumar préstamos al total de gastos.
+- Una lógica de «prestado hoy» distinta entre cobrador y supervisor.
+---
