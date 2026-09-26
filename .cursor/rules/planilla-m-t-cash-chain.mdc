@@ -1,5 +1,5 @@
 ---
-description: Cadena de caja M→T — saldo final del día
+description: Cadena de caja M→T — saldo final del día = CIE (regla de inicio)
 alwaysApply: true
 ---
 
@@ -11,37 +11,53 @@ alwaysApply: true
 | --- | --- |
 | 1 | **M** trabaja el día (cobros, gastos, préstamos en caja). |
 | 2 | **T** es la **última** que cierra. Su Inicial = saldo final de M (solo saldo). |
-| 3 | El saldo que arroja **T** al cerrar es el **saldo final del día**. |
-| 4 | Ese mismo número manda en historial, registros e **Inicial de M del día siguiente**. |
+| 3 | Al cerrar la jornada, el **CIE-** (`cash_float`) es el **saldo final del día**. |
+| 4 | Ese mismo número = **Inicial de M del día siguiente** (taller, Vercel, celular). |
 
 T **no** arrastra préstamos ni gastos de M — solo el saldo.
 
 Planilla **A** no entra en la cadena.
 
-## Fuente de verdad
+## CIE manda (blindaje — no volver a romper)
+
+| Pieza | Fuente de verdad |
+| --- | --- |
+| Saldo final del día | **CIE-** en Supabase (`cash_float`) |
+| Inicial M mañana | **mismo** `cash_float` del CIE de ayer |
+| PCE-T | proyección / eslabón local; **nunca** pisa al CIE |
+
+**Obligatorio en código** (`planilla-cash-chain.ts`):
+
+1. `dayFinalClosingCash` → **primero CIE**, después PCE-T, después caja M.
+2. `openingCashForChainedPlanilla` (M) → si hay CIE de ayer, **ese** es el Inicial. Sin atajos.
+3. `projectPceTFromDayCloses` → alinea PCE-T al `cash_float` del CIE (corrige basura local).
+4. Pull nube: CIE remoto gana; no rebobinar con PCE local viejo.
+
+**Prohibido (falla que ya dañó al dueño):**
+
+- Que un PCE local (ej. 2.090.000) gane sobre CIE nube (2.704.000).
+- Seed / montos fijos inventados como Inicial del día.
+- Una cifra en el taller y otra en Vercel para el mismo Inicial.
+- Parches UI «muéstralo igual» sin leer CIE.
+
+## Fuente de verdad (resumen)
 
 | Pieza | Función / dato |
 | --- | --- |
 | Caja viva de M | `livePrimaryClosingCash` / KPI M |
 | Inicial T | `openingCashForChainedPlanilla` + `primaryLiveClosing` |
-| Saldo final del día | `dayFinalClosingCash` → PCE-T si existe; si no, caja de M |
-| Inicial M mañana | cierre T anoche (`prevT.closingCash`) |
+| Saldo final del día | `dayFinalClosingCash` → **CIE primero** |
+| Inicial M mañana | CIE ayer (`cash_float`) vía `openingCashForChainedPlanilla` |
 
 Detalle: `apps/admin/lib/planilla-cash-chain.ts`.
 
-## Obligatorio
+## Obligatorio (cierre de hojas)
 
 1. Cerrar M antes de T (`assertCanCloseChainedPlanilla`).
-2. Al cerrar T: Inicial = final real de M; `closingCash` de T = saldo final del día.
-3. Historial · T, INICIO y registros leen **la misma** cifra (`dayFinalClosingCash` / PCE-T).
-4. Préstamos del día se reconstruyen con `dayLoanDisbursementRows` (viven en M).
-
-## Prohibido
-
-- Una cifra en la ruta y otra en el historial del cobrador.
-- Que T herede préstamos de M o un PCE hinchado.
-- Que el Inicial de M mañana salga de M en vez del cierre de T.
-- Parches de UI «muéstralo igual» sin pasar por la cadena.
+2. Al cerrar T: Inicial = final real de M; al sellar jornada el CIE lleva el saldo final.
+3. Historial · M y planilla leen **la misma** cifra (`dayFinalClosingCash` / CIE).
+4. Ayer y atrás: no recalcular saldos viejos; solo anclar hoy al CIE de ayer.
+5. Préstamos del día: `dayLoanDisbursementRows` (viven en M).
 
 ## N/P por ruta (INICIO)
 

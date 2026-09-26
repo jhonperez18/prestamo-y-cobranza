@@ -604,16 +604,48 @@ export async function upsertOpsRow(
 /**
  * CIE-/PCE- a day_closes. Si ya hay otro CIE- del mismo cobrador+día (ref distinta),
  * lo reemplaza para no chocar con el unique parcial.
+ *
+ * Blindaje CIE: no dejar que un aparato con cash_float viejo (ej. 2.090.000)
+ * pise el CIE ya sellado en nube (ej. 2.704.000) si el de nube es más reciente.
  */
 export async function upsertDayCloseIdempotent(row: Record<string, unknown>) {
   const client = createMirrorClient();
   if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
 
+  const ref = String(row.ref || "");
+  if (ref.startsWith("CIE-")) {
+    const { data: existing } = await client
+      .from("day_closes")
+      .select("cash_float,closed_at,updated_at")
+      .eq("ref", ref)
+      .maybeSingle();
+    if (existing) {
+      const cloudFloat = Number(existing.cash_float) || 0;
+      const incomingFloat = Number(row.cash_float) || 0;
+      if (cloudFloat !== incomingFloat) {
+        const cloudTs = Date.parse(
+          String(existing.closed_at || existing.updated_at || ""),
+        );
+        const incomingTs = Date.parse(String(row.closed_at || row.updated_at || ""));
+        const cloudWins =
+          Number.isFinite(cloudTs) &&
+          (!Number.isFinite(incomingTs) || cloudTs >= incomingTs);
+        if (cloudWins) {
+          return {
+            ok: true as const,
+            skipped: true as const,
+            reason: "cloud_cie_keeps_cash_float",
+          };
+        }
+      }
+    }
+  }
+
   const first = await client.from("day_closes").upsert(row, { onConflict: "ref" });
   if (!first.error) return { ok: true as const };
 
   const msg = first.error.message || "";
-  const isCie = String(row.ref || "").startsWith("CIE-");
+  const isCie = ref.startsWith("CIE-");
   const isUniqueClash =
     msg.includes("day_closes_collector_date") ||
     msg.includes("day_closes_cie_collector_date") ||
@@ -634,7 +666,7 @@ export async function upsertDayCloseIdempotent(row: Record<string, unknown>) {
     .delete()
     .eq("collector_ref", collectorRef)
     .eq("close_date", closeDate)
-    .neq("ref", String(row.ref))
+    .neq("ref", ref)
     .like("ref", "CIE-%");
   if (delError) return { ok: false as const, error: delError.message };
 

@@ -3,9 +3,9 @@
  *
  * 1. M trabaja el día (cobros / gastos / préstamos en caja).
  * 2. T es la última que cierra: su Inicial = saldo final de M (solo saldo).
- * 3. Saldo final de ayer = Inicial de M hoy (fijado; no se recalcula el pasado).
- * 4. Ayer y atrás quedan inmóviles: no se reescribe saldo ni inicial viejo.
- * 5. Sin montos fijos inventados: el ancla de hoy es el cierre real de ayer (CIE / T).
+ * 3. CIE- (`cash_float`) = saldo final del día en nube. Manda siempre.
+ * 4. Inicial M mañana = CIE de ayer. PCE local nunca pisa al CIE.
+ * 5. Ayer y atrás inmóviles: no recalcular saldos viejos.
  */
 import {
   dayCloseRef,
@@ -355,29 +355,38 @@ export function openingCashForChainedPlanilla(input: {
     };
   }
 
-  // M: Inicial hoy = saldo final de ayer (CIE / T). No arrastra caja vieja ni fallback tóxico.
+  // ─── INVARIANTE SAGRADA (regla de inicio) ─────────────────────────
+  // Si existe CIE- del día anterior, ESE cash_float es el Inicial de M.
+  // Un PCE local jamás lo pisa. Fallo que ya dañó: taller 2.704k vs Vercel 2.090k.
   const prevCie = findLatestFullDayCieBefore(
     input.dayCloses ?? [],
     input.collectorRef,
     date,
   );
+  if (prevCie) {
+    const float = Number(prevCie.cashFloat ?? prevCie.cashExpected);
+    if (Number.isFinite(float)) {
+      return {
+        kind: "chain",
+        opening: pesos(float),
+        ready: true,
+        provisional: false,
+      };
+    }
+  }
+
+  // Sin CIE aún: PCE-T / caja del día previo (mismo dayFinalClosingCash).
   const prevT = findLatestPlanillaCashCloseBefore(
     input.records,
     input.collectorRef,
     date,
     PLANILLA_CASH_CHAIN_SECONDARY,
   );
-  const prevDateCandidates = [
-    prevCie ? normalizeHistoryDate(prevCie.date) || prevCie.date : "",
-    prevT ? normalizeHistoryDate(prevT.date) || prevT.date : "",
-  ].filter(Boolean);
-  const prevDate =
-    prevDateCandidates.length > 0
-      ? prevDateCandidates.sort((a, b) => b.localeCompare(a))[0]
-      : "";
+  const prevDate = prevT
+    ? normalizeHistoryDate(prevT.date) || prevT.date
+    : "";
 
   if (prevDate) {
-    // Solo el cierre real de ese día — sin primaryLive del historial antiguo.
     const final = dayFinalClosingCash({
       collectorRef: input.collectorRef,
       date: prevDate,
@@ -403,7 +412,7 @@ export function openingCashForChainedPlanilla(input: {
     opening: 0,
     ready: false,
     provisional: false,
-    blockReason: `El inicial de ${PLANILLA_CASH_CHAIN_PRIMARY} es el saldo final de ayer (cierre ${PLANILLA_CASH_CHAIN_SECONDARY} / CIE).`,
+    blockReason: `El inicial de ${PLANILLA_CASH_CHAIN_PRIMARY} es el CIE de ayer (cash_float).`,
   };
 }
 
