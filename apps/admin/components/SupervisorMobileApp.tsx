@@ -1917,6 +1917,8 @@ export function SupervisorMobileApp({
         ),
         todayIso: today,
         epoch,
+        dayCloses,
+        monthCloses,
       });
       const mStamped = stampHistoryWithPlanillaCashChain({
         collectorRef: openRoute.collectorRef,
@@ -1998,6 +2000,8 @@ export function SupervisorMobileApp({
       ),
       todayIso: today,
       epoch,
+      dayCloses,
+      monthCloses,
     });
   }, [
     openRoute,

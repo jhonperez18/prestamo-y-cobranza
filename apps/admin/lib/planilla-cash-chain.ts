@@ -2,12 +2,10 @@
  * Cadena de caja entre planillas M y T (solo saldos). Regla de inicio:
  *
  * 1. M trabaja el día (cobros / gastos / préstamos en caja).
- * 2. T es la última que cierra: su Inicial = saldo final de M (solo saldo, sin
- *    arrastrar préstamos ni gastos de M).
- * 3. El saldo que arroja T al cerrar es el saldo final del día: manda en
- *    historial, registros y en el Inicial de M del día siguiente.
- * 4. No se puede cerrar T sin M cerrada el mismo día. Planilla A no participa.
- * 5. Rollover 00:00: ambas planillas abren nuevas.
+ * 2. T es la última que cierra: su Inicial = saldo final de M (solo saldo).
+ * 3. Saldo final de ayer = Inicial de M hoy (fijado; no se recalcula el pasado).
+ * 4. Ayer y atrás quedan inmóviles: no se reescribe saldo ni inicial viejo.
+ * 5. Sin montos fijos inventados: el ancla de hoy es el cierre real de ayer (CIE / T).
  */
 import {
   dayCloseRef,
@@ -31,8 +29,8 @@ export const PLANILLA_CASH_CLOSE_REF_PREFIX = "PCE-";
 export const PLANILLA_CASH_CHAIN_HISTORY_EPOCH = "2026-09-25";
 
 /**
- * Arranque manual una sola vez: cierre T del día previo al época.
- * Fija Saldo T 24 = Inicial M 25. Después manda lo que arrojen las planillas.
+ * Monto del seed viejo (ya no se usa). Solo sirve para detectar y sacar
+ * basura que aún esté en caché local. Inicial hoy = saldo de ayer, punto.
  */
 export const MANUAL_T_LAUNCH_CLOSE = {
   collectorRef: "COB-0",
@@ -41,28 +39,33 @@ export const MANUAL_T_LAUNCH_CLOSE = {
   closingCash: 3_999_000,
 } as const;
 
-/** Inserta el PCE-T de arranque solo si aún no existe. Nunca pisa un cierre real. */
+/** PCE-T con el monto fantasma 3.999.000: no es cierre real. */
+export function isStaleManualLaunchAmount(row: PlanillaCashCloseRecord): boolean {
+  return (
+    row.collectorRef === MANUAL_T_LAUNCH_CLOSE.collectorRef &&
+    sameRoute(row.routeName, PLANILLA_CASH_CHAIN_SECONDARY) &&
+    pesos(row.closingCash) === pesos(MANUAL_T_LAUNCH_CLOSE.closingCash)
+  );
+}
+
+/** @deprecated usar isStaleManualLaunchAmount */
+export function isManualLaunchSeedRecord(row: PlanillaCashCloseRecord): boolean {
+  return isStaleManualLaunchAmount(row);
+}
+
+/** @deprecated usar isStaleManualLaunchAmount */
+export function isPoisonManualLaunchClone(row: PlanillaCashCloseRecord): boolean {
+  return isStaleManualLaunchAmount(row);
+}
+
+/**
+ * Saca el seed 3.999.000 de la cadena. No inserta nada manual.
+ * Inicial de M = saldo final de ayer (CIE / PCE-T / caja), nunca un número fijo.
+ */
 export function ensureManualTLaunchClose(
   records: PlanillaCashCloseRecord[],
 ): PlanillaCashCloseRecord[] {
-  const date = MANUAL_T_LAUNCH_CLOSE.date;
-  const ref = planillaCashCloseRef(
-    MANUAL_T_LAUNCH_CLOSE.collectorRef,
-    date,
-    PLANILLA_CASH_CHAIN_SECONDARY,
-  );
-  if (records.some((row) => row.ref === ref)) return records;
-  const row: PlanillaCashCloseRecord = {
-    ref,
-    collectorRef: MANUAL_T_LAUNCH_CLOSE.collectorRef,
-    collectorName: MANUAL_T_LAUNCH_CLOSE.collectorName,
-    date,
-    routeName: PLANILLA_CASH_CHAIN_SECONDARY,
-    openingCash: pesos(MANUAL_T_LAUNCH_CLOSE.closingCash),
-    closingCash: pesos(MANUAL_T_LAUNCH_CLOSE.closingCash),
-    closedAt: `${date}T23:30:00.000-05:00`,
-  };
-  return upsertPlanillaCashClose(records, row);
+  return records.filter((row) => !isStaleManualLaunchAmount(row));
 }
 
 export type PlanillaCashCloseRecord = {
@@ -127,7 +130,9 @@ export function findPlanillaCashClose(
   routeName: string,
 ) {
   const ref = planillaCashCloseRef(collectorRef, date, routeName);
-  return records.find((row) => row.ref === ref) ?? null;
+  const row = records.find((entry) => entry.ref === ref) ?? null;
+  if (row && isStaleManualLaunchAmount(row)) return null;
+  return row;
 }
 
 /** Último cierre de una ruta de la cadena estrictamente antes de `beforeDate`. */
@@ -142,6 +147,7 @@ export function findLatestPlanillaCashCloseBefore(
   for (const row of records) {
     if (row.collectorRef !== collectorRef) continue;
     if (!sameRoute(row.routeName, routeName)) continue;
+    if (isStaleManualLaunchAmount(row)) continue;
     const d = normalizeHistoryDate(row.date) || row.date;
     if (!d || d >= before) continue;
     if (!best || d > (normalizeHistoryDate(best.date) || best.date)) best = row;
@@ -258,20 +264,17 @@ export function projectPceTFromDayCloses(
     if (!date || !cie.collectorRef) continue;
     const float = Number(cie.cashFloat ?? cie.cashExpected);
     if (!Number.isFinite(float)) continue;
-    const existing = findPlanillaCashClose(
-      next,
-      cie.collectorRef,
-      date,
-      PLANILLA_CASH_CHAIN_SECONDARY,
+    const existingRaw = next.find(
+      (row) =>
+        row.ref ===
+        planillaCashCloseRef(
+          cie.collectorRef,
+          date,
+          PLANILLA_CASH_CHAIN_SECONDARY,
+        ),
     );
-    // No pisar un PCE-T real distinto del arranque manual.
-    if (
-      existing &&
-      !(
-        date === MANUAL_T_LAUNCH_CLOSE.date &&
-        pesos(existing.closingCash) === pesos(MANUAL_T_LAUNCH_CLOSE.closingCash)
-      )
-    ) {
+    // No pisar un PCE-T real. Sí reemplazar basura 3.999.000 con el CIE.
+    if (existingRaw && !isStaleManualLaunchAmount(existingRaw)) {
       continue;
     }
     next = upsertPlanillaCashClose(next, {
@@ -356,45 +359,41 @@ export function openingCashForChainedPlanilla(input: {
     };
   }
 
-  // M: 1) cierre T del día anterior. 2) CIE- del día anterior (nube). 3) época.
+  // M: Inicial hoy = saldo final de ayer (CIE / T). No arrastra caja vieja ni fallback tóxico.
+  const prevCie = findLatestFullDayCieBefore(
+    input.dayCloses ?? [],
+    input.collectorRef,
+    date,
+  );
   const prevT = findLatestPlanillaCashCloseBefore(
     input.records,
     input.collectorRef,
     date,
     PLANILLA_CASH_CHAIN_SECONDARY,
   );
-  const prevCie = findLatestFullDayCieBefore(
-    input.dayCloses ?? [],
-    input.collectorRef,
-    date,
-  );
-  if (prevT && prevCie) {
-    const tDate = normalizeHistoryDate(prevT.date) || prevT.date;
-    const cieDate = normalizeHistoryDate(prevCie.date) || prevCie.date;
-    // Si el CIE es del mismo día o más fresco que el PCE-T, manda el CIE
-    // (evita que el arranque manual 3.999.000 gane sobre el cierre real 2.704.000).
-    if (cieDate >= tDate) {
-      const float = Number(prevCie.cashFloat ?? prevCie.cashExpected);
-      if (Number.isFinite(float)) {
-        return { kind: "chain", opening: pesos(float), ready: true, provisional: false };
-      }
-    }
-  }
-  if (prevT) {
-    return { kind: "chain", opening: pesos(prevT.closingCash), ready: true, provisional: false };
-  }
-  if (prevCie) {
-    const float = Number(prevCie.cashFloat ?? prevCie.cashExpected);
-    if (Number.isFinite(float)) {
-      return { kind: "chain", opening: pesos(float), ready: true, provisional: false };
+  const prevDateCandidates = [
+    prevCie ? normalizeHistoryDate(prevCie.date) || prevCie.date : "",
+    prevT ? normalizeHistoryDate(prevT.date) || prevT.date : "",
+  ].filter(Boolean);
+  const prevDate =
+    prevDateCandidates.length > 0
+      ? prevDateCandidates.sort((a, b) => b.localeCompare(a))[0]
+      : "";
+
+  if (prevDate) {
+    // Solo el cierre real de ese día — sin primaryLive del historial antiguo.
+    const final = dayFinalClosingCash({
+      collectorRef: input.collectorRef,
+      date: prevDate,
+      records: input.records,
+      dayCloses: input.dayCloses,
+    });
+    if (final != null) {
+      return { kind: "chain", opening: pesos(final), ready: true, provisional: false };
     }
   }
 
-  if (
-    date === PLANILLA_CASH_CHAIN_HISTORY_EPOCH &&
-    input.fallbackOpening != null &&
-    Number.isFinite(input.fallbackOpening)
-  ) {
+  if (input.fallbackOpening != null && Number.isFinite(input.fallbackOpening)) {
     return {
       kind: "chain",
       opening: pesos(input.fallbackOpening),
@@ -408,7 +407,7 @@ export function openingCashForChainedPlanilla(input: {
     opening: 0,
     ready: false,
     provisional: false,
-    blockReason: `El inicial de ${PLANILLA_CASH_CHAIN_PRIMARY} llega al cerrar ${PLANILLA_CASH_CHAIN_SECONDARY} la noche anterior.`,
+    blockReason: `El inicial de ${PLANILLA_CASH_CHAIN_PRIMARY} es el saldo final de ayer (cierre ${PLANILLA_CASH_CHAIN_SECONDARY} / CIE).`,
   };
 }
 
@@ -793,12 +792,12 @@ export function applyCollectorCashHandSaldos<
 }
 
 /**
- * Extracto M (como banco): Día · Inicial · Cobros · Préstamo · Gasto · Saldo.
+ * Extracto M: Día · Inicial · Cobros · Préstamo · Gasto · Saldo.
  *
- * Arranque claro (día época):
- * - Saldo del día previo = caja real (efectivo − gasto − préstamo).
- * - Inicial del día época = ese mismo Saldo (se parte de ahí).
- * Después: Inicial = cierre T anoche; Saldo = — mientras el día no cierre.
+ * Regla de inicio (inmóvil hacia atrás):
+ * - Ayer y antes: no se recalculan. Cobros/préstamo/gasto/saldo quedan quietos.
+ * - Saldo final de ayer (CIE/T) se fija una vez.
+ * - Hoy: Inicial = ese saldo final de ayer. Nada más se arrastra.
  */
 export function annotateMHistoryExtractRows(input: {
   rows: Array<{
@@ -815,6 +814,9 @@ export function annotateMHistoryExtractRows(input: {
   epochBootstrapOpening: number;
   todayIso: string;
   epoch?: string;
+  /** CIE-: misma cadena que el KPI Inicial de la planilla. */
+  dayCloses?: CollectorDayCloseRecord[];
+  monthCloses?: CollectorMonthCloseRecord[];
 }): Array<{
   date: string;
   dateLabel: string;
@@ -824,14 +826,24 @@ export function annotateMHistoryExtractRows(input: {
   inicial: number | null;
   saldoShown: number | null;
 }> {
-  const epoch = input.epoch || PLANILLA_CASH_CHAIN_HISTORY_EPOCH;
   const today = normalizeHistoryDate(input.todayIso) || input.todayIso;
   const ascending = [...input.rows].sort((a, b) => a.date.localeCompare(b.date));
-  const launchSaldo = epochBootstrapFromMHistoryRows(
-    ascending,
-    input.epochBootstrapOpening,
-    epoch,
-  );
+  const dayCloses = input.dayCloses ?? [];
+  const monthCloses = input.monthCloses ?? [];
+
+  const pastDates = ascending.map((row) => row.date).filter((d) => d < today);
+  const yesterdayIso = pastDates.length ? pastDates[pastDates.length - 1] : "";
+
+  /** Saldo final de ayer: único ancla para el Inicial de hoy. */
+  const yesterdayFinal =
+    yesterdayIso.length > 0
+      ? dayFinalClosingCash({
+          collectorRef: input.collectorRef,
+          date: yesterdayIso,
+          records: input.records,
+          dayCloses,
+        })
+      : null;
 
   const annotatedAscending: Array<{
     date: string;
@@ -843,74 +855,43 @@ export function annotateMHistoryExtractRows(input: {
     saldoShown: number | null;
   }> = [];
 
-  for (let i = 0; i < ascending.length; i += 1) {
-    const row = ascending[i];
-    const prevAnnotated = i > 0 ? annotatedAscending[i - 1] : null;
-
-    if (row.date < epoch) {
-      // Día previo al época: Saldo = caja real; Inicial = Saldo del día anterior (si hay).
-      // Arranque manual: si hay PCE-T ese día, ese cierre es el Saldo que parte M.
-      const tCloseSameDay = findPlanillaCashClose(
-        input.records,
-        input.collectorRef,
-        row.date,
-        PLANILLA_CASH_CHAIN_SECONDARY,
-      );
-      const inicial =
-        prevAnnotated?.saldoShown != null ? pesos(prevAnnotated.saldoShown) : null;
+  for (const row of ascending) {
+    if (row.date < today) {
+      // Inmóvil: no recalcular Inicial ni Saldo con fórmulas / cadena vieja.
+      const isYesterday = row.date === yesterdayIso;
+      const saldoShown = isYesterday
+        ? yesterdayFinal != null
+          ? pesos(yesterdayFinal)
+          : pesos(row.saldo)
+        : pesos(row.saldo);
       annotatedAscending.push({
         date: row.date,
         dateLabel: row.dateLabel,
         cobro: row.cobro,
         gasto: row.gasto,
         prestamo: row.prestamo,
-        inicial,
-        saldoShown: tCloseSameDay
-          ? pesos(tCloseSameDay.closingCash)
-          : pesos(row.saldo),
+        // No reescribir Inicial del pasado (evita arrastrar -57M, etc.).
+        inicial: null,
+        saldoShown,
       });
       continue;
     }
 
-    const prevT = findLatestPlanillaCashCloseBefore(
-      input.records,
-      input.collectorRef,
-      row.date,
-      PLANILLA_CASH_CHAIN_SECONDARY,
-    );
-
+    // Hoy: Inicial = saldo final de ayer. Saldo aún abierto (—).
     let inicial: number | null = null;
-    if (prevT) {
-      inicial = pesos(prevT.closingCash);
-    } else if (row.date === epoch) {
-      // Arranque: Inicial hoy = Saldo ayer (caja real).
-      inicial =
-        prevAnnotated?.saldoShown != null
-          ? pesos(prevAnnotated.saldoShown)
-          : launchSaldo;
-    } else if (prevAnnotated?.saldoShown != null) {
-      inicial = pesos(prevAnnotated.saldoShown);
+    if (yesterdayFinal != null) {
+      inicial = pesos(yesterdayFinal);
+    } else {
+      const open = openingCashForChainedPlanilla({
+        collectorRef: input.collectorRef,
+        routeName: PLANILLA_CASH_CHAIN_PRIMARY,
+        date: row.date,
+        records: input.records,
+        monthCloses,
+        dayCloses,
+      });
+      if (open.kind === "chain" && open.ready) inicial = pesos(open.opening);
     }
-
-    const mClosed = Boolean(
-      findPlanillaCashClose(
-        input.records,
-        input.collectorRef,
-        row.date,
-        PLANILLA_CASH_CHAIN_PRIMARY,
-      ),
-    );
-    const dayFinished = mClosed || row.date < today;
-
-    let saldoShown: number | null = null;
-    if (dayFinished && inicial != null) {
-      saldoShown = pesos(
-        inicial + pesos(row.cobroEfectivo) - pesos(row.gasto) - pesos(row.prestamo),
-      );
-    } else if (dayFinished) {
-      saldoShown = pesos(row.saldo);
-    }
-    // Hoy abierto: Saldo — (aún no hay cierre).
 
     annotatedAscending.push({
       date: row.date,
@@ -919,7 +900,7 @@ export function annotateMHistoryExtractRows(input: {
       gasto: row.gasto,
       prestamo: row.prestamo,
       inicial,
-      saldoShown,
+      saldoShown: null,
     });
   }
 
@@ -940,8 +921,8 @@ export function annotateMHistoryExtractRows(input: {
 
 /**
  * Historial M/T desde el día época (sin Ant.).
- * M: Inicial = cierre T ayer; día época = saldo final de ayer una vez.
- *     Saldo = Inicial + efectivo − gasto − préstamo.
+ * M: Inicial = misma cadena que la planilla (CIE / PCE-T); día época = saldo real ayer.
+ *     Saldo = Inicial + efectivo − gasto − préstamo (o CIE si ya cerró el día).
  * T: sin columna Inicial; Saldo = final (PCE o vivo desde M).
  */
 export function buildPlanillaChainHistoryRows(input: {
@@ -959,6 +940,8 @@ export function buildPlanillaChainHistoryRows(input: {
   /** Saldo final del día anterior al época (solo bootstrap M). */
   epochBootstrapOpening: number;
   epoch?: string;
+  dayCloses?: CollectorDayCloseRecord[];
+  monthCloses?: CollectorMonthCloseRecord[];
 }): PlanillaChainHistoryRow[] {
   const route = String(input.routeName || "").trim();
   if (!isPlanillaCashChainRoute(route)) return [];
@@ -967,23 +950,79 @@ export function buildPlanillaChainHistoryRows(input: {
   const ascending = [...input.rows]
     .filter((row) => row.date >= epoch)
     .sort((a, b) => a.date.localeCompare(b.date));
+  const dayCloses = input.dayCloses ?? [];
+  const monthCloses = input.monthCloses ?? [];
 
-  const stamped: PlanillaChainHistoryRow[] = ascending.map((row) => {
+  const stamped: PlanillaChainHistoryRow[] = ascending.map((row, index) => {
     if (isM) {
-      const prevT = findLatestPlanillaCashCloseBefore(
-        input.records,
-        input.collectorRef,
-        row.date,
-        PLANILLA_CASH_CHAIN_SECONDARY,
-      );
+      // Inicial hoy = Saldo ayer (fila previa) o cadena planilla.
       let inicial: number | null = null;
-      if (prevT) inicial = pesos(prevT.closingCash);
-      else if (row.date === epoch) inicial = pesos(input.epochBootstrapOpening);
+      if (index > 0) {
+        const prev = ascending[index - 1];
+        const prevOpen = openingCashForChainedPlanilla({
+          collectorRef: input.collectorRef,
+          routeName: PLANILLA_CASH_CHAIN_PRIMARY,
+          date: prev.date,
+          records: input.records,
+          monthCloses,
+          fallbackOpening: input.epochBootstrapOpening,
+          dayCloses,
+        });
+        const prevInicial =
+          prev.date === epoch
+            ? pesos(input.epochBootstrapOpening)
+            : prevOpen.kind === "chain" && prevOpen.ready
+              ? pesos(prevOpen.opening)
+              : pesos(input.epochBootstrapOpening);
+        const prevFormula = pesos(
+          prevInicial +
+            pesos(prev.cobroEfectivo) -
+            pesos(prev.gasto) -
+            pesos(prev.prestamo),
+        );
+        const prevFinal = dayFinalClosingCash({
+          collectorRef: input.collectorRef,
+          date: prev.date,
+          records: input.records,
+          dayCloses,
+          primaryLiveClosing: prevFormula,
+        });
+        inicial = prevFinal != null ? pesos(prevFinal) : prevFormula;
+      } else if (row.date === epoch) {
+        inicial = pesos(input.epochBootstrapOpening);
+      } else {
+        const open = openingCashForChainedPlanilla({
+          collectorRef: input.collectorRef,
+          routeName: PLANILLA_CASH_CHAIN_PRIMARY,
+          date: row.date,
+          records: input.records,
+          monthCloses,
+          fallbackOpening: input.epochBootstrapOpening,
+          dayCloses,
+        });
+        if (open.kind === "chain" && open.ready) inicial = pesos(open.opening);
+      }
 
-      const saldo =
+      const formula =
         inicial == null
           ? null
-          : pesos(inicial + pesos(row.cobroEfectivo) - pesos(row.gasto) - pesos(row.prestamo));
+          : pesos(
+              inicial +
+                pesos(row.cobroEfectivo) -
+                pesos(row.gasto) -
+                pesos(row.prestamo),
+            );
+      const fromCie =
+        formula == null
+          ? null
+          : dayFinalClosingCash({
+              collectorRef: input.collectorRef,
+              date: row.date,
+              records: input.records,
+              dayCloses,
+              primaryLiveClosing: formula,
+            });
+      const saldo = fromCie != null ? pesos(fromCie) : formula;
       return {
         date: row.date,
         dateLabel: row.dateLabel,

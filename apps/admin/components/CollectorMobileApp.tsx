@@ -529,6 +529,8 @@ export function CollectorMobileApp({
         records: planillaCashCloses,
         epochBootstrapOpening: mCarriedFallbackOpening,
         todayIso: date ?? todayIso(),
+        dayCloses,
+        monthCloses,
       });
       const mStamped = stampHistoryWithPlanillaCashChain({
         collectorRef: collector.ref,
@@ -1276,12 +1278,16 @@ export function CollectorMobileApp({
       records: planillaCashCloses,
       epochBootstrapOpening: mCarriedFallbackOpening,
       todayIso: date ?? todayIso(),
+      dayCloses,
+      monthCloses,
     });
   }, [
     collector.ref,
     date,
+    dayCloses,
     historyVisibleRows,
     mCarriedFallbackOpening,
+    monthCloses,
     planillaCashCloses,
     showMInicialColumn,
   ]);
