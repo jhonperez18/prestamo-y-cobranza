@@ -615,13 +615,19 @@ export async function upsertOpsRow(
  *
  * Blindaje CIE: no dejar que un aparato con cash_float viejo (ej. 2.090.000)
  * pise el CIE ya sellado en nube (ej. 2.704.000) si el de nube es más reciente.
+ *
+ * `force: true` (solo taller / force-sync): la PC principal pisa la nube con el float local.
  */
-export async function upsertDayCloseIdempotent(row: Record<string, unknown>) {
+export async function upsertDayCloseIdempotent(
+  row: Record<string, unknown>,
+  options?: { force?: boolean },
+) {
   const client = createMirrorClient();
   if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
 
   const ref = String(row.ref || "");
-  if (ref.startsWith("CIE-")) {
+  const force = Boolean(options?.force);
+  if (ref.startsWith("CIE-") && !force) {
     const { data: existing } = await client
       .from("day_closes")
       .select("cash_float,closed_at,updated_at")
@@ -649,8 +655,13 @@ export async function upsertDayCloseIdempotent(row: Record<string, unknown>) {
     }
   }
 
-  const first = await client.from("day_closes").upsert(row, { onConflict: "ref" });
-  if (!first.error) return { ok: true as const };
+  // Force: marca updated_at ahora para que pulls posteriores no rebobinen con basura vieja.
+  const payload = force
+    ? { ...row, updated_at: new Date().toISOString() }
+    : row;
+
+  const first = await client.from("day_closes").upsert(payload, { onConflict: "ref" });
+  if (!first.error) return { ok: true as const, forced: force };
 
   const msg = first.error.message || "";
   const isCie = ref.startsWith("CIE-");
@@ -663,8 +674,8 @@ export async function upsertDayCloseIdempotent(row: Record<string, unknown>) {
     return { ok: false as const, error: msg };
   }
 
-  const collectorRef = String(row.collector_ref || "");
-  const closeDate = String(row.close_date || "");
+  const collectorRef = String(payload.collector_ref || "");
+  const closeDate = String(payload.close_date || "");
   if (!collectorRef || !closeDate) {
     return { ok: false as const, error: msg };
   }
@@ -678,9 +689,9 @@ export async function upsertDayCloseIdempotent(row: Record<string, unknown>) {
     .like("ref", "CIE-%");
   if (delError) return { ok: false as const, error: delError.message };
 
-  const second = await client.from("day_closes").upsert(row, { onConflict: "ref" });
+  const second = await client.from("day_closes").upsert(payload, { onConflict: "ref" });
   if (second.error) return { ok: false as const, error: second.error.message };
-  return { ok: true as const };
+  return { ok: true as const, forced: force };
 }
 
 /** PostgREST/Supabase suele topear en 1000 filas aunque pidas limit mayor. */
@@ -1473,6 +1484,113 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       ok: false,
       changed: false,
       reason: err instanceof Error ? err.message : "ops_pull_failed",
+    };
+  }
+}
+
+export type ForceCloudSyncResult = {
+  ok: boolean;
+  pushed: number;
+  failed: number;
+  clearedQueue: number;
+  closes: Array<{ ref: string; cashFloat: number; ok: boolean; error?: string }>;
+  error?: string;
+};
+
+/**
+ * Taller PC → nube: pisa `day_closes` (CIE-) con el cash_float local.
+ * Usa `/api/ops/force-sync` (service role) y vacía la cola de cierres.
+ * No sube PCE- (el esquema solo acepta CIE-).
+ */
+export async function forcePushLocalDayClosesToCloud(): Promise<ForceCloudSyncResult> {
+  if (typeof window === "undefined") {
+    return { ok: false, pushed: 0, failed: 0, clearedQueue: 0, closes: [], error: "ssr" };
+  }
+
+  const local = readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, [])
+    .filter((row) => row?.ref && String(row.ref).startsWith("CIE-") && !String(row.ref).startsWith("PCE-"));
+
+  if (!local.length) {
+    return {
+      ok: false,
+      pushed: 0,
+      failed: 0,
+      clearedQueue: 0,
+      closes: [],
+      error: "sin_cie_local",
+    };
+  }
+
+  try {
+    const res = await fetch("/api/ops/force-sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({
+        day_closes: local.map((row) => dayCloseToRow(row)),
+      }),
+    });
+    const body = (await res.json()) as {
+      ok?: boolean;
+      error?: string;
+      results?: Array<{ ref: string; cash_float?: number; ok: boolean; error?: string }>;
+    };
+    if (!res.ok || !body.ok) {
+      return {
+        ok: false,
+        pushed: 0,
+        failed: local.length,
+        clearedQueue: 0,
+        closes: [],
+        error: body.error || `http_${res.status}`,
+      };
+    }
+
+    const closes = (body.results ?? []).map((row) => ({
+      ref: row.ref,
+      cashFloat: Number(row.cash_float) || 0,
+      ok: Boolean(row.ok),
+      error: row.error,
+    }));
+    const pushed = closes.filter((row) => row.ok).length;
+    const failed = closes.filter((row) => !row.ok).length;
+
+    // Limpiar cola de cierres (conflictos viejos) y alinear PCE-T local al CIE subido.
+    const queued = readDemoJson<{ ref: string }[]>(Q_CLOSES, []);
+    const clearedQueue = queued.length;
+    writeDemoJson(Q_CLOSES, []);
+    const projected = projectPceTFromDayCloses(
+      ensureManualTLaunchClose(
+        readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, []),
+      ),
+      local,
+    );
+    writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, projected);
+    emitMirrorQueueChanged();
+
+    // Vaciar resto de colas pendientes (cobros / planilla / etc.).
+    try {
+      const { flushAllMirrorQueues } = await import("@/lib/supabase/mirror-queue");
+      await flushAllMirrorQueues({ attempts: 2 });
+    } catch {
+      /* el CIE ya fue forzado */
+    }
+
+    return {
+      ok: failed === 0,
+      pushed,
+      failed,
+      clearedQueue,
+      closes,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      pushed: 0,
+      failed: local.length,
+      clearedQueue: 0,
+      closes: [],
+      error: err instanceof Error ? err.message : "force_sync_failed",
     };
   }
 }

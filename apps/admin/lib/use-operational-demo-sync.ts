@@ -109,7 +109,6 @@ export function useOperationalDemoSync(
       flushInFlightRef.current = false;
     }
   }, [refreshPending]);
-
   const runHydrateWithRemotePull = useCallback(async () => {
     if (pullInFlightRef.current) return;
     pullInFlightRef.current = true;

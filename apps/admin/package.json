@@ -14,7 +14,8 @@
     "release:force": "node scripts/release.mjs force",
     "purge:cache": "node scripts/release.mjs purge",
     "pwa:icons": "node scripts/generate-pwa-icons.mjs",
-    "db:push": "npx supabase db push --workdir ../.."
+    "db:push": "npx supabase db push --workdir ../..",
+    "force:cie-cristian": "node scripts/force-cie-cristian.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

@@ -1115,8 +1115,9 @@ export function buildCollectorDayHistory(
 }
 
 /**
- * Alinea `CIE.collected` (total del día) y caja menor con pagos reales.
- * `collected` = efectivo + Nequi; `cashFloat` = solo efectivo − gastos.
+ * Alinea `CIE.collected` (total del día, efectivo + Nequi) con pagos reales.
+ * El saldo sellado (`cashFloat` / `cashExpected` / `openingCash` / `cashDeclared`)
+ * es el saldo final del día y el Inicial de mañana: no se recalcula nunca aquí.
  */
 export function alignDayClosesCollectedToPayments(
   closes: CollectorDayCloseRecord[],
@@ -1133,36 +1134,14 @@ export function alignDayClosesCollectedToPayments(
       collectors,
     );
     const expensesTotal = sumExpenseLines(row.expenses ?? []);
-    const declared = pesos(row.cashDeclared ?? row.cashFloat);
-    const check = verifyCashClose({
-      opening: pesos(row.openingCash ?? 0),
-      collections: breakdown.efectivo,
-      expenses: expensesTotal,
-      declared,
-    });
-    const cashVariance =
-      row.cashVariance != null && row.cashVariance !== 0 ? pesos(row.cashVariance) : check.variance;
-    if (
-      row.collected === breakdown.total &&
-      row.expensesTotal === expensesTotal &&
-      row.cashFloat === check.expected &&
-      row.cashExpected === check.expected &&
-      row.cashDeclared === declared &&
-      row.cashVariance === cashVariance
-    ) {
+    if (row.collected === breakdown.total && row.expensesTotal === expensesTotal) {
       return row;
     }
     changed = true;
     return {
       ...row,
       collected: breakdown.total,
-      expenses: row.expenses,
       expensesTotal,
-      openingCash: check.opening,
-      cashExpected: check.expected,
-      cashDeclared: declared,
-      cashVariance,
-      cashFloat: check.expected,
     };
   });
   return changed ? next : closes;

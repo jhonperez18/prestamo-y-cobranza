@@ -9,10 +9,12 @@ import {
   type UiPreferences,
 } from "@/lib/ui-preferences";
 import { BAR_FONT_OPTIONS, fontFamilyStack, UI_FONT_OPTIONS } from "@/lib/ui-fonts";
+import { money } from "@/lib/mock-data";
+import { forcePushLocalDayClosesToCloud } from "@/lib/supabase/ops-mirror";
 
 import { WelcomeMessageSettings } from "@/components/WelcomeMessageSettings";
 
-type Section = "bienvenida" | "colores" | "tipografia";
+type Section = "bienvenida" | "colores" | "tipografia" | "nube";
 
 type Props = {
   adminName: string;
@@ -23,6 +25,7 @@ const TABS: { id: Section; label: string }[] = [
   { id: "bienvenida", label: "Bienvenida" },
   { id: "colores", label: "Colores" },
   { id: "tipografia", label: "Tipografía" },
+  { id: "nube", label: "Nube" },
 ];
 
 function ColorControl({
@@ -167,6 +170,8 @@ function SettingsAppearancePreview({ prefs }: { prefs: UiPreferences }) {
 export function SystemSettingsView({ adminName, onToast }: Props) {
   const [section, setSection] = useState<Section>("bienvenida");
   const [prefs, setPrefs] = useState<UiPreferences>(() => readUiPreferences());
+  const [forceBusy, setForceBusy] = useState(false);
+  const [forceLog, setForceLog] = useState<string>("");
 
   function previewTheme(next: UiPreferences) {
     setPrefs(next);
@@ -182,6 +187,44 @@ export function SystemSettingsView({ adminName, onToast }: Props) {
   function restoreDefaults() {
     setPrefs({ ...DEFAULT_UI_PREFERENCES });
     onToast("Vista previa restablecida. Guarde para aplicar.");
+  }
+
+  async function runForceCloudSync() {
+    if (forceBusy) return;
+    setForceBusy(true);
+    setForceLog("Subiendo CIE locales a Supabase…");
+    try {
+      const result = await forcePushLocalDayClosesToCloud();
+      if (!result.ok && result.error === "sin_cie_local") {
+        setForceLog("No hay CIE- en este navegador para subir.");
+        onToast("Sin cierres CIE locales.");
+        return;
+      }
+      const lines = result.closes.map(
+        (row) =>
+          `${row.ok ? "OK" : "FALLÓ"} ${row.ref} → ${money(row.cashFloat)}${row.error ? ` (${row.error})` : ""}`,
+      );
+      const summary = [
+        `Subidos: ${result.pushed} · Fallidos: ${result.failed} · Cola limpia: ${result.clearedQueue}`,
+        ...lines,
+      ].join("\n");
+      setForceLog(summary);
+      if (result.ok) {
+        onToast(
+          result.pushed === 1
+            ? "1 cierre CIE ya está en la nube (forzado)."
+            : `${result.pushed} cierres CIE ya están en la nube (forzado).`,
+        );
+      } else {
+        onToast(result.error || "Force sync incompleto. Revisá el detalle.");
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "force_sync_failed";
+      setForceLog(msg);
+      onToast(`No se pudo forzar sync: ${msg}`);
+    } finally {
+      setForceBusy(false);
+    }
   }
 
   return (
@@ -206,6 +249,40 @@ export function SystemSettingsView({ adminName, onToast }: Props) {
       <div className="settings-main">
         {section === "bienvenida" ? (
           <WelcomeMessageSettings adminName={adminName} onToast={onToast} />
+        ) : null}
+
+        {section === "nube" ? (
+          <div className="sheet settings-sheet">
+            <div className="sheet-fields">
+              <p className="muted" style={{ marginBottom: 12, maxWidth: "52ch" }}>
+                Si este PC (taller) tiene el Inicial / CIE correcto y Vercel muestra un
+                saldo viejo, forzalo aquí. Pisa <code>day_closes.cash_float</code> en
+                Supabase con lo que hay en este navegador y limpia la cola mirror de
+                cierres.
+              </p>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={forceBusy}
+                onClick={() => void runForceCloudSync()}
+              >
+                {forceBusy ? "Subiendo…" : "Forzar sincronización a la nube"}
+              </button>
+              {forceLog ? (
+                <pre
+                  className="muted"
+                  style={{
+                    marginTop: 16,
+                    whiteSpace: "pre-wrap",
+                    fontSize: 13,
+                    maxWidth: "64ch",
+                  }}
+                >
+                  {forceLog}
+                </pre>
+              ) : null}
+            </div>
+          </div>
         ) : null}
 
         {section === "colores" ? (
