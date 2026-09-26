@@ -167,10 +167,11 @@ export function livePrimaryClosingCash(input: {
 /**
  * Saldo final del día (única cifra para historial / registros / próximo Inicial M).
  *
- * T cierra última jalando M:
- * - Si hay PCE-T → `closingCash` de T (ya incluye el arrastre de M + movimiento de T).
- * - Si no, CIE- del día (`cashFloat`) — misma cifra en nube cuando PCE aún no sube.
- * - Si no, caja de M (`primaryLiveClosing` o PCE-M).
+ * Regla de inicio: Inicial mañana = este número.
+ * Orden (nube gana):
+ * 1) CIE- del día (`cashFloat`) — cierre de jornada en Supabase.
+ * 2) PCE-T si aún no hay CIE.
+ * 3) Caja viva de M / PCE-M.
  */
 export function dayFinalClosingCash(input: {
   collectorRef: string;
@@ -178,10 +179,18 @@ export function dayFinalClosingCash(input: {
   records: PlanillaCashCloseRecord[];
   /** Caja viva / final real de M del mismo día (mientras T no cierra). */
   primaryLiveClosing?: number;
-  /** CIE- del cobrador (fuente nube cuando falta PCE-T). */
+  /** CIE- del cobrador (fuente nube del saldo final del día). */
   dayCloses?: CollectorDayCloseRecord[];
 }): number | null {
   const date = normalizeHistoryDate(input.date) || input.date;
+
+  // CIE manda: es el saldo sellado en nube. Un PCE local viejo no lo pisa.
+  const cie = findFullDayCieClose(input.dayCloses ?? [], input.collectorRef, date);
+  if (cie) {
+    const float = Number(cie.cashFloat ?? cie.cashExpected);
+    if (Number.isFinite(float)) return pesos(float);
+  }
+
   const tClose = findPlanillaCashClose(
     input.records,
     input.collectorRef,
@@ -189,12 +198,6 @@ export function dayFinalClosingCash(input: {
     PLANILLA_CASH_CHAIN_SECONDARY,
   );
   if (tClose) return pesos(tClose.closingCash);
-
-  const cie = findFullDayCieClose(input.dayCloses ?? [], input.collectorRef, date);
-  if (cie) {
-    const float = Number(cie.cashFloat ?? cie.cashExpected);
-    if (Number.isFinite(float)) return pesos(float);
-  }
 
   if (input.primaryLiveClosing != null && Number.isFinite(input.primaryLiveClosing)) {
     return pesos(input.primaryLiveClosing);
@@ -249,14 +252,14 @@ export function findLatestFullDayCieBefore(
 }
 
 /**
- * Si hay CIE- y falta PCE-T ese día, proyecta el eslabón T con el cash_float del CIE.
- * Así el Inicial de M mañana lee la misma cifra que ya está en la nube.
+ * Si hay CIE-, el PCE-T de ese día debe ser la misma cifra (nube = saldo final).
+ * Corrige PCE local viejo que pisaba el Inicial de mañana.
  */
 export function projectPceTFromDayCloses(
   records: PlanillaCashCloseRecord[],
   dayCloses: CollectorDayCloseRecord[],
 ): PlanillaCashCloseRecord[] {
-  let next = records;
+  let next = records.filter((row) => !isStaleManualLaunchAmount(row));
   for (const cie of dayCloses) {
     if (!String(cie.ref || "").startsWith("CIE-")) continue;
     if (isPlanillaCashCloseRef(cie.ref)) continue;
@@ -264,25 +267,18 @@ export function projectPceTFromDayCloses(
     if (!date || !cie.collectorRef) continue;
     const float = Number(cie.cashFloat ?? cie.cashExpected);
     if (!Number.isFinite(float)) continue;
-    const existingRaw = next.find(
-      (row) =>
-        row.ref ===
-        planillaCashCloseRef(
-          cie.collectorRef,
-          date,
-          PLANILLA_CASH_CHAIN_SECONDARY,
-        ),
+    const ref = planillaCashCloseRef(
+      cie.collectorRef,
+      date,
+      PLANILLA_CASH_CHAIN_SECONDARY,
     );
-    // No pisar un PCE-T real. Sí reemplazar basura 3.999.000 con el CIE.
-    if (existingRaw && !isStaleManualLaunchAmount(existingRaw)) {
+    const existing = next.find((row) => row.ref === ref);
+    // CIE manda: alinear PCE-T al cash_float (o crearlo si falta).
+    if (existing && pesos(existing.closingCash) === pesos(float)) {
       continue;
     }
     next = upsertPlanillaCashClose(next, {
-      ref: planillaCashCloseRef(
-        cie.collectorRef,
-        date,
-        PLANILLA_CASH_CHAIN_SECONDARY,
-      ),
+      ref,
       collectorRef: cie.collectorRef,
       collectorName: cie.collectorName || "",
       date,
