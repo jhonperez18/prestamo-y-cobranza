@@ -128,7 +128,8 @@ export function useOperationalDemoSync(
           flushUserMirrorQueues(),
           flushBankAccountMirrorQueues(),
         ]);
-        await reconcileLocalOpsToRemote();
+        // Reusa el bundle del pull: no bajar /api/ops/bundle otra vez (latencia PC).
+        await reconcileLocalOpsToRemote(ops.bundle);
         await reconcileLocalBankAccountsToRemote();
       } catch {
         /* la pantalla ya tiene el dato; la nube reintenta en el siguiente ciclo */

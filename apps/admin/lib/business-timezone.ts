@@ -38,3 +38,15 @@ export function businessClockParts(now = new Date()): BusinessClockParts {
 export function businessTodayIso(now = new Date()) {
   return businessClockParts(now).dateIso;
 }
+
+/** Fecha ISO (Bogotá) hace `days` días civiles. */
+export function businessDaysAgoIso(days: number, now = new Date()) {
+  const today = businessTodayIso(now);
+  const [y, m, d] = today.split("-").map(Number);
+  const utc = Date.UTC(y, (m || 1) - 1, d || 1);
+  const past = new Date(utc - Math.max(0, days) * 86_400_000);
+  const yy = past.getUTCFullYear();
+  const mm = String(past.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(past.getUTCDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}

@@ -1,12 +1,15 @@
-import {
-  fetchOpsTable,
-} from "@/lib/supabase/ops-mirror";
+import { fetchOpsTable, fetchOpsTableSince } from "@/lib/supabase/ops-mirror";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { jsonNoStore } from "@/lib/api-no-store";
+import { businessDaysAgoIso } from "@/lib/business-timezone";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
+
+/** Ventana operativa: planilla reciente (latencia PC). CIE se trae completo (tabla chica). */
+const ASSIGNMENTS_LOOKBACK_DAYS = 45;
+const EXPENSES_LOOKBACK_DAYS = 90;
 
 /** Bundle ops (CIE, planilla, rutas): lectura viva desde Supabase, sin caché. */
 export async function GET() {
@@ -15,14 +18,18 @@ export async function GET() {
     return jsonNoStore({ ok: true, skipped: true, reason: "supabase_not_configured" });
   }
   try {
+    const assignSince = businessDaysAgoIso(ASSIGNMENTS_LOOKBACK_DAYS);
+    const expenseSince = businessDaysAgoIso(EXPENSES_LOOKBACK_DAYS);
+
     const [collectors, routes, day_closes, day_expenses, misc_payments, daily_assignments] =
       await Promise.all([
         fetchOpsTable("collectors"),
         fetchOpsTable("routes"),
+        // CIE completo: pocos registros; Inicial M necesita ayer sin huecos.
         fetchOpsTable("day_closes"),
-        fetchOpsTable("day_expenses"),
+        fetchOpsTableSince("day_expenses", "expense_date", expenseSince),
         fetchOpsTable("misc_payments"),
-        fetchOpsTable("daily_assignments"),
+        fetchOpsTableSince("daily_assignments", "dispatch_date", assignSince),
       ]);
 
     for (const part of [
@@ -49,6 +56,10 @@ export async function GET() {
       day_expenses: day_expenses.rows,
       misc_payments: misc_payments.rows,
       daily_assignments: daily_assignments.rows,
+      window: {
+        assignmentsSince: assignSince,
+        expensesSince: expenseSince,
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";

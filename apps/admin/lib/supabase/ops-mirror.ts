@@ -20,6 +20,7 @@ import {
   projectPceTFromDayCloses,
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
+import { businessDaysAgoIso } from "@/lib/business-timezone";
 import {
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
@@ -708,6 +709,50 @@ export async function fetchOpsTable(table: string) {
   return { ok: true as const, rows };
 }
 
+/**
+ * Lectura paginada con ventana de fechas (acelera el bundle en PC).
+ * No borra filas locales más viejas: el merge solo actualiza lo que viene.
+ */
+export async function fetchOpsTableSince(
+  table: string,
+  dateColumn: string,
+  sinceIso: string,
+) {
+  const client = createMirrorClient();
+  if (!client) return { ok: true as const, skipped: true as const, rows: [] as Record<string, unknown>[] };
+
+  const since = String(sinceIso || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(since)) {
+    return fetchOpsTable(table);
+  }
+
+  let orderById = true;
+  const rows: Record<string, unknown>[] = [];
+  let from = 0;
+  for (;;) {
+    let query = client.from(table).select("*").gte(dateColumn, since);
+    if (orderById) query = query.order("id", { ascending: true });
+    let { data, error } = await query.range(from, from + OPS_FETCH_PAGE - 1);
+    if (error && orderById) {
+      orderById = false;
+      ({ data, error } = await client
+        .from(table)
+        .select("*")
+        .gte(dateColumn, since)
+        .range(from, from + OPS_FETCH_PAGE - 1));
+    }
+    if (error) {
+      return { ok: false as const, error: error.message, rows: [] as Record<string, unknown>[] };
+    }
+    const page = (data ?? []) as Record<string, unknown>[];
+    if (!page.length) break;
+    rows.push(...page);
+    if (page.length < OPS_FETCH_PAGE) break;
+    from += OPS_FETCH_PAGE;
+  }
+  return { ok: true as const, rows };
+}
+
 // —— browser queue + persist ——
 
 async function persistKind(
@@ -932,47 +977,75 @@ export async function flushOpsMirrorQueues() {
   }
 }
 
-export type PullOpsResult = { ok: boolean; changed: boolean; reason?: string };
+export type OpsBundleBody = {
+  ok?: boolean;
+  skipped?: boolean;
+  error?: string;
+  collectors?: Record<string, unknown>[];
+  routes?: Record<string, unknown>[];
+  day_closes?: Record<string, unknown>[];
+  day_expenses?: Record<string, unknown>[];
+  misc_payments?: Record<string, unknown>[];
+  daily_assignments?: Record<string, unknown>[];
+};
+
+export type PullOpsResult = {
+  ok: boolean;
+  changed: boolean;
+  reason?: string;
+  /** Bundle ya bajado: reconcile no vuelve a pedir /api/ops/bundle. */
+  bundle?: OpsBundleBody;
+};
 
 /**
  * C6.1 — crítico: CIE / gastos / planilla / rutas que viven solo en un
  * navegador deben subir a Postgres. Sin esto el saldo de rutas diverge
  * entre PC y celular (mismo bug que los PG- huérfanos).
+ *
+ * Si `prefetched` viene del pull, no se descarga el bundle otra vez (latencia PC).
  */
-export async function reconcileLocalOpsToRemote(): Promise<{
+export async function reconcileLocalOpsToRemote(
+  prefetched?: OpsBundleBody,
+): Promise<{
   pushed: number;
   failed: number;
 }> {
   if (typeof window === "undefined") return { pushed: 0, failed: 0 };
 
   try {
-    const res = await fetch("/api/ops/bundle", { cache: "no-store" });
-    const body = (await res.json()) as {
-      ok?: boolean;
-      skipped?: boolean;
-      collectors?: { ref?: string }[];
-      routes?: { ref?: string }[];
-      day_closes?: { ref?: string }[];
-      day_expenses?: { ref?: string }[];
-      misc_payments?: { ref?: string }[];
-      daily_assignments?: {
-        dispatch_date?: string;
-        item_id?: string;
-        day_closed_at?: string | null;
-      }[];
-    };
-    if (!res.ok || !body.ok || body.skipped) return { pushed: 0, failed: 0 };
+    let body: OpsBundleBody;
+    if (prefetched?.ok && !prefetched.skipped) {
+      body = prefetched;
+    } else {
+      const res = await fetch("/api/ops/bundle", { cache: "no-store" });
+      body = (await res.json()) as OpsBundleBody;
+      if (!res.ok || !body.ok || body.skipped) return { pushed: 0, failed: 0 };
+    }
 
-    const remoteCollector = new Set((body.collectors ?? []).map((r) => r.ref).filter(Boolean));
-    const remoteRoute = new Set((body.routes ?? []).map((r) => r.ref).filter(Boolean));
-    const remoteClose = new Set((body.day_closes ?? []).map((r) => r.ref).filter(Boolean));
-    const remoteExpense = new Set((body.day_expenses ?? []).map((r) => r.ref).filter(Boolean));
-    const remoteMisc = new Set((body.misc_payments ?? []).map((r) => r.ref).filter(Boolean));
+    const remoteCollector = new Set(
+      (body.collectors ?? [])
+        .map((r) => String(r.ref || ""))
+        .filter(Boolean),
+    );
+    const remoteRoute = new Set(
+      (body.routes ?? []).map((r) => String(r.ref || "")).filter(Boolean),
+    );
+    const remoteClose = new Set(
+      (body.day_closes ?? []).map((r) => String(r.ref || "")).filter(Boolean),
+    );
+    const remoteExpense = new Set(
+      (body.day_expenses ?? []).map((r) => String(r.ref || "")).filter(Boolean),
+    );
+    const remoteMisc = new Set(
+      (body.misc_payments ?? []).map((r) => String(r.ref || "")).filter(Boolean),
+    );
     const remoteAssignMeta = new Map<string, { closed: boolean }>();
     for (const r of body.daily_assignments ?? []) {
       const date =
         normalizeHistoryDate(String(r.dispatch_date || "")) || String(r.dispatch_date || "");
-      remoteAssignMeta.set(`${date}::${r.item_id}`, {
+      const itemId = String(r.item_id || "");
+      if (!date || !itemId) continue;
+      remoteAssignMeta.set(`${date}::${itemId}`, {
         closed: Boolean(r.day_closed_at),
       });
     }
@@ -1026,13 +1099,17 @@ export async function reconcileLocalOpsToRemote(): Promise<{
     }
     // PCE- locales: solo cuando el esquema acepte ref ^(CIE|PCE)-.
     // Mientras tanto no encolar (evita 502 day_closes_ref_format).
+    const expenseSince = businessDaysAgoIso(90);
+    const assignSince = businessDaysAgoIso(45);
     for (const row of readDemoJson<CollectorDayExpenseDraft[]>(
       DEMO_COLLECTOR_DAY_EXPENSES_KEY,
       [],
     )) {
-      if (row?.ref && !remoteExpense.has(row.ref)) {
-        jobs.push({ kind: "day_expense", row, key: row.ref });
-      }
+      if (!row?.ref || remoteExpense.has(row.ref)) continue;
+      const d = normalizeHistoryDate(row.date) || row.date;
+      // Fuera de ventana del bundle: no tratar como huérfano (evita re-push eterno).
+      if (d && d < expenseSince) continue;
+      jobs.push({ kind: "day_expense", row, key: row.ref });
     }
     for (const row of readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, [])) {
       if (row?.ref && !remoteMisc.has(row.ref)) {
@@ -1047,6 +1124,8 @@ export async function reconcileLocalOpsToRemote(): Promise<{
       if (!row?.itemId || !date) continue;
       const remote = remoteAssignMeta.get(key);
       const localSealed = Boolean(row.dayClosedAt);
+      // Historia fuera de ventana: no re-subir como huérfano.
+      if (!remote && date < assignSince) continue;
       // Subir si no está en nube, o si este PC ya selló y la nube sigue abierta.
       if (!remote || (localSealed && !remote.closed)) {
         jobs.push({ kind: "assignment", row, key });
@@ -1078,21 +1157,11 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
   if (typeof window === "undefined") return { ok: true, changed: false, reason: "ssr" };
   try {
     const res = await fetch("/api/ops/bundle", { cache: "no-store" });
-    const body = (await res.json()) as {
-      ok?: boolean;
-      error?: string;
-      skipped?: boolean;
-      collectors?: Record<string, unknown>[];
-      routes?: Record<string, unknown>[];
-      day_closes?: Record<string, unknown>[];
-      day_expenses?: Record<string, unknown>[];
-      misc_payments?: Record<string, unknown>[];
-      daily_assignments?: Record<string, unknown>[];
-    };
+    const body = (await res.json()) as OpsBundleBody;
     if (!res.ok || !body.ok) {
       return { ok: false, changed: false, reason: body.error || `http_${res.status}` };
     }
-    if (body.skipped) return { ok: true, changed: false, reason: "skipped" };
+    if (body.skipped) return { ok: true, changed: false, reason: "skipped", bundle: body };
 
     const holdMoney = isVirginRemoteHoldActive();
     let changed = false;
@@ -1144,7 +1213,7 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
     }
 
     if (holdMoney) {
-      return { ok: true, changed, reason: "virgin_hold_skip_money" };
+      return { ok: true, changed, reason: "virgin_hold_skip_money", bundle: body };
     }
 
     const closes = (body.day_closes ?? [])
@@ -1336,7 +1405,7 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       changed = true;
     }
 
-    return { ok: true, changed };
+    return { ok: true, changed, bundle: body };
   } catch (err) {
     return {
       ok: false,
