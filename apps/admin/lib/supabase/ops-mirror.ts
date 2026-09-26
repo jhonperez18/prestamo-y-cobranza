@@ -562,6 +562,8 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
         .select("ref")
         .eq("collector_ref", collectorRef)
         .eq("close_date", closeDate)
+        .like("ref", "CIE-%")
+        .limit(1)
         .maybeSingle();
       if (cie && typeof cie === "object" && "ref" in cie && cie.ref) {
         return { ok: true as const, kept: true as const };

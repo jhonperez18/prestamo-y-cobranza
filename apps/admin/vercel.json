@@ -2,5 +2,15 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "installCommand": "npm install",
-  "buildCommand": "npm run build"
+  "buildCommand": "npm run build",
+  "crons": [
+    {
+      "path": "/api/ops/day-rollover",
+      "schedule": "30 4 * * *"
+    },
+    {
+      "path": "/api/ops/day-rollover",
+      "schedule": "5 5 * * *"
+    }
+  ]
 }

@@ -28,6 +28,7 @@ import { bumpMissedCollectionAlerts } from "@/lib/collection-alerts";
 import { collectorRecaudoBreakdown, collectorRecaudoForDate } from "@/lib/collector-mobile";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { todayIso } from "@/lib/daily-dispatch";
+import { businessClockParts, businessTodayIso } from "@/lib/business-timezone";
 import { pesos } from "@/lib/finance";
 import { sameRoute } from "@/lib/client-route-order";
 import type {
@@ -55,7 +56,7 @@ import {
 } from "@/lib/planilla-payment-reconcile";
 import { syncPermanentRoutePlanilla } from "@/lib/route-planilla";
 
-/** Hora local de corte: cierra la jornada antes de la planilla de medianoche. */
+/** Hora de negocio (Bogotá) de corte: cierra la jornada antes de la planilla de medianoche. */
 export const DAY_AUTO_CLOSE_AT = { hour: 23, minute: 30 } as const;
 
 export type OperationalDayState = {
@@ -88,24 +89,23 @@ export function previousCalendarIso(iso: string) {
   return todayIso(dt);
 }
 
-/** Minutos desde medianoche en hora local. */
+/** Minutos desde medianoche en hora de negocio (Bogotá). */
 export function localMinutesSinceMidnight(now = new Date()) {
-  return now.getHours() * 60 + now.getMinutes();
+  return businessClockParts(now).minutesSinceMidnight;
 }
 
 /**
- * True si la jornada de `dateIso` ya debió cerrarse:
+ * True si la jornada de `dateIso` ya debió cerrarse (reloj Bogotá):
  * - días anteriores a hoy, o
  * - hoy a partir de las 23:30.
  */
 export function dayHasReachedAutoClose(dateIso: string, now = new Date()) {
   const date = normalizeHistoryDate(dateIso) || dateIso;
   if (!date) return false;
-  const today = todayIso(now);
+  const today = businessTodayIso(now);
   if (date < today) return true;
   if (date > today) return false;
-  const cutoff =
-    DAY_AUTO_CLOSE_AT.hour * 60 + DAY_AUTO_CLOSE_AT.minute;
+  const cutoff = DAY_AUTO_CLOSE_AT.hour * 60 + DAY_AUTO_CLOSE_AT.minute;
   return localMinutesSinceMidnight(now) >= cutoff;
 }
 
@@ -240,7 +240,7 @@ export function runOperationalDayCycle(
   state: OperationalDayState,
   now = new Date(),
 ): OperationalDayResult {
-  const today = todayIso(now);
+  const today = businessTodayIso(now);
   let assignments = reconcilePaymentsOntoPlanilla(state.assignments, state.payments);
   assignments = sealOpenVisitsWithLaterPayments(assignments, state.payments, {
     untilDate: today,
