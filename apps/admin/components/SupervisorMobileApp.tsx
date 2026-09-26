@@ -117,6 +117,7 @@ import {
   PLANILLA_CASH_CHAIN_PRIMARY,
   isPlanillaCashChainPrimary,
   isPlanillaCashChainSecondary,
+  stampHistoryWithPlanillaCashChain,
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
 
@@ -1068,13 +1069,6 @@ export function SupervisorMobileApp({
       .slice()
       .sort((a, b) => compareRouteNames(a.routeName, b.routeName));
 
-    const primaryByCollector = new Map<string, string>();
-    for (const route of sorted) {
-      const collectorRef = route.collector?.ref || route.collectorRef || "";
-      if (!collectorRef || primaryByCollector.has(collectorRef)) continue;
-      primaryByCollector.set(collectorRef, route.routeName);
-    }
-
     /** Caja viva de M por cobrador → Inicial momentáneo de T hasta que M cierre. */
     const primaryLiveByCollector = new Map<string, number>();
     const collectorRefsForLive = new Set(
@@ -1105,6 +1099,15 @@ export function SupervisorMobileApp({
           .filter((row) => sameRoute(row.route, PLANILLA_CASH_CHAIN_PRIMARY))
           .map((row) => row.ref),
       );
+      for (const row of todayAssignments) {
+        if (
+          row.collectorRef === collectorRef &&
+          row.clientRef &&
+          sameRoute(assignmentRouteName(row, clients), PLANILLA_CASH_CHAIN_PRIMARY)
+        ) {
+          mClients.add(row.clientRef);
+        }
+      }
       let efectivo = 0;
       for (const pay of collectorDayPayments(collectorRef, today, payments, [collector])) {
         const loan = loans.find((row) => row.ref === pay.loanRef);
@@ -1126,11 +1129,13 @@ export function SupervisorMobileApp({
         if (line.category === "prestamo_ruta" || line.id === "prestamo") continue;
         gastos += amount;
       }
+      // Misma fuente que el KPI Préstamo de M: desembolsos en efectivo del día.
+      // T solo arrastra el saldo; los préstamos salen de la caja de M.
       const prestamos = dayLoanDisbursementTotal(
         dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
           collectorRef,
           assignments: todayAssignments,
-        }).filter((row) => mClients.has(row.clientRef)),
+        }),
       );
       primaryLiveByCollector.set(
         collectorRef,
@@ -1142,12 +1147,10 @@ export function SupervisorMobileApp({
       );
     }
 
-    return sorted.map((route) => {
+    const built = sorted.map((route) => {
       const collector = route.collector;
       const collectorRef = collector?.ref || route.collectorRef || "";
-      const isPrimary =
-        Boolean(collectorRef) &&
-        sameRoute(primaryByCollector.get(collectorRef), route.routeName);
+      const isPrimary = isPlanillaCashChainPrimary(route.routeName);
 
       const mine = todayAssignments.filter(
         (row) =>
@@ -1223,12 +1226,14 @@ export function SupervisorMobileApp({
         if (isPrestamo) continue;
         if (isPrimary) gastosHoy += amount;
       }
-      // Misma fuente que cobrador: GAS- + reconstrucción de créditos en efectivo de hoy.
-      const cashLoansToday = dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
-        collectorRef,
-        assignments: todayAssignments,
-      }).filter((row) => clientRefs.has(row.clientRef));
-      const prestamosHoy = dayLoanDisbursementTotal(cashLoansToday);
+      // Cadena M→T: T solo arrastra el Inicial (saldo). Préstamos viven en M.
+      const cashLoansToday = isPrimary
+        ? dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
+            collectorRef,
+            assignments: todayAssignments,
+          })
+        : [];
+      const prestamosHoy = isPrimary ? dayLoanDisbursementTotal(cashLoansToday) : 0;
 
       const closeRecord = dayCloses.find(
         (row) => row.collectorRef === collectorRef && row.date === today,
@@ -1319,6 +1324,22 @@ export function SupervisorMobileApp({
         statusLabel,
         statusKind,
       };
+    });
+
+    // Reporte firme: Inicial T = saldo final de M (no un PCE hinchado).
+    const mFinalByCollector = new Map<string, number>();
+    for (const row of built) {
+      if (!row.collectorRef || !isPlanillaCashChainPrimary(row.routeName)) continue;
+      mFinalByCollector.set(row.collectorRef, row.enCaja);
+    }
+    return built.map((row) => {
+      if (!isPlanillaCashChainSecondary(row.routeName) || !row.collectorRef) return row;
+      const mFinal = mFinalByCollector.get(row.collectorRef);
+      if (mFinal == null || !Number.isFinite(mFinal)) return row;
+      const saldoInicial = mFinal;
+      const enCaja =
+        saldoInicial + row.cobradoEfectivo - row.gastosHoy - row.prestamosHoy;
+      return { ...row, saldoInicial, enCaja };
     });
   }, [
     assignedCoverage,
@@ -1824,6 +1845,7 @@ export function SupervisorMobileApp({
     if (!collector) return [];
     const period = periodFromDateIso(today);
     const isM = isPlanillaCashChainPrimary(openRoute.routeName);
+    const isT = isPlanillaCashChainSecondary(openRoute.routeName);
     const rows = buildCollectorDayHistory(
       openRoute.collectorRef,
       payments,
@@ -1837,14 +1859,12 @@ export function SupervisorMobileApp({
         assignments,
         clientRefs: openRouteScope.clientRefs,
         loans,
-        includeOperatingExpenses: openRouteScope.isPrimary,
+        clients,
+        includeOperatingExpenses: isM,
       },
     );
-    if (!isM) {
-      return rows.filter((row) => row.date < today).slice(0, 5);
-    }
 
-    // Saldo = caja real (efectivo − gasto − préstamo), misma base que Cierre del día.
+    // Saldo = caja real de M (efectivo − gasto − préstamo), misma base que la ruta.
     const cashHand = buildCollectorDayHistory(
       openRoute.collectorRef,
       payments,
@@ -1856,10 +1876,29 @@ export function SupervisorMobileApp({
       period,
       {
         assignments,
+        loans,
+        clients,
         includeOperatingExpenses: true,
       },
     );
     const cashByDate = new Map(cashHand.map((row) => [row.date, row.saldo]));
+
+    if (isT) {
+      const stamped = stampHistoryWithPlanillaCashChain({
+        collectorRef: openRoute.collectorRef,
+        routeName: openRoute.routeName,
+        rows,
+        records: planillaCashCloses,
+        monthCloses,
+        primaryClosingByDate: cashByDate,
+      });
+      return stamped.filter((row) => row.date <= today).slice(0, 6);
+    }
+
+    if (!isM) {
+      return rows.filter((row) => row.date < today).slice(0, 5);
+    }
+
     const withCashHand = applyCollectorCashHandSaldos(rows, cashByDate);
 
     // M: extracto con hoy incluido (Inicial lleno, Saldo — si aún no cerró).
@@ -3008,6 +3047,7 @@ export function SupervisorMobileApp({
               cobradoCount={openRoute.done}
               visitTotal={openRoute.planilla}
               methodFilter={cobrosMethodFilter ?? undefined}
+              onAttachPaymentEvidence={onAttachPaymentEvidence}
               onBack={() => {
                 if (routeReturnView === "nequi") {
                   setNequiDayIso(null);
@@ -4144,7 +4184,9 @@ export function SupervisorMobileApp({
                           <strong className="is-client">{loan.client}</strong>
                           <span className="is-date">{dateShort}</span>
                           <em className={`is-origin ${originClass}`}>
-                            {loanDisbursementSourceLabel(origin)}
+                            {origin === "efectivo"
+                              ? "Efec"
+                              : loanDisbursementSourceLabel(origin)}
                           </em>
                           <b className={`is-amount ${originClass}`} title="Total a cobrar (capital + interés)">
                             {money(totalCobrar, { symbol: false })}

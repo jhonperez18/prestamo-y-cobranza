@@ -188,21 +188,25 @@ export function openingCashForChainedPlanilla(input: {
       date,
       PLANILLA_CASH_CHAIN_PRIMARY,
     );
+    // Caja viva / final real de M manda sobre un PCE hinchado (p. ej. sin descontar
+    // todos los préstamos). T solo arrastra ese saldo — nunca los préstamos de M.
+    if (input.primaryLiveClosing != null && Number.isFinite(input.primaryLiveClosing)) {
+      return {
+        kind: "chain",
+        opening: pesos(input.primaryLiveClosing),
+        ready: true,
+        provisional: !mClose,
+        blockReason: mClose
+          ? undefined
+          : `Inicial momentáneo de ${PLANILLA_CASH_CHAIN_SECONDARY}: se fija al cerrar ${PLANILLA_CASH_CHAIN_PRIMARY}.`,
+      };
+    }
     if (mClose) {
       return {
         kind: "chain",
         opening: pesos(mClose.closingCash),
         ready: true,
         provisional: false,
-      };
-    }
-    if (input.primaryLiveClosing != null && Number.isFinite(input.primaryLiveClosing)) {
-      return {
-        kind: "chain",
-        opening: pesos(input.primaryLiveClosing),
-        ready: true,
-        provisional: true,
-        blockReason: `Inicial momentáneo de ${PLANILLA_CASH_CHAIN_SECONDARY}: se fija al cerrar ${PLANILLA_CASH_CHAIN_PRIMARY}.`,
       };
     }
     return {
@@ -386,6 +390,11 @@ export function stampHistoryWithPlanillaCashChain<
   records: PlanillaCashCloseRecord[];
   monthCloses: CollectorMonthCloseRecord[];
   fallbackOpening?: number;
+  /**
+   * Saldo final real de M por día (misma cifra que Historial · M / ruta).
+   * T arrastra solo eso — no un PCE hinchado.
+   */
+  primaryClosingByDate?: ReadonlyMap<string, number>;
 }): T[] {
   const route = String(input.routeName || "").trim();
   if (!isPlanillaCashChainRoute(route) || input.rows.length === 0) {
@@ -400,8 +409,45 @@ export function stampHistoryWithPlanillaCashChain<
       row.date,
       route,
     );
-    if (pce) {
-      running = pesos(pce.closingCash);
+    if (pce || isPlanillaCashChainSecondary(route)) {
+      if (isPlanillaCashChainSecondary(route)) {
+        const fromPrimary = input.primaryClosingByDate?.get(row.date);
+        const mClose = findPlanillaCashClose(
+          input.records,
+          input.collectorRef,
+          row.date,
+          PLANILLA_CASH_CHAIN_PRIMARY,
+        );
+        const opening =
+          fromPrimary != null && Number.isFinite(fromPrimary)
+            ? pesos(fromPrimary)
+            : mClose
+              ? pesos(mClose.closingCash)
+              : pce
+                ? pesos(pce.openingCash)
+                : null;
+        if (opening == null) {
+          if (running == null) {
+            running = pesos(row.saldo);
+            return row;
+          }
+          running = pesos(
+            running + pesos(row.cobroEfectivo) - pesos(row.gasto) - pesos(row.prestamo),
+          );
+          return { ...row, saldo: running };
+        }
+        running = pesos(
+          opening + pesos(row.cobroEfectivo) - pesos(row.gasto) - pesos(row.prestamo),
+        );
+        return { ...row, saldo: running };
+      }
+      // M: recalcular; no usar closingCash sellado viejo.
+      running = pesos(
+        pesos(pce!.openingCash) +
+          pesos(row.cobroEfectivo) -
+          pesos(row.gasto) -
+          pesos(row.prestamo),
+      );
       return { ...row, saldo: running };
     }
     if (running == null) {
@@ -471,6 +517,56 @@ export function sealMAndTCashChainForDay(input: {
     cashOut: input.secondaryCashOut,
   });
   return upsertPlanillaCashClose(next, tClose);
+}
+
+/**
+ * Alinea PCE-M/T al saldo final real de M (Inicial + efectivo − gasto − préstamo).
+ * Evita que un cierre viejo sin descontar préstamos hinche el Inicial de T
+ * y, al cerrar T, el Inicial de M del día siguiente.
+ */
+export function alignPlanillaCashChainToPrimaryClosing(
+  records: PlanillaCashCloseRecord[],
+  collectorRef: string,
+  date: string,
+  primaryClosingCash: number,
+): PlanillaCashCloseRecord[] {
+  const d = normalizeHistoryDate(date) || date;
+  const closing = pesos(primaryClosingCash);
+  const mClose = findPlanillaCashClose(
+    records,
+    collectorRef,
+    d,
+    PLANILLA_CASH_CHAIN_PRIMARY,
+  );
+  if (!mClose) return records;
+
+  let next = records;
+  if (pesos(mClose.closingCash) !== closing) {
+    next = upsertPlanillaCashClose(next, { ...mClose, closingCash: closing });
+  }
+
+  const tClose = findPlanillaCashClose(
+    next,
+    collectorRef,
+    d,
+    PLANILLA_CASH_CHAIN_SECONDARY,
+  );
+  if (!tClose) return next;
+
+  // Conserva el movimiento propio de T (cobros − salidas); solo corrige el arrastre.
+  const tDelta = pesos(tClose.closingCash) - pesos(tClose.openingCash);
+  const nextT: PlanillaCashCloseRecord = {
+    ...tClose,
+    openingCash: closing,
+    closingCash: pesos(closing + tDelta),
+  };
+  if (
+    pesos(tClose.openingCash) === nextT.openingCash &&
+    pesos(tClose.closingCash) === nextT.closingCash
+  ) {
+    return next;
+  }
+  return upsertPlanillaCashClose(next, nextT);
 }
 
 export type PlanillaChainHistoryRow = {

@@ -39,6 +39,10 @@ import type {
 } from "@/lib/mock-data";
 import { normalizePaymentMethod } from "@/lib/payment-method";
 import {
+  dayLoanDisbursementRows,
+  dayLoanDisbursementTotal,
+} from "@/lib/collector-history-planilla";
+import {
   isPlanillaCashCloseRef,
   PLANILLA_CASH_CHAIN_PRIMARY,
   PLANILLA_CASH_CHAIN_SECONDARY,
@@ -170,8 +174,12 @@ function cashOutOnRoute(
   dayCloses: CollectorDayCloseRecord[],
   dayExpenseDrafts: CollectorDayExpenseDraft[],
   loans: LoanRow[],
+  clients: ClientRow[],
+  assignments: DailyCollectionAssignment[],
   clientRefs: Set<string>,
   includeOperating: boolean,
+  /** M: incluye todos los desembolsos del día (T solo arrastra saldo). */
+  includeAllDayLoans: boolean,
 ) {
   const draft = findDayExpenseDraft(dayExpenseDrafts, collectorRef, date);
   const fromClose = dayCloses.find(
@@ -182,18 +190,26 @@ function cashOutOnRoute(
   );
   const lines = (draft?.expenses?.length ? draft.expenses : fromClose?.expenses) ?? [];
   let gastos = 0;
-  let prestamos = 0;
   for (const line of lines) {
     const amount = Number(line.amount) || 0;
     if (!(amount > 0)) continue;
-    if (line.category === "prestamo_ruta" || line.id === "prestamo") {
-      const loan = line.loanRef ? loans.find((row) => row.ref === line.loanRef) : undefined;
-      if (loan?.clientRef && clientRefs.has(loan.clientRef)) prestamos += amount;
-      continue;
-    }
+    if (line.category === "prestamo_ruta" || line.id === "prestamo") continue;
     if (includeOperating) gastos += amount;
   }
-  return pesos(gastos + prestamos);
+  const prestamos = includeAllDayLoans
+    ? dayLoanDisbursementTotal(
+        dayLoanDisbursementRows(date, lines, loans, clients, {
+          collectorRef,
+          assignments,
+        }),
+      )
+    : dayLoanDisbursementTotal(
+        dayLoanDisbursementRows(date, lines, loans, clients, {
+          collectorRef,
+          assignments,
+        }).filter((row) => clientRefs.has(row.clientRef)),
+      );
+  return pesos(gastos + (includeOperating || includeAllDayLoans ? prestamos : 0));
 }
 
 function carriedOpeningFallback(
@@ -332,7 +348,10 @@ export function runOperationalDayCycle(
         dayCloses,
         dayExpenseDrafts,
         loans,
+        state.clients,
+        assignments,
         mClients,
+        true,
         true,
       ),
       secondaryCashCollected: cashCollectedOnRoute(
@@ -348,7 +367,10 @@ export function runOperationalDayCycle(
         dayCloses,
         dayExpenseDrafts,
         loans,
+        state.clients,
+        assignments,
         tClients,
+        false,
         false,
       ),
     });

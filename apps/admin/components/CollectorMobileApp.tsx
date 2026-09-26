@@ -472,7 +472,16 @@ export function CollectorMobileApp({
       : undefined;
     const isPrimaryHistory =
       !routeForHistory ||
+      isPlanillaCashChainPrimary(routeForHistory) ||
       sameRoute(routeForHistory, planillaRoutePins[0] || "");
+    const historyExtras = {
+      assignments,
+      rolling: true as const,
+      clientRefs: scopedClients,
+      loans,
+      clients,
+      includeOperatingExpenses: isPrimaryHistory,
+    };
     const base = buildCollectorDayHistory(
       collector.ref,
       livePayments,
@@ -482,14 +491,43 @@ export function CollectorMobileApp({
       dayExpenseDrafts,
       monthCloses,
       viewPeriod,
-      {
-        assignments,
-        rolling: true,
-        clientRefs: scopedClients,
-        loans: scopedClients ? loans : undefined,
-        includeOperatingExpenses: isPrimaryHistory,
-      },
+      historyExtras,
     );
+
+    // Saldo final de M por día = misma cifra que Historial · M / ruta (T solo arrastra eso).
+    let primaryClosingByDate: Map<string, number> | undefined;
+    if (isPlanillaCashChainSecondary(routeForHistory ?? undefined)) {
+      const mBase = buildCollectorDayHistory(
+        collector.ref,
+        livePayments,
+        dayCloses,
+        [collector],
+        extraDates,
+        dayExpenseDrafts,
+        monthCloses,
+        viewPeriod,
+        {
+          assignments,
+          rolling: true,
+          loans,
+          clients,
+          includeOperatingExpenses: true,
+        },
+      );
+      const mForChain = applyCollectorCashHandSaldos(mBase, collectorCashHandByDate);
+      const mStamped = stampHistoryWithPlanillaCashChain({
+        collectorRef: collector.ref,
+        routeName: PLANILLA_CASH_CHAIN_PRIMARY,
+        rows: mForChain,
+        records: planillaCashCloses,
+        monthCloses,
+        fallbackOpening: mCarriedFallbackOpening,
+      });
+      primaryClosingByDate = new Map(
+        mStamped.map((row) => [row.date, row.saldo]),
+      );
+    }
+
     const forChain = isPlanillaCashChainPrimary(routeForHistory ?? undefined)
       ? applyCollectorCashHandSaldos(base, collectorCashHandByDate)
       : base;
@@ -500,6 +538,7 @@ export function CollectorMobileApp({
       records: planillaCashCloses,
       monthCloses,
       fallbackOpening: mCarriedFallbackOpening,
+      primaryClosingByDate,
     });
   }, [
     activeDate,
@@ -681,11 +720,7 @@ export function CollectorMobileApp({
     }
     const mScope = {
       collectorRef: collector.ref,
-      assignments: assignments.filter(
-        (row) =>
-          row.collectorRef === collector.ref &&
-          sameRoute(assignmentRouteName(row, clients), PLANILLA_CASH_CHAIN_PRIMARY),
-      ),
+      assignments: assignments.filter((row) => row.collectorRef === collector.ref),
     };
     const mExpenses = expensesWithDayLoans(
       activeDate,
@@ -695,17 +730,22 @@ export function CollectorMobileApp({
       mScope,
     );
     let gastos = 0;
-    let prestamos = 0;
     for (const line of mExpenses) {
       const amount = Number(line.amount) || 0;
       if (!(amount > 0)) continue;
-      if (line.category === "prestamo_ruta" || line.id === "prestamo") {
-        const loan = line.loanRef ? loans.find((row) => row.ref === line.loanRef) : undefined;
-        if (loan?.clientRef && primaryClientRefs.has(loan.clientRef)) prestamos += amount;
-        continue;
-      }
+      if (line.category === "prestamo_ruta" || line.id === "prestamo") continue;
       gastos += amount;
     }
+    // Préstamos del día salen de M (misma cifra que el KPI); T solo arrastra el saldo.
+    const prestamos = dayLoanDisbursementTotal(
+      dayLoanDisbursementRows(
+        activeDate,
+        expensesForCollectorDay(collector.ref, activeDate, dayCloses, dayExpenseDrafts),
+        loans,
+        clients,
+        mScope,
+      ),
+    );
     const opening =
       primaryChainOpening.kind === "chain" ? primaryChainOpening.opening : 0;
     return livePrimaryClosingCash({
@@ -877,7 +917,7 @@ export function CollectorMobileApp({
     [activeDate, collector.ref, dayCloses, dayExpenseDrafts],
   );
   const loanScope = useMemo(() => {
-    // KPI Préstamos / desembolsos: TODA la jornada del cobrador (M+T+A), no solo el pin activo.
+    // Desembolsos de la jornada del cobrador (KPI solo se muestra en planilla M).
     const dayRows = assignments.filter((row) => row.collectorRef === collector.ref);
     return { collectorRef: collector.ref, assignments: dayRows };
   }, [assignments, collector.ref]);
@@ -991,6 +1031,8 @@ export function CollectorMobileApp({
   function openLoansDetail() {
     if (isNavQuiet()) return;
     if (dayLocked) return;
+    // T solo arrastra saldo: los préstamos del día viven en M.
+    if (!isPrimaryPlanilla) return;
     setExpandedKey(null);
     setConfirmingClose(false);
     setEditingExpenses(false);
@@ -1043,10 +1085,7 @@ export function CollectorMobileApp({
       setConfirmingClose(false);
       return;
     }
-    const cashOut =
-      (isPrimaryPlanilla || isPlanillaCashChainRoute(activePlanillaRoute ?? "")
-        ? topGastos
-        : 0) + topPrestamos;
+    const cashOut = topGastos + topPrestamos;
     const openingForClose =
       chainOpening.kind === "chain"
         ? chainOpening.opening
@@ -1058,11 +1097,8 @@ export function CollectorMobileApp({
       collectorName: collector.name,
       collected: planillaRecaudo.total,
       collectedEfectivo: planillaRecaudo.efectivo,
-      expenses: isPrimaryPlanilla
-        ? savedExpenses
-        : savedExpenses.filter(
-            (row) => row.category === "prestamo_ruta" || row.id === "prestamo",
-          ),
+      // T / A: no reenviar desembolsos de M (el saldo ya los descontó al cerrar M).
+      expenses: isPrimaryPlanilla ? savedExpenses : [],
       planillaRoute: activePlanillaRoute ?? undefined,
       openingCash: openingForClose,
       cashOut,
@@ -1164,7 +1200,8 @@ export function CollectorMobileApp({
     [activeDate, savedExpensesRaw, loans, clients, loanScope],
   );
   const topGastos = isPrimaryPlanilla ? dayExpenseSplit.otrosTotal : 0;
-  const topPrestamos = dayLoanDisbursementTotal(dayLoanRows);
+  // Cadena M→T: T solo arrastra el Inicial (saldo). Préstamos y gastos quedan en M.
+  const topPrestamos = isPrimaryPlanilla ? dayLoanDisbursementTotal(dayLoanRows) : 0;
   /** Inicial: cadena M/T si aplica; A y resto sin cruzar. */
   const headerInicial =
     chainOpening.kind === "chain"
@@ -1186,7 +1223,7 @@ export function CollectorMobileApp({
   const pendingCollectShown = activePlanillaRoute
     ? routePendingCollectCount
     : queue.pendingCollectCount;
-  const planillaPrestadoEfectivo = isPrimaryPlanilla || topPrestamos > 0 ? prestadoEfectivo : 0;
+  const planillaPrestadoEfectivo = isPrimaryPlanilla ? prestadoEfectivo : 0;
 
   const openPlanillaDates = useMemo(
     () => new Set(routeOptions.filter((row) => !row.closed).map((row) => row.date)),
@@ -1600,10 +1637,16 @@ export function CollectorMobileApp({
                 ? "collector-mobile-stat is-prestamos on"
                 : "collector-mobile-stat is-prestamos"
           }
-          disabled={chromeLocked}
-          title={chromeLocked ? "Jornada cerrada" : "Préstamos del día"}
+          disabled={chromeLocked || !isPrimaryPlanilla}
+          title={
+            chromeLocked
+              ? "Jornada cerrada"
+              : !isPrimaryPlanilla
+                ? `Préstamos en la planilla ${PLANILLA_CASH_CHAIN_PRIMARY}`
+                : "Préstamos del día"
+          }
           {...navButtonProps(navIntent, () => {
-            if (chromeLocked) return;
+            if (chromeLocked || !isPrimaryPlanilla) return;
             openLoansDetail();
           })}
         >

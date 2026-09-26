@@ -8,10 +8,14 @@ import {
 import { isoToDispatchLabel, todayIso } from "@/lib/daily-dispatch";
 import { pesos, sumPesos, verifyCashClose } from "@/lib/finance";
 import { displayToIso } from "@/lib/loan-preview";
-import { money, type CollectorRow, type LoanRow, type PaymentRow, paymentsForCollector } from "@/lib/mock-data";
+import { money, type ClientRow, type CollectorRow, type LoanRow, type PaymentRow, paymentsForCollector } from "@/lib/mock-data";
 import { normalizePaymentMethod } from "@/lib/payment-method";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
+import {
+  dayLoanDisbursementRows,
+  dayLoanDisbursementTotal,
+} from "@/lib/collector-history-planilla";
 
 /** Gastos típicos de ruta del cobrador (cuadre de cierre). */
 export const ROUTE_EXPENSE_ITEMS = [
@@ -689,12 +693,14 @@ export type CollectorHistoryExtras = {
   /** Últimos N días corridos, aunque crucen de mes. El día 31 suelta el más antiguo. */
   rolling?: boolean;
   /**
-   * Planilla activa (1 / 1.1): solo cuenta PG- y desembolsos de estos clientes.
-   * Sin inventar montos de otra hoja.
+   * Planilla activa (1 / 1.1): solo cuenta PG- de estos clientes.
+   * Los préstamos del día (caja) se reconstruyen aparte — viven en M.
    */
   clientRefs?: ReadonlySet<string>;
   loans?: LoanRow[];
-  /** false = no suma gastos operativos (caja); solo préstamos de la ruta. */
+  /** Necesario para reconstruir desembolsos (misma fuente que KPI Préstamo). */
+  clients?: ClientRow[];
+  /** false = no suma gastos operativos ni préstamos (T solo arrastra saldo). */
   includeOperatingExpenses?: boolean;
 };
 
@@ -953,6 +959,46 @@ export function buildCollectorDayHistory(
     const buckets = expenseBuckets(row.expenses ?? []);
     gastoByDate.set(date, buckets.gasto);
     prestamoByDate.set(date, buckets.prestamo);
+  }
+
+  // Misma fuente que KPI / ruta: GAS- + créditos en efectivo reconstruidos.
+  // T (includeOperating false): préstamos = 0 — solo arrastra el saldo de M.
+  if (!includeOperating) {
+    for (const date of prestamoByDate.keys()) prestamoByDate.set(date, 0);
+  } else if (extras.loans?.length && extras.clients?.length) {
+    const expenseLinesByDate = new Map<string, RouteExpenseLine[]>();
+    for (const row of closes) {
+      if (row.collectorRef !== collectorRef) continue;
+      const date = normalizeHistoryDate(row.date);
+      if (!date) continue;
+      expenseLinesByDate.set(date, row.expenses ?? []);
+    }
+    for (const row of expenseDrafts) {
+      if (row.collectorRef !== collectorRef) continue;
+      const date = normalizeHistoryDate(row.date);
+      if (!date || closedDates.has(date)) continue;
+      expenseLinesByDate.set(date, row.expenses ?? []);
+    }
+    const loanDates = new Set<string>([
+      ...gastoByDate.keys(),
+      ...prestamoByDate.keys(),
+      ...cobroByDate.keys(),
+      ...closedDates,
+      ...extraDates.map(normalizeHistoryDate).filter(Boolean),
+      ...expenseLinesByDate.keys(),
+    ]);
+    for (const date of loanDates) {
+      const lines = expenseLinesByDate.get(date) ?? [];
+      prestamoByDate.set(
+        date,
+        dayLoanDisbursementTotal(
+          dayLoanDisbursementRows(date, lines, extras.loans, extras.clients, {
+            collectorRef,
+            assignments: extras.assignments,
+          }),
+        ),
+      );
+    }
   }
 
   for (const row of extras.assignments ?? []) {

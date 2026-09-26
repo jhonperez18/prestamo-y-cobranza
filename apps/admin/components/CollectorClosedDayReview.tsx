@@ -11,10 +11,11 @@ import {
   normalizePaymentMethod,
   paymentMethodInitial,
   paymentMethodLabel,
-  paymentMethodRequiresReceipt,
   paymentMethodToneClass,
   type PaymentMethod,
 } from "@/lib/payment-method";
+import { withPaymentEvidence } from "@/lib/payment-evidence-store";
+import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
 import { visitStatusKind, visitStatusLabel } from "@/lib/collector-mobile";
 
 export type ClosedDayDetail = "cobros" | "gastos" | "planilla";
@@ -29,6 +30,8 @@ type Props = {
   visitTotal: number;
   /** Si viene, el reporte de cobros solo muestra ese medio. */
   methodFilter?: PaymentMethod;
+  /** Adjuntar comprobante (Nequi/Banco) desde el recaudo. */
+  onAttachPaymentEvidence?: (paymentRef: string, evidence: PaymentEvidenceRef[]) => void;
   onBack: () => void;
 };
 
@@ -69,6 +72,7 @@ export function CollectorClosedDayReview({
   cobradoCount,
   visitTotal,
   methodFilter,
+  onAttachPaymentEvidence,
   onBack,
 }: Props) {
   const cobros = visits.filter((row) => {
@@ -153,7 +157,8 @@ export function CollectorClosedDayReview({
         ) : (
           <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-day-ficha">
             {cobros.map((item) => {
-              const pay = paymentForVisit(item, payments);
+              const payRaw = paymentForVisit(item, payments);
+              const pay = payRaw ? withPaymentEvidence(payRaw) : undefined;
               const method = pay ? normalizePaymentMethod(pay.method) : "efectivo";
               const amount = pay?.amount ?? item.amountDue;
               const loanRef = item.loanRef || "—";
@@ -171,11 +176,15 @@ export function CollectorClosedDayReview({
                     {paymentMethodInitial(method)}
                   </em>
                   <span className="is-evidence">
-                    {method && paymentMethodRequiresReceipt(method) ? (
-                      <PaymentEvidenceThumb evidence={pay?.evidence} size={28} />
-                    ) : (
-                      <span className="payment-evidence-empty">—</span>
-                    )}
+                    <PaymentEvidenceThumb
+                      evidence={pay?.evidence}
+                      size={28}
+                      onAttach={
+                        pay?.ref && onAttachPaymentEvidence
+                          ? (piece) => onAttachPaymentEvidence(pay.ref, [piece])
+                          : undefined
+                      }
+                    />
                   </span>
                   <b className="is-cobro">{money(amount, { symbol: false })}</b>
                 </li>

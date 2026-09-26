@@ -241,7 +241,13 @@ import {
 import { runOperationalDayCycle } from "@/lib/collector-day-auto-close";
 import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
 import { dedupeDailyPaymentsByVisit, reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
-import { collectorRecaudoBreakdown, collectorRecaudoForDate } from "@/lib/collector-mobile";
+import {
+  collectorDayPayments,
+  collectorRecaudoBreakdown,
+  collectorRecaudoForDate,
+} from "@/lib/collector-mobile";
+import { assignmentRouteName } from "@/lib/collector-dispatch-sync";
+import { sameRoute } from "@/lib/client-route-order";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement, miscPaymentRefForMovement } from "@/lib/misc-payments";
 import {
@@ -292,14 +298,23 @@ import {
 } from "@/lib/collector-day-close";
 import {
   assertCanCloseChainedPlanilla,
+  alignPlanillaCashChainToPrimaryClosing,
   buildPlanillaCashClose,
   ensureManualTLaunchClose,
+  findPlanillaCashClose,
   isPlanillaCashChainRoute,
+  livePrimaryClosingCash,
   planillaCashCloseAsDayClose,
+  PLANILLA_CASH_CHAIN_PRIMARY,
+  PLANILLA_CASH_CHAIN_SECONDARY,
   splitDayClosesAndPlanillaCash,
   upsertPlanillaCashClose,
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
+import {
+  dayLoanDisbursementRows,
+  dayLoanDisbursementTotal,
+} from "@/lib/collector-history-planilla";
 
 import type { FileTab, LoanTab, WorkspaceProps } from "./types";
 
@@ -720,6 +735,109 @@ export function useWorkspace({
     if (!demoHydrated) return;
     writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, planillaCashCloses);
   }, [planillaCashCloses, demoHydrated]);
+
+  /** Repara PCE-M/T si el cierre no descontó todos los préstamos (T no hincha el próximo M). */
+  useEffect(() => {
+    if (!demoHydrated || planillaCashCloses.length === 0) return;
+    let next = planillaCashCloses;
+    let changed = false;
+    const seen = new Set<string>();
+    for (const row of planillaCashCloses) {
+      if (!sameRoute(row.routeName, PLANILLA_CASH_CHAIN_PRIMARY)) continue;
+      const key = `${row.collectorRef}|${row.date}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const collector = collectors.find((entry) => entry.ref === row.collectorRef);
+      if (!collector) continue;
+      const mClients = new Set(
+        clients
+          .filter((entry) => sameRoute(entry.route, PLANILLA_CASH_CHAIN_PRIMARY))
+          .map((entry) => entry.ref),
+      );
+      for (const assignment of dailyAssignments) {
+        if (
+          assignment.collectorRef === row.collectorRef &&
+          assignment.clientRef &&
+          sameRoute(assignmentRouteName(assignment, clients), PLANILLA_CASH_CHAIN_PRIMARY)
+        ) {
+          mClients.add(assignment.clientRef);
+        }
+      }
+      let efectivo = 0;
+      for (const pay of collectorDayPayments(
+        row.collectorRef,
+        row.date,
+        payments,
+        [collector],
+      )) {
+        const loan = loans.find((entry) => entry.ref === pay.loanRef);
+        if (!loan?.clientRef || !mClients.has(loan.clientRef)) continue;
+        const method = normalizePaymentMethod(pay.method);
+        if (method === "nequi" || method === "banco") continue;
+        efectivo += Number(pay.amount) || 0;
+      }
+      const rawExpenses = expensesForCollectorDay(
+        row.collectorRef,
+        row.date,
+        dayCloses,
+        dayExpenseDrafts,
+      );
+      let gastos = 0;
+      for (const line of rawExpenses) {
+        const amount = Number(line.amount) || 0;
+        if (!(amount > 0)) continue;
+        if (line.category === "prestamo_ruta" || line.id === "prestamo") continue;
+        gastos += amount;
+      }
+      const prestamos = dayLoanDisbursementTotal(
+        dayLoanDisbursementRows(row.date, rawExpenses, loans, clients, {
+          collectorRef: row.collectorRef,
+          assignments: dailyAssignments,
+        }),
+      );
+      const trueClosing = livePrimaryClosingCash({
+        opening: row.openingCash,
+        cashCollected: efectivo,
+        cashOut: gastos + prestamos,
+      });
+      const mClose = findPlanillaCashClose(
+        next,
+        row.collectorRef,
+        row.date,
+        PLANILLA_CASH_CHAIN_PRIMARY,
+      );
+      if (mClose && pesos(mClose.closingCash) === pesos(trueClosing)) continue;
+      next = alignPlanillaCashChainToPrimaryClosing(
+        next,
+        row.collectorRef,
+        row.date,
+        trueClosing,
+      );
+      changed = true;
+    }
+    if (!changed) return;
+    setPlanillaCashCloses(next);
+    writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, next);
+    for (const row of next) {
+      if (
+        !sameRoute(row.routeName, PLANILLA_CASH_CHAIN_PRIMARY) &&
+        !sameRoute(row.routeName, PLANILLA_CASH_CHAIN_SECONDARY)
+      ) {
+        continue;
+      }
+      queueDayCloseMirror(planillaCashCloseAsDayClose(row));
+    }
+  }, [
+    clients,
+    collectors,
+    dailyAssignments,
+    dayCloses,
+    dayExpenseDrafts,
+    demoHydrated,
+    loans,
+    payments,
+    planillaCashCloses,
+  ]);
 
   useEffect(() => {
     if (!demoHydrated) return;
@@ -1617,10 +1735,95 @@ export function useWorkspace({
         cashCollected: Number(payload.collectedEfectivo) || 0,
         cashOut: Number(payload.cashOut) || 0,
       });
-      const nextCash = upsertPlanillaCashClose(planillaCashCloses, cashLink);
+      let nextCash = upsertPlanillaCashClose(planillaCashCloses, cashLink);
+
+      // Saldo final real de M (con todos los préstamos) → Inicial de T / próximo M.
+      const collector = collectors.find((row) => row.ref === payload.collectorRef);
+      const mClose = nextCash.find(
+        (row) =>
+          row.collectorRef === payload.collectorRef &&
+          row.date === payload.date &&
+          sameRoute(row.routeName, PLANILLA_CASH_CHAIN_PRIMARY),
+      );
+      if (collector && mClose) {
+        const mClients = new Set(
+          clients
+            .filter((row) => sameRoute(row.route, PLANILLA_CASH_CHAIN_PRIMARY))
+            .map((row) => row.ref),
+        );
+        for (const row of result.assignments) {
+          if (
+            row.collectorRef === payload.collectorRef &&
+            row.clientRef &&
+            sameRoute(assignmentRouteName(row, clients), PLANILLA_CASH_CHAIN_PRIMARY)
+          ) {
+            mClients.add(row.clientRef);
+          }
+        }
+        let efectivo = 0;
+        for (const pay of collectorDayPayments(
+          payload.collectorRef,
+          payload.date,
+          payments,
+          [collector],
+        )) {
+          const loan = loans.find((row) => row.ref === pay.loanRef);
+          if (!loan?.clientRef || !mClients.has(loan.clientRef)) continue;
+          const method = normalizePaymentMethod(pay.method);
+          if (method === "nequi" || method === "banco") continue;
+          efectivo += Number(pay.amount) || 0;
+        }
+        const rawExpenses = expensesForCollectorDay(
+          payload.collectorRef,
+          payload.date,
+          closes,
+          dayExpenseDrafts,
+        );
+        let gastos = 0;
+        for (const line of rawExpenses) {
+          const amount = Number(line.amount) || 0;
+          if (!(amount > 0)) continue;
+          if (line.category === "prestamo_ruta" || line.id === "prestamo") continue;
+          gastos += amount;
+        }
+        const prestamos = dayLoanDisbursementTotal(
+          dayLoanDisbursementRows(payload.date, rawExpenses, loans, clients, {
+            collectorRef: payload.collectorRef,
+            assignments: result.assignments,
+          }),
+        );
+        const trueMClosing = livePrimaryClosingCash({
+          opening: mClose.openingCash,
+          cashCollected: efectivo,
+          cashOut: gastos + prestamos,
+        });
+        nextCash = alignPlanillaCashChainToPrimaryClosing(
+          nextCash,
+          payload.collectorRef,
+          payload.date,
+          trueMClosing,
+        );
+      }
+
       setPlanillaCashCloses(nextCash);
       writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, nextCash);
-      queueDayCloseMirror(planillaCashCloseAsDayClose(cashLink));
+      const mirroredM = nextCash.find(
+        (row) =>
+          row.collectorRef === payload.collectorRef &&
+          row.date === payload.date &&
+          sameRoute(row.routeName, PLANILLA_CASH_CHAIN_PRIMARY),
+      );
+      const mirroredT = nextCash.find(
+        (row) =>
+          row.collectorRef === payload.collectorRef &&
+          row.date === payload.date &&
+          sameRoute(row.routeName, PLANILLA_CASH_CHAIN_SECONDARY),
+      );
+      if (mirroredM) queueDayCloseMirror(planillaCashCloseAsDayClose(mirroredM));
+      if (mirroredT) queueDayCloseMirror(planillaCashCloseAsDayClose(mirroredT));
+      if (!mirroredM && !mirroredT) {
+        queueDayCloseMirror(planillaCashCloseAsDayClose(cashLink));
+      }
     }
 
     if (fullyClosed) {
