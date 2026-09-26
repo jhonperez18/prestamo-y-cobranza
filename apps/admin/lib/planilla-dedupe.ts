@@ -18,10 +18,12 @@ export function dedupePlanillaAssignments(
     const prevScore =
       (prev.dayClosedAt ? 4 : 0) +
       (prev.paymentRef ? 2 : 0) +
+      (prev.visitStatus === "omitido" ? 3 : 0) +
       (prev.visitStatus === "cobrado" || prev.visitStatus === "parcial" ? 1 : 0);
     const nextScore =
       (row.dayClosedAt ? 4 : 0) +
       (row.paymentRef ? 2 : 0) +
+      (row.visitStatus === "omitido" ? 3 : 0) +
       (row.visitStatus === "cobrado" || row.visitStatus === "parcial" ? 1 : 0);
     byKey.set(key, nextScore >= prevScore ? row : prev);
   }

@@ -426,12 +426,14 @@ export function syncPermanentRoutePlanilla(
     if (clientAlreadyListed && loanPaidOnDate(prev.loanRef, date, payments)) continue;
     const inBuilt =
       builtMap.has(prev.itemId) ||
-      [...builtMap.values()].some(
-        (row) =>
-          row.collectorRef === prev.collectorRef &&
-          row.clientRef === prev.clientRef &&
-          (row.loanRef === prev.loanRef || !prev.loanRef || !row.loanRef),
-      );
+      [...builtMap.values()].some((row) => {
+        if (row.collectorRef !== prev.collectorRef) return false;
+        if (row.clientRef !== prev.clientRef) return false;
+        // Prestar (sin loanRef) no cubre una visita de cuota omitida/cobrada.
+        if (prev.loanRef && !row.loanRef) return false;
+        if (!prev.loanRef && row.loanRef) return false;
+        return row.loanRef === prev.loanRef || !prev.loanRef || !row.loanRef;
+      });
     if (inBuilt) continue;
     builtMap.set(prev.itemId, {
       ...prev,

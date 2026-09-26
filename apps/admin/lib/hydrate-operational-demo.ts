@@ -50,6 +50,7 @@ import {
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
+import { restoreSealedVisitsFromPrior } from "@/lib/planilla-sealed-visits";
 import { refreshLabelsFromCatalog } from "@/lib/project-identity";
 import { omitDeleted } from "@/lib/deleted-ids";
 import { dedupeDailyPaymentsByVisit } from "@/lib/planilla-payment-reconcile";
@@ -264,7 +265,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     loans: synced.loans,
     payments: nextPayments,
     routes: cycle.routes,
-    assignments: synced.assignments,
+    assignments: restoreSealedVisitsFromPrior(synced.assignments, storedAssignments),
   });
 
   const storedReconciliations = readDemoJson<BankReconciliation[]>(

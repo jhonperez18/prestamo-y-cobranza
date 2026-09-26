@@ -19,8 +19,11 @@ import {
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
   buildCollectorHistoryPlanillaRows,
+  dayLoanDisbursementRows,
+  dayLoanDisbursementTotal,
   expensesWithDayLoans,
   splitDayExpenses,
+  type DayLoanDisbursementRow,
 } from "@/lib/collector-history-planilla";
 import {
   collectorDayPayments,
@@ -254,8 +257,10 @@ type RouteLiquidacion = {
   cobradoBanco: number;
   /** Gastos operativos (sin préstamos de ruta). */
   gastosHoy: number;
-  /** Capital prestado hoy en esta ruta (efectivo). */
+  /** Capital prestado hoy en esta ruta (efectivo / caja). */
   prestamosHoy: number;
+  /** Filas de desembolso en caja (misma fuente que prestamosHoy). */
+  cashLoansToday: DayLoanDisbursementRow[];
   enCaja: number;
   closed: boolean;
   newLoans: LoanRow[];
@@ -1114,17 +1119,18 @@ export function SupervisorMobileApp({
         dayExpenseDrafts,
       );
       let gastos = 0;
-      let prestamos = 0;
       for (const line of rawExpenses) {
         const amount = Number(line.amount) || 0;
         if (!(amount > 0)) continue;
-        if (line.category === "prestamo_ruta" || line.id === "prestamo") {
-          const loan = line.loanRef ? loans.find((row) => row.ref === line.loanRef) : undefined;
-          if (loan?.clientRef && mClients.has(loan.clientRef)) prestamos += amount;
-          continue;
-        }
+        if (line.category === "prestamo_ruta" || line.id === "prestamo") continue;
         gastos += amount;
       }
+      const prestamos = dayLoanDisbursementTotal(
+        dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
+          collectorRef,
+          assignments: todayAssignments,
+        }).filter((row) => mClients.has(row.clientRef)),
+      );
       primaryLiveByCollector.set(
         collectorRef,
         livePrimaryClosingCash({
@@ -1208,23 +1214,20 @@ export function SupervisorMobileApp({
         dayExpenseDrafts,
       );
       let gastosHoy = 0;
-      let prestamosHoy = 0;
       for (const line of rawExpenses) {
         const amount = Number(line.amount) || 0;
         if (!(amount > 0)) continue;
         const isPrestamo =
           line.category === "prestamo_ruta" || line.id === "prestamo";
-        if (isPrestamo) {
-          const loan = line.loanRef
-            ? loans.find((row) => row.ref === line.loanRef)
-            : undefined;
-          if (loan?.clientRef && clientRefs.has(loan.clientRef)) {
-            prestamosHoy += amount;
-          }
-          continue;
-        }
+        if (isPrestamo) continue;
         if (isPrimary) gastosHoy += amount;
       }
+      // Misma fuente que cobrador: GAS- + reconstrucción de créditos en efectivo de hoy.
+      const cashLoansToday = dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
+        collectorRef,
+        assignments: todayAssignments,
+      }).filter((row) => clientRefs.has(row.clientRef));
+      const prestamosHoy = dayLoanDisbursementTotal(cashLoansToday);
 
       const closeRecord = dayCloses.find(
         (row) => row.collectorRef === collectorRef && row.date === today,
@@ -1254,12 +1257,8 @@ export function SupervisorMobileApp({
           : isPrimary
             ? fullCaja.saldoInicial
             : 0;
-      const enCaja =
-        chainOpen.kind === "chain"
-          ? chainOpen.opening + cobradoEfectivo - gastosHoy - prestamosHoy
-          : isPrimary
-            ? fullCaja.enCaja
-            : cobradoEfectivo - gastosHoy - prestamosHoy;
+      // Cuadre de ruta: siempre Inicial + efectivo − gasto − préstamo (misma cifra del botón).
+      const enCaja = saldoInicial + cobradoEfectivo - gastosHoy - prestamosHoy;
 
       let statusLabel = "Sin planilla";
       let statusKind: StatusKind = "draft";
@@ -1311,6 +1310,7 @@ export function SupervisorMobileApp({
         cobradoBanco,
         gastosHoy,
         prestamosHoy,
+        cashLoansToday,
         enCaja,
         closed,
         newLoans,
@@ -3242,19 +3242,22 @@ export function SupervisorMobileApp({
           ) : (
             <>
               <p className="supervisor-mobile-detail-meta">
-                Préstamos generados hoy · {openRoute.newLoans.length + openRoute.renewals.length}
+                Préstamos en caja hoy · {openRoute.cashLoansToday.length}
+                {openRoute.cashLoansToday.length > 0
+                  ? ` · ${money(openRoute.prestamosHoy, { symbol: false })}`
+                  : ""}
               </p>
-              {openRoute.newLoans.length + openRoute.renewals.length === 0 ? (
-                <p className="ficha-empty">Sin préstamos nuevos ni renovaciones hoy.</p>
+              {openRoute.cashLoansToday.length === 0 ? (
+                <p className="ficha-empty">Sin desembolsos en efectivo hoy en esta ruta.</p>
               ) : (
                 <ul className="supervisor-mobile-list is-loans-today">
-                  {[...openRoute.renewals, ...openRoute.newLoans].map((loan, index) => (
-                    <li key={loan.ref}>
-                      <strong className="is-name">{loan.client}</strong>
+                  {openRoute.cashLoansToday.map((loan, index) => (
+                    <li key={loan.loanRef}>
+                      <strong className="is-name">{loan.clientName}</strong>
                       <b className="is-amount">
-                        {money(loan.balance || loan.total || 0, { symbol: false })}
+                        {money(loan.capital, { symbol: false })}
                       </b>
-                      <span className="is-kind is-count" title="Préstamos iniciados hoy">
+                      <span className="is-kind is-count" title="Desembolso en caja">
                         {index + 1}
                       </span>
                     </li>

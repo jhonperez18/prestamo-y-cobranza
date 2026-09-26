@@ -11,6 +11,7 @@ import {
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
+import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
 import type { ClientRow, CollectorRow, LoanRow, PaymentRow, RouteRow } from "@/lib/mock-data";
 import { paymentsForCollector } from "@/lib/mock-data";
 import { normalizePaymentMethod, paymentMethodIsCash } from "@/lib/payment-method";
@@ -136,9 +137,10 @@ export function collectorMobileQueue(
   dayCloses: CollectorDayCloseRecord[] = [],
   payments: PaymentRow[] = [],
 ): CollectorMobileQueue {
-  // CIE en este aparato debe sellar la hoja antes de contar «por cobrar»
-  // (si no, otro celular ve pendientes fantasma aunque la jornada ya cerró).
-  const sealedAssignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
+  // 1) PG- vivos sellan visitas cobradas (si no, Recaudo sube y «Por cobrar» sigue hinchado).
+  // 2) CIE sella el resto de la hoja.
+  const reconciled = reconcilePaymentsOntoPlanilla(assignments, payments, loans);
+  const sealedAssignments = applyDayCloseRecordsToAssignments(reconciled, dayCloses);
   const dayItems = assignmentsForCollectorDate(
     sealedAssignments,
     collectorRef,
@@ -158,6 +160,14 @@ export function collectorMobileQueue(
   );
   const isEffectivelyPaid = (row: DailyCollectionAssignment) => {
     if (row.visitStatus === "omitido") return false;
+    if (row.visitStatus === "cobrado") {
+      const linked = (row.paymentRef || "").trim();
+      if (!linked) return true;
+      const pay = liveByRef.get(linked);
+      if (!pay) return true;
+      if (pay.loanRef && row.loanRef && pay.loanRef !== row.loanRef) return false;
+      return true;
+    }
     const linked = (row.paymentRef || "").trim();
     if (!linked) return false;
     const pay = liveByRef.get(linked);
@@ -168,34 +178,29 @@ export function collectorMobileQueue(
   };
 
   // Pendientes de la hoja: cobrables + sin préstamo (Prestar), en el orden de la ruta.
-  // Los «filler» ya no se ocultan: van en azul, sin billete.
   // CIE- del día: cero pendientes (el ciclo no puede reabrir «por cobrar»).
   const pending = closedByCie
     ? []
     : sheet.filter((row) => {
-    // Sello de cierre (dayClosedAt): fuera de «por cobrar».
-    // No reabrir por PG ausente en este celular — contradecía reconcile (cierre manda).
-    if (row.dayClosedAt) return false;
+        // Sello de cierre (dayClosedAt): fuera de «por cobrar».
+        if (row.dayClosedAt) return false;
 
-    if (isRouteFiller(row)) {
-      // Sin crédito: sigue en hoja hasta prestar u omitir.
-      if (row.visitStatus === "omitido") return false;
-      return (
-        row.visitStatus === "pendiente" ||
-        !row.visitStatus ||
-        Boolean(row.awaitingLoan)
-      );
-    }
-    if (row.visitStatus === "omitido") return false;
-    if (isEffectivelyPaid(row)) return false;
-    return (
-      row.visitStatus === "pendiente" ||
-      row.visitStatus === "parcial" ||
-      row.visitStatus === "cobrado" ||
-      !row.visitStatus ||
-      Boolean(row.paymentRef?.trim())
-    );
-  });
+        if (isRouteFiller(row)) {
+          if (row.visitStatus === "omitido") return false;
+          return (
+            row.visitStatus === "pendiente" ||
+            !row.visitStatus ||
+            Boolean(row.awaitingLoan)
+          );
+        }
+        if (row.visitStatus === "omitido") return false;
+        if (isEffectivelyPaid(row)) return false;
+        return (
+          row.visitStatus === "pendiente" ||
+          row.visitStatus === "parcial" ||
+          !row.visitStatus
+        );
+      });
   /** KPI: solo los que tienen cuota por cobrar (no los «Prestar»). */
   const pendingCollectCount = pending.filter((row) => !isRouteFiller(row)).length;
   const done = recaudoFromDayPayments(
@@ -209,7 +214,6 @@ export function collectorMobileQueue(
   const closedByVisits =
     sheet.length > 0 && sheet.every((row) => Boolean(row.dayClosedAt));
   // CIE- manda: la jornada está cerrada aunque el ciclo regenere filas fantasma.
-  // Sin CIE, hace falta sello en todas las visitas y cero cobros por cobrar.
   const closed =
     closedByCie || (closedByVisits && pendingCollectCount === 0);
   const routeRef = dispatchRouteRef(collectorRef, date);

@@ -593,12 +593,37 @@ export async function upsertOpsRow(
   return { ok: true as const };
 }
 
+/** PostgREST/Supabase suele topear en 1000 filas aunque pidas limit mayor. */
+const OPS_FETCH_PAGE = 1000;
+
 export async function fetchOpsTable(table: string) {
   const client = createMirrorClient();
   if (!client) return { ok: true as const, skipped: true as const, rows: [] as Record<string, unknown>[] };
-  const { data, error } = await client.from(table).select("*").limit(8000);
-  if (error) return { ok: false as const, error: error.message, rows: [] as Record<string, unknown>[] };
-  return { ok: true as const, rows: (data ?? []) as Record<string, unknown>[] };
+
+  let orderById = true;
+  const rows: Record<string, unknown>[] = [];
+  let from = 0;
+  for (;;) {
+    let query = client.from(table).select("*");
+    if (orderById) query = query.order("id", { ascending: true });
+    let { data, error } = await query.range(from, from + OPS_FETCH_PAGE - 1);
+    if (error && orderById) {
+      orderById = false;
+      ({ data, error } = await client
+        .from(table)
+        .select("*")
+        .range(from, from + OPS_FETCH_PAGE - 1));
+    }
+    if (error) {
+      return { ok: false as const, error: error.message, rows: [] as Record<string, unknown>[] };
+    }
+    const page = (data ?? []) as Record<string, unknown>[];
+    if (!page.length) break;
+    rows.push(...page);
+    if (page.length < OPS_FETCH_PAGE) break;
+    from += OPS_FETCH_PAGE;
+  }
+  return { ok: true as const, rows };
 }
 
 // —— browser queue + persist ——
@@ -1084,19 +1109,41 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       // La nube ya tiene esta firma: un push posterior solo sube filas que cambien de verdad.
       // Sin esto, cada "Actualizar planillas" encolaba toda la hoja, la cola escudaba filas
       // sin cambios contra el N/P del cobrador y luego las pisaba en la nube.
-      sentAssignmentSig.set(key, assignmentMirrorSig(row));
       const prev = assignMap.get(key);
       if (!prev) {
         assignMap.set(key, row);
+        sentAssignmentSig.set(key, assignmentMirrorSig(row));
         assignChanged = true;
         continue;
       }
-      if (sig(prev) === sig(row)) continue;
+      if (sig(prev) === sig(row)) {
+        sentAssignmentSig.set(key, assignmentMirrorSig(row));
+        continue;
+      }
       // Cierre hecho en otro celular: gana siempre. La cola local de hoja "abierta"
       // no puede escudar ese cierre ni volver a subirlo al flush (amigo cerrado / yo abierto).
       const remoteClosedLocalOpen = Boolean(row.dayClosedAt) && !prev.dayClosedAt;
-      if (pendingAssign.has(key) && !remoteClosedLocalOpen) continue;
-      if (remoteClosedLocalOpen && pendingAssign.has(key)) {
+      // N/P u cobro ya en nube: el PC no puede seguir mostrando «por cobrar» por cola
+      // de planilla abierta (regen / Actualizar) que escuda el pull.
+      const remoteSealedVisit =
+        row.visitStatus === "omitido" ||
+        row.visitStatus === "cobrado" ||
+        Boolean(String(row.paymentRef || "").trim());
+      const localOpenVisit =
+        (prev.visitStatus === "pendiente" ||
+          !prev.visitStatus ||
+          prev.visitStatus === "parcial") &&
+        !String(prev.paymentRef || "").trim() &&
+        !prev.dayClosedAt;
+      const remoteSealedLocalOpen = remoteSealedVisit && localOpenVisit;
+      if (
+        pendingAssign.has(key) &&
+        !remoteClosedLocalOpen &&
+        !remoteSealedLocalOpen
+      ) {
+        continue;
+      }
+      if ((remoteClosedLocalOpen || remoteSealedLocalOpen) && pendingAssign.has(key)) {
         dequeue(Q_ASSIGN, key);
         pendingAssign.delete(key);
       }
@@ -1113,6 +1160,38 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
         continue;
       }
       assignMap.set(key, row);
+      sentAssignmentSig.set(key, assignmentMirrorSig(row));
+      assignChanged = true;
+    }
+    // Segunda pasada: N/P y cobros de la nube siempre ganan sobre pendiente local
+    // (aunque la primera pasada haya salido por cola u otra guarda).
+    for (const row of remoteAssign) {
+      const key = `${row.dispatchDate}::${row.itemId}`;
+      const prev = assignMap.get(key);
+      const remoteSealed =
+        row.visitStatus === "omitido" ||
+        row.visitStatus === "cobrado" ||
+        Boolean(String(row.paymentRef || "").trim());
+      if (!remoteSealed) continue;
+      if (prev?.dayClosedAt && !row.dayClosedAt) continue;
+      const localOpen =
+        !prev ||
+        ((prev.visitStatus === "pendiente" ||
+          !prev.visitStatus ||
+          prev.visitStatus === "parcial") &&
+          !String(prev.paymentRef || "").trim());
+      if (!localOpen && prev && sig(prev) === sig(row)) continue;
+      if (!localOpen && prev?.visitStatus === "omitido" && row.visitStatus === "cobrado") {
+        // Cobro real gana sobre N/P.
+      } else if (!localOpen) {
+        continue;
+      }
+      if (pendingAssign.has(key)) {
+        dequeue(Q_ASSIGN, key);
+        pendingAssign.delete(key);
+      }
+      assignMap.set(key, row);
+      sentAssignmentSig.set(key, assignmentMirrorSig(row));
       assignChanged = true;
     }
     const stamped = reconcilePaymentsOntoPlanilla(
