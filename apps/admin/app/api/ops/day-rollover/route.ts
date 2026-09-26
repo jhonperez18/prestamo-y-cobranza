@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { runServerDayRollover } from "@/lib/server-day-rollover";
 import { businessClockParts } from "@/lib/business-timezone";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 /**
  * Sella jornadas vencidas (23:30 Bogotá / días previos) en Supabase.

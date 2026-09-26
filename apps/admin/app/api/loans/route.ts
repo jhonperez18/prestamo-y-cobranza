@@ -10,6 +10,9 @@ import {
   validatePayAmount,
 } from "@/lib/supabase/register-loan-payment";
 import { paymentComboGroupId } from "@/lib/payment-combo";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 export async function GET() {
   try {

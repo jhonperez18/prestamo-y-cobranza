@@ -222,6 +222,8 @@ const nextConfig: NextConfig = {
             { source: "/", headers: noStore },
             { source: "/index", headers: noStore },
             { source: "/manifest.webmanifest", headers: noStore },
+            // APIs de dinero / ops: nunca caché CDN (saldos y cobros en vivo).
+            { source: "/api/:path*", headers: noStore },
             // Documento HTML de la app (evita shell viejo en celular / CDN).
             { source: "/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)", headers: noStore },
             {

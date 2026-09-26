@@ -9,6 +9,11 @@ import {
   registerLoanPaymentInSupabase,
   validatePayAmount,
 } from "@/lib/supabase/register-loan-payment";
+import { jsonNoStore } from "@/lib/api-no-store";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 type LegacyPayBody = {
   payment?: PaymentRow;
@@ -60,7 +65,7 @@ function duplicatedOk(payload: {
  */
 export async function POST(request: Request) {
   if (isVirginWriteLocked()) {
-    return NextResponse.json(virginWriteLockPayload(), { status: 423 });
+    return jsonNoStore(virginWriteLockPayload(), { status: 423 });
   }
 
   try {
@@ -68,7 +73,7 @@ export async function POST(request: Request) {
 
     if (isCollectorPayBody(body)) {
       const result = await processCollectorPayApi(body);
-      return NextResponse.json(result.body, { status: result.status });
+      return jsonNoStore(result.body, { status: result.status });
     }
 
     const legacy = body as LegacyPayBody;
