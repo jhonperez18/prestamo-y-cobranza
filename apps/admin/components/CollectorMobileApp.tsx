@@ -1894,9 +1894,9 @@ export function CollectorMobileApp({
                     .filter(Boolean)
                     .join(" ")}
                 >
-                  <div className="collector-mobile-dense-row is-recaudo-row">
-                    <strong className="is-recaudo-name">{payerName(pay, loans, clients)}</strong>
-                    <span className="is-recaudo-loan">
+                  <div className="collector-mobile-dense-row">
+                    <div className="collector-mobile-visit-who">
+                      <strong>{payerName(pay, loans, clients)}</strong>
                       {canOfferReloan ? (
                         <button
                           type="button"
@@ -1915,8 +1915,8 @@ export function CollectorMobileApp({
                           Préstamo {money(reloan.granted.capital, { symbol: false })}
                         </span>
                       ) : null}
-                    </span>
-                    <span className="is-recaudo-amount">
+                    </div>
+                    <span className="collector-mobile-ref is-done-col">
                       {money(pay.amount, { symbol: false })}
                     </span>
                     <Pill
