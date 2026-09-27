@@ -11,8 +11,11 @@ export type BusinessClockParts = {
   minutesSinceMidnight: number;
 };
 
-export function businessClockParts(now = new Date()): BusinessClockParts {
-  const dtf = new Intl.DateTimeFormat("en-US", {
+/** Crear un Intl.DateTimeFormat es caro (celular): uno solo por proceso. */
+let businessFormatter: Intl.DateTimeFormat | null = null;
+
+function businessClockFormatter() {
+  businessFormatter ??= new Intl.DateTimeFormat("en-US", {
     timeZone: BUSINESS_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
@@ -21,8 +24,28 @@ export function businessClockParts(now = new Date()): BusinessClockParts {
     minute: "2-digit",
     hourCycle: "h23",
   });
+  return businessFormatter;
+}
+
+/**
+ * La salida tiene resolución de minuto: se memoriza el último minuto pedido.
+ * El ciclo diario lo consulta por cada visita con el mismo `now`.
+ */
+let lastMinuteKey = Number.NaN;
+let lastParts: BusinessClockParts | null = null;
+
+export function businessClockParts(now = new Date()): BusinessClockParts {
+  const minuteKey = Math.floor(now.getTime() / 60_000);
+  if (lastParts && minuteKey === lastMinuteKey) return { ...lastParts };
+  const parts = formatBusinessClockParts(now);
+  lastMinuteKey = minuteKey;
+  lastParts = parts;
+  return { ...parts };
+}
+
+function formatBusinessClockParts(now: Date): BusinessClockParts {
   const bag: Record<string, string> = {};
-  for (const part of dtf.formatToParts(now)) {
+  for (const part of businessClockFormatter().formatToParts(now)) {
     if (part.type !== "literal") bag[part.type] = part.value;
   }
   const hour = Number(bag.hour) || 0;

@@ -111,18 +111,60 @@ function paymentRefOnDate(
   return "";
 }
 
+/**
+ * Índice de una pasada: préstamos activos por cliente y pagos por préstamo.
+ * Sin esto cada cliente recorría todos los préstamos × todos los pagos
+ * (≈15 M de vueltas cada 30 s en el celular del cobrador).
+ */
+type PlanillaLoanIndex = {
+  activeByClient: Map<string, LoanRow[]>;
+  loanByRef: Map<string, LoanRow>;
+  /** `undefined` si no llegaron pagos (misma semántica que antes). */
+  paymentsFor: (loanRef: string) => CollectionPaymentTouch[] | undefined;
+};
+
+const NO_PAYMENTS: CollectionPaymentTouch[] = [];
+
+function buildPlanillaLoanIndex(
+  loans: LoanRow[],
+  payments?: CollectionPaymentTouch[],
+): PlanillaLoanIndex {
+  const activeByClient = new Map<string, LoanRow[]>();
+  for (const loan of activeLoans(loans)) {
+    const list = activeByClient.get(loan.clientRef);
+    if (list) list.push(loan);
+    else activeByClient.set(loan.clientRef, [loan]);
+  }
+  const loanByRef = new Map<string, LoanRow>();
+  for (const loan of loans) {
+    if (!loanByRef.has(loan.ref)) loanByRef.set(loan.ref, loan);
+  }
+  const byLoan = new Map<string, CollectionPaymentTouch[]>();
+  for (const pay of payments ?? []) {
+    const ref = pay.loanRef || "";
+    const list = byLoan.get(ref);
+    if (list) list.push(pay);
+    else byLoan.set(ref, [pay]);
+  }
+  return {
+    activeByClient,
+    loanByRef,
+    paymentsFor: (loanRef) => (payments ? (byLoan.get(loanRef) ?? NO_PAYMENTS) : undefined),
+  };
+}
+
 function loanItemsForClient(
   client: ClientRow,
-  loans: LoanRow[],
+  index: PlanillaLoanIndex,
   date: string,
-  payments?: CollectionPaymentTouch[],
 ): DailyCollectionItem[] {
   const items: DailyCollectionItem[] = [];
-  for (const loan of activeLoans(loans)) {
+  for (const loan of index.activeByClient.get(client.ref) ?? []) {
+    const payments = index.paymentsFor(loan.ref);
     const owes = loanOwes(loan, payments);
     const paidToday = loanPaidOnDate(loan.ref, date, payments);
     // Saldo 0 de un día anterior no vuelve a la ruta. El cobro de hoy sí queda.
-    if (loan.clientRef !== client.ref || (owes <= 0 && !paidToday)) continue;
+    if (owes <= 0 && !paidToday) continue;
     if (isPendingReview(client)) continue;
     // Crédito prestado hoy: la cuota entra a hoja de ruta al día siguiente.
     const startedIso = displayToIso(String(loan.date || "").trim());
@@ -329,6 +371,26 @@ export function syncPermanentRoutePlanilla(
 
   const builtMap = new Map<string, DailyCollectionAssignment>();
   const at = new Date().toISOString();
+  const index = buildPlanillaLoanIndex(loans, payments);
+  const owesByLoan = new Map<LoanRow, number>();
+  const owesFor = (loan: LoanRow) => {
+    let owes = owesByLoan.get(loan);
+    if (owes === undefined) {
+      owes = loanOwes(loan, index.paymentsFor(loan.ref));
+      owesByLoan.set(loan, owes);
+    }
+    return owes;
+  };
+  const declinedPrestarKeys = new Set(
+    existing
+      .filter(
+        (prev) =>
+          prev.dispatchDate === date &&
+          prev.visitStatus === "omitido" &&
+          (prev.skipReason === DECLINED_LOAN_OFFER_TODAY_REASON || isAssignmentAwaitingLoan(prev)),
+      )
+      .map((prev) => `${prev.collectorRef}|${prev.clientRef}`),
+  );
 
   for (const route of owned) {
     const collector = collectors.find((row) => row.ref === route.collectorRef);
@@ -338,29 +400,20 @@ export function syncPermanentRoutePlanilla(
       if (!isOperationalClient(client)) continue;
       // Toda la ruta diaria: cobrables + sin préstamo (Completar).
       // Quien ya pagó/omitió hoy no vuelve a pendiente como Completar.
-      const items = loanItemsForClient(client, loans, date, payments);
+      const items = loanItemsForClient(client, index, date);
       // Cada préstamo de hoy se queda en la ruta. El ya cobrado sale en cobrado,
       // no se borra: si se borra, el recaudo desaparece y solo quedan los gastos.
       let dayItems = items;
-      const owesOpen = activeLoans(loans).some(
-        (loan) => loan.clientRef === client.ref && loanOwes(loan, payments) > 0,
+      const owesOpen = (index.activeByClient.get(client.ref) ?? []).some(
+        (loan) => owesFor(loan) > 0,
       );
       const finishedToday = items.some((item) => {
         if (!item.loanRef) return false;
-        const loan = loans.find((row) => row.ref === item.loanRef);
+        const loan = index.loanByRef.get(item.loanRef);
         if (!loan) return false;
-        return loanPaidOnDate(loan.ref, date, payments) && loanOwes(loan, payments) <= 0;
+        return loanPaidOnDate(loan.ref, date, index.paymentsFor(loan.ref)) && owesFor(loan) <= 0;
       });
-      const declinedPrestarToday = existing.some((prev) => {
-        if (prev.dispatchDate !== date) return false;
-        if (prev.collectorRef !== collector.ref) return false;
-        if (prev.clientRef !== client.ref) return false;
-        if (prev.visitStatus !== "omitido") return false;
-        return (
-          prev.skipReason === DECLINED_LOAN_OFFER_TODAY_REASON ||
-          isAssignmentAwaitingLoan(prev)
-        );
-      });
+      const declinedPrestarToday = declinedPrestarKeys.has(`${collector.ref}|${client.ref}`);
       // Sin crédito abierto: oferta Prestar (azul). Terminar hoy no la quita;
       // solo el visto rojo (declinar) saca de la lista del día.
       if (!owesOpen && !declinedPrestarToday) {
@@ -385,7 +438,7 @@ export function syncPermanentRoutePlanilla(
             previousByClientLoan.get(`${item.clientRef}:`),
           livePaymentsByRef,
         );
-        const paidTodayRef = paymentRefOnDate(item.loanRef, date, payments);
+        const paidTodayRef = paymentRefOnDate(item.loanRef, date, index.paymentsFor(item.loanRef));
         builtMap.set(
           item.id,
           paidTodayRef
@@ -415,15 +468,15 @@ export function syncPermanentRoutePlanilla(
     const omitted = prev.visitStatus === "omitido";
     const paid = paymentStillLive && (prev.visitStatus === "cobrado" || Boolean(linkedRef));
     if (!paid && !omitted) continue;
-    const prevLoan = loans.find((entry) => entry.ref === prev.loanRef);
+    const prevLoan = prev.loanRef ? index.loanByRef.get(prev.loanRef) : undefined;
+    const prevPaidToday = loanPaidOnDate(prev.loanRef, date, index.paymentsFor(prev.loanRef));
     const paidOffEarlier =
-      Boolean(prev.loanRef && prevLoan && loanOwes(prevLoan, payments) <= 0) &&
-      !loanPaidOnDate(prev.loanRef, date, payments);
+      Boolean(prev.loanRef && prevLoan && owesFor(prevLoan) <= 0) && !prevPaidToday;
     if (paidOffEarlier) continue;
     const clientAlreadyListed = [...builtMap.values()].some(
       (row) => row.clientRef === prev.clientRef && row.collectorRef === prev.collectorRef,
     );
-    if (clientAlreadyListed && loanPaidOnDate(prev.loanRef, date, payments)) continue;
+    if (clientAlreadyListed && prevPaidToday) continue;
     const inBuilt =
       builtMap.has(prev.itemId) ||
       [...builtMap.values()].some((row) => {

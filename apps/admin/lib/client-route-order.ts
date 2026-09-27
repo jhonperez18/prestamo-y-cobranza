@@ -49,13 +49,30 @@ function routePinRank(route: string): number {
   return idx >= 0 ? idx : ROUTE_PIN_ORDER.length;
 }
 
+/**
+ * `localeCompare` con opciones crea un Collator en cada comparación (muy caro al
+ * ordenar en el celular). Mismo resultado con uno solo reutilizado.
+ */
+let numericCollator: Intl.Collator | null = null;
+let defaultCollator: Intl.Collator | null = null;
+
+function compareNumericText(a: string, b: string) {
+  numericCollator ??= new Intl.Collator(undefined, { numeric: true });
+  return numericCollator.compare(a, b);
+}
+
+function compareText(a: string, b: string) {
+  defaultCollator ??= new Intl.Collator();
+  return defaultCollator.compare(a, b);
+}
+
 /** Orden de rutas: M → T → A → N; el resto después (numérico). */
 export function compareRouteNames(a: string | undefined, b: string | undefined): number {
   const left = migrateLegacyRouteName(String(a ?? "").trim());
   const right = migrateLegacyRouteName(String(b ?? "").trim());
   const rankCmp = routePinRank(left) - routePinRank(right);
   if (rankCmp !== 0) return rankCmp;
-  return left.localeCompare(right, undefined, { numeric: true });
+  return compareNumericText(left, right);
 }
 
 /** Ruta → # (posición). Base de toda lista operativa (planilla, app, supervisor). */
@@ -81,7 +98,7 @@ export function compareClientsByRoutePosition(a: ClientRow, b: ClientRow): numbe
   if (routeCmp !== 0) return routeCmp;
   const orderCmp = (a.routeOrder || 0) - (b.routeOrder || 0);
   if (orderCmp !== 0) return orderCmp;
-  return String(a.ref || "").localeCompare(String(b.ref || ""));
+  return compareText(String(a.ref || ""), String(b.ref || ""));
 }
 
 /**
