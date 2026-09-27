@@ -18,6 +18,7 @@ import type { PaymentRow } from "@/lib/mock-data";
 export const DEMO_PAYMENT_EVIDENCE_KEY = "nexo-demo-payment-evidence";
 
 let memory: EvidenceMap | null = null;
+let writeScheduled = false;
 
 function readMap(): EvidenceMap {
   if (!memory) {
@@ -26,11 +27,33 @@ function readMap(): EvidenceMap {
   return memory;
 }
 
+/**
+ * El mapa entero (todas las fotos) viaja a IndexedDB en cada `put`.
+ * Una ráfaga de cambios (pull con cientos de PG-) se junta en una sola escritura:
+ * escribir una vez por cobro trababa y calentaba el celular.
+ */
 function writeMap(map: EvidenceMap) {
   memory = map;
-  void writeEvidenceMapToIdb(map).catch((error) => {
-    console.error("evidence-idb", error);
-  });
+  if (writeScheduled) return;
+  writeScheduled = true;
+  setTimeout(() => {
+    writeScheduled = false;
+    if (!memory) return;
+    void writeEvidenceMapToIdb(memory).catch((error) => {
+      console.error("evidence-idb", error);
+    });
+  }, 0);
+}
+
+function sameEvidenceRow(a: PaymentEvidenceRef, b: PaymentEvidenceRef) {
+  const aKeys = Object.keys(a) as (keyof PaymentEvidenceRef)[];
+  if (aKeys.length !== Object.keys(b).length) return false;
+  return aKeys.every((key) => a[key] === b[key]);
+}
+
+function sameEvidence(a: PaymentEvidenceRef[], b: PaymentEvidenceRef[] | undefined) {
+  if (!b || a.length !== b.length) return false;
+  return a.every((row, index) => sameEvidenceRow(row, b[index]));
 }
 
 /** Carga fotos desde IndexedDB y saca de localStorage las que todavía estén ahí. */
@@ -48,7 +71,7 @@ export function rememberPaymentEvidence(ref: string, evidence?: PaymentEvidenceR
   if (!evidence?.length) return;
   const map = readMap();
   const next = preferRicherEvidence(evidence, map[key]);
-  if (!next?.length) return;
+  if (!next?.length || sameEvidence(next, map[key])) return;
   map[key] = next;
   writeMap(map);
 }
