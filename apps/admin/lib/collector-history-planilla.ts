@@ -241,7 +241,15 @@ export function expensesWithDayLoans(
   scope: DayLoanDisbursementScope = {},
 ): RouteExpenseLine[] {
   const otros = expenses.filter((row) => !isPrestamoRutaExpense(row));
-  const prestamos = dayLoanDisbursementRows(dateIso, expenses, loans, clients, scope).map(
+  return [
+    ...otros,
+    ...loanRowsToExpenseLines(dayLoanDisbursementRows(dateIso, expenses, loans, clients, scope)),
+  ];
+}
+
+/** Desembolsos → líneas «Préstamo · P-… · cliente» (UI / cierre). */
+export function loanRowsToExpenseLines(rows: DayLoanDisbursementRow[]): RouteExpenseLine[] {
+  return rows.map(
     (row) =>
       ({
         id: "prestamo",
@@ -251,7 +259,6 @@ export function expensesWithDayLoans(
         loanRef: row.loanRef,
       }) as RouteExpenseLine,
   );
-  return [...otros, ...prestamos];
 }
 
 function normalizeHistoryDateSafe(raw: string) {

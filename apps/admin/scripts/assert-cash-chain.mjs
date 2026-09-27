@@ -11,15 +11,20 @@
  *      Historial T · hoy = ese saldo final del libro (ninguna pantalla lo recalcula).
  *   4. Cierre de hoja y auto-cierre 23:30 sellan CIE-26 con el saldo final real,
  *      y ese número es el Inicial M del 27.
+ *   5. Cada planilla con lo suyo: préstamo y gasto hechos en T salen de T (no de M),
+ *      caja T = Inicial + efectivo − préstamos − gastos, y eso es el Inicial M del 27.
  */
 import { register } from "node:module";
 
 register("./ts-alias-loader.mjs", import.meta.url);
 
-const { buildDayCashLedger, withLedgerTodaySaldo } = await import("@/lib/day-cash-ledger");
+const { buildDayCashLedger, chainHistorySplit, withLedgerTodaySaldo } = await import(
+  "@/lib/day-cash-ledger"
+);
 const { sealCollectorDay } = await import("@/lib/collector-day-close-seal");
 const {
   alignDayClosesCollectedToPayments,
+  buildCollectorDayHistory,
   keepSealedCashFloat,
   synthesizeDayClosesFromAssignments,
 } = await import("@/lib/collector-day-close");
@@ -279,6 +284,70 @@ const next = openingCashForChainedPlanilla({
   dayCloses: cycle.dayCloses,
 });
 expect("Inicial M 27 = CIE-26", next.kind === "chain" ? next.opening : null, 3_084_000);
+
+// 5. Cada planilla con lo suyo: préstamo + gasto hechos en T salen de T, no de M (y al revés).
+console.log("— Préstamo y gasto propios de T —");
+const clientT2 = { ref: "CLI-T2", name: "Eva", lastName: "T", route: "T" };
+const loanT2 = { ref: "P-T2", clientRef: "CLI-T2", client: "Eva T", date: "26/09/2026", capital: 100_000, installment: 5_000, fundedBy: "efectivo" };
+const draftsT = [
+  {
+    ...drafts[0],
+    expenses: [
+      ...drafts[0].expenses,
+      { id: "gasolina", label: "Gasolina", amount: 10_000, category: "gasolina", route: "T" },
+    ],
+    expensesTotal: 30_000,
+  },
+];
+const baseT = {
+  ...base,
+  clients: [...clients, clientT2],
+  loans: [...loans, loanT2],
+  dayExpenseDrafts: draftsT,
+};
+const ledgerT = buildDayCashLedger(baseT);
+expect("M · préstamos (sin el de T)", ledgerT.m.prestamos, 300_000);
+expect("M · gastos (sin el de T)", ledgerT.m.gastos, 20_000);
+expect("M · no lista el préstamo de T", ledgerT.m.loanRows.some((r) => r.loanRef === "P-T2"), false);
+expect("Caja viva M intacta", ledgerT.mClosing, 2_884_000);
+expect("T · préstamos propios", ledgerT.t.prestamos, 100_000);
+expect("T · gastos propios", ledgerT.t.gastos, 10_000);
+expect("T · no lista el préstamo de M", ledgerT.t.loanRows.some((r) => r.loanRef === "P-M2"), false);
+expect("Caja T = Inicial + efectivo − préstamos − gastos", ledgerT.dayFinal, 2_884_000 + 200_000 - 100_000 - 10_000);
+
+const splitArgs = (side) => ({
+  assignments,
+  loans: baseT.loans,
+  clients: baseT.clients,
+  chainSplit: chainHistorySplit(side, COB.ref, baseT.clients, assignments),
+});
+const histMRow = buildCollectorDayHistory(COB.ref, payments, [cie25], [COB], [D], draftsT, [], undefined, splitArgs("primary")).find((r) => r.date === D);
+const histTRow = buildCollectorDayHistory(COB.ref, payments, [cie25], [COB], [D], draftsT, [], undefined, splitArgs("secondary")).find((r) => r.date === D);
+expect("Historial M · 26 préstamo", histMRow?.prestamo ?? null, 300_000);
+expect("Historial M · 26 gasto", histMRow?.gasto ?? null, 20_000);
+expect("Historial T · 26 préstamo", histTRow?.prestamo ?? null, 100_000);
+expect("Historial T · 26 gasto", histTRow?.gasto ?? null, 10_000);
+
+const tAfterM = sealCollectorDay({ ...baseT, routeRef: "RUT", planillaRoute: "M", expensesFallback: [], fullyClosed: false });
+const tAfterT = sealCollectorDay({
+  ...baseT,
+  planillaCashCloses: tAfterM.planillaCashCloses,
+  routeRef: "RUT",
+  planillaRoute: "T",
+  expensesFallback: [],
+  fullyClosed: true,
+});
+expect("Cerrar T: PCE-T Inicial = caja M", tAfterT.planillaCashCloses.find((r) => r.ref === `PCE-COB-0-${D}-T`)?.openingCash ?? null, 2_884_000);
+expect("Cerrar T: CIE-26 cash_float", tAfterT.record?.cashFloat ?? null, 2_974_000);
+const tNext = openingCashForChainedPlanilla({
+  collectorRef: COB.ref,
+  routeName: "M",
+  date: "2026-09-27",
+  records: tAfterT.planillaCashCloses,
+  monthCloses: [],
+  dayCloses: tAfterT.dayCloses,
+});
+expect("Inicial M 27 = caja T del 26", tNext.kind === "chain" ? tNext.opening : null, 2_974_000);
 
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);

@@ -140,7 +140,7 @@ export function sealCollectorDay(input: SealCollectorDayInput): SealCollectorDay
     lines,
     sealed: sealedDayCash(sources, breakdown.efectivo),
     movementRefs: lines.map((line) =>
-      dayExpenseLineMovementRef(input.collectorRef, input.date, line.id, line.loanRef),
+      dayExpenseLineMovementRef(input.collectorRef, input.date, line.id, line.loanRef, line.route),
     ),
   });
 

@@ -20,9 +20,11 @@ import {
   dayLoanDisbursementTotal,
   expensesWithDayLoans,
   isPrestamoRutaExpense,
+  loanRowsToExpenseLines,
   operativeExpenseLines,
   splitDayExpenses,
 } from "@/lib/collector-history-planilla";
+import { isSecondaryOperativeLine } from "@/lib/expense-lines";
 import { todayIso } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
@@ -100,10 +102,15 @@ import {
   openingCashForChainedPlanilla,
   PLANILLA_CASH_CHAIN_HISTORY_EPOCH,
   PLANILLA_CASH_CHAIN_PRIMARY,
+  PLANILLA_CASH_CHAIN_SECONDARY,
   stampHistoryWithPlanillaCashChain,
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
-import { buildDayCashLedger, withLedgerTodaySaldo } from "@/lib/day-cash-ledger";
+import {
+  buildDayCashLedger,
+  chainHistorySplit,
+  withLedgerTodaySaldo,
+} from "@/lib/day-cash-ledger";
 import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
 import { CollectorDayLoansPanel } from "@/components/CollectorDayLoansPanel";
 import { CollectorCloseDayConfirm } from "@/components/CollectorCloseDayConfirm";
@@ -489,6 +496,14 @@ export function CollectorMobileApp({
       loans,
       clients,
       includeOperatingExpenses: isPrimaryHistory,
+      chainSplit: isPlanillaCashChainRoute(routeForHistory ?? undefined)
+        ? chainHistorySplit(
+            isPlanillaCashChainSecondary(routeForHistory ?? undefined) ? "secondary" : "primary",
+            collector.ref,
+            clients,
+            assignments,
+          )
+        : undefined,
     };
     const base = buildCollectorDayHistory(
       collector.ref,
@@ -521,6 +536,7 @@ export function CollectorMobileApp({
           loans,
           clients,
           includeOperatingExpenses: true,
+          chainSplit: chainHistorySplit("primary", collector.ref, clients, assignments),
         },
       );
       const mAnnotated = annotateMHistoryExtractRows({
@@ -1007,7 +1023,7 @@ export function CollectorMobileApp({
     if (isNavQuiet()) return;
     // Jornada cerrada: solo lectura, sin acceso a listas ni edición.
     if (dayLocked) return;
-    if (!isPrimaryPlanilla) return;
+    if (!planillaOwnsMovements) return;
     if (!onSaveExpenses) return;
     setExpandedKey(null);
     setConfirmingClose(false);
@@ -1018,8 +1034,7 @@ export function CollectorMobileApp({
   function openLoansDetail() {
     if (isNavQuiet()) return;
     if (dayLocked) return;
-    // T solo arrastra saldo: los préstamos del día viven en M.
-    if (!isPrimaryPlanilla) return;
+    if (!planillaOwnsMovements) return;
     setExpandedKey(null);
     setConfirmingClose(false);
     setEditingExpenses(false);
@@ -1036,13 +1051,20 @@ export function CollectorMobileApp({
     if (!onSaveExpenses) return;
     // Conservar desembolsos de préstamo (no se editan en el sheet de gastos).
     const prestamos = savedExpenses.filter((row) => isPrestamoRutaExpense(row));
-    const operativos = operativeExpenseLines(expenses);
+    // Gastos de la otra planilla de la cadena quedan intactos; los de T llevan su marca.
+    const otherPlanilla = operativeExpenseLines(savedExpensesRaw).filter(
+      (row) =>
+        isSecondaryOperativeLine(row, PLANILLA_CASH_CHAIN_SECONDARY) !== onSecondaryChainPlanilla,
+    );
+    const operativos = operativeExpenseLines(expenses).map((row) =>
+      onSecondaryChainPlanilla ? { ...row, route: PLANILLA_CASH_CHAIN_SECONDARY } : row,
+    );
     onSaveExpenses({
       date: activeDate,
       routeRef,
       collectorRef: collector.ref,
       collectorName: collector.name,
-      expenses: [...prestamos, ...operativos],
+      expenses: [...prestamos, ...otherPlanilla, ...operativos],
     });
     setEditingExpenses(false);
   }
@@ -1130,9 +1152,29 @@ export function CollectorMobileApp({
       : !collectorHasOpenPlanillaWork(queue));
   const chromeLocked = dayLocked || showHomeCuadre;
 
+  /** Cadena M↔T: préstamos y gastos propios de la planilla activa (libro del día). */
+  const chainPlanillaDay = !dayLedger.chain
+    ? null
+    : isPlanillaCashChainSecondary(activePlanillaRoute ?? undefined)
+      ? dayLedger.t
+      : isPlanillaCashChainPrimary(activePlanillaRoute ?? undefined)
+        ? dayLedger.m
+        : null;
+  const onSecondaryChainPlanilla = chainPlanillaDay != null && chainPlanillaDay === dayLedger.t;
+  /** M o T de la cadena, o la planilla principal fuera de ella: ahí se anotan préstamos y gastos. */
+  const planillaOwnsMovements = isPrimaryPlanilla || onSecondaryChainPlanilla;
+  const planillaExpenses = useMemo(
+    () =>
+      chainPlanillaDay
+        ? [...chainPlanillaDay.gastoLines, ...loanRowsToExpenseLines(chainPlanillaDay.loanRows)]
+        : isPrimaryPlanilla
+          ? savedExpenses
+          : [],
+    [chainPlanillaDay, isPrimaryPlanilla, savedExpenses],
+  );
   const dayExpenseSplit = useMemo(
-    () => splitDayExpenses(savedExpenses),
-    [savedExpenses],
+    () => splitDayExpenses(planillaExpenses),
+    [planillaExpenses],
   );
   const lentClientRefs = useMemo(
     () => clientRefsLentOnDate(activeDate, savedExpensesRaw, loans, clients, loanScope),
@@ -1183,12 +1225,24 @@ export function CollectorMobileApp({
   /** Totales de la planilla activa (ruta 1.1 sin datos = ceros reales). */
   const topRecaudo = planillaRecaudo.total;
   const dayLoanRows = useMemo(
-    () => dayLoanDisbursementRows(activeDate, savedExpensesRaw, loans, clients, loanScope),
-    [activeDate, savedExpensesRaw, loans, clients, loanScope],
+    () =>
+      chainPlanillaDay
+        ? chainPlanillaDay.loanRows
+        : isPrimaryPlanilla
+          ? dayLoanDisbursementRows(activeDate, savedExpensesRaw, loans, clients, loanScope)
+          : [],
+    [activeDate, chainPlanillaDay, isPrimaryPlanilla, savedExpensesRaw, loans, clients, loanScope],
   );
-  const topGastos = isPrimaryPlanilla ? dayExpenseSplit.otrosTotal : 0;
-  // Cadena M→T: T solo arrastra el Inicial (saldo). Préstamos y gastos quedan en M.
-  const topPrestamos = isPrimaryPlanilla ? dayLoanDisbursementTotal(dayLoanRows) : 0;
+  // Cadena M↔T: cada planilla muestra solo lo suyo; entre ellas solo pasa el saldo.
+  const topGastos = planillaOwnsMovements ? dayExpenseSplit.otrosTotal : 0;
+  const topPrestamos = planillaOwnsMovements ? dayLoanDisbursementTotal(dayLoanRows) : 0;
+  /** Caja de la planilla: en la cadena, la cifra del libro (M = caja de M; T = saldo final del día). */
+  const planillaCaja =
+    chainPlanillaDay && chainOpening.kind === "chain"
+      ? onSecondaryChainPlanilla
+        ? dayLedger.dayFinal
+        : dayLedger.mClosing
+      : null;
   /** Inicial: cadena M/T si aplica; A y resto sin cruzar. */
   const headerInicial =
     chainOpening.kind === "chain"
@@ -1210,7 +1264,11 @@ export function CollectorMobileApp({
   const pendingCollectShown = activePlanillaRoute
     ? routePendingCollectCount
     : queue.pendingCollectCount;
-  const planillaPrestadoEfectivo = isPrimaryPlanilla ? prestadoEfectivo : 0;
+  const planillaPrestadoEfectivo = chainPlanillaDay
+    ? chainPlanillaDay.prestamos
+    : isPrimaryPlanilla
+      ? prestadoEfectivo
+      : 0;
 
   const openPlanillaDates = useMemo(
     () => new Set(routeOptions.filter((row) => !row.closed).map((row) => row.date)),
@@ -1628,16 +1686,16 @@ export function CollectorMobileApp({
                 ? "collector-mobile-stat is-prestamos on"
                 : "collector-mobile-stat is-prestamos"
           }
-          disabled={chromeLocked || !isPrimaryPlanilla}
+          disabled={chromeLocked || !planillaOwnsMovements}
           title={
             chromeLocked
               ? "Jornada cerrada"
-              : !isPrimaryPlanilla
+              : !planillaOwnsMovements
                 ? `Préstamos en la planilla ${PLANILLA_CASH_CHAIN_PRIMARY}`
                 : "Préstamos del día"
           }
           {...navButtonProps(navIntent, () => {
-            if (chromeLocked || !isPrimaryPlanilla) return;
+            if (chromeLocked || !planillaOwnsMovements) return;
             openLoansDetail();
           })}
         >
@@ -1656,14 +1714,14 @@ export function CollectorMobileApp({
           disabled={
             chromeLocked
               ? true
-              : !onSaveExpenses || !isPrimaryPlanilla || !queue.dispatched.length
+              : !onSaveExpenses || !planillaOwnsMovements || !queue.dispatched.length
           }
           title={
             chromeLocked
               ? "Jornada cerrada"
               : !onSaveExpenses
                 ? "Sin permiso para gastos"
-                : !isPrimaryPlanilla
+                : !planillaOwnsMovements
                   ? "Gastos en la planilla principal"
                   : !queue.dispatched.length
                   ? "Sin planilla"
@@ -1770,7 +1828,9 @@ export function CollectorMobileApp({
               <span>Caja (efectivo − gastos − préstamos)</span>
               <b>
                 {money(
-                  chainOpening.kind === "chain"
+                  planillaCaja != null
+                    ? planillaCaja
+                    : chainOpening.kind === "chain"
                     ? headerInicial + planillaRecaudo.efectivo - topGastos - topPrestamos
                     : isPrimaryPlanilla
                       ? dayCuadre.saldo
@@ -1788,7 +1848,7 @@ export function CollectorMobileApp({
             planillaRows={closedPlanilla}
             prestamos={dayExpenseSplit.prestamos}
             prestamosTotal={topPrestamos}
-            otrosGastos={isPrimaryPlanilla ? dayExpenseSplit.otros : []}
+            otrosGastos={planillaOwnsMovements ? dayExpenseSplit.otros : []}
             otrosTotal={topGastos}
             searchOpen={planillaSearchOpen}
             searchQuery={planillaQuery}
@@ -1805,7 +1865,7 @@ export function CollectorMobileApp({
       <>
       {editingExpenses && onSaveExpenses ? (
         <CollectorCloseDaySheet
-          key={`${collector.ref}-${activeDate}-${operativeExpenseLines(savedExpenses)
+          key={`${collector.ref}-${activeDate}-${activePlanillaRoute ?? ""}-${dayExpenseSplit.otros
             .map((r) => `${r.id}:${r.amount}`)
             .join("|")}`}
           draft={{
@@ -1814,7 +1874,7 @@ export function CollectorMobileApp({
             date: activeDate,
             routeRef,
             collected: recaudo.total,
-            expenses: operativeExpenseLines(savedExpenses),
+            expenses: dayExpenseSplit.otros,
           }}
           onCancel={() => setEditingExpenses(false)}
           onSave={saveExpenses}
@@ -1837,14 +1897,9 @@ export function CollectorMobileApp({
           efectivo={planillaRecaudo.efectivo}
           nequi={planillaRecaudo.nequi}
           banco={planillaRecaudo.banco}
-          expenses={
-            isPrimaryPlanilla
-              ? savedExpenses
-              : savedExpenses.filter(
-                  (row) =>
-                    row.category === "prestamo_ruta" || row.id === "prestamo",
-                )
-          }
+          expenses={planillaExpenses}
+          opening={planillaCaja != null ? headerInicial : undefined}
+          cashFloat={planillaCaja ?? undefined}
           pendingCount={pendingCollectShown}
           onCancel={() => setConfirmingClose(false)}
           onConfirm={confirmCloseDay}

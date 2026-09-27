@@ -13,6 +13,11 @@ import { normalizePaymentMethod } from "@/lib/payment-method";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
 import {
+  loanClientOnSide,
+  operativeLineOnSide,
+  type ChainRouteSplit,
+} from "@/lib/expense-lines";
+import {
   dayLoanDisbursementRows,
   dayLoanDisbursementTotal,
 } from "@/lib/collector-history-planilla";
@@ -37,6 +42,8 @@ export type RouteExpenseLine = {
   category: BankExpenseCategory;
   /** Desembolso de préstamo en efectivo: ancla el Haber al préstamo (varios por día). */
   loanRef?: string;
+  /** Planilla secundaria (T) donde se anotó el gasto operativo. Sin marca = planilla principal (M). */
+  route?: string;
 };
 
 export type CollectorDayCloseDraft = {
@@ -283,10 +290,13 @@ export function dayExpenseLineMovementRef(
   date: string,
   expenseId: string,
   loanRef?: string,
+  route?: string,
 ) {
   if (loanRef) {
     return `GASL-${collectorRef}-${date}-prestamo-${loanRef}`;
   }
+  const routeTag = String(route || "").trim();
+  if (routeTag) return `GASL-${collectorRef}-${date}-${routeTag}-${expenseId}`;
   return `GASL-${collectorRef}-${date}-${expenseId}`;
 }
 
@@ -402,6 +412,7 @@ export function buildDayCloseExpenseMovements(input: {
       draft.date,
       line.id,
       line.loanRef,
+      line.route,
     );
     return {
       ...addManualExpense({
@@ -467,6 +478,7 @@ export function syncRouteExpensesToMovements(
         source.date,
         line.id,
         line.loanRef,
+        line.route,
       );
       wanted.set(key, { source, line });
     }
@@ -744,6 +756,11 @@ export type CollectorHistoryExtras = {
   clients?: ClientRow[];
   /** false = no suma gastos operativos ni préstamos (T solo arrastra saldo). */
   includeOperatingExpenses?: boolean;
+  /**
+   * Cadena M↔T: solo préstamos y gastos de esa planilla (misma regla que el libro del día).
+   * Manda sobre `includeOperatingExpenses`.
+   */
+  chainSplit?: ChainRouteSplit;
 };
 
 /**
@@ -932,7 +949,8 @@ export function buildCollectorDayHistory(
 ): CollectorDayHistoryRow[] {
   const scopeRefs = extras.clientRefs;
   const scopeLoans = extras.loans ?? [];
-  const includeOperating = extras.includeOperatingExpenses !== false;
+  const chainSplit = extras.chainSplit;
+  const includeOperating = chainSplit ? true : extras.includeOperatingExpenses !== false;
   const loanClientRef = (loanRef: string | undefined) => {
     if (!loanRef) return "";
     return scopeLoans.find((row) => row.ref === loanRef)?.clientRef ?? "";
@@ -950,11 +968,16 @@ export function buildCollectorDayHistory(
       if (!(amount > 0)) continue;
       const isPrestamo = line.category === "prestamo_ruta" || line.id === "prestamo";
       if (isPrestamo) {
-        if (!paymentInScope(line.loanRef)) continue;
+        if (chainSplit) {
+          if (!loanClientOnSide(loanClientRef(line.loanRef), chainSplit)) continue;
+        } else if (!paymentInScope(line.loanRef)) {
+          continue;
+        }
         prestamo += amount;
         continue;
       }
       if (!includeOperating) continue;
+      if (chainSplit && !operativeLineOnSide(line, chainSplit)) continue;
       gasto += amount;
     }
     return { gasto, prestamo };
@@ -1033,13 +1056,14 @@ export function buildCollectorDayHistory(
     ]);
     for (const date of loanDates) {
       const lines = expenseLinesByDate.get(date) ?? [];
+      const rows = dayLoanDisbursementRows(date, lines, extras.loans, extras.clients, {
+        collectorRef,
+        assignments: extras.assignments,
+      });
       prestamoByDate.set(
         date,
         dayLoanDisbursementTotal(
-          dayLoanDisbursementRows(date, lines, extras.loans, extras.clients, {
-            collectorRef,
-            assignments: extras.assignments,
-          }),
+          chainSplit ? rows.filter((row) => loanClientOnSide(row.clientRef, chainSplit)) : rows,
         ),
       );
     }

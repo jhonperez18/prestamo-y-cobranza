@@ -16,6 +16,22 @@ alwaysApply: true
 
 T **no** arrastra préstamos ni gastos de M — solo el saldo.
 
+### Cada planilla con lo suyo
+
+M y T tienen clientes, cobros, préstamos y gastos **propios**. Lo único que las une es el saldo.
+
+| Movimiento | Planilla dueña |
+| --- | --- |
+| Cobro en efectivo | ruta del cliente que paga |
+| Préstamo | ruta del cliente que lo recibe |
+| Gasto operativo | planilla donde se anotó (`route: "T"`; sin marca = M) |
+
+- Caja M = Inicial M + efectivo M − préstamos M − gastos M.
+- Caja T = Inicial T (= caja M) + efectivo T − préstamos T − gastos T = saldo final del día.
+- **Prohibido:** mostrar o restar en T un préstamo/gasto de M, o en M uno de T.
+- Libro: `buildDayCashLedger().m` / `.t` (`gastoLines`, `loanRows`). Historial: `chainSplit`
+  (`chainHistorySplit`). Pantallas solo leen eso.
+
 Planilla **A** no entra en la cadena.
 
 ## CIE manda (blindaje — no volver a romper)
@@ -48,7 +64,7 @@ Planilla **A** no entra en la cadena.
 | --- | --- |
 | Caja viva de M | `buildDayCashLedger().mClosing` |
 | Inicial T | **la misma** `mClosing` (T no puede tener otra cifra) |
-| Saldo final del día | `buildDayCashLedger().dayFinal` = `mClosing` + efectivo T |
+| Saldo final del día | `buildDayCashLedger().dayFinal` = `mClosing` + efectivo T − préstamos T − gastos T |
 | `cash_float` del CIE- | `sealedDayCash()` — único que lo escribe (cierre manual, 23:30, cron) |
 | Inicial M mañana | CIE ayer (`cash_float`) vía `openingCashForChainedPlanilla` |
 
@@ -89,7 +105,7 @@ Detalle: `apps/admin/lib/day-cash-ledger.ts`, `apps/admin/lib/planilla-cash-chai
 2. Al cerrar T: Inicial = final real de M; al sellar jornada el CIE lleva el saldo final.
 3. Historial · M y planilla leen **la misma** cifra (`dayFinalClosingCash` / CIE).
 4. Ayer y atrás: no recalcular saldos viejos; solo anclar hoy al CIE de ayer.
-5. Préstamos del día: `dayLoanDisbursementRows` (viven en M).
+5. Préstamos del día: `dayLoanDisbursementRows`, repartidos por ruta del cliente (libro `.m` / `.t`).
 
 ## N/P por ruta (INICIO)
 

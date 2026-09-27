@@ -6,9 +6,11 @@
  * leen de aquí. Una sola fórmula ⇒ una sola cifra en todos los aparatos.
  *
  *   Inicial M   = CIE- de ayer (`cash_float`)            → openingCashForChainedPlanilla
- *   Caja viva M = Inicial M + efectivo M − gastos − préstamos del día
- *   Inicial T   = Caja viva M (misma cifra, sin arrastrar préstamos ni gastos)
- *   Saldo final = Inicial T + efectivo T                  → `cash_float` del CIE- de hoy
+ *   Caja viva M = Inicial M + efectivo M − préstamos M − gastos M
+ *   Inicial T   = Caja viva M (solo el saldo; T no arrastra préstamos ni gastos de M)
+ *   Saldo final = Inicial T + efectivo T − préstamos T − gastos T → `cash_float` del CIE- de hoy
+ *
+ * Cada planilla tiene lo suyo: préstamo = ruta de su cliente; gasto = planilla donde se anotó.
  *
  * Planilla A (y cualquier ruta fuera de la cadena) no entra al saldo.
  */
@@ -24,12 +26,18 @@ import {
 import {
   dayLoanDisbursementRows,
   dayLoanDisbursementTotal,
+  type DayLoanDisbursementRow,
 } from "@/lib/collector-history-planilla";
 import { assignmentRouteName } from "@/lib/collector-dispatch-sync";
 import { collectorDayPayments } from "@/lib/collector-mobile";
 import { sameRoute } from "@/lib/client-route-order";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
-import { isPrestamoRutaExpense } from "@/lib/expense-lines";
+import {
+  isPrestamoRutaExpense,
+  loanClientOnSide,
+  operativeLineOnSide,
+  type ChainRouteSplit,
+} from "@/lib/expense-lines";
 import { pesos } from "@/lib/finance";
 import type { ClientRow, CollectorRow, LoanRow, PaymentRow } from "@/lib/mock-data";
 import { normalizePaymentMethod } from "@/lib/payment-method";
@@ -62,10 +70,15 @@ export type DayCashSources = {
   fallbackOpening?: number;
 };
 
+/** Movimiento propio de una planilla de la cadena ese día. */
 export type RouteCashDay = {
   efectivo: number;
   gastos: number;
   prestamos: number;
+  /** Gastos operativos anotados en esta planilla. */
+  gastoLines: RouteExpenseLine[];
+  /** Préstamos en efectivo a clientes de esta planilla. */
+  loanRows: DayLoanDisbursementRow[];
 };
 
 export type DayCashLedger = {
@@ -118,27 +131,64 @@ export function routeCashCollected(src: DayCashSources, routeName: string): numb
   return pesos(efectivo);
 }
 
-/** Gastos operativos del día (sin préstamos). Viven en M. */
-export function dayOperativeExpenses(src: DayCashSources): number {
-  let gastos = 0;
-  for (const line of dayExpenseLines(src)) {
-    const amount = Number(line.amount) || 0;
-    if (!(amount > 0) || isPrestamoRutaExpense(line)) continue;
-    gastos += amount;
-  }
-  return pesos(gastos);
+/** Reparto M↔T del día: préstamos por ruta del cliente; gastos por planilla donde se anotaron. */
+export function chainRouteSplit(
+  src: DayCashSources,
+  side: ChainRouteSplit["side"],
+): ChainRouteSplit {
+  return {
+    side,
+    secondaryRoute: PLANILLA_CASH_CHAIN_SECONDARY,
+    secondaryClientRefs: routeClientRefsForDay(src, PLANILLA_CASH_CHAIN_SECONDARY),
+  };
 }
 
-/** Capital prestado en efectivo ese día (KPI Préstamo). Vive en M. */
-export function dayCashLoans(src: DayCashSources): number {
-  return pesos(
-    dayLoanDisbursementTotal(
-      dayLoanDisbursementRows(dateIsoOf(src.date), dayExpenseLines(src), src.loans, src.clients, {
-        collectorRef: src.collectorRef,
-        assignments: src.assignments,
-      }),
-    ),
+/** Mismo reparto M↔T para el Historial (varios días): clientes T del catálogo y de sus visitas. */
+export function chainHistorySplit(
+  side: ChainRouteSplit["side"],
+  collectorRef: string,
+  clients: ClientRow[],
+  assignments: DailyCollectionAssignment[],
+): ChainRouteSplit {
+  const refs = new Set(
+    clients
+      .filter((row) => sameRoute(row.route, PLANILLA_CASH_CHAIN_SECONDARY))
+      .map((row) => row.ref),
   );
+  for (const row of assignments) {
+    if (row.collectorRef !== collectorRef || !row.clientRef) continue;
+    if (sameRoute(assignmentRouteName(row, clients), PLANILLA_CASH_CHAIN_SECONDARY)) {
+      refs.add(row.clientRef);
+    }
+  }
+  return { side, secondaryRoute: PLANILLA_CASH_CHAIN_SECONDARY, secondaryClientRefs: refs };
+}
+
+/** Movimiento propio de una planilla de la cadena (M = principal, T = secundaria). */
+function chainRouteDay(
+  src: DayCashSources,
+  side: ChainRouteSplit["side"],
+  efectivo: number,
+): RouteCashDay {
+  const split = chainRouteSplit(src, side);
+  const lines = dayExpenseLines(src);
+  const gastoLines = lines.filter(
+    (line) =>
+      (Number(line.amount) || 0) > 0 &&
+      !isPrestamoRutaExpense(line) &&
+      operativeLineOnSide(line, split),
+  );
+  const loanRows = dayLoanDisbursementRows(dateIsoOf(src.date), lines, src.loans, src.clients, {
+    collectorRef: src.collectorRef,
+    assignments: src.assignments,
+  }).filter((row) => loanClientOnSide(row.clientRef, split));
+  return {
+    efectivo,
+    gastos: sumExpenseLines(gastoLines),
+    prestamos: pesos(dayLoanDisbursementTotal(loanRows)),
+    gastoLines,
+    loanRows,
+  };
 }
 
 /** ¿El cobrador trabaja la cadena M↔T ese día? */
@@ -171,17 +221,9 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
   const date = dateIsoOf(src.date);
   const mOpening = primaryOpeningForDay(src);
   const opening = mOpening.kind === "chain" ? mOpening.opening : 0;
-  const m: RouteCashDay = {
-    efectivo: routeCashCollected(src, PLANILLA_CASH_CHAIN_PRIMARY),
-    gastos: dayOperativeExpenses(src),
-    prestamos: dayCashLoans(src),
-  };
+  const m = chainRouteDay(src, "primary", routeCashCollected(src, PLANILLA_CASH_CHAIN_PRIMARY));
   const mClosing = pesos(opening + m.efectivo - m.gastos - m.prestamos);
-  const t: RouteCashDay = {
-    efectivo: routeCashCollected(src, PLANILLA_CASH_CHAIN_SECONDARY),
-    gastos: 0,
-    prestamos: 0,
-  };
+  const t = chainRouteDay(src, "secondary", routeCashCollected(src, PLANILLA_CASH_CHAIN_SECONDARY));
   return {
     collectorRef: src.collectorRef,
     date,
@@ -190,7 +232,7 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
     m,
     mClosing,
     t,
-    dayFinal: pesos(mClosing + t.efectivo),
+    dayFinal: pesos(mClosing + t.efectivo - t.gastos - t.prestamos),
   };
 }
 

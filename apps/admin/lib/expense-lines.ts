@@ -1,3 +1,4 @@
+import { sameRoute } from "@/lib/client-route-order";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
 
 /** Desembolso de crédito: nunca es «gasto operativo». */
@@ -10,4 +11,37 @@ export function operativeExpenseLines<T extends Pick<RouteExpenseLine, "category
   lines: T[],
 ): T[] {
   return lines.filter((line) => !isPrestamoRutaExpense(line));
+}
+
+/**
+ * Cadena M↔T: cada planilla tiene sus propios préstamos y gastos; solo el saldo pasa de M a T.
+ * - Gasto operativo: es de la planilla secundaria si lleva `route` = esa planilla; sin marca = principal.
+ * - Préstamo: es de la planilla de su cliente.
+ */
+export type ChainRouteSplit = {
+  side: "primary" | "secondary";
+  secondaryRoute: string;
+  /** Clientes de la planilla secundaria: sus préstamos son de esa planilla. */
+  secondaryClientRefs: ReadonlySet<string>;
+};
+
+export function isSecondaryOperativeLine(
+  line: Pick<RouteExpenseLine, "category" | "id" | "route">,
+  secondaryRoute: string,
+) {
+  if (isPrestamoRutaExpense(line)) return false;
+  const route = String(line.route || "").trim();
+  return Boolean(route) && sameRoute(route, secondaryRoute);
+}
+
+export function operativeLineOnSide(
+  line: Pick<RouteExpenseLine, "category" | "id" | "route">,
+  split: ChainRouteSplit,
+) {
+  return isSecondaryOperativeLine(line, split.secondaryRoute) === (split.side === "secondary");
+}
+
+export function loanClientOnSide(clientRef: string | undefined, split: ChainRouteSplit) {
+  const onSecondary = Boolean(clientRef) && split.secondaryClientRefs.has(clientRef as string);
+  return onSecondary === (split.side === "secondary");
 }

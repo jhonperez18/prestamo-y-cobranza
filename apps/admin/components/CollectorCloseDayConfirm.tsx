@@ -11,6 +11,9 @@ type Props = {
   nequi: number;
   banco?: number;
   expenses: RouteExpenseLine[];
+  /** Cadena M↔T: Inicial de la planilla y su caja según el libro del día. */
+  opening?: number;
+  cashFloat?: number;
   pendingCount: number;
   onCancel: () => void;
   onConfirm: () => void;
@@ -23,13 +26,18 @@ export function CollectorCloseDayConfirm({
   nequi,
   banco = 0,
   expenses,
+  opening,
+  cashFloat: ledgerCashFloat,
   pendingCount,
   onCancel,
   onConfirm,
 }: Props) {
   const split = splitDayExpenses(expenses);
   const expensesTotal = sumExpenseLines(expenses);
-  const cashFloat = cashFloatAfterExpenses(efectivo, expensesTotal);
+  const withOpening = opening != null && ledgerCashFloat != null;
+  const cashFloat = withOpening
+    ? ledgerCashFloat
+    : cashFloatAfterExpenses(efectivo, expensesTotal);
 
   return (
     <div
@@ -60,6 +68,12 @@ export function CollectorCloseDayConfirm({
       </div>
 
       <div className="collector-close-confirm-block">
+        {withOpening ? (
+          <div>
+            <em>Inicial</em>
+            <b>{money(opening)}</b>
+          </div>
+        ) : null}
         <div className="is-prestamos">
           <em>Préstamos</em>
           <b>{money(split.prestamosTotal)}</b>
@@ -69,7 +83,11 @@ export function CollectorCloseDayConfirm({
           <b>{money(split.otrosTotal)}</b>
         </div>
         <div className="is-float">
-          <em>Caja (efectivo − gastos − préstamos)</em>
+          <em>
+            {withOpening
+              ? "Caja (inicial + efectivo − préstamos − gastos)"
+              : "Caja (efectivo − gastos − préstamos)"}
+          </em>
           <b>{money(cashFloat)}</b>
         </div>
       </div>

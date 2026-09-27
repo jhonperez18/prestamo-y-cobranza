@@ -22,6 +22,7 @@ import {
   dayLoanDisbursementRows,
   dayLoanDisbursementTotal,
   expensesWithDayLoans,
+  isPrestamoRutaExpense,
   operativeExpenseLines,
   splitDayExpenses,
   type DayLoanDisbursementRow,
@@ -122,9 +123,11 @@ import {
 } from "@/lib/planilla-cash-chain";
 import {
   buildDayCashLedger,
+  chainHistorySplit,
   withLedgerTodaySaldo,
   type DayCashLedger,
 } from "@/lib/day-cash-ledger";
+import { loanClientOnSide, operativeLineOnSide } from "@/lib/expense-lines";
 
 /** Fecha corta para listados: 05/09/2026 → 5/9 */
 function formatLoanListDate(raw?: string | null) {
@@ -1202,23 +1205,32 @@ export function SupervisorMobileApp({
         dayCloses,
         dayExpenseDrafts,
       );
-      let gastosHoy = 0;
-      for (const line of rawExpenses) {
-        const amount = Number(line.amount) || 0;
-        if (!(amount > 0)) continue;
-        const isPrestamo =
-          line.category === "prestamo_ruta" || line.id === "prestamo";
-        if (isPrestamo) continue;
-        if (isPrimary) gastosHoy += amount;
+      // Cadena M↔T: cada planilla con sus propios préstamos y gastos (libro del día).
+      const routeLedger = collectorRef ? ledgerByCollector.get(collectorRef) : undefined;
+      const chainDay = !routeLedger?.chain
+        ? null
+        : isPlanillaCashChainSecondary(route.routeName)
+          ? routeLedger.t
+          : isPlanillaCashChainPrimary(route.routeName)
+            ? routeLedger.m
+            : null;
+      let gastosHoy = chainDay ? chainDay.gastos : 0;
+      if (!chainDay && isPrimary) {
+        for (const line of rawExpenses) {
+          const amount = Number(line.amount) || 0;
+          if (!(amount > 0) || isPrestamoRutaExpense(line)) continue;
+          gastosHoy += amount;
+        }
       }
-      // Cadena M→T: T solo arrastra el Inicial (saldo). Préstamos viven en M.
-      const cashLoansToday = isPrimary
-        ? dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
-            collectorRef,
-            assignments: todayAssignments,
-          })
-        : [];
-      const prestamosHoy = isPrimary ? dayLoanDisbursementTotal(cashLoansToday) : 0;
+      const cashLoansToday = chainDay
+        ? chainDay.loanRows
+        : isPrimary
+          ? dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
+              collectorRef,
+              assignments: todayAssignments,
+            })
+          : [];
+      const prestamosHoy = dayLoanDisbursementTotal(cashLoansToday);
 
       const closeRecord = dayCloses.find(
         (row) => row.collectorRef === collectorRef && row.date === today,
@@ -1252,9 +1264,11 @@ export function SupervisorMobileApp({
       // Cuadre de ruta: Inicial + efectivo − gasto − préstamo. M de la cadena = libro del día
       // (la misma cifra que recibe T como Inicial).
       const chainLedger =
-        isPrimary && chainOpen.kind === "chain" ? ledgerByCollector.get(collectorRef) : undefined;
+        chainDay && chainOpen.kind === "chain" ? routeLedger : undefined;
       const enCaja = chainLedger
-        ? chainLedger.mClosing
+        ? chainDay === chainLedger.t
+          ? chainLedger.dayFinal
+          : chainLedger.mClosing
         : saldoInicial + cobradoEfectivo - gastosHoy - prestamosHoy;
 
       let statusLabel = "Sin planilla";
@@ -1328,8 +1342,11 @@ export function SupervisorMobileApp({
       const mFinal = mFinalByCollector.get(row.collectorRef);
       if (mFinal == null || !Number.isFinite(mFinal)) return row;
       const saldoInicial = mFinal;
+      const ledger = ledgerByCollector.get(row.collectorRef);
       const enCaja =
-        saldoInicial + row.cobradoEfectivo - row.gastosHoy - row.prestamosHoy;
+        ledger?.chain && ledger.mClosing === mFinal
+          ? ledger.dayFinal
+          : saldoInicial + row.cobradoEfectivo - row.gastosHoy - row.prestamosHoy;
       return { ...row, saldoInicial, enCaja };
     });
   }, [
@@ -1745,6 +1762,13 @@ export function SupervisorMobileApp({
   const openRouteExpenses = useMemo(() => {
     if (!openRoute || !openRouteScope) return [];
     // Solo gastos operativos. Los préstamos van al botón Préstamo, no a Gastos.
+    const ledger = ledgerByCollector.get(openRoute.collectorRef);
+    if (ledger?.chain && isPlanillaCashChainSecondary(openRoute.routeName)) {
+      return ledger.t.gastoLines;
+    }
+    if (ledger?.chain && isPlanillaCashChainPrimary(openRoute.routeName)) {
+      return ledger.m.gastoLines;
+    }
     if (!openRouteScope.isPrimary) return [];
     const raw = expensesForCollectorDay(
       openRoute.collectorRef,
@@ -1754,6 +1778,7 @@ export function SupervisorMobileApp({
     );
     return operativeExpenseLines(raw);
   }, [
+    ledgerByCollector,
     openRoute,
     openRouteScope,
     today,
@@ -1870,6 +1895,15 @@ export function SupervisorMobileApp({
         loans,
         clients,
         includeOperatingExpenses: isM,
+        chainSplit:
+          isM || isT
+            ? chainHistorySplit(
+                isT ? "secondary" : "primary",
+                openRoute.collectorRef,
+                clients,
+                assignments,
+              )
+            : undefined,
       },
     );
 
@@ -1890,6 +1924,7 @@ export function SupervisorMobileApp({
           loans,
           clients,
           includeOperatingExpenses: true,
+          chainSplit: chainHistorySplit("primary", openRoute.collectorRef, clients, assignments),
         },
       );
       const mAnnotated = annotateMHistoryExtractRows({
@@ -1968,6 +2003,7 @@ export function SupervisorMobileApp({
         loans,
         clients,
         includeOperatingExpenses: true,
+        chainSplit: chainHistorySplit("primary", openRoute.collectorRef, clients, assignments),
       },
     );
     const cashByDate = new Map(cashHand.map((row) => [row.date, row.saldo]));
@@ -2041,10 +2077,27 @@ export function SupervisorMobileApp({
       dayCloses,
       dayExpenseDrafts,
     );
-    return expensesWithDayLoans(cajaHistoryDayIso, raw, loans, clients, {
+    const lines = expensesWithDayLoans(cajaHistoryDayIso, raw, loans, clients, {
       collectorRef: openRoute.collectorRef,
       assignments,
     });
+    const isT = isPlanillaCashChainSecondary(openRoute.routeName);
+    if (!isT && !isPlanillaCashChainPrimary(openRoute.routeName)) return lines;
+    // Cadena M↔T: el día de la ruta muestra solo sus préstamos y gastos.
+    const split = chainHistorySplit(
+      isT ? "secondary" : "primary",
+      openRoute.collectorRef,
+      clients,
+      assignments,
+    );
+    return lines.filter((line) =>
+      isPrestamoRutaExpense(line)
+        ? loanClientOnSide(
+            loans.find((loan) => loan.ref === line.loanRef)?.clientRef,
+            split,
+          )
+        : operativeLineOnSide(line, split),
+    );
   }, [
     openRoute,
     cajaHistoryDayIso,
