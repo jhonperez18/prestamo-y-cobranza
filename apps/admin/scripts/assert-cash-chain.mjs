@@ -8,6 +8,7 @@
  *   1. Inicial M del 26 = 2.704.000 (CIE de ayer), en planilla e historial.
  *   2. Ninguna proyección (alinear pagos, sintetizar) cambia el saldo sellado.
  *   3. Inicial T = caja viva de M (misma cifra), y saldo final = M + efectivo T.
+ *      Historial T · hoy = ese saldo final del libro (ninguna pantalla lo recalcula).
  *   4. Cierre de hoja y auto-cierre 23:30 sellan CIE-26 con el saldo final real,
  *      y ese número es el Inicial M del 27.
  */
@@ -15,7 +16,7 @@ import { register } from "node:module";
 
 register("./ts-alias-loader.mjs", import.meta.url);
 
-const { buildDayCashLedger } = await import("@/lib/day-cash-ledger");
+const { buildDayCashLedger, withLedgerTodaySaldo } = await import("@/lib/day-cash-ledger");
 const { sealCollectorDay } = await import("@/lib/collector-day-close-seal");
 const {
   alignDayClosesCollectedToPayments,
@@ -180,6 +181,17 @@ const hist = annotateMHistoryExtractRows({
 });
 expect("Historial M · 25 saldo", hist.find((r) => r.date === Y)?.saldoShown ?? null, 2_704_000);
 expect("Historial M · 26 Inicial", hist.find((r) => r.date === D)?.inicial ?? null, 2_704_000);
+
+// Historial T: la fila de hoy = saldo final del libro (caso real 3.612.000 errado); ayer no se toca.
+const histT = withLedgerTodaySaldo(
+  [
+    { date: Y, dateLabel: "25", saldo: 2_704_000 },
+    { date: D, dateLabel: "26", saldo: 3_612_000 },
+  ],
+  ledger,
+);
+expect("Historial T · 26 = libro (saldo final)", histT.find((r) => r.date === D)?.saldo ?? null, ledger.dayFinal);
+expect("Historial T · 25 intacto", histT.find((r) => r.date === Y)?.saldo ?? null, 2_704_000);
 
 // PCE-T viejo se alinea al CIE.
 const projected = projectPceTFromDayCloses(base.planillaCashCloses, base.dayCloses);

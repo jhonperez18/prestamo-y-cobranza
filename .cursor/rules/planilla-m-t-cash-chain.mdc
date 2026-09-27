@@ -56,6 +56,16 @@ Cobrador, supervisor, panel, `sealCollectorDay` (`collector-day-close-seal.ts`) 
 `runOperationalDayCycle` leen del libro. **Nadie más suma cobros/gastos/préstamos
 para un saldo.** Una fórmula paralela = dos cifras = el error del 2.090.000.
 
+### Historial hoy = libro del día
+
+- La fila de **hoy** del Historial de T (cobrador y supervisor) muestra
+  `buildDayCashLedger().dayFinal` vía `withLedgerTodaySaldo`. Misma cifra que la
+  tarjeta de la ruta y que el CIE- que sellará el cierre.
+- Ninguna pantalla recalcula el saldo de hoy por su cuenta (caso T: 3.527.000 en
+  tarjeta vs 3.612.000 en Historial por fórmula paralela — prohibido que vuelva).
+- Días pasados no se recalculan: leen su CIE- / PCE sellado.
+- Candado: `assert-cash-chain.mjs` exige Historial T · hoy = libro.
+
 ### Ninguna proyección escribe `cash_float`
 
 - `alignDayClosesCollectedToPayments` solo toca `collected` / `expensesTotal`.

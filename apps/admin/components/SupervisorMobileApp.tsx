@@ -120,7 +120,11 @@ import {
   stampHistoryWithPlanillaCashChain,
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
-import { buildDayCashLedger, type DayCashLedger } from "@/lib/day-cash-ledger";
+import {
+  buildDayCashLedger,
+  withLedgerTodaySaldo,
+  type DayCashLedger,
+} from "@/lib/day-cash-ledger";
 
 /** Fecha corta para listados: 05/09/2026 → 5/9 */
 function formatLoanListDate(raw?: string | null) {
@@ -1940,19 +1944,8 @@ export function SupervisorMobileApp({
         monthCloses,
         primaryClosingByDate,
       });
-      // Hoy: el saldo de T es el de su tarjeta (libro del día), no un recálculo aparte.
-      const todayCard = liquidaciones.find((row) => row.routeRef === openRoute.routeRef);
       const ledger = ledgerByCollector.get(openRoute.collectorRef);
-      const todayFinal =
-        todayCard && Number.isFinite(todayCard.enCaja)
-          ? todayCard.enCaja
-          : ledger?.chain
-            ? ledger.dayFinal
-            : null;
-      const withToday =
-        todayFinal == null
-          ? stamped
-          : stamped.map((row) => (row.date === today ? { ...row, saldo: todayFinal } : row));
+      const withToday = ledger ? withLedgerTodaySaldo(stamped, ledger) : stamped;
       return withToday.slice(0, 6);
     }
 
@@ -2011,7 +2004,6 @@ export function SupervisorMobileApp({
     clients,
     today,
     planillaCashCloses,
-    liquidaciones,
     ledgerByCollector,
   ]);
 

@@ -194,6 +194,21 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
   };
 }
 
+/**
+ * Historial · T: la fila de hoy muestra el saldo final del libro (el mismo que la
+ * tarjeta y el que sellará el CIE-). Días pasados no se tocan (leen su cierre).
+ * Ninguna pantalla recalcula el saldo de hoy por su cuenta.
+ */
+export function withLedgerTodaySaldo<T extends { date: string; saldo: number }>(
+  rows: T[],
+  ledger: DayCashLedger,
+): T[] {
+  if (!ledger.chain) return rows;
+  return rows.map((row) =>
+    dateIsoOf(row.date) === ledger.date ? { ...row, saldo: ledger.dayFinal } : row,
+  );
+}
+
 /** Saldo que sella el CIE- (`cash_float`) al cerrar la jornada. */
 export type SealedDayCash = {
   openingCash: number;

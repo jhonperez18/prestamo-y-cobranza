@@ -103,7 +103,7 @@ import {
   stampHistoryWithPlanillaCashChain,
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
-import { buildDayCashLedger } from "@/lib/day-cash-ledger";
+import { buildDayCashLedger, withLedgerTodaySaldo } from "@/lib/day-cash-ledger";
 import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
 import { CollectorDayLoansPanel } from "@/components/CollectorDayLoansPanel";
 import { CollectorCloseDayConfirm } from "@/components/CollectorCloseDayConfirm";
@@ -554,7 +554,7 @@ export function CollectorMobileApp({
     const forChain = isPlanillaCashChainPrimary(routeForHistory ?? undefined)
       ? applyCollectorCashHandSaldos(base, collectorCashHandByDate)
       : base;
-    return stampHistoryWithPlanillaCashChain({
+    const stamped = stampHistoryWithPlanillaCashChain({
       collectorRef: collector.ref,
       routeName: routeForHistory ?? undefined,
       rows: forChain,
@@ -563,6 +563,25 @@ export function CollectorMobileApp({
       fallbackOpening: mCarriedFallbackOpening,
       primaryClosingByDate,
     });
+    if (!isPlanillaCashChainSecondary(routeForHistory ?? undefined)) return stamped;
+    const todayDate = date ?? todayIso();
+    const todayLedger = buildDayCashLedger({
+      collectorRef: collector.ref,
+      collectorName: collector.name,
+      date: todayDate,
+      payments: livePayments,
+      loans,
+      clients,
+      collectors: [collector],
+      assignments,
+      dayCloses,
+      dayExpenseDrafts,
+      planillaCashCloses,
+      monthCloses,
+      fallbackOpening:
+        todayDate === PLANILLA_CASH_CHAIN_HISTORY_EPOCH ? mCarriedFallbackOpening : undefined,
+    });
+    return withLedgerTodaySaldo(stamped, todayLedger);
   }, [
     activeDate,
     assignments,
