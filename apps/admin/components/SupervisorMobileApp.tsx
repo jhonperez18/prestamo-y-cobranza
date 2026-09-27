@@ -1066,21 +1066,14 @@ export function SupervisorMobileApp({
     [coverage],
   );
 
-  const liquidaciones = useMemo((): RouteLiquidacion[] => {
-    // Una tarjeta por ruta de catálogo (1, 1.1, 2…): no juntar hojas del mismo cobrador.
-    const sorted = assignedCoverage
-      .slice()
-      .sort((a, b) => compareRouteNames(a.routeName, b.routeName));
-
-    /** Caja viva de M por cobrador → Inicial momentáneo de T hasta que M cierre. */
-    const primaryLiveByCollector = new Map<string, number>();
+  /** Libro de caja del día por cobrador: misma cifra que la app del cobrador, el cierre y el Historial. */
+  const ledgerByCollector = useMemo(() => {
     const collectorRefsForLive = new Set(
-      sorted
+      assignedCoverage
         .map((route) => route.collector?.ref || route.collectorRef || "")
         .filter(Boolean),
     );
-    /** Libro de caja del día por cobrador: misma cifra que la app del cobrador y el cierre. */
-    const ledgerByCollector = new Map<string, DayCashLedger>();
+    const byCollector = new Map<string, DayCashLedger>();
     for (const collectorRef of collectorRefsForLive) {
       const collector = collectors.find((row) => row.ref === collectorRef);
       if (!collector) continue;
@@ -1106,7 +1099,32 @@ export function SupervisorMobileApp({
           monthCloses,
         ).saldoInicial,
       });
-      ledgerByCollector.set(collectorRef, ledger);
+      byCollector.set(collectorRef, ledger);
+    }
+    return byCollector;
+  }, [
+    assignedCoverage,
+    collectors,
+    today,
+    payments,
+    loans,
+    clients,
+    todayAssignments,
+    dayCloses,
+    dayExpenseDrafts,
+    planillaCashCloses,
+    monthCloses,
+  ]);
+
+  const liquidaciones = useMemo((): RouteLiquidacion[] => {
+    // Una tarjeta por ruta de catálogo (1, 1.1, 2…): no juntar hojas del mismo cobrador.
+    const sorted = assignedCoverage
+      .slice()
+      .sort((a, b) => compareRouteNames(a.routeName, b.routeName));
+
+    /** Caja viva de M por cobrador → Inicial momentáneo de T hasta que M cierre. */
+    const primaryLiveByCollector = new Map<string, number>();
+    for (const [collectorRef, ledger] of ledgerByCollector) {
       primaryLiveByCollector.set(collectorRef, ledger.mClosing);
     }
 
@@ -1321,8 +1339,8 @@ export function SupervisorMobileApp({
     monthCloses,
     planillaCashCloses,
     clients,
-    collectors,
     loans,
+    ledgerByCollector,
   ]);
 
   const [unreadByRoute, setUnreadByRoute] = useState<Record<string, number>>({});
@@ -1922,7 +1940,20 @@ export function SupervisorMobileApp({
         monthCloses,
         primaryClosingByDate,
       });
-      return stamped.slice(0, 6);
+      // Hoy: el saldo de T es el de su tarjeta (libro del día), no un recálculo aparte.
+      const todayCard = liquidaciones.find((row) => row.routeRef === openRoute.routeRef);
+      const ledger = ledgerByCollector.get(openRoute.collectorRef);
+      const todayFinal =
+        todayCard && Number.isFinite(todayCard.enCaja)
+          ? todayCard.enCaja
+          : ledger?.chain
+            ? ledger.dayFinal
+            : null;
+      const withToday =
+        todayFinal == null
+          ? stamped
+          : stamped.map((row) => (row.date === today ? { ...row, saldo: todayFinal } : row));
+      return withToday.slice(0, 6);
     }
 
     if (!isM) {
@@ -1980,6 +2011,8 @@ export function SupervisorMobileApp({
     clients,
     today,
     planillaCashCloses,
+    liquidaciones,
+    ledgerByCollector,
   ]);
 
   const openRouteCajaHistoryIsM = Boolean(
