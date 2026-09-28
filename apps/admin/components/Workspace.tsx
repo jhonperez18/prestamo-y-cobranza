@@ -489,6 +489,7 @@ export function Workspace(props: WorkspaceProps) {
     deleteLoan,
     registerPay,
     registerLatePayment,
+    adjustTCashFromMobile,
     latePayOpen,
     setLatePayOpen,
     startLatePay,
@@ -1902,6 +1903,7 @@ export function Workspace(props: WorkspaceProps) {
             });
             onToast(`Gasto ${payment.ref} guardado en registros.`);
           }}
+          onAdjustTCash={adjustTCashFromMobile}
           onPreviewKindChange={onPreviewKindChange}
         />
       );

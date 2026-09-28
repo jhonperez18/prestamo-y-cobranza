@@ -124,6 +124,28 @@ Corrige un cobro que no se anotó en un día ya cerrado. Un solo camino: `commit
 - No entra a una caja ya cerrada hoy. Un día = un pago tardío por préstamo.
 - Candado: `assert-cash-chain.mjs` sección 6.
 
+## Ajuste de saldo real en T (supervisor / admin)
+
+Poner la caja contada de verdad como saldo final del día. Un solo camino: `commitCashAdjustment`
+(`lib/commit-cash-adjustment.ts`), guardado por `saveCashAdjustment` (local + cola + await nube).
+
+| Pieza | Regla |
+| --- | --- |
+| Dónde | Supervisor → ruta T → Historial → tocar el saldo de hoy |
+| Cuándo | Solo hoy (Bogotá), con el CIE- de hoy sellado (T cerró), antes de medianoche |
+| Quién | Supervisor y admin. El cobrador lo ve solo para leer |
+| Qué cambia | CIE- de hoy: `cashFloat` = real; `cashAdjustment` {calculated, real, by, at, reason}; PCE-T saldo = real |
+| Qué no | Cuotas, préstamos, pagos, rutas, clientes, planillas, días pasados |
+| Historial T | Renglón del cierre (saldo calculado) + renglón «Ajuste ±dif» con el real |
+| Re-editar | Corrige el mismo ajuste; `calculated` no cambia |
+| Mañana | Inicial M = CIE de hoy (`cash_float` = real). Sin atajos |
+
+- Nube: el ajuste viaja como entrada `AJUSTE:` en `movement_refs`. `upsertDayCloseIdempotent`
+ no deja que un CIE- sin ajuste (o con uno más viejo) lo pise; el pull no rebobina un ajuste
+ local más nuevo. Días pasados siguen bloqueados (`cloud_cie_past_day_sealed`).
+- `alignChainLinksToLedger` respeta el real (no devuelve PCE-T al calculado).
+- Candado: `assert-cash-chain.mjs` sección 7.
+
 ## N/P por ruta (INICIO)
 
 Cada ruta tiene su propio **N/P** (junto a Historial en la ficha).

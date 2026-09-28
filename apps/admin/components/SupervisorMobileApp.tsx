@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { Pill } from "@/components/ui";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import { CollectorClosedDayReview } from "@/components/CollectorClosedDayReview";
@@ -128,6 +136,16 @@ import {
   type DayCashLedger,
 } from "@/lib/day-cash-ledger";
 import { loanClientOnSide, operativeLineOnSide } from "@/lib/expense-lines";
+import {
+  attachCashAdjustments,
+  cashAdjustmentDelta,
+  cashAdjustmentNote,
+} from "@/lib/cash-adjustment";
+import {
+  cashAdjustmentWindow,
+  type CashAdjustmentRequest,
+} from "@/lib/commit-cash-adjustment";
+import { CashAdjustForm } from "@/components/CashAdjustForm";
 
 /** Fecha corta para listados: 05/09/2026 → 5/9 */
 function formatLoanListDate(raw?: string | null) {
@@ -179,6 +197,8 @@ type Props = {
   onAttachPaymentEvidence?: (paymentRef: string, evidence: PaymentEvidenceRef[]) => void;
   /** Alta de gasto (pago varios) → local + registros banco. */
   onSaveMiscPayment?: (payment: MiscPayment) => void;
+  /** Ajuste de saldo real en T (tras cerrar T, el mismo día). */
+  onAdjustTCash?: (input: CashAdjustmentRequest) => Promise<boolean>;
   onLogout?: () => void;
 };
 
@@ -940,6 +960,7 @@ export function SupervisorMobileApp({
   onUpdateClient,
   onAttachPaymentEvidence,
   onSaveMiscPayment,
+  onAdjustTCash,
   onLogout,
 }: Props) {
   const today = todayIso();
@@ -961,6 +982,8 @@ export function SupervisorMobileApp({
   );
   /** Día ISO del historial de caja (últimos 5 días del cobrador). */
   const [cajaHistoryDayIso, setCajaHistoryDayIso] = useState<string | null>(null);
+  /** Historial · T: formulario de ajuste de saldo real abierto (cobrador del CIE-). */
+  const [cashAdjustCollectorRef, setCashAdjustCollectorRef] = useState<string | null>(null);
   const [snDay, setSnDay] = useState<string | null>(null);
   /** Registro Nequi de hoy filtrado por ruta (1 / 1.1 / 2). */
   const [nequiRegistroRoute, setNequiRegistroRoute] = useState<string | null>(null);
@@ -2046,6 +2069,45 @@ export function SupervisorMobileApp({
   const openRouteCajaHistoryIsM = Boolean(
     openRoute && isPlanillaCashChainPrimary(openRoute.routeName),
   );
+  const openRouteCajaHistoryIsT = Boolean(
+    openRoute && isPlanillaCashChainSecondary(openRoute.routeName),
+  );
+
+  /** Historial · T: renglón del cierre + renglón de ajuste (si lo hubo). */
+  const openRouteTHistory = useMemo(() => {
+    if (!openRoute || !openRouteCajaHistoryIsT) return null;
+    return attachCashAdjustments(
+      openRouteCajaHistory as Array<{
+        date: string;
+        dateLabel: string;
+        cobro: number;
+        gasto: number;
+        prestamo: number;
+        saldo: number;
+      }>,
+      openRoute.collectorRef,
+      dayCloses,
+    );
+  }, [openRoute, openRouteCajaHistoryIsT, openRouteCajaHistory, dayCloses]);
+
+  /** Ajuste de saldo: solo supervisor/admin, T ya cerró hoy y antes de medianoche. */
+  const tCashAdjustDate = useMemo(() => {
+    if (!onAdjustTCash || !openRoute || !openRouteCajaHistoryIsT) return null;
+    const adjustWindow = cashAdjustmentWindow(openRoute.collectorRef, dayCloses);
+    return adjustWindow.open ? adjustWindow.date : null;
+  }, [onAdjustTCash, openRoute, openRouteCajaHistoryIsT, dayCloses]);
+
+  const tCashAdjustTarget = useMemo(() => {
+    if (!tCashAdjustDate || !openRouteTHistory) return null;
+    return openRouteTHistory.find((entry) => entry.row.date === tCashAdjustDate) ?? null;
+  }, [tCashAdjustDate, openRouteTHistory]);
+
+  async function submitTCashAdjust(real: number, reason: string) {
+    if (!onAdjustTCash || !openRoute) return false;
+    const ok = await onAdjustTCash({ collectorRef: openRoute.collectorRef, real, reason });
+    if (ok) setCashAdjustCollectorRef(null);
+    return ok;
+  }
 
   const openRouteHistoryDayCuadre = useMemo(() => {
     if (!openRoute || !cajaHistoryDayIso) return null;
@@ -3006,52 +3068,125 @@ export function SupervisorMobileApp({
                       );
                     })
                   ) : (
-                    openRouteCajaHistory.map((row) => {
-                      const plain = row as {
-                        date: string;
-                        dateLabel: string;
-                        cobro: number;
-                        gasto: number;
-                        prestamo: number;
-                        saldo: number;
-                      };
+                    (
+                      openRouteTHistory ??
+                      openRouteCajaHistory.map((row) => ({
+                        row: row as {
+                          date: string;
+                          dateLabel: string;
+                          cobro: number;
+                          gasto: number;
+                          prestamo: number;
+                          saldo: number;
+                        },
+                        adjustment: null,
+                      }))
+                    ).map(({ row: plain, adjustment }) => {
+                      const adjustable = tCashAdjustDate != null && plain.date === tCashAdjustDate;
+                      const openAdjust = () => setCashAdjustCollectorRef(openRoute.collectorRef);
+                      const delta = adjustment ? cashAdjustmentDelta(adjustment) : 0;
                       return (
-                        <li key={plain.date}>
-                          <button
-                            type="button"
-                            className={
-                              plain.date === cajaHistoryDayIso
-                                ? "collector-mobile-day-history-row on"
-                                : "collector-mobile-day-history-row"
-                            }
-                            onClick={() => openCajaHistorialDay(plain.date)}
-                          >
-                            <span className="is-date">{plain.dateLabel}</span>
-                            <span className="is-money">
-                              {money(plain.cobro, { symbol: false })}
-                            </span>
-                            <span className="is-money">
-                              {money(plain.prestamo, { symbol: false })}
-                            </span>
-                            <span className="is-money">
-                              {money(plain.gasto, { symbol: false })}
-                            </span>
-                            <span
+                        <Fragment key={plain.date}>
+                          <li>
+                            <button
+                              type="button"
                               className={
-                                plain.saldo < 0
-                                  ? "is-saldo is-negative is-saldo-strong"
-                                  : "is-saldo is-saldo-strong"
+                                plain.date === cajaHistoryDayIso
+                                  ? "collector-mobile-day-history-row on"
+                                  : "collector-mobile-day-history-row"
                               }
+                              onClick={() => openCajaHistorialDay(plain.date)}
                             >
-                              {money(plain.saldo, { symbol: false })}
-                            </span>
-                          </button>
-                        </li>
+                              <span className="is-date">{plain.dateLabel}</span>
+                              <span className="is-money">
+                                {money(plain.cobro, { symbol: false })}
+                              </span>
+                              <span className="is-money">
+                                {money(plain.prestamo, { symbol: false })}
+                              </span>
+                              <span className="is-money">
+                                {money(plain.gasto, { symbol: false })}
+                              </span>
+                              <span
+                                className={[
+                                  "is-saldo is-saldo-strong",
+                                  plain.saldo < 0 ? "is-negative" : "",
+                                  adjustable ? "is-adjustable" : "",
+                                ]
+                                  .filter(Boolean)
+                                  .join(" ")}
+                                {...(adjustable
+                                  ? {
+                                      role: "button",
+                                      tabIndex: 0,
+                                      title: "Ajustar saldo real",
+                                      onClick: (event: ReactMouseEvent) => {
+                                        event.stopPropagation();
+                                        openAdjust();
+                                      },
+                                      onKeyDown: (event: ReactKeyboardEvent) => {
+                                        if (event.key !== "Enter" && event.key !== " ") return;
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        openAdjust();
+                                      },
+                                    }
+                                  : {})}
+                              >
+                                {money(plain.saldo, { symbol: false })}
+                              </span>
+                            </button>
+                          </li>
+                          {adjustment ? (
+                            <li>
+                              <button
+                                type="button"
+                                className={
+                                  adjustable
+                                    ? "collector-mobile-day-history-row is-adjustment is-editable"
+                                    : "collector-mobile-day-history-row is-adjustment"
+                                }
+                                disabled={!adjustable}
+                                onClick={openAdjust}
+                                title={cashAdjustmentNote(adjustment)}
+                              >
+                                <span className="is-date">{plain.dateLabel}</span>
+                                <span className="is-money">Ajuste</span>
+                                <span className="is-money" />
+                                <span className="is-money">
+                                  {delta > 0 ? "+" : delta < 0 ? "−" : ""}
+                                  {money(Math.abs(delta), { symbol: false })}
+                                </span>
+                                <span className="is-saldo is-saldo-strong">
+                                  {money(adjustment.real, { symbol: false })}
+                                </span>
+                              </button>
+                              <p className="collector-mobile-day-history-note">
+                                {cashAdjustmentNote(adjustment)}
+                              </p>
+                            </li>
+                          ) : null}
+                        </Fragment>
                       );
                     })
                   )}
                 </ul>
               </div>
+              {tCashAdjustTarget && cashAdjustCollectorRef === openRoute.collectorRef ? (
+                <CashAdjustForm
+                  dateLabel={tCashAdjustTarget.row.dateLabel}
+                  calculated={tCashAdjustTarget.row.saldo}
+                  currentReal={tCashAdjustTarget.adjustment?.real}
+                  currentReason={tCashAdjustTarget.adjustment?.reason}
+                  onSubmit={submitTCashAdjust}
+                  onCancel={() => setCashAdjustCollectorRef(null)}
+                />
+              ) : tCashAdjustTarget ? (
+                <p className="supervisor-mobile-subhead">
+                  T ya cerró hoy: toque el saldo del {tCashAdjustTarget.row.dateLabel} para
+                  ajustarlo al saldo real (hasta medianoche).
+                </p>
+              ) : null}
             </>
           ) : detailMode === "historial-dia" && openRouteHistoryDayCuadre ? (
             <section

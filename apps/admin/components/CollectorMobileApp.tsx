@@ -1,6 +1,11 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  attachCashAdjustments,
+  cashAdjustmentDelta,
+  cashAdjustmentNote,
+} from "@/lib/cash-adjustment";
 import { CollectorPayForm } from "@/components/CollectorPayForm";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import type { QuickLoanDraft } from "@/lib/street-client-loan";
@@ -1288,6 +1293,16 @@ export function CollectorMobileApp({
     );
   }, [activeDate, closedHistoryDates, dayHistory, openPlanillaDates]);
 
+  /** Historial · T: renglón del cierre + ajuste de saldo del supervisor (solo lectura). */
+  const historyRowsWithAdjustment = useMemo(() => {
+    const route =
+      planillaRoutePins.length > 1 ? planillaRouteFilter ?? planillaRoutePins[0] : null;
+    if (!isPlanillaCashChainSecondary(route ?? undefined)) {
+      return historyVisibleRows.map((row) => ({ row, adjustment: null }));
+    }
+    return attachCashAdjustments(historyVisibleRows, collector.ref, dayCloses);
+  }, [collector.ref, dayCloses, historyVisibleRows, planillaRouteFilter, planillaRoutePins]);
+
   /** Historial · M: extracto (Inicial → Saldo). Días previos intactos. */
   const showMInicialColumn = isPlanillaCashChainPrimary(activePlanillaRoute ?? undefined);
   const historyRowsWithInicial = useMemo(() => {
@@ -1563,37 +1578,65 @@ export function CollectorMobileApp({
                   </li>
                 ))
               ) : (
-                historyVisibleRows.map((row) => (
-                  <li key={row.date}>
-                    <button
-                      type="button"
-                      className={
-                        row.date === activeDate
-                          ? "collector-mobile-day-history-row on"
-                          : "collector-mobile-day-history-row"
-                      }
-                      onClick={() => {
-                        setSelectedDate(row.date);
-                        setPreferCobroPlanilla(false);
-                        setListFilter("pending");
-                        setEditingExpenses(false);
-                        setConfirmingClose(false);
-                        setHistoryOpen(false);
-                      }}
-                    >
-                      <span className="is-date">{row.dateLabel}</span>
-                      <span className="is-money">{money(row.cobro, { symbol: false })}</span>
-                      <span className="is-money">{money(row.prestamo, { symbol: false })}</span>
-                      <span className="is-money">{money(row.gasto, { symbol: false })}</span>
-                      <span
+                historyRowsWithAdjustment.map(({ row, adjustment }) => (
+                  <Fragment key={row.date}>
+                    <li>
+                      <button
+                        type="button"
                         className={
-                          row.saldo < 0 ? "is-saldo is-negative is-saldo-strong" : "is-saldo is-saldo-strong"
+                          row.date === activeDate
+                            ? "collector-mobile-day-history-row on"
+                            : "collector-mobile-day-history-row"
                         }
+                        onClick={() => {
+                          setSelectedDate(row.date);
+                          setPreferCobroPlanilla(false);
+                          setListFilter("pending");
+                          setEditingExpenses(false);
+                          setConfirmingClose(false);
+                          setHistoryOpen(false);
+                        }}
                       >
-                        {money(row.saldo, { symbol: false })}
-                      </span>
-                    </button>
-                  </li>
+                        <span className="is-date">{row.dateLabel}</span>
+                        <span className="is-money">{money(row.cobro, { symbol: false })}</span>
+                        <span className="is-money">{money(row.prestamo, { symbol: false })}</span>
+                        <span className="is-money">{money(row.gasto, { symbol: false })}</span>
+                        <span
+                          className={
+                            row.saldo < 0 ? "is-saldo is-negative is-saldo-strong" : "is-saldo is-saldo-strong"
+                          }
+                        >
+                          {money(row.saldo, { symbol: false })}
+                        </span>
+                      </button>
+                    </li>
+                    {adjustment ? (
+                      <li>
+                        <div
+                          className="collector-mobile-day-history-row is-adjustment"
+                          title={cashAdjustmentNote(adjustment)}
+                        >
+                          <span className="is-date">{row.dateLabel}</span>
+                          <span className="is-money">Ajuste</span>
+                          <span className="is-money" />
+                          <span className="is-money">
+                            {cashAdjustmentDelta(adjustment) > 0
+                              ? "+"
+                              : cashAdjustmentDelta(adjustment) < 0
+                                ? "−"
+                                : ""}
+                            {money(Math.abs(cashAdjustmentDelta(adjustment)), { symbol: false })}
+                          </span>
+                          <span className="is-saldo is-saldo-strong">
+                            {money(adjustment.real, { symbol: false })}
+                          </span>
+                        </div>
+                        <p className="collector-mobile-day-history-note">
+                          {cashAdjustmentNote(adjustment)}
+                        </p>
+                      </li>
+                    ) : null}
+                  </Fragment>
                 ))
               )}
             </ul>

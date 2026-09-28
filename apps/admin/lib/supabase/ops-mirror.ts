@@ -22,6 +22,11 @@ import {
 } from "@/lib/planilla-cash-chain";
 import { businessDaysAgoIso, businessTodayIso } from "@/lib/business-timezone";
 import {
+  dayCloseFreshnessMs,
+  joinCashAdjustmentRefs,
+  splitCashAdjustmentRefs,
+} from "@/lib/cash-adjustment";
+import {
   emitMirrorQueueChanged,
   shouldDropFromMirrorQueue,
   type MirrorApiJson,
@@ -66,6 +71,28 @@ function mergeByRefRemote<T extends { ref: string }>(
     map.set(row.ref, row);
   }
   return { merged: [...map.values()], changed };
+}
+
+/**
+ * CIE-: la nube manda, salvo un ajuste de saldo local más nuevo que el de nube
+ * (aún en cola de flush). Así el pull no rebobina el ajuste del supervisor.
+ */
+function mergeDayClosesRemote(
+  local: CollectorDayCloseRecord[],
+  remote: CollectorDayCloseRecord[],
+): { merged: CollectorDayCloseRecord[]; changed: boolean } {
+  const localByRef = new Map(local.filter((row) => row?.ref).map((row) => [row.ref, row]));
+  const adjustmentMs = (row: CollectorDayCloseRecord | undefined) =>
+    dayCloseFreshnessMs(undefined, row?.cashAdjustment) || 0;
+  const chosenRemote = remote.map((row) => {
+    const prev = localByRef.get(row.ref);
+    return prev && adjustmentMs(prev) > adjustmentMs(row) ? prev : row;
+  });
+  return mergeByRefRemote(
+    local,
+    chosenRemote,
+    (r) => `${r.ref}|${r.collected}|${r.cashFloat}|${r.closedAt}|${r.cashAdjustment?.at ?? ""}`,
+  );
 }
 
 /**
@@ -347,7 +374,7 @@ export function dayCloseToRow(c: CollectorDayCloseRecord) {
     expenses_total: Number(c.expensesTotal) || 0,
     cash_float: Number(c.cashFloat) || 0,
     closed_at: c.closedAt,
-    movement_refs: c.movementRefs ?? [],
+    movement_refs: joinCashAdjustmentRefs(c.movementRefs ?? [], c.cashAdjustment),
     updated_at: new Date().toISOString(),
   };
 }
@@ -355,6 +382,9 @@ export function dayCloseToRow(c: CollectorDayCloseRecord) {
 export function rowToDayClose(r: Record<string, unknown>): CollectorDayCloseRecord | null {
   const ref = String(r.ref || "").trim();
   if (!ref) return null;
+  const { movementRefs, cashAdjustment } = splitCashAdjustmentRefs(
+    Array.isArray(r.movement_refs) ? (r.movement_refs as string[]) : [],
+  );
   return {
     ref,
     collectorRef: String(r.collector_ref || ""),
@@ -370,7 +400,15 @@ export function rowToDayClose(r: Record<string, unknown>): CollectorDayCloseReco
     cashDeclared: r.cash_declared == null ? undefined : Number(r.cash_declared) || 0,
     cashVariance: r.cash_variance == null ? undefined : Number(r.cash_variance) || 0,
     closedAt: String(r.closed_at || new Date().toISOString()),
-    movementRefs: Array.isArray(r.movement_refs) ? (r.movement_refs as string[]) : [],
+    ...(cashAdjustment
+      ? {
+          cashExpected: cashAdjustment.calculated,
+          cashDeclared: cashAdjustment.real,
+          cashVariance: cashAdjustment.real - cashAdjustment.calculated,
+          cashAdjustment,
+        }
+      : {}),
+    movementRefs,
   };
 }
 
@@ -630,7 +668,7 @@ export async function upsertDayCloseIdempotent(
   if (ref.startsWith("CIE-") && !force) {
     const { data: existing, error: readError } = await client
       .from("day_closes")
-      .select("cash_float,close_date,closed_at,updated_at")
+      .select("cash_float,close_date,closed_at,updated_at,movement_refs")
       .eq("ref", ref)
       .maybeSingle();
     if (readError) return { ok: false as const, error: readError.message };
@@ -647,11 +685,33 @@ export async function upsertDayCloseIdempotent(
           reason: "cloud_cie_past_day_sealed",
         };
       }
+      const cloudAdjustment = splitCashAdjustmentRefs(
+        Array.isArray(existing.movement_refs) ? (existing.movement_refs as string[]) : [],
+      ).cashAdjustment;
+      const incomingAdjustment = splitCashAdjustmentRefs(
+        Array.isArray(row.movement_refs) ? (row.movement_refs as string[]) : [],
+      ).cashAdjustment;
+      // Ajuste de saldo en nube: otro aparato con el CIE- sin ajuste (o uno más viejo) no lo borra.
+      if (
+        cloudAdjustment &&
+        dayCloseFreshnessMs(undefined, cloudAdjustment) >
+          (dayCloseFreshnessMs(undefined, incomingAdjustment) || 0)
+      ) {
+        return {
+          ok: true as const,
+          skipped: true as const,
+          reason: "cloud_cie_keeps_cash_adjustment",
+        };
+      }
       if (cloudFloat !== incomingFloat) {
-        const cloudTs = Date.parse(
+        const cloudTs = dayCloseFreshnessMs(
           String(existing.closed_at || existing.updated_at || ""),
+          cloudAdjustment,
         );
-        const incomingTs = Date.parse(String(row.closed_at || row.updated_at || ""));
+        const incomingTs = dayCloseFreshnessMs(
+          String(row.closed_at || row.updated_at || ""),
+          incomingAdjustment,
+        );
         const cloudWins =
           Number.isFinite(cloudTs) &&
           (!Number.isFinite(incomingTs) || cloudTs >= incomingTs);
@@ -875,6 +935,11 @@ export function queueDayCloseMirror(c: CollectorDayCloseRecord) {
   // Reconstruido desde planilla: no es saldo sellado, nunca sube.
   if (c.provisional) return;
   void persistKind(Q_CLOSES, { kind: "day_close", row: c }, c.ref);
+}
+/** Cola + subida esperada del CIE-. `true` solo si la nube lo escribió de verdad. */
+export async function mirrorDayCloseNow(c: CollectorDayCloseRecord): Promise<boolean> {
+  if (!String(c.ref || "").startsWith("CIE-") || c.provisional) return false;
+  return persistKind(Q_CLOSES, { kind: "day_close", row: c }, c.ref);
 }
 export function queueDayExpenseMirror(d: CollectorDayExpenseDraft) {
   void persistKind(Q_EXPENSES, { kind: "day_expense", row: d }, d.ref);
@@ -1304,10 +1369,9 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
     const closes = (body.day_closes ?? [])
       .map(rowToDayClose)
       .filter((r): r is CollectorDayCloseRecord => Boolean(r));
-    const clMerge = mergeByRefRemote(
+    const clMerge = mergeDayClosesRemote(
       readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []),
       closes,
-      (r) => `${r.ref}|${r.collected}|${r.cashFloat}|${r.closedAt}`,
     );
     if (clMerge.changed) {
       writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, clMerge.merged);

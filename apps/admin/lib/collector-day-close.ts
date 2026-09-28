@@ -77,7 +77,22 @@ export type CollectorDayCloseRecord = CollectorDayCloseDraft & {
   cashDeclared?: number;
   /** declarado − esperado. 0 = cuadra. */
   cashVariance?: number;
+  /**
+   * Ajuste de saldo real hecho por supervisor/admin tras cerrar T, el mismo día.
+   * `cashFloat` pasa a `real`; `calculated` conserva el saldo del cierre original.
+   */
+  cashAdjustment?: CashAdjustment;
   movementRefs: string[];
+};
+
+export type CashAdjustment = {
+  /** Saldo que selló el cierre (libro del día). No cambia al re-editar. */
+  calculated: number;
+  /** Caja contada de verdad = Inicial M de mañana. */
+  real: number;
+  by: string;
+  at: string;
+  reason: string;
 };
 
 /** Gastos de ruta guardados durante el día (antes de cerrar). */
@@ -597,6 +612,7 @@ export function keepSealedCashFloat(
       cashExpected: prev.cashExpected,
       cashDeclared: prev.cashDeclared,
       cashVariance: prev.cashVariance,
+      cashAdjustment: prev.cashAdjustment,
     };
   });
   return changed ? next : after;

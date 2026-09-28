@@ -73,6 +73,9 @@ type Props = {
   bankAccounts?: import("@/lib/bank").BankAccount[];
   miscPayments?: import("@/lib/misc-payments").MiscPayment[];
   onSaveMiscPayment?: (payment: import("@/lib/misc-payments").MiscPayment) => void;
+  onAdjustTCash?: (
+    input: import("@/lib/commit-cash-adjustment").CashAdjustmentRequest,
+  ) => Promise<boolean>;
   onPreviewKindChange?: (kind: PreviewKind) => void;
 };
 
@@ -103,6 +106,7 @@ export function CollectorMobilePreview({
   bankAccounts = [],
   miscPayments = [],
   onSaveMiscPayment,
+  onAdjustTCash,
   onPreviewKindChange,
 }: Props) {
   const [kind, setKind] = useState<PreviewKind>("collector");
@@ -305,6 +309,7 @@ export function CollectorMobilePreview({
                   onUpdateClient={onUpdateClient}
                   onAttachPaymentEvidence={onAttachPaymentEvidence}
                   onSaveMiscPayment={onSaveMiscPayment}
+                  onAdjustTCash={onAdjustTCash}
                 />
               ) : collector ? (
                 <CollectorMobileApp

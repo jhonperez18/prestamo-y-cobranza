@@ -80,6 +80,8 @@ import {
 } from "@/lib/supabase/ops-mirror";
 import { mirrorAutoDayCloseToCloud } from "@/lib/mirror-auto-day-close";
 import type { MiscPayment } from "@/lib/misc-payments";
+import type { CashAdjustmentRequest } from "@/lib/commit-cash-adjustment";
+import { saveCashAdjustment } from "@/lib/save-cash-adjustment";
 
 type Props = {
   session: AppSession;
@@ -475,6 +477,20 @@ export function SupervisorShell({ session, onLogout }: Props) {
     showToast(`Gasto ${payment.ref} guardado en registros.`);
   }
 
+  async function adjustTCashFromMobile(input: CashAdjustmentRequest) {
+    const saved = await saveCashAdjustment({
+      ...input,
+      by: supervisor?.name || session.name || session.username || "supervisor",
+    });
+    if (!saved.ok) {
+      showToast(saved.error);
+      return false;
+    }
+    setDayCloses(saved.dayCloses);
+    showToast(saved.message);
+    return true;
+  }
+
   function attachPaymentEvidence(paymentRef: string, evidence: PaymentEvidenceRef[]) {
     const ref = paymentRef.trim();
     if (!ref || !evidence.length) return;
@@ -537,6 +553,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
         onUpdateClient={updateClientFromMobile}
         onAttachPaymentEvidence={attachPaymentEvidence}
         onSaveMiscPayment={saveMiscPaymentFromMobile}
+        onAdjustTCash={adjustTCashFromMobile}
         onLogout={onLogout}
       />
       {toastNode}

@@ -1705,6 +1705,32 @@
       font-size: 12px;
       color: #111;
     }
+    .collector-mobile-day-history-list li .collector-mobile-day-history-row.is-adjustment {
+      background: #fff7ed;
+      border-bottom: 0;
+      cursor: default;
+    }
+    .collector-mobile-day-history-list li .collector-mobile-day-history-row.is-adjustment.is-editable {
+      cursor: pointer;
+    }
+    .collector-mobile-day-history-row.is-adjustment .is-money {
+      color: #9a3412;
+      font-weight: 600;
+    }
+    .collector-mobile-day-history-note {
+      margin: 0;
+      padding: 0 8px 4px;
+      background: #fff7ed;
+      border-bottom: 1px solid #e2ece7;
+      font-size: 10px;
+      line-height: 1.3;
+      color: #9a3412;
+    }
+    .collector-mobile-day-history-row .is-saldo.is-adjustable {
+      text-decoration: underline dotted;
+      text-underline-offset: 2px;
+      cursor: pointer;
+    }
     .collector-mobile-route-closed {
       margin: 10px 16px 0;
       padding: 10px 12px;

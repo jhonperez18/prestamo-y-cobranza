@@ -15,6 +15,8 @@
  *      caja T = Inicial + efectivo − préstamos − gastos, y eso es el Inicial M del 27.
  *   6. Pago tardío: la plata entra hoy (caja sube), cubre la cuota del día cerrado,
  *      la visita de hoy sigue por cobrar y el CIE del día cubierto no cambia.
+ *   7. Ajuste de saldo real en T: solo con T cerrada y el mismo día; el real pasa a
+ *      CIE/PCE-T y es el Inicial M de mañana; el saldo del cierre queda en el Historial.
  */
 import { register } from "node:module";
 
@@ -467,6 +469,103 @@ if (late.ok) {
   expect("Pago tardío: marca viaja a la nube (fecha)", parsed.lateFor?.date ?? null, Y);
   expect("Pago tardío: marca viaja a la nube (motivo)", parsed.lateFor?.reason ?? null, "Lo recibió y no lo anotó");
   expect("Pago tardío: concepto intacto", parsed.chargeLabel ?? null, "Cuota");
+}
+
+// 7. Ajuste de saldo real en T (supervisor): tras cerrar T, el mismo día.
+console.log("— Ajuste de saldo real en T —");
+const { commitCashAdjustment, cashAdjustmentWindow } = await import("@/lib/commit-cash-adjustment");
+const { attachCashAdjustments, joinCashAdjustmentRefs, splitCashAdjustmentRefs } = await import(
+  "@/lib/cash-adjustment"
+);
+const { alignChainLinksToLedger } = await import("@/lib/day-cash-ledger");
+
+const adjNow = new Date("2026-09-26T20:00:00.000-05:00");
+const cieRef26 = `CIE-COB-0-${D}`;
+const pceTRef26 = `PCE-COB-0-${D}-T`;
+expect("Ajuste: sin cierre de T no se puede", cashAdjustmentWindow(COB.ref, [cie25], adjNow).open, false);
+expect("Ajuste: día siguiente ya no se puede", cashAdjustmentWindow(COB.ref, afterT.dayCloses, new Date("2026-09-27T09:00:00.000-05:00")).open, false);
+const adj = commitCashAdjustment({
+  collectorRef: COB.ref,
+  real: 2_934_000,
+  reason: "Conteo real de caja",
+  by: "Supervisor",
+  dayCloses: afterT.dayCloses,
+  planillaCashCloses: afterT.planillaCashCloses,
+  now: adjNow,
+});
+expect("Ajuste: se registra", adj.ok, true);
+if (adj.ok) {
+  expect("Ajuste: CIE-26 cash_float = real", adj.record.cashFloat, 2_934_000);
+  expect("Ajuste: saldo del cierre conservado", adj.record.cashAdjustment?.calculated ?? null, 3_084_000);
+  expect("Ajuste: CIE-25 intacto", adj.dayCloses.find((r) => r.ref === cie25.ref)?.cashFloat ?? null, 2_704_000);
+  const adjPceT = adj.planillaCashCloses.find((r) => r.ref === pceTRef26);
+  expect("Ajuste: PCE-T 26 saldo = real", adjPceT?.closingCash ?? null, 2_934_000);
+  expect("Ajuste: PCE-T 26 Inicial intacto", adjPceT?.openingCash ?? null, 2_884_000);
+  const adjNext = openingCashForChainedPlanilla({
+    collectorRef: COB.ref,
+    routeName: "M",
+    date: "2026-09-27",
+    records: adj.planillaCashCloses,
+    monthCloses: [],
+    dayCloses: adj.dayCloses,
+  });
+  expect("Ajuste: Inicial M 27 = saldo real", adjNext.kind === "chain" ? adjNext.opening : null, 2_934_000);
+
+  const adjLedger = buildDayCashLedger({ ...base, dayCloses: adj.dayCloses, planillaCashCloses: adj.planillaCashCloses });
+  const realigned = alignChainLinksToLedger(adj.planillaCashCloses, adjLedger);
+  expect("Ajuste: libro no rebobina PCE-T", realigned.find((r) => r.ref === pceTRef26)?.closingCash ?? null, 2_934_000);
+
+  const again = commitCashAdjustment({
+    collectorRef: COB.ref,
+    real: 2_900_000,
+    reason: "Recontado",
+    by: "Admin",
+    dayCloses: adj.dayCloses,
+    planillaCashCloses: adj.planillaCashCloses,
+    now: new Date("2026-09-26T21:00:00.000-05:00"),
+  });
+  expect("Ajuste: re-editar corrige el mismo renglón", again.ok ? again.dayCloses.filter((r) => r.ref === cieRef26).length : null, 1);
+  expect("Ajuste: re-editar conserva saldo del cierre", again.ok ? again.record.cashAdjustment?.calculated ?? null : null, 3_084_000);
+  expect("Ajuste: re-editar nuevo real", again.ok ? again.record.cashFloat : null, 2_900_000);
+
+  const guardedAdj = keepSealedCashFloat(
+    adj.dayCloses,
+    alignDayClosesCollectedToPayments(adj.dayCloses, payments, [COB]),
+    "ajuste",
+  );
+  expect("Ajuste: proyecciones conservan el real", guardedAdj.find((r) => r.ref === cieRef26)?.cashFloat ?? null, 2_934_000);
+
+  const adjCycle = runOperationalDayCycle(
+    {
+      assignments: afterT.assignments ?? assignments,
+      routes: [],
+      logs: [],
+      dayCloses: adj.dayCloses,
+      dayExpenseDrafts: drafts,
+      payments,
+      loans,
+      clients,
+      collectors: [COB],
+      planillaCashCloses: adj.planillaCashCloses,
+      monthCloses: [],
+    },
+    new Date("2026-09-27T05:10:00.000Z"),
+  );
+  expect("Ajuste: auto-cierre 23:30 no lo pisa", adjCycle.dayCloses.find((r) => r.ref === cieRef26)?.cashFloat ?? null, 2_934_000);
+
+  const refs = joinCashAdjustmentRefs(["MOV-1"], adj.record.cashAdjustment);
+  const back = splitCashAdjustmentRefs(refs);
+  expect("Ajuste: viaja a la nube (real)", back.cashAdjustment?.real ?? null, 2_934_000);
+  expect("Ajuste: viaja a la nube (motivo)", back.cashAdjustment?.reason ?? null, "Conteo real de caja");
+  expect("Ajuste: refs de movimientos intactas", back.movementRefs.join(","), "MOV-1");
+
+  const histAdj = attachCashAdjustments(
+    [{ date: D, dateLabel: "26", saldo: adjLedger.dayFinal }],
+    COB.ref,
+    adj.dayCloses,
+  );
+  expect("Historial T · 26 renglón del cierre", histAdj[0].row.saldo, 3_084_000);
+  expect("Historial T · 26 renglón de ajuste", histAdj[0].adjustment?.real ?? null, 2_934_000);
 }
 
 if (failures) {

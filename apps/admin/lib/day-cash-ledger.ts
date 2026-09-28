@@ -18,6 +18,7 @@ import {
   expensesForCollectorDay,
   normalizeHistoryDate,
   sumExpenseLines,
+  type CashAdjustment,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
@@ -42,6 +43,7 @@ import { pesos } from "@/lib/finance";
 import type { ClientRow, CollectorRow, LoanRow, PaymentRow } from "@/lib/mock-data";
 import { normalizePaymentMethod } from "@/lib/payment-method";
 import {
+  findFullDayCieClose,
   isPlanillaCashChainRoute,
   openingCashForChainedPlanilla,
   planillaCashCloseRef,
@@ -91,8 +93,10 @@ export type DayCashLedger = {
   /** Caja viva / final de M = Inicial de T. */
   mClosing: number;
   t: RouteCashDay;
-  /** Saldo final del día = Inicial M de mañana. */
+  /** Saldo final del día según el libro (lo que selló el cierre). */
   dayFinal: number;
+  /** Ajuste de saldo real sobre el CIE- de ese día (supervisor). Su `real` es el Inicial M de mañana. */
+  cashAdjustment: CashAdjustment | null;
 };
 
 function dateIsoOf(raw: string) {
@@ -233,6 +237,8 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
     mClosing,
     t,
     dayFinal: pesos(mClosing + t.efectivo - t.gastos - t.prestamos),
+    cashAdjustment:
+      findFullDayCieClose(src.dayCloses, src.collectorRef, date)?.cashAdjustment ?? null,
   };
 }
 
@@ -327,6 +333,7 @@ export function alignChainLinksToLedger(
   const opening = ledger.mOpening.kind === "chain" ? pesos(ledger.mOpening.opening) : null;
   const mRef = planillaCashCloseRef(ledger.collectorRef, ledger.date, PLANILLA_CASH_CHAIN_PRIMARY);
   const tRef = planillaCashCloseRef(ledger.collectorRef, ledger.date, PLANILLA_CASH_CHAIN_SECONDARY);
+  const tClosing = ledger.cashAdjustment ? pesos(ledger.cashAdjustment.real) : ledger.dayFinal;
   let changed = false;
   const next = records.map((row) => {
     if (row.ref === mRef) {
@@ -338,11 +345,11 @@ export function alignChainLinksToLedger(
       return { ...row, openingCash, closingCash: ledger.mClosing };
     }
     if (row.ref === tRef) {
-      if (pesos(row.openingCash) === ledger.mClosing && pesos(row.closingCash) === ledger.dayFinal) {
+      if (pesos(row.openingCash) === ledger.mClosing && pesos(row.closingCash) === tClosing) {
         return row;
       }
       changed = true;
-      return { ...row, openingCash: ledger.mClosing, closingCash: ledger.dayFinal };
+      return { ...row, openingCash: ledger.mClosing, closingCash: tClosing };
     }
     return row;
   });
