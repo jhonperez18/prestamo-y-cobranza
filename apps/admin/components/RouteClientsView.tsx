@@ -5,6 +5,7 @@ import { Pill } from "@/components/ui";
 import { clientsOnRouteSorted } from "@/lib/client-route-order";
 import { computeLoanFinancials } from "@/lib/loan-balance";
 import { todayIso } from "@/lib/daily-dispatch";
+import { paymentVisitDate } from "@/lib/late-payment";
 import { canRenewLoan } from "@/lib/loan-renew";
 import { syncLoan } from "@/lib/loan-preview";
 import { computeLoanCuotasProgress, type CuotasProgress } from "@/lib/loan-cuotas-progress";
@@ -78,7 +79,7 @@ function paymentsTodayForClient(
 ) {
   const loanRefs = new Set(loansForClient(clientRef, loans).map((row) => row.ref));
   return payments.filter(
-    (row) => row.loanRef && loanRefs.has(row.loanRef) && row.paidDate === today,
+    (row) => row.loanRef && loanRefs.has(row.loanRef) && paymentVisitDate(row) === today,
   );
 }
 

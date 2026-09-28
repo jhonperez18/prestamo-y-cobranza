@@ -17,6 +17,7 @@ import {
   isDailyCollectionDay,
 } from "@/lib/colombia-holidays";
 import { todayIso } from "@/lib/daily-dispatch";
+import { paymentVisitDate } from "@/lib/late-payment";
 import type { LoanRow, StatusKind } from "@/lib/mock-data";
 
 /** 4.º día hábil sin pago → mora. Alertas visibles: 1, 2 y 3. */
@@ -26,6 +27,8 @@ export type CollectionPaymentTouch = {
   loanRef?: string;
   paidDate?: string;
   amount?: number;
+  /** Pago tardío: la alerta cuenta la visita cubierta, no el día de caja. */
+  lateFor?: { date?: string };
 };
 
 export function loanCollectionAlerts(loan: Pick<LoanRow, "collectionAlerts">) {
@@ -70,7 +73,7 @@ export function loanPaidOnDate(
   return payments.some(
     (row) =>
       row.loanRef === loanRef &&
-      paymentDateIso(row.paidDate || "") === date &&
+      paymentDateIso(paymentVisitDate(row)) === date &&
       (Number(row.amount) || 0) > 0,
   );
 }
@@ -85,7 +88,7 @@ export function lastPaymentDateIso(
   for (const row of payments) {
     if (row.loanRef !== loanRef) continue;
     if ((Number(row.amount) || 0) <= 0) continue;
-    const day = paymentDateIso(row.paidDate || "");
+    const day = paymentDateIso(paymentVisitDate(row));
     if (!day) continue;
     if (day > latest) latest = day;
   }

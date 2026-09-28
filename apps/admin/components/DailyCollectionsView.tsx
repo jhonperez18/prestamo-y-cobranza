@@ -14,6 +14,7 @@ import {
 } from "@/lib/daily-collection-plan";
 import { dayCloseSummary } from "@/lib/collector-dispatch-sync";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
+import { paymentVisitDate } from "@/lib/late-payment";
 import { syncLoan } from "@/lib/loan-preview";
 import {
   dispatchDateHint,
@@ -55,7 +56,7 @@ function paymentForDailyRow(
       (row) =>
         row.loanRef === loanRef &&
         (Number(row.amount) || 0) > 0 &&
-        (normalizeHistoryDate(row.paidDate || "") || "") === day,
+        (normalizeHistoryDate(paymentVisitDate(row)) || "") === day,
     )
     .slice()
     .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));

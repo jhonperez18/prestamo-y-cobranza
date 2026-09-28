@@ -6,6 +6,7 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
 import { operativeExpenseLines } from "@/lib/expense-lines";
 import { money, type PaymentRow } from "@/lib/mock-data";
+import { paymentVisitDate } from "@/lib/late-payment";
 import { routeBlockStarts } from "@/lib/client-route-order";
 import {
   normalizePaymentMethod,
@@ -47,7 +48,7 @@ function paymentForVisit(item: DailyCollectionAssignment, payments: PaymentRow[]
     (row) =>
       !row.voidedAt?.trim() &&
       row.type !== "Anulado" &&
-      (row.paidDate || "").trim() === day &&
+      paymentVisitDate(row) === day &&
       (row.loanRef || "") === loanRef &&
       (!row.collectorRef || !item.collectorRef || row.collectorRef === item.collectorRef) &&
       (Number(row.amount) || 0) > 0,

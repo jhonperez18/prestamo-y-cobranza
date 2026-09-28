@@ -66,6 +66,28 @@ export function cuotaTarget(loan: LoanRow): CuotaTarget | null {
   return null;
 }
 
+/**
+ * Cuota abierta de un día concreto (pago tardío).
+ * Sin cronograma: cuota pactada como referencia (índice -1).
+ */
+export function cuotaTargetOn(loan: LoanRow, date: string): CuotaTarget | null {
+  const day = date.trim();
+  const schedule = loan.schedule ?? [];
+  if (schedule.length) {
+    const index = schedule.findIndex((line) => line.date === day && lineRemaining(line) > 0);
+    if (index < 0) return null;
+    const line = schedule[index];
+    return {
+      index,
+      remaining: Math.min(lineRemaining(line), loan.balance),
+      date: line.date,
+      kind: line.kind,
+    };
+  }
+  const fallback = Math.min(loan.installment ?? 0, loan.balance);
+  return fallback > 0 ? { index: -1, remaining: fallback, date: day } : null;
+}
+
 export function targetLabel(target: CuotaTarget | null) {
   if (!target) return "No hay cuota pendiente.";
   const concept = chargeLabel(target.kind);
@@ -135,11 +157,15 @@ export function paymentRowKind(result: Pick<ApplyPaySuccess, "partial">): Status
   return result.partial ? "partial" : "paid";
 }
 
-export function applyPay(loan: LoanRow, kind: PayKind, amount: number): ApplyPayResult {
+export function applyPay(
+  loan: LoanRow,
+  kind: PayKind,
+  amount: number,
+  target: CuotaTarget | null = cuotaTarget(loan),
+): ApplyPayResult {
   const error = validatePay(loan, kind, amount);
   if (error) return { ok: false, error };
   const amountPesos = pesos(amount);
-  const target = cuotaTarget(loan);
   const schedule = loan.schedule?.map((line) => ({ ...line }));
   const type: "Cuota" | "Abono" = kind === "cuota" ? "Cuota" : "Abono";
   const partial = Boolean(target && amountPesos < target.remaining);

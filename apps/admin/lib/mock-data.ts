@@ -127,6 +127,22 @@ export type PaymentRow = {
   voidedAt?: string;
   voidReason?: string;
   voidedBy?: string;
+  /**
+   * Pago tardío (solo panel): la plata entra el día de `paidDate` (caja de hoy),
+   * pero cubre la visita/cuota de `lateFor.date` (día ya cerrado).
+   * Viaja en charge_label (`TARDE:…`) para la nube.
+   */
+  lateFor?: LatePaymentMark;
+};
+
+export type LatePaymentMark = {
+  /** ISO del día de la cuota que se dejó de registrar. */
+  date: string;
+  /** Quién lo registró en el panel. */
+  by: string;
+  /** ISO de cuándo se registró. */
+  at: string;
+  reason: string;
 };
 
 export type ActivityRow = {

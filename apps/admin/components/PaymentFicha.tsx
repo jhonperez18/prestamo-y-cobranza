@@ -14,6 +14,7 @@ import {
 import { paymentHasReceipt, paymentHasSignature, primaryPaymentEvidence } from "@/lib/payment-evidence";
 import { money, type LoanRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
 import { isPaymentLive } from "@/lib/live-payments";
+import { isLatePayment, latePaymentNote } from "@/lib/late-payment";
 
 type Props = {
   payment: PaymentRow;
@@ -109,6 +110,12 @@ export function PaymentFicha({
         <p className="ficha-empty" style={{ marginBottom: 10 }}>
           Anulado {payment.voidedAt?.slice(0, 10) || ""} · {payment.voidReason || "—"} ·{" "}
           {payment.voidedBy || "—"}
+        </p>
+      ) : null}
+
+      {isLatePayment(payment) ? (
+        <p className="ficha-warn" style={{ marginBottom: 10 }}>
+          {latePaymentNote(payment)}
         </p>
       ) : null}
 

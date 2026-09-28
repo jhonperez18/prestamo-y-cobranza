@@ -107,6 +107,23 @@ Detalle: `apps/admin/lib/day-cash-ledger.ts`, `apps/admin/lib/planilla-cash-chai
 4. Ayer y atrás: no recalcular saldos viejos; solo anclar hoy al CIE de ayer.
 5. Préstamos del día: `dayLoanDisbursementRows`, repartidos por ruta del cliente (libro `.m` / `.t`).
 
+## Pago tardío (solo panel del taller)
+
+Corrige un cobro que no se anotó en un día ya cerrado. Un solo camino: `commitLatePayment`.
+
+| Pieza | Regla |
+| --- | --- |
+| Plata | Entra **hoy** (`paidDate` = hoy) a la caja del cobrador, en la ruta del cliente |
+| Cuota cubierta | La del día elegido (`dueDate` / `lateFor.date`): sin alerta ni mora por ese día |
+| Planilla de hoy | El cliente sigue **por cobrar** (hay que cobrar la de hoy) |
+| Día cubierto | Planilla sellada y CIE- **no se tocan** |
+| Nota | `lateFor` {día, quién, cuándo, motivo} → nube en `charge_label` (`TARDE:…`) |
+
+- Visita ↔ pago = `paymentVisitDate` (planilla, alertas, mora). Caja/CIE/banco = `paidDate`.
+- El cobrador no lo puede hacer; en su app lo ve solo para leer («Tardío dd/mm»).
+- No entra a una caja ya cerrada hoy. Un día = un pago tardío por préstamo.
+- Candado: `assert-cash-chain.mjs` sección 6.
+
 ## N/P por ruta (INICIO)
 
 Cada ruta tiene su propio **N/P** (junto a Historial en la ficha).

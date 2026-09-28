@@ -1,10 +1,12 @@
 /**
  * Une cobros (PG) con visitas de planilla.
  * Regla: si existe pago vivo del día → visita cobrada.
+ * “Del día” = `paymentVisitDate`: un pago tardío cubre su visita, no la de hoy.
  * Si el PG se anula → la visita vuelve a pendiente (reversa).
  */
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { accumulatedDueForLoan } from "@/lib/daily-collection-plan";
+import { paymentVisitDate } from "@/lib/late-payment";
 import { isPaymentLive } from "@/lib/live-payments";
 import type { LoanRow, PaymentRow } from "@/lib/mock-data";
 import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
@@ -128,7 +130,7 @@ export function reconcilePaymentsOntoPlanilla(
 
     const day = row.dispatchDate;
     const match = live.find(
-      (pay) => sameDay(pay.paidDate, day) && paymentMatchesVisit(pay, row),
+      (pay) => sameDay(paymentVisitDate(pay), day) && paymentMatchesVisit(pay, row),
     );
 
     if (!match) return row;
@@ -181,12 +183,12 @@ export function sealOpenVisitsWithLaterPayments(
 
     const match = live
       .filter((pay) => {
-        const paid = (pay.paidDate || "").trim();
+        const paid = paymentVisitDate(pay);
         if (!paid || paid < day) return false;
         if (until && paid > until) return false;
         return paymentMatchesVisit(pay, row);
       })
-      .sort((a, b) => (a.paidDate || "").localeCompare(b.paidDate || ""))[0];
+      .sort((a, b) => paymentVisitDate(a).localeCompare(paymentVisitDate(b)))[0];
 
     if (!match) return row;
     return {

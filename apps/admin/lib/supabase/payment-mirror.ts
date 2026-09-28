@@ -25,6 +25,7 @@ import {
 } from "@/lib/payment-evidence-store";
 import { normalizePaymentMethod, type PaymentMethod } from "@/lib/payment-method";
 import { parseComboChargeLabel } from "@/lib/payment-combo";
+import { encodeLateChargeLabel, parseLateChargeLabel } from "@/lib/late-payment";
 import { isDeletedRef } from "@/lib/deleted-ids";
 import {
   emitMirrorQueueChanged,
@@ -94,7 +95,7 @@ export function paymentRowToMirror(payment: PaymentRow): PaymentMirrorRow | null
     due_date: normalizeHistoryDate(payment.dueDate || "") || payment.dueDate || null,
     charge_label: payment.voidedAt
       ? `ANULADO: ${payment.voidReason || "—"} · ${payment.voidedBy || "—"} · ${payment.voidedAt}`
-      : payment.chargeLabel?.trim() || null,
+      : encodeLateChargeLabel(payment.chargeLabel, payment.lateFor) || null,
     method: normalizePaymentMethod(payment.method),
     source: payment.source || "ruta",
     payment_type: payment.voidedAt ? "Anulado" : payment.type || null,
@@ -143,9 +144,10 @@ export function mirrorRowToPaymentRow(row: PaymentMirrorRow): PaymentRow | null 
     voidReason = "Anulado";
   }
 
+  const lateParsed = isVoided ? {} : parseLateChargeLabel(row.charge_label);
   const comboParsed = isVoided
     ? { chargeLabel: undefined as string | undefined, comboGroupId: undefined as string | undefined }
-    : parseComboChargeLabel(row.charge_label);
+    : parseComboChargeLabel(lateParsed.chargeLabel);
 
   return {
     id: row.id?.trim() || undefined,
@@ -172,6 +174,7 @@ export function mirrorRowToPaymentRow(row: PaymentMirrorRow): PaymentRow | null 
     voidedAt,
     voidReason,
     voidedBy,
+    ...(lateParsed.lateFor ? { lateFor: lateParsed.lateFor } : {}),
   };
 }
 

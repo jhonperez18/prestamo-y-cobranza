@@ -26,6 +26,7 @@ import {
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 import { pendingBalance, pesos } from "@/lib/finance";
 import { displayToIso } from "@/lib/loan-preview";
+import { paymentVisitDate } from "@/lib/late-payment";
 import {
   catalogRoutes,
   routeIsActive,
@@ -88,7 +89,7 @@ function paymentTouchesLoanOnDate(
   return (
     paymentIsLive(pay) &&
     (pay.loanRef || "") === loanRef &&
-    (pay.paidDate || "").trim() === date.trim() &&
+    paymentVisitDate(pay) === date.trim() &&
     pesos(pay.amount ?? 0) > 0
   );
 }

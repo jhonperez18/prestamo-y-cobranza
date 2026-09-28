@@ -123,6 +123,7 @@ import {
   queuePaymentsMirror,
 } from "@/lib/supabase/payment-mirror";
 import { commitVoidPayment } from "@/lib/commit-void-payment";
+import { commitLatePayment, type LatePaymentDraft } from "@/lib/commit-late-payment";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror, flushCatalogMirrorQueues } from "@/lib/supabase/catalog-mirror";
 import {
@@ -344,6 +345,7 @@ export function useWorkspace({
   const [listDateTo, setListDateTo] = useState(todayIso);
   const [listQuery, setListQuery] = useState("");
   const [payMode, setPayMode] = useState<PayKind | null>(null);
+  const [latePayOpen, setLatePayOpen] = useState(false);
   const [loanTab, setLoanTab] = useState<LoanTab>("ficha");
   const navigationKey = `${moduleId}:${viewId}:${openRef}:${fileTab}:${openUserRef}:${openCollectorRef}:${openRouteRef}:${collectorTab}:${userTab}`;
   const [seenKey, setSeenKey] = useState(navigationKey);
@@ -959,6 +961,7 @@ export function useWorkspace({
     setOpenLoanRef(ref);
     setLoanTab("ficha");
     setPayMode(null);
+    setLatePayOpen(false);
     onGo("prestamos", "cuenta");
   }
 
@@ -2412,20 +2415,105 @@ export function useWorkspace({
     })();
   }
 
+  async function registerLatePayment(input: LatePaymentDraft) {
+    if (!openLoan) return false;
+    const loan = openLoan;
+    const base = await syncPaymentsFromCloud();
+    const committed = commitLatePayment({
+      loanRef: loan.ref,
+      coversDate: input.coversDate,
+      amount: input.amount,
+      method: input.method,
+      reason: input.reason,
+      registeredBy: adminName || session.name || session.username || "admin",
+      payments: base,
+      loans,
+      clients,
+      assignments: dailyAssignments,
+      collectors,
+      dayCloses,
+    });
+    if (!committed.ok) {
+      onToast(committed.error);
+      return false;
+    }
+    const projected = projectOperationalMoney({
+      loans: committed.loans,
+      payments: committed.payments,
+      collectors,
+      clients: committed.clients,
+      dayCloses,
+      dayExpenseDrafts,
+      bankAccounts,
+      bankMovements,
+      miscPayments,
+      assignments: committed.assignments,
+      dailyLogs,
+    });
+
+    setLatePayOpen(false);
+    setPayments(committed.payments);
+    setClients(committed.clients);
+    setLoans(projected.loans);
+    setDayCloses(projected.dayCloses);
+    setDailyAssignments(projected.assignments);
+    setDailyLogs(projected.dailyLogs);
+    setBankMovements(projected.bankMovements);
+    writeDemoJson(DEMO_PAYMENTS_KEY, committed.payments);
+    writeDemoJson(DEMO_LOANS_KEY, projected.loans);
+    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, projected.dayCloses);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
+    writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
+
+    const label = `Pago tardío ${committed.payment.ref}`;
+    onToast(`${label} guardado · subiendo a la nube…`);
+    const mirror = await queuePaymentMirror(committed.payment);
+    const nextLoan = projected.loans.find((entry) => entry.ref === loan.ref);
+    if (nextLoan) queueLoanMirror(nextLoan);
+    const lateClient = committed.clients.find((entry) => entry.ref === loan.clientRef);
+    if (lateClient) queueClientMirror(lateClient);
+    queueAssignmentsMirror(projected.assignments);
+    try {
+      let payFlush = await flushPaymentMirrorQueue();
+      if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();
+      await Promise.all([flushCatalogMirrorQueues(), flushOpsMirrorQueues()]);
+      if (!mirror.ok || payFlush.left > 0) {
+        onToast(`${label} guardado en este aparato · nube pendiente (reintenta solo).`);
+      } else {
+        onToast(`${label} listo en la nube.`);
+      }
+    } catch (error) {
+      console.error("[pago-tardio] flush nube", error);
+      onToast(`${label} guardado en este aparato · nube pendiente (reintenta solo).`);
+    }
+    return true;
+  }
+
   function selectClientLoan(ref: string) {
     setOpenLoanRef(ref);
     setLoanTab("ficha");
     setPayMode(null);
+    setLatePayOpen(false);
   }
 
   function goLoanTab(id: LoanTab) {
     setLoanTab(id);
-    if (id !== "pagos") setPayMode(null);
+    if (id !== "pagos") {
+      setPayMode(null);
+      setLatePayOpen(false);
+    }
   }
 
   function startPay(kind: PayKind) {
     setLoanTab("pagos");
+    setLatePayOpen(false);
     setPayMode(kind);
+  }
+
+  function startLatePay() {
+    setLoanTab("pagos");
+    setPayMode(null);
+    setLatePayOpen(true);
   }
   return {
     key,
@@ -2614,6 +2702,10 @@ export function useWorkspace({
     saveUserPermissions,
     deleteLoan,
     registerPay,
+    registerLatePayment,
+    latePayOpen,
+    setLatePayOpen,
+    startLatePay,
     selectClientLoan,
     goLoanTab,
     startPay,

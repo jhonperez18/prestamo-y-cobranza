@@ -15,6 +15,7 @@ import {
 } from "@/lib/planilla-payment-reconcile";
 import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
+import { paymentVisitDate } from "@/lib/late-payment";
 import type {
   ClientRow,
   CollectorRow,
@@ -428,7 +429,7 @@ export function applyPaymentToAssignments(
 
   const targetClient = clientRef?.trim() || "";
   const collectorRef = payment.collectorRef?.trim() || "";
-  const dateHints = [...new Set([dispatchDate, payment.paidDate].filter(Boolean))] as string[];
+  const dateHints = [...new Set([dispatchDate, paymentVisitDate(payment)].filter(Boolean))] as string[];
 
   function rowMatches(row: DailyCollectionAssignment, date: string) {
     if (row.dispatchDate !== date) return false;

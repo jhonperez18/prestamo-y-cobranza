@@ -14,6 +14,7 @@ import {
   type CuotasProgress,
 } from "@/lib/loan-cuotas-progress";
 import { isPaymentLive } from "@/lib/live-payments";
+import { paymentVisitDate } from "@/lib/late-payment";
 import type { LoanRow, PaymentRow } from "@/lib/mock-data";
 import { todayIso } from "@/lib/daily-dispatch";
 import {
@@ -67,7 +68,7 @@ export function planillaLivePaymentForVisit(
   return payments.find(
     (entry) =>
       isPaymentLive(entry) &&
-      (entry.paidDate || "").trim() === day &&
+      paymentVisitDate(entry) === day &&
       paymentBelongsToVisit(entry, row),
   );
 }
@@ -141,7 +142,7 @@ export function enrichSupervisorPlanillaRow(
     ? payments.filter(
         (entry) =>
           !entry.voidedAt?.trim() &&
-          (entry.paidDate || "").trim() === row.dispatchDate &&
+          paymentVisitDate(entry) === row.dispatchDate &&
           entry.loanRef === row.loanRef &&
           Boolean(paymentComboGroupId(entry)),
       )

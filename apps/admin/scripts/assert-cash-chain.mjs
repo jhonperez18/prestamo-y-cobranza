@@ -13,6 +13,8 @@
  *      y ese número es el Inicial M del 27.
  *   5. Cada planilla con lo suyo: préstamo y gasto hechos en T salen de T (no de M),
  *      caja T = Inicial + efectivo − préstamos − gastos, y eso es el Inicial M del 27.
+ *   6. Pago tardío: la plata entra hoy (caja sube), cubre la cuota del día cerrado,
+ *      la visita de hoy sigue por cobrar y el CIE del día cubierto no cambia.
  */
 import { register } from "node:module";
 
@@ -348,6 +350,124 @@ const tNext = openingCashForChainedPlanilla({
   dayCloses: tAfterT.dayCloses,
 });
 expect("Inicial M 27 = caja T del 26", tNext.kind === "chain" ? tNext.opening : null, 2_974_000);
+
+// 6. Pago tardío (panel): cuota del 25 olvidada. La plata entra el 26; el 25 no se reabre.
+console.log("— Pago tardío —");
+const { commitLatePayment } = await import("@/lib/commit-late-payment");
+const { encodeLateChargeLabel, parseLateChargeLabel } = await import("@/lib/late-payment");
+const { liveLoanCollectionAlerts } = await import("@/lib/collection-alerts");
+const { reconcilePaymentsOntoPlanilla } = await import("@/lib/planilla-payment-reconcile");
+
+const clientL = { ref: "CLI-M3", name: "Fito", lastName: "M", route: "M", pending: 60_000 };
+const scheduleL = [
+  { date: Y, amount: 20_000, kind: "cuota", paid: 0 },
+  { date: D, amount: 20_000, kind: "cuota", paid: 0 },
+  { date: "2026-09-28", amount: 20_000, kind: "cuota", paid: 0 },
+];
+const loanL = {
+  ref: "P-L1",
+  clientRef: "CLI-M3",
+  client: "Fito M",
+  date: "24/09/2026",
+  capital: 60_000,
+  total: 60_000,
+  paid: 0,
+  balance: 60_000,
+  installment: 20_000,
+  status: "Activo",
+  kind: "pending",
+  schedule: scheduleL,
+};
+const lateVisitY = visit("V-L-Y", "CLI-M3", "M", Y, {
+  loanRef: "P-L1",
+  visitStatus: "omitido",
+  amountDue: 20_000,
+  dayClosedAt: `${Y}T23:30:00.000-05:00`,
+});
+const lateVisitD = visit("V-L-D", "CLI-M3", "M", D, {
+  loanRef: "P-L1",
+  visitStatus: "pendiente",
+  amountDue: 20_000,
+});
+const lateBase = {
+  ...base,
+  clients: [...clients, clientL],
+  loans: [...loans, loanL],
+  assignments: [...assignments, lateVisitY, lateVisitD],
+};
+const lateNow = new Date("2026-09-26T15:00:00.000-05:00");
+const late = commitLatePayment({
+  loanRef: "P-L1",
+  coversDate: Y,
+  amount: 20_000,
+  method: "efectivo",
+  reason: "Lo recibió y no lo anotó",
+  registeredBy: "Admin",
+  payments: lateBase.payments,
+  loans: lateBase.loans,
+  clients: lateBase.clients,
+  assignments: lateBase.assignments,
+  collectors: [COB],
+  dayCloses: [cie25],
+  now: lateNow,
+});
+expect("Pago tardío: se registra", late.ok, true);
+if (late.ok) {
+  expect("Pago tardío: la plata entra el 26", late.payment.paidDate, D);
+  expect("Pago tardío: cubre la cuota del 25", late.payment.lateFor?.date ?? null, Y);
+  expect("Pago tardío: caja del cobrador de la ruta", late.payment.collectorRef, COB.ref);
+  const visitD = late.assignments.find((r) => r.itemId === "V-L-D");
+  expect("Pago tardío: visita de hoy sigue por cobrar", visitD?.visitStatus ?? null, "pendiente");
+  const visitY = late.assignments.find((r) => r.itemId === "V-L-Y");
+  expect("Pago tardío: planilla del 25 sellada intacta", visitY?.visitStatus ?? null, "omitido");
+  const repull = reconcilePaymentsOntoPlanilla(late.assignments, late.payments, late.loans);
+  expect("Pago tardío: un pull no marca la visita de hoy", repull.find((r) => r.itemId === "V-L-D")?.visitStatus ?? null, "pendiente");
+  const loanAfter = late.loans.find((r) => r.ref === "P-L1");
+  expect("Pago tardío: cuota del 25 pagada", loanAfter?.schedule?.find((l) => l.date === Y)?.paid ?? null, 20_000);
+  expect("Pago tardío: cuota del 26 abierta", loanAfter?.schedule?.find((l) => l.date === D)?.paid ?? 0, 0);
+  expect("Pago tardío: sin alerta hoy", liveLoanCollectionAlerts(loanAfter, late.payments, D), 0);
+  expect("Pago tardío: si no paga el 26, el lunes 28 = Alerta 1", liveLoanCollectionAlerts(loanAfter, late.payments, "2026-09-28"), 1);
+
+  const ledgerBefore = buildDayCashLedger(lateBase);
+  const ledgerAfter = buildDayCashLedger({
+    ...lateBase,
+    payments: late.payments,
+    loans: late.loans,
+    clients: late.clients,
+    assignments: late.assignments,
+  });
+  expect("Pago tardío: caja M de hoy sube el monto", ledgerAfter.mClosing - ledgerBefore.mClosing, 20_000);
+  const alignedLate = keepSealedCashFloat(
+    [cie25],
+    alignDayClosesCollectedToPayments([cie25], late.payments, [COB]),
+    "pago-tardio",
+  );
+  expect("Pago tardío: CIE-25 recaudo intacto", alignedLate[0].collected, 2_090_000);
+  expect("Pago tardío: CIE-25 saldo intacto", alignedLate[0].cashFloat, 2_704_000);
+
+  const again = commitLatePayment({
+    loanRef: "P-L1",
+    coversDate: Y,
+    amount: 20_000,
+    method: "efectivo",
+    reason: "doble",
+    registeredBy: "Admin",
+    payments: late.payments,
+    loans: late.loans,
+    clients: late.clients,
+    assignments: late.assignments,
+    collectors: [COB],
+    dayCloses: [cie25],
+    now: lateNow,
+  });
+  expect("Pago tardío: no se duplica el mismo día", again.ok, false);
+
+  const label = encodeLateChargeLabel("Cuota", late.payment.lateFor);
+  const parsed = parseLateChargeLabel(label);
+  expect("Pago tardío: marca viaja a la nube (fecha)", parsed.lateFor?.date ?? null, Y);
+  expect("Pago tardío: marca viaja a la nube (motivo)", parsed.lateFor?.reason ?? null, "Lo recibió y no lo anotó");
+  expect("Pago tardío: concepto intacto", parsed.chargeLabel ?? null, "Cuota");
+}
 
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);

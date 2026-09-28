@@ -5,6 +5,7 @@
 import type { PaymentMethod } from "@/lib/payment-method";
 import type { PaymentRow } from "@/lib/mock-data";
 import { isPaymentLive } from "@/lib/live-payments";
+import { paymentVisitDate } from "@/lib/late-payment";
 
 const COMBO_CHARGE_PREFIX = "CMB:";
 
@@ -61,7 +62,7 @@ export function visitHasCombinedPayment(
   if (!day) return false;
   const live = payments.filter((row) => {
     if (!isPaymentLive(row)) return false;
-    if ((row.paidDate || "").trim() !== day) return false;
+    if (paymentVisitDate(row) !== day) return false;
     if (input.loanRef && row.loanRef && row.loanRef !== input.loanRef) return false;
     return Boolean(paymentComboGroupId(row));
   });

@@ -8,6 +8,7 @@ import { Pill } from "@/components/ui";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { LOAN_PAYMENT_COLUMNS, LOAN_PAYMENT_COLUMNS_STORAGE_KEY, LOAN_PAYMENT_DEFAULT_COLS } from "@/lib/loan-payment-columns";
 import { money, type LoanRow, type PaymentRow } from "@/lib/mock-data";
+import { isLatePayment, latePaymentNote, latePaymentTag } from "@/lib/late-payment";
 import { normalizePaymentMethod, paymentMethodInitial, paymentMethodKind, paymentMethodLabel } from "@/lib/payment-method";
 import {
   enrichPaymentMovement,
@@ -132,7 +133,17 @@ export function LoanPaymentsTable({
                     ) : null}
                     {isVisible("paidDate") ? <td>{movement.paidDate}</td> : null}
                     {isVisible("paidTime") ? <td>{movement.paidTime}</td> : null}
-                    {isVisible("concept") ? <td>{movement.chargeLabel}</td> : null}
+                    {isVisible("concept") ? (
+                      <td>
+                        {movement.chargeLabel}
+                        {payment && isLatePayment(payment) ? (
+                          <>
+                            {" "}
+                            <Pill label={latePaymentTag(payment)} kind="warn" title={latePaymentNote(payment)} />
+                          </>
+                        ) : null}
+                      </td>
+                    ) : null}
                     {isVisible("collector") ? (
                       <td>{movement.collector}</td>
                     ) : null}

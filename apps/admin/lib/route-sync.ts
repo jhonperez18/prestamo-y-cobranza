@@ -1,6 +1,7 @@
 import { activeLoans, loansForClient, type LoanRow, type PaymentRow, type RouteRow, type RouteStop } from "@/lib/mock-data";
 import { applyPay, cuotaTarget, validatePay, type ApplyPaySuccess, type PayKind } from "@/lib/loan-pay";
 import { isPaymentLive } from "@/lib/live-payments";
+import { paymentVisitDate } from "@/lib/late-payment";
 import type { PaymentMethod } from "@/lib/payment-method";
 import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
 import { validatePaymentEvidence } from "@/lib/payment-evidence";
@@ -118,8 +119,7 @@ export function findDailyClientPayment(
     payments.find((row) => {
       if (!isPaymentLive(row)) return false;
       if (!row.loanRef || !loanRefs.has(row.loanRef)) return false;
-      const paid = (row.paidDate || "").trim();
-      return paid === day;
+      return paymentVisitDate(row) === day;
     }) ?? null
   );
 }

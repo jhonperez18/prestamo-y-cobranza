@@ -5,6 +5,7 @@ import { CollectorPayForm } from "@/components/CollectorPayForm";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import type { QuickLoanDraft } from "@/lib/street-client-loan";
 import { Pill } from "@/components/ui";
+import { isLatePayment, latePaymentNote, latePaymentTag } from "@/lib/late-payment";
 import {
   collectorHasOpenPlanillaWork,
   collectorMobileQueue,
@@ -1982,6 +1983,12 @@ export function CollectorMobileApp({
                   <div className="collector-mobile-dense-row is-recaudo-row">
                     <div className="collector-mobile-visit-who">
                       <strong>{payerName(pay, loans, clients)}</strong>
+                      {isLatePayment(pay) ? (
+                        <>
+                          {" "}
+                          <Pill label={latePaymentTag(pay)} kind="warn" title={latePaymentNote(pay)} />
+                        </>
+                      ) : null}
                     </div>
                     <span className="is-done-loan">
                       {canOfferReloan ? (

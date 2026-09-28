@@ -9,6 +9,7 @@ import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import { pesos } from "@/lib/finance";
 import { evidenceForMirror } from "@/lib/payment-evidence";
 import { parseComboChargeLabel } from "@/lib/payment-combo";
+import { encodeLateChargeLabel, parseLateChargeLabel } from "@/lib/late-payment";
 import { normalizePaymentMethod, type PaymentMethod } from "@/lib/payment-method";
 import type { PaymentRow, StatusKind } from "@/lib/mock-data";
 import { materializeEvidenceForDatabase } from "@/lib/supabase/payment-evidence-storage";
@@ -83,7 +84,7 @@ function paymentToRpcPart(payment: PaymentRow): Record<string, unknown> | null {
     due_date: normalizeHistoryDate(payment.dueDate || "") || payment.dueDate || null,
     charge_label: payment.voidedAt
       ? `ANULADO: ${payment.voidReason || "—"} · ${payment.voidedBy || "—"} · ${payment.voidedAt}`
-      : payment.chargeLabel?.trim() || null,
+      : encodeLateChargeLabel(payment.chargeLabel, payment.lateFor) || null,
     method: normalizePaymentMethod(payment.method),
     source: payment.source || "ruta",
     payment_type: payment.voidedAt ? "Anulado" : payment.type || null,
@@ -108,7 +109,9 @@ function rpcPaymentToRow(raw: RpcPayment, fallback?: PaymentRow): PaymentRow | n
   if (!ref || !loanRef || !paidDate || !(amount > 0)) return fallback ?? null;
 
   const paidTime = (raw.paid_time || "").trim() || fallback?.paidTime || "00:00";
-  const comboParsed = parseComboChargeLabel(raw.charge_label);
+  const lateParsed = parseLateChargeLabel(raw.charge_label);
+  const comboParsed = parseComboChargeLabel(lateParsed.chargeLabel);
+  const lateFor = lateParsed.lateFor ?? fallback?.lateFor;
   const method = normalizePaymentMethod(
     (raw.method || fallback?.method || "efectivo") as PaymentMethod,
   );
@@ -141,6 +144,7 @@ function rpcPaymentToRow(raw: RpcPayment, fallback?: PaymentRow): PaymentRow | n
       (typeof raw.idempotency_key === "string" && raw.idempotency_key.trim()) ||
       fallback?.idempotencyKey,
     updatedAt: raw.updated_at || fallback?.updatedAt,
+    ...(lateFor ? { lateFor } : {}),
   };
 }
 

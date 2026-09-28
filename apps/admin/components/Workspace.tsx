@@ -59,6 +59,7 @@ import { ClientDetailTable } from "@/components/ClientDetailTable";
 import { LoanDetailView } from "@/components/LoanDetailView";
 import { LoanFichaGrid } from "@/components/LoanFichaGrid";
 import { LoanPayForm } from "@/components/LoanPayForm";
+import { LatePayForm } from "@/components/LatePayForm";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { PaymentFicha } from "@/components/PaymentFicha";
 import { PaymentStatusPill } from "@/components/PaymentStatusPill";
@@ -487,6 +488,10 @@ export function Workspace(props: WorkspaceProps) {
     saveUserPermissions,
     deleteLoan,
     registerPay,
+    registerLatePayment,
+    latePayOpen,
+    setLatePayOpen,
+    startLatePay,
     selectClientLoan,
     goLoanTab,
     startPay,
@@ -939,6 +944,9 @@ export function Workspace(props: WorkspaceProps) {
                         <button type="button" className="btn-bar" onClick={() => startPay("abono")}>
                           Abono
                         </button>
+                        <button type="button" className="btn-bar" onClick={startLatePay}>
+                          Pago tardío
+                        </button>
                       </>
                     ) : null}
                     {loanTab !== "pagos" ? (
@@ -1011,6 +1019,16 @@ export function Workspace(props: WorkspaceProps) {
                   mode={payMode}
                   onCancel={() => setPayMode(null)}
                   onRegister={(amount, payMethod) => registerPay(payMode, amount, payMethod)}
+                />
+              ) : null}
+
+              {openLoan && latePayOpen && loanTab === "pagos" ? (
+                <LatePayForm
+                  key={openLoan.ref}
+                  loan={openLoan}
+                  payments={payments}
+                  onCancel={() => setLatePayOpen(false)}
+                  onRegister={registerLatePayment}
                 />
               ) : null}
 
