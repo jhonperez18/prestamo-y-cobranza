@@ -262,7 +262,12 @@ export function BankReconciledLedgerView({
               rows.map((row) => (
                 <tr
                   key={row.ref}
-                  className={isIncome ? "bank-row-income" : "bank-row-expense"}
+                  className={[
+                    isIncome ? "bank-row-income" : "bank-row-expense",
+                    !isIncome && row.category === "prestamo_ruta" ? "is-prestamo-ruta" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
                   onClick={() => {
                     if (isIncome && paymentRefForMovement(row) && onOpenPaymentFicha) {
                       onOpenPaymentFicha(paymentRefForMovement(row)!);
