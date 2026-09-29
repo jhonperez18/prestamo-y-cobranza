@@ -10430,6 +10430,53 @@
     }
     .loan-report-client-ficha .loan-report-ficha-grid {
       padding: 6px 10px 8px;
+    /* Pagar cuota / Abono (panel): compacto ÔÇö resumen angosto y cada m├│dulo en un rengl├│n. */
+    .pay-box.is-compact { padding: 10px 12px 8px; margin-bottom: 10px; }
+    .pay-box.is-compact h2 { font-size: 16px; margin: 0 0 6px; }
+    .pay-box.is-compact .table-wrap { width: max-content; max-width: 100%; }
+    .pay-box.is-compact table.mini-grid { width: auto; min-width: 360px; }
+    .pay-box.is-compact table.mini-grid th.is-concepto,
+    .pay-box.is-compact table.mini-grid td.is-concepto { text-align: left !important; padding-right: 28px !important; }
+    .pay-box.is-compact table.mini-grid th.is-valor,
+    .pay-box.is-compact table.mini-grid td.is-valor { text-align: right !important; }
+    .pay-box.is-compact .pay-line {
+      display: grid;
+      grid-template-columns: 140px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      margin-top: 8px;
+    }
+    .pay-box.is-compact .pay-line .pay-choice-label { margin: 0; font-size: 13px; }
+    .pay-box.is-compact .pay-choice {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      border: 0;
+      border-radius: 0;
+      overflow: visible;
+      background: transparent;
+    }
+    .pay-box.is-compact .pay-choice label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border: 1px solid #d5e2db;
+      border-radius: 6px;
+      background: #fff;
+      font-size: 13px;
+    }
+    .pay-box.is-compact .pay-choice label:last-child { border-bottom: 1px solid #d5e2db; }
+    .pay-box.is-compact .pay-choice label.on { background: #eef5f1; border-color: #1e3a34; }
+    .pay-box.is-compact .pay-choice label:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
+    .pay-box.is-compact .pay-choice input[type="radio"] { width: 14px; height: 14px; margin: 0; }
+    .pay-box.is-compact .pay-choice b { font-size: 13px; color: #14201b; }
+    .pay-box.is-compact .pay-method b,
+    .pay-box.is-compact .pay-destination b { font-size: 11px; font-weight: 500; color: #5b7268; }
+    .pay-box.is-compact .pay-other { width: 130px; padding: 2px 6px; }
+    .pay-box.is-compact .pick-hint { padding: 6px 2px 0; }
+    .pay-box.is-compact .form-actions { padding-top: 8px; margin-top: 8px; }
+    .shell.is-phone-layout .pay-box.is-compact .pay-line { grid-template-columns: 1fr; gap: 4px; }
       margin: 0;
     }
     .loan-report-client-ficha .loan-report-fact {
