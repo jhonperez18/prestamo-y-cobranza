@@ -141,6 +141,7 @@ export function DailyCollectionsView({
   const [selectedDate, setSelectedDate] = useState(todayIso);
   const [routeFilter, setRouteFilter] = useState("");
   const [listFilter, setListFilter] = useState<ListFilter>("all");
+  const [sinceSortDir, setSinceSortDir] = useState<"asc" | "desc">("desc");
   const [draftCollectors, setDraftCollectors] = useState<Record<string, string>>({});
   const [listReady, setListReady] = useState(true);
   const tableRef = useRef<HTMLDivElement>(null);
@@ -232,7 +233,9 @@ export function DailyCollectionsView({
 
   const activeItems = useMemo(() => {
     if (!listReady) return [];
-    return allItems.filter((item) => {
+    const sinceIso = (raw: string) => normalizeHistoryDate(raw) || raw || "";
+    const dir = sinceSortDir === "asc" ? 1 : -1;
+    const filtered = allItems.filter((item) => {
       if (routeFilter && item.clientRoute !== routeFilter) return false;
       if (listFilter === "pending") return isStillDue(item.id, assignments, selectedDate);
       if (listFilter === "mora") return item.kind === "mora";
@@ -242,7 +245,11 @@ export function DailyCollectionsView({
       }
       return true;
     });
-  }, [allItems, routeFilter, listReady, listFilter, assignments, selectedDate]);
+    return filtered
+      .map((item, order) => ({ item, order, since: sinceIso(item.chargeDate) }))
+      .sort((a, b) => dir * a.since.localeCompare(b.since) || a.order - b.order)
+      .map((entry) => entry.item);
+  }, [allItems, routeFilter, listReady, listFilter, assignments, selectedDate, sinceSortDir]);
 
   const summary = useMemo(() => dailyCollectionSummary(activeItems), [activeItems]);
 
@@ -503,7 +510,28 @@ export function DailyCollectionsView({
               {isVisible("zone") ? <th>Ruta</th> : null}
               {isVisible("loan") ? <th>Préstamo</th> : null}
               {isVisible("concept") ? <th>Concepto</th> : null}
-              {isVisible("since") ? <th>Desde</th> : null}
+              {isVisible("since") ? (
+                <th
+                  className="sortable sorted"
+                  aria-sort={sinceSortDir === "asc" ? "ascending" : "descending"}
+                >
+                  <button
+                    type="button"
+                    className="th-sort"
+                    title={
+                      sinceSortDir === "desc"
+                        ? "Más recientes primero · clic para invertir"
+                        : "Más antiguos primero · clic para invertir"
+                    }
+                    onClick={() => setSinceSortDir((dir) => (dir === "desc" ? "asc" : "desc"))}
+                  >
+                    <span className="th-sort-arrow" aria-hidden>
+                      {sinceSortDir === "asc" ? "▲" : "▼"}
+                    </span>
+                    Desde
+                  </button>
+                </th>
+              ) : null}
               {isVisible("amount") ? <th className="right" title="Cuota pactada del préstamo">Cuota</th> : null}
               {isVisible("method") ? <th className="dc-method-head">Método</th> : null}
               {isVisible("evidence") ? <th className="dc-evidence-head">Foto</th> : null}
