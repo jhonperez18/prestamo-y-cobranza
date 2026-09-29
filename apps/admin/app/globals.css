@@ -15611,3 +15611,92 @@
     .supervisor-reloan-panel .supervisor-mobile-subhead {
       margin: 0 0 6px;
     }
+
+/* Vista previa del comprobante (Buscar archivo) — acercar / alejar antes de confirmar */
+.receipt-zoom {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  background: rgba(10, 20, 17, 0.94);
+  color: #fff;
+  padding: max(10px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+  gap: 10px;
+}
+.receipt-zoom-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+.receipt-zoom-head b {
+  font-size: 16px;
+}
+.receipt-zoom-head span {
+  font-size: 12px;
+  opacity: 0.75;
+}
+.receipt-zoom-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  touch-action: none;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  cursor: grab;
+}
+.receipt-zoom-stage img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+  transform-origin: center center;
+  will-change: transform;
+}
+.receipt-zoom-tools {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+.receipt-zoom-tools button {
+  min-width: 48px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+}
+.receipt-zoom-tools button.is-level {
+  min-width: 72px;
+  font-size: 14px;
+}
+.receipt-zoom-tools button:disabled {
+  opacity: 0.35;
+}
+.receipt-zoom-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.receipt-zoom-actions button {
+  height: 48px;
+  border-radius: 12px;
+  border: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+.receipt-zoom-actions .is-cancel {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.receipt-zoom-actions .is-confirm {
+  background: #1e3a34;
+  color: #fff;
+}

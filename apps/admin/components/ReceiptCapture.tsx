@@ -2,12 +2,15 @@
 
 import { useRef, useState } from "react";
 import { CameraIcon } from "@/components/icons";
+import { ReceiptZoomPreview } from "@/components/ReceiptZoomPreview";
 import {
   buildReceiptEvidence,
   compressReceiptImage,
   formatEvidenceSize,
   type PaymentEvidenceRef,
 } from "@/lib/payment-evidence";
+
+type CompressedReceipt = Awaited<ReturnType<typeof compressReceiptImage>>;
 
 type Props = {
   id: string;
@@ -36,21 +39,29 @@ export function ReceiptCapture({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function onPhoto(file: File | undefined) {
+  const [pending, setPending] = useState<CompressedReceipt | null>(null);
+
+  async function onPhoto(file: File | undefined, review: boolean) {
     if (!file) return;
     setBusy(true);
     setError(null);
     try {
       const compressed = await compressReceiptImage(file);
-      onChange(buildReceiptEvidence(compressed.dataUrl, compressed));
+      if (review) setPending(compressed);
+      else onChange(buildReceiptEvidence(compressed.dataUrl, compressed));
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cargar la foto.");
-      onChange(undefined);
+      if (!review) onChange(undefined);
     } finally {
       setBusy(false);
       if (cameraRef.current) cameraRef.current.value = "";
       if (fileRef.current) fileRef.current.value = "";
     }
+  }
+
+  function confirmPending() {
+    if (pending) onChange(buildReceiptEvidence(pending.dataUrl, pending));
+    setPending(null);
   }
 
   function clearPhoto() {
@@ -91,7 +102,7 @@ export function ReceiptCapture({
         capture="environment"
         className="sr-only"
         disabled={busy}
-        onChange={(event) => onPhoto(event.target.files?.[0])}
+        onChange={(event) => onPhoto(event.target.files?.[0], false)}
       />
       <input
         id={galleryId}
@@ -100,8 +111,17 @@ export function ReceiptCapture({
         accept="image/*"
         className="sr-only"
         disabled={busy}
-        onChange={(event) => onPhoto(event.target.files?.[0])}
+        onChange={(event) => onPhoto(event.target.files?.[0], true)}
       />
+
+      {pending ? (
+        <ReceiptZoomPreview
+          src={pending.dataUrl}
+          sizeLabel={formatEvidenceSize(pending.byteSize)}
+          onConfirm={confirmPending}
+          onCancel={() => setPending(null)}
+        />
+      ) : null}
 
       {preview ? (
         <div className="receipt-upload has-photo">
