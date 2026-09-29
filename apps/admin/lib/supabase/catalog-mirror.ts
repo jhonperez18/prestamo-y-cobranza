@@ -217,7 +217,9 @@ export function mirrorToLoanRow(row: LoanMirrorRow): LoanRow | null {
         ? "efectivo"
         : row.notes?.includes("[[fb:banco]]")
           ? "banco"
-          : undefined,
+          : row.notes?.includes("[[fb:cartera]]")
+            ? "cartera"
+            : undefined,
   };
 }
 

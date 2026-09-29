@@ -5,7 +5,7 @@ import {
   interestFromPct,
   type QuickLoanDraft,
 } from "@/lib/street-client-loan";
-import type { LoanDisbursementSource } from "@/lib/nequi-pool";
+import type { LoanDisbursementSource as AnyDisbursementSource } from "@/lib/nequi-pool";
 import {
   PAY_FREQUENCIES,
   previewLoanFlat,
@@ -26,6 +26,9 @@ type Props = {
   onCancel: () => void;
   onSave: (draft: QuickLoanDraft) => void;
 };
+
+/** Préstamo rápido = plata que sale hoy; la cartera existente solo se carga desde el panel. */
+type LoanDisbursementSource = Exclude<AnyDisbursementSource, "cartera">;
 
 function parseMoney(raw: string) {
   const n = Number(String(raw).replace(/[^\d]/g, ""));

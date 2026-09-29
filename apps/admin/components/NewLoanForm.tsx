@@ -783,12 +783,15 @@ export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelet
                       title={
                         fundedBy === "efectivo"
                           ? "Se descuenta del efectivo / En caja del cobrador de la ruta"
-                          : "Origen del desembolso"
+                          : fundedBy === "cartera"
+                            ? "Préstamo que ya estaba en la calle: no descuenta caja, banco ni Nequi"
+                            : "Origen del desembolso"
                       }
                     >
                       <option value="nequi">Nequi</option>
                       <option value="banco">Banco</option>
                       <option value="efectivo">Efectivo (caja cobrador)</option>
+                      <option value="cartera">Cartera existente (ya estaba en la calle)</option>
                     </select>
                   </div>
                   <div className="loan-meta-field">

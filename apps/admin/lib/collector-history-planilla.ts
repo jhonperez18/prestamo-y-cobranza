@@ -3,7 +3,7 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
 import { compareRoutePosition, sameRoute } from "@/lib/client-route-order";
 import { syncLoan, displayToIso } from "@/lib/loan-preview";
-import { loanDisbursementSource } from "@/lib/nequi-pool";
+import { loanDisbursementSource, loanIsExistingPortfolio } from "@/lib/nequi-pool";
 import { isPrestamoRutaExpense } from "@/lib/expense-lines";
 import { isAssignmentAwaitingLoan, planillaLiveCuota } from "@/lib/planilla-display";
 import { withPaymentEvidence } from "@/lib/payment-evidence-store";
@@ -206,8 +206,8 @@ export function dayLoanDisbursementRows(
     const started = displayToIso(String(loan.date || "").trim());
     if (started !== dateIso || byLoan.has(loan.ref)) continue;
     const source = loanDisbursementSource(loan);
-    // Nequi/banco del sistema ≠ caja del cobrador.
-    if (source === "nequi" || source === "banco") continue;
+    // Nequi/banco del sistema ≠ caja del cobrador; cartera existente no sale de ningún lado.
+    if (source === "nequi" || source === "banco" || source === "cartera") continue;
     const client = clients.find((row) => row.ref === loan.clientRef);
     const onSheet = dayClientRefs.has(loan.clientRef);
     const onRoute =
@@ -458,6 +458,7 @@ export function buildCollectorHistoryPlanillaRows(input: {
   // Alta del día sin gasto en cola: solo si el cliente está en ESTA planilla.
   for (const loan of loans) {
     if (!loansStartedToday.has(loan.ref)) continue;
+    if (loanIsExistingPortfolio(loan)) continue;
     if (!sheetClientRefs.has(loan.clientRef)) continue;
     const key = `prestamo:${loan.ref}`;
     if (prestamoKeys.has(key)) continue;

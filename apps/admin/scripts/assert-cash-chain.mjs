@@ -17,6 +17,7 @@
  *      la visita de hoy sigue por cobrar y el CIE del día cubierto no cambia.
  *   7. Ajuste de saldo real en T: solo con T cerrada y el mismo día; el real pasa a
  *      CIE/PCE-T y es el Inicial M de mañana; el saldo del cierre queda en el Historial.
+ *   8. Cartera existente (carga desde planilla manual): no descuenta caja M ni T.
  */
 import { register } from "node:module";
 
@@ -567,6 +568,42 @@ if (adj.ok) {
   expect("Historial T · 26 renglón del cierre", histAdj[0].row.saldo, 3_084_000);
   expect("Historial T · 26 renglón de ajuste", histAdj[0].adjustment?.real ?? null, 2_934_000);
 }
+
+// 8. Cartera existente: préstamos cargados desde planilla manual. Ya estaban en la calle:
+//    no salen de la caja de M ni de T, ni figuran como «Prestado» en la planilla del día.
+console.log("— Cartera existente —");
+const { buildCollectorHistoryPlanillaRows } = await import("@/lib/collector-history-planilla");
+const { loanRowToMirror, mirrorToLoanRow } = await import("@/lib/supabase/catalog-mirror");
+const { markLoanExistingPortfolio } = await import("@/lib/nequi-pool");
+
+const carteraT = markLoanExistingPortfolio({
+  ref: "P-CT1", clientRef: "CLI-T1", client: "Caro T", date: "26/09/2026", capital: 800_000, installment: 40_000,
+});
+const carteraM = markLoanExistingPortfolio({
+  ref: "P-CM1", clientRef: "CLI-M1", client: "Ana M", date: "26/09/2026", capital: 600_000, installment: 30_000,
+});
+const ledgerSinCartera = buildDayCashLedger(base);
+const ledgerCartera = buildDayCashLedger({ ...base, loans: [...loans, carteraT, carteraM] });
+expect("Cartera: préstamos de M no cambian", ledgerCartera.m.prestamos, ledgerSinCartera.m.prestamos);
+expect("Cartera: préstamos de T no cambian", ledgerCartera.t.prestamos, ledgerSinCartera.t.prestamos);
+expect("Cartera: caja viva M intacta", ledgerCartera.mClosing, ledgerSinCartera.mClosing);
+expect("Cartera: saldo final del día intacto", ledgerCartera.dayFinal, ledgerSinCartera.dayFinal);
+const efectivoT = { ref: "P-ET1", clientRef: "CLI-T1", client: "Caro T", date: "26/09/2026", capital: 50_000, installment: 5_000, fundedBy: "efectivo" };
+const planillaCartera = buildCollectorHistoryPlanillaRows({
+  dateIso: D,
+  dispatched: assignments,
+  payments: [],
+  loans: [...loans, carteraT, carteraM, efectivoT],
+  clients,
+});
+expect(
+  "Cartera: sin fila «Prestado» en la planilla",
+  planillaCartera.some((r) => r.key === "prestamo:P-CT1" || r.key === "prestamo:P-CM1"),
+  false,
+);
+expect("Efectivo del día sí figura «Prestado»", planillaCartera.some((r) => r.key === "prestamo:P-ET1"), true);
+const carteraBack = mirrorToLoanRow(loanRowToMirror(carteraT));
+expect("Cartera: la marca viaja a la nube", carteraBack?.fundedBy ?? null, "cartera");
 
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);

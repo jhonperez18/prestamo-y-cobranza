@@ -41,7 +41,12 @@ import {
   type PaymentRow,
   type RouteRow,
 } from "@/lib/mock-data";
-import { markLoanFundedByBanco, markLoanFundedByEfectivo, markLoanFundedByNequi } from "@/lib/nequi-pool";
+import {
+  markLoanExistingPortfolio,
+  markLoanFundedByBanco,
+  markLoanFundedByEfectivo,
+  markLoanFundedByNequi,
+} from "@/lib/nequi-pool";
 import { resolvedLoanInstallment, syncPermanentRoutePlanilla } from "@/lib/route-planilla";
 import {
   flushCatalogMirrorQueues,
@@ -125,7 +130,7 @@ export type PortfolioLoanDraft = {
   total: number;
   installment: number;
   schedule: LoanRow["schedule"];
-  fundedBy?: "nequi" | "banco" | "efectivo";
+  fundedBy?: "nequi" | "banco" | "efectivo" | "cartera";
 };
 
 export type PortfolioCatalogState = {
@@ -524,7 +529,9 @@ export function commitCreateLoan(
       ? markLoanFundedByBanco(loanReady)
       : draft.fundedBy === "efectivo"
         ? markLoanFundedByEfectivo(loanReady)
-        : markLoanFundedByNequi(loanReady),
+        : draft.fundedBy === "cartera"
+          ? markLoanExistingPortfolio(loanReady)
+          : markLoanFundedByNequi(loanReady),
   );
 
   // Asegura al cliente en su ruta (misma que el cobrador de esa ruta).
@@ -641,7 +648,9 @@ export function commitUpdateLoan(
         ? markLoanFundedByEfectivo(fundedBase)
         : draft.fundedBy === "nequi"
           ? markLoanFundedByNequi(fundedBase)
-          : fundedBase;
+          : draft.fundedBy === "cartera"
+            ? markLoanExistingPortfolio(fundedBase)
+            : fundedBase;
   const nextLoan = stampCatalogRow(funded);
   const nextClientBase = stampCatalogRow({
     ...client,

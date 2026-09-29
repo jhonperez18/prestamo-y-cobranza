@@ -2,6 +2,7 @@
  * Origen del desembolso (≠ método de cobro del cliente):
  * - nequi / banco = sale de la cuenta del dueño (Haber en banco / resta pool Nequi)
  * - efectivo = sale de la caja del cobrador
+ * - cartera = préstamo que ya estaba en la calle (carga inicial): no sale plata de ningún lado
  */
 import { displayToIso } from "@/lib/loan-preview";
 import {
@@ -19,14 +20,16 @@ import { normalizePaymentMethod } from "@/lib/payment-method";
 export const NEQUI_FUNDED_MARKER = "[[fb:nequi]]";
 export const EFECTIVO_FUNDED_MARKER = "[[fb:efectivo]]";
 export const BANCO_FUNDED_MARKER = "[[fb:banco]]";
+export const CARTERA_FUNDED_MARKER = "[[fb:cartera]]";
 
 const FUNDED_MARKERS = [
   NEQUI_FUNDED_MARKER,
   EFECTIVO_FUNDED_MARKER,
   BANCO_FUNDED_MARKER,
+  CARTERA_FUNDED_MARKER,
 ] as const;
 
-export type LoanDisbursementSource = "nequi" | "efectivo" | "banco";
+export type LoanDisbursementSource = "nequi" | "efectivo" | "banco" | "cartera";
 
 export function loanDisbursementSource(
   loan: Pick<LoanRow, "fundedBy" | "notes">,
@@ -36,7 +39,13 @@ export function loanDisbursementSource(
     return "efectivo";
   }
   if (loan.fundedBy === "banco" || loan.notes?.includes(BANCO_FUNDED_MARKER)) return "banco";
+  if (loan.fundedBy === "cartera" || loan.notes?.includes(CARTERA_FUNDED_MARKER)) return "cartera";
   return null;
+}
+
+/** Cartera existente: el capital ya estaba en la calle; no es desembolso de caja, banco ni Nequi. */
+export function loanIsExistingPortfolio(loan: Pick<LoanRow, "fundedBy" | "notes">): boolean {
+  return loanDisbursementSource(loan) === "cartera";
 }
 
 export function loanFundedByNequi(loan: Pick<LoanRow, "fundedBy" | "notes">): boolean {
@@ -94,6 +103,15 @@ export function markLoanFundedByBanco(loan: LoanRow): LoanRow {
   };
 }
 
+/** Marca préstamo de cartera existente (carga inicial desde planilla manual). */
+export function markLoanExistingPortfolio(loan: LoanRow): LoanRow {
+  return {
+    ...loan,
+    fundedBy: "cartera",
+    notes: withFundedMarker(loan.notes, CARTERA_FUNDED_MARKER),
+  };
+}
+
 export function hydrateLoanFundedBy(loan: LoanRow): LoanRow {
   const source = loanDisbursementSource(loan);
   if (!source) return loan;
@@ -105,6 +123,7 @@ export function loanDisbursementSourceLabel(source: LoanDisbursementSource | nul
   if (source === "nequi") return "Nequi";
   if (source === "efectivo") return "Efectivo";
   if (source === "banco") return "Banco";
+  if (source === "cartera") return "Cartera";
   return "—";
 }
 

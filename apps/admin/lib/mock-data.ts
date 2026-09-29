@@ -87,7 +87,7 @@ export type LoanRow = {
    * - nequi / banco = cuenta del dueño
    * - efectivo = caja del cobrador
    */
-  fundedBy?: "nequi" | "efectivo" | "banco";
+  fundedBy?: "nequi" | "efectivo" | "banco" | "cartera";
   /** ISO — evita que un pull obsoleto rebobine un edit fresco del padre. */
   updatedAt?: string;
 };
