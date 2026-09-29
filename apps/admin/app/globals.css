@@ -2991,13 +2991,13 @@
       gap: 3px;
     }
     .collector-mobile-card.is-awaiting-loan .collector-mobile-dense-row {
-      grid-template-columns: 1.05rem minmax(0, 1fr) 4.6rem 3.9rem 2.9rem;
+      grid-template-columns: 1.05rem minmax(0, 1fr) 4.6rem 3.9rem 3.9rem;
       grid-template-areas: "ord who saldo cuota pay";
     }
     .collector-mobile-card.is-awaiting-loan .collector-mobile-dense-actions.is-lend-pair {
       grid-area: pay;
       justify-self: end;
-      gap: 5px;
+      gap: 18px;
     }
     .collector-mobile-pay-sticker {
       appearance: none;
