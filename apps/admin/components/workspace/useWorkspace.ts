@@ -63,7 +63,7 @@ import { NewRouteForm, type RouteDraft } from "@/components/NewRouteForm";
 import { ClientDetailTable } from "@/components/ClientDetailTable";
 import { LoanDetailView } from "@/components/LoanDetailView";
 import { LoanFichaGrid } from "@/components/LoanFichaGrid";
-import { LoanPayForm } from "@/components/LoanPayForm";
+import { LoanPayForm, type PanelPayDestination } from "@/components/LoanPayForm";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { PaymentFicha } from "@/components/PaymentFicha";
 import { PaymentStatusPill } from "@/components/PaymentStatusPill";
@@ -124,6 +124,7 @@ import {
 } from "@/lib/supabase/payment-mirror";
 import { commitVoidPayment } from "@/lib/commit-void-payment";
 import { commitLatePayment, type LatePaymentDraft } from "@/lib/commit-late-payment";
+import { routeCollectorCashTarget } from "@/lib/route-collector-cash";
 import { saveCashAdjustment } from "@/lib/save-cash-adjustment";
 import type { CashAdjustmentRequest } from "@/lib/commit-cash-adjustment";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
@@ -2321,7 +2322,25 @@ export function useWorkspace({
     onToast("Préstamo eliminado.");
   }
 
-  function registerPay(kind: PayKind, amount: number, method: PaymentMethod = "efectivo") {
+  function panelPayTarget(loan: LoanRow, now = new Date()) {
+    return routeCollectorCashTarget({
+      loan,
+      clients,
+      routes,
+      collectors,
+      assignments: dailyAssignments,
+      dayCloses,
+      date: todayIso(now),
+      now,
+    });
+  }
+
+  function registerPay(
+    kind: PayKind,
+    amount: number,
+    method: PaymentMethod = "efectivo",
+    destination: PanelPayDestination = "oficina",
+  ) {
     if (!openLoan) return;
     const loan = openLoan;
     const amountPesos = pesos(amount);
@@ -2332,12 +2351,18 @@ export function useWorkspace({
       onToast("Pago ya sincronizado (sin duplicar).");
       return;
     }
+    const target = destination === "cobrador" ? panelPayTarget(loan) : null;
+    if (target && !target.ok) {
+      onToast(target.error);
+      return;
+    }
+    const toCollector = target?.ok ? target.collector : null;
     const result = applyPay(loan, kind, amountPesos);
     if (!result.ok) {
       onToast(result.error);
       return;
     }
-    const target = cuotaTarget(loan);
+    const cuota = cuotaTarget(loan);
     const paidTime = new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });
     const paidDay = todayIso();
     const row = buildPaymentRow(
@@ -2347,10 +2372,11 @@ export function useWorkspace({
         when: `${isoToDispatchLabel(paidDay)} · ${paidTime}`,
         paidDate: paidDay,
         paidTime,
-        dueDate: target?.date,
-        chargeLabel: target?.kind ? chargeLabel(target.kind) : result.type,
+        dueDate: cuota?.date,
+        chargeLabel: cuota?.kind ? chargeLabel(cuota.kind) : result.type,
         client: loan.client,
-        collector: "Caja / oficina",
+        collector: toCollector?.name ?? "Caja / oficina",
+        ...(toCollector ? { collectorRef: toCollector.ref } : {}),
         idempotencyKey,
         amount: amountPesos,
         type: result.type,
@@ -2400,19 +2426,28 @@ export function useWorkspace({
     writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
 
     setPayMode(null);
-    onToast(`${result.message} · guardando en el sistema…`);
-    queuePaymentMirror(row);
+    const label = toCollector
+      ? `${result.message} · a ${toCollector.name}`
+      : `${result.message} · oficina`;
+    onToast(`${label} · guardando en el sistema…`);
+    const mirror = await queuePaymentMirror(row);
     const nextLoan = projected.loans.find((entry) => entry.ref === loan.ref);
     if (nextLoan) queueLoanMirror(nextLoan);
     const cajaClient = nextClients.find((entry) => entry.ref === loan.clientRef);
     if (cajaClient) queueClientMirror(cajaClient);
     queueAssignmentsMirror(projected.assignments);
     try {
-      await flushPaymentMirrorQueue();
+      let payFlush = await flushPaymentMirrorQueue();
+      if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();
       await Promise.all([flushCatalogMirrorQueues(), flushOpsMirrorQueues()]);
-      onToast(`${result.message} · listo.`);
-    } catch {
-      onToast(`${result.message} (sin nube; en este aparato ya está).`);
+      onToast(
+        !mirror.ok || payFlush.left > 0
+          ? `${label} · guardado en este aparato · nube pendiente (reintenta solo).`
+          : `${label} · listo en la nube.`,
+      );
+    } catch (error) {
+      console.error("[pago-panel] flush nube", error);
+      onToast(`${label} · guardado en este aparato · nube pendiente (reintenta solo).`);
     }
     })();
   }
@@ -2719,6 +2754,7 @@ export function useWorkspace({
     saveUserPermissions,
     deleteLoan,
     registerPay,
+    panelPayTarget,
     registerLatePayment,
     adjustTCashFromMobile,
     latePayOpen,

@@ -18,6 +18,7 @@
  *   7. Ajuste de saldo real en T: solo con T cerrada y el mismo día; el real pasa a
  *      CIE/PCE-T y es el Inicial M de mañana; el saldo del cierre queda en el Historial.
  *   8. Cartera existente (carga desde planilla manual): no descuenta caja M ni T.
+ *   9. Cobro del panel: «Solo sistema» no toca la caja; «Cobrador» en efectivo sí, y nunca a caja cerrada.
  */
 import { register } from "node:module";
 
@@ -604,6 +605,51 @@ expect(
 expect("Efectivo del día sí figura «Prestado»", planillaCartera.some((r) => r.key === "prestamo:P-ET1"), true);
 const carteraBack = mirrorToLoanRow(loanRowToMirror(carteraT));
 expect("Cartera: la marca viaja a la nube", carteraBack?.fundedBy ?? null, "cartera");
+
+// 9. Pagar cuota / Abono desde el panel: «Solo sistema» no toca al cobrador;
+//    «Cobrador de la ruta» en efectivo entra a su caja de hoy (lado de la ruta del cliente).
+console.log("— Cobro del panel con destino —");
+const { routeCollectorCashTarget } = await import("@/lib/route-collector-cash");
+const panelNow = new Date("2026-09-26T15:00:00.000-05:00");
+const panelTarget = routeCollectorCashTarget({
+  loan: { ref: "P-T1", clientRef: "CLI-T1" },
+  clients,
+  routes: [],
+  collectors: [COB],
+  assignments,
+  dayCloses: [cie25],
+  date: D,
+  now: panelNow,
+});
+expect("Panel: cobrador de la ruta del cliente", panelTarget.ok ? panelTarget.collector.ref : null, COB.ref);
+const panelClosed = routeCollectorCashTarget({
+  loan: { ref: "P-T1", clientRef: "CLI-T1" },
+  clients,
+  routes: [],
+  collectors: [COB],
+  assignments,
+  dayCloses: afterT.dayCloses,
+  date: D,
+  now: panelNow,
+});
+expect("Panel: caja ya cerrada no recibe", panelClosed.ok, false);
+const panelPay = (extra) => ({ ref: "PG-PANEL", loanRef: "P-T1", amount: 30_000, paidDate: D, source: "caja", ...extra });
+const ledgerOficina = buildDayCashLedger({
+  ...base,
+  payments: [...payments, panelPay({ method: "efectivo", collector: "Caja / oficina" })],
+});
+const ledgerCobrador = buildDayCashLedger({
+  ...base,
+  payments: [...payments, panelPay({ method: "efectivo", collector: COB.name, collectorRef: COB.ref })],
+});
+const ledgerNequiRuta = buildDayCashLedger({
+  ...base,
+  payments: [...payments, panelPay({ method: "nequi", collector: COB.name, collectorRef: COB.ref })],
+});
+expect("Panel · solo sistema: caja intacta", ledgerOficina.dayFinal, ledgerSinCartera.dayFinal);
+expect("Panel · cobrador efectivo: suma a su caja", ledgerCobrador.dayFinal - ledgerSinCartera.dayFinal, 30_000);
+expect("Panel · cobrador efectivo: va al lado T (cliente de T)", ledgerCobrador.mClosing, ledgerSinCartera.mClosing);
+expect("Panel · cobrador Nequi: no entra a la caja", ledgerNequiRuta.dayFinal, ledgerSinCartera.dayFinal);
 
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);

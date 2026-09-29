@@ -292,37 +292,37 @@ function shouldHideCrumb(moduleId: ModuleId, viewId: string) {
 }
 export function Workspace(props: WorkspaceProps) {
   const {
-    moduleId,
-    viewId,
-    viewLabel,
-    moduleLabel,
-    onGo,
-    onToast,
-    adminName = "Administrador",
-    session,
-    onSessionChange,
+  moduleId,
+  viewId,
+  viewLabel,
+  moduleLabel,
+  onGo,
+  onToast,
+  adminName = "Administrador",
+  session,
+  onSessionChange,
   } = props;
   const {
     key,
-    clients,
+      clients,
     setClients,
-    loans,
+      loans,
     setLoans,
-    payments,
+      payments,
     setPayments,
-    routes,
+      routes,
     setRoutes,
-    collectors,
+      collectors,
     setCollectors,
     users,
     setUsers,
-    dailyLogs,
+      dailyLogs,
     setDailyLogs,
     dailyAssignments,
     setDailyAssignments,
-    dayCloses,
+        dayCloses,
     setDayCloses,
-    dayExpenseDrafts,
+      dayExpenseDrafts,
     setDayExpenseDrafts,
     monthCloses,
     setMonthCloses,
@@ -405,7 +405,7 @@ export function Workspace(props: WorkspaceProps) {
     setOpenBankMovementRef,
     bankExpenseReturn,
     setBankExpenseReturn,
-    miscPayments,
+        miscPayments,
     setMiscPayments,
     prestamoListColumns,
     applyOperationalSnapshot,
@@ -413,7 +413,7 @@ export function Workspace(props: WorkspaceProps) {
     applyPlanillaSync,
     openClient,
     rawOpenLoan,
-    openLoan,
+      openLoan,
     openUser,
     openCollector,
     catalogRouteList,
@@ -488,6 +488,7 @@ export function Workspace(props: WorkspaceProps) {
     saveUserPermissions,
     deleteLoan,
     registerPay,
+    panelPayTarget,
     registerLatePayment,
     adjustTCashFromMobile,
     latePayOpen,
@@ -711,48 +712,48 @@ export function Workspace(props: WorkspaceProps) {
           </nav>
           <div className="file-title">
             <h1>{fileTitle}</h1>
-            {fileTab === "ficha" ? (
-              <div className="file-toolbar-actions">
-                {confirmDelete ? (
-                  <>
-                    <p className="ficha-warn">¿Eliminar este cliente? Saldrá del listado.</p>
-                    <button type="button" className="btn-bar" onClick={() => setConfirmDelete(false)}>
-                      Cancelar
-                    </button>
-                    <button type="button" className="btn-bar" onClick={deleteClient}>
-                      Sí, eliminar
-                    </button>
-                  </>
-                ) : pendingReview && canApproveClient ? (
-                  <>
-                    <button type="button" className="btn-bar" onClick={() => startClientApproval([openClient.ref])}>
-                      Aprobar
-                    </button>
-                    <button type="button" className="btn-bar" onClick={() => rejectClients([openClient.ref])}>
-                      Rechazar
-                    </button>
-                    <button type="button" className="btn-bar" onClick={() => onGo("clientes", "editar")}>
-                      Modificar
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button type="button" className="btn-bar" onClick={() => onGo("clientes", "editar")}>
-                      Modificar
-                    </button>
-                    <button
-                      type="button"
-                      className="btn-bar"
-                      disabled={!canDelete || pendingReview}
-                      onClick={() => canDelete && !pendingReview && setConfirmDelete(true)}
-                    >
-                      Eliminar
-                    </button>
-                  </>
-                )}
-              </div>
+              {fileTab === "ficha" ? (
+                    <div className="file-toolbar-actions">
+                      {confirmDelete ? (
+                        <>
+                          <p className="ficha-warn">¿Eliminar este cliente? Saldrá del listado.</p>
+                          <button type="button" className="btn-bar" onClick={() => setConfirmDelete(false)}>
+                            Cancelar
+                          </button>
+                          <button type="button" className="btn-bar" onClick={deleteClient}>
+                            Sí, eliminar
+                          </button>
+                        </>
+                      ) : pendingReview && canApproveClient ? (
+                        <>
+                          <button type="button" className="btn-bar" onClick={() => startClientApproval([openClient.ref])}>
+                            Aprobar
+                          </button>
+                          <button type="button" className="btn-bar" onClick={() => rejectClients([openClient.ref])}>
+                            Rechazar
+                          </button>
+                          <button type="button" className="btn-bar" onClick={() => onGo("clientes", "editar")}>
+                            Modificar
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button type="button" className="btn-bar" onClick={() => onGo("clientes", "editar")}>
+                            Modificar
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-bar"
+                            disabled={!canDelete || pendingReview}
+                            onClick={() => canDelete && !pendingReview && setConfirmDelete(true)}
+                          >
+                            Eliminar
+                          </button>
+                        </>
+                      )}
+                    </div>
             ) : null}
-          </div>
+                  </div>
           <div className="ficha">
             <aside className="ficha-side">
               <div className="photo">
@@ -1018,8 +1019,11 @@ export function Workspace(props: WorkspaceProps) {
                   key={payMode}
                   loan={openLoan}
                   mode={payMode}
+                  routeCollector={panelPayTarget(openLoan)}
                   onCancel={() => setPayMode(null)}
-                  onRegister={(amount, payMethod) => registerPay(payMode, amount, payMethod)}
+                  onRegister={(amount, payMethod, destination) =>
+                    registerPay(payMode, amount, payMethod, destination)
+                  }
                 />
               ) : null}
 
@@ -1795,7 +1799,7 @@ export function Workspace(props: WorkspaceProps) {
         );
       }
       if (viewId === "por-cobrador") {
-        return (
+      return (
           <CollectorRecaudoReportView
             payments={payments}
             loans={loans}

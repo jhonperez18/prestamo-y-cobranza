@@ -8,15 +8,14 @@
  * - El día cubierto no se reabre: su planilla sellada y su CIE- no se tocan.
  */
 import { normalizeHistoryDate, type CollectorDayCloseRecord } from "@/lib/collector-day-close";
-import { isCollectorDayClosedForPayments } from "@/lib/collector-day-auto-close";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { isoToDispatchLabel, todayIso } from "@/lib/daily-dispatch";
 import { newIdempotencyKey, pesos } from "@/lib/finance";
 import { paymentVisitDate } from "@/lib/late-payment";
 import { isPaymentLive } from "@/lib/live-payments";
 import { applyPay, cuotaTargetOn, loanRowAfterPay, paymentRowKind } from "@/lib/loan-pay";
-import { isPlanillaCashCloseRef } from "@/lib/planilla-cash-chain";
 import { chargeLabel } from "@/lib/loan-preview";
+import { collectorCashClosedOn, planillaCollectorRef } from "@/lib/route-collector-cash";
 import {
   nextPaymentCode,
   type ClientRow,
@@ -66,14 +65,9 @@ function lateCollector(
   loan: LoanRow,
   today: string,
 ): CollectorRow | null {
-  const visitOn = (date: string) =>
-    input.assignments.find(
-      (row) =>
-        row.dispatchDate === date &&
-        Boolean(row.collectorRef) &&
-        (row.loanRef === loan.ref || (Boolean(loan.clientRef) && row.clientRef === loan.clientRef)),
-    );
-  const ref = visitOn(input.coversDate)?.collectorRef || visitOn(today)?.collectorRef || "";
+  const ref =
+    planillaCollectorRef(input.assignments, loan, input.coversDate) ||
+    planillaCollectorRef(input.assignments, loan, today);
   return input.collectors.find((row) => row.ref === ref) ?? null;
 }
 
@@ -126,22 +120,14 @@ export function commitLatePayment(input: LatePaymentInput): LatePaymentResult {
     return { ok: false, error: "No se encontró el cobrador de ese cliente en la planilla." };
   }
 
-  const todayClosed =
-    isCollectorDayClosedForPayments(today, now) ||
-    input.dayCloses.some(
-      (row) =>
-        row.collectorRef === collector.ref &&
-        !isPlanillaCashCloseRef(row.ref) &&
-        !row.provisional &&
-        (normalizeHistoryDate(row.date) || row.date) === today,
-    ) ||
-    input.assignments.some(
-      (row) =>
-        row.collectorRef === collector.ref &&
-        row.dispatchDate === today &&
-        Boolean(row.dayClosedAt) &&
-        (row.loanRef === loan.ref || (Boolean(loan.clientRef) && row.clientRef === loan.clientRef)),
-    );
+  const todayClosed = collectorCashClosedOn({
+    collectorRef: collector.ref,
+    loan,
+    dayCloses: input.dayCloses,
+    assignments: input.assignments,
+    date: today,
+    now,
+  });
   if (todayClosed) {
     return {
       ok: false,

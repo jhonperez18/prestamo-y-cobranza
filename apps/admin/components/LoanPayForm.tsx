@@ -8,12 +8,17 @@ import {
   type PaymentMethod,
   normalizePaymentMethod,
 } from "@/lib/payment-method";
+import type { RouteCollectorCashTarget } from "@/lib/route-collector-cash";
+
+/** oficina = solo carga al sistema; cobrador = además entra a la caja / Nequi del cobrador de la ruta. */
+export type PanelPayDestination = "oficina" | "cobrador";
 
 type Props = {
   loan: LoanRow;
   mode: PayKind;
+  routeCollector: RouteCollectorCashTarget;
   onCancel: () => void;
-  onRegister: (amount: number, method: PaymentMethod) => void;
+  onRegister: (amount: number, method: PaymentMethod, destination: PanelPayDestination) => void;
 };
 
 type PayChoice = "cuota" | "otro" | "todo";
@@ -23,7 +28,8 @@ function parseAmount(raw: string) {
   return digits ? Number(digits) : 0;
 }
 
-export function LoanPayForm({ loan, mode, onCancel, onRegister }: Props) {
+export function LoanPayForm({ loan, mode, routeCollector, onCancel, onRegister }: Props) {
+  const [destination, setDestination] = useState<PanelPayDestination>("oficina");
   const target = cuotaTarget(loan);
   const cuotaValue = target?.remaining ?? 0;
   const totalHoy = loan.balance;
@@ -35,7 +41,17 @@ export function LoanPayForm({ loan, mode, onCancel, onRegister }: Props) {
   const title = mode === "cuota" ? "Pagar cuota" : "Abono";
   const error = amount > 0 ? validatePay(loan, mode, amount) : null;
   const hint = payHint(loan, mode, amount);
-  const canRegister = amount > 0 && !error;
+  const destinationError =
+    destination === "cobrador" && !routeCollector.ok ? routeCollector.error : null;
+  const canRegister = amount > 0 && !error && !destinationError;
+  const collectorName = routeCollector.collector?.name ?? "";
+  const payMethod = normalizePaymentMethod(method);
+  const collectorDestinationHint =
+    payMethod === "efectivo"
+      ? "Entra a la caja de hoy del cobrador"
+      : payMethod === "nequi"
+        ? "Queda en el Nequi de la ruta (lo ve el supervisor)"
+        : "Queda a nombre de la ruta · no entra a la caja";
   const canTodo = mode === "cuota" && totalHoy > 0;
   const facts = [
     ["Capital inicial", money(loan.capital)],
@@ -52,7 +68,7 @@ export function LoanPayForm({ loan, mode, onCancel, onRegister }: Props) {
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canRegister) return;
-    onRegister(amount, normalizePaymentMethod(method));
+    onRegister(amount, normalizePaymentMethod(method), destination);
   }
 
   return (
@@ -132,7 +148,32 @@ export function LoanPayForm({ loan, mode, onCancel, onRegister }: Props) {
         ))}
       </div>
 
-      <p className="pick-hint">{hint}</p>
+      <p className="pay-choice-label">Destino de la plata</p>
+      <div className="pay-choice pay-destination" role="radiogroup" aria-label="Destino de la plata">
+        <label className={destination === "oficina" ? "on" : undefined}>
+          <input
+            type="radio"
+            name="pay-destination"
+            checked={destination === "oficina"}
+            onChange={() => setDestination("oficina")}
+          />
+          <span>Solo sistema</span>
+          <b>Oficina · no toca al cobrador</b>
+        </label>
+        <label className={destination === "cobrador" ? "on" : undefined}>
+          <input
+            type="radio"
+            name="pay-destination"
+            checked={destination === "cobrador"}
+            disabled={!routeCollector.collector}
+            onChange={() => setDestination("cobrador")}
+          />
+          <span>{collectorName ? `Cobrador · ${collectorName}` : "Cobrador de la ruta"}</span>
+          <b>{routeCollector.collector ? collectorDestinationHint : "Sin cobrador en la ruta"}</b>
+        </label>
+      </div>
+
+      <p className="pick-hint">{destinationError ?? hint}</p>
       <div className="form-actions">
         <button type="button" className="btn" onClick={onCancel}>
           Cancelar

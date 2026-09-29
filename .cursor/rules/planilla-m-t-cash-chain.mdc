@@ -124,6 +124,18 @@ Corrige un cobro que no se anotó en un día ya cerrado. Un solo camino: `commit
 - No entra a una caja ya cerrada hoy. Un día = un pago tardío por préstamo.
 - Candado: `assert-cash-chain.mjs` sección 6.
 
+## Pagar cuota / Abono desde el panel — destino
+
+El admin elige a dónde va la plata (`LoanPayForm` → `registerPay`):
+
+| Destino | Resultado |
+| --- | --- |
+| Solo sistema | `PG-` «Caja / oficina» sin `collectorRef`: baja el saldo del préstamo; no toca caja M/T |
+| Cobrador de la ruta | `PG-` con `collectorRef` del cobrador (planilla de hoy o fijo de la ruta). Efectivo → su caja de hoy (lado de la ruta del cliente); Nequi → Nequi de la ruta (supervisor) |
+
+- Cobrador y «caja cerrada» salen de `route-collector-cash.ts` (mismo candado que el pago tardío).
+- Nunca entra a una caja ya cerrada hoy. Candado: `assert-cash-chain.mjs` sección 9.
+
 ## Ajuste de saldo real en T (supervisor / admin)
 
 Poner la caja contada de verdad como saldo final del día. Un solo camino: `commitCashAdjustment`
