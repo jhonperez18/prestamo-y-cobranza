@@ -860,7 +860,7 @@ export function clientsOnRouteListed(routeName: string, rows: ClientRow[] = CLIE
   return clientsOnRoute(routeName, rows);
 }
 
-export function nextClientCode(rows: ClientRow[] | number = CLIENTS) {
+export function nextClientCode(rows: Array<Pick<ClientRow, "ref">> | number = CLIENTS) {
   const list = typeof rows === "number" ? CLIENTS : rows;
   const nums = list
     .map((row) => Number(String(row.ref).replace(/^COD-/i, "")))

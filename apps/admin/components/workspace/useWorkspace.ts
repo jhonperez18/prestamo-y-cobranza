@@ -394,7 +394,18 @@ export function useWorkspace({
     setDeletedIds(next);
   }
 
+  /** Bajas aprendidas de la nube (pull / Realtime) entran al estado de pantalla. */
+  const syncDeletedIdsFromStorage = useCallback(() => {
+    const stored = readDeletedIds();
+    if (stored.length === deletedIdsRef.current.size && stored.every((ref) => deletedIdsRef.current.has(ref))) {
+      return;
+    }
+    deletedIdsRef.current = new Set(stored);
+    setDeletedIds(stored);
+  }, []);
+
   const applyOperationalSnapshot = useCallback((snap: OperationalDemoSnapshot) => {
+    syncDeletedIdsFromStorage();
     const gone = deletedIdsRef.current;
     setClients((current) => mergeFresherByRef(current, omitDeleted(snap.clients, gone)));
     setUsers(snap.users);
@@ -427,7 +438,7 @@ export function useWorkspace({
     setBankReconciliations(snap.bankReconciliations);
     setMiscPayments(snap.miscPayments);
     setBankAccountRef((current) => current || snap.bankAccounts[0]?.ref || "");
-  }, []);
+  }, [syncDeletedIdsFromStorage]);
 
   const pendingMirrorToastAtRef = useRef(0);
   const { hydrated: demoHydrated } = useOperationalDemoSync(
@@ -498,13 +509,7 @@ export function useWorkspace({
             raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
           const next = applyWorkspaceRealtimeEvent(table, eventType, record, live);
           if (!next) return;
-          if (eventType === "DELETE") {
-            const ref = String(record?.ref || "").trim();
-            if (ref) {
-              deletedIdsRef.current = new Set(readDeletedIds());
-              setDeletedIds(readDeletedIds());
-            }
-          }
+          syncDeletedIdsFromStorage();
           liveRef.current = next;
           setClients(next.clients);
           setLoans(next.loans);
@@ -546,7 +551,7 @@ export function useWorkspace({
     return () => {
       void browser.removeChannel(channel);
     };
-  }, [demoHydrated]);
+  }, [demoHydrated, syncDeletedIdsFromStorage]);
 
   const namesTitleCaseDoneRef = useRef(false);
   useEffect(() => {

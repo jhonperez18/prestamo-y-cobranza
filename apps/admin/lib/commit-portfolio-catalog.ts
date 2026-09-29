@@ -49,10 +49,12 @@ import {
 } from "@/lib/nequi-pool";
 import { resolvedLoanInstallment, syncPermanentRoutePlanilla } from "@/lib/route-planilla";
 import {
+  clientDeletedRow,
   flushCatalogMirrorQueues,
   queueClientMirror,
   queueLoanMirror,
 } from "@/lib/supabase/catalog-mirror";
+import { deletedClientRefRows, rememberDeletedId } from "@/lib/deleted-ids";
 import {
   flushOpsMirrorQueues,
   queueAssignmentsMirror,
@@ -259,7 +261,7 @@ export function commitCreateClient(
     ? { status: CLIENT_STATUS_ACTIVE, kind: clientStatusKind(CLIENT_STATUS_ACTIVE) }
     : { status: CLIENT_STATUS_REVIEW, kind: clientStatusKind(CLIENT_STATUS_REVIEW) };
 
-  const ref = nextClientCode(state.clients);
+  const ref = nextClientCode([...state.clients, ...deletedClientRefRows()]);
   const row = stampCatalogRow({
     ref,
     alta: clientCreationDate(),
@@ -462,10 +464,12 @@ export function commitDeleteClient(
   if (loansForClient(clientRef, state.loans).length > 0) {
     return { ok: false, error: "No se puede eliminar: el cliente tiene préstamos." };
   }
+  rememberDeletedId(clientRef);
   const clients = state.clients.filter((row) => row.ref !== clientRef);
   let next: PortfolioCatalogState = { ...state, clients };
   next = projectPlanilla(next);
   persistPortfolio(next);
+  queueClientMirror(clientDeletedRow(openClient));
   enqueuePortfolioMirrors(next, { mirrorPlanilla: true });
 
   return {

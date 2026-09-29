@@ -2,6 +2,7 @@ import { CLIENT_STATUS_ACTIVE, clientStatusKind } from "@/lib/client-review";
 import { placeClientOnRoute, nextRouteOrder } from "@/lib/client-route-order";
 import { toClientNameTitleCase } from "@/lib/client-name-case";
 import { todayIso } from "@/lib/daily-dispatch";
+import { deletedClientRefRows } from "@/lib/deleted-ids";
 import {
   LOAN_TERM_OPTIONS,
   PAY_FREQUENCIES,
@@ -57,7 +58,7 @@ export function buildStreetClient(
 ): ClientRow {
   const name = toClientNameTitleCase(draft.name.trim());
   const lastName = toClientNameTitleCase((draft.lastName ?? "").trim());
-  const ref = nextClientCode(clients);
+  const ref = nextClientCode([...clients, ...deletedClientRefRows()]);
   return {
     ref,
     alta: clientCreationDate(),

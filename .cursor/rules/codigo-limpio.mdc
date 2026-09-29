@@ -19,6 +19,7 @@ alwaysApply: true
 ## 3. BORRADO DEFINITIVO Y LIMPIEZA DE CACHÉ (NO MÁS DATOS ZOMBI)
 - **Eliminación Local Inmediata:** Al ejecutar una acción de borrado (`DELETE`), remueve el registro del estado local de la pantalla y del almacenamiento sin esperar la respuesta del servidor.
 - **Lista de Exclusiones (Tombstones):** Mantén un registro temporal de IDs eliminados localmente (`deletedIds`). Toda función de consulta o refresco que traiga listas desde Supabase debe filtrar obligatoriamente los IDs que se encuentren en `deletedIds`.
+- **Baja de cliente viaja a la nube:** `commitDeleteClient` → tombstone local + `queueClientMirror(clientDeletedRow)` (fila con `status = "Eliminado"`, no se borra). Pull / Realtime la aprenden como tombstone en cada aparato; el servidor (`mirrorClientToSupabase`) no deja que una copia vieja la reviva (`client_deleted`); un COD- dado de baja no se reutiliza (`deletedClientRefRows`).
 - **Invalidación de Caché:** Invalida de forma explícita las claves de caché de la vista o del estado global inmediatamente después de confirmar la orden de borrado en la nube.
 
 ## 4. PRESERVACIÓN DEL PROYECTO Y DESPLIEGUE

@@ -36,6 +36,7 @@ import {
   todayIso,
 } from "@/lib/daily-dispatch";
 import { buildDailyCollectionList, type DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import { deletedClientRefRows } from "@/lib/deleted-ids";
 import {
   applySkipToRoute,
   assignmentFromItem,
@@ -631,7 +632,7 @@ export function Workspace(props: WorkspaceProps) {
             <h1>Nuevo cliente</h1>
           </div>
           <NewClientForm
-            code={nextClientCode(clients)}
+            code={nextClientCode([...clients, ...deletedClientRefRows()])}
             routes={activeCatalogRoutes}
             clients={clients}
             onCancel={() => onGo("clientes", "listado")}

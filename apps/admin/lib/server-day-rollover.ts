@@ -13,7 +13,13 @@ import {
   planillaCashCloseAsDayClose,
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
-import { fetchClientsFromSupabase, fetchLoansFromSupabase, mirrorToClientRow, mirrorToLoanRow } from "@/lib/supabase/catalog-mirror";
+import {
+  fetchClientsFromSupabase,
+  fetchLoansFromSupabase,
+  isClientDeletedStatus,
+  mirrorToClientRow,
+  mirrorToLoanRow,
+} from "@/lib/supabase/catalog-mirror";
 import { fetchPaymentsFromSupabase, mirrorRowToPaymentRow } from "@/lib/supabase/payment-mirror";
 import {
   assignmentToRow,
@@ -100,7 +106,7 @@ export async function loadOperationalStateFromCloud(): Promise<
     .filter((row): row is PaymentRow => Boolean(row));
   const clients: ClientRow[] = (clientsT.rows ?? [])
     .map(mirrorToClientRow)
-    .filter((row): row is ClientRow => Boolean(row));
+    .filter((row): row is ClientRow => Boolean(row) && !isClientDeletedStatus(row));
   const loans: LoanRow[] = (loansT.rows ?? [])
     .map(mirrorToLoanRow)
     .filter((row): row is LoanRow => Boolean(row));

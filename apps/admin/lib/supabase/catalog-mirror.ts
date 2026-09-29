@@ -11,12 +11,22 @@ import {
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
-import { isDeletedRef } from "@/lib/deleted-ids";
+import { isDeletedRef, readDeletedIdSet, rememberDeletedId } from "@/lib/deleted-ids";
 import {
   emitMirrorQueueChanged,
   shouldDropFromMirrorQueue,
   type MirrorApiJson,
 } from "@/lib/supabase/mirror-queue";
+
+/**
+ * Baja de cliente en la nube: la fila queda con este estado (no se borra) para que
+ * todo aparato la aprenda en el pull / Realtime y la saque de su caché.
+ */
+export const CLIENT_DELETED_STATUS = "Eliminado";
+
+export function isClientDeletedStatus(row: { status?: string | null } | null | undefined) {
+  return String(row?.status || "").trim() === CLIENT_DELETED_STATUS;
+}
 
 export const DEMO_CLIENT_MIRROR_QUEUE_KEY = "nexo-demo-client-mirror-queue";
 export const DEMO_LOAN_MIRROR_QUEUE_KEY = "nexo-demo-loan-mirror-queue";
@@ -300,7 +310,7 @@ function mergeByRefPreferPendingLocal<T extends { ref: string; updatedAt?: strin
     merged.push(pending ?? row);
   }
   for (const [ref, row] of pendingByRef) {
-    if (seen.has(ref) || localByRef.has(ref)) continue;
+    if (seen.has(ref) || localByRef.has(ref) || isDeletedRef(ref)) continue;
     merged.push(row);
     added += 1;
     changed = true;
@@ -372,6 +382,17 @@ export async function mirrorClientToSupabase(client: ClientRow) {
   if (!row) return { ok: true as const, skipped: true as const, reason: "invalid_client" };
   const supabase = createMirrorClient();
   if (!supabase) return { ok: true as const, skipped: true as const, reason: mirrorSkipReason() };
+  if (!isClientDeletedStatus(row)) {
+    const { data: current, error: readError } = await supabase
+      .from("clients")
+      .select("status")
+      .eq("ref", row.ref)
+      .maybeSingle();
+    if (readError) return { ok: false as const, error: readError.message };
+    if (isClientDeletedStatus(current)) {
+      return { ok: true as const, skipped: true as const, reason: "client_deleted" };
+    }
+  }
   const { error } = await supabase.from("clients").upsert(row, { onConflict: "ref" });
   if (error) return { ok: false as const, error: error.message };
   return { ok: true as const };
@@ -529,6 +550,42 @@ export function queueClientMirror(client: ClientRow) {
   void persistClientToSupabase(client);
 }
 
+/** Fila que sube a la nube para dar de baja al cliente (misma cola que Guardar). */
+export function clientDeletedRow(client: ClientRow, at = new Date().toISOString()): ClientRow {
+  return { ...client, status: CLIENT_DELETED_STATUS, updatedAt: at };
+}
+
+/** Baja hecha en otro aparato → tombstone local. Devuelve si aprendió alguna nueva. */
+function learnRemoteClientDeletes(remote: ClientRow[]) {
+  const known = readDeletedIdSet();
+  let learned = false;
+  for (const row of remote) {
+    if (!isClientDeletedStatus(row) || known.has(row.ref)) continue;
+    rememberDeletedId(row.ref);
+    learned = true;
+  }
+  return learned;
+}
+
+/**
+ * Bajas que quedaron solo en este aparato (antes no viajaban): suben a la nube.
+ * Solo clientes sin préstamos en la nube — los únicos que se pueden eliminar.
+ */
+function queueLocalClientDeletesToCloud(liveRemote: ClientRow[], clientRefsWithLoans: ReadonlySet<string>) {
+  const gone = readDeletedIdSet();
+  if (!gone.size) return;
+  const queued = new Set(
+    readQueue<ClientRow>(DEMO_CLIENT_MIRROR_QUEUE_KEY)
+      .filter((row) => isClientDeletedStatus(row))
+      .map((row) => row.ref),
+  );
+  for (const row of liveRemote) {
+    if (!row.ref.startsWith("COD-") || !gone.has(row.ref)) continue;
+    if (clientRefsWithLoans.has(row.ref) || queued.has(row.ref)) continue;
+    queueClientMirror(clientDeletedRow(row));
+  }
+}
+
 export function queueLoanMirror(loan: LoanRow) {
   if (typeof window === "undefined") return;
   const q = readQueue<LoanRow>(DEMO_LOAN_MIRROR_QUEUE_KEY).filter((r) => r.ref !== loan.ref);
@@ -614,9 +671,17 @@ export async function pullRemoteCatalogIntoDemo(): Promise<PullCatalogResult> {
     let loansReason: string | undefined;
 
     if (!clientsBody.skipped) {
-      const remote = (clientsBody.clients ?? [])
+      const remoteAll = (clientsBody.clients ?? [])
         .map(mirrorToClientRow)
         .filter((row): row is ClientRow => Boolean(row));
+      const learnedDeletes = learnRemoteClientDeletes(remoteAll);
+      const remote = remoteAll.filter((row) => !isClientDeletedStatus(row));
+      if (loansRes.ok && loansBody.ok && !loansBody.skipped) {
+        queueLocalClientDeletesToCloud(
+          remote,
+          new Set((loansBody.loans ?? []).map((row) => row.client_ref)),
+        );
+      }
       const local = readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []);
       const pendingClients = readDemoJson<ClientRow[]>(DEMO_CLIENT_MIRROR_QUEUE_KEY, []).filter(
         (row) => row?.ref,
@@ -627,11 +692,11 @@ export async function pullRemoteCatalogIntoDemo(): Promise<PullCatalogResult> {
         if (!pendingByRef.has(ref)) pendingByRef.set(ref, row);
       }
       const merge = mergeByRefPreferPendingLocal(local, remote, pendingByRef, clientSignature);
-      if (merge.changed || (local.length === 0 && remote.length > 0)) {
+      if (merge.changed || learnedDeletes || (local.length === 0 && remote.length > 0)) {
         writeDemoJson(DEMO_CLIENTS_KEY, merge.merged.length ? merge.merged : remote);
         changed = true;
       }
-      const remoteByRef = new Map(remote.map((row) => [row.ref, row]));
+      const remoteByRef = new Map(remoteAll.map((row) => [row.ref, row]));
       pruneClientPullShieldAgainstRemote(remoteByRef);
     }
 

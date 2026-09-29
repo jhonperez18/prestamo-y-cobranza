@@ -20,6 +20,7 @@ const Q_BANKS = "nexo-demo-bank-account-mirror-queue";
 const DROP_ON_SKIP_REASON = new Set([
   "invalid_payment",
   "invalid_client",
+  "client_deleted",
   "invalid_loan",
   "cloud_cie_keeps_cash_float",
   "cloud_cie_keeps_cash_adjustment",

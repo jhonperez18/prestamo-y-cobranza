@@ -37,6 +37,13 @@ export function rememberDeletedId(ref: string): string[] {
   return readDeletedIds();
 }
 
+/** Códigos COD- dados de baja: el próximo alta no los reutiliza (la nube los guarda «Eliminado»). */
+export function deletedClientRefRows(): { ref: string }[] {
+  return readDeletedIds()
+    .filter((ref) => ref.startsWith("COD-"))
+    .map((ref) => ({ ref }));
+}
+
 export function forgetDeletedId(ref: string): string[] {
   const clean = cleanRef(ref);
   if (!clean) return readDeletedIds();

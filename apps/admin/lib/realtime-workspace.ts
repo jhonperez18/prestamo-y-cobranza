@@ -1,6 +1,6 @@
 /**
  * Un cambio de clientes, préstamos o cobros que llega por el canal en vivo.
- * El ref borrado no entra. El registro local más nuevo no se rebobina.
+ * El ref borrado no entra (DELETE o cliente con estado «Eliminado»). El registro local más nuevo no se rebobina.
  * Después se recalculan nombres, saldos, planilla y caja.
  */
 import type { BankAccount, BankMovement } from "@/lib/bank";
@@ -19,7 +19,13 @@ import type {
 } from "@/lib/mock-data";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { refreshLabelsFromCatalog } from "@/lib/project-identity";
-import { mirrorToClientRow, mirrorToLoanRow, type ClientMirrorRow, type LoanMirrorRow } from "@/lib/supabase/catalog-mirror";
+import {
+  isClientDeletedStatus,
+  mirrorToClientRow,
+  mirrorToLoanRow,
+  type ClientMirrorRow,
+  type LoanMirrorRow,
+} from "@/lib/supabase/catalog-mirror";
 import { mirrorRowToPaymentRow, type PaymentMirrorRow } from "@/lib/supabase/payment-mirror";
 
 export const REALTIME_WORKSPACE_TABLES = ["clients", "loans", "payments"] as const;
@@ -95,7 +101,8 @@ export function applyWorkspaceRealtimeEvent(
   const ref = String(record?.ref || "").trim();
   if (!ref) return null;
 
-  if (eventType === "DELETE") {
+  const softDeleted = table === "clients" && isClientDeletedStatus(record as ClientMirrorRow | null);
+  if (eventType === "DELETE" || softDeleted) {
     rememberDeletedId(ref);
     const next = cascade({
       ...state,
