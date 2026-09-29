@@ -282,6 +282,7 @@ import {
   buildMonthCloseRecord,
   findDayExpenseDraft,
   appendCashDisbursementExpense,
+  syncCashDisbursementExpense,
   applyDayCloseRecordsToAssignments,
   normalizeHistoryDate,
   recoverPaymentsFromAssignments,
@@ -1308,7 +1309,48 @@ export function useWorkspace({
 
   function saveEditLoan(draft: LoanDraft) {
     if (!openLoan) return;
-    void applyPortfolioCommit(commitUpdateLoan(openLoan.ref, draft, portfolioState()));
+    const loanRef = openLoan.ref;
+    void (async () => {
+      const result = commitUpdateLoan(loanRef, draft, portfolioState());
+      const ok = await applyPortfolioCommit(result);
+      if (!ok || !result.ok) return;
+      const loan = result.state.loans.find((row) => row.ref === loanRef);
+      if (!loan) return;
+
+      const synced = syncCashDisbursementExpense(dayExpenseDrafts, dayCloses, loan);
+      if (synced.lockedDates.length) {
+        onToast(
+          `Préstamo ${loanRef}: el día ${synced.lockedDates.map(isoToDispatchLabel).join(", ")} ya cerró; su gasto no se modifica.`,
+        );
+      }
+      if (!synced.changed.length) return;
+
+      writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, synced.drafts);
+      setDayExpenseDrafts(synced.drafts);
+      for (const row of synced.changed) queueDayExpenseMirror(row);
+      const accounts = ensureBankAccounts(bankAccounts);
+      setBankMovements((rows) =>
+        applyBankLedgerSync(rows, {
+          payments,
+          accounts,
+          miscPayments,
+          dayExpenseDrafts: synced.drafts,
+          dayCloses,
+          loans: result.state.loans,
+        }),
+      );
+      try {
+        const flush = await flushOpsMirrorQueues();
+        onToast(
+          flush.left > 0
+            ? `Préstamo ${loanRef}: gasto actualizado en este aparato · nube pendiente (reintenta solo).`
+            : `Préstamo ${loanRef}: gasto del cobrador actualizado a ${money(loan.capital)} · listo en la nube.`,
+        );
+      } catch (error) {
+        console.error("[editar-prestamo] flush gasto", error);
+        onToast(`Préstamo ${loanRef}: gasto actualizado en este aparato · nube pendiente (reintenta solo).`);
+      }
+    })();
   }
 
   function openRouteEdit(ref: string) {

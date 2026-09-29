@@ -19,6 +19,7 @@
  *      CIE/PCE-T y es el Inicial M de mañana; el saldo del cierre queda en el Historial.
  *   8. Cartera existente (carga desde planilla manual): no descuenta caja M ni T.
  *   9. Cobro del panel: «Solo sistema» no toca la caja; «Cobrador» en efectivo sí, y nunca a caja cerrada.
+ *  10. Modificar préstamo: el gasto «Préstamo» del cobrador sigue al capital (día abierto).
  */
 import { register } from "node:module";
 
@@ -650,6 +651,31 @@ expect("Panel · solo sistema: caja intacta", ledgerOficina.dayFinal, ledgerSinC
 expect("Panel · cobrador efectivo: suma a su caja", ledgerCobrador.dayFinal - ledgerSinCartera.dayFinal, 30_000);
 expect("Panel · cobrador efectivo: va al lado T (cliente de T)", ledgerCobrador.mClosing, ledgerSinCartera.mClosing);
 expect("Panel · cobrador Nequi: no entra a la caja", ledgerNequiRuta.dayFinal, ledgerSinCartera.dayFinal);
+
+// 10. Modificar préstamo: la línea «Préstamo» del GAS- sigue al capital nuevo (efectivo);
+//     otro origen la saca; un día con CIE- sellado no se toca.
+console.log("— Modificar préstamo → gasto del cobrador —");
+const { syncCashDisbursementExpense } = await import("@/lib/collector-day-close");
+const gasLoan = {
+  ...drafts[0],
+  expenses: [
+    ...drafts[0].expenses,
+    { id: "prestamo", label: "Préstamo · P-M2 · Beto M", amount: 1_000, category: "prestamo_ruta", loanRef: "P-M2" },
+  ],
+  expensesTotal: 21_000,
+};
+const fixedLoan = { ...loans[3], capital: 300_000, fundedBy: "efectivo" };
+const synced = syncCashDisbursementExpense([gasLoan], [cie25], fixedLoan);
+const syncedLine = synced.drafts[0].expenses.find((r) => r.loanRef === "P-M2");
+expect("Editar préstamo: línea del gasto = capital nuevo", syncedLine?.amount ?? null, 300_000);
+expect("Editar préstamo: gasto operativo intacto", synced.drafts[0].expenses.find((r) => r.id === "almuerzo")?.amount ?? null, 20_000);
+expect("Editar préstamo: total del GAS- recalculado", synced.drafts[0].expensesTotal, 320_000);
+const ledgerEdit = buildDayCashLedger({ ...base, dayExpenseDrafts: synced.drafts });
+expect("Editar préstamo: KPI préstamo M = capital nuevo", ledgerEdit.m.prestamos, 300_000);
+const toNequi = syncCashDisbursementExpense([gasLoan], [cie25], { ...fixedLoan, fundedBy: "nequi" });
+expect("Editar préstamo: pasa a Nequi → sale de la caja", toNequi.drafts[0].expenses.some((r) => r.loanRef === "P-M2"), false);
+const sealedDay = syncCashDisbursementExpense([gasLoan], [{ ...cie25, ref: `CIE-COB-0-${D}`, date: D }], fixedLoan);
+expect("Editar préstamo: día con CIE sellado no se toca", sealedDay.changed.length, 0);
 
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);

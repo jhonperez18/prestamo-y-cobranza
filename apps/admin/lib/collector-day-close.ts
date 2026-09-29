@@ -10,6 +10,8 @@ import { pesos, sumPesos, verifyCashClose } from "@/lib/finance";
 import { displayToIso } from "@/lib/loan-preview";
 import { money, type ClientRow, type CollectorRow, type LoanRow, type PaymentRow, paymentsForCollector } from "@/lib/mock-data";
 import { normalizePaymentMethod } from "@/lib/payment-method";
+import { isPrestamoRutaExpense } from "@/lib/expense-lines";
+import { loanDisbursementSource } from "@/lib/nequi-pool";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
 import {
@@ -403,6 +405,59 @@ export function appendCashDisbursementExpense(
       expenses: [...prev, line],
     }),
   );
+}
+
+export type CashDisbursementSyncResult = {
+  drafts: CollectorDayExpenseDraft[];
+  /** GAS- que cambiaron (hay que encolarlos a la nube). */
+  changed: CollectorDayExpenseDraft[];
+  /** Días con CIE- sellado: el gasto de ese día no se toca. */
+  lockedDates: string[];
+};
+
+/**
+ * Al modificar un préstamo: su línea «Préstamo» en el GAS- del cobrador sigue al préstamo.
+ * Efectivo → monto = capital; otro origen → la línea sale (no resta de la caja).
+ * Un día con CIE- sellado no se toca (su saldo ya es el Inicial del día siguiente).
+ */
+export function syncCashDisbursementExpense(
+  drafts: CollectorDayExpenseDraft[],
+  closes: CollectorDayCloseRecord[],
+  loan: Pick<LoanRow, "ref" | "client" | "capital" | "fundedBy" | "notes">,
+): CashDisbursementSyncResult {
+  const capital = Math.trunc(Number(loan.capital) || 0);
+  const keepCash = loanDisbursementSource(loan) === "efectivo" && capital > 0;
+  const changed: CollectorDayExpenseDraft[] = [];
+  const lockedDates: string[] = [];
+  let next = drafts;
+
+  for (const draft of drafts) {
+    const line = draft.expenses.find((row) => row.loanRef === loan.ref && isPrestamoRutaExpense(row));
+    if (!line) continue;
+    if (keepCash && line.amount === capital) continue;
+    const sealed = closes.some(
+      (row) => row.ref === dayCloseRef(draft.collectorRef, draft.date) && !row.provisional,
+    );
+    if (sealed) {
+      lockedDates.push(draft.date);
+      continue;
+    }
+    const others = draft.expenses.filter((row) => row !== line);
+    const expenses = keepCash
+      ? [...others, { ...line, amount: capital, label: `Préstamo · ${loan.ref} · ${loan.client}` }]
+      : others;
+    const rebuilt = buildDayExpenseDraft({
+      collectorRef: draft.collectorRef,
+      collectorName: draft.collectorName,
+      date: draft.date,
+      routeRef: draft.routeRef,
+      expenses,
+    });
+    next = [rebuilt, ...next.filter((row) => row.ref !== draft.ref)];
+    changed.push(rebuilt);
+  }
+
+  return { drafts: next, changed, lockedDates };
 }
 
 export function removeDayExpenseDraft(
