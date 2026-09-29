@@ -23,7 +23,7 @@ import {
   resolvePaymentEvidence,
   withPaymentEvidence,
 } from "@/lib/payment-evidence-store";
-import { normalizePaymentMethod, type PaymentMethod } from "@/lib/payment-method";
+import { normalizePaymentMethod } from "@/lib/payment-method";
 import { parseComboChargeLabel } from "@/lib/payment-combo";
 import { encodeLateChargeLabel, parseLateChargeLabel } from "@/lib/late-payment";
 import { isDeletedRef } from "@/lib/deleted-ids";

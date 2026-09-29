@@ -47,7 +47,6 @@ import { preferRicherEvidence } from "@/lib/payment-evidence";
 import {
   CLIENT_STATUS_ACTIVE,
   clientStatusKind,
-  isPendingReview,
 } from "@/lib/client-review";
 import {
   type CollectorDayCloseRecord,

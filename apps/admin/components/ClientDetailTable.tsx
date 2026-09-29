@@ -1,6 +1,6 @@
 "use client";
 
-import { money, type ClientRow } from "@/lib/mock-data";
+import { type ClientRow } from "@/lib/mock-data";
 import { QuadDetailTable, type QuadField } from "@/components/QuadDetailTable";
 
 type Props = {

@@ -14,7 +14,7 @@ import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
 import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
 import type { ClientRow, CollectorRow, LoanRow, PaymentRow, RouteRow } from "@/lib/mock-data";
 import { paymentsForCollector } from "@/lib/mock-data";
-import { normalizePaymentMethod, paymentMethodIsCash } from "@/lib/payment-method";
+import { normalizePaymentMethod } from "@/lib/payment-method";
 
 export type CollectorMobileQueue = {
   date: string;

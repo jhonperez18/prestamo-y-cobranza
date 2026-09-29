@@ -25,7 +25,7 @@ import {
 import { todayIso } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { defaultPermissionsForRole } from "@/lib/access-preview";
-import { collectorDeleteGuard, collectorPayments, type CollectorTab, type DeleteGuard } from "@/lib/collector-preview";
+import { collectorDeleteGuard, collectorPayments, type CollectorTab } from "@/lib/collector-preview";
 import { CollectorActivityList } from "@/components/CollectorActivityList";
 import { CollectorDailyHistory } from "@/components/CollectorDailyHistory";
 import { CollectorPayForm } from "@/components/CollectorPayForm";
@@ -33,7 +33,6 @@ import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { PermissionChecklist } from "@/components/PermissionChecklist";
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
 import { normalizePaymentMethod, paymentMethodInitial, paymentMethodKind, paymentMethodLabel } from "@/lib/payment-method";
-import type { CollectorPaymentDraft } from "@/lib/route-sync";
 import { useEffect, useMemo, useState } from "react";
 
 type PayContext = {

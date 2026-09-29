@@ -13,10 +13,7 @@ import type {
 } from "@/lib/collector-day-close";
 import {
   routeIsActive,
-  type ClientRow,
-  type CollectorRow,
   type LoanRow,
-  type PaymentRow,
   type RouteRow,
 } from "@/lib/mock-data";
 

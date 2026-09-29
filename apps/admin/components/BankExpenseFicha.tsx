@@ -20,7 +20,6 @@ import {
   periodLabel,
 } from "@/lib/bank";
 import type { MiscPayment } from "@/lib/misc-payments";
-import { paymentMethodLabel } from "@/lib/payment-method";
 
 type Props = {
   movement: BankMovement;

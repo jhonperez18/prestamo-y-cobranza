@@ -2,26 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ModuleId } from "@/lib/navigation";
-import { CLIENTS, COLLECTORS, ACTIVITY, ADMIN_ROLE_REF, ASSIGNABLE_ROLES, COLLECTOR_ROLE_REF, COLLECTOR_UNASSIGNED_ZONE, DEMO_USER_PASSWORD, activeLoans, loansForClient, LOANS, money, nextClientCode, clientCreationDate, nextCollectorCode, nextLoanCode, nextPaymentCode, nextRouteCode, nextUserCode, normalizeRouteNumber, normalizeUserPermissions, PAYMENTS, roleByRef, ROLES, ROUTES, routeSlug, catalogRoutes, clientsOnRouteListed, routeIsActive, routeStatusMeta, userForCollector, ensureCollectorsForUsers, collectorViewForUser, USERS, type ClientRow, type CollectorRow, type LoanRow, type PaymentRow, type RouteRow, type UserRow } from "@/lib/mock-data";
+import { CLIENTS, COLLECTORS, ACTIVITY, COLLECTOR_ROLE_REF, LOANS, money, nextLoanCode, nextPaymentCode, nextRouteCode, normalizeRouteNumber, PAYMENTS, ROUTES, routeSlug, catalogRoutes, clientsOnRouteListed, routeIsActive, routeStatusMeta, userForCollector, ensureCollectorsForUsers, collectorViewForUser, USERS, type ClientRow, type CollectorRow, type LoanRow, type PaymentRow, type RouteRow, type UserRow } from "@/lib/mock-data";
 import {
   CLIENT_STATUS_ACTIVE,
-  CLIENT_STATUS_REVIEW,
   clientNavBadges,
-  clientsForView,
   clientStatusKind,
-  isPendingReview,
-  normalizeClientLifecycle,
   pendingReviewClients,
 } from "@/lib/client-review";
 import type { AppSession } from "@/lib/auth";
-import { AccessDenied } from "@/components/AccessDenied";
 import { canApproveFromPermissions, canAccessView } from "@/lib/session-access";
 import { buildAlerts } from "@/lib/alerts";
-import { EditUserForm, type UserEditDraft } from "@/components/EditUserForm";
-import { UserFicha, type UserTab } from "@/components/UserFicha";
-import { NewUserForm, type UserDraft } from "@/components/NewUserForm";
-import { UserList } from "@/components/UserList";
-import { DailyCollectionsView } from "@/components/DailyCollectionsView";
+import { type UserEditDraft } from "@/components/EditUserForm";
+import { type UserTab } from "@/components/UserFicha";
+import { type UserDraft } from "@/components/NewUserForm";
 import {
   assignClientToRouteOnLoan,
   buildQuickLoan,
@@ -31,7 +24,6 @@ import {
 } from "@/lib/street-client-loan";
 import {
   isoToDispatchLabel,
-  isoToDispatchToken,
   monthStartIso,
   todayIso,
 } from "@/lib/daily-dispatch";
@@ -40,80 +32,36 @@ import {
   applyDeclineLoanOfferToRoute,
   applySkipToRoute,
   assignmentFromItem,
-  buildDispatchRoute,
   closeDispatchDay,
   collectorDayVisitsFullyClosed,
   DECLINED_LOAN_OFFER_TODAY_REASON,
   declineLoanOfferToday,
-  dispatchRouteRef,
-  markAssignmentsDispatched,
   NO_PAY_TODAY_REASON,
-  rebuildDispatchRoutes,
   skipAssignmentVisit,
-  upsertDispatchDailyLog,
-  upsertDispatchRoute,
 } from "@/lib/collector-dispatch-sync";
-import { collectorPayments, userDeleteGuard, type CollectorTab } from "@/lib/collector-preview";
-import { NewClientForm, type ClientDraft } from "@/components/NewClientForm";
-import { CollectorActivityView } from "@/components/CollectorActivityView";
-import { CollectorFicha } from "@/components/CollectorFicha";
-import { CollectorZonesView } from "@/components/CollectorZonesView";
-import { NewLoanForm, type LoanDraft } from "@/components/NewLoanForm";
-import { NewRouteForm, type RouteDraft } from "@/components/NewRouteForm";
-import { ClientDetailTable } from "@/components/ClientDetailTable";
-import { LoanDetailView } from "@/components/LoanDetailView";
-import { LoanFichaGrid } from "@/components/LoanFichaGrid";
-import { LoanPayForm, type PanelPayDestination } from "@/components/LoanPayForm";
-import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
-import { PaymentFicha } from "@/components/PaymentFicha";
-import { PaymentStatusPill } from "@/components/PaymentStatusPill";
-import { PaymentRefLink } from "@/components/PaymentRefLink";
-import { LoanReportView } from "@/components/LoanReportView";
-import { DataTable, Pill } from "@/components/ui";
-import { ClientList } from "@/components/ClientList";
-import { HomeDashboard } from "@/components/HomeDashboard";
+import { type CollectorTab } from "@/lib/collector-preview";
+import { type ClientDraft } from "@/components/NewClientForm";
+import { type LoanDraft } from "@/components/NewLoanForm";
+import { type RouteDraft } from "@/components/NewRouteForm";
+import { type PanelPayDestination } from "@/components/LoanPayForm";
 import {
   assignCollectorToCatalogRoute,
   planillaDayBlockedReason,
   syncPermanentRoutePlanilla,
 } from "@/lib/route-planilla";
 import { usePlanillaDayRollover } from "@/lib/planilla-day-sync";
-import { AssignRouteCollectorView } from "@/components/AssignRouteCollectorView";
-import { PermissionsPanel, RolePanel } from "@/components/RolePanel";
-import { CarteraView } from "@/components/CarteraView";
-import { CarteraGroupView } from "@/components/CarteraGroupView";
-import { CobranzaPaymentsView } from "@/components/CobranzaPaymentsView";
-import { CollectorRecaudoReportView } from "@/components/CollectorRecaudoReportView";
-import { AnulacionesView } from "@/components/AnulacionesView";
-import { AuditoriaView } from "@/components/AuditoriaView";
-import { SystemSettingsView } from "@/components/SystemSettingsView";
-import { AdminProfileView } from "@/components/AdminProfileView";
-import { BankExtractView } from "@/components/BankExtractView";
-import { BankExtractsListView } from "@/components/BankExtractsListView";
-import { BankAccountListView } from "@/components/BankAccountListView";
-import { BankNewAccountForm } from "@/components/BankNewAccountForm";
-import { BankReportView } from "@/components/BankReportView";
-import { BankReconciledLedgerView } from "@/components/BankReconciledLedgerView";
-import { MiscPaymentNewForm } from "@/components/MiscPaymentNewForm";
-import { MiscPaymentFicha } from "@/components/MiscPaymentFicha";
-import { MiscPaymentListView } from "@/components/MiscPaymentListView";
-import { BankExpenseFicha } from "@/components/BankExpenseFicha";
-import { BankRecordsHistoryView } from "@/components/BankRecordsHistoryView";
-import { CollectorMobilePreview } from "@/components/CollectorMobilePreview";
 import type {
   CollectorSkipVisitDraft,
   CollectorCloseDayPayload,
   CollectorCloseMonthPayload,
   CollectorSaveExpensesPayload,
 } from "@/components/CollectorMobileApp";
-import { ColumnPicker, ColumnPickerBodyCell, useColumnVisibility } from "@/components/ColumnPicker";
-import { LoanPaymentsTable } from "@/components/LoanPaymentsTable";
+import { useColumnVisibility } from "@/components/ColumnPicker";
 import {
   PRESTAMO_LIST_COLUMNS,
   PRESTAMO_LIST_DEFAULT_COLS,
 } from "@/lib/table-columns";
-import { loanStatusPill } from "@/lib/loan-status";
-import { chargeLabel, displayToIso, isoToDisplay, normalizeLoan, syncAllLoans, syncLoan } from "@/lib/loan-preview";
+import { chargeLabel, displayToIso, syncLoan } from "@/lib/loan-preview";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
 import {
   flushPaymentMirrorQueue,
@@ -129,10 +77,6 @@ import { saveCashAdjustment } from "@/lib/save-cash-adjustment";
 import type { CashAdjustmentRequest } from "@/lib/commit-cash-adjustment";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror, flushCatalogMirrorQueues } from "@/lib/supabase/catalog-mirror";
-import {
-  queueBankAccountMirror,
-  flushBankAccountMirrorQueues,
-} from "@/lib/supabase/bank-accounts-mirror";
 import {
   commitUsersCatalog,
 } from "@/lib/users-catalog";
@@ -150,10 +94,8 @@ import {
   flushOpsMirrorQueues,
   queueAssignmentsMirror,
   queueCollectorMirror,
-  queueCollectorsMirror,
   queueDayCloseMirror,
   queueDayExpenseMirror,
-  queueMiscPaymentMirror,
   queueRouteMirror,
   queueRouteDeleteMirror,
   queueRoutesMirror,
@@ -173,34 +115,20 @@ import {
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
-import { computeLoanFinancials, loanPaySummaryRows } from "@/lib/loan-balance";
 import { buildRenewalLoans } from "@/lib/loan-renew";
-import { markLoanFundedByBanco, markLoanFundedByNequi } from "@/lib/nequi-pool";
-import { buildPortfolioStats } from "@/lib/portfolio-stats";
 import {
-  enrichPaymentMovement,
   buildPaymentRow,
-  loansByRef,
-  sortPaymentsNewestFirst,
 } from "@/lib/payment-detail";
 import {
   normalizePaymentMethod,
-  paymentMethodKind,
-  paymentMethodLabel,
   type PaymentMethod,
 } from "@/lib/payment-method";
 import { withPaymentEvidence, rememberPaymentEvidence } from "@/lib/payment-evidence-store";
-import { preferRicherEvidence, evidenceHasPreview, type PaymentEvidenceRef } from "@/lib/payment-evidence";
+import { preferRicherEvidence, type PaymentEvidenceRef } from "@/lib/payment-evidence";
 import {
-  buildRouteStop,
   isCombinedCollectorPayment,
   type CollectorPaymentRegisterInput,
 } from "@/lib/route-sync";
-import {
-  dedupeClientsByRef,
-  migrateLegacyRouteName,
-  normalizeAllRouteOrders,
-} from "@/lib/client-route-order";
 import { newIdempotencyKey, pesos } from "@/lib/finance";
 import { applyPay, cuotaTarget, loanRowAfterPay, paymentRowKind, type PayKind } from "@/lib/loan-pay";
 import {
@@ -214,17 +142,13 @@ import {
 } from "@/lib/collector-daily-log";
 import {
   currentPeriod,
-  isBankExpenseMovement,
-  normalizeBankAccount,
-  normalizeBankMovements,
   ensureBankAccounts,
-  swapReconciliationDebitCredit,
   type BankAccount,
   type BankLedgerKind,
   type BankMovement,
   type BankReconciliation,
 } from "@/lib/bank";
-import { applyBankLedgerSync, syncBankLedger } from "@/lib/bank-ledger-sync";
+import { applyBankLedgerSync } from "@/lib/bank-ledger-sync";
 import {
   commitCollectorPayment,
   commitCollectorCombinedPayment,
@@ -243,37 +167,29 @@ import {
   type PortfolioCatalogState,
   type PortfolioCommitResult,
 } from "@/lib/commit-portfolio-catalog";
-import { runOperationalDayCycle } from "@/lib/collector-day-auto-close";
-import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
-import { dedupeDailyPaymentsByVisit, reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
+import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
 import { sealCollectorDay } from "@/lib/collector-day-close-seal";
 import { alignChainLinksToLedger, buildDayCashLedger } from "@/lib/day-cash-ledger";
 import type { MiscPayment } from "@/lib/misc-payments";
-import { findMiscPaymentForMovement, miscPaymentRefForMovement } from "@/lib/misc-payments";
+import { miscPaymentRefForMovement } from "@/lib/misc-payments";
 import {
   DEMO_COLLECTORS_KEY,
   DEMO_CLIENTS_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_DAILY_LOGS_KEY,
   DEMO_ROUTES_KEY,
-  DEMO_USERS_KEY,
   DEMO_PAYMENTS_KEY,
   DEMO_LOANS_KEY,
   DEMO_BANK_ACCOUNTS_KEY,
   DEMO_BANK_MOVEMENTS_KEY,
   DEMO_BANK_RECONCILIATIONS_KEY,
-  DEMO_BANK_SIDES_VERSION_KEY,
   DEMO_MISC_PAYMENTS_KEY,
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
   DEMO_COLLECTOR_MONTH_CLOSES_KEY,
   DEMO_PLANILLA_CASH_CLOSES_KEY,
   listDeletedRouteRefs,
-  loadDemoPaymentsBundle,
-  loadDemoUsers,
-  loadDemoClients,
   loadDemoDayCloses,
-  loadDemoBankMovements,
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
@@ -285,9 +201,6 @@ import {
   syncCashDisbursementExpense,
   applyDayCloseRecordsToAssignments,
   normalizeHistoryDate,
-  recoverPaymentsFromAssignments,
-  recoverPaymentsFromBankMovements,
-  synthesizeDayClosesFromAssignments,
   upsertDayExpenseDraft,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,

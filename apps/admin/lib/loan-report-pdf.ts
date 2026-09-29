@@ -1,7 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { LoanReportDocument } from "@/lib/loan-report";
-import { money } from "@/lib/mock-data";
 import {
   LOAN_PAYMENT_DEFAULT_COLS,
   loanPaymentMovementCell,

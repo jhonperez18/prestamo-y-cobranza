@@ -2,7 +2,7 @@ import type { AppSession } from "@/lib/auth";
 import { writeSession } from "@/lib/auth";
 import { loadDemoUsers } from "@/lib/demo-persist";
 import { upsertUserInCatalog } from "@/lib/users-catalog";
-import { normalizeUserPermissions, type UserRow } from "@/lib/mock-data";
+import { normalizeUserPermissions } from "@/lib/mock-data";
 
 export const ADMIN_PROFILES_KEY = "nexo-admin-profiles";
 

@@ -10,7 +10,6 @@ import {
   collectionAlertLabel,
   collectionChargeKind,
   type CollectionPaymentTouch,
-  liveLoanCollectionAlerts,
 } from "@/lib/collection-alerts";
 import { isPendingReview, isOperationalClient } from "@/lib/client-review";
 import { isColombiaHoliday, isDailyCollectionDay, weekdayLabel } from "@/lib/colombia-holidays";
