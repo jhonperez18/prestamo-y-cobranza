@@ -136,6 +136,23 @@ El admin elige a dónde va la plata (`LoanPayForm` → `registerPay`):
 - Cobrador y «caja cerrada» salen de `route-collector-cash.ts` (mismo candado que el pago tardío).
 - Nunca entra a una caja ya cerrada hoy. Candado: `assert-cash-chain.mjs` sección 9.
 
+## Modificar préstamo — el gasto del cobrador sigue al capital
+
+El renglón «Préstamo · P-…» del GAS- del cobrador (`prestamo_ruta`) es lo que manda en el KPI
+Préstamo y en lo que se descuenta de la caja. Si se corrige el préstamo, ese renglón se corrige
+también. Un solo camino: `saveEditLoan` → `commitUpdateLoan` → `syncCashDisbursementExpense`
+(`lib/collector-day-close.ts`) → local + `queueDayExpenseMirror` + await `flushOpsMirrorQueues`.
+
+| Caso | Resultado |
+| --- | --- |
+| Sigue en efectivo | El renglón toma el capital nuevo; se recalcula el total del GAS- |
+| Pasa a Nequi / banco / cartera | El renglón se quita (esa plata no salió de la caja) |
+| Día con CIE- sellado | No se toca; aviso «el día … ya cerró» |
+
+- Gastos operativos del mismo GAS- no se tocan.
+- Préstamos ya corregidos antes de esta regla: abrir → Modificar → Guardar (sin cambios).
+- Candado: `assert-cash-chain.mjs` sección 10.
+
 ## Ajuste de saldo real en T (supervisor / admin)
 
 Poner la caja contada de verdad como saldo final del día. Un solo camino: `commitCashAdjustment`

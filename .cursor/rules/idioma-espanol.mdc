@@ -1,0 +1,11 @@
+---
+description: Responder siempre en español
+alwaysApply: true
+---
+
+# Idioma — siempre español
+
+Todas las respuestas al dueño van **en español**: resúmenes, avisos, preguntas, resultados de verify y explicaciones.
+
+- Nombres de código (`funciones`, archivos, comandos) se dejan como están.
+- Nunca responder en inglés, aunque el contexto técnico esté en inglés.
