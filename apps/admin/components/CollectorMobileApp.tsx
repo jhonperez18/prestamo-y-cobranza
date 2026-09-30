@@ -1040,7 +1040,6 @@ export function CollectorMobileApp({
   function openLoansDetail() {
     if (isNavQuiet()) return;
     if (dayLocked) return;
-    if (!planillaOwnsMovements) return;
     setExpandedKey(null);
     setConfirmingClose(false);
     setEditingExpenses(false);
@@ -1242,6 +1241,29 @@ export function CollectorMobileApp({
   // Cadena M↔T: cada planilla muestra solo lo suyo; entre ellas solo pasa el saldo.
   const topGastos = planillaOwnsMovements ? dayExpenseSplit.otrosTotal : 0;
   const topPrestamos = planillaOwnsMovements ? dayLoanDisbursementTotal(dayLoanRows) : 0;
+  /**
+   * Solo lectura para planillas fuera de la cadena (A): préstamos del cobrador a clientes
+   * de esa ruta. La caja no cambia — el libro ya los descuenta en M.
+   */
+  const viewLoanRows = useMemo(() => {
+    if (planillaOwnsMovements || !activePlanillaRoute) return dayLoanRows;
+    const routeClients = new Set(
+      clients.filter((row) => sameRoute(row.route, activePlanillaRoute)).map((row) => row.ref),
+    );
+    return dayLoanDisbursementRows(activeDate, savedExpensesRaw, loans, clients, loanScope).filter((row) =>
+      routeClients.has(row.clientRef),
+    );
+  }, [
+    planillaOwnsMovements,
+    activePlanillaRoute,
+    dayLoanRows,
+    clients,
+    activeDate,
+    savedExpensesRaw,
+    loans,
+    loanScope,
+  ]);
+  const viewPrestamos = dayLoanDisbursementTotal(viewLoanRows);
   /** Caja de la planilla: en la cadena, la cifra del libro (M = caja de M; T = saldo final del día). */
   const planillaCaja =
     chainPlanillaDay && chainOpening.kind === "chain"
@@ -1730,21 +1752,21 @@ export function CollectorMobileApp({
                 ? "collector-mobile-stat is-prestamos on"
                 : "collector-mobile-stat is-prestamos"
           }
-          disabled={chromeLocked || !planillaOwnsMovements}
+          disabled={chromeLocked}
           title={
             chromeLocked
               ? "Jornada cerrada"
               : !planillaOwnsMovements
-                ? `Préstamos en la planilla ${PLANILLA_CASH_CHAIN_PRIMARY}`
+                ? `Préstamos a clientes de esta planilla (la caja los descuenta en ${PLANILLA_CASH_CHAIN_PRIMARY})`
                 : "Préstamos del día"
           }
           {...navButtonProps(navIntent, () => {
-            if (chromeLocked || !planillaOwnsMovements) return;
+            if (chromeLocked) return;
             openLoansDetail();
           })}
         >
           <span>Préstamos</span>
-          <b>{topPrestamos > 0 ? money(topPrestamos) : "—"}</b>
+          <b>{viewPrestamos > 0 ? money(viewPrestamos) : "—"}</b>
         </button>
         <button
           type="button"
@@ -1926,8 +1948,8 @@ export function CollectorMobileApp({
       ) : reviewingLoans ? (
         <CollectorDayLoansPanel
           dateLabel={queue.dateLabel}
-          rows={dayLoanRows}
-          total={topPrestamos}
+          rows={viewLoanRows}
+          total={viewPrestamos}
           onBack={() => setReviewingLoans(false)}
         />
       ) : confirmingClose && onCloseDay ? (
