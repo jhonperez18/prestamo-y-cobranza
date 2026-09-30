@@ -852,6 +852,59 @@ const nSrc = {
 };
 expect("N 26: caja = efectivo − gastos", independentRouteDay(nSrc, "N").closing, 90_000);
 
+// ── 12. Banco: cada cobro llega a su cuenta según la ruta (A → Nequi; M/T/N → Banco) ──
+console.log("\n— Banco: destino del cobro por ruta —");
+const { loanRouteIndex, normalizeBankAccount, syncAllPaymentsToMovements } = await import("@/lib/bank");
+const bankAccounts = [
+  normalizeBankAccount({ ref: "EF", name: "BANCOLOMBIA", bankName: "Efectivo", accountType: "ahorros" }),
+  normalizeBankAccount({ ref: "NQ", name: "NEQUI", bankName: "Nequi", accountType: "corriente" }),
+  normalizeBankAccount({ ref: "BC", name: "BANCO", bankName: "Banco", accountType: "nequi" }),
+];
+const bankClients = [
+  { ref: "C-A", route: "A" },
+  { ref: "C-M", route: "M" },
+  { ref: "C-N", route: "N" },
+];
+const bankLoans = [
+  { ref: "L-A", clientRef: "C-A" },
+  { ref: "L-M", clientRef: "C-M" },
+  { ref: "L-N", clientRef: "C-N" },
+];
+const bankPay = (ref, loanRef, method) => ({
+  ref,
+  loanRef,
+  method,
+  amount: 10_000,
+  paidDate: D,
+  when: D,
+  client: ref,
+  collector: "X",
+  type: "Cuota",
+  kind: "paid",
+});
+const bankRows = syncAllPaymentsToMovements(
+  [
+    bankPay("PG-A1", "L-A", "nequi"),
+    bankPay("PG-A2", "L-A", "banco"),
+    bankPay("PG-A3", "L-A", "efectivo"),
+    bankPay("PG-M1", "L-M", "nequi"),
+    bankPay("PG-M2", "L-M", "banco"),
+    bankPay("PG-N1", "L-N", "nequi"),
+    bankPay("PG-M3", "L-M", "efectivo"),
+  ],
+  [],
+  bankAccounts,
+  loanRouteIndex(bankLoans, bankClients),
+);
+const accountOf = (pg) => bankRows.find((row) => row.paymentRef === pg)?.accountRef ?? null;
+expect("Banco · A no efectivo (nequi) → Nequi", accountOf("PG-A1"), "NQ");
+expect("Banco · A no efectivo (banco) → Nequi", accountOf("PG-A2"), "NQ");
+expect("Banco · A efectivo → principal", accountOf("PG-A3"), "EF");
+expect("Banco · M no efectivo (nequi) → Banco", accountOf("PG-M1"), "BC");
+expect("Banco · M no efectivo (banco) → Banco", accountOf("PG-M2"), "BC");
+expect("Banco · N no efectivo → Banco", accountOf("PG-N1"), "BC");
+expect("Banco · M efectivo → principal", accountOf("PG-M3"), "EF");
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

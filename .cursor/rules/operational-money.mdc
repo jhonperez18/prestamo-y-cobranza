@@ -10,6 +10,9 @@ alwaysApply: true
 - **Pagos `PaymentRow` (`PG-`)** son la raíz de plata en el demo actual.
 - Planilla, CIE (`collected` / `cashFloat`), banco y logs diarios son **proyecciones**.
 - **Efectivo** suma a caja del cobrador; **Nequi** va a cuenta del dueño (no entra a `En caja`).
+- Cuenta del cobro en Banco (`syncAllPaymentsToMovements`): efectivo → cuenta principal;
+  no efectivo de un cliente de **A** → cuenta «Nequi»; de **M / T / N** → cuenta «Banco».
+  Manda la ruta del cliente, no el valor guardado. Candado: `assert-cash-chain.mjs` sección 12.
 - Detalle: `docs/operational-money.md`.
 
 ## Obligatorio tras mutar dinero o cierre

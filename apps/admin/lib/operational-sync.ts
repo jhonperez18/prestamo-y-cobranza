@@ -29,7 +29,7 @@ export type OperationalSyncInput = {
   loans: LoanRow[];
   payments: PaymentRow[];
   collectors: CollectorRow[];
-  clients?: ClientRow[];
+  clients: ClientRow[];
   dayCloses: CollectorDayCloseRecord[];
   dayExpenseDrafts?: CollectorDayExpenseDraft[];
   bankAccounts: BankAccount[];
@@ -116,6 +116,7 @@ export function synchronizeOperationalState(
     dayExpenseDrafts: input.dayExpenseDrafts ?? [],
     dayCloses,
     loans,
+    clients: input.clients,
   });
 
   const assignments = input.assignments?.length

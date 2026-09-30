@@ -196,6 +196,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
             dayExpenseDrafts: next.dayExpenseDrafts,
             dayCloses: next.dayCloses,
             loans: next.loans,
+            clients: readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []),
           }),
         );
         void mirrorAutoDayCloseToCloud({
@@ -424,6 +425,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
         dayExpenseDrafts,
         dayCloses,
         loans: nextLoans,
+        clients: nextClients,
       }),
     );
     showToast(
@@ -467,6 +469,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
         dayExpenseDrafts,
         dayCloses,
         loans,
+        clients,
       }),
     );
     queueMiscPaymentMirror(payment);

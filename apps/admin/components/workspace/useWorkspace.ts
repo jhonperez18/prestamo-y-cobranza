@@ -574,6 +574,7 @@ export function useWorkspace({
             dayExpenseDrafts: next.dayExpenseDrafts,
             dayCloses: split.dayCloses,
             loans: next.loans,
+            clients: readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []),
           }),
         );
         const cashMerged =
@@ -630,9 +631,10 @@ export function useWorkspace({
         dayExpenseDrafts,
         dayCloses,
         loans,
+        clients,
       }),
     );
-  }, [demoHydrated, payments, dayExpenseDrafts, dayCloses, bankAccounts, miscPayments, loans]);
+  }, [demoHydrated, payments, dayExpenseDrafts, dayCloses, bankAccounts, miscPayments, loans, clients]);
 
   useEffect(() => {
     if (!demoHydrated) return;
@@ -1217,6 +1219,7 @@ export function useWorkspace({
           dayExpenseDrafts: nextDrafts,
           dayCloses,
           loans: result.state.loans,
+          clients: result.state.clients,
         }),
       );
       onToast(
@@ -1255,6 +1258,7 @@ export function useWorkspace({
           dayExpenseDrafts: synced.drafts,
           dayCloses,
           loans: result.state.loans,
+          clients: result.state.clients,
         }),
       );
       try {
@@ -1543,6 +1547,7 @@ export function useWorkspace({
         dayExpenseDrafts: nextDrafts,
         dayCloses: nextCloses,
         loans,
+        clients,
       }),
     );
 
@@ -1578,6 +1583,7 @@ export function useWorkspace({
         dayExpenseDrafts: nextDrafts,
         dayCloses,
         loans,
+        clients,
       }),
     );
 
@@ -1676,6 +1682,7 @@ export function useWorkspace({
           dayExpenseDrafts: nextDrafts,
           dayCloses: nextCloses,
           loans,
+          clients,
         }),
       );
     }

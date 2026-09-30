@@ -6,6 +6,7 @@
 import {
   bankMovementsSignature,
   ensureBankAccounts,
+  loanRouteIndex,
   lockPaymentCobrosAsIncome,
   normalizeBankMovements,
   repairMiscPaymentLinks,
@@ -21,7 +22,7 @@ import {
   type CollectorDayExpenseDraft,
 } from "@/lib/collector-day-close";
 import type { MiscPayment } from "@/lib/misc-payments";
-import type { LoanRow, PaymentRow } from "@/lib/mock-data";
+import type { ClientRow, LoanRow, PaymentRow } from "@/lib/mock-data";
 
 export function syncBankLedger(input: {
   payments: PaymentRow[];
@@ -30,12 +31,19 @@ export function syncBankLedger(input: {
   miscPayments: MiscPayment[];
   dayExpenseDrafts: CollectorDayExpenseDraft[];
   dayCloses: CollectorDayCloseRecord[];
-  /** Préstamos/renovaciones con fundedBy Nequi o Banco → Haber. */
-  loans?: LoanRow[];
+  /** Préstamos/renovaciones con fundedBy Nequi o Banco → Haber; y ruta de cada cobro. */
+  loans: LoanRow[];
+  /** Ruta del cliente: decide la cuenta del cobro no efectivo (A → Nequi; M/T/N → Banco). */
+  clients: ClientRow[];
 }): BankMovement[] {
   const accounts = ensureBankAccounts(input.accounts);
   const account = accounts.find((row) => row.active) ?? accounts[0] ?? null;
-  const withPayments = syncAllPaymentsToMovements(input.payments, input.movements, accounts);
+  const withPayments = syncAllPaymentsToMovements(
+    input.payments,
+    input.movements,
+    accounts,
+    loanRouteIndex(input.loans, input.clients),
+  );
   const withMisc = syncMiscPaymentsToMovements(
     input.miscPayments,
     repairMiscPaymentLinks(input.miscPayments, withPayments),
@@ -47,7 +55,7 @@ export function syncBankLedger(input: {
     account?.ref,
   );
   const withLoans = syncNequiLoanDisbursementsToMovements(
-    input.loans ?? [],
+    input.loans,
     withExpenses,
     account?.ref,
   );

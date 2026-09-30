@@ -250,6 +250,7 @@ export function CollectorShell({ session, onLogout }: Props) {
             dayExpenseDrafts: next.dayExpenseDrafts,
             dayCloses: next.dayCloses,
             loans: next.loans,
+            clients: readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []),
           }),
         );
         // Misma cadena que cierre manual: CIE + PCE + planilla sellada → nube.
@@ -544,6 +545,7 @@ export function CollectorShell({ session, onLogout }: Props) {
         dayExpenseDrafts: nextDrafts,
         dayCloses,
         loans: nextLoans,
+        clients: nextClients,
       }),
     );
     showToast(
@@ -639,6 +641,7 @@ export function CollectorShell({ session, onLogout }: Props) {
         dayExpenseDrafts: nextDrafts,
         dayCloses,
         loans: nextLoans,
+        clients: nextClients,
       }),
     );
     showToast(
@@ -731,6 +734,7 @@ export function CollectorShell({ session, onLogout }: Props) {
         dayExpenseDrafts: nextDrafts,
         dayCloses: loadDemoDayCloses<CollectorDayCloseRecord>(),
         loans,
+        clients,
       }),
     );
 
@@ -835,6 +839,7 @@ export function CollectorShell({ session, onLogout }: Props) {
           dayExpenseDrafts: nextDrafts,
           dayCloses: nextCloses,
           loans,
+          clients,
         }),
       );
     }

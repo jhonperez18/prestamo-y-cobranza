@@ -1,5 +1,6 @@
-import type { LoanRow, PaymentRow } from "@/lib/mock-data";
+import type { ClientRow, LoanRow, PaymentRow } from "@/lib/mock-data";
 import { COLLECTORS, money } from "@/lib/mock-data";
+import { sameRoute } from "@/lib/client-route-order";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement } from "@/lib/misc-payments";
 import {
@@ -1225,6 +1226,35 @@ export function repairBankMovementsFromPayments(
   return dedupeBankMovements(next);
 }
 
+/** Ruta de cada préstamo según su cliente (P- → M / T / A / N). */
+export function loanRouteIndex(loans: LoanRow[], clients: ClientRow[]): Map<string, string> {
+  const routeByClient = new Map(clients.map((row) => [row.ref, row.route ?? ""]));
+  const out = new Map<string, string>();
+  for (const loan of loans) {
+    const route = loan.clientRef ? routeByClient.get(loan.clientRef) : undefined;
+    if (route) out.set(loan.ref, route);
+  }
+  return out;
+}
+
+/**
+ * Destino del cobro no efectivo según la ruta: A cobra por Nequi; M / T / N por Banco.
+ * La cuenta se reconoce por su nombre en el catálogo («Nequi» / «Banco»).
+ */
+function digitalPaymentAccounts(accounts: BankAccount[], primary: BankAccount) {
+  const byLabel = (label: string) =>
+    accounts.find(
+      (row) =>
+        row.active && (foldPersonKey(row.name) === label || foldPersonKey(row.bankName) === label),
+    );
+  const legacyNequi = accounts.find((row) => row.accountType === "nequi");
+  return {
+    routeA: byLabel("nequi") ?? legacyNequi ?? primary,
+    otherRoutes: byLabel("banco") ?? legacyNequi ?? primary,
+    legacyNequi,
+  };
+}
+
 /**
  * Fuente de verdad: cada cobro (PG-) existe una sola vez en banco.
  * Conserva conciliado / cuenta / ref previos; rellena los que faltan.
@@ -1233,10 +1263,19 @@ export function syncAllPaymentsToMovements(
   payments: PaymentRow[],
   movements: BankMovement[],
   accounts: BankAccount[],
+  routeByLoan: Map<string, string>,
 ) {
   const primary = accounts.find((row) => row.active) ?? accounts[0];
   if (!primary) return dedupeBankMovements(movements);
-  const nequiAccount = accounts.find((row) => row.accountType === "nequi");
+  const digital = digitalPaymentAccounts(accounts, primary);
+  const accountForPayment = (payment: PaymentRow, method: PaymentMethod) => {
+    if (method === "efectivo") return primary.ref;
+    const route = payment.loanRef ? routeByLoan.get(payment.loanRef) : undefined;
+    if (!route) {
+      return method === "nequi" && digital.legacyNequi ? digital.legacyNequi.ref : primary.ref;
+    }
+    return sameRoute(route, "A") ? digital.routeA.ref : digital.otherRoutes.ref;
+  };
 
   const existing = dedupeBankMovements(repairBankMovementsFromPayments(movements, payments));
   const byPayment = new Map<string, BankMovement>();
@@ -1255,11 +1294,9 @@ export function syncAllPaymentsToMovements(
     const prev = byPayment.get(payment.ref);
     const period = periodFromIso(payment.paidDate);
     const method = normalizePaymentMethod(payment.method);
-    // Cuenta = proyección del método del PG-: Nequi → cuenta Nequi, resto → principal.
-    // Aunque el cobro haya entrado antes de crear la cuenta Nequi, se reubica; solo
-    // una fila ya conciliada conserva su cuenta.
-    const projectedAccountRef =
-      method === "nequi" && nequiAccount ? nequiAccount.ref : primary.ref;
+    // Cuenta = proyección del PG-: efectivo → principal; no efectivo → Nequi (ruta A) o
+    // Banco (M / T / N). Solo una fila ya conciliada conserva su cuenta.
+    const projectedAccountRef = accountForPayment(payment, method);
     const accountRef =
       prev?.reconciled && prev.accountRef ? prev.accountRef : projectedAccountRef;
     paymentRows.push({
