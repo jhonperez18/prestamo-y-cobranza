@@ -8,7 +8,8 @@ type Props = {
   dateLabel: string;
   collected: number;
   efectivo: number;
-  nequi: number;
+  /** Solo ruta A (Efectivo y Nequi). M / T / N no muestran Nequi. */
+  nequi?: number;
   /** Sin valor: la planilla no cobra en Banco (ruta A) y el recuadro no se muestra. */
   banco?: number;
   expenses: RouteExpenseLine[];
@@ -54,10 +55,12 @@ export function CollectorCloseDayConfirm({
           <em>Efectivo</em>
           <b>{money(efectivo)}</b>
         </div>
-        <div className="is-pay-nequi">
-          <em>Nequi</em>
-          <b>{money(nequi)}</b>
-        </div>
+        {nequi != null ? (
+          <div className="is-pay-nequi">
+            <em>Nequi</em>
+            <b>{money(nequi)}</b>
+          </div>
+        ) : null}
         {banco != null ? (
           <div className="is-pay-banco">
             <em>Banco</em>

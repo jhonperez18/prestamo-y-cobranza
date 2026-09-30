@@ -2089,14 +2089,15 @@ export function CollectorMobileApp({
                   <span>Efectivo</span>
                   <b>{money(planillaRecaudo.efectivo)}</b>
                 </div>
-                <div className="is-mean is-pay-nequi">
-                  <span>Nequi</span>
-                  <b>{money(planillaNequiShown)}</b>
-                </div>
-                {planillaIsA ? null : (
+                {planillaIsA ? (
+                  <div className="is-mean is-pay-nequi">
+                    <span>Nequi</span>
+                    <b>{money(planillaNequiShown)}</b>
+                  </div>
+                ) : (
                   <div className="is-mean is-pay-banco">
                     <span>Banco</span>
-                    <b>{money(planillaRecaudo.banco)}</b>
+                    <b>{money(planillaRecaudo.digital)}</b>
                   </div>
                 )}
               </div>
@@ -2168,8 +2169,8 @@ export function CollectorMobileApp({
           }
           collected={planillaRecaudo.total}
           efectivo={planillaRecaudo.efectivo}
-          nequi={planillaNequiShown}
-          banco={planillaIsA ? undefined : planillaRecaudo.banco}
+          nequi={planillaIsA ? planillaNequiShown : undefined}
+          banco={planillaIsA ? undefined : planillaRecaudo.digital}
           expenses={planillaExpenses}
           opening={planillaCaja != null ? headerInicial : undefined}
           cashFloat={planillaCaja ?? undefined}
