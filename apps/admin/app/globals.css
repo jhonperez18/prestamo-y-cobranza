@@ -5062,38 +5062,38 @@
       letter-spacing: 0.04em;
     }
     .supervisor-route-act:disabled {
-      opacity: 0.45;
+      opacity: 0.6;
       cursor: not-allowed;
     }
     .supervisor-route-act.is-planilla {
-      background: #eef6ef;
-      border-color: #c5e0cb;
-      color: #14532d;
+      background: #d6ecda;
+      border-color: #9fcfa9;
+      color: #0f3f22;
     }
     .supervisor-route-act.is-gastos {
-      background: #fff0ee;
-      border-color: #f5c4bc;
-      color: #881337;
+      background: #fddcd7;
+      border-color: #eea398;
+      color: #6f0f2c;
     }
     .supervisor-route-act.is-cobros {
-      background: #e8f0fe;
-      border-color: #bfdbfe;
-      color: #1d4ed8;
+      background: #d3e3fc;
+      border-color: #93bbf5;
+      color: #1a3fae;
     }
     .supervisor-route-act.is-prestamos {
-      background: #fff4e8;
-      border-color: #f0d0a8;
-      color: #9a3412;
+      background: #fde4c8;
+      border-color: #e5b27a;
+      color: #7c2a0e;
     }
     .supervisor-route-act.is-historial {
-      background: #e6f7f3;
-      border-color: #b8e4dc;
-      color: #0a3d38;
+      background: #cdeee6;
+      border-color: #8fd3c5;
+      color: #073330;
     }
     .supervisor-route-act.is-np {
-      background: #fff8f8;
-      border-color: #e8b4b4;
-      color: #8b3a3a;
+      background: #fbe3e3;
+      border-color: #d99090;
+      color: #742d2d;
     }
     .supervisor-route-act:hover:not(:disabled),
     .supervisor-route-act:active:not(:disabled) {
