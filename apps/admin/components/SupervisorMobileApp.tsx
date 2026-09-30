@@ -131,11 +131,11 @@ import {
 } from "@/lib/planilla-cash-chain";
 import {
   buildDayCashLedger,
+  chainDayCuadre,
   chainHistorySplit,
   withLedgerTodaySaldo,
   type DayCashLedger,
 } from "@/lib/day-cash-ledger";
-import { loanClientOnSide, operativeLineOnSide } from "@/lib/expense-lines";
 import {
   attachCashAdjustments,
   cashAdjustmentDelta,
@@ -2248,8 +2248,75 @@ export function SupervisorMobileApp({
     monthCloses,
   ]);
 
+  /**
+   * Día del historial de M / T (libro del día): M = la mañana; T = el día entero (M + T).
+   * La Caja es la misma cifra del renglón: T = saldo final (Inicial de M mañana);
+   * M = saldo de la mañana (Inicial de T).
+   */
+  const openRouteHistoryChainDay = useMemo(() => {
+    if (!openRoute || !cajaHistoryDayIso) return null;
+    const isT = isPlanillaCashChainSecondary(openRoute.routeName);
+    if (!isT && !isPlanillaCashChainPrimary(openRoute.routeName)) return null;
+    const collector = collectors.find((row) => row.ref === openRoute.collectorRef);
+    if (!collector) return null;
+    const cuadre = chainDayCuadre(
+      {
+        collectorRef: collector.ref,
+        collectorName: collector.name,
+        date: cajaHistoryDayIso,
+        payments,
+        loans,
+        clients,
+        collectors: [collector],
+        assignments,
+        dayCloses,
+        dayExpenseDrafts,
+        planillaCashCloses,
+        monthCloses,
+        fallbackOpening:
+          cajaHistoryDayIso === PLANILLA_CASH_CHAIN_HISTORY_EPOCH
+            ? openingSaldoForPeriod(
+                collector.ref,
+                periodFromDateIso(cajaHistoryDayIso),
+                monthCloses,
+              )
+            : undefined,
+      },
+      isT ? "secondary" : "primary",
+    );
+    const listed = isT
+      ? openRouteAdjustHistory?.find((entry) => entry.row.date === cajaHistoryDayIso)?.row.saldo
+      : (openRouteCajaHistory as Array<{ date: string; saldoShown?: number | null }>).find(
+          (row) => row.date === cajaHistoryDayIso,
+        )?.saldoShown;
+    return listed != null && Number.isFinite(listed) ? { ...cuadre, closing: listed } : cuadre;
+  }, [
+    openRoute,
+    openRouteAdjustHistory,
+    openRouteCajaHistory,
+    cajaHistoryDayIso,
+    collectors,
+    payments,
+    loans,
+    clients,
+    assignments,
+    dayCloses,
+    dayExpenseDrafts,
+    planillaCashCloses,
+    monthCloses,
+  ]);
+
   const openRouteHistoryDayCuadre = useMemo(() => {
     if (!openRoute || !cajaHistoryDayIso) return null;
+    if (openRouteHistoryChainDay) {
+      return {
+        saldoInicial: openRouteHistoryChainDay.opening,
+        cobradoEfectivo: openRouteHistoryChainDay.efectivo,
+        cobradoNequi: openRouteHistoryChainDay.nequi,
+        cobradoBanco: openRouteHistoryChainDay.banco,
+        enCaja: openRouteHistoryChainDay.closing,
+      };
+    }
     if (openRouteHistoryIndependentDay) {
       const { day, collected } = openRouteHistoryIndependentDay;
       return {
@@ -2272,6 +2339,7 @@ export function SupervisorMobileApp({
     );
   }, [
     openRoute,
+    openRouteHistoryChainDay,
     openRouteHistoryIndependentDay,
     cajaHistoryDayIso,
     collectors,
@@ -2281,8 +2349,14 @@ export function SupervisorMobileApp({
     monthCloses,
   ]);
 
+  const historyDayShowNequiValue =
+    !openRouteIsA || (openRouteHistoryDayCuadre?.cobradoNequi ?? 0) > 0;
+  const historyDayShowBancoValue =
+    openRouteIsA || (openRouteHistoryDayCuadre?.cobradoBanco ?? 0) > 0;
+
   const openRouteHistoryDayExpenses = useMemo(() => {
     if (!openRoute || !cajaHistoryDayIso) return [];
+    if (openRouteHistoryChainDay) return openRouteHistoryChainDay.lines;
     if (openRouteHistoryIndependentDay) return openRouteHistoryIndependentDay.lines;
     const raw = expensesForCollectorDay(
       openRoute.collectorRef,
@@ -2290,30 +2364,13 @@ export function SupervisorMobileApp({
       dayCloses,
       dayExpenseDrafts,
     );
-    const lines = expensesWithDayLoans(cajaHistoryDayIso, raw, loans, clients, {
+    return expensesWithDayLoans(cajaHistoryDayIso, raw, loans, clients, {
       collectorRef: openRoute.collectorRef,
       assignments,
     });
-    const isT = isPlanillaCashChainSecondary(openRoute.routeName);
-    if (!isT && !isPlanillaCashChainPrimary(openRoute.routeName)) return lines;
-    // Cadena M↔T: el día de la ruta muestra solo sus préstamos y gastos.
-    const split = chainHistorySplit(
-      isT ? "secondary" : "primary",
-      openRoute.collectorRef,
-      clients,
-      assignments,
-    );
-    return lines.filter((line) =>
-      isPrestamoRutaExpense(line)
-        ? loanClientOnSide(
-            loans.find((loan) => loan.ref === line.loanRef)?.clientRef,
-            split,
-            cajaHistoryDayIso,
-          )
-        : operativeLineOnSide(line, split),
-    );
   }, [
     openRoute,
+    openRouteHistoryChainDay,
     openRouteHistoryIndependentDay,
     cajaHistoryDayIso,
     dayCloses,
@@ -3373,19 +3430,28 @@ export function SupervisorMobileApp({
                   <div className="is-cobrado-head">
                     <span>Lo que cobró</span>
                   </div>
-                  <div className="is-cobrado-means" aria-label="Desglose de lo cobrado">
+                  <div
+                    className={`is-cobrado-means${
+                      historyDayShowNequiValue && historyDayShowBancoValue ? "" : " is-two"
+                    }`}
+                    aria-label="Desglose de lo cobrado"
+                  >
                     <div className="is-mean is-pay-efectivo">
                       <span>Efectivo</span>
                       <b>{money(openRouteHistoryDayCuadre.cobradoEfectivo)}</b>
                     </div>
-                    <div className="is-mean is-pay-nequi">
-                      <span>Nequi</span>
-                      <b>{money(openRouteHistoryDayCuadre.cobradoNequi)}</b>
-                    </div>
-                    <div className="is-mean is-pay-banco">
-                      <span>Banco</span>
-                      <b>{money(openRouteHistoryDayCuadre.cobradoBanco)}</b>
-                    </div>
+                    {historyDayShowNequiValue ? (
+                      <div className="is-mean is-pay-banco">
+                        <span>Banco</span>
+                        <b>{money(openRouteHistoryDayCuadre.cobradoNequi)}</b>
+                      </div>
+                    ) : null}
+                    {historyDayShowBancoValue ? (
+                      <div className="is-mean is-pay-nequi">
+                        <span>Nequi</span>
+                        <b>{money(openRouteHistoryDayCuadre.cobradoBanco)}</b>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 <div className="is-saldo">

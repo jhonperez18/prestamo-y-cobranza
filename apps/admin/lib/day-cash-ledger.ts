@@ -28,6 +28,7 @@ import {
 import {
   dayLoanDisbursementRows,
   dayLoanDisbursementTotal,
+  loanRowsToExpenseLines,
   type DayLoanDisbursementRow,
 } from "@/lib/collector-history-planilla";
 import { assignmentRouteName } from "@/lib/collector-dispatch-sync";
@@ -124,18 +125,28 @@ export function routeClientRefsForDay(src: DayCashSources, routeName: string): S
   return refs;
 }
 
-/** Efectivo cobrado a clientes de la ruta (Nequi / banco no entran a la mano). */
-export function routeCashCollected(src: DayCashSources, routeName: string): number {
+/** Cobrado ese día a clientes de la ruta, por medio de pago (nada de otras rutas). */
+export function routeCollectedByMethod(
+  src: DayCashSources,
+  routeName: string,
+): { efectivo: number; nequi: number; banco: number } {
   const refs = routeClientRefsForDay(src, routeName);
-  let efectivo = 0;
+  const out = { efectivo: 0, nequi: 0, banco: 0 };
   for (const pay of collectorDayPayments(src.collectorRef, src.date, src.payments, src.collectors)) {
     const loan = src.loans.find((row) => row.ref === pay.loanRef);
     if (!loan?.clientRef || !refs.has(loan.clientRef)) continue;
+    const amount = Number(pay.amount) || 0;
     const method = normalizePaymentMethod(pay.method);
-    if (method === "nequi" || method === "banco") continue;
-    efectivo += Number(pay.amount) || 0;
+    if (method === "nequi") out.nequi += amount;
+    else if (method === "banco") out.banco += amount;
+    else out.efectivo += amount;
   }
-  return pesos(efectivo);
+  return { efectivo: pesos(out.efectivo), nequi: pesos(out.nequi), banco: pesos(out.banco) };
+}
+
+/** Efectivo cobrado a clientes de la ruta (Nequi / banco no entran a la mano). */
+export function routeCashCollected(src: DayCashSources, routeName: string): number {
+  return routeCollectedByMethod(src, routeName).efectivo;
 }
 
 /** Reparto M↔T del día: préstamos por ruta del cliente; gastos por planilla donde se anotaron. */
@@ -261,6 +272,40 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
     dayFinal: pesos(mClosing + t.efectivo - t.gastos - t.prestamos),
     cashAdjustment:
       findFullDayCieClose(src.dayCloses, src.collectorRef, date)?.cashAdjustment ?? null,
+  };
+}
+
+/** «Cierre del día» del Historial: M = la mañana; T = el día entero (M + T). */
+export type ChainDayCuadre = {
+  /** Inicial de M ese día (CIE de la víspera). */
+  opening: number;
+  efectivo: number;
+  nequi: number;
+  banco: number;
+  /** Gastos y préstamos (renglones) que suma la caja. */
+  lines: RouteExpenseLine[];
+  /** Libro: M = caja de M (Inicial de T); T = saldo final del día. */
+  closing: number;
+};
+
+export function chainDayCuadre(
+  src: DayCashSources,
+  side: ChainRouteSplit["side"],
+): ChainDayCuadre {
+  const ledger = buildDayCashLedger(src);
+  const days = side === "secondary" ? [ledger.m, ledger.t] : [ledger.m];
+  const routes =
+    side === "secondary"
+      ? [PLANILLA_CASH_CHAIN_PRIMARY, PLANILLA_CASH_CHAIN_SECONDARY]
+      : [PLANILLA_CASH_CHAIN_PRIMARY];
+  const collected = routes.map((route) => routeCollectedByMethod(src, route));
+  return {
+    opening: ledger.mOpening.kind === "chain" ? ledger.mOpening.opening : 0,
+    efectivo: pesos(days.reduce((sum, day) => sum + day.efectivo, 0)),
+    nequi: pesos(collected.reduce((sum, row) => sum + row.nequi, 0)),
+    banco: pesos(collected.reduce((sum, row) => sum + row.banco, 0)),
+    lines: days.flatMap((day) => [...day.gastoLines, ...loanRowsToExpenseLines(day.loanRows)]),
+    closing: side === "secondary" ? ledger.dayFinal : ledger.mClosing,
   };
 }
 

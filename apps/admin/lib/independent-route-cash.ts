@@ -30,16 +30,15 @@ import {
   loanRowsToExpenseLines,
   type DayLoanDisbursementRow,
 } from "@/lib/collector-history-planilla";
-import { collectorDayPayments } from "@/lib/collector-mobile";
 import {
   isChainCollectorDay,
   routeCashCollected,
   routeClientRefsForDay,
+  routeCollectedByMethod,
   type DayCashSources,
 } from "@/lib/day-cash-ledger";
 import { isPrestamoRutaExpense } from "@/lib/expense-lines";
 import { pesos } from "@/lib/finance";
-import { normalizePaymentMethod } from "@/lib/payment-method";
 import {
   findFullDayCieClose,
   INDEPENDENT_OWN_LOANS_FROM,
@@ -134,19 +133,7 @@ export function independentRouteCollected(
   src: DayCashSources,
   route: string,
 ): { efectivo: number; nequi: number; banco: number } {
-  const refs = routeClientRefsForDay(src, route);
-  const out = { efectivo: 0, nequi: 0, banco: 0 };
-  for (const pay of collectorDayPayments(src.collectorRef, src.date, src.payments, src.collectors)) {
-    const loan = src.loans.find((row) => row.ref === pay.loanRef);
-    if (!loan?.clientRef || !refs.has(loan.clientRef)) continue;
-    const amount = Number(pay.amount) || 0;
-    if (!(amount > 0)) continue;
-    const method = normalizePaymentMethod(pay.method);
-    if (method === "nequi") out.nequi += amount;
-    else if (method === "banco") out.banco += amount;
-    else out.efectivo += amount;
-  }
-  return { efectivo: pesos(out.efectivo), nequi: pesos(out.nequi), banco: pesos(out.banco) };
+  return routeCollectedByMethod(src, route);
 }
 
 /** Renglones de gasto y préstamo del día de la planilla (los mismos que suma su caja). */

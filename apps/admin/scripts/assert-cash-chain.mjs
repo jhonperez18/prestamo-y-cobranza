@@ -26,7 +26,7 @@ import { register } from "node:module";
 
 register("./ts-alias-loader.mjs", import.meta.url);
 
-const { buildDayCashLedger, chainHistorySplit, withLedgerTodaySaldo } = await import(
+const { buildDayCashLedger, chainDayCuadre, chainHistorySplit, withLedgerTodaySaldo } = await import(
   "@/lib/day-cash-ledger"
 );
 const { sealCollectorDay } = await import("@/lib/collector-day-close-seal");
@@ -335,6 +335,26 @@ expect("Historial M · 26 préstamo", histMRow?.prestamo ?? null, 300_000);
 expect("Historial M · 26 gasto", histMRow?.gasto ?? null, 20_000);
 expect("Historial T · 26 préstamo", histTRow?.prestamo ?? null, 100_000);
 expect("Historial T · 26 gasto", histTRow?.gasto ?? null, 10_000);
+
+// Cierre del día (supervisor): M = la mañana; T = día entero M+T, misma Caja que el libro.
+const sumLines = (lines, loan) =>
+  lines.filter((l) => (l.category === "prestamo_ruta") === loan).reduce((s, l) => s + l.amount, 0);
+const cuadreM = chainDayCuadre(baseT, "primary");
+const cuadreT = chainDayCuadre(baseT, "secondary");
+expect("Cierre M · Inicial = CIE de ayer", cuadreM.opening, 2_704_000);
+expect("Cierre M · efectivo solo M", cuadreM.efectivo, ledgerT.m.efectivo);
+expect("Cierre M · préstamos solo M", sumLines(cuadreM.lines, true), 300_000);
+expect("Cierre M · Caja = Inicial de T", cuadreM.closing, ledgerT.mClosing);
+expect("Cierre T · Inicial = Inicial de M", cuadreT.opening, 2_704_000);
+expect("Cierre T · efectivo M+T", cuadreT.efectivo, ledgerT.m.efectivo + ledgerT.t.efectivo);
+expect("Cierre T · préstamos M+T", sumLines(cuadreT.lines, true), 400_000);
+expect("Cierre T · gastos M+T", sumLines(cuadreT.lines, false), 30_000);
+expect("Cierre T · Caja = saldo final del día", cuadreT.closing, ledgerT.dayFinal);
+expect(
+  "Cierre T · Inicial + efectivo − préstamos − gastos = Caja",
+  cuadreT.opening + cuadreT.efectivo - sumLines(cuadreT.lines, true) - sumLines(cuadreT.lines, false),
+  cuadreT.closing,
+);
 
 const tAfterM = sealCollectorDay({ ...baseT, routeRef: "RUT", planillaRoute: "M", expensesFallback: [], fullyClosed: false });
 const tAfterT = sealCollectorDay({
