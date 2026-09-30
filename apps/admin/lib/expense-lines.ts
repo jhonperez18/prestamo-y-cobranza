@@ -23,6 +23,9 @@ export type ChainRouteSplit = {
   secondaryRoute: string;
   /** Clientes de la planilla secundaria: sus préstamos son de esa planilla. */
   secondaryClientRefs: ReadonlySet<string>;
+  /** Clientes de A / N: desde `ownCashFrom` sus préstamos salen de su propia caja (ni M ni T). */
+  ownCashClientRefs?: ReadonlySet<string>;
+  ownCashFrom?: string;
 };
 
 export function isSecondaryOperativeLine(
@@ -41,7 +44,19 @@ export function operativeLineOnSide(
   return isSecondaryOperativeLine(line, split.secondaryRoute) === (split.side === "secondary");
 }
 
-export function loanClientOnSide(clientRef: string | undefined, split: ChainRouteSplit) {
+export function loanClientOnSide(
+  clientRef: string | undefined,
+  split: ChainRouteSplit,
+  dateIso: string,
+) {
+  if (
+    clientRef &&
+    split.ownCashFrom &&
+    dateIso >= split.ownCashFrom &&
+    split.ownCashClientRefs?.has(clientRef)
+  ) {
+    return false;
+  }
   const onSecondary = Boolean(clientRef) && split.secondaryClientRefs.has(clientRef as string);
   return onSecondary === (split.side === "secondary");
 }

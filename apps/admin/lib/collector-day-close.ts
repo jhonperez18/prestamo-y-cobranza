@@ -1039,7 +1039,7 @@ export function buildCollectorDayHistory(
     const clientRef = loanClientRef(loanRef);
     return Boolean(clientRef && scopeRefs.has(clientRef));
   };
-  const expenseBuckets = (expenses: RouteExpenseLine[]) => {
+  const expenseBuckets = (expenses: RouteExpenseLine[], date: string) => {
     let gasto = 0;
     let prestamo = 0;
     for (const line of expenses) {
@@ -1048,7 +1048,7 @@ export function buildCollectorDayHistory(
       const isPrestamo = line.category === "prestamo_ruta" || line.id === "prestamo";
       if (isPrestamo) {
         if (chainSplit) {
-          if (!loanClientOnSide(loanClientRef(line.loanRef), chainSplit)) continue;
+          if (!loanClientOnSide(loanClientRef(line.loanRef), chainSplit, date)) continue;
         } else if (!paymentInScope(line.loanRef)) {
           continue;
         }
@@ -1086,7 +1086,7 @@ export function buildCollectorDayHistory(
   const gastoByDate = new Map<string, number>();
   const prestamoByDate = new Map<string, number>();
   const applyExpenseSource = (date: string, expenses: RouteExpenseLine[]) => {
-    const buckets = expenseBuckets(expenses);
+    const buckets = expenseBuckets(expenses, date);
     gastoByDate.set(date, (gastoByDate.get(date) ?? 0) + buckets.gasto);
     prestamoByDate.set(date, (prestamoByDate.get(date) ?? 0) + buckets.prestamo);
   };
@@ -1102,7 +1102,7 @@ export function buildCollectorDayHistory(
     const date = normalizeHistoryDate(row.date);
     if (!date || closedDates.has(date)) continue;
     // Borrador: reemplaza (un draft por cobrador+día), no acumula.
-    const buckets = expenseBuckets(row.expenses ?? []);
+    const buckets = expenseBuckets(row.expenses ?? [], date);
     gastoByDate.set(date, buckets.gasto);
     prestamoByDate.set(date, buckets.prestamo);
   }
@@ -1142,7 +1142,9 @@ export function buildCollectorDayHistory(
       prestamoByDate.set(
         date,
         dayLoanDisbursementTotal(
-          chainSplit ? rows.filter((row) => loanClientOnSide(row.clientRef, chainSplit)) : rows,
+          chainSplit
+            ? rows.filter((row) => loanClientOnSide(row.clientRef, chainSplit, date))
+            : rows,
         ),
       );
     }

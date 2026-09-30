@@ -709,6 +709,35 @@ const [aHist26] = withIndependentRouteHistory(
 expect("A aislada: Historial sin gasto de M/T", aHist26.gasto, 0);
 expect("A aislada: Historial sin préstamo de M/T", aHist26.prestamo, 0);
 expect("A aislada: Historial con saldo propio (no el de la cadena)", aHist26.saldo, 50_000);
+// Préstamo a cliente de A: antes del 30/09 salía de M; desde el 30/09 sale de la caja de A.
+const loanA26 = { ref: "P-A3", clientRef: "CLI-A1", client: "Dani A", date: "26/09/2026", capital: 150_000, installment: 7_500, fundedBy: "efectivo" };
+const mBeforeCut = buildDayCashLedger({ ...base, loans: [...loans, loanA26] }).m;
+expect("A antes del 30/09: su préstamo seguía en M (días sellados intactos)", mBeforeCut.loanRows.some((r) => r.loanRef === "P-A3"), true);
+const O = "2026-09-30";
+const ownSrc = {
+  ...base,
+  date: O,
+  loans: [
+    ...loans,
+    { ref: "P-A2", clientRef: "CLI-A1", client: "Dani A", date: "30/09/2026", capital: 200_000, installment: 10_000, fundedBy: "efectivo" },
+    { ref: "P-M3", clientRef: "CLI-M2", client: "Beto M", date: "30/09/2026", capital: 100_000, installment: 5_000, fundedBy: "efectivo" },
+  ],
+  payments: [...payments, pay("PG-O1", "P-A1", 60_000, O)],
+  assignments: [
+    ...assignments,
+    visit("V-M2-O", "CLI-M2", "M", O),
+    visit("V-T1-O", "CLI-T1", "T", O),
+    visit("V-A1-O", "CLI-A1", "A", O),
+  ],
+  dayExpenseDrafts: [],
+};
+const ownLedger = buildDayCashLedger(ownSrc);
+expect("A desde 30/09: M no descuenta el préstamo de A", ownLedger.m.loanRows.map((r) => r.loanRef).join(","), "P-M3");
+expect("A desde 30/09: T tampoco", ownLedger.t.loanRows.length, 0);
+const aOwn = independentRouteDay(ownSrc, "A");
+expect("A desde 30/09: su caja descuenta su préstamo", aOwn.prestamos, 200_000);
+expect("A desde 30/09: caja A = efectivo A − préstamo A", aOwn.closing, 60_000 - 200_000);
+expect("A desde 30/09: sin gastos de M/T", aOwn.gastos, 0);
 const aAdj = commitRouteCashAdjustment({
   collectorRef: COB.ref,
   route: "A",

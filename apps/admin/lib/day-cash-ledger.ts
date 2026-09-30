@@ -12,7 +12,8 @@
  *
  * Cada planilla tiene lo suyo: préstamo = ruta de su cliente; gasto = planilla donde se anotó.
  *
- * Planilla A (y cualquier ruta fuera de la cadena) no entra al saldo.
+ * Planilla A (y cualquier ruta fuera de la cadena) no entra al saldo. Desde
+ * `INDEPENDENT_OWN_LOANS_FROM`, sus préstamos tampoco: salen de la caja de A.
  */
 import {
   expensesForCollectorDay,
@@ -44,6 +45,8 @@ import type { ClientRow, CollectorRow, LoanRow, PaymentRow } from "@/lib/mock-da
 import { normalizePaymentMethod } from "@/lib/payment-method";
 import {
   findFullDayCieClose,
+  INDEPENDENT_OWN_LOANS_FROM,
+  INDEPENDENT_SALDO_ROUTES,
   isPlanillaCashChainRoute,
   openingCashForChainedPlanilla,
   planillaCashCloseRef,
@@ -140,11 +143,21 @@ export function chainRouteSplit(
   src: DayCashSources,
   side: ChainRouteSplit["side"],
 ): ChainRouteSplit {
+  const ownCashClientRefs = new Set<string>();
+  for (const route of INDEPENDENT_SALDO_ROUTES) {
+    for (const ref of routeClientRefsForDay(src, route)) ownCashClientRefs.add(ref);
+  }
   return {
     side,
     secondaryRoute: PLANILLA_CASH_CHAIN_SECONDARY,
     secondaryClientRefs: routeClientRefsForDay(src, PLANILLA_CASH_CHAIN_SECONDARY),
+    ownCashClientRefs,
+    ownCashFrom: INDEPENDENT_OWN_LOANS_FROM,
   };
+}
+
+function isOwnCashRoute(route: string) {
+  return INDEPENDENT_SALDO_ROUTES.some((name) => sameRoute(route, name));
 }
 
 /** Mismo reparto M↔T para el Historial (varios días): clientes T del catálogo y de sus visitas. */
@@ -159,13 +172,22 @@ export function chainHistorySplit(
       .filter((row) => sameRoute(row.route, PLANILLA_CASH_CHAIN_SECONDARY))
       .map((row) => row.ref),
   );
+  const ownCashClientRefs = new Set(
+    clients.filter((row) => isOwnCashRoute(row.route)).map((row) => row.ref),
+  );
   for (const row of assignments) {
     if (row.collectorRef !== collectorRef || !row.clientRef) continue;
-    if (sameRoute(assignmentRouteName(row, clients), PLANILLA_CASH_CHAIN_SECONDARY)) {
-      refs.add(row.clientRef);
-    }
+    const route = assignmentRouteName(row, clients);
+    if (sameRoute(route, PLANILLA_CASH_CHAIN_SECONDARY)) refs.add(row.clientRef);
+    else if (isOwnCashRoute(route)) ownCashClientRefs.add(row.clientRef);
   }
-  return { side, secondaryRoute: PLANILLA_CASH_CHAIN_SECONDARY, secondaryClientRefs: refs };
+  return {
+    side,
+    secondaryRoute: PLANILLA_CASH_CHAIN_SECONDARY,
+    secondaryClientRefs: refs,
+    ownCashClientRefs,
+    ownCashFrom: INDEPENDENT_OWN_LOANS_FROM,
+  };
 }
 
 /** Movimiento propio de una planilla de la cadena (M = principal, T = secundaria). */
@@ -185,7 +207,7 @@ function chainRouteDay(
   const loanRows = dayLoanDisbursementRows(dateIsoOf(src.date), lines, src.loans, src.clients, {
     collectorRef: src.collectorRef,
     assignments: src.assignments,
-  }).filter((row) => loanClientOnSide(row.clientRef, split));
+  }).filter((row) => loanClientOnSide(row.clientRef, split, dateIsoOf(src.date)));
   return {
     efectivo,
     gastos: sumExpenseLines(gastoLines),

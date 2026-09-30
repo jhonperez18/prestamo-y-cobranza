@@ -2308,6 +2308,7 @@ export function SupervisorMobileApp({
         ? loanClientOnSide(
             loans.find((loan) => loan.ref === line.loanRef)?.clientRef,
             split,
+            cajaHistoryDayIso,
           )
         : operativeLineOnSide(line, split),
     );

@@ -31,6 +31,15 @@ export const PLANILLA_CASH_CLOSE_REF_PREFIX = "PCE-";
  */
 export const PLANILLA_CASH_CHAIN_HISTORY_EPOCH = "2026-09-25";
 
+/** Planillas fuera de la cadena con caja propia. */
+export const INDEPENDENT_SALDO_ROUTES = ["A", "N"] as const;
+
+/**
+ * Desde este día, un préstamo a un cliente de A / N sale de la caja de esa planilla
+ * (antes lo descontaba M). Días anteriores quedan como se sellaron.
+ */
+export const INDEPENDENT_OWN_LOANS_FROM = "2026-09-30";
+
 /**
  * Monto del seed viejo (ya no se usa). Solo sirve para detectar y sacar
  * basura que aún esté en caché local. Inicial hoy = saldo de ayer, punto.

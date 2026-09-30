@@ -32,7 +32,8 @@ M y T tienen clientes, cobros, préstamos y gastos **propios**. Lo único que la
 - Libro: `buildDayCashLedger().m` / `.t` (`gastoLines`, `loanRows`). Historial: `chainSplit`
   (`chainHistorySplit`). Pantallas solo leen eso.
 
-Planilla **A** no entra en la cadena.
+Planilla **A** no entra en la cadena. Desde el 2026-09-30 sus préstamos tampoco: M y T no
+los descuentan (`loanClientOnSide` con `ownCashClientRefs`); salen de la caja propia de A.
 
 ## CIE manda (blindaje — no volver a romper)
 
@@ -182,7 +183,7 @@ A y N llevan su propia caja. Un solo dueño: `lib/independent-route-cash.ts` (`i
 | Pieza | Regla |
 | --- | --- |
 | Inicial hoy | Saldo real del último ajuste de esa planilla + movimiento de los días siguientes. Sin ajuste previo: el de siempre |
-| Movimiento | A (Cristian, cobrador de la cadena): efectivo de A — sus préstamos siguen saliendo de M. N (Yesid, sin cadena): efectivo − gastos − préstamos |
+| Movimiento | A (Cristian, cobrador de la cadena): efectivo de A − préstamos a clientes de A (desde `INDEPENDENT_OWN_LOANS_FROM` = 2026-09-30; antes salían de M y esos días no se recalculan). Sus gastos siguen en M/T. N (Yesid, sin cadena): efectivo − gastos − préstamos |
 | Ajuste | Supervisor → ruta A/N → Historial → saldo de hoy. Solo hoy, con el CIE- del cobrador sellado, antes de medianoche (`routeCashAdjustmentWindow`) |
 | Dónde vive | `routeCashAdjustments` del CIE- del día; nube: entrada `AJUSTE@A:` / `AJUSTE@N:` en `movement_refs` |
 | Qué no | `cashFloat`, ajuste de T, PCE-, libro M→T, cuotas, pagos, días pasados |

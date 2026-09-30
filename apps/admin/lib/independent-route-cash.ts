@@ -5,7 +5,8 @@
  *   Inicial de hoy = saldo real del último ajuste + movimiento de los días siguientes.
  *   Saldo del día  = Inicial + movimiento de hoy.
  * Movimiento del día:
- *   - cobrador de la cadena (A de Cristian): efectivo de la ruta (préstamos y gastos van a M).
+ *   - cobrador de la cadena (A de Cristian): efectivo de la ruta − préstamos a clientes de A
+ *     (desde `INDEPENDENT_OWN_LOANS_FROM`; antes iban a M). Los gastos siguen en M / T.
  *   - cobrador sin cadena (N de Yesid): efectivo de la ruta − gastos − préstamos.
  * Sin ajuste previo, el Inicial es el de siempre (`fallbackOpening`).
  *
@@ -39,10 +40,14 @@ import {
 import { isPrestamoRutaExpense } from "@/lib/expense-lines";
 import { pesos } from "@/lib/finance";
 import { normalizePaymentMethod } from "@/lib/payment-method";
-import { findFullDayCieClose, isPlanillaCashChainRoute } from "@/lib/planilla-cash-chain";
+import {
+  findFullDayCieClose,
+  INDEPENDENT_OWN_LOANS_FROM,
+  INDEPENDENT_SALDO_ROUTES,
+  isPlanillaCashChainRoute,
+} from "@/lib/planilla-cash-chain";
 
-/** Planillas con saldo propio ajustable. */
-export const INDEPENDENT_SALDO_ROUTES = ["A", "N"] as const;
+export { INDEPENDENT_SALDO_ROUTES };
 
 export function isIndependentSaldoRoute(route: string | null | undefined): boolean {
   if (!route || isPlanillaCashChainRoute(route)) return false;
@@ -100,14 +105,16 @@ type RouteMovement = {
 
 function routeMovement(src: DayCashSources, route: string): RouteMovement {
   const efectivo = routeCashCollected(src, route);
-  if (isChainCollectorDay(src)) {
+  const date = isoOf(src.date);
+  const chainCollector = isChainCollectorDay(src);
+  const ownLoans = date >= INDEPENDENT_OWN_LOANS_FROM;
+  if (chainCollector && !ownLoans) {
     return { efectivo, gastos: 0, prestamos: 0, gastoLines: [], loanRows: [] };
   }
-  const date = isoOf(src.date);
   const lines = expensesForCollectorDay(src.collectorRef, date, src.dayCloses, src.dayExpenseDrafts);
-  const gastoLines = lines.filter(
-    (line) => (Number(line.amount) || 0) > 0 && !isPrestamoRutaExpense(line),
-  );
+  const gastoLines = chainCollector
+    ? []
+    : lines.filter((line) => (Number(line.amount) || 0) > 0 && !isPrestamoRutaExpense(line));
   const refs = routeClientRefsForDay(src, route);
   const loanRows = dayLoanDisbursementRows(date, lines, src.loans, src.clients, {
     collectorRef: src.collectorRef,

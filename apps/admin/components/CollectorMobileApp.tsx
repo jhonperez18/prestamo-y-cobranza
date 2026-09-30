@@ -10,6 +10,7 @@ import { CollectorPayForm } from "@/components/CollectorPayForm";
 import {
   attachRouteCashAdjustments,
   independentRouteDay,
+  independentRouteDayLines,
   isIndependentSaldoRoute,
   withIndependentRouteHistory,
 } from "@/lib/independent-route-cash";
@@ -1191,16 +1192,58 @@ export function CollectorMobileApp({
         ? dayLedger.m
         : null;
   const onSecondaryChainPlanilla = chainPlanillaDay != null && chainPlanillaDay === dayLedger.t;
+  /**
+   * A / N: caja propia de la planilla (misma cifra que el supervisor). En la planilla
+   * principal de un cobrador sin cadena (N de Yesid) solo manda si ya tiene ajuste.
+   */
+  const saldoRouteName =
+    activePlanillaRoute ?? (planillaRoutePins.length === 1 ? planillaRoutePins[0] : null);
+  const ownRouteDay = useMemo(() => {
+    if (!saldoRouteName || !isIndependentSaldoRoute(saldoRouteName)) return null;
+    const day = independentRouteDay(
+      {
+        collectorRef: collector.ref,
+        collectorName: collector.name,
+        date: activeDate,
+        payments: livePayments,
+        loans,
+        clients,
+        collectors: [collector],
+        assignments,
+        dayCloses,
+        dayExpenseDrafts,
+        planillaCashCloses,
+        monthCloses,
+      },
+      saldoRouteName,
+    );
+    return day.anchored || !isPrimaryPlanilla ? day : null;
+  }, [
+    isPrimaryPlanilla,
+    saldoRouteName,
+    collector,
+    activeDate,
+    livePayments,
+    loans,
+    clients,
+    assignments,
+    dayCloses,
+    dayExpenseDrafts,
+    planillaCashCloses,
+    monthCloses,
+  ]);
   /** M o T de la cadena, o la planilla principal fuera de ella: ahí se anotan préstamos y gastos. */
   const planillaOwnsMovements = isPrimaryPlanilla || onSecondaryChainPlanilla;
   const planillaExpenses = useMemo(
     () =>
       chainPlanillaDay
         ? [...chainPlanillaDay.gastoLines, ...loanRowsToExpenseLines(chainPlanillaDay.loanRows)]
-        : isPrimaryPlanilla
-          ? savedExpenses
-          : [],
-    [chainPlanillaDay, isPrimaryPlanilla, savedExpenses],
+        : ownRouteDay
+          ? independentRouteDayLines(ownRouteDay)
+          : isPrimaryPlanilla
+            ? savedExpenses
+            : [],
+    [chainPlanillaDay, ownRouteDay, isPrimaryPlanilla, savedExpenses],
   );
   const dayExpenseSplit = useMemo(
     () => splitDayExpenses(planillaExpenses),
@@ -1264,13 +1307,22 @@ export function CollectorMobileApp({
     [activeDate, chainPlanillaDay, isPrimaryPlanilla, savedExpensesRaw, loans, clients, loanScope],
   );
   // Cadena M↔T: cada planilla muestra solo lo suyo; entre ellas solo pasa el saldo.
-  const topGastos = planillaOwnsMovements ? dayExpenseSplit.otrosTotal : 0;
-  const topPrestamos = planillaOwnsMovements ? dayLoanDisbursementTotal(dayLoanRows) : 0;
+  const topGastos = ownRouteDay
+    ? ownRouteDay.gastos
+    : planillaOwnsMovements
+      ? dayExpenseSplit.otrosTotal
+      : 0;
+  const topPrestamos = ownRouteDay
+    ? ownRouteDay.prestamos
+    : planillaOwnsMovements
+      ? dayLoanDisbursementTotal(dayLoanRows)
+      : 0;
   /**
-   * Solo lectura para planillas fuera de la cadena (A): préstamos del cobrador a clientes
-   * de esa ruta. La caja no cambia — el libro ya los descuenta en M.
+   * Préstamos de la planilla: A / N = los de su caja propia; otra planilla fuera de la
+   * cadena = solo lectura de los préstamos a clientes de esa ruta.
    */
   const viewLoanRows = useMemo(() => {
+    if (ownRouteDay) return ownRouteDay.loanRows;
     if (planillaOwnsMovements || !activePlanillaRoute) return dayLoanRows;
     const routeClients = new Set(
       clients.filter((row) => sameRoute(row.route, activePlanillaRoute)).map((row) => row.ref),
@@ -1279,6 +1331,7 @@ export function CollectorMobileApp({
       routeClients.has(row.clientRef),
     );
   }, [
+    ownRouteDay,
     planillaOwnsMovements,
     activePlanillaRoute,
     dayLoanRows,
@@ -1296,48 +1349,12 @@ export function CollectorMobileApp({
         ? dayLedger.dayFinal
         : dayLedger.mClosing
       : null;
-  /** A / N con ajuste de saldo previo: caja propia de la planilla (misma cifra que el supervisor). */
-  const saldoRouteName =
-    activePlanillaRoute ?? (planillaRoutePins.length === 1 ? planillaRoutePins[0] : null);
-  const anchoredRouteDay = useMemo(() => {
-    if (!saldoRouteName || !isIndependentSaldoRoute(saldoRouteName)) return null;
-    const day = independentRouteDay(
-      {
-        collectorRef: collector.ref,
-        collectorName: collector.name,
-        date: activeDate,
-        payments: livePayments,
-        loans,
-        clients,
-        collectors: [collector],
-        assignments,
-        dayCloses,
-        dayExpenseDrafts,
-        planillaCashCloses,
-        monthCloses,
-      },
-      saldoRouteName,
-    );
-    return day.anchored ? day : null;
-  }, [
-    saldoRouteName,
-    collector,
-    activeDate,
-    livePayments,
-    loans,
-    clients,
-    assignments,
-    dayCloses,
-    dayExpenseDrafts,
-    planillaCashCloses,
-    monthCloses,
-  ]);
-  /** Inicial: cadena M/T si aplica; A / N con ajuste = caja propia; resto sin cruzar. */
+  /** Inicial: cadena M/T si aplica; A / N = caja propia; resto sin cruzar. */
   const headerInicial =
     chainOpening.kind === "chain"
       ? chainOpening.opening
-      : anchoredRouteDay
-        ? anchoredRouteDay.opening
+      : ownRouteDay
+        ? ownRouteDay.opening
         : isPrimaryPlanilla
           ? dayCuadre.saldoInicial
           : 0;
@@ -1357,7 +1374,9 @@ export function CollectorMobileApp({
     : queue.pendingCollectCount;
   const planillaPrestadoEfectivo = chainPlanillaDay
     ? chainPlanillaDay.prestamos
-    : isPrimaryPlanilla
+    : ownRouteDay
+      ? ownRouteDay.prestamos
+      : isPrimaryPlanilla
       ? prestadoEfectivo
       : 0;
 
@@ -1964,8 +1983,8 @@ export function CollectorMobileApp({
                     ? planillaCaja
                     : chainOpening.kind === "chain"
                     ? headerInicial + planillaRecaudo.efectivo - topGastos - topPrestamos
-                    : anchoredRouteDay
-                    ? anchoredRouteDay.closing
+                    : ownRouteDay
+                    ? ownRouteDay.closing
                     : isPrimaryPlanilla
                       ? dayCuadre.saldo
                       : planillaRecaudo.efectivo - topPrestamos,
