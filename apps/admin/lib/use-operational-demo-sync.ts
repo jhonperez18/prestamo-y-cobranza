@@ -160,7 +160,7 @@ export function useOperationalDemoSync(
       // Sin cambios no se rehace toda la pantalla. Eso era la lentitud en reposo.
       if (changed) commitHydrate();
       try {
-        await reconcileLocalPaymentsToRemote(payments.remoteRefs);
+        await reconcileLocalPaymentsToRemote(payments.remoteRefs, payments.remoteVoidedRefs);
         if (!evidenceOnceRef.current) {
           evidenceOnceRef.current = true;
           // Primero bajar fotos a IndexedDB (sin meterlas en el poll de cobros).

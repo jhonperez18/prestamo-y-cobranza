@@ -198,6 +198,7 @@ function moneySignature(row: PaymentRow) {
     row.method ?? "",
     row.collectorRef ?? "",
     row.source ?? "",
+    paymentIsVoided(row) ? "anulado" : "",
   ].join("|");
 }
 
@@ -337,6 +338,73 @@ function createMirrorClient() {
   return createMirrorServerClient();
 }
 
+function mirrorRowIsVoided(row: Pick<PaymentMirrorRow, "payment_type" | "charge_label">) {
+  return row.payment_type === "Anulado" || (row.charge_label || "").startsWith("ANULADO:");
+}
+
+type LoanTotalsRow = {
+  total: number | null;
+  capital: number | null;
+  interest: number | null;
+  status: string | null;
+};
+
+/**
+ * Anulación en la nube: marca el PG- (una anulación no se deshace) y recalcula el préstamo
+ * con los cobros vivos, igual que `register_collection` / `loan_collected`.
+ */
+async function voidPaymentInSupabase(row: PaymentMirrorRow): Promise<MirrorPaymentResult> {
+  const client = createMirrorClient();
+  if (!client) return { ok: true, skipped: true, reason: "supabase_not_configured" };
+  const stamp = new Date().toISOString();
+
+  const marked = await client
+    .from("payments")
+    .update({
+      payment_type: "Anulado",
+      charge_label: row.charge_label,
+      updated_at: stamp,
+    })
+    .eq("ref", row.ref)
+    .select("ref");
+  if (marked.error) return { ok: false, error: marked.error.message };
+  if (!marked.data?.length) {
+    const { evidence: _evidence, ...withoutEvidence } = row;
+    const inserted = await client
+      .from("payments")
+      .upsert({ ...withoutEvidence, updated_at: stamp }, { onConflict: "ref" });
+    if (inserted.error) return { ok: false, error: inserted.error.message };
+  }
+
+  const [livePays, loanRes] = await Promise.all([
+    client.from("payments").select("amount, payment_type").eq("loan_ref", row.loan_ref),
+    client
+      .from("loans")
+      .select("total, capital, interest, status")
+      .eq("ref", row.loan_ref)
+      .maybeSingle<LoanTotalsRow>(),
+  ]);
+  if (livePays.error) return { ok: false, error: livePays.error.message };
+  if (loanRes.error) return { ok: false, error: loanRes.error.message };
+  const loan = loanRes.data;
+  if (!loan) return { ok: true };
+
+  const paid = (livePays.data as { amount: number | null; payment_type: string | null }[])
+    .filter((pay) => (pay.payment_type || "") !== "Anulado")
+    .reduce((sum, pay) => sum + Math.trunc(Number(pay.amount) || 0), 0);
+  const total = Math.trunc(
+    Number(loan.total ?? (Number(loan.capital) || 0) + (Number(loan.interest) || 0)) || 0,
+  );
+  const status =
+    total - paid <= 0 ? "Finalizado" : loan.status === "Finalizado" ? "Activo" : loan.status;
+  const updated = await client
+    .from("loans")
+    .update({ paid, balance: Math.max(0, total - paid), status, updated_at: stamp })
+    .eq("ref", row.loan_ref);
+  if (updated.error) return { ok: false, error: updated.error.message };
+  return { ok: true };
+}
+
 export type MirrorPaymentResult =
   | { ok: true; skipped?: false; duplicate?: boolean; payment?: PaymentRow }
   | { ok: true; skipped: true; reason: string }
@@ -352,6 +420,10 @@ export async function mirrorPaymentToSupabase(
   if (payment.evidence?.length) {
     rememberPaymentEvidence(payment.ref, payment.evidence);
   }
+
+  // `register_collection` solo inserta: con el PG- ya en la nube contesta «duplicado» y no
+  // guarda la anulación. La anulación va por su propio camino.
+  if (paymentIsVoided(payment)) return voidPaymentInSupabase(row);
 
   const {
     registerLoanPaymentInSupabase,
@@ -622,6 +694,7 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
  */
 export async function reconcileLocalPaymentsToRemote(
   knownRemoteRefs?: string[],
+  knownRemoteVoidedRefs?: string[],
 ): Promise<{
   pushed: number;
   failed: number;
@@ -645,7 +718,16 @@ export async function reconcileLocalPaymentsToRemote(
     const remoteRefs = new Set(
       knownRemoteRefs ?? (remoteRows ?? []).map((row) => row.ref).filter(Boolean),
     );
-    const missing = local.filter((row) => !remoteRefs.has(row.ref));
+    const remoteVoided = new Set(
+      knownRemoteRefs
+        ? (knownRemoteVoidedRefs ?? [])
+        : (remoteRows ?? []).filter(mirrorRowIsVoided).map((row) => row.ref),
+    );
+    // Falta en la nube, o la anulación de este aparato no llegó (el PG- sigue vivo allá).
+    const missing = local.filter(
+      (row) =>
+        !remoteRefs.has(row.ref) || (paymentIsVoided(row) && !remoteVoided.has(row.ref)),
+    );
     if (!missing.length) return { pushed: 0, failed: 0, missing: 0 };
 
     let pushed = 0;
@@ -847,6 +929,7 @@ export type PullPaymentsResult = {
   rows?: PaymentRow[];
   /** Refs que ya vinieron en esta bajada. El reconcile no vuelve a pedir la lista. */
   remoteRefs?: string[];
+  remoteVoidedRefs?: string[];
 };
 
 /**
@@ -931,6 +1014,7 @@ export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> 
       changed: changed || merged.length !== local.length,
       rows: merged,
       remoteRefs: remote.map((row) => row.ref),
+      remoteVoidedRefs: remote.filter(paymentIsVoided).map((row) => row.ref),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "pull_failed";
