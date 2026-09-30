@@ -22,6 +22,10 @@ import {
 } from "@/lib/planilla-cash-chain";
 import { businessDaysAgoIso, businessTodayIso } from "@/lib/business-timezone";
 import {
+  assignmentsInPlanillaWindow,
+  planillaWindowStartIso,
+} from "@/lib/planilla-window";
+import {
   dayCloseFreshnessMs,
   joinCashAdjustmentRefs,
   mergeRouteCashAdjustments,
@@ -1289,7 +1293,7 @@ export async function reconcileLocalOpsToRemote(
     // PCE- locales: solo cuando el esquema acepte ref ^(CIE|PCE)-.
     // Mientras tanto no encolar (evita 502 day_closes_ref_format).
     const expenseSince = businessDaysAgoIso(90);
-    const assignSince = businessDaysAgoIso(45);
+    const assignSince = planillaWindowStartIso();
     for (const row of readDemoJson<CollectorDayExpenseDraft[]>(
       DEMO_COLLECTOR_DAY_EXPENSES_KEY,
       [],
@@ -1591,7 +1595,9 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       DEMO_COLLECTOR_DAY_CLOSES_KEY,
       [],
     );
-    const healed = applyDayCloseRecordsToAssignments(stamped, closesNow);
+    const healed = assignmentsInPlanillaWindow(
+      applyDayCloseRecordsToAssignments(stamped, closesNow),
+    );
     for (const row of healed) {
       if (!row.dayClosedAt) continue;
       const key = `${row.dispatchDate}::${row.itemId}`;

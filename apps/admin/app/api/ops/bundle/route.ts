@@ -2,13 +2,13 @@ import { fetchOpsTable, fetchOpsTableSince } from "@/lib/supabase/ops-mirror";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { jsonNoStore } from "@/lib/api-no-store";
 import { businessDaysAgoIso } from "@/lib/business-timezone";
+import { planillaWindowStartIso } from "@/lib/planilla-window";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-/** Ventana operativa: planilla reciente (latencia PC). CIE se trae completo (tabla chica). */
-const ASSIGNMENTS_LOOKBACK_DAYS = 45;
+/** Ventana operativa: planilla reciente (`planilla-window`). CIE se trae completo (tabla chica). */
 const EXPENSES_LOOKBACK_DAYS = 90;
 
 /** Bundle ops (CIE, planilla, rutas): lectura viva desde Supabase, sin caché. */
@@ -18,7 +18,7 @@ export async function GET() {
     return jsonNoStore({ ok: true, skipped: true, reason: "supabase_not_configured" });
   }
   try {
-    const assignSince = businessDaysAgoIso(ASSIGNMENTS_LOOKBACK_DAYS);
+    const assignSince = planillaWindowStartIso();
     const expenseSince = businessDaysAgoIso(EXPENSES_LOOKBACK_DAYS);
 
     const [collectors, routes, day_closes, day_expenses, misc_payments, daily_assignments] =

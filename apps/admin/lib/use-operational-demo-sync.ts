@@ -10,7 +10,7 @@ import { DEMO_CLIENTS_KEY, DEMO_BANK_ACCOUNTS_KEY, readDemoJson } from "@/lib/de
 import { loadPaymentEvidenceStore } from "@/lib/payment-evidence-store";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { bindMoneyRealtime } from "@/lib/realtime-money";
+import { bindMoneyRealtime, type RealtimeMoneyTable } from "@/lib/realtime-money";
 import {
   pullRemotePaymentsIntoDemo,
   pullRemoteEvidenceIntoIdb,
@@ -54,6 +54,21 @@ const VISIBLE_PULL_MIN_MS = 3_000;
 /** Agrupa ráfagas de postgres_changes en un solo hydrate. */
 const REALTIME_DEBOUNCE_MS = 280;
 
+/** Qué pull cubre cada tabla del canal. Usuarios, banco y reconcile quedan en el pull completo. */
+type PullGroup = "payments" | "catalog" | "ops";
+const CATALOG_LIVE_TABLES = ["clients", "loans", "routes", "collectors"] as const;
+type LiveTable = (typeof CATALOG_LIVE_TABLES)[number] | RealtimeMoneyTable;
+const TABLE_PULL_GROUP: Record<LiveTable, PullGroup> = {
+  payments: "payments",
+  clients: "catalog",
+  loans: "catalog",
+  routes: "ops",
+  collectors: "ops",
+  day_expenses: "ops",
+  day_closes: "ops",
+  daily_assignments: "ops",
+};
+
 /**
  * Sync C5+C6 — local primero (arranque rápido), luego flush/pull en fondo.
  * Rehidrata al terminar el pull (sin dejar UI vacía: el local ya pintó).
@@ -81,6 +96,10 @@ export function useOperationalDemoSync(
   const pullInFlightRef = useRef(false);
   const flushInFlightRef = useRef(false);
   const lastVisiblePullAtRef = useRef(0);
+  /** Grupos avisados por Realtime que aún no bajaron (no se pierden si hay un pull en curso). */
+  const pendingGroupsRef = useRef(new Set<PullGroup>());
+  const drainTimerRef = useRef(0);
+  const scheduleDrainRef = useRef<() => void>(() => {});
 
   const commitHydrate = useCallback(() => {
     const snapshot = hydrateOperationalDemo();
@@ -112,6 +131,8 @@ export function useOperationalDemoSync(
   const runHydrateWithRemotePull = useCallback(async () => {
     if (pullInFlightRef.current) return;
     pullInFlightRef.current = true;
+    // El pull completo cubre todo lo avisado hasta ahora.
+    pendingGroupsRef.current.clear();
     try {
       // Flush primero: lo pendiente en este PC sube aunque el pull tarde o falle.
       await runMirrorFlush();
@@ -170,8 +191,42 @@ export function useOperationalDemoSync(
       pullInFlightRef.current = false;
       setHydrated(true);
       refreshPending();
+      if (pendingGroupsRef.current.size > 0) scheduleDrainRef.current();
     }
   }, [commitHydrate, refreshPending, runMirrorFlush]);
+
+  /** Eco Realtime: baja solo los grupos que cambiaron (un cobro no rebaja clientes ni usuarios). */
+  const runTargetedPull = useCallback(async () => {
+    if (pullInFlightRef.current) return;
+    const groups = new Set(pendingGroupsRef.current);
+    pendingGroupsRef.current.clear();
+    if (groups.size === 0) return;
+    pullInFlightRef.current = true;
+    try {
+      await runMirrorFlush();
+      // Cobros primero: la planilla (ops) se sella contra los PG- ya bajados.
+      const payments = groups.has("payments") ? await pullRemotePaymentsIntoDemo() : null;
+      const [catalog, ops] = await Promise.all([
+        groups.has("catalog") ? pullRemoteCatalogIntoDemo() : null,
+        groups.has("ops") ? pullRemoteOpsIntoDemo() : null,
+      ]);
+      if (payments?.changed || catalog?.changed || ops?.changed) commitHydrate();
+    } catch (error) {
+      // Sin reintento en bucle (sin red giraría cada 280 ms): lo recoge el poll de 45 s.
+      console.error("ops-sync-realtime", error);
+    } finally {
+      pullInFlightRef.current = false;
+      refreshPending();
+      if (pendingGroupsRef.current.size > 0) scheduleDrainRef.current();
+    }
+  }, [commitHydrate, refreshPending, runMirrorFlush]);
+
+  scheduleDrainRef.current = () => {
+    window.clearTimeout(drainTimerRef.current);
+    drainTimerRef.current = window.setTimeout(() => {
+      void runTargetedPull();
+    }, REALTIME_DEBOUNCE_MS);
+  };
 
   useEffect(() => {
     let cancel = false;
@@ -262,17 +317,15 @@ export function useOperationalDemoSync(
     } catch {
       return;
     }
-    let timer = 0;
-    const schedule = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        void runHydrateWithRemotePull();
-      }, REALTIME_DEBOUNCE_MS);
+    const schedule = (table: LiveTable) => {
+      pendingGroupsRef.current.add(TABLE_PULL_GROUP[table]);
+      scheduleDrainRef.current();
     };
-    const tables = ["clients", "loans", "routes", "collectors"] as const;
     const channel = client.channel("nexo-catalog-live");
-    for (const table of tables) {
-      channel.on("postgres_changes", { event: "*", schema: "public", table }, schedule);
+    for (const table of CATALOG_LIVE_TABLES) {
+      channel.on("postgres_changes", { event: "*", schema: "public", table }, () =>
+        schedule(table),
+      );
     }
     // payments, day_expenses, day_closes, daily_assignments: INSERT/UPDATE/DELETE.
     // Este canal no se filtra por rol: admin y supervisor no pierden el global.
@@ -283,7 +336,7 @@ export function useOperationalDemoSync(
       }
     });
     return () => {
-      window.clearTimeout(timer);
+      window.clearTimeout(drainTimerRef.current);
       void client.removeChannel(channel);
     };
   }, [hydrated, runHydrateWithRemotePull]);

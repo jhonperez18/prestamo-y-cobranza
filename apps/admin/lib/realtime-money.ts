@@ -12,6 +12,7 @@ export const REALTIME_MONEY_TABLES = [
   "day_closes",
   "daily_assignments",
 ] as const;
+export type RealtimeMoneyTable = (typeof REALTIME_MONEY_TABLES)[number];
 export const REALTIME_MONEY_EVENTS = ["INSERT", "UPDATE", "DELETE"] as const;
 
 type MoneyChannel = {
@@ -40,7 +41,7 @@ export function moneyRealtimeFilter(roleRef: string | undefined, collectorRef: s
 
 export function bindMoneyRealtime<T extends MoneyChannel>(
   channel: T,
-  onEvent: () => void,
+  onEvent: (table: RealtimeMoneyTable) => void,
   filter?: string,
 ): T {
   for (const table of REALTIME_MONEY_TABLES) {
@@ -50,7 +51,7 @@ export function bindMoneyRealtime<T extends MoneyChannel>(
         filter
           ? { event, schema: "public", table, filter }
           : { event, schema: "public", table },
-        onEvent,
+        () => onEvent(table),
       );
     }
   }

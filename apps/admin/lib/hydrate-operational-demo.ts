@@ -8,6 +8,7 @@ import {
   COLLECTOR_DAILY_LOGS_SEED,
   type CollectorDailyLogRow,
 } from "@/lib/collector-daily-log";
+import { assignmentsInPlanillaWindow } from "@/lib/planilla-window";
 import {
   loadDemoBankMovements,
   loadDemoClients,
@@ -121,9 +122,8 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     ...row,
     zone: COLLECTOR_UNASSIGNED_ZONE,
   }));
-  const storedAssignments = readDemoJson<DailyCollectionAssignment[]>(
-    DEMO_DAILY_ASSIGNMENTS_KEY,
-    [],
+  const storedAssignments = assignmentsInPlanillaWindow(
+    readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []),
   );
   const deletedRoutes = new Set(listDeletedRouteRefs());
   const storedRoutes = dedupeCatalogRoutesByName(
