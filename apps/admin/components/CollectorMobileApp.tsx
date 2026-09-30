@@ -2130,7 +2130,7 @@ export function CollectorMobileApp({
         />
       ) : (
         <>
-      {listFilter === "done" ? (
+      {listFilter === "done" && !planillaIsN ? (
         <section className="collector-mobile-cuadre" aria-label="Cuadre de recaudo por medio de pago">
           <h2>Cuadre del día</h2>
           <div className="collector-mobile-cuadre-grid">
