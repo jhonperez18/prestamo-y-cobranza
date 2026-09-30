@@ -683,8 +683,11 @@ expect("Editar préstamo: día con CIE sellado no se toca", sealedDay.changed.le
 console.log("— Saldo propio A / N —");
 const {
   commitRouteCashAdjustment,
+  independentRouteCollected,
   independentRouteDay,
+  independentRouteDayLines,
   routeCashAdjustmentWindow,
+  withIndependentRouteHistory,
 } = await import("@/lib/independent-route-cash");
 const { mergeRouteCashAdjustments } = await import("@/lib/cash-adjustment");
 const cieAfterT26 = afterT.dayCloses.find((r) => r.ref === cieRef26);
@@ -694,6 +697,18 @@ expect("A/N: con la planilla cerrada se puede", routeCashAdjustmentWindow(COB.re
 const aDay26 = independentRouteDay({ ...base, dayCloses: afterT.dayCloses }, "A");
 expect("A 26: sin ajuste previo, Inicial de siempre (0)", aDay26.opening, 0);
 expect("A 26: caja = efectivo de A (préstamos/gastos van a M)", aDay26.closing, 50_000);
+// A no reporta nada de M / T: solo comparte el cobrador.
+const aCollected26 = independentRouteCollected({ ...base, dayCloses: afterT.dayCloses }, "A");
+expect("A aislada: efectivo del día = solo clientes de A", aCollected26.efectivo, 50_000);
+expect("A aislada: día sin gastos ni préstamos de M/T", independentRouteDayLines(aDay26).length, 0);
+const [aHist26] = withIndependentRouteHistory(
+  [{ date: D, cobro: 50_000, gasto: 999_999, prestamo: 999_999, saldo: 3_084_000 }],
+  { ...base, dayCloses: afterT.dayCloses },
+  "A",
+);
+expect("A aislada: Historial sin gasto de M/T", aHist26.gasto, 0);
+expect("A aislada: Historial sin préstamo de M/T", aHist26.prestamo, 0);
+expect("A aislada: Historial con saldo propio (no el de la cadena)", aHist26.saldo, 50_000);
 const aAdj = commitRouteCashAdjustment({
   collectorRef: COB.ref,
   route: "A",

@@ -190,6 +190,10 @@ A y N llevan su propia caja. Un solo dueño: `lib/independent-route-cash.ts` (`i
 - Guardado: `saveCashAdjustment` con `route` (local + cola + await nube).
 - Nube y pull: unión por ruta, gana el más reciente (`mergeRouteCashAdjustments`); ningún candado del CIE- lo borra.
 - Tarjeta del supervisor, Historial A/N y cabecera del cobrador leen la misma cifra.
+- **A aislada:** con M/T/N solo comparte el cobrador. Tarjeta, Historial (lista y día) y cobrador
+ muestran solo clientes, cobros, gastos y préstamos de A (`independentRouteCollected`,
+ `independentRouteDayLines`, `withIndependentRouteHistory`). Prohibido `cajaDelDia` del cobrador
+ entero o el arrastre de M en una pantalla de A.
 - Candado: `assert-cash-chain.mjs` sección 11.
 
 ## N/P por ruta (INICIO)

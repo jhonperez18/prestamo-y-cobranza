@@ -146,10 +146,13 @@ import {
   type CashAdjustmentRequest,
 } from "@/lib/commit-cash-adjustment";
 import {
-  findRouteCashAdjustment,
+  attachRouteCashAdjustments,
+  independentRouteCollected,
   independentRouteDay,
+  independentRouteDayLines,
   isIndependentSaldoRoute,
   routeCashAdjustmentWindow,
+  withIndependentRouteHistory,
 } from "@/lib/independent-route-cash";
 import { CashAdjustForm } from "@/components/CashAdjustForm";
 
@@ -2051,29 +2054,23 @@ export function SupervisorMobileApp({
 
     if (isIndependentSaldoRoute(openRoute.routeName)) {
       // A / N: saldo del día = caja propia de la planilla (misma cifra que la tarjeta).
-      return rows
-        .filter((row) => row.date <= today)
-        .slice(0, 6)
-        .map((row) => {
-          const day = independentRouteDay(
-            {
-              collectorRef: openRoute.collectorRef,
-              collectorName: collector.name,
-              date: row.date,
-              payments,
-              loans,
-              clients,
-              collectors: [collector],
-              assignments,
-              dayCloses,
-              dayExpenseDrafts,
-              planillaCashCloses,
-              monthCloses,
-            },
-            openRoute.routeName,
-          );
-          return { ...row, gasto: day.gastos, prestamo: day.prestamos, saldo: day.closing };
-        });
+      return withIndependentRouteHistory(
+        rows.filter((row) => row.date <= today).slice(0, 6),
+        {
+          collectorRef: openRoute.collectorRef,
+          collectorName: collector.name,
+          payments,
+          loans,
+          clients,
+          collectors: [collector],
+          assignments,
+          dayCloses,
+          dayExpenseDrafts,
+          planillaCashCloses,
+          monthCloses,
+        },
+        openRoute.routeName,
+      );
     }
 
     if (!isM) {
@@ -2160,17 +2157,7 @@ export function SupervisorMobileApp({
       return attachCashAdjustments(rows, openRoute.collectorRef, dayCloses);
     }
     if (!openRouteCajaHistoryIsIndependent) return null;
-    return rows.map((row) => {
-      const adjustment = findRouteCashAdjustment(
-        dayCloses,
-        openRoute.collectorRef,
-        row.date,
-        openRoute.routeName,
-      );
-      return adjustment
-        ? { row: { ...row, saldo: adjustment.calculated }, adjustment }
-        : { row, adjustment: null };
-    });
+    return attachRouteCashAdjustments(rows, openRoute.collectorRef, openRoute.routeName, dayCloses);
   }, [
     openRoute,
     openRouteCajaHistoryIsT,
@@ -2220,8 +2207,59 @@ export function SupervisorMobileApp({
     return ok;
   }
 
+  /** Día del historial de A / N: solo la planilla (nada de las otras rutas del cobrador). */
+  const openRouteHistoryIndependentDay = useMemo(() => {
+    if (!openRoute || !cajaHistoryDayIso || !isIndependentSaldoRoute(openRoute.routeName)) {
+      return null;
+    }
+    const collector = collectors.find((row) => row.ref === openRoute.collectorRef);
+    if (!collector) return null;
+    const src = {
+      collectorRef: collector.ref,
+      collectorName: collector.name,
+      date: cajaHistoryDayIso,
+      payments,
+      loans,
+      clients,
+      collectors: [collector],
+      assignments,
+      dayCloses,
+      dayExpenseDrafts,
+      planillaCashCloses,
+      monthCloses,
+    };
+    const day = independentRouteDay(src, openRoute.routeName);
+    return {
+      day,
+      collected: independentRouteCollected(src, openRoute.routeName),
+      lines: independentRouteDayLines(day),
+    };
+  }, [
+    openRoute,
+    cajaHistoryDayIso,
+    collectors,
+    payments,
+    loans,
+    clients,
+    assignments,
+    dayCloses,
+    dayExpenseDrafts,
+    planillaCashCloses,
+    monthCloses,
+  ]);
+
   const openRouteHistoryDayCuadre = useMemo(() => {
     if (!openRoute || !cajaHistoryDayIso) return null;
+    if (openRouteHistoryIndependentDay) {
+      const { day, collected } = openRouteHistoryIndependentDay;
+      return {
+        saldoInicial: day.opening,
+        cobradoEfectivo: collected.efectivo,
+        cobradoNequi: collected.nequi,
+        cobradoBanco: collected.banco,
+        enCaja: day.closing,
+      };
+    }
     const collector = collectors.find((row) => row.ref === openRoute.collectorRef);
     if (!collector) return null;
     return cajaDelDia(
@@ -2234,6 +2272,7 @@ export function SupervisorMobileApp({
     );
   }, [
     openRoute,
+    openRouteHistoryIndependentDay,
     cajaHistoryDayIso,
     collectors,
     payments,
@@ -2244,6 +2283,7 @@ export function SupervisorMobileApp({
 
   const openRouteHistoryDayExpenses = useMemo(() => {
     if (!openRoute || !cajaHistoryDayIso) return [];
+    if (openRouteHistoryIndependentDay) return openRouteHistoryIndependentDay.lines;
     const raw = expensesForCollectorDay(
       openRoute.collectorRef,
       cajaHistoryDayIso,
@@ -2273,6 +2313,7 @@ export function SupervisorMobileApp({
     );
   }, [
     openRoute,
+    openRouteHistoryIndependentDay,
     cajaHistoryDayIso,
     dayCloses,
     dayExpenseDrafts,

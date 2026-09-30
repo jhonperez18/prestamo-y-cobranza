@@ -21,12 +21,15 @@ import {
   sumExpenseLines,
   type CollectorDayCloseRecord,
   type RouteCashAdjustment,
+  type RouteExpenseLine,
 } from "@/lib/collector-day-close";
 import {
   dayLoanDisbursementRows,
   dayLoanDisbursementTotal,
+  loanRowsToExpenseLines,
   type DayLoanDisbursementRow,
 } from "@/lib/collector-history-planilla";
+import { collectorDayPayments } from "@/lib/collector-mobile";
 import {
   isChainCollectorDay,
   routeCashCollected,
@@ -35,6 +38,7 @@ import {
 } from "@/lib/day-cash-ledger";
 import { isPrestamoRutaExpense } from "@/lib/expense-lines";
 import { pesos } from "@/lib/finance";
+import { normalizePaymentMethod } from "@/lib/payment-method";
 import { findFullDayCieClose, isPlanillaCashChainRoute } from "@/lib/planilla-cash-chain";
 
 /** Planillas con saldo propio ajustable. */
@@ -89,23 +93,87 @@ type RouteMovement = {
   efectivo: number;
   gastos: number;
   prestamos: number;
+  /** Gastos operativos de la planilla (A de la cadena: ninguno, van a M). */
+  gastoLines: RouteExpenseLine[];
   loanRows: DayLoanDisbursementRow[];
 };
 
 function routeMovement(src: DayCashSources, route: string): RouteMovement {
   const efectivo = routeCashCollected(src, route);
-  if (isChainCollectorDay(src)) return { efectivo, gastos: 0, prestamos: 0, loanRows: [] };
+  if (isChainCollectorDay(src)) {
+    return { efectivo, gastos: 0, prestamos: 0, gastoLines: [], loanRows: [] };
+  }
   const date = isoOf(src.date);
   const lines = expensesForCollectorDay(src.collectorRef, date, src.dayCloses, src.dayExpenseDrafts);
-  const gastos = sumExpenseLines(
-    lines.filter((line) => (Number(line.amount) || 0) > 0 && !isPrestamoRutaExpense(line)),
+  const gastoLines = lines.filter(
+    (line) => (Number(line.amount) || 0) > 0 && !isPrestamoRutaExpense(line),
   );
   const refs = routeClientRefsForDay(src, route);
   const loanRows = dayLoanDisbursementRows(date, lines, src.loans, src.clients, {
     collectorRef: src.collectorRef,
     assignments: src.assignments,
   }).filter((row) => refs.has(row.clientRef));
-  return { efectivo, gastos, prestamos: pesos(dayLoanDisbursementTotal(loanRows)), loanRows };
+  return {
+    efectivo,
+    gastos: sumExpenseLines(gastoLines),
+    prestamos: pesos(dayLoanDisbursementTotal(loanRows)),
+    gastoLines,
+    loanRows,
+  };
+}
+
+/** Cobrado ese día a clientes de la planilla, por medio de pago (nada de otras rutas). */
+export function independentRouteCollected(
+  src: DayCashSources,
+  route: string,
+): { efectivo: number; nequi: number; banco: number } {
+  const refs = routeClientRefsForDay(src, route);
+  const out = { efectivo: 0, nequi: 0, banco: 0 };
+  for (const pay of collectorDayPayments(src.collectorRef, src.date, src.payments, src.collectors)) {
+    const loan = src.loans.find((row) => row.ref === pay.loanRef);
+    if (!loan?.clientRef || !refs.has(loan.clientRef)) continue;
+    const amount = Number(pay.amount) || 0;
+    if (!(amount > 0)) continue;
+    const method = normalizePaymentMethod(pay.method);
+    if (method === "nequi") out.nequi += amount;
+    else if (method === "banco") out.banco += amount;
+    else out.efectivo += amount;
+  }
+  return { efectivo: pesos(out.efectivo), nequi: pesos(out.nequi), banco: pesos(out.banco) };
+}
+
+/** Renglones de gasto y préstamo del día de la planilla (los mismos que suma su caja). */
+export function independentRouteDayLines(day: IndependentRouteDay): RouteExpenseLine[] {
+  return [...day.gastoLines, ...loanRowsToExpenseLines(day.loanRows)];
+}
+
+type HistoryRowLike = { date: string; gasto: number; prestamo: number; saldo: number };
+
+/** Historial de A / N: gasto, préstamo y saldo de la caja propia (misma cifra que la tarjeta). */
+export function withIndependentRouteHistory<Row extends HistoryRowLike>(
+  rows: Row[],
+  src: Omit<DayCashSources, "date">,
+  route: string,
+): Row[] {
+  return rows.map((row) => {
+    const day = independentRouteDay({ ...src, date: row.date }, route);
+    return { ...row, gasto: day.gastos, prestamo: day.prestamos, saldo: day.closing };
+  });
+}
+
+/** Historial de A / N: renglón del día + ajuste de esa planilla (si lo hubo). */
+export function attachRouteCashAdjustments<Row extends HistoryRowLike>(
+  rows: Row[],
+  collectorRef: string,
+  route: string,
+  dayCloses: CollectorDayCloseRecord[],
+): Array<{ row: Row; adjustment: RouteCashAdjustment | null }> {
+  return rows.map((row) => {
+    const adjustment = findRouteCashAdjustment(dayCloses, collectorRef, row.date, route);
+    return adjustment
+      ? { row: { ...row, saldo: adjustment.calculated }, adjustment }
+      : { row, adjustment: null };
+  });
 }
 
 export type IndependentRouteDay = RouteMovement & {

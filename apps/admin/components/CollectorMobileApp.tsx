@@ -7,7 +7,12 @@ import {
   cashAdjustmentNote,
 } from "@/lib/cash-adjustment";
 import { CollectorPayForm } from "@/components/CollectorPayForm";
-import { independentRouteDay, isIndependentSaldoRoute } from "@/lib/independent-route-cash";
+import {
+  attachRouteCashAdjustments,
+  independentRouteDay,
+  isIndependentSaldoRoute,
+  withIndependentRouteHistory,
+} from "@/lib/independent-route-cash";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import type { QuickLoanDraft } from "@/lib/street-client-loan";
 import { Pill } from "@/components/ui";
@@ -586,6 +591,25 @@ export function CollectorMobileApp({
       fallbackOpening: mCarriedFallbackOpening,
       primaryClosingByDate,
     });
+    if (routeForHistory && isIndependentSaldoRoute(routeForHistory)) {
+      return withIndependentRouteHistory(
+        stamped,
+        {
+          collectorRef: collector.ref,
+          collectorName: collector.name,
+          payments: livePayments,
+          loans,
+          clients,
+          collectors: [collector],
+          assignments,
+          dayCloses,
+          dayExpenseDrafts,
+          planillaCashCloses,
+          monthCloses,
+        },
+        routeForHistory,
+      );
+    }
     if (!isPlanillaCashChainSecondary(routeForHistory ?? undefined)) return stamped;
     const todayDate = date ?? todayIso();
     const todayLedger = buildDayCashLedger({
@@ -1358,6 +1382,9 @@ export function CollectorMobileApp({
   const historyRowsWithAdjustment = useMemo(() => {
     const route =
       planillaRoutePins.length > 1 ? planillaRouteFilter ?? planillaRoutePins[0] : null;
+    if (route && isIndependentSaldoRoute(route)) {
+      return attachRouteCashAdjustments(historyVisibleRows, collector.ref, route, dayCloses);
+    }
     if (!isPlanillaCashChainSecondary(route ?? undefined)) {
       return historyVisibleRows.map((row) => ({ row, adjustment: null }));
     }
