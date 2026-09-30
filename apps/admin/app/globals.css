@@ -1276,6 +1276,10 @@
       gap: 8px;
       margin-bottom: 10px;
     }
+    .collector-day-loans-panel-head.is-back-only {
+      justify-content: flex-end;
+      margin-bottom: 6px;
+    }
     .collector-day-loans-panel-head h2 {
       margin: 0;
       font-size: 15px;

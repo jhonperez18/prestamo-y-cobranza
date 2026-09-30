@@ -14,11 +14,7 @@ type Props = {
 export function CollectorDayLoansPanel({ dateLabel, rows, total, onBack }: Props) {
   return (
     <section className="collector-day-loans-panel" aria-label={`Préstamos ${dateLabel}`}>
-      <div className="collector-day-loans-panel-head">
-        <div>
-          <h2>Préstamos del día</h2>
-          <p>{dateLabel}</p>
-        </div>
+      <div className="collector-day-loans-panel-head is-back-only">
         <button type="button" className="collector-mobile-pay-link is-back" onClick={onBack}>
           volver
         </button>
