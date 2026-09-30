@@ -3503,7 +3503,7 @@
       grid-template-columns: 1fr 1fr;
     }
     .collector-pay-inline .pay-method.compact.is-two.has-np {
-      grid-template-columns: 1fr 1fr 2.15rem;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
     /* Combinado: debajo del nombre, en el renglón de saldo y cuota. */
     .collector-mobile-dense-row.is-paying .collector-pay-combo-toggle.is-under-name {
