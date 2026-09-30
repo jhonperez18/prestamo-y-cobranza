@@ -1488,6 +1488,30 @@
     .collector-mobile-cuadre-grid div.is-pay-banco em {
       color: #1e40af;
     }
+    /* M / T: Banco abre la lista de cobros en banco. */
+    .collector-mobile-cuadre-grid button.is-list-toggle {
+      display: grid;
+      gap: 1px;
+      padding: 5px 4px;
+      border-radius: 7px;
+      background: #dbeafe;
+      border: 1px solid #3b82f6;
+      min-width: 0;
+      text-align: center;
+      align-content: center;
+      font: inherit;
+      cursor: pointer;
+    }
+    .collector-mobile-cuadre-grid button.is-list-toggle.on {
+      border-color: #1d4ed8;
+      box-shadow: 0 0 0 1px #1d4ed8;
+    }
+    .collector-mobile-cuadre-grid button.is-list-toggle b {
+      color: #1e3a8a;
+    }
+    .collector-mobile-cuadre-grid button.is-list-toggle em {
+      color: #1e40af;
+    }
     .collector-mobile-card.is-pay-efectivo {
       background: #f3faf6;
       border-color: #86c5a3;
@@ -3217,6 +3241,17 @@
     }
     .collector-mobile-dense-row.is-recaudo-row .collector-mobile-visit-who {
       grid-area: who;
+    }
+    /* Lista de cobros en Banco: nombre · préstamo · evidencia · monto · medio */
+    .collector-mobile-card.is-done .collector-mobile-dense-row.is-recaudo-row.has-evidence {
+      grid-template-columns: minmax(0, 1.5fr) max-content max-content max-content auto;
+      grid-template-areas: "who loan ev ref pay";
+    }
+    .collector-mobile-dense-row.is-recaudo-row .is-done-evidence {
+      grid-area: ev;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .collector-mobile-dense-row.is-recaudo-row .is-done-loan {
       grid-area: loan;

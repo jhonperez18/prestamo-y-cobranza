@@ -17,6 +17,8 @@ import {
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import type { QuickLoanDraft } from "@/lib/street-client-loan";
 import { Pill } from "@/components/ui";
+import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
+import { withPaymentEvidence } from "@/lib/payment-evidence-store";
 import { isLatePayment, latePaymentNote, latePaymentTag } from "@/lib/late-payment";
 import {
   collectorHasOpenPlanillaWork,
@@ -764,6 +766,10 @@ export function CollectorMobileApp({
   const planillaIsA = sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "A");
   /** N: cabecera Inicial · Recaudo · Total día · Caja; Banco en la fila de KPI. */
   const planillaIsN = sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "N");
+  /** M / T: Cuadre sin Nequi (lo no efectivo es Banco) y Total = efectivo − préstamos − gastos. */
+  const planillaIsChain =
+    sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "M") ||
+    sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "T");
 
   /**
    * Libro de caja del día (único dueño del saldo): Inicial M = CIE de ayer;
@@ -2138,19 +2144,43 @@ export function CollectorMobileApp({
               <em>Efectivo</em>
               <b>{money(planillaRecaudo.efectivo)}</b>
             </div>
-            <div className="is-pay-nequi">
-              <em>Nequi</em>
-              <b>{money(planillaNequiShown)}</b>
-            </div>
-            {planillaIsA ? null : (
-              <div className="is-pay-banco">
+            {planillaIsChain ? (
+              <button
+                type="button"
+                className={recaudoOnlyBanco ? "is-pay-banco is-list-toggle on" : "is-pay-banco is-list-toggle"}
+                title="Ver los cobros del día en Banco"
+                aria-pressed={recaudoOnlyBanco}
+                {...navButtonProps(navIntent, () => openRecaudoDetail(!recaudoOnlyBanco))}
+              >
                 <em>Banco</em>
-                <b>{money(planillaRecaudo.banco)}</b>
-              </div>
+                <b>{money(planillaRecaudo.digital)}</b>
+              </button>
+            ) : (
+              <>
+                <div className="is-pay-nequi">
+                  <em>Nequi</em>
+                  <b>{money(planillaNequiShown)}</b>
+                </div>
+                {planillaIsA ? null : (
+                  <div className="is-pay-banco">
+                    <em>Banco</em>
+                    <b>{money(planillaRecaudo.banco)}</b>
+                  </div>
+                )}
+              </>
             )}
-            <div className="is-total">
+            <div
+              className="is-total"
+              title={planillaIsChain ? "Efectivo − préstamos − gastos" : undefined}
+            >
               <em>Total</em>
-              <b>{money(planillaRecaudo.total)}</b>
+              <b>
+                {money(
+                  planillaIsChain
+                    ? planillaRecaudo.efectivo - topPrestamos - topGastos
+                    : planillaRecaudo.total,
+                )}
+              </b>
             </div>
             {planillaPrestadoEfectivo > 0 ? (
               <div
@@ -2207,7 +2237,13 @@ export function CollectorMobileApp({
                     .filter(Boolean)
                     .join(" ")}
                 >
-                  <div className="collector-mobile-dense-row is-recaudo-row">
+                  <div
+                    className={
+                      recaudoOnlyBanco
+                        ? "collector-mobile-dense-row is-recaudo-row has-evidence"
+                        : "collector-mobile-dense-row is-recaudo-row"
+                    }
+                  >
                     <div className="collector-mobile-visit-who">
                       <strong>{payerName(pay, loans, clients)}</strong>
                       {isLatePayment(pay) ? (
@@ -2237,6 +2273,11 @@ export function CollectorMobileApp({
                         </span>
                       ) : null}
                     </span>
+                    {recaudoOnlyBanco ? (
+                      <span className="is-done-evidence">
+                        <PaymentEvidenceThumb evidence={withPaymentEvidence(pay).evidence} size={26} />
+                      </span>
+                    ) : null}
                     <span className="collector-mobile-ref is-done-col">
                       {money(pay.amount, { symbol: false })}
                     </span>
