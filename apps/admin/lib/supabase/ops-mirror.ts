@@ -952,8 +952,34 @@ export function queueCollectorDeleteMirror(ref: string) {
     }
   })();
 }
+/** JSON con llaves ordenadas: jsonb de Postgres reordena las llaves de `stops`. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, entry]) => `${JSON.stringify(k)}:${stableJson(entry)}`).join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+/** Firma de lo que viaja a `routes` (sin `updated_at`). */
+function routeMirrorSig(route: RouteRow) {
+  const { updated_at: _stamp, ...row } = routeToRow(route);
+  return stableJson(row);
+}
+
+/** Última firma subida / vista en nube por ruta: solo se sube la ruta que cambió. */
+const sentRouteSig = new Map<string, string>();
+
 export function queueRouteMirror(r: RouteRow) {
-  void persistKind(Q_ROUTES, { kind: "route", row: r }, r.ref);
+  const sig = routeMirrorSig(r);
+  if (sentRouteSig.get(r.ref) === sig) return;
+  sentRouteSig.set(r.ref, sig);
+  void persistKind(Q_ROUTES, { kind: "route", row: r }, r.ref).then((ok) => {
+    if (!ok) sentRouteSig.delete(r.ref);
+  });
 }
 export function queueRoutesMirror(rows: RouteRow[]) {
   for (const row of rows) queueRouteMirror(row);
@@ -963,6 +989,7 @@ export function queueRoutesMirror(rows: RouteRow[]) {
 export function queueRouteDeleteMirror(ref: string) {
   const clean = (ref || "").trim();
   if (!clean || typeof window === "undefined") return;
+  sentRouteSig.delete(clean);
   void (async () => {
     try {
       const { res, json } = await postMirror("/api/ops/mirror", {
@@ -1422,6 +1449,8 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       (r) => `${r.ref}|${r.name}|${r.collectorRef}|${r.collector}|${r.status}|${r.clients}`,
       pendingRouteRows,
     );
+    // La nube ya tiene estas rutas: un push posterior solo sube la que cambie de verdad.
+    for (const route of routes) sentRouteSig.set(route.ref, routeMirrorSig(route));
     if (rMerge.changed || localRoutes.length !== readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, []).length) {
       writeDemoJson(DEMO_ROUTES_KEY, rMerge.merged);
       changed = true;

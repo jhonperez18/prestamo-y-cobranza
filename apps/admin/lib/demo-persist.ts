@@ -229,15 +229,10 @@ function rewriteWithoutDataPreviews(key: string) {
 }
 
 /**
- * Solo cuando el navegador ya no acepta ni la sesión.
- * Quita colas y copias. Los cobros, clientes, usuarios y préstamos quedan en su clave principal.
+ * Cupo lleno, paso 1: copias -bak y fotos en base64. Las colas de subida (cobros, N/P,
+ * cierres) no se tocan: soltarlas perdía el cambio que aún no llegó a la nube.
  */
-export function freeDemoStorageQuota() {
-  if (typeof window === "undefined") return;
-  for (const key of MIRROR_QUEUE_KEYS) {
-    window.localStorage.removeItem(key);
-    window.localStorage.removeItem(backupKey(key));
-  }
+function freeDemoBackups() {
   const copyKeys = [
     DEMO_DAILY_ASSIGNMENTS_KEY,
     DEMO_DAILY_LOGS_KEY,
@@ -264,19 +259,40 @@ export function freeDemoStorageQuota() {
   }
 }
 
+/** Cupo lleno, paso 2 (último recurso): colas de subida. */
+function freeDemoMirrorQueues() {
+  for (const key of MIRROR_QUEUE_KEYS) {
+    window.localStorage.removeItem(key);
+    window.localStorage.removeItem(backupKey(key));
+  }
+}
+
+/**
+ * Solo cuando el navegador ya no acepta ni la sesión.
+ * Los cobros, clientes, usuarios y préstamos quedan en su clave principal.
+ */
+export function freeDemoStorageQuota() {
+  if (typeof window === "undefined") return;
+  freeDemoBackups();
+  freeDemoMirrorQueues();
+}
+
 export function writeDemoJson(key: string, value: unknown) {
   if (typeof window === "undefined") return;
-  try {
-    writeDemoJsonOnce(key, value);
-  } catch (error) {
-    if (!isQuotaError(error)) return;
-    freeDemoStorageQuota();
+  const steps = [() => undefined, freeDemoBackups, freeDemoMirrorQueues];
+  for (const free of steps) {
     try {
+      free();
       writeDemoJsonOnce(key, value);
-    } catch {
-      /* sigue sin espacio */
+      return;
+    } catch (error) {
+      if (!isQuotaError(error)) {
+        console.error("demo-persist", key, error);
+        return;
+      }
     }
   }
+  console.error("demo-persist", key, "sin espacio en el aparato: no se guardó");
 }
 
 /** La foto no entra a localStorage. El cobro sí: monto, fecha, método, ref. */
