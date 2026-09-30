@@ -1909,6 +1909,9 @@
     .collector-mobile-home-cuadre-grid .is-cobrado-means.is-two {
       grid-template-columns: 1fr 1fr;
     }
+    .collector-mobile-home-cuadre-grid .is-cobrado-means.is-one {
+      grid-template-columns: 1fr;
+    }
     .collector-mobile-home-cuadre-grid .is-cobrado-means .is-mean {
       display: grid;
       gap: 2px;

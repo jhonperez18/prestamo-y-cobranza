@@ -3430,6 +3430,14 @@ export function SupervisorMobileApp({
                   <div className="is-cobrado-head">
                     <span>Lo que cobró</span>
                   </div>
+                  {openRouteCajaHistoryIsT && openRouteHistoryChainDay ? (
+                    <div className="is-cobrado-means is-one" aria-label="Efectivo solo de T">
+                      <div className="is-mean is-pay-efectivo">
+                        <span>Efectivo T</span>
+                        <b>{money(openRouteHistoryChainDay.ownEfectivo)}</b>
+                      </div>
+                    </div>
+                  ) : null}
                   <div
                     className={`is-cobrado-means${
                       historyDayShowNequiValue && historyDayShowBancoValue ? "" : " is-two"
@@ -3437,12 +3445,12 @@ export function SupervisorMobileApp({
                     aria-label="Desglose de lo cobrado"
                   >
                     <div className="is-mean is-pay-efectivo">
-                      <span>Efectivo</span>
+                      <span>{openRouteCajaHistoryIsT ? "Efectivo M+T" : "Efectivo"}</span>
                       <b>{money(openRouteHistoryDayCuadre.cobradoEfectivo)}</b>
                     </div>
                     {historyDayShowNequiValue ? (
                       <div className="is-mean is-pay-banco">
-                        <span>Banco</span>
+                        <span>{openRouteCajaHistoryIsT ? "Banco M+T" : "Banco"}</span>
                         <b>{money(openRouteHistoryDayCuadre.cobradoNequi)}</b>
                       </div>
                     ) : null}

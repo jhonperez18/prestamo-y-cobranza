@@ -279,6 +279,8 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
 export type ChainDayCuadre = {
   /** Inicial de M ese día (CIE de la víspera). */
   opening: number;
+  /** Efectivo cobrado solo en la planilla abierta (M o T). */
+  ownEfectivo: number;
   efectivo: number;
   nequi: number;
   banco: number;
@@ -301,6 +303,7 @@ export function chainDayCuadre(
   const collected = routes.map((route) => routeCollectedByMethod(src, route));
   return {
     opening: ledger.mOpening.kind === "chain" ? ledger.mOpening.opening : 0,
+    ownEfectivo: pesos(side === "secondary" ? ledger.t.efectivo : ledger.m.efectivo),
     efectivo: pesos(days.reduce((sum, day) => sum + day.efectivo, 0)),
     nequi: pesos(collected.reduce((sum, row) => sum + row.nequi, 0)),
     banco: pesos(collected.reduce((sum, row) => sum + row.banco, 0)),
