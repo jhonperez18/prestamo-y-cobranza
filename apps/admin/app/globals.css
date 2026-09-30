@@ -1470,12 +1470,12 @@
       gap: 8px;
       margin: 4px 0 6px;
       padding: 0 2px;
-      font-size: 11px;
-      font-weight: 600;
-      color: #5b7268;
+      font-size: 14px;
+      font-weight: 700;
+      color: #111;
     }
-    .collector-close-list-head span:last-child {
-      text-align: right;
+    .collector-close-list-head span {
+      text-align: center;
     }
     .collector-close-expense-list {
       list-style: none;
