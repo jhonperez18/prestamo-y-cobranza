@@ -624,6 +624,47 @@
       font-variant-numeric: tabular-nums;
       text-align: center;
     }
+    /* Ruta N: Inicial · Recaudo · Total día · Caja en una fila. */
+    .collector-mobile-header-bar:has(.collector-mobile-header-inicial.is-caja) {
+      gap: 4px;
+    }
+    .collector-mobile-header-bar:has(.collector-mobile-header-inicial.is-caja) .collector-mobile-header-inicial {
+      flex: 1 1 0;
+      min-width: 0;
+      padding: 4px 4px;
+    }
+    .collector-mobile-header-bar:has(.collector-mobile-header-inicial.is-caja) .collector-mobile-header-inicial b {
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    button.collector-mobile-header-inicial {
+      font: inherit;
+      cursor: pointer;
+    }
+    .collector-mobile-header-inicial.is-recaudo {
+      border-color: #34d399;
+      background: #d1fae5;
+    }
+    .collector-mobile-header-inicial.is-recaudo b {
+      color: #065f46;
+    }
+    .collector-mobile-header-inicial.is-recaudo.on {
+      border-color: #059669;
+    }
+    .collector-mobile-header-inicial.is-total-dia {
+      border-color: #d4d4d8;
+      background: #f4f4f5;
+    }
+    .collector-mobile-header-inicial.is-total-dia b {
+      color: #111;
+    }
+    .collector-mobile-header-inicial.is-caja {
+      border-color: #0f766e;
+      background: #ccfbf1;
+    }
+    .collector-mobile-header-inicial.is-caja b {
+      color: #0f766e;
+    }
     .collector-mobile-logo-col {
       display: flex;
       flex-direction: column;
@@ -951,6 +992,14 @@
     .collector-mobile-stat.is-recaudo.on {
       border-color: #059669;
       color: #065f46;
+    }
+    .collector-mobile-stat.is-banco {
+      background: #dbeafe;
+      border-color: #93c5fd;
+    }
+    .collector-mobile-stat.is-banco.on {
+      border-color: #2563eb;
+      color: #1e3a8a;
     }
     .collector-mobile-stat.is-gastos.on {
       border-color: #dc2626;
@@ -3194,8 +3243,9 @@
       border-radius: 10px;
       overflow: hidden;
       background: #fff;
-      /* overflow:hidden deja encoger el flex:1 y corta la lista: la pantalla es la que baja. */
-      flex-shrink: 0;
+      /* Alto real de la lista (flex:1 con overflow:hidden la dejaba en el hueco y la cortaba):
+         la pantalla es la que baja. */
+      flex: none;
     }
     .collector-mobile-list.is-recaudo-sheet > .collector-mobile-card.is-dense.is-done {
       border-bottom: 1px solid #e2ece7;

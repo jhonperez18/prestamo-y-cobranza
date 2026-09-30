@@ -299,6 +299,8 @@ export function CollectorMobileApp({
   /** Desde «Inicio» del cuadre → ir a la hoja de cobro (Por cobrar). */
   const [preferCobroPlanilla, setPreferCobroPlanilla] = useState(false);
   const [reloanPayRef, setReloanPayRef] = useState<string | null>(null);
+  /** Hoja de Recaudo abierta desde «Banco»: solo los cobros que no son efectivo. */
+  const [recaudoOnlyBanco, setRecaudoOnlyBanco] = useState(false);
   const [apiPayments, setApiPayments] = useState<PaymentRow[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
   const livePayments = useMemo(() => {
@@ -760,6 +762,8 @@ export function CollectorMobileApp({
     !activePlanillaRoute || sameRoute(activePlanillaRoute, planillaRoutePins[0] || "");
   /** A cobra solo Efectivo y Nequi: lo que no es efectivo se muestra como Nequi. */
   const planillaIsA = sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "A");
+  /** N: cabecera Inicial · Recaudo · Total día · Caja; Banco en la fila de KPI. */
+  const planillaIsN = sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "N");
 
   /**
    * Libro de caja del día (único dueño del saldo): Inicial M = CIE de ayer;
@@ -1075,9 +1079,10 @@ export function CollectorMobileApp({
     setReviewingLoans(true);
   }
 
-  function openRecaudoDetail() {
+  function openRecaudoDetail(onlyBanco = false) {
     // Jornada cerrada: sin acceso a detalle de cobros.
-    if (dayLocked) return;
+    if (dayLocked || isNavQuiet()) return;
+    setRecaudoOnlyBanco(onlyBanco);
     selectFilter("done");
   }
 
@@ -1293,7 +1298,14 @@ export function CollectorMobileApp({
         );
       });
   }, [clients, routeDayPays, loans]);
-  const doneRouteStarts = routeBlockStarts(dayPaysByRoute, (pay) => {
+  const recaudoRows = useMemo(
+    () =>
+      recaudoOnlyBanco
+        ? dayPaysByRoute.filter((pay) => normalizePaymentMethod(pay.method) !== "efectivo")
+        : dayPaysByRoute,
+    [recaudoOnlyBanco, dayPaysByRoute],
+  );
+  const doneRouteStarts = routeBlockStarts(recaudoRows, (pay) => {
     const loan = loans.find((row) => row.ref === pay.loanRef);
     return clients.find((row) => row.ref === loan?.clientRef)?.route;
   });
@@ -1372,6 +1384,19 @@ export function CollectorMobileApp({
           : "Saldo inicial fijo"
         : chainOpening.blockReason
       : undefined;
+  /** Caja de la planilla (la que pasa como Inicial al otro día): una sola cifra para cuadre y cabecera. */
+  const cajaShown =
+    planillaCaja != null
+      ? planillaCaja
+      : chainOpening.kind === "chain"
+        ? headerInicial + planillaRecaudo.efectivo - topGastos - topPrestamos
+        : ownRouteDay
+          ? ownRouteDay.closing
+          : isPrimaryPlanilla
+            ? dayCuadre.saldo
+            : planillaRecaudo.efectivo - topPrestamos;
+  /** N: Total día = recaudo en efectivo − préstamos − gastos (Caja − Inicial); Banco va aparte. */
+  const totalDiaShown = cajaShown - headerInicial;
   const pendingCollectShown = activePlanillaRoute
     ? routePendingCollectCount
     : queue.pendingCollectCount;
@@ -1549,6 +1574,37 @@ export function CollectorMobileApp({
                 <span>{headerInicialProvisional ? "Inicial ·" : "Inicial"}</span>
                 <b>{headerInicialReady ? money(headerInicial) : "—"}</b>
               </div>
+            ) : null}
+            {!chromeLocked && planillaIsN ? (
+              <>
+                <button
+                  type="button"
+                  className={
+                    !reviewingPanel && listFilter === "done" && !recaudoOnlyBanco
+                      ? "collector-mobile-header-inicial is-recaudo on"
+                      : "collector-mobile-header-inicial is-recaudo"
+                  }
+                  title="Cobros del día en efectivo"
+                  {...navButtonProps(navIntent, () => openRecaudoDetail())}
+                >
+                  <span>Recaudo</span>
+                  <b>{money(planillaRecaudo.efectivo)}</b>
+                </button>
+                <div
+                  className="collector-mobile-header-inicial is-total-dia"
+                  title="Recaudo − préstamos − gastos"
+                >
+                  <span>Total día</span>
+                  <b>{headerInicialReady ? money(totalDiaShown) : "—"}</b>
+                </div>
+                <div
+                  className="collector-mobile-header-inicial is-caja"
+                  title="Total día + Inicial: pasa como Inicial al otro día"
+                >
+                  <span>Caja</span>
+                  <b>{headerInicialReady ? money(cajaShown) : "—"}</b>
+                </div>
+              </>
             ) : null}
             {planillaRoutePins.length > 1 && !showHomeCuadre ? (
               <div
@@ -1812,25 +1868,47 @@ export function CollectorMobileApp({
           <span>Por cobrar</span>
           <b>{pendingCollectShown}</b>
         </button>
-        <button
-          type="button"
-          className={
-            chromeLocked
-              ? "collector-mobile-stat is-recaudo is-off"
-              : !reviewingPanel && listFilter === "done"
-                ? "collector-mobile-stat is-recaudo on"
-                : "collector-mobile-stat is-recaudo"
-          }
-          disabled={chromeLocked}
-          title={chromeLocked ? "Jornada cerrada" : undefined}
-          {...navButtonProps(navIntent, () => {
-            if (chromeLocked) return;
-            openRecaudoDetail();
-          })}
-        >
-          <span>Recaudo</span>
-          <b>{money(topRecaudo)}</b>
-        </button>
+        {planillaIsN ? (
+          <button
+            type="button"
+            className={
+              chromeLocked
+                ? "collector-mobile-stat is-banco is-off"
+                : !reviewingPanel && listFilter === "done" && recaudoOnlyBanco
+                  ? "collector-mobile-stat is-banco on"
+                  : "collector-mobile-stat is-banco"
+            }
+            disabled={chromeLocked}
+            title={chromeLocked ? "Jornada cerrada" : "Cobros del día en Banco"}
+            {...navButtonProps(navIntent, () => {
+              if (chromeLocked) return;
+              openRecaudoDetail(true);
+            })}
+          >
+            <span>Banco</span>
+            <b>{money(planillaRecaudo.digital)}</b>
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={
+              chromeLocked
+                ? "collector-mobile-stat is-recaudo is-off"
+                : !reviewingPanel && listFilter === "done"
+                  ? "collector-mobile-stat is-recaudo on"
+                  : "collector-mobile-stat is-recaudo"
+            }
+            disabled={chromeLocked}
+            title={chromeLocked ? "Jornada cerrada" : undefined}
+            {...navButtonProps(navIntent, () => {
+              if (chromeLocked) return;
+              openRecaudoDetail();
+            })}
+          >
+            <span>Recaudo</span>
+            <b>{money(topRecaudo)}</b>
+          </button>
+        )}
         <button
           type="button"
           className={
@@ -1982,19 +2060,7 @@ export function CollectorMobileApp({
 
             <div className="is-saldo">
               <span>Caja (efectivo − gastos − préstamos)</span>
-              <b>
-                {money(
-                  planillaCaja != null
-                    ? planillaCaja
-                    : chainOpening.kind === "chain"
-                    ? headerInicial + planillaRecaudo.efectivo - topGastos - topPrestamos
-                    : ownRouteDay
-                    ? ownRouteDay.closing
-                    : isPrimaryPlanilla
-                      ? dayCuadre.saldo
-                      : planillaRecaudo.efectivo - topPrestamos,
-                )}
-              </b>
+              <b>{money(cajaShown)}</b>
             </div>
           </div>
           <CollectorDayCloseExtras
@@ -2101,10 +2167,12 @@ export function CollectorMobileApp({
 
       {listFilter === "done" ? (
         <ul className="collector-mobile-list compact is-recaudo-sheet" aria-label="Quienes pagaron">
-          {dayPaysByRoute.length === 0 ? (
-            <li className="collector-mobile-empty-inline">Aún no hay cobros del día.</li>
+          {recaudoRows.length === 0 ? (
+            <li className="collector-mobile-empty-inline">
+              {recaudoOnlyBanco ? "Aún no hay cobros en Banco hoy." : "Aún no hay cobros del día."}
+            </li>
           ) : (
-            dayPaysByRoute.map((pay, index) => {
+            recaudoRows.map((pay, index) => {
               const method = normalizePaymentMethod(pay.method);
               const payLoan = loans.find((row) => row.ref === pay.loanRef);
               const payClient = payLoan
