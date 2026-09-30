@@ -3439,7 +3439,13 @@ export function SupervisorMobileApp({
                 </div>
                 <div className="is-gastos">
                   <span>Lo que gastó</span>
-                  <b>{money(openRouteHistoryDayExpenseSplit.otrosTotal)}</b>
+                  <b>
+                    {money(
+                      historyDayChainT
+                        ? historyDayChainT.ownGastos
+                        : openRouteHistoryDayExpenseSplit.otrosTotal,
+                    )}
+                  </b>
                 </div>
                 <div className="is-cobrado">
                   <div className="is-cobrado-head">
