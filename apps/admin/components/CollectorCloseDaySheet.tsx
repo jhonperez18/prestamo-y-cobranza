@@ -20,7 +20,6 @@ type DraftRow = {
 
 type Props = {
   draft: CollectorDayCloseDraft;
-  onCancel: () => void;
   /** Guarda gastos sin cerrar el día. */
   onSave: (expenses: RouteExpenseLine[]) => void;
 };
@@ -62,7 +61,7 @@ function toExpenseLines(rows: DraftRow[]): RouteExpenseLine[] {
   return lines;
 }
 
-export function CollectorCloseDaySheet({ draft, onCancel, onSave }: Props) {
+export function CollectorCloseDaySheet({ draft, onSave }: Props) {
   const [rows, setRows] = useState<DraftRow[]>(() => rowsFromExpenses(draft.expenses));
   const lines = useMemo(() => toExpenseLines(rows), [rows]);
   const expensesTotal = sumExpenseLines(lines);
@@ -157,9 +156,6 @@ export function CollectorCloseDaySheet({ draft, onCancel, onSave }: Props) {
         </ul>
 
         <div className="collector-close-actions is-links">
-          <button type="button" className="collector-mobile-pay-link is-back" onClick={onCancel}>
-            volver
-          </button>
           <button type="submit" className="collector-mobile-pay-link">
             guardar
           </button>

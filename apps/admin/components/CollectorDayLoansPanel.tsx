@@ -7,19 +7,12 @@ type Props = {
   dateLabel: string;
   rows: DayLoanDisbursementRow[];
   total: number;
-  onBack: () => void;
 };
 
 /** Detalle del KPI Préstamos: a quién, capital y cuota. */
-export function CollectorDayLoansPanel({ dateLabel, rows, total, onBack }: Props) {
+export function CollectorDayLoansPanel({ dateLabel, rows, total }: Props) {
   return (
     <section className="collector-day-loans-panel" aria-label={`Préstamos ${dateLabel}`}>
-      <div className="collector-day-loans-panel-head is-back-only">
-        <button type="button" className="collector-mobile-pay-link is-back" onClick={onBack}>
-          volver
-        </button>
-      </div>
-
       {rows.length === 0 ? (
         <p className="collector-day-loans-empty">Aún no hay préstamos en esta ruta hoy.</p>
       ) : (

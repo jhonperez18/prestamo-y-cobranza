@@ -2151,7 +2151,6 @@ export function CollectorMobileApp({
             collected: recaudo.total,
             expenses: dayExpenseSplit.otros,
           }}
-          onCancel={() => setEditingExpenses(false)}
           onSave={saveExpenses}
         />
       ) : reviewingLoans ? (
@@ -2159,7 +2158,6 @@ export function CollectorMobileApp({
           dateLabel={queue.dateLabel}
           rows={viewLoanRows}
           total={viewPrestamos}
-          onBack={() => setReviewingLoans(false)}
         />
       ) : confirmingClose && onCloseDay ? (
         <CollectorCloseDayConfirm
