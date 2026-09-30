@@ -62,6 +62,19 @@ export function paymentMethodForRoute(
   return sameRoute(route, "A") ? "nequi" : "banco";
 }
 
+/** Método a mostrar de un PG-: ruta del cliente del préstamo (A = Nequi, M / T / N = Banco). */
+export function paymentDisplayMethod(
+  payment: { method?: PaymentMethod | string | null; loanRef?: string },
+  loans: readonly { ref: string; clientRef?: string }[],
+  clients: readonly { ref: string; route?: string }[],
+): PaymentMethod {
+  const clientRef = payment.loanRef
+    ? loans.find((loan) => loan.ref === payment.loanRef)?.clientRef
+    : undefined;
+  const route = clientRef ? clients.find((client) => client.ref === clientRef)?.route : undefined;
+  return paymentMethodForRoute(payment.method, route);
+}
+
 export function paymentMethodKind(method?: PaymentMethod | string | null): StatusKind {
   return normalizePaymentMethod(method);
 }

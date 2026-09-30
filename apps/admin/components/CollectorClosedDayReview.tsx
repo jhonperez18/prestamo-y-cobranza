@@ -9,7 +9,7 @@ import { money, type PaymentRow } from "@/lib/mock-data";
 import { paymentVisitDate } from "@/lib/late-payment";
 import { routeBlockStarts } from "@/lib/client-route-order";
 import {
-  normalizePaymentMethod,
+  paymentMethodForRoute,
   paymentMethodInitial,
   paymentMethodLabel,
   paymentMethodToneClass,
@@ -81,7 +81,7 @@ export function CollectorClosedDayReview({
     if (!(row.visitStatus === "cobrado" || row.paymentRef || pay)) return false;
     if (!methodFilter) return true;
     if (!pay) return methodFilter === "efectivo";
-    return normalizePaymentMethod(pay.method) === methodFilter;
+    return paymentMethodForRoute(pay.method, row.clientRoute) === methodFilter;
   });
   const gastoLines = operativeExpenseLines(expenses);
   const expensesTotal = gastoLines.reduce((sum, row) => sum + row.amount, 0);
@@ -160,7 +160,7 @@ export function CollectorClosedDayReview({
             {cobros.map((item) => {
               const payRaw = paymentForVisit(item, payments);
               const pay = payRaw ? withPaymentEvidence(payRaw) : undefined;
-              const method = pay ? normalizePaymentMethod(pay.method) : "efectivo";
+              const method = pay ? paymentMethodForRoute(pay.method, item.clientRoute) : "efectivo";
               const amount = pay?.amount ?? item.amountDue;
               const loanRef = item.loanRef || "—";
               const when = pay?.paidTime?.trim() || "";
@@ -211,7 +211,7 @@ export function CollectorClosedDayReview({
             <ul className="collector-closed-review-list">
               {visits.map((item, index) => {
                 const pay = paymentForVisit(item, payments);
-                const method = pay ? normalizePaymentMethod(pay.method) : null;
+                const method = pay ? paymentMethodForRoute(pay.method, item.clientRoute) : null;
                 const amount = pay?.amount ?? (item.amountDue > 0 ? item.amountDue : 0);
                 const status = item.visitStatus ?? "pendiente";
                 const loanRef = item.loanRef || (item.awaitingLoan ? "Completar" : "—");

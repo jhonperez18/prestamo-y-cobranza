@@ -12,7 +12,7 @@ import type {
   LoanRow,
   PaymentRow,
 } from "@/lib/mock-data";
-import { normalizePaymentMethod, type PaymentMethod } from "@/lib/payment-method";
+import { paymentMethodForRoute, type PaymentMethod } from "@/lib/payment-method";
 import { readDemoJson, writeDemoJson } from "@/lib/demo-persist";
 
 export const SUPERVISOR_ROUTE_SEEN_KEY = "nexo-demo-supervisor-route-seen";
@@ -77,7 +77,7 @@ export function paymentRefsForCollectorRouteDay(
     .filter((row) => {
       if ((Number(row.amount) || 0) <= 0) return false;
       if ((normalizeHistoryDate(row.paidDate || "") || "") !== day) return false;
-      if (method && normalizePaymentMethod(row.method) !== method) return false;
+      if (method && paymentMethodForRoute(row.method, routeName) !== method) return false;
       return paymentBelongsToRoute(row, routeRef, routeName, loanByRef, clientRefs);
     })
     .map((row) => row.ref)

@@ -18,7 +18,7 @@ import { paymentVisitDate } from "@/lib/late-payment";
 import type { LoanRow, PaymentRow } from "@/lib/mock-data";
 import { todayIso } from "@/lib/daily-dispatch";
 import {
-  normalizePaymentMethod,
+  paymentMethodForRoute,
   paymentMethodInitial,
   paymentMethodLabel,
   paymentMethodToneClass,
@@ -149,7 +149,7 @@ export function enrichSupervisorPlanillaRow(
     : [];
   /** E/N solo con PG vivo; si hay pago, estado = cobrado (nunca E + Pend.). */
   const method: PaymentMethod | null = pay
-    ? normalizePaymentMethod(pay.method)
+    ? paymentMethodForRoute(pay.method, row.clientRoute)
     : null;
   let visitStatus = row.visitStatus ?? "pendiente";
   if (pay) {
@@ -165,7 +165,9 @@ export function enrichSupervisorPlanillaRow(
     cuota,
     method,
     methodLabel: isCombined && comboPays.length >= 2
-      ? combinedMethodsLabel(comboPays.map((entry) => normalizePaymentMethod(entry.method)))
+      ? combinedMethodsLabel(
+          comboPays.map((entry) => paymentMethodForRoute(entry.method, row.clientRoute)),
+        )
       : method
         ? paymentMethodInitial(method)
         : null,

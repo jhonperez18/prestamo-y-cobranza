@@ -79,6 +79,7 @@ import { suppressGhostClick, isNavQuiet } from "@/lib/suppress-ghost-click";
 import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import {
   normalizePaymentMethod,
+  paymentDisplayMethod,
   paymentMethodInitial,
   paymentMethodKind,
   paymentMethodLabel,
@@ -2247,7 +2248,7 @@ export function CollectorMobileApp({
             </li>
           ) : (
             recaudoRows.map((pay, index) => {
-              const method = normalizePaymentMethod(pay.method);
+              const method = paymentDisplayMethod(pay, loans, clients);
               const payLoan = loans.find((row) => row.ref === pay.loanRef);
               const payClient = payLoan
                 ? clients.find((row) => row.ref === payLoan.clientRef)

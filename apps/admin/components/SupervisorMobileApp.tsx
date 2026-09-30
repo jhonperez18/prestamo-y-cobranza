@@ -87,6 +87,8 @@ import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import {
   PAYMENT_METHODS,
   normalizePaymentMethod,
+  paymentDisplayMethod,
+  paymentMethodForRoute,
   paymentMethodInitial,
   paymentMethodLabel,
   paymentMethodToneClass,
@@ -155,7 +157,6 @@ import {
   withIndependentRouteHistory,
 } from "@/lib/independent-route-cash";
 import { CashAdjustForm } from "@/components/CashAdjustForm";
-
 /** Fecha corta para listados: 05/09/2026 → 5/9 */
 function formatLoanListDate(raw?: string | null) {
   const text = String(raw ?? "").trim();
@@ -834,7 +835,7 @@ function SupervisorClientFicha({
               <span className="is-method">M</span>
             </li>
             {report.movements.map((row) => {
-              const method = normalizePaymentMethod(row.method);
+              const method = paymentMethodForRoute(row.method, report.client?.route);
               return (
                 <li key={row.ref}>
                   <span className="is-amount">{money(row.amount, { symbol: false })}</span>
@@ -1227,7 +1228,7 @@ export function SupervisorMobileApp({
           if (!loan?.clientRef || !clientRefs.has(loan.clientRef)) continue;
           const amount = Number(pay.amount) || 0;
           if (!(amount > 0)) continue;
-          const method = normalizePaymentMethod(pay.method);
+          const method = paymentDisplayMethod(pay, loans, clients);
           if (method === "nequi") cobradoNequi += amount;
           else if (method === "banco") cobradoBanco += amount;
           else cobradoEfectivo += amount;
@@ -1521,7 +1522,7 @@ export function SupervisorMobileApp({
   const nequiRegisterTodayAll = useMemo(() => {
     const items = paymentsWithEvidence
       .filter((row) => {
-        if (normalizePaymentMethod(row.method) !== "nequi") return false;
+        if (paymentDisplayMethod(row, loans, clients) !== "nequi") return false;
         if (!((row.amount ?? 0) > 0)) return false;
         return normalizeHistoryDate(row.paidDate ?? "") === today;
       })
@@ -1529,7 +1530,7 @@ export function SupervisorMobileApp({
       .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));
     const total = items.reduce((sum, row) => sum + (row.amount ?? 0), 0);
     return { date: today, items, total };
-  }, [paymentsWithEvidence, today]);
+  }, [paymentsWithEvidence, today, loans, clients]);
   const nequiRegistroRoutePins = useMemo(
     () =>
       liquidaciones
@@ -1619,15 +1620,17 @@ export function SupervisorMobileApp({
   /** Ficha de un día del Registro Nequi (misma fila para hoy y para el historial). */
   const renderNequiDayList = (items: typeof paymentsWithEvidence) => (
     <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-register is-nequi-day-ficha">
-      {items.map((pay) => (
+      {items.map((pay) => {
+        const method = paymentDisplayMethod(pay, loans, clients);
+        return (
         <li key={pay.ref}>
           <strong className="is-name">{pay.client}</strong>
           <span className="is-when">{pay.paidTime || "—"}</span>
           <em
-            className={`is-method ${paymentMethodToneClass("nequi")}`}
-            title={paymentMethodLabel("nequi")}
+            className={`is-method ${paymentMethodToneClass(method)}`}
+            title={paymentMethodLabel(method)}
           >
-            {paymentMethodInitial("nequi")}
+            {paymentMethodInitial(method)}
           </em>
           <span className="is-evidence">
             <PaymentEvidenceThumb
@@ -1642,7 +1645,8 @@ export function SupervisorMobileApp({
           </span>
           <b className="is-cobro">{money(pay.amount, { symbol: false })}</b>
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 
@@ -1691,7 +1695,7 @@ export function SupervisorMobileApp({
     const items = paymentsWithEvidence
       .filter(
         (row) =>
-          normalizePaymentMethod(row.method) === "banco" &&
+          paymentDisplayMethod(row, loans, clients) === "banco" &&
           (row.amount ?? 0) > 0 &&
           normalizeHistoryDate(row.paidDate ?? "") === today,
       )
@@ -1699,7 +1703,7 @@ export function SupervisorMobileApp({
       .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));
     const total = items.reduce((sum, row) => sum + (row.amount ?? 0), 0);
     return { date: todayDisplay, items, total };
-  }, [paymentsWithEvidence, today, todayDisplay]);
+  }, [paymentsWithEvidence, today, todayDisplay, loans, clients]);
   const bancoRegisterToday = useMemo(() => {
     const base = bancoRegisterTodayAll;
     if (!bancoRegistroRoute) {
@@ -1868,7 +1872,7 @@ export function SupervisorMobileApp({
       loans,
       routes,
     ).filter((row) => {
-      if (normalizePaymentMethod(row.method) !== "nequi" || !((row.amount ?? 0) > 0)) {
+      if (normalizePaymentMethod(row.method) === "efectivo" || !((row.amount ?? 0) > 0)) {
         return false;
       }
       const loan = loans.find((entry) => entry.ref === row.loanRef);
@@ -1918,7 +1922,7 @@ export function SupervisorMobileApp({
     )
       .filter((row) => {
         if (
-          normalizePaymentMethod(row.method) !== "nequi" ||
+          normalizePaymentMethod(row.method) === "efectivo" ||
           !((row.amount ?? 0) > 0) ||
           normalizeHistoryDate(row.paidDate ?? "") !== nequiDayIso
         ) {
@@ -3536,10 +3540,10 @@ export function SupervisorMobileApp({
                       <strong className="is-name">{pay.client}</strong>
                       <span className="is-when">{pay.paidTime || "—"}</span>
                       <em
-                        className={`is-method ${paymentMethodToneClass("nequi")}`}
-                        title={paymentMethodLabel("nequi")}
+                        className={`is-method ${paymentMethodToneClass(paymentDisplayMethod(pay, loans, clients))}`}
+                        title={paymentMethodLabel(paymentDisplayMethod(pay, loans, clients))}
                       >
-                        {paymentMethodInitial("nequi")}
+                        {paymentMethodInitial(paymentDisplayMethod(pay, loans, clients))}
                       </em>
                       <span className="is-evidence">
                         <PaymentEvidenceThumb
