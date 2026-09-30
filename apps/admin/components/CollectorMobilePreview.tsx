@@ -53,6 +53,10 @@ type Props = {
     phone?: string;
   }) => void;
   onCreateQuickLoan?: (draft: import("@/lib/street-client-loan").QuickLoanDraft) => void;
+  onCreateRouteClient?: (
+    draft: import("@/lib/commit-portfolio-catalog").RouteClientDraft,
+    createdBy?: string,
+  ) => Promise<boolean>;
   onUpdateClient?: (draft: {
     ref: string;
     name: string;
@@ -101,6 +105,7 @@ export function CollectorMobilePreview({
   onCloseMonth,
   onCreateStreetClient,
   onCreateQuickLoan,
+  onCreateRouteClient,
   onUpdateClient,
   onAttachPaymentEvidence,
   bankAccounts = [],
@@ -330,6 +335,11 @@ export function CollectorMobilePreview({
                   onSkipVisit={onSkipVisit}
                   onRenewLoan={onRenewLoan}
                   onCreateQuickLoan={onCreateQuickLoan}
+                  onCreateClient={
+                    onCreateRouteClient
+                      ? (draft) => onCreateRouteClient(draft, collector.name)
+                      : undefined
+                  }
                   onSaveExpenses={onSaveExpenses}
                   onCloseDay={onCloseDay}
                   onCloseMonth={onCloseMonth}

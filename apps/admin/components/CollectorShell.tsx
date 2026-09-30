@@ -36,6 +36,11 @@ import {
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
 import { buildQuickLoan, type QuickLoanDraft } from "@/lib/street-client-loan";
+import {
+  commitCreateRouteClient,
+  flushPortfolioCatalogToCloud,
+  type RouteClientDraft,
+} from "@/lib/commit-portfolio-catalog";
 import { COLLECTOR_DAILY_LOGS_SEED, upsertDailyLogPayment } from "@/lib/collector-daily-log";
 import {
   applyDeclineLoanOfferToRoute,
@@ -661,6 +666,30 @@ export function CollectorShell({ session, onLogout }: Props) {
     }
   }
 
+  async function createRouteClientFromMobile(draft: RouteClientDraft) {
+    const result = commitCreateRouteClient(
+      draft,
+      { clients, loans, routes, assignments: dailyAssignments, collectors, payments },
+      collector?.name,
+    );
+    if (!result.ok) {
+      showToast(result.error);
+      return false;
+    }
+    setClients(result.state.clients);
+    setRoutes(result.state.routes);
+    setDailyAssignments(result.state.assignments);
+    showToast(`${result.message} · subiendo…`);
+    try {
+      await flushPortfolioCatalogToCloud();
+      showToast(result.message);
+    } catch (err) {
+      console.error("[nuevo cliente] flush nube", err);
+      showToast(`${result.message} (sin nube; en este aparato ya está, queda en cola).`);
+    }
+    return true;
+  }
+
   function skipCollectorVisit(draft: CollectorSkipVisitDraft) {
     if (!session.collectorRef) {
       showToast("Sin cobrador vinculado.");
@@ -942,6 +971,9 @@ export function CollectorShell({ session, onLogout }: Props) {
         }
         onCreateQuickLoan={
           hasPermission(session, "cobros.registrar") ? createQuickLoanFromMobile : undefined
+        }
+        onCreateClient={
+          hasPermission(session, "cobros.registrar") ? createRouteClientFromMobile : undefined
         }
         onSkipVisit={
           hasPermission(session, "cobros.registrar") ? skipCollectorVisit : undefined

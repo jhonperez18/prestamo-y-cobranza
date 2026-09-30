@@ -156,6 +156,8 @@ import {
 } from "@/lib/commit-collector-payment";
 import {
   commitCreateClient,
+  commitCreateRouteClient,
+  type RouteClientDraft,
   commitCreateLoan,
   commitDeleteClient,
   commitNormalizeAllClientNamesTitleCase,
@@ -2050,6 +2052,12 @@ export function useWorkspace({
     });
   }
 
+  function createRouteClientFromMobile(draft: RouteClientDraft, createdBy?: string) {
+    return applyPortfolioCommit(
+      commitCreateRouteClient(draft, portfolioState(), createdBy ?? sessionUser?.name),
+    );
+  }
+
   function updateClientFromMobile(draft: {
     ref: string;
     name: string;
@@ -2710,6 +2718,7 @@ export function useWorkspace({
     createStreetClientFromMobile,
     updateClientFromMobile,
     createQuickLoanFromMobile,
+    createRouteClientFromMobile,
     peopleState,
     applyPeopleCommit,
     toggleCollectorActive,

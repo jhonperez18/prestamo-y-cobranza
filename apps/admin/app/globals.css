@@ -1001,6 +1001,88 @@
       border-color: #2563eb;
       color: #1e3a8a;
     }
+    /* Menú ☰ → Nuevo cliente (nombre · posición · ruta fija). */
+    .collector-new-client {
+      margin: 8px 10px;
+      padding: 10px 12px 12px;
+      border: 1px solid #c3d4cc;
+      border-radius: 10px;
+      background: #fff;
+    }
+    .collector-new-client-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .collector-new-client-head h2 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 700;
+      color: #0f3d33;
+    }
+    .collector-new-client-form {
+      display: grid;
+      gap: 8px;
+    }
+    .collector-new-client-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 8px;
+    }
+    .collector-new-client-field {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+    .collector-new-client-field > span {
+      font-size: 11px;
+      font-weight: 650;
+      color: #3f5a50;
+    }
+    .collector-new-client-field input,
+    .collector-new-client-field select {
+      width: 100%;
+      min-width: 0;
+      padding: 7px 8px;
+      border: 1px solid #c3d4cc;
+      border-radius: 7px;
+      font-size: 14px;
+      background: #fff;
+      box-sizing: border-box;
+    }
+    .collector-new-client-route {
+      display: block;
+      padding: 7px 8px;
+      border: 1px solid #e2ece7;
+      border-radius: 7px;
+      background: #f3faf6;
+      font-size: 14px;
+      color: #0f3d33;
+    }
+    .collector-new-client-hint {
+      margin: 0;
+      font-size: 11px;
+      color: #5b7268;
+    }
+    .collector-new-client-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+    .collector-new-client-save {
+      padding: 8px 16px;
+      border: 0;
+      border-radius: 8px;
+      background: #0f766e;
+      color: #fff;
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    .collector-new-client-save:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
     .collector-mobile-stat.is-gastos.on {
       border-color: #dc2626;
       color: #991b1b;

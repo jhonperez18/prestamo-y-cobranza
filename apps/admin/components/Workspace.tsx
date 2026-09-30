@@ -306,6 +306,7 @@ export function Workspace(props: WorkspaceProps) {
     createStreetClientFromMobile,
     updateClientFromMobile,
     createQuickLoanFromMobile,
+    createRouteClientFromMobile,
     peopleState,
     applyPeopleCommit,
     toggleCollectorActive,
@@ -1726,6 +1727,7 @@ export function Workspace(props: WorkspaceProps) {
           onCloseMonth={closeCollectorMonthFromMobile}
           onCreateStreetClient={createStreetClientFromMobile}
           onCreateQuickLoan={createQuickLoanFromMobile}
+          onCreateRouteClient={createRouteClientFromMobile}
           onUpdateClient={updateClientFromMobile}
           onAttachPaymentEvidence={attachPaymentEvidence}
           onSaveMiscPayment={(payment) => {

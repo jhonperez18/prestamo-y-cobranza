@@ -18,6 +18,8 @@ import { QuickLoanForm } from "@/components/QuickLoanForm";
 import type { QuickLoanDraft } from "@/lib/street-client-loan";
 import { Pill } from "@/components/ui";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
+import { CollectorNewClientSheet } from "@/components/CollectorNewClientSheet";
+import type { RouteClientDraft } from "@/lib/commit-portfolio-catalog";
 import { withPaymentEvidence } from "@/lib/payment-evidence-store";
 import { isLatePayment, latePaymentNote, latePaymentTag } from "@/lib/late-payment";
 import {
@@ -195,6 +197,8 @@ type Props = {
   onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
   onRenewLoan?: (loanRef: string) => void;
   onCreateQuickLoan?: (draft: QuickLoanDraft) => void;
+  /** Menú ☰ → Nuevo cliente: alta igual que el taller en la ruta de la planilla abierta. */
+  onCreateClient?: (draft: RouteClientDraft) => Promise<boolean> | boolean;
   onSaveExpenses?: (payload: CollectorSaveExpensesPayload) => void;
   onCloseDay?: (payload: CollectorCloseDayPayload) => void | Promise<void>;
   onCloseMonth?: (payload: CollectorCloseMonthPayload) => void;
@@ -280,6 +284,7 @@ export function CollectorMobileApp({
   onSkipVisit,
   onRenewLoan,
   onCreateQuickLoan,
+  onCreateClient,
   onSaveExpenses,
   onCloseDay,
   onCloseMonth,
@@ -303,6 +308,7 @@ export function CollectorMobileApp({
   const [reloanPayRef, setReloanPayRef] = useState<string | null>(null);
   /** Hoja de Recaudo abierta desde «Banco»: solo los cobros que no son efectivo. */
   const [recaudoOnlyBanco, setRecaudoOnlyBanco] = useState(false);
+  const [creatingClient, setCreatingClient] = useState(false);
   const [apiPayments, setApiPayments] = useState<PaymentRow[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
   const livePayments = useMemo(() => {
@@ -766,6 +772,8 @@ export function CollectorMobileApp({
   const planillaIsA = sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "A");
   /** N: cabecera Inicial · Recaudo · Total día · Caja; Banco en la fila de KPI. */
   const planillaIsN = sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "N");
+  /** Ruta fija del «Nuevo cliente»: la planilla que está abierta. */
+  const newClientRoute = activePlanillaRoute ?? planillaRoutePins[0] ?? "";
   /** M / T: Cuadre sin Nequi (lo no efectivo es Banco) y Total = efectivo − préstamos − gastos. */
   const planillaIsChain =
     sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "M") ||
@@ -1131,6 +1139,25 @@ export function CollectorMobileApp({
   function openHistory() {
     setMenuOpen(false);
     setHistoryOpen(true);
+  }
+
+  function openNewClient() {
+    setMenuOpen(false);
+    setExpandedKey(null);
+    setEditingExpenses(false);
+    setReviewingLoans(false);
+    setConfirmingClose(false);
+    setCreatingClient(true);
+  }
+
+  async function saveNewClient(draft: RouteClientDraft) {
+    if (!onCreateClient) return false;
+    const ok = await onCreateClient(draft);
+    if (ok) {
+      setCreatingClient(false);
+      setListFilter("pending");
+    }
+    return ok;
   }
 
   function confirmCloseDay() {
@@ -1525,6 +1552,17 @@ export function CollectorMobileApp({
                 >
                   Historial
                 </button>
+                {onCreateClient && newClientRoute && !showHomeCuadre ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="collector-mobile-menu-item"
+                    title={`Crear cliente en la ruta ${newClientRoute}`}
+                    onClick={openNewClient}
+                  >
+                    Nuevo cliente
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   role="menuitem"
@@ -2093,7 +2131,14 @@ export function CollectorMobileApp({
 
       {!showHomeCuadre ? (
       <>
-      {editingExpenses && onSaveExpenses ? (
+      {creatingClient && onCreateClient && newClientRoute ? (
+        <CollectorNewClientSheet
+          routeName={newClientRoute}
+          clients={clients}
+          onCancel={() => setCreatingClient(false)}
+          onSave={saveNewClient}
+        />
+      ) : editingExpenses && onSaveExpenses ? (
         <CollectorCloseDaySheet
           key={`${collector.ref}-${activeDate}-${activePlanillaRoute ?? ""}-${dayExpenseSplit.otros
             .map((r) => `${r.id}:${r.amount}`)

@@ -325,6 +325,44 @@ export function commitCreateClient(
   };
 }
 
+/** Alta desde el menú del cobrador: nombre + posición; la ruta es la planilla abierta. */
+export type RouteClientDraft = {
+  name: string;
+  route: string;
+  routeOrder: number;
+};
+
+/**
+ * Mismo alta que el taller (`commitCreateClient`), activa en su ruta y posición:
+ * sin préstamo queda en la planilla con «Prestar». No navega (el cobrador sigue en su app).
+ */
+export function commitCreateRouteClient(
+  draft: RouteClientDraft,
+  state: PortfolioCatalogState,
+  createdBy?: string,
+): PortfolioCommitResult {
+  if (!draft.route.trim()) return { ok: false, error: "Sin ruta para el cliente." };
+  const result = commitCreateClient(
+    {
+      name: draft.name,
+      lastName: "",
+      nickname: "",
+      document: "",
+      route: draft.route,
+      routeOrder: draft.routeOrder,
+      email: "",
+      city: "",
+      barrio: "",
+      address: "",
+      notes: "",
+    },
+    state,
+    { canApprove: true, createdBy },
+  );
+  if (!result.ok) return result;
+  return { ok: true, state: result.state, message: result.message };
+}
+
 export function commitUpdateClient(
   clientRef: string,
   draft: PortfolioClientDraft,
