@@ -372,10 +372,17 @@ export function CollectorPayForm({
     }
   }
 
+  /** Solo pantalla: la opción `nequi` se ve como «Banco» (azul) y `banco` como «Nequi» (morado). */
   function methodTone(id: PaymentMethod) {
     if (id === "efectivo") return "is-pay-efectivo";
-    if (id === "nequi") return "is-pay-nequi";
-    return "is-pay-banco";
+    if (id === "nequi") return "is-pay-banco";
+    return "is-pay-nequi";
+  }
+
+  function methodLabel(id: PaymentMethod, label: string) {
+    if (id === "nequi") return "Banco";
+    if (id === "banco") return "Nequi";
+    return label;
   }
 
   const methodPicker = (
@@ -398,7 +405,7 @@ export function CollectorPayForm({
             disabled={isSubmitting}
             onChange={() => selectMethod(entry.id)}
           />
-          <span>{entry.label}</span>
+          <span>{methodLabel(entry.id, entry.label)}</span>
         </label>
       ))}
       {onNoPay && !combined ? (
@@ -502,7 +509,7 @@ export function CollectorPayForm({
                     setLeg({ method: entry.id, rawAmount: leg.rawAmount, evidenceItem: undefined })
                   }
                 />
-                <span>{entry.label}</span>
+                <span>{methodLabel(entry.id, entry.label)}</span>
               </label>
             );
           })}
