@@ -12,6 +12,7 @@ import {
   type ActivityRow,
   type ClientRow,
   type CollectorRow,
+  type LoanRow,
   type PaymentRow,
   type RoleRow,
   type RouteRow,
@@ -24,7 +25,7 @@ import { mobileAccessLabel } from "@/lib/access-preview";
 import { paymentsForDay, todayDispatchToken, todayIso } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
-import { normalizePaymentMethod, paymentMethodLabel } from "@/lib/payment-method";
+import { paymentDisplayMethod, paymentMethodLabel } from "@/lib/payment-method";
 import { paymentHasReceipt, paymentHasSignature } from "@/lib/payment-evidence";
 
 export type CollectorTab = "ficha" | "rutas" | "cobros" | "historial" | "actividad" | "acceso";
@@ -211,6 +212,7 @@ export function activityFeed(
   payments: PaymentRow[],
   collectors: CollectorRow[],
   filter?: { collectorRef?: string; zone?: string },
+  lookup: { loans: LoanRow[]; clients: ClientRow[] } = { loans: [], clients: [] },
 ): ActivityFeedItem[] {
   const collectorMap = new Map(collectors.map((row) => [row.ref, row]));
 
@@ -240,7 +242,7 @@ export function activityFeed(
         collectorRef: collector?.ref ?? row.collectorRef ?? "",
         collectorName: collector?.name ?? row.collector,
         title: row.type,
-        detail: `${row.client} · ${money(row.amount)} · ${paymentMethodLabel(normalizePaymentMethod(row.method))}${
+        detail: `${row.client} · ${money(row.amount)} · ${paymentMethodLabel(paymentDisplayMethod(row, lookup.loans, lookup.clients))}${
           paymentHasReceipt(row.evidence) ? " · comprobante" : paymentHasSignature(row.evidence) ? " · firma" : ""
         }`,
         kind: row.kind,

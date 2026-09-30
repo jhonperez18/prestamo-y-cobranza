@@ -6,7 +6,7 @@ import { CollectorActivityList } from "@/components/CollectorActivityList";
 import { parseActivityWhen } from "@/lib/collector-daily-log";
 import { activityFeed } from "@/lib/collector-preview";
 import { todayIso } from "@/lib/daily-dispatch";
-import type { ActivityRow, CollectorRow, PaymentRow } from "@/lib/mock-data";
+import type { ActivityRow, ClientRow, CollectorRow, LoanRow, PaymentRow } from "@/lib/mock-data";
 
 type Period = "dia" | "semana" | "mes";
 
@@ -21,6 +21,8 @@ type AppliedFilters = {
 type Props = {
   collectors: CollectorRow[];
   payments: PaymentRow[];
+  loans: LoanRow[];
+  clients: ClientRow[];
   activities: ActivityRow[];
   onOpenCollector: (ref: string) => void;
 };
@@ -80,7 +82,14 @@ function isoToLabel(iso: string | undefined) {
   return `${d}/${m}/${y}`;
 }
 
-export function CollectorActivityView({ collectors, payments, activities, onOpenCollector }: Props) {
+export function CollectorActivityView({
+  collectors,
+  payments,
+  loans,
+  clients,
+  activities,
+  onOpenCollector,
+}: Props) {
   const today = todayIso();
   const monthDefault = defaultRange("mes", today);
 
@@ -104,10 +113,14 @@ export function CollectorActivityView({ collectors, payments, activities, onOpen
 
   const feed = useMemo(
     () =>
-      activityFeed(activities, payments, collectors, {
-        collectorRef: applied.collectorRef || undefined,
-      }),
-    [activities, payments, collectors, applied.collectorRef],
+      activityFeed(
+        activities,
+        payments,
+        collectors,
+        { collectorRef: applied.collectorRef || undefined },
+        { loans, clients },
+      ),
+    [activities, payments, collectors, applied.collectorRef, loans, clients],
   );
 
   const visible = useMemo(() => {

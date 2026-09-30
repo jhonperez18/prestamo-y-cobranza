@@ -87,7 +87,7 @@ export function cobranzaPaymentReportCell(
     case "valor":
       return money(payment.amount);
     case "method":
-      return paymentMethodInitial(payment.method);
+      return paymentMethodInitial(movement.method);
     case "evidence":
       return movement.hasReceipt ? "Sí" : "—";
     case "ruta":

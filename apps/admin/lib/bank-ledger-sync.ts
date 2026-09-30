@@ -38,11 +38,12 @@ export function syncBankLedger(input: {
 }): BankMovement[] {
   const accounts = ensureBankAccounts(input.accounts);
   const account = accounts.find((row) => row.active) ?? accounts[0] ?? null;
+  const routeByLoan = loanRouteIndex(input.loans, input.clients);
   const withPayments = syncAllPaymentsToMovements(
     input.payments,
     input.movements,
     accounts,
-    loanRouteIndex(input.loans, input.clients),
+    routeByLoan,
   );
   const withMisc = syncMiscPaymentsToMovements(
     input.miscPayments,
@@ -60,7 +61,9 @@ export function syncBankLedger(input: {
     account?.ref,
   );
   // Último paso: los cobros nunca se desalinean de Ingresos.
-  return normalizeBankMovements(lockPaymentCobrosAsIncome(withLoans, input.payments));
+  return normalizeBankMovements(
+    lockPaymentCobrosAsIncome(withLoans, input.payments, routeByLoan),
+  );
 }
 
 /** Aplica sync solo si el contenido cambió (corta bucles de setState). */

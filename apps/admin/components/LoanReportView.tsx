@@ -24,10 +24,12 @@ type Props = {
 function ReportBody({
   report,
   payments,
+  clientRoute,
   columnVisibility,
 }: {
   report: ReturnType<typeof buildLoanReport>;
   payments: PaymentRow[];
+  clientRoute?: string;
   columnVisibility: ReturnType<typeof useColumnVisibility>;
 }) {
   return (
@@ -50,6 +52,7 @@ function ReportBody({
         <LoanPaymentsTable
           movements={report.movements}
           payments={payments.filter((row) => row.loanRef === report.loanRef)}
+          clientRoute={clientRoute}
           title="Movimientos recaudados"
           emptyMessage="Sin movimientos registrados."
           columnVisibility={columnVisibility}
@@ -92,7 +95,12 @@ export function LoanReportView({ loan, client, payments, assignments = [], onBac
             </button>
           </div>
         </div>
-        <ReportBody report={report} payments={payments} columnVisibility={columnVisibility} />
+        <ReportBody
+          report={report}
+          payments={payments}
+          clientRoute={client?.route}
+          columnVisibility={columnVisibility}
+        />
       </div>
       {pdfPreviewOpen ? (
         <LoanReportPdfPreview

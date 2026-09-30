@@ -39,7 +39,7 @@ export function buildLoanReport(
 
   const movements = sortPaymentsNewestFirst(
     payments.filter((row) => row.loanRef === loan.ref),
-  ).map((row) => enrichPaymentMovement(row, loan, assignments));
+  ).map((row) => enrichPaymentMovement(row, loan, assignments, client?.route));
 
   const capitalUnificado =
     financials.totalAgreement || loan.total || loan.capital + financials.interestTerm;

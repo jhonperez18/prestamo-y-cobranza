@@ -31,7 +31,7 @@ import {
   type RouteRow,
 } from "@/lib/mock-data";
 import {
-  normalizePaymentMethod,
+  paymentDisplayMethod,
   paymentMethodInitial,
   paymentMethodKind,
   paymentMethodLabel,
@@ -575,7 +575,7 @@ export function DailyCollectionsView({
                   collectorNameForRef(draftRef) ||
                   "—";
                 const pay = paymentForDailyRow(item.loanRef, selectedDate, assigned, payments);
-                const payMethod = pay ? normalizePaymentMethod(pay.method) : null;
+                const payMethod = pay ? paymentDisplayMethod(pay, loans, clients) : null;
 
                 return (
                   <tr key={item.id}>

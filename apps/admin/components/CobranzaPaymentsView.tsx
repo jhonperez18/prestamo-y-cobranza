@@ -21,7 +21,7 @@ import {
 import { money, type ClientRow, type LoanRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
 import { withPaymentEvidence } from "@/lib/payment-evidence-store";
 import {
-  normalizePaymentMethod,
+  paymentDisplayMethod,
   paymentMethodInitial,
   paymentMethodKind,
   paymentMethodLabel,
@@ -353,9 +353,9 @@ export function CobranzaPaymentsView({
                     {columnVisibility.isVisible("method") ? (
                       <td className="cp-col cp-method-cell">
                         <Pill
-                          label={paymentMethodInitial(row.method)}
-                          kind={paymentMethodKind(normalizePaymentMethod(row.method))}
-                          title={paymentMethodLabel(row.method)}
+                          label={paymentMethodInitial(paymentDisplayMethod(row, loans, clients))}
+                          kind={paymentMethodKind(paymentDisplayMethod(row, loans, clients))}
+                          title={paymentMethodLabel(paymentDisplayMethod(row, loans, clients))}
                         />
                       </td>
                     ) : null}

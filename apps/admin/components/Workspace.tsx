@@ -884,6 +884,7 @@ export function Workspace(props: WorkspaceProps) {
                 <LoanPaymentsTable
                   payments={loanPays}
                   loan={openLoan}
+                  clientRoute={loanClient?.route}
                   assignments={dailyAssignments}
                   onOpenPayment={openPaymentFicha}
                   footer={openLoan ? paySummary : undefined}
@@ -1052,13 +1053,14 @@ export function Workspace(props: WorkspaceProps) {
       }
 
       const loan = loans.find((row) => row.ref === payment.loanRef) ?? null;
-      const movement = enrichPaymentMovement(payment, loan, dailyAssignments);
       const route = payment.routeRef
         ? routes.find((row) => row.ref === payment.routeRef) ?? null
         : null;
       const clientRef =
         loan?.clientRef ??
         clients.find((row) => `${row.name} ${row.lastName}` === payment.client)?.ref;
+      const clientRoute = clients.find((row) => row.ref === clientRef)?.route;
+      const movement = enrichPaymentMovement(payment, loan, dailyAssignments, clientRoute);
 
       return (
         <PaymentFicha
@@ -1067,6 +1069,7 @@ export function Workspace(props: WorkspaceProps) {
           loan={loan}
           route={route}
           clientRef={clientRef}
+          clientRoute={clientRoute}
           onOpenClient={openFicha}
           onOpenLoan={openLoanAccount}
           onVoidPayment={voidPayment}
@@ -1379,6 +1382,8 @@ export function Workspace(props: WorkspaceProps) {
         <CollectorActivityView
           collectors={collectors}
           payments={payments}
+          loans={loans}
+          clients={clients}
           activities={activities}
           onOpenCollector={(ref) => openUserByCollector(ref, "actividad")}
         />

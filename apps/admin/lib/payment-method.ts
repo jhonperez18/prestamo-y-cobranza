@@ -62,17 +62,25 @@ export function paymentMethodForRoute(
   return sameRoute(route, "A") ? "nequi" : "banco";
 }
 
+/** Ruta del cliente dueño del préstamo de un PG-. */
+export function paymentClientRoute(
+  payment: { loanRef?: string },
+  loans: readonly { ref: string; clientRef?: string }[],
+  clients: readonly { ref: string; route?: string }[],
+): string | undefined {
+  const clientRef = payment.loanRef
+    ? loans.find((loan) => loan.ref === payment.loanRef)?.clientRef
+    : undefined;
+  return clientRef ? clients.find((client) => client.ref === clientRef)?.route : undefined;
+}
+
 /** Método a mostrar de un PG-: ruta del cliente del préstamo (A = Nequi, M / T / N = Banco). */
 export function paymentDisplayMethod(
   payment: { method?: PaymentMethod | string | null; loanRef?: string },
   loans: readonly { ref: string; clientRef?: string }[],
   clients: readonly { ref: string; route?: string }[],
 ): PaymentMethod {
-  const clientRef = payment.loanRef
-    ? loans.find((loan) => loan.ref === payment.loanRef)?.clientRef
-    : undefined;
-  const route = clientRef ? clients.find((client) => client.ref === clientRef)?.route : undefined;
-  return paymentMethodForRoute(payment.method, route);
+  return paymentMethodForRoute(payment.method, paymentClientRoute(payment, loans, clients));
 }
 
 export function paymentMethodKind(method?: PaymentMethod | string | null): StatusKind {

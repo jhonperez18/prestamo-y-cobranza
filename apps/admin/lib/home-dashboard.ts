@@ -282,6 +282,9 @@ export function buildHomeDashboard(
     pendingActions: buildHomePendingActions(clients, loans, payments, collectors, routes),
     todayPayments: allTodayPayments,
     routes: catalog.map((route) => routeCard(route, clients, assignments, today)),
-    recentActivity: activityFeed(activities, payments, collectors).slice(0, 6),
+    recentActivity: activityFeed(activities, payments, collectors, undefined, {
+      loans,
+      clients,
+    }).slice(0, 6),
   };
 }

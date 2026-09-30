@@ -7,7 +7,7 @@ import { Pill } from "@/components/ui";
 import { PaymentStatusPill } from "@/components/PaymentStatusPill";
 import type { PaymentMovement } from "@/lib/payment-detail";
 import {
-  normalizePaymentMethod,
+  paymentMethodForRoute,
   paymentMethodKind,
   paymentMethodLabel,
 } from "@/lib/payment-method";
@@ -22,6 +22,7 @@ type Props = {
   loan: LoanRow | null;
   route: RouteRow | null;
   clientRef?: string;
+  clientRoute?: string;
   onOpenClient?: (ref: string) => void;
   onOpenLoan?: (ref: string) => void;
   onVoidPayment?: (paymentRef: string, reason: string) => void;
@@ -33,11 +34,12 @@ export function PaymentFicha({
   loan,
   route,
   clientRef,
+  clientRoute,
   onOpenClient,
   onOpenLoan,
   onVoidPayment,
 }: Props) {
-  const method = normalizePaymentMethod(payment.method);
+  const method = paymentMethodForRoute(payment.method, clientRoute);
   const evidence = payment.evidence ?? movement.evidence;
   const item = primaryPaymentEvidence(evidence);
   const hasReceipt = paymentHasReceipt(evidence);

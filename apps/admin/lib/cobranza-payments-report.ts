@@ -10,6 +10,7 @@ import {
 import type { ClientRow, LoanRow, PaymentRow, RouteRow } from "@/lib/mock-data";
 import { money } from "@/lib/mock-data";
 import { paymentRouteLabel } from "@/lib/cobranza-payment-columns";
+import { paymentClientRoute } from "@/lib/payment-method";
 
 export type CobranzaPaymentsReportKind = "pagos" | "abonos";
 
@@ -90,9 +91,15 @@ export function buildCobranzaPaymentsReport(input: {
     : ranged;
 
   const sorted = sortPaymentsNewestFirst(filtered);
-  const movements = sorted.map((payment) =>
-    enrichPaymentMovement(payment, payment.loanRef ? loansByRef.get(payment.loanRef) : null, input.assignments),
-  );
+  const clients = input.clients ?? [];
+  const movementOf = (payment: PaymentRow) =>
+    enrichPaymentMovement(
+      payment,
+      payment.loanRef ? loansByRef.get(payment.loanRef) : null,
+      input.assignments,
+      paymentClientRoute(payment, input.loans, clients),
+    );
+  const movements = sorted.map(movementOf);
 
   const routeCtx = {
     loans: loansByRef,
@@ -105,9 +112,7 @@ export function buildCobranzaPaymentsReport(input: {
   );
 
   const total = sorted.reduce((sum, row) => sum + row.amount, 0);
-  const byMethod = breakdownByLabel(sorted, (row) =>
-    enrichPaymentMovement(row, row.loanRef ? loansByRef.get(row.loanRef) : null, input.assignments).method,
-  );
+  const byMethod = breakdownByLabel(sorted, (row) => movementOf(row).method);
   const byCollector = breakdownByLabel(sorted, (row) => row.collector);
 
   const title = input.kind === "abonos" ? "Informe de abonos" : "Informe de recaudo";

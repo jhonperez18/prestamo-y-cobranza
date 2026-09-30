@@ -9,7 +9,7 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { LOAN_PAYMENT_COLUMNS, LOAN_PAYMENT_COLUMNS_STORAGE_KEY, LOAN_PAYMENT_DEFAULT_COLS } from "@/lib/loan-payment-columns";
 import { money, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 import { isLatePayment, latePaymentNote, latePaymentTag } from "@/lib/late-payment";
-import { normalizePaymentMethod, paymentMethodInitial, paymentMethodKind, paymentMethodLabel } from "@/lib/payment-method";
+import { paymentMethodForRoute, paymentMethodInitial, paymentMethodKind, paymentMethodLabel } from "@/lib/payment-method";
 import {
   enrichPaymentMovement,
   sortPaymentsNewestFirst,
@@ -31,6 +31,7 @@ type Props = {
   movements?: PaymentMovement[];
   payments?: PaymentRow[];
   loan?: LoanRow | null;
+  clientRoute?: string;
   assignments?: DailyCollectionAssignment[];
   title?: string;
   emptyMessage?: string;
@@ -45,6 +46,7 @@ export function LoanPaymentsTable({
   movements: movementsProp,
   payments = [],
   loan = null,
+  clientRoute,
   assignments = [],
   title,
   emptyMessage = "Este préstamo aún no tiene pagos registrados.",
@@ -62,9 +64,9 @@ export function LoanPaymentsTable({
   const movements = useMemo(() => {
     if (movementsProp) return movementsProp;
     return sortPaymentsNewestFirst(payments).map((row) =>
-      enrichPaymentMovement(row, loan, assignments),
+      enrichPaymentMovement(row, loan, assignments, clientRoute),
     );
-  }, [movementsProp, payments, loan, assignments]);
+  }, [movementsProp, payments, loan, assignments, clientRoute]);
 
   const paymentByRef = useMemo(() => new Map(payments.map((row) => [row.ref, row])), [payments]);
 
@@ -151,9 +153,9 @@ export function LoanPaymentsTable({
                       <td>
                         {payment ? (
                           <Pill
-                            label={paymentMethodInitial(payment.method)}
-                            kind={paymentMethodKind(normalizePaymentMethod(payment.method))}
-                            title={paymentMethodLabel(payment.method)}
+                            label={paymentMethodInitial(paymentMethodForRoute(payment.method, clientRoute))}
+                            kind={paymentMethodKind(paymentMethodForRoute(payment.method, clientRoute))}
+                            title={paymentMethodLabel(paymentMethodForRoute(payment.method, clientRoute))}
                           />
                         ) : (
                           movement.method

@@ -11,6 +11,7 @@ import {
 } from "@/lib/nequi-pool";
 import {
   normalizePaymentMethod,
+  paymentMethodForRoute,
   paymentMethodLabel,
   type PaymentMethod,
 } from "@/lib/payment-method";
@@ -692,8 +693,17 @@ export function isPeriodClosed(reconciliations: BankReconciliation[], accountRef
   return reconciliations.some((row) => row.accountRef === accountRef && row.period === period);
 }
 
-export function paymentMovementDescription(payment: PaymentRow) {
-  const method = paymentMethodLabel(normalizePaymentMethod(payment.method));
+/** Método del cobro en banco: ruta del cliente (A = Nequi, M / T / N = Banco). */
+function cobroMethod(payment: PaymentRow, routeByLoan?: Map<string, string>): PaymentMethod {
+  const route = payment.loanRef ? routeByLoan?.get(payment.loanRef) : undefined;
+  return paymentMethodForRoute(payment.method, route);
+}
+
+export function paymentMovementDescription(
+  payment: PaymentRow,
+  routeByLoan?: Map<string, string>,
+) {
+  const method = paymentMethodLabel(cobroMethod(payment, routeByLoan));
   return `Cobro ${payment.ref} · ${payment.type} · ${method}`;
 }
 
@@ -764,6 +774,7 @@ export function paymentRefForMovement(row: BankMovement) {
 export function lockPaymentCobrosAsIncome(
   movements: BankMovement[],
   payments: PaymentRow[],
+  routeByLoan?: Map<string, string>,
 ): BankMovement[] {
   const byPg = new Map(payments.map((row) => [row.ref, row]));
   return movements.map((row) => {
@@ -780,9 +791,9 @@ export function lockPaymentCobrosAsIncome(
       category: undefined,
       dayExpenseLineRef: undefined,
       miscPaymentRef: undefined,
-      description: payment ? paymentMovementDescription(payment) : row.description,
+      description: payment ? paymentMovementDescription(payment, routeByLoan) : row.description,
       method: payment
-        ? normalizePaymentMethod(payment.method)
+        ? cobroMethod(payment, routeByLoan)
         : row.method === "nequi" || row.method === "efectivo" || row.method === "banco"
           ? row.method
           : undefined,
@@ -1197,6 +1208,7 @@ export function latestOpenPendingPeriod(
 export function repairBankMovementsFromPayments(
   movements: BankMovement[],
   payments: PaymentRow[],
+  routeByLoan?: Map<string, string>,
 ): BankMovement[] {
   const paymentByRef = new Map(payments.map((row) => [row.ref, row]));
   const next: BankMovement[] = [];
@@ -1209,8 +1221,8 @@ export function repairBankMovementsFromPayments(
       current = {
         ...row,
         paymentRef: pg,
-        description: paymentMovementDescription(payment),
-        method: normalizePaymentMethod(payment.method),
+        description: paymentMovementDescription(payment, routeByLoan),
+        method: cobroMethod(payment, routeByLoan),
         thirdParty: row.thirdParty?.trim() || payment.client,
         debit: row.debit > 0 ? row.debit : row.credit > 0 ? row.credit : payment.amount,
         credit: 0,
@@ -1277,7 +1289,9 @@ export function syncAllPaymentsToMovements(
     return sameRoute(route, "A") ? digital.routeA.ref : digital.otherRoutes.ref;
   };
 
-  const existing = dedupeBankMovements(repairBankMovementsFromPayments(movements, payments));
+  const existing = dedupeBankMovements(
+    repairBankMovementsFromPayments(movements, payments, routeByLoan),
+  );
   const byPayment = new Map<string, BankMovement>();
   for (const row of existing) {
     const pg = paymentRefForMovement(row);
@@ -1303,14 +1317,14 @@ export function syncAllPaymentsToMovements(
       ref: prev?.ref && !/^PG-/i.test(prev.ref) ? prev.ref : prev?.ref ?? nextBankMovementRef(),
       accountRef,
       period: prev?.reconciled ? prev.period : period,
-      description: paymentMovementDescription(payment),
+      description: paymentMovementDescription(payment, routeByLoan),
       valueDate: payment.paidDate ?? prev?.valueDate ?? displayToday(),
       opDate: payment.paidDate ?? prev?.opDate ?? displayToday(),
       thirdParty: payment.client,
       debit: payment.amount,
       credit: 0,
       paymentRef: payment.ref,
-      method: normalizePaymentMethod(payment.method),
+      method: cobroMethod(payment, routeByLoan),
       inExtract: prev?.inExtract ?? true,
       reconciled: prev?.reconciled ?? false,
       manual: false,

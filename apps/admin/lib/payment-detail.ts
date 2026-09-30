@@ -1,7 +1,7 @@
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { cuotaTarget } from "@/lib/loan-pay";
 import { chargeLabel, displayToIso, isoToDisplay } from "@/lib/loan-preview";
-import { normalizePaymentMethod, paymentMethodLabel } from "@/lib/payment-method";
+import { paymentMethodForRoute, paymentMethodLabel } from "@/lib/payment-method";
 import { paymentHasVisualEvidence } from "@/lib/payment-evidence";
 import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
 import type { LoanRow, PaymentRow, StatusKind } from "@/lib/mock-data";
@@ -278,6 +278,7 @@ export function enrichPaymentMovement(
   payment: PaymentRow,
   loan: LoanRow | null | undefined,
   assignments: DailyCollectionAssignment[] = [],
+  clientRoute?: string,
 ): PaymentMovement {
   const assignment = assignmentForPayment(payment, assignments);
   const whenParts = parseWhenParts(payment.when);
@@ -315,7 +316,7 @@ export function enrichPaymentMovement(
           : payment.collectorRef
             ? "App"
             : "Caja / oficina",
-    method: paymentMethodLabel(normalizePaymentMethod(payment.method)),
+    method: paymentMethodLabel(paymentMethodForRoute(payment.method, clientRoute)),
     evidence: payment.evidence,
     hasReceipt: paymentHasVisualEvidence(payment.evidence),
     amount: payment.amount,

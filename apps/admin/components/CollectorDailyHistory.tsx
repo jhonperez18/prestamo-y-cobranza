@@ -17,13 +17,23 @@ import {
 import { periodFromDateIso } from "@/lib/collector-day-close";
 import { todayIso } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
-import { money, type ActivityRow, type CollectorRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
-import { normalizePaymentMethod, paymentMethodInitial, paymentMethodLabel } from "@/lib/payment-method";
+import {
+  money,
+  type ActivityRow,
+  type ClientRow,
+  type CollectorRow,
+  type LoanRow,
+  type PaymentRow,
+  type RouteRow,
+} from "@/lib/mock-data";
+import { paymentDisplayMethod, paymentMethodInitial, paymentMethodLabel } from "@/lib/payment-method";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 
 type Props = {
   collectorRef: string;
   collector?: CollectorRow | null;
+  loans?: LoanRow[];
+  clients?: ClientRow[];
   dailyLogs: CollectorDailyLogRow[];
   payments: PaymentRow[];
   activities: ActivityRow[];
@@ -37,6 +47,8 @@ type Props = {
 export function CollectorDailyHistory({
   collectorRef,
   collector,
+  loans = [],
+  clients = [],
   dailyLogs,
   payments,
   activities,
@@ -146,6 +158,8 @@ export function CollectorDailyHistory({
                 row={row}
                 open={open}
                 dayPayments={dayPayments}
+                loans={loans}
+                clients={clients}
                 onToggle={() => setOpenRef(open ? "" : row.ref)}
               />
             );
@@ -160,11 +174,15 @@ function DailyLogEntry({
   row,
   open,
   dayPayments,
+  loans,
+  clients,
   onToggle,
 }: {
   row: CollectorDailyLogRow;
   open: boolean;
   dayPayments: PaymentRow[];
+  loans: LoanRow[];
+  clients: ClientRow[];
   onToggle: () => void;
 }) {
   const visitLabel = `${row.visitsDone}/${row.visitsPlanned}`;
@@ -256,9 +274,9 @@ function DailyLogEntry({
                         <td className="pay-col-type">{payment.type}</td>
                         <td
                           className="pay-col-method"
-                          title={paymentMethodLabel(normalizePaymentMethod(payment.method))}
+                          title={paymentMethodLabel(paymentDisplayMethod(payment, loans, clients))}
                         >
-                          {paymentMethodInitial(normalizePaymentMethod(payment.method))}
+                          {paymentMethodInitial(paymentDisplayMethod(payment, loans, clients))}
                         </td>
                         <td className="pay-col-evidence pay-evidence-cell">
                           <PaymentEvidenceThumb evidence={payment.evidence} size={22} />

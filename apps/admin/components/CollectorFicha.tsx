@@ -32,7 +32,7 @@ import { CollectorPayForm } from "@/components/CollectorPayForm";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { PermissionChecklist } from "@/components/PermissionChecklist";
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
-import { normalizePaymentMethod, paymentMethodInitial, paymentMethodKind, paymentMethodLabel } from "@/lib/payment-method";
+import { paymentDisplayMethod, paymentMethodInitial, paymentMethodKind, paymentMethodLabel } from "@/lib/payment-method";
 import { useEffect, useMemo, useState } from "react";
 
 type PayContext = {
@@ -638,9 +638,9 @@ export function CollectorFicha({
                       <td className="money right">{money(row.amount)}</td>
                       <td>
                         <Pill
-                          label={paymentMethodInitial(row.method)}
-                          kind={paymentMethodKind(normalizePaymentMethod(row.method))}
-                          title={paymentMethodLabel(row.method)}
+                          label={paymentMethodInitial(paymentDisplayMethod(row, loans, clients))}
+                          kind={paymentMethodKind(paymentDisplayMethod(row, loans, clients))}
+                          title={paymentMethodLabel(paymentDisplayMethod(row, loans, clients))}
                         />
                       </td>
                       <td className="pay-evidence-cell">
@@ -661,6 +661,8 @@ export function CollectorFicha({
             <CollectorDailyHistory
               collectorRef={collector.ref}
               collector={collector}
+              loans={loans}
+              clients={clients}
               dailyLogs={dailyLogs}
               payments={payments}
               activities={activities}
