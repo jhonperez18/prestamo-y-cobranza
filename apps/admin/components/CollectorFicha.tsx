@@ -693,6 +693,7 @@ export function CollectorFicha({
             <p className="collector-pay-sheet-tag">Vista app móvil</p>
             <CollectorPayForm
               clientName={payContext.clientName}
+              clientRoute={clients.find((row) => row.ref === payContext.clientRef)?.route}
               amountDue={payContext.amountDue}
               chargeLabel={payContext.chargeLabel}
               onCancel={() => setPayContext(null)}

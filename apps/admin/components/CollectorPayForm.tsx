@@ -14,6 +14,7 @@ import {
   type PaymentEvidenceRef,
 } from "@/lib/payment-evidence";
 import { newComboGroupId } from "@/lib/payment-combo";
+import { sameRoute } from "@/lib/client-route-order";
 import { newIdempotencyKey } from "@/lib/finance";
 import { money } from "@/lib/mock-data";
 import type { PayKind } from "@/lib/loan-pay";
@@ -24,6 +25,8 @@ export type { CollectorPaySubmit } from "@/lib/collector-pay-submit";
 
 type Props = {
   clientName: string;
+  /** Ruta del cliente que paga: A solo ve «Nequi»; las demás solo «Banco». Sin ruta: todos. */
+  clientRoute?: string;
   amountDue: number;
   /** Saldo pendiente del préstamo: se puede pagar hasta este valor (cancelar todo). */
   balance?: number;
@@ -115,6 +118,7 @@ function emptyLeg(): ComboLeg {
 
 export function CollectorPayForm({
   clientName,
+  clientRoute,
   amountDue,
   balance,
   chargeLabel,
@@ -385,13 +389,20 @@ export function CollectorPayForm({
     return label;
   }
 
+  const routeMethods = useMemo(() => {
+    const route = String(clientRoute ?? "").trim();
+    if (!route) return PAYMENT_METHODS;
+    const hidden: PaymentMethod = sameRoute(route, "A") ? "nequi" : "banco";
+    return PAYMENT_METHODS.filter((entry) => entry.id !== hidden);
+  }, [clientRoute]);
+
   const methodPicker = (
     <div
       className={`pay-choice pay-method collector-pay-methods${inline ? " compact" : ""}${onNoPay && !combined ? " has-np" : ""}`}
       role="radiogroup"
       aria-label="Forma de pago"
     >
-      {PAYMENT_METHODS.map((entry) => (
+      {routeMethods.map((entry) => (
         <label
           key={entry.id}
           className={[method === entry.id ? "on" : undefined, methodTone(entry.id)]
@@ -485,7 +496,7 @@ export function CollectorPayForm({
           role="radiogroup"
           aria-label={opts.label}
         >
-          {PAYMENT_METHODS.map((entry) => {
+          {routeMethods.map((entry) => {
             const blocked =
               opts.otherMethod != null &&
               normalizePaymentMethod(opts.otherMethod) === entry.id;

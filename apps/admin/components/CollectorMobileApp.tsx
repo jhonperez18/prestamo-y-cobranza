@@ -2380,6 +2380,7 @@ export function CollectorMobileApp({
                           variant="inline"
                           formId={key}
                           clientName={identity.fullName}
+                          clientRoute={assignmentRouteName(item, clients)}
                           amountDue={cuotaShown}
                           balance={identity.balance}
                           canRenew={renewEnabled}
