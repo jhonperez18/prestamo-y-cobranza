@@ -1180,11 +1180,11 @@
     }
     .collector-day-loans-list li {
       padding: 7px 4px;
-      border-bottom: 1px solid #e5e7eb;
-      background: #f3f4f6;
+      border-bottom: 1px solid #e2ece7;
+      background: var(--row-a);
     }
     .collector-day-loans-list li:nth-child(even) {
-      background: #e5e7eb;
+      background: var(--row-b);
     }
     .collector-day-loans-list .is-name {
       min-width: 0;
