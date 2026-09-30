@@ -366,6 +366,7 @@ function RouteBoardCard({
   accent,
   onOpen,
   mode = "ruta",
+  tone,
   unreadCount = 0,
 }: {
   row: RouteLiquidacion;
@@ -373,9 +374,12 @@ function RouteBoardCard({
   onOpen: (routeRef: string) => void;
   /** En vista caja siempre destaca el dinero en mano. */
   mode?: "ruta" | "caja" | "nequi" | "banco";
+  /** Color del panel (Nequi / Banco). Sin tono = el del `mode`. */
+  tone?: "nequi" | "banco";
   /** Cobros nuevos del día aún no revisados por el supervisor. */
   unreadCount?: number;
 }) {
+  const colorMode = tone ?? mode;
   const total = row.planilla || 0;
   const pct = total > 0 ? Math.round((row.done / total) * 100) : 0;
   const showRouteShell = mode === "ruta";
@@ -391,7 +395,7 @@ function RouteBoardCard({
   return (
     <button
       type="button"
-      className={`supervisor-route-board accent-${accent % 2}${row.closed || row.statusKind === "closed" ? " is-closed" : ""}${mode === "caja" ? " is-caja-mode" : ""}${mode === "nequi" ? " is-nequi-mode" : ""}${mode === "banco" ? " is-banco-mode" : ""}${unreadCount > 0 ? " has-unread" : ""}`}
+      className={`supervisor-route-board accent-${accent % 2}${row.closed || row.statusKind === "closed" ? " is-closed" : ""}${mode === "caja" ? " is-caja-mode" : ""}${colorMode === "nequi" ? " is-nequi-mode" : ""}${colorMode === "banco" ? " is-banco-mode" : ""}${unreadCount > 0 ? " has-unread" : ""}`}
       onClick={() => onOpen(row.routeRef)}
     >
       {moneyMode ? (
@@ -411,7 +415,7 @@ function RouteBoardCard({
             </strong>
           </div>
           <div
-            className={`supervisor-caja-hero is-row${mode === "nequi" ? " is-nequi" : ""}${mode === "banco" ? " is-banco" : ""}`}
+            className={`supervisor-caja-hero is-row${colorMode === "nequi" ? " is-nequi" : ""}${colorMode === "banco" ? " is-banco" : ""}`}
           >
             <b>{money(heroAmount, { symbol: false })}</b>
           </div>
@@ -3802,7 +3806,7 @@ export function SupervisorMobileApp({
       ) : view === "nequi" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
           <div className="supervisor-day-boards" aria-label="Total Nequi acumulado">
-            <div className="supervisor-day-board is-nequi supervisor-day-board-wide is-total-row">
+            <div className="supervisor-day-board is-banco supervisor-day-board-wide is-total-row">
               <div className="supervisor-day-board-copy">
                 <span>Total acumulado</span>
               </div>
@@ -3821,6 +3825,7 @@ export function SupervisorMobileApp({
                   row={row}
                   accent={index}
                   mode="nequi"
+                  tone="banco"
                   unreadCount={unreadByRouteNequi[row.routeRef] || 0}
                   onOpen={(ref) =>
                     openRouteSummary(ref, { method: "nequi", returnView: "nequi" })
@@ -3834,7 +3839,7 @@ export function SupervisorMobileApp({
             className="supervisor-day-boards supervisor-nequi-day-total"
             aria-label="Total Nequi del día"
           >
-            <div className="supervisor-day-board is-nequi supervisor-day-board-wide is-nequi-hoy">
+            <div className="supervisor-day-board is-banco supervisor-day-board-wide is-banco-hoy">
               <div className="supervisor-day-board-copy">
                 <span>Total del día</span>
                 <em>
@@ -3842,7 +3847,7 @@ export function SupervisorMobileApp({
                   {liquidaciones.length === 1 ? "" : "es"} · hoy
                 </em>
               </div>
-              <div className="supervisor-caja-hero is-row is-nequi">
+              <div className="supervisor-caja-hero is-row is-banco">
                 <b>{money(nequiHoyTotal, { symbol: false })}</b>
               </div>
             </div>
@@ -3862,8 +3867,8 @@ export function SupervisorMobileApp({
                     type="button"
                     className={
                       nequiRegistroRoute && sameRoute(nequiRegistroRoute, name)
-                        ? "supervisor-nequi-route-pin on"
-                        : "supervisor-nequi-route-pin"
+                        ? "supervisor-nequi-route-pin is-banco on"
+                        : "supervisor-nequi-route-pin is-banco"
                     }
                     title={`Nequi hoy · ruta ${name}`}
                     aria-label={`Nequi hoy ruta ${name}`}
@@ -3889,7 +3894,7 @@ export function SupervisorMobileApp({
                 : "Sin cobros Nequi hoy."}
             </p>
           ) : (
-            <div className="supervisor-nequi-register is-today-only">
+            <div className="supervisor-nequi-register is-today-only is-tone-banco">
               <div className="supervisor-nequi-day">
                 <div className="supervisor-nequi-day-head">
                   <strong>
@@ -3906,7 +3911,7 @@ export function SupervisorMobileApp({
       ) : view === "banco" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
           <div className="supervisor-day-boards" aria-label="Total Banco acumulado">
-            <div className="supervisor-day-board is-banco supervisor-day-board-wide is-total-row">
+            <div className="supervisor-day-board is-nequi supervisor-day-board-wide is-total-row">
               <div className="supervisor-day-board-copy">
                 <span>Total acumulado</span>
               </div>
@@ -3925,6 +3930,7 @@ export function SupervisorMobileApp({
                   row={row}
                   accent={index}
                   mode="banco"
+                  tone="nequi"
                   unreadCount={unreadByRouteBanco[row.routeRef] || 0}
                   onOpen={(ref) =>
                     openRouteSummary(ref, { method: "banco", returnView: "banco" })
@@ -3938,7 +3944,7 @@ export function SupervisorMobileApp({
             className="supervisor-day-boards supervisor-nequi-day-total"
             aria-label="Total Banco del día"
           >
-            <div className="supervisor-day-board is-banco supervisor-day-board-wide is-banco-hoy">
+            <div className="supervisor-day-board is-nequi supervisor-day-board-wide is-nequi-hoy">
               <div className="supervisor-day-board-copy">
                 <span>Total del día</span>
                 <em>
@@ -3946,7 +3952,7 @@ export function SupervisorMobileApp({
                   {liquidaciones.length === 1 ? "" : "es"} · hoy
                 </em>
               </div>
-              <div className="supervisor-caja-hero is-row is-banco">
+              <div className="supervisor-caja-hero is-row is-nequi">
                 <b>{money(bancoHoyTotal, { symbol: false })}</b>
               </div>
             </div>
@@ -3966,8 +3972,8 @@ export function SupervisorMobileApp({
                     type="button"
                     className={
                       bancoRegistroRoute && sameRoute(bancoRegistroRoute, name)
-                        ? "supervisor-nequi-route-pin is-banco on"
-                        : "supervisor-nequi-route-pin is-banco"
+                        ? "supervisor-nequi-route-pin on"
+                        : "supervisor-nequi-route-pin"
                     }
                     title={`Banco hoy · ruta ${name}`}
                     aria-label={`Banco hoy ruta ${name}`}
@@ -3993,7 +3999,7 @@ export function SupervisorMobileApp({
                 : "Sin cobros Banco hoy."}
             </p>
           ) : (
-            <div className="supervisor-nequi-register is-today-only">
+            <div className="supervisor-nequi-register is-today-only is-tone-nequi">
               <div className="supervisor-nequi-day">
                 <div className="supervisor-nequi-day-head">
                   <strong>

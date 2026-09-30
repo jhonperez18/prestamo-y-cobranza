@@ -6396,6 +6396,27 @@
       color: #5b3d8a;
       font-variant-numeric: tabular-nums;
     }
+    /* Panel del botón BANCO: todo azul. Panel del botón NEQUI: todo morado. */
+    .supervisor-nequi-register.is-tone-banco .supervisor-nequi-day {
+      border-color: #c7ddf8;
+    }
+    .supervisor-nequi-register.is-tone-banco .supervisor-nequi-day-head {
+      background: #eff6ff;
+    }
+    .supervisor-mobile .supervisor-nequi-register.is-tone-banco .supervisor-nequi-day-head strong,
+    .supervisor-mobile .supervisor-nequi-register.is-tone-banco .supervisor-nequi-day-head b,
+    .supervisor-mobile-app .supervisor-nequi-register.is-tone-banco .supervisor-nequi-day-head strong,
+    .supervisor-mobile-app .supervisor-nequi-register.is-tone-banco .supervisor-nequi-day-head b {
+      color: #1d4ed8;
+    }
+    .supervisor-nequi-register.is-tone-banco .collector-closed-review-list.is-cobros-cols .is-method.is-pay-nequi {
+      color: #1d4ed8;
+      background: #dbeafe;
+    }
+    .supervisor-nequi-register.is-tone-nequi .collector-closed-review-list.is-cobros-cols .is-method.is-pay-banco {
+      color: #5b3d8a;
+      background: #f1e9fb;
+    }
     /* Cabecera de un día anterior abierto: botón que lo vuelve a recoger. */
     .supervisor-nequi-day-head.is-toggle {
       width: 100%;
