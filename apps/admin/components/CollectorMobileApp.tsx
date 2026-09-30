@@ -2225,7 +2225,7 @@ export function CollectorMobileApp({
                 )}
               </b>
             </div>
-            {planillaPrestadoEfectivo > 0 ? (
+            {planillaPrestadoEfectivo > 0 && !planillaIsChain && !planillaIsA ? (
               <div
                 className="is-prestado"
                 title="Capital prestado hoy en efectivo: sale del efectivo cobrado"
