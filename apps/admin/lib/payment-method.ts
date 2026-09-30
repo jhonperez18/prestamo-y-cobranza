@@ -1,4 +1,5 @@
 import type { StatusKind } from "@/lib/mock-data";
+import { sameRoute } from "@/lib/client-route-order";
 
 export type PaymentMethod = "efectivo" | "nequi" | "banco";
 
@@ -46,6 +47,19 @@ export function paymentMethodPillProps(method?: PaymentMethod | string | null) {
     kind: paymentMethodKind(normalized),
     title: paymentMethodLabel(normalized),
   };
+}
+
+/**
+ * Método que se muestra según la ruta del cliente (misma regla que Banco): lo no efectivo
+ * es Nequi en A y Banco en M / T / N. Manda la ruta, no el valor guardado.
+ */
+export function paymentMethodForRoute(
+  method: PaymentMethod | string | null | undefined,
+  route: string | undefined,
+): PaymentMethod {
+  const normalized = normalizePaymentMethod(method);
+  if (normalized === "efectivo" || !route?.trim()) return normalized;
+  return sameRoute(route, "A") ? "nequi" : "banco";
 }
 
 export function paymentMethodKind(method?: PaymentMethod | string | null): StatusKind {

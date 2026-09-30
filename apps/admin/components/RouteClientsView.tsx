@@ -12,6 +12,7 @@ import { computeLoanCuotasProgress, type CuotasProgress } from "@/lib/loan-cuota
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { planillaCuotaPactada } from "@/lib/planilla-display";
 import {
+  paymentMethodForRoute,
   paymentMethodInitial,
   paymentMethodKind,
   paymentMethodLabel,
@@ -90,6 +91,7 @@ function rowFromAssignment(
   payments: PaymentRow[],
   today: string,
   order: number,
+  routeName: string,
 ): RouteClientRow {
   const client =
     clients.find((row) => row.ref === assignment.clientRef) ??
@@ -122,6 +124,9 @@ function rowFromAssignment(
     todayPays.length > 0
       ? [...todayPays].sort((a, b) => paymentSortKey(b).localeCompare(paymentSortKey(a)))[0]
       : null;
+  const lastMethod = lastToday
+    ? paymentMethodForRoute(lastToday.method, client.route || routeName)
+    : undefined;
   const cuotas = computeLoanCuotasProgress(loan, payments, today);
   const paidToday =
     cobradoHoy > 0 ||
@@ -140,9 +145,9 @@ function rowFromAssignment(
     paidToday,
     cobradoHoy: cobradoHoy || (paidToday ? assignment.amountDue : 0),
     paidTime: lastToday?.paidTime?.trim() || "",
-    paidMethod: lastToday ? paymentMethodInitial(lastToday.method) : "",
-    paidMethodKind: paymentMethodKind(lastToday?.method),
-    paidMethodTitle: lastToday ? paymentMethodLabel(lastToday.method) : "",
+    paidMethod: lastMethod ? paymentMethodInitial(lastMethod) : "",
+    paidMethodKind: paymentMethodKind(lastMethod),
+    paidMethodTitle: lastMethod ? paymentMethodLabel(lastMethod) : "",
     cuotas,
     visitStatus: assignment.visitStatus || "pendiente",
     order: client.routeOrder || order,
@@ -192,6 +197,7 @@ export function RouteClientsView({
             payments,
             today,
             orderOf(assignment.clientRef) || index + 1,
+            routeName,
           ),
         );
     }
