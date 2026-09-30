@@ -1732,6 +1732,10 @@ export function SupervisorMobileApp({
     });
 
   const openRoute = liquidaciones.find((row) => row.routeRef === openRouteRef) ?? null;
+  /** «Cobrado hoy»: A cobra por Nequi (valor `banco`); M, T y N por Banco (valor `nequi`). Con plata del otro, se muestra igual. */
+  const openRouteIsA = openRoute ? sameRoute(openRoute.routeName, "A") : false;
+  const routeMeansShowNequiValue = !openRouteIsA || (openRoute?.cobradoNequi ?? 0) > 0;
+  const routeMeansShowBancoValue = openRouteIsA || (openRoute?.cobradoBanco ?? 0) > 0;
 
   /** N/P solo de la ruta abierta (nunca mezclar M con T/A/N). */
   const openRouteNpByDay = useMemo(() => {
@@ -3459,7 +3463,9 @@ export function SupervisorMobileApp({
                   <b>{money(openRoute.saldoInicial, { symbol: false })}</b>
                 </div>
                 <div
-                  className="supervisor-mobile-sheet-means"
+                  className={`supervisor-mobile-sheet-means${
+                    routeMeansShowNequiValue && routeMeansShowBancoValue ? "" : " is-two"
+                  }`}
                   aria-label="Desglose por medio de pago"
                 >
                   <div className="is-title-means">
@@ -3474,24 +3480,28 @@ export function SupervisorMobileApp({
                     <span>Efectivo</span>
                     <b>{money(openRoute.cobradoEfectivo, { symbol: false })}</b>
                   </button>
-                  <button
-                    type="button"
-                    className="is-pay-nequi is-tap-means"
-                    onClick={() => openNequiDayFicha(today, "totales")}
-                    aria-label="Ver cobros Nequi del día"
-                  >
-                    <span>Nequi</span>
-                    <b>{money(openRoute.cobradoNequi, { symbol: false })}</b>
-                  </button>
-                  <button
-                    type="button"
-                    className="is-pay-banco is-tap-means"
-                    onClick={() => openCobrosReport("banco")}
-                    aria-label="Ver cobros banco del día"
-                  >
-                    <span>Banco</span>
-                    <b>{money(openRoute.cobradoBanco, { symbol: false })}</b>
-                  </button>
+                  {routeMeansShowNequiValue ? (
+                    <button
+                      type="button"
+                      className="is-pay-banco is-tap-means"
+                      onClick={() => openNequiDayFicha(today, "totales")}
+                      aria-label="Ver cobros Banco del día"
+                    >
+                      <span>Banco</span>
+                      <b>{money(openRoute.cobradoNequi, { symbol: false })}</b>
+                    </button>
+                  ) : null}
+                  {routeMeansShowBancoValue ? (
+                    <button
+                      type="button"
+                      className="is-pay-nequi is-tap-means"
+                      onClick={() => openCobrosReport("banco")}
+                      aria-label="Ver cobros Nequi del día"
+                    >
+                      <span>Nequi</span>
+                      <b>{money(openRoute.cobradoBanco, { symbol: false })}</b>
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="is-total-means is-tap-means is-final-box"
