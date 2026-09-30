@@ -3194,6 +3194,8 @@
       border-radius: 10px;
       overflow: hidden;
       background: #fff;
+      /* overflow:hidden deja encoger el flex:1 y corta la lista: la pantalla es la que baja. */
+      flex-shrink: 0;
     }
     .collector-mobile-list.is-recaudo-sheet > .collector-mobile-card.is-dense.is-done {
       border-bottom: 1px solid #e2ece7;
