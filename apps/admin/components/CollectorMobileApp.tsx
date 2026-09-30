@@ -2220,23 +2220,6 @@ export function CollectorMobileApp({
                         }
                       >
                         <strong title={identity.fullName}>{identity.fullName}</strong>
-                        {isOpen && canAct ? (
-                          <button
-                            type="button"
-                            className={
-                              payCombo
-                                ? "collector-pay-combo-toggle is-by-name on"
-                                : "collector-pay-combo-toggle is-by-name"
-                            }
-                            onClick={(event) => {
-                              event.preventDefault();
-                              event.stopPropagation();
-                              setPayCombo((current) => !current);
-                            }}
-                          >
-                            Combinado
-                          </button>
-                        ) : null}
                       </div>
                       {identity.awaitingLoan && !isOpen ? (
                         <>
@@ -2386,7 +2369,7 @@ export function CollectorMobileApp({
                           canRenew={renewEnabled}
                           combined={payCombo}
                           onCombinedChange={setPayCombo}
-                          comboInHeader
+                          allowCombined={canAct}
                           onNoPay={
                             onSkipVisit
                               ? () => {

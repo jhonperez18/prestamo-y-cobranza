@@ -35,10 +35,10 @@ type Props = {
   formId?: string;
   /** Solo activo cuando el plazo del préstamo ya venció. */
   canRenew?: boolean;
-  /** Combinado lo pinta la fila del nombre (antes del billete). */
   combined?: boolean;
   onCombinedChange?: (next: boolean) => void;
-  comboInHeader?: boolean;
+  /** Muestra el botón Combinado (por defecto sí). */
+  allowCombined?: boolean;
   /** N/P: hoy no tiene plata. No crea cobro. */
   onNoPay?: () => void;
   onCancel: () => void;
@@ -127,7 +127,7 @@ export function CollectorPayForm({
   canRenew = false,
   combined: combinedProp,
   onCombinedChange,
-  comboInHeader = false,
+  allowCombined = true,
   onNoPay,
   onCancel,
   onSubmit,
@@ -396,9 +396,45 @@ export function CollectorPayForm({
     return PAYMENT_METHODS.filter((entry) => entry.id !== hidden);
   }, [clientRoute]);
 
+  const pickerCols = `${routeMethods.length === 2 ? " is-two" : ""}${onNoPay && !combined ? " has-np" : ""}`;
+  const comboSecondTone = methodTone(
+    routeMethods.find((entry) => entry.id !== "efectivo")?.id ?? "nequi",
+  );
+
+  const comboToggle = (
+    <button
+      type="button"
+      className={`collector-pay-combo-toggle${inline ? " is-anchored" : ""}${combined ? " on" : ""}`}
+      disabled={isSubmitting}
+      onClick={combined ? disableCombined : enableCombined}
+      aria-pressed={combined}
+      title="Combinado: efectivo + otro método"
+    >
+      <span className="collector-pay-combo-icons" aria-hidden>
+        <svg className="is-pay-efectivo" viewBox="0 0 16 12" focusable="false">
+          <rect x="0.5" y="0.5" width="15" height="11" rx="1.5" />
+          <circle cx="8" cy="6" r="2.2" />
+        </svg>
+        <b>+</b>
+        {comboSecondTone === "is-pay-banco" ? (
+          <svg className="is-pay-banco" viewBox="0 0 16 14" focusable="false">
+            <path d="M1 5 8 1l7 4H1Z" />
+            <path d="M3 6v5M6.3 6v5M9.7 6v5M13 6v5M1.5 12.5h13" />
+          </svg>
+        ) : (
+          <svg className="is-pay-nequi" viewBox="0 0 12 16" focusable="false">
+            <rect x="1" y="0.5" width="10" height="15" rx="2" />
+            <path d="M4.5 12.8h3" />
+          </svg>
+        )}
+      </span>
+      Combinado
+    </button>
+  );
+
   const methodPicker = (
     <div
-      className={`pay-choice pay-method collector-pay-methods${inline ? " compact" : ""}${onNoPay && !combined ? " has-np" : ""}`}
+      className={`pay-choice pay-method collector-pay-methods${inline ? " compact" : ""}${pickerCols}`}
       role="radiogroup"
       aria-label="Forma de pago"
     >
@@ -492,7 +528,7 @@ export function CollectorPayForm({
           {opts.locked ? <em>listo</em> : null}
         </div>
         <div
-          className="pay-choice pay-method collector-pay-methods compact collector-pay-combo-methods"
+          className={`pay-choice pay-method collector-pay-methods compact collector-pay-combo-methods${routeMethods.length === 2 ? " is-two" : ""}`}
           role="radiogroup"
           aria-label={opts.label}
         >
@@ -632,27 +668,11 @@ export function CollectorPayForm({
         </>
       ) : null}
 
-      {comboInHeader ? null : (
+      {!allowCombined ? null : inline ? (
+        <div className={`collector-pay-combo-anchor${pickerCols}`}>{comboToggle}</div>
+      ) : (
         <div className="collector-pay-combo-toggle-row">
-          {combined ? (
-            <button
-              type="button"
-              className="collector-pay-combo-toggle on"
-              disabled={isSubmitting}
-              onClick={disableCombined}
-            >
-              Combinado
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="collector-pay-combo-toggle"
-              disabled={isSubmitting}
-              onClick={enableCombined}
-            >
-              Combinado
-            </button>
-          )}
+          {comboToggle}
           {combined ? (
             <span className="collector-pay-combo-hint">Dos métodos · misma hora</span>
           ) : null}
