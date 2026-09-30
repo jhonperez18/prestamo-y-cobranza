@@ -2934,33 +2934,33 @@ export function SupervisorMobileApp({
           type="button"
           className={
             view === "nequi" || cobrosMethodFilter === "nequi"
-              ? "supervisor-mobile-kpi is-nequi on"
-              : "supervisor-mobile-kpi is-nequi"
+              ? "supervisor-mobile-kpi is-banco on"
+              : "supervisor-mobile-kpi is-banco"
           }
           aria-current={view === "nequi" || cobrosMethodFilter === "nequi" ? "page" : undefined}
           {...navButtonProps(navIntent, () => {
             if (view === "nequi" && !openRouteRef) return;
             goToView("nequi");
           })}
-          title="Panel Nequi"
+          title="Panel Banco"
         >
-          <b>NEQUI</b>
+          <b>BANCO</b>
         </button>
         <button
           type="button"
           className={
             view === "banco" || cobrosMethodFilter === "banco"
-              ? "supervisor-mobile-kpi is-banco on"
-              : "supervisor-mobile-kpi is-banco"
+              ? "supervisor-mobile-kpi is-nequi on"
+              : "supervisor-mobile-kpi is-nequi"
           }
           aria-current={view === "banco" || cobrosMethodFilter === "banco" ? "page" : undefined}
           {...navButtonProps(navIntent, () => {
             if (view === "banco" && !openRouteRef) return;
             goToView("banco");
           })}
-          title="Panel Banco"
+          title="Panel Nequi"
         >
-          <b>BANCO</b>
+          <b>NEQUI</b>
         </button>
         <button
           type="button"
