@@ -3489,66 +3489,18 @@
       color: #9a3412;
       white-space: nowrap;
     }
-    /* Combinado: debajo del nombre, centrado en la línea Efectivo | Banco. */
     .collector-pay-inline .pay-method.compact.is-two {
       grid-template-columns: 1fr 1fr;
     }
     .collector-pay-inline .pay-method.compact.is-two.has-np {
       grid-template-columns: 1fr 1fr 2.15rem;
     }
-    .collector-pay-combo-anchor {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      margin: 0 0 4px;
-      min-width: 0;
-    }
-    .collector-pay-combo-anchor.has-np {
-      grid-template-columns: 1fr 1fr 1fr 2.15rem;
-    }
-    .collector-pay-combo-anchor.is-two {
-      grid-template-columns: 1fr 1fr;
-    }
-    .collector-pay-combo-anchor.is-two.has-np {
-      grid-template-columns: 1fr 1fr 2.15rem;
-    }
-    .collector-pay-combo-anchor > .collector-pay-combo-toggle {
-      grid-column: 1 / 3;
-      justify-self: center;
-    }
-    .collector-pay-combo-toggle {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .collector-pay-combo-icons {
-      display: inline-flex;
-      align-items: center;
-      gap: 2px;
-    }
-    .collector-pay-combo-icons b {
-      font-size: 10px;
-      font-weight: 700;
-      line-height: 1;
-    }
-    .collector-pay-combo-icons svg {
-      height: 11px;
-      width: auto;
-      fill: #fff;
-      stroke-width: 1.2;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-    .collector-pay-combo-icons svg.is-pay-efectivo {
-      fill: #dcfce7;
-      stroke: #15803d;
-    }
-    .collector-pay-combo-icons svg.is-pay-banco {
-      fill: #dbeafe;
-      stroke: #1d4ed8;
-    }
-    .collector-pay-combo-icons svg.is-pay-nequi {
-      fill: #f1e9fb;
-      stroke: #5b3d8a;
+    /* Combinado: debajo del nombre, en el renglón de saldo y cuota. */
+    .collector-mobile-dense-row.is-paying .collector-pay-combo-toggle.is-under-name {
+      grid-row: 2;
+      grid-column: 2;
+      justify-self: start;
+      align-self: center;
     }
     .collector-pay-combo-legs {
       display: grid;
