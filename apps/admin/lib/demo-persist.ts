@@ -296,8 +296,17 @@ function backupPayload(raw: string) {
   return storageJson(parsed);
 }
 
+/**
+ * Planilla (~1,5 MB, 45 días en nube): su copia -bak duplicaba el mayor bloque del cupo
+ * (~5 MB) y al llenarlo se soltaban colas y copias en cada guardado. Se rehace desde la nube.
+ */
+const NO_BACKUP_KEYS: readonly string[] = [...MIRROR_QUEUE_KEYS, DEMO_DAILY_ASSIGNMENTS_KEY];
+
 function writeBackup(key: string, raw: string) {
-  if ((MIRROR_QUEUE_KEYS as readonly string[]).includes(key)) return;
+  if (NO_BACKUP_KEYS.includes(key)) {
+    if (key === DEMO_DAILY_ASSIGNMENTS_KEY) window.localStorage.removeItem(backupKey(key));
+    return;
+  }
   window.localStorage.setItem(backupKey(key), backupPayload(raw));
 }
 
@@ -306,13 +315,17 @@ function writeDemoJsonOnce(key: string, value: unknown) {
   try {
     const prev = readRaw(key);
     const next = storageJson(value);
-    if (prev && prev !== next) {
-      const prevParsed = parseJson<unknown>(prev);
+    // Mismo contenido: no reescribir ni tocar el -bak.
+    if (prev === next) return;
+    if (prev) {
+      // Solo un [] puede ser vaciado accidental: lo anterior se parsea solo en ese caso.
       const wipingArray =
         Array.isArray(value) &&
         value.length === 0 &&
-        Array.isArray(prevParsed) &&
-        prevParsed.length > 0;
+        (() => {
+          const prevParsed = parseJson<unknown>(prev);
+          return Array.isArray(prevParsed) && prevParsed.length > 0;
+        })();
       // Clientes = catálogo sagrado: jamás vaciar desde React/state (ni en virgen).
       if (wipingArray && key === DEMO_CLIENTS_KEY) {
         writeBackup(key, prev);

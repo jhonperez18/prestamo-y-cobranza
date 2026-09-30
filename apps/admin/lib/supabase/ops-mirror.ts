@@ -1008,20 +1008,30 @@ function assignmentMirrorSig(a: DailyCollectionAssignment) {
 const sentAssignmentSig = new Map<string, string>();
 
 /** ¿Hay CIE- local de ese cobrador+día? No subir hoja abierta encima. */
-function localCieCoversAssignment(a: DailyCollectionAssignment): boolean {
+function localCieCoversAssignment(
+  a: DailyCollectionAssignment,
+  readCloses: () => CollectorDayCloseRecord[],
+): boolean {
   if (a.dayClosedAt) return false;
   const date = normalizeHistoryDate(a.dispatchDate) || a.dispatchDate;
   if (!date || !a.collectorRef) return false;
-  return readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []).some(
+  return readCloses().some(
     (row) =>
       row.collectorRef === a.collectorRef &&
       (normalizeHistoryDate(row.date) || row.date) === date,
   );
 }
 
-export function queueAssignmentMirror(a: DailyCollectionAssignment) {
+function readLocalDayCloses() {
+  return readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []);
+}
+
+export function queueAssignmentMirror(
+  a: DailyCollectionAssignment,
+  readCloses: () => CollectorDayCloseRecord[] = readLocalDayCloses,
+) {
   // No encolar planilla abierta si este PC ya tiene el CIE- del día (evita reabrir en nube).
-  if (localCieCoversAssignment(a)) return;
+  if (localCieCoversAssignment(a, readCloses)) return;
   const ref = `${a.dispatchDate}::${a.itemId}`;
   const sig = assignmentMirrorSig(a);
   if (sentAssignmentSig.get(ref) === sig) return;
@@ -1032,7 +1042,10 @@ export function queueAssignmentMirror(a: DailyCollectionAssignment) {
 }
 
 export function queueAssignmentsMirror(rows: DailyCollectionAssignment[]) {
-  for (const row of rows) queueAssignmentMirror(row);
+  // Un lote = una lectura de CIE- (antes se parseaba por cada visita abierta).
+  let closes: CollectorDayCloseRecord[] | null = null;
+  const readCloses = () => (closes ??= readLocalDayCloses());
+  for (const row of rows) queueAssignmentMirror(row, readCloses);
 }
 
 export async function flushOpsMirrorQueues(): Promise<{ flushed: number; left: number }> {
@@ -1292,11 +1305,13 @@ export async function reconcileLocalOpsToRemote(
         jobs.push({ kind: "misc_payment", row, key: row.ref });
       }
     }
+    let localCloses: CollectorDayCloseRecord[] | null = null;
+    const readCloses = () => (localCloses ??= readLocalDayCloses());
     for (const row of readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, [])) {
       const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
       const key = `${date}::${row.itemId}`;
       // No subir hoja abierta «huérfana» si ya hay CIE- local: reabriría el día en la nube.
-      if (localCieCoversAssignment(row)) continue;
+      if (localCieCoversAssignment(row, readCloses)) continue;
       if (!row?.itemId || !date) continue;
       const remote = remoteAssignMeta.get(key);
       const localSealed = Boolean(row.dayClosedAt);

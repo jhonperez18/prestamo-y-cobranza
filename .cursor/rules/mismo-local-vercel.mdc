@@ -23,6 +23,9 @@ La clave sí coincidía. `localStorage` estaba lleno de fotos (`previewUrl` con 
 
 1. Al arrancar, `parkLocalBlobs` saca las fotos de `localStorage` antes de pintar el login.
 2. `writeDemoJson` no persiste `data:`. La copia `-bak` tampoco. Las colas de mirror no tienen `-bak`.
+   La planilla (`nexo-demo-daily-assignments`, ~1,5 MB) tampoco: duplicarla llenaba el cupo (~5 MB)
+   y en cada guardado se soltaban colas y copias. Se rehace desde la nube (45 días en el pull).
+   Mismo contenido = no se reescribe; lo anterior solo se parsea si llega un `[]`.
 3. Un cierre de este PC no lo reabre la hoja abierta de la nube. Un cambio real del otro aparato sí entra.
 4. No rehidratar la pantalla ni volver a subir la fila de planilla si la firma no cambió.
 5. `GET /api/payments` es la lista de dinero, sin la foto. La constancia no se vuelve a bajar en el ciclo de reposo.
