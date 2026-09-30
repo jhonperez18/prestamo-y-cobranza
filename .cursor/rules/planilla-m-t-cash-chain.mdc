@@ -175,6 +175,23 @@ Poner la caja contada de verdad como saldo final del día. Un solo camino: `comm
 - `alignChainLinksToLedger` respeta el real (no devuelve PCE-T al calculado).
 - Candado: `assert-cash-chain.mjs` sección 7.
 
+## Saldo propio de A y N (fuera de la cadena)
+
+A y N llevan su propia caja. Un solo dueño: `lib/independent-route-cash.ts` (`independentRouteDay`).
+
+| Pieza | Regla |
+| --- | --- |
+| Inicial hoy | Saldo real del último ajuste de esa planilla + movimiento de los días siguientes. Sin ajuste previo: el de siempre |
+| Movimiento | A (Cristian, cobrador de la cadena): efectivo de A — sus préstamos siguen saliendo de M. N (Yesid, sin cadena): efectivo − gastos − préstamos |
+| Ajuste | Supervisor → ruta A/N → Historial → saldo de hoy. Solo hoy, con el CIE- del cobrador sellado, antes de medianoche (`routeCashAdjustmentWindow`) |
+| Dónde vive | `routeCashAdjustments` del CIE- del día; nube: entrada `AJUSTE@A:` / `AJUSTE@N:` en `movement_refs` |
+| Qué no | `cashFloat`, ajuste de T, PCE-, libro M→T, cuotas, pagos, días pasados |
+
+- Guardado: `saveCashAdjustment` con `route` (local + cola + await nube).
+- Nube y pull: unión por ruta, gana el más reciente (`mergeRouteCashAdjustments`); ningún candado del CIE- lo borra.
+- Tarjeta del supervisor, Historial A/N y cabecera del cobrador leen la misma cifra.
+- Candado: `assert-cash-chain.mjs` sección 11.
+
 ## N/P por ruta (INICIO)
 
 Cada ruta tiene su propio **N/P** (junto a Historial en la ficha).

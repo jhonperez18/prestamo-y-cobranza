@@ -7,6 +7,7 @@ import {
   cashAdjustmentNote,
 } from "@/lib/cash-adjustment";
 import { CollectorPayForm } from "@/components/CollectorPayForm";
+import { independentRouteDay, isIndependentSaldoRoute } from "@/lib/independent-route-cash";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import type { QuickLoanDraft } from "@/lib/street-client-loan";
 import { Pill } from "@/components/ui";
@@ -1271,13 +1272,51 @@ export function CollectorMobileApp({
         ? dayLedger.dayFinal
         : dayLedger.mClosing
       : null;
-  /** Inicial: cadena M/T si aplica; A y resto sin cruzar. */
+  /** A / N con ajuste de saldo previo: caja propia de la planilla (misma cifra que el supervisor). */
+  const saldoRouteName =
+    activePlanillaRoute ?? (planillaRoutePins.length === 1 ? planillaRoutePins[0] : null);
+  const anchoredRouteDay = useMemo(() => {
+    if (!saldoRouteName || !isIndependentSaldoRoute(saldoRouteName)) return null;
+    const day = independentRouteDay(
+      {
+        collectorRef: collector.ref,
+        collectorName: collector.name,
+        date: activeDate,
+        payments: livePayments,
+        loans,
+        clients,
+        collectors: [collector],
+        assignments,
+        dayCloses,
+        dayExpenseDrafts,
+        planillaCashCloses,
+        monthCloses,
+      },
+      saldoRouteName,
+    );
+    return day.anchored ? day : null;
+  }, [
+    saldoRouteName,
+    collector,
+    activeDate,
+    livePayments,
+    loans,
+    clients,
+    assignments,
+    dayCloses,
+    dayExpenseDrafts,
+    planillaCashCloses,
+    monthCloses,
+  ]);
+  /** Inicial: cadena M/T si aplica; A / N con ajuste = caja propia; resto sin cruzar. */
   const headerInicial =
     chainOpening.kind === "chain"
       ? chainOpening.opening
-      : isPrimaryPlanilla
-        ? dayCuadre.saldoInicial
-        : 0;
+      : anchoredRouteDay
+        ? anchoredRouteDay.opening
+        : isPrimaryPlanilla
+          ? dayCuadre.saldoInicial
+          : 0;
   const headerInicialReady = chainOpening.kind !== "chain" || chainOpening.ready;
   const headerInicialProvisional =
     chainOpening.kind === "chain" && Boolean(chainOpening.provisional);
@@ -1898,6 +1937,8 @@ export function CollectorMobileApp({
                     ? planillaCaja
                     : chainOpening.kind === "chain"
                     ? headerInicial + planillaRecaudo.efectivo - topGastos - topPrestamos
+                    : anchoredRouteDay
+                    ? anchoredRouteDay.closing
                     : isPrimaryPlanilla
                       ? dayCuadre.saldo
                       : planillaRecaudo.efectivo - topPrestamos,

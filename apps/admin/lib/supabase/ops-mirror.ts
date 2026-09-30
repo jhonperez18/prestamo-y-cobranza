@@ -24,6 +24,8 @@ import { businessDaysAgoIso, businessTodayIso } from "@/lib/business-timezone";
 import {
   dayCloseFreshnessMs,
   joinCashAdjustmentRefs,
+  mergeRouteCashAdjustments,
+  routeCashAdjustmentsSig,
   splitCashAdjustmentRefs,
 } from "@/lib/cash-adjustment";
 import {
@@ -76,6 +78,7 @@ function mergeByRefRemote<T extends { ref: string }>(
 /**
  * CIE-: la nube manda, salvo un ajuste de saldo local más nuevo que el de nube
  * (aún en cola de flush). Así el pull no rebobina el ajuste del supervisor.
+ * Ajustes de A/N: unión por ruta (gana el más reciente), ninguno se pierde.
  */
 function mergeDayClosesRemote(
   local: CollectorDayCloseRecord[],
@@ -86,12 +89,21 @@ function mergeDayClosesRemote(
     dayCloseFreshnessMs(undefined, row?.cashAdjustment) || 0;
   const chosenRemote = remote.map((row) => {
     const prev = localByRef.get(row.ref);
-    return prev && adjustmentMs(prev) > adjustmentMs(row) ? prev : row;
+    const chosen = prev && adjustmentMs(prev) > adjustmentMs(row) ? prev : row;
+    const routeCashAdjustments = mergeRouteCashAdjustments(
+      prev?.routeCashAdjustments,
+      row.routeCashAdjustments,
+    );
+    return routeCashAdjustmentsSig(routeCashAdjustments) ===
+      routeCashAdjustmentsSig(chosen.routeCashAdjustments)
+      ? chosen
+      : { ...chosen, routeCashAdjustments };
   });
   return mergeByRefRemote(
     local,
     chosenRemote,
-    (r) => `${r.ref}|${r.collected}|${r.cashFloat}|${r.closedAt}|${r.cashAdjustment?.at ?? ""}`,
+    (r) =>
+      `${r.ref}|${r.collected}|${r.cashFloat}|${r.closedAt}|${r.cashAdjustment?.at ?? ""}|${routeCashAdjustmentsSig(r.routeCashAdjustments)}`,
   );
 }
 
@@ -374,7 +386,11 @@ export function dayCloseToRow(c: CollectorDayCloseRecord) {
     expenses_total: Number(c.expensesTotal) || 0,
     cash_float: Number(c.cashFloat) || 0,
     closed_at: c.closedAt,
-    movement_refs: joinCashAdjustmentRefs(c.movementRefs ?? [], c.cashAdjustment),
+    movement_refs: joinCashAdjustmentRefs(
+      c.movementRefs ?? [],
+      c.cashAdjustment,
+      c.routeCashAdjustments,
+    ),
     updated_at: new Date().toISOString(),
   };
 }
@@ -382,7 +398,7 @@ export function dayCloseToRow(c: CollectorDayCloseRecord) {
 export function rowToDayClose(r: Record<string, unknown>): CollectorDayCloseRecord | null {
   const ref = String(r.ref || "").trim();
   if (!ref) return null;
-  const { movementRefs, cashAdjustment } = splitCashAdjustmentRefs(
+  const { movementRefs, cashAdjustment, routeCashAdjustments } = splitCashAdjustmentRefs(
     Array.isArray(r.movement_refs) ? (r.movement_refs as string[]) : [],
   );
   return {
@@ -408,6 +424,7 @@ export function rowToDayClose(r: Record<string, unknown>): CollectorDayCloseReco
           cashAdjustment,
         }
       : {}),
+    ...(routeCashAdjustments ? { routeCashAdjustments } : {}),
     movementRefs,
   };
 }
@@ -665,7 +682,8 @@ export async function upsertDayCloseIdempotent(
 
   const ref = String(row.ref || "");
   const force = Boolean(options?.force);
-  if (ref.startsWith("CIE-") && !force) {
+  let incomingRow = row;
+  if (ref.startsWith("CIE-")) {
     const { data: existing, error: readError } = await client
       .from("day_closes")
       .select("cash_float,close_date,closed_at,updated_at,movement_refs")
@@ -673,54 +691,82 @@ export async function upsertDayCloseIdempotent(
       .maybeSingle();
     if (readError) return { ok: false as const, error: readError.message };
     if (existing) {
-      const cloudFloat = Number(existing.cash_float) || 0;
-      const incomingFloat = Number(row.cash_float) || 0;
-      // Candado de días pasados: el saldo de ayer y antes ya es el Inicial de otro día.
-      // Solo el botón de taller (force) puede corregirlo.
-      const closeDate = String(existing.close_date || row.close_date || "");
-      if (cloudFloat !== incomingFloat && closeDate && closeDate < businessTodayIso()) {
-        return {
-          ok: true as const,
-          skipped: true as const,
-          reason: "cloud_cie_past_day_sealed",
-        };
-      }
-      const cloudAdjustment = splitCashAdjustmentRefs(
+      const cloudRefs = splitCashAdjustmentRefs(
         Array.isArray(existing.movement_refs) ? (existing.movement_refs as string[]) : [],
-      ).cashAdjustment;
-      const incomingAdjustment = splitCashAdjustmentRefs(
+      );
+      const incomingRefs = splitCashAdjustmentRefs(
         Array.isArray(row.movement_refs) ? (row.movement_refs as string[]) : [],
-      ).cashAdjustment;
-      // Ajuste de saldo en nube: otro aparato con el CIE- sin ajuste (o uno más viejo) no lo borra.
-      if (
-        cloudAdjustment &&
-        dayCloseFreshnessMs(undefined, cloudAdjustment) >
-          (dayCloseFreshnessMs(undefined, incomingAdjustment) || 0)
-      ) {
-        return {
-          ok: true as const,
-          skipped: true as const,
-          reason: "cloud_cie_keeps_cash_adjustment",
-        };
-      }
-      if (cloudFloat !== incomingFloat) {
-        const cloudTs = dayCloseFreshnessMs(
-          String(existing.closed_at || existing.updated_at || ""),
-          cloudAdjustment,
-        );
-        const incomingTs = dayCloseFreshnessMs(
-          String(row.closed_at || row.updated_at || ""),
-          incomingAdjustment,
-        );
-        const cloudWins =
-          Number.isFinite(cloudTs) &&
-          (!Number.isFinite(incomingTs) || cloudTs >= incomingTs);
-        if (cloudWins) {
-          return {
-            ok: true as const,
-            skipped: true as const,
-            reason: "cloud_cie_keeps_cash_float",
-          };
+      );
+      // Ajustes de A/N: unión por ruta (gana el más reciente). Ningún aparato borra el de otro.
+      const routeAdjustments = mergeRouteCashAdjustments(
+        cloudRefs.routeCashAdjustments,
+        incomingRefs.routeCashAdjustments,
+      );
+      const routeSig = routeCashAdjustmentsSig(routeAdjustments);
+      incomingRow = {
+        ...row,
+        movement_refs: joinCashAdjustmentRefs(
+          incomingRefs.movementRefs,
+          incomingRefs.cashAdjustment,
+          routeAdjustments,
+        ),
+      };
+      const cloudNeedsRouteAdjustments =
+        routeSig !== routeCashAdjustmentsSig(cloudRefs.routeCashAdjustments);
+      /** Un candado frena la fila, pero un ajuste nuevo de A/N igual entra a la nube (ok sin skip). */
+      const skipKeepingRouteAdjustments = async (reason: string) => {
+        if (!cloudNeedsRouteAdjustments) {
+          return { ok: true as const, skipped: true as const, reason };
+        }
+        const { error: updateError } = await client
+          .from("day_closes")
+          .update({
+            movement_refs: joinCashAdjustmentRefs(
+              cloudRefs.movementRefs,
+              cloudRefs.cashAdjustment,
+              routeAdjustments,
+            ),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("ref", ref);
+        if (updateError) return { ok: false as const, error: updateError.message };
+        return { ok: true as const };
+      };
+
+      if (!force) {
+        const cloudFloat = Number(existing.cash_float) || 0;
+        const incomingFloat = Number(row.cash_float) || 0;
+        // Candado de días pasados: el saldo de ayer y antes ya es el Inicial de otro día.
+        // Solo el botón de taller (force) puede corregirlo.
+        const closeDate = String(existing.close_date || row.close_date || "");
+        if (cloudFloat !== incomingFloat && closeDate && closeDate < businessTodayIso()) {
+          return skipKeepingRouteAdjustments("cloud_cie_past_day_sealed");
+        }
+        const cloudAdjustment = cloudRefs.cashAdjustment;
+        const incomingAdjustment = incomingRefs.cashAdjustment;
+        // Ajuste de saldo en nube: otro aparato con el CIE- sin ajuste (o uno más viejo) no lo borra.
+        if (
+          cloudAdjustment &&
+          dayCloseFreshnessMs(undefined, cloudAdjustment) >
+            (dayCloseFreshnessMs(undefined, incomingAdjustment) || 0)
+        ) {
+          return skipKeepingRouteAdjustments("cloud_cie_keeps_cash_adjustment");
+        }
+        if (cloudFloat !== incomingFloat) {
+          const cloudTs = dayCloseFreshnessMs(
+            String(existing.closed_at || existing.updated_at || ""),
+            cloudAdjustment,
+          );
+          const incomingTs = dayCloseFreshnessMs(
+            String(row.closed_at || row.updated_at || ""),
+            incomingAdjustment,
+          );
+          const cloudWins =
+            Number.isFinite(cloudTs) &&
+            (!Number.isFinite(incomingTs) || cloudTs >= incomingTs);
+          if (cloudWins) {
+            return skipKeepingRouteAdjustments("cloud_cie_keeps_cash_float");
+          }
         }
       }
     }
@@ -728,8 +774,8 @@ export async function upsertDayCloseIdempotent(
 
   // Force: marca updated_at ahora para que pulls posteriores no rebobinen con basura vieja.
   const payload = force
-    ? { ...row, updated_at: new Date().toISOString() }
-    : row;
+    ? { ...incomingRow, updated_at: new Date().toISOString() }
+    : incomingRow;
 
   const first = await client.from("day_closes").upsert(payload, { onConflict: "ref" });
   if (!first.error) return { ok: true as const, forced: force };

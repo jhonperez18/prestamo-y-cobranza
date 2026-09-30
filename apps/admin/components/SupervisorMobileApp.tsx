@@ -145,6 +145,12 @@ import {
   cashAdjustmentWindow,
   type CashAdjustmentRequest,
 } from "@/lib/commit-cash-adjustment";
+import {
+  findRouteCashAdjustment,
+  independentRouteDay,
+  isIndependentSaldoRoute,
+  routeCashAdjustmentWindow,
+} from "@/lib/independent-route-cash";
 import { CashAdjustForm } from "@/components/CashAdjustForm";
 
 /** Fecha corta para listados: 05/09/2026 → 5/9 */
@@ -197,7 +203,7 @@ type Props = {
   onAttachPaymentEvidence?: (paymentRef: string, evidence: PaymentEvidenceRef[]) => void;
   /** Alta de gasto (pago varios) → local + registros banco. */
   onSaveMiscPayment?: (payment: MiscPayment) => void;
-  /** Ajuste de saldo real en T (tras cerrar T, el mismo día). */
+  /** Ajuste de saldo real en T o en A/N (tras cerrar, el mismo día). */
   onAdjustTCash?: (input: CashAdjustmentRequest) => Promise<boolean>;
   onLogout?: () => void;
 };
@@ -1237,15 +1243,38 @@ export function SupervisorMobileApp({
           : isPlanillaCashChainPrimary(route.routeName)
             ? routeLedger.m
             : null;
-      let gastosHoy = chainDay ? chainDay.gastos : 0;
-      if (!chainDay && isPrimary) {
+      // A / N: caja propia (Inicial = saldo real del último ajuste + arrastre).
+      const independentDay =
+        collector && isIndependentSaldoRoute(route.routeName)
+          ? independentRouteDay(
+              {
+                collectorRef: collector.ref,
+                collectorName: collector.name,
+                date: today,
+                payments,
+                loans,
+                clients,
+                collectors: [collector],
+                assignments,
+                dayCloses,
+                dayExpenseDrafts,
+                planillaCashCloses,
+                monthCloses,
+              },
+              route.routeName,
+            )
+          : null;
+      let gastosHoy = independentDay ? independentDay.gastos : chainDay ? chainDay.gastos : 0;
+      if (!chainDay && !independentDay && isPrimary) {
         for (const line of rawExpenses) {
           const amount = Number(line.amount) || 0;
           if (!(amount > 0) || isPrestamoRutaExpense(line)) continue;
           gastosHoy += amount;
         }
       }
-      const cashLoansToday = chainDay
+      const cashLoansToday = independentDay
+        ? independentDay.loanRows
+        : chainDay
         ? chainDay.loanRows
         : isPrimary
           ? dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
@@ -1281,9 +1310,11 @@ export function SupervisorMobileApp({
       const saldoInicial =
         chainOpen.kind === "chain"
           ? chainOpen.opening
-          : isPrimary
-            ? fullCaja.saldoInicial
-            : 0;
+          : independentDay
+            ? independentDay.opening
+            : isPrimary
+              ? fullCaja.saldoInicial
+              : 0;
       // Cuadre de ruta: Inicial + efectivo − gasto − préstamo. M de la cadena = libro del día
       // (la misma cifra que recibe T como Inicial).
       const chainLedger =
@@ -1292,7 +1323,9 @@ export function SupervisorMobileApp({
         ? chainDay === chainLedger.t
           ? chainLedger.dayFinal
           : chainLedger.mClosing
-        : saldoInicial + cobradoEfectivo - gastosHoy - prestamosHoy;
+        : independentDay
+          ? independentDay.closing
+          : saldoInicial + cobradoEfectivo - gastosHoy - prestamosHoy;
 
       let statusLabel = "Sin planilla";
       let statusKind: StatusKind = "draft";
@@ -1374,6 +1407,7 @@ export function SupervisorMobileApp({
     });
   }, [
     assignedCoverage,
+    assignments,
     todayAssignments,
     today,
     todayDisplay,
@@ -2007,6 +2041,33 @@ export function SupervisorMobileApp({
       return withToday.slice(0, 6);
     }
 
+    if (isIndependentSaldoRoute(openRoute.routeName)) {
+      // A / N: saldo del día = caja propia de la planilla (misma cifra que la tarjeta).
+      return rows
+        .filter((row) => row.date <= today)
+        .slice(0, 6)
+        .map((row) => {
+          const day = independentRouteDay(
+            {
+              collectorRef: openRoute.collectorRef,
+              collectorName: collector.name,
+              date: row.date,
+              payments,
+              loans,
+              clients,
+              collectors: [collector],
+              assignments,
+              dayCloses,
+              dayExpenseDrafts,
+              planillaCashCloses,
+              monthCloses,
+            },
+            openRoute.routeName,
+          );
+          return { ...row, gasto: day.gastos, prestamo: day.prestamos, saldo: day.closing };
+        });
+    }
+
     if (!isM) {
       return rows.filter((row) => row.date < today).slice(0, 5);
     }
@@ -2072,39 +2133,81 @@ export function SupervisorMobileApp({
   const openRouteCajaHistoryIsT = Boolean(
     openRoute && isPlanillaCashChainSecondary(openRoute.routeName),
   );
+  const openRouteCajaHistoryIsIndependent = Boolean(
+    openRoute && isIndependentSaldoRoute(openRoute.routeName),
+  );
 
-  /** Historial · T: renglón del cierre + renglón de ajuste (si lo hubo). */
-  const openRouteTHistory = useMemo(() => {
-    if (!openRoute || !openRouteCajaHistoryIsT) return null;
-    return attachCashAdjustments(
-      openRouteCajaHistory as Array<{
-        date: string;
-        dateLabel: string;
-        cobro: number;
-        gasto: number;
-        prestamo: number;
-        saldo: number;
-      }>,
-      openRoute.collectorRef,
-      dayCloses,
-    );
-  }, [openRoute, openRouteCajaHistoryIsT, openRouteCajaHistory, dayCloses]);
+  /** Historial · T / A / N: renglón del día + renglón de ajuste (si lo hubo). */
+  const openRouteAdjustHistory = useMemo(() => {
+    if (!openRoute) return null;
+    const rows = openRouteCajaHistory as Array<{
+      date: string;
+      dateLabel: string;
+      cobro: number;
+      gasto: number;
+      prestamo: number;
+      saldo: number;
+    }>;
+    if (openRouteCajaHistoryIsT) {
+      return attachCashAdjustments(rows, openRoute.collectorRef, dayCloses);
+    }
+    if (!openRouteCajaHistoryIsIndependent) return null;
+    return rows.map((row) => {
+      const adjustment = findRouteCashAdjustment(
+        dayCloses,
+        openRoute.collectorRef,
+        row.date,
+        openRoute.routeName,
+      );
+      return adjustment
+        ? { row: { ...row, saldo: adjustment.calculated }, adjustment }
+        : { row, adjustment: null };
+    });
+  }, [
+    openRoute,
+    openRouteCajaHistoryIsT,
+    openRouteCajaHistoryIsIndependent,
+    openRouteCajaHistory,
+    dayCloses,
+  ]);
 
-  /** Ajuste de saldo: solo supervisor/admin, T ya cerró hoy y antes de medianoche. */
+  /** Ajuste de saldo: solo supervisor/admin, la planilla ya cerró hoy y antes de medianoche. */
   const tCashAdjustDate = useMemo(() => {
-    if (!onAdjustTCash || !openRoute || !openRouteCajaHistoryIsT) return null;
-    const adjustWindow = cashAdjustmentWindow(openRoute.collectorRef, dayCloses);
-    return adjustWindow.open ? adjustWindow.date : null;
-  }, [onAdjustTCash, openRoute, openRouteCajaHistoryIsT, dayCloses]);
+    if (!onAdjustTCash || !openRoute) return null;
+    if (openRouteCajaHistoryIsT) {
+      const adjustWindow = cashAdjustmentWindow(openRoute.collectorRef, dayCloses);
+      return adjustWindow.open ? adjustWindow.date : null;
+    }
+    if (openRouteCajaHistoryIsIndependent) {
+      const adjustWindow = routeCashAdjustmentWindow(
+        openRoute.collectorRef,
+        openRoute.routeName,
+        dayCloses,
+      );
+      return adjustWindow.open ? adjustWindow.date : null;
+    }
+    return null;
+  }, [
+    onAdjustTCash,
+    openRoute,
+    openRouteCajaHistoryIsT,
+    openRouteCajaHistoryIsIndependent,
+    dayCloses,
+  ]);
 
   const tCashAdjustTarget = useMemo(() => {
-    if (!tCashAdjustDate || !openRouteTHistory) return null;
-    return openRouteTHistory.find((entry) => entry.row.date === tCashAdjustDate) ?? null;
-  }, [tCashAdjustDate, openRouteTHistory]);
+    if (!tCashAdjustDate || !openRouteAdjustHistory) return null;
+    return openRouteAdjustHistory.find((entry) => entry.row.date === tCashAdjustDate) ?? null;
+  }, [tCashAdjustDate, openRouteAdjustHistory]);
 
   async function submitTCashAdjust(real: number, reason: string) {
     if (!onAdjustTCash || !openRoute) return false;
-    const ok = await onAdjustTCash({ collectorRef: openRoute.collectorRef, real, reason });
+    const ok = await onAdjustTCash({
+      collectorRef: openRoute.collectorRef,
+      real,
+      reason,
+      ...(openRouteCajaHistoryIsIndependent ? { route: openRoute.routeName } : {}),
+    });
     if (ok) setCashAdjustCollectorRef(null);
     return ok;
   }
@@ -3069,7 +3172,7 @@ export function SupervisorMobileApp({
                     })
                   ) : (
                     (
-                      openRouteTHistory ??
+                      openRouteAdjustHistory ??
                       openRouteCajaHistory.map((row) => ({
                         row: row as {
                           date: string;
@@ -3183,8 +3286,9 @@ export function SupervisorMobileApp({
                 />
               ) : tCashAdjustTarget ? (
                 <p className="supervisor-mobile-subhead">
-                  T ya cerró hoy: toque el saldo del {tCashAdjustTarget.row.dateLabel} para
-                  ajustarlo al saldo real (hasta medianoche).
+                  {openRoute.routeName} ya cerró hoy: toque el saldo del{" "}
+                  {tCashAdjustTarget.row.dateLabel} para ajustarlo al saldo real (hasta
+                  medianoche).
                 </p>
               ) : null}
             </>

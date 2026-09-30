@@ -84,6 +84,11 @@ export type CollectorDayCloseRecord = CollectorDayCloseDraft & {
    * `cashFloat` pasa a `real`; `calculated` conserva el saldo del cierre original.
    */
   cashAdjustment?: CashAdjustment;
+  /**
+   * Ajuste de saldo real de planillas fuera de la cadena (A, N), uno por ruta.
+   * Su `real` es el Inicial de esa planilla mañana. No toca `cashFloat` ni la cadena M→T.
+   */
+  routeCashAdjustments?: RouteCashAdjustment[];
   movementRefs: string[];
 };
 
@@ -96,6 +101,9 @@ export type CashAdjustment = {
   at: string;
   reason: string;
 };
+
+/** Ajuste de saldo real de una planilla fuera de la cadena (A, N). */
+export type RouteCashAdjustment = CashAdjustment & { route: string };
 
 /** Gastos de ruta guardados durante el día (antes de cerrar). */
 export type CollectorDayExpenseDraft = {

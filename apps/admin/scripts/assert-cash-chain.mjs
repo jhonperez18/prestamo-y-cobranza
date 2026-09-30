@@ -20,6 +20,7 @@
  *   8. Cartera existente (carga desde planilla manual): no descuenta caja M ni T.
  *   9. Cobro del panel: «Solo sistema» no toca la caja; «Cobrador» en efectivo sí, y nunca a caja cerrada.
  *  10. Modificar préstamo: el gasto «Préstamo» del cobrador sigue al capital (día abierto).
+ *  11. Saldo propio de A y N: ajuste tras cerrar = Inicial de esa planilla mañana; M→T intacta.
  */
 import { register } from "node:module";
 
@@ -676,6 +677,110 @@ const toNequi = syncCashDisbursementExpense([gasLoan], [cie25], { ...fixedLoan, 
 expect("Editar préstamo: pasa a Nequi → sale de la caja", toNequi.drafts[0].expenses.some((r) => r.loanRef === "P-M2"), false);
 const sealedDay = syncCashDisbursementExpense([gasLoan], [{ ...cie25, ref: `CIE-COB-0-${D}`, date: D }], fixedLoan);
 expect("Editar préstamo: día con CIE sellado no se toca", sealedDay.changed.length, 0);
+
+// 11. Saldo propio de A y N: ajuste tras cerrar la planilla (mismo día); el real es el
+//     Inicial de esa planilla mañana. La cadena M→T (CIE cash_float, ajuste T, PCE) no se toca.
+console.log("— Saldo propio A / N —");
+const {
+  commitRouteCashAdjustment,
+  independentRouteDay,
+  routeCashAdjustmentWindow,
+} = await import("@/lib/independent-route-cash");
+const { mergeRouteCashAdjustments } = await import("@/lib/cash-adjustment");
+const cieAfterT26 = afterT.dayCloses.find((r) => r.ref === cieRef26);
+expect("A/N: sin cierre no se puede", routeCashAdjustmentWindow(COB.ref, "A", [cie25], adjNow).open, false);
+expect("A/N: M no usa este ajuste", routeCashAdjustmentWindow(COB.ref, "M", afterT.dayCloses, adjNow).open, false);
+expect("A/N: con la planilla cerrada se puede", routeCashAdjustmentWindow(COB.ref, "A", afterT.dayCloses, adjNow).open, true);
+const aDay26 = independentRouteDay({ ...base, dayCloses: afterT.dayCloses }, "A");
+expect("A 26: sin ajuste previo, Inicial de siempre (0)", aDay26.opening, 0);
+expect("A 26: caja = efectivo de A (préstamos/gastos van a M)", aDay26.closing, 50_000);
+const aAdj = commitRouteCashAdjustment({
+  collectorRef: COB.ref,
+  route: "A",
+  real: 80_000,
+  reason: "Conteo real A",
+  by: "Supervisor",
+  calculated: aDay26.closing,
+  dayCloses: afterT.dayCloses,
+  now: adjNow,
+});
+expect("A/N: se registra", aAdj.ok, true);
+if (aAdj.ok) {
+  expect("A/N: CIE cash_float intacto (cadena)", aAdj.record.cashFloat, cieAfterT26?.cashFloat ?? null);
+  expect("A/N: ajuste de T intacto", aAdj.record.cashAdjustment ?? null, cieAfterT26?.cashAdjustment ?? null);
+  const pay27 = pay("PG-E1", "P-A1", 30_000, "2026-09-27");
+  const aDay27 = independentRouteDay(
+    { ...base, date: "2026-09-27", dayCloses: aAdj.dayCloses, payments: [...payments, pay27] },
+    "A",
+  );
+  expect("A 27: Inicial = saldo real del 26", aDay27.opening, 80_000);
+  expect("A 27: caja = real + efectivo de A", aDay27.closing, 110_000);
+  const aDay28 = independentRouteDay(
+    { ...base, date: "2026-09-28", dayCloses: aAdj.dayCloses, payments: [...payments, pay27] },
+    "A",
+  );
+  expect("A 28: arrastre del 27", aDay28.opening, 110_000);
+  const mNext = openingCashForChainedPlanilla({
+    collectorRef: COB.ref,
+    routeName: "M",
+    date: "2026-09-27",
+    records: afterT.planillaCashCloses,
+    monthCloses: [],
+    dayCloses: aAdj.dayCloses,
+  });
+  expect("A/N: Inicial M 27 sigue siendo el CIE-26", mNext.kind === "chain" ? mNext.opening : null, 3_084_000);
+  const again = commitRouteCashAdjustment({
+    collectorRef: COB.ref,
+    route: "A",
+    real: 75_000,
+    reason: "Recontado A",
+    by: "Admin",
+    calculated: 999,
+    dayCloses: aAdj.dayCloses,
+    now: new Date("2026-09-26T21:00:00.000-05:00"),
+  });
+  expect("A/N: re-editar conserva el calculado", again.ok ? again.record.routeCashAdjustments?.[0]?.calculated ?? null : null, 50_000);
+  expect("A/N: re-editar un solo ajuste por ruta", again.ok ? again.record.routeCashAdjustments?.length ?? null : null, 1);
+  const refsA = joinCashAdjustmentRefs(["MOV-1"], undefined, aAdj.record.routeCashAdjustments);
+  const backA = splitCashAdjustmentRefs(refsA);
+  expect("A/N: viaja a la nube (real)", backA.routeCashAdjustments?.[0]?.real ?? null, 80_000);
+  expect("A/N: viaja a la nube (ruta)", backA.routeCashAdjustments?.[0]?.route ?? null, "A");
+  expect("A/N: no se confunde con el ajuste de T", backA.cashAdjustment ?? null, null);
+  expect("A/N: refs de movimientos intactas", backA.movementRefs.join(","), "MOV-1");
+  const newerA = { ...aAdj.record.routeCashAdjustments[0], real: 70_000, at: "2026-09-27T03:00:00.000Z" };
+  const nAdj = { route: "N", calculated: 0, real: 5_000, by: "S", at: "2026-09-27T01:00:00.000Z", reason: "x" };
+  const union = mergeRouteCashAdjustments(aAdj.record.routeCashAdjustments, [newerA, nAdj]);
+  expect("A/N: unión nube+aparato (un ajuste por ruta)", union?.length ?? null, 2);
+  expect("A/N: gana el más reciente", union?.find((r) => r.route === "A")?.real ?? null, 70_000);
+}
+// N: cobrador sin cadena (Yesid) → caja = efectivo − gastos − préstamos.
+const YES = { ref: "COB-1", name: "Yesid" };
+const nSrc = {
+  collectorRef: YES.ref,
+  collectorName: YES.name,
+  date: D,
+  payments: [{ ...pay("PG-N1", "P-N1", 100_000, D), collectorRef: YES.ref, collector: YES.name }],
+  loans: [{ ref: "P-N1", clientRef: "CLI-N1", client: "Eva N", date: "01/09/2026", capital: 400_000, installment: 20_000 }],
+  clients: [{ ref: "CLI-N1", name: "Eva", lastName: "N", route: "N" }],
+  collectors: [YES],
+  assignments: [],
+  dayCloses: [],
+  dayExpenseDrafts: [
+    {
+      ref: `GAS-COB-1-${D}`,
+      collectorRef: YES.ref,
+      collectorName: YES.name,
+      date: D,
+      routeRef: "",
+      expenses: [{ id: "almuerzo", label: "Almuerzo", amount: 10_000, category: "almuerzo" }],
+      expensesTotal: 10_000,
+      updatedAt: `${D}T12:00:00.000Z`,
+    },
+  ],
+  planillaCashCloses: [],
+  monthCloses: [],
+};
+expect("N 26: caja = efectivo − gastos", independentRouteDay(nSrc, "N").closing, 90_000);
 
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);

@@ -44,6 +44,8 @@ export type CashAdjustmentRequest = {
   collectorRef: string;
   real: number;
   reason: string;
+  /** Planilla fuera de la cadena (A, N). Sin ruta = ajuste de T. */
+  route?: string;
 };
 
 export type CashAdjustmentInput = CashAdjustmentRequest & {
