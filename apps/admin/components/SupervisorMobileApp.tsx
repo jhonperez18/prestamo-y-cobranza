@@ -1737,8 +1737,13 @@ export function SupervisorMobileApp({
   const openRoute = liquidaciones.find((row) => row.routeRef === openRouteRef) ?? null;
   /** «Cobrado hoy»: A cobra por Nequi (valor `banco`); M, T y N por Banco (valor `nequi`). Con plata del otro, se muestra igual. */
   const openRouteIsA = openRoute ? sameRoute(openRoute.routeName, "A") : false;
-  const routeMeansShowNequiValue = !openRouteIsA || (openRoute?.cobradoNequi ?? 0) > 0;
+  /** A cobra solo Efectivo y Nequi: lo que no es efectivo se muestra en un solo recuadro Nequi. */
+  const routeMeansShowNequiValue = !openRouteIsA;
   const routeMeansShowBancoValue = openRouteIsA || (openRoute?.cobradoBanco ?? 0) > 0;
+  const routeNequiBoxAmount =
+    (openRoute?.cobradoBanco ?? 0) + (openRouteIsA ? openRoute?.cobradoNequi ?? 0 : 0);
+  const routeNequiBoxMethod: PaymentMethod | null =
+    openRouteIsA && (openRoute?.cobradoNequi ?? 0) > 0 ? null : "banco";
 
   /** N/P solo de la ruta abierta (nunca mezclar M con T/A/N). */
   const openRouteNpByDay = useMemo(() => {
@@ -2349,10 +2354,12 @@ export function SupervisorMobileApp({
     monthCloses,
   ]);
 
-  const historyDayShowNequiValue =
-    !openRouteIsA || (openRouteHistoryDayCuadre?.cobradoNequi ?? 0) > 0;
+  const historyDayShowNequiValue = !openRouteIsA;
   const historyDayShowBancoValue =
     openRouteIsA || (openRouteHistoryDayCuadre?.cobradoBanco ?? 0) > 0;
+  const historyDayNequiBoxAmount =
+    (openRouteHistoryDayCuadre?.cobradoBanco ?? 0) +
+    (openRouteIsA ? openRouteHistoryDayCuadre?.cobradoNequi ?? 0 : 0);
   /** Cierre del día de T: lo propio de T arriba; totales M+T en «Lo que cobró». */
   const historyDayChainT = openRouteCajaHistoryIsT ? openRouteHistoryChainDay : null;
   const historyDayMeansCount =
@@ -3474,7 +3481,7 @@ export function SupervisorMobileApp({
                     {historyDayShowBancoValue ? (
                       <div className="is-mean is-pay-nequi">
                         <span>Nequi</span>
-                        <b>{money(openRouteHistoryDayCuadre.cobradoBanco)}</b>
+                        <b>{money(historyDayNequiBoxAmount)}</b>
                       </div>
                     ) : null}
                     {historyDayChainT ? (
@@ -3634,11 +3641,11 @@ export function SupervisorMobileApp({
                     <button
                       type="button"
                       className="is-pay-nequi is-tap-means"
-                      onClick={() => openCobrosReport("banco")}
+                      onClick={() => openCobrosReport(routeNequiBoxMethod)}
                       aria-label="Ver cobros Nequi del día"
                     >
                       <span>Nequi</span>
-                      <b>{money(openRoute.cobradoBanco, { symbol: false })}</b>
+                      <b>{money(routeNequiBoxAmount, { symbol: false })}</b>
                     </button>
                   ) : null}
                   <button

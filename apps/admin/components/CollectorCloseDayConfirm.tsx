@@ -9,6 +9,7 @@ type Props = {
   collected: number;
   efectivo: number;
   nequi: number;
+  /** Sin valor: la planilla no cobra en Banco (ruta A) y el recuadro no se muestra. */
   banco?: number;
   expenses: RouteExpenseLine[];
   /** Cadena M↔T: Inicial de la planilla y su caja según el libro del día. */
@@ -24,7 +25,7 @@ export function CollectorCloseDayConfirm({
   collected,
   efectivo,
   nequi,
-  banco = 0,
+  banco,
   expenses,
   opening,
   cashFloat: ledgerCashFloat,
@@ -57,10 +58,12 @@ export function CollectorCloseDayConfirm({
           <em>Nequi</em>
           <b>{money(nequi)}</b>
         </div>
-        <div className="is-pay-banco">
-          <em>Banco</em>
-          <b>{money(banco)}</b>
-        </div>
+        {banco != null ? (
+          <div className="is-pay-banco">
+            <em>Banco</em>
+            <b>{money(banco)}</b>
+          </div>
+        ) : null}
         <div className="is-total">
           <em>Total cobrado</em>
           <b>{money(collected)}</b>

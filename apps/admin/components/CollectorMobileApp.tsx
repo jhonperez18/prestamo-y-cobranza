@@ -758,6 +758,8 @@ export function CollectorMobileApp({
     planillaRoutePins.length > 1 ? planillaRouteFilter : null;
   const isPrimaryPlanilla =
     !activePlanillaRoute || sameRoute(activePlanillaRoute, planillaRoutePins[0] || "");
+  /** A cobra solo Efectivo y Nequi: lo que no es efectivo se muestra como Nequi. */
+  const planillaIsA = sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "A");
 
   /**
    * Libro de caja del día (único dueño del saldo): Inicial M = CIE de ayer;
@@ -938,6 +940,7 @@ export function CollectorMobileApp({
       count: routeDayPays.length,
     };
   }, [activePlanillaRoute, routeDayPays, recaudo]);
+  const planillaNequiShown = planillaIsA ? planillaRecaudo.digital : planillaRecaudo.nequi;
   /** Primer PG- del día por crédito: ahí va el botón / etiqueta «Préstamo». */
   const reloanAnchorByLoan = useMemo(() => {
     const anchor = new Map<string, string>();
@@ -1966,12 +1969,14 @@ export function CollectorMobileApp({
                 </div>
                 <div className="is-mean is-pay-nequi">
                   <span>Nequi</span>
-                  <b>{money(planillaRecaudo.nequi)}</b>
+                  <b>{money(planillaNequiShown)}</b>
                 </div>
-                <div className="is-mean is-pay-banco">
-                  <span>Banco</span>
-                  <b>{money(planillaRecaudo.banco)}</b>
-                </div>
+                {planillaIsA ? null : (
+                  <div className="is-mean is-pay-banco">
+                    <span>Banco</span>
+                    <b>{money(planillaRecaudo.banco)}</b>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2048,8 +2053,8 @@ export function CollectorMobileApp({
           }
           collected={planillaRecaudo.total}
           efectivo={planillaRecaudo.efectivo}
-          nequi={planillaRecaudo.nequi}
-          banco={planillaRecaudo.banco}
+          nequi={planillaNequiShown}
+          banco={planillaIsA ? undefined : planillaRecaudo.banco}
           expenses={planillaExpenses}
           opening={planillaCaja != null ? headerInicial : undefined}
           cashFloat={planillaCaja ?? undefined}
@@ -2069,12 +2074,14 @@ export function CollectorMobileApp({
             </div>
             <div className="is-pay-nequi">
               <em>Nequi</em>
-              <b>{money(planillaRecaudo.nequi)}</b>
+              <b>{money(planillaNequiShown)}</b>
             </div>
-            <div className="is-pay-banco">
-              <em>Banco</em>
-              <b>{money(planillaRecaudo.banco)}</b>
-            </div>
+            {planillaIsA ? null : (
+              <div className="is-pay-banco">
+                <em>Banco</em>
+                <b>{money(planillaRecaudo.banco)}</b>
+              </div>
+            )}
             <div className="is-total">
               <em>Total</em>
               <b>{money(planillaRecaudo.total)}</b>
