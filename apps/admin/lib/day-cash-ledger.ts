@@ -281,6 +281,8 @@ export type ChainDayCuadre = {
   opening: number;
   /** Efectivo cobrado solo en la planilla abierta (M o T). */
   ownEfectivo: number;
+  /** Préstamos solo de la planilla abierta (M o T). */
+  ownPrestamos: number;
   efectivo: number;
   nequi: number;
   banco: number;
@@ -304,6 +306,7 @@ export function chainDayCuadre(
   return {
     opening: ledger.mOpening.kind === "chain" ? ledger.mOpening.opening : 0,
     ownEfectivo: pesos(side === "secondary" ? ledger.t.efectivo : ledger.m.efectivo),
+    ownPrestamos: pesos(side === "secondary" ? ledger.t.prestamos : ledger.m.prestamos),
     efectivo: pesos(days.reduce((sum, day) => sum + day.efectivo, 0)),
     nequi: pesos(collected.reduce((sum, row) => sum + row.nequi, 0)),
     banco: pesos(collected.reduce((sum, row) => sum + row.banco, 0)),

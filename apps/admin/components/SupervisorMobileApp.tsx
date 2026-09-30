@@ -2353,6 +2353,15 @@ export function SupervisorMobileApp({
     !openRouteIsA || (openRouteHistoryDayCuadre?.cobradoNequi ?? 0) > 0;
   const historyDayShowBancoValue =
     openRouteIsA || (openRouteHistoryDayCuadre?.cobradoBanco ?? 0) > 0;
+  /** Cierre del día de T: lo propio de T arriba; totales M+T en «Lo que cobró». */
+  const historyDayChainT = openRouteCajaHistoryIsT ? openRouteHistoryChainDay : null;
+  const historyDayMeansCount =
+    1 +
+    Number(historyDayShowNequiValue) +
+    Number(historyDayShowBancoValue) +
+    Number(Boolean(historyDayChainT));
+  const historyDayMeansCols =
+    historyDayMeansCount === 2 ? " is-two" : historyDayMeansCount === 4 ? " is-four" : "";
 
   const openRouteHistoryDayExpenses = useMemo(() => {
     if (!openRoute || !cajaHistoryDayIso) return [];
@@ -3420,7 +3429,13 @@ export function SupervisorMobileApp({
                 </div>
                 <div className="is-prestamos">
                   <span>Lo que prestó</span>
-                  <b>{money(openRouteHistoryDayExpenseSplit.prestamosTotal)}</b>
+                  <b>
+                    {money(
+                      historyDayChainT
+                        ? historyDayChainT.ownPrestamos
+                        : openRouteHistoryDayExpenseSplit.prestamosTotal,
+                    )}
+                  </b>
                 </div>
                 <div className="is-gastos">
                   <span>Lo que gastó</span>
@@ -3430,18 +3445,16 @@ export function SupervisorMobileApp({
                   <div className="is-cobrado-head">
                     <span>Lo que cobró</span>
                   </div>
-                  {openRouteCajaHistoryIsT && openRouteHistoryChainDay ? (
+                  {historyDayChainT ? (
                     <div className="is-cobrado-means is-one" aria-label="Efectivo solo de T">
                       <div className="is-mean is-pay-efectivo">
                         <span>Efectivo T</span>
-                        <b>{money(openRouteHistoryChainDay.ownEfectivo)}</b>
+                        <b>{money(historyDayChainT.ownEfectivo)}</b>
                       </div>
                     </div>
                   ) : null}
                   <div
-                    className={`is-cobrado-means${
-                      historyDayShowNequiValue && historyDayShowBancoValue ? "" : " is-two"
-                    }`}
+                    className={`is-cobrado-means${historyDayMeansCols}`}
                     aria-label="Desglose de lo cobrado"
                   >
                     <div className="is-mean is-pay-efectivo">
@@ -3458,6 +3471,12 @@ export function SupervisorMobileApp({
                       <div className="is-mean is-pay-nequi">
                         <span>Nequi</span>
                         <b>{money(openRouteHistoryDayCuadre.cobradoBanco)}</b>
+                      </div>
+                    ) : null}
+                    {historyDayChainT ? (
+                      <div className="is-mean is-prestamos">
+                        <span>Préstamo M+T</span>
+                        <b>{money(openRouteHistoryDayExpenseSplit.prestamosTotal)}</b>
                       </div>
                     ) : null}
                   </div>
