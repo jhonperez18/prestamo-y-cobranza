@@ -713,6 +713,7 @@ export function CollectorMobileApp({
     date: activeDate,
     monthCloses,
     priorMonthHadActivity,
+    dayCloses,
   });
   const paymentsBlocked = Boolean(monthBlock);
   const canCollect = canRegister && !paymentsBlocked;

@@ -600,6 +600,59 @@ export async function upsertDayExpenseIdempotent(row: Record<string, unknown>) {
   return upsertOpsRow("day_expenses", row, "ref");
 }
 
+type MirrorDb = NonNullable<ReturnType<typeof createMirrorClient>>;
+
+/**
+ * Fila «Prestar» fantasma: la armó un aparato con los préstamos a medio cargar.
+ * - «Préstamo hecho hoy» sin préstamo que empiece ese día.
+ * - Pendiente o «Cierre de jornada» de un cliente con préstamo abierto de días
+ *   anteriores (saldo > 0, sin pago ese día). Esas filas dejaban a cada cliente doble.
+ * Las decisiones del cobrador («Hoy no quiere préstamo», cobrado) siempre entran.
+ */
+async function prestarGhostReason(
+  client: MirrorDb,
+  row: Record<string, unknown>,
+): Promise<{ ghost: boolean; error?: string }> {
+  if (!String(row.item_id || "").includes(":prestar")) return { ghost: false };
+  const dispatchDate = String(row.dispatch_date || "").trim();
+  const clientRef = String(row.client_ref || "").trim();
+  if (!clientRef || !/^\d{4}-\d{2}-\d{2}$/.test(dispatchDate)) return { ghost: false };
+  const status = String(row.visit_status || "pendiente");
+  const reason = String(row.skip_reason || "");
+  const givenTodayClaim = status === "omitido" && reason === LOAN_GIVEN_TODAY_REASON;
+  const autoRow =
+    status === "pendiente" || (status === "omitido" && reason === DAY_CLOSE_SKIP_REASON);
+  if (!givenTodayClaim && !autoRow) return { ghost: false };
+
+  const [y, m, d] = dispatchDate.split("-");
+  const dispatchDisplay = `${d}/${m}/${y}`;
+  const { data: loans, error } = await client
+    .from("loans")
+    .select("ref, status, start_date, balance")
+    .eq("client_ref", clientRef);
+  if (error) return { ghost: false, error: error.message };
+  const live = (loans ?? []).filter((loan) => !isLoanDeletedStatus(loan));
+  const startedToday = (loan: { start_date?: string | null }) =>
+    loan.start_date === dispatchDisplay || loan.start_date === dispatchDate;
+  if (givenTodayClaim) return { ghost: !live.some(startedToday) };
+
+  const open = live.filter(
+    (loan) =>
+      !startedToday(loan) &&
+      Number(loan.balance) > 0 &&
+      !/finaliz|pagad|cancel/i.test(String(loan.status || "")),
+  );
+  if (!open.length) return { ghost: false };
+  const { data: paidToday, error: payError } = await client
+    .from("payments")
+    .select("ref")
+    .in("loan_ref", open.map((loan) => loan.ref))
+    .eq("paid_date", dispatchDate)
+    .limit(1);
+  if (payError) return { ghost: false, error: payError.message };
+  return { ghost: !(paidToday ?? []).length };
+}
+
 /**
  * Espejo de planilla (servidor). Invariantes (no romper nunca):
  * 1) day_closed_at en nube no lo borra una fila abierta de otro celular.
@@ -623,27 +676,9 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
       return { ok: true as const, skipped: true as const, reason: "loan_deleted" };
     }
   }
-  // «Préstamo hecho hoy» sin préstamo con inicio ese día: fila Prestar fantasma de un
-  // aparato con préstamos a medio cargar. No entra (dejaba a cada cliente doble).
-  const dispatchDate = String(row.dispatch_date || "").trim();
-  const clientRef = String(row.client_ref || "").trim();
-  if (
-    String(row.item_id || "").includes(":prestar") &&
-    row.skip_reason === LOAN_GIVEN_TODAY_REASON &&
-    clientRef &&
-    /^\d{4}-\d{2}-\d{2}$/.test(dispatchDate)
-  ) {
-    const [y, m, d] = dispatchDate.split("-");
-    const { data: given, error: givenError } = await client
-      .from("loans")
-      .select("ref, status")
-      .eq("client_ref", clientRef)
-      .in("start_date", [`${d}/${m}/${y}`, dispatchDate]);
-    if (givenError) return { ok: false as const, error: givenError.message };
-    if (!(given ?? []).some((loan) => !isLoanDeletedStatus(loan))) {
-      return { ok: true as const, skipped: true as const, reason: "prestar_ghost" };
-    }
-  }
+  const ghost = await prestarGhostReason(client, row);
+  if (ghost.error) return { ok: false as const, error: ghost.error };
+  if (ghost.ghost) return { ok: true as const, skipped: true as const, reason: "prestar_ghost" };
   const { data, error } = await client
     .from("daily_assignments")
     .select("visit_status, skip_reason, day_closed_at, collector_ref, dispatch_date")

@@ -1046,6 +1046,28 @@ expect(
   false,
 );
 
+// ── 15. Día 1 del mes: el cobro nunca se bloquea si el mes anterior quedó sellado por
+//     el CIE- de su último día de cobro, aunque el cierre de mes falte en ese aparato.
+console.log("\n— Día 1: mes sellado por CIE no bloquea el cobro —");
+const { monthReviewBlock, lastCollectionDayOfPeriod } = await import("@/lib/collector-day-close");
+expect("Último día de cobro de sept-2026", lastCollectionDayOfPeriod("2026-09"), "2026-09-30");
+const sealedSept = [{ ref: `CIE-${COB.ref}-2026-09-30`, collectorRef: COB.ref, date: "2026-09-30", cashFloat: 11_824_000 }];
+expect(
+  "Día 1 con CIE del último día y sin cierre de mes: cobra",
+  monthReviewBlock({ collectorRef: COB.ref, date: "2026-10-01", monthCloses: [], priorMonthHadActivity: true, dayCloses: sealedSept }),
+  null,
+);
+expect(
+  "Día 1 sin CIE ni cierre de mes: pide revisar",
+  Boolean(monthReviewBlock({ collectorRef: COB.ref, date: "2026-10-01", monthCloses: [], priorMonthHadActivity: true, dayCloses: [] })),
+  true,
+);
+expect(
+  "Día 1 con CIE provisional: no cuenta como sellado",
+  Boolean(monthReviewBlock({ collectorRef: COB.ref, date: "2026-10-01", monthCloses: [], priorMonthHadActivity: true, dayCloses: [{ ...sealedSept[0], provisional: true }] })),
+  true,
+);
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

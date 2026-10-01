@@ -225,7 +225,17 @@ abierta de la nube volvía por el pull y la jornada quedaba sin CIE-. No entra a
 Solo si el préstamo salió **ese día** (`loan.date` = día). Préstamo de días anteriores →
 la fila «Prestar» es fantasma y se descarta (si no, cada cliente sale doble). Quien ya tiene
 visita de cuota hoy no recibe oferta Prestar aunque el aparato no haya cargado sus préstamos.
-Candado: `assert-cash-chain.mjs` sección 14.
+Servidor (`prestarGhostReason` en `upsertAssignmentRow`): rechaza «Prestar» pendiente /
+«Cierre de jornada» de cliente con préstamo abierto anterior (sin pago ese día) y «Préstamo
+hecho hoy» sin préstamo de ese día (`prestar_ghost`, sale de cola). Las decisiones del
+cobrador siempre entran. Candado: `assert-cash-chain.mjs` sección 14.
+
+## Día 1 del mes — el cobro no se bloquea por un aparato
+
+`monthReviewBlock` solo bloquea si el mes anterior **no** quedó sellado: sin cierre de mes
+(`MES-`, sincronizado por la nube) **y** sin CIE- (no provisional) de su último día de cobro
+(`periodSealedByDayClose`). El CIE manda; el cierre de mes es proyección.
+Candado: `assert-cash-chain.mjs` sección 15.
 
 ## N/P por ruta (INICIO)
 

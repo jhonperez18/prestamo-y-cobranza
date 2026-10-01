@@ -8,6 +8,7 @@ import {
 import { isoToDispatchLabel, todayIso } from "@/lib/daily-dispatch";
 import { pesos, sumPesos, verifyCashClose } from "@/lib/finance";
 import { displayToIso } from "@/lib/loan-preview";
+import { isDailyCollectionDay } from "@/lib/colombia-holidays";
 import { money, type ClientRow, type CollectorRow, type LoanRow, type PaymentRow, paymentsForCollector } from "@/lib/mock-data";
 import { normalizePaymentMethod } from "@/lib/payment-method";
 import { isPrestamoRutaExpense } from "@/lib/expense-lines";
@@ -205,9 +206,40 @@ export function openingSaldoForPeriod(
   return findMonthClose(monthCloses, collectorRef, prev)?.closingSaldo ?? 0;
 }
 
+/** Último día de cobro (lun–sáb, sin festivos) de un período `YYYY-MM`. */
+export function lastCollectionDayOfPeriod(period: string) {
+  const [y, m] = period.split("-").map(Number);
+  if (!y || !m) return "";
+  for (let d = new Date(y, m, 0).getDate(); d >= 1; d -= 1) {
+    const iso = `${period}-${String(d).padStart(2, "0")}`;
+    if (isDailyCollectionDay(iso)) return iso;
+  }
+  return "";
+}
+
+/**
+ * Mes sellado por la nube: el último día de cobro del mes tiene CIE- (no provisional).
+ * Ese CIE ya fija el saldo; el cierre de mes es solo una proyección.
+ */
+export function periodSealedByDayClose(
+  collectorRef: string,
+  period: string,
+  dayCloses: CollectorDayCloseRecord[],
+) {
+  const lastDay = lastCollectionDayOfPeriod(period);
+  if (!lastDay) return false;
+  return dayCloses.some(
+    (row) =>
+      row.collectorRef === collectorRef &&
+      !row.provisional &&
+      normalizeHistoryDate(row.date) === lastDay,
+  );
+}
+
 /**
  * Día 1 (y el mes nuevo): no cobrar hasta guardar/revisar el mes anterior.
- * Si no hay mes anterior cerrado y el día es 01, bloquea.
+ * Bloquea solo si el mes anterior no quedó sellado: sin cierre de mes y sin CIE- de su
+ * último día de cobro. Un cierre de mes que falte en un aparato nunca deja sin cobro.
  */
 export function monthReviewBlock(input: {
   collectorRef: string;
@@ -215,6 +247,7 @@ export function monthReviewBlock(input: {
   monthCloses: CollectorMonthCloseRecord[];
   /** Si el mes anterior tuvo actividad de caja, exige cierre. */
   priorMonthHadActivity?: boolean;
+  dayCloses?: CollectorDayCloseRecord[];
 }) {
   const period = periodFromDateIso(input.date);
   const day = Number(input.date.slice(8, 10));
@@ -222,6 +255,7 @@ export function monthReviewBlock(input: {
   const prev = previousPeriod(period);
   if (findMonthClose(input.monthCloses, input.collectorRef, prev)) return null;
   if (input.priorMonthHadActivity === false) return null;
+  if (periodSealedByDayClose(input.collectorRef, prev, input.dayCloses ?? [])) return null;
   return {
     previousPeriod: prev,
     message:
