@@ -13,6 +13,8 @@ import {
 import { money } from "@/lib/mock-data";
 
 const OTHER_EXPENSE_ID: RouteExpenseId = "otros";
+const OTHER_EXPENSE_LABEL =
+  ROUTE_EXPENSE_ITEMS.find((item) => item.id === OTHER_EXPENSE_ID)?.label ?? "Otros";
 
 /** Sugerencias del gasto: se pueden repetir; el préstamo va por su botón, no aquí. */
 const EXPENSE_SUGGESTIONS = ROUTE_EXPENSE_ITEMS.filter((item) => item.category !== "prestamo_ruta");
@@ -52,7 +54,7 @@ function rowsFromExpenses(expenses: RouteExpenseLine[]): DraftRow[] {
       return {
         key: `saved-${line.id}-${index}`,
         expenseId: line.id,
-        customLabel: line.id === OTHER_EXPENSE_ID && line.label !== item?.label ? line.label : "",
+        customLabel: line.id === OTHER_EXPENSE_ID ? line.label || item?.label || "" : "",
         amount: formatExpenseAmountInput(line.amount),
         fromSaved: true,
         lineKey: line.lineKey,
@@ -131,22 +133,48 @@ export function CollectorCloseDaySheet({ draft, onSave }: Props) {
               <label className="sr-only" htmlFor={`close-exp-type-${row.key}`}>
                 Tipo de gasto {index + 1}
               </label>
-              <select
-                id={`close-exp-type-${row.key}`}
-                value={row.expenseId}
-                onChange={(event) => {
-                  const expenseId = event.target.value as RouteExpenseId | "";
-                  if (expenseId === row.expenseId) return;
-                  updateRow(row.key, { expenseId, fromSaved: false, lineKey: undefined });
-                }}
-              >
-                <option value="">Elegir gasto…</option>
-                {EXPENSE_SUGGESTIONS.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
+              {row.expenseId === OTHER_EXPENSE_ID ? (
+                <input
+                  id={`close-exp-type-${row.key}`}
+                  className="collector-close-expense-other"
+                  autoComplete="off"
+                  autoFocus={!row.fromSaved}
+                  placeholder="Escribe el gasto"
+                  value={row.customLabel}
+                  onChange={(event) => updateRow(row.key, { customLabel: event.target.value })}
+                  onBlur={() => {
+                    if (row.customLabel.trim()) return;
+                    updateRow(row.key, {
+                      expenseId: "",
+                      customLabel: "",
+                      fromSaved: false,
+                      lineKey: undefined,
+                    });
+                  }}
+                />
+              ) : (
+                <select
+                  id={`close-exp-type-${row.key}`}
+                  value={row.expenseId}
+                  onChange={(event) => {
+                    const expenseId = event.target.value as RouteExpenseId | "";
+                    if (expenseId === row.expenseId) return;
+                    updateRow(row.key, {
+                      expenseId,
+                      customLabel: expenseId === OTHER_EXPENSE_ID ? OTHER_EXPENSE_LABEL : "",
+                      fromSaved: false,
+                      lineKey: undefined,
+                    });
+                  }}
+                >
+                  <option value="">Elegir gasto…</option>
+                  {EXPENSE_SUGGESTIONS.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              )}
               <label className="sr-only" htmlFor={`close-exp-amt-${row.key}`}>
                 Monto {index + 1}
               </label>
@@ -161,21 +189,6 @@ export function CollectorCloseDaySheet({ draft, onSave }: Props) {
                   })
                 }
               />
-              {row.expenseId === OTHER_EXPENSE_ID ? (
-                <>
-                  <label className="sr-only" htmlFor={`close-exp-other-${row.key}`}>
-                    Detalle del gasto {index + 1}
-                  </label>
-                  <input
-                    id={`close-exp-other-${row.key}`}
-                    className="collector-close-expense-other"
-                    autoComplete="off"
-                    placeholder="¿Cuál gasto? (escríbelo)"
-                    value={row.customLabel}
-                    onChange={(event) => updateRow(row.key, { customLabel: event.target.value })}
-                  />
-                </>
-              ) : null}
             </li>
           ))}
         </ul>
