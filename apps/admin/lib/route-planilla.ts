@@ -132,6 +132,8 @@ function buildPlanillaLoanIndex(
 ): PlanillaLoanIndex {
   const activeByClient = new Map<string, LoanRow[]>();
   for (const loan of activeLoans(loans)) {
+    // Préstamo borrado (soft delete «Eliminado») no cuenta: el cliente vuelve a Prestar.
+    if (String(loan.status || "").trim() === "Eliminado") continue;
     const list = activeByClient.get(loan.clientRef);
     if (list) list.push(loan);
     else activeByClient.set(loan.clientRef, [loan]);
@@ -243,6 +245,10 @@ function preserveProgress(
     String(next.itemId || "").includes(":prestar") ||
     !String(next.loanRef || "").trim();
   if (nextAwaiting) {
+    // «Préstamo hecho hoy» cuyo préstamo ya no está (se borró): vuelve a Prestar.
+    const keepsOmitted =
+      previous?.visitStatus === "omitido" &&
+      (previous.skipReason !== LOAN_GIVEN_TODAY_REASON || Boolean(previous.dayClosedAt));
     return {
       ...next,
       loanRef: "",
@@ -251,8 +257,8 @@ function preserveProgress(
       awaitingLoan: true,
       chargeLabel: "Prestar",
       assignedAt: previous?.assignedAt || next.assignedAt,
-      visitStatus: previous?.visitStatus === "omitido" ? "omitido" : next.visitStatus,
-      skipReason: previous?.visitStatus === "omitido" ? previous.skipReason : undefined,
+      visitStatus: keepsOmitted ? "omitido" : next.visitStatus,
+      skipReason: keepsOmitted ? previous?.skipReason : undefined,
       dayClosedAt: previous?.dayClosedAt,
       paymentRef: undefined,
       dispatched: true,
@@ -405,6 +411,7 @@ export function syncPermanentRoutePlanilla(
         (prev) =>
           prev.dispatchDate === date &&
           prev.visitStatus === "omitido" &&
+          prev.skipReason !== LOAN_GIVEN_TODAY_REASON &&
           (prev.skipReason === DECLINED_LOAN_OFFER_TODAY_REASON || isAssignmentAwaitingLoan(prev)),
       )
       .map((prev) => `${prev.collectorRef}|${prev.clientRef}`),

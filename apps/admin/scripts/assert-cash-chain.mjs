@@ -1036,6 +1036,15 @@ expect(
   gSynced.assignments.filter((r) => r.clientRef === "CLI-P1" && r.dispatchDate === pDate && r.itemId.includes(":prestar")).length,
   0,
 );
+// Préstamo de hoy borrado: la fila «Préstamo hecho hoy» vuelve a Prestar pendiente (no desaparece).
+const dSynced = syncPermanentRoutePlanilla(pDate, pRoutes, pClients.slice(0, 1), [
+  { ...pLoans[0], status: "Eliminado" },
+], [COB], [
+  visit(`${pDate}:CLI-P1:prestar`, "CLI-P1", "M", pDate, { visitStatus: "omitido", awaitingLoan: true, chargeLabel: "Prestar", skipReason: "Préstamo hecho hoy" }),
+], []);
+const dRow = dSynced.assignments.find((r) => r.itemId === `${pDate}:CLI-P1:prestar`);
+expect("Préstamo de hoy borrado: el cliente sigue en la planilla", Boolean(dRow), true);
+expect("Préstamo de hoy borrado: vuelve a Prestar pendiente", dRow?.visitStatus ?? null, "pendiente");
 // Préstamos a medio cargar: quien ya tiene visita de cuota hoy no recibe oferta Prestar.
 const hSynced = syncPermanentRoutePlanilla(pDate, pRoutes, pClients.slice(0, 1), [], [COB], [
   visit(`${pDate}:P-G1:acum`, "CLI-P1", "M", pDate, { visitStatus: "pendiente", loanRef: "P-G1" }),

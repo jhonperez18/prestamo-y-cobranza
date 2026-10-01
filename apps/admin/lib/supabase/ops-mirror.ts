@@ -602,6 +602,19 @@ export async function upsertDayExpenseIdempotent(row: Record<string, unknown>) {
 
 type MirrorDb = NonNullable<ReturnType<typeof createMirrorClient>>;
 
+/** ¿El cliente tiene un préstamo vivo (no eliminado) que empieza ese día? Si falla la lectura, asume que sí. */
+async function loanStartedOn(client: MirrorDb, clientRef: string, dispatchDate: string) {
+  if (!clientRef.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(dispatchDate)) return true;
+  const [y, m, d] = dispatchDate.split("-");
+  const { data, error } = await client
+    .from("loans")
+    .select("ref, status")
+    .eq("client_ref", clientRef.trim())
+    .in("start_date", [`${d}/${m}/${y}`, dispatchDate]);
+  if (error) return true;
+  return (data ?? []).some((loan) => !isLoanDeletedStatus(loan));
+}
+
 /**
  * Fila «Prestar» fantasma: la armó un aparato con los préstamos a medio cargar.
  * - «Préstamo hecho hoy» sin préstamo que empiece ese día.
@@ -721,7 +734,12 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
       current?.visit_status === "omitido" &&
       current.skip_reason !== DAY_CLOSE_SKIP_REASON
     ) {
-      return { ok: true as const, kept: true as const };
+      // «Préstamo hecho hoy» cuyo préstamo se borró: el cliente vuelve a Prestar.
+      const loanGone =
+        current.skip_reason === LOAN_GIVEN_TODAY_REASON &&
+        String(row.item_id || "").includes(":prestar") &&
+        !(await loanStartedOn(client, String(row.client_ref || ""), String(row.dispatch_date || "")));
+      if (!loanGone) return { ok: true as const, kept: true as const };
     }
   }
   return upsertOpsRow("daily_assignments", row, "dispatch_date,item_id");
