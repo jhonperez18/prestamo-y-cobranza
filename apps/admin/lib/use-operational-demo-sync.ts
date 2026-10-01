@@ -34,6 +34,7 @@ import {
 import type { BankAccount } from "@/lib/bank";
 import { reportDeviceStatus } from "@/lib/device-status";
 import { pullRemoteMonthClosesIntoDemo } from "@/lib/supabase/month-close-mirror";
+import { useAppAutoUpdate } from "@/lib/app-auto-update";
 
 type Options = {
   /**
@@ -87,6 +88,7 @@ export function useOperationalDemoSync(
   const [pendingMirror, setPendingMirror] = useState<MirrorPendingBreakdown>(() =>
     countPendingMirrorQueues(),
   );
+  useAppAutoUpdate(hydrated);
   const evidenceOnceRef = useRef(false);
   const applyRef = useRef(apply);
   applyRef.current = apply;
