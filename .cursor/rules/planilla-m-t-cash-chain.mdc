@@ -257,9 +257,12 @@ Candado: `assert-cash-chain.mjs` sección 15.
 Un solo camino: `commitDayExpenseDraft` (`lib/commit-day-expense.ts`) → GAS- local + cola +
 `mirrorDayExpenseNow` (await). El aviso dice la verdad: «en la nube» o «en este aparato, se sube solo».
 
-- La cola solo suelta lo que la nube confirmó y que no cambió mientras subía (`dequeueSent`).
-  Un flush jamás borra lo encolado durante el flush.
-- Subidas de `ops-mirror` sin `keepalive` (Chrome rechaza keepalive con >64 KB en vuelo).
+- La cola solo suelta lo que la nube confirmó y que no cambió mientras subía (`queueWithoutSent`,
+  firma `queueRowSig` sin fotos `data:`). Un flush jamás borra lo encolado durante el flush.
+  Misma regla en gastos, planilla, cierres, clientes y préstamos.
+- Subidas de `ops-mirror` y `catalog-mirror` sin `keepalive` (Chrome rechaza keepalive con >64 KB en vuelo).
+- Timbre de la base (`nexo_ops_ping`): suena solo si una fila cambió de verdad (sin contar
+  `updated_at`). Un upsert idéntico no despierta a todos los aparatos.
 - Aparato lleno: `writeDemoJson` devuelve `false` y solo suelta copias `-bak`; las colas no se borran.
 - Candado: `assert-cash-chain.mjs` sección 18.
 

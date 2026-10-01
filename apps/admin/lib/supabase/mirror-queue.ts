@@ -31,6 +31,29 @@ const DROP_ON_SKIP_REASON = new Set([
   "provisional_day_close",
 ]);
 
+/**
+ * Firma de una fila de cola tal como queda en el aparato (sin fotos `data:`, que no
+ * entran a localStorage). Lo enviado y lo encolado se comparan con esta firma.
+ */
+export function queueRowSig(row: unknown): string {
+  return JSON.stringify(row, (key, entry) =>
+    key === "previewUrl" && typeof entry === "string" && entry.startsWith("data:") ? undefined : entry,
+  );
+}
+
+/**
+ * Sobrevivientes de la cola tras una subida: sale solo lo que la nube confirmó y que no
+ * cambió mientras subía. Lo encolado (o editado) durante el envío se queda.
+ */
+export function queueWithoutSent<T extends { ref: string }>(
+  current: readonly T[],
+  sent: readonly { ref: string }[],
+): T[] {
+  if (!sent.length) return [...current];
+  const sentSig = new Map(sent.map((row) => [row.ref, queueRowSig(row)]));
+  return current.filter((row) => sentSig.get(row.ref) !== queueRowSig(row));
+}
+
 export type MirrorApiJson = {
   ok?: boolean;
   skipped?: boolean;

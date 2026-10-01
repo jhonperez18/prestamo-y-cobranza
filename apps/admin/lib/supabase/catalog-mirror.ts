@@ -14,6 +14,7 @@ import {
 import { isDeletedRef, readDeletedIdSet, rememberDeletedId } from "@/lib/deleted-ids";
 import {
   emitMirrorQueueChanged,
+  queueWithoutSent,
   shouldDropFromMirrorQueue,
   type MirrorApiJson,
 } from "@/lib/supabase/mirror-queue";
@@ -463,6 +464,21 @@ function writeQueue<T>(key: string, rows: T[]) {
   emitMirrorQueueChanged();
 }
 
+/** Sale de la cola solo lo confirmado por la nube y sin cambios desde que se envió. */
+function dequeueSent(key: string, sent: readonly { ref: string }[]) {
+  if (!sent.length) return;
+  const current = readQueue<{ ref: string }>(key);
+  const left = queueWithoutSent(current, sent);
+  if (left.length !== current.length) writeQueue(key, left);
+}
+
+/** Envío fallido: la fila sigue en cola sin pisar una versión más nueva encolada mientras subía. */
+function keepQueued<T extends { ref: string }>(key: string, row: T) {
+  const current = readQueue<T>(key);
+  if (current.some((entry) => entry.ref === row.ref)) return;
+  writeQueue(key, [...current, row]);
+}
+
 function readClientPullShield(): Map<string, ClientRow> {
   const raw = readDemoJson<ClientPullShieldEntry[]>(DEMO_CLIENT_PULL_SHIELD_KEY, []);
   const now = Date.now();
@@ -503,12 +519,12 @@ function pruneClientPullShieldAgainstRemote(remoteByRef: Map<string, ClientRow>)
   if (next.length !== raw.length) writeDemoJson(DEMO_CLIENT_PULL_SHIELD_KEY, next);
 }
 
+/** Sin `keepalive` (Chrome lo rechaza con >64 KB en vuelo); la cola cubre el cierre de la app. */
 async function postMirror(path: string, body: unknown) {
   const res = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    keepalive: true,
   });
   const json = (await res.json()) as {
     ok?: boolean;
@@ -524,23 +540,16 @@ export async function persistClientToSupabase(client: ClientRow) {
   try {
     const { res, json } = await postMirror("/api/clients/mirror", { client });
     if (!res.ok || !json.ok) {
-      const q = readQueue<ClientRow>(DEMO_CLIENT_MIRROR_QUEUE_KEY).filter((r) => r.ref !== client.ref);
-      q.push(client);
-      writeQueue(DEMO_CLIENT_MIRROR_QUEUE_KEY, q);
+      keepQueued(DEMO_CLIENT_MIRROR_QUEUE_KEY, client);
       return { ok: false as const, error: json.error || `http_${res.status}` };
     }
     if (!json.skipped) {
-      writeQueue(
-        DEMO_CLIENT_MIRROR_QUEUE_KEY,
-        readQueue<ClientRow>(DEMO_CLIENT_MIRROR_QUEUE_KEY).filter((r) => r.ref !== client.ref),
-      );
+      dequeueSent(DEMO_CLIENT_MIRROR_QUEUE_KEY, [client]);
       armClientPullShield(client);
     }
     return { ok: true as const, skipped: json.skipped };
   } catch (err) {
-    const q = readQueue<ClientRow>(DEMO_CLIENT_MIRROR_QUEUE_KEY).filter((r) => r.ref !== client.ref);
-    q.push(client);
-    writeQueue(DEMO_CLIENT_MIRROR_QUEUE_KEY, q);
+    keepQueued(DEMO_CLIENT_MIRROR_QUEUE_KEY, client);
     return { ok: false as const, error: err instanceof Error ? err.message : "network" };
   }
 }
@@ -550,22 +559,13 @@ export async function persistLoanToSupabase(loan: LoanRow) {
   try {
     const { res, json } = await postMirror("/api/loans/mirror", { loan });
     if (!res.ok || !json.ok) {
-      const q = readQueue<LoanRow>(DEMO_LOAN_MIRROR_QUEUE_KEY).filter((r) => r.ref !== loan.ref);
-      q.push(loan);
-      writeQueue(DEMO_LOAN_MIRROR_QUEUE_KEY, q);
+      keepQueued(DEMO_LOAN_MIRROR_QUEUE_KEY, loan);
       return { ok: false as const, error: json.error || `http_${res.status}` };
     }
-    if (!json.skipped) {
-      writeQueue(
-        DEMO_LOAN_MIRROR_QUEUE_KEY,
-        readQueue<LoanRow>(DEMO_LOAN_MIRROR_QUEUE_KEY).filter((r) => r.ref !== loan.ref),
-      );
-    }
+    if (!json.skipped) dequeueSent(DEMO_LOAN_MIRROR_QUEUE_KEY, [loan]);
     return { ok: true as const, skipped: json.skipped };
   } catch (err) {
-    const q = readQueue<LoanRow>(DEMO_LOAN_MIRROR_QUEUE_KEY).filter((r) => r.ref !== loan.ref);
-    q.push(loan);
-    writeQueue(DEMO_LOAN_MIRROR_QUEUE_KEY, q);
+    keepQueued(DEMO_LOAN_MIRROR_QUEUE_KEY, loan);
     return { ok: false as const, error: err instanceof Error ? err.message : "network" };
   }
 }
@@ -647,37 +647,30 @@ export function queueLoansMirror(loans: LoanRow[]) {
 
 export async function flushCatalogMirrorQueues() {
   if (typeof window === "undefined") return;
-  const clients = readQueue<ClientRow>(DEMO_CLIENT_MIRROR_QUEUE_KEY);
-  const leftClients: ClientRow[] = [];
-  for (const client of clients) {
+  const sentClients: ClientRow[] = [];
+  for (const client of readQueue<ClientRow>(DEMO_CLIENT_MIRROR_QUEUE_KEY)) {
     try {
       const { res, json } = await postMirror("/api/clients/mirror", { client });
       const body = json as MirrorApiJson;
-      if (res.ok && shouldDropFromMirrorQueue(body) && !body.skipped) {
-        armClientPullShield(client);
-        continue;
-      }
-      if (res.ok && shouldDropFromMirrorQueue(body)) continue;
-      leftClients.push(client);
+      if (!res.ok || !shouldDropFromMirrorQueue(body)) continue;
+      if (!body.skipped) armClientPullShield(client);
+      sentClients.push(client);
     } catch {
-      leftClients.push(client);
+      /* queda en cola */
     }
   }
-  writeQueue(DEMO_CLIENT_MIRROR_QUEUE_KEY, leftClients);
+  dequeueSent(DEMO_CLIENT_MIRROR_QUEUE_KEY, sentClients);
 
-  const loans = readQueue<LoanRow>(DEMO_LOAN_MIRROR_QUEUE_KEY);
-  const leftLoans: LoanRow[] = [];
-  for (const loan of loans) {
+  const sentLoans: LoanRow[] = [];
+  for (const loan of readQueue<LoanRow>(DEMO_LOAN_MIRROR_QUEUE_KEY)) {
     try {
       const { res, json } = await postMirror("/api/loans/mirror", { loan });
-      const body = json as MirrorApiJson;
-      if (res.ok && shouldDropFromMirrorQueue(body)) continue;
-      leftLoans.push(loan);
+      if (res.ok && shouldDropFromMirrorQueue(json as MirrorApiJson)) sentLoans.push(loan);
     } catch {
-      leftLoans.push(loan);
+      /* queda en cola */
     }
   }
-  writeQueue(DEMO_LOAN_MIRROR_QUEUE_KEY, leftLoans);
+  dequeueSent(DEMO_LOAN_MIRROR_QUEUE_KEY, sentLoans);
 }
 
 export type PullCatalogResult = {

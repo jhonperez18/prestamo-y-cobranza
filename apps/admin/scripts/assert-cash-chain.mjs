@@ -1250,6 +1250,25 @@ console.log("\n— Gasto: la cola no pierde lo que no subió —");
   quotaKey = DEMO_COLLECTOR_DAY_EXPENSES_KEY;
   expect("Aparato lleno: la escritura avisa que falló", writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, [gas]), false);
   expect("Aparato lleno: la cola de subida no se borra", queued(Q_EXP), gas.ref);
+  quotaKey = "";
+
+  const Q_CLI = "nexo-demo-client-mirror-queue";
+  const { flushCatalogMirrorQueues } = await import("@/lib/supabase/catalog-mirror");
+  const ficha = { ref: "COD-900", name: "Ana", route: "N", docs: [{ previewUrl: "data:image/png;base64,AAA" }] };
+  const fichaNueva = { ...ficha, name: "Ana María" };
+  store.set(Q_CLI, JSON.stringify([ficha]));
+  globalThis.fetch = async (url, init) => {
+    if (init?.keepalive) keepalive = true;
+    if (String(url).includes("/api/clients/mirror")) store.set(Q_CLI, JSON.stringify([fichaNueva]));
+    return { ok: true, status: 200, json: async () => ({ ok: true }) };
+  };
+  await flushCatalogMirrorQueues();
+  const cliQueue = JSON.parse(store.get(Q_CLI) ?? "[]");
+  expect("Ficha editada mientras subía la anterior: sigue en cola", cliQueue.map((r) => r.name).join(","), "Ana María");
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ ok: true }) });
+  await flushCatalogMirrorQueues();
+  expect("Ficha con foto confirmada: sale de cola", queued(Q_CLI), "");
+  expect("Clientes / préstamos sin keepalive", keepalive, false);
   delete globalThis.window;
 }
 

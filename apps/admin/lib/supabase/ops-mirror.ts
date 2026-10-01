@@ -36,6 +36,7 @@ import {
 } from "@/lib/cash-adjustment";
 import {
   emitMirrorQueueChanged,
+  queueWithoutSent,
   shouldDropFromMirrorQueue,
   type MirrorApiJson,
 } from "@/lib/supabase/mirror-queue";
@@ -270,9 +271,8 @@ function dequeue(key: string, ref: string) {
  */
 function dequeueSent(key: string, sent: readonly { ref: string }[]) {
   if (!sent.length) return;
-  const sentSig = new Map(sent.map((row) => [row.ref, JSON.stringify(row)]));
   const current = readDemoJson<{ ref: string }[]>(key, []);
-  const left = current.filter((row) => sentSig.get(row.ref) !== JSON.stringify(row));
+  const left = queueWithoutSent(current, sent);
   if (left.length !== current.length) writeDemoJson(key, left);
   emitMirrorQueueChanged();
 }
