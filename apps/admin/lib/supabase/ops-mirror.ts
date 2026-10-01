@@ -15,6 +15,7 @@ import {
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { DAY_CLOSE_SKIP_REASON } from "@/lib/collector-dispatch-sync";
 import { isDeletedRef, readDeletedIdSet } from "@/lib/deleted-ids";
+import { isLoanDeletedStatus } from "@/lib/supabase/catalog-mirror";
 import type { MiscPayment } from "@/lib/misc-payments";
 import {
   ensureManualTLaunchClose,
@@ -609,6 +610,19 @@ export async function upsertDayExpenseIdempotent(row: Record<string, unknown>) {
 export async function upsertAssignmentRow(row: Record<string, unknown>) {
   const client = createMirrorClient();
   if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  // Visita abierta de un préstamo dado de baja (copia vieja de otro aparato): no vuelve.
+  const loanRef = String(row.loan_ref || "").trim();
+  if (loanRef && !row.day_closed_at && !row.payment_ref) {
+    const { data: loan, error: loanError } = await client
+      .from("loans")
+      .select("status")
+      .eq("ref", loanRef)
+      .maybeSingle();
+    if (loanError) return { ok: false as const, error: loanError.message };
+    if (isLoanDeletedStatus(loan)) {
+      return { ok: true as const, skipped: true as const, reason: "loan_deleted" };
+    }
+  }
   const { data, error } = await client
     .from("daily_assignments")
     .select("visit_status, skip_reason, day_closed_at, collector_ref, dispatch_date")

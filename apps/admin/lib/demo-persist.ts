@@ -144,6 +144,12 @@ function readBakArray<T>(key: string): T[] {
   return Array.isArray(bak) ? bak : [];
 }
 
+/** Copia -bak sin refs dados de baja (tombstone). */
+function readLiveBakArray<T extends { ref?: string }>(key: string): T[] {
+  const gone = readTombstoneRefs();
+  return readBakArray<T>(key).filter((row) => !gone.has(String(row?.ref || "").trim()));
+}
+
 /** Tras paquete virgen: no recuperar cobros/banco/historial desde -bak. */
 export function isVirginOpsMode() {
   if (typeof window === "undefined") return false;
@@ -391,16 +397,25 @@ function mergeByRefKeepAll<T extends { ref?: string }>(primary: T[], extra: T[])
   return [...byRef.values()];
 }
 
+/** Tombstones (refs dados de baja). Dueño: `deleted-ids.ts`; aquí solo se leen. */
+export const DEMO_DELETED_IDS_KEY = "nexo-demo-deleted-ids";
+
+function readTombstoneRefs(): Set<string> {
+  const stored = readDemoJson<string[]>(DEMO_DELETED_IDS_KEY, []);
+  return new Set((Array.isArray(stored) ? stored : []).map((ref) => String(ref || "").trim()));
+}
+
 /**
  * Recupera del -bak filas personalizadas (no-semilla) que desaparecieron del primary.
- * No reinyecta borrados de filas semilla: evita impedir deletes intencionales del catálogo base.
+ * No reinyecta borrados de filas semilla ni refs dados de baja (tombstone): un préstamo
+ * eliminado no puede resucitar desde la copia.
  */
 function recoverCustomRowsFromBak<T extends { ref?: string }>(
   key: string,
   stored: T[],
   seedRefs: Set<string>,
 ): T[] {
-  const bak = readBakArray<T>(key);
+  const bak = readLiveBakArray<T>(key);
   if (!bak.length) return stored;
   if (!stored.length) return bak;
 
@@ -425,7 +440,7 @@ function readStoredLoans(): LoanRow[] | null {
   if (primary && Array.isArray(primary)) {
     if (primary.length === 0) {
       if (isVirginOpsMode()) return [];
-      const bak = readBakArray<LoanRow>(DEMO_LOANS_KEY);
+      const bak = readLiveBakArray<LoanRow>(DEMO_LOANS_KEY);
       if (bak.length > 0) return bak;
       return null;
     }
@@ -433,7 +448,7 @@ function readStoredLoans(): LoanRow[] | null {
     return recoverCustomRowsFromBak(DEMO_LOANS_KEY, primary, SEED_LOAN_REFS);
   }
   if (isVirginOpsMode()) return [];
-  const bak = readBakArray<LoanRow>(DEMO_LOANS_KEY);
+  const bak = readLiveBakArray<LoanRow>(DEMO_LOANS_KEY);
   if (bak.length > 0) return bak;
   return null;
 }
@@ -444,7 +459,7 @@ function readStoredPayments(): PaymentRow[] | null {
   if (primary && Array.isArray(primary)) {
     if (primary.length === 0) {
       if (isVirginOpsMode()) return [];
-      const bak = readBakArray<PaymentRow>(DEMO_PAYMENTS_KEY);
+      const bak = readLiveBakArray<PaymentRow>(DEMO_PAYMENTS_KEY);
       if (bak.length > 0) return bak;
       return null;
     }
@@ -452,7 +467,7 @@ function readStoredPayments(): PaymentRow[] | null {
     return recoverCustomRowsFromBak(DEMO_PAYMENTS_KEY, primary, SEED_PAYMENT_REFS);
   }
   if (isVirginOpsMode()) return [];
-  const bak = readBakArray<PaymentRow>(DEMO_PAYMENTS_KEY);
+  const bak = readLiveBakArray<PaymentRow>(DEMO_PAYMENTS_KEY);
   if (bak.length > 0) return bak;
   return null;
 }

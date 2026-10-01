@@ -2,9 +2,15 @@
  * Tombstones. Un ref borrado en este aparato no vuelve a pintarse ni a guardarse
  * aunque la nube o una caché vieja lo traigan de nuevo.
  */
-import { readDemoJson, writeDemoJson, listDeletedRouteRefs, rememberDeletedRouteRef } from "@/lib/demo-persist";
+import {
+  DEMO_DELETED_IDS_KEY,
+  readDemoJson,
+  writeDemoJson,
+  listDeletedRouteRefs,
+  rememberDeletedRouteRef,
+} from "@/lib/demo-persist";
 
-export const DEMO_DELETED_IDS_KEY = "nexo-demo-deleted-ids";
+export { DEMO_DELETED_IDS_KEY };
 
 function cleanRef(ref: string) {
   return String(ref || "").trim();
