@@ -1679,9 +1679,6 @@ export function SupervisorMobileApp({
     }, 0);
   }, [liquidaciones, paymentsWithEvidence]);
 
-  /** Saldo Nequi + saldo Banco (totales acumulados de ambos paneles). */
-  const nequiBancoSaldoTotal = nequiAcumulado + bancoAcumulado;
-
   /** Informe: caja de cada planilla según el libro del día (T ya incluye M). */
   const informeEfectivo = useMemo((): InformeEfectivo => {
     const cajaOf = (route: string) =>
@@ -1691,13 +1688,13 @@ export function SupervisorMobileApp({
     return { t: cajaOf("T"), n: cajaOf("N") };
   }, [liquidaciones]);
 
-  /** INICIO pie: caja viva de T + Nequi + Banco (misma cifra de arriba). */
+  /** INICIO pie: caja viva de T + Banco acumulado (Nequi es de A, va aparte). */
   const inicioTotalConT = useMemo(() => {
     const routeT = liquidaciones.find((row) =>
       isPlanillaCashChainSecondary(row.routeName),
     );
-    return (routeT?.enCaja ?? 0) + nequiBancoSaldoTotal;
-  }, [liquidaciones, nequiBancoSaldoTotal]);
+    return (routeT?.enCaja ?? 0) + bancoAcumulado;
+  }, [liquidaciones, bancoAcumulado]);
 
   const bancoRegisterTodayAll = useMemo(() => {
     const items = paymentsWithEvidence
@@ -5008,8 +5005,8 @@ export function SupervisorMobileApp({
             )}
             <div
               className="supervisor-caja-hero is-row is-money-lg supervisor-inicio-total"
-              title="Saldo ruta T + Nequi + Banco"
-              aria-label={`Total ruta T más Nequi y Banco: ${money(inicioTotalConT, { symbol: false })}`}
+              title="Saldo ruta T + Banco"
+              aria-label={`Total ruta T más Banco: ${money(inicioTotalConT, { symbol: false })}`}
             >
               <b>{money(inicioTotalConT, { symbol: false })}</b>
             </div>
