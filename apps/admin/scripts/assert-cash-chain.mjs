@@ -851,6 +851,16 @@ const nSrc = {
   monthCloses: [],
 };
 expect("N 26: caja = efectivo − gastos", independentRouteDay(nSrc, "N").closing, 90_000);
+// PCE-T proyectado desde su CIE de ayer (todo CIE- lo genera): no lo vuelve cobrador de la cadena.
+const nWithPce = {
+  ...nSrc,
+  assignments: [{ ...visit("V-N1", "CLI-N1", "N", D), collectorRef: YES.ref, collectorName: YES.name }],
+  planillaCashCloses: [
+    { ref: `PCE-${YES.ref}-${Y}-T`, collectorRef: YES.ref, collectorName: YES.name, date: Y, routeName: "T", openingCash: 0, closingCash: 0, closedAt: `${Y}T23:30:00.000-05:00` },
+  ],
+};
+expect("N con PCE-T proyectado y planilla solo N: sus gastos cuentan", independentRouteDay(nWithPce, "N").gastos, 10_000);
+expect("N con PCE-T proyectado: renglón de gasto en la hoja", independentRouteDayLines(independentRouteDay(nWithPce, "N")).length, 1);
 
 // ── 12. Banco: cada cobro llega a su cuenta según la ruta (A → Nequi; M/T/N → Banco) ──
 console.log("\n— Banco: destino del cobro por ruta —");

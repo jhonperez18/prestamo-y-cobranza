@@ -192,6 +192,9 @@ A y N llevan su propia caja. Un solo dueño: `lib/independent-route-cash.ts` (`i
 | Dónde vive | `routeCashAdjustments` del CIE- del día; nube: entrada `AJUSTE@A:` / `AJUSTE@N:` en `movement_refs` |
 | Qué no | `cashFloat`, ajuste de T, PCE-, libro M→T, cuotas, pagos, días pasados |
 
+- Gastos de N: cuentan en su caja si ese día el cobrador no trabaja hoja M/T (`gastosGoToChain`:
+  con planilla cargada manda la planilla). El PCE-T que se proyecta desde cualquier CIE- no lo
+  vuelve cobrador de la cadena. Candado: sección 11 («N con PCE-T proyectado»).
 - Guardado: `saveCashAdjustment` con `route` (local + cola + await nube).
 - Nube y pull: unión por ruta, gana el más reciente (`mergeRouteCashAdjustments`); ningún candado del CIE- lo borra.
 - Tarjeta del supervisor, Historial A/N y cabecera del cobrador leen la misma cifra.

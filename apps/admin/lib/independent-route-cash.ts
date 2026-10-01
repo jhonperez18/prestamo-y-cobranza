@@ -16,6 +16,7 @@
 import { businessTodayIso } from "@/lib/business-timezone";
 import { mergeRouteCashAdjustments } from "@/lib/cash-adjustment";
 import { sameRoute } from "@/lib/client-route-order";
+import { assignmentRouteName } from "@/lib/collector-dispatch-sync";
 import {
   expensesForCollectorDay,
   normalizeHistoryDate,
@@ -102,10 +103,26 @@ type RouteMovement = {
   loanRows: DayLoanDisbursementRow[];
 };
 
+/**
+ * ¿Los gastos de este cobrador van a M / T ese día? Solo si trabaja una hoja de la cadena.
+ * El PCE-T que se proyecta desde cualquier CIE- (también el de Yesid, solo N) no lo hace
+ * cobrador de la cadena: con planilla cargada manda la planilla.
+ */
+function gastosGoToChain(src: DayCashSources): boolean {
+  const date = isoOf(src.date);
+  const own = src.assignments.filter(
+    (row) => row.collectorRef === src.collectorRef && isoOf(row.dispatchDate) === date,
+  );
+  if (own.length) {
+    return own.some((row) => isPlanillaCashChainRoute(assignmentRouteName(row, src.clients)));
+  }
+  return isChainCollectorDay(src);
+}
+
 function routeMovement(src: DayCashSources, route: string): RouteMovement {
   const efectivo = routeCashCollected(src, route);
   const date = isoOf(src.date);
-  const chainCollector = isChainCollectorDay(src);
+  const chainCollector = gastosGoToChain(src);
   const ownLoans = date >= INDEPENDENT_OWN_LOANS_FROM;
   if (chainCollector && !ownLoans) {
     return { efectivo, gastos: 0, prestamos: 0, gastoLines: [], loanRows: [] };
