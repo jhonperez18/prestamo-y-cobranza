@@ -492,6 +492,9 @@ export const DAY_CLOSE_SKIP_REASON = "Cierre de jornada";
  */
 export const DECLINED_LOAN_OFFER_TODAY_REASON = "Hoy no quiere préstamo";
 
+/** Oferta Prestar ya atendida: el cliente recibió préstamo ese día (la visita queda resuelta). */
+export const LOAN_GIVEN_TODAY_REASON = "Préstamo hecho hoy";
+
 /** Fila de la lista S/N: el cobrador la envió, o quedó sin pagar al cerrar el día. */
 export function isNoPayListRow(row: DailyCollectionAssignment) {
   if (row.visitStatus !== "omitido") return false;

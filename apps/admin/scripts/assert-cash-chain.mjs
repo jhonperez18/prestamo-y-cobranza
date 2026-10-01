@@ -993,6 +993,38 @@ if (poolAdj.ok) {
   );
 }
 
+// ── 14. Prestar atendido: el cliente recibió préstamo hoy. Su visita «Prestar» queda
+//     resuelta (y cerrada si su hoja ya cerró); no desaparece para que la copia abierta
+//     de la nube no bloquee el sello de la jornada (CIE-).
+console.log("\n— Prestar atendido no bloquea el cierre —");
+const { syncPermanentRoutePlanilla } = await import("@/lib/route-planilla");
+const { collectorDayVisitsFullyClosed } = await import("@/lib/collector-dispatch-sync");
+const pDate = "2026-09-30";
+const pClients = [
+  { ref: "CLI-P1", name: "Flaca", lastName: "M", route: "M", status: "Activo", routeOrder: 1 },
+  { ref: "CLI-P2", name: "Sady", lastName: "M", route: "M", status: "Activo", routeOrder: 2 },
+];
+const pRoutes = [{ ref: "RUT-M", name: "M", collectorRef: COB.ref, collector: COB.name, status: "Activa", stops: [] }];
+const pLoans = [
+  { ref: "P-P1", clientRef: "CLI-P1", client: "Flaca M", date: "30/09/2026", capital: 300_000, total: 360_000, installment: 15_000, status: "Revisar" },
+];
+const closedAt = `${pDate}T21:41:00.000Z`;
+const pExisting = [
+  visit(`${pDate}:CLI-P1:prestar`, "CLI-P1", "M", pDate, { visitStatus: "pendiente", awaitingLoan: true, chargeLabel: "Prestar" }),
+  visit(`${pDate}:CLI-P2:prestar`, "CLI-P2", "M", pDate, { visitStatus: "omitido", awaitingLoan: true, skipReason: "Hoy no quiere préstamo", dayClosedAt: closedAt }),
+];
+const pSynced = syncPermanentRoutePlanilla(pDate, pRoutes, pClients, pLoans, [COB], pExisting, []);
+const pRow = pSynced.assignments.find((r) => r.itemId === `${pDate}:CLI-P1:prestar`);
+expect("Prestar atendido: la visita no desaparece", Boolean(pRow), true);
+expect("Prestar atendido: queda resuelta", pRow?.visitStatus ?? null, "omitido");
+expect("Prestar atendido: motivo", pRow?.skipReason ?? null, "Préstamo hecho hoy");
+expect("Prestar atendido: hoja M ya cerrada → cerrada con ella", pRow?.dayClosedAt ?? null, closedAt);
+expect(
+  "Prestar atendido: la jornada puede sellarse",
+  collectorDayVisitsFullyClosed(pSynced.assignments, COB.ref, pDate),
+  true,
+);
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

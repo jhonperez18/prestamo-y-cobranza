@@ -3,6 +3,7 @@ import {
   assignmentFromItem,
   buildDispatchRoute,
   DECLINED_LOAN_OFFER_TODAY_REASON,
+  LOAN_GIVEN_TODAY_REASON,
   upsertDispatchRoute,
 } from "@/lib/collector-dispatch-sync";
 import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
@@ -454,12 +455,46 @@ export function syncPermanentRoutePlanilla(
     }
   }
 
+  const closedAtByCollectorRoute = new Map<string, string>();
+  for (const row of existing) {
+    if (row.dispatchDate !== date || !row.dayClosedAt) continue;
+    const key = `${row.collectorRef}|${String(row.clientRoute || "").trim()}`;
+    if (!closedAtByCollectorRoute.has(key)) closedAtByCollectorRoute.set(key, row.dayClosedAt);
+  }
+
   // Visitas ya cobradas/omitidas del día abierto: no se pierden si el préstamo
   // ya no genera cuota (saldo 0) o el itemId cambió al regenerar.
   // Si el PG fue anulado, no se reinyecta como cobrado.
   for (const prev of existing) {
     if (prev.dispatchDate !== date) continue;
     if (prev.dayClosedAt) continue;
+    // Prestar atendido: el cliente ya recibió préstamo. La visita queda resuelta
+    // (y cerrada si su hoja ya cerró); si se descarta, la copia abierta de la nube
+    // vuelve por el pull y deja la jornada sin CIE-.
+    if (
+      isAssignmentAwaitingLoan(prev) &&
+      prev.visitStatus !== "omitido" &&
+      prev.visitStatus !== "cobrado" &&
+      (index.activeByClient.get(prev.clientRef) ?? []).some((loan) => owesFor(loan) > 0)
+    ) {
+      const routeClosedAt = closedAtByCollectorRoute.get(
+        `${prev.collectorRef}|${String(prev.clientRoute || "").trim()}`,
+      );
+      builtMap.set(prev.itemId, {
+        ...prev,
+        loanRef: "",
+        amountDue: 0,
+        alertCount: 0,
+        awaitingLoan: true,
+        visitStatus: "omitido" as const,
+        skipReason: LOAN_GIVEN_TODAY_REASON,
+        paymentRef: undefined,
+        dayClosedAt: routeClosedAt,
+        dispatched: true,
+        dispatchedAt: prev.dispatchedAt ?? at,
+      });
+      continue;
+    }
     const linkedRef = (prev.paymentRef || "").trim();
     const linkedPay = linkedRef ? livePaymentsByRef.get(linkedRef) : undefined;
     const paymentStillLive =

@@ -216,6 +216,14 @@ Un solo dueño: `lib/digital-pools.ts` (`digitalPoolBalances`).
 - Informe (Banco) y pie de INICIO (caja T + Banco) leen `digitalPoolBalances().banco`. NEQUI no entra.
 - Candado: `assert-cash-chain.mjs` sección 13.
 
+## Prestar atendido no bloquea el cierre
+
+Si un cliente con visita «Prestar» recibe préstamo ese día, la visita **no desaparece**:
+queda `omitido` con motivo «Préstamo hecho hoy» (`LOAN_GIVEN_TODAY_REASON`), y si su hoja
+ya cerró, queda cerrada con ella (`syncPermanentRoutePlanilla`). Si se descartara, la copia
+abierta de la nube volvía por el pull y la jornada quedaba sin CIE-. No entra a N/P.
+Candado: `assert-cash-chain.mjs` sección 14.
+
 ## N/P por ruta (INICIO)
 
 Cada ruta tiene su propio **N/P** (junto a Historial en la ficha).
