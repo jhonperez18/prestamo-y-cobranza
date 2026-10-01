@@ -905,6 +905,94 @@ expect("Banco · M no efectivo (banco) → Banco", accountOf("PG-M2"), "BC");
 expect("Banco · N no efectivo → Banco", accountOf("PG-N1"), "BC");
 expect("Banco · M efectivo → principal", accountOf("PG-M3"), "EF");
 
+// ── 13. Cuadre del total acumulado BANCO / NEQUI: con todas las rutas cerradas hoy.
+//     El real ancla el pool; desde mañana suma sobre él. Cajas, CIE y cadena intactos.
+console.log("\n— Cuadre BANCO / NEQUI —");
+const {
+  commitDigitalPoolAdjustment,
+  digitalPoolAdjustWindow,
+  digitalPoolBalances,
+} = await import("@/lib/digital-pools");
+const poolPay = (ref, loanRef, method, date) => ({
+  ...bankPay(ref, loanRef, method),
+  paidDate: date,
+  collectorRef: COB.ref,
+  collector: COB.name,
+});
+const poolSrc = {
+  payments: [
+    poolPay("PG-PA", "L-A", "banco", D),
+    poolPay("PG-PM", "L-M", "nequi", D),
+    poolPay("PG-PE", "L-M", "efectivo", D),
+  ],
+  loans: bankLoans,
+  clients: bankClients,
+  collectors: [COB],
+  collectorRefs: [COB.ref],
+  dayCloses: afterT.dayCloses,
+};
+const pools0 = digitalPoolBalances(poolSrc);
+expect("Pool: lo digital de M va a Banco (aunque diga nequi)", pools0.banco, 10_000);
+expect("Pool: lo digital de A va a Nequi (aunque diga banco)", pools0.nequi, 10_000);
+expect(
+  "Pool: con una ruta sin cerrar no se cuadra",
+  digitalPoolAdjustWindow([{ ref: COB.ref }, { ref: "COB-X", name: "Otro" }], afterT.dayCloses, adjNow).open,
+  false,
+);
+expect("Pool: todas cerradas → se cuadra", digitalPoolAdjustWindow([{ ref: COB.ref }], afterT.dayCloses, adjNow).open, true);
+const poolAdj = commitDigitalPoolAdjustment({
+  pool: "banco",
+  real: 500_000,
+  reason: "Saldo real del banco",
+  by: "Supervisor",
+  calculated: pools0.banco,
+  collectors: [{ ref: COB.ref }],
+  dayCloses: afterT.dayCloses,
+  now: adjNow,
+});
+expect("Pool: se registra", poolAdj.ok, true);
+if (poolAdj.ok) {
+  const adjCie = poolAdj.records[0];
+  expect("Pool: CIE cash_float intacto (cadena)", adjCie.cashFloat, cieAfterT26?.cashFloat ?? null);
+  expect("Pool: ajuste de T intacto", adjCie.cashAdjustment ?? null, cieAfterT26?.cashAdjustment ?? null);
+  const poolsToday = digitalPoolBalances({ ...poolSrc, dayCloses: poolAdj.dayCloses });
+  expect("Pool: hoy Banco = real", poolsToday.banco, 500_000);
+  expect("Pool: Nequi no se toca", poolsToday.nequi, 10_000);
+  expect(
+    "Pool: calculado (sin el ajuste de hoy) = sistema",
+    digitalPoolBalances({ ...poolSrc, dayCloses: poolAdj.dayCloses }, D).banco,
+    10_000,
+  );
+  const poolsNext = digitalPoolBalances({
+    ...poolSrc,
+    dayCloses: poolAdj.dayCloses,
+    payments: [...poolSrc.payments, poolPay("PG-PM2", "L-M", "nequi", "2026-09-27")],
+  });
+  expect("Pool: mañana = real + lo nuevo", poolsNext.banco, 510_000);
+  const mNextPool = openingCashForChainedPlanilla({
+    collectorRef: COB.ref,
+    routeName: "M",
+    date: "2026-09-27",
+    records: afterT.planillaCashCloses,
+    monthCloses: [],
+    dayCloses: poolAdj.dayCloses,
+  });
+  expect("Pool: Inicial M 27 sigue siendo el CIE-26", mNextPool.kind === "chain" ? mNextPool.opening : null, 3_084_000);
+  expect(
+    "Pool: saldo propio de A intacto",
+    independentRouteDay({ ...base, dayCloses: poolAdj.dayCloses }, "A").closing,
+    aDay26.closing,
+  );
+  const poolBack = splitCashAdjustmentRefs(
+    joinCashAdjustmentRefs([], adjCie.cashAdjustment, adjCie.routeCashAdjustments),
+  );
+  expect(
+    "Pool: viaja a la nube",
+    poolBack.routeCashAdjustments?.find((r) => r.route === "POOL-BANCO")?.real ?? null,
+    500_000,
+  );
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

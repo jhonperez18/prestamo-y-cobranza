@@ -10,6 +10,8 @@ type Props = {
   /** Ajuste ya hecho hoy (re-editar corrige el mismo renglón). */
   currentReal?: number;
   currentReason?: string;
+  /** Encabezado propio (BANCO / NEQUI); sin él, el texto del ajuste de T. */
+  intro?: string;
   onSubmit: (real: number, reason: string) => Promise<boolean>;
   onCancel: () => void;
 };
@@ -23,6 +25,7 @@ export function CashAdjustForm({
   calculated,
   currentReal,
   currentReason,
+  intro,
   onSubmit,
   onCancel,
 }: Props) {
@@ -65,8 +68,8 @@ export function CashAdjustForm({
       }}
     >
       <p className="supervisor-mobile-subhead">
-        Ajuste de saldo · T · {dateLabel}. Saldo del cierre: {money(calculated)}. El saldo real
-        pasa a ser el Inicial de M de mañana.
+        {intro ??
+          `Ajuste de saldo · T · ${dateLabel}. Saldo del cierre: ${money(calculated)}. El saldo real pasa a ser el Inicial de M de mañana.`}
       </p>
       {error ? <p className="supervisor-nuevo-msg">{error}</p> : null}
       <label className="quick-loan-field">

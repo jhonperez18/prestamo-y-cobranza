@@ -71,7 +71,11 @@ import {
 import { commitVoidPayment } from "@/lib/commit-void-payment";
 import { commitLatePayment, type LatePaymentDraft } from "@/lib/commit-late-payment";
 import { routeCollectorCashTarget } from "@/lib/route-collector-cash";
-import { saveCashAdjustment } from "@/lib/save-cash-adjustment";
+import {
+  saveCashAdjustment,
+  saveDigitalPoolAdjustment,
+  type DigitalPoolAdjustRequest,
+} from "@/lib/save-cash-adjustment";
 import type { CashAdjustmentRequest } from "@/lib/commit-cash-adjustment";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror, flushCatalogMirrorQueues } from "@/lib/supabase/catalog-mirror";
@@ -2491,6 +2495,20 @@ export function useWorkspace({
     return true;
   }
 
+  async function adjustDigitalPoolFromMobile(input: DigitalPoolAdjustRequest) {
+    const saved = await saveDigitalPoolAdjustment({
+      ...input,
+      by: adminName || session.name || session.username || "admin",
+    });
+    if (!saved.ok) {
+      onToast(saved.error);
+      return false;
+    }
+    setDayCloses(saved.dayCloses);
+    onToast(saved.message);
+    return true;
+  }
+
   function selectClientLoan(ref: string) {
     setOpenLoanRef(ref);
     setLoanTab("ficha");
@@ -2707,6 +2725,7 @@ export function useWorkspace({
     panelPayTarget,
     registerLatePayment,
     adjustTCashFromMobile,
+    adjustDigitalPoolFromMobile,
     latePayOpen,
     setLatePayOpen,
     startLatePay,

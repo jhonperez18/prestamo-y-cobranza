@@ -23,6 +23,13 @@ import {
   writeDemoJson,
 } from "@/lib/demo-persist";
 import {
+  commitDigitalPoolAdjustment,
+  DIGITAL_POOL_LABEL,
+  digitalPoolAdjustWindow,
+  digitalPoolBalances,
+  type DigitalPool,
+} from "@/lib/digital-pools";
+import {
   commitRouteCashAdjustment,
   independentRouteDay,
   routeCashAdjustmentWindow,
@@ -123,6 +130,67 @@ async function saveRouteCashAdjustment(
     message: cloud
       ? `Saldo de ${input.route} ajustado a ${real}. Es el Inicial de ${input.route} de mañana.`
       : `Saldo de ${input.route} ajustado a ${real} en este aparato. La nube no lo confirmó: queda en cola y se reintenta.`,
+  };
+}
+
+export type SaveDigitalPoolAdjustmentInput = {
+  pool: DigitalPool;
+  real: number;
+  reason: string;
+  by: string;
+  /** Cobradores de las rutas del supervisor (todos deben haber cerrado hoy). */
+  collectors: Array<{ ref: string; name?: string }>;
+};
+
+export type DigitalPoolAdjustRequest = Omit<SaveDigitalPoolAdjustmentInput, "by">;
+
+export type SaveDigitalPoolAdjustmentResult =
+  | { ok: true; dayCloses: CollectorDayCloseRecord[]; cloud: boolean; message: string }
+  | { ok: false; error: string };
+
+/** Cuadre del total acumulado de BANCO / NEQUI: commit → local → await nube (cada CIE- de hoy). */
+export async function saveDigitalPoolAdjustment(
+  input: SaveDigitalPoolAdjustmentInput,
+): Promise<SaveDigitalPoolAdjustmentResult> {
+  const dayCloses = readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []);
+  const adjustWindow = digitalPoolAdjustWindow(input.collectors, dayCloses);
+  if (!adjustWindow.open) return { ok: false, error: adjustWindow.reason };
+
+  const calculated = digitalPoolBalances(
+    {
+      payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []),
+      loans: readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []),
+      clients: readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []),
+      collectors: readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, []),
+      collectorRefs: input.collectors.map((row) => row.ref),
+      dayCloses,
+    },
+    adjustWindow.date,
+  )[input.pool];
+
+  const result = commitDigitalPoolAdjustment({
+    pool: input.pool,
+    real: input.real,
+    reason: input.reason,
+    by: input.by,
+    calculated,
+    collectors: input.collectors,
+    dayCloses,
+  });
+  if (!result.ok) return result;
+
+  writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, result.dayCloses);
+  const mirrored = await Promise.all(result.records.map((record) => mirrorAdjustedClose(record)));
+  const cloud = mirrored.every(Boolean);
+  const label = DIGITAL_POOL_LABEL[input.pool];
+  const real = money(input.real);
+  return {
+    ok: true,
+    dayCloses: result.dayCloses,
+    cloud,
+    message: cloud
+      ? `Total acumulado ${label} cuadrado en ${real}. Desde mañana suma sobre ese saldo.`
+      : `Total acumulado ${label} cuadrado en ${real} en este aparato. La nube no lo confirmó: queda en cola y se reintenta.`,
   };
 }
 

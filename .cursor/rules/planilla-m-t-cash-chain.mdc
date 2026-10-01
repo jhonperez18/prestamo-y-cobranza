@@ -201,6 +201,21 @@ A y N llevan su propia caja. Un solo dueño: `lib/independent-route-cash.ts` (`i
  entero o el arrastre de M en una pantalla de A.
 - Candado: `assert-cash-chain.mjs` sección 11.
 
+## Total acumulado BANCO / NEQUI (fuera de la cadena)
+
+Un solo dueño: `lib/digital-pools.ts` (`digitalPoolBalances`).
+
+| Pieza | Regla |
+| --- | --- |
+| Qué suma | Cobros no efectivo por **ruta del cliente**: A → NEQUI; M / T / N → BANCO (no el método guardado). Resta préstamos desembolsados desde Nequi en el pool de la ruta del cliente |
+| Cuadre | Supervisor / admin → botón BANCO o NEQUI → tocar «Total acumulado». Solo hoy, con **todas** las rutas cerradas (CIE- de cada cobrador), antes de medianoche |
+| Dónde vive | `routeCashAdjustments` de los CIE- de hoy, ruta `POOL-BANCO` / `POOL-NEQUI`; nube: `AJUSTE@POOL-…:` |
+| Después | Saldo = real del último cuadre + movimientos de los días siguientes |
+| Qué no | Cobros, préstamos, cajas, `cashFloat`, ajuste de T, saldo A/N, días pasados |
+
+- Informe (Banco) y pie de INICIO (caja T + Banco) leen `digitalPoolBalances().banco`. NEQUI no entra.
+- Candado: `assert-cash-chain.mjs` sección 13.
+
 ## N/P por ruta (INICIO)
 
 Cada ruta tiene su propio **N/P** (junto a Historial en la ficha).

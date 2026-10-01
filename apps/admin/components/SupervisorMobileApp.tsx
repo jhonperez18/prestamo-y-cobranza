@@ -77,11 +77,18 @@ import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import {
-  digitalPoolsByRoute,
   loanDisbursementSource,
   loanDisbursementSourceLabel,
   paymentsForCollectorIncludingOffice,
 } from "@/lib/nequi-pool";
+import {
+  DIGITAL_POOL_LABEL,
+  digitalPoolAdjustWindow,
+  digitalPoolBalances,
+  todayDigitalPoolAdjustment,
+  type DigitalPool,
+} from "@/lib/digital-pools";
+import type { DigitalPoolAdjustRequest } from "@/lib/save-cash-adjustment";
 import { suppressGhostClick } from "@/lib/suppress-ghost-click";
 import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import {
@@ -212,6 +219,8 @@ type Props = {
   onSaveMiscPayment?: (payment: MiscPayment) => void;
   /** Ajuste de saldo real en T o en A/N (tras cerrar, el mismo día). */
   onAdjustTCash?: (input: CashAdjustmentRequest) => Promise<boolean>;
+  /** Cuadre del total acumulado BANCO / NEQUI (todas las rutas cerradas hoy). */
+  onAdjustDigitalPool?: (input: DigitalPoolAdjustRequest) => Promise<boolean>;
   onLogout?: () => void;
 };
 
@@ -978,6 +987,7 @@ export function SupervisorMobileApp({
   onAttachPaymentEvidence,
   onSaveMiscPayment,
   onAdjustTCash,
+  onAdjustDigitalPool,
   onLogout,
 }: Props) {
   const today = todayIso();
@@ -1001,6 +1011,8 @@ export function SupervisorMobileApp({
   const [cajaHistoryDayIso, setCajaHistoryDayIso] = useState<string | null>(null);
   /** Historial · T: formulario de ajuste de saldo real abierto (cobrador del CIE-). */
   const [cashAdjustCollectorRef, setCashAdjustCollectorRef] = useState<string | null>(null);
+  /** BANCO / NEQUI: cuadre del total acumulado abierto. */
+  const [poolAdjustOpen, setPoolAdjustOpen] = useState<DigitalPool | null>(null);
   const [snDay, setSnDay] = useState<string | null>(null);
   /** Registro Nequi de hoy filtrado por ruta (1 / 1.1 / 2). */
   const [nequiRegistroRoute, setNequiRegistroRoute] = useState<string | null>(null);
@@ -1649,21 +1661,96 @@ export function SupervisorMobileApp({
     </ul>
   );
 
-  /** Acumulados digitales por ruta del cliente: BANCO = M / T / N, NEQUI = A. */
-  const digitalPools = useMemo(() => {
-    const refs = liquidaciones
-      .map((row) => row.collectorRef)
-      .filter((ref): ref is string => Boolean(ref));
-    return digitalPoolsByRoute({
-      payments: paymentsWithEvidence,
-      loans,
-      clients,
-      collectors,
-      collectorRefs: refs,
-    });
-  }, [liquidaciones, collectors, paymentsWithEvidence, loans, clients]);
+  /** Cobradores de las rutas (el cuadre BANCO / NEQUI espera que todos cierren hoy). */
+  const poolCollectors = useMemo(
+    () =>
+      liquidaciones
+        .filter((row) => Boolean(row.collectorRef))
+        .map((row) => ({ ref: row.collectorRef, name: row.collectorName })),
+    [liquidaciones],
+  );
+
+  /** Acumulados digitales por ruta del cliente: BANCO = M / T / N, NEQUI = A (con su cuadre). */
+  const digitalPools = useMemo(
+    () =>
+      digitalPoolBalances({
+        payments: paymentsWithEvidence,
+        loans,
+        clients,
+        collectors,
+        collectorRefs: poolCollectors.map((row) => row.ref),
+        dayCloses,
+      }),
+    [poolCollectors, collectors, paymentsWithEvidence, loans, clients, dayCloses],
+  );
   const bancoPanelAcumulado = digitalPools.banco;
   const nequiPanelAcumulado = digitalPools.nequi;
+
+  const poolAdjustWindow = useMemo(
+    () => digitalPoolAdjustWindow(poolCollectors, dayCloses),
+    [poolCollectors, dayCloses],
+  );
+
+  async function submitPoolAdjust(pool: DigitalPool, real: number, reason: string) {
+    if (!onAdjustDigitalPool) return false;
+    const ok = await onAdjustDigitalPool({ pool, real, reason, collectors: poolCollectors });
+    if (ok) setPoolAdjustOpen(null);
+    return ok;
+  }
+
+  function renderPoolTotal(pool: DigitalPool) {
+    const value = pool === "banco" ? bancoPanelAcumulado : nequiPanelAcumulado;
+    const tone = pool === "banco" ? "is-banco" : "is-nequi";
+    const label = DIGITAL_POOL_LABEL[pool];
+    const adjustment = todayDigitalPoolAdjustment(dayCloses, pool);
+    const editable = Boolean(onAdjustDigitalPool);
+    return (
+      <>
+        <div className="supervisor-day-boards" aria-label={`Total ${label} acumulado`}>
+          <div
+            className={`supervisor-day-board ${tone} supervisor-day-board-wide is-total-row`}
+            {...(editable
+              ? {
+                  role: "button",
+                  tabIndex: 0,
+                  title: `Cuadrar total acumulado ${label}`,
+                  onClick: () => setPoolAdjustOpen((prev) => (prev === pool ? null : pool)),
+                }
+              : {})}
+          >
+            <div className="supervisor-day-board-copy">
+              <span>Total acumulado</span>
+              {editable ? <em>Tocar para cuadrar</em> : null}
+            </div>
+            <b>{money(value, { symbol: false })}</b>
+          </div>
+        </div>
+        {adjustment ? (
+          <p className="supervisor-mobile-subhead">
+            Cuadrado hoy por {adjustment.by || "—"}: calculado{" "}
+            {money(adjustment.calculated, { symbol: false })} → real{" "}
+            {money(adjustment.real, { symbol: false })}
+            {adjustment.reason ? ` · ${adjustment.reason}` : ""}
+          </p>
+        ) : null}
+        {poolAdjustOpen === pool ? (
+          poolAdjustWindow.open ? (
+            <CashAdjustForm
+              dateLabel={todayDisplay}
+              calculated={adjustment?.calculated ?? value}
+              currentReal={adjustment?.real}
+              currentReason={adjustment?.reason}
+              intro={`Cuadre del total acumulado ${label} · ${todayDisplay}. Saldo del sistema: ${money(adjustment?.calculated ?? value)}. Desde mañana suma sobre el saldo real. No toca cobros ni cajas.`}
+              onSubmit={(real, reason) => submitPoolAdjust(pool, real, reason)}
+              onCancel={() => setPoolAdjustOpen(null)}
+            />
+          ) : (
+            <p className="supervisor-nuevo-msg">{poolAdjustWindow.reason}</p>
+          )
+        ) : null}
+      </>
+    );
+  }
 
   /** Suma Nequi solo de hoy (los cobradores de la lista). */
   const nequiHoyTotal = totals.cobradoNequi;
@@ -3947,14 +4034,7 @@ export function SupervisorMobileApp({
         </section>
       ) : view === "nequi" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
-          <div className="supervisor-day-boards" aria-label="Total Nequi acumulado">
-            <div className="supervisor-day-board is-nequi supervisor-day-board-wide is-total-row">
-              <div className="supervisor-day-board-copy">
-                <span>Total acumulado</span>
-              </div>
-              <b>{money(nequiPanelAcumulado, { symbol: false })}</b>
-            </div>
-          </div>
+          {renderPoolTotal("nequi")}
 
           <h3>Por cobrador</h3>
           {liquidaciones.length === 0 ? (
@@ -4052,14 +4132,7 @@ export function SupervisorMobileApp({
         </section>
       ) : view === "banco" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
-          <div className="supervisor-day-boards" aria-label="Total Banco acumulado">
-            <div className="supervisor-day-board is-banco supervisor-day-board-wide is-total-row">
-              <div className="supervisor-day-board-copy">
-                <span>Total acumulado</span>
-              </div>
-              <b>{money(bancoPanelAcumulado, { symbol: false })}</b>
-            </div>
-          </div>
+          {renderPoolTotal("banco")}
 
           <h3>Por cobrador</h3>
           {liquidaciones.length === 0 ? (

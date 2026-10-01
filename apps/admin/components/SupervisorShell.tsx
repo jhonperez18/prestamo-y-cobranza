@@ -80,7 +80,11 @@ import {
 import { mirrorAutoDayCloseToCloud } from "@/lib/mirror-auto-day-close";
 import type { MiscPayment } from "@/lib/misc-payments";
 import type { CashAdjustmentRequest } from "@/lib/commit-cash-adjustment";
-import { saveCashAdjustment } from "@/lib/save-cash-adjustment";
+import {
+  saveCashAdjustment,
+  saveDigitalPoolAdjustment,
+  type DigitalPoolAdjustRequest,
+} from "@/lib/save-cash-adjustment";
 
 type Props = {
   session: AppSession;
@@ -494,6 +498,20 @@ export function SupervisorShell({ session, onLogout }: Props) {
     return true;
   }
 
+  async function adjustDigitalPoolFromMobile(input: DigitalPoolAdjustRequest) {
+    const saved = await saveDigitalPoolAdjustment({
+      ...input,
+      by: supervisor?.name || session.name || session.username || "supervisor",
+    });
+    if (!saved.ok) {
+      showToast(saved.error);
+      return false;
+    }
+    setDayCloses(saved.dayCloses);
+    showToast(saved.message);
+    return true;
+  }
+
   function attachPaymentEvidence(paymentRef: string, evidence: PaymentEvidenceRef[]) {
     const ref = paymentRef.trim();
     if (!ref || !evidence.length) return;
@@ -557,6 +575,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
         onAttachPaymentEvidence={attachPaymentEvidence}
         onSaveMiscPayment={saveMiscPaymentFromMobile}
         onAdjustTCash={adjustTCashFromMobile}
+        onAdjustDigitalPool={adjustDigitalPoolFromMobile}
         onLogout={onLogout}
       />
       {toastNode}
