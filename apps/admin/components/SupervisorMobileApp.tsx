@@ -1688,7 +1688,7 @@ export function SupervisorMobileApp({
       liquidaciones
         .filter((row) => sameRoute(row.routeName, route))
         .reduce((sum, row) => sum + (row.enCaja ?? 0), 0);
-    return { m: cajaOf("M"), t: cajaOf("T"), n: cajaOf("N") };
+    return { t: cajaOf("T"), n: cajaOf("N") };
   }, [liquidaciones]);
 
   /** INICIO pie: caja viva de T + Nequi + Banco (misma cifra de arriba). */

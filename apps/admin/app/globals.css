@@ -5671,9 +5671,15 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
-    .supervisor-liq-table.is-informe tbody tr.is-strong > td {
+    .supervisor-liq-table.is-informe tbody tr.is-total > td {
+      font-weight: 700;
+      color: #0f3d2e;
+      border-bottom: 2px solid #9fbfae;
+    }
+    .supervisor-liq-table.is-informe tbody tr.is-grand > td {
       font-weight: 800;
       color: #0f3d2e;
+      background: #c9ddd0;
     }
     .supervisor-liq-table.is-informe tbody tr.is-sub > td.is-detalle {
       padding-left: 18px !important;
