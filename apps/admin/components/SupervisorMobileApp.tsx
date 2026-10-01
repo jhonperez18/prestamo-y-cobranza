@@ -1747,10 +1747,11 @@ export function SupervisorMobileApp({
   /** «Cobrado hoy»: A cobra por Nequi (valor `banco`); M, T y N por Banco (valor `nequi`). Con plata del otro, se muestra igual. */
   const openRouteIsA = openRoute ? sameRoute(openRoute.routeName, "A") : false;
   /** A cobra solo Efectivo y Nequi: lo que no es efectivo se muestra en un solo recuadro Nequi. */
+  /** Digital por ruta: A = cajita Nequi; M / T / N = cajita Banco (nunca las dos). */
   const routeMeansShowNequiValue = !openRouteIsA;
-  const routeMeansShowBancoValue = openRouteIsA || (openRoute?.cobradoBanco ?? 0) > 0;
-  const routeNequiBoxAmount =
-    (openRoute?.cobradoBanco ?? 0) + (openRouteIsA ? openRoute?.cobradoNequi ?? 0 : 0);
+  const routeMeansShowBancoValue = openRouteIsA;
+  const routeDigitalAmount = (openRoute?.cobradoBanco ?? 0) + (openRoute?.cobradoNequi ?? 0);
+  const routeNequiBoxAmount = routeDigitalAmount;
   const routeNequiBoxMethod: PaymentMethod | null =
     openRouteIsA && (openRoute?.cobradoNequi ?? 0) > 0 ? null : "banco";
 
@@ -2364,11 +2365,11 @@ export function SupervisorMobileApp({
   ]);
 
   const historyDayShowNequiValue = !openRouteIsA;
-  const historyDayShowBancoValue =
-    openRouteIsA || (openRouteHistoryDayCuadre?.cobradoBanco ?? 0) > 0;
-  const historyDayNequiBoxAmount =
+  const historyDayShowBancoValue = openRouteIsA;
+  const historyDayDigitalAmount =
     (openRouteHistoryDayCuadre?.cobradoBanco ?? 0) +
-    (openRouteIsA ? openRouteHistoryDayCuadre?.cobradoNequi ?? 0 : 0);
+    (openRouteHistoryDayCuadre?.cobradoNequi ?? 0);
+  const historyDayNequiBoxAmount = historyDayDigitalAmount;
   /** Cierre del día de T: lo propio de T arriba; totales M+T en «Lo que cobró». */
   const historyDayChainT = openRouteCajaHistoryIsT ? openRouteHistoryChainDay : null;
   const historyDayMeansCount =
@@ -3463,7 +3464,7 @@ export function SupervisorMobileApp({
                     {historyDayShowNequiValue ? (
                       <div className="is-mean is-pay-banco">
                         <span>{openRouteCajaHistoryIsT ? "Banco M+T" : "Banco"}</span>
-                        <b>{money(openRouteHistoryDayCuadre.cobradoNequi)}</b>
+                        <b>{money(historyDayDigitalAmount)}</b>
                       </div>
                     ) : null}
                     {historyDayShowBancoValue ? (
@@ -3622,7 +3623,7 @@ export function SupervisorMobileApp({
                       aria-label="Ver cobros Banco del día"
                     >
                       <span>Banco</span>
-                      <b>{money(openRoute.cobradoNequi, { symbol: false })}</b>
+                      <b>{money(routeDigitalAmount, { symbol: false })}</b>
                     </button>
                   ) : null}
                   {routeMeansShowBancoValue ? (
