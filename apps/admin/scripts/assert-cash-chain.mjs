@@ -1193,6 +1193,66 @@ expect(
 expect("Filas de cola sin ref: detectadas", kinds(health({ queue: { ...hQueueOk, invalidRows: 2 } })), "queue_invalid_rows");
 expect("Misma inconsistencia = misma firma", health({ assignments: withoutR3 }).signature, health({ assignments: withoutR3 }).signature);
 
+// ── 18. Gasto del cobrador: nunca se pierde en silencio. La cola solo suelta lo que la nube
+//     confirmó (no lo encolado durante un flush), sin keepalive y sin borrar colas por espacio.
+console.log("\n— Gasto: la cola no pierde lo que no subió —");
+{
+  const store = new Map([["nexo-demo-virgin-ops-v1", "1"]]);
+  let quotaKey = "";
+  globalThis.window = {
+    localStorage: {
+      get length() { return store.size; },
+      key: (i) => [...store.keys()][i] ?? null,
+      getItem: (k) => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => {
+        if (k === quotaKey) throw new DOMException("lleno", "QuotaExceededError");
+        store.set(k, String(v));
+      },
+      removeItem: (k) => store.delete(k),
+    },
+    dispatchEvent: () => true,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  };
+  const Q_EXP = "nexo-demo-ops-day-expenses-queue";
+  const Q_CIE = "nexo-demo-ops-day-closes-queue";
+  const { mirrorDayExpenseNow, flushOpsMirrorQueues } = await import("@/lib/supabase/ops-mirror");
+  const { writeDemoJson, DEMO_COLLECTOR_DAY_EXPENSES_KEY } = await import("@/lib/demo-persist");
+  const gas = {
+    ref: "GAS-COB-1-2026-10-01", collectorRef: "COB-1", collectorName: "Yesid", date: "2026-10-01",
+    routeRef: "RUT-N", expenses: [{ id: "almuerzo", label: "Almuerzo", category: "almuerzo", amount: 9000 }],
+    expensesTotal: 9000, updatedAt: "2026-10-01T20:00:00.000Z",
+  };
+  const queued = (key) => JSON.parse(store.get(key) ?? "[]").map((r) => r.ref).join(",");
+  let keepalive = false;
+  let expenseNet = "down";
+  let midFlush = null;
+  globalThis.fetch = async (_url, init) => {
+    if (init?.keepalive) keepalive = true;
+    const body = JSON.parse(init.body);
+    if (body.kind === "day_close" && !midFlush) midFlush = mirrorDayExpenseNow(gas);
+    if (body.kind === "day_expense" && expenseNet === "down") throw new TypeError("Failed to fetch");
+    return { ok: true, status: 200, json: async () => ({ ok: true }) };
+  };
+
+  store.set(Q_CIE, JSON.stringify([{ ref: "CIE-COB-1-2026-09-30" }]));
+  await flushOpsMirrorQueues();
+  expect("Gasto sin red encolado durante un flush: sigue en cola", queued(Q_EXP), gas.ref);
+  expect("Envío directo sin red: avisa que no llegó", await midFlush, false);
+  expect("CIE confirmado por la nube: sale de cola", queued(Q_CIE), "");
+
+  expenseNet = "up";
+  expect("Con red: el gasto confirma nube", await mirrorDayExpenseNow(gas), true);
+  expect("Confirmado: sale de cola", queued(Q_EXP), "");
+  expect("Envíos a la nube sin keepalive", keepalive, false);
+
+  store.set(Q_EXP, JSON.stringify([gas]));
+  quotaKey = DEMO_COLLECTOR_DAY_EXPENSES_KEY;
+  expect("Aparato lleno: la escritura avisa que falló", writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, [gas]), false);
+  expect("Aparato lleno: la cola de subida no se borra", queued(Q_EXP), gas.ref);
+  delete globalThis.window;
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

@@ -284,22 +284,27 @@ export function freeDemoStorageQuota() {
   freeDemoMirrorQueues();
 }
 
-export function writeDemoJson(key: string, value: unknown) {
-  if (typeof window === "undefined") return;
-  const steps = [() => undefined, freeDemoBackups, freeDemoMirrorQueues];
+/**
+ * true = quedó en el aparato. Con el cupo lleno solo se sueltan copias -bak:
+ * las colas de subida guardan lo que aún no llegó a la nube y no se borran por espacio.
+ */
+export function writeDemoJson(key: string, value: unknown): boolean {
+  if (typeof window === "undefined") return false;
+  const steps = [() => undefined, freeDemoBackups];
   for (const free of steps) {
     try {
       free();
       writeDemoJsonOnce(key, value);
-      return;
+      return true;
     } catch (error) {
       if (!isQuotaError(error)) {
         console.error("demo-persist", key, error);
-        return;
+        return false;
       }
     }
   }
   console.error("demo-persist", key, "sin espacio en el aparato: no se guardó");
+  return false;
 }
 
 /** La foto no entra a localStorage. El cobro sí: monto, fecha, método, ref. */

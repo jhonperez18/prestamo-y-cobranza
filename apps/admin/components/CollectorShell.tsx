@@ -60,14 +60,13 @@ import {
 import {
   applyDayCloseRecordsToAssignments,
   appendCashDisbursementExpense,
-  buildDayExpenseDraft,
   buildMonthCloseRecord,
-  upsertDayExpenseDraft,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
 import { sealCollectorDay } from "@/lib/collector-day-close-seal";
+import { commitDayExpenseDraft, dayExpenseSavedMessage } from "@/lib/commit-day-expense";
 import type { MiscPayment } from "@/lib/misc-payments";
 import {
   ensureBankAccounts,
@@ -740,18 +739,10 @@ export function CollectorShell({ session, onLogout }: Props) {
     );
   }
 
-  function saveCollectorExpenses(payload: CollectorSaveExpensesPayload) {
-    const draft = buildDayExpenseDraft({
-      collectorRef: payload.collectorRef,
-      collectorName: payload.collectorName,
-      date: payload.date,
-      routeRef: payload.routeRef,
-      expenses: payload.expenses,
-    });
-    const nextDrafts = upsertDayExpenseDraft(dayExpenseDrafts, draft);
-    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
+  async function saveCollectorExpenses(payload: CollectorSaveExpensesPayload) {
+    const commit = commitDayExpenseDraft(dayExpenseDrafts, payload);
+    const nextDrafts = commit.drafts;
     setDayExpenseDrafts(nextDrafts);
-    queueDayExpenseMirror(draft);
 
     const accounts = ensureBankAccounts(
       readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
@@ -773,11 +764,8 @@ export function CollectorShell({ session, onLogout }: Props) {
       }),
     );
 
-    showToast(
-      draft.expensesTotal > 0
-        ? `Gastos guardados · ${money(draft.expensesTotal)} · en Registros`
-        : "Gastos limpiados.",
-    );
+    const inCloud = await commit.inCloud;
+    showToast(dayExpenseSavedMessage(commit.draft, commit.savedLocal, inCloud));
   }
 
   async function closeCollectorMonth(payload: CollectorCloseMonthPayload) {

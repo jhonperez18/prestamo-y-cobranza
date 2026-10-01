@@ -252,6 +252,17 @@ Candado: `assert-cash-chain.mjs` sección 15.
  revive préstamos borrados en los otros celulares.
 - Candado: `assert-cash-chain.mjs` sección 16.
 
+## Gastos del cobrador — nunca se pierden en silencio
+
+Un solo camino: `commitDayExpenseDraft` (`lib/commit-day-expense.ts`) → GAS- local + cola +
+`mirrorDayExpenseNow` (await). El aviso dice la verdad: «en la nube» o «en este aparato, se sube solo».
+
+- La cola solo suelta lo que la nube confirmó y que no cambió mientras subía (`dequeueSent`).
+  Un flush jamás borra lo encolado durante el flush.
+- Subidas de `ops-mirror` sin `keepalive` (Chrome rechaza keepalive con >64 KB en vuelo).
+- Aparato lleno: `writeDemoJson` devuelve `false` y solo suelta copias `-bak`; las colas no se borran.
+- Candado: `assert-cash-chain.mjs` sección 18.
+
 ## Auto-revisión y auto-reparación
 
 Tras cada sync (arranque, pull completo, aviso de tiempo real) corre `evaluateSystemHealth`

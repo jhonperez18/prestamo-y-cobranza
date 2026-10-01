@@ -174,6 +174,7 @@ import {
 } from "@/lib/commit-portfolio-catalog";
 import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
 import { sealCollectorDay } from "@/lib/collector-day-close-seal";
+import { commitDayExpenseDraft, dayExpenseSavedMessage } from "@/lib/commit-day-expense";
 import { alignChainLinksToLedger, buildDayCashLedger } from "@/lib/day-cash-ledger";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { miscPaymentRefForMovement } from "@/lib/misc-payments";
@@ -204,14 +205,12 @@ import {
   queueMonthCloseMirror,
 } from "@/lib/supabase/month-close-mirror";
 import {
-  buildDayExpenseDraft,
   buildMonthCloseRecord,
   findDayExpenseDraft,
   appendCashDisbursementExpense,
   syncCashDisbursementExpense,
   applyDayCloseRecordsToAssignments,
   normalizeHistoryDate,
-  upsertDayExpenseDraft,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
@@ -1570,18 +1569,10 @@ export function useWorkspace({
     onToast(`Día cerrado · ${parts.join(" · ")} · CIE y banco al día.`);
   }
 
-  function saveCollectorExpensesFromMobile(payload: CollectorSaveExpensesPayload) {
-    const draft = buildDayExpenseDraft({
-      collectorRef: payload.collectorRef,
-      collectorName: payload.collectorName,
-      date: payload.date,
-      routeRef: payload.routeRef,
-      expenses: payload.expenses,
-    });
-    const nextDrafts = upsertDayExpenseDraft(dayExpenseDrafts, draft);
-    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
+  async function saveCollectorExpensesFromMobile(payload: CollectorSaveExpensesPayload) {
+    const commit = commitDayExpenseDraft(dayExpenseDrafts, payload);
+    const nextDrafts = commit.drafts;
     setDayExpenseDrafts(nextDrafts);
-    queueDayExpenseMirror(draft);
 
     const accounts = ensureBankAccounts(bankAccounts);
     if (!bankAccounts.length) setBankAccounts(accounts);
@@ -1597,11 +1588,8 @@ export function useWorkspace({
       }),
     );
 
-    onToast(
-      draft.expensesTotal > 0
-        ? `Gastos guardados · ${money(draft.expensesTotal)} · en Registros`
-        : "Gastos limpiados.",
-    );
+    const inCloud = await commit.inCloud;
+    onToast(dayExpenseSavedMessage(commit.draft, commit.savedLocal, inCloud));
   }
 
   async function closeCollectorMonthFromMobile(payload: CollectorCloseMonthPayload) {

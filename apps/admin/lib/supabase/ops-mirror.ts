@@ -233,12 +233,16 @@ function mergeRemoteAuthority<T extends { ref: string }>(
   return { merged, changed };
 }
 
+/**
+ * Sin `keepalive`: Chrome rechaza al instante un keepalive si los que siguen en vuelo
+ * suman más de 64 KB (ráfaga de planilla + pulls), y el dato quedaba sin subir.
+ * Si la app se cierra a media subida, la fila sigue en cola y sube al volver.
+ */
 async function postMirror(path: string, body: unknown) {
   const res = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    keepalive: true,
   });
   const json = (await res.json()) as MirrorApiJson;
   return { res, json };
@@ -251,11 +255,25 @@ function enqueue<T extends { ref: string }>(key: string, row: T) {
   emitMirrorQueueChanged();
 }
 
+/** Descarta la fila de la cola: la nube ya ganó sobre ella. */
 function dequeue(key: string, ref: string) {
   writeDemoJson(
     key,
     readDemoJson<{ ref: string }[]>(key, []).filter((r) => r.ref !== ref),
   );
+  emitMirrorQueueChanged();
+}
+
+/**
+ * Saca de la cola solo lo que la nube confirmó, comparando contra la cola actual:
+ * una fila encolada (o editada) mientras subía la anterior se queda para el próximo envío.
+ */
+function dequeueSent(key: string, sent: readonly { ref: string }[]) {
+  if (!sent.length) return;
+  const sentSig = new Map(sent.map((row) => [row.ref, JSON.stringify(row)]));
+  const current = readDemoJson<{ ref: string }[]>(key, []);
+  const left = current.filter((row) => sentSig.get(row.ref) !== JSON.stringify(row));
+  if (left.length !== current.length) writeDemoJson(key, left);
   emitMirrorQueueChanged();
 }
 
@@ -990,13 +1008,14 @@ async function persistKind(
 ) {
   if (typeof window === "undefined") return false;
   // Cola primero: el pull no debe pisar una edición en vuelo.
-  enqueue(queueKey, { ref, ...(pathBody.row as object) } as { ref: string });
+  const queued = { ref, ...(pathBody.row as object) } as { ref: string };
+  enqueue(queueKey, queued);
   try {
     const { res, json } = await postMirror("/api/ops/mirror", pathBody);
     // Solo sacar de cola si escribió de verdad (o skip irrecuperable / CIE nube gana).
     // Antes: ok+skipped (sin service role / virgin) vaciaba la cola y el dato nunca subía.
     if (res.ok && shouldDropFromMirrorQueue(json)) {
-      dequeue(queueKey, ref);
+      dequeueSent(queueKey, [queued]);
       return !json.skipped;
     }
   } catch {
@@ -1107,8 +1126,12 @@ export async function mirrorDayCloseNow(c: CollectorDayCloseRecord): Promise<boo
   if (!String(c.ref || "").startsWith("CIE-") || c.provisional) return false;
   return persistKind(Q_CLOSES, { kind: "day_close", row: c }, c.ref);
 }
+/** Cola + subida esperada. true = el borrador ya está en Supabase. */
+export function mirrorDayExpenseNow(d: CollectorDayExpenseDraft): Promise<boolean> {
+  return persistKind(Q_EXPENSES, { kind: "day_expense", row: d }, d.ref);
+}
 export function queueDayExpenseMirror(d: CollectorDayExpenseDraft) {
-  void persistKind(Q_EXPENSES, { kind: "day_expense", row: d }, d.ref);
+  void mirrorDayExpenseNow(d);
 }
 export function queueMiscPaymentMirror(m: MiscPayment) {
   void persistKind(Q_MISC, { kind: "misc_payment", row: m }, m.ref);
@@ -1186,58 +1209,53 @@ export async function flushOpsMirrorQueues(): Promise<{ flushed: number; left: n
 
   // Primero deletes (si no, un upsert viejo las revive).
   const routeDeletes = readDemoJson<{ ref: string }[]>(Q_ROUTE_DELETES, []);
-  const routeDeletesLeft: { ref: string }[] = [];
+  const routeDeletesSent: { ref: string }[] = [];
   for (const row of routeDeletes) {
     try {
       const { res, json } = await postMirror("/api/ops/mirror", {
         kind: "route_delete",
         row: { ref: row.ref },
       });
-      if (res.ok && shouldDropFromMirrorQueue(json)) flushed += 1;
-      else routeDeletesLeft.push(row);
+      if (res.ok && shouldDropFromMirrorQueue(json)) {
+        flushed += 1;
+        routeDeletesSent.push(row);
+      }
     } catch {
-      routeDeletesLeft.push(row);
+      /* queda en cola */
     }
   }
-  writeDemoJson(Q_ROUTE_DELETES, routeDeletesLeft);
+  dequeueSent(Q_ROUTE_DELETES, routeDeletesSent);
 
   const collectorDeletes = readDemoJson<{ ref: string }[]>(Q_COLLECTOR_DELETES, []);
-  const collectorDeletesLeft: { ref: string }[] = [];
+  const collectorDeletesSent: { ref: string }[] = [];
   for (const row of collectorDeletes) {
     try {
       const { res, json } = await postMirror("/api/ops/mirror", {
         kind: "collector_delete",
         row: { ref: row.ref },
       });
-      if (res.ok && shouldDropFromMirrorQueue(json)) flushed += 1;
-      else collectorDeletesLeft.push(row);
+      if (res.ok && shouldDropFromMirrorQueue(json)) {
+        flushed += 1;
+        collectorDeletesSent.push(row);
+      }
     } catch {
-      collectorDeletesLeft.push(row);
+      /* queda en cola */
     }
   }
-  writeDemoJson(Q_COLLECTOR_DELETES, collectorDeletesLeft);
+  dequeueSent(Q_COLLECTOR_DELETES, collectorDeletesSent);
 
   const deleted = new Set(listDeletedRouteRefs());
   const deletedCollectors = new Set(
     readDemoJson<{ ref: string }[]>(Q_COLLECTOR_DELETES, []).map((row) => row.ref),
   );
-  const jobs: Array<{ key: string; kind: string; rows: { ref: string }[] }> = [
-    {
-      key: Q_COLLECTORS,
-      kind: "collector",
-      rows: readDemoJson<{ ref: string }[]>(Q_COLLECTORS, []).filter(
-        (row) => !deletedCollectors.has(row.ref),
-      ),
-    },
-    {
-      key: Q_ROUTES,
-      kind: "route",
-      rows: readDemoJson<{ ref: string }[]>(Q_ROUTES, []).filter((row) => !deleted.has(row.ref)),
-    },
-    { key: Q_CLOSES, kind: "day_close", rows: readDemoJson(Q_CLOSES, []) },
-    { key: Q_EXPENSES, kind: "day_expense", rows: readDemoJson(Q_EXPENSES, []) },
-    { key: Q_MISC, kind: "misc_payment", rows: readDemoJson(Q_MISC, []) },
-    { key: Q_ASSIGN, kind: "assignment", rows: readDemoJson(Q_ASSIGN, []) },
+  /** `gone`: fila de algo ya borrado — sale de la cola sin subir. */
+  const jobs: Array<{ key: string; kind: string; gone?: (ref: string) => boolean }> = [
+    { key: Q_COLLECTORS, kind: "collector", gone: (ref) => deletedCollectors.has(ref) },
+    { key: Q_ROUTES, kind: "route", gone: (ref) => deleted.has(ref) },
+    { key: Q_CLOSES, kind: "day_close" },
+    { key: Q_EXPENSES, kind: "day_expense" },
+    { key: Q_MISC, kind: "misc_payment" },
+    { key: Q_ASSIGN, kind: "assignment" },
   ];
   const localAssignByKey = new Map<string, DailyCollectionAssignment>(
     readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []).map((row) => {
@@ -1246,8 +1264,12 @@ export async function flushOpsMirrorQueues(): Promise<{ flushed: number; left: n
     }),
   );
   for (const job of jobs) {
-    const left: { ref: string }[] = [];
-    for (const row of job.rows) {
+    const sent: { ref: string }[] = [];
+    for (const row of readDemoJson<{ ref: string }[]>(job.key, [])) {
+      if (job.gone?.(row.ref)) {
+        sent.push(row);
+        continue;
+      }
       try {
         let payload: unknown = row;
         if (job.kind === "assignment") {
@@ -1260,22 +1282,21 @@ export async function flushOpsMirrorQueues(): Promise<{ flushed: number; left: n
           kind: job.kind,
           row: payload,
         });
-        if (res.ok && shouldDropFromMirrorQueue(json)) flushed += 1;
-        else left.push(row);
+        if (res.ok && shouldDropFromMirrorQueue(json)) {
+          flushed += 1;
+          sent.push(row);
+        }
       } catch {
-        left.push(row);
+        /* queda en cola */
       }
     }
-    writeDemoJson(job.key, left);
+    dequeueSent(job.key, sent);
   }
   emitMirrorQueueChanged();
-  const left =
-    routeDeletesLeft.length +
-    collectorDeletesLeft.length +
-    jobs.reduce(
-      (sum, job) => sum + readDemoJson<{ ref: string }[]>(job.key, []).length,
-      0,
-    );
+  const left = [Q_ROUTE_DELETES, Q_COLLECTOR_DELETES, ...jobs.map((job) => job.key)].reduce(
+    (sum, key) => sum + readDemoJson<{ ref: string }[]>(key, []).length,
+    0,
+  );
   return { flushed, left };
 }
 
