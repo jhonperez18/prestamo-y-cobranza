@@ -17,7 +17,18 @@ export type DeviceStatus = {
   lastPullOk: boolean;
   lastPullError: string;
   pendingTotal: number;
+  /** Auto-revisión: inconsistencias que quedan tras reparar (0 = sano). */
+  healthIssues: number;
+  healthSummary: string;
+  /** Se reparó y sigue: hay que revisar ese aparato. */
+  healthPersistent: boolean;
   reportedAt: string;
+};
+
+export type DeviceHealthInput = {
+  issues: number;
+  summary: string;
+  persistent: boolean;
 };
 
 const DEVICE_ID_KEY = "nexo-device-id";
@@ -45,6 +56,9 @@ export function normalizeDeviceStatus(raw: unknown): DeviceStatus | null {
     lastPullOk: row.lastPullOk === true,
     lastPullError: text(row.lastPullError, 200),
     pendingTotal: Math.max(0, Math.trunc(Number(row.pendingTotal) || 0)),
+    healthIssues: Math.max(0, Math.trunc(Number(row.healthIssues) || 0)),
+    healthSummary: text(row.healthSummary, 200),
+    healthPersistent: row.healthPersistent === true,
     reportedAt: text(row.reportedAt, 40),
   };
 }
@@ -69,10 +83,13 @@ export async function reportDeviceStatus(input: {
   pullOk: boolean;
   pullError?: string;
   pendingTotal: number;
+  health?: DeviceHealthInput;
 }) {
   if (typeof window === "undefined") return;
   const now = Date.now();
-  if (input.pullOk && input.pendingTotal === 0 && now - lastReportAt < REPORT_MIN_MS) return;
+  const healthIssues = input.health?.issues ?? 0;
+  const quiet = input.pullOk && input.pendingTotal === 0 && healthIssues === 0;
+  if (quiet && now - lastReportAt < REPORT_MIN_MS) return;
   const id = deviceId();
   const session = readSession();
   if (!id || !session) return;
@@ -89,6 +106,9 @@ export async function reportDeviceStatus(input: {
     lastPullOk: input.pullOk,
     lastPullError: input.pullError || "",
     pendingTotal: input.pendingTotal,
+    healthIssues,
+    healthSummary: input.health?.summary ?? "",
+    healthPersistent: input.health?.persistent === true,
     reportedAt: new Date(now).toISOString(),
   };
   try {

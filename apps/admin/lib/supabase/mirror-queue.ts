@@ -65,6 +65,27 @@ const OPS_QUEUE_KEYS = [
   Q_MONTH_CLOSES,
 ] as const;
 
+const ALL_QUEUE_KEYS = [
+  Q_PAYMENTS,
+  Q_CLIENTS,
+  Q_LOANS,
+  Q_USERS,
+  Q_USER_DELETES,
+  Q_BANKS,
+  ...OPS_QUEUE_KEYS,
+] as const;
+
+/** Filas sin `ref` en cualquier cola: no se pueden subir ni sacar de cola por ref. */
+export function countInvalidMirrorQueueRows(): number {
+  if (typeof window === "undefined") return 0;
+  let invalid = 0;
+  for (const key of ALL_QUEUE_KEYS) {
+    const rows = readDemoJson<{ ref?: string }[]>(key, []);
+    if (Array.isArray(rows)) invalid += rows.filter((row) => !row?.ref).length;
+  }
+  return invalid;
+}
+
 function queueLen(key: string): number {
   const rows = readDemoJson<{ ref?: string }[]>(key, []);
   return Array.isArray(rows) ? rows.filter((row) => row?.ref).length : 0;

@@ -252,6 +252,25 @@ Candado: `assert-cash-chain.mjs` sección 15.
  revive préstamos borrados en los otros celulares.
 - Candado: `assert-cash-chain.mjs` sección 16.
 
+## Auto-revisión y auto-reparación
+
+Tras cada sync (arranque, pull completo, aviso de tiempo real) corre `evaluateSystemHealth`
+(`lib/system-health.ts`, función pura) sobre el estado hidratado:
+
+| Regla | Inconsistencia |
+| --- | --- |
+| `prestar_missing` | Cliente sin préstamos activos, hoja abierta, sin visita hoy |
+| `prestar_ghost` | «Prestar» pendiente de cliente con préstamo activo |
+| `deleted_loan_row` | Cuota sin plata de préstamo borrado (estado o tombstone) |
+| `queue_invalid_rows` / `queue_stuck` | Fila de cola sin `ref` / pendientes > 10 min |
+
+`createSelfHealer` (`lib/system-self-heal.ts`) repara: baja fresco préstamos + planilla y
+rehidrata (rearma la planilla), o sube la cola ya. **Nunca** borra `localStorage` ni colas.
+Misma firma = una sola reparación; si sigue, el monitor de aparatos lo muestra
+(«Auto-revisión… sigue tras reparar»). Flush con backoff exponencial (8 s → 5 min) y
+pull al volver la red o al reconectar el canal de tiempo real.
+Candado: `assert-cash-chain.mjs` sección 17 (la planilla armada por el sistema siempre sana).
+
 ## N/P por ruta (INICIO)
 
 Cada ruta tiene su propio **N/P** (junto a Historial en la ficha).

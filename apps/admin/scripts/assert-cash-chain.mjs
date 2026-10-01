@@ -1129,6 +1129,70 @@ const fRows = rDayRows(fSynced);
 expect("Terminó hoy: queda el cobro", fRows.some((r) => r.loanRef === "P-F1" && r.visitStatus === "cobrado"), true);
 expect("Terminó hoy: Prestar habilitado", fRows.find((r) => r.itemId === `${rDate}:CLI-R1:prestar`)?.visitStatus ?? null, "pendiente");
 
+// ── 17. Auto-evaluación: la planilla que arma el sistema siempre pasa la revisión;
+//     cada regla detecta su inconsistencia. El motor nunca borra datos locales.
+console.log("\n— Auto-evaluación del sistema —");
+const { evaluateSystemHealth, QUEUE_STUCK_MS } = await import("@/lib/system-health");
+const hLoans = [rLoan("P-R1", "CLI-R1", "Activo"), rLoan("P-R2", "CLI-R2", "Eliminado")];
+const hBuilt = syncPermanentRoutePlanilla(rDate, pRoutes, rClients, hLoans, [COB], [], []).assignments;
+const hQueueOk = { pendingTotal: 0, invalidRows: 0, pendingSinceMs: null };
+const health = (over = {}) =>
+  evaluateSystemHealth({
+    date: rDate,
+    nowMs: Date.parse(`${rDate}T15:00:00.000Z`),
+    clients: rClients,
+    loans: hLoans,
+    routes: pRoutes,
+    collectors: [COB],
+    assignments: hBuilt,
+    dayCloses: [],
+    deletedRefs: new Set(),
+    queue: hQueueOk,
+    ...over,
+  });
+const kinds = (report) => report.issues.map((i) => i.kind).sort().join(",");
+expect("Planilla armada por el sistema: sana", kinds(health()), "");
+expect(
+  "Prestar pendiente de cliente con préstamo activo: fantasma",
+  kinds(health({ assignments: [...hBuilt, visit(`${rDate}:CLI-R1:prestar`, "CLI-R1", "M", rDate, { visitStatus: "pendiente", awaitingLoan: true })] })),
+  "prestar_ghost",
+);
+expect(
+  "Cuota sin plata de préstamo borrado: detectada",
+  kinds(health({ assignments: [...hBuilt, visit(`${rDate}:P-R2:acum`, "CLI-R2", "M", rDate, { visitStatus: "pendiente", loanRef: "P-R2" })] })),
+  "deleted_loan_row",
+);
+expect(
+  "Cuota de préstamo borrado en este aparato (tombstone): detectada",
+  kinds(health({
+    loans: [hLoans[0]],
+    deletedRefs: new Set(["P-R9"]),
+    assignments: [...hBuilt, visit(`${rDate}:P-R9:acum`, "CLI-R2", "M", rDate, { visitStatus: "pendiente", loanRef: "P-R9" })],
+  })),
+  "deleted_loan_row",
+);
+const withoutR3 = hBuilt.filter((r) => r.clientRef !== "CLI-R3");
+expect("Cliente libre sin su Prestar: detectado", kinds(health({ assignments: withoutR3 })), "prestar_missing");
+expect(
+  "Cobrador con el día sellado: no se le exige Prestar",
+  kinds(health({ assignments: withoutR3, dayCloses: [{ ref: `CIE-${COB.ref}-${rDate}`, collectorRef: COB.ref, date: rDate, cashFloat: 0 }] })),
+  "",
+);
+expect("Sin préstamos cargados: no se juzga la planilla", kinds(health({ loans: [], assignments: [] })), "");
+const hNow = Date.parse(`${rDate}T15:00:00.000Z`);
+expect(
+  "Cola con pendientes hace más de 10 min: atascada",
+  kinds(health({ queue: { pendingTotal: 3, invalidRows: 0, pendingSinceMs: hNow - QUEUE_STUCK_MS - 1 } })),
+  "queue_stuck",
+);
+expect(
+  "Cola con pendientes recientes: sana",
+  kinds(health({ queue: { pendingTotal: 3, invalidRows: 0, pendingSinceMs: hNow - 60_000 } })),
+  "",
+);
+expect("Filas de cola sin ref: detectadas", kinds(health({ queue: { ...hQueueOk, invalidRows: 2 } })), "queue_invalid_rows");
+expect("Misma inconsistencia = misma firma", health({ assignments: withoutR3 }).signature, health({ assignments: withoutR3 }).signature);
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

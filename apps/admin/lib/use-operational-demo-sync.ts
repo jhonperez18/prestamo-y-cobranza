@@ -35,6 +35,11 @@ import type { BankAccount } from "@/lib/bank";
 import { reportDeviceStatus } from "@/lib/device-status";
 import { pullRemoteMonthClosesIntoDemo } from "@/lib/supabase/month-close-mirror";
 import { useAppAutoUpdate } from "@/lib/app-auto-update";
+import {
+  createSelfHealer,
+  type SelfHealer,
+  type SelfHealState,
+} from "@/lib/system-self-heal";
 
 type Options = {
   /**
@@ -52,6 +57,8 @@ type Options = {
 const CLOUD_POLL_MS = 45_000;
 /** Flush de colas independiente del pull (cobros/CIE no se quedan atrapados). */
 const MIRROR_FLUSH_MS = 8_000;
+/** Tope del backoff exponencial del flush cuando la nube no responde (8 s → 16 s → … → 5 min). */
+const MIRROR_FLUSH_MAX_BACKOFF_MS = 5 * 60_000;
 /** Evita doble pull al volver foco + visibility a la vez. */
 const VISIBLE_PULL_MIN_MS = 3_000;
 /** Agrupa ráfagas de postgres_changes en un solo hydrate. */
@@ -106,9 +113,15 @@ export function useOperationalDemoSync(
   const pendingGroupsRef = useRef(new Set<PullGroup>());
   const drainTimerRef = useRef(0);
   const scheduleDrainRef = useRef<() => void>(() => {});
+  const snapshotRef = useRef<OperationalDemoSnapshot | null>(null);
+  const flushFailuresRef = useRef(0);
+  const nextFlushAtRef = useRef(0);
+  const healthRef = useRef<SelfHealState>({ issues: 0, summary: "", persistent: false });
+  const healerRef = useRef<SelfHealer | null>(null);
 
   const commitHydrate = useCallback(() => {
     const snapshot = hydrateOperationalDemo();
+    snapshotRef.current = snapshot;
     applyRef.current(snapshot);
     setHydrated(true);
   }, []);
@@ -124,16 +137,80 @@ export function useOperationalDemoSync(
     if (typeof window === "undefined") return;
     if (flushInFlightRef.current) return;
     flushInFlightRef.current = true;
+    let left = 0;
     try {
-      await flushAllMirrorQueues({ attempts: 3 });
-      refreshPending();
+      left = (await flushAllMirrorQueues({ attempts: 3 })).left;
     } catch (error) {
       console.error("mirror-flush", error);
-      refreshPending();
+      left = countPendingMirrorQueues().total;
     } finally {
       flushInFlightRef.current = false;
+      // Backoff exponencial: si la nube no recibe, el siguiente intento automático se aleja.
+      if (left > 0) {
+        flushFailuresRef.current += 1;
+        const wait = Math.min(
+          MIRROR_FLUSH_MS * 2 ** (flushFailuresRef.current - 1),
+          MIRROR_FLUSH_MAX_BACKOFF_MS,
+        );
+        nextFlushAtRef.current = Date.now() + wait;
+      } else {
+        flushFailuresRef.current = 0;
+        nextFlushAtRef.current = 0;
+      }
+      refreshPending();
     }
   }, [refreshPending]);
+
+  const repairPlanilla = useCallback(async (): Promise<boolean> => {
+    if (pullInFlightRef.current) return false;
+    pullInFlightRef.current = true;
+    try {
+      await runMirrorFlush();
+      await Promise.all([pullRemoteCatalogIntoDemo(), pullRemoteOpsIntoDemo()]);
+      // Rehidratar siempre: rearma la planilla con las reglas aunque la nube no haya cambiado.
+      commitHydrate();
+      return true;
+    } catch (error) {
+      console.error("self-heal-planilla", error);
+      return false;
+    } finally {
+      pullInFlightRef.current = false;
+    }
+  }, [commitHydrate, runMirrorFlush]);
+
+  useEffect(() => {
+    healerRef.current = createSelfHealer({
+      readSnapshot: () => snapshotRef.current,
+      pendingTotal: () => countPendingMirrorQueues().total,
+      repairPlanilla,
+      repairQueue: async () => {
+        nextFlushAtRef.current = 0;
+        await runMirrorFlush();
+      },
+      onState: (state) => {
+        healthRef.current = state;
+        if (state.issues > 0) console.warn("self-heal", state);
+      },
+    });
+    return () => {
+      healerRef.current = null;
+    };
+  }, [repairPlanilla, runMirrorFlush]);
+
+  /** Auto-evaluar (y reparar) tras cada sync; después reportar al monitor de aparatos. */
+  const healthCycleThenReport = useCallback(
+    async (pullOk: boolean, pullError: string) => {
+      await healerRef.current?.runHealthCycle();
+      const pending = refreshPending();
+      void reportDeviceStatus({
+        pullOk,
+        pullError,
+        pendingTotal: pending.total,
+        health: healthRef.current,
+      });
+    },
+    [refreshPending],
+  );
   const runHydrateWithRemotePull = useCallback(async () => {
     if (pullInFlightRef.current) return;
     pullInFlightRef.current = true;
@@ -214,11 +291,10 @@ export function useOperationalDemoSync(
     } finally {
       pullInFlightRef.current = false;
       setHydrated(true);
-      const pending = refreshPending();
-      void reportDeviceStatus({ pullOk, pullError, pendingTotal: pending.total });
+      void healthCycleThenReport(pullOk, pullError);
       if (pendingGroupsRef.current.size > 0) scheduleDrainRef.current();
     }
-  }, [commitHydrate, refreshPending, runMirrorFlush]);
+  }, [commitHydrate, healthCycleThenReport, runMirrorFlush]);
 
   /** Eco Realtime: baja solo los grupos que cambiaron (un cobro no rebaja clientes ni usuarios). */
   const runTargetedPull = useCallback(async () => {
@@ -227,6 +303,7 @@ export function useOperationalDemoSync(
     pendingGroupsRef.current.clear();
     if (groups.size === 0) return;
     pullInFlightRef.current = true;
+    let rehydrated = false;
     try {
       await runMirrorFlush();
       // Cobros primero: la planilla (ops) se sella contra los PG- ya bajados.
@@ -235,12 +312,17 @@ export function useOperationalDemoSync(
         groups.has("catalog") ? pullRemoteCatalogIntoDemo() : null,
         groups.has("ops") ? pullRemoteOpsIntoDemo() : null,
       ]);
-      if (payments?.changed || catalog?.changed || ops?.changed) commitHydrate();
+      if (payments?.changed || catalog?.changed || ops?.changed) {
+        commitHydrate();
+        rehydrated = true;
+      }
     } catch (error) {
       // Sin reintento en bucle (sin red giraría cada 280 ms): lo recoge el poll de 45 s.
       console.error("ops-sync-realtime", error);
     } finally {
       pullInFlightRef.current = false;
+      // Cambio recibido → caché rehecha → auto-evaluar (y reparar si algo no cuadra).
+      if (rehydrated) void healerRef.current?.runHealthCycle();
       refreshPending();
       if (pendingGroupsRef.current.size > 0) scheduleDrainRef.current();
     }
@@ -302,7 +384,10 @@ export function useOperationalDemoSync(
       void runHydrateWithRemotePull();
     }
     function onOnline() {
-      void runMirrorFlush();
+      // Volvió la red: se acaba el backoff, sube ya y baja lo que pasó mientras tanto.
+      flushFailuresRef.current = 0;
+      nextFlushAtRef.current = 0;
+      void runHydrateWithRemotePull();
     }
     function onQueueEvent(event: Event) {
       const detail = (event as CustomEvent<MirrorPendingBreakdown>).detail;
@@ -316,6 +401,9 @@ export function useOperationalDemoSync(
     const poll = window.setInterval(refreshFromCloud, CLOUD_POLL_MS);
     const flushPoll = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
+      if (!navigator.onLine) return;
+      if (Date.now() < nextFlushAtRef.current) return;
+      if (countPendingMirrorQueues().total === 0) return;
       void runMirrorFlush();
     }, MIRROR_FLUSH_MS);
     window.addEventListener("storage", onStorage);
@@ -355,11 +443,24 @@ export function useOperationalDemoSync(
     // payments, day_expenses, day_closes, daily_assignments: INSERT/UPDATE/DELETE.
     // Este canal no se filtra por rol: admin y supervisor no pierden el global.
     bindMoneyRealtime(channel, schedule);
-    channel.subscribe((status) => {
-      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-        void runHydrateWithRemotePull();
-      }
-    });
+    // Canal caído → al volver a SUBSCRIBED se baja lo que pasó mientras no llegaban avisos.
+    let disposed = false;
+    const watchChannel = () => {
+      let down = false;
+      return (status: string) => {
+        if (disposed) return;
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          if (!down) void runHydrateWithRemotePull();
+          down = true;
+          return;
+        }
+        if (status === "SUBSCRIBED" && down) {
+          down = false;
+          void runHydrateWithRemotePull();
+        }
+      };
+    };
+    channel.subscribe(watchChannel());
     // Timbre de la base (trigger → realtime.send, sin datos): llega también al cobrador,
     // que entra sin sesión de Supabase y por RLS no recibe postgres_changes.
     const ping = client.channel(OPS_PING_TOPIC);
@@ -368,12 +469,9 @@ export function useOperationalDemoSync(
       if (table in TABLE_PULL_GROUP) schedule(table as LiveTable);
       else void runHydrateWithRemotePull();
     });
-    ping.subscribe((status) => {
-      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-        void runHydrateWithRemotePull();
-      }
-    });
+    ping.subscribe(watchChannel());
     return () => {
+      disposed = true;
       window.clearTimeout(drainTimerRef.current);
       void client.removeChannel(channel);
       void client.removeChannel(ping);

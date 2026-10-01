@@ -117,6 +117,9 @@ export function DeviceStatusPanel({ onToast }: Props) {
                     oldBuild ? "Versión vieja: cerrar y abrir la app" : "",
                     !row.lastPullOk ? `No baja la nube${row.lastPullError ? ` (${row.lastPullError})` : ""}` : "",
                     row.pendingTotal > 0 ? `${row.pendingTotal} cambio(s) sin subir` : "",
+                    row.healthIssues > 0
+                      ? `Auto-revisión: ${row.healthSummary}${row.healthPersistent ? " (sigue tras reparar)" : " (reparando)"}`
+                      : "",
                     stale ? "Sin sincronizar hace más de 10 min" : "",
                   ].filter(Boolean);
                   return (
