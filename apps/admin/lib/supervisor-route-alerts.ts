@@ -175,28 +175,64 @@ export function markRouteDaySeen(
   writeSeen(map);
 }
 
-/** Pitido corto (opcional) cuando sube el contador. */
+const CHIME_FREQUENCY_HZ = 1800;
+const CHIME_VOLUME = 0.35;
+const CHIME_BEEP_SECONDS = 0.12;
+const CHIME_GAP_SECONDS = 0.08;
+
+let chimeContext: AudioContext | null = null;
+
+function chimeAudioContext(): AudioContext | null {
+  if (chimeContext) return chimeContext;
+  const Ctx =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctx) return null;
+  chimeContext = new Ctx();
+  return chimeContext;
+}
+
+/** El celular solo deja sonar audio creado tras un toque: se desbloquea con el primero. */
+function unlockChimeAudio() {
+  try {
+    const ctx = chimeAudioContext();
+    if (ctx?.state === "suspended") void ctx.resume();
+  } catch (err) {
+    console.error("[alerta supervisor] audio", err);
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("pointerdown", unlockChimeAudio, { once: true, passive: true });
+  window.addEventListener("keydown", unlockChimeAudio, { once: true });
+}
+
+function scheduleBeep(ctx: AudioContext, start: number) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "square";
+  osc.frequency.value = CHIME_FREQUENCY_HZ;
+  gain.gain.setValueAtTime(0.0001, start);
+  gain.gain.exponentialRampToValueAtTime(CHIME_VOLUME, start + 0.01);
+  gain.gain.setValueAtTime(CHIME_VOLUME, start + CHIME_BEEP_SECONDS - 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, start + CHIME_BEEP_SECONDS);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(start);
+  osc.stop(start + CHIME_BEEP_SECONDS + 0.01);
+}
+
+/** Pitido doble («pi-pi») cuando sube el contador de cobros sin ver. */
 export function playSupervisorPaymentChime() {
   if (typeof window === "undefined") return;
   try {
-    const Ctx =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.value = 880;
-    gain.gain.value = 0.04;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    const t = ctx.currentTime;
-    osc.start(t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
-    osc.stop(t + 0.2);
-    window.setTimeout(() => void ctx.close(), 280);
-  } catch {
-    /* sin audio / política del navegador */
+    const ctx = chimeAudioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") void ctx.resume();
+    const t = ctx.currentTime + 0.02;
+    scheduleBeep(ctx, t);
+    scheduleBeep(ctx, t + CHIME_BEEP_SECONDS + CHIME_GAP_SECONDS);
+  } catch (err) {
+    console.error("[alerta supervisor] pitido", err);
   }
 }
