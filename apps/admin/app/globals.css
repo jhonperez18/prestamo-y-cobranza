@@ -1507,6 +1507,11 @@
       text-align: right;
       font-variant-numeric: tabular-nums;
     }
+    .collector-close-expense-row input.collector-close-expense-other {
+      grid-column: 1 / -1;
+      text-align: left;
+      font-variant-numeric: normal;
+    }
     .collector-close-actions {
       display: flex;
       justify-content: flex-end;

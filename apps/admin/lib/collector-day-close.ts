@@ -46,6 +46,8 @@ export type RouteExpenseLine = {
   loanRef?: string;
   /** Planilla secundaria (T) donde se anotó el gasto operativo. Sin marca = planilla principal (M). */
   route?: string;
+  /** Gasto repetido del mismo tipo el mismo día (2.º almuerzo…): separa su movimiento de banco. */
+  lineKey?: string;
 };
 
 export type CollectorDayCloseDraft = {
@@ -316,13 +318,17 @@ export function dayExpenseLineMovementRef(
   expenseId: string,
   loanRef?: string,
   route?: string,
+  lineKey?: string,
 ) {
   if (loanRef) {
     return `GASL-${collectorRef}-${date}-prestamo-${loanRef}`;
   }
   const routeTag = String(route || "").trim();
-  if (routeTag) return `GASL-${collectorRef}-${date}-${routeTag}-${expenseId}`;
-  return `GASL-${collectorRef}-${date}-${expenseId}`;
+  const base = routeTag
+    ? `GASL-${collectorRef}-${date}-${routeTag}-${expenseId}`
+    : `GASL-${collectorRef}-${date}-${expenseId}`;
+  const keyTag = String(lineKey || "").trim();
+  return keyTag ? `${base}-${keyTag}` : base;
 }
 
 export function buildDayExpenseDraft(input: {
@@ -491,6 +497,7 @@ export function buildDayCloseExpenseMovements(input: {
       line.id,
       line.loanRef,
       line.route,
+      line.lineKey,
     );
     return {
       ...addManualExpense({
@@ -557,6 +564,7 @@ export function syncRouteExpensesToMovements(
         line.id,
         line.loanRef,
         line.route,
+        line.lineKey,
       );
       wanted.set(key, { source, line });
     }

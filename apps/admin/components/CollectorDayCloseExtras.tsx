@@ -70,8 +70,8 @@ export function CollectorDayCloseExtras({
             <span>{money(otrosTotal, { symbol: false })}</span>
           </p>
           <ul>
-            {otrosGastos.map((line) => (
-              <li key={`${line.id}:${line.label}`}>
+            {otrosGastos.map((line, index) => (
+              <li key={`${line.id}:${line.lineKey || line.label}:${index}`}>
                 <span className="is-name">{line.label}</span>
                 <b className="is-amount">{money(line.amount, { symbol: false })}</b>
               </li>

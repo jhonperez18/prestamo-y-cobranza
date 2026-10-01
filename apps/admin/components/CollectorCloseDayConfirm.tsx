@@ -111,8 +111,8 @@ export function CollectorCloseDayConfirm({
 
       {split.otros.length > 0 ? (
         <ul className="collector-close-confirm-expenses" aria-label="Gastos del día">
-          {split.otros.map((line) => (
-            <li key={`${line.id}:${line.label}`}>
+          {split.otros.map((line, index) => (
+            <li key={`${line.id}:${line.lineKey || line.label}:${index}`}>
               <span>{line.label}</span>
               <b>{money(line.amount)}</b>
             </li>

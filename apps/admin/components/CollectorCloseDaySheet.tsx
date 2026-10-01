@@ -12,10 +12,20 @@ import {
 } from "@/lib/collector-day-close";
 import { money } from "@/lib/mock-data";
 
+const OTHER_EXPENSE_ID: RouteExpenseId = "otros";
+
+/** Sugerencias del gasto: se pueden repetir; el préstamo va por su botón, no aquí. */
+const EXPENSE_SUGGESTIONS = ROUTE_EXPENSE_ITEMS.filter((item) => item.category !== "prestamo_ruta");
+
 type DraftRow = {
   key: string;
   expenseId: RouteExpenseId | "";
+  /** Texto libre cuando el gasto es «Otros». */
+  customLabel: string;
   amount: string;
+  /** Renglón que ya estaba guardado (conserva su referencia de banco). */
+  fromSaved: boolean;
+  lineKey?: string;
 };
 
 type Props = {
@@ -26,36 +36,55 @@ type Props = {
 
 function newRow(): DraftRow {
   return {
-    key: `r-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    key: `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
     expenseId: "",
+    customLabel: "",
     amount: "",
+    fromSaved: false,
   };
 }
 
 function rowsFromExpenses(expenses: RouteExpenseLine[]): DraftRow[] {
   const filled = expenses
     .filter((line) => line.amount > 0)
-    .map((line, index) => ({
-      key: `saved-${line.id}-${index}`,
-      expenseId: line.id as RouteExpenseId,
-      amount: formatExpenseAmountInput(line.amount),
-    }));
+    .map((line, index) => {
+      const item = ROUTE_EXPENSE_ITEMS.find((entry) => entry.id === line.id);
+      return {
+        key: `saved-${line.id}-${index}`,
+        expenseId: line.id,
+        customLabel: line.id === OTHER_EXPENSE_ID && line.label !== item?.label ? line.label : "",
+        amount: formatExpenseAmountInput(line.amount),
+        fromSaved: true,
+        lineKey: line.lineKey,
+      };
+    });
   if (filled.length === 0) return [newRow(), newRow()];
   return [...filled, newRow()];
 }
 
 function toExpenseLines(rows: DraftRow[]): RouteExpenseLine[] {
+  // Un solo renglón por tipo usa la referencia de banco sin marca: el que ya estaba guardado.
+  const plainTaken = new Set<string>(
+    rows.filter((row) => row.fromSaved && !row.lineKey && row.expenseId).map((row) => row.expenseId),
+  );
   const lines: RouteExpenseLine[] = [];
   for (const row of rows) {
     const amount = parseExpenseAmount(row.amount);
     if (!row.expenseId || amount <= 0) continue;
     const item = ROUTE_EXPENSE_ITEMS.find((entry) => entry.id === row.expenseId);
     if (!item) continue;
+    let lineKey = row.lineKey;
+    if (!lineKey && !row.fromSaved) {
+      if (plainTaken.has(item.id)) lineKey = row.key;
+      else plainTaken.add(item.id);
+    }
+    const custom = item.id === OTHER_EXPENSE_ID ? row.customLabel.trim() : "";
     lines.push({
       id: item.id,
-      label: item.label,
+      label: custom || item.label,
       category: item.category,
       amount,
+      ...(lineKey ? { lineKey } : {}),
     });
   }
   return lines;
@@ -70,10 +99,7 @@ export function CollectorCloseDaySheet({ draft, onSave }: Props) {
     const last = nextRows[nextRows.length - 1];
     const lastFilled =
       Boolean(last?.expenseId) && parseExpenseAmount(last?.amount ?? "") > 0;
-    if (lastFilled && nextRows.length < ROUTE_EXPENSE_ITEMS.length) {
-      return [...nextRows, newRow()];
-    }
-    return nextRows;
+    return lastFilled ? [...nextRows, newRow()] : nextRows;
   }
 
   function updateRow(key: string, patch: Partial<DraftRow>) {
@@ -81,14 +107,6 @@ export function CollectorCloseDaySheet({ draft, onSave }: Props) {
       const next = current.map((row) => (row.key === key ? { ...row, ...patch } : row));
       return ensureExtraRow(next);
     });
-  }
-
-  function usedExpenseIds(exceptKey?: string) {
-    return new Set(
-      rows
-        .filter((row) => row.key !== exceptKey && row.expenseId)
-        .map((row) => row.expenseId as RouteExpenseId),
-    );
   }
 
   function handleSubmit(event: FormEvent) {
@@ -108,51 +126,58 @@ export function CollectorCloseDaySheet({ draft, onSave }: Props) {
           <span>Monto</span>
         </div>
         <ul className="collector-close-expense-list" aria-label="Gastos de ruta">
-          {rows.map((row, index) => {
-            const taken = usedExpenseIds(row.key);
-            const options = ROUTE_EXPENSE_ITEMS.filter(
-              (item) =>
-                item.category !== "prestamo_ruta" &&
-                (!taken.has(item.id) || item.id === row.expenseId),
-            );
-            return (
-              <li key={row.key} className="collector-close-expense-row">
-                <label className="sr-only" htmlFor={`close-exp-type-${row.key}`}>
-                  Tipo de gasto {index + 1}
-                </label>
-                <select
-                  id={`close-exp-type-${row.key}`}
-                  value={row.expenseId}
-                  onChange={(event) =>
-                    updateRow(row.key, {
-                      expenseId: event.target.value as RouteExpenseId | "",
-                    })
-                  }
-                >
-                  <option value="">Elegir gasto…</option>
-                  {options.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-                <label className="sr-only" htmlFor={`close-exp-amt-${row.key}`}>
-                  Monto {index + 1}
-                </label>
-                <input
-                  id={`close-exp-amt-${row.key}`}
-                  inputMode="numeric"
-                  placeholder="0"
-                  value={row.amount}
-                  onChange={(event) =>
-                    updateRow(row.key, {
-                      amount: formatExpenseAmountInput(event.target.value),
-                    })
-                  }
-                />
-              </li>
-            );
-          })}
+          {rows.map((row, index) => (
+            <li key={row.key} className="collector-close-expense-row">
+              <label className="sr-only" htmlFor={`close-exp-type-${row.key}`}>
+                Tipo de gasto {index + 1}
+              </label>
+              <select
+                id={`close-exp-type-${row.key}`}
+                value={row.expenseId}
+                onChange={(event) => {
+                  const expenseId = event.target.value as RouteExpenseId | "";
+                  if (expenseId === row.expenseId) return;
+                  updateRow(row.key, { expenseId, fromSaved: false, lineKey: undefined });
+                }}
+              >
+                <option value="">Elegir gasto…</option>
+                {EXPENSE_SUGGESTIONS.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+              <label className="sr-only" htmlFor={`close-exp-amt-${row.key}`}>
+                Monto {index + 1}
+              </label>
+              <input
+                id={`close-exp-amt-${row.key}`}
+                inputMode="numeric"
+                placeholder="0"
+                value={row.amount}
+                onChange={(event) =>
+                  updateRow(row.key, {
+                    amount: formatExpenseAmountInput(event.target.value),
+                  })
+                }
+              />
+              {row.expenseId === OTHER_EXPENSE_ID ? (
+                <>
+                  <label className="sr-only" htmlFor={`close-exp-other-${row.key}`}>
+                    Detalle del gasto {index + 1}
+                  </label>
+                  <input
+                    id={`close-exp-other-${row.key}`}
+                    className="collector-close-expense-other"
+                    autoComplete="off"
+                    placeholder="¿Cuál gasto? (escríbelo)"
+                    value={row.customLabel}
+                    onChange={(event) => updateRow(row.key, { customLabel: event.target.value })}
+                  />
+                </>
+              ) : null}
+            </li>
+          ))}
         </ul>
 
         <div className="collector-close-actions is-links">

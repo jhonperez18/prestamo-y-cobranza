@@ -221,7 +221,14 @@ export function runOperationalDayCycle(
       lines,
       sealed: sealedDayCash(ledgerSources, cashCollected),
       movementRefs: lines.map((line) =>
-        dayExpenseLineMovementRef(pair.collectorRef, pair.date, line.id, line.loanRef, line.route),
+        dayExpenseLineMovementRef(
+          pair.collectorRef,
+          pair.date,
+          line.id,
+          line.loanRef,
+          line.route,
+          line.lineKey,
+        ),
       ),
     });
 

@@ -247,8 +247,8 @@ export function CollectorClosedDayReview({
             <p className="collector-closed-review-empty">Sin gastos registrados.</p>
           ) : (
             <ul className="collector-closed-review-list">
-              {expenses.map((line) => (
-                <li key={line.id}>
+              {expenses.map((line, index) => (
+                <li key={`${line.id}:${line.lineKey || line.loanRef || line.label}:${index}`}>
                   <div className="collector-closed-review-line">
                     <strong>{line.label}</strong>
                   </div>
