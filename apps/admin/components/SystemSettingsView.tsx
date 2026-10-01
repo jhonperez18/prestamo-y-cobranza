@@ -13,8 +13,9 @@ import { money } from "@/lib/mock-data";
 import { forcePushLocalDayClosesToCloud } from "@/lib/supabase/ops-mirror";
 
 import { WelcomeMessageSettings } from "@/components/WelcomeMessageSettings";
+import { DeviceStatusPanel } from "@/components/DeviceStatusPanel";
 
-type Section = "bienvenida" | "colores" | "tipografia" | "nube";
+type Section = "bienvenida" | "colores" | "tipografia" | "nube" | "aparatos";
 
 type Props = {
   adminName: string;
@@ -26,6 +27,7 @@ const TABS: { id: Section; label: string }[] = [
   { id: "colores", label: "Colores" },
   { id: "tipografia", label: "Tipografía" },
   { id: "nube", label: "Nube" },
+  { id: "aparatos", label: "Aparatos" },
 ];
 
 function ColorControl({
@@ -250,6 +252,8 @@ export function SystemSettingsView({ adminName, onToast }: Props) {
         {section === "bienvenida" ? (
           <WelcomeMessageSettings adminName={adminName} onToast={onToast} />
         ) : null}
+
+        {section === "aparatos" ? <DeviceStatusPanel onToast={onToast} /> : null}
 
         {section === "nube" ? (
           <div className="sheet settings-sheet">

@@ -32,6 +32,7 @@ import {
   type MirrorPendingBreakdown,
 } from "@/lib/supabase/mirror-queue";
 import type { BankAccount } from "@/lib/bank";
+import { reportDeviceStatus } from "@/lib/device-status";
 
 type Options = {
   /**
@@ -133,6 +134,8 @@ export function useOperationalDemoSync(
     pullInFlightRef.current = true;
     // El pull completo cubre todo lo avisado hasta ahora.
     pendingGroupsRef.current.clear();
+    let pullOk = false;
+    let pullError = "";
     try {
       // Flush primero: lo pendiente en este PC sube aunque el pull tarde o falle.
       await runMirrorFlush();
@@ -144,6 +147,13 @@ export function useOperationalDemoSync(
         pullRemoteUsersIntoDemo(),
         pullRemoteBankAccountsIntoDemo(),
       ]);
+      const failed = [
+        { label: "cobros", ok: payments.ok, reason: payments.reason },
+        { label: "catálogo", ok: catalog.ok, reason: catalog.reason },
+        { label: "planilla", ok: ops.ok, reason: ops.reason },
+      ].filter((check) => !check.ok);
+      pullOk = failed.length === 0;
+      pullError = failed.map((check) => `${check.label}: ${check.reason || "falló"}`).join(" · ");
       let changed = Boolean(
         payments.changed || catalog.changed || ops.changed || users.changed || banks.changed,
       );
@@ -185,12 +195,15 @@ export function useOperationalDemoSync(
       }
     } catch (error) {
       console.error("ops-sync", error);
+      pullOk = false;
+      pullError = error instanceof Error ? error.message : "sync_failed";
       // Pull falló: igual intentar subir lo pendiente.
       await runMirrorFlush();
     } finally {
       pullInFlightRef.current = false;
       setHydrated(true);
-      refreshPending();
+      const pending = refreshPending();
+      void reportDeviceStatus({ pullOk, pullError, pendingTotal: pending.total });
       if (pendingGroupsRef.current.size > 0) scheduleDrainRef.current();
     }
   }, [commitHydrate, refreshPending, runMirrorFlush]);
