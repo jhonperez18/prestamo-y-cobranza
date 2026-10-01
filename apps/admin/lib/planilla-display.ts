@@ -184,5 +184,14 @@ export function enrichSupervisorPlanillaRow(
     cuotas,
     visitStatus,
     awaitingLoan,
+    /** Plata cobrada en esta visita (los PG- del cobro combinado se suman). */
+    paidAmount: isCombined && comboPays.length >= 2
+      ? comboPays.reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0)
+      : Number(pay?.amount) || 0,
   };
+}
+
+/** Cobro en miles para la planilla densa: 10.000 → «10», 100.000 → «100», 15.500 → «15,5». */
+export function paidThousandsLabel(amount: number): string {
+  return (Math.trunc(amount) / 1000).toLocaleString("es-CO", { maximumFractionDigits: 1 });
 }

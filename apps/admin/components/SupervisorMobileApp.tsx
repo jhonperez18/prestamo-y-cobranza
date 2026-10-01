@@ -70,6 +70,7 @@ import {
 } from "@/lib/collector-day-close";
 import {
   enrichSupervisorPlanillaRow,
+  paidThousandsLabel,
 } from "@/lib/planilla-display";
 import { reloanStateForVisit, type ReloanState } from "@/lib/loan-reloan";
 import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
@@ -614,9 +615,19 @@ function PlanillaTable({
                       Préstamo {money(row.reloan.granted.capital, { symbol: false })}
                     </span>
                   ) : (
-                    <span title={visitStatusLabel(row.visitStatus)}>
+                    <span
+                      title={
+                        row.paidAmount > 0
+                          ? `${visitStatusLabel(row.visitStatus)} · ${money(row.paidAmount)}`
+                          : visitStatusLabel(row.visitStatus)
+                      }
+                    >
                       <Pill
-                        label={visitStatusLabelShort(row.visitStatus)}
+                        label={
+                          row.paidAmount > 0
+                            ? paidThousandsLabel(row.paidAmount)
+                            : visitStatusLabelShort(row.visitStatus)
+                        }
                         kind={visitStatusKind(row.visitStatus)}
                       />
                     </span>
