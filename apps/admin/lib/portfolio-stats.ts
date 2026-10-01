@@ -30,6 +30,22 @@ function paymentMonthKey(payment: PaymentRow, fallbackYear: number) {
   return `${year}-${month}`;
 }
 
+/** Saldo por cobrar de los préstamos activos cuyos clientes están en `clientRefs`. */
+export function portfolioBalanceForClients(
+  loans: LoanRow[],
+  payments: PaymentRow[],
+  clientRefs: ReadonlySet<string>,
+): number {
+  const live = livePayments(payments);
+  let total = 0;
+  for (const loan of syncedActiveLoans(loans, live)) {
+    if (!loan.clientRef || !clientRefs.has(loan.clientRef)) continue;
+    const balance = computeLoanFinancials(loan, live).balancePending;
+    if (balance > 0) total += balance;
+  }
+  return total;
+}
+
 export function moraStats(loans: LoanRow[], payments: PaymentRow[]) {
   const stats = buildPortfolioStats(loans, payments);
   return { count: stats.moraCount, total: stats.moraBalance };

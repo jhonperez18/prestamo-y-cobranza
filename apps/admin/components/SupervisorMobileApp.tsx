@@ -157,6 +157,10 @@ import {
   withIndependentRouteHistory,
 } from "@/lib/independent-route-cash";
 import { CashAdjustForm } from "@/components/CashAdjustForm";
+import {
+  SupervisorMonthlyReport,
+  type InformeEfectivo,
+} from "@/components/SupervisorMonthlyReport";
 import { CollectorNewClientSheet } from "@/components/CollectorNewClientSheet";
 import type { RouteClientDraft } from "@/lib/commit-portfolio-catalog";
 /** Fecha corta para listados: 05/09/2026 → 5/9 */
@@ -1677,6 +1681,15 @@ export function SupervisorMobileApp({
 
   /** Cabecera: saldo Nequi + saldo Banco (totales acumulados de ambos paneles). */
   const nequiBancoSaldoTotal = nequiAcumulado + bancoAcumulado;
+
+  /** Informe: caja de cada planilla según el libro del día (T ya incluye M). */
+  const informeEfectivo = useMemo((): InformeEfectivo => {
+    const cajaOf = (route: string) =>
+      liquidaciones
+        .filter((row) => sameRoute(row.routeName, route))
+        .reduce((sum, row) => sum + (row.enCaja ?? 0), 0);
+    return { m: cajaOf("M"), t: cajaOf("T"), n: cajaOf("N") };
+  }, [liquidaciones]);
 
   /** INICIO pie: caja viva de T + Nequi + Banco (misma cifra de arriba). */
   const inicioTotalConT = useMemo(() => {
@@ -3942,7 +3955,14 @@ export function SupervisorMobileApp({
         </section>
       ) : view === "informe" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
-          <p className="ficha-empty">Informe · próximamente</p>
+          <SupervisorMonthlyReport
+            loans={loans}
+            clients={clients}
+            payments={payments}
+            efectivo={informeEfectivo}
+            banco={bancoAcumulado}
+            corteLabel={todayDisplay}
+          />
         </section>
       ) : view === "nequi" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
