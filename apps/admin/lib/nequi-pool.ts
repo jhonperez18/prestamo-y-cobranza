@@ -14,7 +14,7 @@ import {
   type PaymentRow,
   type RouteRow,
 } from "@/lib/mock-data";
-import { normalizePaymentMethod } from "@/lib/payment-method";
+import { normalizePaymentMethod, paymentMethodForRoute } from "@/lib/payment-method";
 
 /** Marcadores estables en notes para sobrevivir mirror sin columna DB. */
 export const NEQUI_FUNDED_MARKER = "[[fb:nequi]]";
@@ -238,6 +238,56 @@ export function nequiAcumuladoNet(input: {
     input.collectorRefs,
   );
   return ingresos - sumNequiFundedDisbursements(input.loans);
+}
+
+export type DigitalPoolTotals = { banco: number; nequi: number };
+
+/**
+ * Acumulados digitales por ruta del cliente (no por el método guardado):
+ * A → Nequi; M / T / N → Banco. Los préstamos desembolsados desde Nequi restan
+ * en el pool de la ruta del cliente que los recibió.
+ */
+export function digitalPoolsByRoute(input: {
+  payments: PaymentRow[];
+  loans: LoanRow[];
+  clients: ClientRow[];
+  collectors: CollectorRow[];
+  collectorRefs?: Iterable<string>;
+}): DigitalPoolTotals {
+  const routeByClient = new Map(input.clients.map((row) => [row.ref, row.route]));
+  const routeByLoan = new Map(
+    input.loans.map((loan) => [loan.ref, loan.clientRef ? routeByClient.get(loan.clientRef) : undefined]),
+  );
+  const totals: DigitalPoolTotals = { banco: 0, nequi: 0 };
+  const refs = input.collectorRefs
+    ? new Set([...input.collectorRefs].filter(Boolean))
+    : new Set(input.collectors.map((row) => row.ref).filter(Boolean));
+  const seen = new Set<string>();
+  const add = (row: PaymentRow) => {
+    if (!row.ref || seen.has(row.ref) || row.voidedAt?.trim()) return;
+    const amount = Number(row.amount) || 0;
+    if (amount <= 0) return;
+    const route = row.loanRef ? routeByLoan.get(row.loanRef) : undefined;
+    const method = paymentMethodForRoute(row.method, route);
+    if (method === "efectivo") return;
+    seen.add(row.ref);
+    totals[method] += amount;
+  };
+  for (const ref of refs) {
+    for (const row of paymentsForCollector(ref, input.collectors, input.payments)) add(row);
+  }
+  for (const row of input.payments) {
+    if (isOfficePayment(row)) add(row);
+  }
+  for (const loan of input.loans) {
+    if (!loanFundedByNequi(loan)) continue;
+    const capital = Number(loan.capital) || 0;
+    if (capital <= 0) continue;
+    const route = loan.clientRef ? routeByClient.get(loan.clientRef) : undefined;
+    const pool = paymentMethodForRoute("nequi", route) === "banco" ? "banco" : "nequi";
+    totals[pool] -= capital;
+  }
+  return totals;
 }
 
 export function loanDisbursementIsoDate(loan: LoanRow): string {

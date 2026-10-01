@@ -77,7 +77,7 @@ import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import {
-  nequiAcumuladoNet,
+  digitalPoolsByRoute,
   loanDisbursementSource,
   loanDisbursementSourceLabel,
   paymentsForCollectorIncludingOffice,
@@ -1649,35 +1649,25 @@ export function SupervisorMobileApp({
     </ul>
   );
 
-  /** Total Nequi acumulado = cobros Nequi − capitales desembolsados (préstamo/renovación). */
-  const nequiAcumulado = useMemo(() => {
+  /** Acumulados digitales por ruta del cliente: BANCO = M / T / N, NEQUI = A. */
+  const digitalPools = useMemo(() => {
     const refs = liquidaciones
       .map((row) => row.collectorRef)
       .filter((ref): ref is string => Boolean(ref));
-    return nequiAcumuladoNet({
+    return digitalPoolsByRoute({
       payments: paymentsWithEvidence,
       loans,
+      clients,
       collectors,
       collectorRefs: refs,
     });
-  }, [liquidaciones, collectors, paymentsWithEvidence, loans]);
+  }, [liquidaciones, collectors, paymentsWithEvidence, loans, clients]);
+  const bancoPanelAcumulado = digitalPools.banco;
+  const nequiPanelAcumulado = digitalPools.nequi;
 
   /** Suma Nequi solo de hoy (los cobradores de la lista). */
   const nequiHoyTotal = totals.cobradoNequi;
   const bancoHoyTotal = totals.cobradoBanco;
-
-  /** Acumulado Banco = todos los PG- con método banco (sin restar desembolsos). */
-  const bancoAcumulado = useMemo(() => {
-    const refs = new Set(
-      liquidaciones.map((row) => row.collectorRef).filter((ref): ref is string => Boolean(ref)),
-    );
-    return paymentsWithEvidence.reduce((sum, row) => {
-      if (normalizePaymentMethod(row.method) !== "banco") return sum;
-      if (!(Number(row.amount) > 0)) return sum;
-      if (row.collectorRef && refs.size > 0 && !refs.has(row.collectorRef)) return sum;
-      return sum + (row.amount ?? 0);
-    }, 0);
-  }, [liquidaciones, paymentsWithEvidence]);
 
   /** Informe: caja de cada planilla según el libro del día (T ya incluye M). */
   const informeEfectivo = useMemo((): InformeEfectivo => {
@@ -1687,12 +1677,6 @@ export function SupervisorMobileApp({
         .reduce((sum, row) => sum + (row.enCaja ?? 0), 0);
     return { t: cajaOf("T"), n: cajaOf("N") };
   }, [liquidaciones]);
-
-  /**
-   * «Total acumulado» del botón BANCO (vista interna `nequi`). El botón NEQUI (ruta A)
-   * muestra `bancoAcumulado` y no entra en informe ni en el pie de INICIO.
-   */
-  const bancoPanelAcumulado = nequiAcumulado;
 
   /** INICIO pie: caja viva de T + total del botón BANCO. */
   const inicioTotalConT = useMemo(() => {
@@ -3051,14 +3035,14 @@ export function SupervisorMobileApp({
         <button
           type="button"
           className={
-            view === "nequi" || cobrosMethodFilter === "nequi"
+            view === "banco" || cobrosMethodFilter === "banco"
               ? "supervisor-mobile-kpi is-banco on"
               : "supervisor-mobile-kpi is-banco"
           }
-          aria-current={view === "nequi" || cobrosMethodFilter === "nequi" ? "page" : undefined}
+          aria-current={view === "banco" || cobrosMethodFilter === "banco" ? "page" : undefined}
           {...navButtonProps(navIntent, () => {
-            if (view === "nequi" && !openRouteRef) return;
-            goToView("nequi");
+            if (view === "banco" && !openRouteRef) return;
+            goToView("banco");
           })}
           title="Panel Banco"
         >
@@ -3067,14 +3051,14 @@ export function SupervisorMobileApp({
         <button
           type="button"
           className={
-            view === "banco" || cobrosMethodFilter === "banco"
+            view === "nequi" || cobrosMethodFilter === "nequi"
               ? "supervisor-mobile-kpi is-nequi on"
               : "supervisor-mobile-kpi is-nequi"
           }
-          aria-current={view === "banco" || cobrosMethodFilter === "banco" ? "page" : undefined}
+          aria-current={view === "nequi" || cobrosMethodFilter === "nequi" ? "page" : undefined}
           {...navButtonProps(navIntent, () => {
-            if (view === "banco" && !openRouteRef) return;
-            goToView("banco");
+            if (view === "nequi" && !openRouteRef) return;
+            goToView("nequi");
           })}
           title="Panel Nequi"
         >
@@ -3964,11 +3948,11 @@ export function SupervisorMobileApp({
       ) : view === "nequi" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
           <div className="supervisor-day-boards" aria-label="Total Nequi acumulado">
-            <div className="supervisor-day-board is-banco supervisor-day-board-wide is-total-row">
+            <div className="supervisor-day-board is-nequi supervisor-day-board-wide is-total-row">
               <div className="supervisor-day-board-copy">
                 <span>Total acumulado</span>
               </div>
-              <b>{money(bancoPanelAcumulado, { symbol: false })}</b>
+              <b>{money(nequiPanelAcumulado, { symbol: false })}</b>
             </div>
           </div>
 
@@ -3983,7 +3967,7 @@ export function SupervisorMobileApp({
                   row={row}
                   accent={index}
                   mode="nequi"
-                  tone="banco"
+                  tone="nequi"
                   unreadCount={unreadByRouteNequi[row.routeRef] || 0}
                   onOpen={(ref) =>
                     openRouteSummary(ref, { method: "nequi", returnView: "nequi" })
@@ -3997,7 +3981,7 @@ export function SupervisorMobileApp({
             className="supervisor-day-boards supervisor-nequi-day-total"
             aria-label="Total Nequi del día"
           >
-            <div className="supervisor-day-board is-banco supervisor-day-board-wide is-banco-hoy">
+            <div className="supervisor-day-board is-nequi supervisor-day-board-wide is-nequi-hoy">
               <div className="supervisor-day-board-copy">
                 <span>Total del día</span>
                 <em>
@@ -4005,7 +3989,7 @@ export function SupervisorMobileApp({
                   {liquidaciones.length === 1 ? "" : "es"} · hoy
                 </em>
               </div>
-              <div className="supervisor-caja-hero is-row is-banco">
+              <div className="supervisor-caja-hero is-row is-nequi">
                 <b>{money(nequiHoyTotal, { symbol: false })}</b>
               </div>
             </div>
@@ -4025,8 +4009,8 @@ export function SupervisorMobileApp({
                     type="button"
                     className={
                       nequiRegistroRoute && sameRoute(nequiRegistroRoute, name)
-                        ? "supervisor-nequi-route-pin is-banco on"
-                        : "supervisor-nequi-route-pin is-banco"
+                        ? "supervisor-nequi-route-pin on"
+                        : "supervisor-nequi-route-pin"
                     }
                     title={`Nequi hoy · ruta ${name}`}
                     aria-label={`Nequi hoy ruta ${name}`}
@@ -4052,7 +4036,7 @@ export function SupervisorMobileApp({
                 : "Sin cobros Nequi hoy."}
             </p>
           ) : (
-            <div className="supervisor-nequi-register is-today-only is-tone-banco">
+            <div className="supervisor-nequi-register is-today-only is-tone-nequi">
               <div className="supervisor-nequi-day">
                 <div className="supervisor-nequi-day-head">
                   <strong>
@@ -4069,11 +4053,11 @@ export function SupervisorMobileApp({
       ) : view === "banco" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
           <div className="supervisor-day-boards" aria-label="Total Banco acumulado">
-            <div className="supervisor-day-board is-nequi supervisor-day-board-wide is-total-row">
+            <div className="supervisor-day-board is-banco supervisor-day-board-wide is-total-row">
               <div className="supervisor-day-board-copy">
                 <span>Total acumulado</span>
               </div>
-              <b>{money(bancoAcumulado, { symbol: false })}</b>
+              <b>{money(bancoPanelAcumulado, { symbol: false })}</b>
             </div>
           </div>
 
@@ -4088,7 +4072,7 @@ export function SupervisorMobileApp({
                   row={row}
                   accent={index}
                   mode="banco"
-                  tone="nequi"
+                  tone="banco"
                   unreadCount={unreadByRouteBanco[row.routeRef] || 0}
                   onOpen={(ref) =>
                     openRouteSummary(ref, { method: "banco", returnView: "banco" })
@@ -4102,7 +4086,7 @@ export function SupervisorMobileApp({
             className="supervisor-day-boards supervisor-nequi-day-total"
             aria-label="Total Banco del día"
           >
-            <div className="supervisor-day-board is-nequi supervisor-day-board-wide is-nequi-hoy">
+            <div className="supervisor-day-board is-banco supervisor-day-board-wide is-banco-hoy">
               <div className="supervisor-day-board-copy">
                 <span>Total del día</span>
                 <em>
@@ -4110,7 +4094,7 @@ export function SupervisorMobileApp({
                   {liquidaciones.length === 1 ? "" : "es"} · hoy
                 </em>
               </div>
-              <div className="supervisor-caja-hero is-row is-nequi">
+              <div className="supervisor-caja-hero is-row is-banco">
                 <b>{money(bancoHoyTotal, { symbol: false })}</b>
               </div>
             </div>
@@ -4130,8 +4114,8 @@ export function SupervisorMobileApp({
                     type="button"
                     className={
                       bancoRegistroRoute && sameRoute(bancoRegistroRoute, name)
-                        ? "supervisor-nequi-route-pin on"
-                        : "supervisor-nequi-route-pin"
+                        ? "supervisor-nequi-route-pin is-banco on"
+                        : "supervisor-nequi-route-pin is-banco"
                     }
                     title={`Banco hoy · ruta ${name}`}
                     aria-label={`Banco hoy ruta ${name}`}
@@ -4157,7 +4141,7 @@ export function SupervisorMobileApp({
                 : "Sin cobros Banco hoy."}
             </p>
           ) : (
-            <div className="supervisor-nequi-register is-today-only is-tone-nequi">
+            <div className="supervisor-nequi-register is-today-only is-tone-banco">
               <div className="supervisor-nequi-day">
                 <div className="supervisor-nequi-day-head">
                   <strong>
