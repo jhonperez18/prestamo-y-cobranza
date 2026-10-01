@@ -382,6 +382,23 @@ export function syncPermanentRoutePlanilla(
     }
     return owes;
   };
+  const loanGivenOnDate = (clientRef: string) =>
+    (index.activeByClient.get(clientRef) ?? []).some(
+      (loan) => displayToIso(String(loan.date || "").trim()) === date,
+    );
+  // Cliente con visita de cuota hoy: tiene préstamo aunque este aparato aún no lo haya
+  // cargado. Sin esto, un armado con préstamos a medio cargar ofrecía Prestar a toda la ruta.
+  const clientsWithLoanVisitToday = new Set(
+    existing
+      .filter(
+        (prev) =>
+          prev.dispatchDate === date &&
+          prev.clientRef &&
+          String(prev.loanRef || "").trim() &&
+          !isAssignmentAwaitingLoan(prev),
+      )
+      .map((prev) => `${prev.collectorRef}|${prev.clientRef}`),
+  );
   const declinedPrestarKeys = new Set(
     existing
       .filter(
@@ -417,7 +434,9 @@ export function syncPermanentRoutePlanilla(
       const declinedPrestarToday = declinedPrestarKeys.has(`${collector.ref}|${client.ref}`);
       // Sin crédito abierto: oferta Prestar (azul). Terminar hoy no la quita;
       // solo el visto rojo (declinar) saca de la lista del día.
-      if (!owesOpen && !declinedPrestarToday) {
+      const loanVisitToday =
+        !finishedToday && clientsWithLoanVisitToday.has(`${collector.ref}|${client.ref}`);
+      if (!owesOpen && !declinedPrestarToday && !loanVisitToday) {
         const offer = awaitingLoanItemForClient(client, date);
         if (!dayItems.length) {
           dayItems = [offer];
@@ -468,14 +487,19 @@ export function syncPermanentRoutePlanilla(
   for (const prev of existing) {
     if (prev.dispatchDate !== date) continue;
     if (prev.dayClosedAt) continue;
-    // Prestar atendido: el cliente ya recibió préstamo. La visita queda resuelta
+    const prestarRow = isAssignmentAwaitingLoan(prev);
+    // «Préstamo hecho hoy» puesto a un cliente que no recibió préstamo hoy: fila fantasma.
+    if (prestarRow && prev.skipReason === LOAN_GIVEN_TODAY_REASON && !loanGivenOnDate(prev.clientRef)) {
+      continue;
+    }
+    // Prestar atendido: el cliente recibió préstamo hoy. La visita queda resuelta
     // (y cerrada si su hoja ya cerró); si se descarta, la copia abierta de la nube
     // vuelve por el pull y deja la jornada sin CIE-.
     if (
-      isAssignmentAwaitingLoan(prev) &&
+      prestarRow &&
       prev.visitStatus !== "omitido" &&
       prev.visitStatus !== "cobrado" &&
-      (index.activeByClient.get(prev.clientRef) ?? []).some((loan) => owesFor(loan) > 0)
+      loanGivenOnDate(prev.clientRef)
     ) {
       const routeClosedAt = closedAtByCollectorRoute.get(
         `${prev.collectorRef}|${String(prev.clientRoute || "").trim()}`,

@@ -2051,6 +2051,7 @@ export function SupervisorMobileApp({
       period,
       {
         assignments,
+        rolling: true,
         clientRefs: openRouteScope.clientRefs,
         loans,
         clients,
@@ -2081,6 +2082,7 @@ export function SupervisorMobileApp({
         period,
         {
           assignments,
+          rolling: true,
           loans,
           clients,
           includeOperatingExpenses: true,
@@ -2181,6 +2183,7 @@ export function SupervisorMobileApp({
       period,
       {
         assignments,
+        rolling: true,
         loans,
         clients,
         includeOperatingExpenses: true,

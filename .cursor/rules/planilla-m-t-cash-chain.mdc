@@ -222,6 +222,9 @@ Si un cliente con visita «Prestar» recibe préstamo ese día, la visita **no d
 queda `omitido` con motivo «Préstamo hecho hoy» (`LOAN_GIVEN_TODAY_REASON`), y si su hoja
 ya cerró, queda cerrada con ella (`syncPermanentRoutePlanilla`). Si se descartara, la copia
 abierta de la nube volvía por el pull y la jornada quedaba sin CIE-. No entra a N/P.
+Solo si el préstamo salió **ese día** (`loan.date` = día). Préstamo de días anteriores →
+la fila «Prestar» es fantasma y se descarta (si no, cada cliente sale doble). Quien ya tiene
+visita de cuota hoy no recibe oferta Prestar aunque el aparato no haya cargado sus préstamos.
 Candado: `assert-cash-chain.mjs` sección 14.
 
 ## N/P por ruta (INICIO)

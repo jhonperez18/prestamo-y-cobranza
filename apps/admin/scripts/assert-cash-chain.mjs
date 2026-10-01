@@ -1024,6 +1024,27 @@ expect(
   collectorDayVisitsFullyClosed(pSynced.assignments, COB.ref, pDate),
   true,
 );
+// Préstamo de días anteriores: la fila «Prestar» es fantasma, no «Préstamo hecho hoy».
+const gLoans = [
+  { ref: "P-G1", clientRef: "CLI-P1", client: "Flaca M", date: "20/09/2026", capital: 300_000, total: 360_000, installment: 15_000, status: "Activo" },
+];
+const gSynced = syncPermanentRoutePlanilla(pDate, pRoutes, pClients.slice(0, 1), gLoans, [COB], [
+  visit(`${pDate}:CLI-P1:prestar`, "CLI-P1", "M", pDate, { visitStatus: "omitido", awaitingLoan: true, chargeLabel: "Prestar", skipReason: "Préstamo hecho hoy" }),
+], []);
+expect(
+  "Préstamo viejo: sin fila «Prestar» duplicada",
+  gSynced.assignments.filter((r) => r.clientRef === "CLI-P1" && r.dispatchDate === pDate && r.itemId.includes(":prestar")).length,
+  0,
+);
+// Préstamos a medio cargar: quien ya tiene visita de cuota hoy no recibe oferta Prestar.
+const hSynced = syncPermanentRoutePlanilla(pDate, pRoutes, pClients.slice(0, 1), [], [COB], [
+  visit(`${pDate}:P-G1:acum`, "CLI-P1", "M", pDate, { visitStatus: "pendiente", loanRef: "P-G1" }),
+], []);
+expect(
+  "Préstamos sin cargar: no se ofrece Prestar a quien tiene cuota hoy",
+  hSynced.assignments.some((r) => r.clientRef === "CLI-P1" && r.itemId.includes(":prestar")),
+  false,
+);
 
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
