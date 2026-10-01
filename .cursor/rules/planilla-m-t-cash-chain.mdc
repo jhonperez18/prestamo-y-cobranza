@@ -158,6 +158,21 @@ también. Un solo camino: `saveEditLoan` → `commitUpdateLoan` → `syncCashDis
 - Préstamos ya corregidos antes de esta regla: abrir → Modificar → Guardar (sin cambios).
 - Candado: `assert-cash-chain.mjs` sección 10.
 
+## Préstamo del supervisor a cargo de la ruta
+
+El supervisor puede montar un préstamo que asume la ruta del cliente (origen «Caja de la ruta»,
+`fundedBy: "efectivo"`). Un solo camino: `commitRouteCashLoan` (`lib/commit-route-cash-loan.ts`).
+
+| Pieza | Regla |
+| --- | --- |
+| Cobrador | El de la planilla de hoy del cliente; si no, el fijo de su ruta (`routeCollectorCashTarget`) |
+| Registro | Renglón «Préstamo · P-…» en el GAS- de hoy de ese cobrador → KPI Préstamo, lista y caja del lado de la ruta del cliente |
+| Caja cerrada | No entra; el préstamo no se crea |
+| Nequi / Banco | Siguen sin tocar ninguna caja |
+| Modificar préstamo de hoy a efectivo | `routeCashLoanLineMissing` → se carga a la caja de la ruta (días pasados no) |
+
+- Candado: `assert-cash-chain.mjs` sección 19.
+
 ## Ajuste de saldo real en T (supervisor / admin)
 
 Poner la caja contada de verdad como saldo final del día. Un solo camino: `commitCashAdjustment`

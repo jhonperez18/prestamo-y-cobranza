@@ -21,6 +21,11 @@ import {
   type QuickLoanDraft,
 } from "@/lib/street-client-loan";
 import {
+  commitRouteCashLoan,
+  routeCashLoanLineMissing,
+  supervisorLoanOrigin,
+} from "@/lib/commit-route-cash-loan";
+import {
   isoToDispatchLabel,
   monthStartIso,
   todayIso,
@@ -1253,18 +1258,35 @@ export function useWorkspace({
           `Préstamo ${loanRef}: el día ${synced.lockedDates.map(isoToDispatchLabel).join(", ")} ya cerró; su gasto no se modifica.`,
         );
       }
-      if (!synced.changed.length) return;
+      const today = todayIso();
+      const routeCash = routeCashLoanLineMissing(loan, synced.drafts, today)
+        ? commitRouteCashLoan(loan, synced.drafts, {
+            clients: result.state.clients,
+            routes: result.state.routes,
+            collectors,
+            assignments: result.state.assignments,
+            dayCloses,
+            date: today,
+            now: new Date(),
+          })
+        : null;
+      if (routeCash && !routeCash.ok) {
+        onToast(`Préstamo ${loanRef} guardado, pero no se cargó a la caja de la ruta: ${routeCash.error}`);
+      }
+      const drafts = routeCash?.ok ? routeCash.drafts : synced.drafts;
+      const changed = routeCash?.ok ? [...synced.changed, routeCash.draft] : synced.changed;
+      if (!changed.length) return;
 
-      writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, synced.drafts);
-      setDayExpenseDrafts(synced.drafts);
-      for (const row of synced.changed) queueDayExpenseMirror(row);
+      writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, drafts);
+      setDayExpenseDrafts(drafts);
+      for (const row of changed) queueDayExpenseMirror(row);
       const accounts = ensureBankAccounts(bankAccounts);
       setBankMovements((rows) =>
         applyBankLedgerSync(rows, {
           payments,
           accounts,
           miscPayments,
-          dayExpenseDrafts: synced.drafts,
+          dayExpenseDrafts: drafts,
           dayCloses,
           loans: result.state.loans,
           clients: result.state.clients,
@@ -2086,10 +2108,7 @@ export function useWorkspace({
       return;
     }
     const loan = buildQuickLoan(
-      {
-        ...draft,
-        fundedBy: draft.fundedBy === "banco" ? "banco" : "nequi",
-      },
+      { ...draft, fundedBy: supervisorLoanOrigin(draft.fundedBy) },
       client,
       loans,
     );
@@ -2106,6 +2125,27 @@ export function useWorkspace({
       total: client.total + (loan.total ?? 0),
       pending: client.pending + (loan.total ?? 0),
     });
+    const routeCash =
+      loan.fundedBy === "efectivo"
+        ? commitRouteCashLoan(loan, dayExpenseDrafts, {
+            clients: nextClients,
+            routes,
+            collectors,
+            assignments: dailyAssignments,
+            dayCloses,
+            date: todayIso(),
+            now: new Date(),
+          })
+        : null;
+    if (routeCash && !routeCash.ok) {
+      onToast(`Préstamo no creado: ${routeCash.error}`);
+      return;
+    }
+    if (routeCash?.ok) {
+      writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, routeCash.drafts);
+      setDayExpenseDrafts(routeCash.drafts);
+      queueDayExpenseMirror(routeCash.draft);
+    }
     setLoans(nextLoans);
     setClients(nextClients);
     const planilla = syncPermanentRoutePlanilla(
@@ -2122,7 +2162,11 @@ export function useWorkspace({
     queueLoanMirror(loan);
     const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
     if (mirroredClient) queueClientMirror(mirroredClient);
-    onToast(`Préstamo ${loan.ref} creado · cuota ${money(loan.installment ?? 0)}.`);
+    onToast(
+      routeCash?.ok
+        ? `Préstamo ${loan.ref} creado · ${money(loan.capital)} a cargo de la caja de ${routeCash.collector.name} · cuota ${money(loan.installment ?? 0)}.`
+        : `Préstamo ${loan.ref} creado · cuota ${money(loan.installment ?? 0)}.`,
+    );
   }
 
   function peopleState(): PeopleCatalogState {

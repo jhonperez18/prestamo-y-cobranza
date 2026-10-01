@@ -1282,6 +1282,73 @@ console.log("\n— Gasto: la cola no pierde lo que no subió —");
   delete globalThis.window;
 }
 
+// 19. Préstamo del supervisor con origen «Caja de la ruta»: lo asume el cobrador de la ruta
+//     del cliente (renglón «Préstamo» en su GAS- → KPI, lista y caja del lado T).
+//     Banco / Nequi siguen fuera de la caja. Caja cerrada → no entra.
+console.log("— Préstamo del supervisor a cargo de la ruta —");
+{
+  const { commitRouteCashLoan, routeCashLoanLineMissing, supervisorLoanOrigin } = await import(
+    "@/lib/commit-route-cash-loan"
+  );
+  const routes = [{ ref: "RUT-T", name: "T", collectorRef: COB.ref, collector: COB.name, status: "Activa" }];
+  const supLoan = {
+    ref: "P-SUP",
+    clientRef: "CLI-T1",
+    client: "Caro T",
+    date: "26/09/2026",
+    capital: 600_000,
+    installment: 30_000,
+    fundedBy: "efectivo",
+  };
+  const src = {
+    clients,
+    routes,
+    collectors: [COB],
+    assignments,
+    dayCloses: [cie25],
+    date: D,
+    now: new Date(`${D}T15:00:00-05:00`),
+  };
+  expect("Origen supervisor: banco sigue banco", supervisorLoanOrigin("banco"), "banco");
+  expect("Origen supervisor: caja de la ruta = efectivo", supervisorLoanOrigin("efectivo"), "efectivo");
+  expect("Origen supervisor: sin origen = nequi", supervisorLoanOrigin(undefined), "nequi");
+  const res = commitRouteCashLoan(supLoan, drafts, src);
+  expect("Caja de la ruta: entra al cobrador de la ruta", res.ok ? res.collector.ref : res.error, COB.ref);
+  const line = res.ok ? res.draft.expenses.find((r) => r.loanRef === "P-SUP") : null;
+  expect("Caja de la ruta: renglón Préstamo = capital", line?.amount ?? null, 600_000);
+  expect(
+    "Caja de la ruta: gasto operativo del día intacto",
+    res.ok ? res.draft.expenses.find((r) => r.id === "almuerzo")?.amount ?? null : null,
+    20_000,
+  );
+  const before = buildDayCashLedger(base);
+  const after = buildDayCashLedger({ ...base, loans: [...loans, supLoan], dayExpenseDrafts: res.ok ? res.drafts : drafts });
+  expect("Caja de la ruta: KPI préstamo T", after.t.prestamos - before.t.prestamos, 600_000);
+  expect("Caja de la ruta: caja M intacta (cliente de T)", after.mClosing, before.mClosing);
+  expect("Caja de la ruta: saldo final del día baja el capital", before.dayFinal - after.dayFinal, 600_000);
+  const sealed = commitRouteCashLoan(supLoan, drafts, {
+    ...src,
+    dayCloses: [cie25, { ...cie25, ref: `CIE-COB-0-${D}`, date: D }],
+  });
+  expect("Caja de la ruta: caja ya cerrada → no entra", sealed.ok, false);
+  expect("Modificar a caja de la ruta: falta renglón", routeCashLoanLineMissing(supLoan, drafts, D), true);
+  expect(
+    "Modificar a caja de la ruta: con renglón no se duplica",
+    routeCashLoanLineMissing(supLoan, res.ok ? res.drafts : drafts, D),
+    false,
+  );
+  expect(
+    "Modificar: préstamo de banco no se carga a la ruta",
+    routeCashLoanLineMissing({ ...supLoan, fundedBy: "banco" }, drafts, D),
+    false,
+  );
+  expect(
+    "Modificar: préstamo de otro día no se carga hoy",
+    routeCashLoanLineMissing({ ...supLoan, date: "25/09/2026" }, drafts, D),
+    false,
+  );
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

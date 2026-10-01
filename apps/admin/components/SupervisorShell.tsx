@@ -74,9 +74,11 @@ import {
 import {
   flushOpsMirrorQueues,
   queueAssignmentsMirror,
+  queueDayExpenseMirror,
   queueMiscPaymentMirror,
   queueRoutesMirror,
 } from "@/lib/supabase/ops-mirror";
+import { commitRouteCashLoan, supervisorLoanOrigin } from "@/lib/commit-route-cash-loan";
 import { mirrorAutoDayCloseToCloud } from "@/lib/mirror-auto-day-close";
 import type { MiscPayment } from "@/lib/misc-payments";
 import type { CashAdjustmentRequest } from "@/lib/commit-cash-adjustment";
@@ -374,10 +376,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
       return;
     }
     const loan = buildQuickLoan(
-      {
-        ...draft,
-        fundedBy: draft.fundedBy === "banco" ? "banco" : "nequi",
-      },
+      { ...draft, fundedBy: supervisorLoanOrigin(draft.fundedBy) },
       client,
       loans,
     );
@@ -394,6 +393,28 @@ export function SupervisorShell({ session, onLogout }: Props) {
       total: client.total + (loan.total ?? 0),
       pending: client.pending + (loan.total ?? 0),
     });
+    const routeCash =
+      loan.fundedBy === "efectivo"
+        ? commitRouteCashLoan(loan, dayExpenseDrafts, {
+            clients: nextClients,
+            routes,
+            collectors,
+            assignments: dailyAssignments,
+            dayCloses,
+            date: todayIso(),
+            now: new Date(),
+          })
+        : null;
+    if (routeCash && !routeCash.ok) {
+      showToast(`Préstamo no creado: ${routeCash.error}`);
+      return;
+    }
+    const nextDrafts = routeCash?.ok ? routeCash.drafts : dayExpenseDrafts;
+    if (routeCash?.ok) {
+      writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
+      setDayExpenseDrafts(nextDrafts);
+      queueDayExpenseMirror(routeCash.draft);
+    }
     setLoans(nextLoans);
     setClients(nextClients);
     writeDemoJson(DEMO_LOANS_KEY, nextLoans);
@@ -427,14 +448,16 @@ export function SupervisorShell({ session, onLogout }: Props) {
           readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
         ),
         miscPayments: readDemoJson(DEMO_MISC_PAYMENTS_KEY, []),
-        dayExpenseDrafts,
+        dayExpenseDrafts: nextDrafts,
         dayCloses,
         loans: nextLoans,
         clients: nextClients,
       }),
     );
     showToast(
-      `Préstamo ${loan.ref} · origen ${loan.fundedBy === "banco" ? "Banco" : "Nequi"} · subiendo…`,
+      routeCash?.ok
+        ? `Préstamo ${loan.ref} · ${money(loan.capital)} a cargo de la caja de ${routeCash.collector.name} · subiendo…`
+        : `Préstamo ${loan.ref} · origen ${loan.fundedBy === "banco" ? "Banco" : "Nequi"} · subiendo…`,
     );
     try {
       await flushCatalogMirrorQueues();

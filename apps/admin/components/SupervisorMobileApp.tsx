@@ -3933,7 +3933,7 @@ export function SupervisorMobileApp({
                     key={reloanClient.ref}
                     clientName={`${reloanClient.name} ${reloanClient.lastName}`.trim()}
                     clientRef={reloanClient.ref}
-                    fundedByOptions={["nequi", "banco"]}
+                    fundedByOptions={["nequi", "banco", "efectivo"]}
                     defaultFundedBy="nequi"
                     onCancel={() => setReloanClientRef(null)}
                     onSave={(draft) => {
@@ -4510,7 +4510,7 @@ export function SupervisorMobileApp({
                   <QuickLoanForm
                     clientName={`${nuevoLoanClient.name} ${nuevoLoanClient.lastName}`.trim()}
                     clientRef={nuevoLoanClient.ref}
-                    fundedByOptions={["nequi", "banco"]}
+                    fundedByOptions={["nequi", "banco", "efectivo"]}
                     defaultFundedBy="nequi"
                     onCancel={() => setNuevoLoanClientRef(null)}
                     onSave={(draft) => {

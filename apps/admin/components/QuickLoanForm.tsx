@@ -251,7 +251,7 @@ export function QuickLoanForm({
           >
             {options.map((opt) => (
               <option key={opt} value={opt}>
-                {ORIGIN_LABEL[opt]}
+                {opt === "efectivo" ? "Caja de la ruta" : ORIGIN_LABEL[opt]}
               </option>
             ))}
           </select>
