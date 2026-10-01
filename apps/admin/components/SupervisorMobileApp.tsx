@@ -1679,7 +1679,7 @@ export function SupervisorMobileApp({
     }, 0);
   }, [liquidaciones, paymentsWithEvidence]);
 
-  /** Cabecera: saldo Nequi + saldo Banco (totales acumulados de ambos paneles). */
+  /** Saldo Nequi + saldo Banco (totales acumulados de ambos paneles). */
   const nequiBancoSaldoTotal = nequiAcumulado + bancoAcumulado;
 
   /** Informe: caja de cada planilla según el libro del día (T ya incluye M). */
@@ -3004,13 +3004,6 @@ export function SupervisorMobileApp({
       </header>
 
       <div className="supervisor-mobile-nav-block">
-        <div
-          className="supervisor-kpi-nb-sum"
-          aria-label={`Saldo Nequi + Banco: ${money(nequiBancoSaldoTotal, { symbol: false })}`}
-          title="Total acumulado Nequi + Total acumulado Banco"
-        >
-          <b>{money(nequiBancoSaldoTotal, { symbol: false })}</b>
-        </div>
         <div
           className="supervisor-mobile-kpis is-home has-nuevo has-clientes has-nequi has-banco"
           role="group"

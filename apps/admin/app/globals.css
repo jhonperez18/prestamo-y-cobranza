@@ -4348,8 +4348,6 @@
      * Supervisor móvil: montos/saldos/precios sin negrilla (conserva color).
      * Títulos KPI (INICIO/RUTA/…) y th de tablas: sí negrilla.
      */
-    .supervisor-mobile .supervisor-kpi-nb-sum b,
-    .supervisor-mobile-app .supervisor-kpi-nb-sum b,
     .supervisor-mobile .supervisor-caja-hero b,
     .supervisor-mobile-app .supervisor-caja-hero b,
     .supervisor-mobile .supervisor-day-board.is-total-row b,
@@ -4447,7 +4445,6 @@
       color: #111;
       white-space: nowrap;
     }
-    /* Suma Nequi+Banco centrada justo encima de esas dos pestañas (cols 4–5 de 7). */
     .supervisor-mobile-nav-block {
       display: grid;
       grid-template-columns: repeat(7, minmax(0, 1fr));
@@ -4459,31 +4456,6 @@
       top: 0;
       z-index: 30;
       background: #f3f7f5;
-    }
-    .supervisor-mobile-nav-block .supervisor-kpi-nb-sum {
-      grid-column: 4 / span 2;
-      justify-self: stretch;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      margin: 0;
-      padding: 3px 4px 2px;
-      border: 1px solid #c5d4e0;
-      border-bottom: 0;
-      border-radius: 6px 6px 0 0;
-      background: linear-gradient(180deg, #f1e9fb 0%, #e8f0fe 100%);
-      pointer-events: none;
-      user-select: none;
-      z-index: 1;
-    }
-    .supervisor-mobile-nav-block .supervisor-kpi-nb-sum b {
-      font-size: 12px;
-      font-weight: 400;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: 0;
-      color: #334155;
-      line-height: 1;
-      text-align: center;
     }
     .supervisor-mobile-nav-block .supervisor-mobile-kpis {
       grid-column: 1 / -1;
