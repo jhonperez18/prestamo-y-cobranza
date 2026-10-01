@@ -944,6 +944,31 @@ const poolSrc = {
 const pools0 = digitalPoolBalances(poolSrc);
 expect("Pool: lo digital de M va a Banco (aunque diga nequi)", pools0.banco, 10_000);
 expect("Pool: lo digital de A va a Nequi (aunque diga banco)", pools0.nequi, 10_000);
+{
+  const digitalLoan = (ref, clientRef, fundedBy) => ({
+    ref,
+    clientRef,
+    client: ref,
+    date: "26/09/2026",
+    capital: 4_000,
+    fundedBy,
+  });
+  const withLoans = digitalPoolBalances({
+    ...poolSrc,
+    loans: [
+      ...bankLoans,
+      digitalLoan("P-SUP-B", "C-M", "banco"),
+      digitalLoan("P-SUP-N", "C-M", "nequi"),
+      digitalLoan("P-SUP-A", "C-A", "banco"),
+      digitalLoan("P-SUP-E", "C-M", "efectivo"),
+    ],
+  });
+  expect("Pool: préstamo por Banco (supervisor) a cliente de M sale de BANCO", pools0.banco - withLoans.banco, 8_000);
+  expect("Pool: préstamo por Banco a cliente de A sale de NEQUI (manda la ruta)", pools0.nequi - withLoans.nequi, 4_000);
+  const supBancoT = { ref: "P-SUP-T", clientRef: "CLI-T1", client: "Caro T", date: "26/09/2026", capital: 600_000, fundedBy: "banco" };
+  const cashWithBanco = buildDayCashLedger({ ...base, loans: [...loans, supBancoT] });
+  expect("Pool: préstamo por Banco no toca la caja de T", cashWithBanco.dayFinal, buildDayCashLedger(base).dayFinal);
+}
 expect(
   "Pool: con una ruta sin cerrar no se cuadra",
   digitalPoolAdjustWindow([{ ref: COB.ref }, { ref: "COB-X", name: "Otro" }], afterT.dayCloses, adjNow).open,

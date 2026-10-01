@@ -168,7 +168,7 @@ El supervisor puede montar un préstamo que asume la ruta del cliente (origen «
 | Cobrador | El de la planilla de hoy del cliente; si no, el fijo de su ruta (`routeCollectorCashTarget`) |
 | Registro | Renglón «Préstamo · P-…» en el GAS- de hoy de ese cobrador → KPI Préstamo, lista y caja del lado de la ruta del cliente |
 | Caja cerrada | No entra; el préstamo no se crea |
-| Nequi / Banco | Siguen sin tocar ninguna caja |
+| Nequi / Banco | No tocan la caja; salen del Total acumulado BANCO / NEQUI de la ruta del cliente (`digitalPoolBalances`) |
 | Modificar préstamo de hoy a efectivo | `routeCashLoanLineMissing` → se carga a la caja de la ruta (días pasados no) |
 
 - Candado: `assert-cash-chain.mjs` sección 19.
@@ -225,7 +225,7 @@ Un solo dueño: `lib/digital-pools.ts` (`digitalPoolBalances`).
 
 | Pieza | Regla |
 | --- | --- |
-| Qué suma | Cobros no efectivo por **ruta del cliente**: A → NEQUI; M / T / N → BANCO (no el método guardado). Resta préstamos desembolsados desde Nequi en el pool de la ruta del cliente |
+| Qué suma | Cobros no efectivo por **ruta del cliente**: A → NEQUI; M / T / N → BANCO (no el método guardado). Resta préstamos desembolsados desde Nequi **o Banco** (los haga el cobrador o el supervisor) en el pool de la ruta del cliente |
 | Cuadre | Supervisor / admin → botón BANCO o NEQUI → tocar «Total acumulado». Solo hoy, con **todas** las rutas cerradas (CIE- de cada cobrador), antes de medianoche |
 | Dónde vive | `routeCashAdjustments` de los CIE- de hoy, ruta `POOL-BANCO` / `POOL-NEQUI`; nube: `AJUSTE@POOL-…:` |
 | Después | Saldo = real del último cuadre + movimientos de los días siguientes |

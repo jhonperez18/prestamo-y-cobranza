@@ -2,8 +2,8 @@
  * Acumulados digitales del dueño — único dueño del saldo de BANCO y NEQUI.
  *
  * Manda la ruta del cliente (no el método guardado): A → Nequi; M / T / N → Banco.
- * Saldo = cobros digitales − préstamos desembolsados desde Nequi (en el pool de la ruta
- * del cliente que los recibió).
+ * Saldo = cobros digitales − préstamos desembolsados desde Nequi o Banco (en el pool de la
+ * ruta del cliente que los recibió; lo haga el cobrador o el supervisor).
  *
  * Ajuste (cuadrar el saldo real): supervisor / admin, hoy, con TODAS las rutas cerradas
  * (CIE- de cada cobrador sellado) y antes de medianoche. Vive en los CIE- de hoy como
@@ -26,7 +26,12 @@ import {
   type LoanRow,
   type PaymentRow,
 } from "@/lib/mock-data";
-import { isOfficePayment, loanDisbursementIsoDate, loanFundedByNequi } from "@/lib/nequi-pool";
+import {
+  isOfficePayment,
+  loanDisbursementIsoDate,
+  loanFundedByBanco,
+  loanFundedByNequi,
+} from "@/lib/nequi-pool";
 import { paymentRecaudoIso } from "@/lib/payment-detail";
 import { paymentMethodForRoute } from "@/lib/payment-method";
 import { findFullDayCieClose } from "@/lib/planilla-cash-chain";
@@ -134,7 +139,7 @@ export function digitalPoolBalances(src: DigitalPoolSources, before?: string): D
     if (isOfficePayment(row)) add(row);
   }
   for (const loan of src.loans) {
-    if (!loanFundedByNequi(loan)) continue;
+    if (!loanFundedByNequi(loan) && !loanFundedByBanco(loan)) continue;
     const capital = Number(loan.capital) || 0;
     if (capital <= 0) continue;
     const route = loan.clientRef ? routeByClient.get(loan.clientRef) : undefined;
