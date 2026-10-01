@@ -63,13 +63,13 @@ import { syncPermanentRoutePlanilla } from "@/lib/route-planilla";
 import {
   assignClientToRouteOnLoan,
   buildQuickLoan,
-  buildStreetClient,
-  insertStreetClient,
   type QuickLoanDraft,
 } from "@/lib/street-client-loan";
 import {
+  commitCreateRouteClient,
   commitUpdateClient,
   flushPortfolioCatalogToCloud,
+  type RouteClientDraft,
 } from "@/lib/commit-portfolio-catalog";
 import {
   flushOpsMirrorQueues,
@@ -280,27 +280,28 @@ export function SupervisorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_COLLECTORS_KEY, collectors);
   }, [collectors, hydrated]);
 
-  function createStreetClientFromMobile(draft: {
-    name: string;
-    lastName?: string;
-    phone?: string;
-  }) {
-    const row = buildStreetClient(
-      {
-        name: draft.name,
-        lastName: draft.lastName,
-        phone: draft.phone,
-        createdBy: session.name,
-      },
-      clients,
+  async function createRouteClientFromMobile(draft: RouteClientDraft) {
+    const result = commitCreateRouteClient(
+      draft,
+      { clients, loans, routes, assignments: dailyAssignments, collectors, payments },
+      session.name,
     );
-    const nextClients = insertStreetClient(clients, row);
-    setClients(nextClients);
-    queueClientMirror(row);
-    showToast(`Cliente ${row.name} guardado en el catálogo.`);
-    void flushCatalogMirrorQueues().catch(() => {
-      /* offline: queda en cola local */
-    });
+    if (!result.ok) {
+      showToast(result.error);
+      return false;
+    }
+    setClients(result.state.clients);
+    setRoutes(result.state.routes);
+    setDailyAssignments(result.state.assignments);
+    showToast(`${result.message} · subiendo…`);
+    try {
+      await flushPortfolioCatalogToCloud();
+      showToast(result.message);
+    } catch (err) {
+      console.error("[nuevo cliente] flush nube", err);
+      showToast(`${result.message} (sin nube; en este aparato ya está, queda en cola).`);
+    }
+    return true;
   }
 
   function updateClientFromMobile(draft: {
@@ -550,7 +551,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
         monthCloses={monthCloses}
         bankAccounts={bankAccounts}
         miscPayments={miscPayments}
-        onCreateStreetClient={createStreetClientFromMobile}
+        onCreateRouteClient={createRouteClientFromMobile}
         onCreateQuickLoan={createQuickLoanFromMobile}
         onUpdateClient={updateClientFromMobile}
         onAttachPaymentEvidence={attachPaymentEvidence}

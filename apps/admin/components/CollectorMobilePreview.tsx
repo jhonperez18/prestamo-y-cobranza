@@ -47,11 +47,6 @@ type Props = {
   onSaveExpenses?: (payload: CollectorSaveExpensesPayload) => void;
   onCloseDay?: (payload: CollectorCloseDayPayload) => void;
   onCloseMonth?: (payload: CollectorCloseMonthPayload) => void;
-  onCreateStreetClient?: (draft: {
-    name: string;
-    lastName?: string;
-    phone?: string;
-  }) => void;
   onCreateQuickLoan?: (draft: import("@/lib/street-client-loan").QuickLoanDraft) => void;
   onCreateRouteClient?: (
     draft: import("@/lib/commit-portfolio-catalog").RouteClientDraft,
@@ -103,7 +98,6 @@ export function CollectorMobilePreview({
   onSaveExpenses,
   onCloseDay,
   onCloseMonth,
-  onCreateStreetClient,
   onCreateQuickLoan,
   onCreateRouteClient,
   onUpdateClient,
@@ -309,7 +303,11 @@ export function CollectorMobilePreview({
                   planillaCashCloses={planillaCashCloses}
                   bankAccounts={bankAccounts}
                   miscPayments={miscPayments}
-                  onCreateStreetClient={onCreateStreetClient}
+                  onCreateRouteClient={
+                    onCreateRouteClient
+                      ? (draft) => onCreateRouteClient(draft, supervisor.name)
+                      : undefined
+                  }
                   onCreateQuickLoan={onCreateQuickLoan}
                   onUpdateClient={onUpdateClient}
                   onAttachPaymentEvidence={onAttachPaymentEvidence}

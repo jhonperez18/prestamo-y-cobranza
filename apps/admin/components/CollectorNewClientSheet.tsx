@@ -8,20 +8,35 @@ import type { ClientRow } from "@/lib/mock-data";
 type Props = {
   routeName: string;
   clients: ClientRow[];
+  /** Supervisor: rutas a elegir. Sin esto la ruta es fija (planilla abierta del cobrador). */
+  routeOptions?: string[];
   onCancel: () => void;
   onSave: (draft: RouteClientDraft) => Promise<boolean> | boolean;
 };
 
 /** Nuevo cliente desde el cobrador: nombre, posición en la ruta (como el taller) y ruta fija. */
-export function CollectorNewClientSheet({ routeName, clients, onCancel, onSave }: Props) {
+export function CollectorNewClientSheet({
+  routeName,
+  clients,
+  routeOptions,
+  onCancel,
+  onSave,
+}: Props) {
+  const [route, setRoute] = useState(routeName);
   const positionOptions = useMemo(() => {
-    const max = clientsOnRouteSorted(clients, routeName).length + 1;
+    const max = clientsOnRouteSorted(clients, route).length + 1;
     return Array.from({ length: max }, (_, index) => index + 1);
-  }, [clients, routeName]);
+  }, [clients, route]);
   const [name, setName] = useState("");
   const [routeOrder, setRouteOrder] = useState(positionOptions.length);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const canPickRoute = Boolean(routeOptions && routeOptions.length > 1);
+
+  function changeRoute(next: string) {
+    setRoute(next);
+    setRouteOrder(clientsOnRouteSorted(clients, next).length + 1);
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -31,12 +46,16 @@ export function CollectorNewClientSheet({ routeName, clients, onCancel, onSave }
       setError("Escribe el nombre del cliente.");
       return;
     }
+    if (!route.trim()) {
+      setError("Elige la ruta del cliente.");
+      return;
+    }
     const maxPos = Math.max(1, positionOptions.length);
     const pos = Math.min(Math.max(1, routeOrder || maxPos), maxPos);
     setSaving(true);
     setError("");
     try {
-      const ok = await onSave({ name: trimmed, route: routeName, routeOrder: pos });
+      const ok = await onSave({ name: trimmed, route, routeOrder: pos });
       if (!ok) setError("No se pudo crear el cliente.");
     } catch (err) {
       console.error("[nuevo cliente]", err);
@@ -82,13 +101,30 @@ export function CollectorNewClientSheet({ routeName, clients, onCancel, onSave }
               ))}
             </select>
           </label>
-          <div className="collector-new-client-field">
-            <span>Ruta</span>
-            <b className="collector-new-client-route">{routeName}</b>
-          </div>
+          {canPickRoute ? (
+            <label className="collector-new-client-field">
+              <span>Ruta</span>
+              <select
+                name="ruta"
+                value={route}
+                onChange={(event) => changeRoute(event.target.value)}
+              >
+                {routeOptions?.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="collector-new-client-field">
+              <span>Ruta</span>
+              <b className="collector-new-client-route">{route}</b>
+            </div>
+          )}
         </div>
         <p className="collector-new-client-hint">
-          Quedará en #{routeOrder} de la ruta {routeName}; el resto se corre. Sin préstamo aparece
+          Quedará en #{routeOrder} de la ruta {route}; el resto se corre. Sin préstamo aparece
           en la lista para prestarle.
         </p>
         {error ? (

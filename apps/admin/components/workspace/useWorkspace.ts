@@ -18,8 +18,6 @@ import { type UserDraft } from "@/components/NewUserForm";
 import {
   assignClientToRouteOnLoan,
   buildQuickLoan,
-  buildStreetClient,
-  insertStreetClient,
   type QuickLoanDraft,
 } from "@/lib/street-client-loan";
 import {
@@ -2029,29 +2027,6 @@ export function useWorkspace({
     );
   }
 
-  function createStreetClientFromMobile(draft: {
-    name: string;
-    lastName?: string;
-    phone?: string;
-  }) {
-    const row = buildStreetClient(
-      {
-        name: draft.name,
-        lastName: draft.lastName,
-        phone: draft.phone,
-        createdBy: sessionUser?.name ?? "Supervisor",
-      },
-      clients,
-    );
-    const nextClients = insertStreetClient(clients, row);
-    setClients(nextClients);
-    queueClientMirror(row);
-    onToast(`Cliente ${row.name} guardado en el catálogo.`);
-    void flushCatalogMirrorQueues().catch(() => {
-      /* offline: queda en cola local */
-    });
-  }
-
   function createRouteClientFromMobile(draft: RouteClientDraft, createdBy?: string) {
     return applyPortfolioCommit(
       commitCreateRouteClient(draft, portfolioState(), createdBy ?? sessionUser?.name),
@@ -2715,7 +2690,6 @@ export function useWorkspace({
     voidPayment,
     skipCollectorVisit,
     renewLoan,
-    createStreetClientFromMobile,
     updateClientFromMobile,
     createQuickLoanFromMobile,
     createRouteClientFromMobile,

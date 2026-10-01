@@ -157,6 +157,8 @@ import {
   withIndependentRouteHistory,
 } from "@/lib/independent-route-cash";
 import { CashAdjustForm } from "@/components/CashAdjustForm";
+import { CollectorNewClientSheet } from "@/components/CollectorNewClientSheet";
+import type { RouteClientDraft } from "@/lib/commit-portfolio-catalog";
 /** Fecha corta para listados: 05/09/2026 → 5/9 */
 function formatLoanListDate(raw?: string | null) {
   const text = String(raw ?? "").trim();
@@ -183,11 +185,8 @@ type Props = {
   bankAccounts?: BankAccount[];
   /** Pagos varios ya montados (para el siguiente PV-). */
   miscPayments?: MiscPayment[];
-  onCreateStreetClient?: (draft: {
-    name: string;
-    lastName?: string;
-    phone?: string;
-  }) => void;
+  /** Nuevo cliente: mismo alta del cobrador (ruta + posición), local + cola + nube. */
+  onCreateRouteClient?: (draft: RouteClientDraft) => Promise<boolean> | boolean;
   onCreateQuickLoan?: (draft: QuickLoanDraft) => void;
   /** Editar ficha de cliente desde CLIENTES (raíz + cola nube). */
   onUpdateClient?: (draft: {
@@ -969,7 +968,7 @@ export function SupervisorMobileApp({
   planillaCashCloses = [],
   bankAccounts = [],
   miscPayments = [],
-  onCreateStreetClient,
+  onCreateRouteClient,
   onCreateQuickLoan,
   onUpdateClient,
   onAttachPaymentEvidence,
@@ -1005,8 +1004,6 @@ export function SupervisorMobileApp({
   const [bancoRegistroRoute, setBancoRegistroRoute] = useState<string | null>(null);
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
-  const [nuevoName, setNuevoName] = useState("");
-  const [nuevoPhone, setNuevoPhone] = useState("");
   const [gastoLabel, setGastoLabel] = useState("Gasto");
   const [gastoAmount, setGastoAmount] = useState("");
   const [gastoAccountRef, setGastoAccountRef] = useState("");
@@ -1064,8 +1061,6 @@ export function SupervisorMobileApp({
     setNuevoMsg("");
     setNuevoClientSearch("");
     setNuevoLoanClientRef(null);
-    setNuevoName("");
-    setNuevoPhone("");
     setClientesModifyMode(false);
     setClientesEditRef(null);
     setClientesEditSearch("");
@@ -2503,8 +2498,6 @@ export function SupervisorMobileApp({
     setNuevoMode("menu");
     setNuevoClientSearch("");
     setNuevoLoanClientRef(null);
-    setNuevoName("");
-    setNuevoPhone("");
     setGastoLabel("Gasto");
     setGastoAmount("");
     setGastoAccountRef("");
@@ -2559,8 +2552,6 @@ export function SupervisorMobileApp({
     setNuevoMode("menu");
     setNuevoClientSearch("");
     setNuevoLoanClientRef(null);
-    setNuevoName("");
-    setNuevoPhone("");
     setPlanillaRouteFilter(null);
     setClientesRouteFilter(null);
     setClientesLoanClientRef(null);
@@ -2648,8 +2639,6 @@ export function SupervisorMobileApp({
     setNuevoMsg("");
     setNuevoClientSearch("");
     setNuevoLoanClientRef(null);
-    setNuevoName("");
-    setNuevoPhone("");
     setGastoLabel("Gasto");
     setGastoAmount("");
     setGastoAccountRef("");
@@ -2867,21 +2856,13 @@ export function SupervisorMobileApp({
     clients.find((row) => row.ref === nuevoLoanClientRef) ??
     null;
 
-  function submitStreetClient() {
-    if (!onCreateStreetClient) return;
-    const name = nuevoName.trim();
-    if (!name) {
-      setNuevoMsg("Escriba el nombre del cliente.");
-      return;
-    }
-    onCreateStreetClient({
-      name,
-      phone: nuevoPhone.trim() || undefined,
-    });
-    setNuevoName("");
-    setNuevoPhone("");
-    setNuevoMsg(`Listo: ${name} quedó en el catálogo de clientes.`);
+  async function saveNuevoRouteClient(draft: RouteClientDraft) {
+    if (!onCreateRouteClient) return false;
+    const ok = await onCreateRouteClient(draft);
+    if (!ok) return false;
+    setNuevoMsg(`Listo: ${draft.name} quedó en la ruta ${draft.route}, posición ${draft.routeOrder}.`);
     setNuevoMode("menu");
+    return true;
   }
 
   function closeRouteDetail() {
@@ -4217,7 +4198,7 @@ export function SupervisorMobileApp({
                 <button
                   type="button"
                   className="supervisor-nuevo-menu-btn is-cliente"
-                  disabled={!onCreateStreetClient}
+                  disabled={!onCreateRouteClient || planillaRoutePins.length === 0}
                   onClick={() => {
                     resetNuevoFlow();
                     setNuevoMode("cliente");
@@ -4249,7 +4230,7 @@ export function SupervisorMobileApp({
                   <b>Nuevo gasto</b>
                 </button>
               </div>
-              {!onCreateStreetClient && !onCreateQuickLoan && !onSaveMiscPayment ? (
+              {!onCreateRouteClient && !onCreateQuickLoan && !onSaveMiscPayment ? (
                 <p className="ficha-empty">No hay permiso para crear desde esta vista.</p>
               ) : null}
             </>
@@ -4350,60 +4331,20 @@ export function SupervisorMobileApp({
               )}
             </>
           ) : nuevoMode === "cliente" ? (
-            <>
-              <div className="supervisor-mobile-detail-head">
-                <h3>Nuevo cliente</h3>
-                <button
-                  type="button"
-                  className="collector-mobile-pay-link is-back"
-                  onClick={() => {
-                    resetNuevoFlow();
-                    setNuevoMode("menu");
-                  }}
-                >
-                  atrás
-                </button>
-              </div>
-              {!onCreateStreetClient ? (
-                <p className="ficha-empty">No hay permiso para crear clientes desde esta vista.</p>
-              ) : (
-                <form
-                  className="supervisor-nuevo-form"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    submitStreetClient();
-                  }}
-                >
-                  <p className="supervisor-mobile-subhead">
-                    Solo catálogo de clientes. La ruta se asigna al crear el préstamo.
-                  </p>
-                  <label className="quick-loan-field">
-                    <span>Nombre</span>
-                    <input
-                      value={nuevoName}
-                      onChange={(event) => setNuevoName(event.target.value)}
-                      placeholder="Nombre del cliente"
-                      autoFocus
-                    />
-                  </label>
-                  <label className="quick-loan-field">
-                    <span>Teléfono</span>
-                    <input
-                      inputMode="tel"
-                      value={nuevoPhone}
-                      onChange={(event) => setNuevoPhone(event.target.value)}
-                      placeholder="Celular"
-                    />
-                  </label>
-                  {nuevoMsg ? <p className="supervisor-nuevo-msg is-warn">{nuevoMsg}</p> : null}
-                  <div className="quick-loan-actions">
-                    <button type="submit" className="btn">
-                      Crear cliente
-                    </button>
-                  </div>
-                </form>
-              )}
-            </>
+            !onCreateRouteClient || planillaRoutePins.length === 0 ? (
+              <p className="ficha-empty">No hay permiso para crear clientes desde esta vista.</p>
+            ) : (
+              <CollectorNewClientSheet
+                routeName={pickDefaultRoutePin(planillaRoutePins) ?? planillaRoutePins[0]}
+                routeOptions={planillaRoutePins}
+                clients={clients}
+                onCancel={() => {
+                  resetNuevoFlow();
+                  setNuevoMode("menu");
+                }}
+                onSave={saveNuevoRouteClient}
+              />
+            )
           ) : (
             <>
               <div className="supervisor-mobile-detail-head">

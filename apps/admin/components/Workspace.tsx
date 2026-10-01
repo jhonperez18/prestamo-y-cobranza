@@ -303,7 +303,6 @@ export function Workspace(props: WorkspaceProps) {
     voidPayment,
     skipCollectorVisit,
     renewLoan,
-    createStreetClientFromMobile,
     updateClientFromMobile,
     createQuickLoanFromMobile,
     createRouteClientFromMobile,
@@ -1730,7 +1729,6 @@ export function Workspace(props: WorkspaceProps) {
           onSaveExpenses={saveCollectorExpensesFromMobile}
           onCloseDay={closeCollectorDayFromMobile}
           onCloseMonth={closeCollectorMonthFromMobile}
-          onCreateStreetClient={createStreetClientFromMobile}
           onCreateQuickLoan={createQuickLoanFromMobile}
           onCreateRouteClient={createRouteClientFromMobile}
           onUpdateClient={updateClientFromMobile}
