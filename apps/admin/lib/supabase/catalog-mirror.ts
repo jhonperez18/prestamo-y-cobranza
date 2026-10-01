@@ -28,6 +28,13 @@ export function isClientDeletedStatus(row: { status?: string | null } | null | u
   return String(row?.status || "").trim() === CLIENT_DELETED_STATUS;
 }
 
+/** Baja de préstamo en la nube: misma regla que el cliente (la fila queda «Eliminado»). */
+export const LOAN_DELETED_STATUS = "Eliminado";
+
+export function isLoanDeletedStatus(row: { status?: string | null } | null | undefined) {
+  return String(row?.status || "").trim() === LOAN_DELETED_STATUS;
+}
+
 export const DEMO_CLIENT_MIRROR_QUEUE_KEY = "nexo-demo-client-mirror-queue";
 export const DEMO_LOAN_MIRROR_QUEUE_KEY = "nexo-demo-loan-mirror-queue";
 /**
@@ -403,8 +410,31 @@ export async function mirrorLoanToSupabase(loan: LoanRow) {
   if (!row) return { ok: true as const, skipped: true as const, reason: "invalid_loan" };
   const supabase = createMirrorClient();
   if (!supabase) return { ok: true as const, skipped: true as const, reason: mirrorSkipReason() };
+  const deleting = isLoanDeletedStatus(row);
+  if (!deleting) {
+    const { data: current, error: readError } = await supabase
+      .from("loans")
+      .select("status")
+      .eq("ref", row.ref)
+      .maybeSingle();
+    if (readError) return { ok: false as const, error: readError.message };
+    if (isLoanDeletedStatus(current)) {
+      return { ok: true as const, skipped: true as const, reason: "loan_deleted" };
+    }
+  }
   const { error } = await supabase.from("loans").upsert(row, { onConflict: "ref" });
   if (error) return { ok: false as const, error: error.message };
+  if (deleting) {
+    // Visitas abiertas de ese préstamo (sin cobro ni cierre): fuera de la planilla en la nube,
+    // si no vuelven por el pull a cada aparato y dejan la jornada sin CIE-.
+    const { error: assignError } = await supabase
+      .from("daily_assignments")
+      .delete()
+      .eq("loan_ref", row.ref)
+      .is("day_closed_at", null)
+      .is("payment_ref", null);
+    if (assignError) return { ok: false as const, error: assignError.message };
+  }
   return { ok: true as const };
 }
 
@@ -586,6 +616,23 @@ function queueLocalClientDeletesToCloud(liveRemote: ClientRow[], clientRefsWithL
   }
 }
 
+/** Fila que sube a la nube para dar de baja el préstamo (misma cola que Guardar). */
+export function loanDeletedRow(loan: LoanRow, at = new Date().toISOString()): LoanRow {
+  return { ...loan, status: LOAN_DELETED_STATUS, updatedAt: at };
+}
+
+/** Baja de préstamo hecha en otro aparato → tombstone local. */
+function learnRemoteLoanDeletes(remote: LoanRow[]) {
+  const known = readDeletedIdSet();
+  let learned = false;
+  for (const row of remote) {
+    if (!isLoanDeletedStatus(row) || known.has(row.ref)) continue;
+    rememberDeletedId(row.ref);
+    learned = true;
+  }
+  return learned;
+}
+
 export function queueLoanMirror(loan: LoanRow) {
   if (typeof window === "undefined") return;
   const q = readQueue<LoanRow>(DEMO_LOAN_MIRROR_QUEUE_KEY).filter((r) => r.ref !== loan.ref);
@@ -704,16 +751,18 @@ export async function pullRemoteCatalogIntoDemo(): Promise<PullCatalogResult> {
       loansOk = false;
       loansReason = loansBody.error || "loans_pull_failed";
     } else if (!loansBody.skipped) {
-      const remote = (loansBody.loans ?? [])
+      const remoteAll = (loansBody.loans ?? [])
         .map(mirrorToLoanRow)
         .filter((row): row is LoanRow => Boolean(row));
+      const learnedDeletes = learnRemoteLoanDeletes(remoteAll);
+      const remote = remoteAll.filter((row) => !isLoanDeletedStatus(row));
       const local = readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []);
       const pendingLoans = readDemoJson<LoanRow[]>(DEMO_LOAN_MIRROR_QUEUE_KEY, []).filter(
-        (row) => row?.ref,
+        (row) => row?.ref && !isLoanDeletedStatus(row),
       );
       const pendingByRef = new Map(pendingLoans.map((row) => [row.ref, row]));
       const merge = mergeByRefPreferPendingLocal(local, remote, pendingByRef, loanSignature);
-      if (merge.changed) {
+      if (merge.changed || learnedDeletes) {
         writeDemoJson(DEMO_LOANS_KEY, merge.merged);
         changed = true;
       }

@@ -103,6 +103,7 @@ import { syncPermanentRoutePlanilla } from "@/lib/route-planilla";
 import { usePlanillaDayRollover } from "@/lib/planilla-day-sync";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { todayIso } from "@/lib/daily-dispatch";
+import { deletedLoanRefRows } from "@/lib/deleted-ids";
 import { buildRenewalLoans } from "@/lib/loan-renew";
 import {
   CollectorMobileApp,
@@ -480,7 +481,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       showToast("Préstamo no encontrado.");
       return;
     }
-    const newRef = nextLoanCode(loans);
+    const newRef = nextLoanCode([...loans, ...deletedLoanRefRows()]);
     // Cobrador: renovación siempre sale de efectivo y resta de su caja.
     const result = buildRenewalLoans(loan, newRef, todayIso(), "efectivo");
     if (!result) {

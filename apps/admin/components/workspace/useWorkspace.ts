@@ -107,7 +107,7 @@ import {
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
 import { refreshLabelsFromCatalog } from "@/lib/project-identity";
-import { omitDeleted, readDeletedIds, rememberDeletedId } from "@/lib/deleted-ids";
+import { deletedLoanRefRows, omitDeleted, readDeletedIds, rememberDeletedId } from "@/lib/deleted-ids";
 import { mergeFresherByRef } from "@/lib/fresher-row";
 import {
   applyWorkspaceRealtimeEvent,
@@ -167,6 +167,7 @@ import {
   commitRejectClients,
   commitUpdateClient,
   commitUpdateLoan,
+  commitDeleteLoan,
   flushPortfolioCatalogToCloud,
   type PortfolioCatalogState,
   type PortfolioCommitResult,
@@ -1984,7 +1985,7 @@ export function useWorkspace({
       onToast("Préstamo no encontrado.");
       return;
     }
-    const newRef = nextLoanCode(loans);
+    const newRef = nextLoanCode([...loans, ...deletedLoanRefRows()]);
     // Admin/oficina: renovación sale de Nequi (Haber DSB- + resta acumulado).
     const result = buildRenewalLoans(loan, newRef, todayIso(), "nequi");
     if (!result) {
@@ -2251,29 +2252,10 @@ export function useWorkspace({
 
   function deleteLoan() {
     if (!openLoan) return;
-    const removed = openLoan;
-    tombstone(removed.ref);
-    const delta = removed.total ?? removed.capital;
-    setLoans((current) => {
-      const next = omitDeleted(current.filter((row) => row.ref !== removed.ref));
-      writeDemoJson(DEMO_LOANS_KEY, next);
-      return next;
-    });
-    setClients((current) =>
-      current.map((entry) =>
-        entry.ref === removed.clientRef
-          ? {
-              ...entry,
-              total: Math.max(0, entry.total - delta),
-              pending: Math.max(0, entry.pending - delta),
-            }
-          : entry,
-      ),
-    );
+    const removedRef = openLoan.ref;
     setConfirmLoanDelete(false);
-    setOpenLoanRef((current) => (current === removed.ref ? "" : current));
-    onGo("prestamos", "listado");
-    onToast("Préstamo eliminado.");
+    setOpenLoanRef((current) => (current === removedRef ? "" : current));
+    void applyPortfolioCommit(commitDeleteLoan(removedRef, portfolioState()));
   }
 
   function panelPayTarget(loan: LoanRow, now = new Date()) {

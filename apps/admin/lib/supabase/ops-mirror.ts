@@ -14,6 +14,7 @@ import {
 } from "@/lib/collector-day-close";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { DAY_CLOSE_SKIP_REASON } from "@/lib/collector-dispatch-sync";
+import { isDeletedRef, readDeletedIdSet } from "@/lib/deleted-ids";
 import type { MiscPayment } from "@/lib/misc-payments";
 import {
   ensureManualTLaunchClose,
@@ -1525,8 +1526,17 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
     let assignChanged = false;
     const sig = (a: DailyCollectionAssignment) =>
       `${a.visitStatus}|${a.paymentRef}|${a.amountDue}|${a.dayClosedAt}|${a.skipReason}`;
+    const deletedRefs = readDeletedIdSet();
     for (const row of remoteAssign) {
       const key = `${row.dispatchDate}::${row.itemId}`;
+      // Visita abierta de un préstamo dado de baja: no vuelve a la planilla.
+      if (
+        !row.dayClosedAt &&
+        !String(row.paymentRef || "").trim() &&
+        isDeletedRef(row.loanRef || "", deletedRefs)
+      ) {
+        continue;
+      }
       // La nube ya tiene esta firma: un push posterior solo sube filas que cambien de verdad.
       // Sin esto, cada "Actualizar planillas" encolaba toda la hoja, la cola escudaba filas
       // sin cambios contra el N/P del cobrador y luego las pisaba en la nube.

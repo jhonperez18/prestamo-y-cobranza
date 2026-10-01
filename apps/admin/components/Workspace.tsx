@@ -17,7 +17,7 @@ import { DailyCollectionsView } from "@/components/DailyCollectionsView";
 import {
   todayIso,
 } from "@/lib/daily-dispatch";
-import { deletedClientRefRows } from "@/lib/deleted-ids";
+import { deletedClientRefRows, deletedLoanRefRows } from "@/lib/deleted-ids";
 import { userDeleteGuard } from "@/lib/collector-preview";
 import { NewClientForm } from "@/components/NewClientForm";
 import { CollectorActivityView } from "@/components/CollectorActivityView";
@@ -651,7 +651,7 @@ export function Workspace(props: WorkspaceProps) {
         <section className="panel">
           <NewLoanForm
             clients={clients}
-            loanCode={nextLoanCode(loans)}
+            loanCode={nextLoanCode([...loans, ...deletedLoanRefRows()])}
             onCancel={() => onGo("prestamos", "listado")}
             onSave={saveNewLoan}
           />

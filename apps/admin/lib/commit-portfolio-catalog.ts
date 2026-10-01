@@ -51,10 +51,11 @@ import { resolvedLoanInstallment, syncPermanentRoutePlanilla } from "@/lib/route
 import {
   clientDeletedRow,
   flushCatalogMirrorQueues,
+  loanDeletedRow,
   queueClientMirror,
   queueLoanMirror,
 } from "@/lib/supabase/catalog-mirror";
-import { deletedClientRefRows, rememberDeletedId } from "@/lib/deleted-ids";
+import { deletedClientRefRows, deletedLoanRefRows, rememberDeletedId } from "@/lib/deleted-ids";
 import {
   flushOpsMirrorQueues,
   queueAssignmentsMirror,
@@ -519,6 +520,45 @@ export function commitDeleteClient(
   };
 }
 
+/**
+ * Baja de préstamo: tombstone local + fila «Eliminado» a la nube (el servidor saca sus
+ * visitas abiertas) + planilla regenerada (el cliente queda para Prestar).
+ */
+export function commitDeleteLoan(
+  loanRef: string,
+  state: PortfolioCatalogState,
+): PortfolioCommitResult {
+  const removed = state.loans.find((row) => row.ref === loanRef);
+  if (!removed) return { ok: false, error: "Préstamo no encontrado." };
+  rememberDeletedId(removed.ref);
+  const delta = Number(removed.total ?? removed.capital) || 0;
+  const loans = state.loans.filter((row) => row.ref !== removed.ref);
+  const clients = state.clients.map((entry) =>
+    entry.ref === removed.clientRef
+      ? stampCatalogRow({
+          ...entry,
+          total: Math.max(0, entry.total - delta),
+          pending: Math.max(0, entry.pending - delta),
+        })
+      : entry,
+  );
+  const assignments = state.assignments.filter(
+    (row) => row.loanRef !== removed.ref || Boolean(row.dayClosedAt) || Boolean(row.paymentRef),
+  );
+  let next: PortfolioCatalogState = { ...state, loans, clients, assignments };
+  next = projectPlanilla(next);
+  persistPortfolio(next);
+  queueLoanMirror(loanDeletedRow(removed));
+  enqueuePortfolioMirrors(next, { clientRefs: [removed.clientRef], mirrorPlanilla: true });
+
+  return {
+    ok: true,
+    state: next,
+    message: "Préstamo eliminado. El cliente queda para prestar en la planilla del cobrador.",
+    goTo: { moduleId: "prestamos", viewId: "listado" },
+  };
+}
+
 export function commitCreateLoan(
   draft: PortfolioLoanDraft,
   state: PortfolioCatalogState,
@@ -529,7 +569,7 @@ export function commitCreateLoan(
     return { ok: false, error: "No se puede prestar: el registro aún está en revisión." };
   }
 
-  const ref = nextLoanCode(state.loans);
+  const ref = nextLoanCode([...state.loans, ...deletedLoanRefRows()]);
   const synced = syncLoan(
     {
       ref,

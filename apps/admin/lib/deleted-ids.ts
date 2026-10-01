@@ -44,6 +44,13 @@ export function deletedClientRefRows(): { ref: string }[] {
     .map((ref) => ({ ref }));
 }
 
+/** Códigos P- dados de baja: el próximo préstamo no los reutiliza (la nube los guarda «Eliminado»). */
+export function deletedLoanRefRows(): { ref: string }[] {
+  return readDeletedIds()
+    .filter((ref) => /^P-\d+$/i.test(ref))
+    .map((ref) => ({ ref }));
+}
+
 export function forgetDeletedId(ref: string): string[] {
   const clean = cleanRef(ref);
   if (!clean) return readDeletedIds();

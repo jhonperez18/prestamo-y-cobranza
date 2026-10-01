@@ -387,7 +387,7 @@ async function voidPaymentInSupabase(row: PaymentMirrorRow): Promise<MirrorPayme
   if (livePays.error) return { ok: false, error: livePays.error.message };
   if (loanRes.error) return { ok: false, error: loanRes.error.message };
   const loan = loanRes.data;
-  if (!loan) return { ok: true };
+  if (!loan || loan.status === "Eliminado") return { ok: true };
 
   const paid = (livePays.data as { amount: number | null; payment_type: string | null }[])
     .filter((pay) => (pay.payment_type || "") !== "Anulado")

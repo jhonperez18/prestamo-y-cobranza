@@ -2,7 +2,7 @@ import { CLIENT_STATUS_ACTIVE, clientStatusKind } from "@/lib/client-review";
 import { placeClientOnRoute, nextRouteOrder } from "@/lib/client-route-order";
 import { toClientNameTitleCase } from "@/lib/client-name-case";
 import { todayIso } from "@/lib/daily-dispatch";
-import { deletedClientRefRows } from "@/lib/deleted-ids";
+import { deletedClientRefRows, deletedLoanRefRows } from "@/lib/deleted-ids";
 import {
   LOAN_TERM_OPTIONS,
   PAY_FREQUENCIES,
@@ -107,7 +107,7 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
   if (!preview) return null;
 
   const dueIso = preview.dates[preview.dates.length - 1] ?? startIso;
-  const ref = nextLoanCode(loans);
+  const ref = nextLoanCode([...loans, ...deletedLoanRefRows()]);
   const freqLabel =
     PAY_FREQUENCIES.find((item) => item.id === draft.frequency)?.label ?? draft.frequency;
   const termLabel =

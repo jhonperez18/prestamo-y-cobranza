@@ -22,6 +22,7 @@ const DROP_ON_SKIP_REASON = new Set([
   "invalid_client",
   "client_deleted",
   "invalid_loan",
+  "loan_deleted",
   "cloud_cie_keeps_cash_float",
   "cloud_cie_keeps_cash_adjustment",
   "cloud_cie_past_day_sealed",

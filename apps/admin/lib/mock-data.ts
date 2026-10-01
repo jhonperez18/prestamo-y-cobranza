@@ -879,7 +879,7 @@ export function clientCreationDate(date = new Date()) {
   return `${day}/${month}/${year}`;
 }
 
-export function nextLoanCode(rows: LoanRow[] = LOANS) {
+export function nextLoanCode(rows: Pick<LoanRow, "ref">[] = LOANS) {
   const nums = rows
     .map((row) => Number(String(row.ref).replace(/^P-/i, "")))
     .filter((value) => Number.isFinite(value));

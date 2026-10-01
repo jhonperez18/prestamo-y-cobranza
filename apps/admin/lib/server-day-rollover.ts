@@ -17,6 +17,7 @@ import {
   fetchClientsFromSupabase,
   fetchLoansFromSupabase,
   isClientDeletedStatus,
+  isLoanDeletedStatus,
   mirrorToClientRow,
   mirrorToLoanRow,
 } from "@/lib/supabase/catalog-mirror";
@@ -109,7 +110,7 @@ export async function loadOperationalStateFromCloud(): Promise<
     .filter((row): row is ClientRow => Boolean(row) && !isClientDeletedStatus(row));
   const loans: LoanRow[] = (loansT.rows ?? [])
     .map(mirrorToLoanRow)
-    .filter((row): row is LoanRow => Boolean(row));
+    .filter((row): row is LoanRow => Boolean(row) && !isLoanDeletedStatus(row));
 
   const state: OperationalDayState = {
     assignments,
