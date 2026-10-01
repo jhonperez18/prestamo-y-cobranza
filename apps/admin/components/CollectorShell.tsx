@@ -30,6 +30,11 @@ import {
   writeDemoJson,
 } from "@/lib/demo-persist";
 import {
+  DEMO_MONTH_CLOSE_MIRROR_QUEUE_KEY,
+  flushMonthCloseMirrorQueue,
+  queueMonthCloseMirror,
+} from "@/lib/supabase/month-close-mirror";
+import {
   assertCanCloseChainedPlanilla,
   ensureManualTLaunchClose,
   splitDayClosesAndPlanillaCash,
@@ -775,13 +780,20 @@ export function CollectorShell({ session, onLogout }: Props) {
     );
   }
 
-  function closeCollectorMonth(payload: CollectorCloseMonthPayload) {
+  async function closeCollectorMonth(payload: CollectorCloseMonthPayload) {
     const record = buildMonthCloseRecord(payload);
     const next = [record, ...monthCloses.filter((row) => row.ref !== record.ref)];
     writeDemoJson(DEMO_COLLECTOR_MONTH_CLOSES_KEY, next);
     setMonthCloses(next);
+    queueMonthCloseMirror(record);
+    await flushMonthCloseMirrorQueue();
+    const pending = readDemoJson<{ ref: string }[]>(DEMO_MONTH_CLOSE_MIRROR_QUEUE_KEY, []).some(
+      (row) => row.ref === record.ref,
+    );
     showToast(
-      `Mes ${payload.period} guardado · saldo arrastrado ${money(record.closingSaldo)}. Empieza el mes nuevo.`,
+      pending
+        ? `Mes ${payload.period} guardado en este aparato · sin nube aún (reintenta solo).`
+        : `Mes ${payload.period} guardado · saldo arrastrado ${money(record.closingSaldo)}. Empieza el mes nuevo.`,
     );
   }
 

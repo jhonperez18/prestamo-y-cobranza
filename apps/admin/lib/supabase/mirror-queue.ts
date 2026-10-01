@@ -15,6 +15,7 @@ const Q_LOANS = "nexo-demo-loan-mirror-queue";
 const Q_USERS = "nexo-demo-user-mirror-queue";
 const Q_USER_DELETES = "nexo-demo-user-delete-queue";
 const Q_BANKS = "nexo-demo-bank-account-mirror-queue";
+const Q_MONTH_CLOSES = "nexo-demo-month-close-mirror-queue";
 
 /** Respuestas skipped que SÍ pueden salir de cola (no tiene sentido reintentar). */
 const DROP_ON_SKIP_REASON = new Set([
@@ -60,6 +61,7 @@ const OPS_QUEUE_KEYS = [
   "nexo-demo-ops-day-expenses-queue",
   "nexo-demo-ops-misc-queue",
   "nexo-demo-ops-assignments-queue",
+  Q_MONTH_CLOSES,
 ] as const;
 
 function queueLen(key: string): number {
@@ -142,6 +144,7 @@ export async function flushAllMirrorQueues(options?: {
   const { flushBankAccountMirrorQueues } = await import(
     "@/lib/supabase/bank-accounts-mirror"
   );
+  const { flushMonthCloseMirrorQueue } = await import("@/lib/supabase/month-close-mirror");
 
   const maxAttempts = Math.max(1, options?.attempts ?? 3);
   let attemptsUsed = 0;
@@ -173,6 +176,11 @@ export async function flushAllMirrorQueues(options?: {
       await flushBankAccountMirrorQueues();
     } catch (error) {
       console.error("mirror-flush-banks", error);
+    }
+    try {
+      await flushMonthCloseMirrorQueue();
+    } catch (error) {
+      console.error("mirror-flush-month-closes", error);
     }
 
     pending = emitMirrorQueueChanged();

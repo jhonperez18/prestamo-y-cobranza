@@ -33,6 +33,7 @@ import {
 } from "@/lib/supabase/mirror-queue";
 import type { BankAccount } from "@/lib/bank";
 import { reportDeviceStatus } from "@/lib/device-status";
+import { pullRemoteMonthClosesIntoDemo } from "@/lib/supabase/month-close-mirror";
 
 type Options = {
   /**
@@ -141,21 +142,28 @@ export function useOperationalDemoSync(
       await runMirrorFlush();
 
       const payments = await pullRemotePaymentsIntoDemo();
-      const [catalog, ops, users, banks] = await Promise.all([
+      const [catalog, ops, users, banks, months] = await Promise.all([
         pullRemoteCatalogIntoDemo(),
         pullRemoteOpsIntoDemo(),
         pullRemoteUsersIntoDemo(),
         pullRemoteBankAccountsIntoDemo(),
+        pullRemoteMonthClosesIntoDemo(),
       ]);
       const failed = [
         { label: "cobros", ok: payments.ok, reason: payments.reason },
         { label: "catálogo", ok: catalog.ok, reason: catalog.reason },
         { label: "planilla", ok: ops.ok, reason: ops.reason },
+        { label: "cierre de mes", ok: months.ok, reason: months.reason },
       ].filter((check) => !check.ok);
       pullOk = failed.length === 0;
       pullError = failed.map((check) => `${check.label}: ${check.reason || "falló"}`).join(" · ");
       let changed = Boolean(
-        payments.changed || catalog.changed || ops.changed || users.changed || banks.changed,
+        payments.changed ||
+          catalog.changed ||
+          ops.changed ||
+          users.changed ||
+          banks.changed ||
+          months.changed,
       );
       const localClients = readDemoJson(DEMO_CLIENTS_KEY, [] as unknown[]);
       if (!Array.isArray(localClients) || localClients.length === 0) {
