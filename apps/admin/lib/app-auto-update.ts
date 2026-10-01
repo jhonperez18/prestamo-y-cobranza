@@ -40,8 +40,15 @@ async function servedBuild(): Promise<string> {
 export function useAppAutoUpdate(enabled: boolean) {
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return;
-    if (process.env.NODE_ENV !== "production" || !APP_BUILD || APP_BUILD === "dev") return;
+    const isProd = process.env.NODE_ENV === "production";
+    if (isProd && (!APP_BUILD || APP_BUILD === "dev")) return;
 
+    /**
+     * Taller (dev): Fast Refresh puede dejar módulos viejos vivos en una pestaña abierta
+     * (mitad código nuevo, mitad viejo: colas que no suben, saldos de otra versión).
+     * La pestaña ancla el commit que encontró al abrir; si HEAD cambia, recarga completa.
+     */
+    let running = isProd ? APP_BUILD : "";
     let lastTouch = Date.now();
     let target = "";
     let applying = false;
@@ -53,7 +60,12 @@ export function useAppAutoUpdate(enabled: boolean) {
       if (applying) return;
       if (!target) {
         const build = await servedBuild();
-        if (!build || build === APP_BUILD) return;
+        if (!build) return;
+        if (!running) {
+          running = build;
+          return;
+        }
+        if (build === running) return;
         // Ya se recargó hacia esa versión y el CDN aún sirve la vieja: no entrar en bucle.
         if (window.sessionStorage.getItem(TARGET_KEY) === build) return;
         target = build;
@@ -78,6 +90,7 @@ export function useAppAutoUpdate(enabled: boolean) {
     };
     document.addEventListener("visibilitychange", onVisible);
     const timer = window.setInterval(() => void tick(), CHECK_MS);
+    void tick();
     return () => {
       for (const name of events) window.removeEventListener(name, touch, { capture: true });
       document.removeEventListener("visibilitychange", onVisible);
