@@ -13,7 +13,7 @@ import {
   type CollectorDayExpenseDraft,
 } from "@/lib/collector-day-close";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
-import { DAY_CLOSE_SKIP_REASON } from "@/lib/collector-dispatch-sync";
+import { DAY_CLOSE_SKIP_REASON, LOAN_GIVEN_TODAY_REASON } from "@/lib/collector-dispatch-sync";
 import { isDeletedRef, readDeletedIdSet } from "@/lib/deleted-ids";
 import { isLoanDeletedStatus } from "@/lib/supabase/catalog-mirror";
 import type { MiscPayment } from "@/lib/misc-payments";
@@ -621,6 +621,27 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
     if (loanError) return { ok: false as const, error: loanError.message };
     if (isLoanDeletedStatus(loan)) {
       return { ok: true as const, skipped: true as const, reason: "loan_deleted" };
+    }
+  }
+  // «Préstamo hecho hoy» sin préstamo con inicio ese día: fila Prestar fantasma de un
+  // aparato con préstamos a medio cargar. No entra (dejaba a cada cliente doble).
+  const dispatchDate = String(row.dispatch_date || "").trim();
+  const clientRef = String(row.client_ref || "").trim();
+  if (
+    String(row.item_id || "").includes(":prestar") &&
+    row.skip_reason === LOAN_GIVEN_TODAY_REASON &&
+    clientRef &&
+    /^\d{4}-\d{2}-\d{2}$/.test(dispatchDate)
+  ) {
+    const [y, m, d] = dispatchDate.split("-");
+    const { data: given, error: givenError } = await client
+      .from("loans")
+      .select("ref, status")
+      .eq("client_ref", clientRef)
+      .in("start_date", [`${d}/${m}/${y}`, dispatchDate]);
+    if (givenError) return { ok: false as const, error: givenError.message };
+    if (!(given ?? []).some((loan) => !isLoanDeletedStatus(loan))) {
+      return { ok: true as const, skipped: true as const, reason: "prestar_ghost" };
     }
   }
   const { data, error } = await client
