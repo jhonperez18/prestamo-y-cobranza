@@ -56,6 +56,8 @@ const MIRROR_FLUSH_MS = 8_000;
 const VISIBLE_PULL_MIN_MS = 3_000;
 /** Agrupa ráfagas de postgres_changes en un solo hydrate. */
 const REALTIME_DEBOUNCE_MS = 280;
+/** Topic público del timbre de cambios (`nexo_ops_ping` en la base). */
+const OPS_PING_TOPIC = "nexo-ops";
 
 /** Qué pull cubre cada tabla del canal. Usuarios, banco y reconcile quedan en el pull completo. */
 type PullGroup = "payments" | "catalog" | "ops";
@@ -358,9 +360,23 @@ export function useOperationalDemoSync(
         void runHydrateWithRemotePull();
       }
     });
+    // Timbre de la base (trigger → realtime.send, sin datos): llega también al cobrador,
+    // que entra sin sesión de Supabase y por RLS no recibe postgres_changes.
+    const ping = client.channel(OPS_PING_TOPIC);
+    ping.on("broadcast", { event: "changed" }, (message) => {
+      const table = String((message.payload as { table?: string } | undefined)?.table || "");
+      if (table in TABLE_PULL_GROUP) schedule(table as LiveTable);
+      else void runHydrateWithRemotePull();
+    });
+    ping.subscribe((status) => {
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        void runHydrateWithRemotePull();
+      }
+    });
     return () => {
       window.clearTimeout(drainTimerRef.current);
       void client.removeChannel(channel);
+      void client.removeChannel(ping);
     };
   }, [hydrated, runHydrateWithRemotePull]);
 
