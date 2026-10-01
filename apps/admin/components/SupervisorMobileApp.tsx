@@ -1688,13 +1688,19 @@ export function SupervisorMobileApp({
     return { t: cajaOf("T"), n: cajaOf("N") };
   }, [liquidaciones]);
 
-  /** INICIO pie: caja viva de T + Banco acumulado (Nequi es de A, va aparte). */
+  /**
+   * «Total acumulado» del botón BANCO (vista interna `nequi`). El botón NEQUI (ruta A)
+   * muestra `bancoAcumulado` y no entra en informe ni en el pie de INICIO.
+   */
+  const bancoPanelAcumulado = nequiAcumulado;
+
+  /** INICIO pie: caja viva de T + total del botón BANCO. */
   const inicioTotalConT = useMemo(() => {
     const routeT = liquidaciones.find((row) =>
       isPlanillaCashChainSecondary(row.routeName),
     );
-    return (routeT?.enCaja ?? 0) + bancoAcumulado;
-  }, [liquidaciones, bancoAcumulado]);
+    return (routeT?.enCaja ?? 0) + bancoPanelAcumulado;
+  }, [liquidaciones, bancoPanelAcumulado]);
 
   const bancoRegisterTodayAll = useMemo(() => {
     const items = paymentsWithEvidence
@@ -3951,7 +3957,7 @@ export function SupervisorMobileApp({
             clients={clients}
             payments={payments}
             efectivo={informeEfectivo}
-            banco={bancoAcumulado}
+            banco={bancoPanelAcumulado}
             corteLabel={todayDisplay}
           />
         </section>
@@ -3962,7 +3968,7 @@ export function SupervisorMobileApp({
               <div className="supervisor-day-board-copy">
                 <span>Total acumulado</span>
               </div>
-              <b>{money(nequiAcumulado, { symbol: false })}</b>
+              <b>{money(bancoPanelAcumulado, { symbol: false })}</b>
             </div>
           </div>
 
