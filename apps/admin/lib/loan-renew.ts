@@ -5,7 +5,7 @@ import {
   previewLoanFlat,
   type PayFrequency,
 } from "@/lib/loan-preview";
-import type { LoanRow } from "@/lib/mock-data";
+import { isLoanActive, type LoanRow } from "@/lib/mock-data";
 import {
   markLoanFundedByBanco,
   markLoanFundedByEfectivo,
@@ -30,7 +30,7 @@ function markFunded(loan: LoanRow, fundedBy: LoanDisbursementSource): LoanRow {
 /** Renovación disponible cuando ya venció el plazo y aún hay saldo. */
 export function canRenewLoan(loan: LoanRow | null | undefined, today = todayIso()) {
   if (!loan || loan.balance <= 0) return false;
-  if (loan.status === "Finalizado") return false;
+  if (!isLoanActive(loan)) return false;
   const dueIso = displayToIso(loan.due);
   if (!dueIso) return false;
   return dueIso <= today;

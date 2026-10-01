@@ -104,6 +104,7 @@ import {
 import {
   money,
   catalogRoutes,
+  isLoanActive,
   routeIsActive,
   type ClientRow,
   type CollectorRow,
@@ -714,7 +715,7 @@ function currentActiveLoan(
   const raw = primaryLoanForClient(clientRef, loans);
   if (!raw) return null;
   const synced = syncLoan(raw, payments) as LoanRow;
-  if (synced.status === "Finalizado" || synced.balance <= 0) return null;
+  if (!isLoanActive(synced) || synced.balance <= 0) return null;
   return synced;
 }
 
@@ -2852,7 +2853,7 @@ export function SupervisorMobileApp({
     for (const loan of loans) {
       if (!loan.clientRef) continue;
       const synced = syncLoan(loan, payments) as LoanRow;
-      if (synced.status === "Finalizado") continue;
+      if (!isLoanActive(synced)) continue;
       if (!(Number(synced.balance) > 0)) continue;
       const prev = byClient.get(loan.clientRef);
       if (!prev) {

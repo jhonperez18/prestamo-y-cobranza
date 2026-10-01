@@ -10,16 +10,17 @@
  * le desembolsó el crédito nuevo.
  */
 import { syncLoan } from "@/lib/loan-preview";
-import type { LoanRow, PaymentRow } from "@/lib/mock-data";
+import {
+  canClientTakeNewLoan,
+  isLoanActive,
+  type LoanRow,
+  type PaymentRow,
+} from "@/lib/mock-data";
 import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
 
 function liveBalance(loan: LoanRow, payments: PaymentRow[]) {
   const synced = syncLoan(loan, payments) as LoanRow;
   return Number(synced.balance ?? 0);
-}
-
-function loanIsOpen(loan: LoanRow, payments: PaymentRow[]) {
-  return loan.status !== "Finalizado" && liveBalance(loan, payments) > 0;
 }
 
 /** El crédito quedó en cero con un cobro vivo de esa fecha (terminó hoy). */
@@ -50,7 +51,7 @@ export function loanGrantedOnDate(
       (loan) =>
         loan.clientRef === clientRef &&
         loanDisbursementIsoDate(loan) === date &&
-        loanIsOpen(loan, payments),
+        isLoanActive(loan),
     ) ?? null
   );
 }
@@ -76,8 +77,7 @@ export function reloanStateForVisit(input: {
   if (granted) return { canReloan: false, granted };
   const loan = loanRef ? loans.find((row) => row.ref === loanRef) ?? null : null;
   if (!loanSettledOnDate(loan, payments, date)) return { canReloan: false, granted: null };
-  const otherOpen = loans.some(
-    (row) => row.clientRef === clientRef && row.ref !== loan?.ref && loanIsOpen(row, payments),
-  );
-  return { canReloan: !otherOpen, granted: null };
+  // El crédito que terminó hoy puede seguir «Activo» hasta proyectar el estado: no cuenta.
+  const others = loans.filter((row) => row.ref !== loan?.ref);
+  return { canReloan: canClientTakeNewLoan(clientRef, others), granted: null };
 }

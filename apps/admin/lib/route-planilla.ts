@@ -27,10 +27,12 @@ import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 import { pendingBalance, pesos } from "@/lib/finance";
 import { displayToIso } from "@/lib/loan-preview";
 import { paymentVisitDate } from "@/lib/late-payment";
+import { readDeletedIdSet } from "@/lib/deleted-ids";
 import {
   catalogRoutes,
   routeIsActive,
   activeLoans,
+  isLoanVoided,
   type ClientRow,
   type CollectorRow,
   type LoanRow,
@@ -122,6 +124,10 @@ type PlanillaLoanIndex = {
   loanByRef: Map<string, LoanRow>;
   /** `undefined` si no llegaron pagos (misma semántica que antes). */
   paymentsFor: (loanRef: string) => CollectionPaymentTouch[] | undefined;
+  /** Borrado/cancelado (estado o tombstone de este aparato). */
+  loanVoided: (loanRef: string) => boolean;
+  /** Este aparato no sabe nada del préstamo (aún no lo cargó). */
+  loanUnknown: (loanRef: string) => boolean;
 };
 
 const NO_PAYMENTS: CollectionPaymentTouch[] = [];
@@ -132,8 +138,6 @@ function buildPlanillaLoanIndex(
 ): PlanillaLoanIndex {
   const activeByClient = new Map<string, LoanRow[]>();
   for (const loan of activeLoans(loans)) {
-    // Préstamo borrado (soft delete «Eliminado») no cuenta: el cliente vuelve a Prestar.
-    if (String(loan.status || "").trim() === "Eliminado") continue;
     const list = activeByClient.get(loan.clientRef);
     if (list) list.push(loan);
     else activeByClient.set(loan.clientRef, [loan]);
@@ -149,10 +153,23 @@ function buildPlanillaLoanIndex(
     if (list) list.push(pay);
     else byLoan.set(ref, [pay]);
   }
+  const deletedRefs = readDeletedIdSet();
+  const loanVoided = (loanRef: string) => {
+    const ref = String(loanRef || "").trim();
+    if (!ref) return false;
+    if (deletedRefs.has(ref)) return true;
+    const loan = loanByRef.get(ref);
+    return Boolean(loan && isLoanVoided(loan));
+  };
   return {
     activeByClient,
     loanByRef,
     paymentsFor: (loanRef) => (payments ? (byLoan.get(loanRef) ?? NO_PAYMENTS) : undefined),
+    loanVoided,
+    loanUnknown: (loanRef) => {
+      const ref = String(loanRef || "").trim();
+      return Boolean(ref) && !loanByRef.has(ref) && !deletedRefs.has(ref);
+    },
   };
 }
 
@@ -392,16 +409,17 @@ export function syncPermanentRoutePlanilla(
     (index.activeByClient.get(clientRef) ?? []).some(
       (loan) => displayToIso(String(loan.date || "").trim()) === date,
     );
-  // Cliente con visita de cuota hoy: tiene préstamo aunque este aparato aún no lo haya
-  // cargado. Sin esto, un armado con préstamos a medio cargar ofrecía Prestar a toda la ruta.
-  const clientsWithLoanVisitToday = new Set(
+  // Visita de cuota hoy de un préstamo que este aparato aún no cargó: el cliente tiene
+  // préstamo. Sin esto, un armado a medio cargar ofrecía Prestar a toda la ruta.
+  // Préstamo conocido (activo, terminado o borrado) → decide `activeLoans`.
+  const clientsWithUnloadedLoanToday = new Set(
     existing
       .filter(
         (prev) =>
           prev.dispatchDate === date &&
           prev.clientRef &&
-          String(prev.loanRef || "").trim() &&
-          !isAssignmentAwaitingLoan(prev),
+          !isAssignmentAwaitingLoan(prev) &&
+          index.loanUnknown(String(prev.loanRef || "")),
       )
       .map((prev) => `${prev.collectorRef}|${prev.clientRef}`),
   );
@@ -429,9 +447,8 @@ export function syncPermanentRoutePlanilla(
       // Cada préstamo de hoy se queda en la ruta. El ya cobrado sale en cobrado,
       // no se borra: si se borra, el recaudo desaparece y solo quedan los gastos.
       let dayItems = items;
-      const owesOpen = (index.activeByClient.get(client.ref) ?? []).some(
-        (loan) => owesFor(loan) > 0,
-      );
+      // `canClientTakeNewLoan` sobre el índice: libre ⇔ cero préstamos activos.
+      const canTakeNewLoan = !(index.activeByClient.get(client.ref)?.length);
       const finishedToday = items.some((item) => {
         if (!item.loanRef) return false;
         const loan = index.loanByRef.get(item.loanRef);
@@ -441,9 +458,8 @@ export function syncPermanentRoutePlanilla(
       const declinedPrestarToday = declinedPrestarKeys.has(`${collector.ref}|${client.ref}`);
       // Sin crédito abierto: oferta Prestar (azul). Terminar hoy no la quita;
       // solo el visto rojo (declinar) saca de la lista del día.
-      const loanVisitToday =
-        !finishedToday && clientsWithLoanVisitToday.has(`${collector.ref}|${client.ref}`);
-      if (!owesOpen && !declinedPrestarToday && !loanVisitToday) {
+      const unloadedLoanToday = clientsWithUnloadedLoanToday.has(`${collector.ref}|${client.ref}`);
+      if (canTakeNewLoan && !declinedPrestarToday && !unloadedLoanToday) {
         const offer = awaitingLoanItemForClient(client, date);
         if (!dayItems.length) {
           dayItems = [offer];
@@ -534,15 +550,21 @@ export function syncPermanentRoutePlanilla(
     const omitted = prev.visitStatus === "omitido";
     const paid = paymentStillLive && (prev.visitStatus === "cobrado" || Boolean(linkedRef));
     if (!paid && !omitted) continue;
+    // Cuota de un préstamo borrado sin plata de por medio: el cliente queda libre (Prestar).
+    if (!paid && index.loanVoided(String(prev.loanRef || ""))) continue;
     const prevLoan = prev.loanRef ? index.loanByRef.get(prev.loanRef) : undefined;
     const prevPaidToday = loanPaidOnDate(prev.loanRef, date, index.paymentsFor(prev.loanRef));
     const paidOffEarlier =
       Boolean(prev.loanRef && prevLoan && owesFor(prevLoan) <= 0) && !prevPaidToday;
     if (paidOffEarlier) continue;
-    const clientAlreadyListed = [...builtMap.values()].some(
-      (row) => row.clientRef === prev.clientRef && row.collectorRef === prev.collectorRef,
+    // La oferta Prestar de quien terminó hoy no reemplaza su cobro: se compara por préstamo.
+    const loanAlreadyListed = [...builtMap.values()].some(
+      (row) =>
+        row.clientRef === prev.clientRef &&
+        row.collectorRef === prev.collectorRef &&
+        row.loanRef === prev.loanRef,
     );
-    if (clientAlreadyListed && prevPaidToday) continue;
+    if (loanAlreadyListed && prevPaidToday) continue;
     const inBuilt =
       builtMap.has(prev.itemId) ||
       [...builtMap.values()].some((row) => {

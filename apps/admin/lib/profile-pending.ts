@@ -1,5 +1,5 @@
 import type { ClientRow, LoanRow } from "@/lib/mock-data";
-import { activeLoans } from "@/lib/mock-data";
+import { activeLoans, isLoanActive } from "@/lib/mock-data";
 
 /** Documento placeholder de alta en calle (no es cédula real). */
 export function isStreetPlaceholderDocument(document: string | undefined) {
@@ -23,7 +23,7 @@ export function clientsNeedingProfileCompletion(clients: ClientRow[]) {
 /** Préstamo activo creado en calle / rápido, pendiente de revisión en oficina. */
 export function loanNeedsOfficeReview(loan: LoanRow) {
   if (loan.balance <= 0) return false;
-  if (loan.status === "Anulado" || loan.status === "Cancelado") return false;
+  if (!isLoanActive(loan)) return false;
   return Boolean(loan.termsPending);
 }
 

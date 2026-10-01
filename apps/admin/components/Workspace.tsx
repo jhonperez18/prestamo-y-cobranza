@@ -1,7 +1,7 @@
 "use client";
 
 import type { ModuleId } from "@/lib/navigation";
-import { ADMIN_ROLE_REF, ASSIGNABLE_ROLES, COLLECTOR_ROLE_REF, activeLoans, loansForClient, money, nextClientCode, nextLoanCode, roleByRef, ROLES, clientsOnRouteListed, routeIsActive, collectorViewForUser, type LoanRow } from "@/lib/mock-data";
+import { ADMIN_ROLE_REF, ASSIGNABLE_ROLES, COLLECTOR_ROLE_REF, activeLoans, isLoanActive, loansForClient, money, nextClientCode, nextLoanCode, roleByRef, ROLES, clientsOnRouteListed, routeIsActive, collectorViewForUser, type LoanRow } from "@/lib/mock-data";
 import {
   clientsForView,
   isPendingReview,
@@ -718,7 +718,7 @@ export function Workspace(props: WorkspaceProps) {
         ? [loanClient.address, loanClient.barrio, loanClient.city].filter(Boolean).join(", ")
         : "";
       const clientLoans = loanClient ? loansForClient(loanClient.ref, loans) : [];
-      const canPay = Boolean(openLoan && openLoan.balance > 0 && openLoan.status !== "Finalizado");
+      const canPay = Boolean(openLoan && openLoan.balance > 0 && isLoanActive(openLoan));
       const canPayCuota = Boolean(canPay && openLoan && cuotaTarget(openLoan));
       const loanTabs: { id: LoanTab; label: string }[] = [
         { id: "ficha", label: "Ficha" },
@@ -899,7 +899,7 @@ export function Workspace(props: WorkspaceProps) {
     if (moduleId === "prestamos") {
       const baseRows =
         viewId === "activos"
-          ? loans.filter((row) => row.status !== "Finalizado")
+          ? activeLoans(loans)
           : viewId === "finalizados"
             ? loans.filter((row) => row.status === "Finalizado")
             : loans;

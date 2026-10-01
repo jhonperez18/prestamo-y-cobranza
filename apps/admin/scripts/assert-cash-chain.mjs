@@ -1077,6 +1077,58 @@ expect(
   true,
 );
 
+// ── 16. Préstamo activo = una sola regla (`activeLoans`). Cliente libre ⇔ cero activos.
+//     Préstamo borrado con cuota hoy → cliente libre, Prestar habilitado, mismo orden.
+console.log("\n— Préstamo activo: regla única —");
+const { activeLoans, canClientTakeNewLoan } = await import("@/lib/mock-data");
+const statusLoans = ["Finalizado", " eliminado ", "CANCELADO", "Activo", "Alerta 1", "Mora", "Revisar"].map(
+  (status, i) => ({ ref: `P-S${i}`, clientRef: i < 3 ? "CLI-S0" : `CLI-S${i}`, status }),
+);
+expect("activeLoans: limpia mayúsculas/espacios y saca finalizado/eliminado/cancelado", activeLoans(statusLoans).length, 4);
+expect("Solo préstamos finalizados/borrados/cancelados: puede recibir préstamo", canClientTakeNewLoan("CLI-S0", statusLoans), true);
+expect("Con préstamo en mora: no puede recibir otro", canClientTakeNewLoan("CLI-S5", statusLoans), false);
+
+const rDate = "2026-09-30";
+const rClients = [
+  { ref: "CLI-R1", name: "Uno", lastName: "N", route: "M", status: "Activo", routeOrder: 1 },
+  { ref: "CLI-R2", name: "Palomino", lastName: "N", route: "M", status: "Activo", routeOrder: 2 },
+  { ref: "CLI-R3", name: "Tres", lastName: "N", route: "M", status: "Activo", routeOrder: 3 },
+];
+const rLoan = (ref, clientRef, status) => ({
+  ref, clientRef, client: clientRef, date: "20/09/2026", capital: 300_000, total: 360_000, installment: 15_000, status,
+});
+const rDayRows = (synced) => synced.assignments.filter((r) => r.dispatchDate === rDate);
+for (const prevStatus of ["pendiente", "omitido"]) {
+  const rSynced = syncPermanentRoutePlanilla(
+    rDate,
+    pRoutes,
+    rClients,
+    [rLoan("P-R1", "CLI-R1", "Activo"), rLoan("P-R2", "CLI-R2", "Eliminado")],
+    [COB],
+    [visit(`${rDate}:P-R2:acum`, "CLI-R2", "M", rDate, { visitStatus: prevStatus, loanRef: "P-R2" })],
+    [],
+  );
+  const rows = rDayRows(rSynced);
+  const offer = rows.find((r) => r.itemId === `${rDate}:CLI-R2:prestar`);
+  expect(`Borrado con cuota hoy (${prevStatus}): Prestar habilitado`, offer?.visitStatus ?? null, "pendiente");
+  expect(`Borrado con cuota hoy (${prevStatus}): sin cuota del préstamo borrado`, rows.some((r) => r.loanRef === "P-R2"), false);
+  const order = ["CLI-R1", "CLI-R2", "CLI-R3"].map((ref) => rows.findIndex((r) => r.clientRef === ref));
+  expect(`Borrado con cuota hoy (${prevStatus}): visible y en su lugar de la ruta`, order.every((i, k) => i >= 0 && (k === 0 || i > order[k - 1])), true);
+}
+// Terminó de pagar hoy: su visita cobrada no le quita el Prestar.
+const fSynced = syncPermanentRoutePlanilla(
+  rDate,
+  pRoutes,
+  rClients.slice(0, 1),
+  [{ ...rLoan("P-F1", "CLI-R1", "Finalizado"), balance: 0, paid: 360_000 }],
+  [COB],
+  [visit(`${rDate}:P-F1:acum`, "CLI-R1", "M", rDate, { visitStatus: "cobrado", loanRef: "P-F1", paymentRef: "PG-F1" })],
+  [pay("PG-F1", "P-F1", 360_000, rDate)],
+);
+const fRows = rDayRows(fSynced);
+expect("Terminó hoy: queda el cobro", fRows.some((r) => r.loanRef === "P-F1" && r.visitStatus === "cobrado"), true);
+expect("Terminó hoy: Prestar habilitado", fRows.find((r) => r.itemId === `${rDate}:CLI-R1:prestar`)?.visitStatus ?? null, "pendiente");
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

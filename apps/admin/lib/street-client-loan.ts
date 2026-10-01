@@ -13,6 +13,7 @@ import {
   type PayFrequency,
 } from "@/lib/loan-preview";
 import {
+  canClientTakeNewLoan,
   clientCreationDate,
   nextClientCode,
   nextLoanCode,
@@ -150,12 +151,7 @@ export { interestFromPct } from "@/lib/finance";
 
 /** Cliente sin crédito abierto (puede volver a prestar). */
 export function clientHasOpenLoan(clientRef: string, loans: LoanRow[]) {
-  return loans.some(
-    (loan) =>
-      loan.clientRef === clientRef &&
-      loan.status !== "Finalizado" &&
-      Number(loan.balance ?? 0) > 0,
-  );
+  return !canClientTakeNewLoan(clientRef, loans);
 }
 
 /**

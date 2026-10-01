@@ -237,6 +237,21 @@ cobrador siempre entran. Candado: `assert-cash-chain.mjs` sección 14.
 (`periodSealedByDayClose`). El CIE manda; el cierre de mes es proyección.
 Candado: `assert-cash-chain.mjs` sección 15.
 
+## Préstamo activo — una sola regla
+
+| Pieza | Regla (`lib/mock-data.ts`) |
+| --- | --- |
+| Activo | `isLoanActive` / `activeLoans`: estado limpio (minúsculas, sin espacios) ≠ finalizado, eliminado, cancelado |
+| Puede recibir préstamo | `canClientTakeNewLoan` ⇔ `activeLoans(préstamos del cliente).length === 0` |
+| Planilla | Índice = `activeLoans`; oferta Prestar ⇔ cero activos. Cuota sin plata de un préstamo borrado no se arrastra |
+| Visita de cuota hoy | Bloquea Prestar **solo** si su préstamo no está cargado en el aparato |
+
+- Prohibido filtrar estados a mano (`status === "Eliminado"`, `!== "Finalizado"`) en pantallas o planilla.
+- La bajada de la nube **sí** trae los «Eliminado»: así cada aparato aprende el tombstone
+ (`learnRemoteLoanDeletes`) y los descarta antes de pintar. Un `.neq('status','Eliminado')` ahí
+ revive préstamos borrados en los otros celulares.
+- Candado: `assert-cash-chain.mjs` sección 16.
+
 ## N/P por ruta (INICIO)
 
 Cada ruta tiene su propio **N/P** (junto a Historial en la ficha).

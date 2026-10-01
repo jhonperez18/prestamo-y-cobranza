@@ -911,8 +911,36 @@ export function loansForClient(clientRef: string, rows: LoanRow[] = LOANS): Loan
   return rows.filter((row) => row.clientRef === clientRef);
 }
 
+const INACTIVE_LOAN_STATUSES: ReadonlySet<string> = new Set([
+  "finalizado",
+  "eliminado",
+  "cancelado",
+]);
+
+function cleanLoanStatus(status: unknown): string {
+  return String(status ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
+
+/** Préstamo activo: su estado no es finalizado, eliminado ni cancelado. Única regla del sistema. */
+export function isLoanActive(loan: Pick<LoanRow, "status">): boolean {
+  return !INACTIVE_LOAN_STATUSES.has(cleanLoanStatus(loan.status));
+}
+
+/** Borrado o cancelado: nunca existió para la ruta (a diferencia de finalizado, que sí se cobró). */
+export function isLoanVoided(loan: Pick<LoanRow, "status">): boolean {
+  const status = cleanLoanStatus(loan.status);
+  return status === "eliminado" || status === "cancelado";
+}
+
 export function activeLoans(rows: LoanRow[]): LoanRow[] {
-  return rows.filter((row) => row.status !== "Finalizado");
+  return rows.filter(isLoanActive);
+}
+
+/** Puede recibir préstamo nuevo si y solo si no tiene ningún préstamo activo. */
+export function canClientTakeNewLoan(clientRef: string, rows: LoanRow[]): boolean {
+  return activeLoans(loansForClient(clientRef, rows)).length === 0;
 }
 
 export function clientsForView(view: string, rows: ClientRow[] = CLIENTS): ClientRow[] {
