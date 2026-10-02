@@ -1851,6 +1851,8 @@ export function SupervisorMobileApp({
   const openRouteIsA = openRoute ? sameRoute(openRoute.routeName, "A") : false;
   /** A cobra solo Efectivo y Nequi: lo que no es efectivo se muestra en un solo recuadro Nequi. */
   /** Digital por ruta: A = cajita Nequi; M / T / N = cajita Banco (nunca las dos). */
+  const openRouteDigitalPool: "banco" | "nequi" = openRouteIsA ? "nequi" : "banco";
+  const openRouteDigitalLabel = openRouteIsA ? "Nequi" : "Banco";
   const routeMeansShowNequiValue = !openRouteIsA;
   const routeMeansShowBancoValue = openRouteIsA;
   const routeDigitalAmount = (openRoute?.cobradoBanco ?? 0) + (openRoute?.cobradoNequi ?? 0);
@@ -2565,14 +2567,14 @@ export function SupervisorMobileApp({
     setDetailMode("cobros");
   }
 
-  /** Misma ficha Nequi del día que el flujo NEQUI → ruta → día. */
+  /** Ficha digital del día de la ruta: bolsillo de la ruta (A → Nequi; M / T / N → Banco). */
   function openNequiDayFicha(
     dayIso: string,
     backTo: "totales" | "nequi-historial" = "nequi-historial",
   ) {
     const day = normalizeHistoryDate(dayIso) || dayIso;
     suppressGhostClick();
-    setCobrosMethodFilter("nequi");
+    setCobrosMethodFilter(openRouteDigitalPool);
     setNequiDayIso(day);
     setNequiDayBackTo(backTo);
     setDetailMode("nequi-dia");
@@ -3616,7 +3618,7 @@ export function SupervisorMobileApp({
                 </span>
               </p>
               {openRouteNequiDayPays.length === 0 ? (
-                <p className="ficha-empty">Sin movimientos Nequi ese día.</p>
+                <p className="ficha-empty">Sin movimientos {openRouteDigitalLabel} ese día.</p>
               ) : (
                 <>
                   {openRouteNequiDayPays.some((pay) => !pay.evidence?.some((e) => e.previewUrl)) ? (
@@ -3651,7 +3653,7 @@ export function SupervisorMobileApp({
                     </li>
                   ))}
                   <li className="is-total">
-                    <span>Total Nequi</span>
+                    <span>Total {openRouteDigitalLabel}</span>
                     <b>{money(openRouteNequiDayTotal, { symbol: false })}</b>
                   </li>
                 </ul>
