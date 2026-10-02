@@ -1,17 +1,19 @@
 "use client";
 
+import { Pill } from "@/components/ui";
 import { APP_BUILD } from "@/lib/app-build";
+import type { StatusKind } from "@/lib/mock-data";
 import {
   connectionAgoLabel,
   deviceKindLabel,
   type CollectorConnection,
 } from "@/lib/collector-connection";
 
-const LEVEL_LABEL: Record<CollectorConnection["level"], string> = {
-  ok: "Conectado y al día",
-  warn: "Revisar conexión",
-  alert: "Atención",
-  none: "Sin datos",
+const LEVEL_PILL: Record<CollectorConnection["level"], { label: string; kind: StatusKind }> = {
+  ok: { label: "Conectado y al día", kind: "ok" },
+  warn: { label: "Revisar conexión", kind: "warn" },
+  alert: { label: "Atención", kind: "overdue" },
+  none: { label: "Sin datos", kind: "closed" },
 };
 
 type Props = {
@@ -21,10 +23,10 @@ type Props = {
   now: number;
   loadedAt: number;
   loadError: string;
-  onClose: () => void;
+  onBack: () => void;
 };
 
-/** Detalle del punto de conexión (INICIO del supervisor). Solo lectura. */
+/** Detalle del punto de conexión: pantalla dentro de INICIO del supervisor. Solo lectura. */
 export function CollectorConnectionSheet({
   routeName,
   collectorName,
@@ -32,93 +34,110 @@ export function CollectorConnectionSheet({
   now,
   loadedAt,
   loadError,
-  onClose,
+  onBack,
 }: Props) {
   const { latest, devices, newDevice, pendingTotal, reasons, level } = connection;
+  const pill = LEVEL_PILL[level];
+  const versionOff = Boolean(latest?.build && APP_BUILD && latest.build !== APP_BUILD);
   return (
-    <div className="conn-sheet-backdrop" role="presentation" onClick={onClose}>
-      <div
-        className="conn-sheet"
-        role="dialog"
-        aria-label={`Conexión de ${collectorName}`}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <header className="conn-sheet-head">
-          <div>
-            <span className="conn-sheet-ruta">Ruta {routeName}</span>
-            <strong>{collectorName}</strong>
-          </div>
-          <button type="button" className="conn-sheet-close" onClick={onClose}>
-            cerrar
-          </button>
-        </header>
-
-        <p className={`conn-sheet-state is-${level}`}>
-          <span className={`conn-dot is-${level}`} aria-hidden />
-          {LEVEL_LABEL[level]}
-        </p>
-
-        <dl className="conn-sheet-facts">
-          <div>
-            <dt>Última conexión</dt>
-            <dd>{latest ? connectionAgoLabel(latest.reportedAt, now) : "—"}</dd>
-          </div>
-          <div>
-            <dt>Internet</dt>
-            <dd>
-              {latest
-                ? latest.lastPullOk
-                  ? "OK"
-                  : `Sin conexión${latest.lastPullError ? ` (${latest.lastPullError})` : ""}`
-                : "—"}
-            </dd>
-          </div>
-          <div>
-            <dt>Sin subir</dt>
-            <dd>{pendingTotal}</dd>
-          </div>
-          <div>
-            <dt>Versión</dt>
-            <dd>
-              {latest?.build || "—"}
-              {latest?.build && APP_BUILD && latest.build !== APP_BUILD
-                ? " · distinta: cerrar y abrir la app"
-                : ""}
-            </dd>
-          </div>
-        </dl>
-
-        {reasons.length > 0 && level !== "ok" ? (
-          <ul className="conn-sheet-reasons">
-            {reasons.map((reason) => (
-              <li key={reason}>{reason}</li>
-            ))}
-          </ul>
-        ) : null}
-
-        <h4 className="conn-sheet-sub">Aparatos</h4>
-        {devices.length === 0 ? (
-          <p className="conn-sheet-muted">Este cobrador aún no reporta desde ningún aparato.</p>
-        ) : (
-          <ul className="conn-sheet-devices">
-            {devices.map((device) => (
-              <li key={device.deviceId} className={device === newDevice ? "is-new" : undefined}>
-                <span>
-                  {deviceKindLabel(device.userAgent)}
-                  {device === newDevice ? <em> · nuevo</em> : null}
-                </span>
-                <b>{connectionAgoLabel(device.reportedAt, now)}</b>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <p className="conn-sheet-muted">
-          {loadError
-            ? `No se pudo actualizar (${loadError}). Datos de ${loadedAt ? connectionAgoLabel(new Date(loadedAt).toISOString(), now) : "—"}.`
-            : "Se actualiza solo cada minuto."}
-        </p>
+    <div className="conn-detail">
+      <div className="supervisor-mobile-detail-head">
+        <h3>
+          Ruta {routeName} · {collectorName}
+        </h3>
+        <button type="button" className="collector-mobile-pay-link is-back" onClick={onBack}>
+          volver
+        </button>
       </div>
+      <p className="supervisor-mobile-detail-meta conn-detail-meta">
+        <span>Conexión del cobrador</span>
+        <Pill label={pill.label} kind={pill.kind} />
+      </p>
+
+      <table className="supervisor-liq-table is-informe conn-detail-table">
+        <thead>
+          <tr>
+            <th className="is-detalle">Detalle</th>
+            <th className="is-num">Dato</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="is-informe-section">
+            <td colSpan={2}>Estado</td>
+          </tr>
+          <tr>
+            <td className="is-detalle">Última conexión</td>
+            <td className="is-num">{latest ? connectionAgoLabel(latest.reportedAt, now) : "—"}</td>
+          </tr>
+          <tr className={latest && !latest.lastPullOk ? "is-warn" : undefined}>
+            <td className="is-detalle">
+              Internet
+              {latest && !latest.lastPullOk && latest.lastPullError ? (
+                <small className="conn-detail-note">{latest.lastPullError}</small>
+              ) : null}
+            </td>
+            <td className="is-num">{latest ? (latest.lastPullOk ? "OK" : "Sin conexión") : "—"}</td>
+          </tr>
+          <tr className={pendingTotal > 0 ? "is-alert" : undefined}>
+            <td className="is-detalle">Cambios sin subir</td>
+            <td className="is-num">{pendingTotal}</td>
+          </tr>
+          <tr className={versionOff ? "is-warn" : undefined}>
+            <td className="is-detalle">
+              Versión de la app
+              {versionOff ? (
+                <small className="conn-detail-note">Distinta: cerrar y abrir la app</small>
+              ) : null}
+            </td>
+            <td className="is-num">{latest?.build || "—"}</td>
+          </tr>
+
+          {level !== "ok" && reasons.length > 0 ? (
+            <>
+              <tr className="is-informe-section">
+                <td colSpan={2}>Qué revisar</td>
+              </tr>
+              {reasons.map((reason) => (
+                <tr key={reason} className={level === "alert" ? "is-alert" : "is-warn"}>
+                  <td className="is-detalle" colSpan={2}>
+                    {reason}
+                  </td>
+                </tr>
+              ))}
+            </>
+          ) : null}
+
+          <tr className="is-informe-section">
+            <td colSpan={2}>Aparatos</td>
+          </tr>
+          {devices.length === 0 ? (
+            <tr>
+              <td className="is-detalle" colSpan={2}>
+                Aún no reporta desde ningún aparato.
+              </td>
+            </tr>
+          ) : (
+            devices.map((device) => {
+              const isNew = device === newDevice;
+              return (
+                <tr key={device.deviceId} className={isNew ? "is-alert" : undefined}>
+                  <td className="is-detalle">
+                    {deviceKindLabel(device.userAgent)}
+                    {isNew ? <small className="conn-detail-note">Aparato nuevo</small> : null}
+                  </td>
+                  <td className="is-num">{connectionAgoLabel(device.reportedAt, now)}</td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+
+      <p className="conn-detail-foot">
+        {loadError
+          ? `No se pudo actualizar (${loadError}). Datos de ${loadedAt ? connectionAgoLabel(new Date(loadedAt).toISOString(), now) : "—"}.`
+          : "Se actualiza solo cada minuto."}
+      </p>
     </div>
   );
 }

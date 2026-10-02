@@ -7687,107 +7687,54 @@
     .conn-dot.is-alert {
       background: #dc2626;
     }
-    .conn-sheet-backdrop {
-      position: fixed;
-      inset: 0;
-      z-index: 80;
+    .conn-detail {
       display: flex;
-      align-items: flex-end;
-      justify-content: center;
-      background: rgba(15, 23, 20, 0.45);
+      flex-direction: column;
+      gap: 6px;
     }
-    .conn-sheet {
-      width: 100%;
-      max-width: 480px;
-      max-height: 85vh;
-      overflow-y: auto;
-      padding: 14px 16px 18px;
-      border-radius: 14px 14px 0 0;
-      background: #fff;
-      color: #14201b;
-    }
-    .conn-sheet-head {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 8px;
-    }
-    .conn-sheet-head strong {
-      display: block;
-      font-size: 16px;
-    }
-    .conn-sheet-ruta {
-      font-size: 11px;
-      font-weight: 600;
-      color: #3f554c;
-      text-transform: uppercase;
-    }
-    .conn-sheet-close {
-      border: 1px solid #9bb5ab;
-      border-radius: 8px;
-      background: #fff;
-      padding: 4px 10px;
-      font-size: 13px;
-      cursor: pointer;
-    }
-    .conn-sheet-state {
+    .conn-detail-meta {
       display: flex;
       align-items: center;
-      gap: 8px;
-      margin: 10px 0;
-      font-weight: 700;
-    }
-    .conn-sheet-facts {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-      margin: 0;
-    }
-    .conn-sheet-facts dt {
-      font-size: 10px;
-      font-weight: 600;
-      text-transform: uppercase;
-      color: #3f554c;
-    }
-    .conn-sheet-facts dd {
-      margin: 0;
-      font-size: 14px;
-      font-weight: 600;
-      overflow-wrap: anywhere;
-    }
-    .conn-sheet-reasons {
-      margin: 10px 0 0;
-      padding-left: 18px;
-      font-size: 13px;
-      color: #991b1b;
-    }
-    .conn-sheet-sub {
-      margin: 14px 0 6px;
-      font-size: 12px;
-      text-transform: uppercase;
-      color: #3f554c;
-    }
-    .conn-sheet-devices {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-    }
-    .conn-sheet-devices li {
-      display: flex;
       justify-content: space-between;
       gap: 8px;
-      padding: 6px 0;
-      border-bottom: 1px solid #e5ece9;
-      font-size: 13px;
+      margin: 0;
     }
-    .conn-sheet-devices li.is-new em {
-      color: #dc2626;
-      font-style: normal;
-      font-weight: 700;
+    .conn-detail-table {
+      border: 1px solid #dbe5df;
+      border-radius: 8px;
+      overflow: hidden;
     }
-    .conn-sheet-muted {
-      margin: 10px 0 0;
-      font-size: 12px;
+    .supervisor-liq-table.is-informe.conn-detail-table th.is-detalle,
+    .supervisor-liq-table.is-informe.conn-detail-table td.is-detalle {
+      width: 62%;
+    }
+    .supervisor-liq-table.is-informe.conn-detail-table th.is-num,
+    .supervisor-liq-table.is-informe.conn-detail-table td.is-num {
+      width: 38%;
+      color: #111;
+    }
+    .conn-detail-table tbody tr.is-warn > td {
+      background: #fef9c3;
+    }
+    .conn-detail-table tbody tr.is-warn > td:first-child {
+      box-shadow: inset 3px 0 0 #eab308;
+    }
+    .conn-detail-table tbody tr.is-alert > td {
+      background: #fee2e2;
+    }
+    .conn-detail-table tbody tr.is-alert > td:first-child {
+      box-shadow: inset 3px 0 0 #dc2626;
+    }
+    .conn-detail-note {
+      display: block;
+      font-size: 10px;
+      font-weight: 500;
+      color: #5b6f66;
+      white-space: normal;
+    }
+    .conn-detail-foot {
+      margin: 2px 0 0;
+      font-size: 11px;
       color: #5b6f66;
     }
     .supervisor-route-board-metrics > div {

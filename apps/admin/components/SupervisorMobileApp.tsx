@@ -2654,9 +2654,10 @@ export function SupervisorMobileApp({
 
   function goToView(next: SupervisorView) {
     // Misma pestaña sin detalle de ruta: no resetear (evita click fantasma).
-    if (next === view && !openRouteRef) return;
+    if (next === view && !openRouteRef && !connectionRouteRef) return;
     suppressGhostClick(420);
     setOpenRouteRef(null);
+    setConnectionRouteRef(null);
     setRouteReturnView("inicio");
     setDetailMode("totales");
     setCobrosMethodFilter(null);
@@ -5121,7 +5122,20 @@ export function SupervisorMobileApp({
         </section>
       ) : (
         <section className="supervisor-mobile-section supervisor-mobile-home">
-          {liquidaciones.length === 0 ? (
+          {connectionRow && connectionByRoute[connectionRow.routeRef] ? (
+            <CollectorConnectionSheet
+              routeName={connectionRow.routeName}
+              collectorName={connectionRow.collectorName}
+              connection={connectionByRoute[connectionRow.routeRef]}
+              now={deviceStatuses.loadedAt}
+              loadedAt={deviceStatuses.loadedAt}
+              loadError={deviceStatuses.error}
+              onBack={() => {
+                suppressGhostClick(420);
+                setConnectionRouteRef(null);
+              }}
+            />
+          ) : liquidaciones.length === 0 ? (
             <p className="ficha-empty">No hay rutas con cobrador.</p>
           ) : (
             <div className="supervisor-route-boards">
@@ -5133,22 +5147,14 @@ export function SupervisorMobileApp({
                   unreadCount={unreadByRoute[row.routeRef] || 0}
                   onOpen={openRouteSummary}
                   connectionLevel={connectionByRoute[row.routeRef]?.level ?? "none"}
-                  onConnection={() => setConnectionRouteRef(row.routeRef)}
+                  onConnection={() => {
+                    suppressGhostClick(420);
+                    setConnectionRouteRef(row.routeRef);
+                  }}
                 />
               ))}
             </div>
           )}
-          {connectionRow && connectionByRoute[connectionRow.routeRef] ? (
-            <CollectorConnectionSheet
-              routeName={connectionRow.routeName}
-              collectorName={connectionRow.collectorName}
-              connection={connectionByRoute[connectionRow.routeRef]}
-              now={deviceStatuses.loadedAt}
-              loadedAt={deviceStatuses.loadedAt}
-              loadError={deviceStatuses.error}
-              onClose={() => setConnectionRouteRef(null)}
-            />
-          ) : null}
           <footer className="supervisor-mobile-salir-foot">
             {onLogout ? (
               <button
