@@ -342,10 +342,15 @@ const sumLines = (lines, loan) =>
 const cuadreM = chainDayCuadre(baseT, "primary");
 const cuadreT = chainDayCuadre(baseT, "secondary");
 expect("Cierre M · Inicial = CIE de ayer", cuadreM.opening, 2_704_000);
+expect("Cierre T · Inicial = caja final de M (no el Inicial de M)", cuadreT.opening, ledgerT.mClosing);
+expect(
+  "Cierre T · Inicial T + efectivo T − préstamos T − gastos T = Caja",
+  cuadreT.opening + cuadreT.ownEfectivo - cuadreT.ownPrestamos - cuadreT.ownGastos,
+  ledgerT.dayFinal,
+);
 expect("Cierre M · efectivo solo M", cuadreM.efectivo, ledgerT.m.efectivo);
 expect("Cierre M · préstamos solo M", sumLines(cuadreM.lines, true), 300_000);
 expect("Cierre M · Caja = Inicial de T", cuadreM.closing, ledgerT.mClosing);
-expect("Cierre T · Inicial = Inicial de M", cuadreT.opening, 2_704_000);
 expect("Cierre T · efectivo M+T", cuadreT.efectivo, ledgerT.m.efectivo + ledgerT.t.efectivo);
 expect("Cierre T · efectivo solo T", cuadreT.ownEfectivo, ledgerT.t.efectivo);
 expect("Cierre T · solo T + M = total", cuadreT.ownEfectivo + cuadreM.ownEfectivo, cuadreT.efectivo);
@@ -362,8 +367,8 @@ expect(
   cuadreT.nequi + cuadreT.banco,
 );
 expect(
-  "Cierre T · Inicial + efectivo − préstamos − gastos = Caja",
-  cuadreT.opening + cuadreT.efectivo - sumLines(cuadreT.lines, true) - sumLines(cuadreT.lines, false),
+  "Cierre T · Inicial M + efectivo M+T − préstamos M+T − gastos M+T = Caja",
+  cuadreM.opening + cuadreT.efectivo - sumLines(cuadreT.lines, true) - sumLines(cuadreT.lines, false),
   cuadreT.closing,
 );
 

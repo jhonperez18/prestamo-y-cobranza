@@ -84,6 +84,8 @@ para un saldo.** Una fórmula paralela = dos cifras = el error del 2.090.000.
 - «Cierre del día» (supervisor → ruta → Historial → día) sale de `chainDayCuadre`:
  T = día entero M+T (efectivo, banco, préstamos, gastos) y Caja = saldo final (Inicial M mañana);
  M = solo la mañana y Caja = Inicial de T. Caja = la misma cifra del renglón del Historial.
+ «Lo que inició» de T = caja final de M (`mClosing`), nunca el Inicial de M; arriba (inició,
+ prestó, gastó) va lo propio de T y en «Lo que cobró» T al lado de M+T.
  Candado: `assert-cash-chain.mjs` («Cierre M/T»).
 - Candado: `assert-cash-chain.mjs` exige Historial T · hoy = libro.
 
