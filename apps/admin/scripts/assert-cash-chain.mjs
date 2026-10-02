@@ -1401,6 +1401,14 @@ console.log("— Préstamos Banco / Nequi en la planilla del cobrador —");
   expect("Préstamos T · Banco: solo el del día, vivo, por banco", tRows.map((r) => r.loanRef).join(","), "P-BT");
   expect("Préstamos M · Banco: no ve los de clientes de T", dayDigitalLoanRows(D, "M", dLoans, clients).length, 0);
   expect("Préstamos A · Nequi: lista el de su cliente", dayDigitalLoanRows(D, "A", dLoans, clients).map((r) => r.loanRef).join(","), "P-NA");
+  const { dayPlanillaLoansWithoutPayment } = await import("@/lib/day-digital-loans");
+  const unpaidT = dayPlanillaLoansWithoutPayment(D, "T", dLoans, clients, new Set());
+  expect("Recaudo T: préstamos del día sin pago (banco y efectivo)", unpaidT.map((r) => r.loan.ref).sort().join(","), "P-BT,P-ET");
+  expect(
+    "Recaudo T: si el cliente pagó hoy, el préstamo va en su renglón (no se duplica)",
+    dayPlanillaLoansWithoutPayment(D, "T", dLoans, clients, new Set(["CLI-T1"])).length,
+    0,
+  );
   expect("Planilla A → bolsillo Nequi", digitalLoanPoolForRoute("A"), "nequi");
   expect("Planilla T → bolsillo Banco", digitalLoanPoolForRoute("T"), "banco");
   expect(

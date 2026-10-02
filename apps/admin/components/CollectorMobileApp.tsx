@@ -134,9 +134,11 @@ import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
 import { CollectorDayLoansPanel } from "@/components/CollectorDayLoansPanel";
 import {
   dayDigitalLoanRows,
+  dayPlanillaLoansWithoutPayment,
   digitalLoanPoolForRoute,
   digitalLoanPoolLabel,
 } from "@/lib/day-digital-loans";
+import { loanDisbursementSourceLabel } from "@/lib/nequi-pool";
 import { CollectorCloseDayConfirm } from "@/components/CollectorCloseDayConfirm";
 import { CollectorCloseDaySheet } from "@/components/CollectorCloseDaySheet";
 
@@ -1346,6 +1348,16 @@ export function CollectorMobileApp({
         : dayPaysByRoute,
     [recaudoOnlyBanco, dayPaysByRoute],
   );
+  /** Préstamos del día a clientes de esta planilla que no pagaron: también van en la lista. */
+  const unpaidDayLoans = useMemo(() => {
+    if (recaudoOnlyBanco) return [];
+    const paid = new Set<string>();
+    for (const pay of recaudoRows) {
+      const clientRef = loans.find((row) => row.ref === pay.loanRef)?.clientRef;
+      if (clientRef) paid.add(clientRef);
+    }
+    return dayPlanillaLoansWithoutPayment(activeDate, newClientRoute, loans, clients, paid);
+  }, [recaudoOnlyBanco, recaudoRows, loans, clients, activeDate, newClientRoute]);
   const doneRouteStarts = routeBlockStarts(recaudoRows, (pay) => {
     const loan = loans.find((row) => row.ref === pay.loanRef);
     return clients.find((row) => row.ref === loan?.clientRef)?.route;
@@ -2266,7 +2278,7 @@ export function CollectorMobileApp({
 
       {listFilter === "done" ? (
         <ul className="collector-mobile-list compact is-recaudo-sheet" aria-label="Quienes pagaron">
-          {recaudoRows.length === 0 ? (
+          {recaudoRows.length === 0 && unpaidDayLoans.length === 0 ? (
             <li className="collector-mobile-empty-inline">
               {recaudoOnlyBanco ? "Aún no hay cobros en Banco hoy." : "Aún no hay cobros del día."}
             </li>
@@ -2375,6 +2387,31 @@ export function CollectorMobileApp({
               );
             })
           )}
+          {unpaidDayLoans.map(({ loan, clientName, source }) => (
+            <li key={`loan-${loan.ref}`} className="collector-mobile-card is-done is-dense">
+              <div className="collector-mobile-dense-row is-recaudo-row">
+                <div className="collector-mobile-visit-who">
+                  <strong>{clientName}</strong>
+                </div>
+                <span className="is-done-loan">
+                  <span
+                    className="collector-reloan-tag"
+                    title={`Préstamo ${loan.ref} · capital ${money(loan.capital)} · ${loanDisbursementSourceLabel(source)}`}
+                  >
+                    Préstamo {money(loan.capital, { symbol: false })}
+                  </span>
+                </span>
+                <span className="collector-mobile-ref is-done-col">—</span>
+                {source === "efectivo" || source === "banco" || source === "nequi" ? (
+                  <Pill
+                    label={paymentMethodInitial(source)}
+                    kind={paymentMethodKind(source)}
+                    title={`Préstamo por ${loanDisbursementSourceLabel(source)}`}
+                  />
+                ) : null}
+              </div>
+            </li>
+          ))}
         </ul>
       ) : null}
 
