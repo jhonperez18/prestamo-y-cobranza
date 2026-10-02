@@ -3684,8 +3684,16 @@ export function SupervisorMobileApp({
               <CollectorDayCloseExtras
                 dateLabel={cajaHistoryDayIso ? isoToDisplay(cajaHistoryDayIso) : ""}
                 planillaRows={openRouteHistoryDayPlanilla}
-                prestamos={openRouteHistoryDayExpenseSplit.prestamos}
-                prestamosTotal={openRouteHistoryDayExpenseSplit.prestamosTotal}
+                prestamos={
+                  historyDayChainT
+                    ? historyDayChainT.ownLoanLines
+                    : openRouteHistoryDayExpenseSplit.prestamos
+                }
+                prestamosTotal={
+                  historyDayChainT
+                    ? historyDayChainT.ownPrestamos
+                    : openRouteHistoryDayExpenseSplit.prestamosTotal
+                }
                 otrosGastos={openRouteHistoryDayExpenseSplit.otros}
                 otrosTotal={openRouteHistoryDayExpenseSplit.otrosTotal}
               />

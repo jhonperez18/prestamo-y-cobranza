@@ -343,6 +343,8 @@ export type ChainDayCuadre = {
   banco: number;
   /** Gastos y préstamos (renglones) que suma la caja. */
   lines: RouteExpenseLine[];
+  /** Renglones «Préstamo · P-…» solo de la planilla abierta (M o T). */
+  ownLoanLines: RouteExpenseLine[];
   /** Libro: M = caja de M (Inicial de T); T = saldo final del día. */
   closing: number;
 };
@@ -375,6 +377,7 @@ export function chainDayCuadre(
     nequi: pesos(collected.reduce((sum, row) => sum + row.nequi, 0)),
     banco: pesos(collected.reduce((sum, row) => sum + row.banco, 0)),
     lines: days.flatMap((day) => [...day.gastoLines, ...loanRowsToExpenseLines(day.loanRows)]),
+    ownLoanLines: loanRowsToExpenseLines(side === "secondary" ? ledger.t.loanRows : ledger.m.loanRows),
     closing:
       side === "secondary"
         ? (sealedDaySaldo(src.dayCloses, src.collectorRef, ledger.date) ?? ledger.dayFinal)

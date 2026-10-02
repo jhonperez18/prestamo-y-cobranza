@@ -357,6 +357,11 @@ expect("Cierre T · efectivo solo T", cuadreT.ownEfectivo, ledgerT.t.efectivo);
 expect("Cierre T · solo T + M = total", cuadreT.ownEfectivo + cuadreM.ownEfectivo, cuadreT.efectivo);
 expect("Cierre T · préstamos M+T", sumLines(cuadreT.lines, true), 400_000);
 expect("Cierre T · préstamos solo T", cuadreT.ownPrestamos, 100_000);
+expect(
+  "Cierre T · lista de préstamos solo T (suma = préstamos T)",
+  cuadreT.ownLoanLines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0),
+  cuadreT.ownPrestamos,
+);
 expect("Cierre T · gastos solo T", cuadreT.ownGastos, 10_000);
 expect("Cierre M · gastos solo M", cuadreM.ownGastos, 20_000);
 expect("Cierre T · préstamos solo T + M = M+T", cuadreT.ownPrestamos + cuadreM.ownPrestamos, 400_000);
