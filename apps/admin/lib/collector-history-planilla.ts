@@ -8,7 +8,7 @@ import { isPrestamoRutaExpense } from "@/lib/expense-lines";
 import { isAssignmentAwaitingLoan, planillaLiveCuota } from "@/lib/planilla-display";
 import { withPaymentEvidence } from "@/lib/payment-evidence-store";
 import { paymentTimeLabel } from "@/lib/payment-detail";
-import { normalizePaymentMethod } from "@/lib/payment-method";
+import { paymentDisplayMethod } from "@/lib/payment-method";
 import { isLoanVoided, type ClientRow, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 
 export { isPrestamoRutaExpense, operativeExpenseLines } from "@/lib/expense-lines";
@@ -40,8 +40,13 @@ function isHistoryFiller(row: DailyCollectionAssignment) {
   return isAssignmentAwaitingLoan(row);
 }
 
-function historyPayMethod(pays: PaymentRow[]): HistoryPayMethod {
-  const methods = new Set(pays.map((row) => normalizePaymentMethod(row.method)));
+/** Manda la ruta del cliente: no efectivo de A = Nequi; de M / T / N = Banco. */
+function historyPayMethod(
+  pays: PaymentRow[],
+  loans: LoanRow[],
+  clients: ClientRow[],
+): HistoryPayMethod {
+  const methods = new Set(pays.map((row) => paymentDisplayMethod(row, loans, clients)));
   const combo = pays.some((row) => row.comboGroupId) && pays.length > 1;
   if (methods.size > 1 || combo) return "doble";
   return [...methods][0] ?? "efectivo";
@@ -391,7 +396,7 @@ export function buildCollectorHistoryPlanillaRows(input: {
       time: grouped.length ? historyClock(grouped) : "—",
       evidence: grouped.length ? grouped.flatMap((pay) => pay.evidence ?? []) : [],
       method: grouped.length
-        ? historyPayMethod(grouped)
+        ? historyPayMethod(grouped, loans, clients)
         : sinCuota
           ? "vacio"
           : "np",
@@ -427,7 +432,7 @@ export function buildCollectorHistoryPlanillaRows(input: {
       amount: siblings.reduce((sum, row) => sum + (Number(row.amount) || 0), 0),
       time: historyClock(siblings),
       evidence: siblings.flatMap((row) => row.evidence ?? []),
-      method: historyPayMethod(siblings),
+      method: historyPayMethod(siblings, loans, clients),
       lentToday: false,
     });
   }

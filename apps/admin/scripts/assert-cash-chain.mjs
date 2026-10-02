@@ -686,6 +686,19 @@ expect(
   false,
 );
 expect("Efectivo del día sí figura «Prestado»", planillaCartera.some((r) => r.key === "prestamo:P-ET1"), true);
+const planillaMetodo = buildCollectorHistoryPlanillaRows({
+  dateIso: D,
+  dispatched: [],
+  payments: [
+    { ...pay("PG-NT", "P-T1", 20_000, D, "nequi"), when: "26/09/2026 · 10:00" },
+    { ...pay("PG-BA", "P-A1", 20_000, D, "banco"), when: "26/09/2026 · 10:05" },
+  ],
+  loans,
+  clients,
+});
+const metodoDe = (clientRef) => planillaMetodo.find((r) => r.clientRef === clientRef)?.method ?? null;
+expect("Planilla: no efectivo de T se ve «Banco»", metodoDe("CLI-T1"), "banco");
+expect("Planilla: no efectivo de A se ve «Nequi»", metodoDe("CLI-A1"), "nequi");
 const carteraBack = mirrorToLoanRow(loanRowToMirror(carteraT));
 expect("Cartera: la marca viaja a la nube", carteraBack?.fundedBy ?? null, "cartera");
 
