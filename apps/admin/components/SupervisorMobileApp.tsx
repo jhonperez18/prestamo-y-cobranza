@@ -253,6 +253,7 @@ type CierreListKind = "prestamos" | "gastos" | "banco" | "prestamosBanco";
 type CierreListLine = { key: string; label: string; mid?: string; amount: number };
 const CIERRE_LIST_COLS: Partial<Record<CierreListKind, readonly [string, string, string]>> = {
   banco: ["Cliente", "Hora", "Valor"],
+  prestamos: ["Cliente", "Préstamo", "Valor"],
   prestamosBanco: ["Cliente", "Préstamo", "Valor"],
 };
 const CIERRE_LIST_TITLE: Record<CierreListKind, string> = {
@@ -2654,11 +2655,17 @@ export function SupervisorMobileApp({
     cierreList && cierreList.day === cajaHistoryDayIso ? cierreList.kind : null;
   const cierreListLines: CierreListLine[] =
     cierreListKind === "prestamos"
-      ? cierrePrestamos.map((line, index) => ({
-          key: `${line.loanRef || line.label}:${index}`,
-          label: line.label,
-          amount: Number(line.amount) || 0,
-        }))
+      ? cierrePrestamos.map((line, index) => {
+          const loanRef = String(line.loanRef || "").trim();
+          const loan = loanRef ? loans.find((row) => row.ref === loanRef) : undefined;
+          const fromLabel = line.label.split(" · ").slice(loanRef ? 2 : 1).join(" · ");
+          return {
+            key: `${loanRef || line.label}:${index}`,
+            label: (loan?.client || "").trim() || fromLabel || line.label,
+            mid: loanRef || "—",
+            amount: Number(line.amount) || 0,
+          };
+        })
       : cierreListKind === "gastos"
         ? cierreGastos.map((line, index) => ({
             key: `${line.id}:${line.lineKey || line.label}:${index}`,
