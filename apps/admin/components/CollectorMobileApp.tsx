@@ -87,6 +87,7 @@ import {
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import {
   isAssignmentAwaitingLoan,
+  paidThousandsLabel,
   planillaLiveCuota,
   planillaLiveCuotasProgress,
 } from "@/lib/planilla-display";
@@ -131,6 +132,11 @@ import {
 } from "@/lib/day-cash-ledger";
 import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
 import { CollectorDayLoansPanel } from "@/components/CollectorDayLoansPanel";
+import {
+  dayDigitalLoanRows,
+  digitalLoanPoolForRoute,
+  digitalLoanPoolLabel,
+} from "@/lib/day-digital-loans";
 import { CollectorCloseDayConfirm } from "@/components/CollectorCloseDayConfirm";
 import { CollectorCloseDaySheet } from "@/components/CollectorCloseDaySheet";
 
@@ -1392,6 +1398,14 @@ export function CollectorMobileApp({
     loanScope,
   ]);
   const viewPrestamos = dayLoanDisbursementTotal(viewLoanRows);
+  /** Banco / Nequi del supervisor a clientes de esta planilla: solo reporte, la caja no los resta. */
+  const digitalPool = digitalLoanPoolForRoute(newClientRoute);
+  const digitalLoanRows = useMemo(
+    () => dayDigitalLoanRows(activeDate, newClientRoute, loans, clients),
+    [activeDate, newClientRoute, loans, clients],
+  );
+  const digitalPrestamos = dayLoanDisbursementTotal(digitalLoanRows);
+  const prestamosKpi = viewPrestamos + digitalPrestamos;
   /** Caja de la planilla: en la cadena, la cifra del libro (M = caja de M; T = saldo final del día). */
   const planillaCaja =
     chainPlanillaDay && chainOpening.kind === "chain"
@@ -1978,7 +1992,13 @@ export function CollectorMobileApp({
           })}
         >
           <span>Préstamos</span>
-          <b>{viewPrestamos > 0 ? money(viewPrestamos) : "—"}</b>
+          <b>{prestamosKpi > 0 ? money(prestamosKpi) : "—"}</b>
+          {digitalPrestamos > 0 ? (
+            <small className="collector-mobile-stat-split">
+              Ef {paidThousandsLabel(viewPrestamos)} · {digitalPool === "banco" ? "Bco" : "Nequi"}{" "}
+              {paidThousandsLabel(digitalPrestamos)}
+            </small>
+          ) : null}
         </button>
         <button
           type="button"
@@ -2161,6 +2181,9 @@ export function CollectorMobileApp({
           dateLabel={queue.dateLabel}
           rows={viewLoanRows}
           total={viewPrestamos}
+          digitalRows={digitalLoanRows}
+          digitalTotal={digitalPrestamos}
+          digitalLabel={digitalLoanPoolLabel(digitalPool)}
         />
       ) : confirmingClose && onCloseDay ? (
         <CollectorCloseDayConfirm

@@ -173,6 +173,19 @@ El supervisor puede montar un préstamo que asume la ruta del cliente (origen «
 
 - Candado: `assert-cash-chain.mjs` sección 19.
 
+### Botón Préstamos del cobrador: Efectivo + Banco / Nequi
+
+Banco / Nequi solo los monta el supervisor (maneja esos saldos). El cobrador los ve como reporte.
+
+| Pieza | Regla |
+| --- | --- |
+| KPI Préstamos | Total = efectivo (caja) + Banco/Nequi del día; debajo «Ef … · Bco …» (A: «Nequi») |
+| Al abrir | Dos botones: **Efectivo** (resta de la caja) y **Banco** (M / T / N) o **Nequi** (A) |
+| Banco / Nequi | `dayDigitalLoanRows` (`lib/day-digital-loans.ts`): préstamos del día a clientes de esa planilla |
+| Caja | Sin cambio: solo efectivo (`topPrestamos` / libro). Banco / Nequi nunca la tocan |
+
+- Candado: `assert-cash-chain.mjs` sección 20.
+
 ## Ajuste de saldo real en T (supervisor / admin)
 
 Poner la caja contada de verdad como saldo final del día. Un solo camino: `commitCashAdjustment`

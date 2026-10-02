@@ -1374,6 +1374,42 @@ console.log("— Préstamo del supervisor a cargo de la ruta —");
   );
 }
 
+// 20. Botón Préstamos del cobrador: Efectivo (caja) + Banco / Nequi del supervisor (reporte).
+//     Banco / Nequi se listan por planilla del cliente y nunca entran a la caja.
+console.log("— Préstamos Banco / Nequi en la planilla del cobrador —");
+{
+  const { dayDigitalLoanRows, digitalLoanPoolForRoute } = await import("@/lib/day-digital-loans");
+  const dl = (ref, clientRef, fundedBy, extra = {}) => ({
+    ref,
+    clientRef,
+    client: ref,
+    date: "26/09/2026",
+    capital: 600_000,
+    installment: 30_000,
+    fundedBy,
+    ...extra,
+  });
+  const dLoans = [
+    ...loans,
+    dl("P-BT", "CLI-T1", "banco"),
+    dl("P-NA", "CLI-A1", "nequi"),
+    dl("P-ET", "CLI-T1", "efectivo"),
+    dl("P-XT", "CLI-T1", "banco", { status: "Eliminado" }),
+    dl("P-OT", "CLI-T1", "banco", { date: "25/09/2026" }),
+  ];
+  const tRows = dayDigitalLoanRows(D, "T", dLoans, clients);
+  expect("Préstamos T · Banco: solo el del día, vivo, por banco", tRows.map((r) => r.loanRef).join(","), "P-BT");
+  expect("Préstamos M · Banco: no ve los de clientes de T", dayDigitalLoanRows(D, "M", dLoans, clients).length, 0);
+  expect("Préstamos A · Nequi: lista el de su cliente", dayDigitalLoanRows(D, "A", dLoans, clients).map((r) => r.loanRef).join(","), "P-NA");
+  expect("Planilla A → bolsillo Nequi", digitalLoanPoolForRoute("A"), "nequi");
+  expect("Planilla T → bolsillo Banco", digitalLoanPoolForRoute("T"), "banco");
+  expect(
+    "Préstamos Banco / Nequi no tocan la caja del día",
+    buildDayCashLedger({ ...base, loans: [...loans, dLoans.find((r) => r.ref === "P-BT"), dLoans.find((r) => r.ref === "P-NA")] }).dayFinal,
+    buildDayCashLedger(base).dayFinal,
+  );
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);
