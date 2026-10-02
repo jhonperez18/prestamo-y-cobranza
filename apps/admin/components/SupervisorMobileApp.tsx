@@ -2592,6 +2592,42 @@ export function SupervisorMobileApp({
     () => splitDayExpenses(openRouteHistoryDayExpenses),
     [openRouteHistoryDayExpenses],
   );
+  /** Cierre del día: T lista solo lo suyo; M / A / N lo de su planilla. */
+  const cierrePrestamos = historyDayChainT
+    ? historyDayChainT.ownLoanLines
+    : openRouteHistoryDayExpenseSplit.prestamos;
+  const cierrePrestamosTotal = historyDayChainT
+    ? historyDayChainT.ownPrestamos
+    : openRouteHistoryDayExpenseSplit.prestamosTotal;
+  const cierreGastos = historyDayChainT
+    ? historyDayChainT.ownGastoLines
+    : openRouteHistoryDayExpenseSplit.otros;
+  const cierreGastosTotal = historyDayChainT
+    ? historyDayChainT.ownGastos
+    : openRouteHistoryDayExpenseSplit.otrosTotal;
+
+  /** Lista desplegada bajo «Lo que prestó» / «Lo que gastó» (solo ese día). */
+  const [cierreList, setCierreList] = useState<{
+    day: string;
+    kind: "prestamos" | "gastos";
+  } | null>(null);
+  const cierreListKind =
+    cierreList && cierreList.day === cajaHistoryDayIso ? cierreList.kind : null;
+  const toggleCierreList = (kind: "prestamos" | "gastos") => {
+    if (!cajaHistoryDayIso) return;
+    const day = cajaHistoryDayIso;
+    setCierreList((prev) => (prev?.day === day && prev.kind === kind ? null : { day, kind }));
+  };
+  useEffect(() => {
+    if (!cierreListKind) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest?.("[data-cierre-keep]")) return;
+      setCierreList(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [cierreListKind]);
 
   const openRouteHistoryDayPlanilla = useMemo(() => {
     if (!openRoute || !cajaHistoryDayIso || !openRouteScope) return [];
@@ -3606,26 +3642,50 @@ export function SupervisorMobileApp({
                   <span>Lo que inició</span>
                   <b>{money(openRouteHistoryDayCuadre.saldoInicial)}</b>
                 </div>
-                <div className="is-prestamos">
+                <button
+                  type="button"
+                  className={`is-prestamos is-tap${cierreListKind === "prestamos" ? " on" : ""}`}
+                  data-cierre-keep
+                  aria-expanded={cierreListKind === "prestamos"}
+                  onClick={() => toggleCierreList("prestamos")}
+                >
                   <span>Lo que prestó</span>
-                  <b>
-                    {money(
-                      historyDayChainT
-                        ? historyDayChainT.ownPrestamos
-                        : openRouteHistoryDayExpenseSplit.prestamosTotal,
-                    )}
-                  </b>
-                </div>
-                <div className="is-gastos">
+                  <b>{money(cierrePrestamosTotal)}</b>
+                </button>
+                <button
+                  type="button"
+                  className={`is-gastos is-tap${cierreListKind === "gastos" ? " on" : ""}`}
+                  data-cierre-keep
+                  aria-expanded={cierreListKind === "gastos"}
+                  onClick={() => toggleCierreList("gastos")}
+                >
                   <span>Lo que gastó</span>
-                  <b>
-                    {money(
-                      historyDayChainT
-                        ? historyDayChainT.ownGastos
-                        : openRouteHistoryDayExpenseSplit.otrosTotal,
+                  <b>{money(cierreGastosTotal)}</b>
+                </button>
+                {cierreListKind ? (
+                  <div
+                    className={`collector-cierre-drop is-${cierreListKind}`}
+                    data-cierre-keep
+                    aria-label={cierreListKind === "prestamos" ? "Préstamos del día" : "Gastos del día"}
+                  >
+                    {(cierreListKind === "prestamos" ? cierrePrestamos : cierreGastos).length === 0 ? (
+                      <p className="collector-cierre-drop-empty">
+                        {cierreListKind === "prestamos" ? "Sin préstamos ese día." : "Sin gastos ese día."}
+                      </p>
+                    ) : (
+                      <ul>
+                        {(cierreListKind === "prestamos" ? cierrePrestamos : cierreGastos).map(
+                          (line, index) => (
+                            <li key={`${line.id}:${line.loanRef || line.lineKey || line.label}:${index}`}>
+                              <span>{line.label}</span>
+                              <b>{money(line.amount, { symbol: false })}</b>
+                            </li>
+                          ),
+                        )}
+                      </ul>
                     )}
-                  </b>
-                </div>
+                  </div>
+                ) : null}
                 <div className="is-cobrado">
                   <div className="is-cobrado-head">
                     <span>Lo que cobró</span>
@@ -3684,26 +3744,8 @@ export function SupervisorMobileApp({
               <CollectorDayCloseExtras
                 dateLabel={cajaHistoryDayIso ? isoToDisplay(cajaHistoryDayIso) : ""}
                 planillaRows={openRouteHistoryDayPlanilla}
-                prestamos={
-                  historyDayChainT
-                    ? historyDayChainT.ownLoanLines
-                    : openRouteHistoryDayExpenseSplit.prestamos
-                }
-                prestamosTotal={
-                  historyDayChainT
-                    ? historyDayChainT.ownPrestamos
-                    : openRouteHistoryDayExpenseSplit.prestamosTotal
-                }
-                otrosGastos={
-                  historyDayChainT
-                    ? historyDayChainT.ownGastoLines
-                    : openRouteHistoryDayExpenseSplit.otros
-                }
-                otrosTotal={
-                  historyDayChainT
-                    ? historyDayChainT.ownGastos
-                    : openRouteHistoryDayExpenseSplit.otrosTotal
-                }
+                prestamos={[]}
+                prestamosTotal={0}
               />
             </section>
           ) : detailMode === "historial-dia" ? (
