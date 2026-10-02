@@ -3818,6 +3818,7 @@ export function SupervisorMobileApp({
                     <span>N</span>
                     <span>/</span>
                     <span>P</span>
+                    <em className="collector-cierre-np-count">{cierreNpLines.length}</em>
                   </button>
                   <div className="is-saldo">
                     <span>Caja (efectivo − gastos − préstamos)</span>
