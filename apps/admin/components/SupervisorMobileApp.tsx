@@ -249,7 +249,12 @@ type SupervisorView =
   | "prestamos";
 type NuevoMode = "menu" | "cliente" | "prestamo" | "gasto";
 type CierreListKind = "prestamos" | "gastos" | "banco" | "prestamosBanco";
-type CierreListLine = { key: string; label: string; time?: string; amount: number };
+/** `mid` = columna del medio en las listas de tres columnas. */
+type CierreListLine = { key: string; label: string; mid?: string; amount: number };
+const CIERRE_LIST_COLS: Partial<Record<CierreListKind, readonly [string, string, string]>> = {
+  banco: ["Cliente", "Hora", "Valor"],
+  prestamosBanco: ["Cliente", "Préstamo", "Valor"],
+};
 const CIERRE_LIST_TITLE: Record<CierreListKind, string> = {
   prestamos: "Préstamos del día",
   gastos: "Gastos del día",
@@ -2626,7 +2631,7 @@ export function SupervisorMobileApp({
     ? historyDayChainT.ownDigitalPayments.map((pay) => ({
         key: pay.ref,
         label: pay.client,
-        time: pay.paidTime || "—",
+        mid: pay.paidTime || "—",
         amount: Number(pay.amount) || 0,
       }))
     : [];
@@ -2665,7 +2670,8 @@ export function SupervisorMobileApp({
           : cierreListKind === "prestamosBanco"
             ? cierreBancoLoans.map((row) => ({
                 key: row.loanRef,
-                label: `${row.loanRef} · ${row.clientName}`,
+                label: row.clientName,
+                mid: row.loanRef,
                 amount: row.capital,
               }))
             : [];
@@ -3794,19 +3800,19 @@ export function SupervisorMobileApp({
                     {cierreListLines.length === 0 ? (
                       <p className="collector-cierre-drop-empty">{CIERRE_LIST_EMPTY[cierreListKind]}</p>
                     ) : (
-                      <ul className={cierreListKind === "banco" ? "is-cols-3" : undefined}>
-                        {cierreListKind === "banco" ? (
+                      <ul className={CIERRE_LIST_COLS[cierreListKind] ? "is-cols-3" : undefined}>
+                        {CIERRE_LIST_COLS[cierreListKind] ? (
                           <li className="is-head">
-                            <span>Cliente</span>
-                            <span>Hora</span>
-                            <span>Valor</span>
+                            {CIERRE_LIST_COLS[cierreListKind]?.map((title) => (
+                              <span key={title}>{title}</span>
+                            ))}
                           </li>
                         ) : null}
                         {cierreListLines.map((line) => (
                           <li key={line.key}>
                             <span className="is-label">{line.label}</span>
-                            {cierreListKind === "banco" ? (
-                              <span className="is-time">{line.time}</span>
+                            {CIERRE_LIST_COLS[cierreListKind] ? (
+                              <span className="is-time">{line.mid}</span>
                             ) : null}
                             <b>{money(line.amount, { symbol: false })}</b>
                           </li>
