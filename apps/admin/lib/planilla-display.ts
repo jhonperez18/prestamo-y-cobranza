@@ -188,6 +188,16 @@ export function enrichSupervisorPlanillaRow(
     paidAmount: isCombined && comboPays.length >= 2
       ? comboPays.reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0)
       : Number(pay?.amount) || 0,
+    /** Cobro combinado: cada parte con su método (efectivo primero). Vacío si es un solo PG-. */
+    paidParts: isCombined && comboPays.length >= 2
+      ? comboPays
+          .map((entry) => ({
+            method: paymentMethodForRoute(entry.method, row.clientRoute),
+            amount: Number(entry.amount) || 0,
+          }))
+          .filter((part) => part.amount > 0)
+          .sort((a, b) => Number(b.method === "efectivo") - Number(a.method === "efectivo"))
+      : [],
   };
 }
 

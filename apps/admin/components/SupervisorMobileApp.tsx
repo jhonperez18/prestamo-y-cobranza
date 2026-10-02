@@ -616,20 +616,34 @@ function PlanillaTable({
                     </span>
                   ) : (
                     <span
+                      style={
+                        row.paidParts.length >= 2 ? { display: "inline-flex", gap: 2 } : undefined
+                      }
                       title={
                         row.paidAmount > 0
                           ? `${visitStatusLabel(row.visitStatus)} · ${money(row.paidAmount)}`
                           : visitStatusLabel(row.visitStatus)
                       }
                     >
-                      <Pill
-                        label={
-                          row.paidAmount > 0
-                            ? paidThousandsLabel(row.paidAmount)
-                            : visitStatusLabelShort(row.visitStatus)
-                        }
-                        kind={visitStatusKind(row.visitStatus)}
-                      />
+                      {row.paidParts.length >= 2 ? (
+                        row.paidParts.map((part, partIndex) => (
+                          <Pill
+                            key={`${part.method}-${partIndex}`}
+                            label={paidThousandsLabel(part.amount)}
+                            kind={partIndex === 0 ? "ok" : "pending"}
+                            title={`${paymentMethodLabel(part.method)} · ${money(part.amount)}`}
+                          />
+                        ))
+                      ) : (
+                        <Pill
+                          label={
+                            row.paidAmount > 0
+                              ? paidThousandsLabel(row.paidAmount)
+                              : visitStatusLabelShort(row.visitStatus)
+                          }
+                          kind={visitStatusKind(row.visitStatus)}
+                        />
+                      )}
                     </span>
                   )}
                 </td>
