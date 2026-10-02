@@ -87,7 +87,6 @@ import {
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import {
   isAssignmentAwaitingLoan,
-  paidThousandsLabel,
   planillaLiveCuota,
   planillaLiveCuotasProgress,
 } from "@/lib/planilla-display";
@@ -2005,12 +2004,6 @@ export function CollectorMobileApp({
         >
           <span>Préstamos</span>
           <b>{prestamosKpi > 0 ? money(prestamosKpi) : "—"}</b>
-          {digitalPrestamos > 0 ? (
-            <small className="collector-mobile-stat-split">
-              Ef {paidThousandsLabel(viewPrestamos)} · {digitalPool === "banco" ? "Bco" : "Nequi"}{" "}
-              {paidThousandsLabel(digitalPrestamos)}
-            </small>
-          ) : null}
         </button>
         <button
           type="button"
