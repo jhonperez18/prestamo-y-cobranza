@@ -5360,6 +5360,7 @@ export function SupervisorMobileApp({
               ))}
             </div>
           )}
+          {connectionRow && connectionByRoute[connectionRow.routeRef] ? null : (
           <footer className="supervisor-mobile-salir-foot">
             {onLogout ? (
               <button
@@ -5381,6 +5382,7 @@ export function SupervisorMobileApp({
               <b>{money(inicioTotalConT, { symbol: false })}</b>
             </div>
           </footer>
+          )}
         </section>
       )}
     </div>
