@@ -412,6 +412,16 @@ expect(
   cuadreT.nequi + cuadreT.banco,
 );
 expect(
+  "Cierre T · lista Banco T suma el botón Banco T",
+  cuadreT.ownDigitalPayments.reduce((sum, p) => sum + p.amount, 0),
+  cuadreT.ownDigital,
+);
+expect(
+  "Cierre M · lista Banco suma su botón",
+  cuadreM.ownDigitalPayments.reduce((sum, p) => sum + p.amount, 0),
+  cuadreM.ownDigital,
+);
+expect(
   "Cierre T · Inicial M + efectivo M+T − préstamos M+T − gastos M+T = Caja",
   cuadreM.opening + cuadreT.efectivo - sumLines(cuadreT.lines, true) - sumLines(cuadreT.lines, false),
   cuadreT.closing,

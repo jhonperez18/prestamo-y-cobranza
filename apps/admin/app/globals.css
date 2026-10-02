@@ -2048,6 +2048,19 @@
       border-color: #fca5a5;
       background: #fff7ed;
     }
+    .collector-cierre-drop.is-banco {
+      border-color: #93c5fd;
+      background: #eff6ff;
+    }
+    .collector-mobile-home-cuadre-grid .is-cobrado-means button.is-mean.is-pay-banco.on {
+      box-shadow: 0 0 0 2px #2563eb;
+    }
+    .collector-cierre-drop-title {
+      margin: 2px 0 2px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #111;
+    }
     .collector-cierre-drop ul {
       list-style: none;
       margin: 0;

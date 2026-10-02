@@ -126,15 +126,31 @@ export function routeClientRefsForDay(src: DayCashSources, routeName: string): S
 }
 
 /** Cobrado ese día a clientes de la ruta, por medio de pago (nada de otras rutas). */
+/** Cobros del día del cobrador a clientes de la ruta (todos los métodos). */
+function routeDayPayments(src: DayCashSources, routeName: string): PaymentRow[] {
+  const refs = routeClientRefsForDay(src, routeName);
+  return collectorDayPayments(src.collectorRef, src.date, src.payments, src.collectors).filter(
+    (pay) => {
+      const loan = src.loans.find((row) => row.ref === pay.loanRef);
+      return Boolean(loan?.clientRef && refs.has(loan.clientRef));
+    },
+  );
+}
+
+/** Cobros no efectivo (Banco / Nequi) del día a clientes de la ruta. */
+export function routeDigitalPayments(src: DayCashSources, routeName: string): PaymentRow[] {
+  return routeDayPayments(src, routeName).filter((pay) => {
+    const method = normalizePaymentMethod(pay.method);
+    return method === "nequi" || method === "banco";
+  });
+}
+
 export function routeCollectedByMethod(
   src: DayCashSources,
   routeName: string,
 ): { efectivo: number; nequi: number; banco: number } {
-  const refs = routeClientRefsForDay(src, routeName);
   const out = { efectivo: 0, nequi: 0, banco: 0 };
-  for (const pay of collectorDayPayments(src.collectorRef, src.date, src.payments, src.collectors)) {
-    const loan = src.loans.find((row) => row.ref === pay.loanRef);
-    if (!loan?.clientRef || !refs.has(loan.clientRef)) continue;
+  for (const pay of routeDayPayments(src, routeName)) {
     const amount = Number(pay.amount) || 0;
     const method = normalizePaymentMethod(pay.method);
     if (method === "nequi") out.nequi += amount;
@@ -338,6 +354,8 @@ export type ChainDayCuadre = {
   ownGastos: number;
   /** Banco / Nequi cobrado solo en la planilla abierta (M o T). No entra a la caja. */
   ownDigital: number;
+  /** Cobros Banco / Nequi (renglones) que suma `ownDigital`. */
+  ownDigitalPayments: PaymentRow[];
   efectivo: number;
   nequi: number;
   banco: number;
@@ -375,6 +393,7 @@ export function chainDayCuadre(
     ownPrestamos: pesos(side === "secondary" ? ledger.t.prestamos : ledger.m.prestamos),
     ownGastos: pesos(side === "secondary" ? ledger.t.gastos : ledger.m.gastos),
     ownDigital: pesos(own.nequi + own.banco),
+    ownDigitalPayments: routeDigitalPayments(src, routes[routes.length - 1]),
     efectivo: pesos(days.reduce((sum, day) => sum + day.efectivo, 0)),
     nequi: pesos(collected.reduce((sum, row) => sum + row.nequi, 0)),
     banco: pesos(collected.reduce((sum, row) => sum + row.banco, 0)),

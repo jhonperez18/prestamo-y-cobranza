@@ -246,6 +246,17 @@ type SupervisorView =
   | "clientes"
   | "prestamos";
 type NuevoMode = "menu" | "cliente" | "prestamo" | "gasto";
+type CierreListKind = "prestamos" | "gastos" | "banco";
+const CIERRE_LIST_TITLE: Record<CierreListKind, string> = {
+  prestamos: "Préstamos del día",
+  gastos: "Gastos del día",
+  banco: "Banco T del día",
+};
+const CIERRE_LIST_EMPTY: Record<CierreListKind, string> = {
+  prestamos: "Sin préstamos ese día.",
+  gastos: "Sin gastos ese día.",
+  banco: "Sin cobros Banco en T ese día.",
+};
 type RouteDetailMode =
   | "totales"
   | "planilla"
@@ -2606,14 +2617,38 @@ export function SupervisorMobileApp({
     ? historyDayChainT.ownGastos
     : openRouteHistoryDayExpenseSplit.otrosTotal;
 
-  /** Lista desplegada bajo «Lo que prestó» / «Lo que gastó» (solo ese día). */
+  const cierreBancoT = historyDayChainT
+    ? historyDayChainT.ownDigitalPayments.map((pay) => ({
+        key: pay.ref,
+        label: [pay.client, pay.paidTime].filter(Boolean).join(" · "),
+        amount: Number(pay.amount) || 0,
+      }))
+    : [];
+
+  /** Lista desplegada bajo «Caja» al tocar Prestó / Gastó / Banco T (solo ese día). */
   const [cierreList, setCierreList] = useState<{
     day: string;
-    kind: "prestamos" | "gastos";
+    kind: CierreListKind;
   } | null>(null);
   const cierreListKind =
     cierreList && cierreList.day === cajaHistoryDayIso ? cierreList.kind : null;
-  const toggleCierreList = (kind: "prestamos" | "gastos") => {
+  const cierreListLines =
+    cierreListKind === "prestamos"
+      ? cierrePrestamos.map((line, index) => ({
+          key: `${line.loanRef || line.label}:${index}`,
+          label: line.label,
+          amount: Number(line.amount) || 0,
+        }))
+      : cierreListKind === "gastos"
+        ? cierreGastos.map((line, index) => ({
+            key: `${line.id}:${line.lineKey || line.label}:${index}`,
+            label: line.label,
+            amount: Number(line.amount) || 0,
+          }))
+        : cierreListKind === "banco"
+          ? cierreBancoT
+          : [];
+  const toggleCierreList = (kind: CierreListKind) => {
     if (!cajaHistoryDayIso) return;
     const day = cajaHistoryDayIso;
     setCierreList((prev) => (prev?.day === day && prev.kind === kind ? null : { day, kind }));
@@ -3662,30 +3697,6 @@ export function SupervisorMobileApp({
                   <span>Lo que gastó</span>
                   <b>{money(cierreGastosTotal)}</b>
                 </button>
-                {cierreListKind ? (
-                  <div
-                    className={`collector-cierre-drop is-${cierreListKind}`}
-                    data-cierre-keep
-                    aria-label={cierreListKind === "prestamos" ? "Préstamos del día" : "Gastos del día"}
-                  >
-                    {(cierreListKind === "prestamos" ? cierrePrestamos : cierreGastos).length === 0 ? (
-                      <p className="collector-cierre-drop-empty">
-                        {cierreListKind === "prestamos" ? "Sin préstamos ese día." : "Sin gastos ese día."}
-                      </p>
-                    ) : (
-                      <ul>
-                        {(cierreListKind === "prestamos" ? cierrePrestamos : cierreGastos).map(
-                          (line, index) => (
-                            <li key={`${line.id}:${line.loanRef || line.lineKey || line.label}:${index}`}>
-                              <span>{line.label}</span>
-                              <b>{money(line.amount, { symbol: false })}</b>
-                            </li>
-                          ),
-                        )}
-                      </ul>
-                    )}
-                  </div>
-                ) : null}
                 <div className="is-cobrado">
                   <div className="is-cobrado-head">
                     <span>Lo que cobró</span>
@@ -3705,10 +3716,16 @@ export function SupervisorMobileApp({
                       <b>{money(openRouteHistoryDayCuadre.cobradoEfectivo)}</b>
                     </div>
                     {historyDayChainT ? (
-                      <div className="is-mean is-pay-banco">
+                      <button
+                        type="button"
+                        className={`is-mean is-pay-banco is-tap-mean${cierreListKind === "banco" ? " on" : ""}`}
+                        data-cierre-keep
+                        aria-expanded={cierreListKind === "banco"}
+                        onClick={() => toggleCierreList("banco")}
+                      >
                         <span>Banco T</span>
                         <b>{money(historyDayChainT.ownDigital)}</b>
-                      </div>
+                      </button>
                     ) : null}
                     {historyDayShowNequiValue ? (
                       <div className="is-mean is-pay-banco">
@@ -3740,6 +3757,27 @@ export function SupervisorMobileApp({
                   <span>Caja (efectivo − gastos − préstamos)</span>
                   <b>{money(openRouteHistoryDayCuadre.enCaja)}</b>
                 </div>
+                {cierreListKind ? (
+                  <div
+                    className={`collector-cierre-drop is-${cierreListKind}`}
+                    data-cierre-keep
+                    aria-label={CIERRE_LIST_TITLE[cierreListKind]}
+                  >
+                    <p className="collector-cierre-drop-title">{CIERRE_LIST_TITLE[cierreListKind]}</p>
+                    {cierreListLines.length === 0 ? (
+                      <p className="collector-cierre-drop-empty">{CIERRE_LIST_EMPTY[cierreListKind]}</p>
+                    ) : (
+                      <ul>
+                        {cierreListLines.map((line) => (
+                          <li key={line.key}>
+                            <span>{line.label}</span>
+                            <b>{money(line.amount, { symbol: false })}</b>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ) : null}
               </div>
               <CollectorDayCloseExtras
                 dateLabel={cajaHistoryDayIso ? isoToDisplay(cajaHistoryDayIso) : ""}
