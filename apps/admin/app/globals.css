@@ -2051,7 +2051,7 @@
     .collector-mobile-home-cuadre-grid > .collector-cierre-saldo-row {
       grid-column: 1 / -1;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 34px;
+      grid-template-columns: 34px minmax(0, 1fr);
       gap: 6px;
       align-items: stretch;
       justify-items: stretch;
@@ -2059,7 +2059,8 @@
       border: 0;
       background: none;
     }
-    .collector-cierre-saldo-row > .is-saldo {
+    .collector-mobile-home-cuadre-grid.is-inicio-triple .collector-cierre-saldo-row > .is-saldo {
+      grid-column: auto;
       display: grid;
       gap: 4px;
       min-width: 0;

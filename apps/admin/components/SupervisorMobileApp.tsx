@@ -3807,10 +3807,6 @@ export function SupervisorMobileApp({
                   </div>
                 </div>
                 <div className="collector-cierre-saldo-row">
-                  <div className="is-saldo">
-                    <span>Caja (efectivo − gastos − préstamos)</span>
-                    <b>{money(openRouteHistoryDayCuadre.enCaja)}</b>
-                  </div>
                   <button
                     type="button"
                     className={`collector-cierre-np-btn${cierreListKind === "np" ? " on" : ""}`}
@@ -3823,6 +3819,10 @@ export function SupervisorMobileApp({
                     <span>/</span>
                     <span>P</span>
                   </button>
+                  <div className="is-saldo">
+                    <span>Caja (efectivo − gastos − préstamos)</span>
+                    <b>{money(openRouteHistoryDayCuadre.enCaja)}</b>
+                  </div>
                 </div>
                 {cierreListKind ? (
                   <div
