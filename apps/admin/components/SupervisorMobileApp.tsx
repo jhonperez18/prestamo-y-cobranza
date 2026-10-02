@@ -248,25 +248,28 @@ type SupervisorView =
   | "clientes"
   | "prestamos";
 type NuevoMode = "menu" | "cliente" | "prestamo" | "gasto";
-type CierreListKind = "prestamos" | "gastos" | "banco" | "prestamosBanco";
+type CierreListKind = "prestamos" | "gastos" | "banco" | "prestamosBanco" | "np";
 /** `mid` = columna del medio en las listas de tres columnas. */
 type CierreListLine = { key: string; label: string; mid?: string; amount: number };
 const CIERRE_LIST_COLS: Partial<Record<CierreListKind, readonly [string, string, string]>> = {
   banco: ["Cliente", "Hora", "Valor"],
   prestamos: ["Cliente", "Préstamo", "Valor"],
   prestamosBanco: ["Cliente", "Préstamo", "Valor"],
+  np: ["Cliente", "#", "Cuota"],
 };
 const CIERRE_LIST_TITLE: Record<CierreListKind, string> = {
   prestamos: "Préstamos del día",
   gastos: "Gastos del día",
   banco: "Banco T del día",
   prestamosBanco: "Préstamos B M+T del día",
+  np: "N/P del día",
 };
 const CIERRE_LIST_EMPTY: Record<CierreListKind, string> = {
   prestamos: "Sin préstamos ese día.",
   gastos: "Sin gastos ese día.",
   banco: "Sin cobros Banco en T ese día.",
   prestamosBanco: "Sin préstamos del Banco ese día.",
+  np: "Sin N/P ese día.",
 };
 type RouteDetailMode =
   | "totales"
@@ -2734,6 +2737,16 @@ export function SupervisorMobileApp({
     clients,
     openRouteHistoryDayExpenses,
   ]);
+  /** N/P del día de esta ruta: los mismos renglones «N/P» de su planilla. */
+  const cierreNpLines: CierreListLine[] = openRouteHistoryDayPlanilla
+    .filter((row) => row.method === "np")
+    .map((row) => ({
+      key: row.key,
+      label: row.name,
+      mid: row.order != null ? String(row.order) : "—",
+      amount: Number(row.amount) || 0,
+    }));
+  const cierreShownLines = cierreListKind === "np" ? cierreNpLines : cierreListLines;
 
   const openRouteNequiDayTotal = openRouteNequiDayPays.reduce(
     (sum, row) => sum + (row.amount ?? 0),
@@ -3793,9 +3806,23 @@ export function SupervisorMobileApp({
                     ) : null}
                   </div>
                 </div>
-                <div className="is-saldo">
-                  <span>Caja (efectivo − gastos − préstamos)</span>
-                  <b>{money(openRouteHistoryDayCuadre.enCaja)}</b>
+                <div className="collector-cierre-saldo-row">
+                  <div className="is-saldo">
+                    <span>Caja (efectivo − gastos − préstamos)</span>
+                    <b>{money(openRouteHistoryDayCuadre.enCaja)}</b>
+                  </div>
+                  <button
+                    type="button"
+                    className={`collector-cierre-np-btn${cierreListKind === "np" ? " on" : ""}`}
+                    data-cierre-keep
+                    aria-label="N/P del día"
+                    aria-expanded={cierreListKind === "np"}
+                    onClick={() => toggleCierreList("np")}
+                  >
+                    <span>N</span>
+                    <span>/</span>
+                    <span>P</span>
+                  </button>
                 </div>
                 {cierreListKind ? (
                   <div
@@ -3804,7 +3831,7 @@ export function SupervisorMobileApp({
                     aria-label={CIERRE_LIST_TITLE[cierreListKind]}
                   >
                     <p className="collector-cierre-drop-title">{CIERRE_LIST_TITLE[cierreListKind]}</p>
-                    {cierreListLines.length === 0 ? (
+                    {cierreShownLines.length === 0 ? (
                       <p className="collector-cierre-drop-empty">{CIERRE_LIST_EMPTY[cierreListKind]}</p>
                     ) : (
                       <ul className={CIERRE_LIST_COLS[cierreListKind] ? "is-cols-3" : undefined}>
@@ -3815,7 +3842,7 @@ export function SupervisorMobileApp({
                             ))}
                           </li>
                         ) : null}
-                        {cierreListLines.map((line) => (
+                        {cierreShownLines.map((line) => (
                           <li key={line.key}>
                             <span className="is-label">{line.label}</span>
                             {CIERRE_LIST_COLS[cierreListKind] ? (
