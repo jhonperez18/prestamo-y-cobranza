@@ -143,6 +143,7 @@ import {
 import {
   buildDayCashLedger,
   chainDayCuadre,
+  primaryClosingForDay,
   chainHistorySplit,
   withLedgerTodaySaldo,
   type DayCashLedger,
@@ -2147,6 +2148,24 @@ export function SupervisorMobileApp({
       },
     );
 
+    const primaryClosingFor = (dateIso: string) =>
+      primaryClosingForDay(
+        {
+          collectorRef: collector.ref,
+          collectorName: collector.name,
+          payments,
+          loans,
+          clients,
+          collectors: [collector],
+          assignments,
+          dayCloses,
+          dayExpenseDrafts,
+          planillaCashCloses,
+          monthCloses,
+        },
+        dateIso,
+      );
+
     if (isT) {
       // Saldo de T = cierre real de M ese día (+ movimiento propio de T, si hubo).
       // Nunca el rolling global del cobrador (mezcla rutas → saldos falsos).
@@ -2181,6 +2200,7 @@ export function SupervisorMobileApp({
         epoch,
         dayCloses,
         monthCloses,
+        primaryClosingFor,
       });
       const mStamped = stampHistoryWithPlanillaCashChain({
         collectorRef: openRoute.collectorRef,
@@ -2289,6 +2309,7 @@ export function SupervisorMobileApp({
       epoch,
       dayCloses,
       monthCloses,
+      primaryClosingFor,
     });
   }, [
     openRoute,

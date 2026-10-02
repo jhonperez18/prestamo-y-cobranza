@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   attachCashAdjustments,
   cashAdjustmentDelta,
@@ -127,6 +127,7 @@ import {
 import {
   buildDayCashLedger,
   chainHistorySplit,
+  primaryClosingForDay,
   withLedgerTodaySaldo,
 } from "@/lib/day-cash-ledger";
 import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
@@ -499,6 +500,37 @@ export function CollectorMobileApp({
     viewPeriod,
   ]);
 
+  const primaryClosingFor = useCallback(
+    (dateIso: string) =>
+      primaryClosingForDay(
+        {
+          collectorRef: collector.ref,
+          collectorName: collector.name,
+          payments: livePayments,
+          loans,
+          clients,
+          collectors: [collector],
+          assignments,
+          dayCloses,
+          dayExpenseDrafts,
+          planillaCashCloses,
+          monthCloses,
+        },
+        dateIso,
+      ),
+    [
+      collector,
+      livePayments,
+      loans,
+      clients,
+      assignments,
+      dayCloses,
+      dayExpenseDrafts,
+      planillaCashCloses,
+      monthCloses,
+    ],
+  );
+
   const dayHistory = useMemo(() => {
     const extraDates = [
       ...routeOptions.map((row) => row.date),
@@ -578,6 +610,7 @@ export function CollectorMobileApp({
         todayIso: date ?? todayIso(),
         dayCloses,
         monthCloses,
+        primaryClosingFor,
       });
       const mStamped = stampHistoryWithPlanillaCashChain({
         collectorRef: collector.ref,
@@ -664,6 +697,7 @@ export function CollectorMobileApp({
     planillaCashCloses,
     planillaRouteFilter,
     planillaRoutePins,
+    primaryClosingFor,
     routeOptions,
     viewPeriod,
   ]);
@@ -1510,6 +1544,7 @@ export function CollectorMobileApp({
       todayIso: date ?? todayIso(),
       dayCloses,
       monthCloses,
+      primaryClosingFor,
     });
   }, [
     collector.ref,
@@ -1519,6 +1554,7 @@ export function CollectorMobileApp({
     mCarriedFallbackOpening,
     monthCloses,
     planillaCashCloses,
+    primaryClosingFor,
     showMInicialColumn,
   ]);
 

@@ -694,6 +694,8 @@ export function annotateMHistoryExtractRows(input: {
   /** CIE-: misma cadena que el KPI Inicial de la planilla. */
   dayCloses?: CollectorDayCloseRecord[];
   monthCloses?: CollectorMonthCloseRecord[];
+  /** Caja final de M de un día según el libro (`primaryClosingForDay`). */
+  primaryClosingFor?: (dateIso: string) => number | null;
 }): Array<{
   date: string;
   dateLabel: string;
@@ -711,7 +713,7 @@ export function annotateMHistoryExtractRows(input: {
   const pastDates = ascending.map((row) => row.date).filter((d) => d < today);
   const yesterdayIso = pastDates.length ? pastDates[pastDates.length - 1] : "";
 
-  /** Saldo final de ayer: único ancla para el Inicial de hoy. */
+  /** Saldo final de ayer (CIE): único ancla para el Inicial de M hoy. No es el Saldo de M ayer. */
   const yesterdayFinal =
     yesterdayIso.length > 0
       ? dayFinalClosingCash({
@@ -735,12 +737,13 @@ export function annotateMHistoryExtractRows(input: {
   for (const row of ascending) {
     if (row.date < today) {
       // Inmóvil: no recalcular Inicial ni Saldo con fórmulas / cadena vieja.
+      // Saldo de M ayer = caja final de M (Inicial de T), nunca el CIE (saldo final tras T).
       const isYesterday = row.date === yesterdayIso;
-      const saldoShown = isYesterday
-        ? yesterdayFinal != null
-          ? pesos(yesterdayFinal)
-          : pesos(row.saldo)
-        : pesos(row.saldo);
+      const primaryClosing = isYesterday ? (input.primaryClosingFor?.(row.date) ?? null) : null;
+      const saldoShown =
+        primaryClosing != null && Number.isFinite(primaryClosing)
+          ? pesos(primaryClosing)
+          : pesos(row.saldo);
       annotatedAscending.push({
         date: row.date,
         dateLabel: row.dateLabel,

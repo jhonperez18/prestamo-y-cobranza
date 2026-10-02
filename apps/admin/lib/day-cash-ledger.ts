@@ -275,9 +275,33 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
   };
 }
 
+/**
+ * Caja final de M (= Inicial de T). Día con CIE-: saldo sellado (antes de un ajuste) menos el
+ * movimiento propio de T, así Inicial T + movimiento T = CIE. Sin CIE: caja viva de M del libro.
+ */
+function primaryClosingOf(ledger: DayCashLedger, dayCloses: CollectorDayCloseRecord[]): number {
+  const cie = findFullDayCieClose(dayCloses, ledger.collectorRef, ledger.date);
+  if (cie) {
+    const sealed = Number(cie.cashAdjustment?.calculated ?? cie.cashFloat ?? cie.cashExpected);
+    if (Number.isFinite(sealed)) return pesos(sealed - (ledger.dayFinal - ledger.mClosing));
+  }
+  return ledger.mClosing;
+}
+
+/** Caja final de M de un día (Historial · M, fila de ayer). */
+export function primaryClosingForDay(
+  src: Omit<DayCashSources, "date">,
+  date: string,
+): number | null {
+  if (!date) return null;
+  const ledger = buildDayCashLedger({ ...src, date });
+  if (!ledger.chain || ledger.mOpening.kind !== "chain") return null;
+  return primaryClosingOf(ledger, src.dayCloses);
+}
+
 /** «Cierre del día» del Historial: M = la mañana; T = el día entero (M + T). */
 export type ChainDayCuadre = {
-  /** Inicial de la planilla abierta: M = CIE de la víspera; T = caja final de M (`mClosing`). */
+  /** Inicial de la planilla abierta: M = CIE de la víspera; T = caja final de M (`primaryClosingOf`). */
   opening: number;
   /** Efectivo cobrado solo en la planilla abierta (M o T). */
   ownEfectivo: number;
@@ -308,10 +332,11 @@ export function chainDayCuadre(
       : [PLANILLA_CASH_CHAIN_PRIMARY];
   const collected = routes.map((route) => routeCollectedByMethod(src, route));
   const own = collected[collected.length - 1];
+  const primaryClosing = primaryClosingOf(ledger, src.dayCloses);
   return {
     opening:
       side === "secondary"
-        ? ledger.mClosing
+        ? primaryClosing
         : ledger.mOpening.kind === "chain"
           ? ledger.mOpening.opening
           : 0,
@@ -323,7 +348,7 @@ export function chainDayCuadre(
     nequi: pesos(collected.reduce((sum, row) => sum + row.nequi, 0)),
     banco: pesos(collected.reduce((sum, row) => sum + row.banco, 0)),
     lines: days.flatMap((day) => [...day.gastoLines, ...loanRowsToExpenseLines(day.loanRows)]),
-    closing: side === "secondary" ? ledger.dayFinal : ledger.mClosing,
+    closing: side === "secondary" ? ledger.dayFinal : primaryClosing,
   };
 }
 

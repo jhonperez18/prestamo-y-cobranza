@@ -26,7 +26,7 @@ import { register } from "node:module";
 
 register("./ts-alias-loader.mjs", import.meta.url);
 
-const { buildDayCashLedger, chainDayCuadre, chainHistorySplit, withLedgerTodaySaldo } = await import(
+const { buildDayCashLedger, chainDayCuadre, chainHistorySplit, primaryClosingForDay, withLedgerTodaySaldo } = await import(
   "@/lib/day-cash-ledger"
 );
 const { sealCollectorDay } = await import("@/lib/collector-day-close-seal");
@@ -191,8 +191,9 @@ const hist = annotateMHistoryExtractRows({
   epochBootstrapOpening: 0,
   todayIso: D,
   dayCloses: base.dayCloses,
+  primaryClosingFor: (dateIso) => primaryClosingForDay(base, dateIso),
 });
-expect("Historial M · 25 saldo", hist.find((r) => r.date === Y)?.saldoShown ?? null, 2_704_000);
+expect("Historial M · 25 saldo (sin T ese día = CIE)", hist.find((r) => r.date === Y)?.saldoShown ?? null, 2_704_000);
 expect("Historial M · 26 Inicial", hist.find((r) => r.date === D)?.inicial ?? null, 2_704_000);
 
 // Historial T: la fila de hoy = saldo final del libro (caso real 3.612.000 errado); ayer no se toca.
@@ -361,6 +362,26 @@ expect("Cierre M · gastos solo M", cuadreM.ownGastos, 20_000);
 expect("Cierre T · préstamos solo T + M = M+T", cuadreT.ownPrestamos + cuadreM.ownPrestamos, 400_000);
 expect("Cierre T · gastos M+T", sumLines(cuadreT.lines, false), 30_000);
 expect("Cierre T · Caja = saldo final del día", cuadreT.closing, ledgerT.dayFinal);
+{
+  // Día ya sellado (caso 01/10: CIE 12.271.000, M cerró en 12.954.000).
+  const sealedD = (cashFloat) => ({
+    ...baseT,
+    dayCloses: [...baseT.dayCloses, { ...cie25, ref: `CIE-COB-0-${D}`, date: D, cashFloat, cashExpected: cashFloat }],
+  });
+  const sealedLedger = buildDayCashLedger(sealedD(0));
+  const tDelta = sealedLedger.dayFinal - sealedLedger.mClosing;
+  const exact = sealedD(sealedLedger.dayFinal);
+  expect("Historial M · ayer = caja final de M (no el CIE)", primaryClosingForDay(exact, D), sealedLedger.mClosing);
+  expect("Cierre M · Caja = caja final de M (no el CIE)", chainDayCuadre(exact, "primary").closing, sealedLedger.mClosing);
+  expect("Caja final de M ≠ saldo final del día cuando T movió plata", sealedLedger.mClosing !== sealedLedger.dayFinal, true);
+  const off = sealedD(sealedLedger.dayFinal + 100_000);
+  expect("CIE manda: caja final de M = CIE − movimiento de T", primaryClosingForDay(off, D), sealedLedger.dayFinal + 100_000 - tDelta);
+  expect(
+    "Cierre T · Inicial T = Caja de M (misma cifra)",
+    chainDayCuadre(off, "secondary").opening,
+    chainDayCuadre(off, "primary").closing,
+  );
+}
 expect(
   "Cierre T · Banco T + Banco M = Banco M+T",
   cuadreT.ownDigital + cuadreM.ownDigital,
