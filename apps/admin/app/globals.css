@@ -2048,7 +2048,8 @@
       border-color: #fca5a5;
       background: #fff7ed;
     }
-    .collector-cierre-drop.is-banco {
+    .collector-cierre-drop.is-banco,
+    .collector-cierre-drop.is-prestamosBanco {
       border-color: #93c5fd;
       background: #eff6ff;
     }

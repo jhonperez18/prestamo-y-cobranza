@@ -82,6 +82,7 @@ import {
   loanDisbursementSourceLabel,
   paymentsForCollectorIncludingOffice,
 } from "@/lib/nequi-pool";
+import { dayDigitalLoanRows } from "@/lib/day-digital-loans";
 import {
   DIGITAL_POOL_LABEL,
   digitalPoolAdjustWindow,
@@ -135,6 +136,7 @@ import {
   openingCashForChainedPlanilla,
   PLANILLA_CASH_CHAIN_HISTORY_EPOCH,
   PLANILLA_CASH_CHAIN_PRIMARY,
+  PLANILLA_CASH_CHAIN_SECONDARY,
   isPlanillaCashChainPrimary,
   isPlanillaCashChainSecondary,
   stampHistoryWithPlanillaCashChain,
@@ -246,17 +248,19 @@ type SupervisorView =
   | "clientes"
   | "prestamos";
 type NuevoMode = "menu" | "cliente" | "prestamo" | "gasto";
-type CierreListKind = "prestamos" | "gastos" | "banco";
+type CierreListKind = "prestamos" | "gastos" | "banco" | "prestamosBanco";
 type CierreListLine = { key: string; label: string; time?: string; amount: number };
 const CIERRE_LIST_TITLE: Record<CierreListKind, string> = {
   prestamos: "Préstamos del día",
   gastos: "Gastos del día",
   banco: "Banco T del día",
+  prestamosBanco: "Préstamos B M+T del día",
 };
 const CIERRE_LIST_EMPTY: Record<CierreListKind, string> = {
   prestamos: "Sin préstamos ese día.",
   gastos: "Sin gastos ese día.",
   banco: "Sin cobros Banco en T ese día.",
+  prestamosBanco: "Sin préstamos del Banco ese día.",
 };
 type RouteDetailMode =
   | "totales"
@@ -2570,7 +2574,7 @@ export function SupervisorMobileApp({
     1 +
     Number(historyDayShowNequiValue) +
     Number(historyDayShowBancoValue) +
-    3 * Number(Boolean(historyDayChainT));
+    4 * Number(Boolean(historyDayChainT));
   const historyDayMeansCols =
     historyDayMeansCount === 2 ? " is-two" : historyDayMeansCount >= 4 ? " is-four" : "";
 
@@ -2627,6 +2631,15 @@ export function SupervisorMobileApp({
       }))
     : [];
 
+  /** Solo vista: préstamos del día que salieron del Banco a clientes de M y T (no tocan la caja). */
+  const cierreBancoLoans = useMemo(() => {
+    if (!historyDayChainT || !cajaHistoryDayIso) return [];
+    return [PLANILLA_CASH_CHAIN_PRIMARY, PLANILLA_CASH_CHAIN_SECONDARY].flatMap((route) =>
+      dayDigitalLoanRows(cajaHistoryDayIso, route, loans, clients),
+    );
+  }, [historyDayChainT, cajaHistoryDayIso, loans, clients]);
+  const cierreBancoLoansTotal = dayLoanDisbursementTotal(cierreBancoLoans);
+
   /** Lista desplegada bajo «Caja» al tocar Prestó / Gastó / Banco T (solo ese día). */
   const [cierreList, setCierreList] = useState<{
     day: string;
@@ -2649,7 +2662,13 @@ export function SupervisorMobileApp({
           }))
         : cierreListKind === "banco"
           ? cierreBancoT
-          : [];
+          : cierreListKind === "prestamosBanco"
+            ? cierreBancoLoans.map((row) => ({
+                key: row.loanRef,
+                label: `${row.loanRef} · ${row.clientName}`,
+                amount: row.capital,
+              }))
+            : [];
   const toggleCierreList = (kind: CierreListKind) => {
     if (!cajaHistoryDayIso) return;
     const day = cajaHistoryDayIso;
@@ -3746,6 +3765,18 @@ export function SupervisorMobileApp({
                         <span>Préstamo M+T</span>
                         <b>{money(openRouteHistoryDayExpenseSplit.prestamosTotal)}</b>
                       </div>
+                    ) : null}
+                    {historyDayChainT ? (
+                      <button
+                        type="button"
+                        className={`is-mean is-pay-banco is-tap-mean${cierreListKind === "prestamosBanco" ? " on" : ""}`}
+                        data-cierre-keep
+                        aria-expanded={cierreListKind === "prestamosBanco"}
+                        onClick={() => toggleCierreList("prestamosBanco")}
+                      >
+                        <span>Préstamos B M+T</span>
+                        <b>{money(cierreBancoLoansTotal)}</b>
+                      </button>
                     ) : null}
                   </div>
                 </div>
