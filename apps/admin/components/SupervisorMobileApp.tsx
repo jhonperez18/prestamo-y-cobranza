@@ -3694,8 +3694,16 @@ export function SupervisorMobileApp({
                     ? historyDayChainT.ownPrestamos
                     : openRouteHistoryDayExpenseSplit.prestamosTotal
                 }
-                otrosGastos={openRouteHistoryDayExpenseSplit.otros}
-                otrosTotal={openRouteHistoryDayExpenseSplit.otrosTotal}
+                otrosGastos={
+                  historyDayChainT
+                    ? historyDayChainT.ownGastoLines
+                    : openRouteHistoryDayExpenseSplit.otros
+                }
+                otrosTotal={
+                  historyDayChainT
+                    ? historyDayChainT.ownGastos
+                    : openRouteHistoryDayExpenseSplit.otrosTotal
+                }
               />
             </section>
           ) : detailMode === "historial-dia" ? (

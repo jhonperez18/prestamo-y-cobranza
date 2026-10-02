@@ -363,6 +363,11 @@ expect(
   cuadreT.ownPrestamos,
 );
 expect("Cierre T · gastos solo T", cuadreT.ownGastos, 10_000);
+expect(
+  "Cierre T · lista de gastos solo T (suma = gastos T)",
+  cuadreT.ownGastoLines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0),
+  cuadreT.ownGastos,
+);
 expect("Cierre M · gastos solo M", cuadreM.ownGastos, 20_000);
 expect("Cierre T · préstamos solo T + M = M+T", cuadreT.ownPrestamos + cuadreM.ownPrestamos, 400_000);
 expect("Cierre T · gastos M+T", sumLines(cuadreT.lines, false), 30_000);
