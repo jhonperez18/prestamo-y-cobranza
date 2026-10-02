@@ -3570,9 +3570,9 @@ export function SupervisorMobileApp({
               aria-label={`Cierre ${cajaHistoryDayIso ? isoToDisplay(cajaHistoryDayIso) : ""}`}
             >
               <div className="collector-mobile-home-cuadre-head">
-                <Pill label="Cierre" kind="paid" />
                 <div className="collector-mobile-home-cuadre-title-row">
-                  <h2>Cierre del día</h2>
+                  <Pill label="Cierre" kind="paid" />
+                  <h2>del día</h2>
                   <p className="collector-mobile-home-cuadre-progress">
                     {cajaHistoryDayIso ? isoToDisplay(cajaHistoryDayIso) : ""}
                   </p>
