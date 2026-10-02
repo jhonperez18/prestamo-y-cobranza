@@ -6907,6 +6907,26 @@
     .supervisor-nequi-day-row:active {
       background: #f1e9fb;
     }
+    .supervisor-nequi-day-list.is-banco .supervisor-nequi-day-row {
+      border-color: #bfdbfe;
+      background: #f5f9ff;
+    }
+    .supervisor-nequi-day-list.is-banco .supervisor-nequi-day-row:active,
+    .supervisor-nequi-day-list.is-banco .supervisor-nequi-day-row.on {
+      background: #e0edff;
+    }
+    .supervisor-nequi-day-list.is-banco .supervisor-nequi-day-row .is-count {
+      border-right-color: #bfdbfe;
+    }
+    .supervisor-nequi-day-list.is-banco .supervisor-nequi-day-row .is-amount {
+      color: #1d4ed8;
+    }
+    .supervisor-banco-past {
+      margin-top: 14px;
+    }
+    .supervisor-nequi-day-list.is-banco > li > .supervisor-nequi-register {
+      margin-top: 6px;
+    }
     .supervisor-nequi-day-row .is-date {
       font-size: 13px;
       font-weight: 800;

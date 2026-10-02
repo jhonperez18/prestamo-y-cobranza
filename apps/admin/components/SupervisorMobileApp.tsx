@@ -82,7 +82,7 @@ import {
   loanDisbursementSourceLabel,
   paymentsForCollectorIncludingOffice,
 } from "@/lib/nequi-pool";
-import { dayDigitalLoanRows } from "@/lib/day-digital-loans";
+import { dayDigitalLoanRows, digitalLoanPoolForRoute } from "@/lib/day-digital-loans";
 import {
   DIGITAL_POOL_LABEL,
   digitalPoolAdjustWindow,
@@ -1102,6 +1102,8 @@ export function SupervisorMobileApp({
   const [nequiRegistroRoute, setNequiRegistroRoute] = useState<string | null>(null);
   /** Registro Banco de hoy filtrado por ruta (1 / 1.1 / 2). */
   const [bancoRegistroRoute, setBancoRegistroRoute] = useState<string | null>(null);
+  /** Día anterior abierto en Registro Banco (`ruta:fecha`). */
+  const [bancoPastOpenDay, setBancoPastOpenDay] = useState<string | null>(null);
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [gastoLabel, setGastoLabel] = useState("Gasto");
@@ -1655,6 +1657,40 @@ export function SupervisorMobileApp({
         .sort(compareRouteNames),
     [liquidaciones],
   );
+  /** BANCO = rutas M / T / N (A va a Nequi): ni cuadro ni botón de A en el panel Banco. */
+  const bancoLiquidaciones = useMemo(
+    () => liquidaciones.filter((row) => digitalLoanPoolForRoute(row.routeName) === "banco"),
+    [liquidaciones],
+  );
+  const bancoRegistroRoutePins = useMemo(
+    () => nequiRegistroRoutePins.filter((name) => digitalLoanPoolForRoute(name) === "banco"),
+    [nequiRegistroRoutePins],
+  );
+  const bancoHistoryFrom = `${today.slice(0, 7)}-01`;
+  /** Registro Banco: días anteriores del mes (más reciente primero) de la ruta elegida. */
+  const bancoRegisterPastDays = useMemo(() => {
+    if (!bancoRegistroRoute) return [];
+    const byDate = new Map<string, typeof paymentsWithEvidence>();
+    for (const row of paymentsWithEvidence) {
+      if (paymentDisplayMethod(row, loans, clients) !== "banco") continue;
+      if (!((row.amount ?? 0) > 0)) continue;
+      const date = normalizeHistoryDate(row.paidDate ?? "");
+      if (!date || date >= today || date < bancoHistoryFrom) continue;
+      const loan = loans.find((entry) => entry.ref === row.loanRef);
+      const client = clients.find((entry) => entry.ref === (loan?.clientRef || ""));
+      if (!sameRoute(client?.route, bancoRegistroRoute)) continue;
+      byDate.set(date, [...(byDate.get(date) ?? []), row]);
+    }
+    return Array.from(byDate.entries())
+      .map(([date, items]) => ({
+        date,
+        items: items
+          .slice()
+          .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || "")),
+        total: items.reduce((sum, row) => sum + (row.amount ?? 0), 0),
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [paymentsWithEvidence, loans, clients, bancoRegistroRoute, today, bancoHistoryFrom]);
   /** Pins M → T → A → N: rutas activas con cobrador (Ruta / Clientes / Nequi / Banco). */
   const planillaRoutePins = useMemo(
     () =>
@@ -1694,13 +1730,13 @@ export function SupervisorMobileApp({
   useEffect(() => {
     if (view !== "banco") return;
     setBancoRegistroRoute((prev) => {
-      if (nequiRegistroRoutePins.length === 0) return null;
-      if (prev && nequiRegistroRoutePins.some((name) => sameRoute(name, prev))) {
+      if (bancoRegistroRoutePins.length === 0) return null;
+      if (prev && bancoRegistroRoutePins.some((name) => sameRoute(name, prev))) {
         return prev;
       }
-      return pickDefaultRoutePin(nequiRegistroRoutePins);
+      return pickDefaultRoutePin(bancoRegistroRoutePins);
     });
-  }, [view, nequiRegistroRoutePins]);
+  }, [view, bancoRegistroRoutePins]);
   useEffect(() => {
     if (view !== "planilla") return;
     setPlanillaRouteFilter((prev) => {
@@ -2096,6 +2132,11 @@ export function SupervisorMobileApp({
     loans,
     routes,
   ]);
+  /** Banco: historial desde el día 1 del mes en curso (lo anterior no se lista). */
+  const openRouteDigitalDays =
+    openRouteDigitalPool === "banco"
+      ? openRouteNequiDays.filter((day) => day.date >= bancoHistoryFrom)
+      : openRouteNequiDays;
   const openRouteNequiDayPays = useMemo(() => {
     if (!openRoute || !openRouteScope || !nequiDayIso) return [];
     const byRef = new Map(
@@ -2832,7 +2873,7 @@ export function SupervisorMobileApp({
       setNequiRegistroRoute(pickDefaultRoutePin(nequiRegistroRoutePins));
     }
     if (next === "banco") {
-      setBancoRegistroRoute(pickDefaultRoutePin(nequiRegistroRoutePins));
+      setBancoRegistroRoute(pickDefaultRoutePin(bancoRegistroRoutePins));
     }
     if (next === "prestamos") {
       setPrestamosRouteFilter(pickDefaultRoutePin(planillaRoutePins));
@@ -3276,8 +3317,11 @@ export function SupervisorMobileApp({
     setNequiDayBackTo("nequi-historial");
     setCajaHistoryDayIso(null);
     foldSnHistory();
-    if (opts?.method === "nequi" && opts.returnView === "nequi") {
-      setCobrosMethodFilter("nequi");
+    if (
+      (opts?.method === "nequi" && opts.returnView === "nequi") ||
+      (opts?.method === "banco" && opts.returnView === "banco")
+    ) {
+      setCobrosMethodFilter(opts.method);
       setDetailMode("nequi-historial");
     } else if (opts && "method" in opts) {
       setCobrosMethodFilter(opts.method ?? null);
@@ -3483,12 +3527,17 @@ export function SupervisorMobileApp({
 
           {detailMode === "nequi-historial" ? (
             <>
-              <p className="supervisor-mobile-detail-meta">Historial Nequi por día</p>
-              {openRouteNequiDays.length === 0 ? (
-                <p className="ficha-empty">Sin cobros Nequi en esta ruta.</p>
+              <p className="supervisor-mobile-detail-meta">
+                Historial {openRouteDigitalLabel} por día
+              </p>
+              {openRouteDigitalDays.length === 0 ? (
+                <p className="ficha-empty">Sin cobros {openRouteDigitalLabel} en esta ruta.</p>
               ) : (
-                <ul className="supervisor-nequi-day-list" aria-label="Días con Nequi">
-                  {openRouteNequiDays.map((day) => (
+                <ul
+                  className={`supervisor-nequi-day-list${openRouteDigitalPool === "banco" ? " is-banco" : ""}`}
+                  aria-label={`Días con ${openRouteDigitalLabel}`}
+                >
+                  {openRouteDigitalDays.map((day) => (
                     <li key={day.date}>
                       <button
                         type="button"
@@ -4427,11 +4476,11 @@ export function SupervisorMobileApp({
           {renderPoolTotal("banco")}
 
           <h3>Por cobrador</h3>
-          {liquidaciones.length === 0 ? (
+          {bancoLiquidaciones.length === 0 ? (
             <p className="ficha-empty">No hay rutas con cobrador.</p>
           ) : (
             <div className="supervisor-route-boards">
-              {liquidaciones.map((row, index) => (
+              {bancoLiquidaciones.map((row, index) => (
                 <RouteBoardCard
                   key={row.routeRef}
                   row={row}
@@ -4455,8 +4504,8 @@ export function SupervisorMobileApp({
               <div className="supervisor-day-board-copy">
                 <span>Total del día</span>
                 <em>
-                  {liquidaciones.length} cobrador
-                  {liquidaciones.length === 1 ? "" : "es"} · hoy
+                  {bancoLiquidaciones.length} cobrador
+                  {bancoLiquidaciones.length === 1 ? "" : "es"} · hoy
                 </em>
               </div>
               <div className="supervisor-caja-hero is-row is-banco">
@@ -4467,13 +4516,13 @@ export function SupervisorMobileApp({
 
           <div className="supervisor-nequi-registro-head">
             <h3>Registro Banco</h3>
-            {nequiRegistroRoutePins.length > 0 ? (
+            {bancoRegistroRoutePins.length > 0 ? (
               <div
                 className="supervisor-nequi-route-pins"
                 role="group"
                 aria-label="Registro Banco del día por ruta"
               >
-                {nequiRegistroRoutePins.map((name) => (
+                {bancoRegistroRoutePins.map((name) => (
                   <button
                     key={name}
                     type="button"
@@ -4544,6 +4593,39 @@ export function SupervisorMobileApp({
               </div>
             </div>
           )}
+          {bancoRegistroRoute && bancoRegisterPastDays.length > 0 ? (
+            <div className="supervisor-banco-past">
+              <h3>Días anteriores · Ruta {bancoRegistroRoute}</h3>
+              <ul className="supervisor-nequi-day-list is-banco" aria-label="Banco días anteriores">
+                {bancoRegisterPastDays.map((day) => {
+                  const open = bancoPastOpenDay === `${bancoRegistroRoute}:${day.date}`;
+                  return (
+                    <li key={day.date}>
+                      <button
+                        type="button"
+                        className={`supervisor-nequi-day-row${open ? " on" : ""}`}
+                        aria-expanded={open}
+                        onClick={() =>
+                          setBancoPastOpenDay(open ? null : `${bancoRegistroRoute}:${day.date}`)
+                        }
+                      >
+                        <span className="is-date">{isoToDisplay(day.date)}</span>
+                        <span className="is-count">
+                          {day.items.length} cobro{day.items.length === 1 ? "" : "s"}
+                        </span>
+                        <b className="is-amount">{money(day.total, { symbol: false })}</b>
+                      </button>
+                      {open ? (
+                        <div className="supervisor-nequi-register is-tone-banco">
+                          {renderNequiDayList(day.items)}
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : null}
         </section>
       ) : view === "nuevo" ? (
         <section className="supervisor-mobile-section">
