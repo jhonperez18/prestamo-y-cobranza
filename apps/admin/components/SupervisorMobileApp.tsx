@@ -1102,8 +1102,6 @@ export function SupervisorMobileApp({
   const [nequiRegistroRoute, setNequiRegistroRoute] = useState<string | null>(null);
   /** Registro Banco de hoy filtrado por ruta (1 / 1.1 / 2). */
   const [bancoRegistroRoute, setBancoRegistroRoute] = useState<string | null>(null);
-  /** Día anterior abierto en Registro Banco (`ruta:fecha`). */
-  const [bancoPastOpenDay, setBancoPastOpenDay] = useState<string | null>(null);
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [gastoLabel, setGastoLabel] = useState("Gasto");
@@ -1676,30 +1674,6 @@ export function SupervisorMobileApp({
     [nequiRegistroRoutePins],
   );
   const bancoHistoryFrom = `${today.slice(0, 7)}-01`;
-  /** Registro Banco: días anteriores del mes (más reciente primero) de la ruta elegida. */
-  const bancoRegisterPastDays = useMemo(() => {
-    if (!bancoRegistroRoute) return [];
-    const byDate = new Map<string, typeof paymentsWithEvidence>();
-    for (const row of paymentsWithEvidence) {
-      if (paymentDisplayMethod(row, loans, clients) !== "banco") continue;
-      if (!((row.amount ?? 0) > 0)) continue;
-      const date = normalizeHistoryDate(row.paidDate ?? "");
-      if (!date || date >= today || date < bancoHistoryFrom) continue;
-      const loan = loans.find((entry) => entry.ref === row.loanRef);
-      const client = clients.find((entry) => entry.ref === (loan?.clientRef || ""));
-      if (!sameRoute(client?.route, bancoRegistroRoute)) continue;
-      byDate.set(date, [...(byDate.get(date) ?? []), row]);
-    }
-    return Array.from(byDate.entries())
-      .map(([date, items]) => ({
-        date,
-        items: items
-          .slice()
-          .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || "")),
-        total: items.reduce((sum, row) => sum + (row.amount ?? 0), 0),
-      }))
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }, [paymentsWithEvidence, loans, clients, bancoRegistroRoute, today, bancoHistoryFrom]);
   /** Pins M → T → A → N: rutas activas con cobrador (Ruta / Clientes / Nequi / Banco). */
   const planillaRoutePins = useMemo(
     () =>
@@ -4523,11 +4497,9 @@ export function SupervisorMobileApp({
               </div>
             ) : null}
           </div>
-          {bancoRegisterToday.items.length === 0 ? (
+          {!bancoRegistroRoute ? null : bancoRegisterToday.items.length === 0 ? (
             <p className="ficha-empty">
-              {bancoRegistroRoute
-                ? `Sin cobros Banco hoy en ruta ${bancoRegistroRoute}.`
-                : "Sin cobros Banco hoy."}
+              {`Sin cobros Banco hoy en ruta ${bancoRegistroRoute}.`}
             </p>
           ) : (
             <div className="supervisor-nequi-register is-today-only is-tone-banco">
@@ -4568,39 +4540,6 @@ export function SupervisorMobileApp({
               </div>
             </div>
           )}
-          {bancoRegistroRoute && bancoRegisterPastDays.length > 0 ? (
-            <div className="supervisor-banco-past">
-              <h3>Días anteriores · Ruta {bancoRegistroRoute}</h3>
-              <ul className="supervisor-nequi-day-list is-banco" aria-label="Banco días anteriores">
-                {bancoRegisterPastDays.map((day) => {
-                  const open = bancoPastOpenDay === `${bancoRegistroRoute}:${day.date}`;
-                  return (
-                    <li key={day.date}>
-                      <button
-                        type="button"
-                        className={`supervisor-nequi-day-row${open ? " on" : ""}`}
-                        aria-expanded={open}
-                        onClick={() =>
-                          setBancoPastOpenDay(open ? null : `${bancoRegistroRoute}:${day.date}`)
-                        }
-                      >
-                        <span className="is-date">{isoToDisplay(day.date)}</span>
-                        <span className="is-count">
-                          {day.items.length} cobro{day.items.length === 1 ? "" : "s"}
-                        </span>
-                        <b className="is-amount">{money(day.total, { symbol: false })}</b>
-                      </button>
-                      {open ? (
-                        <div className="supervisor-nequi-register is-tone-banco">
-                          {renderNequiDayList(day.items)}
-                        </div>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ) : null}
         </section>
       ) : view === "nuevo" ? (
         <section className="supervisor-mobile-section">

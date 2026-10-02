@@ -6921,12 +6921,6 @@
     .supervisor-nequi-day-list.is-banco .supervisor-nequi-day-row .is-amount {
       color: #1d4ed8;
     }
-    .supervisor-banco-past {
-      margin-top: 14px;
-    }
-    .supervisor-nequi-day-list.is-banco > li > .supervisor-nequi-register {
-      margin-top: 6px;
-    }
     .supervisor-nequi-day-row .is-date {
       font-size: 13px;
       font-weight: 800;
