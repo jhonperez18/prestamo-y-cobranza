@@ -17,7 +17,7 @@ export async function writeDeviceStatus(raw: unknown) {
   if (!status) return { ok: true as const, skipped: true as const, reason: "invalid_device" };
   const supabase = storageClient();
   if (!supabase) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
-  const stamped: DeviceStatus = { ...status, reportedAt: new Date().toISOString() };
+  const stamped: DeviceStatus = { ...status, reportedAt: new Date().toISOString(), firstSeenAt: "" };
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
     .upload(`${DEVICES_FOLDER}/${stamped.deviceId}.json`, Buffer.from(JSON.stringify(stamped), "utf8"), {
@@ -37,15 +37,17 @@ export async function listDeviceStatuses(): Promise<
     .from(STORAGE_BUCKET)
     .list(DEVICES_FOLDER, { limit: 200 });
   if (error) return { ok: false, error: error.message };
-  const names = (files ?? []).map((file) => file.name).filter((name) => name.endsWith(".json"));
+  const entries = (files ?? []).filter((file) => file.name.endsWith(".json"));
   const rows = await Promise.all(
-    names.map(async (name) => {
+    entries.map(async ({ name, created_at: createdAt }) => {
       try {
         const { data, error: readError } = await supabase.storage
           .from(STORAGE_BUCKET)
           .download(`${DEVICES_FOLDER}/${name}`);
         if (readError || !data) return null;
-        return normalizeDeviceStatus(JSON.parse(await data.text()));
+        const row = normalizeDeviceStatus(JSON.parse(await data.text()));
+        // El upsert conserva `created_at` del objeto: es la primera vez que la nube vio el aparato.
+        return row ? { ...row, firstSeenAt: createdAt || "" } : null;
       } catch (err) {
         console.error("device-status-read", name, err);
         return null;

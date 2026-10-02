@@ -1436,6 +1436,55 @@ console.log("— Préstamos Banco / Nequi en la planilla del cobrador —");
   );
 }
 
+// 21. Punto de conexión del cobrador (INICIO): solo lectura de reportes de aparatos.
+//     Verde al día · amarillo >30 min o sin internet · rojo sin subir o aparato nuevo. Taller fuera.
+console.log("— Punto de conexión del cobrador —");
+{
+  const { collectorConnection, devicesForCollector } = await import("@/lib/collector-connection");
+  const NOW = Date.parse("2026-10-01T15:00:00.000Z");
+  const at = (min) => new Date(NOW - min * 60_000).toISOString();
+  const dev = (deviceId, extra = {}) => ({
+    deviceId,
+    userRef: "USR-0",
+    userName: "Cristian",
+    roleName: "Cobrador",
+    build: "abc1234",
+    host: "prestamo-y-cobranza.vercel.app",
+    userAgent: "Mozilla/5.0 (Linux; Android 14) Chrome/140 Mobile",
+    lastPullAt: at(2),
+    lastPullOk: true,
+    lastPullError: "",
+    pendingTotal: 0,
+    healthIssues: 0,
+    healthSummary: "",
+    healthPersistent: false,
+    reportedAt: at(2),
+    firstSeenAt: at(60 * 24 * 10),
+    ...extra,
+  });
+  const cols = [{ ref: "COB-1", name: "Cristian", userRef: "USR-0" }];
+  const phone = dev("phone-0001");
+  const taller = dev("taller-001", { host: "localhost:3000", firstSeenAt: at(5) });
+  const cursor = dev("cursor-001", { userAgent: "Mozilla/5.0 Electron/37 Chrome", firstSeenAt: at(5) });
+  const otro = dev("otro-0001", { userRef: "USR-9", userName: "Yesid" });
+  const own = devicesForCollector("COB-1", "Cristian", cols, [phone, taller, cursor, otro]);
+  expect("Conexión: el taller (localhost / Cursor) y otros usuarios no cuentan", own.map((d) => d.deviceId).join(","), "phone-0001");
+  expect("Conexión: reciente y sin pendientes = verde", collectorConnection(own, NOW).level, "ok");
+  expect("Conexión: >30 min sin conectarse = amarillo", collectorConnection([dev("p", { reportedAt: at(31) })], NOW).level, "warn");
+  expect("Conexión: no pudo bajar la nube = amarillo", collectorConnection([dev("p", { lastPullOk: false })], NOW).level, "warn");
+  expect("Conexión: cambios sin subir = rojo", collectorConnection([dev("p", { pendingTotal: 2 })], NOW).level, "alert");
+  const nuevo = dev("phone-0002", { firstSeenAt: at(30) });
+  const cambio = collectorConnection([phone, nuevo], NOW);
+  expect("Conexión: aparato nuevo (24 h) teniendo otro anterior = rojo", `${cambio.level}:${cambio.newDevice?.deviceId}`, "alert:phone-0002");
+  expect(
+    "Conexión: aparato nuevo hace más de 24 h ya no alerta",
+    collectorConnection([phone, dev("phone-0002", { firstSeenAt: at(60 * 25) })], NOW).level,
+    "ok",
+  );
+  expect("Conexión: un solo aparato nunca es «nuevo»", collectorConnection([dev("p", { firstSeenAt: at(5) })], NOW).level, "ok");
+  expect("Conexión: sin reportes = sin datos", collectorConnection([], NOW).level, "none");
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

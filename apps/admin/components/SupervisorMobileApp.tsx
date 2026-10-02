@@ -171,6 +171,14 @@ import {
   type InformeEfectivo,
 } from "@/components/SupervisorMonthlyReport";
 import { CollectorNewClientSheet } from "@/components/CollectorNewClientSheet";
+import { CollectorConnectionSheet } from "@/components/CollectorConnectionSheet";
+import {
+  collectorConnection,
+  devicesForCollector,
+  type CollectorConnection,
+  type ConnectionLevel,
+} from "@/lib/collector-connection";
+import { useDeviceStatuses } from "@/lib/use-device-statuses";
 import type { RouteClientDraft } from "@/lib/commit-portfolio-catalog";
 /** Fecha corta para listados: 05/09/2026 → 5/9 */
 function formatLoanListDate(raw?: string | null) {
@@ -386,10 +394,15 @@ function RouteBoardCard({
   mode = "ruta",
   tone,
   unreadCount = 0,
+  connectionLevel,
+  onConnection,
 }: {
   row: RouteLiquidacion;
   accent: number;
   onOpen: (routeRef: string) => void;
+  /** Punto de conexión del cobrador (solo INICIO). */
+  connectionLevel?: ConnectionLevel;
+  onConnection?: () => void;
   /** En vista caja siempre destaca el dinero en mano. */
   mode?: "ruta" | "caja" | "nequi" | "banco";
   /** Color del panel (Nequi / Banco). Sin tono = el del `mode`. */
@@ -409,8 +422,9 @@ function RouteBoardCard({
       : mode === "banco"
         ? row.cobradoBanco
         : row.enCaja;
+  const withConnection = Boolean(connectionLevel && onConnection);
 
-  return (
+  const card = (
     <button
       type="button"
       className={`supervisor-route-board accent-${accent % 2}${row.closed || row.statusKind === "closed" ? " is-closed" : ""}${mode === "caja" ? " is-caja-mode" : ""}${colorMode === "nequi" ? " is-nequi-mode" : ""}${colorMode === "banco" ? " is-banco-mode" : ""}${unreadCount > 0 ? " has-unread" : ""}`}
@@ -480,7 +494,9 @@ function RouteBoardCard({
             </div>
           ) : null}
 
-          <div className="supervisor-route-board-metrics is-four">
+          <div
+            className={`supervisor-route-board-metrics is-four${withConnection ? " has-conn-dot" : ""}`}
+          >
             <div>
               <span>Inicial</span>
               <b>{money(row.saldoInicial, { symbol: false })}</b>
@@ -501,6 +517,21 @@ function RouteBoardCard({
         </>
       )}
     </button>
+  );
+  if (!connectionLevel || !onConnection) return card;
+  return (
+    <div className="supervisor-route-board-wrap">
+      {card}
+      <button
+        type="button"
+        className="conn-dot-btn"
+        onClick={onConnection}
+        aria-label={`Conexión de ${row.collectorName}`}
+        title="Conexión del cobrador"
+      >
+        <span className={`conn-dot is-${connectionLevel}`} aria-hidden />
+      </button>
+    </div>
   );
 }
 
@@ -1465,6 +1496,26 @@ export function SupervisorMobileApp({
     loans,
     ledgerByCollector,
   ]);
+
+  const deviceStatuses = useDeviceStatuses();
+  const [connectionRouteRef, setConnectionRouteRef] = useState<string | null>(null);
+  const connectionByRoute = useMemo(() => {
+    const out: Record<string, CollectorConnection> = {};
+    if (!deviceStatuses.loadedAt) return out;
+    for (const row of liquidaciones) {
+      const own = devicesForCollector(
+        row.collectorRef,
+        row.collectorName,
+        collectors,
+        deviceStatuses.devices,
+      );
+      out[row.routeRef] = collectorConnection(own, deviceStatuses.loadedAt);
+    }
+    return out;
+  }, [liquidaciones, collectors, deviceStatuses]);
+  const connectionRow = connectionRouteRef
+    ? (liquidaciones.find((row) => row.routeRef === connectionRouteRef) ?? null)
+    : null;
 
   const [unreadByRoute, setUnreadByRoute] = useState<Record<string, number>>({});
   const [unreadByRouteNequi, setUnreadByRouteNequi] = useState<Record<string, number>>({});
@@ -5081,10 +5132,23 @@ export function SupervisorMobileApp({
                   accent={index}
                   unreadCount={unreadByRoute[row.routeRef] || 0}
                   onOpen={openRouteSummary}
+                  connectionLevel={connectionByRoute[row.routeRef]?.level ?? "none"}
+                  onConnection={() => setConnectionRouteRef(row.routeRef)}
                 />
               ))}
             </div>
           )}
+          {connectionRow && connectionByRoute[connectionRow.routeRef] ? (
+            <CollectorConnectionSheet
+              routeName={connectionRow.routeName}
+              collectorName={connectionRow.collectorName}
+              connection={connectionByRoute[connectionRow.routeRef]}
+              now={deviceStatuses.loadedAt}
+              loadedAt={deviceStatuses.loadedAt}
+              loadError={deviceStatuses.error}
+              onClose={() => setConnectionRouteRef(null)}
+            />
+          ) : null}
           <footer className="supervisor-mobile-salir-foot">
             {onLogout ? (
               <button

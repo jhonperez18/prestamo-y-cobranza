@@ -23,6 +23,8 @@ export type DeviceStatus = {
   /** Se reparó y sigue: hay que revisar ese aparato. */
   healthPersistent: boolean;
   reportedAt: string;
+  /** Primera vez que la nube vio este aparato (fecha del archivo en Storage, la pone el servidor). */
+  firstSeenAt: string;
 };
 
 export type DeviceHealthInput = {
@@ -60,6 +62,7 @@ export function normalizeDeviceStatus(raw: unknown): DeviceStatus | null {
     healthSummary: text(row.healthSummary, 200),
     healthPersistent: row.healthPersistent === true,
     reportedAt: text(row.reportedAt, 40),
+    firstSeenAt: text(row.firstSeenAt, 40),
   };
 }
 
@@ -110,6 +113,7 @@ export async function reportDeviceStatus(input: {
     healthSummary: input.health?.summary ?? "",
     healthPersistent: input.health?.persistent === true,
     reportedAt: new Date(now).toISOString(),
+    firstSeenAt: "",
   };
   try {
     await fetch("/api/ops/devices", {
