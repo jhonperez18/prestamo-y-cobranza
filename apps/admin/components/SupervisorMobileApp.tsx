@@ -144,6 +144,7 @@ import {
   buildDayCashLedger,
   chainDayCuadre,
   primaryClosingForDay,
+  withSealedDaySaldos,
   chainHistorySplit,
   withLedgerTodaySaldo,
   type DayCashLedger,
@@ -2240,8 +2241,9 @@ export function SupervisorMobileApp({
         monthCloses,
         primaryClosingByDate,
       });
+      const sealed = withSealedDaySaldos(stamped, openRoute.collectorRef, dayCloses, today);
       const ledger = ledgerByCollector.get(openRoute.collectorRef);
-      const withToday = ledger ? withLedgerTodaySaldo(stamped, ledger) : stamped;
+      const withToday = ledger ? withLedgerTodaySaldo(sealed, ledger) : sealed;
       return withToday.slice(0, 6);
     }
 

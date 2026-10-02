@@ -381,6 +381,20 @@ expect("Cierre T · Caja = saldo final del día", cuadreT.closing, ledgerT.dayFi
     chainDayCuadre(off, "secondary").opening,
     chainDayCuadre(off, "primary").closing,
   );
+  expect("Cierre T · Caja de un día cerrado = CIE (saldo final, Inicial M mañana)", chainDayCuadre(off, "secondary").closing, sealedLedger.dayFinal + 100_000);
+  const { withSealedDaySaldos } = await import("@/lib/day-cash-ledger");
+  const tomorrow = "2026-09-27";
+  const histTSealed = withSealedDaySaldos(
+    [
+      { date: D, saldo: primaryClosingForDay(off, D) },
+      { date: tomorrow, saldo: 1 },
+    ],
+    COB.ref,
+    off.dayCloses,
+    tomorrow,
+  );
+  expect("Historial T · ayer = CIE (no caja de M + movimiento T)", histTSealed[0].saldo, sealedLedger.dayFinal + 100_000);
+  expect("Historial T · hoy no lo toca (lo pone el libro)", histTSealed[1].saldo, 1);
 }
 expect(
   "Cierre T · Banco T + Banco M = Banco M+T",

@@ -280,12 +280,39 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
  * movimiento propio de T, así Inicial T + movimiento T = CIE. Sin CIE: caja viva de M del libro.
  */
 function primaryClosingOf(ledger: DayCashLedger, dayCloses: CollectorDayCloseRecord[]): number {
-  const cie = findFullDayCieClose(dayCloses, ledger.collectorRef, ledger.date);
-  if (cie) {
-    const sealed = Number(cie.cashAdjustment?.calculated ?? cie.cashFloat ?? cie.cashExpected);
-    if (Number.isFinite(sealed)) return pesos(sealed - (ledger.dayFinal - ledger.mClosing));
-  }
+  const sealed = sealedDaySaldo(dayCloses, ledger.collectorRef, ledger.date);
+  if (sealed != null) return pesos(sealed - (ledger.dayFinal - ledger.mClosing));
   return ledger.mClosing;
+}
+
+/** Saldo final sellado del día (CIE-), antes de un ajuste de saldo real. Sin CIE: null. */
+export function sealedDaySaldo(
+  dayCloses: CollectorDayCloseRecord[],
+  collectorRef: string,
+  date: string,
+): number | null {
+  const cie = findFullDayCieClose(dayCloses, collectorRef, dateIsoOf(date));
+  if (!cie) return null;
+  const sealed = Number(cie.cashAdjustment?.calculated ?? cie.cashFloat ?? cie.cashExpected);
+  return Number.isFinite(sealed) ? pesos(sealed) : null;
+}
+
+/**
+ * Historial · T: días ya cerrados leen su CIE- (saldo final del día). No se recalculan
+ * con la caja de M + movimiento de T. Hoy lo pone `withLedgerTodaySaldo`.
+ */
+export function withSealedDaySaldos<T extends { date: string; saldo: number }>(
+  rows: T[],
+  collectorRef: string,
+  dayCloses: CollectorDayCloseRecord[],
+  todayIso: string,
+): T[] {
+  const today = dateIsoOf(todayIso);
+  return rows.map((row) => {
+    if (dateIsoOf(row.date) >= today) return row;
+    const sealed = sealedDaySaldo(dayCloses, collectorRef, row.date);
+    return sealed == null ? row : { ...row, saldo: sealed };
+  });
 }
 
 /** Caja final de M de un día (Historial · M, fila de ayer). */
@@ -348,7 +375,10 @@ export function chainDayCuadre(
     nequi: pesos(collected.reduce((sum, row) => sum + row.nequi, 0)),
     banco: pesos(collected.reduce((sum, row) => sum + row.banco, 0)),
     lines: days.flatMap((day) => [...day.gastoLines, ...loanRowsToExpenseLines(day.loanRows)]),
-    closing: side === "secondary" ? ledger.dayFinal : primaryClosing,
+    closing:
+      side === "secondary"
+        ? (sealedDaySaldo(src.dayCloses, src.collectorRef, ledger.date) ?? ledger.dayFinal)
+        : primaryClosing,
   };
 }
 

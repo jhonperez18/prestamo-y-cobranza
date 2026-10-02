@@ -129,6 +129,7 @@ import {
   chainHistorySplit,
   primaryClosingForDay,
   withLedgerTodaySaldo,
+  withSealedDaySaldos,
 } from "@/lib/day-cash-ledger";
 import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
 import { CollectorDayLoansPanel } from "@/components/CollectorDayLoansPanel";
@@ -680,7 +681,10 @@ export function CollectorMobileApp({
       fallbackOpening:
         todayDate === PLANILLA_CASH_CHAIN_HISTORY_EPOCH ? mCarriedFallbackOpening : undefined,
     });
-    return withLedgerTodaySaldo(stamped, todayLedger);
+    return withLedgerTodaySaldo(
+      withSealedDaySaldos(stamped, collector.ref, dayCloses, todayDate),
+      todayLedger,
+    );
   }, [
     activeDate,
     assignments,

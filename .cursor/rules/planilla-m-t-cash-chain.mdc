@@ -89,6 +89,8 @@ para un saldo.** Una fórmula paralela = dos cifras = el error del 2.090.000.
  Caja final de M de un día sellado = CIE − movimiento propio de T (`primaryClosingForDay`):
  Historial · M (fila de ayer), Caja del Cierre de M e Inicial de T leen esa misma cifra.
  Prohibido mostrar el CIE (saldo tras T) como saldo de M.
+ Saldo de T de un día cerrado = CIE (`sealedDaySaldo` / `withSealedDaySaldos`): Historial · T y
+ Caja del Cierre de T lo leen directo; nunca «caja de M + movimiento de T» recalculado.
  Candado: `assert-cash-chain.mjs` («Cierre M/T»).
 - Candado: `assert-cash-chain.mjs` exige Historial T · hoy = libro.
 
