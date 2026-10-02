@@ -2569,7 +2569,7 @@ export function SupervisorMobileApp({
     1 +
     Number(historyDayShowNequiValue) +
     Number(historyDayShowBancoValue) +
-    4 * Number(Boolean(historyDayChainT));
+    3 * Number(Boolean(historyDayChainT));
   const historyDayMeansCols =
     historyDayMeansCount === 2 ? " is-two" : historyDayMeansCount >= 4 ? " is-four" : "";
 
@@ -3737,12 +3737,6 @@ export function SupervisorMobileApp({
                       <div className="is-mean is-pay-nequi">
                         <span>Nequi</span>
                         <b>{money(historyDayNequiBoxAmount)}</b>
-                      </div>
-                    ) : null}
-                    {historyDayChainT ? (
-                      <div className="is-mean is-prestamos">
-                        <span>Préstamo T</span>
-                        <b>{money(historyDayChainT.ownPrestamos)}</b>
                       </div>
                     ) : null}
                     {historyDayChainT ? (
