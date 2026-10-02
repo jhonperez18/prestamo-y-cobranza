@@ -247,6 +247,7 @@ type SupervisorView =
   | "prestamos";
 type NuevoMode = "menu" | "cliente" | "prestamo" | "gasto";
 type CierreListKind = "prestamos" | "gastos" | "banco";
+type CierreListLine = { key: string; label: string; time?: string; amount: number };
 const CIERRE_LIST_TITLE: Record<CierreListKind, string> = {
   prestamos: "Préstamos del día",
   gastos: "Gastos del día",
@@ -2620,7 +2621,8 @@ export function SupervisorMobileApp({
   const cierreBancoT = historyDayChainT
     ? historyDayChainT.ownDigitalPayments.map((pay) => ({
         key: pay.ref,
-        label: [pay.client, pay.paidTime].filter(Boolean).join(" · "),
+        label: pay.client,
+        time: pay.paidTime || "—",
         amount: Number(pay.amount) || 0,
       }))
     : [];
@@ -2632,7 +2634,7 @@ export function SupervisorMobileApp({
   } | null>(null);
   const cierreListKind =
     cierreList && cierreList.day === cajaHistoryDayIso ? cierreList.kind : null;
-  const cierreListLines =
+  const cierreListLines: CierreListLine[] =
     cierreListKind === "prestamos"
       ? cierrePrestamos.map((line, index) => ({
           key: `${line.loanRef || line.label}:${index}`,
@@ -3761,10 +3763,20 @@ export function SupervisorMobileApp({
                     {cierreListLines.length === 0 ? (
                       <p className="collector-cierre-drop-empty">{CIERRE_LIST_EMPTY[cierreListKind]}</p>
                     ) : (
-                      <ul>
+                      <ul className={cierreListKind === "banco" ? "is-cols-3" : undefined}>
+                        {cierreListKind === "banco" ? (
+                          <li className="is-head">
+                            <span>Cliente</span>
+                            <span>Hora</span>
+                            <span>Valor</span>
+                          </li>
+                        ) : null}
                         {cierreListLines.map((line) => (
                           <li key={line.key}>
-                            <span>{line.label}</span>
+                            <span className="is-label">{line.label}</span>
+                            {cierreListKind === "banco" ? (
+                              <span className="is-time">{line.time}</span>
+                            ) : null}
                             <b>{money(line.amount, { symbol: false })}</b>
                           </li>
                         ))}

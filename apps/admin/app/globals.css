@@ -2055,6 +2055,51 @@
     .collector-mobile-home-cuadre-grid .is-cobrado-means button.is-mean.is-pay-banco.on {
       box-shadow: 0 0 0 2px #2563eb;
     }
+    .collector-cierre-drop ul.is-cols-3 {
+      display: block;
+      width: 100%;
+    }
+    .collector-cierre-drop ul.is-cols-3 li {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 5px 4px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 82px 78px;
+      align-items: center;
+      gap: 8px;
+    }
+    .collector-mobile-home-cuadre-grid .collector-cierre-drop ul.is-cols-3 .is-label {
+      text-align: left;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .collector-mobile-home-cuadre-grid .collector-cierre-drop ul.is-cols-3 .is-time {
+      text-align: center;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+    }
+    .collector-mobile-home-cuadre-grid .collector-cierre-drop ul.is-cols-3 b {
+      text-align: right;
+    }
+    .collector-mobile-home-cuadre-grid .collector-cierre-drop ul.is-cols-3 li.is-head span {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #1e3a8a;
+    }
+    .collector-mobile-home-cuadre-grid .collector-cierre-drop ul.is-cols-3 li.is-head span:first-child {
+      text-align: left;
+    }
+    .collector-mobile-home-cuadre-grid .collector-cierre-drop ul.is-cols-3 li.is-head span:nth-child(2) {
+      text-align: center;
+    }
+    .collector-mobile-home-cuadre-grid .collector-cierre-drop ul.is-cols-3 li.is-head span:last-child {
+      text-align: right;
+    }
+    .collector-cierre-drop ul.is-cols-3 li:nth-child(even):not(.is-head) {
+      background: rgba(147, 197, 253, 0.18);
+    }
     .collector-cierre-drop-title {
       margin: 2px 0 2px;
       font-size: 11px;
