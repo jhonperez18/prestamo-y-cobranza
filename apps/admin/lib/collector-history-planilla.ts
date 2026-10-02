@@ -9,7 +9,7 @@ import { isAssignmentAwaitingLoan, planillaLiveCuota } from "@/lib/planilla-disp
 import { withPaymentEvidence } from "@/lib/payment-evidence-store";
 import { paymentTimeLabel } from "@/lib/payment-detail";
 import { normalizePaymentMethod } from "@/lib/payment-method";
-import type { ClientRow, LoanRow, PaymentRow } from "@/lib/mock-data";
+import { isLoanVoided, type ClientRow, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 
 export { isPrestamoRutaExpense, operativeExpenseLines } from "@/lib/expense-lines";
 
@@ -330,6 +330,17 @@ export function buildCollectorHistoryPlanillaRows(input: {
   const paidClientRefs = new Set(
     pays.map((pay) => loans.find((row) => row.ref === pay.loanRef)?.clientRef || ""),
   );
+  const lentClientRefs = new Set(
+    loans
+      .filter(
+        (loan) =>
+          loansStartedToday.has(loan.ref) &&
+          Boolean(loan.clientRef) &&
+          !loanIsExistingPortfolio(loan) &&
+          !isLoanVoided(loan),
+      )
+      .map((loan) => loan.clientRef),
+  );
 
   for (const item of dispatched) {
     if (
@@ -362,6 +373,9 @@ export function buildCollectorHistoryPlanillaRows(input: {
       if (matched.some((row) => row.ref === pay.ref)) return true;
       return Boolean(pay.comboGroupId && comboIds.has(pay.comboGroupId));
     });
+    // Visita sin pago de un cliente que recibió préstamo ese día (p. ej. «Prestar»):
+    // la representa su fila «Prestado». Con pago quedan las dos (cuota + préstamo).
+    if (grouped.length === 0 && lentClientRefs.has(item.clientRef)) continue;
     for (const pay of grouped) used.add(pay.ref);
     rows.push({
       key: `${item.itemId}-${item.dispatchDate}`,

@@ -1409,6 +1409,24 @@ console.log("— Préstamos Banco / Nequi en la planilla del cobrador —");
     dayPlanillaLoansWithoutPayment(D, "T", dLoans, clients, new Set(["CLI-T1"])).length,
     0,
   );
+  const { buildCollectorHistoryPlanillaRows: histRows } = await import("@/lib/collector-history-planilla");
+  const prestarVisit = visit("V-PT", "CLI-T1", "T", D, { kind: "prestar", visitStatus: "omitido" });
+  const soloPrestamo = histRows({
+    dateIso: D,
+    dispatched: [prestarVisit],
+    payments: [],
+    loans: [...loans, dLoans.find((r) => r.ref === "P-BT")],
+    clients,
+  }).filter((r) => r.clientRef === "CLI-T1");
+  expect("Historial: Prestar + préstamo hoy = un solo renglón «Prestado»", soloPrestamo.map((r) => r.method).join(","), "prestamo");
+  const pagoYPrestamo = histRows({
+    dateIso: D,
+    dispatched: [visit("V-T1", "CLI-T1", "T", D, { loanRef: "P-T1" })],
+    payments: payments.map((p) => ({ ...p, when: `${p.paidDate} · 10:00` })),
+    loans: [...loans, dLoans.find((r) => r.ref === "P-BT")],
+    clients,
+  }).filter((r) => r.clientRef === "CLI-T1");
+  expect("Historial: pagó y le prestaron = cuota + préstamo", pagoYPrestamo.map((r) => r.method).sort().join(","), "efectivo,prestamo");
   expect("Planilla A → bolsillo Nequi", digitalLoanPoolForRoute("A"), "nequi");
   expect("Planilla T → bolsillo Banco", digitalLoanPoolForRoute("T"), "banco");
   expect(
