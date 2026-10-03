@@ -17,6 +17,7 @@ import {
   type LoanRow,
   type RouteRow,
 } from "@/lib/mock-data";
+import { missingPriorDayCie } from "@/lib/planilla-cash-chain";
 import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
 
 export type HealthIssueKind =
@@ -26,6 +27,8 @@ export type HealthIssueKind =
   | "prestar_ghost"
   /** Cuota sin plata de un préstamo borrado ocupando la planilla. */
   | "deleted_loan_row"
+  /** Día cerrado sin su CIE- en este aparato: el Inicial de M saldría del CIE de antes. */
+  | "cie_missing"
   /** Filas en cola sin `ref`: nunca podrán subir. */
   | "queue_invalid_rows"
   /** Cola con pendientes hace demasiado tiempo. */
@@ -132,6 +135,18 @@ function planillaIssues(input: SystemHealthInput): HealthIssue[] {
   return issues;
 }
 
+/** Regla de inicio: cada día cerrado tiene su CIE- en el aparato (la reparación lo baja). */
+function dayCloseIssues({ date, collectors, dayCloses }: SystemHealthInput): HealthIssue[] {
+  const issues: HealthIssue[] = [];
+  for (const collector of collectors) {
+    const missingDay = missingPriorDayCie(dayCloses, [], collector.ref, date);
+    if (missingDay) {
+      issues.push({ kind: "cie_missing", ref: `${collector.ref}:${missingDay}`, scope: "planilla" });
+    }
+  }
+  return issues;
+}
+
 function queueIssues({ queue, nowMs }: SystemHealthInput): HealthIssue[] {
   const issues: HealthIssue[] = [];
   if (queue.invalidRows > 0) {
@@ -148,7 +163,7 @@ function queueIssues({ queue, nowMs }: SystemHealthInput): HealthIssue[] {
 }
 
 export function evaluateSystemHealth(input: SystemHealthInput): SystemHealthReport {
-  const issues = [...planillaIssues(input), ...queueIssues(input)];
+  const issues = [...planillaIssues(input), ...dayCloseIssues(input), ...queueIssues(input)];
   const signature = issues
     .map((issue) => `${issue.kind}:${issue.ref}`)
     .sort()

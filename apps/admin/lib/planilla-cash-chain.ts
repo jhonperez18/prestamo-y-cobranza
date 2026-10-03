@@ -255,6 +255,59 @@ export function findLatestFullDayCieBefore(
 }
 
 /**
+ * Último día que este aparato sabe cerrado antes de `beforeDate`: CIE- sellado o provisional
+ * (planilla sellada sin su CIE-) y eslabones PCE-. Si es posterior al último CIE- sellado,
+ * a este aparato le falta el CIE- de ese día.
+ */
+export function latestClosedDayBefore(
+  dayCloses: CollectorDayCloseRecord[],
+  records: PlanillaCashCloseRecord[],
+  collectorRef: string,
+  beforeDate: string,
+): string {
+  const before = normalizeHistoryDate(beforeDate) || beforeDate;
+  let latest = "";
+  const consider = (raw: string) => {
+    const d = normalizeHistoryDate(raw) || raw;
+    if (d && d < before && d > latest) latest = d;
+  };
+  for (const row of dayCloses) {
+    if (row.collectorRef !== collectorRef) continue;
+    if (!String(row.ref || "").startsWith("CIE-")) continue;
+    consider(row.date);
+  }
+  for (const row of records) {
+    if (row.collectorRef !== collectorRef) continue;
+    if (isStaleManualLaunchAmount(row)) continue;
+    consider(row.date);
+  }
+  return latest;
+}
+
+/**
+ * Día cerrado cuyo CIE- falta en este aparato ("" = cadena completa).
+ * Un CIE- solo es el Inicial de M si es el del último día cerrado: si después hubo otro
+ * día cerrado sin su CIE- aquí, usar el anterior saltaría ese día
+ * (Vercel 12.271.000 = CIE del 01/10 contra 9.410.000 = CIE del 02/10).
+ */
+export function missingPriorDayCie(
+  dayCloses: CollectorDayCloseRecord[],
+  records: PlanillaCashCloseRecord[],
+  collectorRef: string,
+  date: string,
+): string {
+  const prevCie = findLatestFullDayCieBefore(dayCloses, collectorRef, date);
+  if (!prevCie) return "";
+  const prevCieDate = normalizeHistoryDate(prevCie.date) || prevCie.date;
+  const lastClosedDay = latestClosedDayBefore(dayCloses, records, collectorRef, date);
+  return lastClosedDay > prevCieDate ? lastClosedDay : "";
+}
+
+function missingCieMessage(day: string) {
+  return `Falta en este aparato el cierre (CIE) del ${day}: el inicial de ${PLANILLA_CASH_CHAIN_PRIMARY} es ese saldo. Se está trayendo de la nube.`;
+}
+
+/**
  * Si hay CIE-, el PCE-T de ese día debe ser la misma cifra (nube = saldo final).
  * Corrige PCE local viejo que pisaba el Inicial de mañana.
  */
@@ -366,6 +419,21 @@ export function openingCashForChainedPlanilla(input: {
     input.collectorRef,
     date,
   );
+  const missingDay = missingPriorDayCie(
+    input.dayCloses ?? [],
+    input.records,
+    input.collectorRef,
+    date,
+  );
+  if (missingDay) {
+    return {
+      kind: "chain",
+      opening: 0,
+      ready: false,
+      provisional: true,
+      blockReason: missingCieMessage(missingDay),
+    };
+  }
   if (prevCie) {
     const float = Number(prevCie.cashFloat ?? prevCie.cashExpected);
     if (Number.isFinite(float)) {
@@ -419,14 +487,26 @@ export function openingCashForChainedPlanilla(input: {
   };
 }
 
-/** Guardia: no cerrar T sin M cerrada el mismo día. */
+/**
+ * Guardia: no cerrar T sin M cerrada el mismo día, ni sellar M/T si a este aparato
+ * le falta el CIE- del último día cerrado (el saldo saldría del CIE de anteayer).
+ */
 export function assertCanCloseChainedPlanilla(input: {
   collectorRef: string;
   routeName: string | undefined;
   date: string;
   records: PlanillaCashCloseRecord[];
+  dayCloses: CollectorDayCloseRecord[];
 }): { ok: true } | { ok: false; error: string } {
   const route = String(input.routeName || "").trim();
+  if (!isPlanillaCashChainRoute(route)) return { ok: true };
+  const missingDay = missingPriorDayCie(
+    input.dayCloses,
+    input.records,
+    input.collectorRef,
+    normalizeHistoryDate(input.date) || input.date,
+  );
+  if (missingDay) return { ok: false, error: missingCieMessage(missingDay) };
   if (!isPlanillaCashChainSecondary(route)) return { ok: true };
   const mClose = findPlanillaCashClose(
     input.records,

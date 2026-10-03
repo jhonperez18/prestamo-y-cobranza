@@ -284,6 +284,9 @@ export function freeDemoStorageQuota() {
   freeDemoMirrorQueues();
 }
 
+/** Claves cuyo último guardado no entró al aparato (el pull lo reporta al monitor). */
+const storageWriteFailures = new Set<string>();
+
 /**
  * true = quedó en el aparato. Con el cupo lleno solo se sueltan copias -bak:
  * las colas de subida guardan lo que aún no llegó a la nube y no se borran por espacio.
@@ -295,16 +298,23 @@ export function writeDemoJson(key: string, value: unknown): boolean {
     try {
       free();
       writeDemoJsonOnce(key, value);
+      storageWriteFailures.delete(key);
       return true;
     } catch (error) {
       if (!isQuotaError(error)) {
         console.error("demo-persist", key, error);
+        storageWriteFailures.add(key);
         return false;
       }
     }
   }
   console.error("demo-persist", key, "sin espacio en el aparato: no se guardó");
+  storageWriteFailures.add(key);
   return false;
+}
+
+export function demoStorageWriteFailures(): string[] {
+  return [...storageWriteFailures];
 }
 
 /** La foto no entra a localStorage. El cobro sí: monto, fecha, método, ref. */
@@ -338,6 +348,28 @@ function writeBackup(key: string, raw: string) {
   window.localStorage.setItem(backupKey(key), backupPayload(raw));
 }
 
+/**
+ * La copia -bak nunca compite con el dato: si no cabe, se suelta la copia.
+ * Antes se escribía primero y, con el cupo justo, el CIE- recién bajado de la nube
+ * no entraba (la planilla, sin copia, sí): el aparato quedaba con el CIE de anteayer.
+ */
+function keepBackup(key: string, raw: string) {
+  try {
+    writeBackup(key, raw);
+  } catch (error) {
+    if (!isQuotaError(error)) throw error;
+    window.localStorage.removeItem(backupKey(key));
+  }
+}
+
+/** Raíces del sistema: un [] desde React jamás las vacía (ni en virgen). */
+const NEVER_WIPE_KEYS: readonly string[] = [
+  DEMO_CLIENTS_KEY,
+  DEMO_USERS_KEY,
+  DEMO_LOANS_KEY,
+  DEMO_PAYMENTS_KEY,
+];
+
 function writeDemoJsonOnce(key: string, value: unknown) {
   if (typeof window === "undefined") return;
   try {
@@ -345,48 +377,24 @@ function writeDemoJsonOnce(key: string, value: unknown) {
     const next = storageJson(value);
     // Mismo contenido: no reescribir ni tocar el -bak.
     if (prev === next) return;
-    if (prev) {
-      // Solo un [] puede ser vaciado accidental: lo anterior se parsea solo en ese caso.
-      const wipingArray =
-        Array.isArray(value) &&
-        value.length === 0 &&
-        (() => {
-          const prevParsed = parseJson<unknown>(prev);
-          return Array.isArray(prevParsed) && prevParsed.length > 0;
-        })();
-      // Clientes = catálogo sagrado: jamás vaciar desde React/state (ni en virgen).
-      if (wipingArray && key === DEMO_CLIENTS_KEY) {
-        writeBackup(key, prev);
-        return;
-      }
-      // Usuarios = misma regla (listado/login compartidos vía SQL).
-      if (wipingArray && key === DEMO_USERS_KEY) {
-        writeBackup(key, prev);
-        return;
-      }
-      // Préstamos / cobros = raíces del sistema central en este PC.
-      if (
-        wipingArray &&
-        (key === DEMO_LOANS_KEY || key === DEMO_PAYMENTS_KEY)
-      ) {
-        writeBackup(key, prev);
-        return;
-      }
-      // Nunca respaldar un [] encima de un bak con datos.
-      if (!wipingArray) {
-        writeBackup(key, prev);
-      } else if (isVirginOpsMode()) {
-        // Paquete virgen: [] es intencional (cobros/historial/banco vacíos).
-        writeBackup(key, next);
-        window.localStorage.setItem(key, next);
-        return;
-      } else {
-        // Intento de vaciar: conservar prev en -bak y NO escribir [] si hay datos.
-        writeBackup(key, prev);
-        return;
-      }
+    // Solo un [] puede ser vaciado accidental: lo anterior se parsea solo en ese caso.
+    const wipingArray =
+      Boolean(prev) &&
+      Array.isArray(value) &&
+      value.length === 0 &&
+      (() => {
+        const prevParsed = parseJson<unknown>(prev!);
+        return Array.isArray(prevParsed) && prevParsed.length > 0;
+      })();
+    // Intento de vaciar: conservar prev en -bak y NO escribir [] si hay datos.
+    // Paquete virgen: [] es intencional (cobros/historial/banco vacíos), salvo raíces.
+    if (wipingArray && (NEVER_WIPE_KEYS.includes(key) || !isVirginOpsMode())) {
+      keepBackup(key, prev!);
+      return;
     }
     window.localStorage.setItem(key, next);
+    // Nunca respaldar un [] encima de un bak con datos (salvo paquete virgen).
+    if (prev) keepBackup(key, wipingArray ? next : prev);
   } catch (error) {
     if (isQuotaError(error)) throw error;
   }

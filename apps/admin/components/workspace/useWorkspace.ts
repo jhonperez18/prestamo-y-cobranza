@@ -1632,11 +1632,13 @@ export function useWorkspace({
   }
 
   async function closeCollectorDayFromMobile(payload: CollectorCloseDayPayload) {
+    const storedCloses = loadDemoDayCloses<CollectorDayCloseRecord>();
     const chainGuard = assertCanCloseChainedPlanilla({
       collectorRef: payload.collectorRef,
       routeName: payload.planillaRoute,
       date: payload.date,
       records: planillaCashCloses,
+      dayCloses: storedCloses,
     });
     if (!chainGuard.ok) {
       onToast(chainGuard.error);
@@ -1675,7 +1677,7 @@ export function useWorkspace({
       expensesFallback: payload.expenses,
       fullyClosed,
       assignments: result.assignments,
-      dayCloses: loadDemoDayCloses<CollectorDayCloseRecord>(),
+      dayCloses: storedCloses,
       dayExpenseDrafts,
       planillaCashCloses,
       monthCloses,

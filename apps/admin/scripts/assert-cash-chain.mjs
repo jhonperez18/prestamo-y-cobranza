@@ -1563,6 +1563,147 @@ console.log("— Punto de conexión del cobrador —");
   expect("Conexión: sin reportes = sin datos", collectorConnection([], NOW).level, "none");
 }
 
+// 22. Aparato sin el CIE- de ayer (caso real 03/10: Vercel 12.271.000 = CIE del 01/10,
+//     taller 9.410.000 = CIE del 02/10). El Inicial de M nunca salta un día cerrado:
+//     no se muestra, no se cierra, no se auto-sella y la auto-revisión lo baja de la nube.
+//     Y el guardado del aparato pone el dato antes que su copia -bak (cupo justo).
+console.log("— Aparato sin el CIE de ayer —");
+{
+  const { assertCanCloseChainedPlanilla, missingPriorDayCie } = await import("@/lib/planilla-cash-chain");
+  const D1 = "2026-10-01";
+  const D2 = "2026-10-02";
+  const D3 = "2026-10-03";
+  const cieOf = (date, cashFloat, extra = {}) => ({
+    ...cie25,
+    ref: `CIE-COB-0-${date}`,
+    date,
+    collected: 0,
+    openingCash: undefined,
+    cashExpected: cashFloat,
+    cashDeclared: cashFloat,
+    cashFloat,
+    closedAt: `${date}T22:32:00.000-05:00`,
+    ...extra,
+  });
+  const cie01 = cieOf(D1, 12_271_000);
+  const cie02 = cieOf(D2, 9_410_000);
+  const sealed02 = [visit("V-M9", "CLI-M1", "M", D2, { dayClosedAt: `${D2}T22:32:00.000-05:00` })];
+  const withProvisional = synthesizeDayClosesFromAssignments(sealed02, [], [cie01]);
+  expect("Planilla del 02 sellada sin CIE-02: queda provisional", withProvisional.find((r) => r.date === D2)?.provisional === true, true);
+  expect("Falta el CIE del 02 en este aparato", missingPriorDayCie(withProvisional, [], COB.ref, D3), D2);
+
+  const open03 = openingCashForChainedPlanilla({
+    collectorRef: COB.ref,
+    routeName: "M",
+    date: D3,
+    records: [],
+    monthCloses: [],
+    dayCloses: withProvisional,
+  });
+  expect("Sin CIE-02: Inicial M 03 no usa el CIE-01", open03.kind === "chain" && open03.ready ? open03.opening : "no listo", "no listo");
+  expect("Sin CIE-02: Inicial M 03 nunca es 12.271.000", open03.kind === "chain" && open03.opening === 12_271_000, false);
+  const pceOnly = openingCashForChainedPlanilla({
+    collectorRef: COB.ref,
+    routeName: "M",
+    date: D3,
+    records: [{ ...stalePceT25, ref: `PCE-COB-0-${D2}-M`, date: D2, routeName: "M", closingCash: 13_456_000 }],
+    monthCloses: [],
+    dayCloses: [cie01],
+  });
+  expect("PCE del 02 sin CIE-02: tampoco salta al CIE-01", pceOnly.kind === "chain" && pceOnly.ready, false);
+
+  const guardM = assertCanCloseChainedPlanilla({ collectorRef: COB.ref, routeName: "M", date: D3, records: [], dayCloses: withProvisional });
+  expect("Sin CIE-02: no deja cerrar M del 03", guardM.ok, false);
+  const guardOk = assertCanCloseChainedPlanilla({ collectorRef: COB.ref, routeName: "M", date: D3, records: [], dayCloses: [cie01, cie02] });
+  expect("Con CIE-02: cierre de M permitido", guardOk.ok, true);
+
+  const cycle03 = runOperationalDayCycle(
+    {
+      assignments: [...sealed02, visit("V-M10", "CLI-M1", "M", D3)],
+      routes: [],
+      logs: [],
+      dayCloses: withProvisional,
+      dayExpenseDrafts: [],
+      payments: [],
+      loans,
+      clients,
+      collectors: [COB],
+      planillaCashCloses: [],
+      monthCloses: [],
+    },
+    new Date("2026-10-04T05:10:00.000Z"),
+  );
+  expect("Sin CIE-02: el auto-cierre no sella el 03", cycle03.dayCloses.some((r) => r.ref === `CIE-COB-0-${D3}`), false);
+
+  const cieHealth = evaluateSystemHealth({
+    date: D3,
+    nowMs: Date.parse(`${D3}T15:00:00.000Z`),
+    clients: [],
+    loans: [],
+    routes: [],
+    collectors: [COB],
+    assignments: [],
+    dayCloses: withProvisional,
+    deletedRefs: new Set(),
+    queue: hQueueOk,
+  });
+  expect("Auto-revisión: detecta el CIE faltante y lo repara bajando la planilla", cieHealth.issues.map((i) => `${i.kind}:${i.scope}`).join(","), "cie_missing:planilla");
+
+  const arrived = withProvisional.map((r) => (r.ref === cie02.ref ? cie02 : r));
+  const fixed03 = openingCashForChainedPlanilla({
+    collectorRef: COB.ref,
+    routeName: "M",
+    date: D3,
+    records: [],
+    monthCloses: [],
+    dayCloses: arrived,
+  });
+  expect("Llega el CIE-02 (mismo ref): Inicial M 03 = 9.410.000", fixed03.kind === "chain" && fixed03.ready ? fixed03.opening : null, 9_410_000);
+  expect("Llega el CIE-02: sin inconsistencias", evaluateSystemHealth({
+    date: D3,
+    nowMs: Date.parse(`${D3}T15:00:00.000Z`),
+    clients: [],
+    loans: [],
+    routes: [],
+    collectors: [COB],
+    assignments: [],
+    dayCloses: arrived,
+    deletedRefs: new Set(),
+    queue: hQueueOk,
+  }).ok, true);
+
+  // Cupo justo: cabe el CIE nuevo, no cabe además la copia -bak del valor anterior.
+  const { writeDemoJson, readDemoJson, DEMO_COLLECTOR_DAY_CLOSES_KEY } = await import("@/lib/demo-persist");
+  const store = new Map();
+  let capacity = Infinity;
+  const used = () => [...store].reduce((sum, [k, v]) => sum + k.length + v.length, 0);
+  globalThis.window = {
+    localStorage: {
+      getItem: (k) => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => {
+        const next = used() - (store.has(k) ? k.length + store.get(k).length : 0) + k.length + String(v).length;
+        if (next > capacity) throw new DOMException("cupo lleno", "QuotaExceededError");
+        store.set(k, String(v));
+      },
+      removeItem: (k) => store.delete(k),
+    },
+  };
+  try {
+    store.set(DEMO_COLLECTOR_DAY_CLOSES_KEY, JSON.stringify([cie01]));
+    const grow = JSON.stringify([cie01, cie02]).length - JSON.stringify([cie01]).length;
+    capacity = used() + grow + 10;
+    const saved = writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, [cie01, cie02]);
+    expect("Cupo justo: el CIE-02 se guarda (la copia -bak no compite)", saved, true);
+    expect(
+      "Cupo justo: el aparato queda con el CIE-02",
+      readDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, []).some((r) => r.ref === cie02.ref),
+      true,
+    );
+  } finally {
+    delete globalThis.window;
+  }
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

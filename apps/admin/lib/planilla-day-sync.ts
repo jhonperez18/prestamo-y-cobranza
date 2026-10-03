@@ -30,16 +30,24 @@ export type PlanillaDayApply = (next: {
   autoClosedCount: number;
 }) => void;
 
+/**
+ * Firma de cierres: ref + saldo + sellado. Un CIE- provisional que pasa a sellado (mismo ref)
+ * o que cambia de saldo es otro Inicial de M: el ciclo tiene que verlo.
+ */
+function dayClosesKey(dayCloses: CollectorDayCloseRecord[]) {
+  return dayCloses
+    .map((row) => `${row.ref}:${row.cashFloat}:${row.provisional ? 1 : 0}:${row.closedAt || ""}`)
+    .sort()
+    .join(",");
+}
+
 /** Entradas del ciclo (no incluye planilla/rutas diarias: esas son salida y reentrarían en bucle). */
 function inputKey(state: PlanillaDayState) {
   const payments = state.payments
     .map((row) => `${row.ref}:${row.amount}:${row.paidDate || ""}`)
     .sort()
     .join("|");
-  const closes = state.dayCloses
-    .map((row) => row.ref)
-    .sort()
-    .join(",");
+  const closes = dayClosesKey(state.dayCloses);
   const cashChain = (state.planillaCashCloses ?? [])
     .map((row) => `${row.ref}:${row.closingCash}`)
     .sort()
@@ -104,10 +112,7 @@ function outputKey(state: {
     )
     .sort()
     .join("|");
-  const closes = state.dayCloses
-    .map((row) => row.ref)
-    .sort()
-    .join(",");
+  const closes = dayClosesKey(state.dayCloses);
   const cashChain = (state.planillaCashCloses ?? [])
     .map((row) => `${row.ref}:${row.closingCash}`)
     .sort()

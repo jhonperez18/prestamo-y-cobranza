@@ -60,6 +60,10 @@ function createMirrorClient() {
   return createMirrorServerClient();
 }
 
+function unsavedReason(keys: string[]) {
+  return `sin espacio en el aparato: ${keys.map((key) => key.replace(/^nexo-demo-/, "")).join(", ")}`;
+}
+
 function mergeByRefRemote<T extends { ref: string }>(
   local: T[],
   remote: T[],
@@ -1517,6 +1521,13 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
 
     const holdMoney = isVirginRemoteHoldActive();
     let changed = false;
+    // Lo que no entró al aparato no cuenta como bajado: el monitor lo muestra y el
+    // siguiente ciclo vuelve a intentarlo (sin esto el pull decía OK y la pantalla
+    // seguía leyendo el CIE viejo del disco).
+    const unsaved: string[] = [];
+    const persist = (key: string, value: unknown) => {
+      if (!writeDemoJson(key, value)) unsaved.push(key);
+    };
 
     const collectors = (body.collectors ?? [])
       .map(rowToCollector)
@@ -1539,7 +1550,7 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       pendingCollectorDeletes,
     );
     if (cMerge.changed) {
-      writeDemoJson(DEMO_COLLECTORS_KEY, cMerge.merged);
+      persist(DEMO_COLLECTORS_KEY, cMerge.merged);
       changed = true;
     }
 
@@ -1562,12 +1573,14 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
     // La nube ya tiene estas rutas: un push posterior solo sube la que cambie de verdad.
     for (const route of routes) sentRouteSig.set(route.ref, routeMirrorSig(route));
     if (rMerge.changed || localRoutes.length !== readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, []).length) {
-      writeDemoJson(DEMO_ROUTES_KEY, rMerge.merged);
+      persist(DEMO_ROUTES_KEY, rMerge.merged);
       changed = true;
     }
 
     if (holdMoney) {
-      return { ok: true, changed, reason: "virgin_hold_skip_money", bundle: body };
+      return unsaved.length
+        ? { ok: false, changed, reason: unsavedReason(unsaved), bundle: body }
+        : { ok: true, changed, reason: "virgin_hold_skip_money", bundle: body };
     }
 
     const closes = (body.day_closes ?? [])
@@ -1578,7 +1591,7 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       closes,
     );
     if (clMerge.changed) {
-      writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, clMerge.merged);
+      persist(DEMO_COLLECTOR_DAY_CLOSES_KEY, clMerge.merged);
       changed = true;
     }
     // CIE- de nube → PCE-T local (Inicial M = misma cifra en todos los aparatos).
@@ -1591,7 +1604,7 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       const beforeSig = before.map((r) => `${r.ref}:${r.closingCash}`).sort().join("|");
       const afterSig = projected.map((r) => `${r.ref}:${r.closingCash}`).sort().join("|");
       if (beforeSig !== afterSig) {
-        writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, projected);
+        persist(DEMO_PLANILLA_CASH_CLOSES_KEY, projected);
         changed = true;
       }
     }
@@ -1604,7 +1617,7 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       expenses,
     );
     if (eMerge.changed) {
-      writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, eMerge.merged);
+      persist(DEMO_COLLECTOR_DAY_EXPENSES_KEY, eMerge.merged);
       changed = true;
     }
 
@@ -1617,7 +1630,7 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       (r) => `${r.ref}|${r.amount}|${r.paidDate}|${r.label}`,
     );
     if (mMerge.changed) {
-      writeDemoJson(DEMO_MISC_PAYMENTS_KEY, mMerge.merged);
+      persist(DEMO_MISC_PAYMENTS_KEY, mMerge.merged);
       changed = true;
     }
 
@@ -1739,12 +1752,8 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []),
     );
     // Si el CIE- ya llegó y la planilla local sigue abierta (cola / flush a medias), sellar.
-    const closesNow = readDemoJson<CollectorDayCloseRecord[]>(
-      DEMO_COLLECTOR_DAY_CLOSES_KEY,
-      [],
-    );
     const healed = assignmentsInPlanillaWindow(
-      applyDayCloseRecordsToAssignments(stamped, closesNow),
+      applyDayCloseRecordsToAssignments(stamped, clMerge.merged),
     );
     for (const row of healed) {
       if (!row.dayClosedAt) continue;
@@ -1765,10 +1774,11 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       .join("\n");
     if (stampedSig !== prevSig) assignChanged = true;
     if (assignChanged) {
-      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, healed);
+      persist(DEMO_DAILY_ASSIGNMENTS_KEY, healed);
       changed = true;
     }
 
+    if (unsaved.length) return { ok: false, changed, reason: unsavedReason(unsaved), bundle: body };
     return { ok: true, changed, bundle: body };
   } catch (err) {
     return {

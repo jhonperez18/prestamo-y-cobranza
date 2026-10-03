@@ -209,6 +209,15 @@ export function runOperationalDayCycle(
       fallbackOpening: carriedOpeningFallback(pair.collectorRef, pair.date, monthCloses),
     };
     const ledger = buildDayCashLedger(ledgerSources);
+    // A este aparato le falta el CIE- del último día cerrado: sellar ahora pondría en la nube
+    // un saldo armado desde el CIE de anteayer. Lo sella el cron del servidor (nube completa)
+    // y el pull lo trae.
+    if (ledger.chain && ledger.mOpening.kind === "chain" && !ledger.mOpening.ready) {
+      console.error(
+        `[cadena-rota] no se auto-cierra ${pair.collectorRef} ${pair.date}: ${ledger.mOpening.blockReason ?? ""}`,
+      );
+      continue;
+    }
     const record = finalizeCollectorDayClose({
       draft: {
         collectorRef: pair.collectorRef,

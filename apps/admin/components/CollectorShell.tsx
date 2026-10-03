@@ -786,11 +786,13 @@ export function CollectorShell({ session, onLogout }: Props) {
   }
 
   async function closeCollectorDay(payload: CollectorCloseDayPayload) {
+    const storedCloses = loadDemoDayCloses<CollectorDayCloseRecord>();
     const chainGuard = assertCanCloseChainedPlanilla({
       collectorRef: payload.collectorRef,
       routeName: payload.planillaRoute,
       date: payload.date,
       records: planillaCashCloses,
+      dayCloses: storedCloses,
     });
     if (!chainGuard.ok) {
       showToast(chainGuard.error);
@@ -831,7 +833,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       expensesFallback: payload.expenses,
       fullyClosed,
       assignments: result.assignments,
-      dayCloses: loadDemoDayCloses<CollectorDayCloseRecord>(),
+      dayCloses: storedCloses,
       dayExpenseDrafts,
       planillaCashCloses,
       monthCloses,

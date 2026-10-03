@@ -94,6 +94,23 @@ para un saldo.** Una fórmula paralela = dos cifras = el error del 2.090.000.
  Candado: `assert-cash-chain.mjs` («Cierre M/T»).
 - Candado: `assert-cash-chain.mjs` exige Historial T · hoy = libro.
 
+### Aparato sin el CIE- de ayer (caso 03/10: Vercel 12.271.000 vs taller 9.410.000)
+
+Un CIE- solo es el Inicial de M si es el del **último día cerrado**. Si el aparato sabe de un
+día cerrado posterior (CIE provisional o PCE-) sin su CIE- sellado, el de antes no sirve.
+
+| Pieza | Regla |
+| --- | --- |
+| Inicial M | `missingPriorDayCie` → no listo (nunca el CIE de anteayer) |
+| Cerrar M/T | `assertCanCloseChainedPlanilla` (con `dayCloses`) lo frena con aviso |
+| Auto-cierre 23:30 del aparato | No sella; lo sella el cron con la nube completa |
+| Auto-revisión | `cie_missing` → baja la nube y rehidrata; si sigue, el monitor lo muestra |
+| Guardado | `writeDemoJson`: el dato primero, la copia `-bak` solo si cabe |
+| Pull | Si un guardado no entra, el pull no es OK («sin espacio en el aparato») |
+| Ciclo | Firma de cierres = ref + `cashFloat` + provisional (no solo ref) |
+
+- Candado: `assert-cash-chain.mjs` sección 22.
+
 ### Ninguna proyección escribe `cash_float`
 
 - `alignDayClosesCollectedToPayments` solo toca `collected` / `expensesTotal`.

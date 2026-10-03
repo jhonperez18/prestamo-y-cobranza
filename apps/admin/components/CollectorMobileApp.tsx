@@ -901,8 +901,9 @@ export function CollectorMobileApp({
         routeName: activePlanillaRoute ?? undefined,
         date: activeDate,
         records: planillaCashCloses,
+        dayCloses,
       }),
-    [activeDate, activePlanillaRoute, collector.ref, planillaCashCloses],
+    [activeDate, activePlanillaRoute, collector.ref, dayCloses, planillaCashCloses],
   );
 
   const carriedOpening = openingSaldoForPeriod(collector.ref, viewPeriod, monthCloses);
