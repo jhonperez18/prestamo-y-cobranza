@@ -171,7 +171,10 @@ export function useOperationalDemoSync(
     pullInFlightRef.current = true;
     try {
       await runMirrorFlush();
-      await Promise.all([pullRemoteCatalogIntoDemo(), pullRemoteOpsIntoDemo({ full: true })]);
+      await Promise.all([
+        pullRemoteCatalogIntoDemo({ full: true }),
+        pullRemoteOpsIntoDemo({ full: true }),
+      ]);
       // Rehidratar siempre: rearma la planilla con las reglas aunque la nube no haya cambiado.
       commitHydrate();
       return true;
@@ -230,10 +233,11 @@ export function useOperationalDemoSync(
       // Primera sincronización del día: cupo libre antes de la bajada completa.
       if (tuneupDay) compactDeviceForDay();
 
-      const payments = await pullRemotePaymentsIntoDemo();
+      const full = Boolean(tuneupDay);
+      const payments = await pullRemotePaymentsIntoDemo({ full });
       const [catalog, ops, users, banks, months] = await Promise.all([
-        pullRemoteCatalogIntoDemo(),
-        pullRemoteOpsIntoDemo({ full: Boolean(tuneupDay) }),
+        pullRemoteCatalogIntoDemo({ full }),
+        pullRemoteOpsIntoDemo({ full }),
         pullRemoteUsersIntoDemo(),
         pullRemoteBankAccountsIntoDemo(),
         pullRemoteMonthClosesIntoDemo(),
@@ -256,7 +260,7 @@ export function useOperationalDemoSync(
       );
       const localClients = readDemoJson(DEMO_CLIENTS_KEY, [] as unknown[]);
       if (!Array.isArray(localClients) || localClients.length === 0) {
-        const again = await pullRemoteCatalogIntoDemo();
+        const again = await pullRemoteCatalogIntoDemo({ full: true });
         changed = changed || again.changed;
       }
       const localBanks = readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []);
@@ -267,9 +271,14 @@ export function useOperationalDemoSync(
       // Sin cambios no se rehace toda la pantalla. Eso era la lentitud en reposo.
       // La puesta a punto del día rehidrata siempre (planilla del día con todo fresco).
       if (changed || tuneupDay) commitHydrate();
-      if (tuneupDay && pullOk && ops.full) markDeviceTuneupDone(tuneupDay);
+      if (tuneupDay && pullOk && payments.full && catalog.full && ops.full) {
+        markDeviceTuneupDone(tuneupDay);
+      }
       try {
-        await reconcileLocalPaymentsToRemote(payments.remoteRefs, payments.remoteVoidedRefs);
+        // Solo contra la lista completa: sin ella el reconcile la volvería a bajar entera.
+        if (payments.full && payments.remoteRefs) {
+          await reconcileLocalPaymentsToRemote(payments.remoteRefs, payments.remoteVoidedRefs);
+        }
         if (!evidenceOnceRef.current) {
           evidenceOnceRef.current = true;
           // Primero bajar fotos a IndexedDB (sin meterlas en el poll de cobros).

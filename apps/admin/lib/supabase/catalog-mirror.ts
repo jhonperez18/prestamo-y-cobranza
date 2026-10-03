@@ -3,6 +3,8 @@
  * @see docs/demo-to-backend.md
  */
 import { createMirrorServerClient, mirrorUsesServiceRole } from "@/lib/supabase/admin";
+import { fetchRowsChangedSince } from "@/lib/supabase/changed-since";
+import { createIncrementalPull, withSinceParam } from "@/lib/incremental-pull";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import type { ClientRow, LoanRow, StatusKind } from "@/lib/mock-data";
 import {
@@ -439,17 +441,28 @@ export async function mirrorLoanToSupabase(loan: LoanRow) {
   return { ok: true as const };
 }
 
-export async function fetchClientsFromSupabase() {
+/** `since`: solo filas que cambiaron o se crearon desde ese corte (incluye bajas por estado). */
+export async function fetchClientsFromSupabase(since: string | null = null) {
   const supabase = createMirrorClient();
   if (!supabase) return { ok: true as const, skipped: true as const, reason: mirrorSkipReason(), rows: [] as ClientMirrorRow[] };
+  if (since) {
+    const changed = await fetchRowsChangedSince<ClientMirrorRow>(supabase, "clients", "*", since);
+    if (!changed.ok) return { ok: false as const, error: changed.error, rows: [] as ClientMirrorRow[] };
+    return { ok: true as const, rows: changed.rows };
+  }
   const { data, error } = await supabase.from("clients").select("*").order("updated_at", { ascending: false }).limit(5000);
   if (error) return { ok: false as const, error: error.message, rows: [] as ClientMirrorRow[] };
   return { ok: true as const, rows: (data ?? []) as ClientMirrorRow[] };
 }
 
-export async function fetchLoansFromSupabase() {
+export async function fetchLoansFromSupabase(since: string | null = null) {
   const supabase = createMirrorClient();
   if (!supabase) return { ok: true as const, skipped: true as const, reason: mirrorSkipReason(), rows: [] as LoanMirrorRow[] };
+  if (since) {
+    const changed = await fetchRowsChangedSince<LoanMirrorRow>(supabase, "loans", "*", since);
+    if (!changed.ok) return { ok: false as const, error: changed.error, rows: [] as LoanMirrorRow[] };
+    return { ok: true as const, rows: changed.rows };
+  }
   const { data, error } = await supabase.from("loans").select("*").order("updated_at", { ascending: false }).limit(5000);
   if (error) return { ok: false as const, error: error.message, rows: [] as LoanMirrorRow[] };
   return { ok: true as const, rows: (data ?? []) as LoanMirrorRow[] };
@@ -677,38 +690,62 @@ export type PullCatalogResult = {
   ok: boolean;
   changed: boolean;
   reason?: string;
+  /** true = bajó la lista completa de clientes y préstamos. */
+  full?: boolean;
 };
 
-/** Pull clientes + préstamos. Cola/escudo y updatedAt local ganan sobre remoto viejo. */
-export async function pullRemoteCatalogIntoDemo(): Promise<PullCatalogResult> {
+type CatalogListBody<Key extends "clients" | "loans", Row> = {
+  ok?: boolean;
+  skipped?: boolean;
+  error?: string;
+  incremental?: boolean;
+  cursor?: string;
+} & { [K in Key]?: Row[] };
+
+/** Lista completa al abrir, cada 10 min, al reparar y en la puesta a punto; entre medio solo lo cambiado. */
+const catalogPull = createIncrementalPull();
+
+/**
+ * Pull clientes + préstamos. Cola/escudo y updatedAt local ganan sobre remoto viejo.
+ * `full`: lista completa; si no, solo lo cambiado (una parcial nunca borra lo que no vino).
+ */
+export async function pullRemoteCatalogIntoDemo(
+  opts: { full?: boolean } = {},
+): Promise<PullCatalogResult> {
   if (typeof window === "undefined") {
     return { ok: true, changed: false, reason: "ssr" };
   }
+  const startedAt = Date.now();
+  const localEmpty =
+    readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []).length === 0 ||
+    readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []).length === 0;
+  const since = catalogPull.sinceFor(Boolean(opts.full) || localEmpty);
+  const { cursor, ...result } = await mergeRemoteCatalog(since);
+  catalogPull.settle({ ok: result.ok, full: Boolean(result.full), cursor }, startedAt);
+  return result;
+}
+
+/** `cursor` solo si clientes y préstamos entraron enteros al aparato. */
+async function mergeRemoteCatalog(
+  since: string | null,
+): Promise<PullCatalogResult & { cursor?: string | null }> {
   try {
     const [clientsRes, loansRes] = await Promise.all([
-      fetch("/api/clients", { cache: "no-store" }),
-      fetch("/api/loans", { cache: "no-store" }),
+      fetch(withSinceParam("/api/clients", since), { cache: "no-store" }),
+      fetch(withSinceParam("/api/loans", since), { cache: "no-store" }),
     ]);
-    const clientsBody = (await clientsRes.json()) as {
-      ok?: boolean;
-      clients?: ClientMirrorRow[];
-      skipped?: boolean;
-      error?: string;
-    };
-    const loansBody = (await loansRes.json()) as {
-      ok?: boolean;
-      loans?: LoanMirrorRow[];
-      skipped?: boolean;
-      error?: string;
-    };
+    const clientsBody = (await clientsRes.json()) as CatalogListBody<"clients", ClientMirrorRow>;
+    const loansBody = (await loansRes.json()) as CatalogListBody<"loans", LoanMirrorRow>;
 
     if (!clientsRes.ok || !clientsBody.ok) {
       return { ok: false, changed: false, reason: clientsBody.error || "clients_pull_failed" };
     }
 
+    const full = !clientsBody.incremental && !loansBody.incremental;
     let changed = false;
     let loansOk = true;
     let loansReason: string | undefined;
+    const unsaved: string[] = [];
 
     if (!clientsBody.skipped) {
       const remoteAll = (clientsBody.clients ?? [])
@@ -716,7 +753,9 @@ export async function pullRemoteCatalogIntoDemo(): Promise<PullCatalogResult> {
         .filter((row): row is ClientRow => Boolean(row));
       const learnedDeletes = learnRemoteClientDeletes(remoteAll);
       const remote = remoteAll.filter((row) => !isClientDeletedStatus(row));
-      if (loansRes.ok && loansBody.ok && !loansBody.skipped) {
+      // Solo contra listas completas: con una parcial, un cliente con préstamo que no vino
+      // se vería «sin préstamos» y se encolaría su baja.
+      if (full && loansRes.ok && loansBody.ok && !loansBody.skipped) {
         queueLocalClientDeletesToCloud(
           remote,
           new Set((loansBody.loans ?? []).map((row) => row.client_ref)),
@@ -733,7 +772,9 @@ export async function pullRemoteCatalogIntoDemo(): Promise<PullCatalogResult> {
       }
       const merge = mergeByRefPreferPendingLocal(local, remote, pendingByRef, clientSignature);
       if (merge.changed || learnedDeletes || (local.length === 0 && remote.length > 0)) {
-        writeDemoJson(DEMO_CLIENTS_KEY, merge.merged.length ? merge.merged : remote);
+        if (!writeDemoJson(DEMO_CLIENTS_KEY, merge.merged.length ? merge.merged : remote)) {
+          unsaved.push("clientes");
+        }
         changed = true;
       }
       const remoteByRef = new Map(remoteAll.map((row) => [row.ref, row]));
@@ -756,7 +797,7 @@ export async function pullRemoteCatalogIntoDemo(): Promise<PullCatalogResult> {
       const pendingByRef = new Map(pendingLoans.map((row) => [row.ref, row]));
       const merge = mergeByRefPreferPendingLocal(local, remote, pendingByRef, loanSignature);
       if (merge.changed || learnedDeletes) {
-        writeDemoJson(DEMO_LOANS_KEY, merge.merged);
+        if (!writeDemoJson(DEMO_LOANS_KEY, merge.merged)) unsaved.push("préstamos");
         changed = true;
       }
     }
@@ -764,11 +805,19 @@ export async function pullRemoteCatalogIntoDemo(): Promise<PullCatalogResult> {
     if (clientsBody.skipped && (!loansOk || loansBody.skipped)) {
       return { ok: loansOk, changed: false, reason: loansReason || "skipped" };
     }
+    // Lo que no entró al aparato no vuelve en una bajada parcial: el pull no es OK.
+    if (unsaved.length) {
+      return { ok: false, changed, full, reason: `sin espacio en el aparato: ${unsaved.join(", ")}` };
+    }
 
+    const complete = loansOk && !clientsBody.skipped && !loansBody.skipped;
+    const cursors = [clientsBody.cursor, loansBody.cursor].filter((c): c is string => Boolean(c));
     return {
       ok: true,
       changed,
+      full,
       reason: loansOk ? undefined : loansReason,
+      cursor: complete && cursors.length === 2 ? cursors.sort()[0] : null,
     };
   } catch (err) {
     return {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchLoansFromSupabase } from "@/lib/supabase/catalog-mirror";
+import { changedSinceCursor, readChangedSince } from "@/lib/supabase/changed-since";
 import { isVirginWriteLocked, virginWriteLockPayload } from "@/lib/virgin-lock";
 import { processCollectorPayApi } from "@/lib/supabase/process-collector-pay-api";
 import type { CollectorPayApiBody } from "@/lib/collector-pay-submit";
@@ -14,16 +15,19 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-export async function GET() {
+/** `?since=` → solo lo que cambió o se creó desde ese corte (`incremental: true`). */
+export async function GET(request: Request) {
   try {
-    const result = await fetchLoansFromSupabase();
+    const cursor = changedSinceCursor();
+    const since = readChangedSince(request);
+    const result = await fetchLoansFromSupabase(since);
     if ("skipped" in result && result.skipped) {
       return NextResponse.json({ ok: true, skipped: true, reason: result.reason, loans: [] });
     }
     if (!result.ok) {
       return NextResponse.json({ ok: false, error: result.error, loans: [] }, { status: 502 });
     }
-    return NextResponse.json({ ok: true, loans: result.rows });
+    return NextResponse.json({ ok: true, incremental: Boolean(since), cursor, loans: result.rows });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";
     return NextResponse.json({ ok: false, error: message, loans: [] }, { status: 500 });

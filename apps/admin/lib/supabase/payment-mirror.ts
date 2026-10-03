@@ -5,6 +5,8 @@
  * @see docs/operational-money.md
  */
 import { createMirrorServerClient, mirrorUsesServiceRole } from "@/lib/supabase/admin";
+import { fetchRowsChangedSince } from "@/lib/supabase/changed-since";
+import { createIncrementalPull, withSinceParam } from "@/lib/incremental-pull";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import type { LoanRow, PaymentRow, StatusKind } from "@/lib/mock-data";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
@@ -545,9 +547,11 @@ const PAYMENT_MONEY_COLUMNS =
  * Lectura desde Supabase.
  * La lista de cobros no trae la foto: eso es 1,6 MB que traban la pantalla en reposo.
  * `evidence: true` solo cuando hay que subir una constancia que este aparato tiene y la nube no.
+ * `since`: solo los cobros que cambiaron o se crearon desde ese corte (sin foto).
  */
 export async function fetchPaymentsFromSupabase(options?: {
   evidence?: boolean;
+  since?: string | null;
 }): Promise<FetchPaymentsResult> {
   const client = createMirrorClient();
   if (!client) {
@@ -558,6 +562,16 @@ export async function fetchPaymentsFromSupabase(options?: {
       reason: pub && !mirrorUsesServiceRole() ? "service_role_missing" : "supabase_not_configured",
       rows: [],
     };
+  }
+
+  if (options?.since) {
+    const changed = await fetchRowsChangedSince<PaymentMirrorRow>(
+      client,
+      "payments",
+      PAYMENT_MONEY_COLUMNS,
+      options.since,
+    );
+    return changed.ok ? { ok: true, rows: changed.rows } : { ok: false, error: changed.error, rows: [] };
   }
 
   const query = options?.evidence
@@ -927,7 +941,9 @@ export type PullPaymentsResult = {
   reason?: string;
   /** Lista fusionada. El cobrador la pinta aunque el estado del panel venga vacío. */
   rows?: PaymentRow[];
-  /** Refs que ya vinieron en esta bajada. El reconcile no vuelve a pedir la lista. */
+  /** true = bajó la lista completa (el reconcile solo compara contra una lista completa). */
+  full?: boolean;
+  /** Refs de la lista completa. El reconcile no vuelve a pedirla. Parcial = sin refs. */
   remoteRefs?: string[];
   remoteVoidedRefs?: string[];
 };
@@ -937,24 +953,41 @@ export type PullPaymentsResult = {
  * `changed` incluye refs nuevos o dinero remoto distinto.
  */
 let livePaymentCache: PaymentRow[] | null = null;
-let paymentListFlight: Promise<PaymentMirrorRow[] | null> | null = null;
+type PaymentListBody = { rows: PaymentMirrorRow[]; full: boolean; cursor: string | null };
+const paymentListFlights = new Map<string, Promise<PaymentListBody | null>>();
+/** Lista completa al abrir, cada 10 min y en la puesta a punto; entre medio solo lo cambiado. */
+const paymentsPull = createIncrementalPull();
 
-/** Una sola bajada de la lista. Las llamadas que coinciden esperan la misma. */
-function fetchPaymentList(): Promise<PaymentMirrorRow[] | null> {
-  if (paymentListFlight) return paymentListFlight;
-  paymentListFlight = (async () => {
-    const res = await fetch("/api/payments", { cache: "no-store" });
+/** Una sola bajada por corte. Las llamadas que coinciden esperan la misma. */
+function fetchPaymentListBody(since: string | null): Promise<PaymentListBody | null> {
+  const key = since ?? "full";
+  const inFlight = paymentListFlights.get(key);
+  if (inFlight) return inFlight;
+  const flight = (async () => {
+    const res = await fetch(withSinceParam("/api/payments", since), { cache: "no-store" });
     const body = (await res.json()) as {
       ok?: boolean;
       payments?: PaymentMirrorRow[];
       skipped?: boolean;
+      incremental?: boolean;
+      cursor?: string;
     };
     if (!res.ok || !body.ok || body.skipped) return null;
-    return body.payments ?? [];
+    return {
+      rows: body.payments ?? [],
+      full: !body.incremental,
+      cursor: body.cursor ?? null,
+    };
   })().finally(() => {
-    paymentListFlight = null;
+    paymentListFlights.delete(key);
   });
-  return paymentListFlight;
+  paymentListFlights.set(key, flight);
+  return flight;
+}
+
+/** Lista completa de cobros de la base (reconcile y panel sin caché). */
+async function fetchPaymentList(): Promise<PaymentMirrorRow[] | null> {
+  return (await fetchPaymentListBody(null))?.rows ?? null;
 }
 
 /** Cobros de la base. Sobrevive a un remount del panel. */
@@ -970,14 +1003,35 @@ export async function loadLivePaymentRows(): Promise<PaymentRow[]> {
   return rows;
 }
 
-export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> {
+/**
+ * `full`: lista completa (al abrir, cada 10 min, puesta a punto); si no, solo lo cambiado.
+ * Una bajada parcial nunca borra cobros locales y no trae `remoteRefs` (el reconcile
+ * solo compara contra la lista completa).
+ */
+export async function pullRemotePaymentsIntoDemo(
+  opts: { full?: boolean } = {},
+): Promise<PullPaymentsResult> {
   if (typeof window === "undefined") {
     return { ok: true, added: 0, changed: false, skipped: true, reason: "ssr" };
   }
 
+  const startedAt = Date.now();
+  const localCount = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []).length;
+  const since = paymentsPull.sinceFor(Boolean(opts.full) || localCount === 0);
+  const result = await mergeRemotePayments(since);
+  paymentsPull.settle(
+    { ok: result.ok && !result.skipped, full: Boolean(result.full), cursor: result.cursor },
+    startedAt,
+  );
+  return result;
+}
+
+async function mergeRemotePayments(
+  since: string | null,
+): Promise<PullPaymentsResult & { cursor?: string | null }> {
   try {
-    const listed = await fetchPaymentList();
-    if (!listed) {
+    const body = await fetchPaymentListBody(since);
+    if (!body) {
       return {
         ok: false,
         added: 0,
@@ -985,6 +1039,7 @@ export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> 
         reason: "payments_list_failed",
       };
     }
+    const listed = body.rows;
 
     const remote = enrichClientNames(
       listed
@@ -1004,7 +1059,10 @@ export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> 
     }
     const { merged, added, changed } = mergePaymentsByRef(local, remote, readMirrorQueue());
     if (changed || merged.length !== local.length) {
-      writeDemoJson(DEMO_PAYMENTS_KEY, merged);
+      // Lo que no entró al aparato no vuelve en una bajada parcial: el pull no es OK.
+      if (!writeDemoJson(DEMO_PAYMENTS_KEY, merged)) {
+        return { ok: false, added: 0, changed: false, reason: "sin espacio en el aparato: cobros" };
+      }
     }
     // Misma lista que acaba de bajar: loadLivePaymentRows no re-fetcha en el mismo ciclo.
     livePaymentCache = merged.length > 0 ? merged : livePaymentCache;
@@ -1013,8 +1071,14 @@ export async function pullRemotePaymentsIntoDemo(): Promise<PullPaymentsResult> 
       added,
       changed: changed || merged.length !== local.length,
       rows: merged,
-      remoteRefs: remote.map((row) => row.ref),
-      remoteVoidedRefs: remote.filter(paymentIsVoided).map((row) => row.ref),
+      full: body.full,
+      cursor: body.cursor,
+      ...(body.full
+        ? {
+            remoteRefs: remote.map((row) => row.ref),
+            remoteVoidedRefs: remote.filter(paymentIsVoided).map((row) => row.ref),
+          }
+        : {}),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : "pull_failed";

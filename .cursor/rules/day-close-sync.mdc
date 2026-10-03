@@ -37,9 +37,11 @@ Misma fuerza que un cobro `PG-`: local primero, luego nube; el pull no reabre.
 | --- | --- |
 | Revisión 6:00 | Vercel Cron `0 11 * * *` → `/api/ops/morning-check`: sella lo pendiente (mismo motor 23:30) y revisa hojas pasadas abiertas, días cerrados sin CIE-, Inicial de hoy. No borra nada. Informe en Configuración → Aparatos |
 | Aparato, 1.ª sync del día | `device-daily-tuneup`: subir cola → `compactRebuildableStorage` (solo copias -bak que la nube rehace) → bajada completa → rehidratar |
-| Bajada de planilla | Completa al abrir, cada 10 min y al reparar; entre medio `?since=` (solo lo cambiado). Parcial nunca borra lo que no vino; reconcile solo con lista completa |
+| Bajada liviana (planilla, cobros, clientes, préstamos) | Completa al abrir, cada 10 min, al reparar y en la puesta a punto; entre medio `?since=` (`lib/incremental-pull.ts`) |
+| Qué trae la parcial | Filas con `updated_at` **o** `created_at` ≥ corte − 2 min (`lib/supabase/changed-since.ts`). El corte es la hora del servidor, nunca la del celular. `created_at` atrapa el alta que sube tarde con hora vieja |
+| Qué no hace la parcial | No borra lo que no vino; no corre reconcile de cobros/planilla ni bajas de clientes (solo con lista completa). Si no entra al aparato → la próxima es completa |
 
-- Candado: `assert-cash-chain.mjs` sección 23.
+- Candado: `assert-cash-chain.mjs` secciones 23 y 24.
 
 ## Prohibido
 

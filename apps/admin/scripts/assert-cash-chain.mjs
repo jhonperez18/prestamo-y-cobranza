@@ -1771,6 +1771,63 @@ console.log("— Revisión de la mañana y puesta a punto —");
   }
 }
 
+// 24. Bajada liviana (cobros, clientes, préstamos, planilla): completa al abrir, cada 10 min,
+//     al reparar y en la puesta a punto; entre medio solo lo que cambió o se creó desde el
+//     corte del servidor. Una parcial nunca borra lo que no vino.
+console.log("— Bajada liviana —");
+{
+  const { createIncrementalPull, withSinceParam, FULL_PULL_EVERY_MS } = await import("@/lib/incremental-pull");
+  const { readChangedSince, changedSinceFilter, CHANGED_SINCE_OVERLAP_MS } = await import(
+    "@/lib/supabase/changed-since"
+  );
+  const { mergePaymentsByRef } = await import("@/lib/supabase/payment-mirror");
+
+  const pull = createIncrementalPull();
+  const t0 = Date.parse("2026-10-03T11:00:00.000Z");
+  expect("Bajada: sin corte = completa", pull.sinceFor(false, t0), null);
+  pull.settle({ ok: true, full: true, cursor: "2026-10-03T11:00:00.000Z" }, t0);
+  expect("Bajada: tras la completa = parcial con el corte del servidor", pull.sinceFor(false, t0 + 45_000), "2026-10-03T11:00:00.000Z");
+  expect("Bajada: forzada (reparar / puesta a punto) = completa", pull.sinceFor(true, t0 + 45_000), null);
+  expect("Bajada: a los 10 min = completa", pull.sinceFor(false, t0 + FULL_PULL_EVERY_MS), null);
+  pull.settle({ ok: true, full: false, cursor: "2026-10-03T11:00:45.000Z" }, t0 + 45_000);
+  expect("Bajada: la parcial no reinicia el reloj de la completa", pull.sinceFor(false, t0 + FULL_PULL_EVERY_MS), null);
+  pull.settle({ ok: false, full: false, cursor: "2026-10-03T11:01:30.000Z" }, t0 + 90_000);
+  expect("Bajada: si falla (o no entró al aparato), la próxima es completa", pull.sinceFor(false, t0 + 120_000), null);
+
+  const req = new Request(`http://x/api/payments?since=${encodeURIComponent("2026-10-03T11:00:00.000Z")}`);
+  expect(
+    "Servidor: repasa el margen hacia atrás",
+    readChangedSince(req),
+    new Date(Date.parse("2026-10-03T11:00:00.000Z") - CHANGED_SINCE_OVERLAP_MS).toISOString(),
+  );
+  expect("Servidor: sin since = lista completa", readChangedSince(new Request("http://x/api/payments")), null);
+  expect(
+    "Servidor: atrapa el alta con hora vieja del aparato (created_at)",
+    changedSinceFilter("2026-10-03T10:58:00.000Z"),
+    'updated_at.gte."2026-10-03T10:58:00.000Z",created_at.gte."2026-10-03T10:58:00.000Z"',
+  );
+  expect("Aparato: since en la URL", withSinceParam("/api/loans", "2026-10-03T11:00:00.000Z"), "/api/loans?since=2026-10-03T11%3A00%3A00.000Z");
+  expect("Aparato: completa sin since", withSinceParam("/api/loans", null), "/api/loans");
+
+  const pg = (ref, amount) => ({
+    ref,
+    loan: "P-1",
+    client: "Cliente",
+    collector: "Cristian",
+    amount,
+    date: "03/10/2026",
+    method: "Efectivo",
+    source: "pwa",
+  });
+  const localPays = [pg("PG-1", 50_000), pg("PG-2", 30_000), pg("PG-3", 20_000)];
+  const partial = mergePaymentsByRef(localPays, [pg("PG-4", 40_000)], []);
+  expect(
+    "Cobros: la parcial suma lo nuevo y conserva todo lo local",
+    partial.merged.map((p) => p.ref).sort().join(","),
+    "PG-1,PG-2,PG-3,PG-4",
+  );
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);
