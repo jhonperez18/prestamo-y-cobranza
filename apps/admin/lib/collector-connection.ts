@@ -4,6 +4,7 @@
  */
 import type { CollectorRow } from "@/lib/mock-data";
 import type { DeviceStatus } from "@/lib/device-status";
+import { isStorageFullError } from "@/lib/device-storage-alerts";
 
 export type ConnectionLevel = "ok" | "warn" | "alert" | "none";
 
@@ -81,7 +82,13 @@ export function collectorConnection(own: DeviceStatus[], now: number): Collector
   const reasons: string[] = [];
   if (pendingTotal > 0) reasons.push(`${pendingTotal} cambio(s) sin subir a la nube`);
   if (newDevice) reasons.push("Se conectó desde un aparato nuevo");
-  if (!latest.lastPullOk) reasons.push("La última vez no pudo bajar la nube (sin internet)");
+  if (!latest.lastPullOk) {
+    reasons.push(
+      isStorageFullError(latest.lastPullError)
+        ? "Sin espacio en el aparato: no guarda lo que baja de la nube"
+        : "La última vez no pudo bajar la nube (sin internet)",
+    );
+  }
   if (stale) reasons.push("Más de 30 min sin conectarse");
 
   const level: ConnectionLevel =

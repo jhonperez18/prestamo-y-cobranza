@@ -4,6 +4,7 @@
  */
 import { APP_BUILD } from "@/lib/app-build";
 import { readSession } from "@/lib/auth";
+import { bigDemoStoreActive } from "@/lib/big-demo-store";
 
 export type DeviceStatus = {
   deviceId: string;
@@ -22,6 +23,10 @@ export type DeviceStatus = {
   healthSummary: string;
   /** Se reparó y sigue: hay que revisar ese aparato. */
   healthPersistent: boolean;
+  /** Miles de caracteres ocupados en localStorage (cupo ~5.120). */
+  storageUsedKb: number;
+  /** Planilla y rutas ya viven en IndexedDB. */
+  bigStore: boolean;
   reportedAt: string;
   /** Primera vez que la nube vio este aparato (fecha del archivo en Storage, la pone el servidor). */
   firstSeenAt: string;
@@ -61,6 +66,8 @@ export function normalizeDeviceStatus(raw: unknown): DeviceStatus | null {
     healthIssues: Math.max(0, Math.trunc(Number(row.healthIssues) || 0)),
     healthSummary: text(row.healthSummary, 200),
     healthPersistent: row.healthPersistent === true,
+    storageUsedKb: Math.max(0, Math.trunc(Number(row.storageUsedKb) || 0)),
+    bigStore: row.bigStore === true,
     reportedAt: text(row.reportedAt, 40),
     firstSeenAt: text(row.firstSeenAt, 40),
   };
@@ -78,6 +85,19 @@ function deviceId(): string {
     return created;
   } catch {
     return "";
+  }
+}
+
+function localStorageUsedKb(): number {
+  try {
+    let chars = 0;
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i) ?? "";
+      chars += key.length + (window.localStorage.getItem(key)?.length ?? 0);
+    }
+    return Math.round(chars / 1024);
+  } catch {
+    return 0;
   }
 }
 
@@ -112,6 +132,8 @@ export async function reportDeviceStatus(input: {
     healthIssues,
     healthSummary: input.health?.summary ?? "",
     healthPersistent: input.health?.persistent === true,
+    storageUsedKb: localStorageUsedKb(),
+    bigStore: bigDemoStoreActive(),
     reportedAt: new Date(now).toISOString(),
     firstSeenAt: "",
   };

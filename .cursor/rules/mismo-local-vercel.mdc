@@ -36,6 +36,9 @@ La clave sí coincidía. `localStorage` estaba lleno de fotos (`previewUrl` con 
    `writeDemoJson` las sirven igual; nadie las lee directo. Sin IndexedDB siguen en `localStorage`.
 8. Cupo lleno: primero copias `-bak` rehacibles, después las `-bak` de cobros/préstamos/clientes/usuarios
    (`freeCatalogBackups`). Nunca el dato principal ni las colas. Candado: `assert-cash-chain.mjs` sección 26.
+9. Alarma de cupo (`lib/device-storage-alerts.ts`): cada aparato reporta `storageUsedKb` y si guarda lo que baja.
+   «Sin espacio» o ≥ 70 % → alarma en la revisión 6:00 («Aparatos guardan lo que bajan»), en `verify:prod`
+   (`ALERTA …`) y en el panel de aparatos. El cliente nunca debe ser el primero en verlo.
 
 ## Prohibido
 

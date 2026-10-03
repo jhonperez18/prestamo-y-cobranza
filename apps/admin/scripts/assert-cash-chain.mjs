@@ -1967,6 +1967,34 @@ console.log("— Cupo del aparato —");
     delete globalThis.indexedDB;
     globalThis.BroadcastChannel = prevBroadcast;
   }
+
+  const { deviceStorageAlerts, DEVICE_STORAGE_WARN_KB } = await import("@/lib/device-storage-alerts");
+  const nowMs = Date.parse("2026-10-03T18:00:00Z");
+  const device = (over) => ({
+    deviceId: "dev-12345678",
+    userName: "Carlos",
+    roleName: "Supervisor",
+    host: "prestamo-y-cobranza.vercel.app",
+    build: "x",
+    lastPullOk: true,
+    lastPullError: "",
+    storageUsedKb: 1000,
+    reportedAt: "2026-10-03T17:40:00Z",
+    ...over,
+  });
+  expect(
+    "Alarma: aparato que no guarda lo que baja",
+    deviceStorageAlerts([device({ lastPullOk: false, lastPullError: "cobros: sin espacio en el aparato: cobros" })], nowMs).length,
+    1,
+  );
+  expect("Alarma: almacenamiento al 70 %", deviceStorageAlerts([device({ storageUsedKb: DEVICE_STORAGE_WARN_KB })], nowMs).length, 1);
+  expect("Alarma: aparato sano no alerta", deviceStorageAlerts([device({})], nowMs).length, 0);
+  expect("Alarma: sin internet no es falta de espacio", deviceStorageAlerts([device({ lastPullOk: false, lastPullError: "fetch failed" })], nowMs).length, 0);
+  expect(
+    "Alarma: aparato que no se usa hace días no cuenta",
+    deviceStorageAlerts([device({ lastPullOk: false, lastPullError: "sin espacio", reportedAt: "2026-09-30T10:00:00Z" })], nowMs).length,
+    0,
+  );
 }
 
 if (failures) {

@@ -252,6 +252,23 @@ async function assertCashChain() {
   console.log("Regla de inicio OK");
 }
 
+/** Aviso (no frena el deploy: puede ser justo el que lo arregla). */
+async function reportDeviceStorage() {
+  console.log("Comprobando aparatos (¿guardan lo que bajan?)…");
+  let data;
+  try {
+    data = await fetchJson(`${DOMAIN}/api/ops/devices`);
+  } catch (err) {
+    console.error(`AVISO: monitor de aparatos → ${err?.message || err}`);
+    return;
+  }
+  const alerts = data.storageAlerts ?? [];
+  for (const a of alerts) {
+    console.error(`  ALERTA ${a.userName} (${a.roleName}, ${a.host}, build ${a.build}): ${a.reason}`);
+  }
+  console.log(alerts.length ? `Aparatos con alarma: ${alerts.length} (recargar con este build)` : "Aparatos OK");
+}
+
 const mode = process.argv[2] || "verify";
 
 const branch = capture("git rev-parse --abbrev-ref HEAD");
@@ -302,6 +319,7 @@ if (mode === "verify") {
   await assertServiceRole();
   await assertCatalogHealth();
   await assertCashChain();
+  await reportDeviceStorage();
   console.log(
     `\nListo de verdad. Login → build ${expect}. Catálogo SQL + service role + regla de inicio verificados.`,
   );
@@ -326,6 +344,7 @@ if (mode === "force") {
   await assertLoginBuild(sha);
   await assertCatalogHealth();
   await assertCashChain();
+  await reportDeviceStorage();
   console.log(`\nListo → ${DOMAIN}`);
   console.log(`Login debe mostrar: Código en este sitio: ${sha}`);
   process.exit(0);

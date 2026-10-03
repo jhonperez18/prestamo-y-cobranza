@@ -12,6 +12,8 @@ import { planillaWindowStartIso } from "@/lib/planilla-window";
 import { auditChainFromState } from "@/lib/server-chain-audit";
 import { loadOperationalStateFromCloud, runServerDayRollover } from "@/lib/server-day-rollover";
 import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { listDeviceStatuses } from "@/lib/supabase/device-status-mirror";
+import { deviceStorageAlerts } from "@/lib/device-storage-alerts";
 
 export type MorningCheckItem = { label: string; ok: boolean; detail: string };
 
@@ -119,7 +121,22 @@ export async function runServerMorningCheck(now = new Date()): Promise<MorningCh
   } else {
     items.push(...evaluateMorningState(loaded.state, businessDate, planillaWindowStartIso(now)));
   }
+  items.push(await devicesStorageItem(now));
   return { ok: items.every((item) => item.ok), ranAt, businessDate, items };
+}
+
+async function devicesStorageItem(now: Date): Promise<MorningCheckItem> {
+  const label = "Aparatos guardan lo que bajan";
+  const listed = await listDeviceStatuses();
+  if (!listed.ok) return { label, ok: false, detail: `No se pudo leer el monitor: ${listed.error}` };
+  const alerts = deviceStorageAlerts(listed.devices, now.getTime());
+  return {
+    label,
+    ok: alerts.length === 0,
+    detail: alerts.length
+      ? alerts.map((a) => `${a.userName} (${a.roleName}, ${a.host}): ${a.reason}`).join(" · ")
+      : "Todos con espacio",
+  };
 }
 
 function storageClient() {
