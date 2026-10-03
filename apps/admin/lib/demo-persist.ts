@@ -20,6 +20,13 @@ import {
   mergeStoredPaymentsWithSeed,
   normalizeAllPayments,
 } from "@/lib/payment-detail";
+import {
+  bigDemoStoreActive,
+  bigDemoStoreFailures,
+  isBigDemoKey,
+  readBigDemoRaw,
+  writeBigDemoRaw,
+} from "@/lib/big-demo-store";
 
 export const DEMO_USERS_KEY = "nexo-demo-users";
 /** Clave breve usada en un deploy; se migra de vuelta a DEMO_USERS_KEY. */
@@ -121,8 +128,18 @@ export function ensureInvalidPlanillaPurgedOnce() {
   disarmLegacyWipes();
 }
 
+/** Planilla y rutas del día: en IndexedDB (memoria), sin copia -bak. */
+function bigKeyOf(key: string): { key: string; backup: boolean } | null {
+  if (!bigDemoStoreActive()) return null;
+  if (isBigDemoKey(key)) return { key, backup: false };
+  const base = key.endsWith("-bak") ? key.slice(0, -4) : "";
+  return base && isBigDemoKey(base) ? { key: base, backup: true } : null;
+}
+
 function readRaw(key: string): string | null {
   if (typeof window === "undefined") return null;
+  const big = bigKeyOf(key);
+  if (big) return big.backup ? null : readBigDemoRaw(big.key);
   try {
     return window.localStorage.getItem(key);
   } catch {
@@ -276,7 +293,18 @@ export function compactRebuildableStorage() {
   freeDemoBackups();
 }
 
-/** Cupo lleno, paso 2 (último recurso): colas de subida. */
+/**
+ * Cupo lleno, paso 2: copias -bak de cobros, préstamos, clientes y usuarios. La nube las
+ * rehace; la clave principal y las colas siguen. Sin esto el pull no entraba y el aparato
+ * se quedaba con el día anterior (supervisor 03/10).
+ */
+function freeCatalogBackups() {
+  for (const key of [DEMO_PAYMENTS_KEY, DEMO_LOANS_KEY, DEMO_CLIENTS_KEY, DEMO_USERS_KEY]) {
+    window.localStorage.removeItem(backupKey(key));
+  }
+}
+
+/** Cupo lleno, último recurso (solo si ni la sesión cabe): colas de subida. */
 function freeDemoMirrorQueues() {
   for (const key of MIRROR_QUEUE_KEYS) {
     window.localStorage.removeItem(key);
@@ -291,6 +319,7 @@ function freeDemoMirrorQueues() {
 export function freeDemoStorageQuota() {
   if (typeof window === "undefined") return;
   freeDemoBackups();
+  freeCatalogBackups();
   freeDemoMirrorQueues();
 }
 
@@ -303,7 +332,7 @@ const storageWriteFailures = new Set<string>();
  */
 export function writeDemoJson(key: string, value: unknown): boolean {
   if (typeof window === "undefined") return false;
-  const steps = [() => undefined, freeDemoBackups];
+  const steps = [() => undefined, freeDemoBackups, freeCatalogBackups];
   for (const free of steps) {
     try {
       free();
@@ -324,7 +353,7 @@ export function writeDemoJson(key: string, value: unknown): boolean {
 }
 
 export function demoStorageWriteFailures(): string[] {
-  return [...storageWriteFailures];
+  return [...new Set([...storageWriteFailures, ...bigDemoStoreFailures()])];
 }
 
 /** La foto no entra a localStorage. El cobro sí: monto, fecha, método, ref. */
@@ -350,7 +379,17 @@ function backupPayload(raw: string) {
  */
 const NO_BACKUP_KEYS: readonly string[] = [...MIRROR_QUEUE_KEYS, DEMO_DAILY_ASSIGNMENTS_KEY];
 
+function setRaw(key: string, raw: string) {
+  const big = bigKeyOf(key);
+  if (big) {
+    if (!big.backup) writeBigDemoRaw(big.key, raw);
+    return;
+  }
+  window.localStorage.setItem(key, raw);
+}
+
 function writeBackup(key: string, raw: string) {
+  if (bigKeyOf(key)) return;
   if (NO_BACKUP_KEYS.includes(key)) {
     if (key === DEMO_DAILY_ASSIGNMENTS_KEY) window.localStorage.removeItem(backupKey(key));
     return;
@@ -402,7 +441,7 @@ function writeDemoJsonOnce(key: string, value: unknown) {
       keepBackup(key, prev!);
       return;
     }
-    window.localStorage.setItem(key, next);
+    setRaw(key, next);
     // Nunca respaldar un [] encima de un bak con datos (salvo paquete virgen).
     if (prev) keepBackup(key, wipingArray ? next : prev);
   } catch (error) {
@@ -835,7 +874,7 @@ export function importDemoSnapshot(raw: string): { ok: true } | { ok: false; err
     }
     for (const [key, value] of Object.entries(parsed.keys)) {
       if (!key.startsWith("nexo-demo-")) continue;
-      window.localStorage.setItem(key, JSON.stringify(value));
+      setRaw(key, JSON.stringify(value));
     }
     return { ok: true };
   } catch {

@@ -12,6 +12,7 @@ import {
 } from "@/lib/auth";
 import { bootstrapProtectedDemoData } from "@/lib/bootstrap-demo-data";
 import { parkLocalBlobs } from "@/lib/evidence-idb";
+import { hydrateBigDemoStore } from "@/lib/big-demo-store";
 import { syncDemoStorageToServedBuild } from "@/lib/demo-build-sync";
 import { refreshServedBuildOrReload } from "@/lib/bust-client-cache";
 import {
@@ -63,6 +64,7 @@ export function AuthGate({ channel = "sistema" }: Props) {
     async function boot() {
       try {
         await parkLocalBlobs();
+        await hydrateBigDemoStore();
         const liveBuild = await refreshServedBuildOrReload();
         syncDemoStorageToServedBuild(liveBuild || undefined);
         bootstrapProtectedDemoData();

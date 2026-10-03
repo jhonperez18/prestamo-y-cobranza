@@ -6,6 +6,7 @@ import {
   OPERATIONAL_DEMO_STORAGE_PREFIX,
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
+import { BIG_DEMO_STORE_CHANGED_EVENT } from "@/lib/big-demo-store";
 import { DEMO_CLIENTS_KEY, DEMO_BANK_ACCOUNTS_KEY, readDemoJson } from "@/lib/demo-persist";
 import { loadPaymentEvidenceStore } from "@/lib/payment-evidence-store";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
@@ -392,6 +393,9 @@ export function useOperationalDemoSync(
       commitHydrate();
       refreshPending();
     }
+    function onBigStoreChanged() {
+      commitHydrate();
+    }
     function refreshFromCloud() {
       if (document.visibilityState !== "visible") return;
       const now = Date.now();
@@ -427,6 +431,7 @@ export function useOperationalDemoSync(
       void runMirrorFlush();
     }, MIRROR_FLUSH_MS);
     window.addEventListener("storage", onStorage);
+    window.addEventListener(BIG_DEMO_STORE_CHANGED_EVENT, onBigStoreChanged);
     document.addEventListener("visibilitychange", refreshFromCloud);
     window.addEventListener("focus", refreshFromCloud);
     window.addEventListener("online", onOnline);
@@ -435,6 +440,7 @@ export function useOperationalDemoSync(
       window.clearInterval(poll);
       window.clearInterval(flushPoll);
       window.removeEventListener("storage", onStorage);
+      window.removeEventListener(BIG_DEMO_STORE_CHANGED_EVENT, onBigStoreChanged);
       document.removeEventListener("visibilitychange", refreshFromCloud);
       window.removeEventListener("focus", refreshFromCloud);
       window.removeEventListener("online", onOnline);

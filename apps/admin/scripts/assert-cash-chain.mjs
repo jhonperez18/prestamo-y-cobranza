@@ -1859,6 +1859,116 @@ console.log("— Informe: historial por ruta —");
   );
 }
 
+// 26. Cupo del aparato: planilla y rutas del día viven en IndexedDB (crecen ~190 KB/día y
+//     llenaban los ~5 MB de localStorage: el supervisor dejó de guardar lo que bajaba).
+//     Con el cupo lleno se sueltan también las copias -bak del catálogo; dato y colas siguen.
+console.log("— Cupo del aparato —");
+{
+  const {
+    writeDemoJson,
+    readDemoJson,
+    DEMO_PAYMENTS_KEY,
+    DEMO_LOANS_KEY,
+    DEMO_DAILY_ASSIGNMENTS_KEY,
+    DEMO_ROUTES_KEY,
+  } = await import("@/lib/demo-persist");
+  const big = await import("@/lib/big-demo-store");
+
+  const store = new Map();
+  let cap = Infinity;
+  const used = () => [...store.values()].reduce((sum, v) => sum + v.length, 0);
+  const localStorage = {
+    getItem: (k) => (store.has(k) ? store.get(k) : null),
+    setItem: (k, v) => {
+      const next = String(v);
+      if (used() - (store.get(k)?.length ?? 0) + next.length > cap) {
+        throw new DOMException("full", "QuotaExceededError");
+      }
+      store.set(k, next);
+    },
+    removeItem: (k) => store.delete(k),
+  };
+
+  const idb = new Map();
+  const fakeIndexedDB = {
+    open() {
+      const req = {};
+      setTimeout(() => {
+        const fresh = idb.size === 0;
+        const db = {
+          objectStoreNames: { contains: () => !fresh },
+          createObjectStore: () => undefined,
+          transaction: () => {
+            const tx = {};
+            const op = (fn) => {
+              const r = {};
+              setTimeout(() => {
+                r.result = fn();
+                r.onsuccess?.();
+                setTimeout(() => tx.oncomplete?.());
+              });
+              return r;
+            };
+            tx.objectStore = () => ({
+              get: (k) => op(() => idb.get(k)),
+              put: (v, k) => op(() => void idb.set(k, v)),
+              delete: (k) => op(() => void idb.delete(k)),
+            });
+            return tx;
+          },
+          close: () => undefined,
+        };
+        if (fresh) idb.set("__init", "1");
+        req.result = db;
+        if (fresh) req.onupgradeneeded?.();
+        req.onsuccess?.();
+      });
+      return req;
+    },
+  };
+
+  const prevBroadcast = globalThis.BroadcastChannel;
+  globalThis.window = { localStorage, dispatchEvent: () => true };
+  globalThis.indexedDB = fakeIndexedDB;
+  globalThis.BroadcastChannel = undefined;
+  try {
+    const catalogBak = JSON.stringify([{ ref: "PG-0", n: "x".repeat(60) }]);
+    store.set(DEMO_PAYMENTS_KEY, JSON.stringify([{ ref: "PG-1" }]));
+    store.set(`${DEMO_PAYMENTS_KEY}-bak`, catalogBak);
+    store.set(`${DEMO_LOANS_KEY}-bak`, catalogBak);
+    store.set("nexo-demo-payment-mirror-queue", JSON.stringify([{ ref: "Q" }]));
+    cap = used();
+    const nextPayments = [{ ref: "PG-1" }, { ref: "PG-2", n: "y".repeat(40) }];
+    expect("Cupo lleno: el cobro bajado entra (suelta copias -bak del catálogo)", writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments), true);
+    expect("Cupo lleno: el cobro quedó en su clave", store.get(DEMO_PAYMENTS_KEY), JSON.stringify(nextPayments));
+    expect("Cupo lleno: la cola de subida no se toca", store.has("nexo-demo-payment-mirror-queue"), true);
+
+    cap = Infinity;
+    store.clear();
+    const planilla = JSON.stringify([{ id: "V-1", dispatchDate: "2026-10-03" }]);
+    store.set(DEMO_DAILY_ASSIGNMENTS_KEY, planilla);
+    store.set(DEMO_ROUTES_KEY, JSON.stringify([{ ref: "RUT-1" }]));
+    store.set(`${DEMO_ROUTES_KEY}-bak`, JSON.stringify([{ ref: "RUT-1" }]));
+    await big.hydrateBigDemoStore();
+    expect("IndexedDB: almacén activo tras el arranque", big.bigDemoStoreActive(), true);
+    expect(
+      "IndexedDB: planilla y rutas salen de localStorage (sin copia -bak)",
+      [DEMO_DAILY_ASSIGNMENTS_KEY, DEMO_ROUTES_KEY, `${DEMO_ROUTES_KEY}-bak`].some((k) => store.has(k)),
+      false,
+    );
+    expect("IndexedDB: la planilla se sigue leyendo igual", readDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, []).length, 1);
+    const nextPlanilla = [{ id: "V-1" }, { id: "V-2" }];
+    expect("IndexedDB: guardar planilla responde OK", writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, nextPlanilla), true);
+    await big.flushBigDemoStore();
+    expect("IndexedDB: lo guardado quedó en IndexedDB", idb.get(DEMO_DAILY_ASSIGNMENTS_KEY), JSON.stringify(nextPlanilla));
+    expect("IndexedDB: localStorage no vuelve a recibir la planilla", store.has(DEMO_DAILY_ASSIGNMENTS_KEY), false);
+  } finally {
+    delete globalThis.window;
+    delete globalThis.indexedDB;
+    globalThis.BroadcastChannel = prevBroadcast;
+  }
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

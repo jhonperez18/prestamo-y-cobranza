@@ -34,6 +34,7 @@ import { BANK_RECORD_COLUMNS, BANK_RECORD_DEFAULT_COLS } from "@/lib/table-colum
 import { paymentMethodPillProps } from "@/lib/payment-method";
 import { Pill } from "@/components/ui";
 import { downloadDemoSnapshot, importDemoSnapshot } from "@/lib/demo-persist";
+import { flushBigDemoStore } from "@/lib/big-demo-store";
 
 type Props = {
   accounts: BankAccount[];
@@ -92,7 +93,7 @@ export function BankRecordsHistoryView({
         return;
       }
       onToast?.("Respaldo restaurado · recargando…");
-      window.setTimeout(() => window.location.reload(), 600);
+      void flushBigDemoStore().finally(() => window.location.reload());
     };
     reader.readAsText(file);
   }

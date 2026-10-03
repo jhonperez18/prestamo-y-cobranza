@@ -4,6 +4,7 @@
  * Al instalar, reemplaza estado anterior del origen (localhost ≠ vercel.app).
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
+import { bigDemoStoreActive, isBigDemoKey, writeBigDemoRaw } from "@/lib/big-demo-store";
 import {
   DEMO_BANK_ACCOUNTS_KEY,
   DEMO_BANK_MOVEMENTS_KEY,
@@ -100,6 +101,10 @@ function forceInstallJson(key: string, value: unknown) {
   if (typeof window === "undefined") return;
   try {
     const next = JSON.stringify(value);
+    if (bigDemoStoreActive() && isBigDemoKey(key)) {
+      writeBigDemoRaw(key, next);
+      return;
+    }
     window.localStorage.setItem(key, next);
     window.localStorage.setItem(`${key}-bak`, next);
   } catch {

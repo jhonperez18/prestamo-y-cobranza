@@ -17,6 +17,7 @@ La clave sí coincidía. `localStorage` estaba lleno de fotos (`previewUrl` con 
 | --- | --- |
 | Cobro `PG-` (monto, fecha, método, ref) | `localStorage` `nexo-demo-payments` |
 | Foto / firma | IndexedDB `nexo-evidence`. Nunca `localStorage` |
+| Planilla (`nexo-demo-daily-assignments`) y rutas (`nexo-demo-routes`) | IndexedDB `nexo-demo-big` (`lib/big-demo-store.ts`). Crecen ~190 KB/día: en `localStorage` llenaron el cupo del supervisor (03/10) |
 | Sesión | `nexo-admin-session` (cabe porque la foto no está ahí) |
 
 ## Obligatorio
@@ -30,6 +31,11 @@ La clave sí coincidía. `localStorage` estaba lleno de fotos (`previewUrl` con 
 4. No rehidratar la pantalla ni volver a subir la fila de planilla si la firma no cambió.
 5. `GET /api/payments` es la lista de dinero, sin la foto. La constancia no se vuelve a bajar en el ciclo de reposo.
 6. Un solo manifest: `app/manifest.ts`. `public/manifest.webmanifest` choca y deja el aviso rojo. No se commitea.
+7. Al arrancar, `hydrateBigDemoStore` (en `AuthGate`, tras `parkLocalBlobs`) carga planilla y rutas de IndexedDB
+   a memoria y muda lo que quede en `localStorage` (solo lo suelta con IndexedDB confirmado). `readDemoJson` /
+   `writeDemoJson` las sirven igual; nadie las lee directo. Sin IndexedDB siguen en `localStorage`.
+8. Cupo lleno: primero copias `-bak` rehacibles, después las `-bak` de cobros/préstamos/clientes/usuarios
+   (`freeCatalogBackups`). Nunca el dato principal ni las colas. Candado: `assert-cash-chain.mjs` sección 26.
 
 ## Prohibido
 
