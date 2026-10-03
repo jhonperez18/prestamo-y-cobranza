@@ -94,7 +94,8 @@ export function informeRouteHistory(
     const acc = emptyDay();
     const dayAssignments = assignmentsByDay.get(date) ?? [];
     const payments = paymentsByDay.get(date) ?? [];
-    for (const collectorRef of collectorRefs) {
+    // Un cobrador con varias rutas (M, T, A) llega una vez por ruta: se cuenta una sola vez.
+    for (const collectorRef of new Set(collectorRefs)) {
       const collector = src.collectors.find((row) => row.ref === collectorRef);
       if (!collector) continue;
       collectorDay(

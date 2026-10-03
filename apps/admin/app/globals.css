@@ -5908,49 +5908,60 @@
       color: #0f3d2e;
     }
     .supervisor-informe-history-btn.is-cobrado {
-      border-color: #9fd3c7;
+      background: #e3f4e8;
+      border-color: #9fd3b0;
     }
     .supervisor-informe-history-btn.is-prestamo {
-      border-color: #f2c48d;
+      background: #e3eefb;
+      border-color: #9dbfe8;
     }
     .supervisor-informe-history-btn.is-gasto {
-      border-color: #f0a8a8;
+      background: #fbe6ea;
+      border-color: #eaa4b2;
     }
-    .supervisor-informe-history-btn.on {
-      background: #3f6b53;
-      border-color: #3f6b53;
+    .supervisor-informe-history-btn.is-cobrado.on {
+      background: #bfe6cb;
+      border-color: #4f9e68;
     }
-    .supervisor-informe-history-btn.on span,
-    .supervisor-informe-history-btn.on b {
-      color: #fff;
+    .supervisor-informe-history-btn.is-prestamo.on {
+      background: #c4dbf6;
+      border-color: #4a7fc4;
+    }
+    .supervisor-informe-history-btn.is-gasto.on {
+      background: #f6c6d0;
+      border-color: #c9566e;
     }
     .supervisor-liq-table.is-informe-days th,
     .supervisor-liq-table.is-informe-days td {
-      padding-left: 4px !important;
-      padding-right: 4px !important;
+      padding-left: 3px !important;
+      padding-right: 3px !important;
+    }
+    .supervisor-liq-table.is-informe-days td {
+      color: #111 !important;
+      font-weight: 400 !important;
+      font-size: 11px;
     }
     .supervisor-liq-table.is-informe-days .is-dia {
-      width: 14%;
+      width: 12%;
+    }
+    .supervisor-liq-table.is-informe-days td.is-dia {
       text-align: left !important;
-      color: #111;
-      font-weight: 700;
+      font-size: 9.5px;
     }
     .supervisor-liq-table.is-informe-days .is-num {
-      width: 21.5%;
-      text-align: right !important;
+      width: 22%;
       border-left: 1px solid #cfded6;
+    }
+    .supervisor-liq-table.is-informe-days td.is-num {
+      text-align: right !important;
     }
     .supervisor-liq-table.is-informe-days thead th {
       color: #111 !important;
       text-align: center !important;
     }
-    .supervisor-liq-table.is-informe-days td.is-total {
-      font-weight: 700;
-      color: #0f3d2e;
-    }
     .supervisor-liq-table.is-informe-days td.is-empty {
       text-align: center !important;
-      color: #4b5b52;
+      color: #4b5b52 !important;
     }
     .supervisor-liq-link {
       appearance: none;

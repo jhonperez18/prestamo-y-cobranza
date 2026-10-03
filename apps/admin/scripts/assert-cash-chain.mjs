@@ -1851,6 +1851,12 @@ console.log("— Informe: historial por ruta —");
     (dayOf("prestamo")?.T ?? 0) + (dayOf("prestamo")?.M ?? 0) + (dayOf("prestamo")?.N ?? 0),
   );
   expect("Informe · Total del botón = suma de los días", hist.gasto.total, hist.gasto.days.reduce((s, r) => s + r.total, 0));
+  const repeated = informeRouteHistory(baseT, [COB.ref, COB.ref, COB.ref], D, D);
+  expect(
+    "Informe · cobrador con varias rutas (M, T, A) se cuenta una vez",
+    repeated.prestamo.days.find((row) => row.date === D)?.T ?? null,
+    ledgerT.t.prestamos,
+  );
 }
 
 if (failures) {
