@@ -31,6 +31,16 @@ Misma fuerza que un cobro `PG-`: local primero, luego nube; el pull no reabre.
 9. **CIE `cash_float` manda:** Inicial de M mañana = CIE de ayer. PCE local no lo pisa. `upsertDayCloseIdempotent` no deja que un CIE viejo de otro aparato rebaje el de la nube.
 9. Reconcile local→nube: subir CIE- huérfanos y planilla sellada sobre abierta remota.
 
+## Camino limpio para la jornada (6:00 Bogotá)
+
+| Pieza | Regla |
+| --- | --- |
+| Revisión 6:00 | Vercel Cron `0 11 * * *` → `/api/ops/morning-check`: sella lo pendiente (mismo motor 23:30) y revisa hojas pasadas abiertas, días cerrados sin CIE-, Inicial de hoy. No borra nada. Informe en Configuración → Aparatos |
+| Aparato, 1.ª sync del día | `device-daily-tuneup`: subir cola → `compactRebuildableStorage` (solo copias -bak que la nube rehace) → bajada completa → rehidratar |
+| Bajada de planilla | Completa al abrir, cada 10 min y al reparar; entre medio `?since=` (solo lo cambiado). Parcial nunca borra lo que no vino; reconcile solo con lista completa |
+
+- Candado: `assert-cash-chain.mjs` sección 23.
+
 ## Prohibido
 
 - `flushOpsMirrorQueues` antes de encolar el cierre.

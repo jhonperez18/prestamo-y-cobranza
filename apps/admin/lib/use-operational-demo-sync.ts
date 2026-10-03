@@ -36,6 +36,11 @@ import { reportDeviceStatus } from "@/lib/device-status";
 import { pullRemoteMonthClosesIntoDemo } from "@/lib/supabase/month-close-mirror";
 import { useAppAutoUpdate } from "@/lib/app-auto-update";
 import {
+  compactDeviceForDay,
+  deviceTuneupDueDay,
+  markDeviceTuneupDone,
+} from "@/lib/device-daily-tuneup";
+import {
   createSelfHealer,
   type SelfHealer,
   type SelfHealState,
@@ -166,7 +171,7 @@ export function useOperationalDemoSync(
     pullInFlightRef.current = true;
     try {
       await runMirrorFlush();
-      await Promise.all([pullRemoteCatalogIntoDemo(), pullRemoteOpsIntoDemo()]);
+      await Promise.all([pullRemoteCatalogIntoDemo(), pullRemoteOpsIntoDemo({ full: true })]);
       // Rehidratar siempre: rearma la planilla con las reglas aunque la nube no haya cambiado.
       commitHydrate();
       return true;
@@ -218,14 +223,17 @@ export function useOperationalDemoSync(
     pendingGroupsRef.current.clear();
     let pullOk = false;
     let pullError = "";
+    const tuneupDay = deviceTuneupDueDay();
     try {
       // Flush primero: lo pendiente en este PC sube aunque el pull tarde o falle.
       await runMirrorFlush();
+      // Primera sincronización del día: cupo libre antes de la bajada completa.
+      if (tuneupDay) compactDeviceForDay();
 
       const payments = await pullRemotePaymentsIntoDemo();
       const [catalog, ops, users, banks, months] = await Promise.all([
         pullRemoteCatalogIntoDemo(),
-        pullRemoteOpsIntoDemo(),
+        pullRemoteOpsIntoDemo({ full: Boolean(tuneupDay) }),
         pullRemoteUsersIntoDemo(),
         pullRemoteBankAccountsIntoDemo(),
         pullRemoteMonthClosesIntoDemo(),
@@ -257,7 +265,9 @@ export function useOperationalDemoSync(
         changed = changed || again.changed;
       }
       // Sin cambios no se rehace toda la pantalla. Eso era la lentitud en reposo.
-      if (changed) commitHydrate();
+      // La puesta a punto del día rehidrata siempre (planilla del día con todo fresco).
+      if (changed || tuneupDay) commitHydrate();
+      if (tuneupDay && pullOk && ops.full) markDeviceTuneupDone(tuneupDay);
       try {
         await reconcileLocalPaymentsToRemote(payments.remoteRefs, payments.remoteVoidedRefs);
         if (!evidenceOnceRef.current) {
@@ -273,8 +283,9 @@ export function useOperationalDemoSync(
             });
           }
         }
-        // Reusa el bundle del pull: no bajar /api/ops/bundle otra vez (latencia PC).
-        await reconcileLocalOpsToRemote(ops.bundle);
+        // Huérfanos solo contra la lista completa (una parcial haría ver todo como huérfano).
+        // Reusa ese bundle: no bajar /api/ops/bundle otra vez (latencia PC).
+        if (ops.full && ops.bundle) await reconcileLocalOpsToRemote(ops.bundle);
         await reconcileLocalBankAccountsToRemote();
         // Tras reconcile, vaciar cola otra vez (huérfanos recién encolados).
         await runMirrorFlush();

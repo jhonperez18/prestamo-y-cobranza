@@ -11,6 +11,10 @@
     {
       "path": "/api/ops/day-rollover",
       "schedule": "5 5 * * *"
+    },
+    {
+      "path": "/api/ops/morning-check",
+      "schedule": "0 11 * * *"
     }
   ]
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { normalizeDeviceStatus, type DeviceStatus } from "@/lib/device-status";
+import type { MorningCheckReport } from "@/lib/server-morning-check";
 
 type Props = {
   onToast: (message?: string) => void;
@@ -32,17 +33,24 @@ function deviceLabel(userAgent: string) {
 export function DeviceStatusPanel({ onToast }: Props) {
   const [devices, setDevices] = useState<DeviceStatus[]>([]);
   const [servedBuild, setServedBuild] = useState("");
+  const [morning, setMorning] = useState<MorningCheckReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
   const load = useCallback(async () => {
     try {
-      const [devRes, buildRes] = await Promise.all([
+      const [devRes, buildRes, morningRes] = await Promise.all([
         fetch("/api/ops/devices", { cache: "no-store" }),
         fetch("/api/ops/build-health", { cache: "no-store" }),
+        fetch("/api/ops/morning-check", { cache: "no-store" }),
       ]);
       const devBody = (await devRes.json()) as { ok?: boolean; devices?: unknown[]; error?: string };
       const buildBody = (await buildRes.json()) as { build?: string };
+      const morningBody = (await morningRes.json()) as {
+        ok?: boolean;
+        report?: MorningCheckReport | null;
+      };
+      setMorning(morningBody.ok ? (morningBody.report ?? null) : null);
       if (!devRes.ok || !devBody.ok) {
         onToast(`No se pudo leer el estado de los aparatos: ${devBody.error || devRes.status}`);
         return;
@@ -89,6 +97,26 @@ export function DeviceStatusPanel({ onToast }: Props) {
         >
           {loading ? "Leyendo…" : "Actualizar"}
         </button>
+        <div style={{ marginTop: 16 }}>
+          <strong>Revisión de la mañana (6:00)</strong>
+          {morning ? (
+            <ul className="muted" style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+              <li>
+                {morning.businessDate} · {agoLabel(morning.ranAt, now)} ·{" "}
+                {morning.ok ? "Todo listo para la jornada" : "Hay algo por revisar"}
+              </li>
+              {morning.items.map((item) => (
+                <li key={item.label}>
+                  {item.ok ? "OK" : "Revisar"} — {item.label}: {item.detail}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted" style={{ margin: "6px 0 0" }}>
+              Aún no ha corrido. Corre sola todos los días a las 6:00 a. m.
+            </p>
+          )}
+        </div>
         <div className="table-wrap" style={{ marginTop: 16 }}>
           <table className="data list-grid">
             <thead>

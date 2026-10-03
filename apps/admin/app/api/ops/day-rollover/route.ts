@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runServerDayRollover } from "@/lib/server-day-rollover";
 import { businessClockParts } from "@/lib/business-timezone";
+import { isCronAuthorized } from "@/lib/cron-auth";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
@@ -11,13 +12,7 @@ export const fetchCache = "force-no-store";
  *
  * Auth: header `Authorization: Bearer $CRON_SECRET` o `x-vercel-cron: 1`.
  */
-function authorized(request: Request) {
-  if (request.headers.get("x-vercel-cron") === "1") return true;
-  const secret = process.env.CRON_SECRET?.trim();
-  if (!secret) return false;
-  const auth = request.headers.get("authorization") || "";
-  return auth === `Bearer ${secret}`;
-}
+const authorized = isCronAuthorized;
 
 export async function GET(request: Request) {
   return POST(request);

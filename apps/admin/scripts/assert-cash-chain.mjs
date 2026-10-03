@@ -1704,6 +1704,73 @@ console.log("— Aparato sin el CIE de ayer —");
   }
 }
 
+// 23. Camino limpio para la jornada: revisión de la mañana (6:00) y puesta a punto del aparato.
+//     La revisión detecta hoja pasada abierta y día cerrado sin CIE-; la puesta a punto
+//     solo suelta copias que la nube rehace (nunca cobros, préstamos ni el dato principal).
+console.log("— Revisión de la mañana y puesta a punto —");
+{
+  const { evaluateMorningState } = await import("@/lib/server-morning-check");
+  const M1 = "2026-10-01";
+  const M2 = "2026-10-02";
+  const M3 = "2026-10-03";
+  const cieM1 = { ...cie25, ref: `CIE-COB-0-${M1}`, date: M1, cashFloat: 1_000_000 };
+  const cieM2 = { ...cie25, ref: `CIE-COB-0-${M2}`, date: M2, cashFloat: 1_200_000 };
+  const closedVisit = (id, date) => visit(id, "CLI-M1", "M", date, { dayClosedAt: `${date}T23:30:00.000-05:00` });
+  const morningState = (over) => ({
+    assignments: [closedVisit("V-1", M1), closedVisit("V-2", M2)],
+    routes: [],
+    logs: [],
+    dayCloses: [cieM1, cieM2],
+    dayExpenseDrafts: [],
+    payments: [],
+    loans,
+    clients,
+    collectors: [COB],
+    planillaCashCloses: [],
+    monthCloses: [],
+    ...over,
+  });
+  const okOf = (items, label) => items.find((i) => i.label === label)?.ok;
+  const clean = evaluateMorningState(morningState({}), M3, "2026-09-01");
+  expect("Mañana: nube limpia = todo OK", clean.filter((i) => !i.ok).map((i) => i.label).join(","), "");
+  const withOpen = evaluateMorningState(
+    morningState({ assignments: [closedVisit("V-1", M1), closedVisit("V-2", M2), visit("V-3", "CLI-M1", "M", M2)] }),
+    M3,
+    "2026-09-01",
+  );
+  expect("Mañana: hoja de ayer abierta = revisar", okOf(withOpen, "Hojas de días anteriores cerradas"), false);
+  const withoutCie = evaluateMorningState(morningState({ dayCloses: [cieM1] }), M3, "2026-09-01");
+  expect("Mañana: día cerrado sin CIE = revisar", okOf(withoutCie, "Cada día cerrado tiene su CIE"), false);
+  expect(
+    "Mañana: días anteriores al primer CIE no se exigen",
+    okOf(evaluateMorningState(morningState({ dayCloses: [cieM2] }), M3, "2026-09-01"), "Cada día cerrado tiene su CIE"),
+    true,
+  );
+
+  const { compactRebuildableStorage, DEMO_PAYMENTS_KEY, DEMO_ROUTES_KEY } = await import("@/lib/demo-persist");
+  const store = new Map([
+    [DEMO_PAYMENTS_KEY, "[{\"ref\":\"PG-1\"}]"],
+    [`${DEMO_PAYMENTS_KEY}-bak`, "[{\"ref\":\"PG-1\"}]"],
+    [DEMO_ROUTES_KEY, "[{\"ref\":\"RUT-1\"}]"],
+    [`${DEMO_ROUTES_KEY}-bak`, "[{\"ref\":\"RUT-1\"}]"],
+  ]);
+  globalThis.window = {
+    localStorage: {
+      getItem: (k) => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => store.set(k, String(v)),
+      removeItem: (k) => store.delete(k),
+    },
+  };
+  try {
+    compactRebuildableStorage();
+    expect("Puesta a punto: suelta la copia de rutas (la nube la rehace)", store.has(`${DEMO_ROUTES_KEY}-bak`), false);
+    expect("Puesta a punto: rutas siguen en el aparato", store.has(DEMO_ROUTES_KEY), true);
+    expect("Puesta a punto: cobros y su copia intactos", store.has(DEMO_PAYMENTS_KEY) && store.has(`${DEMO_PAYMENTS_KEY}-bak`), true);
+  } finally {
+    delete globalThis.window;
+  }
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

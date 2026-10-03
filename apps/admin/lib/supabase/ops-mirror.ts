@@ -1003,6 +1003,38 @@ export async function fetchOpsTableSince(
   return { ok: true as const, rows };
 }
 
+/**
+ * Solo filas que cambiaron desde `updatedSinceIso` (trigger `set_updated_at` en cada tabla).
+ * Las tablas operativas no borran filas: una baja viaja como estado, y eso también es cambio.
+ */
+export async function fetchOpsTableChangedSince(
+  table: string,
+  updatedSinceIso: string,
+  window?: { column: string; since: string },
+) {
+  const client = createMirrorClient();
+  if (!client) return { ok: true as const, skipped: true as const, rows: [] as Record<string, unknown>[] };
+
+  const rows: Record<string, unknown>[] = [];
+  let from = 0;
+  for (;;) {
+    let query = client.from(table).select("*").gte("updated_at", updatedSinceIso);
+    if (window) query = query.gte(window.column, window.since);
+    const { data, error } = await query
+      .order("updated_at", { ascending: true })
+      .range(from, from + OPS_FETCH_PAGE - 1);
+    if (error) {
+      return { ok: false as const, error: error.message, rows: [] as Record<string, unknown>[] };
+    }
+    const page = (data ?? []) as Record<string, unknown>[];
+    if (!page.length) break;
+    rows.push(...page);
+    if (page.length < OPS_FETCH_PAGE) break;
+    from += OPS_FETCH_PAGE;
+  }
+  return { ok: true as const, rows };
+}
+
 // —— browser queue + persist ——
 
 async function persistKind(
@@ -1314,15 +1346,36 @@ export type OpsBundleBody = {
   day_expenses?: Record<string, unknown>[];
   misc_payments?: Record<string, unknown>[];
   daily_assignments?: Record<string, unknown>[];
+  /** true = solo filas cambiadas desde `since` (no es la lista completa). */
+  incremental?: boolean;
+  /** Mayor `updated_at` bajado: `since` de la próxima bajada. */
+  cursor?: string | null;
 };
 
 export type PullOpsResult = {
   ok: boolean;
   changed: boolean;
   reason?: string;
-  /** Bundle ya bajado: reconcile no vuelve a pedir /api/ops/bundle. */
+  /** Bundle completo ya bajado: reconcile no vuelve a pedir /api/ops/bundle. */
   bundle?: OpsBundleBody;
+  /** true = bajó la lista completa (reconcile solo compara contra una lista completa). */
+  full?: boolean;
 };
+
+/**
+ * Bajada completa al abrir, cada 10 min y al reparar; entre medio solo lo que cambió.
+ * Antes cada aparato bajaba ~3,3 MB (4.000+ visitas) cada 45 s.
+ */
+const OPS_FULL_PULL_EVERY_MS = 10 * 60_000;
+let opsCursor: string | null = null;
+let lastFullOpsPullAt = 0;
+
+/** Une lo que cambió con lo local: una bajada parcial nunca borra lo que no vino. */
+function upsertByRef<T extends { ref: string }>(local: T[], changed: T[]): T[] {
+  const byRef = new Map(local.filter((row) => row?.ref).map((row) => [row.ref, row]));
+  for (const row of changed) if (row?.ref) byRef.set(row.ref, row);
+  return [...byRef.values()];
+}
 
 /**
  * C6.1 — crítico: CIE / gastos / planilla / rutas que viven solo en un
@@ -1508,16 +1561,42 @@ export async function reconcileLocalOpsToRemote(
   }
 }
 
-/** Pull catálogo operativo + CIE + planilla + PV- */
-export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
+/**
+ * Pull catálogo operativo + CIE + planilla + PV-.
+ * `full`: lista completa (al abrir, cada 10 min, al reparar); si no, solo lo que cambió.
+ */
+export async function pullRemoteOpsIntoDemo(
+  opts: { full?: boolean } = {},
+): Promise<PullOpsResult> {
   if (typeof window === "undefined") return { ok: true, changed: false, reason: "ssr" };
+  const since =
+    !opts.full && opsCursor && Date.now() - lastFullOpsPullAt < OPS_FULL_PULL_EVERY_MS
+      ? opsCursor
+      : null;
+  const startedAt = Date.now();
+  const result = await pullOpsBundle(since);
+  if (!result.ok || result.reason === "skipped") {
+    // Lo que no entró al aparato no vuelve en una bajada parcial: la próxima es completa.
+    opsCursor = null;
+    return result;
+  }
+  if (result.full) lastFullOpsPullAt = startedAt;
+  opsCursor = result.bundle?.cursor ?? opsCursor;
+  return result.full ? result : { ...result, bundle: undefined };
+}
+
+async function pullOpsBundle(since: string | null): Promise<PullOpsResult> {
   try {
-    const res = await fetch("/api/ops/bundle", { cache: "no-store" });
+    const url = since
+      ? `/api/ops/bundle?since=${encodeURIComponent(since)}`
+      : "/api/ops/bundle";
+    const res = await fetch(url, { cache: "no-store" });
     const body = (await res.json()) as OpsBundleBody;
     if (!res.ok || !body.ok) {
       return { ok: false, changed: false, reason: body.error || `http_${res.status}` };
     }
     if (body.skipped) return { ok: true, changed: false, reason: "skipped", bundle: body };
+    const full = !body.incremental;
 
     const holdMoney = isVirginRemoteHoldActive();
     let changed = false;
@@ -1541,9 +1620,10 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
         .map((row) => row.ref)
         .filter(Boolean),
     );
+    const localCollectors = readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, []);
     const cMerge = mergeRemoteAuthority(
-      readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, []),
-      collectors,
+      localCollectors,
+      full ? collectors : upsertByRef(localCollectors, collectors),
       pendingCollectors,
       (r) => `${r.ref}|${r.name}|${r.active}|${r.zone}|${r.userRef ?? ""}|${r.login ?? ""}`,
       pendingCollectorRows,
@@ -1565,7 +1645,7 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
     const pendingRoutes = new Set(pendingRouteRows.map((row) => row.ref));
     const rMerge = mergeRemoteAuthority(
       localRoutes,
-      routes,
+      full ? routes : upsertByRef(localRoutes, routes),
       pendingRoutes,
       (r) => `${r.ref}|${r.name}|${r.collectorRef}|${r.collector}|${r.status}|${r.clients}`,
       pendingRouteRows,
@@ -1579,8 +1659,8 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
 
     if (holdMoney) {
       return unsaved.length
-        ? { ok: false, changed, reason: unsavedReason(unsaved), bundle: body }
-        : { ok: true, changed, reason: "virgin_hold_skip_money", bundle: body };
+        ? { ok: false, changed, reason: unsavedReason(unsaved), bundle: body, full }
+        : { ok: true, changed, reason: "virgin_hold_skip_money", bundle: body, full };
     }
 
     const closes = (body.day_closes ?? [])
@@ -1778,8 +1858,10 @@ export async function pullRemoteOpsIntoDemo(): Promise<PullOpsResult> {
       changed = true;
     }
 
-    if (unsaved.length) return { ok: false, changed, reason: unsavedReason(unsaved), bundle: body };
-    return { ok: true, changed, bundle: body };
+    if (unsaved.length) {
+      return { ok: false, changed, reason: unsavedReason(unsaved), bundle: body, full };
+    }
+    return { ok: true, changed, bundle: body, full };
   } catch (err) {
     return {
       ok: false,

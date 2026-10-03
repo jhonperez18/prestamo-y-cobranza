@@ -5,7 +5,7 @@
  */
 import { businessTodayIso } from "@/lib/business-timezone";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
-import { previousCalendarIso } from "@/lib/collector-day-auto-close";
+import { previousCalendarIso, type OperationalDayState } from "@/lib/collector-day-auto-close";
 import { buildDayCashLedger } from "@/lib/day-cash-ledger";
 import { findFullDayCieClose } from "@/lib/planilla-cash-chain";
 import { loadOperationalStateFromCloud } from "@/lib/server-day-rollover";
@@ -33,7 +33,14 @@ export async function runServerChainAudit(now = new Date()): Promise<ChainAuditR
   const businessDate = businessTodayIso(now);
   const loaded = await loadOperationalStateFromCloud();
   if (!loaded.ok) return { ok: false, businessDate, rows: [], error: loaded.error };
-  const state = loaded.state;
+  return auditChainFromState(loaded.state, businessDate);
+}
+
+/** Misma auditoría sobre un estado ya bajado de la nube (revisión de la mañana). */
+export function auditChainFromState(
+  state: OperationalDayState,
+  businessDate: string,
+): ChainAuditResult {
   const yesterday = previousCalendarIso(businessDate);
 
   const rows: ChainAuditRow[] = [];

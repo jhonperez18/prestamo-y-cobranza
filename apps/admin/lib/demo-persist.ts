@@ -266,6 +266,16 @@ function freeDemoBackups() {
   }
 }
 
+/**
+ * Puesta a punto diaria del aparato: suelta las copias -bak que la nube rehace
+ * (no las de cobros, préstamos, clientes ni usuarios) y fotos en base64.
+ * Nunca toca colas de subida ni el dato principal.
+ */
+export function compactRebuildableStorage() {
+  if (typeof window === "undefined") return;
+  freeDemoBackups();
+}
+
 /** Cupo lleno, paso 2 (último recurso): colas de subida. */
 function freeDemoMirrorQueues() {
   for (const key of MIRROR_QUEUE_KEYS) {
