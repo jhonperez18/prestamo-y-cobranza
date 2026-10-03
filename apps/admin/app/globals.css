@@ -5875,6 +5875,83 @@
       padding-left: 18px !important;
       color: #4b5b52;
     }
+    .supervisor-informe-history-btns {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .supervisor-informe-history-btn {
+      appearance: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+      padding: 8px 4px;
+      border-radius: 10px;
+      border: 1px solid #cfded6;
+      background: #f3f8f5;
+      color: #1f3b2b;
+      font: inherit;
+      cursor: pointer;
+    }
+    .supervisor-informe-history-btn span {
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .supervisor-informe-history-btn b {
+      font-size: 13px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #0f3d2e;
+    }
+    .supervisor-informe-history-btn.is-cobrado {
+      border-color: #9fd3c7;
+    }
+    .supervisor-informe-history-btn.is-prestamo {
+      border-color: #f2c48d;
+    }
+    .supervisor-informe-history-btn.is-gasto {
+      border-color: #f0a8a8;
+    }
+    .supervisor-informe-history-btn.on {
+      background: #3f6b53;
+      border-color: #3f6b53;
+    }
+    .supervisor-informe-history-btn.on span,
+    .supervisor-informe-history-btn.on b {
+      color: #fff;
+    }
+    .supervisor-liq-table.is-informe-days th,
+    .supervisor-liq-table.is-informe-days td {
+      padding-left: 4px !important;
+      padding-right: 4px !important;
+    }
+    .supervisor-liq-table.is-informe-days .is-dia {
+      width: 14%;
+      text-align: left !important;
+      color: #111;
+      font-weight: 700;
+    }
+    .supervisor-liq-table.is-informe-days .is-num {
+      width: 21.5%;
+      text-align: right !important;
+      border-left: 1px solid #cfded6;
+    }
+    .supervisor-liq-table.is-informe-days thead th {
+      color: #111 !important;
+      text-align: center !important;
+    }
+    .supervisor-liq-table.is-informe-days td.is-total {
+      font-weight: 700;
+      color: #0f3d2e;
+    }
+    .supervisor-liq-table.is-informe-days td.is-empty {
+      text-align: center !important;
+      color: #4b5b52;
+    }
     .supervisor-liq-link {
       appearance: none;
       border: 0;

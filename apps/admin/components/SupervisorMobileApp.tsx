@@ -174,6 +174,7 @@ import {
   SupervisorMonthlyReport,
   type InformeEfectivo,
 } from "@/components/SupervisorMonthlyReport";
+import { informeRouteHistory, type InformeHistory } from "@/lib/informe-route-days";
 import { CollectorNewClientSheet } from "@/components/CollectorNewClientSheet";
 import { CollectorConnectionSheet } from "@/components/CollectorConnectionSheet";
 import {
@@ -1887,6 +1888,50 @@ export function SupervisorMobileApp({
         .reduce((sum, row) => sum + (row.enCaja ?? 0), 0);
     return { t: cajaOf("T"), n: cajaOf("N") };
   }, [liquidaciones]);
+
+  /**
+   * Informe: Cobrado / Préstamo / Gasto por ruta, día a día desde el 1 del mes (libro de cada día).
+   * Se calcula después de pintar: a fin de mes son ~31 días × cobradores y no debe trabar la pestaña.
+   */
+  const [informeHistory, setInformeHistory] = useState<InformeHistory | null>(null);
+  useEffect(() => {
+    if (view !== "informe") return;
+    const timer = window.setTimeout(() => {
+      setInformeHistory(
+        informeRouteHistory(
+          {
+            payments,
+            loans,
+            clients,
+            collectors,
+            assignments,
+            dayCloses,
+            dayExpenseDrafts,
+            planillaCashCloses,
+            monthCloses,
+          },
+          poolCollectors.map((row) => row.ref),
+          bancoHistoryFrom,
+          today,
+        ),
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [
+    view,
+    payments,
+    loans,
+    clients,
+    collectors,
+    assignments,
+    dayCloses,
+    dayExpenseDrafts,
+    planillaCashCloses,
+    monthCloses,
+    poolCollectors,
+    bancoHistoryFrom,
+    today,
+  ]);
 
   /** INICIO pie: caja viva de T + total del botón BANCO. */
   const inicioTotalConT = useMemo(() => {
@@ -4351,6 +4396,7 @@ export function SupervisorMobileApp({
             efectivo={informeEfectivo}
             banco={bancoPanelAcumulado}
             corteLabel={todayDisplay}
+            history={informeHistory}
           />
         </section>
       ) : view === "nequi" ? (

@@ -6,8 +6,14 @@
  * Efectivo = caja del libro del día; T ya trae el saldo de M (cadena), por eso
  * el total es T + N y no suma M otra vez.
  */
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { sameRoute } from "@/lib/client-route-order";
+import { isoToDisplay } from "@/lib/loan-preview";
+import {
+  INFORME_HISTORY_ROUTES,
+  type InformeHistory,
+  type InformeHistoryKind,
+} from "@/lib/informe-route-days";
 import { money, type ClientRow, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 import { portfolioBalanceForClients } from "@/lib/portfolio-stats";
 
@@ -20,7 +26,15 @@ type Props = {
   efectivo: InformeEfectivo;
   banco: number;
   corteLabel: string;
+  /** Historial diario por ruta desde el día 1 del mes (Cobrado / Préstamo / Gasto). `null` = calculando. */
+  history: InformeHistory | null;
 };
+
+const HISTORY_BUTTONS: { kind: InformeHistoryKind; label: string }[] = [
+  { kind: "cobrado", label: "Cobrado" },
+  { kind: "prestamo", label: "Préstamo" },
+  { kind: "gasto", label: "Gasto" },
+];
 
 type ReportRow =
   | { kind: "section"; label: string }
@@ -47,7 +61,9 @@ export function SupervisorMonthlyReport({
   efectivo,
   banco,
   corteLabel,
+  history,
 }: Props) {
+  const [openKind, setOpenKind] = useState<InformeHistoryKind | null>(null);
   const rows = useMemo((): ReportRow[] => {
     const cartera = INFORME_ROUTES.map((route) => ({
       route,
@@ -107,6 +123,58 @@ export function SupervisorMonthlyReport({
           </tbody>
         </table>
       </div>
+      <div className="supervisor-informe-history-btns">
+        {HISTORY_BUTTONS.map(({ kind, label }) => (
+          <button
+            key={kind}
+            type="button"
+            className={`supervisor-informe-history-btn is-${kind}${openKind === kind ? " on" : ""}`}
+            aria-expanded={openKind === kind}
+            onClick={() => setOpenKind((prev) => (prev === kind ? null : kind))}
+          >
+            <span>{label}</span>
+            <b>{history ? money(history[kind].total, { symbol: false }) : "…"}</b>
+          </button>
+        ))}
+      </div>
+      {openKind ? (
+        <div className="supervisor-liq-wrap">
+          <table className="supervisor-liq-table is-informe-days">
+            <thead>
+              <tr>
+                <th className="is-dia">Día</th>
+                {INFORME_HISTORY_ROUTES.map((route) => (
+                  <th key={route} className="is-num">
+                    {route}
+                  </th>
+                ))}
+                <th className="is-num is-total">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {!history || history[openKind].days.length === 0 ? (
+                <tr>
+                  <td colSpan={INFORME_HISTORY_ROUTES.length + 2} className="is-empty">
+                    {history ? "Sin movimientos este mes." : "Calculando…"}
+                  </td>
+                </tr>
+              ) : (
+                history[openKind].days.map((day) => (
+                  <tr key={day.date}>
+                    <td className="is-dia">{isoToDisplay(day.date).slice(0, 5)}</td>
+                    {INFORME_HISTORY_ROUTES.map((route) => (
+                      <td key={route} className="is-num">
+                        {money(day[route], { symbol: false })}
+                      </td>
+                    ))}
+                    <td className="is-num is-total">{money(day.total, { symbol: false })}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
     </div>
   );
 }

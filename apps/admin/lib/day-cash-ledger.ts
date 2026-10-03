@@ -270,13 +270,20 @@ export function primaryOpeningForDay(src: DayCashSources): ChainOpeningResult {
   });
 }
 
+/** Movimiento propio de M y de T ese día (sin Inicial): lo mismo que suma el libro. */
+export function chainDayMovements(src: DayCashSources): { m: RouteCashDay; t: RouteCashDay } {
+  return {
+    m: chainRouteDay(src, "primary", routeCashCollected(src, PLANILLA_CASH_CHAIN_PRIMARY)),
+    t: chainRouteDay(src, "secondary", routeCashCollected(src, PLANILLA_CASH_CHAIN_SECONDARY)),
+  };
+}
+
 export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
   const date = dateIsoOf(src.date);
   const mOpening = primaryOpeningForDay(src);
   const opening = mOpening.kind === "chain" ? mOpening.opening : 0;
-  const m = chainRouteDay(src, "primary", routeCashCollected(src, PLANILLA_CASH_CHAIN_PRIMARY));
+  const { m, t } = chainDayMovements(src);
   const mClosing = pesos(opening + m.efectivo - m.gastos - m.prestamos);
-  const t = chainRouteDay(src, "secondary", routeCashCollected(src, PLANILLA_CASH_CHAIN_SECONDARY));
   return {
     collectorRef: src.collectorRef,
     date,

@@ -1828,6 +1828,31 @@ console.log("— Bajada liviana —");
   );
 }
 
+// 25. Informe del supervisor: Cobrado / Préstamo / Gasto por ruta = lo mismo que el libro del día.
+console.log("— Informe: historial por ruta —");
+{
+  const { informeRouteHistory } = await import("@/lib/informe-route-days");
+  const { routeCollectedByMethod } = await import("@/lib/day-cash-ledger");
+  const hist = informeRouteHistory(baseT, [COB.ref], D, D);
+  const dayOf = (kind) => hist[kind].days.find((row) => row.date === D);
+  const collected = (route) => {
+    const by = routeCollectedByMethod(baseT, route);
+    return by.efectivo + by.banco + by.nequi;
+  };
+  expect("Informe · Préstamo M = libro M", dayOf("prestamo")?.M ?? null, ledgerT.m.prestamos);
+  expect("Informe · Préstamo T = libro T", dayOf("prestamo")?.T ?? null, ledgerT.t.prestamos);
+  expect("Informe · Gasto M = libro M (sin capital prestado)", dayOf("gasto")?.M ?? null, ledgerT.m.gastos);
+  expect("Informe · Gasto T = libro T", dayOf("gasto")?.T ?? null, ledgerT.t.gastos);
+  expect("Informe · Cobrado M = cobros de clientes de M", dayOf("cobrado")?.M ?? null, collected("M"));
+  expect("Informe · Cobrado T = cobros de clientes de T", dayOf("cobrado")?.T ?? null, collected("T"));
+  expect(
+    "Informe · Total del día = T + M + N",
+    dayOf("prestamo")?.total ?? null,
+    (dayOf("prestamo")?.T ?? 0) + (dayOf("prestamo")?.M ?? 0) + (dayOf("prestamo")?.N ?? 0),
+  );
+  expect("Informe · Total del botón = suma de los días", hist.gasto.total, hist.gasto.days.reduce((s, r) => s + r.total, 0));
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

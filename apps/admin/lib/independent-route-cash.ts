@@ -145,6 +145,11 @@ function routeMovement(src: DayCashSources, route: string): RouteMovement {
   };
 }
 
+/** Movimiento propio de A / N ese día (sin Inicial): mismo que suma su caja. */
+export { routeMovement as independentRouteMovement };
+/** ¿Los gastos del cobrador van a M / T ese día? (si no, son de su planilla A / N). */
+export { gastosGoToChain as collectorGastosGoToChain };
+
 /** Cobrado ese día a clientes de la planilla, por medio de pago (nada de otras rutas). */
 export function independentRouteCollected(
   src: DayCashSources,

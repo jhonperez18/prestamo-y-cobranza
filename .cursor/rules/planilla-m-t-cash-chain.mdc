@@ -271,6 +271,20 @@ Un solo dueño: `lib/digital-pools.ts` (`digitalPoolBalances`).
 - Informe (Banco) y pie de INICIO (caja T + Banco) leen `digitalPoolBalances().banco`. NEQUI no entra.
 - Candado: `assert-cash-chain.mjs` sección 13.
 
+## Informe del supervisor — Cobrado / Préstamo / Gasto por ruta
+
+Debajo de la tabla del Informe: tres botones con el total del mes; cada uno despliega Día · T · M · N · Total
+desde el día 1. Un solo dueño: `lib/informe-route-days.ts` (`informeRouteHistory`), que solo lee:
+
+| Botón | Fuente |
+| --- | --- |
+| Cobrado | `routeCollectedByMethod` (todos los medios, ruta del cliente) |
+| Préstamo | efectivo: `chainDayMovements` (M/T, el mismo movimiento que suma el libro) y `independentRouteMovement` (N); más Banco/Nequi: `dayDigitalLoanRows` |
+| Gasto | gastos operativos de M/T (`chainDayMovements`) o de N (`independentRouteMovement`); sin capital prestado |
+
+- A no entra. Gastos de un cobrador sin hoja M/T van a N (`collectorGastosGoToChain`).
+- Candado: `assert-cash-chain.mjs` sección 25.
+
 ## Prestar atendido no bloquea el cierre
 
 Si un cliente con visita «Prestar» recibe préstamo ese día, la visita **no desaparece**:
