@@ -532,16 +532,24 @@ export function CollectorMobileApp({
     ],
   );
 
+  /**
+   * Ruta del Historial: la elegida si hay varias. Con una sola ruta y que sea A / N (Yesid)
+   * es esa: su saldo es su caja propia (ajuste del supervisor + movimiento), no el del cobrador.
+   */
+  const historyRoute =
+    planillaRoutePins.length > 1
+      ? planillaRouteFilter ?? planillaRoutePins[0]
+      : planillaRoutePins.length === 1 && isIndependentSaldoRoute(planillaRoutePins[0])
+        ? planillaRoutePins[0]
+        : null;
+
   const dayHistory = useMemo(() => {
     const extraDates = [
       ...routeOptions.map((row) => row.date),
       date ?? todayIso(),
       activeDate,
     ];
-    const routeForHistory =
-      planillaRoutePins.length > 1
-        ? planillaRouteFilter ?? planillaRoutePins[0]
-        : null;
+    const routeForHistory = historyRoute;
     const scopedClients = routeForHistory
       ? new Set(
           clients
@@ -694,12 +702,12 @@ export function CollectorMobileApp({
     date,
     dayCloses,
     dayExpenseDrafts,
+    historyRoute,
     loans,
     mCarriedFallbackOpening,
     monthCloses,
     livePayments,
     planillaCashCloses,
-    planillaRouteFilter,
     planillaRoutePins,
     primaryClosingFor,
     routeOptions,
@@ -1526,8 +1534,7 @@ export function CollectorMobileApp({
 
   /** Historial · T: renglón del cierre + ajuste de saldo del supervisor (solo lectura). */
   const historyRowsWithAdjustment = useMemo(() => {
-    const route =
-      planillaRoutePins.length > 1 ? planillaRouteFilter ?? planillaRoutePins[0] : null;
+    const route = historyRoute;
     if (route && isIndependentSaldoRoute(route)) {
       return attachRouteCashAdjustments(historyVisibleRows, collector.ref, route, dayCloses);
     }
@@ -1535,7 +1542,7 @@ export function CollectorMobileApp({
       return historyVisibleRows.map((row) => ({ row, adjustment: null }));
     }
     return attachCashAdjustments(historyVisibleRows, collector.ref, dayCloses);
-  }, [collector.ref, dayCloses, historyVisibleRows, planillaRouteFilter, planillaRoutePins]);
+  }, [collector.ref, dayCloses, historyVisibleRows, historyRoute]);
 
   /** Historial · M: extracto (Inicial → Saldo). Días previos intactos. */
   const showMInicialColumn = isPlanillaCashChainPrimary(activePlanillaRoute ?? undefined);

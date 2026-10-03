@@ -250,6 +250,9 @@ A y N llevan su propia caja. Un solo dueño: `lib/independent-route-cash.ts` (`i
 - Guardado: `saveCashAdjustment` con `route` (local + cola + await nube).
 - Nube y pull: unión por ruta, gana el más reciente (`mergeRouteCashAdjustments`); ningún candado del CIE- lo borra.
 - Tarjeta del supervisor, Historial A/N y cabecera del cobrador leen la misma cifra.
+- Cobrador con **una sola** ruta y que sea A/N (Yesid → N): su Historial es el de esa ruta
+ (`historyRoute` en `CollectorMobileApp`) → `withIndependentRouteHistory` + `attachRouteCashAdjustments`.
+ Sin eso salía el saldo del cobrador entero, sin el ajuste (negativos en rojo).
 - **A aislada:** con M/T/N solo comparte el cobrador. Tarjeta, Historial (lista y día) y cobrador
  muestran solo clientes, cobros, gastos y préstamos de A (`independentRouteCollected`,
  `independentRouteDayLines`, `withIndependentRouteHistory`). Prohibido `cajaDelDia` del cobrador
