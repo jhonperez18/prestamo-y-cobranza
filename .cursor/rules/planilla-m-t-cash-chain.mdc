@@ -271,7 +271,8 @@ Un solo dueño: `lib/digital-pools.ts` (`digitalPoolBalances`).
 | Después | Saldo = real del último cuadre + movimientos de los días siguientes |
 | Qué no | Cobros, préstamos, cajas, `cashFloat`, ajuste de T, saldo A/N, días pasados |
 
-- Informe (Banco) y pie de INICIO (caja T + Banco) leen `digitalPoolBalances().banco`. NEQUI no entra.
+- Informe (Banco) y pie de INICIO (caja T + caja propia de N + Banco) leen `digitalPoolBalances().banco`.
+ N = la misma cifra de su tarjeta (`independentRouteDay`). A y NEQUI no entran.
 - Candado: `assert-cash-chain.mjs` sección 13.
 
 ## Informe del supervisor — Cobrado / Préstamo / Gasto por ruta

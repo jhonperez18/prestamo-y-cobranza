@@ -1933,12 +1933,13 @@ export function SupervisorMobileApp({
     today,
   ]);
 
-  /** INICIO pie: caja viva de T + total del botón BANCO. */
+  /** INICIO pie: caja viva de T + caja propia de N + total del botón BANCO. */
   const inicioTotalConT = useMemo(() => {
     const routeT = liquidaciones.find((row) =>
       isPlanillaCashChainSecondary(row.routeName),
     );
-    return (routeT?.enCaja ?? 0) + bancoPanelAcumulado;
+    const routeN = liquidaciones.find((row) => sameRoute(row.routeName, "N"));
+    return (routeT?.enCaja ?? 0) + (routeN?.enCaja ?? 0) + bancoPanelAcumulado;
   }, [liquidaciones, bancoPanelAcumulado]);
 
   const bancoRegisterTodayAll = useMemo(() => {
@@ -5422,8 +5423,8 @@ export function SupervisorMobileApp({
             )}
             <div
               className="supervisor-caja-hero is-row is-money-lg supervisor-inicio-total"
-              title="Saldo ruta T + Banco"
-              aria-label={`Total ruta T más Banco: ${money(inicioTotalConT, { symbol: false })}`}
+              title="Saldo ruta T + ruta N + Banco"
+              aria-label={`Total ruta T más ruta N más Banco: ${money(inicioTotalConT, { symbol: false })}`}
             >
               <b>{money(inicioTotalConT, { symbol: false })}</b>
             </div>
