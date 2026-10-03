@@ -4,7 +4,7 @@
  * Al instalar, reemplaza estado anterior del origen (localhost ≠ vercel.app).
  */
 import recoverySeed from "@/lib/seeds/nexo-respaldo-recovery.json";
-import { bigDemoStoreActive, isBigDemoKey, writeBigDemoRaw } from "@/lib/big-demo-store";
+import { demoStorage } from "@/lib/big-demo-store";
 import {
   DEMO_BANK_ACCOUNTS_KEY,
   DEMO_BANK_MOVEMENTS_KEY,
@@ -101,12 +101,8 @@ function forceInstallJson(key: string, value: unknown) {
   if (typeof window === "undefined") return;
   try {
     const next = JSON.stringify(value);
-    if (bigDemoStoreActive() && isBigDemoKey(key)) {
-      writeBigDemoRaw(key, next);
-      return;
-    }
-    window.localStorage.setItem(key, next);
-    window.localStorage.setItem(`${key}-bak`, next);
+    demoStorage.setItem(key, next);
+    demoStorage.setItem(`${key}-bak`, next);
   } catch {
     /* ignore quota / private mode */
   }
@@ -116,7 +112,7 @@ function clearLegacyBackups() {
   if (typeof window === "undefined") return;
   for (const key of PACKAGE_KEYS) {
     try {
-      window.localStorage.removeItem(`${key}-bak`);
+      demoStorage.removeItem(`${key}-bak`);
     } catch {
       /* ignore */
     }
@@ -145,8 +141,8 @@ function clearMirrorQueues() {
   ];
   for (const key of queues) {
     try {
-      window.localStorage.removeItem(key);
-      window.localStorage.removeItem(`${key}-bak`);
+      demoStorage.removeItem(key);
+      demoStorage.removeItem(`${key}-bak`);
     } catch {
       /* ignore */
     }
@@ -188,7 +184,7 @@ function purgeOrphanDemoKeys() {
       }
     }
     for (const key of remove) {
-      window.localStorage.removeItem(key);
+      demoStorage.removeItem(key);
     }
   } catch {
     /* ignore */
@@ -225,7 +221,7 @@ function requestCloudCatalogRepair(force = false) {
 export function isCanonicalPackageInstalled() {
   if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem(DEMO_BOOTSTRAP_PACKAGE_KEY) === "1";
+    return demoStorage.getItem(DEMO_BOOTSTRAP_PACKAGE_KEY) === "1";
   } catch {
     return false;
   }
@@ -236,9 +232,9 @@ export function forceReinstallCanonicalPackage() {
     return { restored: false, retention: null as null | { cutoff: string; changed: boolean } };
   }
   try {
-    window.localStorage.removeItem(DEMO_BOOTSTRAP_PACKAGE_KEY);
+    demoStorage.removeItem(DEMO_BOOTSTRAP_PACKAGE_KEY);
     for (const key of PREVIOUS_PACKAGE_FLAGS) {
-      window.localStorage.removeItem(key);
+      demoStorage.removeItem(key);
     }
   } catch {
     /* ignore */
@@ -254,9 +250,9 @@ export function bootstrapProtectedDemoData() {
   // Gen nueva = reinstalar aunque un paquete anterior ya estuviera marcado.
   if (needsVirginWipeReinstall()) {
     try {
-      window.localStorage.removeItem(DEMO_BOOTSTRAP_PACKAGE_KEY);
+      demoStorage.removeItem(DEMO_BOOTSTRAP_PACKAGE_KEY);
       for (const key of PREVIOUS_PACKAGE_FLAGS) {
-        window.localStorage.removeItem(key);
+        demoStorage.removeItem(key);
       }
     } catch {
       /* ignore */
@@ -267,7 +263,7 @@ export function bootstrapProtectedDemoData() {
     // Paquete marcado sin clientes = caché rota; reparar hoja DIURNO local.
     let clientsShort = false;
     try {
-      const local = JSON.parse(window.localStorage.getItem(DEMO_CLIENTS_KEY) || "[]");
+      const local = JSON.parse(demoStorage.getItem(DEMO_CLIENTS_KEY) || "[]");
       if (!Array.isArray(local) || local.length < DIURNO_ROUTE_NAMES.length) {
         clientsShort = true;
         forceInstallJson(DEMO_CLIENTS_KEY, buildDiurnoRoute1Clients());
@@ -356,7 +352,7 @@ export function bootstrapProtectedDemoData() {
   // Personas: NUNCA reseembra seed mock. El listado / nube manda.
   // Solo deja truqui si el catálogo quedó vacío (sin acceso al panel).
   try {
-    const rawUsers = window.localStorage.getItem(DEMO_USERS_KEY);
+    const rawUsers = demoStorage.getItem(DEMO_USERS_KEY);
     const parsedUsers = rawUsers ? (JSON.parse(rawUsers) as unknown) : [];
     if (!Array.isArray(parsedUsers) || parsedUsers.length === 0) {
       const admin = USERS.find((row) => row.login.toLowerCase() === "truqui");
@@ -369,7 +365,7 @@ export function bootstrapProtectedDemoData() {
   }
   // Cobradores: vacíos hasta pull de ops / vínculo con usuarios (no seed Juan/Lina/Diego).
   try {
-    const rawCobs = window.localStorage.getItem(DEMO_COLLECTORS_KEY);
+    const rawCobs = demoStorage.getItem(DEMO_COLLECTORS_KEY);
     const parsedCobs = rawCobs ? (JSON.parse(rawCobs) as unknown) : null;
     if (parsedCobs == null) {
       forceInstallJson(DEMO_COLLECTORS_KEY, []);
@@ -379,19 +375,19 @@ export function bootstrapProtectedDemoData() {
   }
 
   try {
-    const installed = JSON.parse(window.localStorage.getItem(DEMO_CLIENTS_KEY) || "[]");
+    const installed = JSON.parse(demoStorage.getItem(DEMO_CLIENTS_KEY) || "[]");
     if (!Array.isArray(installed) || installed.length < DIURNO_ROUTE_NAMES.length) {
       // No marcar paquete si el catálogo no quedó instalado (evita caché vacía permanente).
       scrubLegacyMockDemoRows();
       const retention = applyDataRetention();
       return { restored: false, retention };
     }
-    window.localStorage.setItem(DEMO_VIRGIN_OPS_KEY, "1");
-    window.localStorage.setItem(DEMO_VIRGIN_WIPE_GEN_KEY, String(VIRGIN_WIPE_GEN));
-    window.localStorage.removeItem(DEMO_VIRGIN_HOLD_UNTIL_KEY);
-    window.localStorage.setItem(DEMO_BOOTSTRAP_PACKAGE_KEY, "1");
+    demoStorage.setItem(DEMO_VIRGIN_OPS_KEY, "1");
+    demoStorage.setItem(DEMO_VIRGIN_WIPE_GEN_KEY, String(VIRGIN_WIPE_GEN));
+    demoStorage.removeItem(DEMO_VIRGIN_HOLD_UNTIL_KEY);
+    demoStorage.setItem(DEMO_BOOTSTRAP_PACKAGE_KEY, "1");
     for (const key of PREVIOUS_PACKAGE_FLAGS) {
-      window.localStorage.setItem(key, "1");
+      demoStorage.setItem(key, "1");
     }
   } catch {
     /* ignore */

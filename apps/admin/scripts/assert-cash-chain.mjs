@@ -1900,12 +1900,15 @@ console.log("— Cupo del aparato —");
           createObjectStore: () => undefined,
           transaction: () => {
             const tx = {};
+            let open = 0;
             const op = (fn) => {
               const r = {};
+              open += 1;
               setTimeout(() => {
                 r.result = fn();
                 r.onsuccess?.();
-                setTimeout(() => tx.oncomplete?.());
+                open -= 1;
+                if (open === 0) setTimeout(() => tx.oncomplete?.());
               });
               return r;
             };
@@ -1949,14 +1952,28 @@ console.log("— Cupo del aparato —");
     store.set(DEMO_DAILY_ASSIGNMENTS_KEY, planilla);
     store.set(DEMO_ROUTES_KEY, JSON.stringify([{ ref: "RUT-1" }]));
     store.set(`${DEMO_ROUTES_KEY}-bak`, JSON.stringify([{ ref: "RUT-1" }]));
+    store.set(DEMO_PAYMENTS_KEY, "[]");
+    store.set(`${DEMO_PAYMENTS_KEY}-bak`, JSON.stringify([{ ref: "PG-9" }]));
+    store.set("nexo-demo-payment-mirror-queue", JSON.stringify([{ ref: "Q" }]));
+    store.set("nexo-admin-session", "{}");
     await big.hydrateBigDemoStore();
     expect("IndexedDB: almacén activo tras el arranque", big.bigDemoStoreActive(), true);
     expect(
-      "IndexedDB: planilla y rutas salen de localStorage (sin copia -bak)",
-      [DEMO_DAILY_ASSIGNMENTS_KEY, DEMO_ROUTES_KEY, `${DEMO_ROUTES_KEY}-bak`].some((k) => store.has(k)),
+      "IndexedDB: datos y sus copias salen de localStorage",
+      [DEMO_DAILY_ASSIGNMENTS_KEY, DEMO_ROUTES_KEY, `${DEMO_ROUTES_KEY}-bak`, DEMO_PAYMENTS_KEY, `${DEMO_PAYMENTS_KEY}-bak`].some((k) =>
+        store.has(k),
+      ),
       false,
     );
+    expect(
+      "IndexedDB: colas de subida y sesión siguen en localStorage",
+      store.has("nexo-demo-payment-mirror-queue") && store.has("nexo-admin-session"),
+      true,
+    );
+    expect("IndexedDB: la copia -bak viajó (cobro recuperable)", idb.get(`${DEMO_PAYMENTS_KEY}-bak`), JSON.stringify([{ ref: "PG-9" }]));
+    expect("IndexedDB: un [] sigue leyendo la copia -bak", readDemoJson(DEMO_PAYMENTS_KEY, []).length, 1);
     expect("IndexedDB: la planilla se sigue leyendo igual", readDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, []).length, 1);
+    expect("IndexedDB: localStorage queda casi vacío", used() < 200, true);
     const nextPlanilla = [{ id: "V-1" }, { id: "V-2" }];
     expect("IndexedDB: guardar planilla responde OK", writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, nextPlanilla), true);
     await big.flushBigDemoStore();

@@ -20,13 +20,7 @@ import {
   mergeStoredPaymentsWithSeed,
   normalizeAllPayments,
 } from "@/lib/payment-detail";
-import {
-  bigDemoStoreActive,
-  bigDemoStoreFailures,
-  isBigDemoKey,
-  readBigDemoRaw,
-  writeBigDemoRaw,
-} from "@/lib/big-demo-store";
+import { bigDemoStoreFailures, demoStorage } from "@/lib/big-demo-store";
 
 export const DEMO_USERS_KEY = "nexo-demo-users";
 /** Clave breve usada en un deploy; se migra de vuelta a DEMO_USERS_KEY. */
@@ -128,20 +122,10 @@ export function ensureInvalidPlanillaPurgedOnce() {
   disarmLegacyWipes();
 }
 
-/** Planilla y rutas del día: en IndexedDB (memoria), sin copia -bak. */
-function bigKeyOf(key: string): { key: string; backup: boolean } | null {
-  if (!bigDemoStoreActive()) return null;
-  if (isBigDemoKey(key)) return { key, backup: false };
-  const base = key.endsWith("-bak") ? key.slice(0, -4) : "";
-  return base && isBigDemoKey(base) ? { key: base, backup: true } : null;
-}
-
 function readRaw(key: string): string | null {
   if (typeof window === "undefined") return null;
-  const big = bigKeyOf(key);
-  if (big) return big.backup ? null : readBigDemoRaw(big.key);
   try {
-    return window.localStorage.getItem(key);
+    return demoStorage.getItem(key);
   } catch {
     return null;
   }
@@ -249,7 +233,7 @@ function rewriteWithoutDataPreviews(key: string) {
   if (!raw || !raw.includes("data:")) return;
   const parsed = parseJson<unknown>(raw);
   if (parsed === null || parsed === undefined) return;
-  window.localStorage.setItem(key, JSON.stringify(stripDataPreviews(parsed)));
+  demoStorage.setItem(key, JSON.stringify(stripDataPreviews(parsed)));
 }
 
 /**
@@ -269,17 +253,17 @@ function freeDemoBackups() {
     "nexo-demo-payment-evidence",
   ];
   for (const key of copyKeys) {
-    window.localStorage.removeItem(backupKey(key));
+    demoStorage.removeItem(backupKey(key));
   }
   try {
     rewriteWithoutDataPreviews(DEMO_PAYMENTS_KEY);
     rewriteWithoutDataPreviews("nexo-demo-payment-evidence");
   } catch {
     /* si la foto no cabe, la copia -bak de cobros se suelta; la clave principal sigue */
-    window.localStorage.removeItem(backupKey(DEMO_PAYMENTS_KEY));
-    window.localStorage.removeItem(backupKey(DEMO_LOANS_KEY));
-    window.localStorage.removeItem(backupKey(DEMO_CLIENTS_KEY));
-    window.localStorage.removeItem(backupKey(DEMO_USERS_KEY));
+    demoStorage.removeItem(backupKey(DEMO_PAYMENTS_KEY));
+    demoStorage.removeItem(backupKey(DEMO_LOANS_KEY));
+    demoStorage.removeItem(backupKey(DEMO_CLIENTS_KEY));
+    demoStorage.removeItem(backupKey(DEMO_USERS_KEY));
   }
 }
 
@@ -300,15 +284,15 @@ export function compactRebuildableStorage() {
  */
 function freeCatalogBackups() {
   for (const key of [DEMO_PAYMENTS_KEY, DEMO_LOANS_KEY, DEMO_CLIENTS_KEY, DEMO_USERS_KEY]) {
-    window.localStorage.removeItem(backupKey(key));
+    demoStorage.removeItem(backupKey(key));
   }
 }
 
 /** Cupo lleno, último recurso (solo si ni la sesión cabe): colas de subida. */
 function freeDemoMirrorQueues() {
   for (const key of MIRROR_QUEUE_KEYS) {
-    window.localStorage.removeItem(key);
-    window.localStorage.removeItem(backupKey(key));
+    demoStorage.removeItem(key);
+    demoStorage.removeItem(backupKey(key));
   }
 }
 
@@ -374,27 +358,21 @@ function backupPayload(raw: string) {
 }
 
 /**
- * Planilla (~1,5 MB, 45 días en nube): su copia -bak duplicaba el mayor bloque del cupo
- * (~5 MB) y al llenarlo se soltaban colas y copias en cada guardado. Se rehace desde la nube.
+ * Planilla (~2 MB, 45 días en nube): sin copia -bak. Se rehace desde la nube.
+ * Las colas tampoco: viven en localStorage y su escritura es inmediata.
  */
 const NO_BACKUP_KEYS: readonly string[] = [...MIRROR_QUEUE_KEYS, DEMO_DAILY_ASSIGNMENTS_KEY];
 
 function setRaw(key: string, raw: string) {
-  const big = bigKeyOf(key);
-  if (big) {
-    if (!big.backup) writeBigDemoRaw(big.key, raw);
-    return;
-  }
-  window.localStorage.setItem(key, raw);
+  demoStorage.setItem(key, raw);
 }
 
 function writeBackup(key: string, raw: string) {
-  if (bigKeyOf(key)) return;
   if (NO_BACKUP_KEYS.includes(key)) {
-    if (key === DEMO_DAILY_ASSIGNMENTS_KEY) window.localStorage.removeItem(backupKey(key));
+    if (key === DEMO_DAILY_ASSIGNMENTS_KEY) demoStorage.removeItem(backupKey(key));
     return;
   }
-  window.localStorage.setItem(backupKey(key), backupPayload(raw));
+  demoStorage.setItem(backupKey(key), backupPayload(raw));
 }
 
 /**
@@ -407,7 +385,7 @@ function keepBackup(key: string, raw: string) {
     writeBackup(key, raw);
   } catch (error) {
     if (!isQuotaError(error)) throw error;
-    window.localStorage.removeItem(backupKey(key));
+    demoStorage.removeItem(backupKey(key));
   }
 }
 
@@ -566,7 +544,7 @@ export function scrubLegacyMockDemoRows() {
   }
   // Pin bak limpio para que no resuciten Carlos/Ana desde -bak.
   try {
-    window.localStorage.setItem(backupKey(DEMO_CLIENTS_KEY), JSON.stringify(nextClients));
+    demoStorage.setItem(backupKey(DEMO_CLIENTS_KEY), JSON.stringify(nextClients));
   } catch {
     /* ignore */
   }
@@ -577,7 +555,7 @@ export function scrubLegacyMockDemoRows() {
     writeDemoJson(DEMO_LOANS_KEY, nextLoans);
   }
   try {
-    window.localStorage.setItem(backupKey(DEMO_LOANS_KEY), JSON.stringify(nextLoans));
+    demoStorage.setItem(backupKey(DEMO_LOANS_KEY), JSON.stringify(nextLoans));
   } catch {
     /* ignore */
   }
@@ -589,7 +567,7 @@ export function scrubLegacyMockDemoRows() {
     writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
   }
   try {
-    window.localStorage.setItem(backupKey(DEMO_PAYMENTS_KEY), JSON.stringify(nextPayments));
+    demoStorage.setItem(backupKey(DEMO_PAYMENTS_KEY), JSON.stringify(nextPayments));
   } catch {
     /* ignore */
   }
@@ -629,7 +607,7 @@ export function loadDemoClients(seed: ClientRow[] = CLIENTS): ClientRow[] {
     if (cleaned.length !== stored.length) {
       writeDemoJson(DEMO_CLIENTS_KEY, cleaned);
       try {
-        window.localStorage.setItem(backupKey(DEMO_CLIENTS_KEY), JSON.stringify(cleaned));
+        demoStorage.setItem(backupKey(DEMO_CLIENTS_KEY), JSON.stringify(cleaned));
       } catch {
         /* ignore */
       }
