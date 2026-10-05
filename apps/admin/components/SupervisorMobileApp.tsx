@@ -2941,6 +2941,7 @@ export function SupervisorMobileApp({
     setNequiDayIso(null);
     setNequiDayBackTo("nequi-historial");
     setCajaHistoryDayIso(null);
+    setInformeTab("general");
     setNuevoRouteRef(null);
     setNuevoMsg("");
     setNuevoMode("menu");
