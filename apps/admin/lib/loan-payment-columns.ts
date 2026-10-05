@@ -20,8 +20,8 @@ export const LOAN_PAYMENT_COLUMNS: ColumnOption[] = [
 
 export const LOAN_PAYMENT_DEFAULT_COLS = LOAN_PAYMENT_COLUMNS.map((col) => col.id);
 
-/** Informe del préstamo (pantalla + PDF): sin Concepto, Comprobante ni Cuota. */
-const LOAN_REPORT_HIDDEN_COLS = new Set(["concept", "evidence", "cuota"]);
+/** Informe del préstamo (pantalla + PDF): sin Concepto, Comprobante, Origen ni Cuota. */
+const LOAN_REPORT_HIDDEN_COLS = new Set(["concept", "evidence", "source", "cuota"]);
 export const LOAN_REPORT_COLUMNS_STORAGE_KEY = "nexo.prestamos.informe.columns.v1";
 export const LOAN_REPORT_COLUMNS: ColumnOption[] = LOAN_PAYMENT_COLUMNS.filter(
   (col) => !LOAN_REPORT_HIDDEN_COLS.has(col.id),
