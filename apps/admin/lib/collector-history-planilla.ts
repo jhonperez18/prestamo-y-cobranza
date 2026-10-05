@@ -4,7 +4,7 @@ import type { RouteExpenseLine } from "@/lib/collector-day-close";
 import { compareRoutePosition, sameRoute } from "@/lib/client-route-order";
 import { syncLoan, displayToIso } from "@/lib/loan-preview";
 import { loanDisbursementSource, loanIsExistingPortfolio } from "@/lib/nequi-pool";
-import { isPrestamoRutaExpense } from "@/lib/expense-lines";
+import { isLoanTopUpLine, isPrestamoRutaExpense } from "@/lib/expense-lines";
 import { isAssignmentAwaitingLoan, planillaLiveCuota } from "@/lib/planilla-display";
 import { withPaymentEvidence } from "@/lib/payment-evidence-store";
 import { paymentTimeLabel } from "@/lib/payment-detail";
@@ -138,6 +138,8 @@ export type DayLoanDisbursementRow = {
   clientName: string;
   capital: number;
   installment: number;
+  /** Anexo: capital sumado hoy a un préstamo de un día ya cerrado. */
+  topUp?: boolean;
 };
 
 export type DayLoanDisbursementScope = {
@@ -189,6 +191,7 @@ export function dayLoanDisbursementRows(
       clientName,
       capital: Number(line.amount) || Math.trunc(Number(loan?.capital) || 0),
       installment: Math.trunc(Number(loan?.installment) || 0),
+      ...(isLoanTopUpLine(line) ? { topUp: true } : {}),
     });
     if (clientRef) dayClientRefs.add(clientRef);
   }

@@ -6,6 +6,13 @@ export function isPrestamoRutaExpense(line: Pick<RouteExpenseLine, "category" | 
   return line.category === "prestamo_ruta" || line.id === "prestamo";
 }
 
+/** `lineKey` del anexo: capital sumado a un préstamo cuyo día de desembolso ya cerró. */
+export const LOAN_TOP_UP_LINE_KEY = "anexo";
+
+export function isLoanTopUpLine(line: Pick<RouteExpenseLine, "lineKey">) {
+  return line.lineKey === LOAN_TOP_UP_LINE_KEY;
+}
+
 /** Solo almuerzo/gasolina/otros… Sin préstamos (van al botón Préstamo / KPI). */
 export function operativeExpenseLines<T extends Pick<RouteExpenseLine, "category" | "id">>(
   lines: T[],

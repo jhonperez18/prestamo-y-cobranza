@@ -1452,6 +1452,73 @@ console.log("— Préstamo del supervisor a cargo de la ruta —");
   );
 }
 
+// 27. Anexo: el admin sube el capital de un préstamo en efectivo cuyo día ya cerró (CIE-).
+//     El día sellado no se toca; la diferencia sale HOY de la caja de la ruta del cliente
+//     (renglón «Anexo» → KPI Préstamo y lista). Re-editar ajusta el anexo, no lo duplica.
+console.log("— Anexo de préstamo (día del desembolso cerrado) —");
+{
+  const { commitRouteCashLoan } = await import("@/lib/commit-route-cash-loan");
+  const { buildDayExpenseDraft } = await import("@/lib/collector-day-close");
+  const { dayLoanDisbursementRows } = await import("@/lib/collector-history-planilla");
+  const routes = [{ ref: "RUT-T", name: "T", collectorRef: COB.ref, collector: COB.name, status: "Activa" }];
+  const sealedGas = buildDayExpenseDraft({
+    collectorRef: COB.ref,
+    collectorName: COB.name,
+    date: cie25.date,
+    routeRef: "RUT-T",
+    expenses: [
+      { id: "prestamo", label: "Préstamo · P-ANX · Caro T", amount: 1_500_000, category: "prestamo_ruta", loanRef: "P-ANX" },
+    ],
+  });
+  const anxLoan = {
+    ref: "P-ANX",
+    clientRef: "CLI-T1",
+    client: "Caro T",
+    date: "25/09/2026",
+    capital: 1_700_000,
+    installment: 45_000,
+    fundedBy: "efectivo",
+  };
+  const src = { clients, routes, collectors: [COB], assignments, dayCloses: [cie25], date: D, now: new Date(`${D}T15:00:00-05:00`) };
+  const start = [sealedGas, ...drafts];
+  const first = syncCashDisbursementExpense(start, [cie25], anxLoan);
+  expect("Anexo: día sellado no se toca", first.changed.length, 0);
+  expect("Anexo: falta sacar hoy la diferencia", first.topUp, 200_000);
+  const res = commitRouteCashLoan(anxLoan, first.drafts, src, first.topUp);
+  const line = res.ok ? res.draft.expenses.find((r) => r.loanRef === "P-ANX") : null;
+  expect("Anexo: entra hoy al cobrador de la ruta", res.ok ? res.draft.date : res.error, D);
+  expect("Anexo: renglón = diferencia", line?.amount ?? null, 200_000);
+  expect("Anexo: marcado como anexo", line?.lineKey ?? null, "anexo");
+  expect(
+    "Anexo: sábado sigue con el capital entregado",
+    (res.ok ? res.drafts : []).find((r) => r.ref === sealedGas.ref)?.expenses[0]?.amount ?? null,
+    1_500_000,
+  );
+  const before = buildDayCashLedger({ ...base, loans: [...loans, anxLoan] });
+  const after = buildDayCashLedger({ ...base, loans: [...loans, anxLoan], dayExpenseDrafts: res.ok ? res.drafts : drafts });
+  expect("Anexo: KPI préstamo T de hoy", after.t.prestamos - before.t.prestamos, 200_000);
+  expect("Anexo: caja M intacta (cliente de T)", after.mClosing, before.mClosing);
+  expect("Anexo: saldo final de hoy baja la diferencia", before.dayFinal - after.dayFinal, 200_000);
+  const rows = dayLoanDisbursementRows(D, line ? [line] : [], [...loans, anxLoan], clients);
+  expect("Anexo: la lista de Préstamos lo marca", rows[0]?.topUp ?? null, true);
+  const again = syncCashDisbursementExpense(res.ok ? res.drafts : [], [cie25], { ...anxLoan, capital: 1_800_000 });
+  expect("Anexo: re-editar no crea otro anexo", again.topUp, 0);
+  expect(
+    "Anexo: re-editar ajusta el anexo de hoy",
+    again.drafts.find((r) => r.date === D)?.expenses.find((r) => r.loanRef === "P-ANX")?.amount ?? null,
+    300_000,
+  );
+  const lower = syncCashDisbursementExpense(res.ok ? res.drafts : [], [cie25], { ...anxLoan, capital: 1_400_000 });
+  expect("Anexo: bajar bajo lo entregado → aviso, sin tocar caja sellada", lower.belowSealed, 100_000);
+  expect(
+    "Anexo: bajar bajo lo entregado → sale el anexo de hoy",
+    lower.drafts.find((r) => r.date === D)?.expenses.some((r) => r.loanRef === "P-ANX") ?? false,
+    false,
+  );
+  const sameDay = syncCashDisbursementExpense([gasLoan], [cie25], fixedLoan);
+  expect("Anexo: préstamo de un día abierto sigue igual (sin anexo)", sameDay.topUp, 0);
+}
+
 // 20. Botón Préstamos del cobrador: Efectivo (caja) + Banco / Nequi del supervisor (reporte).
 //     Banco / Nequi se listan por planilla del cliente y nunca entran a la caja.
 console.log("— Préstamos Banco / Nequi en la planilla del cobrador —");

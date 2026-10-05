@@ -72,8 +72,11 @@ export function CollectorDayLoansPanel({
           <ul className="collector-day-loans-list">
             {shown.map((row) => (
               <li key={row.loanRef}>
-                <span className="is-name" title={row.clientName}>
-                  {row.clientName}
+                <span
+                  className="is-name"
+                  title={row.topUp ? `Anexo ${row.loanRef}: entregar hoy al cliente` : row.clientName}
+                >
+                  {row.topUp ? `${row.clientName} · Anexo` : row.clientName}
                 </span>
                 <b className="is-capital">{money(row.capital, { symbol: false })}</b>
                 <span className="is-cuota">{money(row.installment, { symbol: false })}</span>

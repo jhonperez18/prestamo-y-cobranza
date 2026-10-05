@@ -83,10 +83,15 @@ export function routeCashLoanLineMissing(
   );
 }
 
+/**
+ * Con `topUp`: anexo — capital sumado a un préstamo cuyo día de desembolso ya cerró. Sale hoy
+ * de la caja de la ruta del cliente, como si el cobrador hiciera el préstamo hoy.
+ */
 export function commitRouteCashLoan(
   loan: Pick<LoanRow, "ref" | "client" | "capital" | "clientRef">,
   drafts: CollectorDayExpenseDraft[],
   src: RouteCashLoanSources,
+  topUp?: number,
 ): RouteCashLoanCommit {
   const target = routeCashLoanTarget(loan.clientRef, src);
   if (!target.ok) return target;
@@ -96,9 +101,15 @@ export function commitRouteCashLoan(
     date: src.date,
     routeRef: target.routeRef,
     loan,
+    topUp,
   });
   const ref = dayExpenseDraftRef(target.collector.ref, src.date);
   const draft = next.find((row) => row.ref === ref);
-  if (!draft) return { ok: false, error: "No se pudo anotar el préstamo en la caja de la ruta." };
+  if (!draft) {
+    return {
+      ok: false,
+      error: `No se pudo anotar el ${topUp !== undefined ? "anexo" : "préstamo"} en la caja de la ruta.`,
+    };
+  }
   return { ok: true, collector: target.collector, drafts: next, draft };
 }

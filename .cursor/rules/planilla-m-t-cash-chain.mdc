@@ -177,7 +177,12 @@ también. Un solo camino: `saveEditLoan` → `commitUpdateLoan` → `syncCashDis
 | Sigue en efectivo | El renglón toma el capital nuevo; se recalcula el total del GAS- |
 | Pasa a Nequi / banco / cartera | El renglón se quita (esa plata no salió de la caja) |
 | Día con CIE- sellado | No se toca; aviso «el día … ya cerró» |
+| Sube el capital y el día ya cerró (efectivo) | **Anexo**: la diferencia sale **hoy** de la caja del cobrador de la ruta del cliente (renglón «Anexo · P-…», `lineKey: "anexo"`) → KPI Préstamo y lista «Cliente · Anexo», como si él lo prestara hoy |
+| Re-editar con anexo | Lo sellado queda fijo; el anexo de hoy = capital − lo sellado (no se duplica) |
+| Baja por debajo de lo ya entregado en día cerrado | Aviso; la caja no se mueve (devolución: pendiente) |
 
+- Un solo camino: `syncCashDisbursementExpense` (`topUp` / `belowSealed`) → `commitRouteCashLoan(…, topUp)`.
+ Caja de hoy cerrada → el anexo no entra y avisa.
 - Gastos operativos del mismo GAS- no se tocan.
 - Préstamos ya corregidos antes de esta regla: abrir → Modificar → Guardar (sin cambios).
 - Candado: `assert-cash-chain.mjs` sección 10.

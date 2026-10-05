@@ -1253,25 +1253,36 @@ export function useWorkspace({
       if (!loan) return;
 
       const synced = syncCashDisbursementExpense(dayExpenseDrafts, dayCloses, loan);
-      if (synced.lockedDates.length) {
+      const closedDays = synced.lockedDates.map(isoToDispatchLabel).join(", ");
+      if (synced.belowSealed > 0) {
         onToast(
-          `Préstamo ${loanRef}: el día ${synced.lockedDates.map(isoToDispatchLabel).join(", ")} ya cerró; su gasto no se modifica.`,
+          `Préstamo ${loanRef}: el capital quedó ${money(synced.belowSealed)} por debajo de lo entregado el ${closedDays} (día cerrado). La caja no se mueve.`,
         );
+      } else if (synced.lockedDates.length && synced.topUp <= 0) {
+        onToast(`Préstamo ${loanRef}: el día ${closedDays} ya cerró; su gasto no se modifica.`);
       }
       const today = todayIso();
-      const routeCash = routeCashLoanLineMissing(loan, synced.drafts, today)
-        ? commitRouteCashLoan(loan, synced.drafts, {
-            clients: result.state.clients,
-            routes: result.state.routes,
-            collectors,
-            assignments: result.state.assignments,
-            dayCloses,
-            date: today,
-            now: new Date(),
-          })
-        : null;
+      const routeSources = {
+        clients: result.state.clients,
+        routes: result.state.routes,
+        collectors,
+        assignments: result.state.assignments,
+        dayCloses,
+        date: today,
+        now: new Date(),
+      };
+      const routeCash =
+        synced.topUp > 0
+          ? commitRouteCashLoan(loan, synced.drafts, routeSources, synced.topUp)
+          : routeCashLoanLineMissing(loan, synced.drafts, today)
+            ? commitRouteCashLoan(loan, synced.drafts, routeSources)
+            : null;
       if (routeCash && !routeCash.ok) {
-        onToast(`Préstamo ${loanRef} guardado, pero no se cargó a la caja de la ruta: ${routeCash.error}`);
+        onToast(
+          synced.topUp > 0
+            ? `Préstamo ${loanRef} guardado, pero el anexo de ${money(synced.topUp)} no entró a la caja de la ruta: ${routeCash.error}`
+            : `Préstamo ${loanRef} guardado, pero no se cargó a la caja de la ruta: ${routeCash.error}`,
+        );
       }
       const drafts = routeCash?.ok ? routeCash.drafts : synced.drafts;
       const changed = routeCash?.ok ? [...synced.changed, routeCash.draft] : synced.changed;
@@ -1294,10 +1305,13 @@ export function useWorkspace({
       );
       try {
         const flush = await flushOpsMirrorQueues();
+        const topUpCollector = synced.topUp > 0 && routeCash?.ok ? routeCash.collector.name : "";
         onToast(
           flush.left > 0
             ? `Préstamo ${loanRef}: gasto actualizado en este aparato · nube pendiente (reintenta solo).`
-            : `Préstamo ${loanRef}: gasto del cobrador actualizado a ${money(loan.capital)} · listo en la nube.`,
+            : topUpCollector
+              ? `Préstamo ${loanRef}: anexo de ${money(synced.topUp)} en Préstamos de hoy de ${topUpCollector} · listo en la nube.`
+              : `Préstamo ${loanRef}: gasto del cobrador actualizado a ${money(loan.capital)} · listo en la nube.`,
         );
       } catch (error) {
         console.error("[editar-prestamo] flush gasto", error);
