@@ -1947,12 +1947,18 @@ export function SupervisorMobileApp({
 
   /** Informe → General (M · T · N, tal cual) o Angélica (solo A: caja propia + Nequi). */
   const [informeTab, setInformeTab] = useState<"general" | "angelica">("general");
-  const informeAEfectivo = useMemo(
-    () =>
-      liquidaciones
-        .filter((row) => sameRoute(row.routeName, INFORME_A_ROUTE))
-        .reduce((sum, row) => sum + (row.enCaja ?? 0), 0),
+  const informeARows = useMemo(
+    () => liquidaciones.filter((row) => sameRoute(row.routeName, INFORME_A_ROUTE)),
     [liquidaciones],
+  );
+  const informeAEfectivo = useMemo(
+    () => informeARows.reduce((sum, row) => sum + (row.enCaja ?? 0), 0),
+    [informeARows],
+  );
+  /** Solo el cobrador dueño de la planilla A: un cobrador sin hoja M/T (N) carga sus gastos a su propia ruta. */
+  const informeACollectorRefs = useMemo(
+    () => [...new Set(informeARows.map((row) => row.collectorRef).filter(Boolean))],
+    [informeARows],
   );
   const [informeAHistory, setInformeAHistory] = useState<InformeRouteHistory | null>(null);
   useEffect(() => {
@@ -1971,7 +1977,7 @@ export function SupervisorMobileApp({
             planillaCashCloses,
             monthCloses,
           },
-          poolCollectors.map((row) => row.ref),
+          informeACollectorRefs,
           INFORME_A_ROUTE,
           bancoHistoryFrom,
           today,
@@ -1991,7 +1997,7 @@ export function SupervisorMobileApp({
     dayExpenseDrafts,
     planillaCashCloses,
     monthCloses,
-    poolCollectors,
+    informeACollectorRefs,
     bancoHistoryFrom,
     today,
   ]);
