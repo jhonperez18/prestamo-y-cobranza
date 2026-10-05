@@ -293,6 +293,10 @@ desde el día 1. Un solo dueño: `lib/informe-route-days.ts` (`informeRouteHisto
 
 - A no entra. Gastos de un cobrador sin hoja M/T van a N (`collectorGastosGoToChain`).
 - Candado: `assert-cash-chain.mjs` sección 25.
+- Arriba, dos botones: **General** (este informe, tal cual) y **Angélica** (solo A, mismo formato,
+ `SupervisorOwnRouteReport`): Cartera A · Efectivo A (`independentRouteDay`, la cifra de su tarjeta) ·
+ Nequi (`digitalPoolBalances().nequi`) · Gran total. Botones de abajo: `informeOwnRouteHistory`
+ (Cobrado de clientes A; Préstamo = caja propia + Nequi/Banco de A; Gasto = caja propia, los de A van a M/T).
 
 ## Prestar atendido no bloquea el cierre
 

@@ -5931,6 +5931,31 @@
       background: #f6c6d0;
       border-color: #c9566e;
     }
+    .supervisor-informe-switch {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .supervisor-informe-switch button {
+      appearance: none;
+      padding: 7px 4px;
+      border-radius: 10px;
+      border: 1px solid #9fbfae;
+      background: #f3f8f5;
+      color: #1f3b2b;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      cursor: pointer;
+    }
+    .supervisor-informe-switch button.on {
+      background: #3f6b52;
+      border-color: #3f6b52;
+      color: #fff;
+    }
     .supervisor-liq-table.is-informe-days th,
     .supervisor-liq-table.is-informe-days td {
       padding-left: 3px !important;

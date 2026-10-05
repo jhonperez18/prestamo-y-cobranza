@@ -174,7 +174,13 @@ import {
   SupervisorMonthlyReport,
   type InformeEfectivo,
 } from "@/components/SupervisorMonthlyReport";
-import { informeRouteHistory, type InformeHistory } from "@/lib/informe-route-days";
+import {
+  informeOwnRouteHistory,
+  informeRouteHistory,
+  type InformeHistory,
+  type InformeRouteHistory,
+} from "@/lib/informe-route-days";
+import { SupervisorOwnRouteReport } from "@/components/SupervisorOwnRouteReport";
 import { CollectorNewClientSheet } from "@/components/CollectorNewClientSheet";
 import { CollectorConnectionSheet } from "@/components/CollectorConnectionSheet";
 import {
@@ -686,7 +692,7 @@ function PlanillaTable({
                     >
                       {row.paidParts.length >= 2 ? (
                         row.paidParts.map((part, partIndex) => (
-                          <Pill
+                    <Pill
                             key={`${part.method}-${partIndex}`}
                             label={paidThousandsLabel(part.amount)}
                             kind={partIndex === 0 ? "ok" : "pending"}
@@ -700,10 +706,10 @@ function PlanillaTable({
                               ? paidThousandsLabel(row.paidAmount)
                               : visitStatusLabelShort(row.visitStatus)
                           }
-                          kind={visitStatusKind(row.visitStatus)}
-                        />
+                      kind={visitStatusKind(row.visitStatus)}
+                    />
                       )}
-                    </span>
+                  </span>
                   )}
                 </td>
               </tr>
@@ -769,7 +775,7 @@ function ClientesTable({
                   {awaitingLoan ? (
                     <span className="supervisor-prestar-text" title="Sin préstamo · listo para prestar">
                       Préstamo
-                    </span>
+                  </span>
                   ) : (
                     <CuotasProgressCell progress={row.cuotas} />
                   )}
@@ -778,8 +784,8 @@ function ClientesTable({
                   {awaitingLoan
                     ? "—"
                     : row.saldo != null
-                      ? money(row.saldo, { symbol: false })
-                      : "—"}
+                    ? money(row.saldo, { symbol: false })
+                    : "—"}
                 </td>
               </tr>
             );
@@ -884,8 +890,8 @@ function SupervisorClientFicha({
             {sharing ? "…" : "Compartir"}
           </button>
           <button type="button" className="collector-mobile-pay-link is-back" onClick={onBack}>
-            volver
-          </button>
+          volver
+        </button>
         </div>
       </div>
 
@@ -934,17 +940,17 @@ function SupervisorClientFicha({
             {report.movements.map((row) => {
               const method = paymentMethodForRoute(row.method, report.client?.route);
               return (
-                <li key={row.ref}>
-                  <span className="is-amount">{money(row.amount, { symbol: false })}</span>
-                  <span className="is-date">{row.paidDate || "—"}</span>
-                  <span className="is-time">{row.paidTime || "—"}</span>
+              <li key={row.ref}>
+                <span className="is-amount">{money(row.amount, { symbol: false })}</span>
+                <span className="is-date">{row.paidDate || "—"}</span>
+                <span className="is-time">{row.paidTime || "—"}</span>
                   <span
                     className={`is-method ${paymentMethodToneClass(method)}`}
                     title={paymentMethodLabel(method)}
                   >
                     {paymentMethodInitial(method)}
                   </span>
-                </li>
+              </li>
               );
             })}
           </ul>
@@ -1050,6 +1056,9 @@ function SnPeople({
     </ul>
   );
 }
+
+/** Informe «Angélica»: la planilla A (caja propia, cobra por Nequi). */
+const INFORME_A_ROUTE = "A";
 
 /** Lista omitida = la misma referencia siempre (`= []` nuevo por render dispara los efectos sin fin). */
 const NO_ROWS: never[] = [];
@@ -1922,6 +1931,57 @@ export function SupervisorMobileApp({
     return () => window.clearTimeout(timer);
   }, [
     view,
+    payments,
+    loans,
+    clients,
+    collectors,
+    assignments,
+    dayCloses,
+    dayExpenseDrafts,
+    planillaCashCloses,
+    monthCloses,
+    poolCollectors,
+    bancoHistoryFrom,
+    today,
+  ]);
+
+  /** Informe → General (M · T · N, tal cual) o Angélica (solo A: caja propia + Nequi). */
+  const [informeTab, setInformeTab] = useState<"general" | "angelica">("general");
+  const informeAEfectivo = useMemo(
+    () =>
+      liquidaciones
+        .filter((row) => sameRoute(row.routeName, INFORME_A_ROUTE))
+        .reduce((sum, row) => sum + (row.enCaja ?? 0), 0),
+    [liquidaciones],
+  );
+  const [informeAHistory, setInformeAHistory] = useState<InformeRouteHistory | null>(null);
+  useEffect(() => {
+    if (view !== "informe" || informeTab !== "angelica") return;
+    const timer = window.setTimeout(() => {
+      setInformeAHistory(
+        informeOwnRouteHistory(
+          {
+            payments,
+            loans,
+            clients,
+            collectors,
+            assignments,
+            dayCloses,
+            dayExpenseDrafts,
+            planillaCashCloses,
+            monthCloses,
+          },
+          poolCollectors.map((row) => row.ref),
+          INFORME_A_ROUTE,
+          bancoHistoryFrom,
+          today,
+        ),
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [
+    view,
+    informeTab,
     payments,
     loans,
     clients,
@@ -3357,7 +3417,7 @@ export function SupervisorMobileApp({
       setDetailMode("cobros");
     } else {
       setCobrosMethodFilter(null);
-      setDetailMode("totales");
+    setDetailMode("totales");
     }
     setView(backTo);
   }
@@ -3376,11 +3436,11 @@ export function SupervisorMobileApp({
       </header>
 
       <div className="supervisor-mobile-nav-block">
-        <div
+      <div
           className="supervisor-mobile-kpis is-home has-nuevo has-clientes has-nequi has-banco"
-          role="group"
-          aria-label="Menú supervisor"
-        >
+        role="group"
+        aria-label="Menú supervisor"
+      >
         <button
           type="button"
           className={
@@ -3510,14 +3570,14 @@ export function SupervisorMobileApp({
       {openRoute ? (
         <section className="supervisor-mobile-section">
           {detailMode !== "gastos" && detailMode !== "cobros" ? (
-            <div className="supervisor-mobile-detail-head">
-              <h3>
-                Ruta {openRoute.routeName} · {openRoute.collectorName}
-              </h3>
-              <button
-                type="button"
+          <div className="supervisor-mobile-detail-head">
+            <h3>
+              Ruta {openRoute.routeName} · {openRoute.collectorName}
+            </h3>
+            <button
+              type="button"
                 className="collector-mobile-pay-link is-back"
-                onClick={() => {
+              onClick={() => {
                   if (detailMode === "nequi-dia") {
                     setNequiDayIso(null);
                     setDetailMode(nequiDayBackTo);
@@ -3533,7 +3593,7 @@ export function SupervisorMobileApp({
                     return;
                   }
                   if (detailMode === "historial") {
-                    setDetailMode("totales");
+                  setDetailMode("totales");
                     return;
                   }
                   if (detailMode === "np-dia") {
@@ -3547,11 +3607,11 @@ export function SupervisorMobileApp({
                   }
                   if (detailMode !== "totales") setDetailMode("totales");
                   else closeRouteDetail();
-                }}
-              >
-                volver
-              </button>
-            </div>
+              }}
+            >
+              volver
+            </button>
+          </div>
           ) : null}
 
           {detailMode === "nequi-historial" ? (
@@ -4052,7 +4112,7 @@ export function SupervisorMobileApp({
                 >
                   <div className="is-title-means">
                     <span className="is-primary-title">Cobrado hoy</span>
-                  </div>
+                </div>
                   <button
                     type="button"
                     className="is-pay-efectivo is-tap-means"
@@ -4136,7 +4196,7 @@ export function SupervisorMobileApp({
                   </div>
                   <div className="is-final">
                     <span>Final</span>
-                    <b>{money(openRoute.enCaja, { symbol: false })}</b>
+                  <b>{money(openRoute.enCaja, { symbol: false })}</b>
                   </div>
                 </div>
                 <div className="supervisor-mobile-sheet-row is-muted">
@@ -4344,7 +4404,7 @@ export function SupervisorMobileApp({
                       </b>
                       <span className="is-kind is-count" title="Desembolso en caja">
                         {index + 1}
-                      </span>
+                        </span>
                     </li>
                   ))}
                 </ul>
@@ -4393,15 +4453,48 @@ export function SupervisorMobileApp({
         </section>
       ) : view === "informe" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
-          <SupervisorMonthlyReport
-            loans={loans}
-            clients={clients}
-            payments={payments}
-            efectivo={informeEfectivo}
-            banco={bancoPanelAcumulado}
-            corteLabel={todayDisplay}
-            history={informeHistory}
-          />
+          <div className="supervisor-informe-switch" role="tablist" aria-label="Informe">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={informeTab === "general"}
+              className={informeTab === "general" ? "on" : undefined}
+              onClick={() => setInformeTab("general")}
+            >
+              General
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={informeTab === "angelica"}
+              className={informeTab === "angelica" ? "on" : undefined}
+              onClick={() => setInformeTab("angelica")}
+            >
+              Angélica
+            </button>
+          </div>
+          {informeTab === "general" ? (
+            <SupervisorMonthlyReport
+              loans={loans}
+              clients={clients}
+              payments={payments}
+              efectivo={informeEfectivo}
+              banco={bancoPanelAcumulado}
+              corteLabel={todayDisplay}
+              history={informeHistory}
+            />
+          ) : (
+            <SupervisorOwnRouteReport
+              route={INFORME_A_ROUTE}
+              loans={loans}
+              clients={clients}
+              payments={payments}
+              efectivo={informeAEfectivo}
+              nequi={nequiPanelAcumulado}
+              corteLabel={todayDisplay}
+              history={informeAHistory}
+            />
+          )}
         </section>
       ) : view === "nequi" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
@@ -4596,7 +4689,7 @@ export function SupervisorMobileApp({
           {nuevoMode === "menu" ? (
             <>
               <div className="supervisor-mobile-detail-head">
-                <h3>Nuevo</h3>
+              <h3>Nuevo</h3>
                 <button
                   type="button"
                   className="collector-mobile-pay-link"
@@ -4666,45 +4759,45 @@ export function SupervisorMobileApp({
               ) : activeBankAccounts.length === 0 ? (
                 <p className="ficha-empty">No hay cuentas bancarias activas.</p>
               ) : (
-                <form
-                  className="supervisor-nuevo-form"
-                  onSubmit={(event) => {
-                    event.preventDefault();
+                  <form
+                    className="supervisor-nuevo-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
                     submitNuevoGasto();
-                  }}
-                >
+                    }}
+                  >
                   <p className="supervisor-mobile-subhead">
                     Queda en Banco → Registros (mismo flujo de pagos varios).
                   </p>
                   {nuevoMsg ? <p className="supervisor-nuevo-msg">{nuevoMsg}</p> : null}
-                  <label className="quick-loan-field">
+                    <label className="quick-loan-field">
                     <span>Concepto</span>
-                    <input
+                      <input
                       value={gastoLabel}
                       onChange={(event) => setGastoLabel(event.target.value)}
                       placeholder="Gasto"
-                      autoFocus
-                    />
-                  </label>
-                  <label className="quick-loan-field">
+                        autoFocus
+                      />
+                    </label>
+                    <label className="quick-loan-field">
                     <span>Importe</span>
-                    <input
+                      <input
                       inputMode="numeric"
                       value={gastoAmount}
                       onChange={(event) => setGastoAmount(event.target.value)}
                       placeholder="0"
                       required
-                    />
-                  </label>
-                  <label className="quick-loan-field">
+                      />
+                    </label>
+                    <label className="quick-loan-field">
                     <span>Fecha</span>
-                    <input
+                      <input
                       type="date"
                       value={gastoDate}
                       onChange={(event) => setGastoDate(event.target.value)}
                       required
-                    />
-                  </label>
+                      />
+                    </label>
                   <label className="quick-loan-field">
                     <span>Cuenta</span>
                     <select
@@ -4734,12 +4827,12 @@ export function SupervisorMobileApp({
                       ))}
                     </select>
                   </label>
-                  <div className="quick-loan-actions">
-                    <button type="submit" className="btn">
+                    <div className="quick-loan-actions">
+                      <button type="submit" className="btn">
                       Guardar gasto
-                    </button>
-                  </div>
-                </form>
+                      </button>
+                    </div>
+                  </form>
               )}
             </>
           ) : nuevoMode === "cliente" ? (
@@ -4762,9 +4855,9 @@ export function SupervisorMobileApp({
               <div className="supervisor-mobile-detail-head">
                 <h3>Nuevo préstamo</h3>
                 <div className="supervisor-prestamos-head-actions">
-                  <button
-                    type="button"
-                    className="collector-mobile-pay-link"
+                <button
+                  type="button"
+                  className="collector-mobile-pay-link"
                     onClick={() => goToView("prestamos")}
                   >
                     Ver préstamos
@@ -4772,22 +4865,22 @@ export function SupervisorMobileApp({
                   <button
                     type="button"
                     className="collector-mobile-pay-link is-back"
-                    onClick={() => {
-                      if (nuevoLoanClientRef) {
-                        setNuevoLoanClientRef(null);
-                        return;
-                      }
-                      if (nuevoRouteRef) {
-                        setNuevoRouteRef(null);
-                        setNuevoClientSearch("");
-                        return;
-                      }
-                      resetNuevoFlow();
-                      setNuevoMode("menu");
-                    }}
-                  >
-                    atrás
-                  </button>
+                  onClick={() => {
+                    if (nuevoLoanClientRef) {
+                      setNuevoLoanClientRef(null);
+                      return;
+                    }
+                    if (nuevoRouteRef) {
+                      setNuevoRouteRef(null);
+                      setNuevoClientSearch("");
+                      return;
+                    }
+                    resetNuevoFlow();
+                    setNuevoMode("menu");
+                  }}
+                >
+                  atrás
+                </button>
                 </div>
               </div>
               {!onCreateQuickLoan ? (
@@ -4918,8 +5011,8 @@ export function SupervisorMobileApp({
               <div className="supervisor-mobile-detail-head">
                 <div className="supervisor-planilla-head-start">
                   <h3>Préstamos</h3>
-                  <button
-                    type="button"
+                          <button
+                            type="button"
                     className={
                       prestamosSearchOpen
                         ? "collector-history-planilla-search supervisor-clientes-search on"
@@ -4941,7 +5034,7 @@ export function SupervisorMobileApp({
                       <circle cx="10.5" cy="10.5" r="6.5" />
                       <line x1="15.5" y1="15.5" x2="21" y2="21" />
                     </svg>
-                  </button>
+                          </button>
                 </div>
                 <div className="supervisor-prestamos-head-actions">
                   {planillaRoutePins.length > 0 ? (
@@ -5079,7 +5172,7 @@ export function SupervisorMobileApp({
                       </li>
                     );
                   })}
-                </ul>
+                    </ul>
               )}
             </>
           )}
@@ -5248,7 +5341,7 @@ export function SupervisorMobileApp({
             <>
               <div className="supervisor-planilla-head">
                 <div className="supervisor-planilla-head-start">
-                  <h3>Clientes</h3>
+                <h3>Clientes</h3>
                   <button
                     type="button"
                     className={
@@ -5342,8 +5435,8 @@ export function SupervisorMobileApp({
                   {clientesSearchActive && clientesEditSearch.trim()
                     ? "No hay clientes con ese filtro."
                     : clientesRouteFilter
-                      ? `No hay clientes en la ruta ${clientesRouteFilter}.`
-                      : "No hay clientes activos."}
+                    ? `No hay clientes en la ruta ${clientesRouteFilter}.`
+                    : "No hay clientes activos."}
                 </p>
               ) : (
                 <ClientesTable
@@ -5420,7 +5513,7 @@ export function SupervisorMobileApp({
                 title="Salir del sistema"
               >
                 <b>SALIR</b>
-              </button>
+          </button>
             ) : (
               <span className="supervisor-mobile-salir-spacer" aria-hidden />
             )}
@@ -5431,7 +5524,7 @@ export function SupervisorMobileApp({
             >
               <b>{money(inicioTotalConT, { symbol: false })}</b>
             </div>
-          </footer>
+        </footer>
           )}
         </section>
       )}

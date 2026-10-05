@@ -129,3 +129,66 @@ export function informeRouteHistory(
   }
   return out;
 }
+
+export type InformeRouteDayRow = { date: string; total: number };
+export type InformeRouteHistory = Record<InformeHistoryKind, { days: InformeRouteDayRow[]; total: number }>;
+
+/**
+ * Informe de una planilla con caja propia (A · Angélica), día a día de `from` a `to`:
+ *   Cobrado  = `routeCollectedByMethod` (todos los medios, clientes de la ruta).
+ *   Préstamo = caja propia (`independentRouteMovement`) + Nequi / Banco (`dayDigitalLoanRows`).
+ *   Gasto    = gastos de su caja (`independentRouteMovement`; los de A van a M/T → 0).
+ */
+export function informeOwnRouteHistory(
+  src: InformeHistorySources,
+  collectorRefs: readonly string[],
+  route: string,
+  from: string,
+  to: string,
+): InformeRouteHistory {
+  const out: InformeRouteHistory = {
+    cobrado: { days: [], total: 0 },
+    prestamo: { days: [], total: 0 },
+    gasto: { days: [], total: 0 },
+  };
+  const start = normalizeHistoryDate(from) || from;
+  const end = normalizeHistoryDate(to) || to;
+  const assignmentsByDay = groupByDay(src.assignments, (row) => row.dispatchDate, start, end);
+  const paymentsByDay = groupByDay(src.payments, (row) => row.paidDate || "", start, end);
+  for (let date = start; date <= end; date = nextIsoDay(date)) {
+    const acc: Record<InformeHistoryKind, number> = { cobrado: 0, prestamo: 0, gasto: 0 };
+    const dayAssignments = assignmentsByDay.get(date) ?? [];
+    const payments = paymentsByDay.get(date) ?? [];
+    for (const collectorRef of new Set(collectorRefs)) {
+      const collector = src.collectors.find((row) => row.ref === collectorRef);
+      if (!collector) continue;
+      const day: DayCashSources = {
+        ...src,
+        assignments: dayAssignments.filter((row) => row.collectorRef === collectorRef),
+        payments,
+        collectors: [collector],
+        collectorRef,
+        collectorName: collector.name,
+        date,
+      };
+      const by = routeCollectedByMethod(day, route);
+      acc.cobrado += by.efectivo + by.banco + by.nequi;
+      const own = independentRouteMovement(day, route);
+      acc.prestamo += own.prestamos;
+      acc.gasto += own.gastos;
+    }
+    for (const row of dayDigitalLoanRows(date, route, src.loans, src.clients)) {
+      acc.prestamo += row.capital;
+    }
+    for (const kind of ["cobrado", "prestamo", "gasto"] as const) {
+      if (acc[kind] === 0) continue;
+      const total = pesos(acc[kind]);
+      out[kind].days.push({ date, total });
+      out[kind].total = pesos(out[kind].total + total);
+    }
+  }
+  for (const kind of ["cobrado", "prestamo", "gasto"] as const) {
+    out[kind].days.sort((a, b) => b.date.localeCompare(a.date));
+  }
+  return out;
+}
