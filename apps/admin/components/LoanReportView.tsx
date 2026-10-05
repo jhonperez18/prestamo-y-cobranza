@@ -6,9 +6,10 @@ import { LoanPaymentsTable } from "@/components/LoanPaymentsTable";
 import { LoanReportPdfPreview } from "@/components/LoanReportPdfPreview";
 import { buildLoanReport } from "@/lib/loan-report";
 import {
-  LOAN_PAYMENT_COLUMNS,
-  LOAN_PAYMENT_COLUMNS_STORAGE_KEY,
-  LOAN_PAYMENT_DEFAULT_COLS,
+  LOAN_REPORT_COLUMNS,
+  LOAN_REPORT_COLUMNS_STORAGE_KEY,
+  LOAN_REPORT_DEFAULT_COLS,
+  militaryTimeLabel,
 } from "@/lib/loan-payment-columns";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { ClientRow, LoanRow, PaymentRow } from "@/lib/mock-data";
@@ -56,6 +57,7 @@ function ReportBody({
           title="Movimientos recaudados"
           emptyMessage="Sin movimientos registrados."
           columnVisibility={columnVisibility}
+          columns={LOAN_REPORT_COLUMNS}
         />
       </section>
 
@@ -73,12 +75,15 @@ function ReportBody({
 }
 
 export function LoanReportView({ loan, client, payments, assignments = [], onBack }: Props) {
-  const report = useMemo(
-    () => buildLoanReport(loan, client, payments, assignments),
-    [loan, client, payments, assignments],
-  );
-  const columnVisibility = useColumnVisibility(LOAN_PAYMENT_COLUMNS, LOAN_PAYMENT_DEFAULT_COLS, {
-    storageKey: LOAN_PAYMENT_COLUMNS_STORAGE_KEY,
+  const report = useMemo(() => {
+    const built = buildLoanReport(loan, client, payments, assignments);
+    return {
+      ...built,
+      movements: built.movements.map((row) => ({ ...row, paidTime: militaryTimeLabel(row.paidTime) })),
+    };
+  }, [loan, client, payments, assignments]);
+  const columnVisibility = useColumnVisibility(LOAN_REPORT_COLUMNS, LOAN_REPORT_DEFAULT_COLS, {
+    storageKey: LOAN_REPORT_COLUMNS_STORAGE_KEY,
   });
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
 

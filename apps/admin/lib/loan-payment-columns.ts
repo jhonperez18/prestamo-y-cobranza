@@ -20,6 +20,22 @@ export const LOAN_PAYMENT_COLUMNS: ColumnOption[] = [
 
 export const LOAN_PAYMENT_DEFAULT_COLS = LOAN_PAYMENT_COLUMNS.map((col) => col.id);
 
+/** Informe del préstamo (pantalla + PDF): sin Concepto, Comprobante ni Cuota. */
+const LOAN_REPORT_HIDDEN_COLS = new Set(["concept", "evidence", "cuota"]);
+export const LOAN_REPORT_COLUMNS_STORAGE_KEY = "nexo.prestamos.informe.columns.v1";
+export const LOAN_REPORT_COLUMNS: ColumnOption[] = LOAN_PAYMENT_COLUMNS.filter(
+  (col) => !LOAN_REPORT_HIDDEN_COLS.has(col.id),
+);
+export const LOAN_REPORT_DEFAULT_COLS = LOAN_REPORT_COLUMNS.map((col) => col.id);
+
+/** «05:05 p. m.» → «17:05». Sin a.m./p.m. se deja como viene (ya es 24 h). */
+export function militaryTimeLabel(label: string) {
+  const match = label.match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*([ap])\.?\s*m\.?/i);
+  if (!match) return label;
+  const hours = Number(match[1]) % 12 + (match[3]!.toLowerCase() === "p" ? 12 : 0);
+  return `${String(hours).padStart(2, "0")}:${match[2]}`;
+}
+
 /** Columnas del PDF al compartir ficha desde el celular (como la pantalla). */
 export const LOAN_FICHA_SHARE_COLS = ["cuota", "amount", "paidDate", "paidTime", "method", "estado"];
 

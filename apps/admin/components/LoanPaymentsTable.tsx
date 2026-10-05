@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo } from "react";
-import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell, useColumnVisibility } from "@/components/ColumnPicker";
+import {
+  ColumnPicker,
+  ColumnPickerBodyCell,
+  ColumnPickerHeadCell,
+  useColumnVisibility,
+  type ColumnOption,
+} from "@/components/ColumnPicker";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { PaymentRefLink } from "@/components/PaymentRefLink";
 import { Pill } from "@/components/ui";
@@ -40,6 +46,8 @@ type Props = {
   className?: string;
   showColumnPicker?: boolean;
   columnVisibility?: ColumnVisibilityApi;
+  /** Columnas que ofrece el selector (por defecto todas). */
+  columns?: ColumnOption[];
 };
 
 export function LoanPaymentsTable({
@@ -55,6 +63,7 @@ export function LoanPaymentsTable({
   className,
   showColumnPicker = true,
   columnVisibility,
+  columns = LOAN_PAYMENT_COLUMNS,
 }: Props) {
   const internalVisibility = useColumnVisibility(LOAN_PAYMENT_COLUMNS, LOAN_PAYMENT_DEFAULT_COLS, {
     storageKey: STORAGE_KEY,
@@ -72,7 +81,7 @@ export function LoanPaymentsTable({
 
   const picker = showColumnPicker ? (
     <ColumnPicker
-      columns={LOAN_PAYMENT_COLUMNS}
+      columns={columns}
       visibleCols={visibleCols}
       onToggle={toggleColumn}
     />
