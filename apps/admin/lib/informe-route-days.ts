@@ -134,10 +134,11 @@ export type InformeRouteDayRow = { date: string; total: number };
 export type InformeRouteHistory = Record<InformeHistoryKind, { days: InformeRouteDayRow[]; total: number }>;
 
 /**
- * Informe de una planilla con caja propia (A · Angélica), día a día de `from` a `to`:
- *   Cobrado  = `routeCollectedByMethod` (todos los medios, clientes de la ruta).
- *   Préstamo = caja propia (`independentRouteMovement`) + Nequi / Banco (`dayDigitalLoanRows`).
- *   Gasto    = gastos de su caja (`independentRouteMovement`; los de A van a M/T → 0).
+ * Informe de una planilla con caja propia (A · Angélica), día a día de `from` a `to`.
+ * Cada día = el Cierre del día de la ruta (Historial → día), mismas funciones:
+ *   Cobrado  = «Lo que cobró» (`routeCollectedByMethod`, todos los medios).
+ *   Préstamo = «Lo que prestó» (`independentRouteMovement`, caja de la ruta).
+ *   Gasto    = «Lo que gastó» (`independentRouteMovement`; los de A van a M/T → 0).
  */
 export function informeOwnRouteHistory(
   src: InformeHistorySources,
@@ -176,9 +177,6 @@ export function informeOwnRouteHistory(
       const own = independentRouteMovement(day, route);
       acc.prestamo += own.prestamos;
       acc.gasto += own.gastos;
-    }
-    for (const row of dayDigitalLoanRows(date, route, src.loans, src.clients)) {
-      acc.prestamo += row.capital;
     }
     for (const kind of ["cobrado", "prestamo", "gasto"] as const) {
       if (acc[kind] === 0) continue;

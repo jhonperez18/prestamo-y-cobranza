@@ -296,7 +296,8 @@ desde el día 1. Un solo dueño: `lib/informe-route-days.ts` (`informeRouteHisto
 - Arriba, dos botones: **General** (este informe, tal cual) y **Angélica** (solo A, mismo formato,
  `SupervisorOwnRouteReport`): Cartera A · Efectivo A (`independentRouteDay`, la cifra de su tarjeta) ·
  Nequi (`digitalPoolBalances().nequi`) · Gran total. Botones de abajo: `informeOwnRouteHistory`
- (Cobrado de clientes A; Préstamo = caja propia + Nequi/Banco de A; Gasto = caja propia, los de A van a M/T).
+ = el Cierre del día de A (Historial → día), solo del cobrador de la planilla A: Cobrado = «Lo que cobró»,
+ Préstamo = «Lo que prestó», Gasto = «Lo que gastó» (los de A van a M/T). Nada que el cierre no muestre.
 
 ## Prestar atendido no bloquea el cierre
 
