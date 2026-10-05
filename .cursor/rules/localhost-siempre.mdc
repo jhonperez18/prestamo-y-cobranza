@@ -12,8 +12,22 @@ alwaysApply: true
 ## Obligatorio
 
 1. Si el puerto 3000 no responde, arrancar `npm run dev` en `apps/admin` y dejarlo en segundo plano.
-2. Comprobar que `http://127.0.0.1:3000` contesta antes de seguir.
+2. Comprobar que `http://127.0.0.1:3000/api/ops/build-health` contesta **200 JSON** antes de seguir.
+ Que `/` dé 200 no alcanza: con las `/api` en 404 el taller no baja ni sube nada.
 3. No usar `HOSTINGER_STATIC_EXPORT=1` en ese proceso. Con eso las rutas `/api` quedan en 404.
+
+## Vigilante (arranque solo con Windows)
+
+| Pieza | Dónde |
+| --- | --- |
+| Inicio de Windows | `Startup\nexo-taller.cmd` → PowerShell oculto |
+| Vigilante | `%LOCALAPPDATA%\nexo-taller\start-taller.ps1` (copia versionada: `apps/admin/scripts/taller-watchdog.ps1`) |
+| Registro | `%LOCALAPPDATA%\nexo-taller\taller.log` |
+
+- Revisa `/api/ops/build-health` cada minuto. Puerto libre → arranca. 3 revisiones sin 200 y el
+ puerto es del `next dev` de este proyecto (colgado o con `/api` en 404) → cierra ese árbol,
+ borra `.next\dev` (caché de compilación: un cierre forzado la deja rota y el nuevo arranca sin `/api`) y arranca.
+- Un solo vigilante (mutex). Si se cambia el script, copiar a `%LOCALAPPDATA%` y relanzar solo el vigilante.
 
 ## Prohibido
 

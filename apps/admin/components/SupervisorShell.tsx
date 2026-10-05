@@ -54,6 +54,7 @@ import {
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import type { PlanillaCashCloseRecord } from "@/lib/planilla-cash-chain";
 import { COLLECTOR_DAILY_LOGS_SEED } from "@/lib/collector-daily-log";
 import { todayIso } from "@/lib/daily-dispatch";
 import { usePlanillaDayRollover } from "@/lib/planilla-day-sync";
@@ -105,6 +106,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
   const [dayCloses, setDayCloses] = useState<CollectorDayCloseRecord[]>([]);
   const [dayExpenseDrafts, setDayExpenseDrafts] = useState<CollectorDayExpenseDraft[]>([]);
   const [monthCloses, setMonthCloses] = useState<CollectorMonthCloseRecord[]>([]);
+  const [planillaCashCloses, setPlanillaCashCloses] = useState<PlanillaCashCloseRecord[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [miscPayments, setMiscPayments] = useState<MiscPayment[]>([]);
   const { showToast, toastNode } = useActionToast();
@@ -126,6 +128,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
     setDayExpenseDrafts(snap.dayExpenseDrafts);
     setDailyLogs(snap.dailyLogs);
     setMonthCloses(snap.monthCloses);
+    setPlanillaCashCloses(readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, []));
     setBankAccounts(
       ensureBankAccounts(
         readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
@@ -168,7 +171,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
       logs: typeof dailyLogs;
       dayCloses: typeof dayCloses;
       dayExpenseDrafts: typeof dayExpenseDrafts;
-      planillaCashCloses?: import("@/lib/planilla-cash-chain").PlanillaCashCloseRecord[];
+      planillaCashCloses?: PlanillaCashCloseRecord[];
       autoClosedCount: number;
     }) => {
       setDailyAssignments(next.assignments);
@@ -178,6 +181,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
       setDayCloses(next.dayCloses);
       setDayExpenseDrafts(next.dayExpenseDrafts);
       if (next.planillaCashCloses) {
+        setPlanillaCashCloses(next.planillaCashCloses);
         writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, next.planillaCashCloses);
       }
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
@@ -209,10 +213,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
           dayCloses: next.dayCloses,
           planillaCashCloses:
             next.planillaCashCloses ??
-            readDemoJson<import("@/lib/planilla-cash-chain").PlanillaCashCloseRecord[]>(
-              DEMO_PLANILLA_CASH_CLOSES_KEY,
-              [],
-            ),
+            readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, []),
           assignments: next.assignments,
         }).catch((error) => {
           console.error("auto-day-close-mirror", error);
@@ -234,7 +235,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
       dayCloses,
       dayExpenseDrafts,
       logs: dailyLogs,
-      planillaCashCloses: readDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, []),
+      planillaCashCloses,
       monthCloses,
     },
     applyPlanillaSync,
@@ -517,6 +518,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
       return false;
     }
     setDayCloses(saved.dayCloses);
+    setPlanillaCashCloses(saved.planillaCashCloses);
     showToast(saved.message);
     return true;
   }
@@ -590,6 +592,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
         dayExpenseDrafts={dayExpenseDrafts}
         dayCloses={dayCloses}
         monthCloses={monthCloses}
+        planillaCashCloses={planillaCashCloses}
         bankAccounts={bankAccounts}
         miscPayments={miscPayments}
         onCreateRouteClient={createRouteClientFromMobile}

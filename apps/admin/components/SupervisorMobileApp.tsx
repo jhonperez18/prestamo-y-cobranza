@@ -1051,6 +1051,9 @@ function SnPeople({
   );
 }
 
+/** Lista omitida = la misma referencia siempre (`= []` nuevo por render dispara los efectos sin fin). */
+const NO_ROWS: never[] = [];
+
 /** App móvil del supervisor: caja + planilla + préstamos/renovaciones en vivo. */
 export function SupervisorMobileApp({
   supervisor,
@@ -1060,12 +1063,12 @@ export function SupervisorMobileApp({
   loans,
   payments,
   assignments,
-  dayExpenseDrafts = [],
-  dayCloses = [],
-  monthCloses = [],
-  planillaCashCloses = [],
-  bankAccounts = [],
-  miscPayments = [],
+  dayExpenseDrafts = NO_ROWS,
+  dayCloses = NO_ROWS,
+  monthCloses = NO_ROWS,
+  planillaCashCloses = NO_ROWS,
+  bankAccounts = NO_ROWS,
+  miscPayments = NO_ROWS,
   onCreateRouteClient,
   onCreateQuickLoan,
   onUpdateClient,

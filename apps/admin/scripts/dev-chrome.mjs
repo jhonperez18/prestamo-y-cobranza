@@ -9,7 +9,8 @@ const next = spawn("npx", ["next", "dev"], {
 let opened = false;
 
 function openChrome() {
-  if (opened) return;
+  // El vigilante del taller (reinicio automático) no abre otra ventana.
+  if (opened || process.env.NEXO_NO_CHROME) return;
   opened = true;
   // Sin caché de disco: el panel madre debe verse al instante tras cada cambio.
   exec(
