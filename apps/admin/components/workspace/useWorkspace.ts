@@ -1972,9 +1972,12 @@ export function useWorkspace({
       onGo("cobranza", "anulaciones");
       return;
     }
-    await flushPaymentMirrorQueue();
-    await flushOpsMirrorQueues().catch(() => undefined);
-    onToast(`Pago ${result.payment.ref} anulado · sincronizado.`);
+    const inCloud = await flushMoneyMovementToCloud("anular-pago");
+    onToast(
+      inCloud
+        ? `Pago ${result.payment.ref} anulado · listo en la nube.`
+        : `Pago ${result.payment.ref} anulado en este aparato · nube pendiente (reintenta solo).`,
+    );
     onGo("cobranza", "anulaciones");
   }
 
@@ -2318,6 +2321,24 @@ export function useWorkspace({
     void applyPortfolioCommit(commitDeleteLoan(removedRef, portfolioState()));
   }
 
+  /**
+   * Sube lo que un movimiento de dinero del panel dejó en cola: PG-, préstamo / cliente y planilla.
+   * `true` solo si la nube confirmó todo; si algo quedó, el ciclo de sync lo reintenta solo.
+   */
+  async function flushMoneyMovementToCloud(tag: string): Promise<boolean> {
+    try {
+      let payFlush = await flushPaymentMirrorQueue();
+      if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();
+      await flushCatalogMirrorQueues();
+      let opsFlush = await flushOpsMirrorQueues();
+      if (opsFlush.left > 0) opsFlush = await flushOpsMirrorQueues();
+      return payFlush.left === 0 && opsFlush.left === 0;
+    } catch (error) {
+      console.error(`[${tag}] flush nube`, error);
+      return false;
+    }
+  }
+
   function panelPayTarget(loan: LoanRow, now = new Date()) {
     return routeCollectorCashTarget({
       loan,
@@ -2432,19 +2453,12 @@ export function useWorkspace({
     const cajaClient = nextClients.find((entry) => entry.ref === loan.clientRef);
     if (cajaClient) queueClientMirror(cajaClient);
     queueAssignmentsMirror(projected.assignments);
-    try {
-      let payFlush = await flushPaymentMirrorQueue();
-      if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();
-      await Promise.all([flushCatalogMirrorQueues(), flushOpsMirrorQueues()]);
-      onToast(
-        !mirror.ok || payFlush.left > 0
-          ? `${label} · guardado en este aparato · nube pendiente (reintenta solo).`
-          : `${label} · listo en la nube.`,
-      );
-    } catch (error) {
-      console.error("[pago-panel] flush nube", error);
-      onToast(`${label} · guardado en este aparato · nube pendiente (reintenta solo).`);
-    }
+    const inCloud = (await flushMoneyMovementToCloud("pago-panel")) && mirror.ok;
+    onToast(
+      inCloud
+        ? `${label} · listo en la nube.`
+        : `${label} · guardado en este aparato · nube pendiente (reintenta solo).`,
+    );
     })();
   }
 
@@ -2506,19 +2520,12 @@ export function useWorkspace({
     const lateClient = committed.clients.find((entry) => entry.ref === loan.clientRef);
     if (lateClient) queueClientMirror(lateClient);
     queueAssignmentsMirror(projected.assignments);
-    try {
-      let payFlush = await flushPaymentMirrorQueue();
-      if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();
-      await Promise.all([flushCatalogMirrorQueues(), flushOpsMirrorQueues()]);
-      if (!mirror.ok || payFlush.left > 0) {
-        onToast(`${label} guardado en este aparato · nube pendiente (reintenta solo).`);
-      } else {
-        onToast(`${label} listo en la nube.`);
-      }
-    } catch (error) {
-      console.error("[pago-tardio] flush nube", error);
-      onToast(`${label} guardado en este aparato · nube pendiente (reintenta solo).`);
-    }
+    const inCloud = (await flushMoneyMovementToCloud("pago-tardio")) && mirror.ok;
+    onToast(
+      inCloud
+        ? `${label} listo en la nube.`
+        : `${label} guardado en este aparato · nube pendiente (reintenta solo).`,
+    );
     return true;
   }
 

@@ -55,6 +55,15 @@ function paymentForVisit(item: DailyCollectionAssignment, payments: PaymentRow[]
   );
 }
 
+/**
+ * Efectivo pagado en el panel con destino «Solo sistema»: cubre la visita, pero esa plata no está
+ * en la caja del cobrador. Banco / Nequi sí van al acumulado de la ruta.
+ */
+function isOfficeCash(pay: PaymentRow | undefined, clientRoute: string | undefined) {
+  if (!pay || pay.collectorRef?.trim()) return false;
+  return paymentMethodForRoute(pay.method, clientRoute) === "efectivo";
+}
+
 /** Nombre de quien pagó: planilla primero, si no el PG- denormalizado. */
 function payerClientName(item: DailyCollectionAssignment, pay: PaymentRow | undefined) {
   const fromVisit = item.clientName?.trim();
@@ -87,6 +96,7 @@ export function CollectorClosedDayReview({
   const expensesTotal = gastoLines.reduce((sum, row) => sum + row.amount, 0);
   const cobrosTotal = cobros.reduce((sum, item) => {
     const pay = paymentForVisit(item, payments);
+    if (isOfficeCash(pay, item.clientRoute)) return sum;
     return sum + (pay?.amount ?? item.amountDue);
   }, 0);
 
@@ -165,10 +175,17 @@ export function CollectorClosedDayReview({
               const loanRef = item.loanRef || "—";
               const when = pay?.paidTime?.trim() || "";
               const clientName = payerClientName(item, pay);
+              const office = isOfficeCash(pay, item.clientRoute);
               return (
                 <li key={item.itemId}>
                   <strong className="is-name">{clientName}</strong>
-                  <span className="is-when">{when || "—"}</span>
+                  <span
+                    className="is-when"
+                    title={office ? "Pagado en oficina: no está en la caja del cobrador" : undefined}
+                  >
+                    {when || "—"}
+                    {office ? " · oficina" : ""}
+                  </span>
                   <span className="is-loan">{loanRef}</span>
                   <em
                     className={`is-method ${paymentMethodToneClass(method)}`}
