@@ -32,6 +32,7 @@ import { LoanPayForm } from "@/components/LoanPayForm";
 import { LatePayForm } from "@/components/LatePayForm";
 import { PaymentFicha } from "@/components/PaymentFicha";
 import { LoanReportView } from "@/components/LoanReportView";
+import { WeeklyReportView } from "@/components/WeeklyReportView";
 import { DataTable, Pill } from "@/components/ui";
 import { ClientList } from "@/components/ClientList";
 import { HomeDashboard } from "@/components/HomeDashboard";
@@ -1667,6 +1668,22 @@ export function Workspace(props: WorkspaceProps) {
             onOpenClient={openFicha}
             onOpenLoan={openLoanAccount}
             onGo={onGo}
+          />
+        );
+      }
+      if (viewId === "semanal") {
+        return (
+          <WeeklyReportView
+            payments={payments}
+            loans={loans}
+            clients={clients}
+            collectors={collectors}
+            routes={routes}
+            assignments={dailyAssignments}
+            dayCloses={dayCloses}
+            dayExpenseDrafts={dayExpenseDrafts}
+            planillaCashCloses={planillaCashCloses}
+            monthCloses={monthCloses}
           />
         );
       }

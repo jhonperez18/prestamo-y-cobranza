@@ -83,6 +83,7 @@ const VIEW_PERMISSIONS: Partial<Record<ModuleId, Record<string, ViewPerm>>> = {
     "por-cobrador": "reportes.ver",
     cartera: "reportes.ver",
     mora: "reportes.ver",
+    semanal: "reportes.ver",
   },
   banco: {
     listado: "banco.ver",
