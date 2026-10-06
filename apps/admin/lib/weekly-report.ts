@@ -47,8 +47,10 @@ export const WEEKLY_SCOPE_ROUTES: Record<WeeklyReportScope, string[]> = {
 };
 
 export type WeeklyRange = {
-  /** Sábado del corte. */
-  saturday: string;
+  /** Día del corte en calendario: el sábado, o el último día del mes si llega antes. */
+  cutoff: string;
+  /** Último corte del mes (el siguiente día de cobro ya es de otro mes). */
+  monthEnd: boolean;
   /** Primer día de cobro de la semana (lunes, o martes si el lunes es festivo). */
   start: string;
   /** Último día de cobro hasta el corte (o hasta hoy si la semana sigue abierta). */
@@ -139,29 +141,60 @@ const MOVEMENT_LABELS: Record<InformeHistoryKind, string> = {
   gasto: "Gasto",
 };
 
-/** Sábados de corte, del más reciente (semana en curso) al más viejo. */
-export function recentWeeklyCortes(today: string, count = 8): string[] {
-  const weekday = utcWeekdayIndex(today);
-  const current = weekday === 0 ? addCalendarDaysIso(today, -1) : addCalendarDaysIso(today, 6 - weekday);
-  return Array.from({ length: count }, (_, index) => addCalendarDaysIso(current, -7 * index));
+function lastDayOfMonth(iso: string) {
+  const [year, month] = iso.split("-").map(Number);
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
 }
 
-export function weeklyRangeForSaturday(saturday: string, today: string): WeeklyRange {
-  const monday = addCalendarDaysIso(saturday, -5);
+/**
+ * Período del informe que contiene `day`: lunes → sábado, sin cruzar de mes.
+ * Si el mes acaba a mitad de semana, el corte es el último día del mes y el día 1 abre otro.
+ */
+function weeklyPeriodOf(day: string) {
+  const weekday = utcWeekdayIndex(day);
+  const anchor = weekday === 0 ? addCalendarDaysIso(day, -1) : day;
+  const monday = addCalendarDaysIso(anchor, 1 - utcWeekdayIndex(anchor));
+  const saturday = addCalendarDaysIso(monday, 5);
+  const monthStart = `${anchor.slice(0, 8)}01`;
+  const monthLast = lastDayOfMonth(anchor);
+  const cutoff = saturday > monthLast ? monthLast : saturday;
+  let next = addCalendarDaysIso(cutoff, 1);
+  while (!isDailyCollectionDay(next)) next = addCalendarDaysIso(next, 1);
+  return {
+    from: monday < monthStart ? monthStart : monday,
+    cutoff,
+    monthEnd: next.slice(0, 7) !== cutoff.slice(0, 7),
+  };
+}
+
+/** Cortes del informe (fin de cada período), del más reciente (en curso) al más viejo. */
+export function recentWeeklyCortes(today: string, count = 8): string[] {
+  const cortes: string[] = [];
+  let period = weeklyPeriodOf(today);
+  while (cortes.length < count) {
+    cortes.push(period.cutoff);
+    period = weeklyPeriodOf(addCalendarDaysIso(period.from, -1));
+  }
+  return cortes;
+}
+
+export function weeklyRangeForCutoff(cutoff: string, today: string): WeeklyRange {
+  const period = weeklyPeriodOf(cutoff);
   const days: string[] = [];
   const holidays: string[] = [];
-  for (let day = monday; day <= saturday; day = addCalendarDaysIso(day, 1)) {
+  for (let day = period.from; day <= period.cutoff; day = addCalendarDaysIso(day, 1)) {
     if (isColombiaHoliday(day)) holidays.push(day);
     if (isDailyCollectionDay(day) && day <= today) days.push(day);
   }
-  const start = days[0] ?? monday;
+  const start = days[0] ?? period.from;
   return {
-    saturday,
+    cutoff: period.cutoff,
+    monthEnd: period.monthEnd,
     start,
     end: days[days.length - 1] ?? start,
     days,
     holidays,
-    partial: saturday > today,
+    partial: period.cutoff > today,
   };
 }
 

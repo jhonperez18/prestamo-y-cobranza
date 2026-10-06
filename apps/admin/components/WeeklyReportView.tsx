@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Reportes → Informes → Semanal. Vista previa de la hoja (corte sábado) con datos reales.
+ * Reportes → Informes → Semanal. Vista previa de la hoja (corte sábado o fin de mes) con datos reales.
  * Todas las cifras salen de `buildWeeklyReport`; esta vista solo pinta.
  */
 import { useMemo, useState } from "react";
@@ -12,7 +12,7 @@ import { weekdayLabel } from "@/lib/colombia-holidays";
 import {
   buildWeeklyReport,
   recentWeeklyCortes,
-  weeklyRangeForSaturday,
+  weeklyRangeForCutoff,
   type WeeklyReport,
   type WeeklyReportScope,
   type WeeklyReportSources,
@@ -110,6 +110,7 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
         <p>
           Semana {shortDate(range.start)} – {shortDate(range.end)}/{range.end.slice(0, 4)} · corte{" "}
           {weekdayLabel(range.end)} {shortDate(range.end)}
+          {range.monthEnd ? " (fin de mes)" : ""}
           {range.partial ? " · semana en curso (hasta hoy)" : ""}
           {range.holidays.length
             ? ` · festivo: ${range.holidays.map((day) => `${weekdayLabel(day)} ${shortDate(day)}`).join(", ")}`
@@ -386,9 +387,9 @@ export function WeeklyReportView({
 }: Props) {
   const today = businessTodayIso();
   const cortes = useMemo(() => recentWeeklyCortes(today), [today]);
-  const [saturday, setSaturday] = useState(() => cortes[cortes[0] > today ? 1 : 0] ?? cortes[0]);
+  const [cutoff, setCutoff] = useState(() => cortes[cortes[0] > today ? 1 : 0] ?? cortes[0]);
   const [scope, setScope] = useState<WeeklyReportScope>("mtn");
-  const range = useMemo(() => weeklyRangeForSaturday(saturday, today), [saturday, today]);
+  const range = useMemo(() => weeklyRangeForCutoff(cutoff, today), [cutoff, today]);
   const report = useMemo(
     () =>
       buildWeeklyReport(
@@ -429,13 +430,14 @@ export function WeeklyReportView({
     <section className="panel weekly-report">
       <div className="weekly-report-toolbar">
         <label>
-          <span>Semana (corte sábado)</span>
-          <select value={saturday} onChange={(event) => setSaturday(event.target.value)}>
+          <span>Semana (corte sábado o fin de mes)</span>
+          <select value={cutoff} onChange={(event) => setCutoff(event.target.value)}>
             {cortes.map((day) => {
-              const week = weeklyRangeForSaturday(day, today);
+              const week = weeklyRangeForCutoff(day, today);
               return (
                 <option key={day} value={day}>
                   {shortDate(week.start)} – {isoToDisplay(day)}
+                  {week.monthEnd ? " · fin de mes" : ""}
                   {week.partial ? " (en curso)" : ""}
                 </option>
               );
