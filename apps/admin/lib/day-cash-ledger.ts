@@ -244,17 +244,37 @@ function chainRouteDay(
   };
 }
 
-/** ¿El cobrador trabaja la cadena M↔T ese día? */
+function assignmentOnChainSheet(src: DayCashSources, row: DailyCollectionAssignment): boolean {
+  return (
+    row.collectorRef === src.collectorRef &&
+    isPlanillaCashChainRoute(assignmentRouteName(row, src.clients))
+  );
+}
+
+/**
+ * ¿El cobrador trabaja la cadena M↔T ese día?
+ * Visitas M/T de ese día, o (si la hoja no está cargada) un cobrador que sí
+ * trabaja M/T y ya tiene CIE-/PCE de ese día. Un PCE-T proyectado desde el
+ * CIE- de Yesid no cuenta: él solo tiene N, N cierra N, nunca PCE-M/T.
+ */
 export function isChainCollectorDay(src: DayCashSources): boolean {
   const date = dateIsoOf(src.date);
-  const onChainSheet = src.assignments.some(
-    (row) =>
-      row.collectorRef === src.collectorRef &&
-      dateIsoOf(row.dispatchDate) === date &&
-      isPlanillaCashChainRoute(assignmentRouteName(row, src.clients)),
-  );
-  if (onChainSheet) return true;
-  return src.planillaCashCloses.some((row) => row.collectorRef === src.collectorRef);
+  if (
+    src.assignments.some(
+      (row) => assignmentOnChainSheet(src, row) && dateIsoOf(row.dispatchDate) === date,
+    )
+  ) {
+    return true;
+  }
+  if (!src.assignments.some((row) => assignmentOnChainSheet(src, row))) return false;
+  if (
+    src.planillaCashCloses.some(
+      (row) => row.collectorRef === src.collectorRef && dateIsoOf(row.date) === date,
+    )
+  ) {
+    return true;
+  }
+  return Boolean(findFullDayCieClose(src.dayCloses, src.collectorRef, date));
 }
 
 /** Inicial de M: CIE- de ayer manda (ver `openingCashForChainedPlanilla`). */

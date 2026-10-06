@@ -26,7 +26,7 @@ import { register } from "node:module";
 
 register("./ts-alias-loader.mjs", import.meta.url);
 
-const { buildDayCashLedger, chainDayCuadre, chainHistorySplit, primaryClosingForDay, withLedgerTodaySaldo } = await import(
+const { buildDayCashLedger, chainDayCuadre, chainHistorySplit, isChainCollectorDay, primaryClosingForDay, withLedgerTodaySaldo } = await import(
   "@/lib/day-cash-ledger"
 );
 const { sealCollectorDay } = await import("@/lib/collector-day-close-seal");
@@ -939,6 +939,42 @@ const nWithPce = {
 };
 expect("N con PCE-T proyectado y planilla solo N: sus gastos cuentan", independentRouteDay(nWithPce, "N").gastos, 10_000);
 expect("N con PCE-T proyectado: renglón de gasto en la hoja", independentRouteDayLines(independentRouteDay(nWithPce, "N")).length, 1);
+expect("N con PCE-T proyectado: no es cobrador de la cadena", isChainCollectorDay(nWithPce), false);
+expect(
+  "N ayer con PCE-T proyectado: tampoco es cadena",
+  isChainCollectorDay({ ...nWithPce, date: Y }),
+  false,
+);
+const nClosed = sealCollectorDay({
+  ...nWithPce,
+  routeRef: "RUT-N",
+  planillaRoute: "N",
+  expensesFallback: nWithPce.dayExpenseDrafts[0].expenses,
+  fullyClosed: true,
+});
+expect(
+  "Cerrar N no escribe PCE-M",
+  nClosed.planillaCashCloses.some((r) => r.routeName === "M" && r.date === D),
+  false,
+);
+expect(
+  "Cerrar N no escribe PCE-T de hoy",
+  nClosed.planillaCashCloses.some((r) => r.routeName === "T" && r.date === D),
+  false,
+);
+expect("Cerrar N: CIE es caja de N (efectivo − gastos)", nClosed.record?.cashFloat ?? null, 90_000);
+const nClosedDay = sealCollectorDay({
+  ...nWithPce,
+  routeRef: "RUT-N",
+  expensesFallback: nWithPce.dayExpenseDrafts[0].expenses,
+  fullyClosed: true,
+});
+expect(
+  "Cerrar jornada N (sin hoja): no PCE-M/T de hoy",
+  nClosedDay.planillaCashCloses.some((r) => r.date === D && (r.routeName === "M" || r.routeName === "T")),
+  false,
+);
+expect("Cerrar jornada N: CIE sigue siendo caja de N", nClosedDay.record?.cashFloat ?? null, 90_000);
 
 // ── 12. Banco: cada cobro llega a su cuenta según la ruta (A → Nequi; M/T/N → Banco) ──
 console.log("\n— Banco: destino del cobro por ruta —");

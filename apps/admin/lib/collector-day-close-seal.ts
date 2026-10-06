@@ -23,8 +23,10 @@ import {
   type DayCashLedger,
   type DayCashSources,
 } from "@/lib/day-cash-ledger";
+import { sameRoute } from "@/lib/client-route-order";
 import type { ClientRow, CollectorRow, LoanRow, PaymentRow } from "@/lib/mock-data";
 import {
+  INDEPENDENT_SALDO_ROUTES,
   isPlanillaCashChainPrimary,
   isPlanillaCashChainRoute,
   isPlanillaCashChainSecondary,
@@ -91,8 +93,15 @@ export function sealCollectorDay(input: SealCollectorDayInput): SealCollectorDay
   const closesT =
     input.fullyClosed || isPlanillaCashChainSecondary(input.planillaRoute);
   const closesChainSheet = isPlanillaCashChainRoute(input.planillaRoute);
+  const closesIndependentSheet = INDEPENDENT_SALDO_ROUTES.some((name) =>
+    sameRoute(input.planillaRoute, name),
+  );
   let planillaCashCloses = input.planillaCashCloses;
-  if (ledger.chain && (closesChainSheet || input.fullyClosed)) {
+  if (
+    ledger.chain &&
+    !closesIndependentSheet &&
+    (closesChainSheet || input.fullyClosed)
+  ) {
     planillaCashCloses = sealChainLinksFromLedger(
       planillaCashCloses,
       ledger,
