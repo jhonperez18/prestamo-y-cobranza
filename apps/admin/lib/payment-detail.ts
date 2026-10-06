@@ -126,9 +126,10 @@ export function buildPaymentRow(
 
 /** Cuota completa = Pagada; abono o cuota incompleta = Parcial. */
 export function paymentSettlementStatus(
-  payment: Pick<PaymentRow, "type" | "kind" | "amount">,
+  payment: Pick<PaymentRow, "type" | "kind" | "amount" | "voidedAt">,
   cuotaAmount?: number,
 ) {
+  if (payment.voidedAt?.trim()) return { label: "Anulado", kind: "warn" as StatusKind };
   const amount = Number(payment.amount) || 0;
   if (cuotaAmount != null && cuotaAmount > 0) {
     if (amount > cuotaAmount) {

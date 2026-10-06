@@ -10,9 +10,7 @@ type Props = {
 };
 
 export function PaymentStatusPill({ payment, loan }: Props) {
-  if (payment.voidedAt?.trim()) {
-    return <Pill label="Anulado" kind="warn" title={payment.voidReason || "Pago anulado"} />;
-  }
   const status = paymentSettlementStatus(payment, cuotaAmountForPayment(payment, loan));
-  return <Pill label={status.label} kind={status.kind} />;
+  const title = payment.voidedAt?.trim() ? payment.voidReason || "Pago anulado" : undefined;
+  return <Pill label={status.label} kind={status.kind} title={title} />;
 }
