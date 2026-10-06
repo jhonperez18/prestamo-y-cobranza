@@ -1653,6 +1653,8 @@ export function useWorkspace({
       date: payload.date,
       records: planillaCashCloses,
       dayCloses: storedCloses,
+      assignments: dailyAssignments,
+      clients,
     });
     if (!chainGuard.ok) {
       onToast(chainGuard.error);

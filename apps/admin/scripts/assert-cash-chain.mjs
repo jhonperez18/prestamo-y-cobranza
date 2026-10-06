@@ -1683,6 +1683,26 @@ console.log("— Aparato sin el CIE de ayer —");
   expect("Sin CIE-02: no deja cerrar M del 03", guardM.ok, false);
   const guardOk = assertCanCloseChainedPlanilla({ collectorRef: COB.ref, routeName: "M", date: D3, records: [], dayCloses: [cie01, cie02] });
   expect("Con CIE-02: cierre de M permitido", guardOk.ok, true);
+  const guardTOpen = assertCanCloseChainedPlanilla({
+    collectorRef: COB.ref,
+    routeName: "T",
+    date: D3,
+    records: [],
+    dayCloses: [cie01, cie02],
+  });
+  expect("T sin PCE-M ni hoja M sellada: no cierra", guardTOpen.ok, false);
+  const guardTSealed = assertCanCloseChainedPlanilla({
+    collectorRef: COB.ref,
+    routeName: "T",
+    date: D3,
+    records: [],
+    dayCloses: [cie01, cie02],
+    assignments: [
+      { collectorRef: COB.ref, dispatchDate: D3, clientRoute: "M", dayClosedAt: `${D3}T18:00:00.000Z` },
+      { collectorRef: COB.ref, dispatchDate: D3, clientRoute: "T" },
+    ],
+  });
+  expect("T con hoja M ya sellada: cierra (el PCE-M se rehace al sellar T)", guardTSealed.ok, true);
 
   const cycle03 = runOperationalDayCycle(
     {

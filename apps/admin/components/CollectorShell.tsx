@@ -793,6 +793,8 @@ export function CollectorShell({ session, onLogout }: Props) {
       date: payload.date,
       records: planillaCashCloses,
       dayCloses: storedCloses,
+      assignments: dailyAssignments,
+      clients,
     });
     if (!chainGuard.ok) {
       showToast(chainGuard.error);

@@ -487,6 +487,32 @@ export function openingCashForChainedPlanilla(input: {
   };
 }
 
+type AssignmentRouteHint = {
+  collectorRef: string;
+  dispatchDate: string;
+  clientRoute?: string;
+  clientRef?: string;
+  dayClosedAt?: string;
+};
+
+/** M ya cerró: eslabón PCE-M o todas las visitas M del día selladas. */
+export function primaryChainSheetSealed(
+  assignments: AssignmentRouteHint[],
+  collectorRef: string,
+  date: string,
+  clients: { ref: string; route: string }[] = [],
+): boolean {
+  const day = normalizeHistoryDate(date) || date;
+  const rows = assignments.filter((row) => {
+    if (row.collectorRef !== collectorRef) return false;
+    if ((normalizeHistoryDate(row.dispatchDate) || row.dispatchDate) !== day) return false;
+    const fromVisit = String(row.clientRoute || "").trim();
+    const fromClient = clients.find((client) => client.ref === row.clientRef)?.route ?? "";
+    return isPlanillaCashChainPrimary(fromVisit || fromClient);
+  });
+  return rows.length > 0 && rows.every((row) => Boolean(row.dayClosedAt));
+}
+
 /**
  * Guardia: no cerrar T sin M cerrada el mismo día, ni sellar M/T si a este aparato
  * le falta el CIE- del último día cerrado (el saldo saldría del CIE de anteayer).
@@ -497,6 +523,8 @@ export function assertCanCloseChainedPlanilla(input: {
   date: string;
   records: PlanillaCashCloseRecord[];
   dayCloses: CollectorDayCloseRecord[];
+  assignments?: AssignmentRouteHint[];
+  clients?: { ref: string; route: string }[];
 }): { ok: true } | { ok: false; error: string } {
   const route = String(input.routeName || "").trim();
   if (!isPlanillaCashChainRoute(route)) return { ok: true };
@@ -515,6 +543,9 @@ export function assertCanCloseChainedPlanilla(input: {
     PLANILLA_CASH_CHAIN_PRIMARY,
   );
   if (mClose) return { ok: true };
+  if (primaryChainSheetSealed(input.assignments ?? [], input.collectorRef, input.date, input.clients)) {
+    return { ok: true };
+  }
   return {
     ok: false,
     error: `No se puede cerrar ${PLANILLA_CASH_CHAIN_SECONDARY} sin cerrar antes ${PLANILLA_CASH_CHAIN_PRIMARY}.`,

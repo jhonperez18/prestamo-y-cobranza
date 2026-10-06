@@ -130,7 +130,8 @@ Detalle: `apps/admin/lib/day-cash-ledger.ts`, `apps/admin/lib/planilla-cash-chai
 
 ## Obligatorio (cierre de hojas)
 
-1. Cerrar M antes de T (`assertCanCloseChainedPlanilla`).
+1. Cerrar M antes de T (`assertCanCloseChainedPlanilla`). M cerrada = PCE-M **o**
+   todas las visitas M del día selladas. Al cerrar T se rehace el PCE-M desde el libro.
 2. Al cerrar T: Inicial = final real de M; al sellar jornada el CIE lleva el saldo final.
 3. Historial · M y planilla leen **la misma** cifra (`dayFinalClosingCash` / CIE).
 4. Ayer y atrás: no recalcular saldos viejos; solo anclar hoy al CIE de ayer.

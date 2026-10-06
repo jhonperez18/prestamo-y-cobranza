@@ -920,8 +920,10 @@ export function CollectorMobileApp({
         date: activeDate,
         records: planillaCashCloses,
         dayCloses,
+        assignments,
+        clients,
       }),
-    [activeDate, activePlanillaRoute, collector.ref, dayCloses, planillaCashCloses],
+    [activeDate, activePlanillaRoute, assignments, clients, collector.ref, dayCloses, planillaCashCloses],
   );
 
   const carriedOpening = openingSaldoForPeriod(collector.ref, viewPeriod, monthCloses);
