@@ -178,6 +178,24 @@ export function recentWeeklyCortes(today: string, count = 8): string[] {
   return cortes;
 }
 
+function lastCollectionDayOf(cutoff: string) {
+  let day = cutoff;
+  while (!isDailyCollectionDay(day)) day = addCalendarDaysIso(day, -1);
+  return day;
+}
+
+/**
+ * Corte cuyo último día de cobro fue `today` o ayer (el cron de 00:05 reintenta el de 23:30).
+ * `null` si ninguno de los dos días cerró un período.
+ */
+export function weeklyCutoffClosedNear(today: string): string | null {
+  for (const day of [today, addCalendarDaysIso(today, -1)]) {
+    const { cutoff } = weeklyPeriodOf(day);
+    if (lastCollectionDayOf(cutoff) === day) return cutoff;
+  }
+  return null;
+}
+
 export function weeklyRangeForCutoff(cutoff: string, today: string): WeeklyRange {
   const period = weeklyPeriodOf(cutoff);
   const days: string[] = [];

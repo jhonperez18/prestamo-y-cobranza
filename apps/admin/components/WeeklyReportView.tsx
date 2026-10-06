@@ -458,7 +458,7 @@ export function WeeklyReportView({
             </button>
           ))}
         </div>
-        <p className="weekly-report-hint">Vista previa de la hoja. El envío por correo se arma después.</p>
+        <p className="weekly-report-hint">Vista previa de la hoja. Al cerrar cada corte se envía por correo al administrador (PDF + resumen).</p>
       </div>
       <ReportSheet report={report} />
     </section>
