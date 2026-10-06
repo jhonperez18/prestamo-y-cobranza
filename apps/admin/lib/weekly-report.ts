@@ -59,8 +59,6 @@ export type WeeklyRange = {
   partial: boolean;
 };
 
-export type WeeklyMark = "N" | "R" | "F" | "A" | "NP";
-
 export type WeeklyClientRow = {
   ref: string;
   order: number;
@@ -68,7 +66,6 @@ export type WeeklyClientRow = {
   /** Lo que debe al corte. `null` = sin préstamo con saldo («–»). */
   debt: number | null;
   paidWeek: number;
-  marks: WeeklyMark[];
 };
 
 export type WeeklyRouteCartera = {
@@ -210,12 +207,10 @@ type CarteraInput = {
   src: WeeklyReportSources;
   range: WeeklyRange;
   route: string;
-  topUpLoanRefs: ReadonlySet<string>;
   paymentsByLoan: Map<string, PaymentRow[]>;
 };
 
-function routeCartera({ src, range, route, topUpLoanRefs, paymentsByLoan }: CarteraInput): WeeklyRouteCartera {
-  const before = addCalendarDaysIso(range.start, -1);
+function routeCartera({ src, range, route, paymentsByLoan }: CarteraInput): WeeklyRouteCartera {
   const loansByClient = new Map<string, LoanRow[]>();
   for (const loan of src.loans) {
     if (!loan.clientRef || isLoanVoided(loan)) continue;
@@ -230,35 +225,21 @@ function routeCartera({ src, range, route, topUpLoanRefs, paymentsByLoan }: Cart
     .map((client): WeeklyClientRow => {
       const loans = loansByClient.get(client.ref) ?? [];
       let debt = 0;
-      let prevDebt = 0;
       let paidWeek = 0;
-      const marks = new Set<WeeklyMark>();
       for (const loan of loans) {
         const loanPayments = paymentsByLoan.get(loan.ref) ?? [];
-        const iso = loanDisbursementIsoDate(loan);
-        const atEnd = Math.max(0, loanBalanceAt(loan, loanPayments, range.end));
-        const atStart = iso <= before ? Math.max(0, loanBalanceAt(loan, loanPayments, before)) : 0;
-        debt += atEnd;
-        prevDebt += atStart;
+        debt += Math.max(0, loanBalanceAt(loan, loanPayments, range.end));
         for (const pay of loanPayments) {
           const paid = paymentRecaudoIso(pay);
           if (paid >= range.start && paid <= range.end) paidWeek += Number(pay.amount) || 0;
         }
-        if (iso >= range.start) {
-          const renewed = loans.some((other) => other !== loan && loanDisbursementIsoDate(other) < iso);
-          marks.add(renewed ? "R" : "N");
-        }
-        if (atStart > 0 && atEnd === 0) marks.add("F");
-        if (topUpLoanRefs.has(loan.ref)) marks.add("A");
       }
-      if (prevDebt > 0 && paidWeek === 0) marks.add("NP");
       return {
         ref: client.ref,
         order: client.routeOrder || 0,
         name: `${client.name} ${client.lastName}`.trim() || client.ref,
         debt: debt > 0 ? pesos(debt) : null,
         paidWeek: pesos(paidWeek),
-        marks: [...marks],
       };
     });
   const owner = ownerOf(src.routes, route);
@@ -419,9 +400,8 @@ export function buildWeeklyReport(
     }
   }
 
-  const topUpLoanRefs = new Set(topUps.map((row) => row.loanRef));
   const paymentsByLoan = groupPaymentsByLoan(livePayments(src.payments));
-  const cartera = routes.map((route) => routeCartera({ src, range, route, topUpLoanRefs, paymentsByLoan }));
+  const cartera = routes.map((route) => routeCartera({ src, range, route, paymentsByLoan }));
   const carteraTotal = pesos(cartera.reduce((sum, row) => sum + row.total, 0));
 
   const caja: WeeklyCajaRow[] = [];

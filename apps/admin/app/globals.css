@@ -16499,11 +16499,6 @@
   color: #5b7268;
   text-align: right;
 }
-.weekly-report-table .is-mark {
-  width: 34px;
-  font-weight: 700;
-  color: #b45309;
-}
 .weekly-report-table .is-name {
   max-width: 140px;
   overflow: hidden;
@@ -16514,9 +16509,14 @@
   color: #fff;
   text-align: center;
 }
-.weekly-report-table.is-cartera th.is-pos,
-.weekly-report-table.is-cartera td.is-pos {
-  border-left: 2px solid #3f6b52;
+.weekly-report-table.is-cartera th.is-route,
+.weekly-report-table.is-cartera .is-pos,
+.weekly-report-table.is-cartera .is-pos-start {
+  border-left: 3px solid #14201b;
+}
+.weekly-report-table.is-cartera th.is-route:last-child,
+.weekly-report-table.is-cartera tr > :last-child {
+  border-right: 3px solid #14201b;
 }
 .weekly-report-table td.is-blank {
   background: #fff;

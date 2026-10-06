@@ -26,8 +26,6 @@ const SCOPES: { id: WeeklyReportScope; label: string }[] = [
   { id: "a", label: "A" },
 ];
 
-const MARK_LEGEND = "N nuevo · R renovación · F terminó · A anexo · NP no pagó en la semana";
-
 function num(value: number | null) {
   return value == null ? "–" : money(value, { symbol: false });
 }
@@ -52,7 +50,7 @@ function CarteraTable({ cartera }: { cartera: WeeklyRouteCartera[] }) {
       <thead>
         <tr>
           {cartera.map((route) => (
-            <th key={route.route} colSpan={5} className="is-route">
+            <th key={route.route} colSpan={4} className="is-route">
               Ruta {route.route}
               {route.collectorName ? ` · ${route.collectorName}` : ""}
             </th>
@@ -64,7 +62,6 @@ function CarteraTable({ cartera }: { cartera: WeeklyRouteCartera[] }) {
             <th key={`${route.route}-c`}>Cliente</th>,
             <th key={`${route.route}-d`} className="is-num">Debe al corte</th>,
             <th key={`${route.route}-p`} className="is-num">Pagó semana</th>,
-            <th key={`${route.route}-m`} className="is-mark">Marca</th>,
           ])}
         </tr>
       </thead>
@@ -74,14 +71,15 @@ function CarteraTable({ cartera }: { cartera: WeeklyRouteCartera[] }) {
             {cartera.map((route) => {
               const row = route.rows[index];
               if (!row) {
-                return [0, 1, 2, 3, 4].map((cell) => <td key={`${route.route}-${cell}`} className="is-blank" />);
+                return [0, 1, 2, 3].map((cell) => (
+                  <td key={`${route.route}-${cell}`} className={cell === 0 ? "is-blank is-pos" : "is-blank"} />
+                ));
               }
               return [
                 <td key={`${route.route}-n`} className="is-pos">{row.order || index + 1}</td>,
                 <td key={`${route.route}-c`} className="is-name">{row.name}</td>,
                 <td key={`${route.route}-d`} className="is-num">{num(row.debt)}</td>,
                 <td key={`${route.route}-p`} className="is-num">{row.paidWeek > 0 ? num(row.paidWeek) : "–"}</td>,
-                <td key={`${route.route}-m`} className="is-mark">{row.marks.join(" ")}</td>,
               ];
             })}
           </tr>
@@ -90,11 +88,11 @@ function CarteraTable({ cartera }: { cartera: WeeklyRouteCartera[] }) {
       <tfoot>
         <tr>
           {cartera.map((route) => [
-            <td key={`${route.route}-t`} colSpan={2}>
+            <td key={`${route.route}-t`} colSpan={2} className="is-pos-start">
               Total · {route.rows.length} clientes · {route.owing} deben
             </td>,
             <td key={`${route.route}-v`} className="is-num">{num(route.total)}</td>,
-            <td key={`${route.route}-e`} colSpan={2} />,
+            <td key={`${route.route}-e`} />,
           ])}
         </tr>
       </tfoot>
@@ -121,10 +119,9 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
 
       <SectionTitle n={1} title="Cartera al corte" note="lo que debe cada cliente" />
       <CarteraTable cartera={report.cartera} />
-      <p className="weekly-report-legend">
-        Marcas: {MARK_LEGEND}
-        {multi ? ` · Cartera total M + T + N: ${num(report.carteraTotal)}` : ""}
-      </p>
+      {multi ? (
+        <p className="weekly-report-legend">Cartera total M + T + N: {num(report.carteraTotal)}</p>
+      ) : null}
 
       <div className="weekly-report-grid">
         <section>
