@@ -5,7 +5,7 @@
  * @see docs/operational-money.md
  */
 import { createMirrorServerClient, mirrorUsesServiceRole } from "@/lib/supabase/admin";
-import { fetchRowsChangedSince } from "@/lib/supabase/changed-since";
+import { fetchAllRows, fetchRowsChangedSince } from "@/lib/supabase/changed-since";
 import { createIncrementalPull, withSinceParam } from "@/lib/incremental-pull";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import type { LoanRow, PaymentRow, StatusKind } from "@/lib/mock-data";
@@ -574,33 +574,19 @@ export async function fetchPaymentsFromSupabase(options?: {
     return changed.ok ? { ok: true, rows: changed.rows } : { ok: false, error: changed.error, rows: [] };
   }
 
-  const query = options?.evidence
-    ? client
-        .from("payments")
-        .select(`${PAYMENT_MONEY_COLUMNS},evidence`)
-        .order("paid_date", { ascending: false })
-        .limit(3000)
-    : client
-        .from("payments")
-        .select(PAYMENT_MONEY_COLUMNS)
-        .order("paid_date", { ascending: false })
-        .limit(3000);
-  const { data, error } = await query;
-
-  if (error && /evidence/i.test(error.message || "")) {
-    const fallback = await client
-      .from("payments")
-      .select(
-        "id,ref,loan_ref,client_ref,collector_ref,collector_name,amount,paid_date,paid_time,due_date,charge_label,method,source,payment_type,payment_kind,route_ref,updated_at",
-      )
-      .order("paid_date", { ascending: false })
-      .limit(3000);
-    if (fallback.error) return { ok: false, error: fallback.error.message, rows: [] };
-    return { ok: true, rows: (fallback.data ?? []) as PaymentMirrorRow[] };
+  let full = await fetchAllRows<PaymentMirrorRow>(
+    client,
+    "payments",
+    options?.evidence ? `${PAYMENT_MONEY_COLUMNS},evidence` : PAYMENT_MONEY_COLUMNS,
+  );
+  if (!full.ok && options?.evidence && /evidence/i.test(full.error)) {
+    full = await fetchAllRows<PaymentMirrorRow>(client, "payments", PAYMENT_MONEY_COLUMNS);
   }
-
-  if (error) return { ok: false, error: error.message, rows: [] };
-  return { ok: true, rows: (data ?? []) as PaymentMirrorRow[] };
+  if (!full.ok) return { ok: false, error: full.error, rows: [] };
+  return {
+    ok: true,
+    rows: full.rows.sort((a, b) => String(b.paid_date).localeCompare(String(a.paid_date))),
+  };
 }
 
 function readMirrorQueue(): PaymentRow[] {

@@ -3,7 +3,7 @@
  * @see docs/demo-to-backend.md
  */
 import { createMirrorServerClient, mirrorUsesServiceRole } from "@/lib/supabase/admin";
-import { fetchRowsChangedSince } from "@/lib/supabase/changed-since";
+import { fetchAllRows, fetchRowsChangedSince } from "@/lib/supabase/changed-since";
 import { createIncrementalPull, withSinceParam } from "@/lib/incremental-pull";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import type { ClientRow, LoanRow, StatusKind } from "@/lib/mock-data";
@@ -450,9 +450,9 @@ export async function fetchClientsFromSupabase(since: string | null = null) {
     if (!changed.ok) return { ok: false as const, error: changed.error, rows: [] as ClientMirrorRow[] };
     return { ok: true as const, rows: changed.rows };
   }
-  const { data, error } = await supabase.from("clients").select("*").order("updated_at", { ascending: false }).limit(5000);
-  if (error) return { ok: false as const, error: error.message, rows: [] as ClientMirrorRow[] };
-  return { ok: true as const, rows: (data ?? []) as ClientMirrorRow[] };
+  const all = await fetchAllRows<ClientMirrorRow>(supabase, "clients", "*");
+  if (!all.ok) return { ok: false as const, error: all.error, rows: [] as ClientMirrorRow[] };
+  return { ok: true as const, rows: all.rows };
 }
 
 export async function fetchLoansFromSupabase(since: string | null = null) {
@@ -463,9 +463,9 @@ export async function fetchLoansFromSupabase(since: string | null = null) {
     if (!changed.ok) return { ok: false as const, error: changed.error, rows: [] as LoanMirrorRow[] };
     return { ok: true as const, rows: changed.rows };
   }
-  const { data, error } = await supabase.from("loans").select("*").order("updated_at", { ascending: false }).limit(5000);
-  if (error) return { ok: false as const, error: error.message, rows: [] as LoanMirrorRow[] };
-  return { ok: true as const, rows: (data ?? []) as LoanMirrorRow[] };
+  const all = await fetchAllRows<LoanMirrorRow>(supabase, "loans", "*");
+  if (!all.ok) return { ok: false as const, error: all.error, rows: [] as LoanMirrorRow[] };
+  return { ok: true as const, rows: all.rows };
 }
 
 function readQueue<T extends { ref: string }>(key: string) {

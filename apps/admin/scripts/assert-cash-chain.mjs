@@ -2081,6 +2081,32 @@ console.log("— Cupo del aparato —");
   );
 }
 
+{
+  console.log("\n— 27. Bajada completa: la base corta en 1.000 filas, nada se lee con .limit() mayor —");
+  const { readFileSync } = await import("node:fs");
+  const mirrors = ["payment-mirror.ts", "catalog-mirror.ts", "ops-mirror.ts"];
+  for (const file of mirrors) {
+    const source = readFileSync(new URL(`../lib/supabase/${file}`, import.meta.url), "utf8");
+    const big = [...source.matchAll(/\.limit\((\d+)\)/g)].filter((m) => Number(m[1]) > 1000).length;
+    expect(`Bajada completa sin .limit() > 1000 en ${file}`, big, 0);
+  }
+
+  const { fetchAllRows } = await import("@/lib/supabase/changed-since");
+  const table = Array.from({ length: 2398 }, (_, i) => ({ id: `id-${String(i).padStart(5, "0")}`, ref: `PG-${i}` }));
+  const fakeClient = {
+    from: () => {
+      const q = {
+        select: () => q,
+        order: () => q,
+        range: (from, to) => Promise.resolve({ data: table.slice(from, Math.min(to + 1, from + 1000)), error: null }),
+      };
+      return q;
+    },
+  };
+  const all = await fetchAllRows(fakeClient, "payments", "*");
+  expect("Bajada completa trae las 2.398 filas (no las primeras 1.000)", all.ok ? all.rows.length : -1, 2398);
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

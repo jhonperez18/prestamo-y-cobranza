@@ -33,6 +33,37 @@ export function changedSinceFilter(sinceIso: string): string {
   return `updated_at.gte."${sinceIso}",created_at.gte."${sinceIso}"`;
 }
 
+/**
+ * Bajada completa de una tabla. La base corta cada consulta en 1.000 filas (`max-rows`):
+ * un `.limit(5000)` devuelve 1.000 en silencio. Por eso va por páginas, en orden de alta:
+ * lo que se crea mientras se pagina cae al final y entra en la última página.
+ */
+export async function fetchAllRows<Row extends object>(
+  client: SupabaseClient,
+  table: string,
+  select: string,
+): Promise<{ ok: true; rows: Row[] } | { ok: false; error: string; rows: Row[] }> {
+  const rows: Row[] = [];
+  const seen = new Set<unknown>();
+  for (let from = 0; ; from += CHANGED_SINCE_PAGE) {
+    const { data, error } = await client
+      .from(table)
+      .select(select)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + CHANGED_SINCE_PAGE - 1);
+    if (error) return { ok: false, error: error.message, rows: [] };
+    const page = (data ?? []) as unknown as Row[];
+    for (const row of page) {
+      const id = (row as { id?: unknown }).id;
+      if (id != null && seen.has(id)) continue;
+      seen.add(id);
+      rows.push(row);
+    }
+    if (page.length < CHANGED_SINCE_PAGE) return { ok: true, rows };
+  }
+}
+
 export async function fetchRowsChangedSince<Row>(
   client: SupabaseClient,
   table: string,
