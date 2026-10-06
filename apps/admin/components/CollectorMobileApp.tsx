@@ -57,7 +57,7 @@ import {
 import type { CollectorPaymentRegisterInput } from "@/lib/route-sync";
 import { canRenewLoan } from "@/lib/loan-renew";
 import { reloanStateForVisit } from "@/lib/loan-reloan";
-import { syncLoan } from "@/lib/loan-preview";
+import { pullCollectorHistoryDay, syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import {
   assignmentRouteName,
   DECLINED_LOAN_OFFER_TODAY_REASON,
@@ -71,7 +71,6 @@ import {
   sameRoute,
 } from "@/lib/client-route-order";
 import {
-  loadLivePaymentRows,
   mergePaymentsByRef,
   pullRemotePaymentsIntoDemo,
 } from "@/lib/supabase/payment-mirror";
@@ -251,12 +250,12 @@ function visitIdentity(
     : item.loanRef
       ? loans.find((row) => row.ref === item.loanRef) ?? null
       : null;
-  const loan = rawLoan ? (syncLoan(rawLoan, payments) as LoanRow) : null;
+  const loan = rawLoan ? syncCollectorLiveLoan(rawLoan, payments, today) : null;
   const cuota = awaitingLoan ? 0 : planillaLiveCuota(item, loan, payments, today);
   const balance = awaitingLoan ? 0 : loan?.balance ?? 0;
   const cuotas = awaitingLoan
     ? null
-    : planillaLiveCuotasProgress(loan, payments, today);
+    : planillaLiveCuotasProgress(loan, [], today);
   const first = client?.name?.trim() || "";
   const last = client?.lastName?.trim() || "";
   const fullName =
@@ -331,9 +330,8 @@ export function CollectorMobileApp({
     let cancelled = false;
     void (async () => {
       try {
-        const rows = await loadLivePaymentRows();
-        if (!cancelled && rows.length > 0) setApiPayments(rows);
-        await pullRemotePaymentsIntoDemo();
+        const result = await pullRemotePaymentsIntoDemo();
+        if (!cancelled && result.rows?.length) setApiPayments(result.rows);
       } catch (error) {
         console.error("collector-recaudo", error);
       }
@@ -342,6 +340,18 @@ export function CollectorMobileApp({
       cancelled = true;
     };
   }, [collector.ref]);
+
+  const viewingDate = selectedDate || date || todayIso();
+  useEffect(() => {
+    if (!viewingDate || viewingDate === todayIso()) return;
+    let cancelled = false;
+    void pullCollectorHistoryDay(viewingDate).catch((error) => {
+      if (!cancelled) console.error("collector-history-day", error);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewingDate]);
 
   // Inicio fijo en «Por cobrar»: con hoja de ruta abierta arranca en la lista de pendientes;
   // con la jornada cerrada esa misma pestaña muestra el cierre. Recaudo solo si el cobrador lo toca.
@@ -571,7 +581,7 @@ export function CollectorMobileApp({
       chainSplit: isPlanillaCashChainRoute(routeForHistory ?? undefined)
         ? chainHistorySplit(
             isPlanillaCashChainSecondary(routeForHistory ?? undefined) ? "secondary" : "primary",
-            collector.ref,
+      collector.ref,
             clients,
             assignments,
           )
@@ -1246,9 +1256,9 @@ export function CollectorMobileApp({
       } catch (error) {
         console.error("collector-close-day", error);
       }
-      setConfirmingClose(false);
+    setConfirmingClose(false);
       // Queda en el home de cierre (mismo panel para todos). INICIO = Por cobrar.
-      setListFilter("pending");
+    setListFilter("pending");
       setPreferCobroPlanilla(false);
       setSelectedDate(null);
     })();
@@ -1584,49 +1594,49 @@ export function CollectorMobileApp({
 
       <header className="collector-mobile-header">
         <div className="collector-mobile-header-top">
-          <div className="collector-mobile-brand">
-            <div className="collector-mobile-logo-col">
-              <img src="/logo-ca-prestamo.png" alt="CA préstamo" className="brand-logo" />
-            </div>
-            <div className="collector-mobile-user-meta">
+        <div className="collector-mobile-brand">
+          <div className="collector-mobile-logo-col">
+            <img src="/logo-ca-prestamo.png" alt="CA préstamo" className="brand-logo" />
+          </div>
+          <div className="collector-mobile-user-meta">
               <div className="collector-mobile-greet-line">
                 <p className="collector-mobile-greet">
                   Hola, {collector.name.split(" ")[0]}
                 </p>
-                <span className="collector-mobile-date">{queue.dateLabel}</span>
+            <span className="collector-mobile-date">{queue.dateLabel}</span>
               </div>
-            </div>
           </div>
-          <div className="collector-mobile-menu" ref={menuRef}>
-            <button
-              type="button"
-              className={
-                menuOpen
-                  ? "collector-mobile-menu-trigger is-open"
-                  : "collector-mobile-menu-trigger"
-              }
-              aria-expanded={menuOpen}
-              aria-haspopup="menu"
-              aria-label="Menú"
-              title="Menú"
-              onClick={() => setMenuOpen((open) => !open)}
-            >
-              <span className="collector-mobile-menu-bars" aria-hidden="true">
-                <i />
-                <i />
-                <i />
-              </span>
-            </button>
-            {menuOpen ? (
-              <div className="collector-mobile-menu-panel" role="menu">
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="collector-mobile-menu-item"
-                  onClick={openHistory}
-                >
-                  Historial
-                </button>
+        </div>
+        <div className="collector-mobile-menu" ref={menuRef}>
+          <button
+            type="button"
+            className={
+              menuOpen
+                ? "collector-mobile-menu-trigger is-open"
+                : "collector-mobile-menu-trigger"
+            }
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            aria-label="Menú"
+            title="Menú"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <span className="collector-mobile-menu-bars" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+          </button>
+          {menuOpen ? (
+            <div className="collector-mobile-menu-panel" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                className="collector-mobile-menu-item"
+                onClick={openHistory}
+              >
+                Historial
+              </button>
                 {onCreateClient && newClientRoute && !showHomeCuadre ? (
                   <button
                     type="button"
@@ -1638,11 +1648,11 @@ export function CollectorMobileApp({
                     Nuevo cliente
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="collector-mobile-menu-item"
-                  disabled={!canCloseDay}
+              <button
+                type="button"
+                role="menuitem"
+                className="collector-mobile-menu-item"
+                disabled={!canCloseDay}
                   title={
                     !chainCloseGuard.ok
                       ? chainCloseGuard.error
@@ -1650,8 +1660,8 @@ export function CollectorMobileApp({
                         ? `Revisar y cerrar planilla ${activePlanillaRoute}`
                         : "Revisar y confirmar cierre del día"
                   }
-                  onClick={openCloseConfirm}
-                >
+                onClick={openCloseConfirm}
+              >
                   {confirmingClose
                     ? "Revisando…"
                     : !chainCloseGuard.ok
@@ -1659,7 +1669,7 @@ export function CollectorMobileApp({
                       : activePlanillaRoute
                         ? `Cerrar planilla ${activePlanillaRoute}`
                         : "Cerrar día"}
-                </button>
+              </button>
                 {onLogout && !preview ? (
                   <button
                     type="button"
@@ -1674,9 +1684,9 @@ export function CollectorMobileApp({
                     Salir
                   </button>
                 ) : null}
-              </div>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
+        </div>
         </div>
         {!chromeLocked || (planillaRoutePins.length > 1 && !showHomeCuadre) ? (
           <div className="collector-mobile-header-bar">
@@ -1891,10 +1901,10 @@ export function CollectorMobileApp({
                             row.saldo < 0 ? "is-saldo is-negative is-saldo-strong" : "is-saldo is-saldo-strong"
                           }
                         >
-                          {money(row.saldo, { symbol: false })}
-                        </span>
-                      </button>
-                    </li>
+                        {money(row.saldo, { symbol: false })}
+                      </span>
+                    </button>
+                  </li>
                     {adjustment ? (
                       <li>
                         <div
@@ -1988,9 +1998,9 @@ export function CollectorMobileApp({
           <b>{pendingCollectShown}</b>
         </button>
         {planillaIsN ? (
-          <button
-            type="button"
-            className={
+        <button
+          type="button"
+          className={
               chromeLocked
                 ? "collector-mobile-stat is-banco is-off"
                 : !reviewingPanel && listFilter === "done" && recaudoOnlyBanco
@@ -2012,21 +2022,21 @@ export function CollectorMobileApp({
             type="button"
             className={
               chromeLocked
-                ? "collector-mobile-stat is-recaudo is-off"
-                : !reviewingPanel && listFilter === "done"
+              ? "collector-mobile-stat is-recaudo is-off"
+              : !reviewingPanel && listFilter === "done"
                   ? "collector-mobile-stat is-recaudo on"
                   : "collector-mobile-stat is-recaudo"
-            }
+          }
             disabled={chromeLocked}
             title={chromeLocked ? "Jornada cerrada" : undefined}
             {...navButtonProps(navIntent, () => {
               if (chromeLocked) return;
               openRecaudoDetail();
             })}
-          >
-            <span>Recaudo</span>
-            <b>{money(topRecaudo)}</b>
-          </button>
+        >
+          <span>Recaudo</span>
+          <b>{money(topRecaudo)}</b>
+        </button>
         )}
         <button
           type="button"
@@ -2145,15 +2155,15 @@ export function CollectorMobileApp({
             >
               <span>{headerInicialProvisional ? "Lo que inició (momentáneo)" : "Lo que inició"}</span>
               <b>{headerInicialReady ? money(headerInicial) : "—"}</b>
-            </div>
+              </div>
             <div className="is-prestamos">
               <span>Lo que prestó</span>
               <b>{money(topPrestamos)}</b>
             </div>
-            <div className="is-gastos">
-              <span>Lo que gastó</span>
+              <div className="is-gastos">
+                <span>Lo que gastó</span>
               <b>{money(topGastos)}</b>
-            </div>
+          </div>
 
             <div className="is-cobrado">
               <div className="is-cobrado-head">
@@ -2166,16 +2176,16 @@ export function CollectorMobileApp({
                 </div>
                 {planillaIsA ? (
                   <div className="is-mean is-pay-nequi">
-                    <span>Nequi</span>
+                  <span>Nequi</span>
                     <b>{money(planillaNequiShown)}</b>
-                  </div>
+                </div>
                 ) : (
                   <div className="is-mean is-pay-banco">
                     <span>Banco</span>
                     <b>{money(planillaRecaudo.digital)}</b>
                   </div>
-                )}
-              </div>
+            )}
+          </div>
             </div>
 
             <div className="is-saldo">
@@ -2279,10 +2289,10 @@ export function CollectorMobileApp({
               </button>
             ) : (
               <>
-                <div className="is-pay-nequi">
-                  <em>Nequi</em>
+            <div className="is-pay-nequi">
+              <em>Nequi</em>
                   <b>{money(planillaNequiShown)}</b>
-                </div>
+            </div>
                 {planillaIsA ? null : (
                   <div className="is-pay-banco">
                     <em>Banco</em>
@@ -2468,10 +2478,10 @@ export function CollectorMobileApp({
             {visibleItems.length === 0 ? (
               <li className="collector-mobile-empty-inline">
                 {dayLocked
-                  ? "Jornada cerrada. Elige otra fecha en Historial si tienes más."
-                  : queue.allDone
-                    ? "Listo: ya no hay pendientes. Cierra el día en el menú para archivar la jornada."
-                    : "¡Listo! No quedan cobros pendientes en esta ruta."}
+                    ? "Jornada cerrada. Elige otra fecha en Historial si tienes más."
+                    : queue.allDone
+                      ? "Listo: ya no hay pendientes. Cierra el día en el menú para archivar la jornada."
+                      : "¡Listo! No quedan cobros pendientes en esta ruta."}
               </li>
             ) : (
               visibleItems.map((item, index) => {
@@ -2502,8 +2512,8 @@ export function CollectorMobileApp({
                     id={`collector-pay-card-${key}`}
                     className={[
                       isOpen
-                        ? "collector-mobile-card is-open is-dense"
-                        : "collector-mobile-card is-dense",
+                          ? "collector-mobile-card is-open is-dense"
+                          : "collector-mobile-card is-dense",
                       identity.awaitingLoan ? "is-awaiting-loan" : "",
                       lentToday ? "is-lent-today" : "",
                       routeStart ? "is-route-start" : "",
@@ -2541,10 +2551,10 @@ export function CollectorMobileApp({
                             </span>
                           </div>
                           <div className="collector-mobile-dense-actions is-lend-pair">
-                            <button
-                              type="button"
+                        <button
+                          type="button"
                               className="collector-mobile-pay-sticker is-lend-check"
-                              disabled={!canLend}
+                          disabled={!canLend}
                               onClick={(event) => {
                                 event.preventDefault();
                                 event.stopPropagation();
@@ -2564,7 +2574,7 @@ export function CollectorMobileApp({
                                   strokeLinejoin="round"
                                 />
                               </svg>
-                            </button>
+                        </button>
                             <button
                               type="button"
                               className="collector-mobile-pay-sticker is-decline-lend-check"

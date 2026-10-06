@@ -2107,6 +2107,57 @@ console.log("— Cupo del aparato —");
   expect("Bajada completa trae las 2.398 filas (no las primeras 1.000)", all.ok ? all.rows.length : -1, 2398);
 }
 
+{
+  console.log("\n— 28. Cobrador: solo el día; el historial no se reenvía —");
+  const { readFileSync } = await import("node:fs");
+  const paySrc = readFileSync(new URL("../lib/supabase/payment-mirror.ts", import.meta.url), "utf8");
+  expect(
+    "Reconcile de cobros = cola, no historial",
+    paySrc.includes("flushPaymentMirrorQueue") && !paySrc.includes("for (const payment of missing)"),
+    true,
+  );
+  const appSrc = readFileSync(new URL("../components/CollectorMobileApp.tsx", import.meta.url), "utf8");
+  expect("App cobrador no baja la lista entera al abrir", appSrc.includes("loadLivePaymentRows"), false);
+  expect("App cobrador pide el historial al tocarlo", appSrc.includes("pullCollectorHistoryDay"), true);
+
+  const { syncCollectorLiveLoan } = await import("@/lib/collector-live-window");
+  const loan = {
+    ref: "P-1",
+    clientRef: "CLI-1",
+    client: "Ana",
+    date: "01/09/2026",
+    due: "06/10/2026",
+    capital: 600000,
+    paid: 500000,
+    balance: 100000,
+    total: 600000,
+    installment: 20000,
+    status: "Activo",
+    kind: "ok",
+    updatedAt: "2026-10-06T10:00:00.000Z",
+  };
+  const live = syncCollectorLiveLoan(
+    loan,
+    [
+      {
+        ref: "PG-new",
+        loanRef: "P-1",
+        when: "06/10/2026",
+        paidDate: "2026-10-06",
+        client: "Ana",
+        collector: "Yesid",
+        amount: 20000,
+        type: "Cuota",
+        kind: "ok",
+        updatedAt: "2026-10-06T18:00:00.000Z",
+      },
+    ],
+    "2026-10-06",
+  );
+  expect("Saldo cobrador = ficha + cobro de hoy que aún no está en la ficha", live.paid, 520000);
+  expect("Saldo restante tras el cobro de hoy", live.balance, 80000);
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

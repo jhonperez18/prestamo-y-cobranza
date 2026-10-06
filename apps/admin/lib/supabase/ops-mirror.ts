@@ -23,6 +23,11 @@ import {
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
 import { businessDaysAgoIso, businessTodayIso } from "@/lib/business-timezone";
+import {
+  collectorLiveDayIso,
+  isCollectorLiveDevice,
+  withDateWindowParam,
+} from "@/lib/collector-live-window";
 import { createIncrementalPull, withSinceParam } from "@/lib/incremental-pull";
 import {
   assignmentsInPlanillaWindow,
@@ -968,6 +973,7 @@ export async function fetchOpsTableSince(
   table: string,
   dateColumn: string,
   sinceIso: string,
+  untilIso?: string,
 ) {
   const client = createMirrorClient();
   if (!client) return { ok: true as const, skipped: true as const, rows: [] as Record<string, unknown>[] };
@@ -982,15 +988,14 @@ export async function fetchOpsTableSince(
   let from = 0;
   for (;;) {
     let query = client.from(table).select("*").gte(dateColumn, since);
+    if (untilIso && /^\d{4}-\d{2}-\d{2}$/.test(untilIso)) query = query.lte(dateColumn, untilIso);
     if (orderById) query = query.order("id", { ascending: true });
     let { data, error } = await query.range(from, from + OPS_FETCH_PAGE - 1);
     if (error && orderById) {
       orderById = false;
-      ({ data, error } = await client
-        .from(table)
-        .select("*")
-        .gte(dateColumn, since)
-        .range(from, from + OPS_FETCH_PAGE - 1));
+      let fallback = client.from(table).select("*").gte(dateColumn, since);
+      if (untilIso && /^\d{4}-\d{2}-\d{2}$/.test(untilIso)) fallback = fallback.lte(dateColumn, untilIso);
+      ({ data, error } = await fallback.range(from, from + OPS_FETCH_PAGE - 1));
     }
     if (error) {
       return { ok: false as const, error: error.message, rows: [] as Record<string, unknown>[] };
@@ -1355,6 +1360,8 @@ export async function reconcileLocalOpsToRemote(
   failed: number;
 }> {
   if (typeof window === "undefined") return { pushed: 0, failed: 0 };
+  // Cobrador: solo la cola del día. El historial sellado no se reenvía.
+  if (isCollectorLiveDevice()) return { pushed: 0, failed: 0 };
 
   try {
     let body: OpsBundleBody;
@@ -1535,7 +1542,8 @@ export async function pullRemoteOpsIntoDemo(
   if (typeof window === "undefined") return { ok: true, changed: false, reason: "ssr" };
   const since = opsPull.sinceFor(Boolean(opts.full));
   const startedAt = Date.now();
-  const result = await pullOpsBundle(since);
+  const fromDate = !since && isCollectorLiveDevice() ? collectorLiveDayIso() : null;
+  const result = await pullOpsBundle(since, fromDate);
   opsPull.settle(
     {
       ok: result.ok && result.reason !== "skipped",
@@ -1547,9 +1555,21 @@ export async function pullRemoteOpsIntoDemo(
   return result.full ? result : { ...result, bundle: undefined };
 }
 
-async function pullOpsBundle(since: string | null): Promise<PullOpsResult> {
+/** Historial cobrador: un día de planilla/gastos, sin reenviar nada. */
+export async function mergeOpsWindowIntoDemo(fromDate: string, toDate = fromDate) {
+  return pullOpsBundle(null, fromDate, toDate);
+}
+
+async function pullOpsBundle(
+  since: string | null,
+  fromDate: string | null = null,
+  toDate: string | null = null,
+): Promise<PullOpsResult> {
   try {
-    const res = await fetch(withSinceParam("/api/ops/bundle", since), { cache: "no-store" });
+    const res = await fetch(
+      withDateWindowParam(withSinceParam("/api/ops/bundle", since), fromDate, toDate),
+      { cache: "no-store" },
+    );
     const body = (await res.json()) as OpsBundleBody;
     if (!res.ok || !body.ok) {
       return { ok: false, changed: false, reason: body.error || `http_${res.status}` };

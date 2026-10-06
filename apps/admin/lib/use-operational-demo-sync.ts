@@ -276,10 +276,8 @@ export function useOperationalDemoSync(
         markDeviceTuneupDone(tuneupDay);
       }
       try {
-        // Solo contra la lista completa: sin ella el reconcile la volvería a bajar entera.
-        if (payments.full && payments.remoteRefs) {
-          await reconcileLocalPaymentsToRemote(payments.remoteRefs, payments.remoteVoidedRefs);
-        }
+        // Solo la cola: el historial no se reenvía.
+        await reconcileLocalPaymentsToRemote();
         if (!evidenceOnceRef.current) {
           evidenceOnceRef.current = true;
           // Primero bajar fotos a IndexedDB (sin meterlas en el poll de cobros).

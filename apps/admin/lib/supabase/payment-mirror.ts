@@ -6,6 +6,11 @@
  */
 import { createMirrorServerClient, mirrorUsesServiceRole } from "@/lib/supabase/admin";
 import { fetchAllRows, fetchRowsChangedSince } from "@/lib/supabase/changed-since";
+import {
+  collectorLiveDayIso,
+  isCollectorLiveDevice,
+  withDateWindowParam,
+} from "@/lib/collector-live-window";
 import { createIncrementalPull, withSinceParam } from "@/lib/incremental-pull";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import type { LoanRow, PaymentRow, StatusKind } from "@/lib/mock-data";
@@ -552,6 +557,8 @@ const PAYMENT_MONEY_COLUMNS =
 export async function fetchPaymentsFromSupabase(options?: {
   evidence?: boolean;
   since?: string | null;
+  fromDate?: string | null;
+  toDate?: string | null;
 }): Promise<FetchPaymentsResult> {
   const client = createMirrorClient();
   if (!client) {
@@ -574,13 +581,30 @@ export async function fetchPaymentsFromSupabase(options?: {
     return changed.ok ? { ok: true, rows: changed.rows } : { ok: false, error: changed.error, rows: [] };
   }
 
+  const dateWindow =
+    options?.fromDate && /^\d{4}-\d{2}-\d{2}$/.test(options.fromDate)
+      ? {
+          column: "paid_date",
+          since: options.fromDate,
+          until:
+            options.toDate && /^\d{4}-\d{2}-\d{2}$/.test(options.toDate)
+              ? options.toDate
+              : undefined,
+        }
+      : undefined;
   let full = await fetchAllRows<PaymentMirrorRow>(
     client,
     "payments",
     options?.evidence ? `${PAYMENT_MONEY_COLUMNS},evidence` : PAYMENT_MONEY_COLUMNS,
+    dateWindow,
   );
   if (!full.ok && options?.evidence && /evidence/i.test(full.error)) {
-    full = await fetchAllRows<PaymentMirrorRow>(client, "payments", PAYMENT_MONEY_COLUMNS);
+    full = await fetchAllRows<PaymentMirrorRow>(
+      client,
+      "payments",
+      PAYMENT_MONEY_COLUMNS,
+      dateWindow,
+    );
   }
   if (!full.ok) return { ok: false, error: full.error, rows: [] };
   return {
@@ -689,12 +713,12 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
 }
 
 /**
- * C4.1 — crítico negocio: todo `PG-` que exista solo en este navegador
- * debe subir a Postgres. Sin esto, PC y celular divergen (alerta distinta).
+ * C4.1 — solo la cola. El historial ya en la nube no se vuelve a subir.
+ * Comparar todo lo local contra una lista incompleta era el rebote de la mañana.
  */
 export async function reconcileLocalPaymentsToRemote(
-  knownRemoteRefs?: string[],
-  knownRemoteVoidedRefs?: string[],
+  _knownRemoteRefs?: string[],
+  _knownRemoteVoidedRefs?: string[],
 ): Promise<{
   pushed: number;
   failed: number;
@@ -703,46 +727,13 @@ export async function reconcileLocalPaymentsToRemote(
   if (typeof window === "undefined") {
     return { pushed: 0, failed: 0, missing: 0 };
   }
-
-  const local = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []).filter((row) => row?.ref);
-  if (!local.length) return { pushed: 0, failed: 0, missing: 0 };
-
   try {
-    const remoteRows = knownRemoteRefs
-      ? null
-      : await fetchPaymentList();
-    if (!knownRemoteRefs && !remoteRows) {
-      return { pushed: 0, failed: 0, missing: local.length };
-    }
-
-    const remoteRefs = new Set(
-      knownRemoteRefs ?? (remoteRows ?? []).map((row) => row.ref).filter(Boolean),
-    );
-    const remoteVoided = new Set(
-      knownRemoteRefs
-        ? (knownRemoteVoidedRefs ?? [])
-        : (remoteRows ?? []).filter(mirrorRowIsVoided).map((row) => row.ref),
-    );
-    // Falta en la nube, o la anulación de este aparato no llegó (el PG- sigue vivo allá).
-    const missing = local.filter(
-      (row) =>
-        !remoteRefs.has(row.ref) || (paymentIsVoided(row) && !remoteVoided.has(row.ref)),
-    );
-    if (!missing.length) return { pushed: 0, failed: 0, missing: 0 };
-
-    let pushed = 0;
-    let failed = 0;
-    for (const payment of missing) {
-      const result = await persistPaymentToSupabase(withPaymentEvidence(payment));
-      if (result.ok && !("skipped" in result && result.skipped)) {
-        pushed += 1;
-      } else if (!result.ok) {
-        failed += 1;
-      }
-    }
-    return { pushed, failed, missing: missing.length };
+    const queue = readMirrorQueue();
+    if (!queue.length) return { pushed: 0, failed: 0, missing: 0 };
+    const result = await flushPaymentMirrorQueue();
+    return { pushed: result.flushed, failed: result.left, missing: result.left };
   } catch {
-    return { pushed: 0, failed: local.length, missing: local.length };
+    return { pushed: 0, failed: 1, missing: 1 };
   }
 }
 
@@ -757,7 +748,11 @@ export async function pullRemoteEvidenceIntoIdb(): Promise<{
 }> {
   if (typeof window === "undefined") return { parked: 0, failed: false };
   try {
-    const res = await fetch("/api/payments?evidence=1", { method: "GET", cache: "no-store" });
+    const evidenceUrl = withDateWindowParam(
+      "/api/payments?evidence=1",
+      isCollectorLiveDevice() ? collectorLiveDayIso() : null,
+    );
+    const res = await fetch(evidenceUrl, { method: "GET", cache: "no-store" });
     const body = (await res.json()) as {
       ok?: boolean;
       payments?: PaymentMirrorRow[];
@@ -794,14 +789,20 @@ export async function reconcilePaymentEvidenceToRemote(): Promise<{
     return { pushed: 0, failed: 0, pending: 0, errors: [] };
   }
 
+  const liveDay = isCollectorLiveDevice() ? collectorLiveDayIso() : null;
   const local = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, [])
     .filter((row) => row?.ref)
+    .filter((row) => !liveDay || row.paidDate === liveDay)
     .map(withPaymentEvidence)
     .filter((row) => evidenceHasPreview(row.evidence));
   if (!local.length) return { pushed: 0, failed: 0, pending: 0, errors: [] };
 
   try {
-    const res = await fetch("/api/payments?evidence=1", { method: "GET", cache: "no-store" });
+    const evidenceUrl = withDateWindowParam(
+      "/api/payments?evidence=1",
+      isCollectorLiveDevice() ? collectorLiveDayIso() : null,
+    );
+    const res = await fetch(evidenceUrl, { method: "GET", cache: "no-store" });
     const body = (await res.json()) as {
       ok?: boolean;
       payments?: PaymentMirrorRow[];
@@ -945,12 +946,19 @@ const paymentListFlights = new Map<string, Promise<PaymentListBody | null>>();
 const paymentsPull = createIncrementalPull();
 
 /** Una sola bajada por corte. Las llamadas que coinciden esperan la misma. */
-function fetchPaymentListBody(since: string | null): Promise<PaymentListBody | null> {
-  const key = since ?? "full";
+function fetchPaymentListBody(
+  since: string | null,
+  fromDate: string | null = null,
+  toDate: string | null = null,
+): Promise<PaymentListBody | null> {
+  const key = `${since ?? "full"}|${fromDate ?? ""}|${toDate ?? ""}`;
   const inFlight = paymentListFlights.get(key);
   if (inFlight) return inFlight;
   const flight = (async () => {
-    const res = await fetch(withSinceParam("/api/payments", since), { cache: "no-store" });
+    const res = await fetch(
+      withDateWindowParam(withSinceParam("/api/payments", since), fromDate, toDate),
+      { cache: "no-store" },
+    );
     const body = (await res.json()) as {
       ok?: boolean;
       payments?: PaymentMirrorRow[];
@@ -980,7 +988,10 @@ async function fetchPaymentList(): Promise<PaymentMirrorRow[] | null> {
 export async function loadLivePaymentRows(): Promise<PaymentRow[]> {
   if (typeof window === "undefined") return [];
   if (livePaymentCache?.length) return livePaymentCache;
-  const payments = await fetchPaymentList();
+  const fromDate = isCollectorLiveDevice() ? collectorLiveDayIso() : null;
+  const payments = fromDate
+    ? (await fetchPaymentListBody(null, fromDate))?.rows ?? null
+    : await fetchPaymentList();
   if (!payments) return livePaymentCache ?? [];
   const rows = payments
     .map(mirrorRowToPaymentRow)
@@ -1004,7 +1015,8 @@ export async function pullRemotePaymentsIntoDemo(
   const startedAt = Date.now();
   const localCount = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []).length;
   const since = paymentsPull.sinceFor(Boolean(opts.full) || localCount === 0);
-  const result = await mergeRemotePayments(since);
+  const fromDate = !since && isCollectorLiveDevice() ? collectorLiveDayIso() : null;
+  const result = await mergeRemotePayments(since, fromDate);
   paymentsPull.settle(
     { ok: result.ok && !result.skipped, full: Boolean(result.full), cursor: result.cursor },
     startedAt,
@@ -1014,9 +1026,11 @@ export async function pullRemotePaymentsIntoDemo(
 
 async function mergeRemotePayments(
   since: string | null,
+  fromDate: string | null = null,
+  toDate: string | null = null,
 ): Promise<PullPaymentsResult & { cursor?: string | null }> {
   try {
-    const body = await fetchPaymentListBody(since);
+    const body = await fetchPaymentListBody(since, fromDate, toDate);
     if (!body) {
       return {
         ok: false,
@@ -1059,7 +1073,7 @@ async function mergeRemotePayments(
       rows: merged,
       full: body.full,
       cursor: body.cursor,
-      ...(body.full
+      ...(body.full && !fromDate
         ? {
             remoteRefs: remote.map((row) => row.ref),
             remoteVoidedRefs: remote.filter(paymentIsVoided).map((row) => row.ref),
@@ -1070,4 +1084,13 @@ async function mergeRemotePayments(
     const message = err instanceof Error ? err.message : "pull_failed";
     return { ok: false, added: 0, changed: false, reason: message };
   }
+}
+
+/** Historial cobrador: baja un día, lo mezcla y no toca la cola. */
+export async function mergePaymentsWindowIntoDemo(fromDate: string, toDate = fromDate) {
+  const result = await mergeRemotePayments(null, fromDate, toDate);
+  return (result.rows ?? []).filter((row) => {
+    const day = String(row.paidDate || "");
+    return day >= fromDate && day <= toDate;
+  });
 }

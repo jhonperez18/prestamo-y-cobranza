@@ -137,7 +137,7 @@ export function computeLoanCuotasProgress(
   const total = dates.length || interestChargeCount(synced.schedule ?? []);
   const expected = Math.min(total, dates.filter((d) => d <= asOfIso).length);
 
-  const paidTotal = payments
+  const paySum = payments
     .filter((row) => {
       if (row.loanRef !== synced.ref) return false;
       if ((Number(row.amount) || 0) <= 0) return false;
@@ -146,6 +146,8 @@ export function computeLoanCuotasProgress(
       return payDay <= asOfIso;
     })
     .reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+  const catalogPaid = pesos(Number(synced.paid) || 0);
+  const paidTotal = payments.length > 0 ? Math.max(paySum, catalogPaid) : catalogPaid;
 
   const installment = pesos(Number(synced.installment) || 0);
   const covered =

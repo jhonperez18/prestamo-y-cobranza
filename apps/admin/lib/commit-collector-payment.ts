@@ -12,6 +12,7 @@ import {
   dispatchRouteRef,
   upsertDispatchRoute,
 } from "@/lib/collector-dispatch-sync";
+import { isCollectorLiveDevice, syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import { chargeLabel, syncLoan } from "@/lib/loan-preview";
 import { cuotaTarget, loanRowAfterPay, paymentRowKind } from "@/lib/loan-pay";
 import { buildPaymentRow } from "@/lib/payment-detail";
@@ -182,7 +183,11 @@ export function commitCollectorPayment(
 
   const dispatchDate = draft.dispatchDate?.trim() || todayIso();
   const resolved = resolveCollectorPaymentContext(draft, loans, routes, dispatchDate);
-  const loan = resolved.loan ? (syncLoan(resolved.loan, payments) as LoanRow) : null;
+  const loan = resolved.loan
+    ? ((isCollectorLiveDevice()
+        ? syncCollectorLiveLoan(resolved.loan, payments, dispatchDate)
+        : syncLoan(resolved.loan, payments)) as LoanRow)
+    : null;
   const route = resolved.route;
   if (!loan || loan.balance <= 0) {
     return { ok: false, error: "No hay préstamo activo para este cliente. No se registró el cobro." };
@@ -407,7 +412,11 @@ export function commitCollectorCombinedPayment(input: {
 
   const dispatchDate = a.dispatchDate?.trim() || todayIso();
   const resolved = resolveCollectorPaymentContext(a, input.loans, input.routes, dispatchDate);
-  const loan = resolved.loan ? (syncLoan(resolved.loan, input.payments) as LoanRow) : null;
+  const loan = resolved.loan
+    ? ((isCollectorLiveDevice()
+        ? syncCollectorLiveLoan(resolved.loan, input.payments, dispatchDate)
+        : syncLoan(resolved.loan, input.payments)) as LoanRow)
+    : null;
   if (!loan || loan.balance <= 0) {
     return { ok: false, error: "No hay préstamo activo para este cliente. No se registró el cobro." };
   }

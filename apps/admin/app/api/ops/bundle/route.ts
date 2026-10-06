@@ -9,6 +9,7 @@ import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { jsonNoStore } from "@/lib/api-no-store";
 import { businessDaysAgoIso } from "@/lib/business-timezone";
 import { planillaWindowStartIso } from "@/lib/planilla-window";
+import { readIsoDateParam } from "@/lib/collector-live-window";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -32,8 +33,10 @@ export async function GET(request: Request) {
   }
   try {
     const cursor = changedSinceCursor();
-    const assignSince = planillaWindowStartIso();
-    const expenseSince = businessDaysAgoIso(EXPENSES_LOOKBACK_DAYS);
+    const liveFrom = readIsoDateParam(request, "fromDate");
+    const liveTo = readIsoDateParam(request, "toDate");
+    const assignSince = liveFrom ?? planillaWindowStartIso();
+    const expenseSince = liveFrom ?? businessDaysAgoIso(EXPENSES_LOOKBACK_DAYS);
     const since = readChangedSince(request);
     const client = since ? createMirrorServerClient() : null;
     if (since && !client) {
@@ -57,9 +60,14 @@ export async function GET(request: Request) {
             fetchOpsTable("routes"),
             // CIE completo: pocos registros; Inicial M necesita ayer sin huecos.
             fetchOpsTable("day_closes"),
-            fetchOpsTableSince("day_expenses", "expense_date", expenseSince),
+            fetchOpsTableSince("day_expenses", "expense_date", expenseSince, liveTo ?? undefined),
             fetchOpsTable("misc_payments"),
-            fetchOpsTableSince("daily_assignments", "dispatch_date", assignSince),
+            fetchOpsTableSince(
+              "daily_assignments",
+              "dispatch_date",
+              assignSince,
+              liveTo ?? undefined,
+            ),
           ],
     );
 

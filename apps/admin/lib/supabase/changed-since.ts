@@ -42,16 +42,21 @@ export async function fetchAllRows<Row extends object>(
   client: SupabaseClient,
   table: string,
   select: string,
+  window?: { column: string; since: string; until?: string },
 ): Promise<{ ok: true; rows: Row[] } | { ok: false; error: string; rows: Row[] }> {
   const rows: Row[] = [];
   const seen = new Set<unknown>();
   for (let from = 0; ; from += CHANGED_SINCE_PAGE) {
-    const { data, error } = await client
+    let query = client
       .from(table)
       .select(select)
       .order("created_at", { ascending: true })
-      .order("id", { ascending: true })
-      .range(from, from + CHANGED_SINCE_PAGE - 1);
+      .order("id", { ascending: true });
+    if (window) {
+      query = query.gte(window.column, window.since);
+      if (window.until) query = query.lte(window.column, window.until);
+    }
+    const { data, error } = await query.range(from, from + CHANGED_SINCE_PAGE - 1);
     if (error) return { ok: false, error: error.message, rows: [] };
     const page = (data ?? []) as unknown as Row[];
     for (const row of page) {

@@ -368,6 +368,23 @@ Misma firma = una sola reparación; si sigue, el monitor de aparatos lo muestra
 pull al volver la red o al reconectar el canal de tiempo real.
 Candado: `assert-cash-chain.mjs` sección 17 (la planilla armada por el sistema siempre sana).
 
+## App cobrador — solo el día (no volver el rebote)
+
+El cobrador **mueve** la planilla y los cobros de **hoy**. El historial se **lee**.
+
+| Pieza | Regla |
+| --- | --- |
+| Bajada viva | Planilla y cobros de hoy (`fromDate` = día Bogotá). CIE sí completo (Inicial M = ayer) |
+| Subida | Solo la cola (cobro nuevo, anulación, gasto, cierre de hoy) |
+| Saldo al cobrar | Ficha del préstamo (`paid` / `balance`) + cobro de hoy que aún no está en la ficha |
+| Historial | Al tocar un día, baja **ese** día. No anota ni reenvía |
+
+**Prohibido (rebote del 06/10):** comparar todo lo local contra una lista incompleta y
+volver a subir cobros viejos. La base corta en 1.000 filas; una “lista completa” corta
+no es la nube. Candado: `assert-cash-chain.mjs` secciones 27 y 28.
+
+Supervisor, taller, cron e informe siguen leyendo la nube completa. En Supabase no se borra nada.
+
 ## N/P por ruta (INICIO)
 
 Cada ruta tiene su propio **N/P** (junto a Historial en la ficha).
