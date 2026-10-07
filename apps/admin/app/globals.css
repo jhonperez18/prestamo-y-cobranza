@@ -2114,6 +2114,7 @@
       background: #fef2f2;
     }
     .collector-cierre-drop.is-banco,
+    .collector-cierre-drop.is-bancoRuta,
     .collector-cierre-drop.is-prestamosBanco {
       border-color: #93c5fd;
       background: #eff6ff;

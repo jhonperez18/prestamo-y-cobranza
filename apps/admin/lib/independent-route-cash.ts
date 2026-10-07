@@ -45,6 +45,7 @@ import {
 } from "@/lib/day-cash-ledger";
 import { isPrestamoRutaExpense } from "@/lib/expense-lines";
 import { pesos } from "@/lib/finance";
+import type { PaymentRow } from "@/lib/mock-data";
 import {
   findFullDayCieClose,
   INDEPENDENT_OWN_LOANS_FROM,
@@ -210,10 +211,15 @@ export { gastosGoToChain as collectorGastosGoToChain };
 export function independentRouteCollected(
   src: DayCashSources,
   route: string,
-): { efectivo: number; nequi: number; banco: number } {
+): { efectivo: number; nequi: number; banco: number; digitalPayments: PaymentRow[] } {
   const cash = routeCollectedByMethod(src, route);
   const digital = routeDigitalCollected(src, route);
-  return { efectivo: cash.efectivo, nequi: digital.nequi, banco: digital.banco };
+  return {
+    efectivo: cash.efectivo,
+    nequi: digital.nequi,
+    banco: digital.banco,
+    digitalPayments: digital.payments,
+  };
 }
 
 /** Renglones de gasto y préstamo del día de la planilla (los mismos que suma su caja). */

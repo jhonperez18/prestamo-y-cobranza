@@ -425,6 +425,7 @@ expect(
   cuadreM.ownDigitalPayments.reduce((sum, p) => sum + p.amount, 0),
   cuadreM.ownDigital,
 );
+expect("Cierre M · botón Banco = lista Banco de M", cuadreM.banco + cuadreM.nequi, cuadreM.ownDigital);
 expect(
   "Cierre T · Inicial M + efectivo M+T − préstamos M+T − gastos M+T = Caja",
   cuadreM.opening + cuadreT.efectivo - sumLines(cuadreT.lines, true) - sumLines(cuadreT.lines, false),
@@ -1700,6 +1701,16 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     bancoNHistorial.reduce((sum, row) => sum + (row.amount || 0), 0),
   );
   expect("Regla Banco N: Nequi de N es 0", cierreNOffice.nequi, 0);
+  expect(
+    "Lista Banco N (Cierre) = cifra del botón",
+    cierreNOffice.digitalPayments.reduce((sum, row) => sum + (row.amount || 0), 0),
+    cierreNOffice.banco,
+  );
+  expect(
+    "Lista Banco N = mismos renglones del historial",
+    cierreNOffice.digitalPayments.map((row) => row.ref).sort().join(","),
+    bancoNHistorial.map((row) => row.ref).sort().join(","),
+  );
   expect("Regla Banco N incluye oficina", cierreNOffice.banco, 50_000);
   expect(
     "N · oficina Banco no mueve la caja",

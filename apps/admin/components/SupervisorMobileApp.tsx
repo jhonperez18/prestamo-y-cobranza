@@ -270,11 +270,12 @@ type SupervisorView =
   | "clientes"
   | "prestamos";
 type NuevoMode = "menu" | "cliente" | "prestamo" | "gasto";
-type CierreListKind = "prestamos" | "gastos" | "banco" | "prestamosBanco" | "np";
+type CierreListKind = "prestamos" | "gastos" | "banco" | "bancoRuta" | "prestamosBanco" | "np";
 /** `mid` = columna del medio en las listas de tres columnas. */
 type CierreListLine = { key: string; label: string; mid?: string; amount: number };
 const CIERRE_LIST_COLS: Partial<Record<CierreListKind, readonly [string, string, string]>> = {
   banco: ["Cliente", "Hora", "Valor"],
+  bancoRuta: ["Cliente", "Hora", "Valor"],
   prestamos: ["Cliente", "Préstamo", "Valor"],
   prestamosBanco: ["Cliente", "Préstamo", "Valor"],
   np: ["Cliente", "#", "Cuota"],
@@ -283,6 +284,7 @@ const CIERRE_LIST_TITLE: Record<CierreListKind, string> = {
   prestamos: "Préstamos del día",
   gastos: "Gastos del día",
   banco: "Banco T del día",
+  bancoRuta: "Banco del día",
   prestamosBanco: "Préstamos B M+T del día",
   np: "N/P del día",
 };
@@ -290,6 +292,7 @@ const CIERRE_LIST_EMPTY: Record<CierreListKind, string> = {
   prestamos: "Sin préstamos ese día.",
   gastos: "Sin gastos ese día.",
   banco: "Sin cobros Banco en T ese día.",
+  bancoRuta: "Sin cobros Banco ese día.",
   prestamosBanco: "Sin préstamos del Banco ese día.",
   np: "Sin N/P ese día.",
 };
@@ -2891,6 +2894,21 @@ export function SupervisorMobileApp({
       }))
     : [];
 
+  /** Banco de M / N: los mismos cobros que suma el botón (historial Banco de esa ruta). */
+  const cierreBancoRutaPayments = historyDayChainT
+    ? null
+    : openRouteHistoryChainDay
+      ? openRouteHistoryChainDay.ownDigitalPayments
+      : openRouteHistoryIndependentDay && !openRouteIsA
+        ? openRouteHistoryIndependentDay.collected.digitalPayments
+        : null;
+  const cierreBancoRuta = (cierreBancoRutaPayments ?? []).map((pay) => ({
+    key: pay.ref,
+    label: pay.client,
+    mid: pay.paidTime || "—",
+    amount: Number(pay.amount) || 0,
+  }));
+
   /** Solo vista: préstamos del día que salieron del Banco a clientes de M y T (no tocan la caja). */
   const cierreBancoLoans = useMemo(() => {
     if (!historyDayChainT || !cajaHistoryDayIso) return [];
@@ -2928,14 +2946,16 @@ export function SupervisorMobileApp({
           }))
         : cierreListKind === "banco"
           ? cierreBancoT
-          : cierreListKind === "prestamosBanco"
-            ? cierreBancoLoans.map((row) => ({
-                key: row.loanRef,
-                label: row.clientName,
-                mid: row.loanRef,
-                amount: row.capital,
-              }))
-            : [];
+          : cierreListKind === "bancoRuta"
+            ? cierreBancoRuta
+            : cierreListKind === "prestamosBanco"
+              ? cierreBancoLoans.map((row) => ({
+                  key: row.loanRef,
+                  label: row.clientName,
+                  mid: row.loanRef,
+                  amount: row.capital,
+                }))
+              : [];
   const toggleCierreList = (kind: CierreListKind) => {
     if (!cajaHistoryDayIso) return;
     const day = cajaHistoryDayIso;
@@ -4039,7 +4059,18 @@ export function SupervisorMobileApp({
                         <b>{money(historyDayChainT.ownDigital)}</b>
                       </button>
                     ) : null}
-                    {historyDayShowNequiValue ? (
+                    {historyDayShowNequiValue && cierreBancoRutaPayments ? (
+                      <button
+                        type="button"
+                        className={`is-mean is-pay-banco is-tap-mean${cierreListKind === "bancoRuta" ? " on" : ""}`}
+                        data-cierre-keep
+                        aria-expanded={cierreListKind === "bancoRuta"}
+                        onClick={() => toggleCierreList("bancoRuta")}
+                      >
+                        <span>Banco</span>
+                        <b>{money(historyDayDigitalAmount)}</b>
+                      </button>
+                    ) : historyDayShowNequiValue ? (
                       <div className="is-mean is-pay-banco">
                         <span>{openRouteCajaHistoryIsT ? "Banco M+T" : "Banco"}</span>
                         <b>{money(historyDayDigitalAmount)}</b>
