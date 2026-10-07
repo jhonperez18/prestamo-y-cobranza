@@ -263,8 +263,10 @@ A y N llevan su propia caja. Un solo dueño: `lib/independent-route-cash.ts` (`i
 - **M cerrada, T/A abiertas:** el cobrador sigue cobrando. La app abre la primera hoja abierta
   (`defaultOpenPlanillaRoute`). Un cobro en T no salta el pin a M (`keepOpenPlanillaRoute`):
   si salta, M ya cerró y el billete se apaga. Prohibido que el cuadre de M esconda T o A.
-  Cerrar T sigue pidiendo M. Inicial / CIE no cambian. Candado: «M cerrada: abre T» y
-  «Cobro en T no apaga el billete».
+  Cerrar T sigue pidiendo M. Inicial / CIE no cambian. Confirmar en T cierra la firma
+  al guardar local; la nube va atrás y solo encola la visita cobrada (no M+T+A).
+  Candado: «M cerrada: abre T», «Cobro en T no apaga el billete» y
+  «Confirmar en T solo encola la visita cobrada».
 - Guardado: `saveCashAdjustment` con `route` (local + cola + await nube).
 - Nube y pull: unión por ruta, gana el más reciente (`mergeRouteCashAdjustments`); ningún candado del CIE- lo borra.
 - Tarjeta del supervisor, Historial A/N y cabecera del cobrador leen la misma cifra.

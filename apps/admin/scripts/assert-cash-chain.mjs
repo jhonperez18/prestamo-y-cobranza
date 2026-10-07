@@ -1097,6 +1097,25 @@ expect(
   keepOpenPlanillaRoute("T", chainPins, afterOneTPay, D, chainClients),
   "T",
 );
+const { assignmentsForCreatedPayments } = await import("@/lib/commit-collector-payment");
+const tPaidVisit = {
+  ...visit("V-T-paid", "CLI-T1", "T", D, { visitStatus: "cobrado" }),
+  paymentRef: "PG-T1",
+  loanRef: "P-T1",
+};
+expect(
+  "Confirmar en T solo encola la visita cobrada (no M+T+A)",
+  assignmentsForCreatedPayments(
+    [
+      visit("V-M-lock", "CLI-M1", "M", D, { dayClosedAt: `${D}T18:00:00.000Z`, visitStatus: "cobrado" }),
+      tPaidVisit,
+      visit("V-T-open", "CLI-T2", "T", D, { visitStatus: "pendiente" }),
+      visit("V-A-open", "CLI-A1", "A", D, { visitStatus: "pendiente" }),
+    ],
+    [{ ref: "PG-T1", loanRef: "P-T1", paidDate: D }],
+  ).map((row) => row.itemId).join(","),
+  "V-T-paid",
+);
 
 // ── 12. Banco: cada cobro llega a su cuenta según la ruta (A → Nequi; M/T/N → Banco) ──
 console.log("\n— Banco: destino del cobro por ruta —");

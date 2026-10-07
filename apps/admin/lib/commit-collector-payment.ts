@@ -94,6 +94,27 @@ export function paymentsFromCollectorCommit(
   return [committed.payment];
 }
 
+/**
+ * Visitas que este cobro acaba de marcar. Confirmar en T no puede reenviar
+ * toda la planilla M+T+A: eso deja al cobrador pegado en la firma.
+ */
+export function assignmentsForCreatedPayments(
+  assignments: DailyCollectionAssignment[],
+  payments: PaymentRow[],
+): DailyCollectionAssignment[] {
+  const payRefs = new Set(payments.map((row) => row.ref).filter(Boolean));
+  if (!payRefs.size) return [];
+  const matched = assignments.filter(
+    (row) => Boolean(row.paymentRef && payRefs.has(row.paymentRef)),
+  );
+  if (matched.length) return matched;
+  const loanRefs = new Set(payments.map((row) => row.loanRef).filter(Boolean));
+  const dates = new Set(payments.map((row) => row.paidDate).filter(Boolean));
+  return assignments.filter(
+    (row) => Boolean(row.loanRef && loanRefs.has(row.loanRef) && dates.has(row.dispatchDate)),
+  );
+}
+
 export {
   reconcilePaymentsOntoPlanilla,
   dedupeDailyPaymentsByVisit,

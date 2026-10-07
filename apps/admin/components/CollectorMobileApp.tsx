@@ -1126,10 +1126,11 @@ export function CollectorMobileApp({
     setExpandedKey(key);
   }
 
-  function closeCard() {
+  function closeCard(force = false) {
     // Eco del billete suele caer en «cerrar» justo al abrir: ignorar.
-    if (isNavQuiet()) return;
-    suppressGhostClick(420);
+    // Confirmar es gesto del cobrador: no dejarlo preso en la firma.
+    if (!force && isNavQuiet()) return;
+    if (!force) suppressGhostClick(420);
     setExpandedKey(null);
   }
 
@@ -2806,7 +2807,7 @@ export function CollectorMobileApp({
                                   },
                                 ],
                               });
-                              if (ok !== false) closeCard();
+                              if (ok !== false) closeCard(true);
                               return;
                             }
                             const ok = await onRegisterPayment({
@@ -2824,7 +2825,7 @@ export function CollectorMobileApp({
                               clientName: identity.fullName,
                             });
                             // Solo cerrar si el cobro quedó registrado (o el handler no reporta fallo).
-                            if (ok !== false) closeCard();
+                            if (ok !== false) closeCard(true);
                           }}
                         />
                       </div>

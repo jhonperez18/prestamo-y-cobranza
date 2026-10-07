@@ -93,6 +93,7 @@ import {
 } from "@/lib/supabase/ops-mirror";
 import { mirrorAutoDayCloseToCloud } from "@/lib/mirror-auto-day-close";
 import {
+  assignmentsForCreatedPayments,
   commitCollectorPayment,
   commitCollectorCombinedPayment,
   paymentsFromCollectorCommit,
@@ -439,19 +440,21 @@ export function CollectorShell({ session, onLogout }: Props) {
     setDayCloses(projected.dayCloses);
     setDailyAssignments(projected.assignments);
     setDailyLogs(projected.dailyLogs);
-    writeDemoJson(DEMO_PAYMENTS_KEY, committed.payments);
-    writeDemoJson(DEMO_LOANS_KEY, projected.loans);
-    writeDemoJson(DEMO_CLIENTS_KEY, committed.clients);
-    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
-    writeDemoJson(DEMO_ROUTES_KEY, committed.routes);
-    writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, projected.dayCloses);
-    writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
-    writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, projected.bankMovements);
+    try {
+      writeDemoJson(DEMO_PAYMENTS_KEY, committed.payments);
+      writeDemoJson(DEMO_LOANS_KEY, projected.loans);
+      writeDemoJson(DEMO_CLIENTS_KEY, committed.clients);
+      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
+      writeDemoJson(DEMO_ROUTES_KEY, committed.routes);
+      writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, projected.dayCloses);
+      writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
+      writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, projected.bankMovements);
+    } catch (error) {
+      console.error("collector-pay-persist", error);
+    }
 
     const toastRefs = paymentsCreated.map((row) => row.ref).join(" + ");
     showToast(`Cobro ${toastRefs} guardado · subiendo a la nube…`);
-    // Crítico para el supervisor: solo el PG-. Catálogo/ops van en fondo (más velocidad).
-    await queuePaymentsMirror(paymentsCreated);
     const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
     if (paidLoan) queueLoanMirror(paidLoan);
     const paidClient = committed.clients.find((row) =>
@@ -460,21 +463,26 @@ export function CollectorShell({ session, onLogout }: Props) {
       ),
     );
     if (paidClient) queueClientMirror(paidClient);
-    queueAssignmentsMirror(projected.assignments);
-    try {
-      let payFlush = await flushPaymentMirrorQueue();
-      if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();
-      void Promise.all([flushCatalogMirrorQueues(), flushOpsMirrorQueues()]).catch(() => {
-        /* reintenta el poll / siguiente cobro */
-      });
-      if (payFlush.left > 0) {
-        showToast(`Cobro ${toastRefs} guardado (sin nube; reintenta solo).`);
-      } else {
-        showToast(`Cobro ${toastRefs} listo en la nube`);
+    // Solo la visita cobrada. Reenviar M+T+A en cada confirmar deja T pegado en la firma.
+    queueAssignmentsMirror(assignmentsForCreatedPayments(projected.assignments, paymentsCreated));
+    // El cobrador sigue cobrando ya: la firma no espera el POST. La nube va atrás.
+    void (async () => {
+      try {
+        await queuePaymentsMirror(paymentsCreated);
+        let payFlush = await flushPaymentMirrorQueue();
+        if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();
+        void Promise.all([flushCatalogMirrorQueues(), flushOpsMirrorQueues()]).catch(() => {
+          /* reintenta el poll / siguiente cobro */
+        });
+        if (payFlush.left > 0) {
+          showToast(`Cobro ${toastRefs} guardado (sin nube; reintenta solo).`);
+        } else {
+          showToast(`Cobro ${toastRefs} listo en la nube`);
+        }
+      } catch {
+        showToast(`Cobro ${toastRefs} guardado (sin nube; en este aparato ya está).`);
       }
-    } catch {
-      showToast(`Cobro ${toastRefs} guardado (sin nube; en este aparato ya está).`);
-    }
+    })();
     return true;
   }
 
