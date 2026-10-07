@@ -12,7 +12,10 @@ import { loadPaymentEvidenceStore } from "@/lib/payment-evidence-store";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { bindMoneyRealtime, type RealtimeMoneyTable } from "@/lib/realtime-money";
+import { businessTodayIso } from "@/lib/business-timezone";
+import { isCollectorLiveDevice } from "@/lib/collector-live-window";
 import {
+  mergePaymentsWindowIntoDemo,
   pullRemotePaymentsIntoDemo,
   pullRemoteEvidenceIntoIdb,
   reconcileLocalPaymentsToRemote,
@@ -324,14 +327,26 @@ export function useOperationalDemoSync(
     pullInFlightRef.current = true;
     let rehydrated = false;
     try {
-      await runMirrorFlush();
-      // Cobros primero: la planilla (ops) se sella contra los PG- ya bajados.
-      const payments = groups.has("payments") ? await pullRemotePaymentsIntoDemo() : null;
+      // El cobro del otro aparato no espera el flush de este (supervisor en vivo).
+      let paymentsChanged = false;
+      if (groups.has("payments")) {
+        const today = businessTodayIso();
+        await mergePaymentsWindowIntoDemo(today, today);
+        const incremental = await pullRemotePaymentsIntoDemo();
+        paymentsChanged = Boolean(incremental.changed);
+      }
       const [catalog, ops] = await Promise.all([
         groups.has("catalog") ? pullRemoteCatalogIntoDemo() : null,
         groups.has("ops") ? pullRemoteOpsIntoDemo() : null,
       ]);
-      if (payments?.changed || catalog?.changed || ops?.changed) {
+      const paintSupervisor =
+        groups.has("payments") && !isCollectorLiveDevice();
+      if (
+        paintSupervisor ||
+        paymentsChanged ||
+        catalog?.changed ||
+        ops?.changed
+      ) {
         commitHydrate();
         rehydrated = true;
       }
@@ -344,6 +359,7 @@ export function useOperationalDemoSync(
       if (rehydrated) void healerRef.current?.runHealthCycle();
       refreshPending();
       if (pendingGroupsRef.current.size > 0) scheduleDrainRef.current();
+      void runMirrorFlush();
     }
   }, [commitHydrate, refreshPending, runMirrorFlush]);
 

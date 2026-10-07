@@ -2448,6 +2448,22 @@ console.log("— Cupo del aparato —");
   expect("Saldo restante tras el cobro de hoy", live.balance, 80000);
 }
 
+{
+  const { readFileSync } = await import("node:fs");
+  const syncSrc = readFileSync(new URL("../lib/use-operational-demo-sync.ts", import.meta.url), "utf8");
+  const targeted = syncSrc.slice(syncSrc.indexOf("const runTargetedPull"));
+  expect(
+    "Supervisor: el timbre baja los cobros de hoy (no espera since)",
+    targeted.includes("mergePaymentsWindowIntoDemo"),
+    true,
+  );
+  expect(
+    "Supervisor: el cobro en vivo no espera el flush de este aparato",
+    targeted.includes("await runMirrorFlush()"),
+    false,
+  );
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);
