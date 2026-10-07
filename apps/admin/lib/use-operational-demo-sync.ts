@@ -324,29 +324,22 @@ export function useOperationalDemoSync(
     const groups = new Set(pendingGroupsRef.current);
     pendingGroupsRef.current.clear();
     if (groups.size === 0) return;
+    // Cobrador: el timbre de SU cobro no puede bajar el día ni rehidratar. Eso tumba T.
+    if (isCollectorLiveDevice()) return;
     pullInFlightRef.current = true;
     let rehydrated = false;
     try {
       // El cobro del otro aparato no espera el flush de este (supervisor en vivo).
-      let paymentsChanged = false;
       if (groups.has("payments")) {
         const today = businessTodayIso();
         await mergePaymentsWindowIntoDemo(today, today);
-        const incremental = await pullRemotePaymentsIntoDemo();
-        paymentsChanged = Boolean(incremental.changed);
+        await pullRemotePaymentsIntoDemo();
       }
       const [catalog, ops] = await Promise.all([
         groups.has("catalog") ? pullRemoteCatalogIntoDemo() : null,
         groups.has("ops") ? pullRemoteOpsIntoDemo() : null,
       ]);
-      const paintSupervisor =
-        groups.has("payments") && !isCollectorLiveDevice();
-      if (
-        paintSupervisor ||
-        paymentsChanged ||
-        catalog?.changed ||
-        ops?.changed
-      ) {
+      if (groups.has("payments") || catalog?.changed || ops?.changed) {
         commitHydrate();
         rehydrated = true;
       }

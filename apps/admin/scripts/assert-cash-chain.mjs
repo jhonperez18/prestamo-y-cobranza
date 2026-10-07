@@ -2462,6 +2462,11 @@ console.log("— Cupo del aparato —");
     targeted.includes("await runMirrorFlush()"),
     false,
   );
+  expect(
+    "Cobrador: el timbre de su cobro no rehace T",
+    targeted.includes("isCollectorLiveDevice()") && targeted.includes("return"),
+    true,
+  );
 }
 
 if (failures) {
