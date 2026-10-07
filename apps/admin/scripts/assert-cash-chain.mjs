@@ -4270,6 +4270,42 @@ console.log("— Cupo del aparato —");
   );
 }
 
+{
+  console.log("\n— P- chocado entre aparatos: Bader no borra a Dary (M 07/10) —");
+  const { appendCashDisbursementExpense: appendLoanLine, cashLineIsLoanOf } = await import(
+    "@/lib/collector-day-close"
+  );
+  const base = {
+    collectorRef: "COB-0",
+    collectorName: "Edgar",
+    date: "2026-10-07",
+    routeRef: "M",
+  };
+  let drafts = appendLoanLine([], { ...base, loan: { ref: "P-434", client: "Dary Amor", capital: 900_000 } });
+  drafts = appendLoanLine(drafts, { ...base, loan: { ref: "P-434", client: "Bader", capital: 1_000_000 } });
+  const lines = drafts[0]?.expenses ?? [];
+  expect(
+    "Mismo P-434 de otro cliente: quedan Dary 900.000 y Bader 1.000.000",
+    lines.map((row) => `${row.label}=${row.amount}`).sort().join(" | "),
+    "Préstamo · P-434 · Bader=1000000 | Préstamo · P-434 · Dary Amor=900000",
+  );
+  drafts = appendLoanLine(drafts, { ...base, loan: { ref: "P-434", client: "Dary Amor", capital: 900_000 } });
+  expect("Mismo préstamo otra vez: no se duplica", drafts[0]?.expenses.length, 2);
+  expect(
+    "Renombre P-434 → P-442 de Bader no toca a Dary",
+    cashLineIsLoanOf({ loanRef: "P-434", label: "Préstamo · P-434 · Dary Amor" }, "P-434", "Bader"),
+    false,
+  );
+  const { readFileSync: readSrc } = await import("node:fs");
+  const catalogSrc = readSrc(new URL("../lib/supabase/catalog-mirror.ts", import.meta.url), "utf8");
+  expect(
+    "Renombre de ficha: el renglón del cobrador sigue al P- nuevo y sube a la nube",
+    catalogSrc.includes("cashLineIsLoanOf(line, from, renamedClient)") &&
+      catalogSrc.includes("queueDayExpenseMirror(draft)"),
+    true,
+  );
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

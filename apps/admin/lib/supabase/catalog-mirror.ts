@@ -13,11 +13,13 @@ import { displayToIso } from "@/lib/loan-preview";
 import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import {
   DEMO_CLIENTS_KEY,
+  DEMO_COLLECTOR_DAY_EXPENSES_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_LOANS_KEY,
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
+import { cashLineIsLoanOf, type CollectorDayExpenseDraft } from "@/lib/collector-day-close";
 import { isDeletedRef, readDeletedIdSet, rememberDeletedId } from "@/lib/deleted-ids";
 import {
   emitMirrorQueueChanged,
@@ -436,11 +438,35 @@ function applyLoanRefRename(from: string, to: string) {
   });
   if (assignChanged) writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, nextAssigns);
   const loans = readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []);
+  const renamedClient = loans.find((row) => row.ref === from)?.client;
   const nextLoans = loans.map((row) =>
     row.ref === from ? { ...row, ref: to, updatedAt: new Date().toISOString() } : row,
   );
   if (nextLoans.some((row, i) => row.ref !== loans[i]?.ref)) {
     writeDemoJson(DEMO_LOANS_KEY, nextLoans);
+  }
+  // El renglón «Préstamo · P-…» del cobrador sigue a su ficha (si no, queda con el P- de otro cliente).
+  const drafts = renamedClient
+    ? readDemoJson<CollectorDayExpenseDraft[]>(DEMO_COLLECTOR_DAY_EXPENSES_KEY, [])
+    : [];
+  const changedDrafts: CollectorDayExpenseDraft[] = [];
+  const nextDrafts = drafts.map((draft) => {
+    let touched = false;
+    const expenses = draft.expenses.map((line) => {
+      if (!cashLineIsLoanOf(line, from, renamedClient)) return line;
+      touched = true;
+      return { ...line, loanRef: to, label: line.label.replace(` · ${from} · `, ` · ${to} · `) };
+    });
+    if (!touched) return draft;
+    const next = { ...draft, expenses };
+    changedDrafts.push(next);
+    return next;
+  });
+  if (changedDrafts.length) {
+    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
+    void import("@/lib/supabase/ops-mirror").then(({ queueDayExpenseMirror }) => {
+      for (const draft of changedDrafts) queueDayExpenseMirror(draft);
+    });
   }
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(BIG_DEMO_STORE_CHANGED_EVENT));

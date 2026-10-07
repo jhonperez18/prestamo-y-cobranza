@@ -423,9 +423,25 @@ function loanCashLineLabel(loan: Pick<LoanRow, "ref" | "client">, topUp: boolean
 }
 
 /**
+ * Renglón «Préstamo · P-… · cliente» de ese préstamo. Mismo P- de otro cliente (código
+ * chocado entre aparatos) no es el mismo renglón: Bader P-434 borraba a Dary P-434.
+ */
+export function cashLineIsLoanOf(
+  row: Pick<RouteExpenseLine, "loanRef" | "label">,
+  loanRef: string,
+  client: string | undefined,
+): boolean {
+  if (row.loanRef !== loanRef) return false;
+  const parts = String(row.label || "").split(" · ");
+  const lineClient = parts.length >= 3 ? parts.slice(2).join(" · ").trim() : "";
+  const name = String(client || "").trim();
+  return !lineClient || !name || lineClient.toLowerCase() === name.toLowerCase();
+}
+
+/**
  * Desembolso del cobrador en efectivo → gasto «Préstamo» del día (resta En caja).
  * Con `topUp`: renglón «Anexo» por ese monto (capital sumado tras cerrar el día del préstamo).
- * Idempotente por loanRef.
+ * Idempotente por loanRef + cliente.
  */
 export function appendCashDisbursementExpense(
   drafts: CollectorDayExpenseDraft[],
@@ -450,7 +466,9 @@ export function appendCashDisbursementExpense(
     loanRef: input.loan.ref,
     ...(isTopUp ? { lineKey: LOAN_TOP_UP_LINE_KEY } : {}),
   };
-  const prev = (existing?.expenses ?? []).filter((row) => row.loanRef !== input.loan.ref);
+  const prev = (existing?.expenses ?? []).filter(
+    (row) => !cashLineIsLoanOf(row, input.loan.ref, input.loan.client),
+  );
   return upsertDayExpenseDraft(
     drafts,
     buildDayExpenseDraft({
