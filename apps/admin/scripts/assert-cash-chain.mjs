@@ -1273,6 +1273,18 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
     payFn.includes("projectOperationalMoney") || payFn.includes("syncBankLedger"),
     false,
   );
+  expect(
+    "Cobrador: préstamo / gasto / cierre tampoco arman Banco",
+    shellSrc.includes("syncBankLedger"),
+    false,
+  );
+  const opsSyncSrc = readFileSync(new URL("../lib/operational-sync.ts", import.meta.url), "utf8");
+  expect(
+    "Cobrador vivo: el ciclo no restaura Haber ni arma el registro Banco",
+    opsSyncSrc.includes("isCollectorLiveDevice()") &&
+      opsSyncSrc.includes("restoreLoansFromOrphanDisbursements"),
+    true,
+  );
   const applySync = shellSrc.slice(shellSrc.indexOf("const applyPlanillaSync"));
   const applyBody = applySync.slice(0, applySync.indexOf("usePlanillaDayRollover"));
   expect(
@@ -4045,9 +4057,9 @@ console.log("— Cupo del aparato —");
   const collapsed = collapseDuplicateDigitalLoans(nLoans);
   expect("Ficha Marlin: se deja el original P-101", collapsed.loans.some((row) => row.ref === "P-101"), true);
   expect(
-    "Ficha Marlin: copias P-102 y P-103 salen",
+    "Hydrate Banco/Nequi: no tumba el efectivo de Marlin (el cobrador no se cuelga)",
     collapsed.removed.filter((row) => row.clientRef === marlin.ref).length,
-    2,
+    0,
   );
   expect("Ficha Hiania no se toca", collapsed.loans.some((row) => row.ref === "P-800"), true);
   expect(

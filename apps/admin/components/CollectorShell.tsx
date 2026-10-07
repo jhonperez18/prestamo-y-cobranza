@@ -13,7 +13,6 @@ import {
 } from "@/lib/mock-data";
 import {
   DEMO_BANK_ACCOUNTS_KEY,
-  DEMO_BANK_MOVEMENTS_KEY,
   DEMO_CLIENTS_KEY,
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
@@ -21,7 +20,6 @@ import {
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_DAILY_LOGS_KEY,
   DEMO_LOANS_KEY,
-  DEMO_MISC_PAYMENTS_KEY,
   DEMO_PAYMENTS_KEY,
   DEMO_PLANILLA_CASH_CLOSES_KEY,
   DEMO_ROUTES_KEY,
@@ -69,15 +67,11 @@ import {
 } from "@/lib/collector-day-close";
 import { sealCollectorDay } from "@/lib/collector-day-close-seal";
 import { commitDayExpenseDraft, dayExpenseSavedMessage } from "@/lib/commit-day-expense";
-import type { MiscPayment } from "@/lib/misc-payments";
 import {
   ensureBankAccounts,
   normalizeBankAccount,
-  normalizeBankMovements,
   type BankAccount,
-  type BankMovement,
 } from "@/lib/bank";
-import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import {
   enqueuePaymentsForFlush,
   flushPaymentMirrorQueue,
@@ -253,24 +247,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, next.dayCloses);
       writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, next.dayExpenseDrafts);
       if (next.autoClosedCount > 0) {
-        writeDemoJson(
-          DEMO_BANK_MOVEMENTS_KEY,
-          syncBankLedger({
-            payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []),
-            movements: normalizeBankMovements(
-              readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
-            ),
-            accounts: ensureBankAccounts(
-              readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
-            ),
-            miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-            dayExpenseDrafts: next.dayExpenseDrafts,
-            dayCloses: next.dayCloses,
-            loans: next.loans,
-            clients: readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []),
-          }),
-        );
-        // Misma cadena que cierre manual: CIE + PCE + planilla sellada → nube.
+        // Cobrador: no arma Banco. El registro lo proyecta supervisor / sistema.
         void mirrorAutoDayCloseToCloud({
           dayCloses: next.dayCloses,
           planillaCashCloses: next.planillaCashCloses,
@@ -535,23 +512,6 @@ export function CollectorShell({ session, onLogout }: Props) {
       (row) => row.ref === `GAS-${collector.ref}-${todayIso()}`,
     );
     if (expenseDraft) queueDayExpenseMirror(expenseDraft);
-    writeDemoJson(
-      DEMO_BANK_MOVEMENTS_KEY,
-      syncBankLedger({
-        payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, payments),
-        movements: normalizeBankMovements(
-          readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
-        ),
-        accounts: ensureBankAccounts(
-          readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
-        ),
-        miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-        dayExpenseDrafts: nextDrafts,
-        dayCloses,
-        loans: nextLoans,
-        clients: nextClients,
-      }),
-    );
     showToast(
       `Renovación ${newRef}: capital ${money(result.created.capital)} sale de efectivo · subiendo…`,
     );
@@ -641,23 +601,6 @@ export function CollectorShell({ session, onLogout }: Props) {
       (row) => row.ref === `GAS-${collector.ref}-${todayIso()}`,
     );
     if (expenseDraft) queueDayExpenseMirror(expenseDraft);
-    writeDemoJson(
-      DEMO_BANK_MOVEMENTS_KEY,
-      syncBankLedger({
-        payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, payments),
-        movements: normalizeBankMovements(
-          readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
-        ),
-        accounts: ensureBankAccounts(
-          readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
-        ),
-        miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-        dayExpenseDrafts: nextDrafts,
-        dayCloses,
-        loans: nextLoans,
-        clients: nextClients,
-      }),
-    );
     showToast(
       `Préstamo ${loan.ref} · capital ${money(loan.capital)} descontado de caja · subiendo…`,
     );
@@ -747,26 +690,6 @@ export function CollectorShell({ session, onLogout }: Props) {
     const commit = commitDayExpenseDraft(dayExpenseDrafts, payload);
     const nextDrafts = commit.drafts;
     setDayExpenseDrafts(nextDrafts);
-
-    const accounts = ensureBankAccounts(
-      readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
-    );
-    writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, accounts);
-    writeDemoJson(
-      DEMO_BANK_MOVEMENTS_KEY,
-      syncBankLedger({
-        payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, payments),
-        movements: normalizeBankMovements(
-          readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
-        ),
-        accounts,
-        miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-        dayExpenseDrafts: nextDrafts,
-        dayCloses: loadDemoDayCloses<CollectorDayCloseRecord>(),
-        loans,
-        clients,
-      }),
-    );
 
     const inCloud = await commit.inCloud;
     showToast(dayExpenseSavedMessage(commit.draft, commit.savedLocal, inCloud));
@@ -864,22 +787,6 @@ export function CollectorShell({ session, onLogout }: Props) {
       const nextDrafts = sealed.dayExpenseDrafts;
       writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
       setDayExpenseDrafts(nextDrafts);
-
-      writeDemoJson(
-        DEMO_BANK_MOVEMENTS_KEY,
-        syncBankLedger({
-          payments: readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, payments),
-          movements: normalizeBankMovements(
-            readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
-          ),
-          accounts,
-          miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-          dayExpenseDrafts: nextDrafts,
-          dayCloses: nextCloses,
-          loans,
-          clients,
-        }),
-      );
     }
 
     const closedAssignments = applyDayCloseRecordsToAssignments(

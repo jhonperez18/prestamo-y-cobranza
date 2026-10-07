@@ -25,6 +25,7 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
 import { livePayments } from "@/lib/live-payments";
 import { restoreLoansFromOrphanDisbursements } from "@/lib/restore-loans-from-bank-disbursements";
+import { isCollectorLiveDevice } from "@/lib/collector-live-window";
 
 export type OperationalSyncInput = {
   loans: LoanRow[];
@@ -98,11 +99,13 @@ export function synchronizeOperationalState(
   const paymentsAll = input.payments ?? [];
   const payments = livePayments(paymentsAll);
   const collectors = input.collectors ?? [];
-  const restored = restoreLoansFromOrphanDisbursements({
-    loans: input.loans,
-    movements: input.bankMovements,
-    clients: input.clients,
-  });
+  const restored = isCollectorLiveDevice()
+    ? { loans: input.loans, movements: input.bankMovements, created: [] as LoanRow[], removed: [] as LoanRow[] }
+    : restoreLoansFromOrphanDisbursements({
+        loans: input.loans,
+        movements: input.bankMovements,
+        clients: input.clients,
+      });
 
   const loans = syncAllLoans(restored.loans, payments) as LoanRow[];
 
@@ -114,16 +117,18 @@ export function synchronizeOperationalState(
     ),
   );
 
-  const bankMovements = syncBankLedger({
-    payments,
-    movements: restored.movements,
-    accounts: input.bankAccounts,
-    miscPayments: input.miscPayments ?? [],
-    dayExpenseDrafts: input.dayExpenseDrafts ?? [],
-    dayCloses,
-    loans,
-    clients: input.clients,
-  });
+  const bankMovements = isCollectorLiveDevice()
+    ? restored.movements
+    : syncBankLedger({
+        payments,
+        movements: restored.movements,
+        accounts: input.bankAccounts,
+        miscPayments: input.miscPayments ?? [],
+        dayExpenseDrafts: input.dayExpenseDrafts ?? [],
+        dayCloses,
+        loans,
+        clients: input.clients,
+      });
 
   const assignments = input.assignments?.length
     ? reconcilePaymentsOntoPlanilla(input.assignments, payments, loans)

@@ -26,10 +26,13 @@ import {
   loanBankOutflowCapital,
   loanDisbursementIsoDate,
   loanDisbursementMovementRef,
+  loanFundedByBanco,
+  loanFundedByNequi,
   loanIsExistingPortfolio,
   markLoanFundedByBanco,
   markLoanFundedByNequi,
 } from "@/lib/nequi-pool";
+import { isCollectorLiveDevice } from "@/lib/collector-live-window";
 import { loanDeletedRow, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 
 export type RestoreLoansFromDisbursementsInput = {
@@ -50,15 +53,11 @@ function loanCodeNumber(ref: string): number {
   return matched ? Number(matched[1]) : Number.POSITIVE_INFINITY;
 }
 
-/**
- * Un cliente + un día + un capital = un desembolso (efectivo, Banco o Nequi).
- * El original es el P- más viejo. Cartera existente no entra.
- */
-export function digitalDisbursementTwinKey(
-  loan: Pick<LoanRow, "ref" | "clientRef" | "date" | "capital" | "status" | "fundedBy" | "notes"> & {
-    start_date?: string;
-  },
-): string {
+type TwinLoan = Pick<LoanRow, "ref" | "clientRef" | "date" | "capital" | "status" | "fundedBy" | "notes"> & {
+  start_date?: string;
+};
+
+function twinParts(loan: TwinLoan): string {
   if (isLoanVoided(loan) || !isLoanActive(loan) || loanIsExistingPortfolio(loan)) return "";
   const date = loanDisbursementIsoDate(loan);
   const capital = loanBankOutflowCapital(loan);
@@ -67,25 +66,46 @@ export function digitalDisbursementTwinKey(
   return `${clientRef}|${date}|${capital}`;
 }
 
+/** Banco / Nequi: un cliente + un día + un capital = un Haber. El original es el P- más viejo. */
+export function digitalDisbursementTwinKey(loan: TwinLoan): string {
+  if (!loanFundedByBanco(loan) && !loanFundedByNequi(loan)) return "";
+  return twinParts(loan);
+}
+
+/** Efectivo de caja: mismo criterio, sin tumbar el catálogo en cada hydrate. */
+export function cashDisbursementTwinKey(loan: TwinLoan): string {
+  if (loanFundedByBanco(loan) || loanFundedByNequi(loan)) return "";
+  return twinParts(loan);
+}
+
 export function preferOriginalDigitalLoan<T extends { ref: string }>(current: T, next: T): T {
   return loanCodeNumber(next.ref) < loanCodeNumber(current.ref) ? next : current;
 }
 
-/** De varias fichas gemelas, se queda el P- original (número más bajo). */
-export function uniqueDigitalDisbursementLoans(loans: LoanRow[]): LoanRow[] {
+function uniqueByTwinKey(loans: LoanRow[], keyOf: (loan: LoanRow) => string): LoanRow[] {
   const keep = new Map<string, LoanRow>();
   for (const loan of loans) {
-    const key = digitalDisbursementTwinKey(loan);
+    const key = keyOf(loan);
     if (!key) continue;
     const current = keep.get(key);
     keep.set(key, current ? preferOriginalDigitalLoan(current, loan) : loan);
   }
   const originals = new Set([...keep.values()].map((row) => row.ref));
   return loans.filter((loan) => {
-    const key = digitalDisbursementTwinKey(loan);
+    const key = keyOf(loan);
     if (!key) return true;
     return originals.has(loan.ref);
   });
+}
+
+/** De varias fichas gemelas Banco/Nequi, se queda el P- original (número más bajo). */
+export function uniqueDigitalDisbursementLoans(loans: LoanRow[]): LoanRow[] {
+  return uniqueByTwinKey(loans, digitalDisbursementTwinKey);
+}
+
+/** De varias copias en efectivo, se queda el P- original. No tumba el catálogo. */
+export function uniqueCashDisbursementLoans(loans: LoanRow[]): LoanRow[] {
+  return uniqueByTwinKey(loans, cashDisbursementTwinKey);
 }
 
 export function existingDigitalDisbursementTwin(
@@ -99,7 +119,9 @@ export function existingDigitalDisbursementTwin(
   const amount = Math.trunc(Number(capital) || 0);
   if (!ref || !date || amount <= 0) return undefined;
   const key = `${ref}|${date}|${amount}`;
-  return loans.find((loan) => digitalDisbursementTwinKey(loan) === key);
+  return loans.find(
+    (loan) => digitalDisbursementTwinKey(loan) === key || cashDisbursementTwinKey(loan) === key,
+  );
 }
 
 /**
@@ -418,7 +440,11 @@ export function restoreLoansFromOrphanDisbursements(
   }
 
   const collapsed = collapseDuplicateDigitalLoans(loans);
-  if (typeof window !== "undefined" && collapsed.removed.length > 0) {
+  if (
+    typeof window !== "undefined" &&
+    collapsed.removed.length > 0 &&
+    !isCollectorLiveDevice()
+  ) {
     for (const row of collapsed.removed) rememberDeletedId(row.ref);
     queueLoansMirror(collapsed.removed.map((row) => loanDeletedRow(row)));
   }

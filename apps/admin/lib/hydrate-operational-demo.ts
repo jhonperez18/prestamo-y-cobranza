@@ -50,6 +50,7 @@ import {
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
+import { isCollectorLiveDevice } from "@/lib/collector-live-window";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { restoreLoansFromOrphanDisbursements } from "@/lib/restore-loans-from-bank-disbursements";
 import { queueLoansMirror } from "@/lib/supabase/catalog-mirror";
@@ -178,14 +179,15 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
       );
 
   const reconciledLoansBase = syncAllLoans(storedLoans, nextPayments) as LoanRow[];
-  const restoredFromBank = isVirginOpsMode()
-    ? { loans: reconciledLoansBase, movements: storedMovementsEarly ?? [], created: [] as LoanRow[] }
-    : restoreLoansFromOrphanDisbursements({
-        loans: reconciledLoansBase,
-        movements: storedMovementsEarly ?? [],
-        clients: liveClients,
-      });
-  if (restoredFromBank.created.length) {
+  const restoredFromBank =
+    isVirginOpsMode() || isCollectorLiveDevice()
+      ? { loans: reconciledLoansBase, movements: storedMovementsEarly ?? [], created: [] as LoanRow[] }
+      : restoreLoansFromOrphanDisbursements({
+          loans: reconciledLoansBase,
+          movements: storedMovementsEarly ?? [],
+          clients: liveClients,
+        });
+  if (restoredFromBank.created.length && !isCollectorLiveDevice()) {
     queueLoansMirror(restoredFromBank.created);
   }
   const reconciledLoans = restoredFromBank.loans;

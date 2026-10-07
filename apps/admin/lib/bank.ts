@@ -13,6 +13,7 @@ import {
 } from "@/lib/nequi-pool";
 import {
   disbursementBelongsToLoan,
+  uniqueCashDisbursementLoans,
   uniqueDigitalDisbursementLoans,
 } from "@/lib/restore-loans-from-bank-disbursements";
 import {
@@ -1176,7 +1177,7 @@ export function syncCashLoanDisbursementsToMovements(
   const primary = ensureBankAccounts(accounts).find((row) => row.active) ?? accounts[0];
   if (!primary) return movements;
   const cashLoans = loans.filter(loanLeavesCashBox);
-  const wanted = uniqueDigitalDisbursementLoans(cashLoans);
+  const wanted = uniqueCashDisbursementLoans(cashLoans);
   const cashRefs = new Set(cashLoans.map((loan) => loan.ref));
   let next = [...movements];
   const kept = new Set<string>();
