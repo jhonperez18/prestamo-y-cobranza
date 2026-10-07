@@ -238,8 +238,29 @@ function enqueuePortfolioMirrors(
     if (row) void queuePaymentMirror(row);
   }
   if (opts.mirrorPlanilla) {
-    queueRoutesMirror(state.routes);
-    queueAssignmentsMirror(state.assignments);
+    const clientRefs = new Set((opts.clientRefs ?? []).filter(Boolean));
+    const loanRefs = new Set((opts.loanRefs ?? []).filter(Boolean));
+    const scoped = clientRefs.size > 0 || loanRefs.size > 0;
+    const assignments = scoped
+      ? state.assignments.filter(
+          (row) =>
+            clientRefs.has(row.clientRef) ||
+            (Boolean(row.loanRef) && loanRefs.has(row.loanRef)),
+        )
+      : state.assignments;
+    queueAssignmentsMirror(assignments);
+    if (scoped) {
+      const names = new Set(
+        assignments.map((row) => String(row.clientRoute || "").trim()).filter(Boolean),
+      );
+      queueRoutesMirror(
+        names.size
+          ? state.routes.filter((row) => names.has(String(row.name || "").trim()))
+          : [],
+      );
+    } else {
+      queueRoutesMirror(state.routes);
+    }
   }
 }
 
@@ -480,7 +501,7 @@ export function commitRejectClients(
   let next: PortfolioCatalogState = { ...state, clients };
   next = projectPlanilla(next);
   persistPortfolio(next);
-  enqueuePortfolioMirrors(next, { mirrorPlanilla: true });
+  enqueuePortfolioMirrors(next, { clientRefs: refs, mirrorPlanilla: true });
 
   return {
     ok: true,
@@ -509,7 +530,7 @@ export function commitDeleteClient(
   next = projectPlanilla(next);
   persistPortfolio(next);
   queueClientMirror(clientDeletedRow(openClient));
-  enqueuePortfolioMirrors(next, { mirrorPlanilla: true });
+  enqueuePortfolioMirrors(next, { clientRefs: [clientRef], mirrorPlanilla: true });
 
   return {
     ok: true,

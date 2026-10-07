@@ -26,6 +26,7 @@ import { businessDaysAgoIso, businessTodayIso } from "@/lib/business-timezone";
 import {
   collectorLiveDayIso,
   isCollectorLiveDevice,
+  isSupervisorLiveDevice,
   withDateWindowParam,
 } from "@/lib/collector-live-window";
 import { createIncrementalPull, withSinceParam } from "@/lib/incremental-pull";
@@ -1476,19 +1477,22 @@ export async function reconcileLocalOpsToRemote(
     }
     let localCloses: CollectorDayCloseRecord[] | null = null;
     const readCloses = () => (localCloses ??= readLocalDayCloses());
-    for (const row of readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, [])) {
-      const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
-      const key = `${date}::${row.itemId}`;
-      // No subir hoja abierta «huérfana» si ya hay CIE- local: reabriría el día en la nube.
-      if (localCieCoversAssignment(row, readCloses)) continue;
-      if (!row?.itemId || !date) continue;
-      const remote = remoteAssignMeta.get(key);
-      const localSealed = Boolean(row.dayClosedAt);
-      // Historia fuera de ventana: no re-subir como huérfano.
-      if (!remote && date < assignSince) continue;
-      // Subir si no está en nube, o si este PC ya selló y la nube sigue abierta.
-      if (!remote || (localSealed && !remote.closed)) {
-        jobs.push({ kind: "assignment", row, key });
+    // Supervisor: no reenviar la planilla como huérfana. Eso tapa cobros y préstamos.
+    if (!isSupervisorLiveDevice()) {
+      for (const row of readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, [])) {
+        const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
+        const key = `${date}::${row.itemId}`;
+        // No subir hoja abierta «huérfana» si ya hay CIE- local: reabriría el día en la nube.
+        if (localCieCoversAssignment(row, readCloses)) continue;
+        if (!row?.itemId || !date) continue;
+        const remote = remoteAssignMeta.get(key);
+        const localSealed = Boolean(row.dayClosedAt);
+        // Historia fuera de ventana: no re-subir como huérfano.
+        if (!remote && date < assignSince) continue;
+        // Subir si no está en nube, o si este PC ya selló y la nube sigue abierta.
+        if (!remote || (localSealed && !remote.closed)) {
+          jobs.push({ kind: "assignment", row, key });
+        }
       }
     }
 
@@ -1730,6 +1734,10 @@ async function pullOpsBundle(
       }
       if (sig(prev) === sig(row)) {
         sentAssignmentSig.set(key, assignmentMirrorSig(row));
+        if (pendingAssign.has(key)) {
+          dequeue(Q_ASSIGN, key);
+          pendingAssign.delete(key);
+        }
         continue;
       }
       // Cierre hecho en otro celular: gana siempre. La cola local de hoja "abierta"

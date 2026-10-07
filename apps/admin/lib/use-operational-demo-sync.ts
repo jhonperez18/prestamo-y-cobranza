@@ -13,7 +13,7 @@ import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { bindMoneyRealtime, type RealtimeMoneyTable } from "@/lib/realtime-money";
 import { businessTodayIso } from "@/lib/business-timezone";
-import { isCollectorLiveDevice } from "@/lib/collector-live-window";
+import { isCollectorLiveDevice, isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import {
   mergePaymentsWindowIntoDemo,
   pullRemotePaymentsIntoDemo,
@@ -232,8 +232,11 @@ export function useOperationalDemoSync(
     let pullError = "";
     const tuneupDay = deviceTuneupDueDay();
     try {
-      // Flush primero: lo pendiente en este PC sube aunque el pull tarde o falle.
-      await runMirrorFlush();
+      // Cobrador / taller: subir cola antes de bajar.
+      // Supervisor: bajar primero. Si espera el flush de planilla, no ve cobros ni préstamos.
+      if (!isSupervisorLiveDevice()) {
+        await runMirrorFlush();
+      }
       // Primera sincronización del día: cupo libre antes de la bajada completa.
       if (tuneupDay) compactDeviceForDay();
 

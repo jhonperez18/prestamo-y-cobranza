@@ -185,7 +185,8 @@ export function SupervisorShell({ session, onLogout }: Props) {
         writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, next.planillaCashCloses);
       }
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
-      queueAssignmentsMirror(next.assignments);
+      // Supervisor: no reenviar la planilla entera. Eso tapa cobros y préstamos del sistema.
+      // Alta / cobro / cierre ya encolan la visita que toca.
       writeDemoJson(DEMO_ROUTES_KEY, next.routes);
       writeDemoJson(DEMO_LOANS_KEY, next.loans);
       writeDemoJson(DEMO_DAILY_LOGS_KEY, next.logs);
@@ -436,8 +437,16 @@ export function SupervisorShell({ session, onLogout }: Props) {
     queueLoanMirror(loan);
     const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
     if (mirroredClient) queueClientMirror(mirroredClient);
-    queueAssignmentsMirror(planilla.assignments);
-    queueRoutesMirror(planilla.routes);
+    const loanDay = todayIso();
+    queueAssignmentsMirror(
+      planilla.assignments.filter(
+        (row) => row.clientRef === client.ref && row.dispatchDate === loanDay,
+      ),
+    );
+    const loanRoute = planilla.routes.find(
+      (row) => String(row.name || "").trim() === targetRoute.trim(),
+    );
+    if (loanRoute) queueRoutesMirror([loanRoute]);
     writeDemoJson(
       DEMO_BANK_MOVEMENTS_KEY,
       syncBankLedger({

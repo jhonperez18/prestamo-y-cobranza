@@ -9,11 +9,22 @@ import { pesos } from "@/lib/finance";
 import { paymentVisitDate } from "@/lib/late-payment";
 import { isPaymentLive } from "@/lib/live-payments";
 import { syncLoan } from "@/lib/loan-preview";
-import { COLLECTOR_ROLE_REF, type LoanRow, type PaymentRow } from "@/lib/mock-data";
+import {
+  COLLECTOR_ROLE_REF,
+  SUPERVISOR_ROLE_REF,
+  type LoanRow,
+  type PaymentRow,
+} from "@/lib/mock-data";
 
 export function isCollectorLiveDevice(): boolean {
   if (typeof window === "undefined") return false;
   return readSession()?.roleRef === COLLECTOR_ROLE_REF;
+}
+
+/** App supervisor: tiene que bajar el sistema entero; no reenviar la planilla. */
+export function isSupervisorLiveDevice(): boolean {
+  if (typeof window === "undefined") return false;
+  return readSession()?.roleRef === SUPERVISOR_ROLE_REF;
 }
 
 export function collectorLiveDayIso(now = new Date()): string {

@@ -1206,6 +1206,47 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
     applyBody.includes("queueAssignmentsMirror(next.assignments)"),
     false,
   );
+  const supervisorSrc = readFileSync(
+    new URL("../components/SupervisorShell.tsx", import.meta.url),
+    "utf8",
+  );
+  const supervisorApply = supervisorSrc.slice(supervisorSrc.indexOf("const applyPlanillaSync"));
+  const supervisorApplyBody = supervisorApply.slice(
+    0,
+    supervisorApply.indexOf("usePlanillaDayRollover"),
+  );
+  expect(
+    "Supervisor: el ciclo del día no reenvía toda la planilla",
+    supervisorApplyBody.includes("queueAssignmentsMirror(next.assignments)"),
+    false,
+  );
+  const syncSrc = readFileSync(
+    new URL("../lib/use-operational-demo-sync.ts", import.meta.url),
+    "utf8",
+  );
+  const hydrateFn = syncSrc.slice(syncSrc.indexOf("const runHydrateWithRemotePull"));
+  expect(
+    "Supervisor: baja la nube antes de vaciar la cola de planilla",
+    hydrateFn.includes("isSupervisorLiveDevice") &&
+      hydrateFn.includes("if (!isSupervisorLiveDevice())"),
+    true,
+  );
+  const opsSrc = readFileSync(new URL("../lib/supabase/ops-mirror.ts", import.meta.url), "utf8");
+  expect(
+    "Supervisor: reconcile no reenvía planilla huérfana",
+    opsSrc.includes("Supervisor: no reenviar la planilla como huérfana"),
+    true,
+  );
+  const portfolioSrc = readFileSync(
+    new URL("../lib/commit-portfolio-catalog.ts", import.meta.url),
+    "utf8",
+  );
+  const enqueueFn = portfolioSrc.slice(portfolioSrc.indexOf("function enqueuePortfolioMirrors"));
+  expect(
+    "Catálogo: planilla encolada solo de los clientes tocados",
+    enqueueFn.includes("const scoped = clientRefs.size > 0 || loanRefs.size > 0"),
+    true,
+  );
 }
 
 // ── 12. Banco: cada cobro llega a su cuenta según la ruta (A → Nequi; M/T/N → Banco) ──
