@@ -1284,6 +1284,17 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
     /queueAssignmentsMirror\((planilla\.assignments|nextAssignments)\)/.test(shellSrc),
     false,
   );
+  const updateSrc = readFileSync(new URL("../lib/app-auto-update.ts", import.meta.url), "utf8");
+  expect(
+    "Versión nueva obligatoria: la subida previa tiene tope (no cuelga la actualización)",
+    updateSrc.includes("flushWithCap()") && !/await flushAllMirrorQueues\(\);/.test(updateSrc),
+    true,
+  );
+  expect(
+    "Versión nueva obligatoria: al volver a la app y a los 5 min, sin esperar 2 min quieto",
+    updateSrc.includes("FORCE_AFTER_MS") && updateSrc.includes("tick(true)"),
+    true,
+  );
   const mobileSrc = readFileSync(new URL("../components/CollectorMobileApp.tsx", import.meta.url), "utf8");
   expect(
     "Cobrador: «Crear préstamo» cierra el formulario antes de registrar",

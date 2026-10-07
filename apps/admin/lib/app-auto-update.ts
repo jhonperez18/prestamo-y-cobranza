@@ -10,11 +10,17 @@ import { flushAllMirrorQueues } from "@/lib/supabase/mirror-queue";
  * Antes solo se revisaba al abrir la app: un celular abierto todo el día seguía con el
  * código viejo (sin los arreglos del taller y con colas que el servidor nuevo rechaza).
  *
- * Nunca interrumpe un cobro: recarga solo con 2 min sin tocar la pantalla, sin panel /
- * diálogo / campo abierto, y después de subir a la nube lo pendiente.
+ * Nunca interrumpe un cobro: no recarga con panel / diálogo / campo abierto.
+ * Obligatoria: recarga al volver a la app, con 2 min sin tocar, o a los 5 min de
+ * publicada en el primer momento libre. La subida previa tiene tope: lo que no subió
+ * sigue en la cola del aparato y lo sube la versión nueva (antes una petición colgada
+ * dejaba el celular en la versión vieja para siempre).
  */
 const CHECK_MS = 60_000;
 const IDLE_MS = 120_000;
+const FORCE_AFTER_MS = 5 * 60_000;
+const FLUSH_CAP_MS = 15_000;
+const BUILD_CHECK_TIMEOUT_MS = 10_000;
 const TARGET_KEY = "nexo-auto-update-target";
 
 function screenBusy() {
@@ -27,13 +33,27 @@ function screenBusy() {
 
 async function servedBuild(): Promise<string> {
   try {
-    const res = await fetch("/api/ops/build-health", { cache: "no-store" });
+    const res = await fetch("/api/ops/build-health", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(BUILD_CHECK_TIMEOUT_MS),
+    });
     if (!res.ok) return "";
     const data = (await res.json()) as { build?: string };
     return String(data.build || "").trim();
   } catch (error) {
     console.error("auto-update-check", error);
     return "";
+  }
+}
+
+async function flushWithCap(): Promise<void> {
+  try {
+    await Promise.race([
+      flushAllMirrorQueues({ attempts: 1 }),
+      new Promise<void>((resolve) => window.setTimeout(resolve, FLUSH_CAP_MS)),
+    ]);
+  } catch (error) {
+    console.error("auto-update-flush", error);
   }
 }
 
@@ -51,12 +71,13 @@ export function useAppAutoUpdate(enabled: boolean) {
     let running = isProd ? APP_BUILD : "";
     let lastTouch = Date.now();
     let target = "";
+    let targetSince = 0;
     let applying = false;
     const touch = () => {
       lastTouch = Date.now();
     };
 
-    async function tick() {
+    async function tick(resumed = false) {
       if (applying) return;
       if (!target) {
         const build = await servedBuild();
@@ -69,28 +90,31 @@ export function useAppAutoUpdate(enabled: boolean) {
         // Ya se recargó hacia esa versión y el CDN aún sirve la vieja: no entrar en bucle.
         if (window.sessionStorage.getItem(TARGET_KEY) === build) return;
         target = build;
+        targetSince = Date.now();
       }
-      if (Date.now() - lastTouch < IDLE_MS || screenBusy()) return;
+      if (screenBusy()) return;
+      const idle = Date.now() - lastTouch >= IDLE_MS;
+      const overdue = Date.now() - targetSince >= FORCE_AFTER_MS;
+      if (!resumed && !idle && !overdue) return;
       applying = true;
+      await flushWithCap();
       try {
-        await flushAllMirrorQueues();
         window.sessionStorage.setItem(TARGET_KEY, target);
         await bustClientCaches();
-        window.location.reload();
       } catch (error) {
         console.error("auto-update-apply", error);
-        applying = false;
       }
+      window.location.reload();
     }
 
     const events = ["pointerdown", "keydown", "touchstart", "input"] as const;
     for (const name of events) window.addEventListener(name, touch, { passive: true, capture: true });
     const onVisible = () => {
-      if (document.visibilityState === "visible") void tick();
+      if (document.visibilityState === "visible") void tick(true);
     };
     document.addEventListener("visibilitychange", onVisible);
     const timer = window.setInterval(() => void tick(), CHECK_MS);
-    void tick();
+    void tick(true);
     return () => {
       for (const name of events) window.removeEventListener(name, touch, { capture: true });
       document.removeEventListener("visibilitychange", onVisible);

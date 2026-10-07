@@ -21,6 +21,11 @@ Cada publicación y cada “versión vieja” **purga la caché**. Sin eso el ce
 3. Si el usuario dice que el celular no actualiza: `cd apps/admin && npm run purge:cache` en el momento, sin esperar otro pedido.
 4. El navegador suelta service worker y Cache Storage en cada arranque. Si había algo guardado, recarga una vez.
 
+5. Versión nueva **obligatoria** en cada aparato (`lib/app-auto-update.ts`): recarga al volver a
+ la app, con 2 min quieto, o a los 5 min de publicada en el primer momento sin panel / campo
+ abierto. La subida previa tiene tope (15 s): lo pendiente queda en la cola y lo sube la versión
+ nueva. Prohibido esperar un flush sin tope antes de recargar (dejó a Yesid una semana en la vieja).
+
 ## Prohibido
 
 - Declarar listo sin purge de CDN.
