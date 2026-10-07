@@ -31,6 +31,7 @@ import {
   collectorRecaudoBreakdown,
   defaultMobileRouteDate,
   defaultOpenPlanillaRoute,
+  keepOpenPlanillaRoute,
 } from "@/lib/collector-mobile";
 import {
   buildCollectorHistoryPlanillaRows,
@@ -414,21 +415,9 @@ export function CollectorMobileApp({
       return;
     }
     const day = selectedDate ?? date ?? todayIso();
-    const dayNorm = normalizeHistoryDate(day) || day;
-    setPlanillaRouteFilter((prev) => {
-      const open = defaultOpenPlanillaRoute(planillaRoutePins, assignments, day, clients);
-      const prevOpen =
-        Boolean(prev) &&
-        assignments.some((row) => {
-          const rowDay = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
-          if (rowDay !== dayNorm) return false;
-          if (row.dayClosedAt) return false;
-          if (row.visitStatus === "omitido" || row.visitStatus === "cobrado") return false;
-          return sameRoute(assignmentRouteName(row, clients), prev ?? undefined);
-        });
-      if (prevOpen) return prev;
-      return open ?? prev ?? planillaRoutePins[0];
-    });
+    setPlanillaRouteFilter((prev) =>
+      keepOpenPlanillaRoute(prev, planillaRoutePins, assignments, day, clients),
+    );
   }, [planillaRoutePins, assignments, clients, date, selectedDate]);
 
   const activeDate = useMemo(() => {

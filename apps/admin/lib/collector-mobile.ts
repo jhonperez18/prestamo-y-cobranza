@@ -361,6 +361,41 @@ export function defaultOpenPlanillaRoute(
   return open ?? pins[0] ?? null;
 }
 
+/** ¿Esa ruta hoy ya tiene sello de cierre en todas las visitas? */
+export function planillaRouteSheetSealed(
+  routeName: string | null | undefined,
+  assignments: DailyCollectionAssignment[],
+  date: string,
+  clients: ClientRow[] = [],
+): boolean {
+  if (!routeName) return false;
+  const day = normalizeHistoryDate(date) || date;
+  const sheet = assignments.filter((row) => {
+    if ((normalizeHistoryDate(row.dispatchDate) || row.dispatchDate) !== day) return false;
+    return sameRoute(assignmentRouteName(row, clients), routeName);
+  });
+  return sheet.length > 0 && sheet.every((row) => Boolean(row.dayClosedAt));
+}
+
+/**
+ * Pin mientras cobra: un cobro en T no puede saltar a M (M ya cerró → sin billete).
+ * Solo cambia si la hoja actual ya está sellada o aún no hay pin.
+ */
+export function keepOpenPlanillaRoute(
+  prev: string | null | undefined,
+  pins: string[],
+  assignments: DailyCollectionAssignment[],
+  date: string,
+  clients: ClientRow[] = [],
+): string | null {
+  if (pins.length <= 1) return pins[0] ?? null;
+  const current = prev && pins.some((name) => sameRoute(name, prev)) ? prev : null;
+  if (current && !planillaRouteSheetSealed(current, assignments, date, clients)) {
+    return current;
+  }
+  return defaultOpenPlanillaRoute(pins, assignments, date, clients);
+}
+
 /** ¿Queda alguna hoja de esa fecha sin sellar? Si sí, el cobrador sigue cobrando. */
 export function collectorHasOpenRouteSheet(
   pins: string[],

@@ -975,7 +975,7 @@ expect(
   false,
 );
 expect("Cerrar jornada N: CIE sigue siendo caja de N", nClosedDay.record?.cashFloat ?? null, 90_000);
-const { defaultMobileRouteDate, defaultOpenPlanillaRoute, collectorHasOpenRouteSheet } = await import("@/lib/collector-mobile");
+const { defaultMobileRouteDate, defaultOpenPlanillaRoute, collectorHasOpenRouteSheet, keepOpenPlanillaRoute } = await import("@/lib/collector-mobile");
 const dayOpt = (date, closed, total) => ({
   date,
   dateLabel: date,
@@ -1087,6 +1087,15 @@ expect(
   "M cerrada: aún hay hoja abierta (no cuadre)",
   collectorHasOpenRouteSheet(chainPins, chainVisits, D, chainClients),
   true,
+);
+const afterOneTPay = [
+  visit("V-M-lock", "CLI-M1", "M", D, { dayClosedAt: `${D}T18:00:00.000Z`, visitStatus: "cobrado" }),
+  visit("V-T-paid", "CLI-T1", "T", D, { dayClosedAt: null, visitStatus: "cobrado" }),
+];
+expect(
+  "Cobro en T no apaga el billete (no saltar a M)",
+  keepOpenPlanillaRoute("T", chainPins, afterOneTPay, D, chainClients),
+  "T",
 );
 
 // ── 12. Banco: cada cobro llega a su cuenta según la ruta (A → Nequi; M/T/N → Banco) ──
