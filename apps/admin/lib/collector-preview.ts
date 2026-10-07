@@ -24,7 +24,7 @@ import { compareRouteNames, sameRoute } from "@/lib/client-route-order";
 import { mobileAccessLabel } from "@/lib/access-preview";
 import { paymentsForDay, todayDispatchToken, todayIso } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
-import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
+import { visiblePlanillaAssignments } from "@/lib/planilla-dedupe";
 import { paymentDisplayMethod, paymentMethodLabel } from "@/lib/payment-method";
 import { paymentHasReceipt, paymentHasSignature } from "@/lib/payment-evidence";
 
@@ -97,7 +97,7 @@ export function routeCoverageSummaries(
 
       // Cada ruta cuenta lo suyo: si el cobrador tiene «1» y «1.1», la fila
       // se asigna por cliente/ruta y solo cae al cobrador si no se puede ubicar.
-      const planillaToday = dedupePlanillaAssignments(
+      const planillaToday = visiblePlanillaAssignments(
         assignments.filter((row) => {
           if (!row.dispatched || row.dispatchDate !== day) return false;
           if (clientRefs.has(row.clientRef)) return true;

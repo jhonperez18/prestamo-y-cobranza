@@ -43,7 +43,7 @@ import {
   visitStatusLabelShort,
 } from "@/lib/collector-mobile";
 import { todayIso } from "@/lib/daily-dispatch";
-import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
+import { visiblePlanillaAssignments } from "@/lib/planilla-dedupe";
 import { isValidPlanillaAssignment } from "@/lib/planilla-eligibility";
 import {
   clientsOnRouteSorted,
@@ -1199,7 +1199,7 @@ export function SupervisorMobileApp({
 
   const todayAssignments = useMemo(
     () =>
-      dedupePlanillaAssignments(
+      visiblePlanillaAssignments(
         assignments.filter(
           (row) =>
             row.dispatched &&

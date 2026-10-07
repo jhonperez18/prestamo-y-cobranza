@@ -1203,6 +1203,25 @@ expect(
   hSynced.assignments.some((r) => r.clientRef === "CLI-P1" && r.itemId.includes(":prestar")),
   false,
 );
+// Terminó hoy + Prestar hecho: se guarda las dos filas (el pull no revive Prestar abierta),
+// la lista cuenta una sola persona.
+const { visiblePlanillaAssignments } = await import("@/lib/planilla-dedupe");
+const twin = [
+  visit(`${pDate}:P-OLD:acum`, "CLI-P1", "M", pDate, { visitStatus: "cobrado", loanRef: "P-OLD", paymentRef: "PG-OLD" }),
+  visit(`${pDate}:CLI-P1:prestar`, "CLI-P1", "M", pDate, {
+    visitStatus: "omitido",
+    awaitingLoan: true,
+    chargeLabel: "Prestar",
+    skipReason: "Préstamo hecho hoy",
+  }),
+];
+expect("Prestar hecho hoy: las dos filas se guardan", twin.length, 2);
+expect("Prestar hecho hoy: la lista no lo duplica", visiblePlanillaAssignments(twin).length, 1);
+expect(
+  "Prestar hecho hoy: queda la cuota, no el Prestar",
+  visiblePlanillaAssignments(twin)[0]?.loanRef ?? null,
+  "P-OLD",
+);
 
 // ── 15. Día 1 del mes: el cobro nunca se bloquea si el mes anterior quedó sellado por
 //     el CIE- de su último día de cobro, aunque el cierre de mes falte en ese aparato.

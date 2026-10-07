@@ -8,7 +8,7 @@ import {
   liveLoanCollectionAlerts,
 } from "@/lib/collection-alerts";
 import { isValidPlanillaAssignment } from "@/lib/planilla-eligibility";
-import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
+import { visiblePlanillaAssignments } from "@/lib/planilla-dedupe";
 import {
   reconcilePaymentsOntoPlanilla,
   sealOpenVisitsWithLaterPayments,
@@ -168,7 +168,7 @@ export function assignmentsForCollectorDate(
   payments?: CollectionPaymentTouch[],
 ) {
   const compare = assignmentRoutePositionComparator(clients);
-  return dedupePlanillaAssignments(
+  return visiblePlanillaAssignments(
     assignments
       .filter(
         (row) =>
@@ -224,7 +224,7 @@ export function assignmentsForCollector(
   payments?: CollectionPaymentTouch[],
 ) {
   const compare = assignmentRoutePositionComparator(clients);
-  return dedupePlanillaAssignments(
+  return visiblePlanillaAssignments(
     assignments
       .filter((row) => row.collectorRef === collectorRef)
       .filter((row) => isValidPlanillaAssignment(row, clients, loans)),
