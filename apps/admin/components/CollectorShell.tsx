@@ -798,7 +798,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     });
     if (!chainGuard.ok) {
       showToast(chainGuard.error);
-      return;
+      return false;
     }
 
     const accounts = ensureBankAccounts(
@@ -913,7 +913,7 @@ export function CollectorShell({ session, onLogout }: Props) {
       showToast(
         `${label} · sigue otra hoja abierta. ${formatCloseDayAlertSummary(alertResult.alerted, alertResult.toMora) || ""}`.trim(),
       );
-      return;
+      return false;
     }
 
     const parts = [
@@ -927,6 +927,7 @@ export function CollectorShell({ session, onLogout }: Props) {
         : null,
     ].filter(Boolean);
     showToast(`Día cerrado · ${parts.join(" · ")}.`);
+    return true;
   }
 
   if (!hydrated) {

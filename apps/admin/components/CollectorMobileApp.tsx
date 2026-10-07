@@ -209,7 +209,9 @@ type Props = {
   /** Menú ☰ → Nuevo cliente: alta igual que el taller en la ruta de la planilla abierta. */
   onCreateClient?: (draft: RouteClientDraft) => Promise<boolean> | boolean;
   onSaveExpenses?: (payload: CollectorSaveExpensesPayload) => void;
-  onCloseDay?: (payload: CollectorCloseDayPayload) => void | Promise<void>;
+  onCloseDay?: (
+    payload: CollectorCloseDayPayload,
+  ) => boolean | void | Promise<boolean | void>;
   onCloseMonth?: (payload: CollectorCloseMonthPayload) => void;
   onLogout?: () => void;
 };
@@ -1254,13 +1256,15 @@ export function CollectorMobileApp({
     };
     void (async () => {
       try {
-        await onCloseDay(payload);
+        const ok = await onCloseDay(payload);
+        setConfirmingClose(false);
+        if (ok === false) return;
       } catch (error) {
         console.error("collector-close-day", error);
+        setConfirmingClose(false);
+        return;
       }
-    setConfirmingClose(false);
-      // Queda en el home de cierre (mismo panel para todos). INICIO = Por cobrar.
-    setListFilter("pending");
+      setListFilter("pending");
       setPreferCobroPlanilla(false);
       setSelectedDate(null);
     })();
@@ -2214,6 +2218,21 @@ export function CollectorMobileApp({
           <p className="collector-mobile-home-cuadre-hint is-ok">
             Este saldo es el que llevas hasta el próximo cobro. Historial para ver otros días.
           </p>
+          {onCloseDay &&
+          routeOptions.some((row) => row.date === today && !row.closed && row.total > 0) ? (
+            <button
+              type="button"
+              className="collector-mobile-pay-link"
+              onClick={() => {
+                setSelectedDate(today);
+                setPreferCobroPlanilla(true);
+                setListFilter("pending");
+                setConfirmingClose(false);
+              }}
+            >
+              Ir a cerrar el día de hoy
+            </button>
+          ) : null}
         </section>
       ) : null}
 

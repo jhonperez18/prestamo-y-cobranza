@@ -45,7 +45,7 @@ type Props = {
   onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
   onRenewLoan?: (loanRef: string) => void;
   onSaveExpenses?: (payload: CollectorSaveExpensesPayload) => void;
-  onCloseDay?: (payload: CollectorCloseDayPayload) => void;
+  onCloseDay?: (payload: CollectorCloseDayPayload) => boolean | void | Promise<boolean | void>;
   onCloseMonth?: (payload: CollectorCloseMonthPayload) => void;
   onCreateQuickLoan?: (draft: import("@/lib/street-client-loan").QuickLoanDraft) => void;
   onCreateRouteClient?: (

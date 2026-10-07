@@ -1658,7 +1658,7 @@ export function useWorkspace({
     });
     if (!chainGuard.ok) {
       onToast(chainGuard.error);
-      return;
+      return false;
     }
 
     const accounts = ensureBankAccounts(bankAccounts);
@@ -1766,7 +1766,7 @@ export function useWorkspace({
       onToast(
         `${label} · sigue otra hoja abierta. ${formatCloseDayAlertSummary(alertResult.alerted, alertResult.toMora) || ""}`.trim(),
       );
-      return;
+      return false;
     }
 
     const parts = [
@@ -1777,6 +1777,7 @@ export function useWorkspace({
       formatCloseDayAlertSummary(alertResult.alerted, alertResult.toMora),
     ].filter(Boolean);
     onToast(`Día cerrado · ${parts.join(" · ")}.`);
+    return true;
   }
 
   function assignDailyCollectionHandler(

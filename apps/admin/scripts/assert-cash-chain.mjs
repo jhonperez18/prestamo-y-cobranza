@@ -975,6 +975,26 @@ expect(
   false,
 );
 expect("Cerrar jornada N: CIE sigue siendo caja de N", nClosedDay.record?.cashFloat ?? null, 90_000);
+const { defaultMobileRouteDate } = await import("@/lib/collector-mobile");
+const dayOpt = (date, closed, total) => ({
+  date,
+  dateLabel: date,
+  routeRef: "RUT",
+  routeName: "N",
+  pending: closed ? 0 : 1,
+  done: total,
+  total,
+  closed,
+  allDone: closed,
+});
+expect(
+  "Hoy abierto de N manda sobre un día pasado abierto",
+  defaultMobileRouteDate(
+    [dayOpt("2026-10-05", true, 138), dayOpt("2026-10-06", false, 138), dayOpt("2026-10-04", false, 10)],
+    "2026-10-06",
+  ),
+  "2026-10-06",
+);
 
 // ── 12. Banco: cada cobro llega a su cuenta según la ruta (A → Nequi; M/T/N → Banco) ──
 console.log("\n— Banco: destino del cobro por ruta —");

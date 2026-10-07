@@ -311,18 +311,19 @@ export function defaultMobileRouteDate(
 ): string {
   if (!options.length) return fallback;
 
-  const openPast = options.find(
-    (row) => !row.closed && row.date < fallback && row.total > 0,
-  );
-  if (openPast) return openPast.date;
-
-  const withPending = options.find((row) => !row.closed && row.pending > 0);
-  if (withPending) return withPending.date;
-
+  // Hoy abierto manda. Un día pasado abierto no puede esconder el cierre de N.
   const openTodayWithSheet = options.find(
     (row) => !row.closed && row.date === fallback && row.total > 0,
   );
   if (openTodayWithSheet) return openTodayWithSheet.date;
+
+  const withPending = options.find((row) => !row.closed && row.pending > 0);
+  if (withPending) return withPending.date;
+
+  const openPast = options.find(
+    (row) => !row.closed && row.date < fallback && row.total > 0,
+  );
+  if (openPast) return openPast.date;
 
   const lastClosed = options
     .filter((row) => row.closed)
