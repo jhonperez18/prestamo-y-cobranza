@@ -1189,11 +1189,39 @@ export function useWorkspace({
       const result = commitCreateLoan(draft, portfolioState());
       const ok = await applyPortfolioCommit(result, { deferToast: cash });
       if (!ok || !result.ok) return;
-      if (!cash) return;
 
       const loan = result.focusLoanRef
         ? result.state.loans.find((row) => row.ref === result.focusLoanRef)
         : result.state.loans[0];
+
+      const projectBank = (drafts = dayExpenseDrafts) => {
+        const accounts = ensureBankAccounts(bankAccounts);
+        if (!bankAccounts.length) setBankAccounts(accounts);
+        setBankMovements((rows) =>
+          applyBankLedgerSync(rows, {
+            payments,
+            accounts,
+            miscPayments,
+            dayExpenseDrafts: drafts,
+            dayCloses,
+            loans: result.state.loans,
+            clients: result.state.clients,
+          }),
+        );
+      };
+
+      if (!cash) {
+        projectBank();
+        const origin =
+          draft.fundedBy === "banco" ? "Banco" : draft.fundedBy === "nequi" ? "Nequi" : "";
+        onToast(
+          loan && origin
+            ? `Préstamo ${loan.ref}: ${money(loan.capital)} en registro ${origin}.`
+            : result.message,
+        );
+        return;
+      }
+
       if (!loan) {
         onToast(result.message);
         return;
@@ -1203,6 +1231,7 @@ export function useWorkspace({
       const route = result.state.routes.find((row) => row.name === client?.route);
       const collector = collectors.find((row) => row.ref === route?.collectorRef);
       if (!collector || !route) {
+        projectBank();
         onToast(
           `${result.message} Origen efectivo: asigne cobrador a la ruta para descontar de su caja.`,
         );
@@ -1223,19 +1252,7 @@ export function useWorkspace({
         (row) => row.ref === `GAS-${collector.ref}-${date}`,
       );
       if (expenseDraft) queueDayExpenseMirror(expenseDraft);
-      const accounts = ensureBankAccounts(bankAccounts);
-      if (!bankAccounts.length) setBankAccounts(accounts);
-      setBankMovements((rows) =>
-        applyBankLedgerSync(rows, {
-          payments,
-          accounts,
-          miscPayments,
-          dayExpenseDrafts: nextDrafts,
-          dayCloses,
-          loans: result.state.loans,
-          clients: result.state.clients,
-        }),
-      );
+      projectBank(nextDrafts);
       onToast(
         `Préstamo ${loan.ref}: capital ${money(loan.capital)} descontado del efectivo de ${collector.name}.`,
       );
@@ -1286,11 +1303,6 @@ export function useWorkspace({
       }
       const drafts = routeCash?.ok ? routeCash.drafts : synced.drafts;
       const changed = routeCash?.ok ? [...synced.changed, routeCash.draft] : synced.changed;
-      if (!changed.length) return;
-
-      writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, drafts);
-      setDayExpenseDrafts(drafts);
-      for (const row of changed) queueDayExpenseMirror(row);
       const accounts = ensureBankAccounts(bankAccounts);
       setBankMovements((rows) =>
         applyBankLedgerSync(rows, {
@@ -1303,6 +1315,11 @@ export function useWorkspace({
           clients: result.state.clients,
         }),
       );
+      if (!changed.length) return;
+
+      writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, drafts);
+      setDayExpenseDrafts(drafts);
+      for (const row of changed) queueDayExpenseMirror(row);
       try {
         const flush = await flushOpsMirrorQueues();
         const topUpCollector = synced.topUp > 0 && routeCash?.ok ? routeCash.collector.name : "";

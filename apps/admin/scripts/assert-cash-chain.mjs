@@ -1189,6 +1189,23 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
     payCommitSrc.includes("syncPermanentRoutePlanilla"),
     false,
   );
+  const shellSrc = readFileSync(new URL("../components/CollectorShell.tsx", import.meta.url), "utf8");
+  const payFn = shellSrc.slice(
+    shellSrc.indexOf("async function registerCollectorPayment"),
+    shellSrc.indexOf("async function renewCollectorLoan"),
+  );
+  expect(
+    "Cobrador: confirmar no arma Banco ni rehace la planilla",
+    payFn.includes("projectOperationalMoney") || payFn.includes("syncBankLedger"),
+    false,
+  );
+  const applySync = shellSrc.slice(shellSrc.indexOf("const applyPlanillaSync"));
+  const applyBody = applySync.slice(0, applySync.indexOf("usePlanillaDayRollover"));
+  expect(
+    "Cobrador: el ciclo del día no reenvía toda la planilla",
+    applyBody.includes("queueAssignmentsMirror(next.assignments)"),
+    false,
+  );
 }
 
 // ── 12. Banco: cada cobro llega a su cuenta según la ruta (A → Nequi; M/T/N → Banco) ──
@@ -1243,6 +1260,105 @@ expect("Banco · M no efectivo (nequi) → Banco", accountOf("PG-M1"), "BC");
 expect("Banco · M no efectivo (banco) → Banco", accountOf("PG-M2"), "BC");
 expect("Banco · N no efectivo → Banco", accountOf("PG-N1"), "BC");
 expect("Banco · M efectivo → principal", accountOf("PG-M3"), "EF");
+
+const { lockPaymentCobrosAsIncome } = await import("@/lib/bank");
+const voidedFlaca = {
+  ...bankPay("PG-10439", "L-M", "nequi"),
+  client: "Maria Flaca",
+  amount: 50_000,
+  type: "Anulado",
+  voidedAt: "2026-10-07T03:28:29.769Z",
+};
+const priorVoidRow = {
+  ref: "MOV-VOID",
+  accountRef: "BC",
+  period: "2026-10",
+  description: "Cobro PG-10439",
+  valueDate: D,
+  opDate: D,
+  thirdParty: "Maria Flaca",
+  debit: 50_000,
+  credit: 0,
+  paymentRef: "PG-10439",
+  inExtract: true,
+  reconciled: false,
+  manual: false,
+};
+const afterVoid = syncAllPaymentsToMovements(
+  [bankPay("PG-M3", "L-M", "efectivo"), voidedFlaca],
+  [priorVoidRow],
+  bankAccounts,
+  loanRouteIndex(bankLoans, bankClients),
+);
+expect(
+  "Banco · anulado no queda en registros (Maria Flaca)",
+  afterVoid.some((row) => row.paymentRef === "PG-10439"),
+  false,
+);
+expect(
+  "Banco · cobro vivo sigue tras anular otro",
+  afterVoid.some((row) => row.paymentRef === "PG-M3"),
+  true,
+);
+expect(
+  "Banco · lock suelta el PG- anulado",
+  lockPaymentCobrosAsIncome([priorVoidRow], [voidedFlaca]).some(
+    (row) => row.paymentRef === "PG-10439",
+  ),
+  false,
+);
+
+const { syncNequiLoanDisbursementsToMovements } = await import("@/lib/bank");
+const bankClientsWithT = [...bankClients, { ref: "C-T", route: "T" }];
+const dsbRows = syncNequiLoanDisbursementsToMovements(
+  [
+    {
+      ref: "P-T1",
+      clientRef: "C-T",
+      client: "Jose Albornoz",
+      capital: 1_000_000,
+      date: "06/10/2026",
+      fundedBy: "banco",
+      notes: "[[fb:banco]]",
+    },
+    {
+      ref: "P-A1",
+      clientRef: "C-A",
+      client: "A",
+      capital: 500_000,
+      date: "2026-10-06",
+      fundedBy: "nequi",
+      notes: "[[fb:nequi]]",
+    },
+    {
+      ref: "P-CASH",
+      clientRef: "C-M",
+      client: "X",
+      capital: 100_000,
+      date: "2026-10-06",
+      fundedBy: "efectivo",
+      notes: "[[fb:efectivo]]",
+    },
+  ],
+  [],
+  bankAccounts,
+  bankClientsWithT,
+);
+const dsbOf = (loanRef) =>
+  dsbRows.find((row) => row.loanDisbursementRef === `DSB-${loanRef}`)?.accountRef ?? null;
+expect("Banco · desembolso T Banco → cuenta Banco", dsbOf("P-T1"), "BC");
+expect("Banco · desembolso A Nequi → cuenta Nequi", dsbOf("P-A1"), "NQ");
+expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisbursementRef === "DSB-P-CASH"), false);
+{
+  const { readFileSync } = await import("node:fs");
+  const bankSrc = readFileSync(new URL("../lib/bank.ts", import.meta.url), "utf8");
+  expect(
+    "Desembolso DSB usa la ruta del cliente (no la primera cuenta activa)",
+    bankSrc.includes("digitalAccountRefForRoute") &&
+      bankSrc.includes("sameRoute(route || \"\", \"A\")"),
+    true,
+  );
+}
 
 // ── 13. Cuadre del total acumulado BANCO / NEQUI: con todas las rutas cerradas hoy.
 //     El real ancla el pool; desde mañana suma sobre él. Cajas, CIE y cadena intactos.

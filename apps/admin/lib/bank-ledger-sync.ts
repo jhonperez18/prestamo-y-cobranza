@@ -58,7 +58,8 @@ export function syncBankLedger(input: {
   const withLoans = syncNequiLoanDisbursementsToMovements(
     input.loans,
     withExpenses,
-    account?.ref,
+    accounts,
+    input.clients,
   );
   // Último paso: los cobros nunca se desalinean de Ingresos.
   return normalizeBankMovements(

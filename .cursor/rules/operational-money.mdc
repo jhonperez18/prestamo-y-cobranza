@@ -13,6 +13,10 @@ alwaysApply: true
 - Cuenta del cobro en Banco (`syncAllPaymentsToMovements`): efectivo → cuenta principal;
   no efectivo de un cliente de **A** → cuenta «Nequi»; de **M / T / N** → cuenta «Banco».
   Manda la ruta del cliente, no el valor guardado. Candado: `assert-cash-chain.mjs` sección 12.
+- Desembolso Banco / Nequi (`DSB-` vía `syncNequiLoanDisbursementsToMovements`): misma cuenta
+  que el cobro digital de esa ruta (T de Albornoz → «Banco», no la primera cuenta activa).
+  Tras Nuevo préstamo hay que proyectar el ledger; no basta con guardar el `P-`.
+- `PG-` anulado (`voidedAt` o tipo Anulado) sale del registro Banco. No queda huérfano.
 - Detalle: `docs/operational-money.md`.
 
 ## Obligatorio tras mutar dinero o cierre

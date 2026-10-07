@@ -1,6 +1,7 @@
 import type { ClientRow, LoanRow, PaymentRow } from "@/lib/mock-data";
 import { COLLECTORS, money } from "@/lib/mock-data";
 import { sameRoute } from "@/lib/client-route-order";
+import { isPaymentLive } from "@/lib/live-payments";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement } from "@/lib/misc-payments";
 import {
@@ -777,7 +778,12 @@ export function lockPaymentCobrosAsIncome(
   routeByLoan?: Map<string, string>,
 ): BankMovement[] {
   const byPg = new Map(payments.map((row) => [row.ref, row]));
-  return movements.map((row) => {
+  return movements.filter((row) => {
+    const pg = paymentRefForMovement(row);
+    if (!pg) return true;
+    const payment = byPg.get(pg);
+    return !payment || isPaymentLive(payment);
+  }).map((row) => {
     const pg = paymentRefForMovement(row);
     if (!pg) return row;
     const payment = byPg.get(pg);
@@ -998,15 +1004,19 @@ export function syncMiscPaymentsToMovements(
 }
 
 /**
- * Desembolsos de préstamo/renovación financiados con Nequi → Haber en banco.
- * Ref estable DSB-{loanRef}; capital = plata entregada (no incluye interés).
+ * Desembolsos Banco / Nequi → Haber. Ref estable DSB-{loanRef}.
+ * Cuenta = ruta del cliente (A → Nequi; M / T / N → Banco). No la primera cuenta activa.
  */
 export function syncNequiLoanDisbursementsToMovements(
   loans: LoanRow[],
   movements: BankMovement[],
-  accountRef: string | null | undefined,
+  accounts: BankAccount[],
+  clients: ClientRow[] = [],
 ): BankMovement[] {
-  if (!accountRef) return movements;
+  const ensured = ensureBankAccounts(accounts);
+  const primary = ensured.find((row) => row.active) ?? ensured[0];
+  if (!primary) return movements;
+  const routeByClient = new Map(clients.map((row) => [row.ref, row.route ?? ""]));
 
   const wanted = loans.filter(
     (loan) =>
@@ -1028,6 +1038,11 @@ export function syncNequiLoanDisbursementsToMovements(
     const capital = Number(loan.capital) || 0;
     const isRenewal = /renovaci[oó]n/i.test(loan.notes || "");
     const originLabel = loanFundedByBanco(loan) ? "Banco" : "Nequi";
+    const route = loan.clientRef ? routeByClient.get(loan.clientRef) : undefined;
+    const projectedAccountRef = digitalAccountRefForRoute(ensured, route) ?? primary.ref;
+    const existing = byRef.get(lineRef) ?? next.find((row) => row.ref === lineRef);
+    const accountRef =
+      existing?.reconciled && existing.accountRef ? existing.accountRef : projectedAccountRef;
     const patch: BankMovement = {
       ref: lineRef,
       accountRef,
@@ -1044,7 +1059,6 @@ export function syncNequiLoanDisbursementsToMovements(
       reconciled: false,
       manual: true,
     };
-    const existing = byRef.get(lineRef) ?? next.find((row) => row.ref === lineRef);
     if (existing) {
       next = next.map((row) =>
         row.ref === existing.ref || row.loanDisbursementRef === lineRef
@@ -1250,7 +1264,7 @@ export function loanRouteIndex(loans: LoanRow[], clients: ClientRow[]): Map<stri
 }
 
 /**
- * Destino del cobro no efectivo según la ruta: A cobra por Nequi; M / T / N por Banco.
+ * Destino del cobro / desembolso digital según la ruta: A → Nequi; M / T / N → Banco.
  * La cuenta se reconoce por su nombre en el catálogo («Nequi» / «Banco»).
  */
 function digitalPaymentAccounts(accounts: BankAccount[], primary: BankAccount) {
@@ -1265,6 +1279,17 @@ function digitalPaymentAccounts(accounts: BankAccount[], primary: BankAccount) {
     otherRoutes: byLabel("banco") ?? legacyNequi ?? primary,
     legacyNequi,
   };
+}
+
+/** Cuenta del Haber DSB-: misma ley que el cobro no efectivo (ruta del cliente). */
+export function digitalAccountRefForRoute(
+  accounts: BankAccount[],
+  route: string | undefined,
+): string | null {
+  const primary = accounts.find((row) => row.active) ?? accounts[0];
+  if (!primary) return null;
+  const digital = digitalPaymentAccounts(accounts, primary);
+  return sameRoute(route || "", "A") ? digital.routeA.ref : digital.otherRoutes.ref;
 }
 
 /**
@@ -1305,6 +1330,7 @@ export function syncAllPaymentsToMovements(
   for (const payment of payments) {
     if (seenPayments.has(payment.ref)) continue;
     seenPayments.add(payment.ref);
+    if (!isPaymentLive(payment)) continue;
     const prev = byPayment.get(payment.ref);
     const period = periodFromIso(payment.paidDate);
     const method = normalizePaymentMethod(payment.method);

@@ -240,6 +240,10 @@ export function nequiAcumuladoNet(input: {
   return ingresos - sumNequiFundedDisbursements(input.loans);
 }
 
-export function loanDisbursementIsoDate(loan: LoanRow): string {
-  return displayToIso(loan.date) || loan.date || "";
+export function loanDisbursementIsoDate(
+  loan: Pick<LoanRow, "date"> & { start_date?: string },
+): string {
+  const raw = String(loan.date || loan.start_date || "").trim();
+  if (!raw) return "";
+  return displayToIso(raw) || raw;
 }

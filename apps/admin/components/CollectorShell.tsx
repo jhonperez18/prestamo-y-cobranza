@@ -76,7 +76,6 @@ import {
   type BankMovement,
 } from "@/lib/bank";
 import { syncBankLedger } from "@/lib/bank-ledger-sync";
-import { projectOperationalMoney } from "@/lib/project-operational-money";
 import {
   enqueuePaymentsForFlush,
   flushPaymentMirrorQueue,
@@ -244,7 +243,8 @@ export function CollectorShell({ session, onLogout }: Props) {
         writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, next.planillaCashCloses);
       }
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
-      queueAssignmentsMirror(next.assignments);
+      // Cobrador: no reenviar la planilla entera (ayer + hoy). Eso pega N al cobrar.
+      // Confirmar / omitir / cerrar ya encolan la visita que toca.
       writeDemoJson(DEMO_ROUTES_KEY, next.routes);
       writeDemoJson(DEMO_LOANS_KEY, next.loans);
       writeDemoJson(DEMO_DAILY_LOGS_KEY, next.logs);
@@ -451,37 +451,7 @@ export function CollectorShell({ session, onLogout }: Props) {
         } catch (error) {
           console.error("collector-pay-persist-rest", error);
         }
-        const accounts = ensureBankAccounts(
-          readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
-        );
-        const projected = projectOperationalMoney({
-          loans: committed.loans,
-          payments: committed.payments,
-          collectors,
-          clients: committed.clients,
-          dayCloses: loadDemoDayCloses<CollectorDayCloseRecord>(),
-          dayExpenseDrafts: readDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),
-          bankAccounts: accounts,
-          bankMovements: normalizeBankMovements(
-            readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
-          ),
-          miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-          assignments: committed.assignments,
-          dailyLogs: logsAfterPay,
-        });
-        setLoans(projected.loans);
-        setDayCloses(projected.dayCloses);
-        setDailyAssignments(projected.assignments);
-        setDailyLogs(projected.dailyLogs);
-        try {
-          writeDemoJson(DEMO_LOANS_KEY, projected.loans);
-          writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, projected.dayCloses);
-          writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
-          writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
-          writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, projected.bankMovements);
-        } catch (error) {
-          console.error("collector-pay-project", error);
-        }
+        // Primero el PG-: confirmar en N no espera Banco ni rehacer la planilla.
         await queuePaymentsMirror(paymentsCreated);
         let payFlush = await flushPaymentMirrorQueue();
         if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();
