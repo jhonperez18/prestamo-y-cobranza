@@ -21,7 +21,7 @@ import {
   reconcileLocalPaymentsToRemote,
   reconcilePaymentEvidenceToRemote,
 } from "@/lib/supabase/payment-mirror";
-import { pullRemoteCatalogIntoDemo } from "@/lib/supabase/catalog-mirror";
+import { flushCatalogMirrorQueues, pullRemoteCatalogIntoDemo } from "@/lib/supabase/catalog-mirror";
 import { pullRemoteOpsIntoDemo, reconcileLocalOpsToRemote } from "@/lib/supabase/ops-mirror";
 import { pullRemoteUsersIntoDemo } from "@/lib/supabase/user-mirror";
 import {
@@ -233,9 +233,12 @@ export function useOperationalDemoSync(
     const tuneupDay = deviceTuneupDueDay();
     try {
       // Cobrador / taller: subir cola antes de bajar.
-      // Supervisor: bajar primero. Si espera el flush de planilla, no ve cobros ni préstamos.
+      // Supervisor: bajar cobros primero (no espera el flush de planilla).
+      // Los préstamos restaurados del Haber (Albornoz) sí suben: si no, Vercel no los ve.
       if (!isSupervisorLiveDevice()) {
         await runMirrorFlush();
+      } else {
+        await flushCatalogMirrorQueues();
       }
       // Primera sincronización del día: cupo libre antes de la bajada completa.
       if (tuneupDay) compactDeviceForDay();

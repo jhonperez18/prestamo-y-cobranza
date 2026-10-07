@@ -40,7 +40,12 @@ export type RestoreLoansFromDisbursementsResult = {
 };
 
 function nameKey(raw: string) {
-  return raw.trim().toLowerCase().replace(/\s+/g, " ");
+  return raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
 }
 
 function clientMatchesThirdParty(client: ClientRow, thirdParty: string) {
@@ -48,17 +53,36 @@ function clientMatchesThirdParty(client: ClientRow, thirdParty: string) {
   if (!needle) return false;
   const full = nameKey(`${client.name} ${client.lastName}`);
   const nick = nameKey(client.name);
-  return full === needle || nick === needle;
+  if (full === needle || nick === needle) return true;
+  if (full.replace(/ /g, "") === needle.replace(/ /g, "")) return true;
+  const needleParts = needle.split(" ").filter(Boolean);
+  const fullParts = full.split(" ").filter(Boolean);
+  if (needleParts.length >= 2 && fullParts.length >= 2) {
+    const hasAll = (left: string[], right: string[]) => left.every((part) => right.includes(part));
+    return hasAll(needleParts, fullParts) || hasAll(fullParts, needleParts);
+  }
+  return false;
+}
+
+/** El Haber DSB es de este préstamo, no de otro cliente que heredó el P-. */
+export function disbursementBelongsToLoan(
+  thirdParty: string | undefined,
+  loanClient: string | undefined,
+): boolean {
+  const a = nameKey(thirdParty || "");
+  const b = nameKey(loanClient || "");
+  if (!a || !b) return false;
+  return a === b || a.replace(/ /g, "") === b.replace(/ /g, "");
 }
 
 function findClientByThirdParty(clients: ClientRow[], thirdParty: string) {
   return clients.find((row) => clientMatchesThirdParty(row, thirdParty));
 }
 
-/** DSB-P-425 → P-425 */
+/** DSB-P-425 → P-425 (también DSB-P-425-keep si otro cliente heredó el código). */
 export function loanRefFromDisbursementMovement(row: BankMovement): string {
   const raw = String(row.loanDisbursementRef || row.ref || "").trim();
-  const matched = /(?:^DSB-)?(P-\d+)$/i.exec(raw);
+  const matched = /(?:^DSB-)?(P-\d+)(?:-keep)?$/i.exec(raw);
   return matched?.[1] ? `P-${matched[1].replace(/^P-/i, "")}` : "";
 }
 

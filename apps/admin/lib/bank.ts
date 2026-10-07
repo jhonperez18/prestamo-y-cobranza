@@ -10,6 +10,7 @@ import {
   loanFundedByBanco,
   loanFundedByNequi,
 } from "@/lib/nequi-pool";
+import { disbursementBelongsToLoan } from "@/lib/restore-loans-from-bank-disbursements";
 import {
   normalizePaymentMethod,
   paymentMethodForRoute,
@@ -1059,7 +1060,7 @@ export function syncNequiLoanDisbursementsToMovements(
       reconciled: false,
       manual: true,
     };
-    if (existing) {
+    if (existing && disbursementBelongsToLoan(existing.thirdParty, loan.client)) {
       next = next.map((row) =>
         row.ref === existing.ref || row.loanDisbursementRef === lineRef
           ? {
@@ -1071,6 +1072,18 @@ export function syncNequiLoanDisbursementsToMovements(
           : row,
       );
     } else {
+      if (
+        existing &&
+        !disbursementBelongsToLoan(existing.thirdParty, loan.client) &&
+        !String(existing.ref).endsWith("-keep")
+      ) {
+        const keepRef = `${existing.ref}-keep`;
+        next = next.map((row) =>
+          row.ref === existing.ref
+            ? { ...row, ref: keepRef, loanDisbursementRef: keepRef }
+            : row,
+        );
+      }
       next = [patch, ...next];
     }
   }

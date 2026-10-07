@@ -2190,6 +2190,39 @@ expect(
   );
   expect("Registro Banco: rehacer ficha no vuelve a descontar el millón", albHaber(afterLedger), 1_000_000);
   expect("Registro Banco: sigue un solo Haber de Albornoz", albHaberRows(afterLedger).length, 1);
+  const ceciliaLoan = markLoanFundedByBanco({
+    ref: "P-425",
+    clientRef: "COD-CEC",
+    client: "Cecilia",
+    date: "07/10/2026",
+    capital: 1_000_000,
+    status: "Revisar",
+  });
+  const afterCecilia = syncNequiLoanDisbursementsToMovements(
+    [yeniLoan, ceciliaLoan],
+    bankRows,
+    bankAccounts,
+    [...albBankClients, { ref: "COD-CEC", name: "Cecilia", lastName: "", route: "T" }],
+  );
+  expect("Haber Albornoz no lo pisa otro P-425", albHaber(afterCecilia), 1_000_000);
+  expect(
+    "Cecilia tiene su Haber aparte",
+    afterCecilia.some(
+      (row) => /cecilia/i.test(`${row.thirdParty || ""}`) && (Number(row.credit) || 0) === 1_000_000,
+    ),
+    true,
+  );
+  expect(
+    "José con tilde encuentra a Jose Albornoz",
+    restoreLoansFromOrphanDisbursements({
+      loans: [yeniLoan, martinLoan],
+      movements: [{ ...bankRows[1], thirdParty: "José Albornoz" }],
+      clients: [
+        { ref: "COD-274", name: "Jose", lastName: "Albornoz", route: "T", status: "Activo", routeOrder: 42 },
+      ],
+    }).created.some((row) => row.clientRef === "COD-274" && row.capital === 1_000_000),
+    true,
+  );
   const poolBase = {
     payments: [],
     clients: albBankClients,
