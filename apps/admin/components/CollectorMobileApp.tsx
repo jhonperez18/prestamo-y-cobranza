@@ -2464,8 +2464,8 @@ export function CollectorMobileApp({
                         defaultFundedBy="efectivo"
                         onCancel={() => setReloanPayRef(null)}
                         onSave={(draft) => {
-                          onCreateQuickLoan({ ...draft, routeName: payClient.route });
                           setReloanPayRef(null);
+                          onCreateQuickLoan({ ...draft, routeName: payClient.route });
                         }}
                       />
                     </div>
@@ -2722,8 +2722,8 @@ export function CollectorMobileApp({
                           defaultFundedBy="efectivo"
                           onCancel={closeCard}
                           onSave={(draft) => {
+                            closeCard(true);
                             onCreateQuickLoan(draft);
-                            closeCard();
                           }}
                         />
                       </div>
@@ -2761,8 +2761,8 @@ export function CollectorMobileApp({
                           onRenew={
                             onRenewLoan && loanForRenew
                               ? () => {
+                                  closeCard(true);
                                   onRenewLoan(loanForRenew.ref);
-                                  closeCard();
                                 }
                               : undefined
                           }

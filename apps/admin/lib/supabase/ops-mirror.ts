@@ -1215,6 +1215,23 @@ export function queueAssignmentMirror(
   });
 }
 
+function assignmentKey(a: DailyCollectionAssignment) {
+  return `${normalizeHistoryDate(a.dispatchDate) || a.dispatchDate}::${a.itemId}`;
+}
+
+/**
+ * Visitas nuevas o cambiadas entre dos planillas. Un préstamo del cobrador solo
+ * sube eso: reenviar toda la planilla (cientos de filas, una petición cada una)
+ * deja el celular trabado.
+ */
+export function assignmentsChangedFrom(
+  prev: DailyCollectionAssignment[],
+  next: DailyCollectionAssignment[],
+): DailyCollectionAssignment[] {
+  const before = new Map(prev.map((row) => [assignmentKey(row), assignmentMirrorSig(row)]));
+  return next.filter((row) => before.get(assignmentKey(row)) !== assignmentMirrorSig(row));
+}
+
 export function queueAssignmentsMirror(rows: DailyCollectionAssignment[]) {
   // Un lote = una lectura de CIE- (antes se parseaba por cada visita abierta).
   let closes: CollectorDayCloseRecord[] | null = null;

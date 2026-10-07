@@ -84,6 +84,7 @@ import {
   queueLoansMirror,
 } from "@/lib/supabase/catalog-mirror";
 import {
+  assignmentsChangedFrom,
   flushOpsMirrorQueues,
   queueAssignmentsMirror,
   queueDayCloseMirror,
@@ -492,7 +493,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     queueLoansMirror([result.created, result.closed]);
     const renewedClient = nextClients.find((entry) => entry.ref === loan.clientRef);
     if (renewedClient) queueClientMirror(renewedClient);
-    queueAssignmentsMirror(planilla.assignments);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, planilla.assignments));
     queueRoutesMirror(planilla.routes);
     const clientRow = nextClients.find((c) => c.ref === loan.clientRef);
     const routeRef =
@@ -582,7 +583,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     queueLoanMirror(loan);
     const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
     if (mirroredClient) queueClientMirror(mirroredClient);
-    queueAssignmentsMirror(planilla.assignments);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, planilla.assignments));
     queueRoutesMirror(planilla.routes);
     const routeRef =
       myRoutes.find((row) => row.name === client.route)?.ref ||
@@ -673,7 +674,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     setRoutes(nextRoutes);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, nextAssignments);
     writeDemoJson(DEMO_ROUTES_KEY, nextRoutes);
-    queueAssignmentsMirror(nextAssignments);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, nextAssignments));
     queueRoutesMirror(nextRoutes);
     showToast(
       declinedOffer

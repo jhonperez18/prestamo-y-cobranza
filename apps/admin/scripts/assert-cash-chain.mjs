@@ -1279,6 +1279,17 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
     shellSrc.includes("syncBankLedger"),
     false,
   );
+  expect(
+    "Cobrador: prestar / renovar / N/P no reenvían la planilla entera",
+    /queueAssignmentsMirror\((planilla\.assignments|nextAssignments)\)/.test(shellSrc),
+    false,
+  );
+  const mobileSrc = readFileSync(new URL("../components/CollectorMobileApp.tsx", import.meta.url), "utf8");
+  expect(
+    "Cobrador: «Crear préstamo» cierra el formulario antes de registrar",
+    /closeCard\(true\);\s*onCreateQuickLoan\(draft\)/.test(mobileSrc),
+    true,
+  );
   const opsSyncSrc = readFileSync(new URL("../lib/operational-sync.ts", import.meta.url), "utf8");
   expect(
     "Cobrador vivo: el ciclo no restaura Haber ni arma el registro Banco",
@@ -4190,6 +4201,38 @@ console.log("— Cupo del aparato —");
     movements: ledger,
   });
   expect("Banco: solo sale Carlos Cerveza 500 (M)", pools.banco, -500_000);
+}
+
+{
+  console.log("— Préstamo del cobrador: solo sube la visita que cambió —");
+  const { assignmentsChangedFrom } = await import("@/lib/supabase/ops-mirror");
+  const visit = (itemId, dispatchDate, extra = {}) => ({
+    itemId,
+    dispatchDate,
+    clientRef: `COD-${itemId}`,
+    collectorRef: "COB-0",
+    amountDue: 10_000,
+    visitStatus: "pendiente",
+    dispatched: true,
+    ...extra,
+  });
+  const prev = [
+    ...Array.from({ length: 200 }, (_, index) => visit(`V${index}`, "2026-10-06", { visitStatus: "cobrado", dayClosedAt: "2026-10-06T23:30:00Z" })),
+    ...Array.from({ length: 230 }, (_, index) => visit(`H${index}`, "2026-10-07")),
+    visit("PRESTAR-1", "2026-10-07", { kind: "prestar", amountDue: 0 }),
+  ];
+  const next = [
+    ...prev.filter((row) => row.itemId !== "PRESTAR-1"),
+    visit("PRESTAR-1", "2026-10-07", { kind: "prestar", amountDue: 0, visitStatus: "omitido", skipReason: "Préstamo hecho hoy" }),
+    visit("CUOTA-P-999", "2026-10-07", { loanRef: "P-999" }),
+  ];
+  const changed = assignmentsChangedFrom(prev, next);
+  expect("Préstamo: sube 2 visitas (Prestar atendido + cuota nueva), no 432", changed.length, 2);
+  expect(
+    "Préstamo: el día de ayer (sellado) no se reenvía",
+    changed.some((row) => row.dispatchDate === "2026-10-06"),
+    false,
+  );
 }
 
 if (failures) {
