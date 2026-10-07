@@ -629,6 +629,13 @@ function enqueueMirrorPayment(payment: PaymentRow) {
   writeMirrorQueue(queue);
 }
 
+/** Encola ya (sync). El POST va atrás: confirmar en T no espera la nube. */
+export function enqueuePaymentsForFlush(payments: PaymentRow[]): void {
+  for (const payment of payments) {
+    enqueueMirrorPayment(withPaymentEvidence(payment));
+  }
+}
+
 function dequeueMirrorPayment(ref: string) {
   writeMirrorQueue(readMirrorQueue().filter((row) => row.ref !== ref));
 }
@@ -653,6 +660,7 @@ export async function persistPaymentToSupabase(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body,
+      signal: AbortSignal.timeout(20_000),
       ...(useKeepalive ? { keepalive: true } : {}),
     });
     const result = (await res.json()) as MirrorPaymentResult & { error?: string };
@@ -693,6 +701,7 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ payment: payload }),
+        signal: AbortSignal.timeout(20_000),
       });
       const body = (await res.json()) as MirrorApiJson;
       // Solo sacar de cola si realmente escribió en Postgres (o skip irrecuperable).

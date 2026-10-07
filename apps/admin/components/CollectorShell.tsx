@@ -77,7 +77,11 @@ import {
 } from "@/lib/bank";
 import { syncBankLedger } from "@/lib/bank-ledger-sync";
 import { projectOperationalMoney } from "@/lib/project-operational-money";
-import { flushPaymentMirrorQueue, queuePaymentsMirror } from "@/lib/supabase/payment-mirror";
+import {
+  enqueuePaymentsForFlush,
+  flushPaymentMirrorQueue,
+  queuePaymentsMirror,
+} from "@/lib/supabase/payment-mirror";
 import {
   flushCatalogMirrorQueues,
   queueClientMirror,
@@ -412,49 +416,22 @@ export function CollectorShell({ session, onLogout }: Props) {
       }
     }
 
-    const accounts = ensureBankAccounts(
-      readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
-    );
-    writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, accounts);
-
-    const projected = projectOperationalMoney({
-      loans: committed.loans,
-      payments: committed.payments,
-      collectors,
-      clients: committed.clients,
-      dayCloses: loadDemoDayCloses<CollectorDayCloseRecord>(),
-      dayExpenseDrafts: readDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),
-      bankAccounts: accounts,
-      bankMovements: normalizeBankMovements(
-        readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
-      ),
-      miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
-      assignments: committed.assignments,
-      dailyLogs: logsAfterPay,
-    });
-
     setPayments(committed.payments);
     setClients(committed.clients);
     setRoutes(committed.routes);
-    setLoans(projected.loans);
-    setDayCloses(projected.dayCloses);
-    setDailyAssignments(projected.assignments);
-    setDailyLogs(projected.dailyLogs);
+    setLoans(committed.loans);
+    setDailyAssignments(committed.assignments);
+    setDailyLogs(logsAfterPay);
     try {
       writeDemoJson(DEMO_PAYMENTS_KEY, committed.payments);
-      writeDemoJson(DEMO_LOANS_KEY, projected.loans);
-      writeDemoJson(DEMO_CLIENTS_KEY, committed.clients);
-      writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
-      writeDemoJson(DEMO_ROUTES_KEY, committed.routes);
-      writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, projected.dayCloses);
-      writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
-      writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, projected.bankMovements);
+      writeDemoJson(DEMO_LOANS_KEY, committed.loans);
     } catch (error) {
       console.error("collector-pay-persist", error);
     }
 
     const toastRefs = paymentsCreated.map((row) => row.ref).join(" + ");
     showToast(`Cobro ${toastRefs} guardado · subiendo a la nube…`);
+    enqueuePaymentsForFlush(paymentsCreated);
     const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
     if (paidLoan) queueLoanMirror(paidLoan);
     const paidClient = committed.clients.find((row) =>
@@ -463,11 +440,48 @@ export function CollectorShell({ session, onLogout }: Props) {
       ),
     );
     if (paidClient) queueClientMirror(paidClient);
-    // Solo la visita cobrada. Reenviar M+T+A en cada confirmar deja T pegado en la firma.
-    queueAssignmentsMirror(assignmentsForCreatedPayments(projected.assignments, paymentsCreated));
-    // El cobrador sigue cobrando ya: la firma no espera el POST. La nube va atrás.
+    queueAssignmentsMirror(assignmentsForCreatedPayments(committed.assignments, paymentsCreated));
     void (async () => {
       try {
+        try {
+          writeDemoJson(DEMO_CLIENTS_KEY, committed.clients);
+          writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, committed.assignments);
+          writeDemoJson(DEMO_ROUTES_KEY, committed.routes);
+          writeDemoJson(DEMO_DAILY_LOGS_KEY, logsAfterPay);
+        } catch (error) {
+          console.error("collector-pay-persist-rest", error);
+        }
+        const accounts = ensureBankAccounts(
+          readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
+        );
+        const projected = projectOperationalMoney({
+          loans: committed.loans,
+          payments: committed.payments,
+          collectors,
+          clients: committed.clients,
+          dayCloses: loadDemoDayCloses<CollectorDayCloseRecord>(),
+          dayExpenseDrafts: readDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),
+          bankAccounts: accounts,
+          bankMovements: normalizeBankMovements(
+            readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
+          ),
+          miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
+          assignments: committed.assignments,
+          dailyLogs: logsAfterPay,
+        });
+        setLoans(projected.loans);
+        setDayCloses(projected.dayCloses);
+        setDailyAssignments(projected.assignments);
+        setDailyLogs(projected.dailyLogs);
+        try {
+          writeDemoJson(DEMO_LOANS_KEY, projected.loans);
+          writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, projected.dayCloses);
+          writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, projected.assignments);
+          writeDemoJson(DEMO_DAILY_LOGS_KEY, projected.dailyLogs);
+          writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, projected.bankMovements);
+        } catch (error) {
+          console.error("collector-pay-project", error);
+        }
         await queuePaymentsMirror(paymentsCreated);
         let payFlush = await flushPaymentMirrorQueue();
         if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();

@@ -306,42 +306,46 @@ export function commitCollectorPayment(
     paymentRef: payment.ref,
   });
 
-  const planilla = syncPermanentRoutePlanilla(
-    dispatchDate,
-    nextRoutes,
-    nextClients,
-    nextLoans,
-    collectors,
-    nextAssignments,
-    nextPayments,
-  );
-  nextAssignments = reconcilePaymentsOntoPlanilla(planilla.assignments, nextPayments);
-
-  const collector = collectors.find((row) => row.ref === draft.collectorRef);
-  if (collector) {
-    const existing = planilla.routes.find(
-      (row) => row.ref === dispatchRouteRef(draft.collectorRef, dispatchDate),
-    );
-    const rebuilt = buildDispatchRoute(
-      draft.collectorRef,
-      collector.name,
+  // App cobrador: solo sella esta visita. Rearmar M+T+A en cada confirmar
+  // deja T preso en la firma y el PG- no llega a encolarse.
+  if (!isCollectorLiveDevice()) {
+    const planilla = syncPermanentRoutePlanilla(
       dispatchDate,
-      nextAssignments,
-      nextLoans,
+      nextRoutes,
       nextClients,
-      existing,
+      nextLoans,
+      collectors,
+      nextAssignments,
+      nextPayments,
     );
-    nextRoutes = upsertDispatchRoute(planilla.routes, rebuilt);
-  } else {
-    nextRoutes = planilla.routes;
+    nextAssignments = reconcilePaymentsOntoPlanilla(planilla.assignments, nextPayments);
+
+    const collector = collectors.find((row) => row.ref === draft.collectorRef);
+    if (collector) {
+      const existing = planilla.routes.find(
+        (row) => row.ref === dispatchRouteRef(draft.collectorRef, dispatchDate),
+      );
+      const rebuilt = buildDispatchRoute(
+        draft.collectorRef,
+        collector.name,
+        dispatchDate,
+        nextAssignments,
+        nextLoans,
+        nextClients,
+        existing,
+      );
+      nextRoutes = upsertDispatchRoute(planilla.routes, rebuilt);
+    } else {
+      nextRoutes = planilla.routes;
+    }
+    nextRoutes = stampRouteStopPaid(nextRoutes, {
+      collectorRef: draft.collectorRef,
+      dispatchDate,
+      clientRef: draft.clientRef,
+      loanRef: loan.ref,
+      paymentRef: payment.ref,
+    });
   }
-  nextRoutes = stampRouteStopPaid(nextRoutes, {
-    collectorRef: draft.collectorRef,
-    dispatchDate,
-    clientRef: draft.clientRef,
-    loanRef: loan.ref,
-    paymentRef: payment.ref,
-  });
 
   return {
     ok: true,

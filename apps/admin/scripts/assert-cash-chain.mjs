@@ -1104,6 +1104,11 @@ const tPaidVisit = {
   loanRef: "P-T1",
 };
 expect(
+  "Celular: confirmar no rearma M+T+A (isCollectorLiveDevice en Node = taller sí rearma)",
+  (await import("@/lib/collector-live-window")).isCollectorLiveDevice(),
+  false,
+);
+expect(
   "Confirmar en T solo encola la visita cobrada (no M+T+A)",
   assignmentsForCreatedPayments(
     [

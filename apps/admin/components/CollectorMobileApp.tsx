@@ -2767,8 +2767,9 @@ export function CollectorMobileApp({
                               : undefined
                           }
                           onSubmit={async (payload) => {
+                            closeCard(true);
                             if (payload.combined) {
-                              const ok = await onRegisterPayment({
+                              await onRegisterPayment({
                                 combined: true,
                                 comboGroupId: payload.combined.comboGroupId,
                                 paidTime: payload.combined.paidTime,
@@ -2807,10 +2808,9 @@ export function CollectorMobileApp({
                                   },
                                 ],
                               });
-                              if (ok !== false) closeCard(true);
                               return;
                             }
-                            const ok = await onRegisterPayment({
+                            await onRegisterPayment({
                               idempotencyKey: payload.idempotencyKey,
                               routeRef,
                               clientRef: item.clientRef,
@@ -2824,8 +2824,6 @@ export function CollectorMobileApp({
                               collectorName: collector.name,
                               clientName: identity.fullName,
                             });
-                            // Solo cerrar si el cobro quedó registrado (o el handler no reporta fallo).
-                            if (ok !== false) closeCard(true);
                           }}
                         />
                       </div>
