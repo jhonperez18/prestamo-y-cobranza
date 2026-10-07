@@ -1,4 +1,6 @@
+import { sameRoute } from "@/lib/client-route-order";
 import {
+  assignmentRouteName,
   assignmentsForCollector,
   assignmentsForCollectorDate,
   dispatchRouteRef,
@@ -333,6 +335,48 @@ export function defaultMobileRouteDate(
   if (lastClosed) return lastClosed.date;
 
   return fallback || options[0]!.date;
+}
+
+/**
+ * Pin de planilla al abrir: la primera hoja de HOY que aún se puede trabajar.
+ * Si M ya cerró, no esconder T/A en el cuadre (cadena: M cierra, T sigue cobrando).
+ */
+export function defaultOpenPlanillaRoute(
+  pins: string[],
+  assignments: DailyCollectionAssignment[],
+  date: string,
+  clients: ClientRow[] = [],
+): string | null {
+  if (!pins.length) return null;
+  if (pins.length === 1) return pins[0] ?? null;
+  const day = normalizeHistoryDate(date) || date;
+  const open = pins.find((name) =>
+    assignments.some((row) => {
+      if ((normalizeHistoryDate(row.dispatchDate) || row.dispatchDate) !== day) return false;
+      if (row.dayClosedAt) return false;
+      if (row.visitStatus === "omitido" || row.visitStatus === "cobrado") return false;
+      return sameRoute(assignmentRouteName(row, clients), name);
+    }),
+  );
+  return open ?? pins[0] ?? null;
+}
+
+/** ¿Queda alguna hoja de esa fecha sin sellar? Si sí, el cobrador sigue cobrando. */
+export function collectorHasOpenRouteSheet(
+  pins: string[],
+  assignments: DailyCollectionAssignment[],
+  date: string,
+  clients: ClientRow[] = [],
+): boolean {
+  if (pins.length <= 1) return false;
+  const day = normalizeHistoryDate(date) || date;
+  return pins.some((name) =>
+    assignments.some((row) => {
+      if ((normalizeHistoryDate(row.dispatchDate) || row.dispatchDate) !== day) return false;
+      if (row.dayClosedAt) return false;
+      return sameRoute(assignmentRouteName(row, clients), name);
+    }),
+  );
 }
 
 /** Los PG del día que arman el recaudo. La lista y el total salen de aquí. */

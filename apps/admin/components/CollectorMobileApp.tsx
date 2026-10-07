@@ -24,11 +24,13 @@ import { withPaymentEvidence } from "@/lib/payment-evidence-store";
 import { isLatePayment, latePaymentNote, latePaymentTag } from "@/lib/late-payment";
 import {
   collectorHasOpenPlanillaWork,
+  collectorHasOpenRouteSheet,
   collectorMobileQueue,
   collectorMobileRoutes,
   collectorDayPayments,
   collectorRecaudoBreakdown,
   defaultMobileRouteDate,
+  defaultOpenPlanillaRoute,
 } from "@/lib/collector-mobile";
 import {
   buildCollectorHistoryPlanillaRows,
@@ -411,11 +413,23 @@ export function CollectorMobileApp({
       setPlanillaRouteFilter(null);
       return;
     }
+    const day = selectedDate ?? date ?? todayIso();
+    const dayNorm = normalizeHistoryDate(day) || day;
     setPlanillaRouteFilter((prev) => {
-      if (prev && planillaRoutePins.some((name) => sameRoute(name, prev))) return prev;
-      return planillaRoutePins[0];
+      const open = defaultOpenPlanillaRoute(planillaRoutePins, assignments, day, clients);
+      const prevOpen =
+        Boolean(prev) &&
+        assignments.some((row) => {
+          const rowDay = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
+          if (rowDay !== dayNorm) return false;
+          if (row.dayClosedAt) return false;
+          if (row.visitStatus === "omitido" || row.visitStatus === "cobrado") return false;
+          return sameRoute(assignmentRouteName(row, clients), prev);
+        });
+      if (prevOpen) return prev;
+      return open ?? prev ?? planillaRoutePins[0];
     });
-  }, [planillaRoutePins]);
+  }, [planillaRoutePins, assignments, clients, date, selectedDate]);
 
   const activeDate = useMemo(() => {
     const fallback = date ?? todayIso();
@@ -1281,6 +1295,12 @@ export function CollectorMobileApp({
   }
 
   const reviewingPanel = editingExpenses || confirmingClose || reviewingLoans;
+  const todayHasOpenSheet = collectorHasOpenRouteSheet(
+    planillaRoutePins,
+    assignments,
+    activeDate,
+    clients,
+  );
   /** Sin planilla abierta → mismo inicio (último cierre + saldo) para todos los cobradores. */
   const showHomeCuadre =
     !preferCobroPlanilla &&
@@ -1288,6 +1308,7 @@ export function CollectorMobileApp({
     !editingExpenses &&
     !reviewingLoans &&
     !confirmingClose &&
+    !todayHasOpenSheet &&
     (activePlanillaRoute
       ? planillaLocked ||
         (routeDispatched.length === 0 &&
@@ -1694,7 +1715,7 @@ export function CollectorMobileApp({
           ) : null}
         </div>
         </div>
-        {!chromeLocked || (planillaRoutePins.length > 1 && !showHomeCuadre) ? (
+        {!chromeLocked || (planillaRoutePins.length > 1 && todayHasOpenSheet) ? (
           <div className="collector-mobile-header-bar">
             {!chromeLocked ? (
               <div
@@ -1741,7 +1762,7 @@ export function CollectorMobileApp({
                 </div>
               </>
             ) : null}
-            {planillaRoutePins.length > 1 && !showHomeCuadre ? (
+            {planillaRoutePins.length > 1 && (!showHomeCuadre || todayHasOpenSheet) ? (
               <div
                 className="collector-mobile-route-pins"
                 role="group"
@@ -2138,8 +2159,12 @@ export function CollectorMobileApp({
                 setReloanPayRef(null);
                 if (planillaRoutePins.length > 1) {
                   setPlanillaRouteFilter(
-                    planillaRoutePins.find((name) => sameRoute(name, "1")) ??
-                      planillaRoutePins[0],
+                    defaultOpenPlanillaRoute(
+                      planillaRoutePins,
+                      assignments,
+                      day,
+                      clients,
+                    ) ?? planillaRoutePins[0],
                   );
                 }
               }}
