@@ -424,7 +424,7 @@ export function CollectorMobileApp({
           if (rowDay !== dayNorm) return false;
           if (row.dayClosedAt) return false;
           if (row.visitStatus === "omitido" || row.visitStatus === "cobrado") return false;
-          return sameRoute(assignmentRouteName(row, clients), prev);
+          return sameRoute(assignmentRouteName(row, clients), prev ?? undefined);
         });
       if (prevOpen) return prev;
       return open ?? prev ?? planillaRoutePins[0];
