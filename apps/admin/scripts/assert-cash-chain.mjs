@@ -1041,6 +1041,32 @@ expect(
   }).ok,
   false,
 );
+const { planillaCuotaPactada, planillaLiveCuota } = await import("@/lib/planilla-display");
+const nLoanZeroInstallment = {
+  ref: "P-381",
+  clientRef: "CLI-N1",
+  capital: 300_000,
+  paid: 0,
+  balance: 360_000,
+  installment: 0,
+  status: "Revisar",
+  termsPending: true,
+  date: "01/10/2026",
+  schedule: [{ date: D, kind: "cuota", paid: 0, amount: 15_000 }],
+};
+expect(
+  "Cuota de N: si la ficha perdió installment, sale del cronograma",
+  planillaCuotaPactada(nLoanZeroInstallment),
+  15_000,
+);
+expect(
+  "Cuota de N: visita Alerta con amountDue 0 no deja el cobro en blanco",
+  planillaLiveCuota(
+    { ...visit("V-N1", "CLI-N1", "N", D), loanRef: "P-381", amountDue: 0, kind: "alerta" },
+    { ...nLoanZeroInstallment, installment: 15_000 },
+  ),
+  15_000,
+);
 
 // ── 12. Banco: cada cobro llega a su cuenta según la ruta (A → Nequi; M/T/N → Banco) ──
 console.log("\n— Banco: destino del cobro por ruta —");

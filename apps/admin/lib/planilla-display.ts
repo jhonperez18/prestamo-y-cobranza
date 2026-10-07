@@ -81,10 +81,18 @@ export function planillaCuotaPactada(loan: LoanRow | null | undefined): number {
   if (!loan) return 0;
   const synced = syncLoan(loan) as LoanRow;
   const installment = Math.trunc(Number(synced.installment) || 0);
-  if (installment <= 0) return 0;
+  const fromSchedule = Math.trunc(
+    Number(
+      (synced.schedule ?? []).find(
+        (line) => (line.kind ?? "cuota") !== "capital" && Number(line.amount) > 0,
+      )?.amount ?? 0,
+    ) || 0,
+  );
+  const pactada = installment > 0 ? installment : fromSchedule;
+  if (pactada <= 0) return 0;
   const balance = Math.trunc(Number(synced.balance) || 0);
   if (balance <= 0) return 0;
-  return Math.min(installment, balance);
+  return Math.min(pactada, balance);
 }
 
 export function planillaLiveCuotasProgress(
@@ -107,7 +115,10 @@ export function planillaLiveCuota(
 ): number {
   // Sin préstamo cobrable no hay cuota: el monto inventado no debe aparecer.
   if (isAssignmentAwaitingLoan(row) || !loan) return 0;
-  return planillaCuotaPactada(loan);
+  const pactada = planillaCuotaPactada(loan);
+  if (pactada > 0) return pactada;
+  // Visita reabierta / Alerta con amountDue 0: no dejar la cuota en blanco.
+  return Math.max(0, Math.trunc(Number(row.amountDue) || 0));
 }
 
 export function planillaSyncedLoan(
