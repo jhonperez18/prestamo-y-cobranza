@@ -1098,16 +1098,36 @@ expect(
   "T",
 );
 const { assignmentsForCreatedPayments } = await import("@/lib/commit-collector-payment");
+const { applyPaymentToAssignments } = await import("@/lib/collector-dispatch-sync");
 const tPaidVisit = {
   ...visit("V-T-paid", "CLI-T1", "T", D, { visitStatus: "cobrado" }),
   paymentRef: "PG-T1",
   loanRef: "P-T1",
 };
-expect(
-  "Celular: confirmar no rearma M+T+A (isCollectorLiveDevice en Node = taller sí rearma)",
-  (await import("@/lib/collector-live-window")).isCollectorLiveDevice(),
-  false,
+const mixDay = "2026-10-06";
+const mixSheet = [
+  visit("V-M-lock", "CLI-M1", "M", mixDay, { dayClosedAt: `${mixDay}T18:00:00.000Z`, visitStatus: "cobrado", paymentRef: "PG-M-old", loanRef: "P-M1" }),
+  visit("V-T-open", "CLI-T1", "T", mixDay, { dayClosedAt: null, visitStatus: "pendiente", loanRef: "P-T1", amountDue: 20_000 }),
+  visit("V-A-open", "CLI-A1", "A", mixDay, { dayClosedAt: null, visitStatus: "pendiente", loanRef: "P-A1", amountDue: 20_000 }),
+];
+const payTOnly = {
+  ref: "PG-T-lock",
+  loanRef: "P-T1",
+  paidDate: mixDay,
+  collectorRef: COB.ref,
+  amount: 20_000,
+};
+const afterTPay = reconcilePaymentsOntoPlanilla(
+  applyPaymentToAssignments(mixSheet, payTOnly, mixDay, "CLI-T1"),
+  [payTOnly],
 );
+const mAfter = afterTPay.find((r) => r.itemId === "V-M-lock");
+const aAfter = afterTPay.find((r) => r.itemId === "V-A-open");
+const tAfter = afterTPay.find((r) => r.itemId === "V-T-open");
+expect("Cobro en T no toca M (sello)", mAfter?.dayClosedAt || "", `${mixDay}T18:00:00.000Z`);
+expect("Cobro en T no toca M (pago)", mAfter?.paymentRef || "", "PG-M-old");
+expect("Cobro en T no toca A", `${aAfter?.visitStatus || ""}:${aAfter?.paymentRef || ""}`, "pendiente:");
+expect("Cobro en T solo sella T", tAfter?.visitStatus || "", "cobrado");
 expect(
   "Confirmar en T solo encola la visita cobrada (no M+T+A)",
   assignmentsForCreatedPayments(
@@ -1121,6 +1141,27 @@ expect(
   ).map((row) => row.itemId).join(","),
   "V-T-paid",
 );
+expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard({
+  collectorRef: COB.ref,
+  routeName: "T",
+  date: D,
+  records: [],
+  dayCloses: [],
+  assignments: [
+    visit("V-M-open", "CLI-M1", "M", D, { visitStatus: "pendiente", dayClosedAt: null, loanRef: "P-M1" }),
+    visit("V-T-wait", "CLI-T1", "T", D, { visitStatus: "pendiente", dayClosedAt: null, loanRef: "P-T1" }),
+  ],
+  clients: chainClients,
+}).ok, false);
+{
+  const { readFileSync } = await import("node:fs");
+  const payCommitSrc = readFileSync(new URL("../lib/commit-collector-payment.ts", import.meta.url), "utf8");
+  expect(
+    "Cobro no rearma M+T+A (commit no llama syncPermanentRoutePlanilla)",
+    payCommitSrc.includes("syncPermanentRoutePlanilla"),
+    false,
+  );
+}
 
 // ── 12. Banco: cada cobro llega a su cuenta según la ruta (A → Nequi; M/T/N → Banco) ──
 console.log("\n— Banco: destino del cobro por ruta —");

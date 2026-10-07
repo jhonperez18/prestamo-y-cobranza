@@ -18,7 +18,10 @@ T **no** arrastra préstamos ni gastos de M — solo el saldo.
 
 ### Cada planilla con lo suyo
 
-M y T tienen clientes, cobros, préstamos y gastos **propios**. Lo único que las une es el saldo.
+M, T, A y N tienen clientes, cobros, préstamos y gastos **propios**.
+**Lo único que une dos rutas** es el cierre: **T no puede cerrar antes que M**.
+Un cobro en T no rearma, no encola y no toca visitas de M ni de A.
+Prohibido que el confirmar de una ruta dependa de otra.
 
 | Movimiento | Planilla dueña |
 | --- | --- |
@@ -263,10 +266,11 @@ A y N llevan su propia caja. Un solo dueño: `lib/independent-route-cash.ts` (`i
 - **M cerrada, T/A abiertas:** el cobrador sigue cobrando. La app abre la primera hoja abierta
   (`defaultOpenPlanillaRoute`). Un cobro en T no salta el pin a M (`keepOpenPlanillaRoute`):
   si salta, M ya cerró y el billete se apaga. Prohibido que el cuadre de M esconda T o A.
-  Cerrar T sigue pidiendo M. Inicial / CIE no cambian. Confirmar en T cierra la firma
-  al guardar local; la nube va atrás y solo encola la visita cobrada (no M+T+A).
-  Candado: «M cerrada: abre T», «Cobro en T no apaga el billete» y
-  «Confirmar en T solo encola la visita cobrada».
+  Cerrar T sigue pidiendo M. Inicial / CIE no cambian. Confirmar sella **solo esa visita**
+  (`commitCollectorPayment` no rearma M+T+A). La nube va atrás y solo encola la visita cobrada.
+  Candado: «M cerrada: abre T», «Cobro en T no apaga el billete»,
+  «Cobro en T no toca M», «Cobro en T no toca A» y
+  «T no cierra si M sigue abierta».
 - Guardado: `saveCashAdjustment` con `route` (local + cola + await nube).
 - Nube y pull: unión por ruta, gana el más reciente (`mergeRouteCashAdjustments`); ningún candado del CIE- lo borra.
 - Tarjeta del supervisor, Historial A/N y cabecera del cobrador leen la misma cifra.

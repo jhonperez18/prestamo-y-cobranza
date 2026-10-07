@@ -8,9 +8,7 @@ import { pesos } from "@/lib/finance";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
   applyPaymentToAssignments,
-  buildDispatchRoute,
   dispatchRouteRef,
-  upsertDispatchRoute,
 } from "@/lib/collector-dispatch-sync";
 import { isCollectorLiveDevice, syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import { chargeLabel, syncLoan } from "@/lib/loan-preview";
@@ -28,7 +26,6 @@ import {
   type RouteRow,
 } from "@/lib/mock-data";
 import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
-import { syncPermanentRoutePlanilla } from "@/lib/route-planilla";
 import {
   applyCollectorPaymentResult,
   resolveCollectorPaymentContext,
@@ -170,7 +167,6 @@ export function commitCollectorPayment(
     clients,
     routes,
     assignments,
-    collectors,
   } = input;
 
   const amountPesos = pesos(draft.amount);
@@ -306,46 +302,8 @@ export function commitCollectorPayment(
     paymentRef: payment.ref,
   });
 
-  // App cobrador: solo sella esta visita. Rearmar M+T+A en cada confirmar
-  // deja T preso en la firma y el PG- no llega a encolarse.
-  if (!isCollectorLiveDevice()) {
-    const planilla = syncPermanentRoutePlanilla(
-      dispatchDate,
-      nextRoutes,
-      nextClients,
-      nextLoans,
-      collectors,
-      nextAssignments,
-      nextPayments,
-    );
-    nextAssignments = reconcilePaymentsOntoPlanilla(planilla.assignments, nextPayments);
-
-    const collector = collectors.find((row) => row.ref === draft.collectorRef);
-    if (collector) {
-      const existing = planilla.routes.find(
-        (row) => row.ref === dispatchRouteRef(draft.collectorRef, dispatchDate),
-      );
-      const rebuilt = buildDispatchRoute(
-        draft.collectorRef,
-        collector.name,
-        dispatchDate,
-        nextAssignments,
-        nextLoans,
-        nextClients,
-        existing,
-      );
-      nextRoutes = upsertDispatchRoute(planilla.routes, rebuilt);
-    } else {
-      nextRoutes = planilla.routes;
-    }
-    nextRoutes = stampRouteStopPaid(nextRoutes, {
-      collectorRef: draft.collectorRef,
-      dispatchDate,
-      clientRef: draft.clientRef,
-      loanRef: loan.ref,
-      paymentRef: payment.ref,
-    });
-  }
+  // Ley: un cobro solo sella SU visita. Nunca rearma M+T+A juntas.
+  // Lo único que une rutas es el cierre: T no cierra antes que M.
 
   return {
     ok: true,
