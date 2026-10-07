@@ -303,10 +303,12 @@ export function collectorHasOpenPlanillaWork(queue: CollectorMobileQueue): boole
  * Fecha de inicio de la app del cobrador (misma regla para todos):
  * 1) Hoy abierto con planilla (total > 0) — manda, aunque ya no haya pendientes.
  *    El cuadre de ayer no puede esconder el cierre de hoy (caso N 06/10).
- * 2) Día con visitas pendientes.
- * 3) Jornada pasada abierta con hoja.
- * 4) Último cierre formal → cuadre (solo si hoy no está abierto).
- * 5) Hoy / fallback.
+ * 2) Día con visitas pendientes (hoy o atrasadas de verdad).
+ * 3) Último cierre formal → cuadre (solo si hoy no está abierto).
+ * 4) Hoy / fallback.
+ *
+ * Un día pasado lleno (0 pendientes) no es trabajo abierto. Si el sistema ya
+ * cerró y el celular no trajo el CIE, esa hoja no puede esconder el día nuevo.
  */
 export function defaultMobileRouteDate(
   options: CollectorMobileRouteOption[],
@@ -322,11 +324,6 @@ export function defaultMobileRouteDate(
 
   const withPending = options.find((row) => !row.closed && row.pending > 0);
   if (withPending) return withPending.date;
-
-  const openPast = options.find(
-    (row) => !row.closed && row.date < fallback && row.total > 0,
-  );
-  if (openPast) return openPast.date;
 
   const lastClosed = options
     .filter((row) => row.closed)
@@ -402,8 +399,11 @@ export function collectorHasOpenRouteSheet(
   assignments: DailyCollectionAssignment[],
   date: string,
   clients: ClientRow[] = [],
+  dayCloses: CollectorDayCloseRecord[] = [],
+  collectorRef = "",
 ): boolean {
   if (pins.length <= 1) return false;
+  if (collectorRef && hasDayCloseRecord(dayCloses, collectorRef, date)) return false;
   const day = normalizeHistoryDate(date) || date;
   return pins.some((name) =>
     assignments.some((row) => {

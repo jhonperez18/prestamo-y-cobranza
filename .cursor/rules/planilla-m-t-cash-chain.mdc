@@ -261,8 +261,12 @@ A y N llevan su propia caja. Un solo dueño: `lib/independent-route-cash.ts` (`i
 - **Cierre de N (caso 06/10):** lo cierra el cobrador, después de revisar el cuadre. El taller
   no sella el CIE- de hoy ni la planilla por él. La app abre **hoy** si la hoja de hoy está
   abierta (`defaultMobileRouteDate`: hoy manda aunque queden 0 pendientes). Prohibido que el
-  cuadre de ayer esconda el botón de cerrar. **T no se toca** para «arreglar» N: T ya cierra.
-  Candado: `assert-cash-chain.mjs` («Hoy lleno de N», «Cerrar N no pide M», «T sigue pidiendo M»).
+  cuadre de ayer esconda el botón de cerrar. **Al día siguiente** una hoja pasada llena
+  (0 pendientes, aunque el celular no traiga aún el CIE) no puede seguir abierta ni
+  esconder el día nuevo. CIE de N cierra esa jornada: el cobrador ve el cuadre, no cobros.
+  **T no se toca** para «arreglar» N: T ya cierra.
+  Candado: `assert-cash-chain.mjs` («Hoy lleno de N», «N ya cerrada… no esconde el día nuevo»,
+  «Cerrar N no pide M», «T sigue pidiendo M»).
 - **M cerrada, T/A abiertas:** el cobrador sigue cobrando. La app abre la primera hoja abierta
   (`defaultOpenPlanillaRoute`). Un cobro en T no salta el pin a M (`keepOpenPlanillaRoute`):
   si salta, M ya cerró y el billete se apaga. Prohibido que el cuadre de M esconda T o A.

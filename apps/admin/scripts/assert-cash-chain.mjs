@@ -1014,6 +1014,22 @@ expect(
   ),
   "2026-10-06",
 );
+expect(
+  "N ya cerrada en el sistema (0 pendientes) no esconde el día nuevo",
+  defaultMobileRouteDate(
+    [dayOptFull("2026-10-06", false, 142), dayOptFull("2026-10-05", true, 138)],
+    "2026-10-07",
+  ),
+  "2026-10-05",
+);
+expect(
+  "Mañana sin hoja de N abre el día nuevo, no la hoja sellada de ayer",
+  defaultMobileRouteDate(
+    [dayOptFull("2026-10-06", false, 142)],
+    "2026-10-07",
+  ),
+  "2026-10-07",
+);
 const { assertCanCloseChainedPlanilla: nCloseGuard } = await import("@/lib/planilla-cash-chain");
 expect(
   "Cerrar N no pide M",
@@ -1087,6 +1103,18 @@ expect(
   "M cerrada: aún hay hoja abierta (no cuadre)",
   collectorHasOpenRouteSheet(chainPins, chainVisits, D, chainClients),
   true,
+);
+expect(
+  "CIE de la jornada: ninguna hoja sigue abierta (N y T igual)",
+  collectorHasOpenRouteSheet(
+    chainPins,
+    chainVisits,
+    D,
+    chainClients,
+    [{ ref: `CIE-${COB.ref}-${D}`, collectorRef: COB.ref, date: D, cashFloat: 1 }],
+    COB.ref,
+  ),
+  false,
 );
 const afterOneTPay = [
   visit("V-M-lock", "CLI-M1", "M", D, { dayClosedAt: `${D}T18:00:00.000Z`, visitStatus: "cobrado" }),

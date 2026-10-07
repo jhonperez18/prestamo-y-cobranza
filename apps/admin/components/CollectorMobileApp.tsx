@@ -1290,6 +1290,8 @@ export function CollectorMobileApp({
     assignments,
     activeDate,
     clients,
+    dayCloses,
+    collector.ref,
   );
   /** Sin planilla abierta → mismo inicio (último cierre + saldo) para todos los cobradores. */
   const showHomeCuadre =
