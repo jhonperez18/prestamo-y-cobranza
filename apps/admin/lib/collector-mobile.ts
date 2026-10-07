@@ -299,11 +299,12 @@ export function collectorHasOpenPlanillaWork(queue: CollectorMobileQueue): boole
 
 /**
  * Fecha de inicio de la app del cobrador (misma regla para todos):
- * 1) Jornada abierta atrasada CON hoja enviada (hay que cerrarla).
+ * 1) Hoy abierto con planilla (total > 0) — manda, aunque ya no haya pendientes.
+ *    El cuadre de ayer no puede esconder el cierre de hoy (caso N 06/10).
  * 2) Día con visitas pendientes.
- * 3) Hoy abierto con planilla asignada (total > 0).
- * 4) Último cierre formal → cuadre + saldo en caja (recordatorio).
- * 5) Hoy / fallback (home idle: mismo panel para todos).
+ * 3) Jornada pasada abierta con hoja.
+ * 4) Último cierre formal → cuadre (solo si hoy no está abierto).
+ * 5) Hoy / fallback.
  */
 export function defaultMobileRouteDate(
   options: CollectorMobileRouteOption[],
@@ -311,7 +312,7 @@ export function defaultMobileRouteDate(
 ): string {
   if (!options.length) return fallback;
 
-  // Hoy abierto manda. Un día pasado abierto no puede esconder el cierre de N.
+  // Hoy abierto manda. Un día pasado (abierto o ya cerrado) no esconde el cierre.
   const openTodayWithSheet = options.find(
     (row) => !row.closed && row.date === fallback && row.total > 0,
   );

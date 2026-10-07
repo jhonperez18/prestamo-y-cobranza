@@ -255,6 +255,11 @@ A y N llevan su propia caja. Un solo dueño: `lib/independent-route-cash.ts` (`i
   vuelve cobrador de la cadena: `isChainCollectorDay` solo mira visitas M/T de ese día.
   Cerrar N no escribe PCE-M/T ni sella el CIE- con la fórmula M↔T. Candado: sección 11
   («N con PCE-T proyectado»).
+- **Cierre de N (caso 06/10):** lo cierra el cobrador, después de revisar el cuadre. El taller
+  no sella el CIE- de hoy ni la planilla por él. La app abre **hoy** si la hoja de hoy está
+  abierta (`defaultMobileRouteDate`: hoy manda aunque queden 0 pendientes). Prohibido que el
+  cuadre de ayer esconda el botón de cerrar. **T no se toca** para «arreglar» N: T ya cierra.
+  Candado: `assert-cash-chain.mjs` («Hoy lleno de N», «Cerrar N no pide M», «T sigue pidiendo M»).
 - Guardado: `saveCashAdjustment` con `route` (local + cola + await nube).
 - Nube y pull: unión por ruta, gana el más reciente (`mergeRouteCashAdjustments`); ningún candado del CIE- lo borra.
 - Tarjeta del supervisor, Historial A/N y cabecera del cobrador leen la misma cifra.

@@ -995,6 +995,52 @@ expect(
   ),
   "2026-10-06",
 );
+const dayOptFull = (date, closed, total) => ({
+  date,
+  dateLabel: date,
+  routeRef: "RUT",
+  routeName: "N",
+  pending: 0,
+  done: total,
+  total,
+  closed,
+  allDone: true,
+});
+expect(
+  "Hoy lleno de N (0 pendientes) manda sobre el cuadre de ayer",
+  defaultMobileRouteDate(
+    [dayOptFull("2026-10-05", true, 138), dayOptFull("2026-10-06", false, 138)],
+    "2026-10-06",
+  ),
+  "2026-10-06",
+);
+const { assertCanCloseChainedPlanilla: nCloseGuard } = await import("@/lib/planilla-cash-chain");
+expect(
+  "Cerrar N no pide M",
+  nCloseGuard({
+    collectorRef: YES.ref,
+    routeName: "N",
+    date: D,
+    records: [],
+    dayCloses: [],
+    assignments: nWithPce.assignments,
+    clients: nSrc.clients,
+  }).ok,
+  true,
+);
+expect(
+  "T sigue pidiendo M (arreglar N no cambia T)",
+  nCloseGuard({
+    collectorRef: "COB-0",
+    routeName: "T",
+    date: D,
+    records: [],
+    dayCloses: [],
+    assignments: [],
+    clients: [],
+  }).ok,
+  false,
+);
 
 // ── 12. Banco: cada cobro llega a su cuenta según la ruta (A → Nequi; M/T/N → Banco) ──
 console.log("\n— Banco: destino del cobro por ruta —");

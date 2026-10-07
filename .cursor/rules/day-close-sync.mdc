@@ -43,6 +43,20 @@ Misma fuerza que un cobro `PG-`: local primero, luego nube; el pull no reabre.
 
 - Candado: `assert-cash-chain.mjs` secciones 23, 24, 27 y 28.
 
+## Cierre de hoy — el cobrador, no el taller
+
+El cobrador revisa si está cuadrado y cierra. El taller / un script **no** sella el CIE- ni
+la planilla de **hoy** en su lugar.
+
+| Pieza | Regla |
+| --- | --- |
+| App | `defaultMobileRouteDate`: si hoy tiene hoja abierta, abre **hoy**. El cuadre de ayer no esconde el cierre (N 06/10: hoja llena, 0 pendientes). |
+| N | Cierra N. No pide M. No escribe PCE-M/T. No es cadena. |
+| T | Ya cierra. No se toca para «arreglar» N. Sigue pidiendo M. |
+| Ayer | Día cerrado = intocable. |
+
+- Candado: `assert-cash-chain.mjs` («Hoy lleno de N», «Cerrar N no pide M», «T sigue pidiendo M»).
+
 ## Prohibido
 
 - `flushOpsMirrorQueues` antes de encolar el cierre.
@@ -50,6 +64,7 @@ Misma fuerza que un cobro `PG-`: local primero, luego nube; el pull no reabre.
 - Depender del PC del dueño o de una pestaña abierta para el corte 23:30.
 - Parche de UI «muéstralo cerrado» sin pasar por commit + cola + servidor.
 - Subir toda la planilla abierta «por si acaso» encima de un día con CIE-.
+- Sellar hoy (CIE- + planilla) desde el taller si el cobrador no ha cerrado.
 
 ## INICIO
 
