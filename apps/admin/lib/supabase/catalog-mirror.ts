@@ -626,6 +626,8 @@ async function postMirror(path: string, body: unknown) {
     skipped?: boolean;
     reason?: string;
     error?: string;
+    ref?: string;
+    rekeyed?: boolean;
   };
   return { res, json };
 }

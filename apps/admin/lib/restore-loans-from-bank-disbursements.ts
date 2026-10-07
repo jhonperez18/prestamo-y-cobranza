@@ -227,11 +227,11 @@ function buildRestoredLoan(input: {
       installment,
       schedule: sibling?.schedule ?? preview?.schedule,
       termsPending: true,
-      updatedAt: new Date().toISOString(),
     },
     undefined,
   ) as LoanRow;
-  return input.fundedBy === "nequi" ? markLoanFundedByNequi(base) : markLoanFundedByBanco(base);
+  const stamped = { ...base, updatedAt: new Date().toISOString() };
+  return input.fundedBy === "nequi" ? markLoanFundedByNequi(stamped) : markLoanFundedByBanco(stamped);
 }
 
 /**
