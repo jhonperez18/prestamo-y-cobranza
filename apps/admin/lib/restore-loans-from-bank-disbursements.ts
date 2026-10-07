@@ -182,8 +182,10 @@ export function disbursementBelongsToLoan(
   return a === b || a.replace(/ /g, "") === b.replace(/ /g, "");
 }
 
+/** Solo un cliente con ese nombre: dos «Diego» (N y A) no se adivinan. */
 function findClientByThirdParty(clients: ClientRow[], thirdParty: string) {
-  return clients.find((row) => clientMatchesThirdParty(row, thirdParty));
+  const matches = clients.filter((row) => clientMatchesThirdParty(row, thirdParty));
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 /** DSB-P-425 → P-425 (también DSB-P-425-keep si otro cliente heredó el código). */
@@ -193,11 +195,10 @@ export function loanRefFromDisbursementMovement(row: BankMovement): string {
   return matched?.[1] ? `P-${matched[1].replace(/^P-/i, "")}` : "";
 }
 
+/** Solo el Haber DSB- de Banco / Nequi. GASL-…-prestamo y CSH- son efectivo de caja. */
 function isDisbursementMovement(row: BankMovement) {
   if ((Number(row.credit) || 0) <= 0) return false;
-  if (row.category === "prestamo_ruta") return true;
-  const raw = String(row.loanDisbursementRef || row.ref || "");
-  return /^DSB-/i.test(raw) || /desembolso/i.test(row.description || "");
+  return /^DSB-/i.test(String(row.ref || "")) || /^DSB-/i.test(String(row.loanDisbursementRef || ""));
 }
 
 function fundedFromMovement(row: BankMovement): "banco" | "nequi" {

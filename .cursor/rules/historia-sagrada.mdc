@@ -1,0 +1,25 @@
+---
+alwaysApply: true
+---
+# Historia sagrada — regla de oro del dueño (2026-10-07)
+
+## Ley
+
+Lo que ya pasó es historia y **no se manipula**: cobros, préstamos, gastos, cierres (CIE-, PCE-),
+planillas, saldos, ajustes y movimientos de días pasados.
+
+Solo el dueño puede pedir corregir un dato histórico, con pedido explícito para ese dato.
+
+## Obligatorio
+
+1. Ningún código, script, sync, pull, reparación ni proyección reescribe, borra, recalcula o
+ reasigna un dato de un día pasado sin pedido explícito del dueño.
+2. Un error de **pantalla** (una fila que no existe, un total mal sumado) se corrige en la
+ lectura, sin tocar el dato guardado.
+3. Si un arreglo «necesita» cambiar historia → **parar y preguntar** antes de tocar nada.
+
+## Prohibido
+
+- Rellenar historia con datos inventados o inferidos (nombres parecidos, montos iguales).
+- Mover un registro de una ruta a otra, de un día a otro o de un cliente a otro por cuenta propia.
+- Recalcular saldos de días cerrados.

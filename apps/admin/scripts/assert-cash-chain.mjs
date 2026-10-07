@@ -4069,6 +4069,118 @@ console.log("— Cupo del aparato —");
   );
 }
 
+{
+  console.log("— Banco N sin Diego fantasma; Banco M solo Carlos Cerveza 500 —");
+  const { listOrphanDisbursementOutflows, restoreLoansFromOrphanDisbursements } = await import(
+    "@/lib/restore-loans-from-bank-disbursements"
+  );
+  const { markLoanFundedByEfectivo, markLoanFundedByBanco } = await import("@/lib/nequi-pool");
+  const { syncBankLedger } = await import("@/lib/bank-ledger-sync");
+  const { digitalPoolBalances } = await import("@/lib/digital-pools");
+  const diegoN = { ref: "COD-184", name: "Diego", lastName: "", route: "N", status: "Activo" };
+  const diegoA = { ref: "COD-260", name: "Diego", lastName: "", route: "A", status: "Activo" };
+  const rachi = { ref: "COD-RAC", name: "Rachi", lastName: "", route: "M", status: "Activo" };
+  const carlos = { ref: "COD-87", name: "Carlos Cerveza", lastName: "", route: "M", status: "Activo" };
+  const clients = [diegoN, diegoA, rachi, carlos];
+  const p399 = markLoanFundedByEfectivo({
+    ref: "P-399",
+    clientRef: diegoA.ref,
+    client: "Diego",
+    date: "02/10/2026",
+    capital: 600_000,
+    installment: 30_000,
+    status: "Revisar",
+    fundedBy: "efectivo",
+  });
+  const p375 = markLoanFundedByEfectivo({
+    ref: "P-375",
+    clientRef: rachi.ref,
+    client: "Rachi",
+    date: "01/10/2026",
+    capital: 200_000,
+    installment: 10_000,
+    status: "Revisar",
+    fundedBy: "efectivo",
+  });
+  const p408 = markLoanFundedByBanco({
+    ref: "P-408",
+    clientRef: carlos.ref,
+    client: "Carlos Cerveza",
+    date: "03/10/2026",
+    capital: 500_000,
+    installment: 25_000,
+    status: "Revisar",
+    fundedBy: "banco",
+  });
+  const loans = [p399, p375, p408];
+  const cob = { ref: "COB-C", name: "Diego" };
+  const expenseFor = (loan, date) => ({
+    ref: `GAS-${cob.ref}-${date}`,
+    collectorRef: cob.ref,
+    collectorName: cob.name,
+    date,
+    expenses: [
+      {
+        id: "prestamo",
+        label: `Préstamo · ${loan.ref} · ${loan.client}`,
+        amount: loan.capital,
+        category: "prestamo_ruta",
+        loanRef: loan.ref,
+      },
+    ],
+  });
+  const ledger = syncBankLedger({
+    payments: [],
+    movements: [],
+    accounts: bankAccounts,
+    miscPayments: [],
+    dayExpenseDrafts: [expenseFor(p375, "2026-10-01"), expenseFor(p399, "2026-10-02")],
+    dayCloses: [],
+    loans,
+    clients,
+  });
+  expect(
+    "Huérfanos: el efectivo (GASL / CSH) no es desembolso Banco",
+    listOrphanDisbursementOutflows({ loans, movements: ledger, clients }).length,
+    0,
+  );
+  expect(
+    "Restore: el efectivo no crea fichas Banco",
+    restoreLoansFromOrphanDisbursements({ loans, movements: ledger, clients }).created.length,
+    0,
+  );
+  const ambiguous = [
+    {
+      ref: "DSB-P-999",
+      loanDisbursementRef: "DSB-P-999",
+      accountRef: ledger[0]?.accountRef || "",
+      period: "2026-10",
+      description: "Desembolso Banco · Préstamo · P-999 · Diego",
+      valueDate: "2026-10-02",
+      opDate: "2026-10-02",
+      thirdParty: "Diego",
+      debit: 0,
+      credit: 600_000,
+      category: "prestamo_ruta",
+    },
+  ];
+  expect(
+    "Huérfanos: «Diego» en N y en A no se adivina",
+    listOrphanDisbursementOutflows({ loans, movements: ambiguous, clients }).length,
+    0,
+  );
+  const pools = digitalPoolBalances({
+    payments: [],
+    loans,
+    clients,
+    collectors: [cob],
+    collectorRefs: [cob.ref],
+    dayCloses: [],
+    movements: ledger,
+  });
+  expect("Banco: solo sale Carlos Cerveza 500 (M)", pools.banco, -500_000);
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);
