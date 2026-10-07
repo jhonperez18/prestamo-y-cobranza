@@ -4216,7 +4216,31 @@ console.log("— Cupo del aparato —");
 
 {
   console.log("— Préstamo del cobrador: solo sube la visita que cambió —");
-  const { assignmentsChangedFrom } = await import("@/lib/supabase/ops-mirror");
+  const { assignmentsChangedFrom, collectorQueueKeepsAssignment } = await import(
+    "@/lib/supabase/ops-mirror"
+  );
+  const todayQ = "2026-10-07";
+  expect(
+    "Cola del cobrador: hoy y ayer suben",
+    collectorQueueKeepsAssignment({ ref: "2026-10-07::A" }, todayQ) &&
+      collectorQueueKeepsAssignment({ dispatchDate: "2026-10-06", ref: "x" }, todayQ),
+    true,
+  );
+  expect(
+    "Cola del cobrador: 23/09–02/10 (historia) no se reenvía (Yesid trabado)",
+    ["2026-09-23", "2026-09-30", "2026-10-02"].some((day) =>
+      collectorQueueKeepsAssignment({ ref: `${day}::A` }, todayQ),
+    ),
+    false,
+  );
+  const { readFileSync } = await import("node:fs");
+  const opsMirrorSrc = readFileSync(new URL("../lib/supabase/ops-mirror.ts", import.meta.url), "utf8");
+  expect(
+    "Servidor: día pasado cerrado no se reescribe con copia de aparato (historia sagrada)",
+    opsMirrorSrc.includes('reason: "historia_sellada"') &&
+      opsMirrorSrc.includes("pruneCollectorHistoryQueue();"),
+    true,
+  );
   const visit = (itemId, dispatchDate, extra = {}) => ({
     itemId,
     dispatchDate,

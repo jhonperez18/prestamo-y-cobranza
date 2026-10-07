@@ -294,6 +294,32 @@ function dequeueSent(key: string, sent: readonly { ref: string }[]) {
  * (CIE- o dayClosedAt). Sin esto, al actualizar el código el flush reabre la hoja
  * del amigo en la nube.
  */
+/**
+ * Cobrador: su cola sube planilla de hoy y de ayer. Días más viejos son historia ya
+ * sellada en la nube; reenviarlos (cientos de filas, una petición cada una) dejaba el
+ * celular trabado sin bajar nada (Yesid 07/10: filas del 23/09 al 02/10).
+ */
+export function collectorQueueKeepsAssignment(
+  row: { ref?: string; dispatchDate?: string },
+  todayIso: string,
+): boolean {
+  const raw = String(row.dispatchDate || String(row.ref || "").split("::")[0] || "");
+  const date = normalizeHistoryDate(raw) || raw;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return true;
+  const yesterday = new Date(`${todayIso}T12:00:00Z`);
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  return date >= yesterday.toISOString().slice(0, 10);
+}
+
+function pruneCollectorHistoryQueue() {
+  if (typeof window === "undefined" || !isCollectorLiveDevice()) return;
+  const queued = readDemoJson<{ ref: string; dispatchDate?: string }[]>(Q_ASSIGN, []);
+  if (!queued.length) return;
+  const today = businessTodayIso();
+  const kept = queued.filter((row) => collectorQueueKeepsAssignment(row, today));
+  if (kept.length !== queued.length) writeDemoJson(Q_ASSIGN, kept);
+}
+
 function pruneOpenAssignmentQueueAgainstLocalCloses() {
   if (typeof window === "undefined") return;
   const queued = readDemoJson<
@@ -743,7 +769,7 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
   }
   const { data, error } = await client
     .from("daily_assignments")
-    .select("visit_status, skip_reason, day_closed_at, collector_ref, dispatch_date")
+    .select("visit_status, skip_reason, day_closed_at, payment_ref, collector_ref, dispatch_date")
     .eq("dispatch_date", row.dispatch_date)
     .eq("item_id", row.item_id)
     .maybeSingle();
@@ -751,12 +777,23 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
     visit_status?: string;
     skip_reason?: string | null;
     day_closed_at?: string | null;
+    payment_ref?: string | null;
     collector_ref?: string | null;
     dispatch_date?: string | null;
   } | null;
   // Cierre en nube gana siempre frente a hoja abierta (dueño / otro celular / código viejo).
   if (!error && current?.day_closed_at && !row.day_closed_at) {
     return { ok: true as const, kept: true as const };
+  }
+  // Historia: día pasado ya cerrado en nube no se reescribe con la copia de un aparato.
+  // Solo entra un cobro (PG-) que la nube aún no tenía.
+  if (
+    !error &&
+    current?.day_closed_at &&
+    String(row.dispatch_date || "") < businessTodayIso() &&
+    !(row.payment_ref && !current.payment_ref)
+  ) {
+    return { ok: true as const, kept: true as const, reason: "historia_sellada" };
   }
   // Si ya hay CIE- del día, tampoco aceptar una fila que limpie el sello.
   if (!error && !row.day_closed_at) {
@@ -1206,6 +1243,7 @@ export function queueAssignmentMirror(
 ) {
   // No encolar planilla abierta si este PC ya tiene el CIE- del día (evita reabrir en nube).
   if (localCieCoversAssignment(a, readCloses)) return;
+  if (isCollectorLiveDevice() && !collectorQueueKeepsAssignment(a, businessTodayIso())) return;
   const ref = `${a.dispatchDate}::${a.itemId}`;
   const sig = assignmentMirrorSig(a);
   if (sentAssignmentSig.get(ref) === sig) return;
@@ -1242,6 +1280,7 @@ export function queueAssignmentsMirror(rows: DailyCollectionAssignment[]) {
 export async function flushOpsMirrorQueues(): Promise<{ flushed: number; left: number }> {
   if (typeof window === "undefined") return { flushed: 0, left: 0 };
 
+  pruneCollectorHistoryQueue();
   pruneOpenAssignmentQueueAgainstLocalCloses();
 
   // PCE- colados en la cola de cierres: basura irrecuperable (schema solo CIE-).
