@@ -108,6 +108,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
   const [monthCloses, setMonthCloses] = useState<CollectorMonthCloseRecord[]>([]);
   const [planillaCashCloses, setPlanillaCashCloses] = useState<PlanillaCashCloseRecord[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [bankMovements, setBankMovements] = useState<BankMovement[]>([]);
   const [miscPayments, setMiscPayments] = useState<MiscPayment[]>([]);
   const { showToast, toastNode } = useActionToast();
 
@@ -134,6 +135,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
         readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
       ),
     );
+    setBankMovements(normalizeBankMovements(snap.bankMovements ?? []));
     setMiscPayments(readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []));
   }, []);
 
@@ -603,6 +605,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
         monthCloses={monthCloses}
         planillaCashCloses={planillaCashCloses}
         bankAccounts={bankAccounts}
+        bankMovements={bankMovements}
         miscPayments={miscPayments}
         onCreateRouteClient={createRouteClientFromMobile}
         onCreateQuickLoan={createQuickLoanFromMobile}

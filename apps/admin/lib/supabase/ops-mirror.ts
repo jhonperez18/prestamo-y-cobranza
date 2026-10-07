@@ -23,6 +23,7 @@ import {
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
 import { businessDaysAgoIso, businessTodayIso } from "@/lib/business-timezone";
+import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import {
   collectorLiveDayIso,
   isCollectorLiveDevice,
@@ -631,17 +632,22 @@ export async function upsertDayExpenseIdempotent(row: Record<string, unknown>) {
 
 type MirrorDb = NonNullable<ReturnType<typeof createMirrorClient>>;
 
+function loanStartedOnIso(
+  loan: { start_date?: string | null },
+  dispatchDate: string,
+) {
+  return loanDisbursementIsoDate({ date: loan.start_date || "", start_date: loan.start_date || "" }) === dispatchDate;
+}
+
 /** ¿El cliente tiene un préstamo vivo (no eliminado) que empieza ese día? Si falla la lectura, asume que sí. */
 async function loanStartedOn(client: MirrorDb, clientRef: string, dispatchDate: string) {
   if (!clientRef.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(dispatchDate)) return true;
-  const [y, m, d] = dispatchDate.split("-");
   const { data, error } = await client
     .from("loans")
-    .select("ref, status")
-    .eq("client_ref", clientRef.trim())
-    .in("start_date", [`${d}/${m}/${y}`, dispatchDate]);
+    .select("ref, status, start_date")
+    .eq("client_ref", clientRef.trim());
   if (error) return true;
-  return (data ?? []).some((loan) => !isLoanDeletedStatus(loan));
+  return (data ?? []).some((loan) => !isLoanDeletedStatus(loan) && loanStartedOnIso(loan, dispatchDate));
 }
 
 /**
@@ -666,16 +672,13 @@ async function prestarGhostReason(
     status === "pendiente" || (status === "omitido" && reason === DAY_CLOSE_SKIP_REASON);
   if (!givenTodayClaim && !autoRow) return { ghost: false };
 
-  const [y, m, d] = dispatchDate.split("-");
-  const dispatchDisplay = `${d}/${m}/${y}`;
   const { data: loans, error } = await client
     .from("loans")
     .select("ref, status, start_date, balance")
     .eq("client_ref", clientRef);
   if (error) return { ghost: false, error: error.message };
   const live = (loans ?? []).filter((loan) => !isLoanDeletedStatus(loan));
-  const startedToday = (loan: { start_date?: string | null }) =>
-    loan.start_date === dispatchDisplay || loan.start_date === dispatchDate;
+  const startedToday = (loan: { start_date?: string | null }) => loanStartedOnIso(loan, dispatchDate);
   if (givenTodayClaim) return { ghost: !live.some(startedToday) };
 
   const open = live.filter(
@@ -684,15 +687,18 @@ async function prestarGhostReason(
       Number(loan.balance) > 0 &&
       !/finaliz|pagad|cancel/i.test(String(loan.status || "")),
   );
-  if (!open.length) return { ghost: false };
-  const { data: paidToday, error: payError } = await client
-    .from("payments")
-    .select("ref")
-    .in("loan_ref", open.map((loan) => loan.ref))
-    .eq("paid_date", dispatchDate)
-    .limit(1);
-  if (payError) return { ghost: false, error: payError.message };
-  return { ghost: !(paidToday ?? []).length };
+  if (open.length) {
+    const { data: paidToday, error: payError } = await client
+      .from("payments")
+      .select("ref")
+      .in("loan_ref", open.map((loan) => loan.ref))
+      .eq("paid_date", dispatchDate)
+      .limit(1);
+    if (payError) return { ghost: false, error: payError.message };
+    if (!(paidToday ?? []).length) return { ghost: true };
+  }
+
+  return { ghost: false };
 }
 
 /**
@@ -720,7 +726,21 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
   }
   const ghost = await prestarGhostReason(client, row);
   if (ghost.error) return { ok: false as const, error: ghost.error };
-  if (ghost.ghost) return { ok: true as const, skipped: true as const, reason: "prestar_ghost" };
+  if (ghost.ghost) {
+    const incomingStatus = String(row.visit_status ?? "pendiente");
+    const autoPending = incomingStatus === "pendiente" && !row.day_closed_at && !row.payment_ref;
+    if (autoPending && String(row.item_id || "").includes(":prestar")) {
+      const { error: delError } = await client
+        .from("daily_assignments")
+        .delete()
+        .eq("dispatch_date", row.dispatch_date)
+        .eq("item_id", row.item_id)
+        .is("day_closed_at", null)
+        .is("payment_ref", null);
+      if (delError) return { ok: false as const, error: delError.message };
+    }
+    return { ok: true as const, skipped: true as const, reason: "prestar_ghost" };
+  }
   const { data, error } = await client
     .from("daily_assignments")
     .select("visit_status, skip_reason, day_closed_at, collector_ref, dispatch_date")

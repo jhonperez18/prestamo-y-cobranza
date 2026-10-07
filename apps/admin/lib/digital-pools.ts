@@ -10,8 +10,16 @@
  * `routeCashAdjustments` con ruta `POOL-BANCO` / `POOL-NEQUI` (nube: `AJUSTE@POOL-…:`).
  * Desde el día siguiente: saldo = real del último ajuste + movimientos posteriores.
  * No toca cobros, préstamos, cajas, CIE `cashFloat` ni la cadena M → T.
+ *
+ * Regla: el botón Banco / Nequi del Cierre de una ruta = cobros de este historial
+ * (`digitalPoolDayPayments`, inflow). Incluye Caja / oficina. T / M / N → Banco;
+ * A → solo Nequi. Lo que entra al botón es lo que entra al pool de esa ruta.
+ * No entra a la caja.
  */
-import { businessTodayIso } from "@/lib/business-timezone";
+import type { BankMovement } from "@/lib/bank";
+import { sameRoute } from "@/lib/client-route-order";
+import { BUSINESS_TIME_ZONE, businessTodayIso } from "@/lib/business-timezone";
+import { listOrphanDisbursementOutflows } from "@/lib/restore-loans-from-bank-disbursements";
 import { mergeRouteCashAdjustments } from "@/lib/cash-adjustment";
 import {
   normalizeHistoryDate,
@@ -20,6 +28,7 @@ import {
 } from "@/lib/collector-day-close";
 import { pesos } from "@/lib/finance";
 import {
+  isLoanVoided,
   paymentsForCollector,
   type ClientRow,
   type CollectorRow,
@@ -33,7 +42,11 @@ import {
   loanFundedByNequi,
 } from "@/lib/nequi-pool";
 import { paymentRecaudoIso } from "@/lib/payment-detail";
-import { paymentMethodForRoute } from "@/lib/payment-method";
+import {
+  paymentClientRoute,
+  paymentDisplayMethod,
+  paymentMethodForRoute,
+} from "@/lib/payment-method";
 import { findFullDayCieClose } from "@/lib/planilla-cash-chain";
 
 export type DigitalPool = "banco" | "nequi";
@@ -56,6 +69,8 @@ export type DigitalPoolSources = {
   collectors: CollectorRow[];
   collectorRefs: Iterable<string>;
   dayCloses: CollectorDayCloseRecord[];
+  /** Haber DSB huérfano: sale del pool aunque la ficha aún no esté (Albornoz). */
+  movements?: BankMovement[];
 };
 
 type PoolAnchor = { date: string; adjustment: RouteCashAdjustment };
@@ -138,13 +153,31 @@ export function digitalPoolBalances(src: DigitalPoolSources, before?: string): D
   for (const row of src.payments) {
     if (isOfficePayment(row)) add(row);
   }
+  const countedOutflow = new Set<string>();
   for (const loan of src.loans) {
     if (!loanFundedByNequi(loan) && !loanFundedByBanco(loan)) continue;
     const capital = Number(loan.capital) || 0;
     if (capital <= 0) continue;
     const route = loan.clientRef ? routeByClient.get(loan.clientRef) : undefined;
     const pool: DigitalPool = paymentMethodForRoute("nequi", route) === "banco" ? "banco" : "nequi";
-    if (counts(pool, loanDisbursementIsoDate(loan))) totals[pool] -= capital;
+    const dateIso = loanDisbursementIsoDate(loan);
+    const key = `${loan.clientRef || ""}|${dateIso}|${capital}`;
+    countedOutflow.add(key);
+    if (counts(pool, dateIso)) totals[pool] -= capital;
+  }
+  if (src.movements?.length) {
+    for (const orphan of listOrphanDisbursementOutflows({
+      loans: src.loans,
+      movements: src.movements,
+      clients: src.clients,
+    })) {
+      const route = routeByClient.get(orphan.clientRef);
+      const pool: DigitalPool = paymentMethodForRoute("nequi", route) === "banco" ? "banco" : "nequi";
+      const key = `${orphan.clientRef}|${orphan.dateIso}|${orphan.capital}`;
+      if (countedOutflow.has(key)) continue;
+      countedOutflow.add(key);
+      if (counts(pool, orphan.dateIso)) totals[pool] -= orphan.capital;
+    }
   }
   return { banco: pesos(totals.banco), nequi: pesos(totals.nequi) };
 }
@@ -239,4 +272,319 @@ export function commitDigitalPoolAdjustment(input: DigitalPoolAdjustInput): Digi
   const byRef = new Map(records.map((row) => [row.ref, row]));
   const dayCloses = input.dayCloses.map((row) => byRef.get(row.ref) ?? row);
   return { ok: true, records, dayCloses };
+}
+
+/** Préstamo que sale del pool (solo capital). No es cuota: la cuota entra al día siguiente en la ruta. */
+export type DigitalPoolRegisterLoan = {
+  loanRef: string;
+  clientRef: string;
+  clientName: string;
+  capital: number;
+  time: string;
+  dateIso: string;
+};
+
+export type DigitalPoolRegisterDay = {
+  date: string;
+  items: PaymentRow[];
+  loans: DigitalPoolRegisterLoan[];
+  /** Cobros del día (suman al pool). */
+  inflow: number;
+  /** Capitales prestados desde el pool (restan). */
+  outflow: number;
+  /** Neto del día: cobros − préstamos. Positivo suma al saldo; negativo lo resta. */
+  total: number;
+};
+
+function paymentMatchesPoolRoute(
+  row: PaymentRow,
+  loans: LoanRow[],
+  clients: ClientRow[],
+  routeName: string,
+): boolean {
+  if (sameRoute(paymentClientRoute(row, loans, clients), routeName)) return true;
+  const needle = (row.client || "").trim().toLowerCase();
+  if (!needle) return false;
+  return clients.some((client) => {
+    if (!sameRoute(client.route, routeName)) return false;
+    const full = `${client.name} ${client.lastName}`.trim().toLowerCase();
+    const nick = (client.name || "").trim().toLowerCase();
+    return full === needle || nick === needle;
+  });
+}
+
+function isPoolRegisterPayment(
+  row: PaymentRow,
+  loans: LoanRow[],
+  clients: ClientRow[],
+  pool: DigitalPool,
+  routeName?: string | null,
+): boolean {
+  if (row.voidedAt?.trim()) return false;
+  if (!((row.amount ?? 0) > 0)) return false;
+  if (paymentDisplayMethod(row, loans, clients) !== pool) return false;
+  const route = routeName?.trim();
+  if (route && !paymentMatchesPoolRoute(row, loans, clients, route)) return false;
+  return true;
+}
+
+function sortPoolRegisterItems(items: PaymentRow[]): PaymentRow[] {
+  return items
+    .slice()
+    .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));
+}
+
+function poolOfClientRoute(route: string | undefined): DigitalPool {
+  return paymentMethodForRoute("nequi", route) === "banco" ? "banco" : "nequi";
+}
+
+function loanRegisterTime(loan: LoanRow): string {
+  const ms = Date.parse(String(loan.updatedAt || "").trim());
+  if (!Number.isFinite(ms) || ms <= 0) return "";
+  try {
+    return new Date(ms).toLocaleTimeString("es-CO", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: BUSINESS_TIME_ZONE,
+    });
+  } catch (err) {
+    console.error("loanRegisterTime", err);
+    return "";
+  }
+}
+
+function toRegisterLoan(loan: LoanRow, client: ClientRow): DigitalPoolRegisterLoan {
+  const capital = pesos(Math.trunc(Number(loan.capital) || 0));
+  return {
+    loanRef: loan.ref,
+    clientRef: client.ref,
+    clientName: `${client.name} ${client.lastName}`.trim() || (loan.client || "").trim() || loan.ref,
+    capital,
+    time: loanRegisterTime(loan),
+    dateIso: loanDisbursementIsoDate(loan),
+  };
+}
+
+function isPoolRegisterLoan(
+  loan: LoanRow,
+  clients: ClientRow[],
+  pool: DigitalPool,
+  routeName?: string | null,
+): ClientRow | null {
+  if (isLoanVoided(loan)) return null;
+  if (!loanFundedByBanco(loan) && !loanFundedByNequi(loan)) return null;
+  const capital = Math.trunc(Number(loan.capital) || 0);
+  if (capital <= 0 || !loan.ref) return null;
+  const client = clients.find((row) => row.ref === loan.clientRef);
+  if (!client) return null;
+  if (poolOfClientRoute(client.route) !== pool) return null;
+  const route = routeName?.trim();
+  if (route && !sameRoute(client.route, route)) return null;
+  return client;
+}
+
+function sortPoolRegisterLoans(rows: DigitalPoolRegisterLoan[]): DigitalPoolRegisterLoan[] {
+  return rows.slice().sort((a, b) => {
+    const byTime = (b.time || "").localeCompare(a.time || "");
+    if (byTime !== 0) return byTime;
+    return a.clientName.localeCompare(b.clientName, "es");
+  });
+}
+
+function emptyRegisterDay(date: string): DigitalPoolRegisterDay {
+  return { date, items: [], loans: [], inflow: 0, outflow: 0, total: 0 };
+}
+
+function outflowDedupeKey(clientRef: string, dateIso: string, capital: number) {
+  return `${clientRef}|${dateIso}|${capital}`;
+}
+
+function collectPoolOutflowLoans(input: {
+  loans: LoanRow[];
+  clients: ClientRow[];
+  pool: DigitalPool;
+  routeName?: string | null;
+  dateIso?: string;
+  fromIso?: string;
+  toIso?: string;
+  movements?: BankMovement[];
+}): DigitalPoolRegisterLoan[] {
+  const rows: DigitalPoolRegisterLoan[] = [];
+  const seen = new Set<string>();
+  for (const loan of input.loans) {
+    const client = isPoolRegisterLoan(loan, input.clients, input.pool, input.routeName);
+    if (!client) continue;
+    const date = loanDisbursementIsoDate(loan);
+    if (!date) continue;
+    if (input.dateIso && date !== input.dateIso) continue;
+    if (input.fromIso && date < input.fromIso) continue;
+    if (input.toIso && date > input.toIso) continue;
+    const capital = pesos(Math.trunc(Number(loan.capital) || 0));
+    const key = outflowDedupeKey(client.ref, date, capital);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push(toRegisterLoan(loan, client));
+  }
+  if (input.movements?.length) {
+    for (const orphan of listOrphanDisbursementOutflows({
+      loans: input.loans,
+      movements: input.movements,
+      clients: input.clients,
+    })) {
+      const client = input.clients.find((row) => row.ref === orphan.clientRef);
+      if (!client) continue;
+      if (poolOfClientRoute(client.route) !== input.pool) continue;
+      const route = input.routeName?.trim();
+      if (route && !sameRoute(client.route, route)) continue;
+      if (input.dateIso && orphan.dateIso !== input.dateIso) continue;
+      if (input.fromIso && orphan.dateIso < input.fromIso) continue;
+      if (input.toIso && orphan.dateIso > input.toIso) continue;
+      const key = outflowDedupeKey(orphan.clientRef, orphan.dateIso, orphan.capital);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({
+        loanRef: orphan.movementRef,
+        clientRef: orphan.clientRef,
+        clientName: orphan.clientName,
+        capital: pesos(orphan.capital),
+        time: orphan.time,
+        dateIso: orphan.dateIso,
+      });
+    }
+  }
+  return sortPoolRegisterLoans(rows);
+}
+
+function sealRegisterDay(
+  date: string,
+  items: PaymentRow[],
+  loans: DigitalPoolRegisterLoan[],
+): DigitalPoolRegisterDay {
+  const sortedItems = sortPoolRegisterItems(items);
+  const sortedLoans = sortPoolRegisterLoans(loans);
+  const inflow = pesos(sortedItems.reduce((sum, row) => sum + (row.amount ?? 0), 0));
+  const outflow = pesos(sortedLoans.reduce((sum, row) => sum + row.capital, 0));
+  return {
+    date,
+    items: sortedItems,
+    loans: sortedLoans,
+    inflow,
+    outflow,
+    total: pesos(inflow - outflow),
+  };
+}
+
+/**
+ * Cobros del pool en un día (ruta del cliente). Incluye Caja / oficina.
+ * Misma lista que el botón Banco T / Banco M / Nequi A (`routeDigitalPayments`).
+ * No toca la caja.
+ */
+export function digitalPoolDayPayments(input: {
+  payments: PaymentRow[];
+  loans: LoanRow[];
+  clients: ClientRow[];
+  pool: DigitalPool;
+  dateIso: string;
+  routeName?: string | null;
+}): PaymentRow[] {
+  const date = isoOf(input.dateIso);
+  if (!date) return [];
+  return sortPoolRegisterItems(
+    input.payments.filter((row) => {
+      if (!isPoolRegisterPayment(row, input.loans, input.clients, input.pool, input.routeName)) {
+        return false;
+      }
+      return isoOf(paymentRecaudoIso(row)) === date;
+    }),
+  );
+}
+
+/** Préstamos del pool en un día (capital). Ruta del cliente. Incluye Haber huérfano. */
+export function digitalPoolDayLoans(input: {
+  loans: LoanRow[];
+  clients: ClientRow[];
+  pool: DigitalPool;
+  dateIso: string;
+  routeName?: string | null;
+  movements?: BankMovement[];
+}): DigitalPoolRegisterLoan[] {
+  const date = isoOf(input.dateIso);
+  if (!date) return [];
+  return collectPoolOutflowLoans({ ...input, dateIso: date });
+}
+
+/**
+ * Registro Banco / Nequi por día: cobros (`paidDate`) − préstamos (capital del desembolso).
+ * Incluye abonos del sistema (Caja / oficina). No mezcla rutas ni mueve caja.
+ * Un día solo con préstamo también sale: así el supervisor ve lo que salió del saldo.
+ */
+export function digitalPoolRegisterDays(input: {
+  payments: PaymentRow[];
+  loans: LoanRow[];
+  clients: ClientRow[];
+  pool: DigitalPool;
+  fromIso: string;
+  toIso: string;
+  routeName?: string | null;
+  movements?: BankMovement[];
+}): DigitalPoolRegisterDay[] {
+  const from = isoOf(input.fromIso);
+  const to = isoOf(input.toIso);
+  const byDate = new Map<string, { items: PaymentRow[]; loans: DigitalPoolRegisterLoan[] }>();
+  const bucket = (date: string) => {
+    const current = byDate.get(date);
+    if (current) return current;
+    const next = { items: [] as PaymentRow[], loans: [] as DigitalPoolRegisterLoan[] };
+    byDate.set(date, next);
+    return next;
+  };
+  for (const row of input.payments) {
+    if (!isPoolRegisterPayment(row, input.loans, input.clients, input.pool, input.routeName)) {
+      continue;
+    }
+    const date = isoOf(paymentRecaudoIso(row));
+    if (!date || (from && date < from) || (to && date > to)) continue;
+    bucket(date).items.push(row);
+  }
+  for (const loan of collectPoolOutflowLoans({
+    loans: input.loans,
+    clients: input.clients,
+    pool: input.pool,
+    routeName: input.routeName,
+    fromIso: from,
+    toIso: to,
+    movements: input.movements,
+  })) {
+    if (!loan.dateIso) continue;
+    bucket(loan.dateIso).loans.push(loan);
+  }
+  return Array.from(byDate.entries())
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([date, row]) => sealRegisterDay(date, row.items, row.loans));
+}
+
+/** Un día del registro (cobros + préstamos + neto). */
+export function digitalPoolDayLedger(input: {
+  payments: PaymentRow[];
+  loans: LoanRow[];
+  clients: ClientRow[];
+  pool: DigitalPool;
+  dateIso: string;
+  routeName?: string | null;
+  movements?: BankMovement[];
+}): DigitalPoolRegisterDay {
+  const date = isoOf(input.dateIso);
+  if (!date) return emptyRegisterDay("");
+  return (
+    digitalPoolRegisterDays({
+      payments: input.payments,
+      loans: input.loans,
+      clients: input.clients,
+      pool: input.pool,
+      fromIso: date,
+      toIso: date,
+      routeName: input.routeName,
+      movements: input.movements,
+    })[0] ?? emptyRegisterDay(date)
+  );
 }

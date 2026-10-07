@@ -23,7 +23,7 @@ import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
 export type HealthIssueKind =
   /** Cliente sin préstamos activos que no tiene su visita «Prestar» hoy. */
   | "prestar_missing"
-  /** Visita «Prestar» pendiente de un cliente que tiene préstamo activo. */
+  /** Visita «Prestar» pendiente de un cliente que ya tiene préstamo activo. */
   | "prestar_ghost"
   /** Cuota sin plata de un préstamo borrado ocupando la planilla. */
   | "deleted_loan_row"

@@ -66,7 +66,7 @@ export type CollectorDayCloseRecord = CollectorDayCloseDraft & {
   expensesTotal: number;
   /**
    * Saldo sellado al cerrar la jornada. Cadena M↔T: saldo final del día = Inicial M
-   * de mañana. Solo lo escribe el cierre (`sealedDayCash` en `day-cash-ledger`).
+   * de mañana. Cadena: `sealedDayCash`. N: caja del historial (`resolveSealedDayCash`).
    */
   cashFloat: number;
   /**
@@ -686,7 +686,7 @@ export function syncRouteExpensesToMovements(
 
 /**
  * Arma el CIE- de la jornada. El saldo NO se calcula aquí: llega sellado desde
- * `sealedDayCash` (libro de caja del día), único dueño de `cashFloat`.
+ * `resolveSealedDayCash` (libro M↔T o caja del historial de N).
  */
 export function finalizeCollectorDayClose(input: {
   draft: CollectorDayCloseDraft;

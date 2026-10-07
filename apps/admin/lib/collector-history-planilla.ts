@@ -3,7 +3,11 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
 import { compareRoutePosition, sameRoute } from "@/lib/client-route-order";
 import { syncLoan, displayToIso } from "@/lib/loan-preview";
-import { loanDisbursementSource, loanIsExistingPortfolio } from "@/lib/nequi-pool";
+import {
+  loanDisbursementIsoDate,
+  loanDisbursementSource,
+  loanIsExistingPortfolio,
+} from "@/lib/nequi-pool";
 import { isLoanTopUpLine, isPrestamoRutaExpense } from "@/lib/expense-lines";
 import { isAssignmentAwaitingLoan, planillaLiveCuota } from "@/lib/planilla-display";
 import { withPaymentEvidence } from "@/lib/payment-evidence-store";
@@ -211,7 +215,7 @@ export function dayLoanDisbursementRows(
   }
 
   for (const loan of loans) {
-    const started = displayToIso(String(loan.date || "").trim());
+    const started = loanDisbursementIsoDate(loan);
     if (started !== dateIso || byLoan.has(loan.ref)) continue;
     const source = loanDisbursementSource(loan);
     // Nequi/banco del sistema ≠ caja del cobrador; cartera existente no sale de ningún lado.
@@ -295,7 +299,7 @@ export function clientRefsLentOnDate(
 function loanRefsStartedOnDate(dateIso: string, loans: LoanRow[]): Set<string> {
   const refs = new Set<string>();
   for (const loan of loans) {
-    const started = displayToIso(String(loan.date || "").trim());
+    const started = loanDisbursementIsoDate(loan);
     if (started === dateIso && loan.ref) refs.add(loan.ref);
   }
   return refs;

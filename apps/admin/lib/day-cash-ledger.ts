@@ -34,6 +34,8 @@ import {
 import { assignmentRouteName } from "@/lib/collector-dispatch-sync";
 import { collectorDayPayments } from "@/lib/collector-mobile";
 import { sameRoute } from "@/lib/client-route-order";
+import { digitalLoanPoolForRoute } from "@/lib/day-digital-loans";
+import { digitalPoolDayPayments } from "@/lib/digital-pools";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
   isPrestamoRutaExpense,
@@ -137,12 +139,58 @@ function routeDayPayments(src: DayCashSources, routeName: string): PaymentRow[] 
   );
 }
 
-/** Cobros no efectivo (Banco / Nequi) del día a clientes de la ruta. */
+/**
+ * Cobros que entran al Banco / Nequi de esa ruta (incluye Caja / oficina).
+ * REGLA: T / M / N → Banco; A → solo Nequi. El botón del Cierre = historial de
+ * esa ruta. Lo que entra al botón es lo que entra al historial. No toca la caja.
+ */
 export function routeDigitalPayments(src: DayCashSources, routeName: string): PaymentRow[] {
-  return routeDayPayments(src, routeName).filter((pay) => {
-    const method = normalizePaymentMethod(pay.method);
-    return method === "nequi" || method === "banco";
+  return digitalPoolDayPayments({
+    payments: src.payments,
+    loans: src.loans,
+    clients: src.clients,
+    pool: digitalLoanPoolForRoute(routeName),
+    dateIso: dateIsoOf(src.date),
+    routeName,
   });
+}
+
+function digitalPaymentsTotal(rows: PaymentRow[]): number {
+  return pesos(rows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0));
+}
+
+/**
+ * Cobros digitales de una ruta, en su único bolsillo: A → Nequi; M / T / N → Banco.
+ * El otro medio queda en 0. Misma lista que el historial de esa ruta.
+ */
+export function routeDigitalCollected(
+  src: DayCashSources,
+  routeName: string,
+): { nequi: number; banco: number; payments: PaymentRow[] } {
+  const payments = routeDigitalPayments(src, routeName);
+  const total = digitalPaymentsTotal(payments);
+  if (digitalLoanPoolForRoute(routeName) === "nequi") {
+    return { nequi: total, banco: 0, payments };
+  }
+  return { nequi: 0, banco: total, payments };
+}
+
+function chainDigitalCollected(
+  src: DayCashSources,
+  routes: string[],
+): { nequi: number; banco: number; own: PaymentRow[] } {
+  let nequi = 0;
+  let banco = 0;
+  const lists = routes.map((route) => routeDigitalCollected(src, route));
+  for (const row of lists) {
+    nequi += row.nequi;
+    banco += row.banco;
+  }
+  return {
+    nequi: pesos(nequi),
+    banco: pesos(banco),
+    own: lists[lists.length - 1]?.payments ?? [],
+  };
 }
 
 export function routeCollectedByMethod(
@@ -379,7 +427,7 @@ export type ChainDayCuadre = {
   ownPrestamos: number;
   /** Gastos operativos solo de la planilla abierta (M o T). */
   ownGastos: number;
-  /** Banco / Nequi cobrado solo en la planilla abierta (M o T). No entra a la caja. */
+  /** Banco / Nequi de esa planilla (cobrador + Caja / oficina). Igual al historial de ese pool. No entra a la caja. */
   ownDigital: number;
   /** Cobros Banco / Nequi (renglones) que suma `ownDigital`. */
   ownDigitalPayments: PaymentRow[];
@@ -406,8 +454,7 @@ export function chainDayCuadre(
     side === "secondary"
       ? [PLANILLA_CASH_CHAIN_PRIMARY, PLANILLA_CASH_CHAIN_SECONDARY]
       : [PLANILLA_CASH_CHAIN_PRIMARY];
-  const collected = routes.map((route) => routeCollectedByMethod(src, route));
-  const own = collected[collected.length - 1];
+  const digital = chainDigitalCollected(src, routes);
   const primaryClosing = primaryClosingOf(ledger, src.dayCloses);
   return {
     opening:
@@ -419,11 +466,11 @@ export function chainDayCuadre(
     ownEfectivo: pesos(side === "secondary" ? ledger.t.efectivo : ledger.m.efectivo),
     ownPrestamos: pesos(side === "secondary" ? ledger.t.prestamos : ledger.m.prestamos),
     ownGastos: pesos(side === "secondary" ? ledger.t.gastos : ledger.m.gastos),
-    ownDigital: pesos(own.nequi + own.banco),
-    ownDigitalPayments: routeDigitalPayments(src, routes[routes.length - 1]),
+    ownDigital: digitalPaymentsTotal(digital.own),
+    ownDigitalPayments: digital.own,
     efectivo: pesos(days.reduce((sum, day) => sum + day.efectivo, 0)),
-    nequi: pesos(collected.reduce((sum, row) => sum + row.nequi, 0)),
-    banco: pesos(collected.reduce((sum, row) => sum + row.banco, 0)),
+    nequi: digital.nequi,
+    banco: digital.banco,
     lines: days.flatMap((day) => [...day.gastoLines, ...loanRowsToExpenseLines(day.loanRows)]),
     ownLoanLines: loanRowsToExpenseLines(side === "secondary" ? ledger.t.loanRows : ledger.m.loanRows),
     ownGastoLines: side === "secondary" ? ledger.t.gastoLines : ledger.m.gastoLines,
@@ -457,8 +504,8 @@ export type SealedDayCash = {
 
 /**
  * Cadena M↔T: saldo final del día (Inicial M de mañana).
- * Fuera de la cadena: caja menor del día (efectivo − gastos), como siempre;
- * su Inicial lo arrastra el historial, no el CIE-.
+ * Fuera de la cadena el cierre pasa por `resolveSealedDayCash` (caja del historial).
+ * Este fallback (neto del día) solo aplica si no hay planilla A/N.
  */
 export function sealedDayCash(src: DayCashSources, cashCollectedAllRoutes: number): SealedDayCash {
   const ledger = buildDayCashLedger(src);

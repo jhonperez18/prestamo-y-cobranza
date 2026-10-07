@@ -51,6 +51,8 @@ import {
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
+import { restoreLoansFromOrphanDisbursements } from "@/lib/restore-loans-from-bank-disbursements";
+import { queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 import { restoreSealedVisitsFromPrior } from "@/lib/planilla-sealed-visits";
 import { refreshLabelsFromCatalog } from "@/lib/project-identity";
 import { omitDeleted } from "@/lib/deleted-ids";
@@ -175,7 +177,18 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
         loadDemoDayCloses<CollectorDayCloseRecord>(),
       );
 
-  const reconciledLoans = syncAllLoans(storedLoans, nextPayments) as LoanRow[];
+  const reconciledLoansBase = syncAllLoans(storedLoans, nextPayments) as LoanRow[];
+  const restoredFromBank = isVirginOpsMode()
+    ? { loans: reconciledLoansBase, movements: storedMovementsEarly ?? [], created: [] as LoanRow[] }
+    : restoreLoansFromOrphanDisbursements({
+        loans: reconciledLoansBase,
+        movements: storedMovementsEarly ?? [],
+        clients: liveClients,
+      });
+  if (restoredFromBank.created.length) {
+    queueLoansMirror(restoredFromBank.created);
+  }
+  const reconciledLoans = restoredFromBank.loans;
   // No inventar COB en hydrate (evita diego fantasma entre localhost/Vercel).
   const linked = ensureCollectorsForUsers(loadDemoUsers(), storedCollectors, {
     inventMissing: false,
@@ -244,7 +257,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
   );
   const storedMovements = stripRemovedPaymentMovements(
-    storedMovementsEarly ?? [],
+    restoredFromBank.movements.length ? restoredFromBank.movements : storedMovementsEarly ?? [],
     deduped.removedRefs,
   );
   const misc = readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []);

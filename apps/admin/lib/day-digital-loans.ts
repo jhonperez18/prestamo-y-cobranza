@@ -5,9 +5,9 @@
  */
 import { sameRoute } from "@/lib/client-route-order";
 import type { DayLoanDisbursementRow } from "@/lib/collector-history-planilla";
-import { displayToIso } from "@/lib/loan-preview";
 import { isLoanVoided, type ClientRow, type LoanRow } from "@/lib/mock-data";
 import {
+  loanDisbursementIsoDate,
   loanDisbursementSource,
   loanFundedByBanco,
   loanFundedByNequi,
@@ -49,7 +49,7 @@ export function dayPlanillaLoansWithoutPayment(
   const rows: DayPlanillaLoan[] = [];
   for (const loan of loans) {
     if (isLoanVoided(loan) || loanIsExistingPortfolio(loan)) continue;
-    if (displayToIso(String(loan.date || "").trim()) !== dateIso) continue;
+    if (loanDisbursementIsoDate(loan) !== dateIso) continue;
     if (!loan.clientRef || paidClientRefs.has(loan.clientRef)) continue;
     if (!((Number(loan.capital) || 0) > 0)) continue;
     const client = clientByRef.get(loan.clientRef);
@@ -76,7 +76,7 @@ export function dayDigitalLoanRows(
   for (const loan of loans) {
     if (!loanFundedByBanco(loan) && !loanFundedByNequi(loan)) continue;
     if (isLoanVoided(loan)) continue;
-    if (displayToIso(String(loan.date || "").trim()) !== dateIso) continue;
+    if (loanDisbursementIsoDate(loan) !== dateIso) continue;
     const capital = Math.trunc(Number(loan.capital) || 0);
     if (capital <= 0) continue;
     const client = clientByRef.get(loan.clientRef);

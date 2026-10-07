@@ -1112,7 +1112,15 @@ export function useWorkspace({
     if (labeled.payments !== result.state.payments) writeDemoJson(DEMO_PAYMENTS_KEY, labeled.payments);
     if (labeled.assignments !== result.state.assignments) {
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, labeled.assignments);
-      queueAssignmentsMirror(labeled.assignments);
+      const focusLoan = result.focusLoanRef;
+      const focusClient = result.focusClientRef;
+      queueAssignmentsMirror(
+        labeled.assignments.filter(
+          (row) =>
+            Boolean(focusLoan && row.loanRef === focusLoan) ||
+            Boolean(focusClient && row.clientRef === focusClient),
+        ),
+      );
     }
     setClients(result.state.clients);
     setLoans(labeled.loans);

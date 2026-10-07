@@ -90,7 +90,7 @@ export function evaluateMorningState(
         ? chain.rows
             .map(
               (row) =>
-                `${row.collectorName}: ${row.todayOpening == null ? "—" : moneyLabel(row.todayOpening)}${row.ok ? "" : ` (CIE ${moneyLabel(row.yesterdayCieFloat)})`}`,
+                `${row.collectorName}: ${row.todayOpening == null ? "—" : moneyLabel(row.todayOpening)}${row.ok ? "" : ` (${row.kind === "independent" ? "Caja" : "CIE"} ${moneyLabel(row.yesterdayCieFloat)})`}`,
             )
             .join(" · ")
         : "Sin cierre ayer (día sin cobro)",

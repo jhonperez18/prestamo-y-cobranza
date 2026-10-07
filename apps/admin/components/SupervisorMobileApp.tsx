@@ -80,15 +80,17 @@ import { primaryLoanForClient } from "@/lib/route-sync";
 import {
   loanDisbursementSource,
   loanDisbursementSourceLabel,
-  paymentsForCollectorIncludingOffice,
 } from "@/lib/nequi-pool";
 import { dayDigitalLoanRows, digitalLoanPoolForRoute } from "@/lib/day-digital-loans";
 import {
   DIGITAL_POOL_LABEL,
   digitalPoolAdjustWindow,
   digitalPoolBalances,
+  digitalPoolDayLedger,
+  digitalPoolRegisterDays,
   todayDigitalPoolAdjustment,
   type DigitalPool,
+  type DigitalPoolRegisterLoan,
 } from "@/lib/digital-pools";
 import type { DigitalPoolAdjustRequest } from "@/lib/save-cash-adjustment";
 import { suppressGhostClick } from "@/lib/suppress-ghost-click";
@@ -127,7 +129,7 @@ import {
   withPaymentEvidence,
 } from "@/lib/payment-evidence-store";
 import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
-import type { BankAccount } from "@/lib/bank";
+import type { BankAccount, BankMovement } from "@/lib/bank";
 import { displayToday } from "@/lib/bank";
 import { createMiscPayment, type MiscPayment } from "@/lib/misc-payments";
 import {
@@ -146,6 +148,7 @@ import {
   buildDayCashLedger,
   chainDayCuadre,
   primaryClosingForDay,
+  routeDigitalCollected,
   withSealedDaySaldos,
   chainHistorySplit,
   withLedgerTodaySaldo,
@@ -215,6 +218,8 @@ type Props = {
   planillaCashCloses?: PlanillaCashCloseRecord[];
   /** Cuentas activas para Nuevo gasto → Banco registros. */
   bankAccounts?: BankAccount[];
+  /** Haber DSB del registro Banco: monta préstamos huérfanos (Albornoz) en el historial. */
+  bankMovements?: BankMovement[];
   /** Pagos varios ya montados (para el siguiente PV-). */
   miscPayments?: MiscPayment[];
   /** Nuevo cliente: mismo alta del cobrador (ruta + posición), local + cola + nube. */
@@ -1077,6 +1082,7 @@ export function SupervisorMobileApp({
   monthCloses = NO_ROWS,
   planillaCashCloses = NO_ROWS,
   bankAccounts = NO_ROWS,
+  bankMovements = NO_ROWS,
   miscPayments = NO_ROWS,
   onCreateRouteClient,
   onCreateQuickLoan,
@@ -1113,8 +1119,10 @@ export function SupervisorMobileApp({
   const [snDay, setSnDay] = useState<string | null>(null);
   /** Registro Nequi de hoy filtrado por ruta (1 / 1.1 / 2). */
   const [nequiRegistroRoute, setNequiRegistroRoute] = useState<string | null>(null);
-  /** Registro Banco de hoy filtrado por ruta (1 / 1.1 / 2). */
+  /** Registro Banco filtrado por ruta (M / T / N). */
   const [bancoRegistroRoute, setBancoRegistroRoute] = useState<string | null>(null);
+  /** Día abierto del historial Banco (null = Hoy + lista de días). */
+  const [bancoRegistroDay, setBancoRegistroDay] = useState<string | null>(null);
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [gastoLabel, setGastoLabel] = useState("Gasto");
@@ -1169,6 +1177,7 @@ export function SupervisorMobileApp({
     setCajaHistoryDayIso(null);
     setNequiRegistroRoute(null);
     setBancoRegistroRoute(null);
+    setBancoRegistroDay(null);
     setNuevoMode("menu");
     setNuevoRouteRef(null);
     setNuevoMsg("");
@@ -1323,8 +1332,6 @@ export function SupervisorMobileApp({
           };
 
       let cobradoEfectivo = 0;
-      let cobradoNequi = 0;
-      let cobradoBanco = 0;
       if (collector) {
         for (const pay of collectorDayPayments(
           collector.ref,
@@ -1336,12 +1343,30 @@ export function SupervisorMobileApp({
           if (!loan?.clientRef || !clientRefs.has(loan.clientRef)) continue;
           const amount = Number(pay.amount) || 0;
           if (!(amount > 0)) continue;
-          const method = paymentDisplayMethod(pay, loans, clients);
-          if (method === "nequi") cobradoNequi += amount;
-          else if (method === "banco") cobradoBanco += amount;
-          else cobradoEfectivo += amount;
+          if (paymentDisplayMethod(pay, loans, clients) === "efectivo") cobradoEfectivo += amount;
         }
       }
+      const digitalCollected = collector
+        ? routeDigitalCollected(
+            {
+              collectorRef: collector.ref,
+              collectorName: collector.name,
+              date: today,
+              payments,
+              loans,
+              clients,
+              collectors: [collector],
+              assignments,
+              dayCloses,
+              dayExpenseDrafts,
+              planillaCashCloses,
+              monthCloses,
+            },
+            route.routeName,
+          )
+        : { nequi: 0, banco: 0, payments: [] };
+      const cobradoNequi = digitalCollected.nequi;
+      const cobradoBanco = digitalCollected.banco;
       const cobradoHoy = cobradoEfectivo + cobradoNequi + cobradoBanco;
 
       const rawExpenses = expensesForCollectorDay(
@@ -1764,8 +1789,18 @@ export function SupervisorMobileApp({
     });
   }, [view, planillaRoutePins]);
 
-  /** Ficha de un día del Registro Nequi (misma fila para hoy y para el historial). */
-  const renderNequiDayList = (items: typeof paymentsWithEvidence) => (
+  const poolDayCountLabel = (cobros: number, prestamos: number) => {
+    const cobro = `${cobros} cobro${cobros === 1 ? "" : "s"}`;
+    if (prestamos <= 0) return cobro;
+    return `${cobro} · ${prestamos} préstamo${prestamos === 1 ? "" : "s"}`;
+  };
+
+  /** Ficha de un día del Registro Banco / Nequi: cobros (entran) y préstamos en azul (salen). */
+  const renderNequiDayList = (
+    items: typeof paymentsWithEvidence,
+    loansOut: DigitalPoolRegisterLoan[] = [],
+    net?: number,
+  ) => (
     <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-register is-nequi-day-ficha">
       {items.map((pay) => {
         const method = paymentDisplayMethod(pay, loans, clients);
@@ -1794,6 +1829,23 @@ export function SupervisorMobileApp({
         </li>
         );
       })}
+      {loansOut.map((row) => (
+        <li key={row.loanRef} className="is-outflow">
+          <strong className="is-name">{row.clientName}</strong>
+          <span className="is-when">{row.time || "—"}</span>
+          <em className="is-method is-pay-prestamo" title="Sale del Banco · solo capital">
+            −
+          </em>
+          <span className="is-evidence" aria-hidden />
+          <b className="is-out">{money(-row.capital, { symbol: false })}</b>
+        </li>
+      ))}
+      {net != null ? (
+        <li className={net < 0 ? "is-total is-net-negative" : "is-total"}>
+          <span>Saldo del día</span>
+          <b>{money(net, { symbol: false })}</b>
+        </li>
+      ) : null}
     </ul>
   );
 
@@ -1816,8 +1868,9 @@ export function SupervisorMobileApp({
         collectors,
         collectorRefs: poolCollectors.map((row) => row.ref),
         dayCloses,
+        movements: bankMovements,
       }),
-    [poolCollectors, collectors, paymentsWithEvidence, loans, clients, dayCloses],
+    [poolCollectors, collectors, paymentsWithEvidence, loans, clients, dayCloses, bankMovements],
   );
   const bancoPanelAcumulado = digitalPools.banco;
   const nequiPanelAcumulado = digitalPools.nequi;
@@ -2011,32 +2064,48 @@ export function SupervisorMobileApp({
     return (routeT?.enCaja ?? 0) + (routeN?.enCaja ?? 0) + bancoPanelAcumulado;
   }, [liquidaciones, bancoPanelAcumulado]);
 
-  const bancoRegisterTodayAll = useMemo(() => {
-    const items = paymentsWithEvidence
-      .filter(
-        (row) =>
-          paymentDisplayMethod(row, loans, clients) === "banco" &&
-          (row.amount ?? 0) > 0 &&
-          normalizeHistoryDate(row.paidDate ?? "") === today,
-      )
-      .slice()
-      .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));
-    const total = items.reduce((sum, row) => sum + (row.amount ?? 0), 0);
-    return { date: todayDisplay, items, total };
-  }, [paymentsWithEvidence, today, todayDisplay, loans, clients]);
+  /**
+   * Registro Banco por día: hoy abierto; los días anteriores en historial.
+   * Cada cobro (incluido Caja / oficina) queda en su paidDate, no en “Hoy” del día siguiente.
+   */
+  const bancoRegisterDays = useMemo(
+    () =>
+      digitalPoolRegisterDays({
+        payments: paymentsWithEvidence,
+        loans,
+        clients,
+        pool: "banco",
+        fromIso: bancoHistoryFrom,
+        toIso: today,
+        routeName: bancoRegistroRoute,
+        movements: bankMovements,
+      }),
+    [paymentsWithEvidence, loans, clients, bancoHistoryFrom, today, bancoRegistroRoute, bankMovements],
+  );
   const bancoRegisterToday = useMemo(() => {
-    const base = bancoRegisterTodayAll;
-    if (!bancoRegistroRoute) {
-      return base;
-    }
-    const items = base.items.filter((pay) => {
-      const loan = loans.find((row) => row.ref === pay.loanRef);
-      const client = clients.find((row) => row.ref === (loan?.clientRef || ""));
-      return sameRoute(client?.route, bancoRegistroRoute);
-    });
-    const total = items.reduce((sum, row) => sum + (row.amount ?? 0), 0);
-    return { date: base.date, items, total };
-  }, [bancoRegisterTodayAll, bancoRegistroRoute, loans, clients]);
+    const found = bancoRegisterDays.find((day) => day.date === today);
+    return {
+      date: todayDisplay,
+      items: found?.items ?? [],
+      loans: found?.loans ?? [],
+      total: found?.total ?? 0,
+    };
+  }, [bancoRegisterDays, today, todayDisplay]);
+  const bancoRegisterPastDays = useMemo(
+    () => bancoRegisterDays.filter((day) => day.date < today),
+    [bancoRegisterDays, today],
+  );
+  const bancoRegisterOpenDay = useMemo(() => {
+    if (!bancoRegistroDay) return null;
+    return (
+      bancoRegisterDays.find((day) => day.date === bancoRegistroDay) ?? {
+        date: bancoRegistroDay,
+        items: [] as typeof paymentsWithEvidence,
+        loans: [],
+        total: 0,
+      }
+    );
+  }, [bancoRegistroDay, bancoRegisterDays]);
 
   /** Filas de planilla: `#` = posición del cliente en su ruta; `route` para la raya verde. */
   const planillaTableRows = (rows: DailyCollectionAssignment[]): PlanillaTableRow[] =>
@@ -2186,91 +2255,57 @@ export function SupervisorMobileApp({
     dayExpenseDrafts,
   ]);
   const openRouteNequiDays = useMemo(() => {
-    if (!openRoute || !openRouteScope) return [];
-    const mine = paymentsForCollectorIncludingOffice(
-      openRoute.collectorRef,
-      collectors,
-      paymentsWithEvidence,
-      clients,
+    if (!openRoute) return [];
+    return digitalPoolRegisterDays({
+      payments: paymentsWithEvidence,
       loans,
-      routes,
-    ).filter((row) => {
-      if (normalizePaymentMethod(row.method) === "efectivo" || !((row.amount ?? 0) > 0)) {
-        return false;
-      }
-      const loan = loans.find((entry) => entry.ref === row.loanRef);
-      if (loan?.clientRef && openRouteScope.clientRefs.has(loan.clientRef)) return true;
-      if (row.routeRef && row.routeRef === openRoute.routeRef) return true;
-      return false;
-    });
-    const byDate = new Map<string, { count: number; amount: number }>();
-    for (const row of mine) {
-      const date = normalizeHistoryDate(row.paidDate ?? "");
-      if (!date) continue;
-      const prev = byDate.get(date) ?? { count: 0, amount: 0 };
-      byDate.set(date, {
-        count: prev.count + 1,
-        amount: prev.amount + (row.amount ?? 0),
-      });
-    }
-    return Array.from(byDate.entries())
-      .map(([date, stats]) => ({
-        date,
-        dateLabel: isoToDisplay(date),
-        count: stats.count,
-        amount: stats.amount,
-      }))
-      .sort((a, b) => b.date.localeCompare(a.date));
+      clients,
+      pool: openRouteDigitalPool,
+      fromIso: bancoHistoryFrom,
+      toIso: today,
+      routeName: openRoute.routeName,
+      movements: bankMovements,
+    }).map((day) => ({
+      date: day.date,
+      dateLabel: isoToDisplay(day.date),
+      count: day.items.length,
+      loanCount: day.loans.length,
+      amount: day.total,
+    }));
   }, [
     openRoute,
-    openRouteScope,
-    collectors,
+    openRouteDigitalPool,
     paymentsWithEvidence,
-    clients,
     loans,
-    routes,
+    clients,
+    bancoHistoryFrom,
+    today,
+    bankMovements,
   ]);
   /** Banco / Nequi: historial desde el día 1 del mes en curso (lo anterior no se lista). */
-  const openRouteDigitalDays = openRouteNequiDays.filter((day) => day.date >= bancoHistoryFrom);
-  const openRouteNequiDayPays = useMemo(() => {
-    if (!openRoute || !openRouteScope || !nequiDayIso) return [];
-    const byRef = new Map(
-      paymentsWithEvidence.filter((row) => row.ref).map((row) => [row.ref, row] as const),
-    );
-    return paymentsForCollectorIncludingOffice(
-      openRoute.collectorRef,
-      collectors,
-      paymentsWithEvidence,
-      clients,
+  const openRouteDigitalDays = openRouteNequiDays;
+  const openRouteDigitalDayLedger = useMemo(() => {
+    if (!openRoute || !nequiDayIso) return null;
+    return digitalPoolDayLedger({
+      payments: paymentsWithEvidence,
       loans,
-      routes,
-    )
-      .filter((row) => {
-        if (
-          normalizePaymentMethod(row.method) === "efectivo" ||
-          !((row.amount ?? 0) > 0) ||
-          normalizeHistoryDate(row.paidDate ?? "") !== nequiDayIso
-        ) {
-          return false;
-        }
-        const loan = loans.find((entry) => entry.ref === row.loanRef);
-        if (loan?.clientRef && openRouteScope.clientRefs.has(loan.clientRef)) return true;
-        if (row.routeRef && row.routeRef === openRoute.routeRef) return true;
-        return false;
-      })
-      .map((row) => withPaymentEvidence(byRef.get(row.ref) ?? row))
-      .slice()
-      .sort((a, b) => (b.paidTime || "").localeCompare(a.paidTime || ""));
+      clients,
+      pool: openRouteDigitalPool,
+      dateIso: nequiDayIso,
+      routeName: openRoute.routeName,
+      movements: bankMovements,
+    });
   }, [
     openRoute,
-    openRouteScope,
+    openRouteDigitalPool,
     nequiDayIso,
-    collectors,
     paymentsWithEvidence,
-    clients,
     loans,
-    routes,
+    clients,
+    bankMovements,
   ]);
+  const openRouteNequiDayPays = openRouteDigitalDayLedger?.items ?? [];
+  const openRouteNequiDayLoans = openRouteDigitalDayLedger?.loans ?? [];
 
   const openRouteCajaHistory = useMemo(() => {
     if (!openRoute || !openRouteScope) return [];
@@ -2709,9 +2744,11 @@ export function SupervisorMobileApp({
 
   const historyDayShowNequiValue = !openRouteIsA;
   const historyDayShowBancoValue = openRouteIsA;
-  const historyDayDigitalAmount =
-    (openRouteHistoryDayCuadre?.cobradoBanco ?? 0) +
-    (openRouteHistoryDayCuadre?.cobradoNequi ?? 0);
+  /** A = solo Nequi; M / T / N = solo Banco (T muestra M+T en el recuadro conjunto). */
+  const historyDayDigitalAmount = openRouteIsA
+    ? (openRouteHistoryDayCuadre?.cobradoNequi ?? 0)
+    : (openRouteHistoryDayCuadre?.cobradoBanco ?? 0) +
+      (openRouteHistoryDayCuadre?.cobradoNequi ?? 0);
   const historyDayNequiBoxAmount = historyDayDigitalAmount;
   /** Cierre del día de T: lo propio de T arriba; totales M+T en «Lo que cobró». */
   const historyDayChainT = openRouteCajaHistoryIsT ? openRouteHistoryChainDay : null;
@@ -2884,10 +2921,7 @@ export function SupervisorMobileApp({
     }));
   const cierreShownLines = cierreListKind === "np" ? cierreNpLines : cierreListLines;
 
-  const openRouteNequiDayTotal = openRouteNequiDayPays.reduce(
-    (sum, row) => sum + (row.amount ?? 0),
-    0,
-  );
+  const openRouteNequiDayTotal = openRouteDigitalDayLedger?.total ?? 0;
 
   function openCobrosReport(method: PaymentMethod | null = null) {
     suppressGhostClick();
@@ -2970,6 +3004,7 @@ export function SupervisorMobileApp({
     }
     if (next === "banco") {
       setBancoRegistroRoute(pickDefaultRoutePin(bancoRegistroRoutePins));
+      setBancoRegistroDay(null);
     }
     if (next === "prestamos") {
       setPrestamosRouteFilter(pickDefaultRoutePin(planillaRoutePins));
@@ -3006,6 +3041,7 @@ export function SupervisorMobileApp({
     setClientesLoanClientRef(null);
     setNequiRegistroRoute(null);
     setBancoRegistroRoute(null);
+    setBancoRegistroDay(null);
     resetClientesModify();
     setClientesSearchOpen(false);
     setPrestamoFichaRef(null);
@@ -3627,7 +3663,7 @@ export function SupervisorMobileApp({
                 Historial {openRouteDigitalLabel} por día
               </p>
               {openRouteDigitalDays.length === 0 ? (
-                <p className="ficha-empty">Sin cobros {openRouteDigitalLabel} en esta ruta.</p>
+                <p className="ficha-empty">Sin movimientos {openRouteDigitalLabel} en esta ruta.</p>
               ) : (
                 <ul
                   className={`supervisor-nequi-day-list${openRouteDigitalPool === "banco" ? " is-banco" : ""}`}
@@ -3642,9 +3678,11 @@ export function SupervisorMobileApp({
                       >
                         <span className="is-date">{day.dateLabel}</span>
                         <span className="is-count">
-                          {day.count} cobro{day.count === 1 ? "" : "s"}
+                          {poolDayCountLabel(day.count, day.loanCount)}
                         </span>
-                        <b className="is-amount">{money(day.amount, { symbol: false })}</b>
+                        <b className={day.amount < 0 ? "is-amount is-negative" : "is-amount"}>
+                          {money(day.amount, { symbol: false })}
+                        </b>
                       </button>
                     </li>
                   ))}
@@ -3916,6 +3954,7 @@ export function SupervisorMobileApp({
                         onClick={() => toggleCierreList("banco")}
                       >
                         <span>Banco T</span>
+                        {/* Regla: Banco T = historial Banco de T (cobros). Incluye oficina. No toca caja. */}
                         <b>{money(historyDayChainT.ownDigital)}</b>
                       </button>
                     ) : null}
@@ -3928,6 +3967,7 @@ export function SupervisorMobileApp({
                     {historyDayShowBancoValue ? (
                       <div className="is-mean is-pay-nequi">
                         <span>Nequi</span>
+                        {/* Regla: Nequi A = historial Nequi de A. Exclusivo de A. No toca caja. */}
                         <b>{money(historyDayNequiBoxAmount)}</b>
                       </div>
                     ) : null}
@@ -4019,11 +4059,10 @@ export function SupervisorMobileApp({
                   ·
                 </span>
                 <span>
-                  {openRouteNequiDayPays.length} cobro
-                  {openRouteNequiDayPays.length === 1 ? "" : "s"}
+                  {poolDayCountLabel(openRouteNequiDayPays.length, openRouteNequiDayLoans.length)}
                 </span>
               </p>
-              {openRouteNequiDayPays.length === 0 ? (
+              {openRouteNequiDayPays.length === 0 && openRouteNequiDayLoans.length === 0 ? (
                 <p className="ficha-empty">Sin movimientos {openRouteDigitalLabel} ese día.</p>
               ) : (
                 <>
@@ -4033,36 +4072,11 @@ export function SupervisorMobileApp({
                       (misma app) o subila acá con +.
                     </p>
                   ) : null}
-                <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-register is-nequi-day-ficha">
-                  {openRouteNequiDayPays.map((pay) => (
-                    <li key={pay.ref}>
-                      <strong className="is-name">{pay.client}</strong>
-                      <span className="is-when">{pay.paidTime || "—"}</span>
-                      <em
-                        className={`is-method ${paymentMethodToneClass(paymentDisplayMethod(pay, loans, clients))}`}
-                        title={paymentMethodLabel(paymentDisplayMethod(pay, loans, clients))}
-                      >
-                        {paymentMethodInitial(paymentDisplayMethod(pay, loans, clients))}
-                      </em>
-                      <span className="is-evidence">
-                        <PaymentEvidenceThumb
-                          evidence={pay.evidence}
-                          size={28}
-                          onAttach={
-                            onAttachPaymentEvidence
-                              ? (piece) => onAttachPaymentEvidence(pay.ref, [piece])
-                              : undefined
-                          }
-                        />
-                      </span>
-                      <b className="is-cobro">{money(pay.amount, { symbol: false })}</b>
-                    </li>
-                  ))}
-                  <li className="is-total">
-                    <span>Total {openRouteDigitalLabel}</span>
-                    <b>{money(openRouteNequiDayTotal, { symbol: false })}</b>
-                  </li>
-                </ul>
+                  {renderNequiDayList(
+                    openRouteNequiDayPays,
+                    openRouteNequiDayLoans,
+                    openRouteNequiDayTotal,
+                  )}
                 </>
               )}
             </>
@@ -4615,11 +4629,19 @@ export function SupervisorMobileApp({
 
           <div className="supervisor-nequi-registro-head">
             <h3>Registro Banco</h3>
-            {bancoRegistroRoutePins.length > 0 ? (
+            {bancoRegistroDay ? (
+              <button
+                type="button"
+                className="collector-mobile-pay-link is-back"
+                onClick={() => setBancoRegistroDay(null)}
+              >
+                volver
+              </button>
+            ) : bancoRegistroRoutePins.length > 0 ? (
               <div
                 className="supervisor-nequi-route-pins"
                 role="group"
-                aria-label="Registro Banco del día por ruta"
+                aria-label="Registro Banco por ruta"
               >
                 {bancoRegistroRoutePins.map((name) => (
                   <button
@@ -4630,8 +4652,8 @@ export function SupervisorMobileApp({
                         ? "supervisor-nequi-route-pin is-banco on"
                         : "supervisor-nequi-route-pin is-banco"
                     }
-                    title={`Banco hoy · ruta ${name}`}
-                    aria-label={`Banco hoy ruta ${name}`}
+                    title={`Banco · ruta ${name}`}
+                    aria-label={`Banco ruta ${name}`}
                     aria-pressed={Boolean(
                       bancoRegistroRoute && sameRoute(bancoRegistroRoute, name),
                     )}
@@ -4647,48 +4669,92 @@ export function SupervisorMobileApp({
               </div>
             ) : null}
           </div>
-          {!bancoRegistroRoute ? null : bancoRegisterToday.items.length === 0 ? (
-            <p className="ficha-empty">
-              {`Sin cobros Banco hoy en ruta ${bancoRegistroRoute}.`}
-            </p>
-          ) : (
-            <div className="supervisor-nequi-register is-today-only is-tone-banco">
-              <div className="supervisor-nequi-day">
-                <div className="supervisor-nequi-day-head">
-                  <strong>
-                    Hoy · {bancoRegisterToday.date}
-                    {bancoRegistroRoute ? ` · Ruta ${bancoRegistroRoute}` : ""}
-                  </strong>
-                  <b>{money(bancoRegisterToday.total, { symbol: false })}</b>
+          {bancoRegisterOpenDay ? (
+            bancoRegisterOpenDay.items.length === 0 && bancoRegisterOpenDay.loans.length === 0 ? (
+              <p className="ficha-empty">
+                {bancoRegistroRoute
+                  ? `Sin movimientos Banco el ${isoToDisplay(bancoRegisterOpenDay.date)} en ruta ${bancoRegistroRoute}.`
+                  : `Sin movimientos Banco el ${isoToDisplay(bancoRegisterOpenDay.date)}.`}
+              </p>
+            ) : (
+              <div className="supervisor-nequi-register is-tone-banco">
+                <div className="supervisor-nequi-day">
+                  <div className="supervisor-nequi-day-head">
+                    <strong>
+                      {isoToDisplay(bancoRegisterOpenDay.date)}
+                      {bancoRegistroRoute ? ` · Ruta ${bancoRegistroRoute}` : ""}
+                    </strong>
+                    <b className={bancoRegisterOpenDay.total < 0 ? "is-negative" : undefined}>
+                      {money(bancoRegisterOpenDay.total, { symbol: false })}
+                    </b>
+                  </div>
+                  {renderNequiDayList(
+                    bancoRegisterOpenDay.items,
+                    bancoRegisterOpenDay.loans,
+                    bancoRegisterOpenDay.total,
+                  )}
                 </div>
-                <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-register is-nequi-day-ficha">
-                  {bancoRegisterToday.items.map((pay) => (
-                    <li key={pay.ref}>
-                      <strong className="is-name">{pay.client}</strong>
-                      <span className="is-when">{pay.paidTime || "—"}</span>
-                      <em
-                        className={`is-method ${paymentMethodToneClass("banco")}`}
-                        title={paymentMethodLabel("banco")}
-                      >
-                        {paymentMethodInitial("banco")}
-                      </em>
-                      <span className="is-evidence">
-                        <PaymentEvidenceThumb
-                          evidence={pay.evidence}
-                          size={28}
-                          onAttach={
-                            onAttachPaymentEvidence
-                              ? (piece) => onAttachPaymentEvidence(pay.ref, [piece])
-                              : undefined
-                          }
-                        />
-                      </span>
-                      <b className="is-cobro">{money(pay.amount, { symbol: false })}</b>
-                    </li>
-                  ))}
-                </ul>
               </div>
-            </div>
+            )
+          ) : (
+            <>
+              {bancoRegisterToday.items.length === 0 && bancoRegisterToday.loans.length === 0 ? (
+                <p className="ficha-empty">
+                  {bancoRegistroRoute
+                    ? `Sin movimientos Banco hoy en ruta ${bancoRegistroRoute}.`
+                    : "Sin movimientos Banco hoy."}
+                </p>
+              ) : (
+                <div className="supervisor-nequi-register is-today-only is-tone-banco">
+                  <div className="supervisor-nequi-day">
+                    <div className="supervisor-nequi-day-head">
+                      <strong>
+                        Hoy · {bancoRegisterToday.date}
+                        {bancoRegistroRoute ? ` · Ruta ${bancoRegistroRoute}` : ""}
+                      </strong>
+                      <b className={bancoRegisterToday.total < 0 ? "is-negative" : undefined}>
+                        {money(bancoRegisterToday.total, { symbol: false })}
+                      </b>
+                    </div>
+                    {renderNequiDayList(
+                      bancoRegisterToday.items,
+                      bancoRegisterToday.loans,
+                      bancoRegisterToday.total,
+                    )}
+                  </div>
+                </div>
+              )}
+              {bancoRegisterPastDays.length > 0 ? (
+                <>
+                  <p className="supervisor-mobile-detail-meta">Historial por día</p>
+                  <ul
+                    className="supervisor-nequi-day-list is-banco"
+                    aria-label="Días con movimientos Banco"
+                  >
+                    {bancoRegisterPastDays.map((day) => (
+                      <li key={day.date}>
+                        <button
+                          type="button"
+                          className="supervisor-nequi-day-row"
+                          onClick={() => {
+                            suppressGhostClick();
+                            setBancoRegistroDay(day.date);
+                          }}
+                        >
+                          <span className="is-date">{isoToDisplay(day.date)}</span>
+                          <span className="is-count">
+                            {poolDayCountLabel(day.items.length, day.loans.length)}
+                          </span>
+                          <b className={day.total < 0 ? "is-amount is-negative" : "is-amount"}>
+                            {money(day.total, { symbol: false })}
+                          </b>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </>
           )}
         </section>
       ) : view === "nuevo" ? (

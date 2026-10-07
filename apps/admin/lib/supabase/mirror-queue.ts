@@ -60,6 +60,9 @@ export type MirrorApiJson = {
   reason?: string;
   kept?: boolean;
   error?: string;
+  /** Alta de préstamo: si el P- ya era de otro cliente, la nube asignó otro. */
+  ref?: string;
+  rekeyed?: boolean;
 };
 
 /**

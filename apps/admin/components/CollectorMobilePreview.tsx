@@ -70,6 +70,7 @@ type Props = {
     evidence: import("@/lib/payment-evidence").PaymentEvidenceRef[],
   ) => void;
   bankAccounts?: import("@/lib/bank").BankAccount[];
+  bankMovements?: import("@/lib/bank").BankMovement[];
   miscPayments?: import("@/lib/misc-payments").MiscPayment[];
   onSaveMiscPayment?: (payment: import("@/lib/misc-payments").MiscPayment) => void;
   onAdjustTCash?: (
@@ -106,6 +107,7 @@ export function CollectorMobilePreview({
   onUpdateClient,
   onAttachPaymentEvidence,
   bankAccounts = [],
+  bankMovements = [],
   miscPayments = [],
   onSaveMiscPayment,
   onAdjustTCash,
@@ -306,6 +308,7 @@ export function CollectorMobilePreview({
                   monthCloses={monthCloses}
                   planillaCashCloses={planillaCashCloses}
                   bankAccounts={bankAccounts}
+                  bankMovements={bankMovements}
                   miscPayments={miscPayments}
                   onCreateRouteClient={
                     onCreateRouteClient

@@ -2560,6 +2560,10 @@
       color: #1d4ed8;
       background: #dbeafe;
     }
+    .collector-closed-review-list.is-cobros-cols .is-method.is-pay-prestamo {
+      color: #1d4ed8;
+      background: #dbeafe;
+    }
     .collector-closed-review-list.is-cobros-cols .is-evidence {
       justify-self: center;
       display: flex;
@@ -2708,6 +2712,31 @@
       font-size: 12px;
       font-weight: 400;
       color: #0f766e;
+    }
+    .collector-closed-review-list.is-cobros-cols.has-evidence > li.is-outflow,
+    .supervisor-nequi-day .collector-closed-review-list.is-cobros-cols.has-evidence > li.is-outflow,
+    .supervisor-nequi-register .collector-closed-review-list.is-cobros-cols.has-evidence > li.is-outflow {
+      background: #dbeafe !important;
+      box-shadow: inset 4px 0 0 #1d4ed8;
+    }
+    .collector-closed-review-list.is-nequi-day-ficha > li.is-outflow .is-name,
+    .collector-closed-review-list.is-nequi-day-ficha > li.is-outflow .is-when,
+    .collector-closed-review-list.is-nequi-day-ficha > li.is-outflow .is-out {
+      color: #1d4ed8;
+    }
+    .collector-closed-review-list.is-nequi-day-ficha > li.is-outflow .is-name {
+      font-weight: 700;
+    }
+    .collector-closed-review-list.is-nequi-day-ficha > li.is-outflow .is-out {
+      justify-self: end;
+      min-width: 0;
+      white-space: nowrap;
+      text-align: right;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .collector-closed-review-list.is-nequi-day-ficha > li.is-total.is-net-negative b {
+      color: #1d4ed8;
     }
     .collector-closed-review-list.is-cobros-cols > li.is-total {
       display: flex;
@@ -7056,6 +7085,9 @@
       text-align: right;
       white-space: nowrap;
       min-width: 4.5rem;
+    }
+    .supervisor-nequi-day-list.is-banco .supervisor-nequi-day-row .is-amount.is-negative {
+      color: #1d4ed8;
     }
     .supervisor-day-board-wide {
       grid-column: 1 / -1;

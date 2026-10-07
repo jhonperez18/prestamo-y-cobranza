@@ -1740,6 +1740,7 @@ export function Workspace(props: WorkspaceProps) {
           monthCloses={monthCloses}
           planillaCashCloses={planillaCashCloses}
           bankAccounts={bankAccounts}
+          bankMovements={bankMovements}
           miscPayments={miscPayments}
           onRegisterPayment={registerCollectorPayment}
           onSkipVisit={skipCollectorVisit}

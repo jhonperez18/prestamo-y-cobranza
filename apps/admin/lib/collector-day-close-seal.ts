@@ -19,10 +19,10 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
   buildDayCashLedger,
   sealChainLinksFromLedger,
-  sealedDayCash,
   type DayCashLedger,
   type DayCashSources,
 } from "@/lib/day-cash-ledger";
+import { resolveSealedDayCash } from "@/lib/independent-route-cash";
 import { sameRoute } from "@/lib/client-route-order";
 import type { ClientRow, CollectorRow, LoanRow, PaymentRow } from "@/lib/mock-data";
 import {
@@ -147,7 +147,7 @@ export function sealCollectorDay(input: SealCollectorDayInput): SealCollectorDay
       expenses: lines,
     },
     lines,
-    sealed: sealedDayCash(sources, breakdown.efectivo),
+    sealed: resolveSealedDayCash(sources, breakdown.efectivo, input.planillaRoute),
     movementRefs: lines.map((line) =>
       dayExpenseLineMovementRef(
         input.collectorRef,

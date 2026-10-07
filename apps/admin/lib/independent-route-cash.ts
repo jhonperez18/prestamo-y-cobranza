@@ -11,7 +11,9 @@
  * Sin ajuste previo, el Inicial es el de siempre (`fallbackOpening`).
  *
  * El ajuste vive en el CIE- del cobrador de ese día (`routeCashAdjustments`).
- * No toca la cadena: ni `cashFloat`, ni `cashAdjustment` de T, ni PCE-, ni el libro del día.
+ * Al cerrar N, el CIE- sella esa misma caja (`cashFloat` = closing del historial).
+ * El neto del día (efectivo − gastos − préstamos) se suma al historial; no es el Inicial.
+ * No toca la cadena: ni `cashFloat` de M↔T, ni `cashAdjustment` de T, ni PCE-.
  */
 import { businessTodayIso } from "@/lib/business-timezone";
 import { mergeRouteCashAdjustments } from "@/lib/cash-adjustment";
@@ -36,7 +38,10 @@ import {
   routeCashCollected,
   routeClientRefsForDay,
   routeCollectedByMethod,
+  routeDigitalCollected,
+  sealedDayCash,
   type DayCashSources,
+  type SealedDayCash,
 } from "@/lib/day-cash-ledger";
 import { isPrestamoRutaExpense } from "@/lib/expense-lines";
 import { pesos } from "@/lib/finance";
@@ -52,6 +57,53 @@ export { INDEPENDENT_SALDO_ROUTES };
 export function isIndependentSaldoRoute(route: string | null | undefined): boolean {
   if (!route || isPlanillaCashChainRoute(route)) return false;
   return INDEPENDENT_SALDO_ROUTES.some((name) => sameRoute(route, name));
+}
+
+/** Planilla A/N de este cobrador ese día (pista de la hoja, si no visitas N/A). */
+export function independentRouteForCollectorDay(
+  src: DayCashSources,
+  hint?: string,
+): string | null {
+  if (hint && isIndependentSaldoRoute(hint)) return hint.trim().toUpperCase();
+  const date = isoOf(src.date);
+  const all = new Set<string>();
+  const today = new Set<string>();
+  for (const row of src.assignments) {
+    if (row.collectorRef !== src.collectorRef) continue;
+    const name = assignmentRouteName(row, src.clients);
+    if (!isIndependentSaldoRoute(name)) continue;
+    const key = name.trim().toUpperCase();
+    all.add(key);
+    if (isoOf(row.dispatchDate) === date) today.add(key);
+  }
+  if (today.has("N")) return "N";
+  if (today.size === 1) return [...today][0];
+  if (all.has("N")) return "N";
+  if (all.size === 1) return [...all][0];
+  return null;
+}
+
+/** CIE- de N/A: Inicial y caja del historial (no el neto del día). */
+export function sealedIndependentDayCash(
+  src: DayCashSources,
+  routeHint?: string,
+): SealedDayCash | null {
+  const route = independentRouteForCollectorDay(src, routeHint);
+  if (!route) return null;
+  const day = independentRouteDay(src, route);
+  return { openingCash: day.opening, cashFloat: day.closing };
+}
+
+/**
+ * Saldo que sella el CIE-. Cadena M↔T = libro. N (y A sola) = caja del historial.
+ */
+export function resolveSealedDayCash(
+  src: DayCashSources,
+  cashCollectedAllRoutes: number,
+  routeHint?: string,
+): SealedDayCash {
+  if (isChainCollectorDay(src)) return sealedDayCash(src, cashCollectedAllRoutes);
+  return sealedIndependentDayCash(src, routeHint) ?? sealedDayCash(src, cashCollectedAllRoutes);
 }
 
 function isoOf(raw: string) {
@@ -150,12 +202,18 @@ export { routeMovement as independentRouteMovement };
 /** ¿Los gastos del cobrador van a M / T ese día? (si no, son de su planilla A / N). */
 export { gastosGoToChain as collectorGastosGoToChain };
 
-/** Cobrado ese día a clientes de la planilla, por medio de pago (nada de otras rutas). */
+/**
+ * Cobrado ese día a clientes de la planilla.
+ * Efectivo = caja. Digital = historial de su bolsillo (A → solo Nequi; N → solo Banco).
+ * Incluye Caja / oficina. No mezcla rutas ni toca la caja.
+ */
 export function independentRouteCollected(
   src: DayCashSources,
   route: string,
 ): { efectivo: number; nequi: number; banco: number } {
-  return routeCollectedByMethod(src, route);
+  const cash = routeCollectedByMethod(src, route);
+  const digital = routeDigitalCollected(src, route);
+  return { efectivo: cash.efectivo, nequi: digital.nequi, banco: digital.banco };
 }
 
 /** Renglones de gasto y préstamo del día de la planilla (los mismos que suma su caja). */

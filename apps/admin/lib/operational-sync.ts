@@ -24,6 +24,7 @@ import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
 import { livePayments } from "@/lib/live-payments";
+import { restoreLoansFromOrphanDisbursements } from "@/lib/restore-loans-from-bank-disbursements";
 
 export type OperationalSyncInput = {
   loans: LoanRow[];
@@ -97,8 +98,13 @@ export function synchronizeOperationalState(
   const paymentsAll = input.payments ?? [];
   const payments = livePayments(paymentsAll);
   const collectors = input.collectors ?? [];
+  const restored = restoreLoansFromOrphanDisbursements({
+    loans: input.loans,
+    movements: input.bankMovements,
+    clients: input.clients,
+  });
 
-  const loans = syncAllLoans(input.loans, payments) as LoanRow[];
+  const loans = syncAllLoans(restored.loans, payments) as LoanRow[];
 
   const dayCloses = trimCollectorDayClosesHistory(
     keepSealedCashFloat(
@@ -110,7 +116,7 @@ export function synchronizeOperationalState(
 
   const bankMovements = syncBankLedger({
     payments,
-    movements: input.bankMovements,
+    movements: restored.movements,
     accounts: input.bankAccounts,
     miscPayments: input.miscPayments ?? [],
     dayExpenseDrafts: input.dayExpenseDrafts ?? [],

@@ -33,9 +33,9 @@ import { businessClockParts, businessTodayIso } from "@/lib/business-timezone";
 import {
   buildDayCashLedger,
   sealChainLinksFromLedger,
-  sealedDayCash,
   type DayCashSources,
 } from "@/lib/day-cash-ledger";
+import { resolveSealedDayCash } from "@/lib/independent-route-cash";
 import { pesos } from "@/lib/finance";
 import type {
   ClientRow,
@@ -228,7 +228,7 @@ export function runOperationalDayCycle(
         expenses: lines,
       },
       lines,
-      sealed: sealedDayCash(ledgerSources, cashCollected),
+      sealed: resolveSealedDayCash(ledgerSources, cashCollected),
       movementRefs: lines.map((line) =>
         dayExpenseLineMovementRef(
           pair.collectorRef,

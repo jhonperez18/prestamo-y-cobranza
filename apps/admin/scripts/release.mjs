@@ -241,8 +241,10 @@ async function assertCashChain() {
     process.exit(1);
   }
   for (const row of data.rows ?? []) {
+    const tag = row.kind === "independent" ? "Caja" : "CIE";
+    const tLabel = row.kind === "independent" ? "Caja hoy" : "Inicial T";
     console.log(
-      `  ${row.ok ? "OK   " : "FALLA"} ${row.collectorName || row.collectorRef}: CIE ${row.yesterday} = ${row.yesterdayCieFloat} · Inicial hoy = ${row.todayOpening ?? "—"} · Inicial T = ${row.todayMClosing ?? "—"} · saldo final = ${row.todayFinal ?? "—"}`,
+      `  ${row.ok ? "OK   " : "FALLA"} ${row.collectorName || row.collectorRef}: ${tag} ${row.yesterday} = ${row.yesterdayCieFloat} · Inicial hoy = ${row.todayOpening ?? "—"} · ${tLabel} = ${row.todayMClosing ?? "—"} · saldo final = ${row.todayFinal ?? "—"}`,
     );
   }
   if (!data.ok) {

@@ -1319,14 +1319,14 @@ export function CollectorMobileApp({
         : null;
   const onSecondaryChainPlanilla = chainPlanillaDay != null && chainPlanillaDay === dayLedger.t;
   /**
-   * A / N: caja propia de la planilla (misma cifra que el supervisor). En la planilla
-   * principal de un cobrador sin cadena (N de Yesid) solo manda si ya tiene ajuste.
+   * A / N: caja propia de la planilla (misma cifra que el supervisor).
+   * N de Yesid arrastra el historial; el neto del CIE- no es el Inicial.
    */
   const saldoRouteName =
     activePlanillaRoute ?? (planillaRoutePins.length === 1 ? planillaRoutePins[0] : null);
   const ownRouteDay = useMemo(() => {
     if (!saldoRouteName || !isIndependentSaldoRoute(saldoRouteName)) return null;
-    const day = independentRouteDay(
+    return independentRouteDay(
       {
         collectorRef: collector.ref,
         collectorName: collector.name,
@@ -1343,9 +1343,7 @@ export function CollectorMobileApp({
       },
       saldoRouteName,
     );
-    return day.anchored || !isPrimaryPlanilla ? day : null;
   }, [
-    isPrimaryPlanilla,
     saldoRouteName,
     collector,
     activeDate,

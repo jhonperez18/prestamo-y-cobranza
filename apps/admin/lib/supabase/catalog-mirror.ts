@@ -6,9 +6,14 @@ import { createMirrorServerClient, mirrorUsesServiceRole } from "@/lib/supabase/
 import { fetchAllRows, fetchRowsChangedSince } from "@/lib/supabase/changed-since";
 import { createIncrementalPull, withSinceParam } from "@/lib/incremental-pull";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
-import type { ClientRow, LoanRow, StatusKind } from "@/lib/mock-data";
+import { nextLoanCode, type ClientRow, type LoanRow, type StatusKind } from "@/lib/mock-data";
+import { BIG_DEMO_STORE_CHANGED_EVENT } from "@/lib/big-demo-store";
+import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import { displayToIso } from "@/lib/loan-preview";
+import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import {
   DEMO_CLIENTS_KEY,
+  DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_LOANS_KEY,
   readDemoJson,
   writeDemoJson,
@@ -180,8 +185,8 @@ export function loanRowToMirror(row: LoanRow): LoanMirrorRow | null {
     ref,
     client_ref: clientRef,
     client_name: row.client || "",
-    start_date: row.date || "",
-    due_date: row.due || "",
+    start_date: loanDisbursementIsoDate(row) || displayToIso(row.date) || row.date || "",
+    due_date: displayToIso(row.due) || row.due || "",
     capital: Number(row.capital) || 0,
     paid: Number(row.paid) || 0,
     balance: Number(row.balance) || 0,
@@ -211,8 +216,8 @@ export function mirrorToLoanRow(row: LoanMirrorRow): LoanRow | null {
     ref,
     clientRef,
     client: row.client_name || "",
-    date: row.start_date || "",
-    due: row.due_date || "",
+    date: loanDisbursementIsoDate({ date: row.start_date, start_date: row.start_date }) || row.start_date || "",
+    due: displayToIso(row.due_date) || row.due_date || "",
     capital: Number(row.capital) || 0,
     paid: Number(row.paid) || 0,
     balance: Number(row.balance) || 0,
@@ -408,21 +413,97 @@ export async function mirrorClientToSupabase(client: ClientRow) {
   return { ok: true as const };
 }
 
+async function nextCloudLoanRef(
+  supabase: NonNullable<ReturnType<typeof createMirrorClient>>,
+): Promise<string | null> {
+  const all = await fetchAllRows<{ ref: string }>(supabase, "loans", "ref");
+  if (!all.ok) return null;
+  const nums = all.rows
+    .map((entry) => Number(String(entry.ref || "").replace(/^P-/i, "")))
+    .filter((n) => Number.isFinite(n));
+  const next = (nums.length ? Math.max(...nums) : 0) + 1;
+  return `P-${next}`;
+}
+
+function applyLoanRefRename(from: string, to: string) {
+  if (!from || !to || from === to) return;
+  const assigns = readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []);
+  let assignChanged = false;
+  const nextAssigns = assigns.map((row) => {
+    if (row.loanRef !== from) return row;
+    assignChanged = true;
+    return { ...row, loanRef: to };
+  });
+  if (assignChanged) writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, nextAssigns);
+  const loans = readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []);
+  const nextLoans = loans.map((row) =>
+    row.ref === from ? { ...row, ref: to, updatedAt: new Date().toISOString() } : row,
+  );
+  if (nextLoans.some((row, i) => row.ref !== loans[i]?.ref)) {
+    writeDemoJson(DEMO_LOANS_KEY, nextLoans);
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(BIG_DEMO_STORE_CHANGED_EVENT));
+  }
+}
+
+/** Si este aparato tiene un P- que en la nube ya es de otro cliente, no lo pisa: nuevo código y sube. */
+function rekeyCollidingLocalLoans(local: LoanRow[], remote: LoanRow[]): LoanRow[] {
+  const remoteByRef = new Map(remote.filter((row) => row.ref).map((row) => [row.ref, row]));
+  const used = new Set(
+    [...local, ...remote].map((row) => row.ref).filter(Boolean),
+  );
+  const out: LoanRow[] = [];
+  for (const row of local) {
+    const other = remoteByRef.get(row.ref);
+    if (
+      other &&
+      other.clientRef &&
+      row.clientRef &&
+      other.clientRef !== row.clientRef
+    ) {
+      const nextRef = nextLoanCode([...out, ...remote, ...local].map((entry) => ({ ref: entry.ref })));
+      let ref = nextRef;
+      let n = Number(String(ref).replace(/^P-/i, "")) || 0;
+      while (used.has(ref)) {
+        n += 1;
+        ref = `P-${n}`;
+      }
+      used.add(ref);
+      const rekeyed = { ...row, ref, updatedAt: new Date().toISOString() };
+      out.push(rekeyed);
+      applyLoanRefRename(row.ref, ref);
+      queueLoanMirror(rekeyed);
+      continue;
+    }
+    out.push(row);
+  }
+  return out;
+}
+
 export async function mirrorLoanToSupabase(loan: LoanRow) {
-  const row = loanRowToMirror(loan);
-  if (!row) return { ok: true as const, skipped: true as const, reason: "invalid_loan" };
+  const mapped = loanRowToMirror(loan);
+  if (!mapped) return { ok: true as const, skipped: true as const, reason: "invalid_loan" };
   const supabase = createMirrorClient();
   if (!supabase) return { ok: true as const, skipped: true as const, reason: mirrorSkipReason() };
+  let row = mapped;
+  const originalRef = row.ref;
   const deleting = isLoanDeletedStatus(row);
   if (!deleting) {
     const { data: current, error: readError } = await supabase
       .from("loans")
-      .select("status")
+      .select("status, client_ref")
       .eq("ref", row.ref)
       .maybeSingle();
     if (readError) return { ok: false as const, error: readError.message };
     if (isLoanDeletedStatus(current)) {
       return { ok: true as const, skipped: true as const, reason: "loan_deleted" };
+    }
+    const currentClient = String(current?.client_ref || "").trim();
+    if (currentClient && currentClient !== row.client_ref) {
+      const nextRef = await nextCloudLoanRef(supabase);
+      if (!nextRef) return { ok: false as const, error: "loan_ref_alloc_failed" };
+      row = { ...row, ref: nextRef };
     }
   }
   const { error } = await supabase.from("loans").upsert(row, { onConflict: "ref" });
@@ -438,7 +519,8 @@ export async function mirrorLoanToSupabase(loan: LoanRow) {
       .is("payment_ref", null);
     if (assignError) return { ok: false as const, error: assignError.message };
   }
-  return { ok: true as const };
+  const rekeyed = row.ref !== originalRef;
+  return { ok: true as const, ref: row.ref, rekeyed };
 }
 
 /** `since`: solo filas que cambiaron o se crearon desde ese corte (incluye bajas por estado). */
@@ -576,7 +658,10 @@ export async function persistLoanToSupabase(loan: LoanRow) {
       return { ok: false as const, error: json.error || `http_${res.status}` };
     }
     if (!json.skipped) dequeueSent(DEMO_LOAN_MIRROR_QUEUE_KEY, [loan]);
-    return { ok: true as const, skipped: json.skipped };
+    if (json.rekeyed && json.ref && json.ref !== loan.ref) {
+      applyLoanRefRename(loan.ref, json.ref);
+    }
+    return { ok: true as const, skipped: json.skipped, ref: json.ref, rekeyed: json.rekeyed };
   } catch (err) {
     keepQueued(DEMO_LOAN_MIRROR_QUEUE_KEY, loan);
     return { ok: false as const, error: err instanceof Error ? err.message : "network" };
@@ -790,13 +875,15 @@ async function mergeRemoteCatalog(
         .filter((row): row is LoanRow => Boolean(row));
       const learnedDeletes = learnRemoteLoanDeletes(remoteAll);
       const remote = remoteAll.filter((row) => !isLoanDeletedStatus(row));
-      const local = readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []);
+      const localRaw = readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []);
+      const local = rekeyCollidingLocalLoans(localRaw, remote);
+      const rekeyed = local.some((row, index) => row.ref !== localRaw[index]?.ref);
       const pendingLoans = readDemoJson<LoanRow[]>(DEMO_LOAN_MIRROR_QUEUE_KEY, []).filter(
         (row) => row?.ref && !isLoanDeletedStatus(row),
       );
       const pendingByRef = new Map(pendingLoans.map((row) => [row.ref, row]));
       const merge = mergeByRefPreferPendingLocal(local, remote, pendingByRef, loanSignature);
-      if (merge.changed || learnedDeletes) {
+      if (merge.changed || learnedDeletes || rekeyed) {
         if (!writeDemoJson(DEMO_LOANS_KEY, merge.merged)) unsaved.push("préstamos");
         changed = true;
       }

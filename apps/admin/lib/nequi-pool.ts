@@ -4,6 +4,7 @@
  * - efectivo = sale de la caja del cobrador
  * - cartera = préstamo que ya estaba en la calle (carga inicial): no sale plata de ningún lado
  */
+import { businessTodayIso } from "@/lib/business-timezone";
 import { displayToIso } from "@/lib/loan-preview";
 import {
   paymentsForCollector,
@@ -14,7 +15,7 @@ import {
   type PaymentRow,
   type RouteRow,
 } from "@/lib/mock-data";
-import { normalizePaymentMethod } from "@/lib/payment-method";
+import { normalizePaymentMethod, paymentDisplayMethod } from "@/lib/payment-method";
 
 /** Marcadores estables en notes para sobrevivir mirror sin columna DB. */
 export const NEQUI_FUNDED_MARKER = "[[fb:nequi]]";
@@ -177,8 +178,8 @@ export function sumCollectorNequiIngresos(
 }
 
 /**
- * Cobros del cobrador más abonos Nequi hechos en el sistema
- * a clientes de sus rutas (mismo día en la ficha Nequi).
+ * Cobros del cobrador más abonos del sistema (Caja / oficina) a clientes de sus rutas.
+ * A → Nequi; M / T / N → Banco. El efectivo de oficina no entra (no es recaudo de ruta).
  */
 export function paymentsForCollectorIncludingOffice(
   collectorRef: string,
@@ -217,8 +218,8 @@ export function paymentsForCollectorIncludingOffice(
   const extra = payments.filter((row) => {
     if (!row.ref || seen.has(row.ref) || row.voidedAt?.trim()) return false;
     if (!isOfficePayment(row)) return false;
-    if (normalizePaymentMethod(row.method) !== "nequi") return false;
     if (!((row.amount ?? 0) > 0)) return false;
+    if (paymentDisplayMethod(row, loans, clients) === "efectivo") return false;
     if (row.loanRef && loanRefs.has(row.loanRef)) return true;
     return names.has((row.client || "").trim().toLowerCase());
   });
@@ -245,5 +246,10 @@ export function loanDisbursementIsoDate(
 ): string {
   const raw = String(loan.date || loan.start_date || "").trim();
   if (!raw) return "";
-  return displayToIso(raw) || raw;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  if (/^\d{4}-\d{2}-\d{2}[T\s]/.test(raw) || /(?:Z|[+-]\d{2}:\d{2})$/.test(raw)) {
+    const parsed = Date.parse(raw);
+    if (Number.isFinite(parsed)) return businessTodayIso(new Date(parsed));
+  }
+  return displayToIso(raw);
 }

@@ -89,6 +89,9 @@ para un saldo.** Una fórmula paralela = dos cifras = el error del 2.090.000.
  M = solo la mañana y Caja = Inicial de T. Caja = la misma cifra del renglón del Historial.
  «Lo que inició» de T = caja final de M, nunca el Inicial de M; arriba (inició,
  prestó, gastó) va lo propio de T y en «Lo que cobró» T al lado de M+T.
+ **Banco / Nequi de la ruta = historial de esa ruta** (cobros, cobrador + Caja / oficina).
+ T / M / N → Banco; **A → solo Nequi** (nunca Banco). Lo que entre al botón es lo que
+ entra a ese historial. No entra a la caja.
  Caja final de M de un día sellado = CIE − movimiento propio de T (`primaryClosingForDay`):
  Historial · M (fila de ayer), Caja del Cierre de M e Inicial de T leen esa misma cifra.
  Prohibido mostrar el CIE (saldo tras T) como saldo de M.
@@ -302,6 +305,39 @@ Un solo dueño: `lib/digital-pools.ts` (`digitalPoolBalances`).
 - Informe (Banco) y pie de INICIO (caja T + caja propia de N + Banco) leen `digitalPoolBalances().banco`.
  N = la misma cifra de su tarjeta (`independentRouteDay`). A y NEQUI no entran.
 - Candado: `assert-cash-chain.mjs` sección 13.
+
+### Banco / Nequi de la ruta = historial de esa ruta (sagrado)
+
+**Ley:** lo que entra al botón Banco / Nequi del Cierre es lo que entra al historial
+de ese pool en esa ruta. Una sola lista. Sin cifra paralela.
+
+| Ruta | Bolsillo | Botón del Cierre | Historial |
+| --- | --- | --- | --- |
+| T | Banco | Banco T | historial Banco de T |
+| M | Banco | Banco | historial Banco de M |
+| N | Banco | Banco | historial Banco de N |
+| A | **Nequi** (exclusivo) | Nequi | historial Nequi de A |
+
+| Pieza | Fuente |
+| --- | --- |
+| Historial Banco / Nequi (día · ruta) | `digitalPoolDayPayments` (cobros / inflow) |
+| Botón T / M | `chainDayCuadre.ownDigital` / `routeDigitalCollected` |
+| Botón A / N | `independentRouteCollected` digital = `routeDigitalCollected` |
+| Lista bajo el botón | los mismos renglones (`ownDigitalPayments`) |
+
+- Incluye cobros del cobrador **y** Caja / oficina a clientes de esa ruta
+  (caso 07/10 T: Yeni Isolina 80.000 + Yadira 298.000).
+- Manda la ruta del cliente, no el método guardado.
+- **A nunca va a Banco.** M / T / N nunca van a Nequi.
+- **No** toca caja, CIE, INICIO ni préstamos. El historial puede restar capital aparte;
+  el botón es **solo cobros** (inflow).
+- Un solo dueño: `routeDigitalCollected` → `routeDigitalPayments` → `digitalPoolDayPayments`.
+
+**Prohibido:** `collectorDayPayments` a solas para el botón (deja fuera oficina).
+Una cifra en el botón y otra en el historial de esa ruta. Nequi en M/T/N o Banco en A.
+
+- Candado: `assert-cash-chain.mjs` («Banco T = historial», «Nequi A = historial»,
+  «Banco M / N = historial»).
 
 ## Informe del supervisor — Cobrado / Préstamo / Gasto por ruta
 
