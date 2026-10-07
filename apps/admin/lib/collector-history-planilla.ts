@@ -211,7 +211,9 @@ export function dayLoanDisbursementRows(
 
   // 2) Reconstrucción: créditos en efectivo de hoy de clientes de SU hoja o SU ruta.
   if (!collectorRef) {
-    return [...byLoan.values()].sort((a, b) => a.clientName.localeCompare(b.clientName, "es"));
+    return uniqueDayLoanDisbursementRows([...byLoan.values()]).sort((a, b) =>
+      a.clientName.localeCompare(b.clientName, "es"),
+    );
   }
 
   for (const loan of loans) {
@@ -237,7 +239,29 @@ export function dayLoanDisbursementRows(
     });
   }
 
-  return [...byLoan.values()].sort((a, b) => a.clientName.localeCompare(b.clientName, "es"));
+  return uniqueDayLoanDisbursementRows([...byLoan.values()]).sort((a, b) =>
+    a.clientName.localeCompare(b.clientName, "es"),
+  );
+}
+
+function loanCodeNumber(ref: string): number {
+  const matched = /^P-(\d+)/i.exec((ref || "").trim());
+  return matched ? Number(matched[1]) : Number.POSITIVE_INFINITY;
+}
+
+/** Un cliente + un capital ese día = un renglón. El original es el P- más viejo. */
+function uniqueDayLoanDisbursementRows(rows: DayLoanDisbursementRow[]): DayLoanDisbursementRow[] {
+  const keep = new Map<string, DayLoanDisbursementRow>();
+  for (const row of rows) {
+    const clientRef = (row.clientRef || "").trim();
+    const capital = Math.trunc(Number(row.capital) || 0);
+    const key = clientRef && capital > 0 ? `${clientRef}|${capital}` : `ref:${row.loanRef}`;
+    const current = keep.get(key);
+    if (!current || loanCodeNumber(row.loanRef) < loanCodeNumber(current.loanRef)) {
+      keep.set(key, row);
+    }
+  }
+  return [...keep.values()];
 }
 
 export function dayLoanDisbursementTotal(rows: DayLoanDisbursementRow[]) {

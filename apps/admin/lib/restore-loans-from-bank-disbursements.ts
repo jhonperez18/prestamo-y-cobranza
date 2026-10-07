@@ -13,19 +13,24 @@ import {
   syncLoan,
   type PayFrequency,
 } from "@/lib/loan-preview";
+import { rememberDeletedId } from "@/lib/deleted-ids";
 import {
   canClientTakeNewLoan,
   isLoanActive,
+  isLoanVoided,
   nextLoanCode,
   type ClientRow,
   type LoanRow,
 } from "@/lib/mock-data";
 import {
+  loanBankOutflowCapital,
   loanDisbursementIsoDate,
   loanDisbursementMovementRef,
+  loanIsExistingPortfolio,
   markLoanFundedByBanco,
   markLoanFundedByNequi,
 } from "@/lib/nequi-pool";
+import { loanDeletedRow, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 
 export type RestoreLoansFromDisbursementsInput = {
   loans: LoanRow[];
@@ -37,7 +42,87 @@ export type RestoreLoansFromDisbursementsResult = {
   loans: LoanRow[];
   movements: BankMovement[];
   created: LoanRow[];
+  removed: LoanRow[];
 };
+
+function loanCodeNumber(ref: string): number {
+  const matched = /^P-(\d+)/i.exec((ref || "").trim());
+  return matched ? Number(matched[1]) : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * Un cliente + un día + un capital = un desembolso (efectivo, Banco o Nequi).
+ * El original es el P- más viejo. Cartera existente no entra.
+ */
+export function digitalDisbursementTwinKey(
+  loan: Pick<LoanRow, "ref" | "clientRef" | "date" | "capital" | "status" | "fundedBy" | "notes"> & {
+    start_date?: string;
+  },
+): string {
+  if (isLoanVoided(loan) || !isLoanActive(loan) || loanIsExistingPortfolio(loan)) return "";
+  const date = loanDisbursementIsoDate(loan);
+  const capital = loanBankOutflowCapital(loan);
+  const clientRef = (loan.clientRef || "").trim();
+  if (!clientRef || !date || capital <= 0) return "";
+  return `${clientRef}|${date}|${capital}`;
+}
+
+export function preferOriginalDigitalLoan<T extends { ref: string }>(current: T, next: T): T {
+  return loanCodeNumber(next.ref) < loanCodeNumber(current.ref) ? next : current;
+}
+
+/** De varias fichas gemelas, se queda el P- original (número más bajo). */
+export function uniqueDigitalDisbursementLoans(loans: LoanRow[]): LoanRow[] {
+  const keep = new Map<string, LoanRow>();
+  for (const loan of loans) {
+    const key = digitalDisbursementTwinKey(loan);
+    if (!key) continue;
+    const current = keep.get(key);
+    keep.set(key, current ? preferOriginalDigitalLoan(current, loan) : loan);
+  }
+  const originals = new Set([...keep.values()].map((row) => row.ref));
+  return loans.filter((loan) => {
+    const key = digitalDisbursementTwinKey(loan);
+    if (!key) return true;
+    return originals.has(loan.ref);
+  });
+}
+
+export function existingDigitalDisbursementTwin(
+  loans: LoanRow[],
+  clientRef: string,
+  dateIso: string,
+  capital: number,
+): LoanRow | undefined {
+  const ref = (clientRef || "").trim();
+  const date = (dateIso || "").trim();
+  const amount = Math.trunc(Number(capital) || 0);
+  if (!ref || !date || amount <= 0) return undefined;
+  const key = `${ref}|${date}|${amount}`;
+  return loans.find((loan) => digitalDisbursementTwinKey(loan) === key);
+}
+
+/**
+ * Copias del mismo desembolso: se deja el original y las demás salen (tombstone).
+ * Así Listado y Banco no muestran P-426 y P-430 a la vez.
+ */
+export function collapseDuplicateDigitalLoans(loans: LoanRow[]): {
+  loans: LoanRow[];
+  removed: LoanRow[];
+} {
+  const originals = new Set(uniqueDigitalDisbursementLoans(loans).map((row) => row.ref));
+  const removed: LoanRow[] = [];
+  const next: LoanRow[] = [];
+  for (const loan of loans) {
+    const key = digitalDisbursementTwinKey(loan);
+    if (!key || originals.has(loan.ref)) {
+      next.push(loan);
+      continue;
+    }
+    removed.push(loan);
+  }
+  return { loans: next, removed };
+}
 
 function nameKey(raw: string) {
   return raw
@@ -332,5 +417,10 @@ export function restoreLoansFromOrphanDisbursements(
     );
   }
 
-  return { loans, movements, created };
+  const collapsed = collapseDuplicateDigitalLoans(loans);
+  if (typeof window !== "undefined" && collapsed.removed.length > 0) {
+    for (const row of collapsed.removed) rememberDeletedId(row.ref);
+    queueLoansMirror(collapsed.removed.map((row) => loanDeletedRow(row)));
+  }
+  return { loans: collapsed.loans, movements, created, removed: collapsed.removed };
 }

@@ -66,6 +66,8 @@ import {
   buildQuickLoan,
   type QuickLoanDraft,
 } from "@/lib/street-client-loan";
+import { existingDigitalDisbursementTwin } from "@/lib/restore-loans-from-bank-disbursements";
+import { loanBankOutflowCapital, loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import {
   commitCreateRouteClient,
   commitUpdateClient,
@@ -387,6 +389,18 @@ export function SupervisorShell({ session, onLogout }: Props) {
     if (!loan) {
       showToast("Revise capital, interés, tiempo y frecuencia.");
       return;
+    }
+    if (loan.fundedBy !== "cartera") {
+      const twin = existingDigitalDisbursementTwin(
+        loans,
+        client.ref,
+        loanDisbursementIsoDate(loan),
+        loanBankOutflowCapital(loan),
+      );
+      if (twin) {
+        showToast(`Este préstamo ya está registrado (${twin.ref}). No se duplica.`);
+        return;
+      }
     }
     const nextLoans = [loan, ...loans];
     const targetRoute = (draft.routeName ?? client.route).trim();

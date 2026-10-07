@@ -1,16 +1,20 @@
-import type { ClientRow, LoanRow, PaymentRow } from "@/lib/mock-data";
-import { COLLECTORS, money } from "@/lib/mock-data";
+import { COLLECTORS, isLoanActive, isLoanVoided, money, type ClientRow, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 import { sameRoute } from "@/lib/client-route-order";
 import { isPaymentLive } from "@/lib/live-payments";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement } from "@/lib/misc-payments";
 import {
+  loanBankOutflowCapital,
   loanDisbursementIsoDate,
   loanDisbursementMovementRef,
+  loanDisbursementSource,
   loanFundedByBanco,
   loanFundedByNequi,
 } from "@/lib/nequi-pool";
-import { disbursementBelongsToLoan } from "@/lib/restore-loans-from-bank-disbursements";
+import {
+  disbursementBelongsToLoan,
+  uniqueDigitalDisbursementLoans,
+} from "@/lib/restore-loans-from-bank-disbursements";
 import {
   normalizePaymentMethod,
   paymentMethodForRoute,
@@ -1019,11 +1023,13 @@ export function syncNequiLoanDisbursementsToMovements(
   if (!primary) return movements;
   const routeByClient = new Map(clients.map((row) => [row.ref, row.route ?? ""]));
 
-  const wanted = loans.filter(
-    (loan) =>
-      (loanFundedByNequi(loan) || loanFundedByBanco(loan)) &&
-      (Number(loan.capital) || 0) > 0 &&
-      Boolean(loan.ref),
+  const wanted = uniqueDigitalDisbursementLoans(
+    loans.filter(
+      (loan) =>
+        (loanFundedByNequi(loan) || loanFundedByBanco(loan)) &&
+        loanBankOutflowCapital(loan) > 0 &&
+        Boolean(loan.ref),
+    ),
   );
   const byRef = new Map(
     movements
@@ -1032,16 +1038,29 @@ export function syncNequiLoanDisbursementsToMovements(
   );
 
   let next = [...movements];
+  const keptHaberRefs = new Set<string>();
   for (const loan of wanted) {
     const lineRef = loanDisbursementMovementRef(loan.ref);
     const valueDate = loanDisbursementIsoDate(loan);
     if (!valueDate) continue;
-    const capital = Number(loan.capital) || 0;
+    const capital = loanBankOutflowCapital(loan);
     const isRenewal = /renovaci[oó]n/i.test(loan.notes || "");
     const originLabel = loanFundedByBanco(loan) ? "Banco" : "Nequi";
     const route = loan.clientRef ? routeByClient.get(loan.clientRef) : undefined;
     const projectedAccountRef = digitalAccountRefForRoute(ensured, route) ?? primary.ref;
-    const existing = byRef.get(lineRef) ?? next.find((row) => row.ref === lineRef);
+    const existing =
+      byRef.get(lineRef) ??
+      next.find((row) => row.ref === lineRef) ??
+      next.find(
+        (row) =>
+          (Number(row.credit) || 0) > 0 &&
+          (row.category === "prestamo_ruta" ||
+            /^DSB-/i.test(String(row.ref || "")) ||
+            /^DSB-/i.test(String(row.loanDisbursementRef || ""))) &&
+          Math.trunc(Number(row.credit) || 0) === capital &&
+          loanDisbursementIsoDate({ date: row.valueDate || row.opDate || "" }) === valueDate &&
+          disbursementBelongsToLoan(row.thirdParty, loan.client),
+      );
     const accountRef =
       existing?.reconciled && existing.accountRef ? existing.accountRef : projectedAccountRef;
     const patch: BankMovement = {
@@ -1062,15 +1081,19 @@ export function syncNequiLoanDisbursementsToMovements(
     };
     if (existing && disbursementBelongsToLoan(existing.thirdParty, loan.client)) {
       next = next.map((row) =>
-        row.ref === existing.ref || row.loanDisbursementRef === lineRef
+        row.ref === existing.ref ||
+        row.loanDisbursementRef === existing.loanDisbursementRef ||
+        row.loanDisbursementRef === lineRef
           ? {
               ...row,
               ...patch,
-              ref: existing.ref,
+              ref: lineRef,
+              loanDisbursementRef: lineRef,
               reconciled: existing.reconciled,
             }
           : row,
       );
+      keptHaberRefs.add(lineRef);
     } else {
       if (
         existing &&
@@ -1083,12 +1106,136 @@ export function syncNequiLoanDisbursementsToMovements(
             ? { ...row, ref: keepRef, loanDisbursementRef: keepRef }
             : row,
         );
+        keptHaberRefs.add(keepRef);
       }
       next = [patch, ...next];
+      keptHaberRefs.add(lineRef);
     }
   }
 
-  return next;
+  return next.filter((row) => {
+    if ((Number(row.credit) || 0) <= 0) return true;
+    const isHaber =
+      row.category === "prestamo_ruta" ||
+      /^DSB-/i.test(String(row.ref || "")) ||
+      /^DSB-/i.test(String(row.loanDisbursementRef || ""));
+    if (!isHaber) return true;
+    const owner = wanted.find(
+      (loan) =>
+        Math.trunc(Number(row.credit) || 0) === loanBankOutflowCapital(loan) &&
+        loanDisbursementIsoDate({ date: row.valueDate || row.opDate || "" }) ===
+          loanDisbursementIsoDate(loan) &&
+        disbursementBelongsToLoan(row.thirdParty, loan.client),
+    );
+    if (!owner) return true;
+    const keepRef = loanDisbursementMovementRef(owner.ref);
+    return row.ref === keepRef || row.loanDisbursementRef === keepRef || keptHaberRefs.has(row.ref);
+  });
+}
+
+function cashLoanMovementRef(loanRef: string) {
+  return `CSH-${(loanRef || "").trim()}`;
+}
+
+function isDigitalDisbursementHaber(row: Pick<BankMovement, "ref" | "loanDisbursementRef">) {
+  return (
+    /^DSB-/i.test(String(row.ref || "")) || /^DSB-/i.test(String(row.loanDisbursementRef || ""))
+  );
+}
+
+function isCashLoanHaber(row: BankMovement) {
+  if ((Number(row.credit) || 0) <= 0) return false;
+  if (row.category !== "prestamo_ruta") return false;
+  if (isDigitalDisbursementHaber(row)) return false;
+  return true;
+}
+
+function cashHaberLoanRef(row: BankMovement): string {
+  const hay = `${row.ref} ${row.dayExpenseLineRef || ""} ${row.loanDisbursementRef || ""}`;
+  const matched = /(?:^|-)(P-\d+)/i.exec(hay);
+  return matched?.[1] ? `P-${matched[1].replace(/^P-/i, "")}` : "";
+}
+
+function loanLeavesCashBox(loan: LoanRow): boolean {
+  if (isLoanVoided(loan) || !isLoanActive(loan) || !loan.ref) return false;
+  const source = loanDisbursementSource(loan);
+  if (source === "banco" || source === "nequi" || source === "cartera") return false;
+  return loanBankOutflowCapital(loan) > 0;
+}
+
+/**
+ * Préstamo en efectivo del cobrador → Haber en la cuenta principal (BANCOLOMBIA),
+ * igual que gasolina: el registro del sistema lo lista, azul (`prestamo_ruta`).
+ * No es DSB-; no resta Banco/Nequi de la ruta ni el Inicial de caja.
+ */
+export function syncCashLoanDisbursementsToMovements(
+  loans: LoanRow[],
+  movements: BankMovement[],
+  accounts: BankAccount[],
+): BankMovement[] {
+  const primary = ensureBankAccounts(accounts).find((row) => row.active) ?? accounts[0];
+  if (!primary) return movements;
+  const cashLoans = loans.filter(loanLeavesCashBox);
+  const wanted = uniqueDigitalDisbursementLoans(cashLoans);
+  const cashRefs = new Set(cashLoans.map((loan) => loan.ref));
+  let next = [...movements];
+  const kept = new Set<string>();
+
+  for (const loan of wanted) {
+    const lineRef = cashLoanMovementRef(loan.ref);
+    const valueDate = loanDisbursementIsoDate(loan);
+    if (!valueDate) continue;
+    const capital = loanBankOutflowCapital(loan);
+    const existing =
+      next.find(
+        (row) =>
+          !isDigitalDisbursementHaber(row) &&
+          (row.ref === lineRef || row.loanDisbursementRef === lineRef),
+      ) ??
+      next.find((row) => isCashLoanHaber(row) && cashHaberLoanRef(row) === loan.ref);
+    const patch: BankMovement = {
+      ref: existing?.ref || lineRef,
+      accountRef: existing?.reconciled && existing.accountRef ? existing.accountRef : primary.ref,
+      period: existing?.reconciled ? existing.period : periodFromIso(valueDate),
+      description: `Gasto ruta · Préstamo · ${loan.ref} · ${loan.client}`,
+      valueDate,
+      opDate: valueDate,
+      thirdParty: loan.client,
+      debit: 0,
+      credit: capital,
+      category: "prestamo_ruta",
+      loanDisbursementRef: lineRef,
+      dayExpenseLineRef: existing?.dayExpenseLineRef,
+      inExtract: existing?.inExtract ?? true,
+      reconciled: existing?.reconciled ?? false,
+      manual: existing?.manual ?? true,
+    };
+    if (existing) {
+      next = next.map((row) =>
+        row.ref === existing.ref
+          ? { ...row, ...patch, ref: existing.ref, reconciled: existing.reconciled }
+          : row,
+      );
+      kept.add(existing.ref);
+    } else {
+      next = [patch, ...next];
+      kept.add(lineRef);
+    }
+  }
+
+  return next.filter((row) => {
+    if (!isCashLoanHaber(row)) return true;
+    if (kept.has(row.ref)) return true;
+    const loanRef = cashHaberLoanRef(row);
+    if (loanRef && cashRefs.has(loanRef)) return false;
+    return !wanted.some(
+      (loan) =>
+        Math.trunc(Number(row.credit) || 0) === loanBankOutflowCapital(loan) &&
+        loanDisbursementIsoDate({ date: row.valueDate || row.opDate || "" }) ===
+          loanDisbursementIsoDate(loan) &&
+        disbursementBelongsToLoan(row.thirdParty, loan.client),
+    );
+  });
 }
 
 /** Repara enlaces perdidos entre movimientos de egreso y pagos varios existentes. */

@@ -1706,6 +1706,92 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     }).length,
     0,
   );
+  const cesarReyN = { ref: "CLI-N-CESAR", name: "Cesar", lastName: "Rey", route: "N" };
+  const cesarResT = { ref: "CLI-T-CESAR", name: "Cesar", lastName: "Res", route: "T" };
+  const mixClients = [...nSrc.clients, cesarReyN, cesarResT];
+  const mixLoans = [
+    ...nSrc.loans,
+    { ref: "P-N-CESAR", clientRef: cesarReyN.ref, client: "Cesar Rey", date: "01/09/2026", capital: 100_000, installment: 10_000 },
+    { ref: "P-T-CESAR", clientRef: cesarResT.ref, client: "Cesar", date: "01/09/2026", capital: 100_000, installment: 10_000 },
+  ];
+  const tCesarPay = {
+    ref: "PG-T-CESAR",
+    loanRef: "P-T-CESAR",
+    client: "Cesar",
+    amount: 20_000,
+    paidDate: D,
+    method: "nequi",
+    collectorRef: COB.ref,
+  };
+  const nCesarPay = {
+    ref: "PG-N-CESAR",
+    loanRef: "P-N-CESAR",
+    client: "Cesar Rey",
+    amount: 15_000,
+    paidDate: D,
+    method: "nequi",
+    collectorRef: YES.ref,
+  };
+  const bancoNSinT = digitalPoolDayPayments({
+    payments: [tCesarPay, nCesarPay],
+    loans: mixLoans,
+    clients: mixClients,
+    pool: "banco",
+    dateIso: D,
+    routeName: "N",
+  });
+  const bancoTSinN = digitalPoolDayPayments({
+    payments: [tCesarPay, nCesarPay],
+    loans: mixLoans,
+    clients: mixClients,
+    pool: "banco",
+    dateIso: D,
+    routeName: "T",
+  });
+  expect(
+    "Banco N no mete cobros de T aunque el nombre se parezca",
+    bancoNSinT.some((row) => row.ref === "PG-T-CESAR") ? 1 : 0,
+    0,
+  );
+  expect(
+    "Banco N no lista Nequi del cobrador (N sigue en cero)",
+    bancoNSinT.some((row) => row.ref === "PG-N-CESAR") ? 1 : 0,
+    0,
+  );
+  expect(
+    "Banco N sí lista una consignación Banco de la ficha N",
+    digitalPoolDayPayments({
+      payments: [
+        {
+          ref: "PG-N-BANCO",
+          loanRef: "P-N-CESAR",
+          client: "Cesar Rey",
+          amount: 15_000,
+          paidDate: D,
+          method: "banco",
+          collectorRef: YES.ref,
+        },
+      ],
+      loans: mixLoans,
+      clients: mixClients,
+      pool: "banco",
+      dateIso: D,
+      routeName: "N",
+    }).some((row) => row.ref === "PG-N-BANCO")
+      ? 1
+      : 0,
+    1,
+  );
+  expect(
+    "Banco T no mete cobros de N aunque el nombre se parezca",
+    bancoTSinN.some((row) => row.ref === "PG-N-CESAR") ? 1 : 0,
+    0,
+  );
+  expect(
+    "Banco T sí lista el cobro de la ficha T",
+    bancoTSinN.some((row) => row.ref === "PG-T-CESAR") ? 1 : 0,
+    1,
+  );
   const bancoLoanT = {
     ref: "P-BT-REG",
     clientRef: "CLI-T1",
@@ -1731,6 +1817,66 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
   expect("Historial Banco: neto del día = cobros − capital", bancoDayWithLoan.total, -702_000);
   expect("Historial Banco: un solo renglón de préstamo", bancoDayWithLoan.loans.length, 1);
   expect("Historial Banco: el renglón lleva el capital, no el total", bancoDayWithLoan.loans[0]?.capital ?? 0, 1_000_000);
+  const { loanBankOutflowCapital } = await import("@/lib/nequi-pool");
+  expect(
+    "Banco: capital 1M + interés 300k = sale 1M",
+    loanBankOutflowCapital({ capital: 1_000_000, interest: 300_000, total: 1_300_000 }),
+    1_000_000,
+  );
+  expect(
+    "Banco: nunca sale el total a cobrar",
+    loanBankOutflowCapital({ capital: 1_300_000, interest: 260_000, total: 1_560_000 }),
+    1_300_000,
+  );
+  expect(
+    "Banco: Alcira y Juan 2 se quedan con su capital (no se recortan)",
+    loanBankOutflowCapital({ capital: 600_000, interest: 120_000, total: 720_000 }),
+    600_000,
+  );
+  const nequiPoolSrc = readFileSync(new URL("../lib/nequi-pool.ts", import.meta.url), "utf8");
+  expect(
+    "Dueño Banco: loanBankOutflowCapital (nunca total ni interés)",
+    nequiPoolSrc.includes("export function loanBankOutflowCapital") &&
+      nequiPoolSrc.includes("Nunca `total`"),
+    true,
+  );
+  const digitalPoolSrc = readFileSync(new URL("../lib/digital-pools.ts", import.meta.url), "utf8");
+  expect(
+    "Historial Banco resta loanBankOutflowCapital",
+    digitalPoolSrc.includes("loanBankOutflowCapital(loan)"),
+    true,
+  );
+  expect(
+    "Banco de la ruta = ficha del Listado, nunca por nombre",
+    digitalPoolSrc.includes("sameRoute(paymentClientRoute") &&
+      digitalPoolSrc.includes("function paymentMatchesPoolRoute") &&
+      !digitalPoolSrc.includes("const needle"),
+    true,
+  );
+  expect(
+    "Banco: un solo libro (historial = acumulado)",
+    digitalPoolSrc.includes("isPoolRegisterPayment(row, src.loans, src.clients, pool)") &&
+      digitalPoolSrc.includes("collectPoolOutflowLoans({") &&
+      !digitalPoolSrc.includes("paymentsForCollector("),
+    true,
+  );
+  expect(
+    "Prestado Banco: un cliente un día un capital = un renglón",
+    digitalPoolSrc.includes("uniquePoolRegisterLoans") &&
+      digitalPoolSrc.includes("preferPoolOutflowRow"),
+    true,
+  );
+  const bancoSrc = readFileSync(new URL("../components/SupervisorMobileApp.tsx", import.meta.url), "utf8");
+  expect(
+    "Registro Banco muestra el nombre de la ficha, no un apodo de otra ruta",
+    bancoSrc.includes("paymentCatalogClientName(pay, loans, clients)"),
+    true,
+  );
+  expect(
+    "Supervisor Banco: el azul es capital, no total",
+    bancoSrc.includes("money(-row.capital") && !bancoSrc.includes("money(-row.total"),
+    true,
+  );
   expect(
     "Historial Banco: efectivo del mismo día no sale del Banco",
     digitalPoolDayLedger({
@@ -1768,7 +1914,6 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     }).outflow,
     0,
   );
-  const bancoSrc = readFileSync(new URL("../components/SupervisorMobileApp.tsx", import.meta.url), "utf8");
   expect(
     "Supervisor Banco: préstamos en azul y saldo del día",
     bancoSrc.includes("is-outflow") && bancoSrc.includes("Saldo del día"),
@@ -1810,8 +1955,38 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     true,
   );
   expect(
-    "Registro Banco lista historial por día (no solo Hoy)",
-    bancoSrc.includes("Historial por día") && bancoSrc.includes("digitalPoolRegisterDays"),
+    "Registro Banco lista historial cobrado y prestado por día",
+    bancoSrc.includes("is-cobrado-hist") &&
+      bancoSrc.includes("is-prestado-hist") &&
+      bancoSrc.includes("bancoRouteHistoryDays") &&
+      bancoSrc.includes("bancoRouteHistoryTotals") &&
+      bancoSrc.includes("bancoRouteCobradoHistoryDays") &&
+      bancoSrc.includes("bancoRoutePrestadoHistoryDays"),
+    true,
+  );
+  expect(
+    "Registro Nequi: cobrado, prestado y saldo de la ruta A",
+    bancoSrc.includes("nequiRouteHistoryDays") &&
+      bancoSrc.includes("NEQUI_ROUTE_PIN") &&
+      bancoSrc.includes("is-nequi-tres") &&
+      bancoSrc.includes("is-nequi-saldo"),
+    true,
+  );
+  expect(
+    "Banco/Nequi: el día en curso queda habilitado",
+    bancoSrc.includes("bancoRouteCobradoHistoryDays(bancoRutaHistoryDays, today)") &&
+      bancoSrc.includes("bancoRoutePrestadoHistoryDays(bancoRutaHistoryDays, today)") &&
+      bancoSrc.includes("bancoRouteCobradoHistoryDays(nequiRutaHistoryDays, today)") &&
+      bancoSrc.includes("bancoRoutePrestadoHistoryDays(nequiRutaHistoryDays, today)"),
+    true,
+  );
+  expect(
+    "Banco: rutas M T N + acumulado de saldos",
+    bancoSrc.includes("BANCO_ROUTE_PINS") &&
+      bancoSrc.includes("bancoRouteCuadre") &&
+      bancoSrc.includes("bancoAcumuladoRutas") &&
+      bancoSrc.includes("Acumulado (M + T + N)") &&
+      bancoSrc.includes("Ruta M"),
     true,
   );
   const catalogSrc = readFileSync(new URL("../lib/supabase/catalog-mirror.ts", import.meta.url), "utf8");
@@ -1838,6 +2013,14 @@ const {
   commitDigitalPoolAdjustment,
   digitalPoolAdjustWindow,
   digitalPoolBalances,
+  digitalPoolRegisterDays,
+  bancoRouteCuadre,
+  bancoAcumuladoRutas,
+  bancoRouteHistoryDays,
+  bancoRouteHistoryTotals,
+  bancoRouteCobradoHistoryDays,
+  bancoRoutePrestadoHistoryDays,
+  nequiRouteHistoryDays,
 } = await import("@/lib/digital-pools");
 const poolPay = (ref, loanRef, method, date) => ({
   ...bankPay(ref, loanRef, method),
@@ -1861,6 +2044,292 @@ const pools0 = digitalPoolBalances(poolSrc);
 expect("Pool: lo digital de M va a Banco (aunque diga nequi)", pools0.banco, 10_000);
 expect("Pool: lo digital de A va a Nequi (aunque diga banco)", pools0.nequi, 10_000);
 {
+  const bancoDays = digitalPoolRegisterDays({
+    payments: poolSrc.payments,
+    loans: poolSrc.loans,
+    clients: poolSrc.clients,
+    pool: "banco",
+    fromIso: "2026-09-01",
+    toIso: D,
+  });
+  const nequiDays = digitalPoolRegisterDays({
+    payments: poolSrc.payments,
+    loans: poolSrc.loans,
+    clients: poolSrc.clients,
+    pool: "nequi",
+    fromIso: "2026-09-01",
+    toIso: D,
+  });
+  expect(
+    "Pool: acumulado Banco = suma − resta del historial",
+    pools0.banco,
+    bancoDays.reduce((sum, day) => sum + day.total, 0),
+  );
+  expect(
+    "Pool: acumulado Nequi = suma − resta del historial",
+    pools0.nequi,
+    nequiDays.reduce((sum, day) => sum + day.total, 0),
+  );
+  const yesidNequiN = {
+    ref: "PG-N-PWA",
+    loanRef: "L-N",
+    client: "Eva N",
+    amount: 180_000,
+    paidDate: D,
+    method: "nequi",
+    source: "pwa",
+    collectorRef: "COB-1",
+    collector: "Yesid",
+  };
+  expect(
+    "Pool: Nequi del cobrador de N no mueve Banco (N sigue en cero)",
+    digitalPoolBalances({ ...poolSrc, payments: [...poolSrc.payments, yesidNequiN] }).banco,
+    pools0.banco,
+  );
+  expect(
+    "Pool: un cobro de otro cobrador sí entra al acumulado",
+    digitalPoolBalances({
+      ...poolSrc,
+      payments: [
+        ...poolSrc.payments,
+        { ...poolPay("PG-OTRO", "L-M", "nequi", D), collectorRef: "COB-X", collector: "Otro" },
+      ],
+    }).banco,
+    20_000,
+  );
+  const cuadreArgs = {
+    payments: poolSrc.payments,
+    loans: poolSrc.loans,
+    clients: poolSrc.clients,
+    dayCloses: [],
+    fromIso: "2026-09-01",
+    dateIso: D,
+  };
+  const mCuadre = bancoRouteCuadre({ ...cuadreArgs, routeName: "M" });
+  const tCuadre = bancoRouteCuadre({ ...cuadreArgs, routeName: "T" });
+  const nCuadre = bancoRouteCuadre({ ...cuadreArgs, routeName: "N" });
+  expect("Banco ruta M: cobrado del día", mCuadre.cobrado, 10_000);
+  expect("Banco ruta M: inicio del primer día = 0", mCuadre.inicio, 0);
+  expect("Banco ruta M: saldo = inicio + cobrado − prestado", mCuadre.saldo, 10_000);
+  expect("Banco ruta T: sin movimiento = 0", tCuadre.saldo, 0);
+  expect("Banco ruta N: sigue en cero", nCuadre.cobrado, 0);
+  expect(
+    "Banco acumulado = saldo M + T + N",
+    bancoAcumuladoRutas([mCuadre, tCuadre, nCuadre]),
+    10_000,
+  );
+  const mNextDay = bancoRouteCuadre({
+    ...cuadreArgs,
+    dateIso: "2026-09-27",
+    payments: [...poolSrc.payments, poolPay("PG-PM2", "L-M", "nequi", "2026-09-27")],
+  });
+  expect("Banco ruta: el inicio de mañana es el saldo de hoy", mNextDay.inicio, 10_000);
+  expect("Banco ruta: saldo de mañana arrastra", mNextDay.saldo, 20_000);
+  const mHist = bancoRouteHistoryDays({
+    ...cuadreArgs,
+    toIso: "2026-09-27",
+    routeName: "M",
+    payments: [...poolSrc.payments, poolPay("PG-PM2", "L-M", "nequi", "2026-09-27")],
+  });
+  const hist26 = mHist.find((day) => day.date === D);
+  const hist27 = mHist.find((day) => day.date === "2026-09-27");
+  expect("Banco historial M: día 1 inicial 0", hist26?.inicio, 0);
+  expect("Banco historial M: día 1 final = cobrado", hist26?.saldo, 10_000);
+  expect("Banco historial M: día 2 inicial = final de ayer", hist27?.inicio, 10_000);
+  expect("Banco historial M: día 2 final arrastra", hist27?.saldo, 20_000);
+  expect(
+    "Banco historial M: botón cobrado = suma de todos los días",
+    bancoRouteHistoryTotals(mHist).cobrado,
+    20_000,
+  );
+  expect(
+    "Banco historial M: botón prestado a la fecha",
+    bancoRouteHistoryTotals(mHist).prestado,
+    0,
+  );
+  const mCobrado = bancoRouteCobradoHistoryDays(mHist);
+  const cob26 = mCobrado.find((day) => day.date === D);
+  const cob27 = mCobrado.find((day) => day.date === "2026-09-27");
+  expect("Banco cobrado: día 1 inicial 0", cob26?.inicio, 0);
+  expect("Banco cobrado: día 1 final = cobrado (no resta)", cob26?.final, 10_000);
+  expect("Banco cobrado: día 2 inicial = final de ayer", cob27?.inicio, 10_000);
+  expect("Banco cobrado: día 2 final arrastra solo cobrado", cob27?.final, 20_000);
+  expect(
+    "Banco cobrado: botón = suma a la fecha",
+    bancoRouteHistoryTotals(mHist).cobrado,
+    cob27?.final,
+  );
+  const mHistLoan = bancoRouteHistoryDays({
+    ...cuadreArgs,
+    toIso: "2026-09-27",
+    routeName: "M",
+    payments: [...poolSrc.payments, poolPay("PG-PM2", "L-M", "nequi", "2026-09-27")],
+    loans: [
+      ...poolSrc.loans,
+      {
+        ref: "P-M-BCO",
+        clientRef: "C-M",
+        client: "M",
+        date: "26/09/2026",
+        capital: 4_000,
+        fundedBy: "banco",
+      },
+    ],
+  });
+  const mixed26 = mHistLoan.find((day) => day.date === D);
+  const cobLoan26 = bancoRouteCobradoHistoryDays(mHistLoan).find((day) => day.date === D);
+  expect("Banco cobrado: el préstamo baja el saldo mixto", mixed26?.saldo, 6_000);
+  expect("Banco cobrado: el renglón no resta el préstamo", cobLoan26?.final, 10_000);
+  const mPrestado = bancoRoutePrestadoHistoryDays(mHistLoan);
+  const pre26 = mPrestado.find((day) => day.date === D);
+  expect("Banco prestado: el primer día inicial = 0", pre26?.inicio, 0);
+  expect("Banco prestado: final = solo capital prestado", pre26?.final, 4_000);
+  expect("Banco prestado: no arrastra el cobrado", pre26?.inicio, 0);
+  const aHist = nequiRouteHistoryDays({
+    payments: poolSrc.payments,
+    loans: poolSrc.loans,
+    clients: poolSrc.clients,
+    dayCloses: [],
+    fromIso: "2026-09-01",
+    toIso: D,
+  });
+  expect(
+    "Nequi historial: solo ruta A",
+    aHist.every((day) => day.route === "A"),
+    true,
+  );
+  expect("Nequi cobrado: entra el de A", aHist.find((day) => day.date === D)?.cobrado, 10_000);
+  expect(
+    "Nequi no mezcla cobros de M",
+    aHist.some((day) => day.items.some((row) => row.ref === "PG-PM")),
+    false,
+  );
+  const aCobrado = bancoRouteCobradoHistoryDays(aHist);
+  const aCob26 = aCobrado.find((day) => day.date === D);
+  expect("Nequi cobrado: día 1 inicial 0", aCob26?.inicio, 0);
+  expect("Nequi cobrado: día 1 final = cobrado (no resta)", aCob26?.final, 10_000);
+  expect(
+    "Nequi cobrado: botón = suma a la fecha",
+    bancoRouteHistoryTotals(aHist).cobrado,
+    10_000,
+  );
+  const aHistLoan = nequiRouteHistoryDays({
+    payments: poolSrc.payments,
+    loans: [
+      ...poolSrc.loans,
+      {
+        ref: "P-A-NQ",
+        clientRef: "C-A",
+        client: "A",
+        date: "26/09/2026",
+        capital: 3_000,
+        fundedBy: "banco",
+      },
+      {
+        ref: "P-M-NQ",
+        clientRef: "C-M",
+        client: "M",
+        date: "26/09/2026",
+        capital: 9_000,
+        fundedBy: "nequi",
+      },
+    ],
+    clients: poolSrc.clients,
+    dayCloses: [],
+    fromIso: "2026-09-01",
+    toIso: D,
+  });
+  const aPre = bancoRoutePrestadoHistoryDays(aHistLoan);
+  const aPre26 = aPre.find((day) => day.date === D);
+  expect("Nequi prestado: solo capital de A", aPre26?.prestado, 3_000);
+  expect("Nequi prestado: el primer día inicial = 0", aPre26?.inicio, 0);
+  expect("Nequi prestado: final = solo capital prestado", aPre26?.final, 3_000);
+  expect(
+    "Nequi no lista préstamo de M",
+    aPre.some((day) => day.loans.some((row) => row.loanRef === "P-M-NQ")),
+    false,
+  );
+  expect(
+    "Nequi saldo = cobrado − prestado de A",
+    aHistLoan.find((day) => day.date === D)?.saldo,
+    7_000,
+  );
+  const HOY = "2026-09-27";
+  const mLive = bancoRouteHistoryDays({
+    ...cuadreArgs,
+    toIso: HOY,
+    routeName: "M",
+    payments: poolSrc.payments,
+  });
+  expect("Banco: el día en curso sale aunque aún no cobre", mLive.some((day) => day.date === HOY), true);
+  expect("Banco: día en curso inicial = final de ayer", mLive.find((day) => day.date === HOY)?.inicio, 10_000);
+  expect("Banco: día en curso cobrado 0 hasta que entre plata", mLive.find((day) => day.date === HOY)?.cobrado, 0);
+  const mLiveCob = bancoRouteCobradoHistoryDays(mLive, HOY);
+  expect("Banco cobrado: renglón de hoy habilitado", mLiveCob.find((day) => day.date === HOY)?.cobrado, 0);
+  expect("Banco cobrado: final de hoy arrastra", mLiveCob.find((day) => day.date === HOY)?.final, 10_000);
+  const mLivePay = bancoRouteHistoryDays({
+    ...cuadreArgs,
+    toIso: HOY,
+    routeName: "M",
+    payments: [...poolSrc.payments, poolPay("PG-HOY", "L-M", "nequi", HOY)],
+  });
+  expect("Banco: el cobro de hoy entra al instante en M", mLivePay.find((day) => day.date === HOY)?.cobrado, 10_000);
+  const tLive = bancoRouteHistoryDays({
+    ...cuadreArgs,
+    toIso: HOY,
+    routeName: "T",
+    payments: [...poolSrc.payments, poolPay("PG-HOY", "L-M", "nequi", HOY)],
+  });
+  expect("Banco: cobro de M no entra al día en curso de T", tLive.find((day) => day.date === HOY)?.cobrado, 0);
+  const mLiveLoan = bancoRouteHistoryDays({
+    ...cuadreArgs,
+    toIso: HOY,
+    routeName: "M",
+    payments: poolSrc.payments,
+    loans: [
+      ...poolSrc.loans,
+      {
+        ref: "P-HOY-M",
+        clientRef: "C-M",
+        client: "M",
+        date: "27/09/2026",
+        capital: 4_000,
+        fundedBy: "banco",
+      },
+    ],
+  });
+  const mLivePre = bancoRoutePrestadoHistoryDays(mLiveLoan, HOY);
+  expect(
+    "Banco prestado: préstamo del sistema/supervisor entra hoy en su ruta",
+    mLivePre.find((day) => day.date === HOY)?.prestado,
+    4_000,
+  );
+  const aLiveLoan = nequiRouteHistoryDays({
+    payments: poolSrc.payments,
+    loans: [
+      ...poolSrc.loans,
+      {
+        ref: "P-HOY-A",
+        clientRef: "C-A",
+        client: "A",
+        date: "27/09/2026",
+        capital: 2_000,
+        fundedBy: "nequi",
+      },
+    ],
+    clients: poolSrc.clients,
+    dayCloses: [],
+    fromIso: "2026-09-01",
+    toIso: HOY,
+  });
+  const aLivePre = bancoRoutePrestadoHistoryDays(aLiveLoan, HOY);
+  expect(
+    "Nequi prestado: préstamo de A entra hoy; M no se mezcla",
+    aLivePre.find((day) => day.date === HOY)?.prestado,
+    2_000,
+  );
+}
+{
   const digitalLoan = (ref, clientRef, fundedBy) => ({
     ref,
     clientRef,
@@ -1874,12 +2343,12 @@ expect("Pool: lo digital de A va a Nequi (aunque diga banco)", pools0.nequi, 10_
     loans: [
       ...bankLoans,
       digitalLoan("P-SUP-B", "C-M", "banco"),
-      digitalLoan("P-SUP-N", "C-M", "nequi"),
+      { ...digitalLoan("P-SUP-N", "C-M", "nequi"), capital: 5_000 },
       digitalLoan("P-SUP-A", "C-A", "banco"),
       digitalLoan("P-SUP-E", "C-M", "efectivo"),
     ],
   });
-  expect("Pool: préstamo por Banco (supervisor) a cliente de M sale de BANCO", pools0.banco - withLoans.banco, 8_000);
+  expect("Pool: préstamo por Banco (supervisor) a cliente de M sale de BANCO", pools0.banco - withLoans.banco, 9_000);
   expect("Pool: préstamo por Banco a cliente de A sale de NEQUI (manda la ruta)", pools0.nequi - withLoans.nequi, 4_000);
   const supBancoT = { ref: "P-SUP-T", clientRef: "CLI-T1", client: "Caro T", date: "26/09/2026", capital: 600_000, fundedBy: "banco" };
   const cashWithBanco = buildDayCashLedger({ ...base, loans: [...loans, supBancoT] });
@@ -2288,6 +2757,73 @@ expect(
     1,
   );
   expect("Historial T 06/10: no dobla el millón", histAfter.outflow, 2_000_000);
+  const albFicha = markLoanFundedByBanco({
+    ref: "P-430",
+    clientRef: "COD-274",
+    client: "Jose Albornoz",
+    date: "06/10/2026",
+    capital: 1_000_000,
+    installment: 30_000,
+    total: 1_300_000,
+    interest: 300_000,
+    status: "Revisar",
+    notes: "[[fb:banco]]",
+  });
+  const histDup = digitalPoolDayLedger({
+    payments: [],
+    loans: [yeniLoan, martinLoan, albFicha, { ...albFicha, ref: "P-999" }],
+    clients: albBankClients,
+    pool: "banco",
+    dateIso: bankDay,
+    routeName: "T",
+    movements: bankRows,
+  });
+  expect(
+    "Prestado Banco: el mismo préstamo no se lista dos veces",
+    histDup.loans.filter((row) => /albornoz/i.test(row.clientName)).length,
+    1,
+  );
+  expect("Prestado Banco: Yeni + Albornoz una sola vez", histDup.outflow, 2_000_000);
+  const albTwin = markLoanFundedByBanco({
+    ...albFicha,
+    ref: "P-426",
+  });
+  const { collapseDuplicateDigitalLoans, uniqueDigitalDisbursementLoans } = await import(
+    "@/lib/restore-loans-from-bank-disbursements"
+  );
+  const collapsedAlb = collapseDuplicateDigitalLoans([yeniLoan, martinLoan, albFicha, albTwin]);
+  expect("Ficha Albornoz: se deja el original P-426", collapsedAlb.loans.some((row) => row.ref === "P-426"), true);
+  expect("Ficha Albornoz: la copia P-430 sale", collapsedAlb.removed.some((row) => row.ref === "P-430"), true);
+  expect("Ficha Yeni Isolina no se toca", collapsedAlb.loans.some((row) => row.ref === yeniLoan.ref), true);
+  const afterTwinHaber = syncNequiLoanDisbursementsToMovements(
+    [yeniLoan, martinLoan, albFicha, albTwin],
+    bankRows,
+    bankAccounts,
+    albBankClients,
+  );
+  expect(
+    "Registro Banco: un solo Haber de Albornoz aunque haya dos fichas",
+    albHaberRows(afterTwinHaber).length,
+    1,
+  );
+  expect("Registro Banco: el millón de Albornoz una vez", albHaber(afterTwinHaber), 1_000_000);
+  expect(
+    "Registro Banco: Yeni Isolina sigue con su Haber",
+    afterTwinHaber.some(
+      (row) => /isolina/i.test(`${row.thirdParty || ""}`) && (Number(row.credit) || 0) === 1_000_000,
+    ),
+    true,
+  );
+  expect(
+    "Registro Banco: el Haber queda en el original P-426",
+    albHaberRows(afterTwinHaber).some((row) => /P-426/i.test(`${row.ref || ""} ${row.loanDisbursementRef || ""}`)),
+    true,
+  );
+  expect(
+    "Desembolso: unique deja el P- más viejo",
+    uniqueDigitalDisbursementLoans([albFicha, albTwin]).map((row) => row.ref).join(","),
+    "P-426",
+  );
   const poolOrphan = digitalPoolBalances({
     ...poolBase,
     loans: [yeniLoan, martinLoan],
@@ -3381,6 +3917,143 @@ console.log("— Cupo del aparato —");
     "Cobrador: el timbre de su cobro no rehace T",
     targeted.includes("isCollectorLiveDevice()") && targeted.includes("return"),
     true,
+  );
+}
+
+{
+  console.log("— Préstamo efectivo único (Marlin ×3) y Hiania 800 no es Banco —");
+  const { dayLoanDisbursementRows, dayLoanDisbursementTotal } = await import(
+    "@/lib/collector-history-planilla"
+  );
+  const { dayDigitalLoanRows } = await import("@/lib/day-digital-loans");
+  const { collapseDuplicateDigitalLoans, existingDigitalDisbursementTwin } = await import(
+    "@/lib/restore-loans-from-bank-disbursements"
+  );
+  const { markLoanFundedByEfectivo } = await import("@/lib/nequi-pool");
+  const { syncCashLoanDisbursementsToMovements, syncNequiLoanDisbursementsToMovements } =
+    await import("@/lib/bank");
+  const { syncBankLedger } = await import("@/lib/bank-ledger-sync");
+  const { digitalPoolBalances } = await import("@/lib/digital-pools");
+  const nDate = "2026-10-07";
+  const hiania = { ref: "COD-HIA", name: "Hiania", lastName: "", route: "N", status: "Activo" };
+  const marlin = { ref: "COD-MAR", name: "Marlin", lastName: "", route: "N", status: "Activo" };
+  const nClients = [hiania, marlin];
+  const pHia = markLoanFundedByEfectivo({
+    ref: "P-800",
+    clientRef: hiania.ref,
+    client: "Hiania",
+    date: "07/10/2026",
+    capital: 800_000,
+    installment: 25_000,
+    status: "Activo",
+    fundedBy: "efectivo",
+  });
+  const pMar1 = markLoanFundedByEfectivo({
+    ref: "P-101",
+    clientRef: marlin.ref,
+    client: "Marlin",
+    date: "07/10/2026",
+    capital: 100_000,
+    installment: 5_000,
+    status: "Activo",
+    fundedBy: "efectivo",
+  });
+  const nLoans = [pHia, pMar1, { ...pMar1, ref: "P-102" }, { ...pMar1, ref: "P-103" }];
+  const nExpenses = nLoans.map((loan) => ({
+    id: "prestamo",
+    label: `Préstamo · ${loan.ref} · ${loan.client}`,
+    amount: loan.capital,
+    category: "prestamo_ruta",
+    loanRef: loan.ref,
+  }));
+  const cobN = { ref: "COB-Y", name: "Yesid" };
+  const rows = dayLoanDisbursementRows(nDate, nExpenses, nLoans, nClients, {
+    collectorRef: cobN.ref,
+    assignments: [
+      { clientRef: hiania.ref, collectorRef: cobN.ref, dispatchDate: nDate, route: "N" },
+      { clientRef: marlin.ref, collectorRef: cobN.ref, dispatchDate: nDate, route: "N" },
+    ],
+  });
+  expect("Préstamos N: Marlin una sola vez", rows.filter((row) => row.clientRef === marlin.ref).length, 1);
+  expect("Préstamos N: Hiania una sola vez", rows.filter((row) => row.clientRef === hiania.ref).length, 1);
+  expect("Préstamos N: efectivo = 800 + 100", dayLoanDisbursementTotal(rows), 900_000);
+  expect(
+    "Préstamos N: original Marlin es el P- más viejo",
+    rows.find((row) => row.clientRef === marlin.ref)?.loanRef,
+    "P-101",
+  );
+  expect("Banco N: Hiania 800 no entra al pool (es efectivo)", dayDigitalLoanRows(nDate, "N", nLoans, nClients).length, 0);
+  const dsbHaber = syncNequiLoanDisbursementsToMovements(nLoans, [], bankAccounts, nClients);
+  expect("DSB Banco/Nequi: el efectivo no arma DSB", dsbHaber.length, 0);
+  const reg = syncCashLoanDisbursementsToMovements(nLoans, [], bankAccounts);
+  expect(
+    "Registro sistema: Hiania 800 en Haber azul",
+    reg.filter(
+      (row) =>
+        /hiania/i.test(`${row.thirdParty || ""}`) &&
+        row.category === "prestamo_ruta" &&
+        (Number(row.credit) || 0) === 800_000,
+    ).length,
+    1,
+  );
+  expect(
+    "Registro sistema: Marlin 100 una sola vez",
+    reg.filter((row) => /marlin/i.test(`${row.thirdParty || ""}`) && (Number(row.credit) || 0) === 100_000)
+      .length,
+    1,
+  );
+  const ledger = syncBankLedger({
+    payments: [],
+    movements: [],
+    accounts: bankAccounts,
+    miscPayments: [],
+    dayExpenseDrafts: [
+      {
+        ref: `GAS-${cobN.ref}-${nDate}`,
+        collectorRef: cobN.ref,
+        collectorName: cobN.name,
+        date: nDate,
+        expenses: [{ id: "gasolina", label: "Gasolina", amount: 10_000, category: "gasolina" }],
+      },
+    ],
+    dayCloses: [],
+    loans: nLoans,
+    clients: nClients,
+  });
+  expect(
+    "Registro sistema: gasolina de Yesid sigue",
+    ledger.some((row) => row.category === "gasolina" && (Number(row.credit) || 0) === 10_000),
+    true,
+  );
+  expect(
+    "Registro sistema: préstamo + gasolina en la misma cuenta",
+    ledger.filter((row) => row.category === "prestamo_ruta" || row.category === "gasolina").every(
+      (row) => row.accountRef === ledger.find((item) => item.category === "gasolina")?.accountRef,
+    ),
+    true,
+  );
+  const poolN = digitalPoolBalances({
+    payments: [],
+    loans: nLoans,
+    clients: nClients,
+    collectors: [cobN],
+    collectorRefs: [cobN.ref],
+    dayCloses: [],
+    movements: ledger,
+  });
+  expect("Pool Banco N: el efectivo no resta el acumulado", poolN.banco, 0);
+  const collapsed = collapseDuplicateDigitalLoans(nLoans);
+  expect("Ficha Marlin: se deja el original P-101", collapsed.loans.some((row) => row.ref === "P-101"), true);
+  expect(
+    "Ficha Marlin: copias P-102 y P-103 salen",
+    collapsed.removed.filter((row) => row.clientRef === marlin.ref).length,
+    2,
+  );
+  expect("Ficha Hiania no se toca", collapsed.loans.some((row) => row.ref === "P-800"), true);
+  expect(
+    "Alta: no se duplica el mismo efectivo",
+    existingDigitalDisbursementTwin(nLoans, marlin.ref, nDate, 100_000)?.ref,
+    "P-101",
   );
 }
 

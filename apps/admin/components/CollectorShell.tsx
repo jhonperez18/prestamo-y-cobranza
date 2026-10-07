@@ -41,6 +41,8 @@ import {
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
 import { buildQuickLoan, type QuickLoanDraft } from "@/lib/street-client-loan";
+import { existingDigitalDisbursementTwin } from "@/lib/restore-loans-from-bank-disbursements";
+import { loanBankOutflowCapital, loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import {
   commitCreateRouteClient,
   flushPortfolioCatalogToCloud,
@@ -577,6 +579,16 @@ export function CollectorShell({ session, onLogout }: Props) {
     const loan = buildQuickLoan({ ...draft, fundedBy: "efectivo" }, client, loans);
     if (!loan) {
       showToast("Revise capital, interés, tiempo y frecuencia.");
+      return;
+    }
+    const twin = existingDigitalDisbursementTwin(
+      loans,
+      client.ref,
+      loanDisbursementIsoDate(loan),
+      loanBankOutflowCapital(loan),
+    );
+    if (twin) {
+      showToast(`Este préstamo ya está registrado (${twin.ref}). No se duplica.`);
       return;
     }
     const nextLoans = [loan, ...loans];

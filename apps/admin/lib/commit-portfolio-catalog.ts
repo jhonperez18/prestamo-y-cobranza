@@ -26,7 +26,7 @@ import {
   DEMO_ROUTES_KEY,
   writeDemoJson,
 } from "@/lib/demo-persist";
-import { mergeSchedulePaid, syncLoan } from "@/lib/loan-preview";
+import { displayToIso, mergeSchedulePaid, syncLoan } from "@/lib/loan-preview";
 import {
   catalogRoutes,
   clientCreationDate,
@@ -42,11 +42,13 @@ import {
   type RouteRow,
 } from "@/lib/mock-data";
 import {
+  loanBankOutflowCapital,
   markLoanExistingPortfolio,
   markLoanFundedByBanco,
   markLoanFundedByEfectivo,
   markLoanFundedByNequi,
 } from "@/lib/nequi-pool";
+import { existingDigitalDisbursementTwin } from "@/lib/restore-loans-from-bank-disbursements";
 import { resolvedLoanInstallment, syncPermanentRoutePlanilla } from "@/lib/route-planilla";
 import {
   clientDeletedRow,
@@ -588,6 +590,20 @@ export function commitCreateLoan(
   if (!client) return { ok: false, error: "Seleccione un cliente." };
   if (isPendingReview(client)) {
     return { ok: false, error: "No se puede prestar: el registro aún está en revisión." };
+  }
+  if (draft.fundedBy !== "cartera") {
+    const twin = existingDigitalDisbursementTwin(
+      state.loans,
+      client.ref,
+      displayToIso(draft.date) || String(draft.date || "").trim(),
+      loanBankOutflowCapital({ capital: draft.capital }),
+    );
+    if (twin) {
+      return {
+        ok: false,
+        error: `Este préstamo ya está registrado (${twin.ref}). No se duplica.`,
+      };
+    }
   }
 
   const ref = nextLoanCode([...state.loans, ...deletedLoanRefRows()]);

@@ -83,7 +83,16 @@ import {
 } from "@/lib/nequi-pool";
 import { dayDigitalLoanRows, digitalLoanPoolForRoute } from "@/lib/day-digital-loans";
 import {
+  BANCO_ROUTE_PINS,
   DIGITAL_POOL_LABEL,
+  NEQUI_ROUTE_PIN,
+  bancoAcumuladoRutas,
+  bancoRouteCuadre,
+  bancoRouteCobradoHistoryDays,
+  bancoRouteHistoryDays,
+  bancoRouteHistoryTotals,
+  bancoRoutePrestadoHistoryDays,
+  nequiRouteHistoryDays,
   digitalPoolAdjustWindow,
   digitalPoolBalances,
   digitalPoolDayLedger,
@@ -98,6 +107,7 @@ import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import {
   PAYMENT_METHODS,
   normalizePaymentMethod,
+  paymentCatalogClientName,
   paymentDisplayMethod,
   paymentMethodForRoute,
   paymentMethodInitial,
@@ -1119,10 +1129,16 @@ export function SupervisorMobileApp({
   const [snDay, setSnDay] = useState<string | null>(null);
   /** Registro Nequi de hoy filtrado por ruta (1 / 1.1 / 2). */
   const [nequiRegistroRoute, setNequiRegistroRoute] = useState<string | null>(null);
-  /** Registro Banco filtrado por ruta (M / T / N). */
+  /** Registro Banco filtrado por ruta (M / T / N). null = cuatro botones de saldo. */
   const [bancoRegistroRoute, setBancoRegistroRoute] = useState<string | null>(null);
-  /** Día abierto del historial Banco (null = Hoy + lista de días). */
+  /** Historial desplegado: solo cobrado o solo prestado. */
+  const [bancoRutaExpand, setBancoRutaExpand] = useState<"cobrado" | "prestado" | null>(null);
+  /** Un solo día abierto en el historial (acordeón). */
   const [bancoRegistroDay, setBancoRegistroDay] = useState<string | null>(null);
+  /** Historial Nequi (ruta A): cobrado o prestado. */
+  const [nequiRutaExpand, setNequiRutaExpand] = useState<"cobrado" | "prestado" | null>(null);
+  /** Un solo día abierto en el historial Nequi (acordeón). */
+  const [nequiRegistroDay, setNequiRegistroDay] = useState<string | null>(null);
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [gastoLabel, setGastoLabel] = useState("Gasto");
@@ -1177,6 +1193,7 @@ export function SupervisorMobileApp({
     setCajaHistoryDayIso(null);
     setNequiRegistroRoute(null);
     setBancoRegistroRoute(null);
+    setBancoRutaExpand(null);
     setBancoRegistroDay(null);
     setNuevoMode("menu");
     setNuevoRouteRef(null);
@@ -1693,11 +1710,6 @@ export function SupervisorMobileApp({
         .sort(compareRouteNames),
     [liquidaciones],
   );
-  /** BANCO = rutas M / T / N (A va a Nequi): ni cuadro ni botón de A en el panel Banco. */
-  const bancoLiquidaciones = useMemo(
-    () => liquidaciones.filter((row) => digitalLoanPoolForRoute(row.routeName) === "banco"),
-    [liquidaciones],
-  );
   /** NEQUI = solo ruta A: un cuadro, sin botones de ruta abajo. */
   const nequiLiquidaciones = useMemo(
     () => liquidaciones.filter((row) => digitalLoanPoolForRoute(row.routeName) === "nequi"),
@@ -1705,10 +1717,6 @@ export function SupervisorMobileApp({
   );
   const nequiOnlyRoutePins = useMemo(
     () => nequiRegistroRoutePins.filter((name) => digitalLoanPoolForRoute(name) === "nequi"),
-    [nequiRegistroRoutePins],
-  );
-  const bancoRegistroRoutePins = useMemo(
-    () => nequiRegistroRoutePins.filter((name) => digitalLoanPoolForRoute(name) === "banco"),
     [nequiRegistroRoutePins],
   );
   const bancoHistoryFrom = `${today.slice(0, 7)}-01`;
@@ -1751,13 +1759,25 @@ export function SupervisorMobileApp({
   useEffect(() => {
     if (view !== "banco") return;
     setBancoRegistroRoute((prev) => {
-      if (bancoRegistroRoutePins.length === 0) return null;
-      if (prev && bancoRegistroRoutePins.some((name) => sameRoute(name, prev))) {
-        return prev;
-      }
-      return pickDefaultRoutePin(bancoRegistroRoutePins);
+      if (!prev) return null;
+      if (BANCO_ROUTE_PINS.some((pin) => sameRoute(pin, prev))) return prev;
+      return null;
     });
-  }, [view, bancoRegistroRoutePins]);
+  }, [view]);
+  useEffect(() => {
+    const openDay =
+      view === "banco" ? bancoRegistroDay : view === "nequi" ? nequiRegistroDay : null;
+    if (!openDay) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-pool-day]")) return;
+      if (view === "banco") setBancoRegistroDay(null);
+      if (view === "nequi") setNequiRegistroDay(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [view, bancoRegistroDay, nequiRegistroDay]);
   useEffect(() => {
     if (view !== "planilla") return;
     setPlanillaRouteFilter((prev) => {
@@ -1806,7 +1826,7 @@ export function SupervisorMobileApp({
         const method = paymentDisplayMethod(pay, loans, clients);
         return (
         <li key={pay.ref}>
-          <strong className="is-name">{pay.client}</strong>
+          <strong className="is-name">{paymentCatalogClientName(pay, loans, clients)}</strong>
           <span className="is-when">{pay.paidTime || "—"}</span>
           <em
             className={`is-method ${paymentMethodToneClass(method)}`}
@@ -1943,7 +1963,6 @@ export function SupervisorMobileApp({
 
   /** Suma Nequi solo de hoy (los cobradores de la lista). */
   const nequiHoyTotal = totals.cobradoNequi;
-  const bancoHoyTotal = totals.cobradoBanco;
 
   /** Informe: caja de cada planilla según el libro del día (T ya incluye M). */
   const informeEfectivo = useMemo((): InformeEfectivo => {
@@ -2068,45 +2087,104 @@ export function SupervisorMobileApp({
    * Registro Banco por día: hoy abierto; los días anteriores en historial.
    * Cada cobro (incluido Caja / oficina) queda en su paidDate, no en “Hoy” del día siguiente.
    */
-  const bancoRegisterDays = useMemo(
+  const bancoRouteCuadres = useMemo(
     () =>
-      digitalPoolRegisterDays({
+      BANCO_ROUTE_PINS.map((pin) =>
+        bancoRouteCuadre({
+          payments: paymentsWithEvidence,
+          loans,
+          clients,
+          dayCloses,
+          dateIso: today,
+          routeName: pin,
+          fromIso: bancoHistoryFrom,
+          movements: bankMovements,
+        }),
+      ),
+    [paymentsWithEvidence, loans, clients, dayCloses, today, bancoHistoryFrom, bankMovements],
+  );
+  const bancoRutaCuadreHoy = useMemo(
+    () =>
+      bancoRouteCuadres.find(
+        (row) => bancoRegistroRoute && sameRoute(row.route, bancoRegistroRoute),
+      ) ?? null,
+    [bancoRouteCuadres, bancoRegistroRoute],
+  );
+  const bancoSumaSaldos = useMemo(
+    () => bancoAcumuladoRutas(bancoRouteCuadres),
+    [bancoRouteCuadres],
+  );
+  const bancoRutaHistoryDays = useMemo(
+    () =>
+      bancoRegistroRoute
+        ? bancoRouteHistoryDays({
+            payments: paymentsWithEvidence,
+            loans,
+            clients,
+            dayCloses,
+            fromIso: bancoHistoryFrom,
+            toIso: today,
+            routeName: bancoRegistroRoute,
+            movements: bankMovements,
+          })
+        : [],
+    [
+      paymentsWithEvidence,
+      loans,
+      clients,
+      dayCloses,
+      bancoHistoryFrom,
+      today,
+      bancoRegistroRoute,
+      bankMovements,
+    ],
+  );
+  const bancoCobradoDays = useMemo(
+    () => bancoRouteCobradoHistoryDays(bancoRutaHistoryDays, today),
+    [bancoRutaHistoryDays, today],
+  );
+  const bancoPrestadoDays = useMemo(
+    () => bancoRoutePrestadoHistoryDays(bancoRutaHistoryDays, today),
+    [bancoRutaHistoryDays, today],
+  );
+  const bancoRutaTotales = useMemo(
+    () => bancoRouteHistoryTotals(bancoRutaHistoryDays),
+    [bancoRutaHistoryDays],
+  );
+  const nequiRutaHistoryDays = useMemo(
+    () =>
+      nequiRouteHistoryDays({
         payments: paymentsWithEvidence,
         loans,
         clients,
-        pool: "banco",
+        dayCloses,
         fromIso: bancoHistoryFrom,
         toIso: today,
-        routeName: bancoRegistroRoute,
         movements: bankMovements,
       }),
-    [paymentsWithEvidence, loans, clients, bancoHistoryFrom, today, bancoRegistroRoute, bankMovements],
+    [
+      paymentsWithEvidence,
+      loans,
+      clients,
+      dayCloses,
+      bancoHistoryFrom,
+      today,
+      bankMovements,
+    ],
   );
-  const bancoRegisterToday = useMemo(() => {
-    const found = bancoRegisterDays.find((day) => day.date === today);
-    return {
-      date: todayDisplay,
-      items: found?.items ?? [],
-      loans: found?.loans ?? [],
-      total: found?.total ?? 0,
-    };
-  }, [bancoRegisterDays, today, todayDisplay]);
-  const bancoRegisterPastDays = useMemo(
-    () => bancoRegisterDays.filter((day) => day.date < today),
-    [bancoRegisterDays, today],
+  const nequiCobradoDays = useMemo(
+    () => bancoRouteCobradoHistoryDays(nequiRutaHistoryDays, today),
+    [nequiRutaHistoryDays, today],
   );
-  const bancoRegisterOpenDay = useMemo(() => {
-    if (!bancoRegistroDay) return null;
-    return (
-      bancoRegisterDays.find((day) => day.date === bancoRegistroDay) ?? {
-        date: bancoRegistroDay,
-        items: [] as typeof paymentsWithEvidence,
-        loans: [],
-        total: 0,
-      }
-    );
-  }, [bancoRegistroDay, bancoRegisterDays]);
-
+  const nequiPrestadoDays = useMemo(
+    () => bancoRoutePrestadoHistoryDays(nequiRutaHistoryDays, today),
+    [nequiRutaHistoryDays, today],
+  );
+  const nequiRutaTotales = useMemo(
+    () => bancoRouteHistoryTotals(nequiRutaHistoryDays),
+    [nequiRutaHistoryDays],
+  );
+  const nequiRutaSaldo = nequiRutaHistoryDays[0]?.saldo ?? 0;
   /** Filas de planilla: `#` = posición del cliente en su ruta; `route` para la raya verde. */
   const planillaTableRows = (rows: DailyCollectionAssignment[]): PlanillaTableRow[] =>
     rows.map((row, index) => {
@@ -3000,10 +3078,12 @@ export function SupervisorMobileApp({
       setClientesSearchOpen(false);
     }
     if (next === "nequi") {
-      setNequiRegistroRoute(pickDefaultRoutePin(nequiOnlyRoutePins));
+      setNequiRutaExpand(null);
+      setNequiRegistroDay(null);
     }
     if (next === "banco") {
-      setBancoRegistroRoute(pickDefaultRoutePin(bancoRegistroRoutePins));
+      setBancoRegistroRoute(null);
+      setBancoRutaExpand(null);
       setBancoRegistroDay(null);
     }
     if (next === "prestamos") {
@@ -3041,6 +3121,7 @@ export function SupervisorMobileApp({
     setClientesLoanClientRef(null);
     setNequiRegistroRoute(null);
     setBancoRegistroRoute(null);
+    setBancoRutaExpand(null);
     setBancoRegistroDay(null);
     resetClientesModify();
     setClientesSearchOpen(false);
@@ -4519,242 +4600,376 @@ export function SupervisorMobileApp({
         </section>
       ) : view === "nequi" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
-          {renderPoolTotal("nequi")}
-
-          <h3>Por cobrador</h3>
-          {nequiLiquidaciones.length === 0 ? (
-            <p className="ficha-empty">No hay rutas con cobrador.</p>
-          ) : (
-            <div className="supervisor-route-boards">
-              {nequiLiquidaciones.map((row, index) => (
-                <RouteBoardCard
-                  key={row.routeRef}
-                  row={row}
-                  accent={index}
-                  mode="nequi"
-                  tone="nequi"
-                  unreadCount={unreadByRouteNequi[row.routeRef] || 0}
-                  onOpen={(ref) =>
-                    openRouteSummary(ref, { method: "nequi", returnView: "nequi" })
-                  }
-                />
-              ))}
-            </div>
-          )}
-
-          <div
-            className="supervisor-day-boards supervisor-nequi-day-total"
-            aria-label="Total Nequi del día"
-          >
-            <div className="supervisor-day-board is-nequi supervisor-day-board-wide is-nequi-hoy">
-              <div className="supervisor-day-board-copy">
-                <span>Total del día</span>
-                <em>
-                  {nequiLiquidaciones.length} cobrador
-                  {nequiLiquidaciones.length === 1 ? "" : "es"} · hoy
-                </em>
-              </div>
-              <div className="supervisor-caja-hero is-row is-nequi">
-                <b>{money(nequiHoyTotal, { symbol: false })}</b>
-              </div>
-            </div>
-          </div>
-
           <div className="supervisor-nequi-registro-head">
-            <h3>Registro Nequi</h3>
+            <h3>Nequi · Ruta {NEQUI_ROUTE_PIN}</h3>
           </div>
-          {nequiRegisterToday.items.length === 0 ? (
-            <p className="ficha-empty">
-              {nequiRegistroRoute
-                ? `Sin cobros Nequi hoy en ruta ${nequiRegistroRoute}.`
-                : "Sin cobros Nequi hoy."}
-            </p>
-          ) : (
-            <div className="supervisor-nequi-register is-today-only is-tone-nequi">
-              <div className="supervisor-nequi-day">
-                <div className="supervisor-nequi-day-head">
-                  <strong>
-                    Hoy · {todayDisplay}
-                    {nequiRegistroRoute ? ` · Ruta ${nequiRegistroRoute}` : ""}
-                  </strong>
-                  <b>{money(nequiRegisterToday.total, { symbol: false })}</b>
-                </div>
-                {renderNequiDayList(nequiRegisterToday.items)}
-              </div>
+          <section
+            className="collector-mobile-home-cuadre is-supervisor-caja-day is-banco-ruta"
+            aria-label={`Nequi ruta ${NEQUI_ROUTE_PIN}`}
+          >
+            <div className="collector-mobile-home-cuadre-grid is-banco-dos is-nequi-tres">
+              <button
+                type="button"
+                className={`is-banco-cobrado is-tap${nequiRutaExpand === "cobrado" ? " on" : ""}`}
+                aria-expanded={nequiRutaExpand === "cobrado"}
+                onClick={() => {
+                  suppressGhostClick();
+                  setNequiRegistroDay(null);
+                  setNequiRutaExpand((prev) => (prev === "cobrado" ? null : "cobrado"));
+                }}
+              >
+                <span>Cobrado</span>
+                <b>{money(nequiRutaTotales.cobrado, { symbol: false })}</b>
+              </button>
+              <button
+                type="button"
+                className={`is-prestamos is-tap${nequiRutaExpand === "prestado" ? " on" : ""}`}
+                aria-expanded={nequiRutaExpand === "prestado"}
+                onClick={() => {
+                  suppressGhostClick();
+                  setNequiRegistroDay(null);
+                  setNequiRutaExpand((prev) => (prev === "prestado" ? null : "prestado"));
+                }}
+              >
+                <span>Prestado</span>
+                <b>{money(nequiRutaTotales.prestado, { symbol: false })}</b>
+              </button>
+              <button
+                type="button"
+                className="is-nequi-saldo"
+                title="Saldo Nequi ruta A"
+                aria-label="Saldo Nequi ruta A"
+              >
+                <span>Saldo</span>
+                <b>{money(nequiRutaSaldo, { symbol: false })}</b>
+              </button>
             </div>
-          )}
+          </section>
+          {nequiRutaExpand === "cobrado" ? (
+            nequiCobradoDays.length > 0 ? (
+              <div className="supervisor-banco-hist">
+                <div className="supervisor-banco-hist-head" aria-hidden>
+                  <span>Fecha</span>
+                  <span>Inicial</span>
+                  <span>Cobrado</span>
+                  <span>Final</span>
+                </div>
+                <ul
+                  className="supervisor-nequi-day-list is-banco is-cobrado-hist"
+                  aria-label="Fecha inicial cobrado final"
+                >
+                {nequiCobradoDays.map((day) => {
+                  const open = nequiRegistroDay === day.date;
+                  return (
+                    <li key={day.date} data-pool-day={day.date}>
+                      <button
+                        type="button"
+                        className={
+                          open
+                            ? "supervisor-nequi-day-row on"
+                            : "supervisor-nequi-day-row"
+                        }
+                        aria-expanded={open}
+                        onClick={() => {
+                          suppressGhostClick();
+                          setNequiRegistroDay((prev) =>
+                            prev === day.date ? null : day.date,
+                          );
+                        }}
+                      >
+                        <span className="is-date">{isoToDisplay(day.date)}</span>
+                        <span className="is-ini">
+                          {money(day.inicio, { symbol: false })}
+                        </span>
+                        <span className="is-cob">
+                          {money(day.cobrado, { symbol: false })}
+                        </span>
+                        <span className="is-fin">
+                          {money(day.final, { symbol: false })}
+                        </span>
+                      </button>
+                      {open ? (
+                        <div className="supervisor-banco-day-drop">
+                          {renderNequiDayList(day.items, [], undefined)}
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+                </ul>
+              </div>
+            ) : (
+              <p className="ficha-empty">Sin cobros Nequi en ruta A.</p>
+            )
+          ) : null}
+          {nequiRutaExpand === "prestado" ? (
+            nequiPrestadoDays.length > 0 ? (
+              <div className="supervisor-banco-hist">
+                <div className="supervisor-banco-hist-head" aria-hidden>
+                  <span>Fecha</span>
+                  <span>Inicial</span>
+                  <span>Prestado</span>
+                  <span>Final</span>
+                </div>
+                <ul
+                  className="supervisor-nequi-day-list is-banco is-prestado-hist"
+                  aria-label="Fecha inicial prestado final"
+                >
+                {nequiPrestadoDays.map((day) => {
+                  const open = nequiRegistroDay === day.date;
+                  return (
+                    <li key={day.date} data-pool-day={day.date}>
+                      <button
+                        type="button"
+                        className={
+                          open
+                            ? "supervisor-nequi-day-row on"
+                            : "supervisor-nequi-day-row"
+                        }
+                        aria-expanded={open}
+                        onClick={() => {
+                          suppressGhostClick();
+                          setNequiRegistroDay((prev) =>
+                            prev === day.date ? null : day.date,
+                          );
+                        }}
+                      >
+                        <span className="is-date">{isoToDisplay(day.date)}</span>
+                        <span className="is-ini">
+                          {money(day.inicio, { symbol: false })}
+                        </span>
+                        <span className="is-pre">
+                          {money(day.prestado, { symbol: false })}
+                        </span>
+                        <span className="is-fin">
+                          {money(day.final, { symbol: false })}
+                        </span>
+                      </button>
+                      {open ? (
+                        <div className="supervisor-banco-day-drop">
+                          {renderNequiDayList([], day.loans, undefined)}
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
+                </ul>
+              </div>
+            ) : (
+              <p className="ficha-empty">Sin préstamos Nequi en ruta A.</p>
+            )
+          ) : null}
         </section>
       ) : view === "banco" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
-          {renderPoolTotal("banco")}
-
-          <h3>Por cobrador</h3>
-          {bancoLiquidaciones.length === 0 ? (
-            <p className="ficha-empty">No hay rutas con cobrador.</p>
-          ) : (
-            <div className="supervisor-route-boards">
-              {bancoLiquidaciones.map((row, index) => (
-                <RouteBoardCard
-                  key={row.routeRef}
-                  row={row}
-                  accent={index}
-                  mode="banco"
-                  tone="banco"
-                  unreadCount={unreadByRouteBanco[row.routeRef] || 0}
-                  onOpen={(ref) =>
-                    openRouteSummary(ref, { method: "banco", returnView: "banco" })
-                  }
-                />
-              ))}
-            </div>
-          )}
-
-          <div
-            className="supervisor-day-boards supervisor-nequi-day-total"
-            aria-label="Total Banco del día"
-          >
-            <div className="supervisor-day-board is-banco supervisor-day-board-wide is-banco-hoy">
-              <div className="supervisor-day-board-copy">
-                <span>Total del día</span>
-                <em>
-                  {bancoLiquidaciones.length} cobrador
-                  {bancoLiquidaciones.length === 1 ? "" : "es"} · hoy
-                </em>
-              </div>
-              <div className="supervisor-caja-hero is-row is-banco">
-                <b>{money(bancoHoyTotal, { symbol: false })}</b>
-              </div>
-            </div>
-          </div>
-
           <div className="supervisor-nequi-registro-head">
-            <h3>Registro Banco</h3>
-            {bancoRegistroDay ? (
+            <h3>
+              {bancoRegistroRoute ? `Banco · Ruta ${bancoRegistroRoute}` : "Banco"}
+            </h3>
+            {bancoRegistroRoute ? (
               <button
                 type="button"
                 className="collector-mobile-pay-link is-back"
-                onClick={() => setBancoRegistroDay(null)}
+                onClick={() => {
+                  setBancoRegistroRoute(null);
+                  setBancoRutaExpand(null);
+                  setBancoRegistroDay(null);
+                }}
               >
                 volver
               </button>
-            ) : bancoRegistroRoutePins.length > 0 ? (
-              <div
-                className="supervisor-nequi-route-pins"
-                role="group"
-                aria-label="Registro Banco por ruta"
-              >
-                {bancoRegistroRoutePins.map((name) => (
-                  <button
-                    key={name}
-                    type="button"
-                    className={
-                      bancoRegistroRoute && sameRoute(bancoRegistroRoute, name)
-                        ? "supervisor-nequi-route-pin is-banco on"
-                        : "supervisor-nequi-route-pin is-banco"
-                    }
-                    title={`Banco · ruta ${name}`}
-                    aria-label={`Banco ruta ${name}`}
-                    aria-pressed={Boolean(
-                      bancoRegistroRoute && sameRoute(bancoRegistroRoute, name),
-                    )}
-                    onClick={() =>
-                      setBancoRegistroRoute((prev) =>
-                        prev && sameRoute(prev, name) ? null : name,
-                      )
-                    }
-                  >
-                    <b>{name}</b>
-                  </button>
-                ))}
-              </div>
             ) : null}
           </div>
-          {bancoRegisterOpenDay ? (
-            bancoRegisterOpenDay.items.length === 0 && bancoRegisterOpenDay.loans.length === 0 ? (
-              <p className="ficha-empty">
-                {bancoRegistroRoute
-                  ? `Sin movimientos Banco el ${isoToDisplay(bancoRegisterOpenDay.date)} en ruta ${bancoRegistroRoute}.`
-                  : `Sin movimientos Banco el ${isoToDisplay(bancoRegisterOpenDay.date)}.`}
-              </p>
-            ) : (
-              <div className="supervisor-nequi-register is-tone-banco">
-                <div className="supervisor-nequi-day">
-                  <div className="supervisor-nequi-day-head">
-                    <strong>
-                      {isoToDisplay(bancoRegisterOpenDay.date)}
-                      {bancoRegistroRoute ? ` · Ruta ${bancoRegistroRoute}` : ""}
-                    </strong>
-                    <b className={bancoRegisterOpenDay.total < 0 ? "is-negative" : undefined}>
-                      {money(bancoRegisterOpenDay.total, { symbol: false })}
-                    </b>
-                  </div>
-                  {renderNequiDayList(
-                    bancoRegisterOpenDay.items,
-                    bancoRegisterOpenDay.loans,
-                    bancoRegisterOpenDay.total,
-                  )}
-                </div>
-              </div>
-            )
-          ) : (
+          {!bancoRegistroRoute ? (
+            <div
+              className="supervisor-banco-home-grid"
+              role="group"
+              aria-label="Ruta M, Ruta T, Ruta N y Acumulado (M + T + N)"
+            >
+              {bancoRouteCuadres.map((row, index) => (
+                <button
+                  key={row.route}
+                  type="button"
+                  className={`supervisor-banco-home-btn is-route-${row.route} accent-${index % 2}`}
+                  title={`Ruta ${row.route}`}
+                  aria-label={`Ruta ${row.route} saldo ${money(row.saldo, { symbol: false })}`}
+                  onClick={() => {
+                    suppressGhostClick();
+                    setBancoRegistroRoute(row.route);
+                    setBancoRutaExpand(null);
+                    setBancoRegistroDay(null);
+                  }}
+                >
+                  <span>Ruta {row.route}</span>
+                  <span className="is-amount">{money(row.saldo, { symbol: false })}</span>
+                </button>
+              ))}
+              <button
+                type="button"
+                className="supervisor-banco-home-btn is-acumulado"
+                title="Acumulado (M + T + N)"
+                aria-label="Acumulado (M + T + N)"
+              >
+                <span>Saldo</span>
+                <span className="is-amount">{money(bancoSumaSaldos, { symbol: false })}</span>
+              </button>
+            </div>
+          ) : bancoRutaCuadreHoy ? (
             <>
-              {bancoRegisterToday.items.length === 0 && bancoRegisterToday.loans.length === 0 ? (
-                <p className="ficha-empty">
-                  {bancoRegistroRoute
-                    ? `Sin movimientos Banco hoy en ruta ${bancoRegistroRoute}.`
-                    : "Sin movimientos Banco hoy."}
-                </p>
-              ) : (
-                <div className="supervisor-nequi-register is-today-only is-tone-banco">
-                  <div className="supervisor-nequi-day">
-                    <div className="supervisor-nequi-day-head">
-                      <strong>
-                        Hoy · {bancoRegisterToday.date}
-                        {bancoRegistroRoute ? ` · Ruta ${bancoRegistroRoute}` : ""}
-                      </strong>
-                      <b className={bancoRegisterToday.total < 0 ? "is-negative" : undefined}>
-                        {money(bancoRegisterToday.total, { symbol: false })}
-                      </b>
-                    </div>
-                    {renderNequiDayList(
-                      bancoRegisterToday.items,
-                      bancoRegisterToday.loans,
-                      bancoRegisterToday.total,
-                    )}
-                  </div>
-                </div>
-              )}
-              {bancoRegisterPastDays.length > 0 ? (
-                <>
-                  <p className="supervisor-mobile-detail-meta">Historial por día</p>
-                  <ul
-                    className="supervisor-nequi-day-list is-banco"
-                    aria-label="Días con movimientos Banco"
+              <section
+                className="collector-mobile-home-cuadre is-supervisor-caja-day is-banco-ruta"
+                aria-label={`Banco ruta ${bancoRutaCuadreHoy.route}`}
+              >
+                <div className="collector-mobile-home-cuadre-grid is-banco-dos">
+                  <button
+                    type="button"
+                    className={`is-banco-cobrado is-tap${bancoRutaExpand === "cobrado" ? " on" : ""}`}
+                    aria-expanded={bancoRutaExpand === "cobrado"}
+                    onClick={() => {
+                      suppressGhostClick();
+                      setBancoRegistroDay(null);
+                      setBancoRutaExpand((prev) => (prev === "cobrado" ? null : "cobrado"));
+                    }}
                   >
-                    {bancoRegisterPastDays.map((day) => (
-                      <li key={day.date}>
-                        <button
-                          type="button"
-                          className="supervisor-nequi-day-row"
-                          onClick={() => {
-                            suppressGhostClick();
-                            setBancoRegistroDay(day.date);
-                          }}
-                        >
-                          <span className="is-date">{isoToDisplay(day.date)}</span>
-                          <span className="is-count">
-                            {poolDayCountLabel(day.items.length, day.loans.length)}
-                          </span>
-                          <b className={day.total < 0 ? "is-amount is-negative" : "is-amount"}>
-                            {money(day.total, { symbol: false })}
-                          </b>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </>
+                    <span>Cobrado</span>
+                    <b>{money(bancoRutaTotales.cobrado, { symbol: false })}</b>
+                  </button>
+                  <button
+                    type="button"
+                    className={`is-prestamos is-tap${bancoRutaExpand === "prestado" ? " on" : ""}`}
+                    aria-expanded={bancoRutaExpand === "prestado"}
+                    onClick={() => {
+                      suppressGhostClick();
+                      setBancoRegistroDay(null);
+                      setBancoRutaExpand((prev) => (prev === "prestado" ? null : "prestado"));
+                    }}
+                  >
+                    <span>Prestado</span>
+                    <b>{money(bancoRutaTotales.prestado, { symbol: false })}</b>
+                  </button>
+                </div>
+              </section>
+              {bancoRutaExpand === "cobrado" ? (
+                bancoCobradoDays.length > 0 ? (
+                  <div className="supervisor-banco-hist">
+                    <div className="supervisor-banco-hist-head" aria-hidden>
+                      <span>Fecha</span>
+                      <span>Inicial</span>
+                      <span>Cobrado</span>
+                      <span>Final</span>
+                    </div>
+                    <ul
+                      className="supervisor-nequi-day-list is-banco is-cobrado-hist"
+                      aria-label="Fecha inicial cobrado final"
+                    >
+                    {bancoCobradoDays.map((day) => {
+                      const open = bancoRegistroDay === day.date;
+                      return (
+                        <li key={day.date} data-pool-day={day.date}>
+                          <button
+                            type="button"
+                            className={
+                              open
+                                ? "supervisor-nequi-day-row on"
+                                : "supervisor-nequi-day-row"
+                            }
+                            aria-expanded={open}
+                            onClick={() => {
+                              suppressGhostClick();
+                              setBancoRegistroDay((prev) =>
+                                prev === day.date ? null : day.date,
+                              );
+                            }}
+                          >
+                            <span className="is-date">{isoToDisplay(day.date)}</span>
+                            <span className="is-ini">
+                              {money(day.inicio, { symbol: false })}
+                            </span>
+                            <span className="is-cob">
+                              {money(day.cobrado, { symbol: false })}
+                            </span>
+                            <span className="is-fin">
+                              {money(day.final, { symbol: false })}
+                            </span>
+                          </button>
+                          {open ? (
+                            <div className="supervisor-banco-day-drop">
+                              {renderNequiDayList(day.items, [], undefined)}
+                            </div>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="ficha-empty">
+                    Sin cobros Banco en ruta {bancoRutaCuadreHoy.route}.
+                  </p>
+                )
+              ) : null}
+              {bancoRutaExpand === "prestado" ? (
+                bancoPrestadoDays.length > 0 ? (
+                  <div className="supervisor-banco-hist">
+                    <div className="supervisor-banco-hist-head" aria-hidden>
+                      <span>Fecha</span>
+                      <span>Inicial</span>
+                      <span>Prestado</span>
+                      <span>Final</span>
+                    </div>
+                    <ul
+                      className="supervisor-nequi-day-list is-banco is-prestado-hist"
+                      aria-label="Fecha inicial prestado final"
+                    >
+                    {bancoPrestadoDays.map((day) => {
+                      const open = bancoRegistroDay === day.date;
+                      return (
+                        <li key={day.date} data-pool-day={day.date}>
+                          <button
+                            type="button"
+                            className={
+                              open
+                                ? "supervisor-nequi-day-row on"
+                                : "supervisor-nequi-day-row"
+                            }
+                            aria-expanded={open}
+                            onClick={() => {
+                              suppressGhostClick();
+                              setBancoRegistroDay((prev) =>
+                                prev === day.date ? null : day.date,
+                              );
+                            }}
+                          >
+                            <span className="is-date">{isoToDisplay(day.date)}</span>
+                            <span className="is-ini">
+                              {money(day.inicio, { symbol: false })}
+                            </span>
+                            <span className="is-pre">
+                              {money(day.prestado, { symbol: false })}
+                            </span>
+                            <span className="is-fin">
+                              {money(day.final, { symbol: false })}
+                            </span>
+                          </button>
+                          {open ? (
+                            <div className="supervisor-banco-day-drop">
+                              {renderNequiDayList([], day.loans, undefined)}
+                            </div>
+                          ) : null}
+                        </li>
+                      );
+                    })}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="ficha-empty">
+                    Sin préstamos Banco en ruta {bancoRutaCuadreHoy.route}.
+                  </p>
+                )
               ) : null}
             </>
+          ) : (
+            <p className="ficha-empty">No hay rutas Banco (M, T, N).</p>
           )}
         </section>
       ) : view === "nuevo" ? (

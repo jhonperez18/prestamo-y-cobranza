@@ -14,10 +14,22 @@
  * Regla: el botón Banco / Nequi del Cierre de una ruta = cobros de este historial
  * (`digitalPoolDayPayments`, inflow). Incluye Caja / oficina. T / M / N → Banco;
  * A → solo Nequi. Lo que entra al botón es lo que entra al pool de esa ruta.
+ * N: si no hay consignación Banco, el historial y el acumulado quedan en 0
+ * (el efectivo no entra; un Nequi del cobrador de N no se inventa como ingreso).
  * No entra a la caja.
+ *
+ * Un solo libro: `digitalPoolBalances` = real del último ajuste + mismos cobros
+ * − mismos capitales que el historial (`isPoolRegisterPayment` /
+ * `collectPoolOutflowLoans`). Nunca una suma de cobradores y otra de la ruta.
+ *
+ * Día en curso: siempre hay renglón de hoy en esa ruta (aunque aún vaya en 0).
+ * Un cobro del cobrador, un reporte o un préstamo Banco/Nequi del sistema o del
+ * supervisor entra al instante en la ruta del cliente. M, T y N no se mezclan;
+ * A es solo Nequi. No toca caja ni INICIO.
  */
 import type { BankMovement } from "@/lib/bank";
 import { sameRoute } from "@/lib/client-route-order";
+import { addCalendarDaysIso } from "@/lib/colombia-holidays";
 import { BUSINESS_TIME_ZONE, businessTodayIso } from "@/lib/business-timezone";
 import { listOrphanDisbursementOutflows } from "@/lib/restore-loans-from-bank-disbursements";
 import { mergeRouteCashAdjustments } from "@/lib/cash-adjustment";
@@ -29,7 +41,6 @@ import {
 import { pesos } from "@/lib/finance";
 import {
   isLoanVoided,
-  paymentsForCollector,
   type ClientRow,
   type CollectorRow,
   type LoanRow,
@@ -37,12 +48,14 @@ import {
 } from "@/lib/mock-data";
 import {
   isOfficePayment,
+  loanBankOutflowCapital,
   loanDisbursementIsoDate,
   loanFundedByBanco,
   loanFundedByNequi,
 } from "@/lib/nequi-pool";
 import { paymentRecaudoIso } from "@/lib/payment-detail";
 import {
+  normalizePaymentMethod,
   paymentClientRoute,
   paymentDisplayMethod,
   paymentMethodForRoute,
@@ -60,6 +73,65 @@ export const DIGITAL_POOL_ROUTE: Record<DigitalPool, string> = {
 export const DIGITAL_POOL_LABEL: Record<DigitalPool, string> = {
   banco: "Banco",
   nequi: "Nequi",
+};
+
+/** Banco se muestra por estas rutas. A no entra (Nequi exclusivo). */
+export const BANCO_ROUTE_PINS = ["M", "T", "N"] as const;
+export type BancoRoutePin = (typeof BANCO_ROUTE_PINS)[number];
+
+/** Nequi es solo la ruta A. */
+export const NEQUI_ROUTE_PIN = "A";
+
+export function isBancoRoutePin(name: string | null | undefined): name is BancoRoutePin {
+  return Boolean(name && BANCO_ROUTE_PINS.some((pin) => sameRoute(pin, name)));
+}
+
+export type BancoRouteCuadre = {
+  route: BancoRoutePin;
+  date: string;
+  /** Saldo de ayer de esa ruta (se fija al pasar el día). */
+  inicio: number;
+  cobrado: number;
+  prestado: number;
+  /** Inicio + cobrado − prestado (capital). Es la inicial del día siguiente. */
+  saldo: number;
+};
+
+export type BancoRouteHistoryDay = BancoRouteCuadre & {
+  items: PaymentRow[];
+  loans: DigitalPoolRegisterLoan[];
+};
+
+/** Historial Nequi: solo ruta A. Mismo libro (cobrado / prestado / saldo). */
+export type NequiRouteHistoryDay = {
+  route: typeof NEQUI_ROUTE_PIN;
+  date: string;
+  inicio: number;
+  cobrado: number;
+  prestado: number;
+  saldo: number;
+  items: PaymentRow[];
+  loans: DigitalPoolRegisterLoan[];
+};
+
+/** Renglón del historial Cobrado: no resta préstamos. Final = inicial del día siguiente. */
+export type BancoRouteCobradoDay = {
+  route: string;
+  date: string;
+  inicio: number;
+  cobrado: number;
+  final: number;
+  items: PaymentRow[];
+};
+
+/** Renglón del historial Prestado: solo capital prestado. El primer día inicial = 0. */
+export type BancoRoutePrestadoDay = {
+  route: string;
+  date: string;
+  inicio: number;
+  prestado: number;
+  final: number;
+  loans: DigitalPoolRegisterLoan[];
 };
 
 export type DigitalPoolSources = {
@@ -126,57 +198,30 @@ export function digitalPoolBalances(src: DigitalPoolSources, before?: string): D
   };
   const counts = (pool: DigitalPool, iso: string) => {
     const anchor = anchors[pool];
-    return !anchor || (Boolean(iso) && iso > anchor.date);
+    const day = isoOf(iso);
+    return !anchor || (Boolean(day) && day > anchor.date);
   };
 
-  const routeByClient = new Map(src.clients.map((row) => [row.ref, row.route]));
-  const routeByLoan = new Map(
-    src.loans.map((loan) => [
-      loan.ref,
-      loan.clientRef ? routeByClient.get(loan.clientRef) : undefined,
-    ]),
-  );
-  const seen = new Set<string>();
-  const add = (row: PaymentRow) => {
-    if (!row.ref || seen.has(row.ref) || row.voidedAt?.trim()) return;
-    const amount = Number(row.amount) || 0;
-    if (amount <= 0) return;
-    const route = row.loanRef ? routeByLoan.get(row.loanRef) : undefined;
-    const method = paymentMethodForRoute(row.method, route);
-    if (method === "efectivo") return;
-    seen.add(row.ref);
-    if (counts(method, paymentRecaudoIso(row))) totals[method] += amount;
-  };
-  for (const ref of new Set([...src.collectorRefs].filter(Boolean))) {
-    for (const row of paymentsForCollector(ref, src.collectors, src.payments)) add(row);
-  }
+  const seenIn = new Set<string>();
   for (const row of src.payments) {
-    if (isOfficePayment(row)) add(row);
+    if (!row.ref || seenIn.has(row.ref)) continue;
+    for (const pool of ["banco", "nequi"] as const) {
+      if (!isPoolRegisterPayment(row, src.loans, src.clients, pool)) continue;
+      seenIn.add(row.ref);
+      if (counts(pool, paymentRecaudoIso(row))) {
+        totals[pool] += Number(row.amount) || 0;
+      }
+      break;
+    }
   }
-  const countedOutflow = new Set<string>();
-  for (const loan of src.loans) {
-    if (!loanFundedByNequi(loan) && !loanFundedByBanco(loan)) continue;
-    const capital = Number(loan.capital) || 0;
-    if (capital <= 0) continue;
-    const route = loan.clientRef ? routeByClient.get(loan.clientRef) : undefined;
-    const pool: DigitalPool = paymentMethodForRoute("nequi", route) === "banco" ? "banco" : "nequi";
-    const dateIso = loanDisbursementIsoDate(loan);
-    const key = `${loan.clientRef || ""}|${dateIso}|${capital}`;
-    countedOutflow.add(key);
-    if (counts(pool, dateIso)) totals[pool] -= capital;
-  }
-  if (src.movements?.length) {
-    for (const orphan of listOrphanDisbursementOutflows({
+  for (const pool of ["banco", "nequi"] as const) {
+    for (const loan of collectPoolOutflowLoans({
       loans: src.loans,
-      movements: src.movements,
       clients: src.clients,
+      pool,
+      movements: src.movements,
     })) {
-      const route = routeByClient.get(orphan.clientRef);
-      const pool: DigitalPool = paymentMethodForRoute("nequi", route) === "banco" ? "banco" : "nequi";
-      const key = `${orphan.clientRef}|${orphan.dateIso}|${orphan.capital}`;
-      if (countedOutflow.has(key)) continue;
-      countedOutflow.add(key);
-      if (counts(pool, orphan.dateIso)) totals[pool] -= orphan.capital;
+      if (counts(pool, loan.dateIso)) totals[pool] -= loan.capital;
     }
   }
   return { banco: pesos(totals.banco), nequi: pesos(totals.nequi) };
@@ -296,21 +341,14 @@ export type DigitalPoolRegisterDay = {
   total: number;
 };
 
+/** Banco / Nequi de una ruta = préstamo → ficha → ruta del Listado. Nunca por nombre. */
 function paymentMatchesPoolRoute(
   row: PaymentRow,
   loans: LoanRow[],
   clients: ClientRow[],
   routeName: string,
 ): boolean {
-  if (sameRoute(paymentClientRoute(row, loans, clients), routeName)) return true;
-  const needle = (row.client || "").trim().toLowerCase();
-  if (!needle) return false;
-  return clients.some((client) => {
-    if (!sameRoute(client.route, routeName)) return false;
-    const full = `${client.name} ${client.lastName}`.trim().toLowerCase();
-    const nick = (client.name || "").trim().toLowerCase();
-    return full === needle || nick === needle;
-  });
+  return sameRoute(paymentClientRoute(row, loans, clients), routeName);
 }
 
 function isPoolRegisterPayment(
@@ -322,6 +360,16 @@ function isPoolRegisterPayment(
 ): boolean {
   if (row.voidedAt?.trim()) return false;
   if (!((row.amount ?? 0) > 0)) return false;
+  const catalogRoute = paymentClientRoute(row, loans, clients);
+  const stored = normalizePaymentMethod(row.method);
+  if (
+    pool === "banco" &&
+    sameRoute(catalogRoute, "N") &&
+    stored !== "banco" &&
+    !isOfficePayment(row)
+  ) {
+    return false;
+  }
   if (paymentDisplayMethod(row, loans, clients) !== pool) return false;
   const route = routeName?.trim();
   if (route && !paymentMatchesPoolRoute(row, loans, clients, route)) return false;
@@ -354,12 +402,11 @@ function loanRegisterTime(loan: LoanRow): string {
 }
 
 function toRegisterLoan(loan: LoanRow, client: ClientRow): DigitalPoolRegisterLoan {
-  const capital = pesos(Math.trunc(Number(loan.capital) || 0));
   return {
     loanRef: loan.ref,
     clientRef: client.ref,
     clientName: `${client.name} ${client.lastName}`.trim() || (loan.client || "").trim() || loan.ref,
-    capital,
+    capital: loanBankOutflowCapital(loan),
     time: loanRegisterTime(loan),
     dateIso: loanDisbursementIsoDate(loan),
   };
@@ -373,7 +420,7 @@ function isPoolRegisterLoan(
 ): ClientRow | null {
   if (isLoanVoided(loan)) return null;
   if (!loanFundedByBanco(loan) && !loanFundedByNequi(loan)) return null;
-  const capital = Math.trunc(Number(loan.capital) || 0);
+  const capital = loanBankOutflowCapital(loan);
   if (capital <= 0 || !loan.ref) return null;
   const client = clients.find((row) => row.ref === loan.clientRef);
   if (!client) return null;
@@ -399,6 +446,40 @@ function outflowDedupeKey(clientRef: string, dateIso: string, capital: number) {
   return `${clientRef}|${dateIso}|${capital}`;
 }
 
+function isLoanCodeRef(ref: string) {
+  return /^P-\d+/i.test(ref.trim());
+}
+
+function loanCodeNumber(ref: string): number {
+  const matched = /^P-(\d+)/i.exec((ref || "").trim());
+  return matched ? Number(matched[1]) : Number.POSITIVE_INFINITY;
+}
+
+/** Un cliente + un día + un capital = un solo renglón. El original es el P- más viejo. */
+function preferPoolOutflowRow(
+  current: DigitalPoolRegisterLoan | undefined,
+  next: DigitalPoolRegisterLoan,
+): DigitalPoolRegisterLoan {
+  if (!current) return next;
+  const currentP = isLoanCodeRef(current.loanRef);
+  const nextP = isLoanCodeRef(next.loanRef);
+  if (nextP && !currentP) return next;
+  if (currentP && !nextP) return current;
+  if (nextP && currentP && loanCodeNumber(next.loanRef) < loanCodeNumber(current.loanRef)) {
+    return next;
+  }
+  return current;
+}
+
+function uniquePoolRegisterLoans(rows: DigitalPoolRegisterLoan[]): DigitalPoolRegisterLoan[] {
+  const byKey = new Map<string, DigitalPoolRegisterLoan>();
+  for (const row of rows) {
+    const key = outflowDedupeKey(row.clientRef, row.dateIso, row.capital);
+    byKey.set(key, preferPoolOutflowRow(byKey.get(key), row));
+  }
+  return sortPoolRegisterLoans([...byKey.values()]);
+}
+
 function collectPoolOutflowLoans(input: {
   loans: LoanRow[];
   clients: ClientRow[];
@@ -410,7 +491,8 @@ function collectPoolOutflowLoans(input: {
   movements?: BankMovement[];
 }): DigitalPoolRegisterLoan[] {
   const rows: DigitalPoolRegisterLoan[] = [];
-  const seen = new Set<string>();
+  const seenRefs = new Set<string>();
+  const coveredTwins = new Set<string>();
   for (const loan of input.loans) {
     const client = isPoolRegisterLoan(loan, input.clients, input.pool, input.routeName);
     if (!client) continue;
@@ -419,11 +501,20 @@ function collectPoolOutflowLoans(input: {
     if (input.dateIso && date !== input.dateIso) continue;
     if (input.fromIso && date < input.fromIso) continue;
     if (input.toIso && date > input.toIso) continue;
-    const capital = pesos(Math.trunc(Number(loan.capital) || 0));
-    const key = outflowDedupeKey(client.ref, date, capital);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    rows.push(toRegisterLoan(loan, client));
+    if (!loan.ref || seenRefs.has(loan.ref)) continue;
+    seenRefs.add(loan.ref);
+    const capital = loanBankOutflowCapital(loan);
+    const twin = outflowDedupeKey(client.ref, date, capital);
+    const nextRow = toRegisterLoan(loan, client);
+    if (coveredTwins.has(twin)) {
+      const idx = rows.findIndex(
+        (row) => outflowDedupeKey(row.clientRef, row.dateIso, row.capital) === twin,
+      );
+      if (idx >= 0) rows[idx] = preferPoolOutflowRow(rows[idx], nextRow);
+      continue;
+    }
+    coveredTwins.add(twin);
+    rows.push(nextRow);
   }
   if (input.movements?.length) {
     for (const orphan of listOrphanDisbursementOutflows({
@@ -439,9 +530,11 @@ function collectPoolOutflowLoans(input: {
       if (input.dateIso && orphan.dateIso !== input.dateIso) continue;
       if (input.fromIso && orphan.dateIso < input.fromIso) continue;
       if (input.toIso && orphan.dateIso > input.toIso) continue;
-      const key = outflowDedupeKey(orphan.clientRef, orphan.dateIso, orphan.capital);
-      if (seen.has(key)) continue;
-      seen.add(key);
+      if (seenRefs.has(orphan.movementRef)) continue;
+      if (coveredTwins.has(outflowDedupeKey(orphan.clientRef, orphan.dateIso, orphan.capital))) {
+        continue;
+      }
+      seenRefs.add(orphan.movementRef);
       rows.push({
         loanRef: orphan.movementRef,
         clientRef: orphan.clientRef,
@@ -452,7 +545,7 @@ function collectPoolOutflowLoans(input: {
       });
     }
   }
-  return sortPoolRegisterLoans(rows);
+  return uniquePoolRegisterLoans(rows);
 }
 
 function sealRegisterDay(
@@ -461,7 +554,7 @@ function sealRegisterDay(
   loans: DigitalPoolRegisterLoan[],
 ): DigitalPoolRegisterDay {
   const sortedItems = sortPoolRegisterItems(items);
-  const sortedLoans = sortPoolRegisterLoans(loans);
+  const sortedLoans = uniquePoolRegisterLoans(loans);
   const inflow = pesos(sortedItems.reduce((sum, row) => sum + (row.amount ?? 0), 0));
   const outflow = pesos(sortedLoans.reduce((sum, row) => sum + row.capital, 0));
   return {
@@ -587,4 +680,303 @@ export function digitalPoolDayLedger(input: {
       movements: input.movements,
     })[0] ?? emptyRegisterDay(date)
   );
+}
+
+function poolRouteWindowStart(
+  dayCloses: CollectorDayCloseRecord[],
+  pool: DigitalPool,
+  fromIso: string,
+) {
+  const from = isoOf(fromIso);
+  const anchor = latestDigitalPoolAnchor(dayCloses, pool);
+  if (!anchor) return from;
+  const next = addCalendarDaysIso(anchor.date, 1);
+  if (!from) return next;
+  return next > from ? next : from;
+}
+
+function bancoRouteWindowStart(dayCloses: CollectorDayCloseRecord[], fromIso: string) {
+  return poolRouteWindowStart(dayCloses, "banco", fromIso);
+}
+
+/**
+ * Cuadre Banco de una ruta en un día: Inicio (saldo de ayer, fijo) + cobrado − capital prestado.
+ * No mezcla rutas. N sin consignación Banco queda en 0. No toca caja ni INICIO.
+ */
+export function bancoRouteCuadre(input: {
+  payments: PaymentRow[];
+  loans: LoanRow[];
+  clients: ClientRow[];
+  dayCloses: CollectorDayCloseRecord[];
+  dateIso: string;
+  routeName: string;
+  fromIso: string;
+  movements?: BankMovement[];
+}): BancoRouteCuadre {
+  const date = isoOf(input.dateIso);
+  const route: BancoRoutePin =
+    BANCO_ROUTE_PINS.find((pin) => sameRoute(pin, input.routeName)) ?? "M";
+  if (!date) {
+    return { route, date: "", inicio: 0, cobrado: 0, prestado: 0, saldo: 0 };
+  }
+  const start = bancoRouteWindowStart(input.dayCloses, input.fromIso);
+  const prior = addCalendarDaysIso(date, -1);
+  let inicio = 0;
+  if (start && prior && prior >= start) {
+    const past = digitalPoolRegisterDays({
+      payments: input.payments,
+      loans: input.loans,
+      clients: input.clients,
+      pool: "banco",
+      fromIso: start,
+      toIso: prior,
+      routeName: route,
+      movements: input.movements,
+    });
+    inicio = pesos(past.reduce((sum, day) => sum + day.total, 0));
+  }
+  const day = digitalPoolDayLedger({
+    payments: input.payments,
+    loans: input.loans,
+    clients: input.clients,
+    pool: "banco",
+    dateIso: date,
+    routeName: route,
+    movements: input.movements,
+  });
+  const cobrado = pesos(day.inflow);
+  const prestado = pesos(day.outflow);
+  return {
+    route,
+    date,
+    inicio,
+    cobrado,
+    prestado,
+    saldo: pesos(inicio + cobrado - prestado),
+  };
+}
+
+/** Acumulado Banco = suma de los saldos M + T + N. */
+export function bancoAcumuladoRutas(cuadres: readonly BancoRouteCuadre[]): number {
+  return pesos(cuadres.reduce((sum, row) => sum + row.saldo, 0));
+}
+
+/**
+ * Historial Banco de una ruta: cada día con su inicial (= final de ayer) y su final.
+ * Solo esa ruta. No mezcla M/T/N ni toca caja.
+ */
+export function bancoRouteHistoryDays(input: {
+  payments: PaymentRow[];
+  loans: LoanRow[];
+  clients: ClientRow[];
+  dayCloses: CollectorDayCloseRecord[];
+  fromIso: string;
+  toIso: string;
+  routeName: string;
+  movements?: BankMovement[];
+}): BancoRouteHistoryDay[] {
+  const route: BancoRoutePin =
+    BANCO_ROUTE_PINS.find((pin) => sameRoute(pin, input.routeName)) ?? "M";
+  const start = bancoRouteWindowStart(input.dayCloses, input.fromIso);
+  const to = isoOf(input.toIso);
+  if (!start || !to || start > to) return [];
+  const days = digitalPoolRegisterDays({
+    payments: input.payments,
+    loans: input.loans,
+    clients: input.clients,
+    pool: "banco",
+    fromIso: start,
+    toIso: to,
+    routeName: route,
+    movements: input.movements,
+  });
+  const byDate = new Map(days.map((day) => [day.date, day]));
+  const chronological = [...byDate.keys()].sort((a, b) => a.localeCompare(b));
+  let running = 0;
+  const rows: BancoRouteHistoryDay[] = [];
+  for (const date of chronological) {
+    const day = byDate.get(date);
+    if (!day) continue;
+    const inicio = pesos(running);
+    const cobrado = pesos(day.inflow);
+    const prestado = pesos(day.outflow);
+    const saldo = pesos(inicio + cobrado - prestado);
+    running = saldo;
+    rows.push({
+      route,
+      date,
+      inicio,
+      cobrado,
+      prestado,
+      saldo,
+      items: day.items,
+      loans: day.loans,
+    });
+  }
+  if (to && !byDate.has(to)) {
+    const inicio = pesos(running);
+    rows.push({
+      route,
+      date: to,
+      inicio,
+      cobrado: 0,
+      prestado: 0,
+      saldo: inicio,
+      items: [],
+      loans: [],
+    });
+  }
+  return rows.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/**
+ * Historial Nequi de la ruta A: cada día con su inicial (= final de ayer) y su final.
+ * Solo A. No mezcla M/T/N ni toca caja.
+ */
+export function nequiRouteHistoryDays(input: {
+  payments: PaymentRow[];
+  loans: LoanRow[];
+  clients: ClientRow[];
+  dayCloses: CollectorDayCloseRecord[];
+  fromIso: string;
+  toIso: string;
+  movements?: BankMovement[];
+}): NequiRouteHistoryDay[] {
+  const route = NEQUI_ROUTE_PIN;
+  const start = poolRouteWindowStart(input.dayCloses, "nequi", input.fromIso);
+  const to = isoOf(input.toIso);
+  if (!start || !to || start > to) return [];
+  const days = digitalPoolRegisterDays({
+    payments: input.payments,
+    loans: input.loans,
+    clients: input.clients,
+    pool: "nequi",
+    fromIso: start,
+    toIso: to,
+    routeName: route,
+    movements: input.movements,
+  });
+  const byDate = new Map(days.map((day) => [day.date, day]));
+  const chronological = [...byDate.keys()].sort((a, b) => a.localeCompare(b));
+  let running = 0;
+  const rows: NequiRouteHistoryDay[] = [];
+  for (const date of chronological) {
+    const day = byDate.get(date);
+    if (!day) continue;
+    const inicio = pesos(running);
+    const cobrado = pesos(day.inflow);
+    const prestado = pesos(day.outflow);
+    const saldo = pesos(inicio + cobrado - prestado);
+    running = saldo;
+    rows.push({
+      route,
+      date,
+      inicio,
+      cobrado,
+      prestado,
+      saldo,
+      items: day.items,
+      loans: day.loans,
+    });
+  }
+  if (to && !byDate.has(to)) {
+    const inicio = pesos(running);
+    rows.push({
+      route,
+      date: to,
+      inicio,
+      cobrado: 0,
+      prestado: 0,
+      saldo: inicio,
+      items: [],
+      loans: [],
+    });
+  }
+  return rows.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/** Suma a la fecha de una ruta: cobrado de todos los días y capital prestado de todos los días. */
+export function bancoRouteHistoryTotals(
+  days: readonly Pick<BancoRouteHistoryDay, "cobrado" | "prestado">[],
+) {
+  return {
+    cobrado: pesos(days.reduce((sum, day) => sum + day.cobrado, 0)),
+    prestado: pesos(days.reduce((sum, day) => sum + day.prestado, 0)),
+  };
+}
+
+/**
+ * Historial del botón Cobrado: inicial · cobrado · final.
+ * Final = inicial + cobrado (no resta préstamos). Ese final es la inicial del día siguiente.
+ * `liveDate` (hoy): el renglón queda habilitado aunque aún vaya en 0; se llena al instante.
+ */
+export function bancoRouteCobradoHistoryDays(
+  days: readonly {
+    route: string;
+    date: string;
+    cobrado: number;
+    items: PaymentRow[];
+  }[],
+  liveDate = "",
+): BancoRouteCobradoDay[] {
+  const live = isoOf(liveDate);
+  const chrono = [...days].sort((a, b) => a.date.localeCompare(b.date));
+  let running = 0;
+  const rows: BancoRouteCobradoDay[] = [];
+  for (const day of chrono) {
+    const cobrado = pesos(day.cobrado);
+    const isLive = Boolean(live && day.date === live);
+    if (cobrado <= 0 && day.items.length === 0 && !isLive) continue;
+    const inicio = pesos(running);
+    const final = pesos(inicio + cobrado);
+    running = final;
+    rows.push({
+      route: day.route,
+      date: day.date,
+      inicio,
+      cobrado,
+      final,
+      items: day.items,
+    });
+  }
+  return rows.sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/**
+ * Historial del botón Prestado: inicial · prestado · final.
+ * El primer día inicial = 0. Final = inicial + capital prestado (no mezcla cobrado).
+ * Ese final es la inicial del día siguiente, solo de esa ruta.
+ * `liveDate` (hoy): el renglón queda habilitado aunque aún vaya en 0; un préstamo
+ * del sistema o del supervisor entra al instante en esa ruta.
+ */
+export function bancoRoutePrestadoHistoryDays(
+  days: readonly {
+    route: string;
+    date: string;
+    prestado: number;
+    loans: DigitalPoolRegisterLoan[];
+  }[],
+  liveDate = "",
+): BancoRoutePrestadoDay[] {
+  const live = isoOf(liveDate);
+  const chrono = [...days].sort((a, b) => a.date.localeCompare(b.date));
+  let running = 0;
+  const rows: BancoRoutePrestadoDay[] = [];
+  for (const day of chrono) {
+    const prestado = pesos(day.prestado);
+    const isLive = Boolean(live && day.date === live);
+    if (prestado <= 0 && day.loans.length === 0 && !isLive) continue;
+    const inicio = pesos(running);
+    const final = pesos(inicio + prestado);
+    running = final;
+    rows.push({
+      route: day.route,
+      date: day.date,
+      inicio,
+      prestado,
+      final,
+      loans: day.loans,
+    });
+  }
+  return rows.sort((a, b) => b.date.localeCompare(a.date));
 }

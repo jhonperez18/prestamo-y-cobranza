@@ -329,9 +329,12 @@ de ese pool en esa ruta. Una sola lista. Sin cifra paralela.
   (caso 07/10 T: Yeni Isolina 80.000 + Yadira 298.000).
 - Manda la ruta del cliente, no el método guardado.
 - **A nunca va a Banco.** M / T / N nunca van a Nequi.
-- **No** toca caja, CIE, INICIO ni préstamos. El historial puede restar capital aparte;
-  el botón es **solo cobros** (inflow).
+- **No** toca caja, CIE, INICIO ni préstamos. El historial puede restar **solo el capital**
+  (`loanBankOutflowCapital`): el interés no sale de Banco / Nequi. El botón es **solo cobros** (inflow).
 - Un solo dueño: `routeDigitalCollected` → `routeDigitalPayments` → `digitalPoolDayPayments`.
+- **Día en curso:** el historial Banco (M/T/N) y Nequi (A) siempre muestra hoy, aunque vaya en 0.
+  Un cobro del cobrador, un reporte o un préstamo Banco/Nequi del sistema o del supervisor
+  entra al instante en la ruta del cliente. Rutas limpias: no se mezclan.
 
 **Prohibido:** `collectorDayPayments` a solas para el botón (deja fuera oficina).
 Una cifra en el botón y otra en el historial de esa ruta. Nequi en M/T/N o Banco en A.

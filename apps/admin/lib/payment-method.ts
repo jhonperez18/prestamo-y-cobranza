@@ -62,16 +62,59 @@ export function paymentMethodForRoute(
   return sameRoute(route, "A") ? "nequi" : "banco";
 }
 
-/** Ruta del cliente dueño del préstamo de un PG-. */
-export function paymentClientRoute(
-  payment: { loanRef?: string },
-  loans: readonly { ref: string; clientRef?: string }[],
-  clients: readonly { ref: string; route?: string }[],
-): string | undefined {
-  const clientRef = payment.loanRef
-    ? loans.find((loan) => loan.ref === payment.loanRef)?.clientRef
+type PaymentLoanLookup = {
+  loanRef?: string;
+  client?: string;
+};
+
+type LoanLookupRow = {
+  ref: string;
+  clientRef?: string;
+  client?: string;
+};
+
+type ClientLookupRow = {
+  ref: string;
+  route?: string;
+  name?: string;
+  lastName?: string;
+};
+
+function paymentLoanClient(
+  payment: PaymentLoanLookup,
+  loans: readonly LoanLookupRow[],
+  clients: readonly ClientLookupRow[],
+) {
+  const loan = payment.loanRef
+    ? loans.find((row) => row.ref === payment.loanRef)
     : undefined;
-  return clientRef ? clients.find((client) => client.ref === clientRef)?.route : undefined;
+  const client = loan?.clientRef
+    ? clients.find((row) => row.ref === loan.clientRef)
+    : undefined;
+  return { loan, client };
+}
+
+/** Ruta del cliente dueño del préstamo de un PG- (Listado). Nunca infiere por nombre. */
+export function paymentClientRoute(
+  payment: PaymentLoanLookup,
+  loans: readonly LoanLookupRow[],
+  clients: readonly ClientLookupRow[],
+): string | undefined {
+  return paymentLoanClient(payment, loans, clients).client?.route;
+}
+
+/** Nombre del registro Banco / Nequi: ficha del Listado, no un apodo de otra ruta. */
+export function paymentCatalogClientName(
+  payment: PaymentLoanLookup,
+  loans: readonly LoanLookupRow[],
+  clients: readonly ClientLookupRow[],
+): string {
+  const { loan, client } = paymentLoanClient(payment, loans, clients);
+  const catalog = `${client?.name ?? ""} ${client?.lastName ?? ""}`.trim();
+  if (catalog) return catalog;
+  const fromLoan = loan?.client?.trim();
+  if (fromLoan) return fromLoan;
+  return (payment.client || "").trim();
 }
 
 /** Método a mostrar de un PG-: ruta del cliente del préstamo (A = Nequi, M / T / N = Banco). */

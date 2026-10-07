@@ -12,6 +12,7 @@ import {
   repairMiscPaymentLinks,
   syncAllPaymentsToMovements,
   syncMiscPaymentsToMovements,
+  syncCashLoanDisbursementsToMovements,
   syncNequiLoanDisbursementsToMovements,
   type BankAccount,
   type BankMovement,
@@ -31,7 +32,7 @@ export function syncBankLedger(input: {
   miscPayments: MiscPayment[];
   dayExpenseDrafts: CollectorDayExpenseDraft[];
   dayCloses: CollectorDayCloseRecord[];
-  /** Préstamos/renovaciones con fundedBy Nequi o Banco → Haber; y ruta de cada cobro. */
+  /** Préstamos: Banco/Nequi → Haber DSB-; efectivo → Haber CSH- en la cuenta principal. */
   loans: LoanRow[];
   /** Ruta del cliente: decide la cuenta del cobro no efectivo (A → Nequi; M/T/N → Banco). */
   clients: ClientRow[];
@@ -61,9 +62,14 @@ export function syncBankLedger(input: {
     accounts,
     input.clients,
   );
+  const withCashLoans = syncCashLoanDisbursementsToMovements(
+    input.loans,
+    withLoans,
+    accounts,
+  );
   // Último paso: los cobros nunca se desalinean de Ingresos.
   return normalizeBankMovements(
-    lockPaymentCobrosAsIncome(withLoans, input.payments, routeByLoan),
+    lockPaymentCobrosAsIncome(withCashLoans, input.payments, routeByLoan),
   );
 }
 

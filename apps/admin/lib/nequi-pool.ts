@@ -5,6 +5,7 @@
  * - cartera = préstamo que ya estaba en la calle (carga inicial): no sale plata de ningún lado
  */
 import { businessTodayIso } from "@/lib/business-timezone";
+import { pesos } from "@/lib/finance";
 import { displayToIso } from "@/lib/loan-preview";
 import {
   paymentsForCollector,
@@ -132,11 +133,22 @@ export function loanDisbursementMovementRef(loanRef: string) {
   return `DSB-${(loanRef || "").trim()}`;
 }
 
+/**
+ * Plata que sale de Banco / Nequi: solo el capital.
+ * El interés es lo que el cliente debe de más; no sale de la cuenta.
+ * Nunca `total` ni `capital + interés`.
+ */
+export function loanBankOutflowCapital(
+  loan: Pick<LoanRow, "capital" | "interest" | "total">,
+): number {
+  return pesos(Number(loan.capital) || 0);
+}
+
 export function sumNequiFundedDisbursements(loans: LoanRow[]): number {
   let sum = 0;
   for (const loan of loans) {
     if (!loanFundedByNequi(loan)) continue;
-    const capital = Number(loan.capital) || 0;
+    const capital = loanBankOutflowCapital(loan);
     if (capital > 0) sum += capital;
   }
   return sum;

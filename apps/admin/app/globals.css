@@ -6945,6 +6945,217 @@
         0 0 0 3px rgba(29, 78, 216, 0.28),
         0 2px 6px rgba(30, 64, 175, 0.22);
     }
+    .supervisor-nequi-route-pin.is-acumulado {
+      min-width: 52px;
+      padding: 0 12px;
+    }
+    .supervisor-banco-home-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .supervisor-banco-home-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 88px;
+      padding: 14px 10px;
+      border-radius: 16px;
+      border: 1px solid #9bb5ab;
+      background: #fff;
+      font: inherit;
+      font-weight: 400;
+      color: #111;
+      cursor: pointer;
+    }
+    .supervisor-banco-home-btn span {
+      font-size: 12px;
+      font-weight: 400;
+      color: #111;
+    }
+    .supervisor-banco-home-btn .is-amount {
+      font-size: 22px;
+      font-weight: 400;
+      font-variant-numeric: tabular-nums;
+      color: #111;
+    }
+    .supervisor-banco-home-btn.accent-0 {
+      background: linear-gradient(180deg, #f0fdfa 0%, #fff 42%);
+      border-color: #9bb5ab;
+    }
+    .supervisor-banco-home-btn.accent-1 {
+      background: linear-gradient(180deg, #fff7ed 0%, #fff 42%);
+      border-color: #f0d0a8;
+    }
+    .supervisor-banco-home-btn.is-acumulado {
+      grid-column: 1 / -1;
+      background: #e8f0fe;
+      border-color: #bfdbfe;
+      cursor: default;
+    }
+    .supervisor-banco-home-btn.is-acumulado span,
+    .supervisor-banco-home-btn.is-acumulado .is-amount {
+      color: #111;
+      font-weight: 400;
+    }
+    .supervisor-banco-day-ini {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin: 0 0 8px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: #eff6ff;
+      color: #1e3a8a;
+      font-size: 12px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .supervisor-nequi-day-list.is-banco > li {
+      display: grid;
+      gap: 4px;
+    }
+    .supervisor-banco-day-drop {
+      padding: 8px 10px 10px;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      background: #f8fbff;
+    }
+    .supervisor-banco-hist {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .supervisor-banco-hist-head {
+      display: grid;
+      grid-template-columns: 3.6rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+      column-gap: 6px;
+      align-items: center;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #c5e0cb;
+      background: #eef6ef;
+      font-size: 11px;
+      font-weight: 500;
+      color: #000;
+    }
+    .supervisor-banco-hist-head span:first-child {
+      text-align: left;
+    }
+    .supervisor-banco-hist-head span:not(:first-child) {
+      text-align: right;
+    }
+    .supervisor-nequi-day-list.is-banco.is-cobrado-hist .supervisor-nequi-day-row {
+      grid-template-columns: 3.6rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+      column-gap: 6px;
+      font-weight: 400;
+    }
+    .supervisor-nequi-day-list.is-banco.is-cobrado-hist .supervisor-nequi-day-row .is-date {
+      font-size: 10px;
+      font-weight: 400;
+      color: #111;
+      line-height: 1.2;
+    }
+    .supervisor-nequi-day-list.is-banco.is-cobrado-hist .supervisor-nequi-day-row .is-ini,
+    .supervisor-nequi-day-list.is-banco.is-cobrado-hist .supervisor-nequi-day-row .is-cob,
+    .supervisor-nequi-day-list.is-banco.is-cobrado-hist .supervisor-nequi-day-row .is-fin {
+      font-size: 12px;
+      font-weight: 400;
+      color: #1d4ed8;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .supervisor-nequi-day-list.is-banco.is-prestado-hist .supervisor-nequi-day-row {
+      grid-template-columns: 3.6rem minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+      column-gap: 6px;
+      font-weight: 400;
+      color: #111;
+    }
+    .supervisor-nequi-day-list.is-banco.is-prestado-hist .supervisor-nequi-day-row .is-date {
+      font-size: 10px;
+      font-weight: 400;
+      color: #111;
+      line-height: 1.2;
+    }
+    .supervisor-nequi-day-list.is-banco.is-prestado-hist .supervisor-nequi-day-row .is-ini,
+    .supervisor-nequi-day-list.is-banco.is-prestado-hist .supervisor-nequi-day-row .is-pre,
+    .supervisor-nequi-day-list.is-banco.is-prestado-hist .supervisor-nequi-day-row .is-fin {
+      font-size: 12px;
+      font-weight: 400;
+      color: #111;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta {
+      margin-top: 8px;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-banco-dos {
+      grid-template-columns: 1fr 1fr;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-nequi-tres {
+      grid-template-columns: 1fr 1fr;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-nequi-tres .is-nequi-saldo {
+      grid-column: 1 / -1;
+      padding: 8px 6px;
+      border: 1px solid #d4c0ef;
+      background: #f1e9fb;
+      font: inherit;
+      color: #111;
+      cursor: default;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-nequi-tres .is-nequi-saldo span {
+      font-size: 10px;
+      font-weight: 400;
+      color: #111;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-nequi-tres .is-nequi-saldo b {
+      font-size: 22px;
+      font-weight: 400;
+      color: #111;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-banco-dos .is-prestamos {
+      padding: 8px 6px;
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-banco-dos .is-prestamos span {
+      font-size: 10px;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-banco-dos .is-prestamos b {
+      font-size: 13px;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-banco-dos .is-banco-cobrado,
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-inicio-triple .is-banco-cobrado {
+      padding: 8px 6px;
+      border-color: #86efac;
+      background: #ecfdf5;
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-banco-dos .is-banco-cobrado span,
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-inicio-triple .is-banco-cobrado span {
+      font-size: 10px;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-banco-dos .is-banco-cobrado b,
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-inicio-triple .is-banco-cobrado b {
+      font-size: 13px;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid > button.is-banco-cobrado.on {
+      box-shadow: 0 0 0 2px #16a34a;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid > button.is-inicial {
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+    }
     /* En celular el scroll es de toda la pantalla Nequi, no un cajón truncado. */
     .supervisor-nequi-register.is-today-only {
       max-height: none;

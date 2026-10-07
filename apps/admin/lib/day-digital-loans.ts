@@ -7,6 +7,7 @@ import { sameRoute } from "@/lib/client-route-order";
 import type { DayLoanDisbursementRow } from "@/lib/collector-history-planilla";
 import { isLoanVoided, type ClientRow, type LoanRow } from "@/lib/mock-data";
 import {
+  loanBankOutflowCapital,
   loanDisbursementIsoDate,
   loanDisbursementSource,
   loanFundedByBanco,
@@ -77,7 +78,7 @@ export function dayDigitalLoanRows(
     if (!loanFundedByBanco(loan) && !loanFundedByNequi(loan)) continue;
     if (isLoanVoided(loan)) continue;
     if (loanDisbursementIsoDate(loan) !== dateIso) continue;
-    const capital = Math.trunc(Number(loan.capital) || 0);
+    const capital = loanBankOutflowCapital(loan);
     if (capital <= 0) continue;
     const client = clientByRef.get(loan.clientRef);
     if (!client || !sameRoute(client.route, route)) continue;
@@ -89,5 +90,15 @@ export function dayDigitalLoanRows(
       installment: Math.trunc(Number(loan.installment) || 0),
     });
   }
-  return rows.sort((a, b) => a.clientName.localeCompare(b.clientName, "es"));
+  const keep = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    const key = `${row.clientRef}|${row.capital}`;
+    const current = keep.get(key);
+    const rowN = /^P-(\d+)/i.exec(row.loanRef);
+    const curN = current ? /^P-(\d+)/i.exec(current.loanRef) : null;
+    const rowNum = rowN ? Number(rowN[1]) : Number.POSITIVE_INFINITY;
+    const curNum = curN ? Number(curN[1]) : Number.POSITIVE_INFINITY;
+    if (!current || rowNum < curNum) keep.set(key, row);
+  }
+  return [...keep.values()].sort((a, b) => a.clientName.localeCompare(b.clientName, "es"));
 }
