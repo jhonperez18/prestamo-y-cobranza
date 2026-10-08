@@ -61,6 +61,7 @@ import {
 import {
   buildCollectorDayHistory,
   expensesForCollectorDay,
+  isLiveCashDay,
   normalizeHistoryDate,
   openingSaldoForPeriod,
   periodFromDateIso,
@@ -68,6 +69,7 @@ import {
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
+import { businessTodayIso } from "@/lib/business-timezone";
 import {
   enrichSupervisorPlanillaRow,
   paidThousandsLabel,
@@ -102,6 +104,8 @@ import {
   type DigitalPoolRegisterLoan,
 } from "@/lib/digital-pools";
 import type { DigitalPoolAdjustRequest } from "@/lib/save-cash-adjustment";
+import type { SheetReopenRequest } from "@/lib/save-sheet-reopen";
+import { sheetReopenWindow } from "@/lib/sheet-reopen";
 import { suppressGhostClick } from "@/lib/suppress-ghost-click";
 import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import {
@@ -257,6 +261,8 @@ type Props = {
   onAdjustTCash?: (input: CashAdjustmentRequest) => Promise<boolean>;
   /** Cuadre del total acumulado BANCO / NEQUI (todas las rutas cerradas hoy). */
   onAdjustDigitalPool?: (input: DigitalPoolAdjustRequest) => Promise<boolean>;
+  /** Reabrir la hoja de hoy de un cobrador (cerró por error). Nunca M. */
+  onReopenSheet?: (input: SheetReopenRequest) => Promise<boolean>;
   onLogout?: () => void;
 };
 
@@ -1104,6 +1110,7 @@ export function SupervisorMobileApp({
   onSaveMiscPayment,
   onAdjustTCash,
   onAdjustDigitalPool,
+  onReopenSheet,
   onLogout,
 }: Props) {
   const today = todayIso();
@@ -1129,6 +1136,9 @@ export function SupervisorMobileApp({
   const [cashAdjustCollectorRef, setCashAdjustCollectorRef] = useState<string | null>(null);
   /** BANCO / NEQUI: cuadre del total acumulado abierto. */
   const [poolAdjustOpen, setPoolAdjustOpen] = useState<DigitalPool | null>(null);
+  /** «Reabrir hoja de hoy»: confirmación abierta (clave cobrador|ruta) y envío en curso. */
+  const [reopenConfirmKey, setReopenConfirmKey] = useState<string | null>(null);
+  const [reopeningSheet, setReopeningSheet] = useState(false);
   const [snDay, setSnDay] = useState<string | null>(null);
   /** Registro Nequi de hoy filtrado por ruta (1 / 1.1 / 2). */
   const [nequiRegistroRoute, setNequiRegistroRoute] = useState<string | null>(null);
@@ -1441,6 +1451,7 @@ export function SupervisorMobileApp({
           ? dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
               collectorRef,
               assignments: todayAssignments,
+              liveDay: isLiveCashDay(collectorRef, today, dayCloses, businessTodayIso()),
             })
           : [];
       const prestamosHoy = dayLoanDisbursementTotal(cashLoansToday);
@@ -2679,6 +2690,27 @@ export function SupervisorMobileApp({
     });
     if (ok) setCashAdjustCollectorRef(null);
     return ok;
+  }
+
+  /** Reabrir la hoja de hoy: solo supervisor/admin, hoy antes de 23:30, día sellado, nunca M. */
+  const sheetReopenKey = openRoute ? `${openRoute.collectorRef}|${openRoute.routeName}` : null;
+  const canReopenSheet = useMemo(() => {
+    if (!onReopenSheet || !openRoute) return false;
+    return sheetReopenWindow(openRoute.collectorRef, openRoute.routeName, dayCloses).open;
+  }, [onReopenSheet, openRoute, dayCloses]);
+
+  async function confirmReopenSheet() {
+    if (!onReopenSheet || !openRoute || reopeningSheet) return;
+    setReopeningSheet(true);
+    try {
+      const ok = await onReopenSheet({
+        collectorRef: openRoute.collectorRef,
+        route: openRoute.routeName,
+      });
+      if (ok) setReopenConfirmKey(null);
+    } finally {
+      setReopeningSheet(false);
+    }
   }
 
   /** Día del historial de A / N: solo la planilla (nada de las otras rutas del cobrador). */
@@ -3987,6 +4019,39 @@ export function SupervisorMobileApp({
                   {tCashAdjustTarget.row.dateLabel} para ajustarlo al saldo real (hasta
                   medianoche).
                 </p>
+              ) : null}
+              {canReopenSheet && reopenConfirmKey === sheetReopenKey ? (
+                <div className="supervisor-mobile-subhead">
+                  <p>
+                    ¿Reabrir la hoja {openRoute.routeName} de hoy? Las visitas sin cobrar vuelven a
+                    pendiente; los cobros hechos se quedan. El cobrador cobra y vuelve a cerrar
+                    (el saldo final se recalcula).
+                  </p>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    disabled={reopeningSheet}
+                    onClick={() => void confirmReopenSheet()}
+                  >
+                    {reopeningSheet ? "Reabriendo…" : `Sí, reabrir ${openRoute.routeName}`}
+                  </button>{" "}
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={reopeningSheet}
+                    onClick={() => setReopenConfirmKey(null)}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              ) : canReopenSheet ? (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setReopenConfirmKey(sheetReopenKey)}
+                >
+                  Reabrir hoja de hoy
+                </button>
               ) : null}
             </>
           ) : detailMode === "historial-dia" && openRouteHistoryDayCuadre ? (

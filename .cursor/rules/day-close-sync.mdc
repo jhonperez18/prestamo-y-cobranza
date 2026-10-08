@@ -37,7 +37,7 @@ Misma fuerza que un cobro `PG-`: local primero, luego nube; el pull no reabre.
 | --- | --- |
 | Revisión 6:00 | Vercel Cron `0 11 * * *` → `/api/ops/morning-check`: sella lo pendiente (mismo motor 23:30) y revisa hojas pasadas abiertas, días cerrados sin CIE-, Inicial de hoy. No borra nada. Informe en Configuración → Aparatos |
 | Aparato, 1.ª sync del día | `device-daily-tuneup`: subir cola → `compactRebuildableStorage` (solo copias -bak que la nube rehace) → bajada completa → rehidratar |
-| Bajada liviana (planilla, cobros, clientes, préstamos) | Completa al abrir, cada 10 min, al reparar y en la puesta a punto; entre medio `?since=` (`lib/incremental-pull.ts`). **Cobrador:** “completa” = el día (planilla + cobros de hoy); el historial no viaja |
+| Bajada liviana (planilla, cobros, clientes, préstamos) | Completa al abrir, cada 60 min, al reparar y en la puesta a punto; entre medio `?since=` (`lib/incremental-pull.ts`). **Cobrador:** “completa” = el día (planilla + cobros de hoy); el historial no viaja |
 | Qué trae la parcial | Filas con `updated_at` **o** `created_at` ≥ corte − 2 min (`lib/supabase/changed-since.ts`). El corte es la hora del servidor, nunca la del celular. `created_at` atrapa el alta que sube tarde con hora vieja |
 | Qué no hace la parcial | No borra lo que no vino; no corre reconcile de historial. Reconcile de cobros = **cola**, nunca reenviar PG- viejos. Si no entra al aparato → la próxima es completa |
 
@@ -56,6 +56,22 @@ la planilla de **hoy** en su lugar.
 | Ayer | Día cerrado = intocable. |
 
 - Candado: `assert-cash-chain.mjs` («Hoy lleno de N», «Cerrar N no pide M», «T sigue pidiendo M»).
+
+## Reabrir hoja de hoy (caso 07/10: T de Edgar se cerró con M)
+
+Un solo camino: supervisor / admin → ruta → Historial → «Reabrir hoja de hoy»
+(`lib/sheet-reopen.ts`, `/api/ops/reopen-sheet`).
+
+| Pieza | Regla |
+| --- | --- |
+| Cuándo | Solo hoy (Bogotá), antes de 23:30, con el CIE- sellado y sin ajuste de saldo. Nunca M |
+| Nube | Marca `REABIERTA@<ruta>:<iso>` en `movement_refs` del CIE-. Visitas de esa planilla: «Cierre de jornada» → pendiente; cobros y N/P quedan. Nada se borra |
+| CIE- vigente | Solo si `closed_at` > marca. Si no, `rowToDayClose` = null (aparatos y corte 23:30 lo ven abierto) |
+| Aparato atrasado | CIE- viejo → `cie_reopened`; visita sellada vieja de esa ruta → `hoja_reabierta`. No la vuelven a cerrar |
+| Pull | `applySheetReopensLocally`: suelta CIE-/PCE- de esa ruta, reabre visitas, limpia su cola |
+| Volver a cerrar | El cobrador cierra; el CIE- nuevo (posterior) manda y el saldo final se recalcula |
+
+- Candado: `assert-cash-chain.mjs` sección 29.
 
 ## Prohibido
 

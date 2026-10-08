@@ -951,7 +951,7 @@ export type PullPaymentsResult = {
 let livePaymentCache: PaymentRow[] | null = null;
 type PaymentListBody = { rows: PaymentMirrorRow[]; full: boolean; cursor: string | null };
 const paymentListFlights = new Map<string, Promise<PaymentListBody | null>>();
-/** Lista completa al abrir, cada 10 min y en la puesta a punto; entre medio solo lo cambiado. */
+/** Lista completa al abrir, cada 60 min y en la puesta a punto; entre medio solo lo cambiado. */
 const paymentsPull = createIncrementalPull();
 
 /** Una sola bajada por corte. Las llamadas que coinciden esperan la misma. */
@@ -1010,7 +1010,7 @@ export async function loadLivePaymentRows(): Promise<PaymentRow[]> {
 }
 
 /**
- * `full`: lista completa (al abrir, cada 10 min, puesta a punto); si no, solo lo cambiado.
+ * `full`: lista completa (al abrir, cada 60 min, puesta a punto); si no, solo lo cambiado.
  * Una bajada parcial nunca borra cobros locales y no trae `remoteRefs` (el reconcile
  * solo compara contra la lista completa).
  */

@@ -3109,9 +3109,12 @@ console.log("\n— Gasto: la cola no pierde lo que no subió —");
   globalThis.fetch = async (_url, init) => {
     if (init?.keepalive) keepalive = true;
     const body = JSON.parse(init.body);
-    if (body.kind === "day_close" && !midFlush) midFlush = mirrorDayExpenseNow(gas);
-    if (body.kind === "day_expense" && expenseNet === "down") throw new TypeError("Failed to fetch");
-    return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    const batch = body.kind === "batch";
+    const kinds = batch ? body.items.map((item) => item.kind) : [body.kind];
+    if (kinds.includes("day_close") && !midFlush) midFlush = mirrorDayExpenseNow(gas);
+    if (kinds.includes("day_expense") && expenseNet === "down") throw new TypeError("Failed to fetch");
+    const reply = batch ? { ok: true, results: body.items.map(() => ({ ok: true })) } : { ok: true };
+    return { ok: true, status: 200, json: async () => reply };
   };
 
   store.set(Q_CIE, JSON.stringify([{ ref: "CIE-COB-1-2026-09-30" }]));
@@ -3624,7 +3627,7 @@ console.log("— Revisión de la mañana y puesta a punto —");
   }
 }
 
-// 24. Bajada liviana (cobros, clientes, préstamos, planilla): completa al abrir, cada 10 min,
+// 24. Bajada liviana (cobros, clientes, préstamos, planilla): completa al abrir, cada 60 min,
 //     al reparar y en la puesta a punto; entre medio solo lo que cambió o se creó desde el
 //     corte del servidor. Una parcial nunca borra lo que no vino.
 console.log("— Bajada liviana —");
@@ -3641,7 +3644,12 @@ console.log("— Bajada liviana —");
   pull.settle({ ok: true, full: true, cursor: "2026-10-03T11:00:00.000Z" }, t0);
   expect("Bajada: tras la completa = parcial con el corte del servidor", pull.sinceFor(false, t0 + 45_000), "2026-10-03T11:00:00.000Z");
   expect("Bajada: forzada (reparar / puesta a punto) = completa", pull.sinceFor(true, t0 + 45_000), null);
-  expect("Bajada: a los 10 min = completa", pull.sinceFor(false, t0 + FULL_PULL_EVERY_MS), null);
+  expect("Bajada: a los 60 min = completa", pull.sinceFor(false, t0 + FULL_PULL_EVERY_MS), null);
+  expect(
+    "Bajada: a los 10 min sigue parcial (la completa de 5,6 MB trababa el celular)",
+    pull.sinceFor(false, t0 + 10 * 60_000),
+    "2026-10-03T11:00:00.000Z",
+  );
   pull.settle({ ok: true, full: false, cursor: "2026-10-03T11:00:45.000Z" }, t0 + 45_000);
   expect("Bajada: la parcial no reinicia el reloj de la completa", pull.sinceFor(false, t0 + FULL_PULL_EVERY_MS), null);
   pull.settle({ ok: false, full: false, cursor: "2026-10-03T11:01:30.000Z" }, t0 + 90_000);
@@ -4296,12 +4304,293 @@ console.log("— Cupo del aparato —");
     cashLineIsLoanOf({ loanRef: "P-434", label: "Préstamo · P-434 · Dary Amor" }, "P-434", "Bader"),
     false,
   );
+  const { dayLoanDisbursementRows: loanRowsM, dayLoanDisbursementTotal: loanTotalM } = await import(
+    "@/lib/collector-history-planilla"
+  );
+  const { isLiveCashDay } = await import("@/lib/collector-day-close");
+  const mClient = (ref, name) => ({ ref, name, lastName: "", route: "M", status: "Activo" });
+  const mClients = [
+    mClient("COD-CEC", "Cecilia"),
+    mClient("COD-62", "Dary Amor"),
+    mClient("COD-57", "Enrique"),
+    mClient("COD-65", "Celina"),
+    mClient("COD-37", "Bader"),
+  ];
+  const mLoan = (ref, clientRef, client, capital) => ({
+    ref,
+    clientRef,
+    client,
+    date: "07/10/2026",
+    capital,
+    installment: 45_000,
+    status: "Activo",
+    fundedBy: "efectivo",
+  });
+  const mLoans = [
+    mLoan("P-425", "COD-CEC", "Cecilia", 1_000_000),
+    mLoan("P-434", "COD-62", "Dary Amor", 900_000),
+    mLoan("P-435", "COD-57", "Enrique", 300_000),
+    mLoan("P-437", "COD-65", "Celina", 2_000_000),
+    mLoan("P-442", "COD-37", "Bader", 1_000_000),
+  ];
+  const brokenLines = [
+    { id: "prestamo", label: "Préstamo · P-425 · Cecilia", amount: 1_000_000, loanRef: "P-425", category: "prestamo_ruta" },
+    { id: "prestamo", label: "Préstamo · P-434 · Bader", amount: 1_000_000, loanRef: "P-434", category: "prestamo_ruta" },
+    { id: "prestamo", label: "Préstamo · P-443 · Celina", amount: 2_000_000, loanRef: "P-443", category: "prestamo_ruta" },
+  ];
+  const mScope = {
+    collectorRef: "COB-0",
+    assignments: mClients.map((row) => ({
+      clientRef: row.ref,
+      collectorRef: "COB-0",
+      dispatchDate: "2026-10-07",
+      route: "M",
+    })),
+  };
+  const liveRows = loanRowsM("2026-10-07", brokenLines, mLoans, mClients, { ...mScope, liveDay: true });
+  expect("Día abierto: Préstamos M = fichas (5.200.000), no el renglón dañado", loanTotalM(liveRows), 5_200_000);
+  expect(
+    "Día abierto: Dary sale con lo de su ficha (900.000)",
+    liveRows.find((row) => row.clientRef === "COD-62")?.capital ?? null,
+    900_000,
+  );
+  const sealedRows = loanRowsM("2026-10-07", brokenLines, mLoans, mClients, mScope);
+  expect(
+    "Día sellado: el renglón guardado es historia y no se recalcula",
+    sealedRows.find((row) => row.loanRef === "P-434")?.capital ?? null,
+    1_000_000,
+  );
+  const cieM = { ref: "CIE-COB-0-2026-10-07", collectorRef: "COB-0", date: "2026-10-07" };
+  expect(
+    "Día vivo = hoy sin CIE- sellado; con CIE- o ayer, no",
+    [
+      isLiveCashDay("COB-0", "2026-10-07", [], "2026-10-07"),
+      isLiveCashDay("COB-0", "2026-10-07", [cieM], "2026-10-07"),
+      isLiveCashDay("COB-0", "2026-10-07", [{ ...cieM, provisional: true }], "2026-10-07"),
+      isLiveCashDay("COB-0", "2026-10-06", [], "2026-10-07"),
+    ].join(","),
+    "true,false,true,false",
+  );
+  const { renameLoanRefInState } = await import("@/lib/supabase/catalog-mirror");
+  const gasLine = (ref, client, amount) => ({
+    id: "prestamo",
+    label: `Préstamo · ${ref} · ${client}`,
+    amount,
+    loanRef: ref,
+    category: "prestamo_ruta",
+  });
+  const gasM = {
+    ref: "GAS-COB-0-2026-10-07",
+    collectorRef: "COB-0",
+    collectorName: "Edgar",
+    date: "2026-10-07",
+    routeRef: "RUT-1",
+    expenses: [gasLine("P-434", "Dary Amor", 900_000), gasLine("P-434", "Bader", 1_000_000)],
+    expensesTotal: 1_900_000,
+  };
+  const visit = (loanRef, clientRef, extra = {}) => ({
+    itemId: `2026-10-08:${loanRef}`,
+    dispatchDate: "2026-10-08",
+    loanRef,
+    clientRef,
+    collectorRef: "COB-0",
+    ...extra,
+  });
+  const clash = renameLoanRefInState(
+    {
+      loans: [mLoan("P-434", "COD-37", "Bader", 1_000_000)],
+      loanQueue: [],
+      assignments: [visit("P-434", "COD-62"), visit("P-434", "COD-37")],
+      drafts: [gasM],
+    },
+    { ref: "P-434", clientRef: "COD-37", client: "Bader" },
+    "P-442",
+    "2026-10-07",
+  );
+  expect(
+    "Choque P-434: Bader pasa a P-442 (ficha, visita y renglón); Dary queda en P-434",
+    [
+      clash.loans.map((row) => row.ref).join(","),
+      clash.assignments.map((row) => `${row.clientRef}:${row.loanRef}`).join(","),
+      clash.drafts[0].expenses.map((row) => row.label).join(" | "),
+      clash.drafts[0].expensesTotal,
+    ].join(" / "),
+    "P-442 / COD-62:P-434,COD-37:P-442 / Préstamo · P-434 · Dary Amor | Préstamo · P-442 · Bader / 1900000",
+  );
+  const celinaGas = {
+    ...gasM,
+    expenses: [gasLine("P-437", "Celina", 2_000_000), gasLine("P-439", "Celina", 2_000_000)],
+    expensesTotal: 4_000_000,
+  };
+  const twin = renameLoanRefInState(
+    {
+      loans: [mLoan("P-437", "COD-65", "Celina", 2_000_000), mLoan("P-439", "COD-65", "Celina", 2_000_000)],
+      loanQueue: [mLoan("P-439", "COD-65", "Celina", 2_000_000)],
+      assignments: [visit("P-437", "COD-65"), visit("P-439", "COD-65")],
+      drafts: [celinaGas],
+    },
+    { ref: "P-439", clientRef: "COD-65", client: "Celina" },
+    "P-437",
+    "2026-10-07",
+  );
+  expect(
+    "Reintento Celina: P-439 se une a P-437 (una ficha, una visita, un renglón de 2.000.000)",
+    [
+      twin.twin,
+      twin.loans.map((row) => row.ref).join(","),
+      twin.loanQueue.length,
+      twin.assignments.map((row) => row.loanRef).join(","),
+      twin.drafts[0].expensesTotal,
+    ].join(" / "),
+    "true / P-437 / 0 / P-437 / 2000000",
+  );
   const { readFileSync: readSrc } = await import("node:fs");
   const catalogSrc = readSrc(new URL("../lib/supabase/catalog-mirror.ts", import.meta.url), "utf8");
+  const mobileSrc = readSrc(new URL("../components/CollectorMobileApp.tsx", import.meta.url), "utf8");
+  expect(
+    "Cerrar M no cierra T: el panel queda amarrado a su hoja, se cierra al cambiar y no acepta doble toque",
+    mobileSrc.includes("setCloseTargetKey(activeCloseKey);") &&
+      mobileSrc.includes("closeTargetKey !== activeCloseKey") &&
+      mobileSrc.includes("closingDayRef.current = true;\n    setConfirmingClose(false);"),
+    true,
+  );
+  const opsSrc = readSrc(new URL("../lib/supabase/ops-mirror.ts", import.meta.url), "utf8");
+  const opsRouteSrc = readSrc(new URL("../app/api/ops/mirror/route.ts", import.meta.url), "utf8");
+  expect(
+    "Subida en paquetes: cola → /api/ops/mirror batch (≤20 filas), cada fila con su candado",
+    opsSrc.includes("await postMirrorBatch(") &&
+      opsSrc.includes("export const OPS_MIRROR_BATCH_MAX = 20;") &&
+      opsRouteSrc.includes('body.kind === "batch"') &&
+      opsRouteSrc.includes("await safeMirrorItem(item)"),
+    true,
+  );
+  expect(
+    "Nube: alta con insert (sin pisar otra ficha), une reintentos y la baja no toca a otro cliente",
+    catalogSrc.includes('.from("loans").insert(row)') &&
+      catalogSrc.includes("error.code !== UNIQUE_VIOLATION") &&
+      catalogSrc.includes("findCloudLoanTwin(supabase, row)") &&
+      catalogSrc.includes('reason: "loan_ref_other_client"'),
+    true,
+  );
   expect(
     "Renombre de ficha: el renglón del cobrador sigue al P- nuevo y sube a la nube",
-    catalogSrc.includes("cashLineIsLoanOf(line, from, renamedClient)") &&
+    catalogSrc.includes("renameLoanRefInState(state, loan, to, businessTodayIso())") &&
       catalogSrc.includes("queueDayExpenseMirror(draft)"),
+    true,
+  );
+}
+
+// 29. Reabrir hoja de hoy (caso 07/10: T de Edgar se cerró con M, faltaban cobros).
+// Supervisor/admin, solo hoy antes de 23:30, nunca M. La nube marca el CIE-; un cierre
+// posterior manda; un aparato atrasado no la vuelve a cerrar.
+{
+  const {
+    applySheetReopen,
+    cieClosesRoute,
+    dayCloseReopenFromRow,
+    encodeSheetReopenRef,
+    sheetReopenWindow,
+  } = await import("@/lib/sheet-reopen");
+  const { rowToDayClose } = await import("@/lib/supabase/ops-mirror");
+  const closedAt = "2026-10-08T00:13:59.931Z";
+  const reopenAt = "2026-10-08T00:40:00.000Z";
+  const cieRow = (refs, closed = closedAt) => ({
+    ref: "CIE-COB-0-2026-10-07",
+    collector_ref: "COB-0",
+    close_date: "2026-10-07",
+    cash_float: 7_104_000,
+    closed_at: closed,
+    movement_refs: ["GASL-COB-0-2026-10-07-almuerzo", ...refs],
+  });
+  const marker = encodeSheetReopenRef({ route: "T", at: reopenAt, by: "Supervisor" });
+  const reopened = cieRow([marker]);
+  const reclosed = cieRow([marker], "2026-10-08T01:30:00.000Z");
+  expect(
+    "Reabierta: el CIE- deja de cerrar el día (rowToDayClose null) y solo para T",
+    [
+      rowToDayClose(reopened) === null,
+      cieClosesRoute(reopened, "T"),
+      cieClosesRoute(reopened, "M"),
+      cieClosesRoute(reopened, "A"),
+    ].join(","),
+    "true,false,true,true",
+  );
+  expect(
+    "Vuelve a cerrar después: el CIE- nuevo manda y la marca queda solo como historia",
+    [
+      rowToDayClose(reclosed)?.ref,
+      rowToDayClose(reclosed)?.movementRefs.join(","),
+      dayCloseReopenFromRow(reclosed) === null,
+      cieClosesRoute(reclosed, "T"),
+    ].join(" / "),
+    "CIE-COB-0-2026-10-07 / GASL-COB-0-2026-10-07-almuerzo / true / true",
+  );
+  const bogota = (hhmm) => new Date(`2026-10-07T${hhmm}:00-05:00`);
+  const cie = { ref: "CIE-COB-0-2026-10-07", collectorRef: "COB-0", date: "2026-10-07", closedAt, cashFloat: 7_104_000 };
+  expect(
+    "Ventana: T/A sí (hoy, antes de 23:30, con CIE-); M no; 23:30 no; sin CIE- no; con ajuste no",
+    [
+      sheetReopenWindow("COB-0", "T", [cie], bogota("19:45")).open,
+      sheetReopenWindow("COB-0", "A", [cie], bogota("19:45")).open,
+      sheetReopenWindow("COB-0", "M", [cie], bogota("19:45")).open,
+      sheetReopenWindow("COB-0", "T", [cie], bogota("23:30")).open,
+      sheetReopenWindow("COB-0", "T", [], bogota("19:45")).open,
+      sheetReopenWindow(
+        "COB-0",
+        "T",
+        [{ ...cie, cashAdjustment: { calculated: 1, real: 2, at: closedAt, by: "x", reason: "" } }],
+        bogota("19:45"),
+      ).open,
+    ].join(","),
+    "true,true,false,false,false,false",
+  );
+  const sealedVisit = (itemId, route, extra) => ({
+    itemId,
+    dispatchDate: "2026-10-07",
+    collectorRef: "COB-0",
+    clientRef: `C-${itemId}`,
+    clientRoute: route,
+    dispatched: true,
+    dayClosedAt: "07:13 p. m.",
+    amountDue: 0,
+    ...extra,
+  });
+  const reopen = dayCloseReopenFromRow(reopened);
+  const state = {
+    dayCloses: [cie],
+    planillaCashCloses: [{ ref: "PCE-COB-0-2026-10-07-T", collectorRef: "COB-0", collectorName: "Edgar", date: "2026-10-07", routeName: "T", openingCash: 0, closingCash: 7_104_000, closedAt }],
+    assignments: [
+      sealedVisit("t1", "T", { visitStatus: "omitido", skipReason: "Cierre de jornada" }),
+      sealedVisit("t2", "T", { visitStatus: "cobrado", paymentRef: "PG-1" }),
+      sealedVisit("t3", "T", { visitStatus: "omitido", skipReason: "No estaba" }),
+      sealedVisit("m1", "M", { visitStatus: "omitido", skipReason: "Cierre de jornada" }),
+    ],
+  };
+  const applied = applySheetReopen(state, reopen, []);
+  expect(
+    "Aparato: suelta CIE- y PCE-T; T vuelve a pendiente (cobro y N/P quedan); M sigue cerrada",
+    [
+      applied.dayCloses.length,
+      applied.planillaCashCloses.length,
+      applied.assignments
+        .map((row) => `${row.itemId}:${row.visitStatus}:${row.dayClosedAt ? "S" : "A"}`)
+        .join(","),
+    ].join(" / "),
+    "0 / 0 / t1:pendiente:A,t2:cobrado:A,t3:omitido:A,m1:omitido:S",
+  );
+  const relocal = applySheetReopen(
+    { ...state, dayCloses: [{ ...cie, closedAt: "2026-10-08T01:30:00.000Z" }] },
+    reopen,
+    [],
+  );
+  expect("Aparato con cierre posterior: la reapertura vieja no lo toca", relocal.changed, false);
+  const { readFileSync: readReopenSrc } = await import("node:fs");
+  const opsReopenSrc = readReopenSrc(new URL("../lib/supabase/ops-mirror.ts", import.meta.url), "utf8");
+  expect(
+    "Nube: CIE- viejo no pisa la reapertura; visita sellada vieja no cierra T; el pull la aplica",
+    opsReopenSrc.includes('reason: "cie_reopened"') &&
+      opsReopenSrc.includes('reason: "hoja_reabierta"') &&
+      opsReopenSrc.includes("applySheetReopensLocally(reopens, persist)"),
     true,
   );
 }

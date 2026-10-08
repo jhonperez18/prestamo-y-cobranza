@@ -322,6 +322,7 @@ export function Workspace(props: WorkspaceProps) {
     registerLatePayment,
     adjustTCashFromMobile,
     adjustDigitalPoolFromMobile,
+    reopenSheetFromMobile,
     latePayOpen,
     setLatePayOpen,
     startLatePay,
@@ -1762,6 +1763,7 @@ export function Workspace(props: WorkspaceProps) {
           }}
           onAdjustTCash={adjustTCashFromMobile}
           onAdjustDigitalPool={adjustDigitalPoolFromMobile}
+          onReopenSheet={reopenSheetFromMobile}
           onPreviewKindChange={onPreviewKindChange}
         />
       );

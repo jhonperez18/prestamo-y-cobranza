@@ -5,6 +5,7 @@ import {
   type BankExpenseCategory,
   type BankMovement,
 } from "@/lib/bank";
+import { businessTodayIso } from "@/lib/business-timezone";
 import { isoToDispatchLabel, todayIso } from "@/lib/daily-dispatch";
 import { pesos, sumPesos, verifyCashClose } from "@/lib/finance";
 import { displayToIso } from "@/lib/loan-preview";
@@ -406,6 +407,19 @@ export function expensesForCollectorDay(
   if (closed) return closed.expenses.filter((row) => row.amount > 0);
   const draft = findDayExpenseDraft(drafts, collectorRef, date);
   return draft?.expenses.filter((row) => row.amount > 0) ?? [];
+}
+
+/** Hoy y sin CIE- sellado del cobrador: lo prestado se lee de la ficha (`liveDay`). */
+export function isLiveCashDay(
+  collectorRef: string,
+  date: string,
+  closes: CollectorDayCloseRecord[],
+  todayIso: string,
+): boolean {
+  const day = normalizeHistoryDate(date) || date;
+  if (!collectorRef || day !== todayIso) return false;
+  const closeRef = dayCloseRef(collectorRef, day);
+  return !closes.some((row) => row.ref === closeRef && !row.provisional);
 }
 
 export function upsertDayExpenseDraft(
@@ -1231,6 +1245,7 @@ export function buildCollectorDayHistory(
       const rows = dayLoanDisbursementRows(date, lines, extras.loans, extras.clients, {
         collectorRef,
         assignments: extras.assignments,
+        liveDay: isLiveCashDay(collectorRef, date, closes, businessTodayIso()),
       });
       prestamoByDate.set(
         date,

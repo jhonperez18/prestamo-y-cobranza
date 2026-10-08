@@ -90,6 +90,7 @@ import {
   saveDigitalPoolAdjustment,
   type DigitalPoolAdjustRequest,
 } from "@/lib/save-cash-adjustment";
+import { reopenSheetToday, type SheetReopenRequest } from "@/lib/save-sheet-reopen";
 
 type Props = {
   session: AppSession;
@@ -562,6 +563,22 @@ export function SupervisorShell({ session, onLogout }: Props) {
     return true;
   }
 
+  async function reopenSheetFromMobile(input: SheetReopenRequest) {
+    const saved = await reopenSheetToday({
+      ...input,
+      by: supervisor?.name || session.name || session.username || "supervisor",
+    });
+    if (!saved.ok) {
+      showToast(saved.error);
+      return false;
+    }
+    setDayCloses(saved.dayCloses);
+    setPlanillaCashCloses(saved.planillaCashCloses);
+    setDailyAssignments(saved.assignments);
+    showToast(saved.message);
+    return true;
+  }
+
   function attachPaymentEvidence(paymentRef: string, evidence: PaymentEvidenceRef[]) {
     const ref = paymentRef.trim();
     if (!ref || !evidence.length) return;
@@ -628,6 +645,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
         onSaveMiscPayment={saveMiscPaymentFromMobile}
         onAdjustTCash={adjustTCashFromMobile}
         onAdjustDigitalPool={adjustDigitalPoolFromMobile}
+        onReopenSheet={reopenSheetFromMobile}
         onLogout={onLogout}
       />
       {toastNode}

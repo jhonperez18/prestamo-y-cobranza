@@ -92,6 +92,7 @@ import {
   planillaLiveCuota,
   planillaLiveCuotasProgress,
 } from "@/lib/planilla-display";
+import { businessTodayIso } from "@/lib/business-timezone";
 import type {
   RouteExpenseLine,
   CollectorDayCloseRecord,
@@ -104,6 +105,7 @@ import {
   expensesForCollectorDay,
   findMonthClose,
   isLastCalendarDayOfMonth,
+  isLiveCashDay,
   monthClosingSaldoFromHistory,
   monthReviewBlock,
   normalizeHistoryDate,
@@ -311,6 +313,9 @@ export function CollectorMobileApp({
   const [editingExpenses, setEditingExpenses] = useState(false);
   const [reviewingLoans, setReviewingLoans] = useState(false);
   const [confirmingClose, setConfirmingClose] = useState(false);
+  /** Hoja (día + planilla) que el cobrador eligió cerrar. El panel no se pasa a otra hoja. */
+  const [closeTargetKey, setCloseTargetKey] = useState<string | null>(null);
+  const closingDayRef = useRef(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [planillaSearchOpen, setPlanillaSearchOpen] = useState(false);
@@ -836,6 +841,12 @@ export function CollectorMobileApp({
   /** Ruta de planilla seleccionada (null = una sola ruta / sin pines). */
   const activePlanillaRoute =
     planillaRoutePins.length > 1 ? planillaRouteFilter : null;
+  const activeCloseKey = `${activeDate}|${activePlanillaRoute ?? ""}`;
+  // Cerrada M, la app pasa sola a T: el panel de M no puede quedar abierto apuntando a T
+  // (caso 07/10: un segundo toque en «Confirmar» cerró T sin que nadie lo pidiera).
+  useEffect(() => {
+    if (confirmingClose && closeTargetKey !== activeCloseKey) setConfirmingClose(false);
+  }, [activeCloseKey, closeTargetKey, confirmingClose]);
   const isPrimaryPlanilla =
     !activePlanillaRoute || sameRoute(activePlanillaRoute, planillaRoutePins[0] || "");
   /** A cobra solo Efectivo y Nequi: lo que no es efectivo se muestra como Nequi. */
@@ -1048,8 +1059,12 @@ export function CollectorMobileApp({
   const loanScope = useMemo(() => {
     // Desembolsos de la jornada del cobrador (KPI solo se muestra en planilla M).
     const dayRows = assignments.filter((row) => row.collectorRef === collector.ref);
-    return { collectorRef: collector.ref, assignments: dayRows };
-  }, [assignments, collector.ref]);
+    return {
+      collectorRef: collector.ref,
+      assignments: dayRows,
+      liveDay: isLiveCashDay(collector.ref, activeDate, dayCloses, businessTodayIso()),
+    };
+  }, [activeDate, assignments, collector.ref, dayCloses]);
   /** Gastos + desembolsos en efectivo del día (reconstruye si el cierre perdió la línea). */
   const savedExpenses = useMemo(
     () =>
@@ -1207,6 +1222,7 @@ export function CollectorMobileApp({
     setExpandedKey(null);
     setEditingExpenses(false);
     setReviewingLoans(false);
+    setCloseTargetKey(activeCloseKey);
     setConfirmingClose(true);
   }
 
@@ -1235,11 +1251,13 @@ export function CollectorMobileApp({
   }
 
   function confirmCloseDay() {
-    if (!onCloseDay || dayLocked) return;
-    if (!chainCloseGuard.ok) {
+    if (!onCloseDay || dayLocked || closingDayRef.current) return;
+    if (!chainCloseGuard.ok || closeTargetKey !== activeCloseKey) {
       setConfirmingClose(false);
       return;
     }
+    closingDayRef.current = true;
+    setConfirmingClose(false);
     const cashOut = topGastos + topPrestamos;
     const openingForClose =
       chainOpening.kind === "chain"
@@ -1261,12 +1279,12 @@ export function CollectorMobileApp({
     void (async () => {
       try {
         const ok = await onCloseDay(payload);
-        setConfirmingClose(false);
         if (ok === false) return;
       } catch (error) {
         console.error("collector-close-day", error);
-        setConfirmingClose(false);
         return;
+      } finally {
+        closingDayRef.current = false;
       }
       setListFilter("pending");
       setPreferCobroPlanilla(false);

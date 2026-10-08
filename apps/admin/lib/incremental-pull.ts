@@ -1,8 +1,10 @@
 /**
- * Bajada completa al abrir, cada 10 min, al reparar y en la puesta a punto del día;
+ * Bajada completa al abrir, cada 60 min, al reparar y en la puesta a punto del día;
  * entre medio solo lo que cambió (`?since=` con el corte que devolvió el servidor).
+ * La completa pesa ~5,6 MB por aparato (planilla de 16 días ≈ 3,5 MB): cada 10 min trababa
+ * el celular y agotaba la transferencia de Vercel. Lo nuevo llega igual por la parcial.
  */
-export const FULL_PULL_EVERY_MS = 10 * 60_000;
+export const FULL_PULL_EVERY_MS = 60 * 60_000;
 
 export type IncrementalPullOutcome = {
   ok: boolean;

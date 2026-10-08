@@ -34,6 +34,7 @@ import {
   type DayLoanDisbursementRow,
 } from "@/lib/collector-history-planilla";
 import {
+  dayLoanScope,
   isChainCollectorDay,
   routeCashCollected,
   routeClientRefsForDay,
@@ -185,10 +186,9 @@ function routeMovement(src: DayCashSources, route: string): RouteMovement {
     ? []
     : lines.filter((line) => (Number(line.amount) || 0) > 0 && !isPrestamoRutaExpense(line));
   const refs = routeClientRefsForDay(src, route);
-  const loanRows = dayLoanDisbursementRows(date, lines, src.loans, src.clients, {
-    collectorRef: src.collectorRef,
-    assignments: src.assignments,
-  }).filter((row) => refs.has(row.clientRef));
+  const loanRows = dayLoanDisbursementRows(date, lines, src.loans, src.clients, dayLoanScope(src)).filter(
+    (row) => refs.has(row.clientRef),
+  );
   return {
     efectivo,
     gastos: sumExpenseLines(gastoLines),

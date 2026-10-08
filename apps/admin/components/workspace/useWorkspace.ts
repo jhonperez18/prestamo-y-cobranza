@@ -84,6 +84,7 @@ import {
   type DigitalPoolAdjustRequest,
 } from "@/lib/save-cash-adjustment";
 import type { CashAdjustmentRequest } from "@/lib/commit-cash-adjustment";
+import { reopenSheetToday, type SheetReopenRequest } from "@/lib/save-sheet-reopen";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { queueClientMirror, queueLoanMirror, queueLoansMirror, flushCatalogMirrorQueues } from "@/lib/supabase/catalog-mirror";
 import {
@@ -2600,6 +2601,22 @@ export function useWorkspace({
     return true;
   }
 
+  async function reopenSheetFromMobile(input: SheetReopenRequest) {
+    const saved = await reopenSheetToday({
+      ...input,
+      by: adminName || session.name || session.username || "admin",
+    });
+    if (!saved.ok) {
+      onToast(saved.error);
+      return false;
+    }
+    setDayCloses(saved.dayCloses);
+    setPlanillaCashCloses(saved.planillaCashCloses);
+    setDailyAssignments(saved.assignments);
+    onToast(saved.message);
+    return true;
+  }
+
   function selectClientLoan(ref: string) {
     setOpenLoanRef(ref);
     setLoanTab("ficha");
@@ -2817,6 +2834,7 @@ export function useWorkspace({
     registerLatePayment,
     adjustTCashFromMobile,
     adjustDigitalPoolFromMobile,
+    reopenSheetFromMobile,
     latePayOpen,
     setLatePayOpen,
     startLatePay,

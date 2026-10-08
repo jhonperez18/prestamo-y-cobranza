@@ -79,6 +79,7 @@ type Props = {
   onAdjustDigitalPool?: (
     input: import("@/lib/save-cash-adjustment").DigitalPoolAdjustRequest,
   ) => Promise<boolean>;
+  onReopenSheet?: (input: import("@/lib/save-sheet-reopen").SheetReopenRequest) => Promise<boolean>;
   onPreviewKindChange?: (kind: PreviewKind) => void;
 };
 
@@ -112,6 +113,7 @@ export function CollectorMobilePreview({
   onSaveMiscPayment,
   onAdjustTCash,
   onAdjustDigitalPool,
+  onReopenSheet,
   onPreviewKindChange,
 }: Props) {
   const [kind, setKind] = useState<PreviewKind>("collector");
@@ -321,6 +323,7 @@ export function CollectorMobilePreview({
                   onSaveMiscPayment={onSaveMiscPayment}
                   onAdjustTCash={onAdjustTCash}
                   onAdjustDigitalPool={onAdjustDigitalPool}
+                  onReopenSheet={onReopenSheet}
                 />
               ) : collector ? (
                 <CollectorMobileApp

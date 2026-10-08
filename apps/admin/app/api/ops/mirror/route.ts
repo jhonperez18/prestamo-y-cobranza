@@ -6,6 +6,7 @@ import {
   dayCloseToRow,
   dayExpenseToRow,
   miscToRow,
+  OPS_MIRROR_BATCH_MAX,
   routeToRow,
   upsertAssignmentRow,
   upsertDayCloseIdempotent,
@@ -26,113 +27,105 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-type Body = {
+type MirrorItem = {
   kind?: string;
   row?: unknown;
 };
 
+type Body = MirrorItem & {
+  /** `kind: "batch"`: varias filas en una sola petición, en orden, cada una con su candado. */
+  items?: MirrorItem[];
+};
+
+type ItemOutcome = { status: number; json: Record<string, unknown> };
+
+const VIRGIN_LOCKED_KINDS = new Set(["day_close", "day_expense", "misc_payment", "assignment", "route"]);
+
+async function deleteByRef(table: "routes" | "collectors", row: unknown): Promise<ItemOutcome> {
+  const ref = String((row as { ref?: string })?.ref || "").trim();
+  if (!ref) return { status: 400, json: { ok: false, error: "missing_ref" } };
+  const client = createMirrorServerClient();
+  if (!client) return { status: 200, json: { ok: true, skipped: true, reason: "supabase_not_configured" } };
+  const { error } = await client.from(table).delete().eq("ref", ref);
+  if (error) return { status: 502, json: { ok: false, error: error.message } };
+  return { status: 200, json: { ok: true, deleted: ref } };
+}
+
+async function mirrorItem(item: MirrorItem): Promise<ItemOutcome> {
+  const kind = item.kind;
+  if (!kind || !item.row) return { status: 400, json: { ok: false, error: "missing_kind_or_row" } };
+
+  // Candado virgen: no dejar que un celular viejo rellene CIE/gastos/planilla.
+  // route_delete SÍ se permite (Eliminar debe borrar de verdad).
+  if (isVirginWriteLocked() && VIRGIN_LOCKED_KINDS.has(kind)) {
+    return { status: 200, json: virginWriteLockPayload() as Record<string, unknown> };
+  }
+
+  let result:
+    | Awaited<ReturnType<typeof upsertOpsRow>>
+    | Awaited<ReturnType<typeof upsertAssignmentRow>>;
+
+  switch (kind) {
+    case "collector":
+      result = await upsertOpsRow("collectors", collectorToRow(item.row as CollectorRow), "ref");
+      break;
+    case "route":
+      result = await upsertOpsRow("routes", routeToRow(item.row as RouteRow), "ref");
+      break;
+    case "route_delete":
+      return deleteByRef("routes", item.row);
+    case "collector_delete":
+      return deleteByRef("collectors", item.row);
+    case "day_close": {
+      result = await upsertDayCloseIdempotent(dayCloseToRow(item.row as CollectorDayCloseRecord));
+      if (result.ok && !("skipped" in result && result.skipped)) {
+        await auditDayCloseInCloud(item.row as CollectorDayCloseRecord);
+      }
+      break;
+    }
+    case "day_expense":
+      result = await upsertDayExpenseIdempotent(dayExpenseToRow(item.row as CollectorDayExpenseDraft));
+      break;
+    case "misc_payment":
+      result = await upsertOpsRow("misc_payments", miscToRow(item.row as MiscPayment), "ref");
+      break;
+    case "assignment": {
+      const raw = item.row as DailyCollectionAssignment & { ref?: string };
+      // Un N/P del cobrador no lo pisa una fila «pendiente» sin PG-.
+      result = await upsertAssignmentRow(assignmentToRow(raw));
+      break;
+    }
+    default:
+      return { status: 400, json: { ok: false, error: "unknown_kind" } };
+  }
+  return { status: result.ok ? 200 : 502, json: result as Record<string, unknown> };
+}
+
+async function safeMirrorItem(item: MirrorItem): Promise<ItemOutcome> {
+  try {
+    return await mirrorItem(item);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "unknown_error";
+    return { status: 500, json: { ok: false, error: message } };
+  }
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as Body;
-    const kind = body.kind;
-    if (!kind || !body.row) {
-      return jsonNoStore({ ok: false, error: "missing_kind_or_row" }, { status: 400 });
+    if (body.kind === "batch") {
+      const items = Array.isArray(body.items) ? body.items : [];
+      if (!items.length || items.length > OPS_MIRROR_BATCH_MAX) {
+        return jsonNoStore({ ok: false, error: "bad_batch_size" }, { status: 400 });
+      }
+      const results: Record<string, unknown>[] = [];
+      for (const item of items) results.push((await safeMirrorItem(item)).json);
+      return jsonNoStore({ ok: true, results });
     }
-
-    // Candado virgen: no dejar que un celular viejo rellene CIE/gastos/planilla.
-    // route_delete SÍ se permite (Eliminar debe borrar de verdad).
-    if (
-      isVirginWriteLocked() &&
-      (kind === "day_close" ||
-        kind === "day_expense" ||
-        kind === "misc_payment" ||
-        kind === "assignment" ||
-        kind === "route")
-    ) {
-      return jsonNoStore(virginWriteLockPayload());
-    }
-
-    let result:
-      | Awaited<ReturnType<typeof upsertOpsRow>>
-      | Awaited<ReturnType<typeof upsertAssignmentRow>>;
-
-    switch (kind) {
-      case "collector": {
-        const mapped = collectorToRow(body.row as CollectorRow);
-        result = await upsertOpsRow("collectors", mapped, "ref");
-        break;
-      }
-      case "route": {
-        const mapped = routeToRow(body.row as RouteRow);
-        result = await upsertOpsRow("routes", mapped, "ref");
-        break;
-      }
-      case "route_delete": {
-        const ref = String((body.row as { ref?: string })?.ref || "").trim();
-        if (!ref) {
-          return jsonNoStore({ ok: false, error: "missing_ref" }, { status: 400 });
-        }
-        const client = createMirrorServerClient();
-        if (!client) {
-          return jsonNoStore({ ok: true, skipped: true, reason: "supabase_not_configured" });
-        }
-        const { error } = await client.from("routes").delete().eq("ref", ref);
-        if (error) {
-          return jsonNoStore({ ok: false, error: error.message }, { status: 502 });
-        }
-        return jsonNoStore({ ok: true, deleted: ref });
-      }
-      case "collector_delete": {
-        const ref = String((body.row as { ref?: string })?.ref || "").trim();
-        if (!ref) {
-          return jsonNoStore({ ok: false, error: "missing_ref" }, { status: 400 });
-        }
-        const client = createMirrorServerClient();
-        if (!client) {
-          return jsonNoStore({ ok: true, skipped: true, reason: "supabase_not_configured" });
-        }
-        const { error } = await client.from("collectors").delete().eq("ref", ref);
-        if (error) {
-          return jsonNoStore({ ok: false, error: error.message }, { status: 502 });
-        }
-        return jsonNoStore({ ok: true, deleted: ref });
-      }
-      case "day_close": {
-        const mapped = dayCloseToRow(body.row as CollectorDayCloseRecord);
-        result = await upsertDayCloseIdempotent(mapped);
-        if (result.ok && !("skipped" in result && result.skipped)) {
-          await auditDayCloseInCloud(body.row as CollectorDayCloseRecord);
-        }
-        break;
-      }
-      case "day_expense": {
-        const mapped = dayExpenseToRow(body.row as CollectorDayExpenseDraft);
-        result = await upsertDayExpenseIdempotent(mapped);
-        break;
-      }
-      case "misc_payment": {
-        const mapped = miscToRow(body.row as MiscPayment);
-        result = await upsertOpsRow("misc_payments", mapped, "ref");
-        break;
-      }
-      case "assignment": {
-        const raw = body.row as DailyCollectionAssignment & { ref?: string };
-        const mapped = assignmentToRow(raw);
-        // Un N/P del cobrador no lo pisa una fila «pendiente» sin PG-.
-        result = await upsertAssignmentRow(mapped);
-        break;
-      }
-      default:
-        return jsonNoStore({ ok: false, error: "unknown_kind" }, { status: 400 });
-    }
-
-    if (!result.ok) {
-      return jsonNoStore(result, { status: 502 });
-    }
-    return jsonNoStore(result);
+    const outcome = await mirrorItem(body);
+    return jsonNoStore(outcome.json, { status: outcome.status });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";
     return jsonNoStore({ ok: false, error: message }, { status: 500 });
   }
 }
-

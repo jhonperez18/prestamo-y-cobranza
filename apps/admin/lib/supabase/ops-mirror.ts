@@ -4,7 +4,7 @@
  * @see docs/supabase-schema.md
  */
 import { createMirrorServerClient } from "@/lib/supabase/admin";
-import type { CollectorRow, PaymentRow, RouteRow, UserRow } from "@/lib/mock-data";
+import type { ClientRow, CollectorRow, PaymentRow, RouteRow, UserRow } from "@/lib/mock-data";
 import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
 import {
   applyDayCloseRecordsToAssignments,
@@ -49,6 +49,16 @@ import {
   type MirrorApiJson,
 } from "@/lib/supabase/mirror-queue";
 import {
+  applySheetReopen,
+  cieClosesRoute,
+  dayCloseReopenFromRow,
+  isSheetReopenRef,
+  liveSheetReopens,
+  withoutSheetReopenRefs,
+  type DayCloseReopen,
+} from "@/lib/sheet-reopen";
+import {
+  DEMO_CLIENTS_KEY,
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
   DEMO_COLLECTORS_KEY,
@@ -261,6 +271,19 @@ async function postMirror(path: string, body: unknown) {
   return { res, json };
 }
 
+/** Filas por petición a `/api/ops/mirror` (cada una pasa por su candado en el servidor). */
+export const OPS_MIRROR_BATCH_MAX = 20;
+
+/** Un paquete = una petición; la respuesta trae el resultado de cada fila, en el mismo orden. */
+async function postMirrorBatch(items: Array<{ kind: string; row: unknown }>): Promise<MirrorApiJson[]> {
+  const { res, json } = await postMirror("/api/ops/mirror", { kind: "batch", items });
+  const results = (json as MirrorApiJson & { results?: MirrorApiJson[] }).results;
+  if (!res.ok || !Array.isArray(results) || results.length !== items.length) {
+    throw new Error(json?.error || `http_${res.status}`);
+  }
+  return results;
+}
+
 function enqueue<T extends { ref: string }>(key: string, row: T) {
   const q = readDemoJson<T[]>(key, []).filter((r) => r.ref !== row.ref);
   q.push(row);
@@ -350,6 +373,52 @@ function pruneOpenAssignmentQueueAgainstLocalCloses() {
     return true;
   });
   if (kept.length !== queued.length) writeDemoJson(Q_ASSIGN, kept);
+}
+
+/**
+ * Hoja reabierta por el supervisor (marca en el CIE- de nube): este aparato suelta su
+ * CIE- y su PCE- de esa planilla, reabre las visitas y saca de la cola lo sellado antes
+ * de la reapertura (si no, el flush lo volvería a cerrar). Un cierre local posterior manda.
+ */
+export function applySheetReopensLocally(
+  reopens: readonly DayCloseReopen[],
+  persist: (key: string, value: unknown) => void = (key, value) => {
+    writeDemoJson(key, value);
+  },
+): boolean {
+  if (typeof window === "undefined" || !reopens.length) return false;
+  const clients = readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []);
+  const before = {
+    dayCloses: readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []),
+    planillaCashCloses: readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, []),
+    assignments: readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []),
+  };
+  let state = before;
+  const reopenedKeys = new Set<string>();
+  const staleCloseRefs = new Set<string>();
+  for (const reopen of reopens) {
+    const applied = applySheetReopen(state, reopen, clients);
+    if (!applied.changed) continue;
+    state = applied;
+    staleCloseRefs.add(reopen.closeRef);
+    for (const key of applied.reopenedKeys) reopenedKeys.add(key);
+  }
+  if (state === before) return false;
+  if (state.dayCloses !== before.dayCloses) persist(DEMO_COLLECTOR_DAY_CLOSES_KEY, state.dayCloses);
+  if (state.planillaCashCloses !== before.planillaCashCloses) {
+    persist(DEMO_PLANILLA_CASH_CLOSES_KEY, state.planillaCashCloses);
+  }
+  if (state.assignments !== before.assignments) persist(DEMO_DAILY_ASSIGNMENTS_KEY, state.assignments);
+
+  const closeQueue = readDemoJson<{ ref: string }[]>(Q_CLOSES, []);
+  const keptCloses = closeQueue.filter((row) => !staleCloseRefs.has(row.ref));
+  if (keptCloses.length !== closeQueue.length) writeDemoJson(Q_CLOSES, keptCloses);
+  const assignQueue = readDemoJson<{ ref: string; dayClosedAt?: string }[]>(Q_ASSIGN, []);
+  const keptAssign = assignQueue.filter((row) => !(row.dayClosedAt && reopenedKeys.has(row.ref)));
+  if (keptAssign.length !== assignQueue.length) writeDemoJson(Q_ASSIGN, keptAssign);
+  for (const key of reopenedKeys) sentAssignmentSig.delete(key);
+  emitMirrorQueueChanged();
+  return true;
 }
 
 const Q_COLLECTORS = "nexo-demo-ops-collectors-queue";
@@ -457,11 +526,13 @@ export function dayCloseToRow(c: CollectorDayCloseRecord) {
   };
 }
 
+/** CIE- reabierto (supervisor) sin cierre posterior: no cierra el día → null. */
 export function rowToDayClose(r: Record<string, unknown>): CollectorDayCloseRecord | null {
   const ref = String(r.ref || "").trim();
   if (!ref) return null;
+  if (dayCloseReopenFromRow(r)) return null;
   const { movementRefs, cashAdjustment, routeCashAdjustments } = splitCashAdjustmentRefs(
-    Array.isArray(r.movement_refs) ? (r.movement_refs as string[]) : [],
+    withoutSheetReopenRefs(Array.isArray(r.movement_refs) ? (r.movement_refs as string[]) : []),
   );
   return {
     ref,
@@ -731,8 +802,8 @@ async function prestarGhostReason(
  * Espejo de planilla (servidor). Invariantes (no romper nunca):
  * 1) day_closed_at en nube no lo borra una fila abierta de otro celular.
  * 2) omitido (N/P) no lo pisa un «pendiente» sin PG-.
- * 3) Reabrir jornada a propósito exige flujo explícito (hoy: no hay UI);
- *    un upsert normal nunca limpia day_closed_at.
+ * 3) Reabrir jornada solo por «Reabrir hoja de hoy» (`/api/ops/reopen-sheet`, marca en el
+ *    CIE-); un upsert normal nunca limpia day_closed_at.
  */
 export async function upsertAssignmentRow(row: Record<string, unknown>) {
   const client = createMirrorClient();
@@ -795,21 +866,28 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
   ) {
     return { ok: true as const, kept: true as const, reason: "historia_sellada" };
   }
-  // Si ya hay CIE- del día, tampoco aceptar una fila que limpie el sello.
-  if (!error && !row.day_closed_at) {
+  // CIE- del día: una fila abierta no limpia el sello. Si el supervisor reabrió esa
+  // planilla, el sello viejo de un aparato atrasado tampoco la vuelve a cerrar.
+  const sealedIncoming = Boolean(row.day_closed_at);
+  const closeDate = String(row.dispatch_date || current?.dispatch_date || "").trim();
+  if (!error && (!sealedIncoming || closeDate === businessTodayIso())) {
     const collectorRef = String(row.collector_ref || current?.collector_ref || "").trim();
-    const closeDate = String(row.dispatch_date || current?.dispatch_date || "").trim();
     if (collectorRef && closeDate) {
-      const { data: cie } = await client
+      const { data: cie, error: cieError } = await client
         .from("day_closes")
-        .select("ref")
+        .select("ref, closed_at, movement_refs")
         .eq("collector_ref", collectorRef)
         .eq("close_date", closeDate)
         .like("ref", "CIE-%")
         .limit(1)
         .maybeSingle();
-      if (cie && typeof cie === "object" && "ref" in cie && cie.ref) {
-        return { ok: true as const, kept: true as const };
+      if (cieError) return { ok: false as const, error: cieError.message };
+      if (cie?.ref) {
+        const closesRoute = cieClosesRoute(cie, String(row.client_route || ""));
+        if (!sealedIncoming && closesRoute) return { ok: true as const, kept: true as const };
+        if (sealedIncoming && !closesRoute) {
+          return { ok: true as const, skipped: true as const, reason: "hoja_reabierta" };
+        }
       }
     }
   }
@@ -882,10 +960,21 @@ export async function upsertDayCloseIdempotent(
         incomingRefs.routeCashAdjustments,
       );
       const routeSig = routeCashAdjustmentsSig(routeAdjustments);
+      // Hoja reabierta por el supervisor: solo un cierre posterior la vuelve a sellar.
+      // La copia vieja (cerrada antes de reabrir) de cualquier aparato no entra.
+      const cloudReopenRefs = cloudRefs.movementRefs.filter(isSheetReopenRef);
+      const liveReopens = liveSheetReopens(String(existing.closed_at || ""), cloudReopenRefs);
+      if (liveReopens.length) {
+        const reopenedMs = Math.max(...liveReopens.map((reopen) => Date.parse(reopen.at)));
+        const incomingClosedMs = Date.parse(String(row.closed_at || ""));
+        if (!Number.isFinite(incomingClosedMs) || incomingClosedMs <= reopenedMs) {
+          return { ok: true as const, skipped: true as const, reason: "cie_reopened" };
+        }
+      }
       incomingRow = {
         ...row,
         movement_refs: joinCashAdjustmentRefs(
-          incomingRefs.movementRefs,
+          [...withoutSheetReopenRefs(incomingRefs.movementRefs), ...cloudReopenRefs],
           incomingRefs.cashAdjustment,
           routeAdjustments,
         ),
@@ -1352,29 +1441,33 @@ export async function flushOpsMirrorQueues(): Promise<{ flushed: number; left: n
   );
   for (const job of jobs) {
     const sent: { ref: string }[] = [];
+    const pending: Array<{ row: { ref: string }; payload: unknown }> = [];
     for (const row of readDemoJson<{ ref: string }[]>(job.key, [])) {
       if (job.gone?.(row.ref)) {
         sent.push(row);
         continue;
       }
+      let payload: unknown = row;
+      if (job.kind === "assignment") {
+        const live = localAssignByKey.get(row.ref);
+        // No subir hoja abierta si este aparato ya tiene el cierre (pull del amigo).
+        if (live?.dayClosedAt) payload = live;
+      }
+      pending.push({ row, payload });
+    }
+    for (let start = 0; start < pending.length; start += OPS_MIRROR_BATCH_MAX) {
+      const chunk = pending.slice(start, start + OPS_MIRROR_BATCH_MAX);
       try {
-        let payload: unknown = row;
-        if (job.kind === "assignment") {
-          const queued = row as { ref: string; dayClosedAt?: string };
-          const live = localAssignByKey.get(queued.ref);
-          // No subir hoja abierta si este aparato ya tiene el cierre (pull del amigo).
-          if (live?.dayClosedAt) payload = live;
-        }
-        const { res, json } = await postMirror("/api/ops/mirror", {
-          kind: job.kind,
-          row: payload,
-        });
-        if (res.ok && shouldDropFromMirrorQueue(json)) {
+        const results = await postMirrorBatch(
+          chunk.map((entry) => ({ kind: job.kind, row: entry.payload })),
+        );
+        chunk.forEach((entry, index) => {
+          if (!shouldDropFromMirrorQueue(results[index])) return;
           flushed += 1;
-          sent.push(row);
-        }
-      } catch {
-        /* queda en cola */
+          sent.push(entry.row);
+        });
+      } catch (err) {
+        console.error("[ops-mirror] paquete sin subir (queda en cola)", job.kind, err);
       }
     }
     dequeueSent(job.key, sent);
@@ -1614,7 +1707,7 @@ export async function reconcileLocalOpsToRemote(
 
 /**
  * Pull catálogo operativo + CIE + planilla + PV-.
- * `full`: lista completa (al abrir, cada 10 min, al reparar); si no, solo lo que cambió.
+ * `full`: lista completa (al abrir, cada 60 min, al reparar); si no, solo lo que cambió.
  */
 export async function pullRemoteOpsIntoDemo(
   opts: { full?: boolean } = {},
@@ -1722,6 +1815,10 @@ async function pullOpsBundle(
         : { ok: true, changed, reason: "virgin_hold_skip_money", bundle: body, full };
     }
 
+    const reopens = (body.day_closes ?? [])
+      .map(dayCloseReopenFromRow)
+      .filter((r): r is DayCloseReopen => Boolean(r));
+    if (reopens.length && applySheetReopensLocally(reopens, persist)) changed = true;
     const closes = (body.day_closes ?? [])
       .map(rowToDayClose)
       .filter((r): r is CollectorDayCloseRecord => Boolean(r));

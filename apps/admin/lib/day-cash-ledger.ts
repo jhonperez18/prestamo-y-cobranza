@@ -15,8 +15,10 @@
  * Planilla A (y cualquier ruta fuera de la cadena) no entra al saldo. Desde
  * `INDEPENDENT_OWN_LOANS_FROM`, sus préstamos tampoco: salen de la caja de A.
  */
+import { businessTodayIso } from "@/lib/business-timezone";
 import {
   expensesForCollectorDay,
+  isLiveCashDay,
   normalizeHistoryDate,
   sumExpenseLines,
   type CashAdjustment,
@@ -30,6 +32,7 @@ import {
   dayLoanDisbursementTotal,
   loanRowsToExpenseLines,
   type DayLoanDisbursementRow,
+  type DayLoanDisbursementScope,
 } from "@/lib/collector-history-planilla";
 import { assignmentRouteName } from "@/lib/collector-dispatch-sync";
 import { collectorDayPayments } from "@/lib/collector-mobile";
@@ -76,7 +79,23 @@ export type DayCashSources = {
   monthCloses: CollectorMonthCloseRecord[];
   /** Solo si no existe CIE- previo ni PCE-T previo (día época / cobrador nuevo). */
   fallbackOpening?: number;
+  /** Hoy en Bogotá (pruebas); por defecto `businessTodayIso()`. */
+  todayIso?: string;
 };
+
+/** Préstamos del día del cobrador: hoy sin sellar, la ficha manda; lo sellado es historia. */
+export function dayLoanScope(src: DayCashSources): DayLoanDisbursementScope {
+  return {
+    collectorRef: src.collectorRef,
+    assignments: src.assignments,
+    liveDay: isLiveCashDay(
+      src.collectorRef,
+      src.date,
+      src.dayCloses,
+      src.todayIso ?? businessTodayIso(),
+    ),
+  };
+}
 
 /** Movimiento propio de una planilla de la cadena ese día. */
 export type RouteCashDay = {
@@ -279,10 +298,13 @@ function chainRouteDay(
       !isPrestamoRutaExpense(line) &&
       operativeLineOnSide(line, split),
   );
-  const loanRows = dayLoanDisbursementRows(dateIsoOf(src.date), lines, src.loans, src.clients, {
-    collectorRef: src.collectorRef,
-    assignments: src.assignments,
-  }).filter((row) => loanClientOnSide(row.clientRef, split, dateIsoOf(src.date)));
+  const loanRows = dayLoanDisbursementRows(
+    dateIsoOf(src.date),
+    lines,
+    src.loans,
+    src.clients,
+    dayLoanScope(src),
+  ).filter((row) => loanClientOnSide(row.clientRef, split, dateIsoOf(src.date)));
   return {
     efectivo,
     gastos: sumExpenseLines(gastoLines),

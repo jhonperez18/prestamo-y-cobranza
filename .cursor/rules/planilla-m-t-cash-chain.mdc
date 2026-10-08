@@ -174,10 +174,23 @@ El admin elige a dónde va la plata (`LoanPayForm` → `registerPay`):
 
 ## Modificar préstamo — el gasto del cobrador sigue al capital
 
-El renglón «Préstamo · P-…» del GAS- del cobrador (`prestamo_ruta`) es lo que manda en el KPI
-Préstamo y en lo que se descuenta de la caja. Si se corrige el préstamo, ese renglón se corrige
-también. Un solo camino: `saveEditLoan` → `commitUpdateLoan` → `syncCashDisbursementExpense`
-(`lib/collector-day-close.ts`) → local + `queueDayExpenseMirror` + await `flushOpsMirrorQueues`.
+El renglón «Préstamo · P-…» del GAS- del cobrador (`prestamo_ruta`) dice **qué** préstamo salió
+de **qué** caja. El **monto** de hoy sin CIE- sellado sale de la **ficha** (`liveDay` en
+`dayLoanDisbursementRows`, `isLiveCashDay`): la misma cifra que el sistema principal. Renglón sin
+ficha viva no resta. Días sellados / pasados: el renglón guardado es historia y no se recalcula.
+Si se corrige el préstamo, ese renglón se corrige también. Un solo camino: `saveEditLoan` →
+`commitUpdateLoan` → `syncCashDisbursementExpense` (`lib/collector-day-close.ts`) → local +
+`queueDayExpenseMirror` + await `flushOpsMirrorQueues`.
+
+**Caso Dary / Bader (07/10):** el celular trabado le dio a Bader el P-434 de Dary; su renglón borró
+el de Dary y la pantalla mostró «Dary · 1.000.000» (nombre de la ficha, monto del renglón). Cerrado:
+- `cashLineIsLoanOf`: un renglón es de un préstamo por P- **y** cliente.
+- Nube (`mirrorLoanToSupabase`): alta con `insert` (nunca pisa otra ficha; si otro aparato tomó el
+ P- en medio, se vuelve a mirar), baja que no toca la ficha de otro cliente
+ (`loan_ref_other_client`), y reintento del mismo préstamo (mismo cliente, día y capital, activo)
+ se une a la ficha que ya está (`findCloudLoanTwin`) — así nacían Celina ×5 / Enrique ×2.
+- `renameLoanRefInState`: lo de ese cliente (ficha, cola, visitas, renglón) sigue al P- de la nube.
+- Candado: `assert-cash-chain.mjs` («Choque P-434», «Reintento Celina», «Día abierto … fichas»).
 
 | Caso | Resultado |
 | --- | --- |

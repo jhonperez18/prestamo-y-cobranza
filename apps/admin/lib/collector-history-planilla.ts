@@ -150,7 +150,30 @@ export type DayLoanDisbursementScope = {
   collectorRef?: string;
   /** Visitas del día: limita créditos al cobrador de esa hoja. */
   assignments?: DailyCollectionAssignment[];
+  /**
+   * Hoy sin CIE- sellado: la ficha del préstamo manda (monto y cliente), igual que el
+   * sistema principal. Días sellados / pasados: el renglón guardado es historia y no se toca.
+   */
+  liveDay?: boolean;
 };
+
+function loanLeftCollectorCash(loan: LoanRow): boolean {
+  const source = loanDisbursementSource(loan);
+  return source !== "nequi" && source !== "banco" && source !== "cartera";
+}
+
+function disbursementRowFromLoan(loan: LoanRow, clients: ClientRow[]): DayLoanDisbursementRow {
+  const client = clients.find((row) => row.ref === loan.clientRef);
+  return {
+    loanRef: loan.ref,
+    clientRef: loan.clientRef,
+    clientName: client
+      ? `${client.name} ${client.lastName}`.trim()
+      : (loan.client || "").trim() || loan.ref,
+    capital: Math.trunc(Number(loan.capital) || 0),
+    installment: Math.trunc(Number(loan.installment) || 0),
+  };
+}
 
 /**
  * Desembolsos que salen de caja de UN cobrador ese día.
@@ -184,6 +207,13 @@ export function dayLoanDisbursementRows(
     const loanRef = String(line.loanRef || "").trim();
     if (!loanRef || byLoan.has(loanRef)) continue;
     const loan = loans.find((row) => row.ref === loanRef);
+    if (scope.liveDay && !isLoanTopUpLine(line)) {
+      // Sin ficha viva (dada de baja) no salió plata de la caja.
+      if (!loan || !loanLeftCollectorCash(loan)) continue;
+      byLoan.set(loanRef, disbursementRowFromLoan(loan, clients));
+      dayClientRefs.add(loan.clientRef);
+      continue;
+    }
     const clientRef = loan?.clientRef || "";
     const client = clients.find((row) => row.ref === clientRef);
     const clientName = client
@@ -219,24 +249,15 @@ export function dayLoanDisbursementRows(
   for (const loan of loans) {
     const started = loanDisbursementIsoDate(loan);
     if (started !== dateIso || byLoan.has(loan.ref)) continue;
-    const source = loanDisbursementSource(loan);
     // Nequi/banco del sistema ≠ caja del cobrador; cartera existente no sale de ningún lado.
-    if (source === "nequi" || source === "banco" || source === "cartera") continue;
+    if (!loanLeftCollectorCash(loan)) continue;
     const client = clients.find((row) => row.ref === loan.clientRef);
     const onSheet = dayClientRefs.has(loan.clientRef);
     const onRoute =
       Boolean(client?.route) &&
       [...collectorRoutes].some((route) => sameRoute(route, client?.route));
     if (!onSheet && !onRoute) continue;
-    byLoan.set(loan.ref, {
-      loanRef: loan.ref,
-      clientRef: loan.clientRef,
-      clientName: client
-        ? `${client.name} ${client.lastName}`.trim()
-        : (loan.client || "").trim() || loan.ref,
-      capital: Math.trunc(Number(loan.capital) || 0),
-      installment: Math.trunc(Number(loan.installment) || 0),
-    });
+    byLoan.set(loan.ref, disbursementRowFromLoan(loan, clients));
   }
 
   return uniqueDayLoanDisbursementRows([...byLoan.values()]).sort((a, b) =>
