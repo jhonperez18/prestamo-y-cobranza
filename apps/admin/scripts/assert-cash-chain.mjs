@@ -4836,6 +4836,13 @@ console.log("\n— Renovar sin plata —");
       src("../lib/supabase/register-loan-payment.ts").includes("keepRenewedLoanClosed(client"),
     true,
   );
+  const supervisorSrc = src("../components/SupervisorMobileApp.tsx");
+  expect(
+    "Supervisor: préstamos / renovados de hoy por fecha ISO (la nube no trae dd/mm/aaaa)",
+    supervisorSrc.includes("loanDisbursementIsoDate(loan) === today") &&
+      !supervisorSrc.includes("loan.date === todayDisplay"),
+    true,
+  );
 }
 
 if (failures) {

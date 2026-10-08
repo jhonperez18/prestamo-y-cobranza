@@ -81,6 +81,7 @@ import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import {
+  loanDisbursementIsoDate,
   loanDisbursementSource,
   loanDisbursementSourceLabel,
 } from "@/lib/nequi-pool";
@@ -125,6 +126,7 @@ import {
   money,
   catalogRoutes,
   isLoanActive,
+  isLoanVoided,
   routeIsActive,
   type ClientRow,
   type CollectorRow,
@@ -1359,7 +1361,10 @@ export function SupervisorMobileApp({
       }
 
       const loansToday = loans.filter(
-        (loan) => clientRefs.has(loan.clientRef) && loan.date === todayDisplay,
+        (loan) =>
+          clientRefs.has(loan.clientRef) &&
+          !isLoanVoided(loan) &&
+          loanDisbursementIsoDate(loan) === today,
       );
       const renewals = loansToday.filter(isRenewalLoan);
       const newLoans = loansToday.filter((loan) => !isRenewalLoan(loan));
@@ -4395,11 +4400,7 @@ export function SupervisorMobileApp({
                   <button
                     type="button"
                     className="supervisor-mobile-sheet-row is-tap is-prestamo-ruta is-primary-row"
-                    disabled={openRoute.prestamosHoy <= 0}
-                    onClick={() => {
-                      if (openRoute.prestamosHoy <= 0) return;
-                      setDetailMode("prestamos");
-                    }}
+                    onClick={() => setDetailMode("prestamos")}
                     aria-label="Ver préstamos del día en esta ruta"
                   >
                     <span className="is-primary-title">Préstamo</span>
