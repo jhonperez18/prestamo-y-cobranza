@@ -6,8 +6,8 @@
  * en `movement_refs`. Un CIE- cuyo `closed_at` no es posterior a la marca no cierra el
  * día; el siguiente cierre del cobrador (o el corte 23:30) lo vuelve a sellar.
  *
- * Solo hoy (Bogotá), antes de las 23:30, y nunca M (es el inicio de la cadena: T ya
- * arrancó con su saldo). Días pasados son historia.
+ * Solo hoy (Bogotá), antes de las 23:30. Reabrir M reabre también T (el saldo final de M
+ * es el Inicial de T). Días pasados son historia.
  */
 import { businessClockParts } from "@/lib/business-timezone";
 import { sameRoute } from "@/lib/client-route-order";
@@ -21,6 +21,7 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { ClientRow } from "@/lib/mock-data";
 import {
   isPlanillaCashChainPrimary,
+  PLANILLA_CASH_CHAIN_SECONDARY,
   planillaCashCloseRef,
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
@@ -106,46 +107,78 @@ export function cieClosesRoute(
   );
 }
 
-/** Fila `day_closes` de nube → reapertura vigente (si la hay). */
-export function dayCloseReopenFromRow(row: Record<string, unknown>): DayCloseReopen | null {
+/** Fila `day_closes` de nube → reaperturas vigentes (una por planilla). */
+export function dayCloseReopensFromRow(row: Record<string, unknown>): DayCloseReopen[] {
   const ref = String(row.ref || "").trim();
-  if (!ref.startsWith("CIE-")) return null;
+  if (!ref.startsWith("CIE-")) return [];
   const refs = Array.isArray(row.movement_refs) ? (row.movement_refs as string[]) : [];
-  const live = liveSheetReopens(String(row.closed_at || ""), refs);
-  if (!live.length) return null;
-  const latest = live.reduce((a, b) => (ms(b.at) > ms(a.at) ? b : a));
-  return {
-    ...latest,
+  const collectorRef = String(row.collector_ref || "");
+  const date = normalizeHistoryDate(String(row.close_date || "")) || String(row.close_date || "");
+  return liveSheetReopens(String(row.closed_at || ""), refs).map((reopen) => ({
+    ...reopen,
     closeRef: ref,
-    collectorRef: String(row.collector_ref || ""),
-    date: normalizeHistoryDate(String(row.close_date || "")) || String(row.close_date || ""),
-  };
+    collectorRef,
+    date,
+  }));
+}
+
+/**
+ * Planillas que abre el botón. M arrastra a T: el saldo final de M es el Inicial de T,
+ * así que T no puede quedar cerrada sobre una M abierta.
+ */
+export function routesToReopen(route: string): string[] {
+  const key = routeKey(route);
+  return isPlanillaCashChainPrimary(key) ? [key, PLANILLA_CASH_CHAIN_SECONDARY] : [key];
+}
+
+/** Reaperturas de hoy de ese cobrador que ningún cierre posterior dejó atrás. */
+export function liveReopensFor(
+  collectorRef: string,
+  date: string,
+  reopens: readonly DayCloseReopen[],
+  dayCloses: readonly CollectorDayCloseRecord[],
+): DayCloseReopen[] {
+  const cie = dayCloses.find((row) => row.ref === dayCloseRef(collectorRef, date) && !row.provisional);
+  const closedMs = ms(cie?.closedAt);
+  return reopens.filter(
+    (reopen) =>
+      reopen.collectorRef === collectorRef &&
+      reopen.date === date &&
+      !(Number.isFinite(closedMs) && closedMs > ms(reopen.at)),
+  );
 }
 
 export type SheetReopenWindow =
   | { open: true; date: string }
   | { open: false; reason: string };
 
-/** Solo hoy (Bogotá), antes de 23:30, con el día sellado (CIE-) y nunca M. */
+/**
+ * Solo hoy (Bogotá), antes de 23:30, sin ajuste de saldo, con el día del cobrador
+ * cerrado (CIE-) o con otra planilla suya ya reabierta hoy.
+ */
 export function sheetReopenWindow(
   collectorRef: string,
   route: string,
   dayCloses: readonly CollectorDayCloseRecord[],
+  reopens: readonly DayCloseReopen[] = [],
   now = new Date(),
 ): SheetReopenWindow {
   if (!collectorRef || !route) return { open: false, reason: "Falta cobrador o planilla." };
-  if (isPlanillaCashChainPrimary(route)) {
-    return { open: false, reason: "M no se reabre: es el inicio de la cadena (T ya arrancó con su saldo)." };
-  }
   const clock = businessClockParts(now);
   if (clock.minutesSinceMidnight >= REOPEN_CUTOFF_MINUTES) {
     return { open: false, reason: "Después de las 23:30 la jornada la sella el corte automático." };
   }
   const ref = dayCloseRef(collectorRef, clock.dateIso);
   const cie = dayCloses.find((row) => row.ref === ref && !row.provisional);
-  if (!cie) return { open: false, reason: `Hoy no hay cierre de jornada de ese cobrador.` };
-  if (cie.cashAdjustment) {
+  if (cie?.cashAdjustment) {
     return { open: false, reason: "El saldo de hoy ya se ajustó a la caja contada: no se reabre." };
+  }
+  const live = liveReopensFor(collectorRef, clock.dateIso, reopens, dayCloses);
+  if (!cie && !live.length) {
+    return { open: false, reason: "Hoy no hay cierre de jornada de ese cobrador." };
+  }
+  if (live.some((reopen) => sameRoute(reopen.route, route))) {
+    return { open: false, reason: `La hoja ${routeKey(route)} ya está reabierta.` };
   }
   return { open: true, date: clock.dateIso };
 }

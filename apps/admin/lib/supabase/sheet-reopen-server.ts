@@ -2,16 +2,19 @@
  * Reabrir la hoja de hoy en la nube (supervisor / admin). Ver `lib/sheet-reopen.ts`.
  *
  * 1. Marca `REABIERTA@<ruta>` en el CIE- de hoy (hora del servidor, nunca antes del cierre).
- * 2. Visitas de esa planilla: «Cierre de jornada» → pendiente; cobros y N/P quedan, sin sello.
- * Nada se borra. M, A y el resto de planillas del cobrador siguen cerradas.
+ *    M arrastra a T (el saldo final de M es el Inicial de T).
+ * 2. Visitas de esas planillas: «Cierre de jornada» → pendiente; cobros y N/P quedan, sin sello.
+ * Nada se borra. El resto de planillas del cobrador siguen cerradas.
  */
 import { businessTodayIso } from "@/lib/business-timezone";
+import { sameRoute } from "@/lib/client-route-order";
 import { DAY_CLOSE_SKIP_REASON } from "@/lib/collector-dispatch-sync";
 import { dayCloseRef } from "@/lib/collector-day-close";
 import { createMirrorServerClient } from "@/lib/supabase/admin";
 import {
-  dayCloseReopenFromRow,
+  dayCloseReopensFromRow,
   encodeSheetReopenRef,
+  routesToReopen,
   sheetReopenWindow,
   type DayCloseReopen,
 } from "@/lib/sheet-reopen";
@@ -24,7 +27,7 @@ export type ReopenSheetRequest = {
 };
 
 export type ReopenSheetResult =
-  | { ok: true; reopen: DayCloseReopen; reopenedVisits: number }
+  | { ok: true; reopens: DayCloseReopen[]; reopenedVisits: number }
   | { ok: false; error: string; status: number };
 
 export async function reopenSheetInCloud(
@@ -44,27 +47,26 @@ export async function reopenSheetInCloud(
     .maybeSingle();
   if (readError) return { ok: false, error: readError.message, status: 500 };
   const row = (cie ?? null) as Record<string, unknown> | null;
+  if (!row) return { ok: false, error: "Hoy no hay cierre de jornada de ese cobrador.", status: 409 };
 
-  const already = row ? dayCloseReopenFromRow(row) : null;
-  if (already && already.route === route) {
-    return { ok: true, reopen: already, reopenedVisits: 0 };
-  }
-  const record = row ? rowToDayClose(row) : null;
-  const gate = sheetReopenWindow(collectorRef, route, record ? [record] : [], now);
-  if (!gate.open || !row) {
-    return { ok: false, error: gate.open ? "Hoy no hay cierre de jornada." : gate.reason, status: 409 };
-  }
+  const live = dayCloseReopensFromRow(row);
+  const record = rowToDayClose(row);
+  const gate = sheetReopenWindow(collectorRef, route, record ? [record] : [], live, now);
+  if (!gate.open) return { ok: false, error: gate.reason, status: 409 };
 
+  const routes = routesToReopen(route).filter(
+    (target) => !live.some((reopen) => sameRoute(reopen.route, target)),
+  );
   const closedMs = Date.parse(String(row.closed_at || ""));
   const at = new Date(
     Math.max(now.getTime(), Number.isFinite(closedMs) ? closedMs + 1 : 0),
   ).toISOString();
   const refs = Array.isArray(row.movement_refs) ? (row.movement_refs as string[]) : [];
-  const marker = encodeSheetReopenRef({ route, at, by });
+  const markers = routes.map((target) => encodeSheetReopenRef({ route: target, at, by }));
   const stamp = new Date().toISOString();
   const { error: markError } = await client
     .from("day_closes")
-    .update({ movement_refs: [...refs, marker], updated_at: stamp })
+    .update({ movement_refs: [...refs, ...markers], updated_at: stamp })
     .eq("ref", String(row.ref));
   if (markError) return { ok: false, error: markError.message, status: 500 };
 
@@ -74,7 +76,7 @@ export async function reopenSheetInCloud(
     .update({ visit_status: "pendiente", skip_reason: null, day_closed_at: null, updated_at: stamp })
     .eq("collector_ref", collectorRef)
     .eq("dispatch_date", date)
-    .eq("client_route", route)
+    .in("client_route", routes)
     .eq("visit_status", "omitido")
     .eq("skip_reason", DAY_CLOSE_SKIP_REASON)
     .is("payment_ref", null)
@@ -85,13 +87,17 @@ export async function reopenSheetInCloud(
     .update({ day_closed_at: null, updated_at: stamp })
     .eq("collector_ref", collectorRef)
     .eq("dispatch_date", date)
-    .eq("client_route", route)
+    .in("client_route", routes)
     .not("day_closed_at", "is", null);
   if (sealError) return { ok: false, error: sealError.message, status: 500 };
 
+  const closeRef = String(row.ref);
   return {
     ok: true,
-    reopen: { route, at, by, closeRef: String(row.ref), collectorRef, date },
+    reopens: [
+      ...live,
+      ...routes.map((target) => ({ route: target, at, by, closeRef, collectorRef, date })),
+    ],
     reopenedVisits: (skipped ?? []).length,
   };
 }

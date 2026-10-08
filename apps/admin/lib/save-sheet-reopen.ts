@@ -11,8 +11,8 @@ import {
   readDemoJson,
 } from "@/lib/demo-persist";
 import type { PlanillaCashCloseRecord } from "@/lib/planilla-cash-chain";
-import { sheetReopenWindow, type DayCloseReopen } from "@/lib/sheet-reopen";
-import { applySheetReopensLocally } from "@/lib/supabase/ops-mirror";
+import { routesToReopen, sheetReopenWindow, type DayCloseReopen } from "@/lib/sheet-reopen";
+import { applySheetReopensLocally, readKnownSheetReopens } from "@/lib/supabase/ops-mirror";
 
 export type SheetReopenRequest = { collectorRef: string; route: string };
 
@@ -27,7 +27,7 @@ export type SaveSheetReopenResult =
   | { ok: false; error: string };
 
 type ReopenApiJson =
-  | { ok: true; reopen: DayCloseReopen; reopenedVisits: number }
+  | { ok: true; reopens: DayCloseReopen[]; reopenedVisits: number }
   | { ok: false; error?: string };
 
 export async function reopenSheetToday(
@@ -37,6 +37,7 @@ export async function reopenSheetToday(
     input.collectorRef,
     input.route,
     readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []),
+    readKnownSheetReopens(),
   );
   if (!gate.open) return { ok: false, error: gate.reason };
 
@@ -55,12 +56,13 @@ export async function reopenSheetToday(
   }
   if (!json.ok) return { ok: false, error: json.error || "La nube no reabrió la hoja." };
 
-  applySheetReopensLocally([json.reopen]);
+  applySheetReopensLocally(json.reopens);
+  const routes = routesToReopen(input.route).join(" y ");
   return {
     ok: true,
     dayCloses: readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []),
     planillaCashCloses: readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, []),
     assignments: readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []),
-    message: `Hoja ${input.route} reabierta. El cobrador ya puede cobrar y volver a cerrar (el saldo final se recalcula).`,
+    message: `Hoja ${routes} reabierta. El cobrador ya puede cobrar y volver a cerrar (el saldo final se recalcula).`,
   };
 }

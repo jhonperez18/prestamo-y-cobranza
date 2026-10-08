@@ -105,7 +105,8 @@ import {
 } from "@/lib/digital-pools";
 import type { DigitalPoolAdjustRequest } from "@/lib/save-cash-adjustment";
 import type { SheetReopenRequest } from "@/lib/save-sheet-reopen";
-import { sheetReopenWindow } from "@/lib/sheet-reopen";
+import { routesToReopen, sheetReopenWindow } from "@/lib/sheet-reopen";
+import { readKnownSheetReopens } from "@/lib/supabase/ops-mirror";
 import { suppressGhostClick } from "@/lib/suppress-ghost-click";
 import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import {
@@ -2696,8 +2697,15 @@ export function SupervisorMobileApp({
   const sheetReopenKey = openRoute ? `${openRoute.collectorRef}|${openRoute.routeName}` : null;
   const canReopenSheet = useMemo(() => {
     if (!onReopenSheet || !openRoute) return false;
-    return sheetReopenWindow(openRoute.collectorRef, openRoute.routeName, dayCloses).open;
-  }, [onReopenSheet, openRoute, dayCloses]);
+    return sheetReopenWindow(
+      openRoute.collectorRef,
+      openRoute.routeName,
+      dayCloses,
+      readKnownSheetReopens(),
+    ).open;
+    // `assignments` cambia con cada pull que trae una reapertura nueva.
+  }, [onReopenSheet, openRoute, dayCloses, assignments]);
+  const reopenRoutesLabel = openRoute ? routesToReopen(openRoute.routeName).join(" y ") : "";
 
   async function confirmReopenSheet() {
     if (!onReopenSheet || !openRoute || reopeningSheet) return;
@@ -4023,7 +4031,7 @@ export function SupervisorMobileApp({
               {canReopenSheet && reopenConfirmKey === sheetReopenKey ? (
                 <div className="supervisor-mobile-subhead">
                   <p>
-                    ¿Reabrir la hoja {openRoute.routeName} de hoy? Las visitas sin cobrar vuelven a
+                    ¿Reabrir la hoja {reopenRoutesLabel} de hoy? Las visitas sin cobrar vuelven a
                     pendiente; los cobros hechos se quedan. El cobrador cobra y vuelve a cerrar
                     (el saldo final se recalcula).
                   </p>
@@ -4033,7 +4041,7 @@ export function SupervisorMobileApp({
                     disabled={reopeningSheet}
                     onClick={() => void confirmReopenSheet()}
                   >
-                    {reopeningSheet ? "Reabriendo…" : `Sí, reabrir ${openRoute.routeName}`}
+                    {reopeningSheet ? "Reabriendo…" : `Sí, reabrir ${reopenRoutesLabel}`}
                   </button>{" "}
                   <button
                     type="button"

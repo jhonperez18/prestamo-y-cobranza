@@ -4481,16 +4481,18 @@ console.log("— Cupo del aparato —");
 }
 
 // 29. Reabrir hoja de hoy (caso 07/10: T de Edgar se cerró con M, faltaban cobros).
-// Supervisor/admin, solo hoy antes de 23:30, nunca M. La nube marca el CIE-; un cierre
-// posterior manda; un aparato atrasado no la vuelve a cerrar.
+// Supervisor/admin, solo hoy antes de 23:30. M arrastra a T. La nube marca el CIE-; un
+// cierre posterior manda; un aparato atrasado no la vuelve a cerrar.
 {
   const {
     applySheetReopen,
     cieClosesRoute,
-    dayCloseReopenFromRow,
+    dayCloseReopensFromRow,
     encodeSheetReopenRef,
+    routesToReopen,
     sheetReopenWindow,
   } = await import("@/lib/sheet-reopen");
+  const dayCloseReopenFromRow = (row) => dayCloseReopensFromRow(row)[0] ?? null;
   const { rowToDayClose } = await import("@/lib/supabase/ops-mirror");
   const closedAt = "2026-10-08T00:13:59.931Z";
   const reopenAt = "2026-10-08T00:40:00.000Z";
@@ -4528,21 +4530,45 @@ console.log("— Cupo del aparato —");
   const bogota = (hhmm) => new Date(`2026-10-07T${hhmm}:00-05:00`);
   const cie = { ref: "CIE-COB-0-2026-10-07", collectorRef: "COB-0", date: "2026-10-07", closedAt, cashFloat: 7_104_000 };
   expect(
-    "Ventana: T/A sí (hoy, antes de 23:30, con CIE-); M no; 23:30 no; sin CIE- no; con ajuste no",
+    "Ventana: T/A/M sí (hoy, antes de 23:30, con CIE-); 23:30 no; sin CIE- no; con ajuste no",
     [
-      sheetReopenWindow("COB-0", "T", [cie], bogota("19:45")).open,
-      sheetReopenWindow("COB-0", "A", [cie], bogota("19:45")).open,
-      sheetReopenWindow("COB-0", "M", [cie], bogota("19:45")).open,
-      sheetReopenWindow("COB-0", "T", [cie], bogota("23:30")).open,
-      sheetReopenWindow("COB-0", "T", [], bogota("19:45")).open,
+      sheetReopenWindow("COB-0", "T", [cie], [], bogota("19:45")).open,
+      sheetReopenWindow("COB-0", "A", [cie], [], bogota("19:45")).open,
+      sheetReopenWindow("COB-0", "M", [cie], [], bogota("19:45")).open,
+      sheetReopenWindow("COB-0", "T", [cie], [], bogota("23:30")).open,
+      sheetReopenWindow("COB-0", "T", [], [], bogota("19:45")).open,
       sheetReopenWindow(
         "COB-0",
         "T",
         [{ ...cie, cashAdjustment: { calculated: 1, real: 2, at: closedAt, by: "x", reason: "" } }],
+        [],
         bogota("19:45"),
       ).open,
     ].join(","),
-    "true,true,false,false,false,false",
+    "true,true,true,false,false,false",
+  );
+  const liveT = dayCloseReopensFromRow(reopened);
+  expect(
+    "T ya reabierta (sin CIE- vigente): M y A siguen con botón, T no; M arrastra a T",
+    [
+      sheetReopenWindow("COB-0", "M", [], liveT, bogota("19:58")).open,
+      sheetReopenWindow("COB-0", "A", [], liveT, bogota("19:58")).open,
+      sheetReopenWindow("COB-0", "T", [], liveT, bogota("19:58")).open,
+      routesToReopen("M").join("+"),
+      routesToReopen("A").join("+"),
+    ].join(","),
+    "true,true,false,M+T,A",
+  );
+  expect(
+    "Cobrador volvió a cerrar después: la reapertura vieja ya no cuenta para el botón",
+    sheetReopenWindow(
+      "COB-0",
+      "T",
+      [{ ...cie, closedAt: "2026-10-08T01:30:00.000Z" }],
+      liveT,
+      bogota("20:45"),
+    ).open,
+    true,
   );
   const sealedVisit = (itemId, route, extra) => ({
     itemId,
@@ -4584,6 +4610,26 @@ console.log("— Cupo del aparato —");
     [],
   );
   expect("Aparato con cierre posterior: la reapertura vieja no lo toca", relocal.changed, false);
+  const bothRow = cieRow([marker, encodeSheetReopenRef({ route: "M", at: reopenAt, by: "Supervisor" })]);
+  const bothApplied = dayCloseReopensFromRow(bothRow).reduce(
+    (acc, reopen) => applySheetReopen(acc, reopen, []),
+    {
+      dayCloses: [],
+      planillaCashCloses: [],
+      assignments: [
+        sealedVisit("m2", "M", { visitStatus: "omitido", skipReason: "Cierre de jornada" }),
+        sealedVisit("m3", "M", { visitStatus: "cobrado", paymentRef: "PG-9" }),
+        sealedVisit("a1", "A", { visitStatus: "omitido", skipReason: "Cierre de jornada" }),
+      ],
+    },
+  );
+  expect(
+    "M reabierta con T: el aparato abre M (cobro queda) y A sigue cerrada",
+    bothApplied.assignments
+      .map((row) => `${row.itemId}:${row.visitStatus}:${row.dayClosedAt ? "S" : "A"}`)
+      .join(","),
+    "m2:pendiente:A,m3:cobrado:A,a1:omitido:S",
+  );
   const { readFileSync: readReopenSrc } = await import("node:fs");
   const opsReopenSrc = readReopenSrc(new URL("../lib/supabase/ops-mirror.ts", import.meta.url), "utf8");
   expect(

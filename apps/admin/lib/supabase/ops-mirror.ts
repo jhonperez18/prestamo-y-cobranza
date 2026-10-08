@@ -51,7 +51,7 @@ import {
 import {
   applySheetReopen,
   cieClosesRoute,
-  dayCloseReopenFromRow,
+  dayCloseReopensFromRow,
   isSheetReopenRef,
   liveSheetReopens,
   withoutSheetReopenRefs,
@@ -375,6 +375,22 @@ function pruneOpenAssignmentQueueAgainstLocalCloses() {
   if (kept.length !== queued.length) writeDemoJson(Q_ASSIGN, kept);
 }
 
+/** Reaperturas de hoy que este aparato conoce (el botón sigue para las otras hojas). */
+const SHEET_REOPENS_KEY = "nexo-demo-sheet-reopens";
+
+export function readKnownSheetReopens(): DayCloseReopen[] {
+  const today = businessTodayIso();
+  return readDemoJson<DayCloseReopen[]>(SHEET_REOPENS_KEY, []).filter((row) => row?.date === today);
+}
+
+function rememberSheetReopens(reopens: readonly DayCloseReopen[]) {
+  const known = readKnownSheetReopens();
+  const sig = (row: DayCloseReopen) => `${row.closeRef}|${row.route}|${row.at}`;
+  const seen = new Set(known.map(sig));
+  const fresh = reopens.filter((row) => row.date === businessTodayIso() && !seen.has(sig(row)));
+  if (fresh.length) writeDemoJson(SHEET_REOPENS_KEY, [...known, ...fresh]);
+}
+
 /**
  * Hoja reabierta por el supervisor (marca en el CIE- de nube): este aparato suelta su
  * CIE- y su PCE- de esa planilla, reabre las visitas y saca de la cola lo sellado antes
@@ -387,6 +403,7 @@ export function applySheetReopensLocally(
   },
 ): boolean {
   if (typeof window === "undefined" || !reopens.length) return false;
+  rememberSheetReopens(reopens);
   const clients = readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []);
   const before = {
     dayCloses: readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []),
@@ -530,7 +547,7 @@ export function dayCloseToRow(c: CollectorDayCloseRecord) {
 export function rowToDayClose(r: Record<string, unknown>): CollectorDayCloseRecord | null {
   const ref = String(r.ref || "").trim();
   if (!ref) return null;
-  if (dayCloseReopenFromRow(r)) return null;
+  if (dayCloseReopensFromRow(r).length) return null;
   const { movementRefs, cashAdjustment, routeCashAdjustments } = splitCashAdjustmentRefs(
     withoutSheetReopenRefs(Array.isArray(r.movement_refs) ? (r.movement_refs as string[]) : []),
   );
@@ -1815,9 +1832,7 @@ async function pullOpsBundle(
         : { ok: true, changed, reason: "virgin_hold_skip_money", bundle: body, full };
     }
 
-    const reopens = (body.day_closes ?? [])
-      .map(dayCloseReopenFromRow)
-      .filter((r): r is DayCloseReopen => Boolean(r));
+    const reopens = (body.day_closes ?? []).flatMap(dayCloseReopensFromRow);
     if (reopens.length && applySheetReopensLocally(reopens, persist)) changed = true;
     const closes = (body.day_closes ?? [])
       .map(rowToDayClose)

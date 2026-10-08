@@ -64,7 +64,8 @@ Un solo camino: supervisor / admin → ruta → Historial → «Reabrir hoja de 
 
 | Pieza | Regla |
 | --- | --- |
-| Cuándo | Solo hoy (Bogotá), antes de 23:30, con el CIE- sellado y sin ajuste de saldo. Nunca M |
+| Cuándo | Solo hoy (Bogotá), antes de 23:30, sin ajuste de saldo, con el CIE- sellado o con otra hoja del cobrador ya reabierta hoy |
+| M | Reabrir M reabre también T (el saldo final de M es el Inicial de T). Se vuelve a cerrar M y después T |
 | Nube | Marca `REABIERTA@<ruta>:<iso>` en `movement_refs` del CIE-. Visitas de esa planilla: «Cierre de jornada» → pendiente; cobros y N/P quedan. Nada se borra |
 | CIE- vigente | Solo si `closed_at` > marca. Si no, `rowToDayClose` = null (aparatos y corte 23:30 lo ven abierto) |
 | Aparato atrasado | CIE- viejo → `cie_reopened`; visita sellada vieja de esa ruta → `hoja_reabierta`. No la vuelven a cerrar |
