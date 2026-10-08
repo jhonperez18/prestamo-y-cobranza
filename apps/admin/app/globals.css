@@ -3084,7 +3084,24 @@
     .collector-history-planilla.is-cierre-sheet .collector-history-planilla-head span:nth-child(2) {
       text-align: left;
     }
+    .collector-history-planilla.is-cierre-sheet .collector-history-planilla-head,
+    .collector-history-planilla.is-cierre-sheet li {
+      grid-template-columns:
+        1.35rem
+        minmax(0, 1.7fr)
+        minmax(0, 1fr)
+        minmax(0, 0.7fr)
+        1.55rem
+        2.4rem;
+    }
+    .collector-history-planilla.is-cierre-sheet .is-cuota,
+    .collector-history-planilla.is-cierre-sheet .collector-history-planilla-head span:nth-child(3) {
+      text-align: left;
+    }
     .collector-history-planilla.is-cierre-sheet .is-method {
+      justify-self: center;
+      width: 1.9rem;
+      padding: 1px 0;
       font-size: 10px;
       font-weight: 700;
     }
