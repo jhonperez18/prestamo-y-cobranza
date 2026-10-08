@@ -70,7 +70,7 @@ Un solo camino: supervisor / admin → ruta → Historial → «Reabrir hoja de 
 | CIE- vigente | Solo si `closed_at` > marca. Si no, `rowToDayClose` = null (aparatos y corte 23:30 lo ven abierto) |
 | Aparato atrasado | CIE- viejo → `cie_reopened`; visita sellada vieja de esa ruta → `hoja_reabierta`. No la vuelven a cerrar |
 | Pull | `applySheetReopensLocally`: suelta CIE-/PCE- de esa ruta, reabre visitas, limpia su cola |
-| Volver a cerrar | El cobrador cierra; el CIE- nuevo (posterior) manda y el saldo final se recalcula |
+| Volver a cerrar | El cobrador cierra; el CIE- nuevo (posterior) manda y el saldo final se recalcula. La nube sella sola las visitas de esa hoja (`sealReclosedSheets`); `hoja_reabierta` reintenta, no se descarta (caso T 07/10: 64 visitas quedaron abiertas) |
 
 - Candado: `assert-cash-chain.mjs` sección 29.
 

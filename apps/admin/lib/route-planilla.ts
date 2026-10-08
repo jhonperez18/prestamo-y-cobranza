@@ -173,10 +173,16 @@ function buildPlanillaLoanIndex(
   };
 }
 
+/**
+ * `sheetOpen`: la hoja de ese cobrador y ruta sigue abierta hoy. Préstamo activo = cliente
+ * listo para pagar, aunque se haya prestado hoy. Con la hoja ya cerrada, el préstamo de hoy
+ * entra mañana (no reabre el día ni queda en N/P).
+ */
 function loanItemsForClient(
   client: ClientRow,
   index: PlanillaLoanIndex,
   date: string,
+  sheetOpen: boolean,
 ): DailyCollectionItem[] {
   const items: DailyCollectionItem[] = [];
   for (const loan of index.activeByClient.get(client.ref) ?? []) {
@@ -186,10 +192,9 @@ function loanItemsForClient(
     // Saldo 0 de un día anterior no vuelve a la ruta. El cobro de hoy sí queda.
     if (owes <= 0 && !paidToday) continue;
     if (isPendingReview(client)) continue;
-    // Crédito prestado hoy (día Bogotá): la cuota entra a hoja de ruta al día siguiente.
     const startedIso = loanDisbursementIsoDate(loan);
-    if (startedIso === date && !paidToday) continue;
-    if (!loanIsCollectibleOn(loan, date)) continue;
+    if (startedIso === date && !paidToday && !sheetOpen) continue;
+    if (startedIso !== date && !loanIsCollectibleOn(loan, date)) continue;
 
     const installment = resolvedLoanInstallment(loan);
     const pactada = paidToday && owes <= 0 ? 0 : Math.min(installment > 0 ? installment : owes, owes);
@@ -435,6 +440,13 @@ export function syncPermanentRoutePlanilla(
       .map((prev) => `${prev.collectorRef}|${prev.clientRef}`),
   );
 
+  const closedAtByCollectorRoute = new Map<string, string>();
+  for (const row of existing) {
+    if (row.dispatchDate !== date || !row.dayClosedAt) continue;
+    const key = `${row.collectorRef}|${String(row.clientRoute || "").trim()}`;
+    if (!closedAtByCollectorRoute.has(key)) closedAtByCollectorRoute.set(key, row.dayClosedAt);
+  }
+
   for (const route of owned) {
     const collector = collectors.find((row) => row.ref === route.collectorRef);
     if (!collector) continue;
@@ -443,7 +455,10 @@ export function syncPermanentRoutePlanilla(
       if (!isOperationalClient(client)) continue;
       // Toda la ruta diaria: cobrables + sin préstamo (Completar).
       // Quien ya pagó/omitió hoy no vuelve a pendiente como Completar.
-      const items = loanItemsForClient(client, index, date);
+      const sheetOpen = !closedAtByCollectorRoute.has(
+        `${collector.ref}|${String(client.route || "").trim()}`,
+      );
+      const items = loanItemsForClient(client, index, date, sheetOpen);
       // Cada préstamo de hoy se queda en la ruta. El ya cobrado sale en cobrado,
       // no se borra: si se borra, el recaudo desaparece y solo quedan los gastos.
       let dayItems = items;
@@ -495,13 +510,6 @@ export function syncPermanentRoutePlanilla(
         );
       }
     }
-  }
-
-  const closedAtByCollectorRoute = new Map<string, string>();
-  for (const row of existing) {
-    if (row.dispatchDate !== date || !row.dayClosedAt) continue;
-    const key = `${row.collectorRef}|${String(row.clientRoute || "").trim()}`;
-    if (!closedAtByCollectorRoute.has(key)) closedAtByCollectorRoute.set(key, row.dayClosedAt);
   }
 
   // Visitas ya cobradas/omitidas del día abierto: no se pierden si el préstamo

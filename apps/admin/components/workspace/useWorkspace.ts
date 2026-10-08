@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ModuleId } from "@/lib/navigation";
-import { CLIENTS, COLLECTORS, ACTIVITY, COLLECTOR_ROLE_REF, LOANS, money, nextLoanCode, nextPaymentCode, nextRouteCode, normalizeRouteNumber, PAYMENTS, ROUTES, routeSlug, catalogRoutes, clientsOnRouteListed, routeIsActive, routeStatusMeta, userForCollector, ensureCollectorsForUsers, collectorViewForUser, USERS, type ClientRow, type CollectorRow, type LoanRow, type PaymentRow, type RouteRow, type UserRow } from "@/lib/mock-data";
+import { CLIENTS, COLLECTORS, ACTIVITY, COLLECTOR_ROLE_REF, LOANS, money, newLoanBlockReason, nextLoanCode, nextPaymentCode, nextRouteCode, normalizeRouteNumber, PAYMENTS, ROUTES, routeSlug, catalogRoutes, clientsOnRouteListed, routeIsActive, routeStatusMeta, userForCollector, ensureCollectorsForUsers, collectorViewForUser, USERS, type ClientRow, type CollectorRow, type LoanRow, type PaymentRow, type RouteRow, type UserRow } from "@/lib/mock-data";
 import {
   CLIENT_STATUS_ACTIVE,
   clientNavBadges,
@@ -2087,7 +2087,7 @@ export function useWorkspace({
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
-    queueLoansMirror([result.created, result.closed]);
+    queueLoansMirror([result.closed, result.created]);
     const renewedClient = clients.find((entry) => entry.ref === loan.clientRef);
     if (renewedClient) {
       queueClientMirror({
@@ -2155,6 +2155,11 @@ export function useWorkspace({
     const client = clients.find((row) => row.ref === draft.clientRef);
     if (!client) {
       onToast("Cliente no encontrado.");
+      return;
+    }
+    const blocked = newLoanBlockReason(client.ref, loans);
+    if (blocked) {
+      onToast(blocked);
       return;
     }
     const loan = buildQuickLoan(

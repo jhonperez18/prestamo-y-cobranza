@@ -5,7 +5,7 @@
  */
 import type { BankMovement } from "@/lib/bank";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
-import { deletedLoanRefRows } from "@/lib/deleted-ids";
+import { deletedLoanRefRows, readDeletedIdSet } from "@/lib/deleted-ids";
 import { interestFromPct } from "@/lib/finance";
 import {
   isoToDisplay,
@@ -377,11 +377,14 @@ export function restoreLoansFromOrphanDisbursements(
   let loans = [...input.loans];
   let movements = [...input.movements];
   const created: LoanRow[] = [];
+  const deletedRefs = readDeletedIdSet();
 
   for (const row of input.movements) {
     if (!isDisbursementMovement(row)) continue;
     const occupiedRef = loanRefFromDisbursementMovement(row);
     if (!occupiedRef) continue;
+    // Préstamo dado de baja a propósito: su Haber no lo vuelve a crear con otro P-.
+    if (deletedRefs.has(occupiedRef) && !loans.some((loan) => loan.ref === occupiedRef)) continue;
     const capital = Number(row.credit) || 0;
     const dateIso = valueDateIso(row);
     if (capital <= 0 || !dateIso) continue;

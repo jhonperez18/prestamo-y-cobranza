@@ -93,6 +93,7 @@ export function insertStreetClient(clients: ClientRow[], row: ClientRow) {
 }
 
 export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: LoanRow[]): LoanRow | null {
+  if (!canClientTakeNewLoan(client.ref, loans)) return null;
   const startIso = todayIso();
   const preview = previewLoanFlat({
     capital: draft.capital,

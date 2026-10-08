@@ -405,6 +405,17 @@ Candado: `assert-cash-chain.mjs` sección 15.
 | Visita de cuota hoy | Bloquea Prestar **solo** si su préstamo no está cargado en el aparato |
 
 - Prohibido filtrar estados a mano (`status === "Eliminado"`, `!== "Finalizado"`) en pantallas o planilla.
+
+**Un cliente, un préstamo (caso José Albornoz 07/10):**
+
+| Pieza | Regla |
+| --- | --- |
+| Alta (panel, supervisor, cobrador) | `newLoanBlockReason` → con un préstamo activo no se presta (debe quedar en cero). `buildQuickLoan` y `commitCreateLoan` lo frenan |
+| Nube | `mirrorLoanToSupabase`: alta activa de un cliente con otro activo → `client_has_active_loan` (queda en cola, no entra) |
+| Renovar | Sube primero el viejo «Finalizado», después el nuevo |
+| Préstamo activado | El cliente queda **listo para pagar** ese mismo día (cuota por cobrar) si su hoja sigue abierta; con la hoja cerrada entra mañana (no reabre el día) |
+| Haber DSB de Banco | No rehace con otro P- un préstamo dado de baja (`deletedRefs`): así nacían P-438 → P-451 |
+| Reactivar (pedido del dueño) | Ficha viva en la nube con baja aprendida en el aparato → la baja se suelta (`forgetRemoteLoanRevivals`), salvo baja propia en cola |
 - La bajada de la nube **sí** trae los «Eliminado»: así cada aparato aprende el tombstone
  (`learnRemoteLoanDeletes`) y los descarta antes de pintar. Un `.neq('status','Eliminado')` ahí
  revive préstamos borrados en los otros celulares.

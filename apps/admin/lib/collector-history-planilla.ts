@@ -181,7 +181,7 @@ function disbursementRowFromLoan(loan: LoanRow, clients: ClientRow[]): DayLoanDi
  * 1) líneas de gasto ya guardadas en SU día (GAS-/CIE ya filtrados por cobrador), y
  * 2) créditos en efectivo de clientes de SU hoja ese día.
  *
- * Crédito prestado hoy sale de la planilla de cobro (cuota = mañana). No filtrar
+ * El cliente puede no estar en la hoja de ese día (préstamo tras el cierre). No filtrar
  * la línea GAS-/CIE por dayClientRefs: si no, el botón Préstamos queda en 0
  * aunque el desembolso ya está en caja del cobrador.
  */
@@ -340,7 +340,7 @@ export function clientRefsLentOnDate(
   return refs;
 }
 
-/** Créditos dados de alta ese día (la cuota entra a ruta al día siguiente). */
+/** Créditos dados de alta ese día (su desembolso va en la fila «Prestado»). */
 function loanRefsStartedOnDate(dateIso: string, loans: LoanRow[]): Set<string> {
   const refs = new Set<string>();
   for (const loan of loans) {
@@ -406,9 +406,6 @@ export function buildCollectorHistoryPlanillaRows(input: {
     ) {
       continue;
     }
-    // Crédito nuevo del día → no es cobro; se marca aparte como «Prestado».
-    if (item.loanRef && loansStartedToday.has(item.loanRef)) continue;
-
     const rawLoan = item.loanRef
       ? loans.find((row) => row.ref === item.loanRef)
       : undefined;
@@ -459,11 +456,6 @@ export function buildCollectorHistoryPlanillaRows(input: {
 
   for (const pay of pays) {
     if (used.has(pay.ref)) continue;
-    // Pago del crédito recién prestado el mismo día no aplica; el desembolso va aparte.
-    if (pay.loanRef && loansStartedToday.has(pay.loanRef)) {
-      used.add(pay.ref);
-      continue;
-    }
     const siblings = pay.comboGroupId
       ? pays.filter((row) => row.comboGroupId === pay.comboGroupId)
       : [pay];

@@ -8,6 +8,7 @@ import {
   COLLECTORS,
   ROUTES,
   money,
+  newLoanBlockReason,
   type ClientRow,
   type LoanRow,
   type PaymentRow,
@@ -380,6 +381,11 @@ export function SupervisorShell({ session, onLogout }: Props) {
     const client = clients.find((row) => row.ref === draft.clientRef);
     if (!client) {
       showToast("Cliente no encontrado.");
+      return;
+    }
+    const blocked = newLoanBlockReason(client.ref, loans);
+    if (blocked) {
+      showToast(blocked);
       return;
     }
     const loan = buildQuickLoan(

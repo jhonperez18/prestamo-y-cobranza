@@ -32,7 +32,7 @@ import {
   type RouteExpenseLine,
 } from "@/lib/collector-day-close";
 import { businessTodayIso } from "@/lib/business-timezone";
-import { isDeletedRef, readDeletedIdSet, rememberDeletedId } from "@/lib/deleted-ids";
+import { forgetDeletedId, isDeletedRef, readDeletedIdSet, rememberDeletedId } from "@/lib/deleted-ids";
 import {
   emitMirrorQueueChanged,
   queueWithoutSent,
@@ -614,6 +614,22 @@ async function findCloudLoanTwin(
   return { ok: true, ref: live[0] ?? null };
 }
 
+/** Préstamo activo del cliente en la nube con otro P- (cualquier día y capital). */
+async function findCloudActiveLoan(
+  supabase: MirrorDbClient,
+  row: LoanMirrorRow,
+): Promise<{ ok: true; ref: string | null } | { ok: false; error: string }> {
+  if (!row.client_ref) return { ok: true, ref: null };
+  const { data, error } = await supabase
+    .from("loans")
+    .select("ref, status")
+    .eq("client_ref", row.client_ref)
+    .neq("ref", row.ref);
+  if (error) return { ok: false, error: error.message };
+  const open = (data ?? []).find((entry) => isLoanActive({ status: String(entry.status || "") }));
+  return { ok: true, ref: open ? String(open.ref || "") : null };
+}
+
 /** Visitas abiertas de la copia repetida (sin cobro ni cierre): la ficha original ya tiene las suyas. */
 async function dropTwinOpenVisits(supabase: MirrorDbClient, loanRef: string, clientRef: string) {
   const { error } = await supabase
@@ -675,6 +691,14 @@ export async function mirrorLoanToSupabase(loan: LoanRow) {
       if (!nextRef) return { ok: false as const, error: "loan_ref_alloc_failed" };
       row = { ...row, ref: nextRef };
       continue;
+    }
+    // Un cliente, un préstamo activo: el alta espera en cola hasta que el anterior quede en cero.
+    if (isLoanActive({ status: String(row.status || "") })) {
+      const open = await findCloudActiveLoan(supabase, row);
+      if (!open.ok) return { ok: false as const, error: open.error };
+      if (open.ref) {
+        return { ok: true as const, skipped: true as const, reason: "client_has_active_loan", ref: open.ref };
+      }
     }
     // Alta: insert (nunca upsert) — si otro aparato tomó el P- en medio, se vuelve a mirar.
     const { error } = await supabase.from("loans").insert(row);
@@ -907,6 +931,28 @@ function learnRemoteLoanDeletes(remote: LoanRow[]) {
   return learned;
 }
 
+/**
+ * Préstamo reactivado en la nube (por pedido del dueño): la baja aprendida aquí se suelta.
+ * El servidor nunca revive una baja por el espejo (`loan_deleted`), así que una ficha viva
+ * en la nube con tombstone local solo es una reactivación. Una baja propia aún en cola manda.
+ */
+function forgetRemoteLoanRevivals(remote: LoanRow[]) {
+  const known = readDeletedIdSet();
+  if (!known.size) return false;
+  const pendingDeletes = new Set(
+    readQueue<LoanRow>(DEMO_LOAN_MIRROR_QUEUE_KEY)
+      .filter((row) => isLoanDeletedStatus(row))
+      .map((row) => row.ref),
+  );
+  let revived = false;
+  for (const row of remote) {
+    if (isLoanDeletedStatus(row) || !known.has(row.ref) || pendingDeletes.has(row.ref)) continue;
+    forgetDeletedId(row.ref);
+    revived = true;
+  }
+  return revived;
+}
+
 export function queueLoanMirror(loan: LoanRow) {
   if (typeof window === "undefined") return;
   const q = readQueue<LoanRow>(DEMO_LOAN_MIRROR_QUEUE_KEY).filter((r) => r.ref !== loan.ref);
@@ -1049,7 +1095,8 @@ async function mergeRemoteCatalog(
       const remoteAll = (loansBody.loans ?? [])
         .map(mirrorToLoanRow)
         .filter((row): row is LoanRow => Boolean(row));
-      const learnedDeletes = learnRemoteLoanDeletes(remoteAll);
+      const revived = forgetRemoteLoanRevivals(remoteAll);
+      const learnedDeletes = learnRemoteLoanDeletes(remoteAll) || revived;
       const remote = remoteAll.filter((row) => !isLoanDeletedStatus(row));
       const localRaw = readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []);
       const local = rekeyCollidingLocalLoans(localRaw, remote);

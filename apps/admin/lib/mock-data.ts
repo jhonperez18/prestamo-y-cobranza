@@ -943,6 +943,14 @@ export function canClientTakeNewLoan(clientRef: string, rows: LoanRow[]): boolea
   return activeLoans(loansForClient(clientRef, rows)).length === 0;
 }
 
+/** Aviso de toda alta de préstamo (panel, supervisor, cobrador). `null` = puede recibirlo. */
+export function newLoanBlockReason(clientRef: string, rows: LoanRow[]): string | null {
+  const open = activeLoans(loansForClient(clientRef, rows));
+  if (!open.length) return null;
+  const refs = open.map((row) => row.ref).join(", ");
+  return `No se puede prestar: el cliente tiene el préstamo ${refs} activo. Primero debe quedar en cero.`;
+}
+
 export function clientsForView(view: string, rows: ClientRow[] = CLIENTS): ClientRow[] {
   if (view === "revision") return rows.filter((row) => row.status === "Pte. revisión");
   if (view === "activos") return rows.filter((row) => row.status === "Activo");

@@ -31,6 +31,7 @@ import {
   catalogRoutes,
   clientCreationDate,
   loansForClient,
+  newLoanBlockReason,
   nextClientCode,
   nextLoanCode,
   normalizeRouteNumber,
@@ -591,6 +592,8 @@ export function commitCreateLoan(
   if (isPendingReview(client)) {
     return { ok: false, error: "No se puede prestar: el registro aún está en revisión." };
   }
+  const blocked = newLoanBlockReason(client.ref, state.loans);
+  if (blocked) return { ok: false, error: blocked };
   if (draft.fundedBy !== "cartera") {
     const twin = existingDigitalDisbursementTwin(
       state.loans,

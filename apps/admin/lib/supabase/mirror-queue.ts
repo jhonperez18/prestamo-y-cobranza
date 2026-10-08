@@ -30,7 +30,6 @@ const DROP_ON_SKIP_REASON = new Set([
   "cloud_cie_past_day_sealed",
   "provisional_day_close",
   "cie_reopened",
-  "hoja_reabierta",
 ]);
 
 /**

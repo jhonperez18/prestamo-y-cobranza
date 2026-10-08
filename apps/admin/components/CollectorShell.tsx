@@ -6,6 +6,7 @@ import {
   COLLECTORS,
   ROUTES,
   money,
+  newLoanBlockReason,
   nextLoanCode,
   type ClientRow,
   type LoanRow,
@@ -490,7 +491,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     setRoutes(planilla.routes);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, planilla.assignments);
     writeDemoJson(DEMO_ROUTES_KEY, planilla.routes);
-    queueLoansMirror([result.created, result.closed]);
+    queueLoansMirror([result.closed, result.created]);
     const renewedClient = nextClients.find((entry) => entry.ref === loan.clientRef);
     if (renewedClient) queueClientMirror(renewedClient);
     queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, planilla.assignments));
@@ -535,6 +536,11 @@ export function CollectorShell({ session, onLogout }: Props) {
     const client = clients.find((row) => row.ref === draft.clientRef);
     if (!client) {
       showToast("Cliente no encontrado.");
+      return;
+    }
+    const blocked = newLoanBlockReason(client.ref, loans);
+    if (blocked) {
+      showToast(blocked);
       return;
     }
     const loan = buildQuickLoan({ ...draft, fundedBy: "efectivo" }, client, loans);

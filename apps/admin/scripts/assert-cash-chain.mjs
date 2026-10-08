@@ -2519,6 +2519,21 @@ expect(
   hSynced.assignments.some((r) => r.clientRef === "CLI-P1" && r.itemId.includes(":prestar")),
   false,
 );
+// Préstamo activado hoy con la hoja abierta: el cliente queda listo para pagar ya (no al día siguiente).
+const nowSynced = syncPermanentRoutePlanilla(pDate, pRoutes, pClients.slice(0, 1), pLoans, [COB], [pExisting[0]], []);
+const nowRows = nowSynced.assignments.filter((r) => r.clientRef === "CLI-P1" && r.dispatchDate === pDate);
+expect(
+  "Préstamo de hoy, hoja abierta: cuota por cobrar hoy",
+  nowRows.some((r) => r.loanRef === "P-P1" && r.visitStatus === "pendiente" && r.amountDue === 15_000),
+  true,
+);
+expect("Préstamo de hoy, hoja abierta: Prestar queda resuelto", nowRows.find((r) => r.itemId.includes(":prestar"))?.skipReason ?? null, "Préstamo hecho hoy");
+expect("Préstamo de hoy: nunca disponible para prestar", nowRows.some((r) => r.itemId.includes(":prestar") && r.visitStatus === "pendiente"), false);
+expect(
+  "Préstamo de hoy, hoja ya cerrada: entra mañana (no reabre el día)",
+  pSynced.assignments.some((r) => r.loanRef === "P-P1" && r.dispatchDate === pDate),
+  false,
+);
 const albDate = "2026-10-01";
 const albClients = [
   { ref: "CLI-ALB", name: "Jose", lastName: "Albornoz", route: "T", status: "Activo", routeOrder: 42 },
@@ -2966,6 +2981,39 @@ const statusLoans = ["Finalizado", " eliminado ", "CANCELADO", "Activo", "Alerta
 expect("activeLoans: limpia mayúsculas/espacios y saca finalizado/eliminado/cancelado", activeLoans(statusLoans).length, 4);
 expect("Solo préstamos finalizados/borrados/cancelados: puede recibir préstamo", canClientTakeNewLoan("CLI-S0", statusLoans), true);
 expect("Con préstamo en mora: no puede recibir otro", canClientTakeNewLoan("CLI-S5", statusLoans), false);
+{
+  const { newLoanBlockReason } = await import("@/lib/mock-data");
+  const { buildQuickLoan } = await import("@/lib/street-client-loan");
+  expect("Alta con préstamo activo: aviso", Boolean(newLoanBlockReason("CLI-S5", statusLoans)), true);
+  expect("Alta sin préstamo activo: sin aviso", newLoanBlockReason("CLI-S0", statusLoans), null);
+  const quick = buildQuickLoan(
+    { clientRef: "CLI-S5", capital: 500_000, interest: 100_000, frequency: "diario", termMonths: 1, fundedBy: "efectivo" },
+    { ref: "CLI-S5", name: "Cinco", lastName: "S", route: "T" },
+    statusLoans,
+  );
+  expect("Préstamo rápido a cliente con préstamo activo: no se crea", quick, null);
+  const { readFileSync } = await import("node:fs");
+  const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
+  const portfolioSrc = read("../lib/commit-portfolio-catalog.ts");
+  expect("Nuevo préstamo del panel pasa por la regla única", /newLoanBlockReason\(client\.ref, state\.loans\)/.test(portfolioSrc), true);
+  for (const [label, path] of [
+    ["cobrador", "../components/CollectorShell.tsx"],
+    ["supervisor", "../components/SupervisorShell.tsx"],
+    ["panel móvil", "../components/workspace/useWorkspace.ts"],
+  ]) {
+    expect(`Préstamo rápido (${label}) avisa el préstamo activo`, read(path).includes("newLoanBlockReason(client.ref, loans)"), true);
+  }
+  for (const path of ["../components/CollectorShell.tsx", "../components/workspace/useWorkspace.ts"]) {
+    expect(`Renovar (${path.split("/").pop()}): cierra el viejo antes de subir el nuevo`, read(path).includes("queueLoansMirror([result.closed, result.created])"), true);
+  }
+  const catalogMirrorSrc = read("../lib/supabase/catalog-mirror.ts");
+  expect("Nube: un cliente, un préstamo activo", catalogMirrorSrc.includes('reason: "client_has_active_loan"'), true);
+  expect("Nube: préstamo reactivado vuelve a cada aparato", catalogMirrorSrc.includes("forgetRemoteLoanRevivals(remoteAll)"), true);
+  const queueSrc = read("../lib/supabase/mirror-queue.ts");
+  expect("«client_has_active_loan» espera en cola (no se descarta)", queueSrc.includes('"client_has_active_loan"'), false);
+  const restoreSrc = read("../lib/restore-loans-from-bank-disbursements.ts");
+  expect("Haber de Banco no revive un préstamo dado de baja", restoreSrc.includes("deletedRefs.has(occupiedRef)"), true);
+}
 
 const rDate = "2026-09-30";
 const rClients = [
@@ -4646,6 +4694,14 @@ console.log("— Cupo del aparato —");
       opsReopenSrc.includes("applySheetReopensLocally(reopens, persist)"),
     true,
   );
+  expect(
+    "Volver a cerrar (T 07/10): la nube sella la hoja con el CIE- nuevo, sin depender del orden del celular",
+    opsReopenSrc.includes("reclosedRoutes = liveReopens.map((reopen) => reopen.route)") &&
+      opsReopenSrc.includes("await sealReclosedSheets(client, payload, reclosedRoutes)"),
+    true,
+  );
+  const reopenQueueSrc = readReopenSrc(new URL("../lib/supabase/mirror-queue.ts", import.meta.url), "utf8");
+  expect("Visita sellada que llega antes del CIE- nuevo: reintenta (no se descarta)", reopenQueueSrc.includes('"hoja_reabierta"'), false);
 }
 
 if (failures) {

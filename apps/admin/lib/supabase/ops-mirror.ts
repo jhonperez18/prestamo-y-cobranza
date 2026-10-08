@@ -938,6 +938,68 @@ export async function upsertOpsRow(
   return { ok: true as const };
 }
 
+/** Hora del sello en la planilla (misma etiqueta que pone el aparato: «10:28 p. m.»). */
+function dayClosedLabel(closedAtIso: string) {
+  const ms = Date.parse(closedAtIso);
+  return new Date(Number.isFinite(ms) ? ms : Date.now()).toLocaleTimeString("es-CO", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Bogota",
+  });
+}
+
+/**
+ * Hoja reabierta que el cobrador volvió a cerrar: la nube sella sus visitas con el CIE- nuevo
+ * (mismo criterio que `applyDayCloseRecordsToAssignments`). No depende de que las visitas
+ * selladas del celular lleguen antes o después del CIE-.
+ */
+async function sealReclosedSheets(
+  client: MirrorDb,
+  cie: Record<string, unknown>,
+  routes: string[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const collectorRef = String(cie.collector_ref || "").trim();
+  const date = String(cie.close_date || "").trim();
+  if (!collectorRef || !date || !routes.length) return { ok: true };
+  const label = dayClosedLabel(String(cie.closed_at || ""));
+  const stamp = new Date().toISOString();
+  const { error: skipError } = await client
+    .from("daily_assignments")
+    .update({
+      visit_status: "omitido",
+      skip_reason: DAY_CLOSE_SKIP_REASON,
+      amount_due: 0,
+      day_closed_at: label,
+      updated_at: stamp,
+    })
+    .eq("collector_ref", collectorRef)
+    .eq("dispatch_date", date)
+    .in("client_route", routes)
+    .is("day_closed_at", null)
+    .is("payment_ref", null)
+    .or("visit_status.is.null,visit_status.eq.pendiente");
+  if (skipError) return { ok: false, error: skipError.message };
+  const { error: paidError } = await client
+    .from("daily_assignments")
+    .update({ visit_status: "cobrado", amount_due: 0, day_closed_at: label, updated_at: stamp })
+    .eq("collector_ref", collectorRef)
+    .eq("dispatch_date", date)
+    .in("client_route", routes)
+    .is("day_closed_at", null)
+    .not("payment_ref", "is", null)
+    .or("visit_status.is.null,visit_status.eq.pendiente");
+  if (paidError) return { ok: false, error: paidError.message };
+  const { error: sealError } = await client
+    .from("daily_assignments")
+    .update({ day_closed_at: label, updated_at: stamp })
+    .eq("collector_ref", collectorRef)
+    .eq("dispatch_date", date)
+    .in("client_route", routes)
+    .is("day_closed_at", null);
+  if (sealError) return { ok: false, error: sealError.message };
+  return { ok: true };
+}
+
 /**
  * CIE-/PCE- a day_closes. Si ya hay otro CIE- del mismo cobrador+día (ref distinta),
  * lo reemplaza para no chocar con el unique parcial.
@@ -957,6 +1019,7 @@ export async function upsertDayCloseIdempotent(
   const ref = String(row.ref || "");
   const force = Boolean(options?.force);
   let incomingRow = row;
+  let reclosedRoutes: string[] = [];
   if (ref.startsWith("CIE-")) {
     const { data: existing, error: readError } = await client
       .from("day_closes")
@@ -987,6 +1050,7 @@ export async function upsertDayCloseIdempotent(
         if (!Number.isFinite(incomingClosedMs) || incomingClosedMs <= reopenedMs) {
           return { ok: true as const, skipped: true as const, reason: "cie_reopened" };
         }
+        reclosedRoutes = liveReopens.map((reopen) => reopen.route);
       }
       incomingRow = {
         ...row,
@@ -1063,7 +1127,12 @@ export async function upsertDayCloseIdempotent(
     : incomingRow;
 
   const first = await client.from("day_closes").upsert(payload, { onConflict: "ref" });
-  if (!first.error) return { ok: true as const, forced: force };
+  if (!first.error) {
+    if (!reclosedRoutes.length) return { ok: true as const, forced: force };
+    const sealed = await sealReclosedSheets(client, payload, reclosedRoutes);
+    if (!sealed.ok) return sealed;
+    return { ok: true as const, forced: force };
+  }
 
   const msg = first.error.message || "";
   const isCie = ref.startsWith("CIE-");
