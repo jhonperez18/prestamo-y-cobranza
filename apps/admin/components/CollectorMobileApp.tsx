@@ -1000,6 +1000,11 @@ export function CollectorMobileApp({
 
   const routeRef = queue.routeRef ?? dispatchRouteRef(collector.ref, activeDate);
   const visibleItems = listFilter === "done" ? queue.done : routePending;
+  /** La ficha de cada fila no cambia al abrir/cerrar un panel: solo cuando cambian los datos. */
+  const visibleIdentities = useMemo(
+    () => visibleItems.map((item) => visitIdentity(item, clients, loans, livePayments, activeDate)),
+    [visibleItems, clients, loans, livePayments, activeDate],
+  );
   const recaudo = useMemo(
     () => collectorRecaudoBreakdown(collector.ref, activeDate, livePayments, [collector]),
     [activeDate, collector, livePayments],
@@ -2542,7 +2547,7 @@ export function CollectorMobileApp({
                 const key = itemKey(item);
                 const isOpen = expandedKey === key;
                 const routeStart = pendingRouteStarts[index];
-                const identity = visitIdentity(item, clients, loans, livePayments, activeDate);
+                const identity = visibleIdentities[index];
                 const canLend =
                   identity.awaitingLoan &&
                   !dayLocked &&

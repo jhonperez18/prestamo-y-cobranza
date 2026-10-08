@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   runOperationalDayCycle,
   type OperationalDayState,
@@ -79,8 +79,7 @@ function inputKey(state: PlanillaDayState) {
   return [payments, closes, cashChain, expenses, clients, collectors, loans, catalog].join("::");
 }
 
-/** Salida operativa: decide si hace falta setState. */
-function outputKey(state: {
+type OutputState = {
   assignments: DailyCollectionAssignment[];
   routes: RouteRow[];
   loans: LoanRow[];
@@ -88,7 +87,32 @@ function outputKey(state: {
   dayCloses: CollectorDayCloseRecord[];
   dayExpenseDrafts: CollectorDayExpenseDraft[];
   planillaCashCloses?: import("@/lib/planilla-cash-chain").PlanillaCashCloseRecord[];
-}) {
+};
+
+function outputParts(state: OutputState): unknown[] {
+  return [
+    state.assignments,
+    state.routes,
+    state.loans,
+    state.logs,
+    state.dayCloses,
+    state.dayExpenseDrafts,
+    state.planillaCashCloses,
+  ];
+}
+
+/** Las listas de estado no se mutan: mismas listas ⇒ misma firma (5 000+ visitas no se re-firman). */
+function cachedOutputKey(
+  cache: { parts: unknown[]; key: string } | null,
+  state: OutputState,
+): { parts: unknown[]; key: string } {
+  const parts = outputParts(state);
+  if (cache && cache.parts.every((part, index) => part === parts[index])) return cache;
+  return { parts, key: outputKey(state) };
+}
+
+/** Salida operativa: decide si hace falta setState. */
+function outputKey(state: OutputState) {
   const assignments = state.assignments
     .map(
       (row) =>
@@ -140,16 +164,34 @@ export function usePlanillaDayRollover(
   const applyRef = useRef(apply);
   applyRef.current = apply;
   const lastOutputRef = useRef<string>("");
-  const trigger = inputKey(state);
+  const outputCacheRef = useRef<{ parts: unknown[]; key: string } | null>(null);
+  const lastRunAtRef = useRef(0);
+  const trigger = useMemo(
+    () => inputKey(state),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- la firma solo lee estas listas
+    [
+      state.payments,
+      state.dayCloses,
+      state.planillaCashCloses,
+      state.dayExpenseDrafts,
+      state.clients,
+      state.collectors,
+      state.loans,
+      state.routes,
+    ],
+  );
 
   useEffect(() => {
     if (!enabled) return;
 
     function syncNow() {
+      lastRunAtRef.current = Date.now();
       const current = stateRef.current;
-      const before = outputKey(current);
+      outputCacheRef.current = cachedOutputKey(outputCacheRef.current, current);
+      const before = outputCacheRef.current.key;
       const next = runOperationalDayCycle(current);
-      const after = outputKey(next);
+      outputCacheRef.current = cachedOutputKey(outputCacheRef.current, next);
+      const after = outputCacheRef.current.key;
 
       if (next.autoClosed.length === 0 && after === before) return;
       if (next.autoClosed.length === 0 && after === lastOutputRef.current) return;
@@ -169,8 +211,11 @@ export function usePlanillaDayRollover(
 
     syncNow();
 
+    // Al volver a la app llegan `visibilitychange` y `focus` juntos: un solo ciclo.
     const onVisible = () => {
-      if (document.visibilityState === "visible") syncNow();
+      if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastRunAtRef.current < 1_000) return;
+      syncNow();
     };
     const interval = window.setInterval(syncNow, 30_000);
 

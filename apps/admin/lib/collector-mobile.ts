@@ -129,6 +129,23 @@ function recaudoFromDayPayments(
   });
 }
 
+/**
+ * 1) PG- vivos sellan visitas cobradas (si no, Recaudo sube y «Por cobrar» sigue hinchado).
+ * 2) CIE sella el resto de la hoja.
+ * No depende de la fecha: la lista de días lo hace una vez para todas.
+ */
+function sealedPlanilla(
+  assignments: DailyCollectionAssignment[],
+  loans: LoanRow[],
+  dayCloses: CollectorDayCloseRecord[],
+  payments: PaymentRow[],
+) {
+  return applyDayCloseRecordsToAssignments(
+    reconcilePaymentsOntoPlanilla(assignments, payments, loans),
+    dayCloses,
+  );
+}
+
 export function collectorMobileQueue(
   collectorRef: string,
   date: string,
@@ -139,10 +156,28 @@ export function collectorMobileQueue(
   dayCloses: CollectorDayCloseRecord[] = [],
   payments: PaymentRow[] = [],
 ): CollectorMobileQueue {
-  // 1) PG- vivos sellan visitas cobradas (si no, Recaudo sube y «Por cobrar» sigue hinchado).
-  // 2) CIE sella el resto de la hoja.
-  const reconciled = reconcilePaymentsOntoPlanilla(assignments, payments, loans);
-  const sealedAssignments = applyDayCloseRecordsToAssignments(reconciled, dayCloses);
+  return queueFromSealedPlanilla(
+    collectorRef,
+    date,
+    sealedPlanilla(assignments, loans, dayCloses, payments),
+    loans,
+    clients,
+    routes,
+    dayCloses,
+    payments,
+  );
+}
+
+function queueFromSealedPlanilla(
+  collectorRef: string,
+  date: string,
+  sealedAssignments: DailyCollectionAssignment[],
+  loans: LoanRow[],
+  clients: ClientRow[],
+  routes: RouteRow[],
+  dayCloses: CollectorDayCloseRecord[],
+  payments: PaymentRow[],
+): CollectorMobileQueue {
   const dayItems = assignmentsForCollectorDate(
     sealedAssignments,
     collectorRef,
@@ -260,11 +295,12 @@ export function collectorMobileRoutes(
     ]),
   ].sort((a, b) => b.localeCompare(a));
 
+  const sealed = dates.length ? sealedPlanilla(assignments, loans, dayCloses, payments) : assignments;
   return dates.map((date) => {
-    const queue = collectorMobileQueue(
+    const queue = queueFromSealedPlanilla(
       collectorRef,
       date,
-      assignments,
+      sealed,
       loans,
       clients,
       routes,
