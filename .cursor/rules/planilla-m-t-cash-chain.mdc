@@ -496,12 +496,26 @@ pedazo viejo de cobros y rehacía `paid` con eso.
 | Pieza | Regla |
 | --- | --- |
 | Cobrar en el cobrador | `loanRowAfterLivePay`: ficha + el cobro nuevo; el PG- queda en `livePaidRefs` (no se cuenta dos veces) |
-| Hidratar / proyectar en el cobrador | `syncDeviceLoans`: la ficha manda; nunca `syncAllLoans(fichas, cobros del aparato)` |
+| Hidratar / proyectar en el cobrador | `syncDeviceLoans` y `loadDemoPaymentsBundle({ loansFromFicha })`: la ficha manda; nunca `syncAllLoans(fichas, cobros del aparato)` |
 | «Terminó hoy → prestar» | `loanSettledOnDate` lee el saldo vivo (`syncCollectorLiveLoan`) |
 | Nube | `mirrorLoanToSupabase` → `withCloudLedger`: al actualizar, `paid` = el de la nube (lo llevan los cobros); saldo = total − eso |
 | Panel / supervisor | Siguen con el historial completo (`loanRowAfterPay`) |
 
 - Candado: `assert-cash-chain.mjs` sección 31.
+
+**Celular liviano (08/10):** cerrada la jornada y subida, el cobrador suelta lo anterior a su
+último CIE- (`releaseClosedDaysOnDevice`, `lib/collector-device-release.ts`). Corre al cerrar
+(`closeCollectorDay`) y en la 1.ª sincronización del día (cierre sin señal / corte 23:30).
+
+| Pieza | Regla |
+| --- | --- |
+| Se queda | Día del último CIE- (su cuadre) y hoy; CIE-/PCE-; clientes; fichas; colas |
+| Se suelta | Cobros, planilla, gastos, bitácora, rutas diarias y banco de días anteriores, juntos (si queda planilla o banco sin cobros, hidratar los rearma) |
+| No suelta | Algo en cola · sin CIE- real (provisional, reabierta, M cerrada con T abierta) · supervisor / panel |
+| Guardado | `releaseDemoRows`: clave y `-bak` iguales (si no, la copia lo devuelve). Cobros nunca en `[]` |
+| Historial | Se baja al tocar un día y se vuelve a soltar. En la nube no se borra nada |
+
+- Candado: `assert-cash-chain.mjs` sección 32.
 
 **Prohibido (rebote del 06/10):** comparar todo lo local contra una lista incompleta y
 volver a subir cobros viejos. La base corta en 1.000 filas; una “lista completa” corta

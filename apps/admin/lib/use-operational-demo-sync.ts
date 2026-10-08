@@ -14,6 +14,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { bindMoneyRealtime, type RealtimeMoneyTable } from "@/lib/realtime-money";
 import { businessTodayIso } from "@/lib/business-timezone";
 import { isCollectorLiveDevice, isSupervisorLiveDevice } from "@/lib/collector-live-window";
+import { releaseClosedDaysOnDevice } from "@/lib/collector-device-release";
 import {
   mergePaymentsWindowIntoDemo,
   pullRemotePaymentsIntoDemo,
@@ -277,6 +278,10 @@ export function useOperationalDemoSync(
       if (!Array.isArray(localBanks) || localBanks.length === 0) {
         const again = await pullRemoteBankAccountsIntoDemo();
         changed = changed || again.changed;
+      }
+      // Cobrador: arranca el día con su último cierre y hoy (cierre sin señal / corte 23:30).
+      if (tuneupDay && pullOk && isCollectorLiveDevice()) {
+        changed = releaseClosedDaysOnDevice().released > 0 || changed;
       }
       // Sin cambios no se rehace toda la pantalla. Eso era la lentitud en reposo.
       // La puesta a punto del día rehidrata siempre (planilla del día con todo fresco).

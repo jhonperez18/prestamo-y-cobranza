@@ -67,6 +67,8 @@ import {
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
 import { sealCollectorDay } from "@/lib/collector-day-close-seal";
+import { releaseClosedDaysOnDevice } from "@/lib/collector-device-release";
+import { BIG_DEMO_STORE_CHANGED_EVENT } from "@/lib/big-demo-store";
 import { commitDayExpenseDraft, dayExpenseSavedMessage } from "@/lib/commit-day-expense";
 import {
   ensureBankAccounts,
@@ -789,6 +791,11 @@ export function CollectorShell({ session, onLogout }: Props) {
         `${label} · sigue otra hoja abierta. ${formatCloseDayAlertSummary(alertResult.alerted, alertResult.toMora) || ""}`.trim(),
       );
       return false;
+    }
+
+    // Jornada cerrada y subida: el celular suelta lo anterior a este cierre.
+    if (record && releaseClosedDaysOnDevice().released > 0) {
+      window.dispatchEvent(new CustomEvent(BIG_DEMO_STORE_CHANGED_EVENT));
     }
 
     const parts = [

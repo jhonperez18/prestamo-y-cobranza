@@ -336,6 +336,37 @@ export function writeDemoJson(key: string, value: unknown): boolean {
   return false;
 }
 
+/** Filas por día que el celular del cobrador suelta tras un cierre ya subido. */
+const RELEASABLE_DAY_KEYS: readonly string[] = [
+  DEMO_PAYMENTS_KEY,
+  DEMO_DAILY_ASSIGNMENTS_KEY,
+  DEMO_COLLECTOR_DAY_EXPENSES_KEY,
+  DEMO_DAILY_LOGS_KEY,
+  DEMO_ROUTES_KEY,
+  DEMO_BANK_MOVEMENTS_KEY,
+];
+
+/**
+ * Soltar a propósito (no es un vaciado accidental): la clave y su -bak quedan iguales,
+ * si no la copia devuelve lo soltado al leer. Los cobros nunca quedan en [].
+ */
+export function releaseDemoRows(key: string, rows: unknown[]): boolean {
+  if (typeof window === "undefined") return false;
+  if (!RELEASABLE_DAY_KEYS.includes(key)) return false;
+  if (!rows.length && NEVER_WIPE_KEYS.includes(key)) return false;
+  try {
+    const raw = storageJson(rows);
+    setRaw(key, raw);
+    demoStorage.removeItem(backupKey(key));
+    if (rows.length) keepBackup(key, raw);
+    storageWriteFailures.delete(key);
+    return true;
+  } catch (error) {
+    console.error("demo-persist", key, "no se pudo soltar", error);
+    return false;
+  }
+}
+
 export function demoStorageWriteFailures(): string[] {
   return [...new Set([...storageWriteFailures, ...bigDemoStoreFailures()])];
 }
@@ -640,8 +671,11 @@ export function loadDemoPayments(loans?: LoanRow[]): PaymentRow[] {
   return normalizeAllPayments(merged, loans);
 }
 
-/** Carga pagos y préstamos sincronizados (fuente única para el panel). */
-export function loadDemoPaymentsBundle() {
+/**
+ * Carga pagos y préstamos sincronizados (fuente única para el panel).
+ * `loansFromFicha`: celular del cobrador, cuya lista de cobros es solo el día; el saldo lo manda la ficha.
+ */
+export function loadDemoPaymentsBundle(options?: { loansFromFicha?: boolean }) {
   disarmLegacyWipes();
   const packaged = isCanonicalPackageFlag();
   if (packaged) scrubLegacyMockDemoRows();
@@ -651,7 +685,7 @@ export function loadDemoPaymentsBundle() {
   const merged = mergeStoredPaymentsWithSeed(stored ?? (packaged ? [] : PAYMENTS), {
     addMissingSeed: firstBoot && !packaged,
   });
-  const loans = loadDemoLoans(merged);
+  const loans = loadDemoLoans(merged, { fromFicha: options?.loansFromFicha });
   const payments = normalizeAllPayments(merged, loans);
   // Rehidrata claves vacías tras wipe legado para que el siguiente arranque no “parta de cero”.
   if (firstBoot || !readRaw(DEMO_PAYMENTS_KEY)) {
@@ -664,7 +698,10 @@ export function loadDemoPaymentsBundle() {
 }
 
 /** Préstamos: usa guardados; si no hay clave / quedó [], semilla. Nunca vacía datos existentes. */
-export function loadDemoLoans(payments: PaymentRow[] = loadDemoPayments()): LoanRow[] {
+export function loadDemoLoans(
+  payments: PaymentRow[] = loadDemoPayments(),
+  options?: { fromFicha?: boolean },
+): LoanRow[] {
   disarmLegacyWipes();
   const packaged = isCanonicalPackageFlag();
   const stored = readStoredLoans();
@@ -672,7 +709,7 @@ export function loadDemoLoans(payments: PaymentRow[] = loadDemoPayments()): Loan
   const filtered = packaged
     ? base.filter((row) => isAllowedPackagedClientRef(row.clientRef))
     : base;
-  return syncAllLoans(filtered, payments);
+  return options?.fromFicha ? syncAllLoans(filtered) : syncAllLoans(filtered, payments);
 }
 
 /** Cierres de jornada: recupera -bak si la clave quedó vacía. */

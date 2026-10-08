@@ -119,7 +119,9 @@ export const OPERATIONAL_DEMO_STORAGE_PREFIX = "nexo-demo-";
 export function hydrateOperationalDemo(): OperationalDemoSnapshot {
   syncDemoStorageToServedBuild();
 
-  const { payments: storedPayments, loans: storedLoans } = loadDemoPaymentsBundle();
+  const { payments: storedPayments, loans: storedLoans } = loadDemoPaymentsBundle({
+    loansFromFicha: isCollectorLiveDevice(),
+  });
   const storedCollectors = readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, []).map((row) => ({
     ...row,
     zone: COLLECTOR_UNASSIGNED_ZONE,

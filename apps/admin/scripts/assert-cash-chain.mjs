@@ -4951,12 +4951,129 @@ console.log("\n— Cobro del cobrador con la ficha, no con la lista del aparato 
   expect(
     "Hidratar / proyectar en el cobrador no rehace la ficha con su lista de cobros",
     jSrc("../lib/hydrate-operational-demo.ts").includes("syncDeviceLoans(storedLoans") &&
+      jSrc("../lib/hydrate-operational-demo.ts").includes("loansFromFicha: isCollectorLiveDevice()") &&
       jSrc("../lib/operational-sync.ts").includes("syncDeviceLoans(restored.loans"),
     true,
   );
   expect(
     "Nube: actualizar un préstamo pasa por los cobros de la nube",
     jSrc("../lib/supabase/catalog-mirror.ts").includes("withCloudLedger(row, Number(current.paid)"),
+    true,
+  );
+}
+
+// ── 32. Celular del cobrador liviano: cerrada la jornada (y subida) suelta lo anterior a ese
+//     cierre. Se queda con el día cerrado (su cuadre), hoy, los CIE-/PCE-, clientes, fichas y
+//     colas. Con algo en cola, sin cierre real o con la hoja reabierta, no suelta nada.
+console.log("\n— Celular del cobrador liviano —");
+{
+  const { collectorReleaseCutoff, keepDeviceDaysFrom, releaseClosedDaysOnDevice } = await import(
+    "@/lib/collector-device-release"
+  );
+  const {
+    DEMO_PAYMENTS_KEY, DEMO_DAILY_ASSIGNMENTS_KEY, DEMO_COLLECTOR_DAY_CLOSES_KEY, DEMO_ROUTES_KEY,
+    DEMO_LOANS_KEY, DEMO_CLIENTS_KEY, DEMO_COLLECTOR_DAY_EXPENSES_KEY, DEMO_BANK_MOVEMENTS_KEY,
+    readDemoJson: readDevice, writeDemoJson: writeDevice,
+  } = await import("@/lib/demo-persist");
+  const D1 = "2026-10-05";
+  const D2 = "2026-10-06";
+  const D3 = "2026-10-07";
+  const cie = (date, over = {}) => ({ ...cie25, ref: `CIE-${COB.ref}-${date}`, collectorRef: COB.ref, date, ...over });
+  expect("Sin cierre: no se suelta nada", collectorReleaseCutoff([], COB.ref, D3), null);
+  expect("Corte = último CIE- real", collectorReleaseCutoff([cie(D1), cie(D2)], COB.ref, D3), D2);
+  expect("CIE provisional no cuenta", collectorReleaseCutoff([cie(D1), cie(D2, { provisional: true })], COB.ref, D3), D1);
+  expect("CIE de otro cobrador no cuenta", collectorReleaseCutoff([cie(D2, { collectorRef: "COB-9" })], COB.ref, D3), null);
+
+  const rows = {
+    payments: [
+      pay("PG-1", "P-M1", 10_000, D1),
+      pay("PG-2", "P-M1", 10_000, D2),
+      pay("PG-3", "P-M1", 10_000, D3),
+      { ...pay("PG-T", "P-M1", 10_000, D3), lateFor: { date: D1, by: "admin", at: `${D3}T10:00:00Z`, reason: "x" } },
+    ],
+    assignments: [visit("V-1", "CLI-M1", "M", D1), visit("V-2", "CLI-M1", "M", D2), visit("V-3", "CLI-M1", "M", D3)],
+    dayExpenseDrafts: [{ id: "G-1", date: D1 }, { id: "G-3", date: D3 }],
+    dailyLogs: [{ date: D1 }, { date: D3 }],
+    routes: [
+      { ref: "RUT-M", name: "M", stops: [] },
+      { ref: `RUT-D-${COB.ref}-${D1}`, name: "M", stops: [] },
+      { ref: `RUT-D-${COB.ref}-${D2}`, name: "M", stops: [] },
+    ],
+    bankMovements: [{ ref: "MOV-1", valueDate: D1 }, { ref: "MOV-2", valueDate: D2 }],
+  };
+  const kept = keepDeviceDaysFrom(rows, D2);
+  expect("Cobros: se quedan el día cerrado y hoy (y el tardío de hoy)", kept.payments.map((r) => r.ref).join(","), "PG-2,PG-3,PG-T");
+  expect("Planilla: se quedan el día cerrado y hoy", kept.assignments.map((r) => r.itemId).join(","), "V-2,V-3");
+  expect("Rutas fijas siempre; diarias desde el cierre", kept.routes.map((r) => r.ref).join(","), `RUT-M,RUT-D-${COB.ref}-${D2}`);
+  expect("Banco y gastos sueltan lo viejo junto con los cobros", `${kept.bankMovements.length}/${kept.dayExpenseDrafts.length}/${kept.dailyLogs.length}`, "1/1/1");
+
+  const store = new Map();
+  const put = (k, v) => writeDevice(k, v);
+  const get = (k) => readDevice(k, null);
+  const session = (roleRef) =>
+    store.set("nexo-admin-session", JSON.stringify({ userRef: "USR-C", username: "c", roleRef, permissions: [], collectorRef: COB.ref }));
+  const seed = (closes) => {
+    put(DEMO_PAYMENTS_KEY, rows.payments);
+    put(DEMO_DAILY_ASSIGNMENTS_KEY, rows.assignments);
+    put(DEMO_ROUTES_KEY, rows.routes);
+    put(DEMO_COLLECTOR_DAY_EXPENSES_KEY, rows.dayExpenseDrafts);
+    put(DEMO_BANK_MOVEMENTS_KEY, rows.bankMovements);
+    put(DEMO_COLLECTOR_DAY_CLOSES_KEY, closes);
+    put(DEMO_LOANS_KEY, loans);
+    put(DEMO_CLIENTS_KEY, clients);
+  };
+  globalThis.window = {
+    localStorage: {
+      getItem: (k) => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => store.set(k, String(v)),
+      removeItem: (k) => store.delete(k),
+    },
+    dispatchEvent: () => true,
+  };
+  try {
+    store.set("nexo-demo-virgin-ops-v1", "1");
+    session("ROL-1");
+    seed([cie(D1), cie(D2)]);
+    put("nexo-demo-ops-assignments-queue", [{ ref: "V-1" }]);
+    expect("Con algo en cola: no suelta nada", releaseClosedDaysOnDevice(D3).reason, "queue_pending");
+    expect("Con algo en cola: los cobros siguen", get(DEMO_PAYMENTS_KEY).length, 4);
+    put("nexo-demo-ops-assignments-queue", []);
+
+    seed([cie(D2, { collectorRef: "COB-9" })]);
+    expect("Hoja sin cerrar (o reabierta, sin CIE-): no suelta nada", releaseClosedDaysOnDevice(D3).reason, "no_close");
+
+    seed([cie(D1), cie(D2)]);
+    const done = releaseClosedDaysOnDevice(D3);
+    expect("Cierre confirmado: suelta lo anterior al cierre", `${done.cutoff}/${done.released}`, `${D2}/5`);
+    expect("Quedan los cobros del día cerrado y de hoy", get(DEMO_PAYMENTS_KEY).map((r) => r.ref).join(","), "PG-2,PG-3,PG-T");
+    expect("Los cierres no se tocan (Inicial de hoy)", get(DEMO_COLLECTOR_DAY_CLOSES_KEY).length, 2);
+    expect("Clientes y fichas no se tocan", `${get(DEMO_CLIENTS_KEY).length}/${get(DEMO_LOANS_KEY).length}`, `${clients.length}/${loans.length}`);
+    expect("Otra vez el mismo día: nada más que soltar", releaseClosedDaysOnDevice(D3).released, 0);
+    const { loadDemoPaymentsBundle, loadDemoBankMovements } = await import("@/lib/demo-persist");
+    expect(
+      "Lo soltado no vuelve por la copia -bak (cobros ni banco)",
+      `${loadDemoPaymentsBundle().payments.map((r) => r.ref).sort().join(",")}/${loadDemoBankMovements().length}`,
+      "PG-2,PG-3,PG-T/1",
+    );
+
+    seed([cie(D1), cie(D2)]);
+    put(DEMO_PAYMENTS_KEY, [pay("PG-1", "P-M1", 10_000, D1)]);
+    releaseClosedDaysOnDevice(D3);
+    expect("Cobros nunca quedan en []: los viejos esperan al primero del día", get(DEMO_PAYMENTS_KEY).length, 1);
+
+    seed([cie(D1), cie(D2)]);
+    session("ROL-2");
+    expect("Supervisor / panel: no suelta nada", releaseClosedDaysOnDevice(D3).reason, "not_collector");
+  } finally {
+    delete globalThis.window;
+  }
+
+  const { readFileSync: readReleaseSrc } = await import("node:fs");
+  const rSrc = (path) => readReleaseSrc(new URL(path, import.meta.url), "utf8");
+  expect(
+    "Suelta al cerrar la jornada y en la 1.ª sincronización del día (cierre sin señal / 23:30)",
+    rSrc("../components/CollectorShell.tsx").includes("releaseClosedDaysOnDevice().released > 0") &&
+      rSrc("../lib/use-operational-demo-sync.ts").includes("tuneupDay && pullOk && isCollectorLiveDevice()"),
     true,
   );
 }
