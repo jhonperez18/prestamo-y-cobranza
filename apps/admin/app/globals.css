@@ -3076,6 +3076,18 @@
     .collector-history-planilla-head span {
       font-weight: 700;
     }
+    .collector-history-planilla.is-cierre-sheet .collector-history-planilla-head span {
+      text-align: center;
+      min-width: 0;
+      white-space: nowrap;
+    }
+    .collector-history-planilla.is-cierre-sheet .collector-history-planilla-head span:nth-child(2) {
+      text-align: left;
+    }
+    .collector-history-planilla.is-cierre-sheet .is-method {
+      font-size: 10px;
+      font-weight: 700;
+    }
     .collector-history-planilla ul {
       list-style: none;
       margin: 0;

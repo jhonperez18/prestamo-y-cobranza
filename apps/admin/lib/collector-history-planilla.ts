@@ -364,6 +364,18 @@ export function loanRegisteredTimeLabel(loan: Pick<LoanRow, "createdAt"> | undef
   return `${clock.hour}:${String(clock.minute).padStart(2, "0")}`;
 }
 
+/** Método en una letra (hojas de los botones del Cierre). */
+export function historyMethodInitial(method: HistoryPayMethod) {
+  if (method === "efectivo") return "E";
+  if (method === "banco") return "B";
+  if (method === "nequi") return "N";
+  if (method === "prestamo") return "P";
+  if (method === "renovado") return "R";
+  if (method === "doble") return "D";
+  if (method === "np") return "N/P";
+  return "—";
+}
+
 export function historyMethodLabel(method: HistoryPayMethod) {
   if (method === "nequi") return "Nequi";
   if (method === "banco") return "Banco";

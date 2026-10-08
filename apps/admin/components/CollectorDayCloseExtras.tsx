@@ -3,6 +3,7 @@
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { routeBlockStarts } from "@/lib/client-route-order";
 import {
+  historyMethodInitial,
   historyMethodLabel,
   type CollectorHistoryPlanillaRow,
 } from "@/lib/collector-history-planilla";
@@ -16,6 +17,8 @@ type Props = {
   planillaTitle?: string;
   /** Hoja de préstamos: columna «Monto» y renglones azules intercalados. */
   loansSheet?: boolean;
+  /** Hoja de un botón del Cierre: método en inicial (E / B / N / P) y títulos sobre su columna. */
+  cierreSheet?: boolean;
   prestamos: RouteExpenseLine[];
   prestamosTotal: number;
   otrosGastos?: RouteExpenseLine[];
@@ -36,6 +39,7 @@ export function CollectorDayCloseExtras({
   planillaRows,
   planillaTitle,
   loansSheet = false,
+  cierreSheet = false,
   prestamos,
   otrosGastos = [],
   otrosTotal = 0,
@@ -88,7 +92,13 @@ export function CollectorDayCloseExtras({
 
       {planillaRows.length > 0 ? (
         <div
-          className={loansSheet ? "collector-history-planilla is-loans-sheet" : "collector-history-planilla"}
+          className={[
+            "collector-history-planilla",
+            loansSheet ? "is-loans-sheet" : "",
+            cierreSheet ? "is-cierre-sheet" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
           aria-label={`Planilla ${dateLabel}`}
         >
           <p className="collector-history-planilla-title">
@@ -182,7 +192,7 @@ export function CollectorDayCloseExtras({
                           : `is-method is-pay-${row.method}`
                     }
                   >
-                    {historyMethodLabel(row.method)}
+                    {cierreSheet ? historyMethodInitial(row.method) : historyMethodLabel(row.method)}
                   </span>
                 </li>
               ))

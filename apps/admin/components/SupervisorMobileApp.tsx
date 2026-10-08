@@ -4357,6 +4357,7 @@ export function SupervisorMobileApp({
                       loansSheet={
                         cierreListKind === "prestamos" || cierreListKind === "prestamosBanco"
                       }
+                      cierreSheet
                       prestamos={[]}
                       prestamosTotal={0}
                     />
