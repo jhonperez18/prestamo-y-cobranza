@@ -142,6 +142,7 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
     },
     undefined,
   ) as LoanRow;
+  loan.createdAt = new Date().toISOString();
 
   if (draft.fundedBy === "efectivo") return markLoanFundedByEfectivo(loan);
   if (draft.fundedBy === "banco") return markLoanFundedByBanco(loan);

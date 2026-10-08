@@ -14,6 +14,8 @@ type Props = {
   planillaRows: CollectorHistoryPlanillaRow[];
   /** Título de la planilla (por defecto «Planilla {dateLabel}»). */
   planillaTitle?: string;
+  /** Hoja de préstamos: columna «Monto» y renglones azules intercalados. */
+  loansSheet?: boolean;
   prestamos: RouteExpenseLine[];
   prestamosTotal: number;
   otrosGastos?: RouteExpenseLine[];
@@ -33,6 +35,7 @@ export function CollectorDayCloseExtras({
   dateLabel,
   planillaRows,
   planillaTitle,
+  loansSheet = false,
   prestamos,
   otrosGastos = [],
   otrosTotal = 0,
@@ -84,7 +87,10 @@ export function CollectorDayCloseExtras({
       ) : null}
 
       {planillaRows.length > 0 ? (
-        <div className="collector-history-planilla" aria-label={`Planilla ${dateLabel}`}>
+        <div
+          className={loansSheet ? "collector-history-planilla is-loans-sheet" : "collector-history-planilla"}
+          aria-label={`Planilla ${dateLabel}`}
+        >
           <p className="collector-history-planilla-title">
             <strong>{planillaTitle ?? `Planilla ${dateLabel}`}</strong>
             {onToggleSearch ? (
@@ -133,7 +139,7 @@ export function CollectorDayCloseExtras({
           <div className="collector-history-planilla-head">
             <span>#</span>
             <span>Nombre</span>
-            <span>Cuota</span>
+            <span>{loansSheet ? "Monto" : "Cuota"}</span>
             <span>Hora</span>
             <span>Foto</span>
             <span>Método</span>

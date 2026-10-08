@@ -91,6 +91,8 @@ export type LoanRow = {
   fundedBy?: "nequi" | "efectivo" | "banco" | "cartera";
   /** ISO — evita que un pull obsoleto rebobine un edit fresco del padre. */
   updatedAt?: string;
+  /** ISO — momento en que se registró el préstamo (columna Hora del Cierre). */
+  createdAt?: string;
   /**
    * Solo en el celular del cobrador: PG- de este aparato ya sumados a `paid`.
    * No viaja a la nube; el pull trae la ficha del servidor sin esto.

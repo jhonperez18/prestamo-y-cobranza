@@ -2938,6 +2938,9 @@
       background: #8ec8f0;
       color: #111;
     }
+    .collector-history-planilla.is-loans-sheet li.is-lent:nth-child(even) {
+      background: #cfe6f8;
+    }
     .collector-history-planilla .is-method.is-pay-prestamo {
       color: #111;
       font-weight: 700;

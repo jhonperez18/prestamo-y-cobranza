@@ -122,6 +122,8 @@ export type LoanMirrorRow = {
   collection_alerts: number;
   terms_pending: boolean;
   updated_at: string;
+  /** Sin valor la nube pone la hora del alta (`default now()`). */
+  created_at?: string;
 };
 
 function createMirrorClient() {
@@ -220,6 +222,7 @@ export function loanRowToMirror(row: LoanRow): LoanMirrorRow | null {
     collection_alerts: Number(row.collectionAlerts) || 0,
     terms_pending: Boolean(row.termsPending),
     updated_at: row.updatedAt || new Date().toISOString(),
+    ...(row.createdAt ? { created_at: row.createdAt } : {}),
   };
 }
 
@@ -251,6 +254,7 @@ export function mirrorToLoanRow(row: LoanMirrorRow): LoanRow | null {
     collectionAlerts: Number(row.collection_alerts) || 0,
     termsPending: Boolean(row.terms_pending),
     updatedAt: row.updated_at || undefined,
+    createdAt: row.created_at || undefined,
     fundedBy: row.notes?.includes("[[fb:nequi]]")
       ? "nequi"
       : row.notes?.includes("[[fb:efectivo]]")

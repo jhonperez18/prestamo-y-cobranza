@@ -16,6 +16,7 @@ import { withPaymentEvidence } from "@/lib/payment-evidence-store";
 import { paymentTimeLabel } from "@/lib/payment-detail";
 import { paymentDisplayMethod } from "@/lib/payment-method";
 import { isLoanVoided, type ClientRow, type LoanRow, type PaymentRow } from "@/lib/mock-data";
+import { businessClockParts } from "@/lib/business-timezone";
 
 export { isPrestamoRutaExpense, operativeExpenseLines } from "@/lib/expense-lines";
 
@@ -352,6 +353,15 @@ function loanRefsStartedOnDate(dateIso: string, loans: LoanRow[]): Set<string> {
     if (started === dateIso && loan.ref) refs.add(loan.ref);
   }
   return refs;
+}
+
+/** Hora (Bogotá) en que se registró el préstamo, si fue ese mismo día. Sin registro: «—». */
+export function loanRegisteredTimeLabel(loan: Pick<LoanRow, "createdAt"> | undefined, dateIso: string) {
+  const at = loan?.createdAt ? new Date(loan.createdAt) : null;
+  if (!at || Number.isNaN(at.getTime())) return "—";
+  const clock = businessClockParts(at);
+  if (clock.dateIso !== dateIso) return "—";
+  return `${clock.hour}:${String(clock.minute).padStart(2, "0")}`;
 }
 
 export function historyMethodLabel(method: HistoryPayMethod) {

@@ -716,6 +716,16 @@ expect("Planilla: no efectivo de T se ve «Banco»", metodoDe("CLI-T1"), "banco"
 expect("Planilla: no efectivo de A se ve «Nequi»", metodoDe("CLI-A1"), "nequi");
 const carteraBack = mirrorToLoanRow(loanRowToMirror(carteraT));
 expect("Cartera: la marca viaja a la nube", carteraBack?.fundedBy ?? null, "cartera");
+{
+  const { loanRegisteredTimeLabel } = await import("@/lib/collector-history-planilla");
+  const stamped = { ...carteraT, createdAt: "2026-10-08T14:05:00.000Z" };
+  const back = mirrorToLoanRow(loanRowToMirror(stamped));
+  expect("Préstamo: la hora de registro viaja a la nube", back?.createdAt ?? null, stamped.createdAt);
+  expect("Préstamo: hora del Cierre en Bogotá", loanRegisteredTimeLabel(back, "2026-10-08"), "9:05");
+  expect("Préstamo: otro día sin hora", loanRegisteredTimeLabel(back, "2026-10-09"), "—");
+  expect("Préstamo viejo sin registro: «—»", loanRegisteredTimeLabel(carteraT, "2026-10-08"), "—");
+  expect("Préstamo viejo: no manda created_at vacío", "created_at" in loanRowToMirror(carteraT), false);
+}
 
 // 9. Pagar cuota / Abono desde el panel: «Solo sistema» no toca al cobrador;
 //    «Cobrador de la ruta» en efectivo entra a su caja de hoy (lado de la ruta del cliente).

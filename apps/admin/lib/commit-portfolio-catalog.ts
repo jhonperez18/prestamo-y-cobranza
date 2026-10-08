@@ -643,6 +643,7 @@ export function commitCreateLoan(
   );
   const loanReady = stampCatalogRow({
     ...pinned,
+    createdAt: new Date().toISOString(),
     installment: installment > 0 ? installment : pinned.installment,
     balance: Math.max(0, Number(pinned.total) || Number(draft.total) || Number(draft.capital) || 0),
   });

@@ -32,6 +32,7 @@ import {
   expensesWithDayLoans,
   isPrestamoRutaExpense,
   operativeExpenseLines,
+  loanRegisteredTimeLabel,
   splitDayExpenses,
   type CollectorHistoryPlanillaRow,
   type DayLoanDisbursementRow,
@@ -3039,7 +3040,7 @@ export function SupervisorMobileApp({
         ? `${client.name} ${client.lastName}`.trim()
         : (loan?.client || "").trim() || fallbackName,
       amount: Number(capital) || 0,
-      time: "—",
+      time: cajaHistoryDayIso ? loanRegisteredTimeLabel(loan, cajaHistoryDayIso) : "—",
       evidence: [],
       method: "prestamo",
       lentToday: true,
@@ -4353,6 +4354,9 @@ export function SupervisorMobileApp({
                       dateLabel={cajaHistoryDayIso ? isoToDisplay(cajaHistoryDayIso) : ""}
                       planillaRows={cierrePlanillaRows}
                       planillaTitle={CIERRE_LIST_TITLE[cierreListKind]}
+                      loansSheet={
+                        cierreListKind === "prestamos" || cierreListKind === "prestamosBanco"
+                      }
                       prestamos={[]}
                       prestamosTotal={0}
                     />
