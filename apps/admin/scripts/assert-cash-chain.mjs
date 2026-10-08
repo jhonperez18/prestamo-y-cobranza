@@ -4631,6 +4631,13 @@ console.log("— Cupo del aparato —");
     "m2:pendiente:A,m3:cobrado:A,a1:omitido:S",
   );
   const { readFileSync: readReopenSrc } = await import("node:fs");
+  const supMobileSrc = readReopenSrc(new URL("../components/SupervisorMobileApp.tsx", import.meta.url), "utf8");
+  expect(
+    "Cobrado hoy · botón Nequi (A) / Banco: abre solo los cobros de ese medio, nunca el recaudo entero",
+    supMobileSrc.includes("const routeNequiBoxMethod: PaymentMethod = openRouteDigitalPool;") &&
+      supMobileSrc.includes("onClick={() => openCobrosReport(routeNequiBoxMethod)}"),
+    true,
+  );
   const opsReopenSrc = readReopenSrc(new URL("../lib/supabase/ops-mirror.ts", import.meta.url), "utf8");
   expect(
     "Nube: CIE- viejo no pisa la reapertura; visita sellada vieja no cierra T; el pull la aplica",

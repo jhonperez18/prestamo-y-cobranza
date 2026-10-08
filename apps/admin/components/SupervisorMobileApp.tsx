@@ -2231,8 +2231,8 @@ export function SupervisorMobileApp({
   const routeMeansShowBancoValue = openRouteIsA;
   const routeDigitalAmount = (openRoute?.cobradoBanco ?? 0) + (openRoute?.cobradoNequi ?? 0);
   const routeNequiBoxAmount = routeDigitalAmount;
-  const routeNequiBoxMethod: PaymentMethod | null =
-    openRouteIsA && (openRoute?.cobradoNequi ?? 0) > 0 ? null : "banco";
+  /** Botón digital de «Cobrado hoy»: solo los cobros de ese medio (A → Nequi). Nunca el recaudo entero. */
+  const routeNequiBoxMethod: PaymentMethod = openRouteDigitalPool;
 
   /** N/P solo de la ruta abierta (nunca mezclar M con T/A/N). */
   const openRouteNpByDay = useMemo(() => {
