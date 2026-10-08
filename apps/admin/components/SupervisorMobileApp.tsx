@@ -50,6 +50,7 @@ import {
   clientsOnRouteSorted,
   compareClientsByRoutePosition,
   compareRouteNames,
+  compareRoutePosition,
   nextRouteOrder,
   routeBlockStarts,
   sameRoute,
@@ -291,23 +292,8 @@ type CierreListKind =
   | "efectivoCadena"
   | "prestamosBanco"
   | "np";
-/** `mid` = columna del medio en las listas de tres columnas. */
-type CierreListLine = { key: string; label: string; mid?: string; amount: number };
-function cierrePayLine(pay: PaymentRow): CierreListLine {
-  return {
-    key: pay.ref,
-    label: pay.client,
-    mid: pay.paidTime || "—",
-    amount: Number(pay.amount) || 0,
-  };
-}
-const CIERRE_LIST_COLS: Partial<Record<CierreListKind, readonly [string, string, string]>> = {
-  banco: ["Cliente", "Hora", "Valor"],
-  bancoRuta: ["Cliente", "Hora", "Valor"],
-  prestamos: ["Cliente", "Préstamo", "Valor"],
-  prestamosBanco: ["Cliente", "Préstamo", "Valor"],
-  np: ["Cliente", "#", "Cuota"],
-};
+/** Renglón de la lista de Gastos del Cierre (los demás botones abren la planilla). */
+type CierreListLine = { key: string; label: string; amount: number };
 const CIERRE_LIST_TITLE: Record<CierreListKind, string> = {
   prestamos: "Préstamos del día",
   gastos: "Gastos del día",
@@ -2989,10 +2975,6 @@ export function SupervisorMobileApp({
     ? historyDayChainT.ownGastos
     : openRouteHistoryDayExpenseSplit.otrosTotal;
 
-  const cierreBancoT = historyDayChainT
-    ? historyDayChainT.ownDigitalPayments.map(cierrePayLine)
-    : [];
-
   /** Banco de M / N: los mismos cobros que suma el botón (historial Banco de esa ruta). */
   const cierreBancoRutaPayments = historyDayChainT
     ? null
@@ -3001,8 +2983,6 @@ export function SupervisorMobileApp({
       : openRouteHistoryIndependentDay && !openRouteIsA
         ? openRouteHistoryIndependentDay.collected.digitalPayments
         : null;
-  const cierreBancoRuta = (cierreBancoRutaPayments ?? []).map(cierrePayLine);
-
   /** Nequi de A: los mismos cobros que suma el botón (historial Nequi de A). */
   const cierreNequiRutaPayments =
     openRouteIsA && openRouteHistoryIndependentDay
@@ -3034,36 +3014,43 @@ export function SupervisorMobileApp({
   const cierreListKind =
     cierreList && cierreList.day === cajaHistoryDayIso ? cierreList.kind : null;
   const cierreListLines: CierreListLine[] =
-    cierreListKind === "prestamos"
-      ? cierrePrestamos.map((line, index) => {
-          const loanRef = String(line.loanRef || "").trim();
-          const loan = loanRef ? loans.find((row) => row.ref === loanRef) : undefined;
-          const fromLabel = line.label.split(" · ").slice(loanRef ? 2 : 1).join(" · ");
-          return {
-            key: `${loanRef || line.label}:${index}`,
-            label: (loan?.client || "").trim() || fromLabel || line.label,
-            mid: loanRef || "—",
-            amount: Number(line.amount) || 0,
-          };
-        })
-      : cierreListKind === "gastos"
-        ? cierreGastos.map((line, index) => ({
-            key: `${line.id}:${line.lineKey || line.label}:${index}`,
-            label: line.label,
-            amount: Number(line.amount) || 0,
-          }))
-        : cierreListKind === "banco"
-          ? cierreBancoT
-          : cierreListKind === "bancoRuta"
-            ? cierreBancoRuta
-            : cierreListKind === "prestamosBanco"
-              ? cierreBancoLoans.map((row) => ({
-                  key: row.loanRef,
-                  label: row.clientName,
-                  mid: row.loanRef,
-                  amount: row.capital,
-                }))
-              : [];
+    cierreListKind === "gastos"
+      ? cierreGastos.map((line, index) => ({
+          key: `${line.id}:${line.lineKey || line.label}:${index}`,
+          label: line.label,
+          amount: Number(line.amount) || 0,
+        }))
+      : [];
+  /** Préstamo del día como renglón de la planilla («Prestado», capital). */
+  const cierreLoanPlanillaRow = (
+    loanRef: string,
+    capital: number,
+    fallbackName: string,
+    index: number,
+  ): CollectorHistoryPlanillaRow => {
+    const loan = loanRef ? loans.find((row) => row.ref === loanRef) : undefined;
+    const client = clients.find((row) => row.ref === loan?.clientRef);
+    return {
+      key: `prestamo:${loanRef || fallbackName}:${index}`,
+      clientRef: client?.ref || loan?.clientRef || "",
+      route: String(client?.route || "").trim(),
+      order: client?.routeOrder && client.routeOrder > 0 ? client.routeOrder : null,
+      name: client
+        ? `${client.name} ${client.lastName}`.trim()
+        : (loan?.client || "").trim() || fallbackName,
+      amount: Number(capital) || 0,
+      time: "—",
+      evidence: [],
+      method: "prestamo",
+      lentToday: true,
+    };
+  };
+  const cierreLoanPlanillaRows = (rows: CollectorHistoryPlanillaRow[]) =>
+    rows.sort(
+      (a, b) =>
+        compareRoutePosition(a.route, a.order, b.route, b.order) ||
+        a.name.localeCompare(b.name, "es"),
+    );
   const toggleCierreList = (kind: CierreListKind) => {
     if (!cajaHistoryDayIso) return;
     const day = cajaHistoryDayIso;
@@ -3117,16 +3104,8 @@ export function SupervisorMobileApp({
     openRouteHistoryDayExpenses,
   ]);
   /** N/P del día de esta ruta: los mismos renglones «N/P» de su planilla. */
-  const cierreNpLines: CierreListLine[] = openRouteHistoryDayPlanilla
-    .filter((row) => row.method === "np")
-    .map((row) => ({
-      key: row.key,
-      label: row.name,
-      mid: row.order != null ? String(row.order) : "—",
-      amount: Number(row.amount) || 0,
-    }));
-  const cierreShownLines = cierreListKind === "np" ? cierreNpLines : cierreListLines;
-  /** Botones de cobro y N/P: la lista sale con las columnas de la planilla del día. */
+  const cierreNpRows = openRouteHistoryDayPlanilla.filter((row) => row.method === "np");
+  /** Cobros, préstamos y N/P: la lista sale con las columnas de la planilla del día. */
   const cierrePlanillaPayments: PaymentRow[] | null =
     cierreListKind === "efectivo"
       ? cierreEfectivoPayments
@@ -3141,8 +3120,22 @@ export function SupervisorMobileApp({
               : null;
   const cierrePlanillaRows: CollectorHistoryPlanillaRow[] | null =
     cierreListKind === "np"
-      ? openRouteHistoryDayPlanilla.filter((row) => row.method === "np")
-      : cierrePlanillaPayments && cajaHistoryDayIso
+      ? cierreNpRows
+      : cierreListKind === "prestamos"
+        ? cierreLoanPlanillaRows(
+            cierrePrestamos.map((line, index) => {
+              const loanRef = String(line.loanRef || "").trim();
+              const fromLabel = line.label.split(" · ").slice(loanRef ? 2 : 1).join(" · ");
+              return cierreLoanPlanillaRow(loanRef, Number(line.amount) || 0, fromLabel || line.label, index);
+            }),
+          )
+        : cierreListKind === "prestamosBanco"
+          ? cierreLoanPlanillaRows(
+              cierreBancoLoans.map((row, index) =>
+                cierreLoanPlanillaRow(row.loanRef, row.capital, row.clientName, index),
+              ),
+            )
+          : cierrePlanillaPayments && cajaHistoryDayIso
         ? buildCollectorHistoryPlanillaRows({
             dateIso: cajaHistoryDayIso,
             dispatched: [],
@@ -4322,7 +4315,7 @@ export function SupervisorMobileApp({
                     <span>N</span>
                     <span>/</span>
                     <span>P</span>
-                    <em className="collector-cierre-np-count">{cierreNpLines.length}</em>
+                    <em className="collector-cierre-np-count">{cierreNpRows.length}</em>
                   </button>
                   <div className="is-saldo">
                     <span>Caja (efectivo − gastos − préstamos)</span>
@@ -4336,23 +4329,13 @@ export function SupervisorMobileApp({
                     aria-label={CIERRE_LIST_TITLE[cierreListKind]}
                   >
                     <p className="collector-cierre-drop-title">{CIERRE_LIST_TITLE[cierreListKind]}</p>
-                    {cierreShownLines.length === 0 ? (
+                    {cierreListLines.length === 0 ? (
                       <p className="collector-cierre-drop-empty">{CIERRE_LIST_EMPTY[cierreListKind]}</p>
                     ) : (
-                      <ul className={CIERRE_LIST_COLS[cierreListKind] ? "is-cols-3" : undefined}>
-                        {CIERRE_LIST_COLS[cierreListKind] ? (
-                          <li className="is-head">
-                            {CIERRE_LIST_COLS[cierreListKind]?.map((title) => (
-                              <span key={title}>{title}</span>
-                            ))}
-                          </li>
-                        ) : null}
-                        {cierreShownLines.map((line) => (
+                      <ul>
+                        {cierreListLines.map((line) => (
                           <li key={line.key}>
                             <span className="is-label">{line.label}</span>
-                            {CIERRE_LIST_COLS[cierreListKind] ? (
-                              <span className="is-time">{line.mid}</span>
-                            ) : null}
                             <b>{money(line.amount, { symbol: false })}</b>
                           </li>
                         ))}
@@ -4376,14 +4359,6 @@ export function SupervisorMobileApp({
                   )}
                 </div>
               ) : null}
-              {openRouteIsA ? null : (
-                <CollectorDayCloseExtras
-                  dateLabel={cajaHistoryDayIso ? isoToDisplay(cajaHistoryDayIso) : ""}
-                  planillaRows={openRouteHistoryDayPlanilla}
-                  prestamos={[]}
-                  prestamosTotal={0}
-                />
-              )}
             </section>
           ) : detailMode === "historial-dia" ? (
             <p className="ficha-empty">Sin datos de cierre para ese día.</p>
