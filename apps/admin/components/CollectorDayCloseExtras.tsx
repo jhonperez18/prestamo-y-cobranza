@@ -145,6 +145,7 @@ export function CollectorDayCloseExtras({
                     className={[
                       row.method === "vacio" ? "is-vacio" : "",
                       row.method === "prestamo" ? "is-lent" : "",
+                      row.method === "renovado" ? "is-renewed" : "",
                       routeStarts[index] ? "is-route-start" : "",
                     ]
                       .filter(Boolean)

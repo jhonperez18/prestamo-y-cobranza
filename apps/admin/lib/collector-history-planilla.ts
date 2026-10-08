@@ -1,13 +1,15 @@
-import { assignmentRouteName } from "@/lib/collector-dispatch-sync";
+import { assignmentRouteName, LOAN_RENEWED_TODAY_REASON } from "@/lib/collector-dispatch-sync";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
 import { compareRoutePosition, sameRoute } from "@/lib/client-route-order";
 import { syncLoan, displayToIso } from "@/lib/loan-preview";
 import {
+  isCashlessRenewal,
   loanDisbursementIsoDate,
   loanDisbursementSource,
   loanIsExistingPortfolio,
 } from "@/lib/nequi-pool";
+import { loanRenewedInto } from "@/lib/loan-renewal-marks";
 import { isLoanTopUpLine, isPrestamoRutaExpense } from "@/lib/expense-lines";
 import { isAssignmentAwaitingLoan, planillaLiveCuota } from "@/lib/planilla-display";
 import { withPaymentEvidence } from "@/lib/payment-evidence-store";
@@ -24,7 +26,8 @@ export type HistoryPayMethod =
   | "doble"
   | "np"
   | "vacio"
-  | "prestamo";
+  | "prestamo"
+  | "renovado";
 
 export type CollectorHistoryPlanillaRow = {
   key: string;
@@ -207,6 +210,7 @@ export function dayLoanDisbursementRows(
     const loanRef = String(line.loanRef || "").trim();
     if (!loanRef || byLoan.has(loanRef)) continue;
     const loan = loans.find((row) => row.ref === loanRef);
+    if (isCashlessRenewal(loan)) continue;
     if (scope.liveDay && !isLoanTopUpLine(line)) {
       // Sin ficha viva (dada de baja) no salió plata de la caja.
       if (!loan || !loanLeftCollectorCash(loan)) continue;
@@ -356,6 +360,7 @@ export function historyMethodLabel(method: HistoryPayMethod) {
   if (method === "doble") return "Doble";
   if (method === "np") return "N/P";
   if (method === "prestamo") return "Prestado";
+  if (method === "renovado") return "Renovado";
   if (method === "vacio") return "—";
   return "Efectivo";
 }
@@ -379,6 +384,7 @@ export function buildCollectorHistoryPlanillaRows(input: {
     .filter((row) => !row.voidedAt?.trim())
     .map((row) => withPaymentEvidence(row));
   const used = new Set<string>();
+  const renewedLoanRefs = new Set<string>();
   const rows: CollectorHistoryPlanillaRow[] = [];
 
   const visitClientRefs = new Set(
@@ -430,6 +436,24 @@ export function buildCollectorHistoryPlanillaRows(input: {
     // Visita sin pago de un cliente que recibió préstamo ese día (p. ej. «Prestar»):
     // la representa su fila «Prestado». Con pago quedan las dos (cuota + préstamo).
     if (grouped.length === 0 && lentClientRefs.has(item.clientRef)) continue;
+    if (grouped.length === 0 && item.visitStatus === "omitido" && item.skipReason === LOAN_RENEWED_TODAY_REASON) {
+      const renewedInto = rawLoan ? loanRenewedInto(rawLoan) : null;
+      const renewal = renewedInto ? loans.find((row) => row.ref === renewedInto) : undefined;
+      if (renewal) renewedLoanRefs.add(renewal.ref);
+      rows.push({
+        key: `${item.itemId}-${item.dispatchDate}`,
+        clientRef: item.clientRef,
+        route: assignmentRouteName(item, clients),
+        order: visitOrder(item, clients),
+        name: visitFullName(item, clients),
+        amount: renewal ? Math.trunc(Number(renewal.capital) || 0) : null,
+        time: "—",
+        evidence: [],
+        method: "renovado",
+        lentToday: false,
+      });
+      continue;
+    }
     for (const pay of grouped) used.add(pay.ref);
     rows.push({
       key: `${item.itemId}-${item.dispatchDate}`,
@@ -490,6 +514,7 @@ export function buildCollectorHistoryPlanillaRows(input: {
     if (!isPrestamoRutaExpense(line)) continue;
     const loanRef = String(line.loanRef || "").trim();
     const loan = loanRef ? loans.find((row) => row.ref === loanRef) : undefined;
+    if (isCashlessRenewal(loan)) continue;
     const clientRef = loan?.clientRef || "";
     if (!clientRef) continue;
     // Regla de oro: no pintar prestamos ajenos aunque el gasto se filtró mal.
@@ -521,7 +546,9 @@ export function buildCollectorHistoryPlanillaRows(input: {
   // Alta del día sin gasto en cola: solo si el cliente está en ESTA planilla.
   for (const loan of loans) {
     if (!loansStartedToday.has(loan.ref)) continue;
-    if (loanIsExistingPortfolio(loan)) continue;
+    const renewal = isCashlessRenewal(loan);
+    if (loanIsExistingPortfolio(loan) && !renewal) continue;
+    if (renewal && renewedLoanRefs.has(loan.ref)) continue;
     if (!sheetClientRefs.has(loan.clientRef)) continue;
     const key = `prestamo:${loan.ref}`;
     if (prestamoKeys.has(key)) continue;
@@ -539,8 +566,8 @@ export function buildCollectorHistoryPlanillaRows(input: {
       amount: Math.trunc(Number(loan.capital) || 0),
       time: "—",
       evidence: [],
-      method: "prestamo",
-      lentToday: true,
+      method: renewal ? "renovado" : "prestamo",
+      lentToday: !renewal,
     });
   }
 

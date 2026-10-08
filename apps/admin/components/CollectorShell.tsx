@@ -110,7 +110,7 @@ import { usePlanillaDayRollover } from "@/lib/planilla-day-sync";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { todayIso } from "@/lib/daily-dispatch";
 import { deletedLoanRefRows } from "@/lib/deleted-ids";
-import { buildRenewalLoans } from "@/lib/loan-renew";
+import { commitLoanRenewal } from "@/lib/commit-loan-renewal";
 import {
   CollectorMobileApp,
   type CollectorCloseDayPayload,
@@ -453,81 +453,38 @@ export function CollectorShell({ session, onLogout }: Props) {
 
   async function renewCollectorLoan(loanRef: string) {
     if (!collector) return;
-    const loan = loans.find((row) => row.ref === loanRef);
-    if (!loan) {
-      showToast("Préstamo no encontrado.");
-      return;
-    }
     const newRef = nextLoanCode([...loans, ...deletedLoanRefRows()]);
-    // Cobrador: renovación siempre sale de efectivo y resta de su caja.
-    const result = buildRenewalLoans(loan, newRef, todayIso(), "efectivo");
-    if (!result) {
-      showToast("La renovación se activa cuando se cumpla el plazo del préstamo.");
+    const renewal = commitLoanRenewal(
+      { loans, clients, routes, collectors, assignments: dailyAssignments, payments },
+      loanRef,
+      newRef,
+      todayIso(),
+    );
+    if (!renewal.ok) {
+      showToast(renewal.error);
       return;
     }
-    const nextLoans = [result.created, ...loans.map((row) => (row.ref === loanRef ? result.closed : row))];
-    const nextClients = clients.map((entry) => {
-      if (entry.ref !== loan.clientRef) return entry;
-      return {
-        ...entry,
-        total: entry.total + (result.created.total ?? 0),
-        pending: Math.max(0, entry.pending - loan.balance + (result.created.total ?? 0)),
-      };
-    });
-    setLoans(nextLoans);
-    setClients(nextClients);
-    writeDemoJson(DEMO_LOANS_KEY, nextLoans);
-    writeDemoJson(DEMO_CLIENTS_KEY, nextClients);
-    const planilla = syncPermanentRoutePlanilla(
-      todayIso(),
-      routes,
-      nextClients,
-      nextLoans,
-      collectors,
-      dailyAssignments,
-      payments,
-    );
-    setDailyAssignments(planilla.assignments);
-    setRoutes(planilla.routes);
-    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, planilla.assignments);
-    writeDemoJson(DEMO_ROUTES_KEY, planilla.routes);
-    queueLoansMirror([result.closed, result.created]);
-    const renewedClient = nextClients.find((entry) => entry.ref === loan.clientRef);
-    if (renewedClient) queueClientMirror(renewedClient);
-    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, planilla.assignments));
-    queueRoutesMirror(planilla.routes);
-    const clientRow = nextClients.find((c) => c.ref === loan.clientRef);
-    const routeRef =
-      myRoutes.find((row) => row.name === clientRow?.route)?.ref ||
-      myRoutes[0]?.ref ||
-      "";
-    const nextDrafts = appendCashDisbursementExpense(dayExpenseDrafts, {
-      collectorRef: collector.ref,
-      collectorName: collector.name,
-      date: todayIso(),
-      routeRef,
-      loan: result.created,
-    });
-    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
-    setDayExpenseDrafts(nextDrafts);
-    const expenseDraft = nextDrafts.find(
-      (row) => row.ref === `GAS-${collector.ref}-${todayIso()}`,
-    );
-    if (expenseDraft) queueDayExpenseMirror(expenseDraft);
-    showToast(
-      `Renovación ${newRef}: capital ${money(result.created.capital)} sale de efectivo · subiendo…`,
-    );
+    setLoans(renewal.loans);
+    setClients(renewal.clients);
+    writeDemoJson(DEMO_LOANS_KEY, renewal.loans);
+    writeDemoJson(DEMO_CLIENTS_KEY, renewal.clients);
+    setDailyAssignments(renewal.assignments);
+    setRoutes(renewal.routes);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, renewal.assignments);
+    writeDemoJson(DEMO_ROUTES_KEY, renewal.routes);
+    queueLoansMirror([renewal.closed, renewal.created]);
+    if (renewal.client) queueClientMirror(renewal.client);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, renewal.assignments));
+    queueRoutesMirror(renewal.routes);
+    const summary = `Renovado: debía ${money(renewal.created.capital)} + 20 % = ${money(renewal.created.total ?? 0)} · cuota desde mañana`;
+    showToast(`${summary} · subiendo…`);
     try {
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
       await flushOpsMirrorQueues();
-      showToast(
-        `Renovación ${newRef} lista · capital ${money(result.created.capital)}.`,
-      );
+      showToast(summary);
     } catch {
-      showToast(
-        `Renovación ${newRef} guardada (sin nube; en este aparato ya está).`,
-      );
+      showToast("Renovado en este aparato; se sube solo a la nube.");
     }
   }
 

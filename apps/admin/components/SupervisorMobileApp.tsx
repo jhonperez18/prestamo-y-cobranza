@@ -75,6 +75,7 @@ import {
   paidThousandsLabel,
 } from "@/lib/planilla-display";
 import { reloanStateForVisit, type ReloanState } from "@/lib/loan-reloan";
+import { loanRenewalOf } from "@/lib/loan-renewal-marks";
 import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
@@ -307,6 +308,7 @@ type RouteDetailMode =
   | "totales"
   | "planilla"
   | "prestamos"
+  | "renovados"
   | "gastos"
   | "cobros"
   | "historial"
@@ -653,6 +655,7 @@ function PlanillaTable({
             const rowClass = [
               routeStarts[index] ? "is-route-start" : "",
               row.reloan.granted ? "is-reloan" : "",
+              row.reloan.renewed ? "is-renewed" : "",
               row.awaitingLoan ? "is-awaiting-loan" : "",
             ]
               .filter(Boolean)
@@ -667,7 +670,11 @@ function PlanillaTable({
                   {row.awaitingLoan ? "—" : money(row.saldo, { symbol: false })}
                 </td>
                 <td className="is-metodo">
-                  {methodLabel &&
+                  {row.reloan.renewed ? (
+                    <em className="supervisor-planilla-method is-pay-renovado" title="Renovado: sin plata">
+                      R
+                    </em>
+                  ) : methodLabel &&
                   (row.visitStatus === "cobrado" || row.visitStatus === "parcial") ? (
                     <em
                       className={`supervisor-planilla-method ${methodTone}`}
@@ -703,6 +710,13 @@ function PlanillaTable({
                       title={`Préstamo ${row.reloan.granted.ref} · capital ${money(row.reloan.granted.capital)}`}
                     >
                       Préstamo {money(row.reloan.granted.capital, { symbol: false })}
+                    </span>
+                  ) : row.reloan.renewed ? (
+                    <span
+                      className="supervisor-reloan-tag is-renewal"
+                      title={`Renovado ${row.reloan.renewed.ref} · debía ${money(row.reloan.renewed.capital)} + 20 % · sin plata · cuota desde mañana`}
+                    >
+                      Renovado {money(row.reloan.renewed.capital, { symbol: false })}
                     </span>
                   ) : (
                     <span
@@ -1003,7 +1017,7 @@ function SupervisorClientFicha({
 }
 
 function isRenewalLoan(loan: LoanRow) {
-  return Boolean(loan.notes?.toLowerCase().includes("renovación"));
+  return Boolean(loanRenewalOf(loan));
 }
 
 function cajaDelDia(
@@ -4311,9 +4325,7 @@ export function SupervisorMobileApp({
                   <b>{money(openRoute.saldoInicial, { symbol: false })}</b>
                 </div>
                 <div
-                  className={`supervisor-mobile-sheet-means${
-                    routeMeansShowNequiValue && routeMeansShowBancoValue ? "" : " is-two"
-                  }`}
+                  className="supervisor-mobile-sheet-means"
                   aria-label="Desglose por medio de pago"
                 >
                   <div className="is-title-means">
@@ -4352,6 +4364,16 @@ export function SupervisorMobileApp({
                   ) : null}
                   <button
                     type="button"
+                    className="is-renewal-means is-tap-means"
+                    onClick={() => setDetailMode("renovados")}
+                    aria-label="Ver renovados del día"
+                    title="Renovados hoy: lo que debía + 20 % · sin plata"
+                  >
+                    <span>Renovado</span>
+                    <b>{openRoute.renewals.length}</b>
+                  </button>
+                  <button
+                    type="button"
                     className="is-total-means is-tap-means is-final-box"
                     onClick={() => openCobrosReport(null)}
                     aria-label="Ver todos los cobros"
@@ -4360,28 +4382,30 @@ export function SupervisorMobileApp({
                     <b>{money(openRoute.cobradoHoy, { symbol: false })}</b>
                   </button>
                 </div>
-                <button
-                  type="button"
-                  className="supervisor-mobile-sheet-row is-tap is-gastos is-primary-row"
-                  onClick={() => setDetailMode("gastos")}
-                  aria-label="Ver reporte de gastos del día"
-                >
-                  <span className="is-primary-title">Gasto</span>
-                  <b>{money(openRoute.gastosHoy, { symbol: false })}</b>
-                </button>
-                <button
-                  type="button"
-                  className="supervisor-mobile-sheet-row is-tap is-prestamo-ruta is-primary-row"
-                  disabled={openRoute.prestamosHoy <= 0}
-                  onClick={() => {
-                    if (openRoute.prestamosHoy <= 0) return;
-                    setDetailMode("prestamos");
-                  }}
-                  aria-label="Ver préstamos del día en esta ruta"
-                >
-                  <span className="is-primary-title">Préstamo</span>
-                  <b>{money(openRoute.prestamosHoy, { symbol: false })}</b>
-                </button>
+                <div className="supervisor-mobile-sheet-pair">
+                  <button
+                    type="button"
+                    className="supervisor-mobile-sheet-row is-tap is-gastos is-primary-row"
+                    onClick={() => setDetailMode("gastos")}
+                    aria-label="Ver reporte de gastos del día"
+                  >
+                    <span className="is-primary-title">Gasto</span>
+                    <b>{money(openRoute.gastosHoy, { symbol: false })}</b>
+                  </button>
+                  <button
+                    type="button"
+                    className="supervisor-mobile-sheet-row is-tap is-prestamo-ruta is-primary-row"
+                    disabled={openRoute.prestamosHoy <= 0}
+                    onClick={() => {
+                      if (openRoute.prestamosHoy <= 0) return;
+                      setDetailMode("prestamos");
+                    }}
+                    aria-label="Ver préstamos del día en esta ruta"
+                  >
+                    <span className="is-primary-title">Préstamo</span>
+                    <b>{money(openRoute.prestamosHoy, { symbol: false })}</b>
+                  </button>
+                </div>
                 <div className="supervisor-mobile-cuadre is-four" aria-label="Cuadre de caja">
                   <div className="supervisor-mobile-cuadre-title is-primary-title">Cuadre</div>
                   <div>
@@ -4529,6 +4553,34 @@ export function SupervisorMobileApp({
                   snDay === today ? todayDisplay : isoToDisplay(snDay)
                 }
               />
+            </>
+          ) : detailMode === "renovados" ? (
+            <>
+              <p className="supervisor-mobile-detail-meta">
+                Renovados hoy · {openRoute.renewals.length} · Ruta {openRoute.routeName}
+              </p>
+              {openRoute.renewals.length === 0 ? (
+                <p className="ficha-empty">Sin renovados hoy en esta ruta.</p>
+              ) : (
+                <ul className="supervisor-mobile-list is-loans-today is-renewals-today">
+                  {openRoute.renewals.map((loan, index) => {
+                    const client = clients.find((row) => row.ref === loan.clientRef);
+                    const name = client
+                      ? `${client.name} ${client.lastName}`.trim()
+                      : (loan.client || "").trim() || loan.ref;
+                    return (
+                      <li
+                        key={loan.ref}
+                        title={`${loan.ref} · renovación de ${loanRenewalOf(loan) ?? "—"} · debía ${money(loan.capital)} + 20 % = ${money(loan.total ?? loan.capital)} · sin plata`}
+                      >
+                        <strong className="is-name">{name}</strong>
+                        <b className="is-amount">{money(loan.capital, { symbol: false })}</b>
+                        <span className="is-kind is-count">{index + 1}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
             </>
           ) : detailMode === "planilla" ? (
             <>

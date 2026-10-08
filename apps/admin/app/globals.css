@@ -2936,6 +2936,16 @@
       color: #111;
       font-weight: 700;
     }
+    .collector-history-planilla li.is-renewed,
+    .collector-history-planilla li.is-renewed:nth-child(odd),
+    .collector-history-planilla li.is-renewed:nth-child(even) {
+      background: #fde68a;
+      color: #111;
+    }
+    .collector-history-planilla .is-method.is-pay-renovado {
+      color: #92400e;
+      font-weight: 700;
+    }
     .collector-history-loans {
       margin: 12px 0 0;
       padding: 10px 12px;
@@ -5666,6 +5676,10 @@
     .supervisor-mobile-sheet-means .is-pay-banco b {
       color: #1d4ed8;
     }
+    .supervisor-mobile-sheet-means .is-renewal-means b {
+      color: #92400e;
+      font-weight: 700;
+    }
     .supervisor-mobile-sheet-row.is-hint span {
       font-size: 10px;
       font-weight: 500;
@@ -5691,6 +5705,21 @@
     .supervisor-mobile-sheet-row.is-prestamo-ruta .is-primary-title,
     .supervisor-mobile-sheet-row.is-prestamo-ruta b {
       color: #111;
+    }
+    .supervisor-mobile-sheet-pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      border-bottom: 1px solid #e8efeb;
+    }
+    .supervisor-mobile-sheet-pair > button.supervisor-mobile-sheet-row {
+      border-bottom: 0;
+      min-width: 0;
+    }
+    .supervisor-mobile-sheet-pair > button.supervisor-mobile-sheet-row + button.supervisor-mobile-sheet-row {
+      border-left: 1px solid #e8efeb;
+    }
+    .supervisor-mobile-sheet-pair > .supervisor-mobile-sheet-row.is-prestamo-ruta b {
+      color: #1d4ed8;
     }
     .supervisor-mobile-cuadre-title,
     .supervisor-mobile-cuadre-title.is-primary-title {
@@ -6181,6 +6210,10 @@
     .supervisor-planilla-method.is-pay-banco {
       color: #1d4ed8;
       background: #dbeafe;
+    }
+    .supervisor-planilla-method.is-pay-renovado {
+      color: #92400e;
+      background: #fde68a;
     }
     .supervisor-planilla-method.is-pay-combinado {
       color: #c2410c;
@@ -10112,6 +10145,7 @@
     .pill.efectivo { background: #bbf7d0; color: #14532d; }
     .pill.nequi { background: #e9d5ff; color: #5b3d8a; }
     .pill.banco { background: #bfdbfe; color: #1e40af; }
+    .pill.renovado { background: #fde68a; color: #92400e; }
 
     .check { accent-color: #0f766e; }
 
@@ -16502,6 +16536,14 @@
       color: #1e40af;
       white-space: nowrap;
     }
+    .collector-reloan-tag.is-renewal {
+      color: #92400e;
+    }
+    .collector-mobile-list.is-recaudo-sheet > .collector-mobile-card.is-dense.is-done.is-renewed,
+    .collector-mobile-list.is-recaudo-sheet > .collector-mobile-card.is-dense.is-done.is-renewed:nth-child(odd),
+    .collector-mobile-list.is-recaudo-sheet > .collector-mobile-card.is-dense.is-done.is-renewed:nth-child(even) {
+      background: #fef3c7;
+    }
     .collector-mobile-list.compact > .collector-mobile-card.is-dense.is-reloan,
     .collector-mobile-card.is-done.is-reloan {
       background: #dbeafe;
@@ -16523,6 +16565,12 @@
       font-weight: 700;
       color: #1e40af;
       white-space: nowrap;
+    }
+    .supervisor-liq-table tbody tr.is-renewed > td {
+      background: #fef3c7;
+    }
+    .supervisor-liq-table .supervisor-reloan-tag.is-renewal {
+      color: #92400e;
     }
     .supervisor-reloan-panel {
       margin: 0 0 10px;

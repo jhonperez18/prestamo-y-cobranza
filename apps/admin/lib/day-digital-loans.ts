@@ -7,6 +7,7 @@ import { sameRoute } from "@/lib/client-route-order";
 import type { DayLoanDisbursementRow } from "@/lib/collector-history-planilla";
 import { isLoanVoided, type ClientRow, type LoanRow } from "@/lib/mock-data";
 import {
+  isCashlessRenewal,
   loanBankOutflowCapital,
   loanDisbursementIsoDate,
   loanDisbursementSource,
@@ -32,6 +33,8 @@ export type DayPlanillaLoan = {
   loan: LoanRow;
   clientName: string;
   source: LoanDisbursementSource | null;
+  /** Renovación (sin plata): se muestra «Renovado», no «Préstamo». */
+  renewal: boolean;
 };
 
 /**
@@ -49,7 +52,8 @@ export function dayPlanillaLoansWithoutPayment(
   const clientByRef = new Map(clients.map((row) => [row.ref, row]));
   const rows: DayPlanillaLoan[] = [];
   for (const loan of loans) {
-    if (isLoanVoided(loan) || loanIsExistingPortfolio(loan)) continue;
+    const renewal = isCashlessRenewal(loan);
+    if (isLoanVoided(loan) || (loanIsExistingPortfolio(loan) && !renewal)) continue;
     if (loanDisbursementIsoDate(loan) !== dateIso) continue;
     if (!loan.clientRef || paidClientRefs.has(loan.clientRef)) continue;
     if (!((Number(loan.capital) || 0) > 0)) continue;
@@ -59,6 +63,7 @@ export function dayPlanillaLoansWithoutPayment(
       loan,
       clientName: `${client.name} ${client.lastName}`.trim() || (loan.client || "").trim() || loan.ref,
       source: loanDisbursementSource(loan),
+      renewal,
     });
   }
   return rows.sort((a, b) => a.clientName.localeCompare(b.clientName, "es"));

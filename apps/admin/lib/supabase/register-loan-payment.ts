@@ -10,6 +10,7 @@ import { pesos } from "@/lib/finance";
 import { evidenceForMirror } from "@/lib/payment-evidence";
 import { parseComboChargeLabel } from "@/lib/payment-combo";
 import { encodeLateChargeLabel, parseLateChargeLabel } from "@/lib/late-payment";
+import { loanRenewedInto } from "@/lib/loan-renewal-marks";
 import { normalizePaymentMethod, type PaymentMethod } from "@/lib/payment-method";
 import type { PaymentRow, StatusKind } from "@/lib/mock-data";
 import { materializeEvidenceForDatabase } from "@/lib/supabase/payment-evidence-storage";
@@ -196,6 +197,34 @@ function mapRpcError(body: RegisterCollectionRpcBody | null, fallback: string): 
   return { error: err, status: 502 };
 }
 
+/**
+ * Renovado: la deuda siguió en el P- de continuación. `register_collection` reabre un
+ * «Finalizado» que recibe un cobro; aquí se vuelve a cerrar.
+ */
+async function keepRenewedLoanClosed(
+  client: NonNullable<ReturnType<typeof createMirrorServerClient>>,
+  loanRef: string,
+): Promise<void> {
+  const { data, error } = await client
+    .from("loans")
+    .select("notes, status, balance")
+    .eq("ref", loanRef)
+    .maybeSingle<{ notes: string | null; status: string | null; balance: number | null }>();
+  if (error) {
+    console.error(`[renovado] no se pudo leer ${loanRef}: ${error.message}`);
+    return;
+  }
+  if (!data || !loanRenewedInto(data)) return;
+  if (data.status === "Finalizado" && Number(data.balance) === 0) return;
+  const updated = await client
+    .from("loans")
+    .update({ status: "Finalizado", balance: 0, updated_at: new Date().toISOString() })
+    .eq("ref", loanRef);
+  if (updated.error) {
+    console.error(`[renovado] no se pudo dejar cerrado ${loanRef}: ${updated.error.message}`);
+  }
+}
+
 export async function registerLoanPaymentInSupabase(
   payment: PaymentRow,
 ): Promise<RegisterLoanPaymentResult> {
@@ -267,6 +296,7 @@ export async function registerLoanPaymentInSupabase(
 
   const registered =
     rpcPaymentToRow(body.payment as RpcPayment, prepared) ?? prepared;
+  if (!body.duplicate) await keepRenewedLoanClosed(client, String(prepared.loanRef || ""));
 
   return {
     ok: true,
@@ -355,6 +385,7 @@ export async function registerCombinedLoanPaymentInSupabase(
     rpcPaymentToRow(rawPayments[0] as RpcPayment, preparedA) ?? preparedA,
     rpcPaymentToRow(rawPayments[1] as RpcPayment, preparedB) ?? preparedB,
   ];
+  if (!body.duplicate) await keepRenewedLoanClosed(client, String(preparedA.loanRef || ""));
 
   return {
     ok: true,

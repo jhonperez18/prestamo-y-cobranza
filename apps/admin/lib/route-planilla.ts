@@ -4,8 +4,10 @@ import {
   buildDispatchRoute,
   DECLINED_LOAN_OFFER_TODAY_REASON,
   LOAN_GIVEN_TODAY_REASON,
+  LOAN_RENEWED_TODAY_REASON,
   upsertDispatchRoute,
 } from "@/lib/collector-dispatch-sync";
+import { loanRenewalOf } from "@/lib/loan-renewal-marks";
 import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
 import {
   collectionAlertLabel,
@@ -193,6 +195,8 @@ function loanItemsForClient(
     if (owes <= 0 && !paidToday) continue;
     if (isPendingReview(client)) continue;
     const startedIso = loanDisbursementIsoDate(loan);
+    // Renovación: el día que se renueva la visita queda «Renovado hoy»; la cuota nueva, mañana.
+    if (startedIso === date && !paidToday && loanRenewalOf(loan)) continue;
     if (startedIso === date && !paidToday && !sheetOpen) continue;
     if (startedIso !== date && !loanIsCollectibleOn(loan, date)) continue;
 
@@ -518,6 +522,11 @@ export function syncPermanentRoutePlanilla(
   for (const prev of existing) {
     if (prev.dispatchDate !== date) continue;
     if (prev.dayClosedAt) continue;
+    // Renovado hoy: resuelta sin cobro. Su préstamo ya cerró, pero el renglón queda en la lista.
+    if (prev.visitStatus === "omitido" && prev.skipReason === LOAN_RENEWED_TODAY_REASON) {
+      builtMap.set(prev.itemId, { ...prev, amountDue: 0, alertCount: 0 });
+      continue;
+    }
     const prestarRow = isAssignmentAwaitingLoan(prev);
     // «Préstamo hecho hoy» puesto a un cliente que no recibió préstamo hoy: fila fantasma.
     if (prestarRow && prev.skipReason === LOAN_GIVEN_TODAY_REASON && !loanGivenOnDate(prev.clientRef)) {

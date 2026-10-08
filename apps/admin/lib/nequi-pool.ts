@@ -7,6 +7,7 @@
 import { businessTodayIso } from "@/lib/business-timezone";
 import { pesos } from "@/lib/finance";
 import { displayToIso } from "@/lib/loan-preview";
+import { loanRenewalOf } from "@/lib/loan-renewal-marks";
 import {
   paymentsForCollector,
   routesForCollector,
@@ -48,6 +49,11 @@ export function loanDisbursementSource(
 /** Cartera existente: el capital ya estaba en la calle; no es desembolso de caja, banco ni Nequi. */
 export function loanIsExistingPortfolio(loan: Pick<LoanRow, "fundedBy" | "notes">): boolean {
   return loanDisbursementSource(loan) === "cartera";
+}
+
+/** Renovación sin plata: lo que el cliente debía + 20 %. Se muestra «Renovado»; nunca toca caja, Banco ni Nequi. */
+export function isCashlessRenewal(loan: Pick<LoanRow, "fundedBy" | "notes"> | undefined | null): boolean {
+  return Boolean(loan && loanRenewalOf(loan) && loanIsExistingPortfolio(loan));
 }
 
 export function loanFundedByNequi(loan: Pick<LoanRow, "fundedBy" | "notes">): boolean {

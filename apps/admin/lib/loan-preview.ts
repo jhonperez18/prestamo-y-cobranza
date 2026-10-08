@@ -1,6 +1,7 @@
 import { isDailyCollectionDay } from "@/lib/colombia-holidays";
 import { reconcileLoanCollectionAlerts } from "@/lib/collection-alerts";
 import { pendingBalance, sumPesos } from "@/lib/finance";
+import { loanRenewedInto } from "@/lib/loan-renewal-marks";
 import { loanStatusPill } from "@/lib/loan-status";
 import type { LoanRow } from "@/lib/mock-data";
 
@@ -1040,7 +1041,8 @@ export function normalizeLoan<T extends LoanTermsRow>(
     pact: flat ? ("valor" as const) : effectivePact("interes", terms.pact),
     rate: flat ? 0 : effectivePact("interes", terms.pact) === "tasa" ? (terms.rate ?? 0) : 0,
     paid: ledger.paid,
-    balance: ledger.balance,
+    // Renovado: su deuda siguió en el P- de continuación. Recalcular con sus cobros no lo reabre.
+    balance: loanRenewedInto(terms) ? 0 : ledger.balance,
   };
   const reconciled = reconcileLoanCollectionAlerts(
     merged as LoanRow,

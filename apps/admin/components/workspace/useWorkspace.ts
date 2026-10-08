@@ -101,6 +101,7 @@ import {
   type PeopleCatalogState,
 } from "@/lib/commit-people-catalog";
 import {
+  assignmentsChangedFrom,
   flushOpsMirrorQueues,
   queueAssignmentsMirror,
   queueCollectorMirror,
@@ -125,7 +126,7 @@ import {
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
-import { buildRenewalLoans } from "@/lib/loan-renew";
+import { commitLoanRenewal } from "@/lib/commit-loan-renewal";
 import {
   buildPaymentRow,
 } from "@/lib/payment-detail";
@@ -2051,57 +2052,35 @@ export function useWorkspace({
     );
   }
 
-  function renewLoan(loanRef: string) {
-    const loan = loans.find((row) => row.ref === loanRef);
-    if (!loan) {
-      onToast("Préstamo no encontrado.");
-      return;
-    }
+  async function renewLoan(loanRef: string) {
     const newRef = nextLoanCode([...loans, ...deletedLoanRefRows()]);
-    // Admin/oficina: renovación sale de Nequi (Haber DSB- + resta acumulado).
-    const result = buildRenewalLoans(loan, newRef, todayIso(), "nequi");
-    if (!result) {
-      onToast("La renovación se activa cuando se cumpla el plazo del préstamo.");
+    const renewal = commitLoanRenewal(
+      { loans, clients, routes, collectors, assignments: dailyAssignments, payments },
+      loanRef,
+      newRef,
+      todayIso(),
+    );
+    if (!renewal.ok) {
+      onToast(renewal.error);
       return;
     }
-    const nextLoans = [result.created, ...loans.map((row) => (row.ref === loanRef ? result.closed : row))];
-    setLoans(nextLoans);
-    setClients((current) =>
-      current.map((entry) => {
-        if (entry.ref !== loan.clientRef) return entry;
-        return {
-          ...entry,
-          total: entry.total + (result.created.total ?? 0),
-          pending: Math.max(0, entry.pending - loan.balance + (result.created.total ?? 0)),
-        };
-      }),
-    );
-    const planilla = syncPermanentRoutePlanilla(
-      todayIso(),
-      routes,
-      clients,
-      nextLoans,
-      collectors,
-      dailyAssignments,
-      payments,
-    );
-    setDailyAssignments(planilla.assignments);
-    setRoutes(planilla.routes);
-    queueLoansMirror([result.closed, result.created]);
-    const renewedClient = clients.find((entry) => entry.ref === loan.clientRef);
-    if (renewedClient) {
-      queueClientMirror({
-        ...renewedClient,
-        total: renewedClient.total + (result.created.total ?? 0),
-        pending: Math.max(
-          0,
-          renewedClient.pending - loan.balance + (result.created.total ?? 0),
-        ),
-      });
+    setLoans(renewal.loans);
+    setClients(renewal.clients);
+    setDailyAssignments(renewal.assignments);
+    setRoutes(renewal.routes);
+    queueLoansMirror([renewal.closed, renewal.created]);
+    if (renewal.client) queueClientMirror(renewal.client);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, renewal.assignments));
+    queueRoutesMirror(renewal.routes);
+    const summary = `Renovado: debía ${money(renewal.created.capital)} + 20 % = ${money(renewal.created.total ?? 0)} · cuota desde mañana`;
+    onToast(`${summary} · subiendo…`);
+    try {
+      await flushCatalogMirrorQueues();
+      await flushOpsMirrorQueues();
+      onToast(summary);
+    } catch {
+      onToast("Renovado en este aparato; se sube solo a la nube.");
     }
-    onToast(
-      `Renovación ${newRef}: capital ${money(result.created.capital)} sale de Nequi · total ${money(result.created.total ?? 0)}.`,
-    );
   }
 
   function createRouteClientFromMobile(draft: RouteClientDraft, createdBy?: string) {

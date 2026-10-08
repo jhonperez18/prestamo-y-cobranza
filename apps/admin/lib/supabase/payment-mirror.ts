@@ -34,6 +34,7 @@ import { normalizePaymentMethod } from "@/lib/payment-method";
 import { parseComboChargeLabel } from "@/lib/payment-combo";
 import { encodeLateChargeLabel, parseLateChargeLabel } from "@/lib/late-payment";
 import { isDeletedRef } from "@/lib/deleted-ids";
+import { loanRenewedInto } from "@/lib/loan-renewal-marks";
 import {
   emitMirrorQueueChanged,
   shouldDropFromMirrorQueue,
@@ -354,6 +355,7 @@ type LoanTotalsRow = {
   capital: number | null;
   interest: number | null;
   status: string | null;
+  notes: string | null;
 };
 
 /**
@@ -387,7 +389,7 @@ async function voidPaymentInSupabase(row: PaymentMirrorRow): Promise<MirrorPayme
     client.from("payments").select("amount, payment_type").eq("loan_ref", row.loan_ref),
     client
       .from("loans")
-      .select("total, capital, interest, status")
+      .select("total, capital, interest, status, notes")
       .eq("ref", row.loan_ref)
       .maybeSingle<LoanTotalsRow>(),
   ]);
@@ -402,11 +404,18 @@ async function voidPaymentInSupabase(row: PaymentMirrorRow): Promise<MirrorPayme
   const total = Math.trunc(
     Number(loan.total ?? (Number(loan.capital) || 0) + (Number(loan.interest) || 0)) || 0,
   );
+  // Renovado: la deuda siguió en el P- de continuación; un cobro tardío no lo reabre.
+  const renewed = Boolean(loanRenewedInto(loan));
   const status =
-    total - paid <= 0 ? "Finalizado" : loan.status === "Finalizado" ? "Activo" : loan.status;
+    renewed || total - paid <= 0
+      ? "Finalizado"
+      : loan.status === "Finalizado"
+        ? "Activo"
+        : loan.status;
+  const balance = renewed ? 0 : Math.max(0, total - paid);
   const updated = await client
     .from("loans")
-    .update({ paid, balance: Math.max(0, total - paid), status, updated_at: stamp })
+    .update({ paid, balance, status, updated_at: stamp })
     .eq("ref", row.loan_ref);
   if (updated.error) return { ok: false, error: updated.error.message };
   return { ok: true };

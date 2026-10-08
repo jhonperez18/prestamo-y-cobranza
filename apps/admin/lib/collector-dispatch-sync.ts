@@ -495,6 +495,9 @@ export const DECLINED_LOAN_OFFER_TODAY_REASON = "Hoy no quiere préstamo";
 /** Oferta Prestar ya atendida: el cliente recibió préstamo ese día (la visita queda resuelta). */
 export const LOAN_GIVEN_TODAY_REASON = "Préstamo hecho hoy";
 
+/** Renovado hoy: sale de por cobrar (no es N/P ni alerta); la cuota nueva arranca mañana. */
+export const LOAN_RENEWED_TODAY_REASON = "Renovado hoy";
+
 /** Fila de la lista S/N: el cobrador la envió, o quedó sin pagar al cerrar el día. */
 export function isNoPayListRow(row: DailyCollectionAssignment) {
   if (row.visitStatus !== "omitido") return false;

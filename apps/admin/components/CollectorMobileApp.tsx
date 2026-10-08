@@ -2497,22 +2497,40 @@ export function CollectorMobileApp({
               );
             })
           )}
-          {unpaidDayLoans.map(({ loan, clientName, source }) => (
-            <li key={`loan-${loan.ref}`} className="collector-mobile-card is-done is-dense">
+          {unpaidDayLoans.map(({ loan, clientName, source, renewal }) => (
+            <li
+              key={`loan-${loan.ref}`}
+              className={
+                renewal
+                  ? "collector-mobile-card is-done is-dense is-renewed"
+                  : "collector-mobile-card is-done is-dense"
+              }
+            >
               <div className="collector-mobile-dense-row is-recaudo-row">
                 <div className="collector-mobile-visit-who">
                   <strong>{clientName}</strong>
                 </div>
                 <span className="is-done-loan">
-                  <span
-                    className="collector-reloan-tag"
-                    title={`Préstamo ${loan.ref} · capital ${money(loan.capital)} · ${loanDisbursementSourceLabel(source)}`}
-                  >
-                    Préstamo {money(loan.capital, { symbol: false })}
-                  </span>
+                  {renewal ? (
+                    <span
+                      className="collector-reloan-tag is-renewal"
+                      title={`Renovado ${loan.ref} · debía ${money(loan.capital)} + 20 % · sin plata · cuota desde mañana`}
+                    >
+                      Renovado {money(loan.capital, { symbol: false })}
+                    </span>
+                  ) : (
+                    <span
+                      className="collector-reloan-tag"
+                      title={`Préstamo ${loan.ref} · capital ${money(loan.capital)} · ${loanDisbursementSourceLabel(source)}`}
+                    >
+                      Préstamo {money(loan.capital, { symbol: false })}
+                    </span>
+                  )}
                 </span>
                 <span className="collector-mobile-ref is-done-col">—</span>
-                {source === "efectivo" || source === "banco" || source === "nequi" ? (
+                {renewal ? (
+                  <Pill label="R" kind="renovado" title="Renovado: sin plata, no toca la caja" />
+                ) : source === "efectivo" || source === "banco" || source === "nequi" ? (
                   <Pill
                     label={paymentMethodInitial(source)}
                     kind={paymentMethodKind(source)}

@@ -16,7 +16,7 @@ import {
   type LoanRow,
   type PaymentRow,
 } from "@/lib/mock-data";
-import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
+import { isCashlessRenewal, loanDisbursementIsoDate } from "@/lib/nequi-pool";
 
 function liveBalance(loan: LoanRow, payments: PaymentRow[]) {
   const synced = syncLoan(loan, payments) as LoanRow;
@@ -51,7 +51,21 @@ export function loanGrantedOnDate(
       (loan) =>
         loan.clientRef === clientRef &&
         loanDisbursementIsoDate(loan) === date &&
-        isLoanActive(loan),
+        isLoanActive(loan) &&
+        !isCashlessRenewal(loan),
+    ) ?? null
+  );
+}
+
+/** Renovación hecha a ese cliente en esa fecha (renglón «Renovado»: sin plata). */
+export function loanRenewedOnDate(clientRef: string, loans: LoanRow[], date: string): LoanRow | null {
+  return (
+    loans.find(
+      (loan) =>
+        loan.clientRef === clientRef &&
+        loanDisbursementIsoDate(loan) === date &&
+        isLoanActive(loan) &&
+        isCashlessRenewal(loan),
     ) ?? null
   );
 }
@@ -61,6 +75,8 @@ export type ReloanState = {
   canReloan: boolean;
   /** Crédito nuevo entregado hoy (si ya se le prestó). */
   granted: LoanRow | null;
+  /** Renovado hoy: lo que debía + 20 % (no es préstamo nuevo). */
+  renewed: LoanRow | null;
 };
 
 /** Estado del renglón de un cliente en los registros del día. */
@@ -72,12 +88,14 @@ export function reloanStateForVisit(input: {
   date: string;
 }): ReloanState {
   const { clientRef, loanRef, loans, payments, date } = input;
-  if (!clientRef) return { canReloan: false, granted: null };
+  if (!clientRef) return { canReloan: false, granted: null, renewed: null };
   const granted = loanGrantedOnDate(clientRef, loans, payments, date);
-  if (granted) return { canReloan: false, granted };
+  if (granted) return { canReloan: false, granted, renewed: null };
+  const renewed = loanRenewedOnDate(clientRef, loans, date);
+  if (renewed) return { canReloan: false, granted: null, renewed };
   const loan = loanRef ? loans.find((row) => row.ref === loanRef) ?? null : null;
-  if (!loanSettledOnDate(loan, payments, date)) return { canReloan: false, granted: null };
+  if (!loanSettledOnDate(loan, payments, date)) return { canReloan: false, granted: null, renewed: null };
   // El crédito que terminó hoy puede seguir «Activo» hasta proyectar el estado: no cuenta.
   const others = loans.filter((row) => row.ref !== loan?.ref);
-  return { canReloan: canClientTakeNewLoan(clientRef, others), granted: null };
+  return { canReloan: canClientTakeNewLoan(clientRef, others), granted: null, renewed: null };
 }

@@ -374,6 +374,24 @@ desde el día 1. Un solo dueño: `lib/informe-route-days.ts` (`informeRouteHisto
  = el Cierre del día de A (Historial → día), solo del cobrador de la planilla A: Cobrado = «Lo que cobró»,
  Préstamo = «Lo que prestó», Gasto = «Lo que gastó» (los de A van a M/T). Nada que el cierre no muestre.
 
+## Renovar = sin plata (caso Nelson Jefe 08/10)
+
+Vencido el préstamo, «Renovar» suma el 20 % a lo que el cliente **debe** y lo pasa a 1 mes.
+No es préstamo nuevo: no sale plata de caja, Banco ni Nequi. No afecta al cobrador.
+Un solo camino: `commitLoanRenewal` (`lib/commit-loan-renewal.ts`), lo usan cobrador y panel.
+
+| Pieza | Regla |
+| --- | --- |
+| Viejo (P-10) | Finalizado, «Cerrado por renovación → P-…» (`loanRenewedInto`). Ficha: estado «Renovado», saldo = lo que debía |
+| Nuevo (P-455) | «Renovación de P-…» (`loanRenewalOf`), capital = saldo, +20 %, `[[fb:cartera]]` |
+| Hoy | La visita queda `omitido` «Renovado hoy» (`LOAN_RENEWED_TODAY_REASON`): sale de por cobrar, no es N/P |
+| Mañana | Día 1 del nuevo: cuota nueva, mora en cero |
+| Pantallas | Recaudo, Historial y planilla del supervisor: «Renovado» (ámbar, «R»), nunca «Préstamo» / «E» (`isCashlessRenewal`, `loanRenewedOnDate`) |
+| Caja | Ningún renglón «Préstamo · P-…» de una renovación cuenta (`isCashlessRenewal`), ni hoy ni en historia |
+| Nube | Un cobro tardío no reabre el renovado (`keepRenewedLoanClosed`, `payment-mirror`) |
+
+- Candado: `assert-cash-chain.mjs` sección 30.
+
 ## Prestar atendido no bloquea el cierre
 
 Si un cliente con visita «Prestar» recibe préstamo ese día, la visita **no desaparece**:

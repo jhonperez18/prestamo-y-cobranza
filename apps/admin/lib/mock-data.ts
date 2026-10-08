@@ -13,7 +13,8 @@ export type StatusKind =
   | "closed"
   | "efectivo"
   | "nequi"
-  | "banco";
+  | "banco"
+  | "renovado";
 
 export type ClientRow = {
   ref: string;

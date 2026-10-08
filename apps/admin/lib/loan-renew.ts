@@ -6,12 +6,9 @@ import {
   type PayFrequency,
 } from "@/lib/loan-preview";
 import { isLoanActive, type LoanRow } from "@/lib/mock-data";
-import {
-  markLoanFundedByBanco,
-  markLoanFundedByEfectivo,
-  markLoanFundedByNequi,
-  type LoanDisbursementSource,
-} from "@/lib/nequi-pool";
+import { markLoanExistingPortfolio } from "@/lib/nequi-pool";
+
+export { loanRenewalOf, loanRenewedInto } from "@/lib/loan-renewal-marks";
 
 export const RENEWAL_INTEREST_RATE = 0.2;
 export const RENEWAL_TERM_MONTHS = 1 as const;
@@ -19,12 +16,6 @@ export const RENEWAL_TERM_MONTHS = 1 as const;
 function pesos(value: number) {
   if (!Number.isFinite(value) || value < 0) return 0;
   return Math.trunc(value);
-}
-
-function markFunded(loan: LoanRow, fundedBy: LoanDisbursementSource): LoanRow {
-  if (fundedBy === "efectivo") return markLoanFundedByEfectivo(loan);
-  if (fundedBy === "banco") return markLoanFundedByBanco(loan);
-  return markLoanFundedByNequi(loan);
 }
 
 /** Renovación disponible cuando ya venció el plazo y aún hay saldo. */
@@ -60,16 +51,15 @@ export type LoanRenewalResult = {
 };
 
 /**
- * Genera un préstamo nuevo sobre el saldo (capital = saldo, +20%, 1 mes)
- * y cierra el préstamo vencido.
- *
- * `fundedBy`: cobrador → efectivo; supervisor/admin → nequi | banco.
+ * Renovar: a lo que el cliente quedó debiendo se le suma el 20 % a 1 mes. No es préstamo
+ * nuevo ni sale plata: el cliente ya la tiene. El vencido se cierra («Cerrado por renovación»)
+ * y la deuda sigue en el P- de continuación como cartera (sin caja, Banco ni Nequi).
+ * Cobro desde mañana (día 1); hoy la visita queda «Renovado hoy».
  */
 export function buildRenewalLoans(
   source: LoanRow,
   newRef: string,
   today = todayIso(),
-  fundedBy: LoanDisbursementSource = "nequi",
 ): LoanRenewalResult | null {
   if (!canRenewLoan(source, today)) return null;
   const built = renewalPreview(source, today);
@@ -89,7 +79,7 @@ export function buildRenewalLoans(
       : `Cerrado por renovación → ${newRef}`,
   };
 
-  const created = markFunded(
+  const created = markLoanExistingPortfolio(
     {
       ref: newRef,
       clientRef: source.clientRef,
@@ -110,9 +100,8 @@ export function buildRenewalLoans(
       total: preview.total,
       installment: preview.installment,
       schedule: preview.schedule,
-      notes: `Renovación de ${source.ref} · capital ${capital} + 20% (${interest}) · 1 mes`,
+      notes: `Renovación de ${source.ref} · saldo ${capital} + 20% (${interest}) · 1 mes`,
     },
-    fundedBy,
   );
 
   return { closed, created };
@@ -120,6 +109,6 @@ export function buildRenewalLoans(
 
 /** @deprecated Prefer buildRenewalLoans (préstamo nuevo). */
 export function renewLoanFromBalance(loan: LoanRow, today = todayIso()): LoanRow | null {
-  const result = buildRenewalLoans(loan, loan.ref, today, "nequi");
+  const result = buildRenewalLoans(loan, loan.ref, today);
   return result?.created ?? null;
 }

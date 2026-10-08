@@ -334,7 +334,7 @@ export function RouteClientsView({
                           disabled={!canRenew}
                           title={
                             canRenew
-                              ? "Genera préstamo nuevo: saldo + 20% a 1 mes"
+                              ? "Lo que debe + 20 % a 1 mes · sin plata · cuota desde mañana"
                               : "Disponible cuando se cumpla el plazo"
                           }
                           onClick={(event) => {

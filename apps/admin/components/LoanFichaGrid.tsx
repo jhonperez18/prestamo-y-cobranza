@@ -3,6 +3,7 @@
 import { Pill } from "@/components/ui";
 import { computeLoanFinancials } from "@/lib/loan-balance";
 import { LOAN_FICHA_COLUMNS, loanFichaRow, sortLoansForFicha, syncLoan } from "@/lib/loan-preview";
+import { loanRenewedInto } from "@/lib/loan-renewal-marks";
 import { loanStatusPill } from "@/lib/loan-status";
 import { money, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 
@@ -57,7 +58,11 @@ export function LoanFichaGrid({ loans, payments, selectedRef, onSelect }: Props)
                   paid: financials.paidTotal,
                   pending: financials.balancePending,
                 });
-                const status = loanStatusPill(synced);
+                // Renovado: el saldo de la fila es lo que debía al renovar (siguió en la continuación).
+                const renewedInto = loanRenewedInto(loan);
+                const status = renewedInto
+                  ? { label: "Renovado", kind: "paid" as const }
+                  : loanStatusPill(synced);
                 const selected = loan.ref === selectedRef;
                 return (
                   <tr
@@ -70,7 +75,11 @@ export function LoanFichaGrid({ loans, payments, selectedRef, onSelect }: Props)
                       switch (col.id) {
                         case "estado":
                           return (
-                            <td key={col.id} className={cls}>
+                            <td
+                              key={col.id}
+                              className={cls}
+                              title={renewedInto ? `Renovado → ${renewedInto}` : undefined}
+                            >
                               <Pill label={status.label} kind={status.kind} />
                             </td>
                           );

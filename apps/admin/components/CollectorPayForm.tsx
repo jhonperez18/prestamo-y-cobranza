@@ -741,7 +741,7 @@ export function CollectorPayForm({
               isSubmitting
                 ? "Guardando…"
                 : canRenew
-                  ? "Renueva el saldo + 20% a 1 mes · capital sale de efectivo (caja)"
+                  ? "Lo que debe + 20 % a 1 mes · sin plata (no toca la caja) · cuota desde mañana"
                   : "Disponible cuando se cumpla el plazo del préstamo"
             }
             onClick={() => {

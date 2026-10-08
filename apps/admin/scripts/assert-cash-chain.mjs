@@ -3004,7 +3004,7 @@ expect("Con préstamo en mora: no puede recibir otro", canClientTakeNewLoan("CLI
     expect(`Préstamo rápido (${label}) avisa el préstamo activo`, read(path).includes("newLoanBlockReason(client.ref, loans)"), true);
   }
   for (const path of ["../components/CollectorShell.tsx", "../components/workspace/useWorkspace.ts"]) {
-    expect(`Renovar (${path.split("/").pop()}): cierra el viejo antes de subir el nuevo`, read(path).includes("queueLoansMirror([result.closed, result.created])"), true);
+    expect(`Renovar (${path.split("/").pop()}): cierra el viejo antes de subir el nuevo`, read(path).includes("queueLoansMirror([renewal.closed, renewal.created])"), true);
   }
   const catalogMirrorSrc = read("../lib/supabase/catalog-mirror.ts");
   expect("Nube: un cliente, un préstamo activo", catalogMirrorSrc.includes('reason: "client_has_active_loan"'), true);
@@ -4702,6 +4702,140 @@ console.log("— Cupo del aparato —");
   );
   const reopenQueueSrc = readReopenSrc(new URL("../lib/supabase/mirror-queue.ts", import.meta.url), "utf8");
   expect("Visita sellada que llega antes del CIE- nuevo: reintenta (no se descarta)", reopenQueueSrc.includes('"hoja_reabierta"'), false);
+}
+
+// ── 30. Renovar (caso Nelson Jefe 08/10): a lo que debe se le suma el 20 % a 1 mes.
+//     No es préstamo nuevo ni sale plata (ni caja, ni Banco, ni Nequi). Hoy la visita
+//     queda «Renovado hoy»; la cuota nueva arranca mañana. El vencido no se reabre.
+console.log("\n— Renovar sin plata —");
+{
+  const { commitLoanRenewal } = await import("@/lib/commit-loan-renewal");
+  const { loanRenewedInto, loanRenewalOf, canRenewLoan } = await import("@/lib/loan-renew");
+  const { syncLoan } = await import("@/lib/loan-preview");
+  const { isLoanActive } = await import("@/lib/mock-data");
+  const { loanDisbursementSource } = await import("@/lib/nequi-pool");
+  const { dayLoanDisbursementRows } = await import("@/lib/collector-history-planilla");
+  const { isNoPayListRow } = await import("@/lib/collector-dispatch-sync");
+  const rDay = "2026-10-08";
+  const rNext = "2026-10-09";
+  const rClients = [
+    { ref: "CLI-R1", name: "Nelson", lastName: "Jefe", route: "M", status: "Activo", routeOrder: 1, total: 240_000, pending: 180_000 },
+  ];
+  const rRoutes = [{ ref: "RUT-M", name: "M", collectorRef: COB.ref, collector: COB.name, status: "Activa", stops: [] }];
+  const rOld = {
+    ref: "P-R1", clientRef: "CLI-R1", client: "Nelson Jefe", date: "21/09/2026", due: "06/10/2026",
+    capital: 200_000, interest: 40_000, total: 240_000, installment: 20_000, frequency: "diario",
+    paid: 60_000, balance: 180_000, status: "Activo", notes: "[[fb:efectivo]]",
+  };
+  const rPays = [pay("PG-R1", "P-R1", 30_000, "2026-09-22"), pay("PG-R2", "P-R1", 30_000, "2026-09-23")];
+  const rState = {
+    loans: [rOld],
+    clients: rClients,
+    routes: rRoutes,
+    collectors: [COB],
+    assignments: [visit(`${rDay}:P-R1:acum`, "CLI-R1", "M", rDay, { visitStatus: "pendiente", loanRef: "P-R1", amountDue: 20_000 })],
+    payments: rPays,
+  };
+  const renewed = commitLoanRenewal(rState, "P-R1", "P-R2", rDay);
+  expect("Renovar: se hace", renewed.ok, true);
+  if (renewed.ok) {
+    expect("Renovar: saldo + 20 %", [renewed.created.capital, renewed.created.interest, renewed.created.total].join("/"), "180000/36000/216000");
+    expect("Renovar: continuación del mismo préstamo", [loanRenewedInto(renewed.closed), loanRenewalOf(renewed.created)].join("/"), "P-R2/P-R1");
+    expect("Renovar: sin plata (cartera: ni caja, ni Banco, ni Nequi)", loanDisbursementSource(renewed.created), "cartera");
+    expect(
+      "Renovar: no resta de la caja del cobrador (ni con un renglón «Préstamo» viejo)",
+      dayLoanDisbursementRows(
+        rDay,
+        [{ id: "prestamo", label: "Préstamo · P-R2", amount: 180_000, loanRef: "P-R2" }],
+        renewed.loans,
+        rClients,
+        { collectorRef: COB.ref, assignments: renewed.assignments, liveDay: true },
+      ).length,
+      0,
+    );
+    expect(
+      "Renovar: día cerrado / historia tampoco cuenta un renglón «Préstamo» de la renovación",
+      dayLoanDisbursementRows(
+        rDay,
+        [{ id: "prestamo", label: "Préstamo · P-R2", amount: 180_000, loanRef: "P-R2" }],
+        renewed.loans,
+        rClients,
+        { collectorRef: COB.ref, assignments: renewed.assignments },
+      ).length,
+      0,
+    );
+    const closedSynced = syncLoan(renewed.closed, rPays);
+    expect(
+      "Renovado: recalcular con sus cobros no lo reabre",
+      [closedSynced.balance, isLoanActive(closedSynced), canRenewLoan(closedSynced, rDay)].join("/"),
+      "0/false/false",
+    );
+    const todayRows = renewed.assignments.filter((r) => r.clientRef === "CLI-R1" && r.dispatchDate === rDay);
+    const renewedRow = todayRows.find((r) => r.loanRef === "P-R1");
+    expect("Hoy: la visita queda «Renovado hoy» (sale de por cobrar)", `${renewedRow?.visitStatus}:${renewedRow?.skipReason}`, "omitido:Renovado hoy");
+    expect("Hoy: no es N/P", renewedRow ? isNoPayListRow(renewedRow) : null, false);
+    expect("Hoy: sin cuota nueva ni Prestar", todayRows.filter((r) => r.loanRef === "P-R2" || r.itemId.includes(":prestar")).length, 0);
+    const rebuilt = syncPermanentRoutePlanilla(rDay, rRoutes, renewed.clients, renewed.loans, [COB], renewed.assignments, rPays);
+    expect(
+      "Hoy: rearmar la planilla deja el renglón «Renovado hoy»",
+      rebuilt.assignments.filter((r) => r.clientRef === "CLI-R1" && r.dispatchDate === rDay).map((r) => `${r.loanRef}:${r.skipReason}`).join(","),
+      "P-R1:Renovado hoy",
+    );
+    const tomorrow = syncPermanentRoutePlanilla(rNext, rRoutes, renewed.clients, renewed.loans, [COB], renewed.assignments, rPays);
+    const tomorrowRow = tomorrow.assignments.find((r) => r.clientRef === "CLI-R1" && r.dispatchDate === rNext);
+    expect(
+      "Mañana: día 1 con la cuota nueva",
+      `${tomorrowRow?.loanRef}:${tomorrowRow?.visitStatus}:${tomorrowRow?.amountDue}`,
+      `P-R2:pendiente:${renewed.created.installment}`,
+    );
+    expect("Mañana: contador de mora en cero", tomorrowRow?.alertCount ?? 0, 0);
+    const { buildCollectorHistoryPlanillaRows } = await import("@/lib/collector-history-planilla");
+    const { dayPlanillaLoansWithoutPayment } = await import("@/lib/day-digital-loans");
+    const histRows = buildCollectorHistoryPlanillaRows({
+      dateIso: rDay,
+      dispatched: rebuilt.assignments.filter((r) => r.dispatchDate === rDay),
+      payments: [],
+      loans: renewed.loans,
+      clients: renewed.clients,
+      expenses: [{ id: "prestamo", label: "Préstamo · P-R2", amount: 180_000, loanRef: "P-R2" }],
+    }).filter((r) => r.clientRef === "CLI-R1");
+    expect(
+      "Historial: una sola fila «Renovado» (no «Prestado»)",
+      histRows.map((r) => `${r.method}:${r.amount}:${r.lentToday}`).join(","),
+      "renovado:180000:false",
+    );
+    const recaudo = dayPlanillaLoansWithoutPayment(rDay, "M", renewed.loans, renewed.clients, new Set());
+    expect(
+      "Recaudo: fila «Renovado» (R), no «Préstamo» (E)",
+      recaudo.map((r) => `${r.loan.ref}:${r.renewal}`).join(","),
+      "P-R2:true",
+    );
+    const { reloanStateForVisit } = await import("@/lib/loan-reloan");
+    const supRow = reloanStateForVisit({ clientRef: "CLI-R1", loanRef: "P-R1", loans: renewed.loans, payments: rPays, date: rDay });
+    expect(
+      "Supervisor: renglón «Renovado» (no azul «Préstamo»)",
+      `${supRow.granted?.ref ?? "-"}:${supRow.renewed?.ref ?? "-"}`,
+      "-:P-R2",
+    );
+  }
+  const { readFileSync: readRenewSrc } = await import("node:fs");
+  const src = (path) => readRenewSrc(new URL(path, import.meta.url), "utf8");
+  const collectorShellSrc = src("../components/CollectorShell.tsx");
+  const workspaceSrc = src("../components/workspace/useWorkspace.ts");
+  expect(
+    "Cobrador y panel renuevan por un solo camino, sin renglón de caja ni Nequi",
+    collectorShellSrc.includes("commitLoanRenewal(") &&
+      workspaceSrc.includes("commitLoanRenewal(") &&
+      !collectorShellSrc.includes("buildRenewalLoans") &&
+      !workspaceSrc.includes("buildRenewalLoans"),
+    true,
+  );
+  expect(
+    "Nube: un cobro tardío no reabre un préstamo renovado",
+    src("../lib/supabase/payment-mirror.ts").includes("loanRenewedInto(loan)") &&
+      src("../lib/supabase/register-loan-payment.ts").includes("keepRenewedLoanClosed(client"),
+    true,
+  );
 }
 
 if (failures) {
