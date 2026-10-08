@@ -157,6 +157,11 @@ export function enrichSupervisorPlanillaRow(
           entry.loanRef === row.loanRef &&
           Boolean(paymentComboGroupId(entry)),
       )
+      .sort(
+        (a, b) =>
+          Number(paymentMethodForRoute(a.method, row.clientRoute) === "efectivo") -
+          Number(paymentMethodForRoute(b.method, row.clientRoute) === "efectivo"),
+      )
     : [];
   /** E/N solo con PG vivo; si hay pago, estado = cobrado (nunca E + Pend.). */
   const method: PaymentMethod | null = pay
@@ -199,7 +204,7 @@ export function enrichSupervisorPlanillaRow(
     paidAmount: isCombined && comboPays.length >= 2
       ? comboPays.reduce((sum, entry) => sum + (Number(entry.amount) || 0), 0)
       : Number(pay?.amount) || 0,
-    /** Cobro combinado: cada parte con su método (efectivo primero). Vacío si es un solo PG-. */
+    /** Cobro combinado: cada parte con su método, en el orden de `methodLabel` (B+E). Vacío si es un solo PG-. */
     paidParts: isCombined && comboPays.length >= 2
       ? comboPays
           .map((entry) => ({
@@ -207,7 +212,6 @@ export function enrichSupervisorPlanillaRow(
             amount: Number(entry.amount) || 0,
           }))
           .filter((part) => part.amount > 0)
-          .sort((a, b) => Number(b.method === "efectivo") - Number(a.method === "efectivo"))
       : [],
   };
 }

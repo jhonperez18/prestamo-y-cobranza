@@ -6220,6 +6220,14 @@
       background: #ffedd5;
       border: 1px solid #fdba74;
     }
+    .supervisor-planilla-method.is-pay-prestamo {
+      color: #fff;
+      background: #2563eb;
+    }
+    .supervisor-planilla-saldo-new {
+      color: #047857;
+      font-weight: 700;
+    }
     .supervisor-clientes-table .is-ruta {
       width: 7%;
       min-width: 1.5rem;

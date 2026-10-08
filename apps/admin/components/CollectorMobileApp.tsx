@@ -143,7 +143,11 @@ import {
   digitalLoanPoolForRoute,
   digitalLoanPoolLabel,
 } from "@/lib/day-digital-loans";
-import { loanDisbursementSourceLabel } from "@/lib/nequi-pool";
+import {
+  loanDisbursementSource,
+  loanDisbursementSourceLabel,
+  type LoanDisbursementSource,
+} from "@/lib/nequi-pool";
 import { CollectorCloseDayConfirm } from "@/components/CollectorCloseDayConfirm";
 import { CollectorCloseDaySheet } from "@/components/CollectorCloseDaySheet";
 
@@ -242,6 +246,61 @@ function itemKey(item: DailyCollectionAssignment) {
 }
 
 /** Vista compacta: #, nombre completo, apodo, saldo, cuota. */
+function DayLoanListRow({
+  loan,
+  clientName,
+  source,
+  renewal,
+}: {
+  loan: LoanRow;
+  clientName: string;
+  source: LoanDisbursementSource | null;
+  renewal: boolean;
+}) {
+  return (
+    <li
+      className={
+        renewal
+          ? "collector-mobile-card is-done is-dense is-renewed"
+          : "collector-mobile-card is-done is-dense"
+      }
+    >
+      <div className="collector-mobile-dense-row is-recaudo-row">
+        <div className="collector-mobile-visit-who">
+          <strong>{clientName}</strong>
+        </div>
+        <span className="is-done-loan">
+          {renewal ? (
+            <span
+              className="collector-reloan-tag is-renewal"
+              title={`Renovado ${loan.ref} · debía ${money(loan.capital)} + 20 % · sin plata · cuota desde mañana`}
+            >
+              Renovado {money(loan.capital, { symbol: false })}
+            </span>
+          ) : (
+            <span
+              className="collector-reloan-tag"
+              title={`Préstamo ${loan.ref} · capital ${money(loan.capital)} · ${loanDisbursementSourceLabel(source)}`}
+            >
+              Préstamo {money(loan.capital, { symbol: false })}
+            </span>
+          )}
+        </span>
+        <span className="collector-mobile-ref is-done-col">—</span>
+        {renewal ? (
+          <Pill label="R" kind="renovado" title="Renovado: sin plata, no toca la caja" />
+        ) : source === "efectivo" || source === "banco" || source === "nequi" ? (
+          <Pill
+            label={paymentMethodInitial(source)}
+            kind={paymentMethodKind(source)}
+            title={`Préstamo por ${loanDisbursementSourceLabel(source)}`}
+          />
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
 function visitIdentity(
   item: DailyCollectionAssignment,
   clients: ClientRow[],
@@ -1454,6 +1513,14 @@ export function CollectorMobileApp({
     }
     return dayPlanillaLoansWithoutPayment(activeDate, newClientRoute, loans, clients, paid);
   }, [recaudoOnlyBanco, recaudoRows, loans, clients, activeDate, newClientRoute]);
+  /** Último cobro del día por crédito: debajo va la fila del préstamo nuevo (cobro ≠ préstamo). */
+  const lastPayRefByLoan = useMemo(() => {
+    const last = new Map<string, string>();
+    for (const pay of recaudoRows) {
+      if (pay.loanRef) last.set(pay.loanRef, pay.ref);
+    }
+    return last;
+  }, [recaudoRows]);
   const doneRouteStarts = routeBlockStarts(recaudoRows, (pay) => {
     const loan = loans.find((row) => row.ref === pay.loanRef);
     return clients.find((row) => row.ref === loan?.clientRef)?.route;
@@ -2415,7 +2482,7 @@ export function CollectorMobileApp({
                 Boolean(payClient) &&
                 Boolean(onCreateQuickLoan) &&
                 !dayLocked;
-              return (
+              const payRow = (
                 <li
                   key={pay.ref}
                   className={[
@@ -2455,13 +2522,6 @@ export function CollectorMobileApp({
                         >
                           Préstamo
                         </button>
-                      ) : reloan.granted && isReloanAnchor ? (
-                        <span
-                          className="collector-reloan-tag"
-                          title={`Préstamo ${reloan.granted.ref} · capital ${money(reloan.granted.capital)}`}
-                        >
-                          Préstamo {money(reloan.granted.capital, { symbol: false })}
-                        </span>
                       ) : null}
                     </span>
                     {recaudoOnlyBanco ? (
@@ -2495,50 +2555,33 @@ export function CollectorMobileApp({
                   ) : null}
                 </li>
               );
+              const grantedRow =
+                reloan.granted && !recaudoOnlyBanco && lastPayRefByLoan.get(pay.loanRef ?? "") === pay.ref
+                  ? reloan.granted
+                  : null;
+              return grantedRow ? (
+                <Fragment key={pay.ref}>
+                  {payRow}
+                  <DayLoanListRow
+                    loan={grantedRow}
+                    clientName={payerName(pay, loans, clients)}
+                    source={loanDisbursementSource(grantedRow)}
+                    renewal={false}
+                  />
+                </Fragment>
+              ) : (
+                payRow
+              );
             })
           )}
           {unpaidDayLoans.map(({ loan, clientName, source, renewal }) => (
-            <li
+            <DayLoanListRow
               key={`loan-${loan.ref}`}
-              className={
-                renewal
-                  ? "collector-mobile-card is-done is-dense is-renewed"
-                  : "collector-mobile-card is-done is-dense"
-              }
-            >
-              <div className="collector-mobile-dense-row is-recaudo-row">
-                <div className="collector-mobile-visit-who">
-                  <strong>{clientName}</strong>
-                </div>
-                <span className="is-done-loan">
-                  {renewal ? (
-                    <span
-                      className="collector-reloan-tag is-renewal"
-                      title={`Renovado ${loan.ref} · debía ${money(loan.capital)} + 20 % · sin plata · cuota desde mañana`}
-                    >
-                      Renovado {money(loan.capital, { symbol: false })}
-                    </span>
-                  ) : (
-                    <span
-                      className="collector-reloan-tag"
-                      title={`Préstamo ${loan.ref} · capital ${money(loan.capital)} · ${loanDisbursementSourceLabel(source)}`}
-                    >
-                      Préstamo {money(loan.capital, { symbol: false })}
-                    </span>
-                  )}
-                </span>
-                <span className="collector-mobile-ref is-done-col">—</span>
-                {renewal ? (
-                  <Pill label="R" kind="renovado" title="Renovado: sin plata, no toca la caja" />
-                ) : source === "efectivo" || source === "banco" || source === "nequi" ? (
-                  <Pill
-                    label={paymentMethodInitial(source)}
-                    kind={paymentMethodKind(source)}
-                    title={`Préstamo por ${loanDisbursementSourceLabel(source)}`}
-                  />
-                ) : null}
-              </div>
-            </li>
+              loan={loan}
+              clientName={clientName}
+              source={source}
+              renewal={renewal}
+            />
           ))}
         </ul>
       ) : null}

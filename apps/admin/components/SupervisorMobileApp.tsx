@@ -605,6 +605,7 @@ function RouteBoardCard({
 type PlanillaTableRow = ReturnType<typeof enrichSupervisorPlanillaRow> & {
   route: string;
   clientRef: string;
+  loanRef: string;
   reloan: ReloanState;
 };
 
@@ -654,9 +655,15 @@ function PlanillaTable({
               lagDays: 0,
             };
             const reloanOpen = Boolean(reloanClientRef) && reloanClientRef === row.clientRef;
+            /** Renglón del préstamo nuevo; el del crédito pagado muestra solo lo cobrado. */
+            const grantedHere =
+              row.reloan.granted &&
+              (row.loanRef === row.reloan.granted.ref || row.paidAmount <= 0)
+                ? row.reloan.granted
+                : null;
             const rowClass = [
               routeStarts[index] ? "is-route-start" : "",
-              row.reloan.granted ? "is-reloan" : "",
+              grantedHere ? "is-reloan" : "",
               row.reloan.renewed ? "is-renewed" : "",
               row.awaitingLoan ? "is-awaiting-loan" : "",
             ]
@@ -669,10 +676,22 @@ function PlanillaTable({
                   {row.clientName}
                 </td>
                 <td className="is-num">
-                  {row.awaitingLoan ? "—" : money(row.saldo, { symbol: false })}
+                  {row.awaitingLoan ? (
+                    "—"
+                  ) : grantedHere ? (
+                    <span className="supervisor-planilla-saldo-new">
+                      {money(row.saldo, { symbol: false })}
+                    </span>
+                  ) : (
+                    money(row.saldo, { symbol: false })
+                  )}
                 </td>
                 <td className="is-metodo">
-                  {row.reloan.renewed ? (
+                  {grantedHere && !row.awaitingLoan && row.paidAmount <= 0 ? (
+                    <em className="supervisor-planilla-method is-pay-prestamo" title="Préstamo nuevo">
+                      P
+                    </em>
+                  ) : row.reloan.renewed ? (
                     <em className="supervisor-planilla-method is-pay-renovado" title="Renovado: sin plata">
                       R
                     </em>
@@ -706,13 +725,13 @@ function PlanillaTable({
                     >
                       Préstamo
                     </button>
-                  ) : row.reloan.granted ? (
-                    <span
-                      className="supervisor-reloan-tag"
-                      title={`Préstamo ${row.reloan.granted.ref} · capital ${money(row.reloan.granted.capital)}`}
+                  ) : grantedHere ? (
+                    <em
+                      className="supervisor-planilla-method is-pay-prestamo"
+                      title={`Préstamo ${grantedHere.ref} · capital ${money(grantedHere.capital)}`}
                     >
-                      Préstamo {money(row.reloan.granted.capital, { symbol: false })}
-                    </span>
+                      {paidThousandsLabel(grantedHere.capital)}
+                    </em>
                   ) : row.reloan.renewed ? (
                     <span
                       className="supervisor-reloan-tag is-renewal"
@@ -733,12 +752,13 @@ function PlanillaTable({
                     >
                       {row.paidParts.length >= 2 ? (
                         row.paidParts.map((part, partIndex) => (
-                    <Pill
+                          <em
                             key={`${part.method}-${partIndex}`}
-                            label={paidThousandsLabel(part.amount)}
-                            kind={partIndex === 0 ? "ok" : "pending"}
+                            className={`supervisor-planilla-method ${paymentMethodToneClass(part.method)}`}
                             title={`${paymentMethodLabel(part.method)} · ${money(part.amount)}`}
-                          />
+                          >
+                            {paidThousandsLabel(part.amount)}
+                          </em>
                         ))
                       ) : (
                         <Pill
@@ -2229,6 +2249,7 @@ export function SupervisorMobileApp({
         ...enrichSupervisorPlanillaRow(row, position, loans, payments, today),
         route: assignmentRouteName(row, clients),
         clientRef: row.clientRef,
+        loanRef: row.loanRef ?? "",
         reloan: reloanStateForVisit({
           clientRef: row.clientRef,
           loanRef: row.loanRef,
