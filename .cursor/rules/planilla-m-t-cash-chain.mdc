@@ -489,6 +489,20 @@ Prohibido `queueAssignmentsMirror(planilla.assignments)` en el cobrador: cientos
 una petición cada una → «Crear préstamo» no responde y el celular se traba. El formulario
 se cierra al confirmar (`closeCard(true)`) antes de registrar. Candado: `assert-cash-chain.mjs`.
 
+**El saldo lo manda la ficha, nunca la lista del aparato (caso Jhon Flaca 08/10):** paga todo
+(220.000 = 130.000 efectivo + 90.000 Banco) y salía «mayor a lo pendiente». El celular tenía un
+pedazo viejo de cobros y rehacía `paid` con eso.
+
+| Pieza | Regla |
+| --- | --- |
+| Cobrar en el cobrador | `loanRowAfterLivePay`: ficha + el cobro nuevo; el PG- queda en `livePaidRefs` (no se cuenta dos veces) |
+| Hidratar / proyectar en el cobrador | `syncDeviceLoans`: la ficha manda; nunca `syncAllLoans(fichas, cobros del aparato)` |
+| «Terminó hoy → prestar» | `loanSettledOnDate` lee el saldo vivo (`syncCollectorLiveLoan`) |
+| Nube | `mirrorLoanToSupabase` → `withCloudLedger`: al actualizar, `paid` = el de la nube (lo llevan los cobros); saldo = total − eso |
+| Panel / supervisor | Siguen con el historial completo (`loanRowAfterPay`) |
+
+- Candado: `assert-cash-chain.mjs` sección 31.
+
 **Prohibido (rebote del 06/10):** comparar todo lo local contra una lista incompleta y
 volver a subir cobros viejos. La base corta en 1.000 filas; una “lista completa” corta
 no es la nube. Candado: `assert-cash-chain.mjs` secciones 27 y 28.

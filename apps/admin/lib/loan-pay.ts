@@ -214,3 +214,33 @@ export function loanRowAfterPay(
   });
   return syncLoan(cleared, payments) as LoanRow;
 }
+
+/**
+ * Celular del cobrador: la ficha baja solo con el cobro nuevo.
+ * El aparato no tiene el historial: rehacer `paid` con su lista de cobros da un saldo falso
+ * (Jhon Flaca 08/10: el 2.º tramo del combinado vio 60.000 de saldo y rechazó 90.000).
+ * `pay` sale de la ficha viva (`syncCollectorLiveLoan`): de ahí el estado y la cuota.
+ */
+export function loanRowAfterLivePay(
+  loan: LoanRow,
+  pay: ApplyPaySuccess,
+  payment: { ref: string; amount: number },
+): LoanRow {
+  const amount = pesos(payment.amount);
+  const cleared = clearCollectionAlertsOnPay({
+    ...loan,
+    paid: pay.paid,
+    balance: pay.balance,
+    status: pay.status,
+    kind: pay.kind,
+    schedule: pay.schedule ?? loan.schedule,
+  });
+  const refs = new Set(loan.livePaidRefs ?? []);
+  if (payment.ref) refs.add(payment.ref);
+  return {
+    ...cleared,
+    paid: pesos(loan.paid) + amount,
+    balance: Math.max(0, pesos(loan.balance) - amount),
+    livePaidRefs: [...refs],
+  };
+}

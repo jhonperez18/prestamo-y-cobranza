@@ -17,6 +17,7 @@ import { BIG_DEMO_STORE_CHANGED_EVENT } from "@/lib/big-demo-store";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { displayToIso } from "@/lib/loan-preview";
 import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
+import { loanRenewedInto } from "@/lib/loan-renewal-marks";
 import {
   DEMO_CLIENTS_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
@@ -642,6 +643,28 @@ async function dropTwinOpenVisits(supabase: MirrorDbClient, loanRef: string, cli
   if (error) console.error("[loan-twin] visitas abiertas sin limpiar", loanRef, error.message);
 }
 
+/**
+ * Lo pagado de un préstamo que ya está en la nube lo llevan sus cobros (`register_collection`,
+ * anulación). La ficha que sube un aparato trae términos, estado y alertas; su `paid` sale de
+ * la lista de cobros que tenga ese aparato (el cobrador solo tiene el día) y no puede pisarlo.
+ */
+export function withCloudLedger(row: LoanMirrorRow, cloudPaid: number): LoanMirrorRow {
+  const paid = Math.max(0, Math.trunc(cloudPaid));
+  const total = Math.trunc(
+    Number(row.total ?? (Number(row.capital) || 0) + (Number(row.interest) || 0)) || 0,
+  );
+  const renewed = Boolean(loanRenewedInto(row));
+  const balance = renewed ? 0 : Math.max(0, total - paid);
+  const finished = renewed || balance <= 0;
+  const status = finished
+    ? isLoanActive({ status: row.status }) ? "Finalizado" : row.status
+    : row.status === "Finalizado"
+      ? "Activo"
+      : row.status;
+  const kind = status === row.status ? row.kind : finished ? "paid" : "ok";
+  return { ...row, paid, balance, status, kind };
+}
+
 const UNIQUE_VIOLATION = "23505";
 const LOAN_WRITE_ATTEMPTS = 5;
 
@@ -657,7 +680,7 @@ export async function mirrorLoanToSupabase(loan: LoanRow) {
   for (let attempt = 0; attempt < LOAN_WRITE_ATTEMPTS && !written; attempt += 1) {
     const { data: current, error: readError } = await supabase
       .from("loans")
-      .select("status, client_ref")
+      .select("status, client_ref, paid")
       .eq("ref", row.ref)
       .maybeSingle();
     if (readError) return { ok: false as const, error: readError.message };
@@ -675,7 +698,10 @@ export async function mirrorLoanToSupabase(loan: LoanRow) {
       return { ok: true as const, skipped: true as const, reason: "loan_deleted" };
     }
     if (current && !otherClient) {
-      const { error } = await supabase.from("loans").update(row).eq("ref", row.ref);
+      const { error } = await supabase
+        .from("loans")
+        .update(withCloudLedger(row, Number(current.paid) || 0))
+        .eq("ref", row.ref);
       if (error) return { ok: false as const, error: error.message };
       written = true;
       break;

@@ -91,6 +91,11 @@ export type LoanRow = {
   fundedBy?: "nequi" | "efectivo" | "banco" | "cartera";
   /** ISO — evita que un pull obsoleto rebobine un edit fresco del padre. */
   updatedAt?: string;
+  /**
+   * Solo en el celular del cobrador: PG- de este aparato ya sumados a `paid`.
+   * No viaja a la nube; el pull trae la ficha del servidor sin esto.
+   */
+  livePaidRefs?: string[];
 };
 
 export type PaymentRow = {

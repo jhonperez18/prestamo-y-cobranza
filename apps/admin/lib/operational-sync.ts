@@ -12,7 +12,6 @@ import {
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
 } from "@/lib/collector-day-close";
-import { syncAllLoans } from "@/lib/loan-preview";
 import type { MiscPayment } from "@/lib/misc-payments";
 import type {
   ClientRow,
@@ -25,7 +24,7 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
 import { livePayments } from "@/lib/live-payments";
 import { restoreLoansFromOrphanDisbursements } from "@/lib/restore-loans-from-bank-disbursements";
-import { isCollectorLiveDevice } from "@/lib/collector-live-window";
+import { isCollectorLiveDevice, syncDeviceLoans } from "@/lib/collector-live-window";
 
 export type OperationalSyncInput = {
   loans: LoanRow[];
@@ -107,7 +106,7 @@ export function synchronizeOperationalState(
         clients: input.clients,
       });
 
-  const loans = syncAllLoans(restored.loans, payments) as LoanRow[];
+  const loans = syncDeviceLoans(restored.loans, payments);
 
   const dayCloses = trimCollectorDayClosesHistory(
     keepSealedCashFloat(

@@ -4845,6 +4845,122 @@ console.log("\n— Renovar sin plata —");
   );
 }
 
+// ── 31. Cobro en el celular del cobrador (caso Jhon Flaca 08/10): paga todo lo que debe
+//     (220.000 = 130.000 efectivo + 90.000 Banco) para volver a prestar. El celular solo tiene
+//     el día (o un pedazo viejo): el saldo sale de la ficha, nunca de su lista de cobros.
+//     La nube tampoco acepta el `paid` de un aparato: lo llevan sus cobros.
+console.log("\n— Cobro del cobrador con la ficha, no con la lista del aparato —");
+{
+  const { commitCollectorPayment, commitCollectorCombinedPayment } = await import("@/lib/commit-collector-payment");
+  const { syncCollectorLiveLoan } = await import("@/lib/collector-live-window");
+  const { loanSettledOnDate } = await import("@/lib/loan-reloan");
+  const { isCollectorDayClosedForPayments } = await import("@/lib/collector-day-auto-close");
+  const { businessTodayIso } = await import("@/lib/business-timezone");
+  const { addCalendarDaysIso } = await import("@/lib/colombia-holidays");
+  const { withCloudLedger } = await import("@/lib/supabase/catalog-mirror");
+  const today = businessTodayIso();
+  const jDay = isCollectorDayClosedForPayments(today) ? addCalendarDaysIso(today, 1) : today;
+  const jLoan = {
+    ref: "P-J1", clientRef: "CLI-J1", client: "Jhon Flaca", date: "05/09/2026", due: "05/10/2026",
+    capital: 500_000, interest: 100_000, total: 600_000, installment: 20_000, days: 30, frequency: "diario",
+    paid: 380_000, balance: 220_000, status: "Alerta 1", kind: "warn", collectionAlerts: 1,
+    notes: "[[fb:efectivo]]", updatedAt: "2026-09-30T12:00:00.000Z",
+  };
+  const jHist = [
+    pay("PG-J1", "P-J1", 100_000, "2026-09-10"),
+    pay("PG-J2", "P-J1", 100_000, "2026-09-20"),
+    pay("PG-J3", "P-J1", 180_000, "2026-09-26"),
+  ];
+  const jRoute = { ref: `RUT-D-${COB.ref}-${jDay}`, name: "M", collectorRef: COB.ref, collector: COB.name, status: "Activa", stops: [] };
+  const jVisit = visit(`${jDay}:P-J1:acum`, "CLI-J1", "M", jDay, { visitStatus: "pendiente", loanRef: "P-J1", amountDue: 20_000 });
+  const receipt = [{ id: "EV-J", kind: "comprobante", fileId: "f-j", previewUrl: "data:image/png;base64,iVBORw0KGgo=", capturedAt: `${jDay}T15:00:00.000Z` }];
+  const signature = [{ id: "EV-F", kind: "firma", fileId: "f-f", previewUrl: "data:image/png;base64,iVBORw0KGgo=", capturedAt: `${jDay}T15:00:00.000Z` }];
+  const part = (key, method, amount, evidence = signature) => ({
+    idempotencyKey: key, routeRef: jRoute.ref, clientRef: "CLI-J1", loanRef: "P-J1", dispatchDate: jDay,
+    amount, kind: "cuota", method, evidence, collectorRef: COB.ref, collectorName: COB.name, clientName: "Jhon Flaca",
+  });
+  const combo = (cache) =>
+    commitCollectorCombinedPayment({
+      parts: [part("K-A", "efectivo", 130_000), part("K-B", "banco", 90_000, receipt)],
+      comboGroupId: "CMB-J", paidTime: "10:00",
+      payments: cache, loans: [jLoan], clients: [{ ref: "CLI-J1", name: "Jhon", lastName: "Flaca", route: "M", pending: 220_000 }],
+      routes: [jRoute], assignments: [jVisit], collectors: [COB],
+    });
+  const settled = (result, label) => {
+    expect(`${label}: el cobro entra`, result.ok || result.error, true);
+    if (!result.ok) return;
+    const loan = result.loans.find((l) => l.ref === "P-J1");
+    const live = syncCollectorLiveLoan(loan, result.payments, jDay);
+    expect(`${label}: ficha en cero y Finalizado`, `${loan.paid}/${loan.balance}/${loan.status}`, "600000/0/Finalizado");
+    expect(`${label}: el saldo vivo no cuenta dos veces el cobro`, live.balance, 0);
+    expect(`${label}: queda libre para prestar hoy`, loanSettledOnDate(loan, result.payments, jDay), true);
+  };
+
+  const store = new Map([["nexo-admin-session", JSON.stringify({ userRef: "USR-J", username: "cob", roleRef: "ROL-1", permissions: [] })]]);
+  globalThis.window = {
+    localStorage: {
+      getItem: (k) => (store.has(k) ? store.get(k) : null),
+      setItem: (k, v) => store.set(k, String(v)),
+      removeItem: (k) => store.delete(k),
+    },
+    dispatchEvent: () => true,
+  };
+  try {
+    settled(combo(jHist), "Celular con todo el historial");
+    settled(combo(jHist.slice(1)), "Celular con un pedazo viejo (daba «mayor a lo pendiente»)");
+    settled(combo([]), "Celular solo con el día");
+    const first = commitCollectorPayment({
+      draft: part("K-1", "efectivo", 100_000), payments: [], loans: [jLoan], clients: [],
+      routes: [jRoute], assignments: [jVisit], collectors: [COB],
+    });
+    expect("Dos cobros sueltos el mismo día: el 1.º entra", first.ok || first.error, true);
+    if (first.ok) {
+      const second = commitCollectorPayment({
+        draft: { ...part("K-2", "efectivo", 120_000), kind: "abono" }, payments: first.payments, loans: first.loans,
+        clients: [], routes: first.routes, assignments: first.assignments, collectors: [COB],
+      });
+      settled(second, "Dos cobros sueltos el mismo día");
+      if (second.ok) {
+        const third = commitCollectorPayment({
+          draft: { ...part("K-3", "efectivo", 1_000), kind: "abono" }, payments: second.payments, loans: second.loans,
+          clients: [], routes: second.routes, assignments: second.assignments, collectors: [COB],
+        });
+        expect("Pagado en cero: no acepta un peso más", third.ok, false);
+      }
+    }
+  } finally {
+    delete globalThis.window;
+  }
+  settled(combo(jHist), "Panel del taller (historial completo, mismo resultado)");
+
+  const mirrorRow = (over) => ({
+    ref: "P-J1", client_ref: "CLI-J1", capital: 500_000, interest: 100_000, total: 600_000,
+    paid: 20_000, balance: 580_000, status: "Activo", kind: "ok", notes: "[[fb:efectivo]]", ...over,
+  });
+  const fromCloud = withCloudLedger(mirrorRow({}), 380_000);
+  expect("Nube: el `paid` de un aparato no pisa los cobros", `${fromCloud.paid}/${fromCloud.balance}/${fromCloud.status}`, "380000/220000/Activo");
+  const early = withCloudLedger(mirrorRow({ paid: 600_000, balance: 0, status: "Finalizado", kind: "paid" }), 380_000);
+  expect("Nube: «Finalizado» antes de que suba el cobro no cierra el préstamo", `${early.balance}/${early.status}`, "220000/Activo");
+  const paidOff = withCloudLedger(mirrorRow({ status: "Alerta 1" }), 600_000);
+  expect("Nube: con los cobros completos queda Finalizado", `${paidOff.balance}/${paidOff.status}`, "0/Finalizado");
+  const renewedOld = withCloudLedger(mirrorRow({ status: "Finalizado", notes: "Cerrado por renovación → P-J2" }), 380_000);
+  expect("Nube: renovado sigue en cero y cerrado", `${renewedOld.balance}/${renewedOld.status}`, "0/Finalizado");
+
+  const { readFileSync: readJhonSrc } = await import("node:fs");
+  const jSrc = (path) => readJhonSrc(new URL(path, import.meta.url), "utf8");
+  expect(
+    "Hidratar / proyectar en el cobrador no rehace la ficha con su lista de cobros",
+    jSrc("../lib/hydrate-operational-demo.ts").includes("syncDeviceLoans(storedLoans") &&
+      jSrc("../lib/operational-sync.ts").includes("syncDeviceLoans(restored.loans"),
+    true,
+  );
+  expect(
+    "Nube: actualizar un préstamo pasa por los cobros de la nube",
+    jSrc("../lib/supabase/catalog-mirror.ts").includes("withCloudLedger(row, Number(current.paid)"),
+    true,
+  );
+}
+
 if (failures) {
   console.error(`\n✖ Regla de inicio ROTA (${failures} falla${failures === 1 ? "" : "s"}). No se publica.`);
   process.exit(1);

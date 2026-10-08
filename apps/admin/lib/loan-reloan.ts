@@ -9,6 +9,7 @@
  * El renglón del cliente en los registros del día se pinta azul cuando ya se
  * le desembolsó el crédito nuevo.
  */
+import { isCollectorLiveDevice, syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import { syncLoan } from "@/lib/loan-preview";
 import {
   canClientTakeNewLoan,
@@ -18,8 +19,10 @@ import {
 } from "@/lib/mock-data";
 import { isCashlessRenewal, loanDisbursementIsoDate } from "@/lib/nequi-pool";
 
-function liveBalance(loan: LoanRow, payments: PaymentRow[]) {
-  const synced = syncLoan(loan, payments) as LoanRow;
+function liveBalance(loan: LoanRow, payments: PaymentRow[], date: string) {
+  const synced = isCollectorLiveDevice()
+    ? syncCollectorLiveLoan(loan, payments, date)
+    : (syncLoan(loan, payments) as LoanRow);
   return Number(synced.balance ?? 0);
 }
 
@@ -30,7 +33,7 @@ export function loanSettledOnDate(
   date: string,
 ): boolean {
   if (!loan) return false;
-  if (liveBalance(loan, payments) > 0) return false;
+  if (liveBalance(loan, payments, date) > 0) return false;
   return payments.some(
     (row) =>
       row.loanRef === loan.ref &&

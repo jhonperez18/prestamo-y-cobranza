@@ -8,7 +8,7 @@ import { businessTodayIso } from "@/lib/business-timezone";
 import { pesos } from "@/lib/finance";
 import { paymentVisitDate } from "@/lib/late-payment";
 import { isPaymentLive } from "@/lib/live-payments";
-import { syncLoan } from "@/lib/loan-preview";
+import { syncAllLoans, syncLoan } from "@/lib/loan-preview";
 import {
   COLLECTOR_ROLE_REF,
   SUPERVISOR_ROLE_REF,
@@ -51,6 +51,7 @@ export function withDateWindowParam(
 /**
  * Saldo del cobrador = ficha del préstamo (nube) + cobros de hoy que aún no están en esa ficha.
  * No suma el historial: si solo está el día, el saldo no se infla.
+ * Un cobro de este aparato ya sumado a la ficha (`livePaidRefs`) no se cuenta dos veces.
  */
 export function syncCollectorLiveLoan(
   loan: LoanRow,
@@ -59,9 +60,11 @@ export function syncCollectorLiveLoan(
 ): LoanRow {
   const base = syncLoan(loan) as LoanRow;
   const catalogAt = Date.parse(String(loan.updatedAt || "")) || 0;
+  const inFicha = new Set(loan.livePaidRefs ?? []);
   let add = 0;
   for (const row of dayPayments) {
     if (row.loanRef !== loan.ref || !isPaymentLive(row)) continue;
+    if (inFicha.has(row.ref)) continue;
     const day = paymentVisitDate(row) || row.paidDate || "";
     if (day !== today) continue;
     const payAt = Date.parse(String(row.updatedAt || "")) || 0;
@@ -74,6 +77,14 @@ export function syncCollectorLiveLoan(
     paid: pesos(base.paid) + add,
     balance: Math.max(0, pesos(base.balance) - add),
   };
+}
+
+/**
+ * Fichas del aparato tras hidratar / proyectar. En el cobrador la ficha manda el saldo:
+ * su lista de cobros es solo el día y rehacer `paid` con ella lo deja falso.
+ */
+export function syncDeviceLoans(loans: LoanRow[], payments: PaymentRow[]): LoanRow[] {
+  return isCollectorLiveDevice() ? syncAllLoans(loans) : syncAllLoans(loans, payments);
 }
 
 /** Al abrir un día del historial: baja solo ese día y lo deja para leer. */

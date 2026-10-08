@@ -12,7 +12,12 @@ import {
 } from "@/lib/collector-dispatch-sync";
 import { isCollectorLiveDevice, syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import { chargeLabel, syncLoan } from "@/lib/loan-preview";
-import { cuotaTarget, loanRowAfterPay, paymentRowKind } from "@/lib/loan-pay";
+import {
+  cuotaTarget,
+  loanRowAfterLivePay,
+  loanRowAfterPay,
+  paymentRowKind,
+} from "@/lib/loan-pay";
 import { buildPaymentRow } from "@/lib/payment-detail";
 import { validatePaymentEvidence } from "@/lib/payment-evidence";
 import { rememberPaymentEvidence } from "@/lib/payment-evidence-store";
@@ -275,9 +280,13 @@ export function commitCollectorPayment(
   }
 
   const nextPayments = [payment, ...payments];
-  const nextLoans = loans.map((row) =>
-    row.ref === loan.ref ? loanRowAfterPay(row, result.pay, nextPayments) : row,
-  );
+  const live = isCollectorLiveDevice();
+  const nextLoans = loans.map((row) => {
+    if (row.ref !== loan.ref) return row;
+    return live
+      ? loanRowAfterLivePay(row, result.pay, payment)
+      : loanRowAfterPay(row, result.pay, nextPayments);
+  });
   const nextClients = clients.map((entry) => {
     if (entry.ref !== draft.clientRef) return entry;
     return { ...entry, pending: Math.max(0, entry.pending - draft.amount) };
@@ -416,7 +425,9 @@ export function commitCollectorCombinedPayment(input: {
     input.payments,
   );
   if (!simFirst.ok) return { ok: false, error: simFirst.error };
-  const loanAfterFirst = loanRowAfterPay(loan, simFirst.pay, input.payments);
+  const loanAfterFirst = isCollectorLiveDevice()
+    ? loanRowAfterLivePay(loan, simFirst.pay, { ref: "", amount: amountA })
+    : loanRowAfterPay(loan, simFirst.pay, input.payments);
   const simSecond = applyCollectorPaymentResult(
     loanAfterFirst,
     {

@@ -50,7 +50,7 @@ import {
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
-import { isCollectorLiveDevice } from "@/lib/collector-live-window";
+import { isCollectorLiveDevice, syncDeviceLoans } from "@/lib/collector-live-window";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { restoreLoansFromOrphanDisbursements } from "@/lib/restore-loans-from-bank-disbursements";
 import { queueLoansMirror } from "@/lib/supabase/catalog-mirror";
@@ -59,7 +59,6 @@ import { refreshLabelsFromCatalog } from "@/lib/project-identity";
 import { omitDeleted } from "@/lib/deleted-ids";
 import { dedupeDailyPaymentsByVisit } from "@/lib/planilla-payment-reconcile";
 import { stripRemovedPaymentMovements } from "@/lib/purge-unclosed-payments";
-import { syncAllLoans } from "@/lib/loan-preview";
 import {
   indexPaymentEvidenceFromPayments,
   withPaymentEvidence,
@@ -178,7 +177,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
         loadDemoDayCloses<CollectorDayCloseRecord>(),
       );
 
-  const reconciledLoansBase = syncAllLoans(storedLoans, nextPayments) as LoanRow[];
+  const reconciledLoansBase = syncDeviceLoans(storedLoans, nextPayments);
   const restoredFromBank =
     isVirginOpsMode() || isCollectorLiveDevice()
       ? { loans: reconciledLoansBase, movements: storedMovementsEarly ?? [], created: [] as LoanRow[] }
