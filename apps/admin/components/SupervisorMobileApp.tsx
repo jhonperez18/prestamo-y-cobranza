@@ -33,6 +33,7 @@ import {
   isPrestamoRutaExpense,
   operativeExpenseLines,
   splitDayExpenses,
+  type CollectorHistoryPlanillaRow,
   type DayLoanDisbursementRow,
 } from "@/lib/collector-history-planilla";
 import {
@@ -303,9 +304,6 @@ function cierrePayLine(pay: PaymentRow): CierreListLine {
 const CIERRE_LIST_COLS: Partial<Record<CierreListKind, readonly [string, string, string]>> = {
   banco: ["Cliente", "Hora", "Valor"],
   bancoRuta: ["Cliente", "Hora", "Valor"],
-  nequiRuta: ["Cliente", "Hora", "Valor"],
-  efectivo: ["Cliente", "Hora", "Valor"],
-  efectivoCadena: ["Cliente", "Hora", "Valor"],
   prestamos: ["Cliente", "Préstamo", "Valor"],
   prestamosBanco: ["Cliente", "Préstamo", "Valor"],
   np: ["Cliente", "#", "Cuota"],
@@ -3058,13 +3056,7 @@ export function SupervisorMobileApp({
           ? cierreBancoT
           : cierreListKind === "bancoRuta"
             ? cierreBancoRuta
-            : cierreListKind === "nequiRuta"
-              ? (cierreNequiRutaPayments ?? []).map(cierrePayLine)
-              : cierreListKind === "efectivo"
-                ? (cierreEfectivoPayments ?? []).map(cierrePayLine)
-                : cierreListKind === "efectivoCadena"
-                  ? (cierreEfectivoCadenaPayments ?? []).map(cierrePayLine)
-                  : cierreListKind === "prestamosBanco"
+            : cierreListKind === "prestamosBanco"
               ? cierreBancoLoans.map((row) => ({
                   key: row.loanRef,
                   label: row.clientName,
@@ -3134,6 +3126,31 @@ export function SupervisorMobileApp({
       amount: Number(row.amount) || 0,
     }));
   const cierreShownLines = cierreListKind === "np" ? cierreNpLines : cierreListLines;
+  /** Botones de cobro y N/P: la lista sale con las columnas de la planilla del día. */
+  const cierrePlanillaPayments: PaymentRow[] | null =
+    cierreListKind === "efectivo"
+      ? cierreEfectivoPayments
+      : cierreListKind === "efectivoCadena"
+        ? cierreEfectivoCadenaPayments
+        : cierreListKind === "banco"
+          ? (historyDayChainT?.ownDigitalPayments ?? null)
+          : cierreListKind === "bancoRuta"
+            ? cierreBancoRutaPayments
+            : cierreListKind === "nequiRuta"
+              ? cierreNequiRutaPayments
+              : null;
+  const cierrePlanillaRows: CollectorHistoryPlanillaRow[] | null =
+    cierreListKind === "np"
+      ? openRouteHistoryDayPlanilla.filter((row) => row.method === "np")
+      : cierrePlanillaPayments && cajaHistoryDayIso
+        ? buildCollectorHistoryPlanillaRows({
+            dateIso: cajaHistoryDayIso,
+            dispatched: [],
+            payments: cierrePlanillaPayments,
+            loans,
+            clients,
+          })
+        : null;
 
   const openRouteNequiDayTotal = openRouteDigitalDayLedger?.total ?? 0;
 
@@ -4312,7 +4329,7 @@ export function SupervisorMobileApp({
                     <b>{money(openRouteHistoryDayCuadre.enCaja)}</b>
                   </div>
                 </div>
-                {cierreListKind ? (
+                {cierreListKind && !cierrePlanillaRows ? (
                   <div
                     className={`collector-cierre-drop is-${cierreListKind}`}
                     data-cierre-keep
@@ -4344,6 +4361,21 @@ export function SupervisorMobileApp({
                   </div>
                 ) : null}
               </div>
+              {cierreListKind && cierrePlanillaRows ? (
+                <div data-cierre-keep aria-label={CIERRE_LIST_TITLE[cierreListKind]}>
+                  {cierrePlanillaRows.length === 0 ? (
+                    <p className="collector-cierre-drop-empty">{CIERRE_LIST_EMPTY[cierreListKind]}</p>
+                  ) : (
+                    <CollectorDayCloseExtras
+                      dateLabel={cajaHistoryDayIso ? isoToDisplay(cajaHistoryDayIso) : ""}
+                      planillaRows={cierrePlanillaRows}
+                      planillaTitle={CIERRE_LIST_TITLE[cierreListKind]}
+                      prestamos={[]}
+                      prestamosTotal={0}
+                    />
+                  )}
+                </div>
+              ) : null}
               {openRouteIsA ? null : (
                 <CollectorDayCloseExtras
                   dateLabel={cajaHistoryDayIso ? isoToDisplay(cajaHistoryDayIso) : ""}

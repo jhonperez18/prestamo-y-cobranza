@@ -12,6 +12,8 @@ import { money } from "@/lib/mock-data";
 type Props = {
   dateLabel: string;
   planillaRows: CollectorHistoryPlanillaRow[];
+  /** Título de la planilla (por defecto «Planilla {dateLabel}»). */
+  planillaTitle?: string;
   prestamos: RouteExpenseLine[];
   prestamosTotal: number;
   otrosGastos?: RouteExpenseLine[];
@@ -30,6 +32,7 @@ type Props = {
 export function CollectorDayCloseExtras({
   dateLabel,
   planillaRows,
+  planillaTitle,
   prestamos,
   otrosGastos = [],
   otrosTotal = 0,
@@ -83,7 +86,7 @@ export function CollectorDayCloseExtras({
       {planillaRows.length > 0 ? (
         <div className="collector-history-planilla" aria-label={`Planilla ${dateLabel}`}>
           <p className="collector-history-planilla-title">
-            <strong>Planilla {dateLabel}</strong>
+            <strong>{planillaTitle ?? `Planilla ${dateLabel}`}</strong>
             {onToggleSearch ? (
               <button
                 type="button"
