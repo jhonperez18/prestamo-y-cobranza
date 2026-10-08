@@ -227,6 +227,14 @@ export function routeCollectedByMethod(
   return { efectivo: pesos(out.efectivo), nequi: pesos(out.nequi), banco: pesos(out.banco) };
 }
 
+/** Renglones del efectivo que suma `routeCollectedByMethod` (lista del botón Efectivo del Cierre). */
+export function routeCashPayments(src: DayCashSources, routeName: string): PaymentRow[] {
+  return routeDayPayments(src, routeName).filter((pay) => {
+    const method = normalizePaymentMethod(pay.method);
+    return method !== "nequi" && method !== "banco";
+  });
+}
+
 /** Efectivo cobrado a clientes de la ruta (Nequi / banco no entran a la mano). */
 export function routeCashCollected(src: DayCashSources, routeName: string): number {
   return routeCollectedByMethod(src, routeName).efectivo;
@@ -453,6 +461,10 @@ export type ChainDayCuadre = {
   ownDigital: number;
   /** Cobros Banco / Nequi (renglones) que suma `ownDigital`. */
   ownDigitalPayments: PaymentRow[];
+  /** Cobros en efectivo (renglones) que suman `ownEfectivo`. */
+  ownCashPayments: PaymentRow[];
+  /** Cobros en efectivo (renglones) que suman `efectivo` (T: M + T). */
+  cashPayments: PaymentRow[];
   efectivo: number;
   nequi: number;
   banco: number;
@@ -490,6 +502,8 @@ export function chainDayCuadre(
     ownGastos: pesos(side === "secondary" ? ledger.t.gastos : ledger.m.gastos),
     ownDigital: digitalPaymentsTotal(digital.own),
     ownDigitalPayments: digital.own,
+    ownCashPayments: routeCashPayments(src, routes[routes.length - 1]),
+    cashPayments: routes.flatMap((route) => routeCashPayments(src, route)),
     efectivo: pesos(days.reduce((sum, day) => sum + day.efectivo, 0)),
     nequi: digital.nequi,
     banco: digital.banco,

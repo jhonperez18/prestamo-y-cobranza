@@ -2122,6 +2122,12 @@
     .collector-mobile-home-cuadre-grid .is-cobrado-means button.is-mean.is-pay-banco.on {
       box-shadow: 0 0 0 2px #2563eb;
     }
+    .collector-mobile-home-cuadre-grid .is-cobrado-means button.is-mean.is-pay-efectivo.on {
+      box-shadow: 0 0 0 2px #059669;
+    }
+    .collector-mobile-home-cuadre-grid .is-cobrado-means button.is-mean.is-pay-nequi.on {
+      box-shadow: 0 0 0 2px #7c3aed;
+    }
     .collector-cierre-drop ul.is-cols-3 {
       display: block;
       width: 100%;

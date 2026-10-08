@@ -280,12 +280,32 @@ type SupervisorView =
   | "clientes"
   | "prestamos";
 type NuevoMode = "menu" | "cliente" | "prestamo" | "gasto";
-type CierreListKind = "prestamos" | "gastos" | "banco" | "bancoRuta" | "prestamosBanco" | "np";
+type CierreListKind =
+  | "prestamos"
+  | "gastos"
+  | "banco"
+  | "bancoRuta"
+  | "nequiRuta"
+  | "efectivo"
+  | "efectivoCadena"
+  | "prestamosBanco"
+  | "np";
 /** `mid` = columna del medio en las listas de tres columnas. */
 type CierreListLine = { key: string; label: string; mid?: string; amount: number };
+function cierrePayLine(pay: PaymentRow): CierreListLine {
+  return {
+    key: pay.ref,
+    label: pay.client,
+    mid: pay.paidTime || "—",
+    amount: Number(pay.amount) || 0,
+  };
+}
 const CIERRE_LIST_COLS: Partial<Record<CierreListKind, readonly [string, string, string]>> = {
   banco: ["Cliente", "Hora", "Valor"],
   bancoRuta: ["Cliente", "Hora", "Valor"],
+  nequiRuta: ["Cliente", "Hora", "Valor"],
+  efectivo: ["Cliente", "Hora", "Valor"],
+  efectivoCadena: ["Cliente", "Hora", "Valor"],
   prestamos: ["Cliente", "Préstamo", "Valor"],
   prestamosBanco: ["Cliente", "Préstamo", "Valor"],
   np: ["Cliente", "#", "Cuota"],
@@ -295,6 +315,9 @@ const CIERRE_LIST_TITLE: Record<CierreListKind, string> = {
   gastos: "Gastos del día",
   banco: "Banco T del día",
   bancoRuta: "Banco del día",
+  nequiRuta: "Nequi del día",
+  efectivo: "Efectivo del día",
+  efectivoCadena: "Efectivo M+T del día",
   prestamosBanco: "Préstamos B M+T del día",
   np: "N/P del día",
 };
@@ -303,6 +326,9 @@ const CIERRE_LIST_EMPTY: Record<CierreListKind, string> = {
   gastos: "Sin gastos ese día.",
   banco: "Sin cobros Banco en T ese día.",
   bancoRuta: "Sin cobros Banco ese día.",
+  nequiRuta: "Sin cobros Nequi ese día.",
+  efectivo: "Sin cobros en efectivo ese día.",
+  efectivoCadena: "Sin cobros en efectivo en M ni T ese día.",
   prestamosBanco: "Sin préstamos del Banco ese día.",
   np: "Sin N/P ese día.",
 };
@@ -2966,12 +2992,7 @@ export function SupervisorMobileApp({
     : openRouteHistoryDayExpenseSplit.otrosTotal;
 
   const cierreBancoT = historyDayChainT
-    ? historyDayChainT.ownDigitalPayments.map((pay) => ({
-        key: pay.ref,
-        label: pay.client,
-        mid: pay.paidTime || "—",
-        amount: Number(pay.amount) || 0,
-      }))
+    ? historyDayChainT.ownDigitalPayments.map(cierrePayLine)
     : [];
 
   /** Banco de M / N: los mismos cobros que suma el botón (historial Banco de esa ruta). */
@@ -2982,12 +3003,21 @@ export function SupervisorMobileApp({
       : openRouteHistoryIndependentDay && !openRouteIsA
         ? openRouteHistoryIndependentDay.collected.digitalPayments
         : null;
-  const cierreBancoRuta = (cierreBancoRutaPayments ?? []).map((pay) => ({
-    key: pay.ref,
-    label: pay.client,
-    mid: pay.paidTime || "—",
-    amount: Number(pay.amount) || 0,
-  }));
+  const cierreBancoRuta = (cierreBancoRutaPayments ?? []).map(cierrePayLine);
+
+  /** Nequi de A: los mismos cobros que suma el botón (historial Nequi de A). */
+  const cierreNequiRutaPayments =
+    openRouteIsA && openRouteHistoryIndependentDay
+      ? openRouteHistoryIndependentDay.collected.digitalPayments
+      : null;
+
+  /** Efectivo de la planilla abierta (T: solo T) y, en T, el de M+T: los cobros que suma cada botón. */
+  const cierreEfectivoPayments = openRouteHistoryChainDay
+    ? openRouteHistoryChainDay.ownCashPayments
+    : openRouteHistoryIndependentDay
+      ? openRouteHistoryIndependentDay.collected.cashPayments
+      : null;
+  const cierreEfectivoCadenaPayments = historyDayChainT ? historyDayChainT.cashPayments : null;
 
   /** Solo vista: préstamos del día que salieron del Banco a clientes de M y T (no tocan la caja). */
   const cierreBancoLoans = useMemo(() => {
@@ -3028,7 +3058,13 @@ export function SupervisorMobileApp({
           ? cierreBancoT
           : cierreListKind === "bancoRuta"
             ? cierreBancoRuta
-            : cierreListKind === "prestamosBanco"
+            : cierreListKind === "nequiRuta"
+              ? (cierreNequiRutaPayments ?? []).map(cierrePayLine)
+              : cierreListKind === "efectivo"
+                ? (cierreEfectivoPayments ?? []).map(cierrePayLine)
+                : cierreListKind === "efectivoCadena"
+                  ? (cierreEfectivoCadenaPayments ?? []).map(cierrePayLine)
+                  : cierreListKind === "prestamosBanco"
               ? cierreBancoLoans.map((row) => ({
                   key: row.loanRef,
                   label: row.clientName,
@@ -4150,15 +4186,45 @@ export function SupervisorMobileApp({
                     aria-label="Desglose de lo cobrado"
                   >
                     {historyDayChainT ? (
-                      <div className="is-mean is-pay-efectivo">
+                      <button
+                        type="button"
+                        className={`is-mean is-pay-efectivo is-tap-mean${cierreListKind === "efectivo" ? " on" : ""}`}
+                        data-cierre-keep
+                        aria-expanded={cierreListKind === "efectivo"}
+                        onClick={() => toggleCierreList("efectivo")}
+                      >
                         <span>Efectivo T</span>
                         <b>{money(historyDayChainT.ownEfectivo)}</b>
-                      </div>
+                      </button>
                     ) : null}
-                    <div className="is-mean is-pay-efectivo">
-                      <span>{openRouteCajaHistoryIsT ? "Efectivo M+T" : "Efectivo"}</span>
-                      <b>{money(openRouteHistoryDayCuadre.cobradoEfectivo)}</b>
-                    </div>
+                    {historyDayChainT ? (
+                      <button
+                        type="button"
+                        className={`is-mean is-pay-efectivo is-tap-mean${cierreListKind === "efectivoCadena" ? " on" : ""}`}
+                        data-cierre-keep
+                        aria-expanded={cierreListKind === "efectivoCadena"}
+                        onClick={() => toggleCierreList("efectivoCadena")}
+                      >
+                        <span>Efectivo M+T</span>
+                        <b>{money(openRouteHistoryDayCuadre.cobradoEfectivo)}</b>
+                      </button>
+                    ) : cierreEfectivoPayments ? (
+                      <button
+                        type="button"
+                        className={`is-mean is-pay-efectivo is-tap-mean${cierreListKind === "efectivo" ? " on" : ""}`}
+                        data-cierre-keep
+                        aria-expanded={cierreListKind === "efectivo"}
+                        onClick={() => toggleCierreList("efectivo")}
+                      >
+                        <span>Efectivo</span>
+                        <b>{money(openRouteHistoryDayCuadre.cobradoEfectivo)}</b>
+                      </button>
+                    ) : (
+                      <div className="is-mean is-pay-efectivo">
+                        <span>Efectivo</span>
+                        <b>{money(openRouteHistoryDayCuadre.cobradoEfectivo)}</b>
+                      </div>
+                    )}
                     {historyDayChainT ? (
                       <button
                         type="button"
@@ -4189,7 +4255,18 @@ export function SupervisorMobileApp({
                         <b>{money(historyDayDigitalAmount)}</b>
                       </div>
                     ) : null}
-                    {historyDayShowBancoValue ? (
+                    {historyDayShowBancoValue && cierreNequiRutaPayments ? (
+                      <button
+                        type="button"
+                        className={`is-mean is-pay-nequi is-tap-mean${cierreListKind === "nequiRuta" ? " on" : ""}`}
+                        data-cierre-keep
+                        aria-expanded={cierreListKind === "nequiRuta"}
+                        onClick={() => toggleCierreList("nequiRuta")}
+                      >
+                        <span>Nequi</span>
+                        <b>{money(historyDayNequiBoxAmount)}</b>
+                      </button>
+                    ) : historyDayShowBancoValue ? (
                       <div className="is-mean is-pay-nequi">
                         <span>Nequi</span>
                         {/* Regla: Nequi A = historial Nequi de A. Exclusivo de A. No toca caja. */}
@@ -4267,12 +4344,14 @@ export function SupervisorMobileApp({
                   </div>
                 ) : null}
               </div>
-              <CollectorDayCloseExtras
-                dateLabel={cajaHistoryDayIso ? isoToDisplay(cajaHistoryDayIso) : ""}
-                planillaRows={openRouteHistoryDayPlanilla}
-                prestamos={[]}
-                prestamosTotal={0}
-              />
+              {openRouteIsA ? null : (
+                <CollectorDayCloseExtras
+                  dateLabel={cajaHistoryDayIso ? isoToDisplay(cajaHistoryDayIso) : ""}
+                  planillaRows={openRouteHistoryDayPlanilla}
+                  prestamos={[]}
+                  prestamosTotal={0}
+                />
+              )}
             </section>
           ) : detailMode === "historial-dia" ? (
             <p className="ficha-empty">Sin datos de cierre para ese día.</p>

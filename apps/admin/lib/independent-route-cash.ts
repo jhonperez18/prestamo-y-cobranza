@@ -38,6 +38,7 @@ import {
   isChainCollectorDay,
   routeCashCollected,
   routeClientRefsForDay,
+  routeCashPayments,
   routeCollectedByMethod,
   routeDigitalCollected,
   sealedDayCash,
@@ -211,7 +212,13 @@ export { gastosGoToChain as collectorGastosGoToChain };
 export function independentRouteCollected(
   src: DayCashSources,
   route: string,
-): { efectivo: number; nequi: number; banco: number; digitalPayments: PaymentRow[] } {
+): {
+  efectivo: number;
+  nequi: number;
+  banco: number;
+  digitalPayments: PaymentRow[];
+  cashPayments: PaymentRow[];
+} {
   const cash = routeCollectedByMethod(src, route);
   const digital = routeDigitalCollected(src, route);
   return {
@@ -219,6 +226,7 @@ export function independentRouteCollected(
     nequi: digital.nequi,
     banco: digital.banco,
     digitalPayments: digital.payments,
+    cashPayments: routeCashPayments(src, route),
   };
 }
 
