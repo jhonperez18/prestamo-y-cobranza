@@ -7,9 +7,13 @@ import { LoginScreen } from "@/components/LoginScreen";
 import { SupervisorShell } from "@/components/SupervisorShell";
 import {
   clearSession,
+  resumeSession,
+  sessionStillValid,
+  stampSession,
   writeSession,
   type AppSession,
 } from "@/lib/auth";
+import { businessTodayIso } from "@/lib/business-timezone";
 import { bootstrapProtectedDemoData } from "@/lib/bootstrap-demo-data";
 import { parkLocalBlobs } from "@/lib/evidence-idb";
 import { hydrateBigDemoStore } from "@/lib/big-demo-store";
@@ -50,6 +54,14 @@ type Props = {
   channel?: PwaChannelId;
 };
 
+/** Sesión viva: si el Listado la invalidó (clave, rol, baja) o ya es otro día → login. */
+function keepIfValid(session: AppSession | null): AppSession | null {
+  if (!session) return null;
+  if (sessionStillValid(session, loadDemoUsers(), businessTodayIso())) return session;
+  clearSession();
+  return null;
+}
+
 export function AuthGate({ channel = "sistema" }: Props) {
   const [session, setSession] = useState<AppSession | null>(null);
   const [ready, setReady] = useState(false);
@@ -77,22 +89,30 @@ export function AuthGate({ channel = "sistema" }: Props) {
       // Local primero: login listo sin esperar la nube.
       const users = loadDemoUsers();
       writeDemoJson(DEMO_USERS_KEY, users);
-      clearSession();
-      setSession(null);
+      // Volver de WhatsApp / banco (o una recarga) retoma la sesión del día si sigue valiendo.
+      const resumed = resumeSession(users, businessTodayIso());
+      if (resumed && sessionAllowedOnChannel(resumed, channel)) {
+        writeSession(resumed);
+        setSession(resumed);
+      } else {
+        clearSession();
+        setSession(null);
+      }
       mq = window.matchMedia("(max-width: 900px)");
       syncPhone();
       mq.addEventListener("change", syncPhone);
       setReady(true);
 
-      // Sync personas en fondo (otro PC/celular).
+      // Sync personas en fondo (otro PC/celular). Con el Listado nuevo se revisa la sesión.
       void (async () => {
         try {
           await flushUserMirrorQueues();
           await pullRemoteUsersIntoDemo();
           if (cancelled) return;
           writeDemoJson(DEMO_USERS_KEY, loadDemoUsers());
-        } catch {
-          /* offline */
+          setSession((prev) => keepIfValid(prev));
+        } catch (error) {
+          console.error("auth-users-sync", error);
         }
       })();
     }
@@ -112,6 +132,16 @@ export function AuthGate({ channel = "sistema" }: Props) {
     setSession(null);
   }, [session, channel]);
 
+  const loggedIn = session != null;
+  useEffect(() => {
+    if (!loggedIn) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") setSession((prev) => keepIfValid(prev));
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [loggedIn]);
+
   if (!ready) {
     return <div className="login-screen login-loading" aria-hidden />;
   }
@@ -123,8 +153,9 @@ export function AuthGate({ channel = "sistema" }: Props) {
         channel={channel}
         onSuccess={(next) => {
           if (!sessionAllowedOnChannel(next, channel)) return;
-          writeSession(next);
-          setSession(next);
+          const stamped = stampSession(next, loadDemoUsers(), businessTodayIso());
+          writeSession(stamped);
+          setSession(stamped);
         }}
       />
     );

@@ -15,6 +15,10 @@ export type AppSession = {
   permissions: string[];
   channels: AccessChannel[];
   collectorRef?: string;
+  /** Día (Bogotá) en que se entró: la sesión guardada vence a medianoche. */
+  issuedOn?: string;
+  /** Huella de la clave al entrar (no la clave): si el Listado la cambia, se vuelve a pedir. */
+  credentialStamp?: string;
 };
 
 /** @deprecated use AppSession */
@@ -129,4 +133,47 @@ export function writeSession(session: AppSession) {
 
 export function clearSession() {
   window.localStorage.removeItem(AUTH_SESSION_KEY);
+}
+
+function credentialStampOf(user: UserRow): string {
+  const text = `${user.ref}|${user.password?.trim() || DEFAULT_DEMO_PASSWORD}`;
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+/** Sesión recién aceptada en el login: queda marcada con el día y la huella de la clave. */
+export function stampSession(session: AppSession, users: UserRow[], today: string): AppSession {
+  const user = users.find((row) => row.ref === session.userRef);
+  return { ...session, issuedOn: today, credentialStamp: user ? credentialStampOf(user) : "" };
+}
+
+/**
+ * ¿La sesión sigue valiendo? El Listado (`USR-`) manda: mismo día, usuario activo, mismo rol
+ * y la misma clave con que entró. Cualquier cambio → se vuelve a pedir la clave.
+ */
+export function sessionStillValid(session: AppSession, users: UserRow[], today: string): boolean {
+  if (session.issuedOn !== today) return false;
+  const user = users.find((row) => row.ref === session.userRef);
+  if (!user || !user.active || user.roleRef !== session.roleRef) return false;
+  return !session.credentialStamp || credentialStampOf(user) === session.credentialStamp;
+}
+
+/**
+ * Al arrancar (la app volvió de segundo plano o se recargó): retoma la sesión guardada si
+ * sigue valiendo. Sin huella de clave no se retoma.
+ */
+export function resumeSession(users: UserRow[], today: string): AppSession | null {
+  const stored = readSession();
+  if (!stored?.credentialStamp || !sessionStillValid(stored, users, today)) return null;
+  const user = users.find((row) => row.ref === stored.userRef);
+  if (!user) return null;
+  return {
+    ...sessionFromUser(user),
+    issuedOn: stored.issuedOn,
+    credentialStamp: stored.credentialStamp,
+  };
 }
