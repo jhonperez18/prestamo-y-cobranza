@@ -16,6 +16,18 @@ alwaysApply: true
 
 T **no** arrastra préstamos ni gastos de M — solo el saldo.
 
+### Regla de oro del dueño (09/10): las bases son fijas
+
+- **Inicial de M hoy = CIE- de ayer, fijo todo el día.** Cobros, préstamos y gastos de hoy no lo mueven.
+- Lo de hoy se anota aparte y arma el saldo **al cierre**: M cierra (Inicial fijo + su movimiento) →
+ T arranca con esa caja → T cierra = saldo final del día = Inicial fijo de M mañana.
+- Cada movimiento entra una sola vez, en su planilla: al cortar el día no se resta sobre lo restado.
+- La caja viva de M (lo que será el Inicial de T) sí cambia mientras M esté abierta; el Inicial de M no.
+- **Libro desde el 01/10** (`ROUTE_CASH_BOOK_FROM`): arranca con el saldo manual del 30/09
+ (CIE- de M/T, ajuste de A / N). Antes es ficción: ninguna pantalla lo muestra ni lo arrastra.
+ Días cerrados leen lo sellado (Inicial = CIE víspera; Saldo M = caja final de M); el celular del
+ cobrador los recibe del servidor (`/api/ops/route-cash-book`), nunca los rehace a medias.
+
 ### Cada planilla con lo suyo
 
 M, T, A y N tienen clientes, cobros, préstamos y gastos **propios**.
