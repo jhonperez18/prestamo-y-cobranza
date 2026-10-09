@@ -79,6 +79,7 @@ async function listFiles(bucket, prefix = "") {
   const { data: buckets, error } = await s.storage.listBuckets();
   if (error) throw new Error(`buckets: ${error.message}`);
   for (const bucket of buckets || []) {
+    if (bucket.name === "respaldos") continue;
     const files = await listFiles(bucket.name);
     for (const file of files) {
       const { data, error: dlError } = await s.storage.from(bucket.name).download(file);
