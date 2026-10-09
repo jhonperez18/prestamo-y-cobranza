@@ -29,6 +29,9 @@ Primero dice qué es lo mejor para el negocio, después hace lo que el dueño de
 - Si se hace un parche por urgencia → decirlo con la palabra **«parche»** y anotar el arreglo de fondo pendiente.
 - Prohibido presentar un candado como «arreglado de raíz».
 - Cada fase que pase un dato a la nube **quita** los candados de ese dato. Los candados bajan, no suben.
+- **Cero candados nuevos (dueño, 2026-10-09).** Una falla se arregla moviendo ese dato a la nube.
+  Prohibido sumar secciones a `assert-cash-chain.mjs` o `if` de un caso. Si hay urgencia que pierde
+  plata → avisar al dueño y pedir permiso antes del parche.
 
 ## Rumbo (modelo banco)
 
