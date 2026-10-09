@@ -1,51 +1,28 @@
 /**
- * El Haber DSB- del registro Banco es evidencia del desembolso.
- * Si un P- lo pisó otro cliente, se rehace la ficha del tercero del movimiento
- * con un código nuevo. No se inventa el capital: sale del Haber.
+ * El Haber DSB- del registro Banco es evidencia del desembolso, solo para leer.
+ * Un préstamo existe si la nube lo tiene: ningún aparato rehace fichas desde Banco
+ * ni da de baja «copias» (caso Albornoz 08/10: seis P- para un préstamo y la ficha real borrada).
  */
 import type { BankMovement } from "@/lib/bank";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
-import { deletedLoanRefRows, readDeletedIdSet } from "@/lib/deleted-ids";
-import { interestFromPct } from "@/lib/finance";
 import {
-  isoToDisplay,
-  previewLoanFlat,
-  syncLoan,
-  type PayFrequency,
-} from "@/lib/loan-preview";
-import { rememberDeletedId } from "@/lib/deleted-ids";
-import {
-  canClientTakeNewLoan,
   isLoanActive,
   isLoanVoided,
-  nextLoanCode,
   type ClientRow,
   type LoanRow,
 } from "@/lib/mock-data";
 import {
   loanBankOutflowCapital,
   loanDisbursementIsoDate,
-  loanDisbursementMovementRef,
   loanFundedByBanco,
   loanFundedByNequi,
   loanIsExistingPortfolio,
-  markLoanFundedByBanco,
-  markLoanFundedByNequi,
 } from "@/lib/nequi-pool";
-import { isCollectorLiveDevice } from "@/lib/collector-live-window";
-import { loanDeletedRow, queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 
-export type RestoreLoansFromDisbursementsInput = {
+export type OrphanDisbursementInput = {
   loans: LoanRow[];
   movements: BankMovement[];
   clients: ClientRow[];
-};
-
-export type RestoreLoansFromDisbursementsResult = {
-  loans: LoanRow[];
-  movements: BankMovement[];
-  created: LoanRow[];
-  removed: LoanRow[];
 };
 
 function loanCodeNumber(ref: string): number {
@@ -72,7 +49,7 @@ export function digitalDisbursementTwinKey(loan: TwinLoan): string {
   return twinParts(loan);
 }
 
-/** Efectivo de caja: mismo criterio, sin tumbar el catálogo en cada hydrate. */
+/** Efectivo de caja: mismo criterio. */
 export function cashDisbursementTwinKey(loan: TwinLoan): string {
   if (loanFundedByBanco(loan) || loanFundedByNequi(loan)) return "";
   return twinParts(loan);
@@ -98,16 +75,17 @@ function uniqueByTwinKey(loans: LoanRow[], keyOf: (loan: LoanRow) => string): Lo
   });
 }
 
-/** De varias fichas gemelas Banco/Nequi, se queda el P- original (número más bajo). */
+/** Proyección del registro Banco: un desembolso se cuenta una vez. No toca el catálogo. */
 export function uniqueDigitalDisbursementLoans(loans: LoanRow[]): LoanRow[] {
   return uniqueByTwinKey(loans, digitalDisbursementTwinKey);
 }
 
-/** De varias copias en efectivo, se queda el P- original. No tumba el catálogo. */
+/** Proyección del registro sistema (efectivo): un desembolso se cuenta una vez. */
 export function uniqueCashDisbursementLoans(loans: LoanRow[]): LoanRow[] {
   return uniqueByTwinKey(loans, cashDisbursementTwinKey);
 }
 
+/** Alta: si ya hay ficha para ese cliente, día y capital, no se crea otra. */
 export function existingDigitalDisbursementTwin(
   loans: LoanRow[],
   clientRef: string,
@@ -122,28 +100,6 @@ export function existingDigitalDisbursementTwin(
   return loans.find(
     (loan) => digitalDisbursementTwinKey(loan) === key || cashDisbursementTwinKey(loan) === key,
   );
-}
-
-/**
- * Copias del mismo desembolso: se deja el original y las demás salen (tombstone).
- * Así Listado y Banco no muestran P-426 y P-430 a la vez.
- */
-export function collapseDuplicateDigitalLoans(loans: LoanRow[]): {
-  loans: LoanRow[];
-  removed: LoanRow[];
-} {
-  const originals = new Set(uniqueDigitalDisbursementLoans(loans).map((row) => row.ref));
-  const removed: LoanRow[] = [];
-  const next: LoanRow[] = [];
-  for (const loan of loans) {
-    const key = digitalDisbursementTwinKey(loan);
-    if (!key || originals.has(loan.ref)) {
-      next.push(loan);
-      continue;
-    }
-    removed.push(loan);
-  }
-  return { loans: next, removed };
 }
 
 function nameKey(raw: string) {
@@ -201,11 +157,6 @@ function isDisbursementMovement(row: BankMovement) {
   return /^DSB-/i.test(String(row.ref || "")) || /^DSB-/i.test(String(row.loanDisbursementRef || ""));
 }
 
-function fundedFromMovement(row: BankMovement): "banco" | "nequi" {
-  const hay = `${row.description || ""} ${row.accountRef || ""}`.toLowerCase();
-  return hay.includes("nequi") ? "nequi" : "banco";
-}
-
 function valueDateIso(row: BankMovement) {
   return normalizeHistoryDate(row.valueDate || row.opDate || "") || "";
 }
@@ -239,10 +190,10 @@ export type OrphanDisbursementOutflow = {
 
 /**
  * Haber DSB que no tiene ficha de ese cliente (el P- lo pisó otro o desapareció).
- * El historial Banco lo lista; restoreLoansFromOrphanDisbursements lo convierte en ficha.
+ * El historial Banco lo lista para que se vea; la ficha la corrige el dueño en la nube.
  */
 export function listOrphanDisbursementOutflows(
-  input: RestoreLoansFromDisbursementsInput,
+  input: OrphanDisbursementInput,
 ): OrphanDisbursementOutflow[] {
   const rows: OrphanDisbursementOutflow[] = [];
   for (const row of input.movements) {
@@ -275,182 +226,4 @@ export function listOrphanDisbursementOutflows(
     });
   }
   return rows;
-}
-
-function movementOwnsLoan(row: BankMovement, loan: LoanRow, clients: ClientRow[]) {
-  if (loan.ref !== loanRefFromDisbursementMovement(row)) return false;
-  const third = findClientByThirdParty(clients, row.thirdParty || "");
-  return Boolean(third && third.ref === loan.clientRef);
-}
-
-function siblingTerms(
-  orphan: BankMovement,
-  movements: BankMovement[],
-  loans: LoanRow[],
-  clients: ClientRow[],
-): LoanRow | null {
-  const date = valueDateIso(orphan);
-  const capital = Number(orphan.credit) || 0;
-  for (const row of movements) {
-    if (row.ref === orphan.ref) continue;
-    if (!isDisbursementMovement(row)) continue;
-    if (valueDateIso(row) !== date) continue;
-    if ((Number(row.credit) || 0) !== capital) continue;
-    const loanRef = loanRefFromDisbursementMovement(row);
-    const loan = loans.find((entry) => entry.ref === loanRef);
-    if (!loan || !isLoanActive(loan)) continue;
-    if (Number(loan.capital) !== capital) continue;
-    if (!movementOwnsLoan(row, loan, clients)) continue;
-    return loan;
-  }
-  return null;
-}
-
-function buildRestoredLoan(input: {
-  ref: string;
-  client: ClientRow;
-  capital: number;
-  dateIso: string;
-  fundedBy: "banco" | "nequi";
-  sibling: LoanRow | null;
-}): LoanRow {
-  const startIso = input.dateIso;
-  const sibling = input.sibling;
-  const preview =
-    sibling && Number(sibling.installment) > 0
-      ? null
-      : previewLoanFlat({
-          capital: input.capital,
-          interest: interestFromPct(input.capital, 20),
-          startIso,
-          frequency: "diario",
-          termMonths: 1,
-        });
-  const frequency = (sibling?.frequency || "diario") as PayFrequency;
-  const installment = Number(sibling?.installment) || Number(preview?.installment) || 0;
-  const total =
-    Number(sibling?.total) || Number(preview?.total) || input.capital;
-  const interest = Number(sibling?.interest) || Number(preview?.interest) || 0;
-  const notes = sibling?.notes?.includes("Préstamo rápido")
-    ? sibling.notes
-    : preview
-      ? "Préstamo rápido · Diario · 1 mes"
-      : "Préstamo";
-  const base = syncLoan(
-    {
-      ref: input.ref,
-      clientRef: input.client.ref,
-      client: `${input.client.name} ${input.client.lastName}`.trim(),
-      date: isoToDisplay(startIso) || startIso,
-      due: sibling?.due || (preview ? isoToDisplay(preview.dates[preview.dates.length - 1] || startIso) : ""),
-      capital: input.capital,
-      paid: 0,
-      balance: total,
-      status: "Revisar",
-      kind: "ok",
-      notes,
-      rate: sibling?.rate,
-      frequency,
-      mode: sibling?.mode || "cuota_fija",
-      pact: sibling?.pact || "valor",
-      days: sibling?.days ?? preview?.days,
-      interest,
-      total,
-      installment,
-      schedule: sibling?.schedule ?? preview?.schedule,
-      termsPending: true,
-    },
-    undefined,
-  ) as LoanRow;
-  const stamped = { ...base, updatedAt: new Date().toISOString() };
-  return input.fundedBy === "nequi" ? markLoanFundedByNequi(stamped) : markLoanFundedByBanco(stamped);
-}
-
-/**
- * DSB cuyo P- ya es de otro cliente (o desapareció): ficha nueva para el tercero del Haber.
- * Idempotente. No toca el préstamo que se quedó con el código viejo.
- */
-export function restoreLoansFromOrphanDisbursements(
-  input: RestoreLoansFromDisbursementsInput,
-): RestoreLoansFromDisbursementsResult {
-  const clients = input.clients;
-  let loans = [...input.loans];
-  let movements = [...input.movements];
-  const created: LoanRow[] = [];
-  const deletedRefs = readDeletedIdSet();
-
-  for (const row of input.movements) {
-    if (!isDisbursementMovement(row)) continue;
-    const occupiedRef = loanRefFromDisbursementMovement(row);
-    if (!occupiedRef) continue;
-    // Préstamo dado de baja a propósito: su Haber no lo vuelve a crear con otro P-.
-    if (deletedRefs.has(occupiedRef) && !loans.some((loan) => loan.ref === occupiedRef)) continue;
-    const capital = Number(row.credit) || 0;
-    const dateIso = valueDateIso(row);
-    if (capital <= 0 || !dateIso) continue;
-    const client = findClientByThirdParty(clients, row.thirdParty || "");
-    if (!client) continue;
-
-    const occupied = loans.find((loan) => loan.ref === occupiedRef);
-    if (occupied && occupied.clientRef === client.ref) continue;
-
-    const already = loans.find(
-      (loan) =>
-        loan.clientRef === client.ref &&
-        isLoanActive(loan) &&
-        Number(loan.capital) === capital &&
-        loanDisbursementIsoDate(loan) === dateIso,
-    );
-    if (already || !canClientTakeNewLoan(client.ref, loans)) {
-      if (!already) continue;
-      const nextDsb = loanDisbursementMovementRef(already.ref);
-      if (row.ref === nextDsb) continue;
-      movements = movements.map((entry) =>
-        entry.ref === row.ref
-          ? {
-              ...entry,
-              ref: nextDsb,
-              loanDisbursementRef: nextDsb,
-              description: (entry.description || "").replace(occupiedRef, already.ref),
-            }
-          : entry,
-      );
-      continue;
-    }
-
-    const sibling = siblingTerms(row, input.movements, loans, clients);
-    const ref = nextLoanCode([...loans, ...deletedLoanRefRows()]);
-    const restored = buildRestoredLoan({
-      ref,
-      client,
-      capital,
-      dateIso,
-      fundedBy: fundedFromMovement(row),
-      sibling,
-    });
-    loans = [...loans, restored];
-    created.push(restored);
-    const nextDsb = loanDisbursementMovementRef(ref);
-    movements = movements.map((entry) =>
-      entry.ref === row.ref
-        ? {
-            ...entry,
-            ref: nextDsb,
-            loanDisbursementRef: nextDsb,
-            description: (entry.description || "").replace(occupiedRef, ref),
-          }
-        : entry,
-    );
-  }
-
-  const collapsed = collapseDuplicateDigitalLoans(loans);
-  if (
-    typeof window !== "undefined" &&
-    collapsed.removed.length > 0 &&
-    !isCollectorLiveDevice()
-  ) {
-    for (const row of collapsed.removed) rememberDeletedId(row.ref);
-    queueLoansMirror(collapsed.removed.map((row) => loanDeletedRow(row)));
-  }
-  return { loans: collapsed.loans, movements, created, removed: collapsed.removed };
 }

@@ -98,6 +98,8 @@ export type LoanRow = {
    * No viaja a la nube; el pull trae la ficha del servidor sin esto.
    */
   livePaidRefs?: string[];
+  /** Solo en la fila de baja: «owner» = botón Borrar. La nube rechaza cualquier otra baja. */
+  deleteIntent?: "owner";
 };
 
 export type PaymentRow = {

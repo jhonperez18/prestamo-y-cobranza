@@ -375,6 +375,21 @@ function pruneOpenAssignmentQueueAgainstLocalCloses() {
   if (kept.length !== queued.length) writeDemoJson(Q_ASSIGN, kept);
 }
 
+/** Visita sin cobro de un préstamo dado de baja (o que la nube no tiene): no sube. */
+function pruneAssignmentQueueForDeletedLoans() {
+  if (typeof window === "undefined") return;
+  const deleted = readDeletedIdSet();
+  if (!deleted.size) return;
+  const queued = readDemoJson<{ ref: string; loanRef?: string; paymentRef?: string | null }[]>(
+    Q_ASSIGN,
+    [],
+  );
+  const kept = queued.filter(
+    (row) => !(row.loanRef && !row.paymentRef && deleted.has(String(row.loanRef).trim())),
+  );
+  if (kept.length !== queued.length) writeDemoJson(Q_ASSIGN, kept);
+}
+
 /** Reaperturas de hoy que este aparato conoce (el botón sigue para las otras hojas). */
 const SHEET_REOPENS_KEY = "nexo-demo-sheet-reopens";
 
@@ -825,16 +840,19 @@ async function prestarGhostReason(
 export async function upsertAssignmentRow(row: Record<string, unknown>) {
   const client = createMirrorClient();
   if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  // La visita sin cobro existe solo si su préstamo existe en la nube. P- que la nube no
+  // tiene (ficha rehecha en un aparato) → espera en cola; si el préstamo sube, entra.
   // Visita abierta de un préstamo dado de baja (copia vieja de otro aparato): no vuelve.
   const loanRef = String(row.loan_ref || "").trim();
-  if (loanRef && !row.day_closed_at && !row.payment_ref) {
+  if (loanRef && !row.payment_ref) {
     const { data: loan, error: loanError } = await client
       .from("loans")
       .select("status")
       .eq("ref", loanRef)
       .maybeSingle();
     if (loanError) return { ok: false as const, error: loanError.message };
-    if (isLoanDeletedStatus(loan)) {
+    if (!loan) return { ok: true as const, skipped: true as const, reason: "loan_missing" };
+    if (!row.day_closed_at && isLoanDeletedStatus(loan)) {
       return { ok: true as const, skipped: true as const, reason: "loan_deleted" };
     }
   }
@@ -1457,6 +1475,7 @@ export async function flushOpsMirrorQueues(): Promise<{ flushed: number; left: n
 
   pruneCollectorHistoryQueue();
   pruneOpenAssignmentQueueAgainstLocalCloses();
+  pruneAssignmentQueueForDeletedLoans();
 
   // PCE- colados en la cola de cierres: basura irrecuperable (schema solo CIE-).
   {

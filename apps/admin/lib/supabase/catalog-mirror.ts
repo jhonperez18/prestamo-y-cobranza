@@ -680,6 +680,10 @@ export async function mirrorLoanToSupabase(loan: LoanRow) {
   let row = mapped;
   const originalRef = row.ref;
   const deleting = isLoanDeletedStatus(row);
+  // Solo el botón Borrar da de baja. Un aparato no decide que un préstamo sobra (P-430 de Albornoz).
+  if (deleting && loan.deleteIntent !== "owner") {
+    return { ok: true as const, skipped: true as const, reason: "loan_delete_not_owner" };
+  }
   let written = false;
   for (let attempt = 0; attempt < LOAN_WRITE_ATTEMPTS && !written; attempt += 1) {
     const { data: current, error: readError } = await supabase
@@ -944,9 +948,9 @@ function queueLocalClientDeletesToCloud(liveRemote: ClientRow[], clientRefsWithL
   }
 }
 
-/** Fila que sube a la nube para dar de baja el préstamo (misma cola que Guardar). */
-export function loanDeletedRow(loan: LoanRow, at = new Date().toISOString()): LoanRow {
-  return { ...loan, status: LOAN_DELETED_STATUS, updatedAt: at };
+/** Baja pedida con el botón Borrar (misma cola que Guardar). Es la única baja que la nube acepta. */
+export function loanOwnerDeleteRow(loan: LoanRow, at = new Date().toISOString()): LoanRow {
+  return { ...loan, status: LOAN_DELETED_STATUS, updatedAt: at, deleteIntent: "owner" };
 }
 
 /** Baja de préstamo hecha en otro aparato → tombstone local. */
@@ -1062,11 +1066,33 @@ export async function pullRemoteCatalogIntoDemo(
   return result;
 }
 
+/**
+ * Lista completa de la nube: un préstamo que la nube no tiene y que este aparato no está
+ * subiendo no existe (P-426 / P-433 de Albornoz armaban alertas). Queda como baja local;
+ * si la nube lo tiene vivo después, `forgetRemoteLoanRevivals` lo devuelve.
+ */
+function dropLoansMissingFromCloud(
+  merged: LoanRow[],
+  remoteRefs: ReadonlySet<string>,
+  pendingRefs: ReadonlySet<string>,
+): { loans: LoanRow[]; dropped: string[] } {
+  const dropped: string[] = [];
+  const loans = merged.filter((row) => {
+    if (remoteRefs.has(row.ref) || pendingRefs.has(row.ref)) return true;
+    dropped.push(row.ref);
+    return false;
+  });
+  for (const ref of dropped) rememberDeletedId(ref);
+  return { loans, dropped };
+}
+
 /** `cursor` solo si clientes y préstamos entraron enteros al aparato. */
 async function mergeRemoteCatalog(
   since: string | null,
 ): Promise<PullCatalogResult & { cursor?: string | null }> {
   try {
+    // Lo que estaba subiendo al pedir la lista: si sube en medio, la lista puede no traerlo aún.
+    const loansQueuedAtStart = readQueue<LoanRow>(DEMO_LOAN_MIRROR_QUEUE_KEY).map((row) => row.ref);
     const [clientsRes, loansRes] = await Promise.all([
       fetch(withSinceParam("/api/clients", since), { cache: "no-store" }),
       fetch(withSinceParam("/api/loans", since), { cache: "no-store" }),
@@ -1136,8 +1162,15 @@ async function mergeRemoteCatalog(
       );
       const pendingByRef = new Map(pendingLoans.map((row) => [row.ref, row]));
       const merge = mergeByRefPreferPendingLocal(local, remote, pendingByRef, loanSignature);
-      if (merge.changed || learnedDeletes || rekeyed) {
-        if (!writeDemoJson(DEMO_LOANS_KEY, merge.merged)) unsaved.push("préstamos");
+      const settled = loansBody.incremental
+        ? { loans: merge.merged, dropped: [] as string[] }
+        : dropLoansMissingFromCloud(
+            merge.merged,
+            new Set(remoteAll.map((row) => row.ref)),
+            new Set([...pendingByRef.keys(), ...loansQueuedAtStart]),
+          );
+      if (merge.changed || learnedDeletes || rekeyed || settled.dropped.length) {
+        if (!writeDemoJson(DEMO_LOANS_KEY, settled.loans)) unsaved.push("préstamos");
         changed = true;
       }
     }

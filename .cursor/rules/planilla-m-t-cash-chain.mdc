@@ -432,7 +432,10 @@ Candado: `assert-cash-chain.mjs` sección 15.
 | Nube | `mirrorLoanToSupabase`: alta activa de un cliente con otro activo → `client_has_active_loan` (queda en cola, no entra) |
 | Renovar | Sube primero el viejo «Finalizado», después el nuevo |
 | Préstamo activado | El cliente queda **listo para pagar** ese mismo día (cuota por cobrar) si su hoja sigue abierta; con la hoja cerrada entra mañana (no reabre el día) |
-| Haber DSB de Banco | No rehace con otro P- un préstamo dado de baja (`deletedRefs`): así nacían P-438 → P-451 |
+| Haber DSB de Banco | Solo se lee. Ningún aparato arma fichas desde Banco ni da de baja «copias» (caso Albornoz 08/10: P-426/430/433/438/451/452) |
+| Existe | Un préstamo existe si la nube lo tiene. Bajada completa suelta lo que no está ni sube (`dropLoansMissingFromCloud`) |
+| Baja | Solo Borrar (`loanOwnerDeleteRow`, `deleteIntent: "owner"`); otra baja → `loan_delete_not_owner` |
+| Visita sin cobro | De un P- que la nube no tiene → `loan_missing` (espera en cola) |
 | Reactivar (pedido del dueño) | Ficha viva en la nube con baja aprendida en el aparato → la baja se suelta (`forgetRemoteLoanRevivals`), salvo baja propia en cola |
 - La bajada de la nube **sí** trae los «Eliminado»: así cada aparato aprende el tombstone
  (`learnRemoteLoanDeletes`) y los descarta antes de pintar. Un `.neq('status','Eliminado')` ahí

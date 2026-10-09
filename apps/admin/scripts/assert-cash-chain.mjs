@@ -1313,9 +1313,8 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
   );
   const opsSyncSrc = readFileSync(new URL("../lib/operational-sync.ts", import.meta.url), "utf8");
   expect(
-    "Cobrador vivo: el ciclo no restaura Haber ni arma el registro Banco",
-    opsSyncSrc.includes("isCollectorLiveDevice()") &&
-      opsSyncSrc.includes("restoreLoansFromOrphanDisbursements"),
+    "Cobrador vivo: el ciclo no arma el registro Banco",
+    /isCollectorLiveDevice\(\)\s*\?\s*input\.bankMovements/.test(opsSyncSrc),
     true,
   );
   const applySync = shellSrc.slice(shellSrc.indexOf("const applyPlanillaSync"));
@@ -2607,7 +2606,6 @@ expect(
   false,
 );
 {
-  const { restoreLoansFromOrphanDisbursements } = await import("@/lib/restore-loans-from-bank-disbursements");
   const { loanFundedByBanco, markLoanFundedByBanco, markLoanFundedByEfectivo } = await import("@/lib/nequi-pool");
   const bankDay = "2026-10-06";
   const payDay = "2026-10-07";
@@ -2666,18 +2664,36 @@ expect(
       accountRef: "BC",
     },
   ];
-  const recovered = restoreLoansFromOrphanDisbursements({
-    loans: [yeniLoan, martinLoan],
-    movements: bankRows,
-    clients: albBankClients,
+  // La ficha de Albornoz es la de la nube (mensual, 1 cuota de 1.200.000), no una que un
+  // aparato arma desde el Haber copiando términos de otro cliente.
+  const albNew = markLoanFundedByBanco({
+    ref: "P-430",
+    clientRef: "COD-274",
+    client: "Jose Albornoz",
+    date: "06/10/2026",
+    capital: 1_000_000,
+    installment: 1_200_000,
+    total: 1_200_000,
+    interest: 200_000,
+    days: 1,
+    frequency: "mensual",
+    status: "Activo",
+    notes: "Mensual · 1 cuota\n[[fb:banco]]",
   });
-  const albNew = recovered.created.find((row) => row.clientRef === "COD-274");
-  expect("Registro Banco: Albornoz recupera ficha (no pisa P-425 de Martín)", Boolean(albNew), true);
-  expect("Registro Banco: capital de Albornoz = Haber 1.000.000", albNew?.capital ?? 0, 1_000_000);
-  expect("Registro Banco: fecha del desembolso", albNew?.date?.includes("06/10") || albNew?.date === bankDay, true);
+  const recovered = {
+    loans: [yeniLoan, martinLoan, albNew],
+    movements: bankRows.map((row) =>
+      /albornoz/i.test(row.thirdParty)
+        ? {
+            ...row,
+            ref: "DSB-P-430",
+            loanDisbursementRef: "DSB-P-430",
+            description: "Desembolso Banco · Préstamo · P-430 · Jose Albornoz",
+          }
+        : row,
+    ),
+  };
   expect("Registro Banco: Martín sigue con P-425", recovered.loans.some((row) => row.ref === "P-425" && row.clientRef === "COD-142"), true);
-  expect("Registro Banco: Albornoz no se queda con P-425", albNew?.ref !== "P-425", true);
-  expect("Registro Banco: cuota del lote (Yeni 30.000)", albNew?.installment ?? 0, 30_000);
   expect(
     "Registro Banco: el Haber DSB apunta a la ficha nueva",
     recovered.movements.some((row) => row.thirdParty === "Jose Albornoz" && String(row.ref).includes(albNew?.ref || "NO")),
@@ -2749,17 +2765,6 @@ expect(
     afterCecilia.some(
       (row) => /cecilia/i.test(`${row.thirdParty || ""}`) && (Number(row.credit) || 0) === 1_000_000,
     ),
-    true,
-  );
-  expect(
-    "José con tilde encuentra a Jose Albornoz",
-    restoreLoansFromOrphanDisbursements({
-      loans: [yeniLoan, martinLoan],
-      movements: [{ ...bankRows[1], thirdParty: "José Albornoz" }],
-      clients: [
-        { ref: "COD-274", name: "Jose", lastName: "Albornoz", route: "T", status: "Activo", routeOrder: 42 },
-      ],
-    }).created.some((row) => row.clientRef === "COD-274" && row.capital === 1_000_000),
     true,
   );
   const poolBase = {
@@ -2858,13 +2863,7 @@ expect(
     ...albFicha,
     ref: "P-426",
   });
-  const { collapseDuplicateDigitalLoans, uniqueDigitalDisbursementLoans } = await import(
-    "@/lib/restore-loans-from-bank-disbursements"
-  );
-  const collapsedAlb = collapseDuplicateDigitalLoans([yeniLoan, martinLoan, albFicha, albTwin]);
-  expect("Ficha Albornoz: se deja el original P-426", collapsedAlb.loans.some((row) => row.ref === "P-426"), true);
-  expect("Ficha Albornoz: la copia P-430 sale", collapsedAlb.removed.some((row) => row.ref === "P-430"), true);
-  expect("Ficha Yeni Isolina no se toca", collapsedAlb.loans.some((row) => row.ref === yeniLoan.ref), true);
+  const { uniqueDigitalDisbursementLoans } = await import("@/lib/restore-loans-from-bank-disbursements");
   const afterTwinHaber = syncNequiLoanDisbursementsToMovements(
     [yeniLoan, martinLoan, albFicha, albTwin],
     bankRows,
@@ -3021,8 +3020,44 @@ expect("Con préstamo en mora: no puede recibir otro", canClientTakeNewLoan("CLI
   expect("Nube: préstamo reactivado vuelve a cada aparato", catalogMirrorSrc.includes("forgetRemoteLoanRevivals(remoteAll)"), true);
   const queueSrc = read("../lib/supabase/mirror-queue.ts");
   expect("«client_has_active_loan» espera en cola (no se descarta)", queueSrc.includes('"client_has_active_loan"'), false);
+  // Caso Albornoz 08/10: un préstamo existe si la nube lo tiene. Ningún aparato lo arma ni lo da de baja.
   const restoreSrc = read("../lib/restore-loans-from-bank-disbursements.ts");
-  expect("Haber de Banco no revive un préstamo dado de baja", restoreSrc.includes("deletedRefs.has(occupiedRef)"), true);
+  for (const [label, src] of [
+    ["registro Banco", restoreSrc],
+    ["hidratar", read("../lib/hydrate-operational-demo.ts")],
+    ["ciclo operativo", read("../lib/operational-sync.ts")],
+  ]) {
+    expect(`Albornoz (${label}): el aparato no rehace fichas desde Banco`, /restoreLoansFromOrphanDisbursements|buildRestoredLoan|siblingTerms/.test(src), false);
+    expect(`Albornoz (${label}): el aparato no da de baja «copias»`, src.includes("collapseDuplicateDigitalLoans"), false);
+  }
+  expect(
+    "Albornoz: bajada completa suelta el préstamo que la nube no tiene",
+    catalogMirrorSrc.includes("dropLoansMissingFromCloud(") && catalogMirrorSrc.includes("loansQueuedAtStart"),
+    true,
+  );
+  expect(
+    "Albornoz: la nube solo acepta la baja del botón Borrar",
+    /deleting && loan\.deleteIntent !== "owner"[\s\S]{0,120}"loan_delete_not_owner"/.test(catalogMirrorSrc),
+    true,
+  );
+  expect(
+    "Albornoz: Borrar marca la baja como del dueño",
+    read("../lib/commit-portfolio-catalog.ts").includes("queueLoanMirror(loanOwnerDeleteRow(removed))"),
+    true,
+  );
+  expect("«loan_delete_not_owner» sale de la cola (el préstamo sigue vivo)", queueSrc.includes('"loan_delete_not_owner"'), true);
+  const opsMirrorSrc = read("../lib/supabase/ops-mirror.ts");
+  expect(
+    "Albornoz: la nube no acepta visita de un P- que no tiene",
+    opsMirrorSrc.includes('reason: "loan_missing"'),
+    true,
+  );
+  expect("«loan_missing» espera en cola (el préstamo puede venir subiendo)", queueSrc.includes('"loan_missing"'), false);
+  expect(
+    "Albornoz: la cola suelta visitas de préstamos dados de baja",
+    opsMirrorSrc.includes("pruneAssignmentQueueForDeletedLoans()"),
+    true,
+  );
 }
 
 const rDate = "2026-09-30";
@@ -4037,9 +4072,7 @@ console.log("— Cupo del aparato —");
     "@/lib/collector-history-planilla"
   );
   const { dayDigitalLoanRows } = await import("@/lib/day-digital-loans");
-  const { collapseDuplicateDigitalLoans, existingDigitalDisbursementTwin } = await import(
-    "@/lib/restore-loans-from-bank-disbursements"
-  );
+  const { existingDigitalDisbursementTwin } = await import("@/lib/restore-loans-from-bank-disbursements");
   const { markLoanFundedByEfectivo } = await import("@/lib/nequi-pool");
   const { syncCashLoanDisbursementsToMovements, syncNequiLoanDisbursementsToMovements } =
     await import("@/lib/bank");
@@ -4153,14 +4186,6 @@ console.log("— Cupo del aparato —");
     movements: ledger,
   });
   expect("Pool Banco N: el efectivo no resta el acumulado", poolN.banco, 0);
-  const collapsed = collapseDuplicateDigitalLoans(nLoans);
-  expect("Ficha Marlin: se deja el original P-101", collapsed.loans.some((row) => row.ref === "P-101"), true);
-  expect(
-    "Hydrate Banco/Nequi: no tumba el efectivo de Marlin (el cobrador no se cuelga)",
-    collapsed.removed.filter((row) => row.clientRef === marlin.ref).length,
-    0,
-  );
-  expect("Ficha Hiania no se toca", collapsed.loans.some((row) => row.ref === "P-800"), true);
   expect(
     "Alta: no se duplica el mismo efectivo",
     existingDigitalDisbursementTwin(nLoans, marlin.ref, nDate, 100_000)?.ref,
@@ -4170,9 +4195,7 @@ console.log("— Cupo del aparato —");
 
 {
   console.log("— Banco N sin Diego fantasma; Banco M solo Carlos Cerveza 500 —");
-  const { listOrphanDisbursementOutflows, restoreLoansFromOrphanDisbursements } = await import(
-    "@/lib/restore-loans-from-bank-disbursements"
-  );
+  const { listOrphanDisbursementOutflows } = await import("@/lib/restore-loans-from-bank-disbursements");
   const { markLoanFundedByEfectivo, markLoanFundedByBanco } = await import("@/lib/nequi-pool");
   const { syncBankLedger } = await import("@/lib/bank-ledger-sync");
   const { digitalPoolBalances } = await import("@/lib/digital-pools");
@@ -4241,11 +4264,6 @@ console.log("— Cupo del aparato —");
   expect(
     "Huérfanos: el efectivo (GASL / CSH) no es desembolso Banco",
     listOrphanDisbursementOutflows({ loans, movements: ledger, clients }).length,
-    0,
-  );
-  expect(
-    "Restore: el efectivo no crea fichas Banco",
-    restoreLoansFromOrphanDisbursements({ loans, movements: ledger, clients }).created.length,
     0,
   );
   const ambiguous = [
@@ -4962,7 +4980,7 @@ console.log("\n— Cobro del cobrador con la ficha, no con la lista del aparato 
     "Hidratar / proyectar en el cobrador no rehace la ficha con su lista de cobros",
     jSrc("../lib/hydrate-operational-demo.ts").includes("syncDeviceLoans(storedLoans") &&
       jSrc("../lib/hydrate-operational-demo.ts").includes("loansFromFicha: isCollectorLiveDevice()") &&
-      jSrc("../lib/operational-sync.ts").includes("syncDeviceLoans(restored.loans"),
+      jSrc("../lib/operational-sync.ts").includes("syncDeviceLoans(input.loans"),
     true,
   );
   expect(

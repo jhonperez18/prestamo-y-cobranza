@@ -52,8 +52,6 @@ import {
 } from "@/lib/collector-day-close";
 import { isCollectorLiveDevice, syncDeviceLoans } from "@/lib/collector-live-window";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
-import { restoreLoansFromOrphanDisbursements } from "@/lib/restore-loans-from-bank-disbursements";
-import { queueLoansMirror } from "@/lib/supabase/catalog-mirror";
 import { restoreSealedVisitsFromPrior } from "@/lib/planilla-sealed-visits";
 import { refreshLabelsFromCatalog } from "@/lib/project-identity";
 import { omitDeleted } from "@/lib/deleted-ids";
@@ -179,19 +177,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
         loadDemoDayCloses<CollectorDayCloseRecord>(),
       );
 
-  const reconciledLoansBase = syncDeviceLoans(storedLoans, nextPayments);
-  const restoredFromBank =
-    isVirginOpsMode() || isCollectorLiveDevice()
-      ? { loans: reconciledLoansBase, movements: storedMovementsEarly ?? [], created: [] as LoanRow[] }
-      : restoreLoansFromOrphanDisbursements({
-          loans: reconciledLoansBase,
-          movements: storedMovementsEarly ?? [],
-          clients: liveClients,
-        });
-  if (restoredFromBank.created.length && !isCollectorLiveDevice()) {
-    queueLoansMirror(restoredFromBank.created);
-  }
-  const reconciledLoans = restoredFromBank.loans;
+  const reconciledLoans = syncDeviceLoans(storedLoans, nextPayments);
   // No inventar COB en hydrate (evita diego fantasma entre localhost/Vercel).
   const linked = ensureCollectorsForUsers(loadDemoUsers(), storedCollectors, {
     inventMissing: false,
@@ -260,7 +246,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
   );
   const storedMovements = stripRemovedPaymentMovements(
-    restoredFromBank.movements.length ? restoredFromBank.movements : storedMovementsEarly ?? [],
+    storedMovementsEarly ?? [],
     deduped.removedRefs,
   );
   const misc = readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []);

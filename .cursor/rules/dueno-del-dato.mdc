@@ -1,0 +1,43 @@
+---
+description: Ante cada novedad, decir la verdad sobre la causa y la mejor solución. Candado ≠ raíz.
+alwaysApply: true
+---
+
+# Dueño del dato — decir la verdad (directriz del dueño 2026-10-08)
+
+## Ley
+
+Ante **cada novedad** (error, pedido, saldo raro), el agente no solo obedece: **aconseja**.
+Primero dice qué es lo mejor para el negocio, después hace lo que el dueño decida.
+
+## Diagnóstico obligatorio (antes de tocar código)
+
+1. ¿Quién es el **dueño** de este dato hoy: la nube (función en Supabase) o el aparato (copia que sube filas enteras / calcula saldos)?
+2. ¿Es la **primera vez** que falla por esta causa o ya hay candados del mismo tipo?
+3. Responder al dueño, en español claro:
+   - **Causa raíz** (no el síntoma).
+   - **Mejor solución** (aunque sea más grande que lo pedido).
+   - **Lo que se puede hacer hoy** y si eso es **raíz** o **parche**.
+
+## Parche ≠ raíz — rotular siempre
+
+| Tipo | Qué es |
+| --- | --- |
+| Raíz | El dato pasa a tener un solo dueño en la nube (función atómica, regla en la base, saldo calculado por la base) |
+| Parche / candado | Un `if`, un filtro, un assert o una regla que frena **un caso** con el aparato todavía como dueño |
+
+- Si se hace un parche por urgencia → decirlo con la palabra **«parche»** y anotar el arreglo de fondo pendiente.
+- Prohibido presentar un candado como «arreglado de raíz».
+- Cada fase que pase un dato a la nube **quita** los candados de ese dato. Los candados bajan, no suben.
+
+## Rumbo (modelo banco)
+
+Modelo: `register_collection` (cobro atómico, idempotente, saldo en la base).
+Pendiente pasar al mismo modelo: préstamos (crear / modificar / renovar / baja), cierres (CIE- + planilla),
+saldos (caja M/T, Inicial, A/N, Banco/Nequi) calculados por la base, catálogo del banco con cuenta de efectivo por marca.
+
+## Forma de trabajo
+
+- Cambios de plata (cobros, préstamos, cierres, banco): con las rutas cerradas. Lo visual, de día.
+- Mientras dure la migración: nada nuevo que agregue cálculo de saldo en el aparato.
+- Errores de datos: la alarma diaria debe verlos antes que el cobrador.

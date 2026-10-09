@@ -54,7 +54,7 @@ import { resolvedLoanInstallment, syncPermanentRoutePlanilla } from "@/lib/route
 import {
   clientDeletedRow,
   flushCatalogMirrorQueues,
-  loanDeletedRow,
+  loanOwnerDeleteRow,
   queueClientMirror,
   queueLoanMirror,
 } from "@/lib/supabase/catalog-mirror";
@@ -572,7 +572,7 @@ export function commitDeleteLoan(
   let next: PortfolioCatalogState = { ...state, loans, clients, assignments };
   next = projectPlanilla(next);
   persistPortfolio(next);
-  queueLoanMirror(loanDeletedRow(removed));
+  queueLoanMirror(loanOwnerDeleteRow(removed));
   enqueuePortfolioMirrors(next, { clientRefs: [removed.clientRef], mirrorPlanilla: true });
 
   return {
