@@ -2781,6 +2781,19 @@ expect(
     poolBefore.banco - poolAfter.banco,
     1_000_000,
   );
+  const ghostHaber = bankRows.map((row) =>
+    /albornoz/i.test(row.thirdParty)
+      ? { ...row, ref: "DSB-P-433", loanDisbursementRef: "DSB-P-433", description: "Desembolso Banco · Préstamo · P-433 · Jose Albornoz" }
+      : row,
+  );
+  const afterGhost = syncNequiLoanDisbursementsToMovements(recovered.loans, ghostHaber, bankAccounts, albBankClients);
+  expect("Albornoz: Haber guardado con P- fantasma + P-430 en la nube = un solo Haber", albHaberRows(afterGhost).length, 1);
+  expect("Albornoz: el millón sale una vez con Haber fantasma", albHaber(afterGhost), 1_000_000);
+  expect(
+    "Total BANCO: P-430 + Haber fantasma descuenta el millón una vez",
+    poolBefore.banco - digitalPoolBalances({ ...poolBase, loans: recovered.loans, movements: ghostHaber }).banco,
+    1_000_000,
+  );
   const { listOrphanDisbursementOutflows } = await import("@/lib/restore-loans-from-bank-disbursements");
   const { digitalPoolDayLedger } = await import("@/lib/digital-pools");
   const orphans = listOrphanDisbursementOutflows({
