@@ -9,6 +9,7 @@ import { businessTodayIso } from "@/lib/business-timezone";
 import { ADMIN_ROLE_REF } from "@/lib/mock-data";
 import { loadOperationalStateFromCloud } from "@/lib/server-day-rollover";
 import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { CATALOG_FILE_UPLOAD, downloadCatalogFile } from "@/lib/supabase/catalog-file";
 import { fetchUsersFromSupabase } from "@/lib/supabase/user-mirror";
 import {
   buildWeeklyReport,
@@ -58,7 +59,7 @@ function storageClient() {
 async function readSentFile(): Promise<{ ok: true; file: SentFile } | { ok: false; error: string }> {
   const supabase = storageClient();
   if (!supabase) return { ok: false, error: "supabase_not_configured" };
-  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).download(SENT_PATH);
+  const { data, error } = await downloadCatalogFile(supabase, STORAGE_BUCKET, SENT_PATH);
   if (error) {
     if (/not found|No such file|404/i.test(error.message)) return { ok: true, file: { sent: {} } };
     return { ok: false, error: error.message };
@@ -79,10 +80,7 @@ async function markSent(cutoff: string, entry: SentEntry) {
   const file: SentFile = { sent: { ...current.file.sent, [cutoff]: entry } };
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .upload(SENT_PATH, Buffer.from(JSON.stringify(file, null, 2), "utf8"), {
-      contentType: "application/json",
-      upsert: true,
-    });
+    .upload(SENT_PATH, Buffer.from(JSON.stringify(file, null, 2), "utf8"), CATALOG_FILE_UPLOAD);
   if (error) return { ok: false as const, error: error.message };
   return { ok: true as const };
 }

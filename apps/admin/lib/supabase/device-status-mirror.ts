@@ -3,6 +3,7 @@
  * `app-catalog/devices/<deviceId>.json`. Un archivo por aparato: sin carreras entre celulares.
  */
 import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { CATALOG_FILE_UPLOAD, downloadCatalogFile } from "@/lib/supabase/catalog-file";
 import { normalizeDeviceStatus, type DeviceStatus } from "@/lib/device-status";
 
 const STORAGE_BUCKET = "app-catalog";
@@ -20,10 +21,7 @@ export async function writeDeviceStatus(raw: unknown) {
   const stamped: DeviceStatus = { ...status, reportedAt: new Date().toISOString(), firstSeenAt: "" };
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .upload(`${DEVICES_FOLDER}/${stamped.deviceId}.json`, Buffer.from(JSON.stringify(stamped), "utf8"), {
-      contentType: "application/json",
-      upsert: true,
-    });
+    .upload(`${DEVICES_FOLDER}/${stamped.deviceId}.json`, Buffer.from(JSON.stringify(stamped), "utf8"), CATALOG_FILE_UPLOAD);
   if (error) return { ok: false as const, error: error.message };
   return { ok: true as const };
 }
@@ -41,9 +39,11 @@ export async function listDeviceStatuses(): Promise<
   const rows = await Promise.all(
     entries.map(async ({ name, created_at: createdAt }) => {
       try {
-        const { data, error: readError } = await supabase.storage
-          .from(STORAGE_BUCKET)
-          .download(`${DEVICES_FOLDER}/${name}`);
+        const { data, error: readError } = await downloadCatalogFile(
+          supabase,
+          STORAGE_BUCKET,
+          `${DEVICES_FOLDER}/${name}`,
+        );
         if (readError || !data) return null;
         const row = normalizeDeviceStatus(JSON.parse(await data.text()));
         // El upsert conserva `created_at` del objeto: es la primera vez que la nube vio el aparato.

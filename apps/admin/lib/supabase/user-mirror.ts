@@ -6,6 +6,7 @@
  * el mirror intenta SQL si la tabla existe y, si no, usa Storage.
  */
 import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { CATALOG_FILE_UPLOAD, downloadCatalogFile } from "@/lib/supabase/catalog-file";
 import type { AccessChannel, UserRow } from "@/lib/mock-data";
 import {
   DEMO_USERS_KEY,
@@ -144,7 +145,7 @@ async function readStorageCatalog(): Promise<{
   if (!supabase) {
     return { ok: true, skipped: true, reason: "supabase_not_configured", users: [] };
   }
-  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).download(STORAGE_PATH);
+  const { data, error } = await downloadCatalogFile(supabase, STORAGE_BUCKET, STORAGE_PATH);
   if (error) {
     // Bucket vacío / archivo aún no creado.
     if (/not found|No such file|404/i.test(error.message)) {
@@ -182,10 +183,7 @@ async function writeStorageCatalog(users: UserRow[]) {
       .sort((a, b) => a.ref.localeCompare(b.ref, "es")),
   };
   const body = Buffer.from(JSON.stringify(payload), "utf8");
-  const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(STORAGE_PATH, body, {
-    contentType: "application/json",
-    upsert: true,
-  });
+  const { error } = await supabase.storage.from(STORAGE_BUCKET).upload(STORAGE_PATH, body, CATALOG_FILE_UPLOAD);
   if (error) return { ok: false as const, error: error.message };
   return { ok: true as const };
 }

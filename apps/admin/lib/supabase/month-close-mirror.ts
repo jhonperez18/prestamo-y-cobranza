@@ -5,6 +5,7 @@
  * fuera el que guardó el mes.
  */
 import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { CATALOG_FILE_UPLOAD, downloadCatalogFile } from "@/lib/supabase/catalog-file";
 import type { CollectorMonthCloseRecord } from "@/lib/collector-day-close";
 import { DEMO_COLLECTOR_MONTH_CLOSES_KEY, readDemoJson, writeDemoJson } from "@/lib/demo-persist";
 import { emitMirrorQueueChanged, shouldDropFromMirrorQueue, type MirrorApiJson } from "@/lib/supabase/mirror-queue";
@@ -43,7 +44,7 @@ export async function writeMonthClose(raw: unknown) {
   const supabase = storageClient();
   if (!supabase) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
   const path = `${FOLDER}/${record.ref}.json`;
-  const { data: current } = await supabase.storage.from(STORAGE_BUCKET).download(path);
+  const { data: current } = await downloadCatalogFile(supabase, STORAGE_BUCKET, path);
   if (current) {
     try {
       const existing = normalizeMonthClose(JSON.parse(await current.text()));
@@ -56,10 +57,7 @@ export async function writeMonthClose(raw: unknown) {
   }
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .upload(path, Buffer.from(JSON.stringify(record), "utf8"), {
-      contentType: "application/json",
-      upsert: true,
-    });
+    .upload(path, Buffer.from(JSON.stringify(record), "utf8"), CATALOG_FILE_UPLOAD);
   if (error) return { ok: false as const, error: error.message };
   return { ok: true as const };
 }
@@ -75,7 +73,7 @@ export async function listMonthCloses(): Promise<
   const names = (files ?? []).map((file) => file.name).filter((name) => name.endsWith(".json"));
   const rows = await Promise.all(
     names.map(async (name) => {
-      const { data, error: readError } = await supabase.storage.from(STORAGE_BUCKET).download(`${FOLDER}/${name}`);
+      const { data, error: readError } = await downloadCatalogFile(supabase, STORAGE_BUCKET, `${FOLDER}/${name}`);
       if (readError || !data) {
         throw new Error(`month_close_read_failed:${name}:${readError?.message || "sin datos"}`);
       }

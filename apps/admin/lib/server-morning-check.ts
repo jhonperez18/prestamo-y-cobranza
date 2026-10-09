@@ -12,6 +12,7 @@ import { planillaWindowStartIso } from "@/lib/planilla-window";
 import { auditChainFromState } from "@/lib/server-chain-audit";
 import { loadOperationalStateFromCloud, runServerDayRollover } from "@/lib/server-day-rollover";
 import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { CATALOG_FILE_UPLOAD, downloadCatalogFile } from "@/lib/supabase/catalog-file";
 import { listDeviceStatuses } from "@/lib/supabase/device-status-mirror";
 import { deviceStorageAlerts } from "@/lib/device-storage-alerts";
 
@@ -148,10 +149,7 @@ export async function saveMorningCheckReport(report: MorningCheckReport) {
   if (!supabase) return { ok: false as const, error: "supabase_not_configured" };
   const { error } = await supabase.storage
     .from(STORAGE_BUCKET)
-    .upload(REPORT_PATH, Buffer.from(JSON.stringify(report), "utf8"), {
-      contentType: "application/json",
-      upsert: true,
-    });
+    .upload(REPORT_PATH, Buffer.from(JSON.stringify(report), "utf8"), CATALOG_FILE_UPLOAD);
   if (error) return { ok: false as const, error: error.message };
   return { ok: true as const };
 }
@@ -161,7 +159,7 @@ export async function readMorningCheckReport(): Promise<
 > {
   const supabase = storageClient();
   if (!supabase) return { ok: true, report: null };
-  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).download(REPORT_PATH);
+  const { data, error } = await downloadCatalogFile(supabase, STORAGE_BUCKET, REPORT_PATH);
   if (error || !data) {
     // Aún no corrió nunca: no es una falla.
     if (/not.?found|404|object/i.test(error?.message || "")) return { ok: true, report: null };

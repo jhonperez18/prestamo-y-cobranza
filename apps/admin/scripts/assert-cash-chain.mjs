@@ -1479,6 +1479,19 @@ expect("Banco · M efectivo → principal", accountOf("PG-M3"), "EF");
   expect("Nube: el uso viaja en la firma de la cuenta", /row\.role \?\? ""/.test(bankMirrorSrc), true);
   const bankSrc = readFileSync(new URL("../lib/bank.ts", import.meta.url), "utf8");
   expect("Banco: nadie elige cuenta por «primera activa»", /\.find\(\(row\) => row\.active\)/.test(bankSrc), false);
+  // Caché de Storage (09/10): leer la copia de hace una hora y reescribir pisaba el guardado anterior.
+  for (const file of [
+    "supabase/bank-accounts-mirror.ts",
+    "supabase/user-mirror.ts",
+    "supabase/month-close-mirror.ts",
+    "supabase/device-status-mirror.ts",
+    "server-weekly-report.ts",
+    "server-morning-check.ts",
+  ]) {
+    const src = readFileSync(new URL(`../lib/${file}`, import.meta.url), "utf8");
+    expect(`Storage fresco (${file}): lee sin caché`, /\.download\(/.test(src), false);
+    expect(`Storage fresco (${file}): escribe sin caché`, /\.upload\([^;]*CATALOG_FILE_UPLOAD\)/.test(src), true);
+  }
 }
 
 const { lockPaymentCobrosAsIncome } = await import("@/lib/bank");
