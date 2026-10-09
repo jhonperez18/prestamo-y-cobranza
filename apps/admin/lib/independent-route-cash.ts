@@ -281,9 +281,10 @@ export function withIndependentRouteHistory<Row extends HistoryRowLike>(
   rows: Row[],
   src: Omit<DayCashSources, "date">,
   route: string,
+  book?: RouteCashBook | null,
 ): Row[] {
   return rows.map((row) => {
-    const day = independentRouteDay({ ...src, date: row.date }, route);
+    const day = independentRouteDay({ ...src, date: row.date }, route, book);
     return { ...row, gasto: day.gastos, prestamo: day.prestamos, saldo: day.closing };
   });
 }
@@ -315,12 +316,76 @@ export type IndependentRouteDay = RouteMovement & {
   adjustment: RouteCashAdjustment | null;
 };
 
-export function independentRouteDay(src: DayCashSources, route: string): IndependentRouteDay {
+/**
+ * Libro de caja de A / N calculado por el servidor con la nube completa: un día pasado por
+ * fecha. El celular del cobrador solo guarda hoy; con el libro no rehace días que no tiene.
+ */
+export type RouteCashBookDay = {
+  date: string;
+  opening: number;
+  closing: number;
+  efectivo: number;
+  gastos: number;
+  prestamos: number;
+};
+export type RouteCashBook = Map<string, RouteCashBookDay>;
+
+/** El libro empieza el 1 de octubre: Inicial = ajuste manual del 30/09. Antes no hay caja propia. */
+export const ROUTE_CASH_BOOK_FROM = "2026-10-01";
+
+function latestBookBefore(
+  book: RouteCashBook | null | undefined,
+  date: string,
+): { date: string; real: number } | null {
+  let best: RouteCashBookDay | null = null;
+  for (const day of book?.values() ?? []) {
+    if (day.date < date && (!best || day.date > best.date)) best = day;
+  }
+  return best ? { date: best.date, real: best.closing } : null;
+}
+
+/** Punto de partida más reciente. En el mismo día: ajuste manual > CIE- sellado > libro. */
+function openingAnchor(
+  src: DayCashSources,
+  route: string,
+  date: string,
+  book: RouteCashBook | null | undefined,
+): { date: string; real: number } | null {
+  const candidates = [
+    latestAnchorBefore(src.dayCloses, src.collectorRef, route, date),
+    latestSealedBefore(src, route, date),
+    latestBookBefore(book, date),
+  ];
+  let best: { date: string; real: number } | null = null;
+  for (const candidate of candidates) {
+    if (candidate && (!best || candidate.date > best.date)) best = candidate;
+  }
+  return best;
+}
+
+export function independentRouteDay(
+  src: DayCashSources,
+  route: string,
+  book?: RouteCashBook | null,
+): IndependentRouteDay {
   const date = isoOf(src.date);
   const today = routeMovement({ ...src, date }, route);
-  const adjusted = latestAnchorBefore(src.dayCloses, src.collectorRef, route, date);
-  const sealed = latestSealedBefore(src, route, date);
-  const anchor = sealed && (!adjusted || sealed.date > adjusted.date) ? sealed : adjusted;
+  const booked = date < businessTodayIso() ? book?.get(date) : undefined;
+  if (booked) {
+    return {
+      ...today,
+      efectivo: booked.efectivo,
+      gastos: booked.gastos,
+      prestamos: booked.prestamos,
+      route,
+      date,
+      anchored: true,
+      opening: booked.opening,
+      closing: booked.closing,
+      adjustment: findRouteCashAdjustment(src.dayCloses, src.collectorRef, date, route),
+    };
+  }
+  const anchor = openingAnchor(src, route, date, book);
   let opening = pesos(src.fallbackOpening ?? 0);
   if (anchor) {
     opening = anchor.real;

@@ -14,6 +14,7 @@ import {
   isIndependentSaldoRoute,
   withIndependentRouteHistory,
 } from "@/lib/independent-route-cash";
+import { useRouteCashBook } from "@/lib/use-route-cash-book";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import type { QuickLoanDraft } from "@/lib/street-client-loan";
 import { Pill } from "@/components/ui";
@@ -622,6 +623,15 @@ export function CollectorMobileApp({
         ? planillaRoutePins[0]
         : null;
 
+  /** Caja propia A / N del cobrador: los días pasados los da el servidor (el celular solo guarda hoy). */
+  const cashBookRoute = planillaRoutePins.find((pin) => isIndependentSaldoRoute(pin)) ?? null;
+  const cashBook = useRouteCashBook(collector.ref, cashBookRoute, `${todayIso()}|${activeDate}`);
+  const cashBookFor = useCallback(
+    (route: string | null | undefined) =>
+      route && cashBookRoute && sameRoute(route, cashBookRoute) ? cashBook : null,
+    [cashBook, cashBookRoute],
+  );
+
   const dayHistory = useMemo(() => {
     const extraDates = [
       ...routeOptions.map((row) => row.date),
@@ -748,6 +758,7 @@ export function CollectorMobileApp({
           monthCloses,
         },
         routeForHistory,
+        cashBookFor(routeForHistory),
       );
     }
     if (!isPlanillaCashChainSecondary(routeForHistory ?? undefined)) return stamped;
@@ -775,6 +786,7 @@ export function CollectorMobileApp({
   }, [
     activeDate,
     assignments,
+    cashBookFor,
     clients,
     collector,
     collectorCashHandByDate,
@@ -1424,9 +1436,11 @@ export function CollectorMobileApp({
         monthCloses,
       },
       saldoRouteName,
+      cashBookFor(saldoRouteName),
     );
   }, [
     saldoRouteName,
+    cashBookFor,
     collector,
     activeDate,
     livePayments,
