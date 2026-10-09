@@ -129,6 +129,45 @@ export function findRouteCashAdjustment(
   return cie?.routeCashAdjustments?.find((adj) => sameRoute(adj.route, route)) ?? null;
 }
 
+/**
+ * Desde este día el CIE- de un cobrador sin cadena (N) sella la caja de su planilla
+ * (`sealedIndependentDayCash`). Los anteriores sellaban otra fórmula: no sirven de Inicial.
+ */
+const INDEPENDENT_CIE_SEALS_FROM = "2026-10-08";
+
+/**
+ * Caja de la planilla sellada en el CIE- de ese día. Manda sobre el recálculo: el celular
+ * del cobrador solo guarda los cobros de hoy y no puede rehacer los días pasados.
+ */
+function sealedRouteClosing(src: DayCashSources, route: string, day: string): number | null {
+  if (day < INDEPENDENT_CIE_SEALS_FROM) return null;
+  const cie = findFullDayCieClose(src.dayCloses, src.collectorRef, day);
+  if (!cie) return null;
+  const daySrc = { ...src, date: day };
+  if (isChainCollectorDay(daySrc)) return null;
+  if (independentRouteForCollectorDay(daySrc, route) !== route.trim().toUpperCase()) return null;
+  return pesos(cie.cashFloat);
+}
+
+/** Último día (antes de `date`) con la caja de esa planilla sellada en su CIE-. */
+function latestSealedBefore(
+  src: DayCashSources,
+  route: string,
+  date: string,
+): { date: string; real: number } | null {
+  const days = new Set<string>();
+  for (const row of src.dayCloses) {
+    if (row.collectorRef !== src.collectorRef || !String(row.ref || "").startsWith("CIE-")) continue;
+    const day = isoOf(row.date);
+    if (day >= INDEPENDENT_CIE_SEALS_FROM && day < date) days.add(day);
+  }
+  for (const day of [...days].sort().reverse()) {
+    const sealed = sealedRouteClosing(src, route, day);
+    if (sealed !== null) return { date: day, real: sealed };
+  }
+  return null;
+}
+
 /** Último día (antes de `date`) con ajuste de esa planilla. */
 function latestAnchorBefore(
   dayCloses: CollectorDayCloseRecord[],
@@ -267,7 +306,7 @@ export function attachRouteCashAdjustments<Row extends HistoryRowLike>(
 export type IndependentRouteDay = RouteMovement & {
   route: string;
   date: string;
-  /** Hay un ajuste previo: el Inicial sale de él (no del `fallbackOpening`). */
+  /** Hay un ajuste previo o un CIE- sellado: el Inicial sale de él (no del `fallbackOpening`). */
   anchored: boolean;
   opening: number;
   /** Inicial + efectivo − gastos − préstamos. */
@@ -279,7 +318,9 @@ export type IndependentRouteDay = RouteMovement & {
 export function independentRouteDay(src: DayCashSources, route: string): IndependentRouteDay {
   const date = isoOf(src.date);
   const today = routeMovement({ ...src, date }, route);
-  const anchor = latestAnchorBefore(src.dayCloses, src.collectorRef, route, date);
+  const adjusted = latestAnchorBefore(src.dayCloses, src.collectorRef, route, date);
+  const sealed = latestSealedBefore(src, route, date);
+  const anchor = sealed && (!adjusted || sealed.date > adjusted.date) ? sealed : adjusted;
   let opening = pesos(src.fallbackOpening ?? 0);
   if (anchor) {
     opening = anchor.real;
@@ -288,13 +329,14 @@ export function independentRouteDay(src: DayCashSources, route: string): Indepen
       opening = pesos(opening + move.efectivo - move.gastos - move.prestamos);
     }
   }
+  const sealedClosing = date < businessTodayIso() ? sealedRouteClosing(src, route, date) : null;
   return {
     ...today,
     route,
     date,
     anchored: Boolean(anchor),
     opening,
-    closing: pesos(opening + today.efectivo - today.gastos - today.prestamos),
+    closing: sealedClosing ?? pesos(opening + today.efectivo - today.gastos - today.prestamos),
     adjustment: findRouteCashAdjustment(src.dayCloses, src.collectorRef, date, route),
   };
 }
