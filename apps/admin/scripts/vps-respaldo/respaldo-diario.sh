@@ -1,5 +1,6 @@
 #!/bin/bash
 # Respaldo diario de Supabase → /var/backups/autoprestamos/AAAA-MM-DD.tar.gz (guarda 30 días).
+# Incluye pg_dump del esquema public (restaurable en la copia de ensayo).
 # Segunda copia (solo tablas) → depósito privado `respaldos` de Supabase (7 días).
 # Copia en el VPS: /root/respaldo/respaldo-diario.sh (esta es la versionada).
 set -euo pipefail
@@ -11,7 +12,9 @@ NODE="node --experimental-websocket --no-warnings --env-file=$ENV"
 mkdir -p "$DEST"
 chmod 700 "$DEST"
 rm -rf "$WORK"
-if $NODE /root/respaldo/respaldo-diario.cjs "$WORK"; then
+# Estructura + datos del esquema public (funciones, permisos, reglas). Clave en /root/.pgpass.
+PGURL="host=db.connkdwezlwqlwgjerav.supabase.co port=5432 dbname=postgres user=postgres sslmode=require connect_timeout=20"
+if $NODE /root/respaldo/respaldo-diario.cjs "$WORK" && pg_dump "$PGURL" -Fc -n public -f "$WORK/base-public.dump"; then
   tar -czf "$DEST/$DAY.tar.gz.tmp" -C "$DEST" "$DAY"
   mv "$DEST/$DAY.tar.gz.tmp" "$DEST/$DAY.tar.gz"
   chmod 600 "$DEST/$DAY.tar.gz"
