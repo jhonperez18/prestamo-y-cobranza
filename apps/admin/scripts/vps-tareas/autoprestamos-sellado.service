@@ -1,0 +1,7 @@
+[Unit]
+Description=Autoprestamos: sellado nocturno de jornadas (day-rollover)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/tareas/tarea-ops.sh day-rollover

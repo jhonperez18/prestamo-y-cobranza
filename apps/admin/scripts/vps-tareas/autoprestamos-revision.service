@@ -1,0 +1,7 @@
+[Unit]
+Description=Autoprestamos: revision de la manana (morning-check)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/root/tareas/tarea-ops.sh morning-check
