@@ -382,6 +382,16 @@ export function defaultOpenPlanillaRoute(
 ): string | null {
   if (!pins.length) return null;
   if (pins.length === 1) return pins[0] ?? null;
+  return workablePlanillaRoute(pins, assignments, date, clients) ?? pins[0] ?? null;
+}
+
+/** Primera hoja de esa fecha con visitas por trabajar; `null` si todas están cerradas o atendidas. */
+function workablePlanillaRoute(
+  pins: string[],
+  assignments: DailyCollectionAssignment[],
+  date: string,
+  clients: ClientRow[],
+): string | null {
   const day = normalizeHistoryDate(date) || date;
   const open = pins.find((name) =>
     assignments.some((row) => {
@@ -391,7 +401,7 @@ export function defaultOpenPlanillaRoute(
       return sameRoute(assignmentRouteName(row, clients), name);
     }),
   );
-  return open ?? pins[0] ?? null;
+  return open ?? null;
 }
 
 /** ¿Esa ruta hoy ya tiene sello de cierre en todas las visitas? */
@@ -412,7 +422,8 @@ export function planillaRouteSheetSealed(
 
 /**
  * Pin mientras cobra: un cobro en T no puede saltar a M (M ya cerró → sin billete).
- * Solo cambia si la hoja actual ya está sellada o aún no hay pin.
+ * Solo cambia si la hoja actual ya está sellada y hay otra por trabajar, o aún no hay pin.
+ * Día cerrado (Historial → día): todas selladas, se queda en la ruta que eligió el cobrador.
  */
 export function keepOpenPlanillaRoute(
   prev: string | null | undefined,
@@ -423,10 +434,9 @@ export function keepOpenPlanillaRoute(
 ): string | null {
   if (pins.length <= 1) return pins[0] ?? null;
   const current = prev && pins.some((name) => sameRoute(name, prev)) ? prev : null;
-  if (current && !planillaRouteSheetSealed(current, assignments, date, clients)) {
-    return current;
-  }
-  return defaultOpenPlanillaRoute(pins, assignments, date, clients);
+  if (!current) return defaultOpenPlanillaRoute(pins, assignments, date, clients);
+  if (!planillaRouteSheetSealed(current, assignments, date, clients)) return current;
+  return workablePlanillaRoute(pins, assignments, date, clients) ?? current;
 }
 
 /** ¿Queda alguna hoja de esa fecha sin sellar? Si sí, el cobrador sigue cobrando. */
