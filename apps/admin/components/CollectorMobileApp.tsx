@@ -2362,21 +2362,6 @@ export function CollectorMobileApp({
           <p className="collector-mobile-home-cuadre-hint is-ok">
             Este saldo es el que llevas hasta el próximo cobro. Historial para ver otros días.
           </p>
-          {onCloseDay &&
-          routeOptions.some((row) => row.date === today && !row.closed && row.total > 0) ? (
-            <button
-              type="button"
-              className="collector-mobile-pay-link"
-              onClick={() => {
-                setSelectedDate(today);
-                setPreferCobroPlanilla(true);
-                setListFilter("pending");
-                setConfirmingClose(false);
-              }}
-            >
-              Ir a cerrar el día de hoy
-            </button>
-          ) : null}
         </section>
       ) : null}
 
