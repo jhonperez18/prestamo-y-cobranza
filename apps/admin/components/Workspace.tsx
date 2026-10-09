@@ -80,6 +80,7 @@ import {
 } from "@/lib/payment-detail";
 import { cuotaTarget } from "@/lib/loan-pay";
 import {
+  applyBankAccountSave,
   isBankExpenseMovement,
   type BankAccount,
 } from "@/lib/bank";
@@ -1497,38 +1498,32 @@ export function Workspace(props: WorkspaceProps) {
           key={editingAccount?.ref ?? "new"}
           accounts={bankAccounts}
           initialAccount={editingAccount}
-          onSave={(account) => {
-            const stamped = {
-              ...account,
-              updatedAt: new Date().toISOString(),
-            };
-            setBankAccounts((rows) => {
-              const idx = rows.findIndex((row) => row.ref === stamped.ref);
-              if (idx >= 0) {
-                const next = rows.slice();
-                next[idx] = stamped;
-                return next;
-              }
-              return [...rows, stamped];
-            });
-            writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, (() => {
-              const current = readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []);
-              const idx = current.findIndex((row) => row.ref === stamped.ref);
-              if (idx >= 0) {
-                const next = current.slice();
-                next[idx] = stamped;
-                return next;
-              }
-              return [...current, stamped];
-            })());
+          onSave={async (account) => {
+            const at = new Date().toISOString();
+            const saved = applyBankAccountSave(
+              readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []),
+              account,
+              at,
+            );
+            const stamped = saved.changed[0];
+            setBankAccounts((rows) => applyBankAccountSave(rows, account, at).accounts);
+            writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, saved.accounts);
+            // Solo la cuenta guardada sube: la nube le quita el uso a la otra en la misma escritura.
             queueBankAccountMirror(stamped);
-            void flushBankAccountMirrorQueues().catch(() => {
-              /* offline: local + cola ya montados */
-            });
             setBankAccountRef(stamped.ref);
             setEditBankAccountRef(null);
             onGo("banco", "listado");
-            onToast("Cuenta guardada en este PC y en cola a la nube.");
+            let left = 1;
+            try {
+              left = await flushBankAccountMirrorQueues();
+            } catch (err) {
+              console.error("[banco] cuenta sin subir", err);
+            }
+            onToast(
+              left === 0
+                ? `Cuenta ${stamped.ref} guardada en la nube.`
+                : `Cuenta ${stamped.ref} guardada en este PC; se sube sola al volver la conexión.`,
+            );
           }}
           onCancel={() => {
             setEditBankAccountRef(null);

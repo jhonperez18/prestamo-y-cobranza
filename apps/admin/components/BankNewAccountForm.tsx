@@ -1,9 +1,12 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
-import type { BankAccount, BankAccountType } from "@/lib/bank";
+import type { BankAccount, BankAccountRole, BankAccountType } from "@/lib/bank";
 import {
+  BANK_ACCOUNT_ROLES,
+  bankAccountRoleLabel,
   bankAccountTypeLabel,
+  isBankAccountRole,
   isBankAccountRefTaken,
   nextBankAccountRef,
   normalizeBankAccount,
@@ -14,7 +17,7 @@ type Props = {
   accounts: BankAccount[];
   /** Si viene, el formulario edita esa cuenta (Ref. fija). */
   initialAccount?: BankAccount | null;
-  onSave: (account: BankAccount) => void;
+  onSave: (account: BankAccount) => void | Promise<void>;
   onCancel: () => void;
   onToast: (message?: string) => void;
 };
@@ -64,6 +67,7 @@ type FormState = {
   bankName: string;
   accountNumber: string;
   accountType: BankAccountType;
+  role: BankAccountRole | "";
   currency: string;
   status: "abierto" | "cerrado";
   country: string;
@@ -79,6 +83,7 @@ function formFromAccount(account: BankAccount): FormState {
     bankName: account.bankName === "Sin banco" ? "" : account.bankName,
     accountNumber: account.accountNumber === "Sin número" ? "" : account.accountNumber,
     accountType: account.accountType,
+    role: isBankAccountRole(account.role) ? account.role : "",
     currency: account.currency || "COP",
     status: account.active ? "abierto" : "cerrado",
     country: account.country || "Colombia (CO)",
@@ -94,6 +99,7 @@ const EMPTY_FORM: FormState = {
   bankName: "",
   accountNumber: "",
   accountType: "corriente",
+  role: "",
   currency: "COP",
   status: "abierto",
   country: "Colombia (CO)",
@@ -156,9 +162,24 @@ export function BankNewAccountForm({
       address: form.address.trim(),
       active: form.status === "abierto",
       openingBalance,
+      role: form.role || null,
     });
+    if (row.role && !row.active) {
+      onToast(`Una cuenta cerrada no puede ser la de ${bankAccountRoleLabel(row.role)}.`);
+      return;
+    }
+    const holder = row.role
+      ? accounts.find((entry) => entry.ref !== row.ref && entry.role === row.role)
+      : undefined;
+    if (
+      holder &&
+      !window.confirm(
+        `${holder.name} (${holder.ref}) es hoy la cuenta de ${bankAccountRoleLabel(row.role)}. ¿Pasar ese uso a ${row.name}?`,
+      )
+    ) {
+      return;
+    }
     onSave(row);
-    onToast(editing ? `Cuenta ${row.ref} actualizada.` : `Cuenta ${row.ref} creada.`);
   };
 
   return (
@@ -216,6 +237,24 @@ export function BankNewAccountForm({
                 {ACCOUNT_TYPES.map((type) => (
                   <option key={type} value={type}>
                     {bankAccountTypeLabel(type)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="sheet-row">
+              <label className="sheet-label" htmlFor="bank-role">
+                Uso en el sistema
+              </label>
+              <select
+                id="bank-role"
+                value={form.role}
+                onChange={(event) => setField("role", event.target.value as FormState["role"])}
+              >
+                <option value="">{bankAccountRoleLabel(null)}</option>
+                {BANK_ACCOUNT_ROLES.map((role) => (
+                  <option key={role} value={role}>
+                    {bankAccountRoleLabel(role)}
                   </option>
                 ))}
               </select>

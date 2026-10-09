@@ -1420,6 +1420,67 @@ expect("Banco · M no efectivo (banco) → Banco", accountOf("PG-M2"), "BC");
 expect("Banco · N no efectivo → Banco", accountOf("PG-N1"), "BC");
 expect("Banco · M efectivo → principal", accountOf("PG-M3"), "EF");
 
+{
+  // Paso 0 (09/10): la cuenta de cada uso la manda la marca del catálogo, no el orden.
+  // La nube guarda el catálogo ordenado por ref: ANGE (Nequi) primero recibía el efectivo.
+  const { accountForRole, applyBankAccountSave, syncCashLoanDisbursementsToMovements } = await import("@/lib/bank");
+  const { syncBankLedger } = await import("@/lib/bank-ledger-sync");
+  const { readFileSync } = await import("node:fs");
+  const cloudOrder = [
+    normalizeBankAccount({ ref: "ANGE", name: "NEQUI", bankName: "Nequi", accountType: "corriente", role: "nequi" }),
+    normalizeBankAccount({ ref: "BCA-1", name: "BANCOLOMBIA", bankName: "Efectivo", accountType: "ahorros", role: "efectivo" }),
+    normalizeBankAccount({ ref: "TRUQUI", name: "BANCO", bankName: "Banco", accountType: "nequi", role: "banco" }),
+  ];
+  const shuffled = [cloudOrder[2], cloudOrder[0], cloudOrder[1]];
+  for (const [label, accounts] of [["orden nube", cloudOrder], ["otro orden", shuffled]]) {
+    expect(`Cuenta efectivo por marca (${label})`, accountForRole(accounts, "efectivo")?.ref, "BCA-1");
+    expect(`Cuenta Banco por marca (${label})`, accountForRole(accounts, "banco")?.ref, "TRUQUI");
+    expect(`Cuenta Nequi por marca (${label})`, accountForRole(accounts, "nequi")?.ref, "ANGE");
+    const rows = syncAllPaymentsToMovements(
+      [bankPay("PG-M3", "L-M", "efectivo"), bankPay("PG-A1", "L-A", "nequi"), bankPay("PG-M2", "L-M", "banco")],
+      [],
+      accounts,
+      loanRouteIndex(bankLoans, bankClients),
+    );
+    const of = (pg) => rows.find((row) => row.paymentRef === pg)?.accountRef ?? null;
+    expect(`Efectivo no cae en Nequi (${label})`, of("PG-M3"), "BCA-1");
+    expect(`Cobro A → Nequi (${label})`, of("PG-A1"), "ANGE");
+    expect(`Cobro M Banco → Banco (${label})`, of("PG-M2"), "TRUQUI");
+    const cashLoan = syncCashLoanDisbursementsToMovements(
+      [{ ref: "P-EF", clientRef: "C-M", client: "Cliente M", date: "2026-10-08", capital: 200_000, status: "Activo", notes: "[[fb:efectivo]]" }],
+      [],
+      accounts,
+    );
+    expect(`Préstamo en efectivo → cuenta efectivo (${label})`, cashLoan[0]?.accountRef, "BCA-1");
+    const ledger = syncBankLedger({
+      payments: [],
+      movements: [],
+      accounts,
+      miscPayments: [],
+      dayExpenseDrafts: [
+        { ref: "GAS-X", collectorRef: "COB-X", collectorName: "X", date: "2026-10-08", expenses: [{ id: "gasolina", label: "Gasolina", amount: 10_000, category: "gasolina" }] },
+      ],
+      dayCloses: [],
+      loans: [],
+      clients: [],
+    });
+    expect(`Gasto de ruta → cuenta efectivo (${label})`, ledger.find((row) => row.category === "gasolina")?.accountRef, "BCA-1");
+  }
+  const moved = applyBankAccountSave(cloudOrder, { ...cloudOrder[0], role: "efectivo" }, "2026-10-09T06:00:00.000Z");
+  expect("Pasar el uso: la cuenta nueva lo toma", accountForRole(moved.accounts, "efectivo")?.ref, "ANGE");
+  expect("Pasar el uso: la anterior lo suelta", moved.accounts.find((row) => row.ref === "BCA-1")?.role, null);
+  expect("Pasar el uso: un solo efectivo", moved.accounts.filter((row) => row.role === "efectivo").length, 1);
+  const bankMirrorSrc = readFileSync(new URL("../lib/supabase/bank-accounts-mirror.ts", import.meta.url), "utf8");
+  expect(
+    "Nube: aparato viejo sin marca no borra el uso de la cuenta",
+    bankMirrorSrc.includes("normalized.role === undefined && previous?.role !== undefined"),
+    true,
+  );
+  expect("Nube: el uso viaja en la firma de la cuenta", /row\.role \?\? ""/.test(bankMirrorSrc), true);
+  const bankSrc = readFileSync(new URL("../lib/bank.ts", import.meta.url), "utf8");
+  expect("Banco: nadie elige cuenta por «primera activa»", /\.find\(\(row\) => row\.active\)/.test(bankSrc), false);
+}
+
 const { lockPaymentCobrosAsIncome } = await import("@/lib/bank");
 const voidedFlaca = {
   ...bankPay("PG-10439", "L-M", "nequi"),

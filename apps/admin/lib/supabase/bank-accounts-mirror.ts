@@ -4,6 +4,7 @@
  */
 import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
+  applyBankAccountSave,
   normalizeBankAccount,
   type BankAccount,
   type BankAccountType,
@@ -48,6 +49,7 @@ function accountSignature(row: BankAccount) {
     row.address,
     row.active ? 1 : 0,
     Number(row.openingBalance) || 0,
+    row.role ?? "",
   ].join("|");
 }
 
@@ -162,9 +164,14 @@ export async function mirrorBankAccountToSupabase(account: BankAccount) {
   if (current.skipped) {
     return { ok: true as const, skipped: true as const, reason: current.reason };
   }
-  const byRef = new Map(current.accounts.map((row) => [row.ref, row]));
-  byRef.set(normalized.ref, normalized);
-  return writeStorageCatalog(Array.from(byRef.values()));
+  const previous = current.accounts.find((row) => row.ref === normalized.ref);
+  // Aparato viejo (no conoce la marca): la nube conserva el uso que tenía la cuenta.
+  const incoming =
+    normalized.role === undefined && previous?.role !== undefined
+      ? { ...normalized, role: previous.role }
+      : normalized;
+  const { accounts } = applyBankAccountSave(current.accounts, incoming, incoming.updatedAt || new Date().toISOString());
+  return writeStorageCatalog(accounts);
 }
 
 export async function fetchBankAccountsFromSupabase() {
@@ -243,8 +250,9 @@ export function queueBankAccountsMirror(accounts: BankAccount[]) {
   for (const row of accounts) queueBankAccountMirror(row);
 }
 
-export async function flushBankAccountMirrorQueues() {
-  if (typeof window === "undefined") return;
+/** Devuelve cuántas cuentas quedaron en cola (0 = todo en la nube). */
+export async function flushBankAccountMirrorQueues(): Promise<number> {
+  if (typeof window === "undefined") return 0;
   const accounts = readQueue();
   const left: BankAccount[] = [];
   for (const account of accounts) {
@@ -261,6 +269,7 @@ export async function flushBankAccountMirrorQueues() {
     }
   }
   writeQueue(left);
+  return left.length;
 }
 
 function mergePreferPendingLocal(

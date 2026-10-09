@@ -97,9 +97,78 @@ export type BankAccount = {
   address: string;
   active: boolean;
   openingBalance: number;
+  /**
+   * Uso en el sistema (una cuenta por uso, catálogo de la nube). `null` = ninguno;
+   * ausente = aparato viejo que no conoce la marca (la nube conserva la que había).
+   */
+  role?: BankAccountRole | null;
   /** Sello para merge nube (PC padre no se rebobina). */
   updatedAt?: string;
 };
+
+export type BankAccountRole = "efectivo" | "banco" | "nequi";
+
+export const BANK_ACCOUNT_ROLES: BankAccountRole[] = ["efectivo", "banco", "nequi"];
+
+export function isBankAccountRole(value: unknown): value is BankAccountRole {
+  return value === "efectivo" || value === "banco" || value === "nequi";
+}
+
+export function bankAccountRoleLabel(role: BankAccountRole | null | undefined) {
+  if (role === "efectivo") return "Efectivo (cobros, gastos y préstamos en efectivo)";
+  if (role === "banco") return "Banco (rutas M · T · N)";
+  if (role === "nequi") return "Nequi (ruta A)";
+  return "Ninguno";
+}
+
+function legacyAccountForRole(active: BankAccount[], role: BankAccountRole): BankAccount | undefined {
+  const byLabel = (label: string) =>
+    active.find((row) => foldPersonKey(row.name) === label || foldPersonKey(row.bankName) === label);
+  const efectivo = active[0];
+  const typedNequi = active.find((row) => row.accountType === "nequi");
+  if (role === "efectivo") return efectivo;
+  if (role === "nequi") return byLabel("nequi") ?? typedNequi ?? efectivo;
+  return byLabel("banco") ?? typedNequi ?? efectivo;
+}
+
+/**
+ * Cuenta de cada uso: manda la marca `role` del catálogo de la nube; el orden de la
+ * lista no decide (caso ANGE/Nequi recibiendo efectivo, 08/10). Un uso sin marca
+ * (caché vieja, pruebas) sigue la regla anterior.
+ */
+export function accountForRole(
+  accounts: BankAccount[],
+  role: BankAccountRole,
+): BankAccount | undefined {
+  const active = accounts.filter((row) => row.active);
+  const marked = active.find((row) => row.role === role);
+  if (marked) return marked;
+  return legacyAccountForRole(active.length ? active : accounts, role);
+}
+
+/**
+ * Guardar una cuenta: si toma un uso que tenía otra, esa otra lo suelta.
+ * Devuelve el catálogo nuevo y las filas que cambiaron (para la cola de la nube).
+ */
+export function applyBankAccountSave(
+  accounts: BankAccount[],
+  saved: BankAccount,
+  at: string,
+): { accounts: BankAccount[]; changed: BankAccount[] } {
+  const stamped = { ...saved, updatedAt: at };
+  const changed: BankAccount[] = [stamped];
+  const next = accounts.map((row) => {
+    if (row.ref === stamped.ref) return stamped;
+    if (isBankAccountRole(stamped.role) && row.role === stamped.role) {
+      const released = { ...row, role: null, updatedAt: at };
+      changed.push(released);
+      return released;
+    }
+    return row;
+  });
+  if (!accounts.some((row) => row.ref === stamped.ref)) next.push(stamped);
+  return { accounts: next, changed };
+}
 
 export function bankAccountTypeLabel(type: BankAccountType) {
   if (type === "corriente") return "Cuenta corriente, cheque o tarjeta";
@@ -122,6 +191,7 @@ export function normalizeBankAccount(row: Partial<BankAccount> & Pick<BankAccoun
     address: row.address ?? "",
     active: row.active !== false,
     openingBalance: Number(row.openingBalance) || 0,
+    role: isBankAccountRole(row.role) ? row.role : row.role === null ? null : undefined,
     updatedAt: row.updatedAt?.trim() || undefined,
   };
 }
@@ -1020,7 +1090,7 @@ export function syncNequiLoanDisbursementsToMovements(
   clients: ClientRow[] = [],
 ): BankMovement[] {
   const ensured = ensureBankAccounts(accounts);
-  const primary = ensured.find((row) => row.active) ?? ensured[0];
+  const primary = accountForRole(ensured, "efectivo");
   if (!primary) return movements;
   const routeByClient = new Map(clients.map((row) => [row.ref, row.route ?? ""]));
 
@@ -1165,7 +1235,7 @@ function loanLeavesCashBox(loan: LoanRow): boolean {
 }
 
 /**
- * Préstamo en efectivo del cobrador → Haber en la cuenta principal (BANCOLOMBIA),
+ * Préstamo en efectivo del cobrador → Haber en la cuenta de efectivo (`role`),
  * igual que gasolina: el registro del sistema lo lista, azul (`prestamo_ruta`).
  * No es DSB-; no resta Banco/Nequi de la ruta ni el Inicial de caja.
  */
@@ -1174,7 +1244,7 @@ export function syncCashLoanDisbursementsToMovements(
   movements: BankMovement[],
   accounts: BankAccount[],
 ): BankMovement[] {
-  const primary = ensureBankAccounts(accounts).find((row) => row.active) ?? accounts[0];
+  const primary = accountForRole(ensureBankAccounts(accounts), "efectivo");
   if (!primary) return movements;
   const cashLoans = loans.filter(loanLeavesCashBox);
   const wanted = uniqueCashDisbursementLoans(cashLoans);
@@ -1425,32 +1495,14 @@ export function loanRouteIndex(loans: LoanRow[], clients: ClientRow[]): Map<stri
 }
 
 /**
- * Destino del cobro / desembolso digital según la ruta: A → Nequi; M / T / N → Banco.
- * La cuenta se reconoce por su nombre en el catálogo («Nequi» / «Banco»).
+ * Cuenta del cobro / desembolso digital según la ruta: A → Nequi; M / T / N → Banco.
+ * Misma ley para el Haber DSB-.
  */
-function digitalPaymentAccounts(accounts: BankAccount[], primary: BankAccount) {
-  const byLabel = (label: string) =>
-    accounts.find(
-      (row) =>
-        row.active && (foldPersonKey(row.name) === label || foldPersonKey(row.bankName) === label),
-    );
-  const legacyNequi = accounts.find((row) => row.accountType === "nequi");
-  return {
-    routeA: byLabel("nequi") ?? legacyNequi ?? primary,
-    otherRoutes: byLabel("banco") ?? legacyNequi ?? primary,
-    legacyNequi,
-  };
-}
-
-/** Cuenta del Haber DSB-: misma ley que el cobro no efectivo (ruta del cliente). */
 export function digitalAccountRefForRoute(
   accounts: BankAccount[],
   route: string | undefined,
 ): string | null {
-  const primary = accounts.find((row) => row.active) ?? accounts[0];
-  if (!primary) return null;
-  const digital = digitalPaymentAccounts(accounts, primary);
-  return sameRoute(route || "", "A") ? digital.routeA.ref : digital.otherRoutes.ref;
+  return accountForRole(accounts, sameRoute(route || "", "A") ? "nequi" : "banco")?.ref ?? null;
 }
 
 /**
@@ -1463,16 +1515,15 @@ export function syncAllPaymentsToMovements(
   accounts: BankAccount[],
   routeByLoan: Map<string, string>,
 ) {
-  const primary = accounts.find((row) => row.active) ?? accounts[0];
-  if (!primary) return dedupeBankMovements(movements);
-  const digital = digitalPaymentAccounts(accounts, primary);
+  const cash = accountForRole(accounts, "efectivo");
+  if (!cash) return dedupeBankMovements(movements);
   const accountForPayment = (payment: PaymentRow, method: PaymentMethod) => {
-    if (method === "efectivo") return primary.ref;
+    if (method === "efectivo") return cash.ref;
     const route = payment.loanRef ? routeByLoan.get(payment.loanRef) : undefined;
     if (!route) {
-      return method === "nequi" && digital.legacyNequi ? digital.legacyNequi.ref : primary.ref;
+      return method === "nequi" ? (accountForRole(accounts, "nequi") ?? cash).ref : cash.ref;
     }
-    return sameRoute(route, "A") ? digital.routeA.ref : digital.otherRoutes.ref;
+    return digitalAccountRefForRoute(accounts, route) ?? cash.ref;
   };
 
   const existing = dedupeBankMovements(

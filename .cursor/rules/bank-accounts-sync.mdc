@@ -15,9 +15,23 @@ Las cuentas (etiqueta, tipo, banco, número) son catálogo del padre: Guardar �
 | Catálogo cuentas | Storage `bank-accounts.json` + local |
 | Movimientos / saldo | Proyección desde `PG-` (+ gastos); no inventar ledger aparte |
 
+## Uso de cada cuenta (Paso 0, 09/10)
+
+| Uso (`role`) | Qué recibe | Hoy |
+| --- | --- | --- |
+| `efectivo` | Cobros en efectivo, gastos de ruta, préstamos en efectivo | BCA-1 BANCOLOMBIA |
+| `banco` | Cobros y desembolsos no efectivo de M / T / N | TRUQUI BANCO |
+| `nequi` | Cobros y desembolsos no efectivo de A | ANGE NEQUI |
+
+- Un solo dueño: `accountForRole` (`lib/bank.ts`). Prohibido elegir cuenta por «primera activa» o por orden de la lista
+  (la nube ordena por ref: ANGE quedaba primera y recibía el efectivo).
+- Una cuenta por uso. Guardar con un uso ajeno lo pasa (`applyBankAccountSave`, también en la nube).
+- Aparato viejo sin marca no la borra: la nube conserva el `role` que había.
+- Se cambia en Banco → Cuentas → Editar → «Uso en el sistema». Candado: `assert-cash-chain.mjs` («Paso 0»).
+
 ## Obligatorio
 
-1. Alta/edición de cuenta → `queueBankAccountMirror` + flush.
+1. Alta/edición de cuenta → `queueBankAccountMirror` + await flush (el aviso dice si llegó a la nube).
 2. Sync arranque: reconcile local→nube → pull (cola/escudo no rebobina).
 3. No declarar “actualizado” si localhost y Vercel muestran cuentas distintas.
 

@@ -15,8 +15,9 @@ alwaysApply: true
   No entra a la caja. Dueño: `routeDigitalCollected` = `digitalPoolDayPayments`.
   Día en curso siempre visible en esa ruta; cobro del cobrador o préstamo Banco/Nequi del
   sistema / supervisor entra al instante. Rutas limpias, sin mezclar.
-- Cuenta del cobro en Banco (`syncAllPaymentsToMovements`): efectivo → cuenta principal;
-  no efectivo de un cliente de **A** → cuenta «Nequi»; de **M / T / N** → cuenta «Banco».
+- Cuenta del cobro en Banco (`syncAllPaymentsToMovements`): efectivo → cuenta con uso `efectivo`;
+  no efectivo de un cliente de **A** → uso `nequi`; de **M / T / N** → uso `banco` (`accountForRole`,
+  marca del catálogo; nunca el orden de la lista — ver `bank-accounts-sync.mdc`).
   Manda la ruta del cliente, no el valor guardado. Candado: `assert-cash-chain.mjs` sección 12.
 - Desembolso Banco / Nequi (`DSB-` vía `syncNequiLoanDisbursementsToMovements`): misma cuenta
   que el cobro digital de esa ruta (T de Albornoz → «Banco», no la primera cuenta activa).

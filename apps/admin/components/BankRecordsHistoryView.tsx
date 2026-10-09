@@ -17,6 +17,7 @@ import {
   filterBankHistory,
   formatBankAmount,
   isBankExpenseMovement,
+  accountForRole,
   isBankIncomeMovement,
   isPeriodClosed,
   isoToDisplay,
@@ -146,10 +147,7 @@ export function BankRecordsHistoryView({
 
   const reconcileTarget = useMemo(() => {
     const accountRef =
-      accountFilter ||
-      accounts.find((row) => row.active)?.ref ||
-      accounts[0]?.ref ||
-      "";
+      accountFilter || accountForRole(accounts, "efectivo")?.ref || "";
     if (!accountRef) return null;
     const account = accounts.find((row) => row.ref === accountRef);
     if (!account) return null;

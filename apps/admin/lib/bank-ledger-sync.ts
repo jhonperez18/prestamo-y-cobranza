@@ -4,6 +4,7 @@
  * Regla de raíz: todo pago PG- que entra al banco = Ingreso (Debe).
  */
 import {
+  accountForRole,
   bankMovementsSignature,
   ensureBankAccounts,
   loanRouteIndex,
@@ -38,7 +39,7 @@ export function syncBankLedger(input: {
   clients: ClientRow[];
 }): BankMovement[] {
   const accounts = ensureBankAccounts(input.accounts);
-  const account = accounts.find((row) => row.active) ?? accounts[0] ?? null;
+  const account = accountForRole(accounts, "efectivo") ?? null;
   const routeByLoan = loanRouteIndex(input.loans, input.clients);
   const withPayments = syncAllPaymentsToMovements(
     input.payments,
