@@ -235,7 +235,7 @@ export function useOperationalDemoSync(
     try {
       // Cobrador / taller: subir cola antes de bajar.
       // Supervisor: bajar cobros primero (no espera el flush de planilla).
-      // Los préstamos restaurados del Haber (Albornoz) sí suben: si no, Vercel no los ve.
+      // Sus préstamos en cola sí suben antes: la bajada completa suelta lo que la nube no tiene.
       if (!isSupervisorLiveDevice()) {
         await runMirrorFlush();
       } else {
