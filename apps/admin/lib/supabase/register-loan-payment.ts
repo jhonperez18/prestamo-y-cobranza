@@ -13,6 +13,7 @@ import { encodeLateChargeLabel, parseLateChargeLabel } from "@/lib/late-payment"
 import { normalizePaymentMethod, type PaymentMethod } from "@/lib/payment-method";
 import { newPaymentRef, type PaymentRow, type StatusKind } from "@/lib/mock-data";
 import { materializeEvidenceForDatabase } from "@/lib/supabase/payment-evidence-storage";
+import { PAYMENT_REJECTED_BALANCE } from "@/lib/supabase/mirror-queue";
 
 type RpcPayment = {
   id?: string;
@@ -64,6 +65,8 @@ export type RegisterLoanPaymentResult =
       error: string;
       status: 400 | 409 | 500 | 502;
       balance?: number;
+      /** La base dijo que no (no es red): `saldo_excedido`. */
+      reason?: typeof PAYMENT_REJECTED_BALANCE;
     };
 
 function paymentToRpcPart(payment: PaymentRow): Record<string, unknown> | null {
@@ -222,17 +225,17 @@ function mapRpcError(body: RegisterCollectionRpcBody | null, fallback: string): 
   error: string;
   status: 400 | 409 | 500 | 502;
   balance?: number;
+  reason?: typeof PAYMENT_REJECTED_BALANCE;
 } {
   const code = body?.code;
   const err = (body?.error || fallback).trim();
-  if (err === "saldo_excedido" || code === 409) {
+  if (err === PAYMENT_REJECTED_BALANCE || code === 409) {
+    const overBalance = err === PAYMENT_REJECTED_BALANCE;
     return {
-      error:
-        err === "saldo_excedido"
-          ? "El valor no puede ser mayor a lo pendiente del préstamo."
-          : err,
+      error: overBalance ? "El valor no puede ser mayor a lo pendiente del préstamo." : err,
       status: 409,
       balance: typeof body?.balance === "number" ? body.balance : undefined,
+      ...(overBalance ? { reason: PAYMENT_REJECTED_BALANCE } : {}),
     };
   }
   if (code === 400 || /invalida|invalido|requeridas|iguales|inconsistente/i.test(err)) {

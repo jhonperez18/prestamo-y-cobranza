@@ -18,8 +18,12 @@ const Q_USER_DELETES = "nexo-demo-user-delete-queue";
 const Q_BANKS = "nexo-demo-bank-account-mirror-queue";
 const Q_MONTH_CLOSES = "nexo-demo-month-close-mirror-queue";
 
+/** El préstamo debe menos que el cobro en la nube: el cobro no existe, no se reintenta. */
+export const PAYMENT_REJECTED_BALANCE = "saldo_excedido";
+
 /** Respuestas skipped que SÍ pueden salir de cola (no tiene sentido reintentar). */
 const DROP_ON_SKIP_REASON = new Set([
+  PAYMENT_REJECTED_BALANCE,
   "invalid_payment",
   "invalid_client",
   "client_deleted",
@@ -68,6 +72,8 @@ export type MirrorApiJson = {
   /** Alta de préstamo: si el P- ya era de otro cliente, la nube asignó otro. */
   ref?: string;
   rekeyed?: boolean;
+  /** Cobro rechazado (`saldo_excedido`): lo que el préstamo debe en la nube. */
+  balance?: number;
 };
 
 /**

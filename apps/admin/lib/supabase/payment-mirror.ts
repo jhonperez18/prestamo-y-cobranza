@@ -13,7 +13,7 @@ import {
 } from "@/lib/collector-live-window";
 import { createIncrementalPull, withSinceParam } from "@/lib/incremental-pull";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
-import type { LoanRow, PaymentRow, StatusKind } from "@/lib/mock-data";
+import { money, type LoanRow, type PaymentRow, type StatusKind } from "@/lib/mock-data";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import {
@@ -39,9 +39,11 @@ import { encodeLateChargeLabel, parseLateChargeLabel } from "@/lib/late-payment"
 import { isDeletedRef } from "@/lib/deleted-ids";
 import {
   emitMirrorQueueChanged,
+  PAYMENT_REJECTED_BALANCE,
   shouldDropFromMirrorQueue,
   type MirrorApiJson,
 } from "@/lib/supabase/mirror-queue";
+import { reportPaymentRejection } from "@/lib/loan-rejections";
 
 export type PaymentMirrorRow = {
   id?: string;
@@ -393,7 +395,7 @@ export type MirrorPaymentResult =
       /** Combinado: los dos tramos, en el orden enviado. */
       payments?: PaymentRow[];
     }
-  | { ok: true; skipped: true; reason: string }
+  | { ok: true; skipped: true; reason: string; balance?: number }
   | { ok: false; error: string };
 
 /** Upsert un cobro en public.payments. Seguro llamar tras commit local. */
@@ -421,6 +423,10 @@ export async function mirrorPaymentToSupabase(
       duplicate: registered.duplicate,
       payment: registered.payments[0],
     };
+  }
+
+  if (registered.reason === PAYMENT_REJECTED_BALANCE) {
+    return { ok: true, skipped: true, reason: PAYMENT_REJECTED_BALANCE, balance: registered.balance };
   }
 
   // Sin service role / sin Supabase: no tumbar el cobro local.
@@ -486,6 +492,10 @@ export async function mirrorCombinedPaymentsToSupabase(
       payment: combined.payments[0],
       payments: combined.payments,
     };
+  }
+
+  if (combined.reason === PAYMENT_REJECTED_BALANCE) {
+    return { ok: true, skipped: true, reason: PAYMENT_REJECTED_BALANCE, balance: combined.balance };
   }
 
   if (
@@ -664,6 +674,52 @@ function adoptCloudPaymentRefs(
   window.dispatchEvent(new CustomEvent(BIG_DEMO_STORE_CHANGED_EVENT));
 }
 
+function isPaymentRejection(reply: { skipped?: boolean; reason?: string } | null | undefined) {
+  return Boolean(reply?.skipped && reply.reason === PAYMENT_REJECTED_BALANCE);
+}
+
+/**
+ * La nube no aceptó el cobro (el préstamo debe menos): ese PG- no existe. Sale de la cola y de
+ * los cobros del aparato (caja), su visita abierta vuelve a «por cobrar» y se avisa en pantalla.
+ */
+function dropRejectedPayments(sent: PaymentRow[], balance: number | undefined) {
+  const refs = new Set(sent.map((row) => row.ref));
+  writeMirrorQueue(readMirrorQueue().filter((row) => !refs.has(row.ref)));
+  writeDemoJson(
+    DEMO_PAYMENTS_KEY,
+    readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []).filter((row) => !refs.has(row.ref)),
+  );
+
+  const reopened: DailyCollectionAssignment[] = [];
+  const assignments = readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []).map(
+    (row) => {
+      if (!row.paymentRef || !refs.has(row.paymentRef) || row.dayClosedAt) return row;
+      const next: DailyCollectionAssignment = { ...row, visitStatus: "pendiente", paymentRef: undefined };
+      reopened.push(next);
+      return next;
+    },
+  );
+  if (reopened.length) {
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
+    void import("@/lib/supabase/ops-mirror").then(({ queueAssignmentsMirror }) =>
+      queueAssignmentsMirror(reopened),
+    );
+  }
+  window.dispatchEvent(new CustomEvent(BIG_DEMO_STORE_CHANGED_EVENT));
+
+  const first = sent[0];
+  if (!first) return;
+  const total = sent.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const owes = Number(balance || 0);
+  const why = owes > 0 ? `el préstamo ${first.loanRef} solo debe ${money(owes)}` : `el préstamo ${first.loanRef} ya está pagado`;
+  reportPaymentRejection({
+    ref: first.ref,
+    client: first.client,
+    reason: PAYMENT_REJECTED_BALANCE,
+    message: `Cobro de ${first.client || "cliente"} por ${money(total)} no entró en la nube: ${why}. Se quitó de la caja.`,
+  });
+}
+
 /** POST al API de espejo; si falla, deja el cobro en cola offline. */
 export async function persistPaymentToSupabase(
   payment: PaymentRow,
@@ -695,6 +751,8 @@ export async function persistPaymentToSupabase(
     if (!result.skipped) {
       dequeueMirrorPayment(payload.ref);
       adoptCloudPaymentRefs([payload], [result.payment]);
+    } else if (isPaymentRejection(result)) {
+      dropRejectedPayments([payload], result.balance);
     } else if (!shouldDropFromMirrorQueue(result)) {
       // skipped sin escritura real (p. ej. service_role_missing): queda pendiente.
       enqueueMirrorPayment(payload);
@@ -719,6 +777,7 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
 
   let flushed = 0;
   const left: PaymentRow[] = [];
+  const rejected: { payment: PaymentRow; balance?: number }[] = [];
   for (const payment of queue) {
     const payload = withPaymentEvidence(payment);
     try {
@@ -730,7 +789,10 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
       });
       const body = (await res.json()) as MirrorApiJson & { payment?: PaymentRow };
       // Solo sacar de cola si realmente escribió en Postgres (o skip irrecuperable).
-      if (res.ok && shouldDropFromMirrorQueue(body) && !body.skipped) {
+      if (res.ok && isPaymentRejection(body)) {
+        flushed += 1;
+        rejected.push({ payment: payload, balance: body.balance });
+      } else if (res.ok && shouldDropFromMirrorQueue(body) && !body.skipped) {
         flushed += 1;
         adoptCloudPaymentRefs([payload], [body.payment]);
       } else if (res.ok && shouldDropFromMirrorQueue(body) && body.skipped) {
@@ -744,6 +806,7 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
     }
   }
   writeMirrorQueue(left);
+  for (const row of rejected) dropRejectedPayments([row.payment], row.balance);
   return { flushed, left: left.length };
 }
 
@@ -929,6 +992,8 @@ export async function queueCombinedPaymentMirror(
       dequeueMirrorPayment(payload[0].ref);
       dequeueMirrorPayment(payload[1].ref);
       adoptCloudPaymentRefs(payload, result.payments);
+    } else if (isPaymentRejection(result)) {
+      dropRejectedPayments(payload, result.balance);
     }
     return result;
   } catch (err) {

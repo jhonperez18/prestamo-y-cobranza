@@ -22,15 +22,23 @@ export function readLoanRejections(): LoanRejection[] {
   return readDemoJson<LoanRejection[]>(LOAN_REJECTIONS_KEY, []);
 }
 
-export function reportLoanRejection(input: Omit<LoanRejection, "message" | "at">): LoanRejection {
-  const entry: LoanRejection = {
-    ...input,
-    message: loanRejectionMessage(input.reason, input.client, input.cloudRef),
-    at: new Date().toISOString(),
-  };
-  console.error("[prestamo-rechazado]", entry.message, entry.ref);
+function recordRejection(entry: LoanRejection): LoanRejection {
+  console.error("[rechazo-nube]", entry.message, entry.ref);
   if (typeof window === "undefined") return entry;
   writeDemoJson(LOAN_REJECTIONS_KEY, [entry, ...readLoanRejections()].slice(0, KEEP));
   window.dispatchEvent(new CustomEvent(LOAN_REJECTED_EVENT, { detail: entry }));
   return entry;
+}
+
+export function reportLoanRejection(input: Omit<LoanRejection, "message" | "at">): LoanRejection {
+  return recordRejection({
+    ...input,
+    message: loanRejectionMessage(input.reason, input.client, input.cloudRef),
+    at: new Date().toISOString(),
+  });
+}
+
+/** Cobro que la nube no aceptó: ya salió de la caja del aparato; el cobrador lo ve en pantalla. */
+export function reportPaymentRejection(input: Omit<LoanRejection, "at">): LoanRejection {
+  return recordRejection({ ...input, at: new Date().toISOString() });
 }
