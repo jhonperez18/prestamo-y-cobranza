@@ -6,6 +6,7 @@
  * Claves duplicadas como literales a propósito: evita ciclos con payment/ops-mirror.
  */
 import { readDemoJson } from "@/lib/demo-persist";
+import { LOAN_REJECTION_REASONS, LOAN_SILENT_SKIPS } from "@/lib/loan-command";
 
 export const MIRROR_QUEUE_CHANGED_EVENT = "nexo-mirror-queue-changed";
 
@@ -31,6 +32,8 @@ const DROP_ON_SKIP_REASON = new Set([
   "cloud_cie_past_day_sealed",
   "provisional_day_close",
   "cie_reopened",
+  ...LOAN_SILENT_SKIPS,
+  ...LOAN_REJECTION_REASONS,
 ]);
 
 /**

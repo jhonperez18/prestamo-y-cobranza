@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { CloseIcon, PersonMiniIcon, SearchIcon } from "@/components/icons";
-import { money, nextLoanCode, type ClientRow, type LoanRow } from "@/lib/mock-data";
+import { money, type ClientRow, type LoanRow } from "@/lib/mock-data";
+import { loanRefLabel } from "@/lib/loan-command";
 import { isOperationalClient } from "@/lib/client-review";
 import {
   buildFlatLoanPreviewCards,
@@ -45,7 +46,6 @@ export type LoanDraft = {
 type Props = {
   clients: ClientRow[];
   loan?: LoanRow;
-  loanCode?: string;
   onCancel: () => void;
   onSave: (draft: LoanDraft) => void;
   onDelete?: () => void;
@@ -136,10 +136,10 @@ function initialCuotas(loan?: LoanRow | null, termDays = 30, frequency: PayFrequ
   return suggestedInstallmentsForDays(frequency, termDays);
 }
 
-export function NewLoanForm({ clients, loan, loanCode, onCancel, onSave, onDelete }: Props) {
+export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props) {
   const editing = Boolean(loan);
   const syncedLoan = useMemo(() => (loan ? syncLoan(loan, undefined) : null), [loan]);
-  const code = loan?.ref ?? loanCode ?? nextLoanCode();
+  const code = loan ? loanRefLabel(loan.ref) : "P- al guardar";
   const [query, setQuery] = useState("");
   const [client, setClient] = useState<ClientRow | null>(
     () => (loan ? (clients.find((row) => row.ref === loan.clientRef) ?? null) : null),

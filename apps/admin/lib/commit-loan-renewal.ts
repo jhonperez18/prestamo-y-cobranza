@@ -1,6 +1,7 @@
 import { LOAN_RENEWED_TODAY_REASON } from "@/lib/collector-dispatch-sync";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { buildRenewalLoans } from "@/lib/loan-renew";
+import { loanCommandKey, pendingLoanRef, type LoanCommand } from "@/lib/loan-command";
 import type {
   ClientRow,
   CollectorRow,
@@ -25,6 +26,8 @@ export type LoanRenewalCommit =
       ok: true;
       closed: LoanRow;
       created: LoanRow;
+      /** Orden para la nube: la base cierra el viejo y da el P- del nuevo. */
+      command: LoanCommand;
       client: ClientRow | null;
       loans: LoanRow[];
       clients: ClientRow[];
@@ -54,17 +57,17 @@ function markRenewedVisitToday(
 
 /**
  * Renovar (cobrador y panel, un solo camino): sin movimiento de plata.
- * Préstamos + cliente + planilla de hoy. El que llama persiste, encola y sube.
+ * Préstamos + cliente + planilla de hoy. El que llama persiste, encola `command` con
+ * `created` y sube. El nuevo lleva número pendiente hasta que la nube le da su P-.
  */
 export function commitLoanRenewal(
   state: LoanRenewalState,
   loanRef: string,
-  newRef: string,
   today: string,
 ): LoanRenewalCommit {
   const loan = state.loans.find((row) => row.ref === loanRef);
   if (!loan) return { ok: false, error: "Préstamo no encontrado." };
-  const result = buildRenewalLoans(loan, newRef, today);
+  const result = buildRenewalLoans(loan, pendingLoanRef(), today);
   if (!result) {
     return { ok: false, error: "La renovación se activa cuando se cumpla el plazo del préstamo." };
   }
@@ -90,6 +93,7 @@ export function commitLoanRenewal(
     ok: true,
     closed: result.closed,
     created: result.created,
+    command: { op: "renew", key: loanCommandKey(), oldRef: loanRef },
     client: clients.find((entry) => entry.ref === loan.clientRef) ?? null,
     loans,
     clients,

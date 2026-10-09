@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useActionToast } from "@/hooks/useActionToast";
+import { useLoanRejectionToast } from "@/hooks/useLoanRejectionToast";
 import {
   COLLECTORS,
   ROUTES,
   money,
   newLoanBlockReason,
-  nextLoanCode,
   type ClientRow,
   type LoanRow,
   type PaymentRow,
@@ -83,9 +83,9 @@ import {
 import {
   flushCatalogMirrorQueues,
   queueClientMirror,
-  queueLoanMirror,
-  queueLoansMirror,
+  queueLoanCommand,
 } from "@/lib/supabase/catalog-mirror";
+import { loanCommandKey, loanRefLabel } from "@/lib/loan-command";
 import {
   assignmentsChangedFrom,
   flushOpsMirrorQueues,
@@ -111,7 +111,6 @@ import { syncPermanentRoutePlanilla } from "@/lib/route-planilla";
 import { usePlanillaDayRollover } from "@/lib/planilla-day-sync";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { todayIso } from "@/lib/daily-dispatch";
-import { deletedLoanRefRows } from "@/lib/deleted-ids";
 import { commitLoanRenewal } from "@/lib/commit-loan-renewal";
 import {
   CollectorMobileApp,
@@ -150,6 +149,7 @@ export function CollectorShell({ session, onLogout }: Props) {
   const [monthCloses, setMonthCloses] = useState<CollectorMonthCloseRecord[]>([]);
   const [planillaCashCloses, setPlanillaCashCloses] = useState<PlanillaCashCloseRecord[]>([]);
   const { showToast, toastNode } = useActionToast();
+  useLoanRejectionToast(showToast);
 
   const collector = useMemo(() => {
     if (!session.collectorRef) return null;
@@ -416,7 +416,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     showToast(`Cobro ${toastRefs} guardado · subiendo a la nube…`);
     enqueuePaymentsForFlush(paymentsCreated);
     const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
-    if (paidLoan) queueLoanMirror(paidLoan);
+    if (paidLoan) void queueLoanCommand(paidLoan, { op: "alerts" });
     const paidClient = committed.clients.find((row) =>
       committed.loans.some(
         (loan) => loan.ref === committed.payment.loanRef && loan.clientRef === row.ref,
@@ -455,11 +455,9 @@ export function CollectorShell({ session, onLogout }: Props) {
 
   async function renewCollectorLoan(loanRef: string) {
     if (!collector) return;
-    const newRef = nextLoanCode([...loans, ...deletedLoanRefRows()]);
     const renewal = commitLoanRenewal(
       { loans, clients, routes, collectors, assignments: dailyAssignments, payments },
       loanRef,
-      newRef,
       todayIso(),
     );
     if (!renewal.ok) {
@@ -474,18 +472,24 @@ export function CollectorShell({ session, onLogout }: Props) {
     setRoutes(renewal.routes);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, renewal.assignments);
     writeDemoJson(DEMO_ROUTES_KEY, renewal.routes);
-    queueLoansMirror([renewal.closed, renewal.created]);
+    const sent = queueLoanCommand(renewal.created, renewal.command);
     if (renewal.client) queueClientMirror(renewal.client);
     queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, renewal.assignments));
     queueRoutesMirror(renewal.routes);
     const summary = `Renovado: debía ${money(renewal.created.capital)} + 20 % = ${money(renewal.created.total ?? 0)} · cuota desde mañana`;
     showToast(`${summary} · subiendo…`);
     try {
+      const cloud = await sent;
+      if (cloud.ok && cloud.rejected) {
+        showToast(cloud.message);
+        return;
+      }
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
       await flushOpsMirrorQueues();
-      showToast(summary);
-    } catch {
+      showToast(cloud.ok ? `${summary} · ${cloud.ref}` : "Renovado en este aparato; se sube solo a la nube.");
+    } catch (error) {
+      console.error("collector-renew-mirror", error);
       showToast("Renovado en este aparato; se sube solo a la nube.");
     }
   }
@@ -545,7 +549,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     setRoutes(planilla.routes);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, planilla.assignments);
     writeDemoJson(DEMO_ROUTES_KEY, planilla.routes);
-    queueLoanMirror(loan);
+    const sentLoan = queueLoanCommand(loan, { op: "create", key: loanCommandKey() });
     const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
     if (mirroredClient) queueClientMirror(mirroredClient);
     queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, planilla.assignments));
@@ -568,19 +572,25 @@ export function CollectorShell({ session, onLogout }: Props) {
     );
     if (expenseDraft) queueDayExpenseMirror(expenseDraft);
     showToast(
-      `Préstamo ${loan.ref} · capital ${money(loan.capital)} descontado de caja · subiendo…`,
+      `Préstamo ${loanRefLabel(loan.ref)} · capital ${money(loan.capital)} descontado de caja · subiendo…`,
     );
     try {
+      const cloud = await sentLoan;
+      if (cloud.ok && cloud.rejected) {
+        showToast(cloud.message);
+        return;
+      }
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
       await flushOpsMirrorQueues();
       showToast(
-        `Préstamo ${loan.ref} listo · cuota ${money(loan.installment ?? 0)}.`,
+        cloud.ok
+          ? `Préstamo ${cloud.ref} listo · cuota ${money(loan.installment ?? 0)}.`
+          : `Préstamo guardado, ${loanRefLabel(loan.ref)} (sin nube; se sube solo).`,
       );
-    } catch {
-      showToast(
-        `Préstamo ${loan.ref} guardado (sin nube; en este aparato ya está).`,
-      );
+    } catch (error) {
+      console.error("collector-quick-loan-mirror", error);
+      showToast(`Préstamo guardado, ${loanRefLabel(loan.ref)} (sin nube; se sube solo).`);
     }
   }
 

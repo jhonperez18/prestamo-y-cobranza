@@ -1,7 +1,7 @@
 "use client";
 
 import type { ModuleId } from "@/lib/navigation";
-import { ADMIN_ROLE_REF, ASSIGNABLE_ROLES, COLLECTOR_ROLE_REF, activeLoans, isLoanActive, loansForClient, money, nextClientCode, nextLoanCode, roleByRef, ROLES, clientsOnRouteListed, routeIsActive, collectorViewForUser, type LoanRow } from "@/lib/mock-data";
+import { ADMIN_ROLE_REF, ASSIGNABLE_ROLES, COLLECTOR_ROLE_REF, activeLoans, isLoanActive, loansForClient, money, nextClientCode, roleByRef, ROLES, clientsOnRouteListed, routeIsActive, collectorViewForUser, type LoanRow } from "@/lib/mock-data";
 import {
   clientsForView,
   isPendingReview,
@@ -17,7 +17,7 @@ import { DailyCollectionsView } from "@/components/DailyCollectionsView";
 import {
   todayIso,
 } from "@/lib/daily-dispatch";
-import { deletedClientRefRows, deletedLoanRefRows } from "@/lib/deleted-ids";
+import { deletedClientRefRows } from "@/lib/deleted-ids";
 import { userDeleteGuard } from "@/lib/collector-preview";
 import { NewClientForm } from "@/components/NewClientForm";
 import { CollectorActivityView } from "@/components/CollectorActivityView";
@@ -654,7 +654,6 @@ export function Workspace(props: WorkspaceProps) {
         <section className="panel">
           <NewLoanForm
             clients={clients}
-            loanCode={nextLoanCode([...loans, ...deletedLoanRefRows()])}
             onCancel={() => onGo("prestamos", "listado")}
             onSave={saveNewLoan}
           />

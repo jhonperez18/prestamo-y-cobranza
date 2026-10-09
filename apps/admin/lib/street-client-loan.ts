@@ -2,7 +2,8 @@ import { CLIENT_STATUS_ACTIVE, clientStatusKind } from "@/lib/client-review";
 import { placeClientOnRoute, nextRouteOrder } from "@/lib/client-route-order";
 import { toClientNameTitleCase } from "@/lib/client-name-case";
 import { todayIso } from "@/lib/daily-dispatch";
-import { deletedClientRefRows, deletedLoanRefRows } from "@/lib/deleted-ids";
+import { deletedClientRefRows } from "@/lib/deleted-ids";
+import { pendingLoanRef } from "@/lib/loan-command";
 import {
   LOAN_TERM_OPTIONS,
   PAY_FREQUENCIES,
@@ -16,7 +17,6 @@ import {
   canClientTakeNewLoan,
   clientCreationDate,
   nextClientCode,
-  nextLoanCode,
   type ClientRow,
   type LoanRow,
 } from "@/lib/mock-data";
@@ -109,7 +109,7 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
   if (!preview) return null;
 
   const dueIso = preview.dates[preview.dates.length - 1] ?? startIso;
-  const ref = nextLoanCode([...loans, ...deletedLoanRefRows()]);
+  const ref = pendingLoanRef();
   const freqLabel =
     PAY_FREQUENCIES.find((item) => item.id === draft.frequency)?.label ?? draft.frequency;
   const termLabel =

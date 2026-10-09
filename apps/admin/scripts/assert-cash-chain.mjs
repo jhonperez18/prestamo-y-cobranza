@@ -2117,13 +2117,6 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       bancoSrc.includes("Ruta M"),
     true,
   );
-  const catalogSrc = readFileSync(new URL("../lib/supabase/catalog-mirror.ts", import.meta.url), "utf8");
-  expect(
-    "Préstamo: un P- no pisa el de otro cliente",
-    catalogSrc.includes("currentClient !== row.client_ref") &&
-      catalogSrc.includes("rekeyCollidingLocalLoans"),
-    true,
-  );
   const wsSrc = readFileSync(new URL("../components/workspace/useWorkspace.ts", import.meta.url), "utf8");
   const applyPortfolio = wsSrc.slice(wsSrc.indexOf("async function applyPortfolioCommit"));
   expect(
@@ -3099,14 +3092,9 @@ expect("Con préstamo en mora: no puede recibir otro", canClientTakeNewLoan("CLI
   ]) {
     expect(`Préstamo rápido (${label}) avisa el préstamo activo`, read(path).includes("newLoanBlockReason(client.ref, loans)"), true);
   }
-  for (const path of ["../components/CollectorShell.tsx", "../components/workspace/useWorkspace.ts"]) {
-    expect(`Renovar (${path.split("/").pop()}): cierra el viejo antes de subir el nuevo`, read(path).includes("queueLoansMirror([renewal.closed, renewal.created])"), true);
-  }
   const catalogMirrorSrc = read("../lib/supabase/catalog-mirror.ts");
-  expect("Nube: un cliente, un préstamo activo", catalogMirrorSrc.includes('reason: "client_has_active_loan"'), true);
   expect("Nube: préstamo reactivado vuelve a cada aparato", catalogMirrorSrc.includes("forgetRemoteLoanRevivals(remoteAll)"), true);
   const queueSrc = read("../lib/supabase/mirror-queue.ts");
-  expect("«client_has_active_loan» espera en cola (no se descarta)", queueSrc.includes('"client_has_active_loan"'), false);
   // Caso Albornoz 08/10: un préstamo existe si la nube lo tiene. Ningún aparato lo arma ni lo da de baja.
   const restoreSrc = read("../lib/restore-loans-from-bank-disbursements.ts");
   for (const [label, src] of [
@@ -3120,16 +3108,6 @@ expect("Con préstamo en mora: no puede recibir otro", canClientTakeNewLoan("CLI
   expect(
     "Albornoz: bajada completa suelta el préstamo que la nube no tiene",
     catalogMirrorSrc.includes("dropLoansMissingFromCloud(") && catalogMirrorSrc.includes("loansQueuedAtStart"),
-    true,
-  );
-  expect(
-    "Albornoz: la nube solo acepta la baja del botón Borrar",
-    /deleting && loan\.deleteIntent !== "owner"[\s\S]{0,120}"loan_delete_not_owner"/.test(catalogMirrorSrc),
-    true,
-  );
-  expect(
-    "Albornoz: Borrar marca la baja como del dueño",
-    read("../lib/commit-portfolio-catalog.ts").includes("queueLoanMirror(loanOwnerDeleteRow(removed))"),
     true,
   );
   expect("«loan_delete_not_owner» sale de la cola (el préstamo sigue vivo)", queueSrc.includes('"loan_delete_not_owner"'), true);
@@ -4628,14 +4606,6 @@ console.log("— Cupo del aparato —");
     true,
   );
   expect(
-    "Nube: alta con insert (sin pisar otra ficha), une reintentos y la baja no toca a otro cliente",
-    catalogSrc.includes('.from("loans").insert(row)') &&
-      catalogSrc.includes("error.code !== UNIQUE_VIOLATION") &&
-      catalogSrc.includes("findCloudLoanTwin(supabase, row)") &&
-      catalogSrc.includes('reason: "loan_ref_other_client"'),
-    true,
-  );
-  expect(
     "Renombre de ficha: el renglón del cobrador sigue al P- nuevo y sube a la nube",
     catalogSrc.includes("renameLoanRefInState(state, loan, to, businessTodayIso())") &&
       catalogSrc.includes("queueDayExpenseMirror(draft)"),
@@ -4851,17 +4821,18 @@ console.log("\n— Renovar sin plata —");
     assignments: [visit(`${rDay}:P-R1:acum`, "CLI-R1", "M", rDay, { visitStatus: "pendiente", loanRef: "P-R1", amountDue: 20_000 })],
     payments: rPays,
   };
-  const renewed = commitLoanRenewal(rState, "P-R1", "P-R2", rDay);
+  const renewed = commitLoanRenewal(rState, "P-R1", rDay);
   expect("Renovar: se hace", renewed.ok, true);
   if (renewed.ok) {
+    const R2 = renewed.created.ref;
     expect("Renovar: saldo + 20 %", [renewed.created.capital, renewed.created.interest, renewed.created.total].join("/"), "180000/36000/216000");
-    expect("Renovar: continuación del mismo préstamo", [loanRenewedInto(renewed.closed), loanRenewalOf(renewed.created)].join("/"), "P-R2/P-R1");
+    expect("Renovar: continuación del mismo préstamo", [loanRenewedInto(renewed.closed), loanRenewalOf(renewed.created)].join("/"), `${R2}/P-R1`);
     expect("Renovar: sin plata (cartera: ni caja, ni Banco, ni Nequi)", loanDisbursementSource(renewed.created), "cartera");
     expect(
       "Renovar: no resta de la caja del cobrador (ni con un renglón «Préstamo» viejo)",
       dayLoanDisbursementRows(
         rDay,
-        [{ id: "prestamo", label: "Préstamo · P-R2", amount: 180_000, loanRef: "P-R2" }],
+        [{ id: "prestamo", label: `Préstamo · ${R2}`, amount: 180_000, loanRef: R2 }],
         renewed.loans,
         rClients,
         { collectorRef: COB.ref, assignments: renewed.assignments, liveDay: true },
@@ -4872,7 +4843,7 @@ console.log("\n— Renovar sin plata —");
       "Renovar: día cerrado / historia tampoco cuenta un renglón «Préstamo» de la renovación",
       dayLoanDisbursementRows(
         rDay,
-        [{ id: "prestamo", label: "Préstamo · P-R2", amount: 180_000, loanRef: "P-R2" }],
+        [{ id: "prestamo", label: `Préstamo · ${R2}`, amount: 180_000, loanRef: R2 }],
         renewed.loans,
         rClients,
         { collectorRef: COB.ref, assignments: renewed.assignments },
@@ -4889,7 +4860,7 @@ console.log("\n— Renovar sin plata —");
     const renewedRow = todayRows.find((r) => r.loanRef === "P-R1");
     expect("Hoy: la visita queda «Renovado hoy» (sale de por cobrar)", `${renewedRow?.visitStatus}:${renewedRow?.skipReason}`, "omitido:Renovado hoy");
     expect("Hoy: no es N/P", renewedRow ? isNoPayListRow(renewedRow) : null, false);
-    expect("Hoy: sin cuota nueva ni Prestar", todayRows.filter((r) => r.loanRef === "P-R2" || r.itemId.includes(":prestar")).length, 0);
+    expect("Hoy: sin cuota nueva ni Prestar", todayRows.filter((r) => r.loanRef === R2 || r.itemId.includes(":prestar")).length, 0);
     const rebuilt = syncPermanentRoutePlanilla(rDay, rRoutes, renewed.clients, renewed.loans, [COB], renewed.assignments, rPays);
     expect(
       "Hoy: rearmar la planilla deja el renglón «Renovado hoy»",
@@ -4901,7 +4872,7 @@ console.log("\n— Renovar sin plata —");
     expect(
       "Mañana: día 1 con la cuota nueva",
       `${tomorrowRow?.loanRef}:${tomorrowRow?.visitStatus}:${tomorrowRow?.amountDue}`,
-      `P-R2:pendiente:${renewed.created.installment}`,
+      `${R2}:pendiente:${renewed.created.installment}`,
     );
     expect("Mañana: contador de mora en cero", tomorrowRow?.alertCount ?? 0, 0);
     const { buildCollectorHistoryPlanillaRows } = await import("@/lib/collector-history-planilla");
@@ -4912,7 +4883,7 @@ console.log("\n— Renovar sin plata —");
       payments: [],
       loans: renewed.loans,
       clients: renewed.clients,
-      expenses: [{ id: "prestamo", label: "Préstamo · P-R2", amount: 180_000, loanRef: "P-R2" }],
+      expenses: [{ id: "prestamo", label: `Préstamo · ${R2}`, amount: 180_000, loanRef: R2 }],
     }).filter((r) => r.clientRef === "CLI-R1");
     expect(
       "Historial: una sola fila «Renovado» (no «Prestado»)",
@@ -4923,14 +4894,14 @@ console.log("\n— Renovar sin plata —");
     expect(
       "Recaudo: fila «Renovado» (R), no «Préstamo» (E)",
       recaudo.map((r) => `${r.loan.ref}:${r.renewal}`).join(","),
-      "P-R2:true",
+      `${R2}:true`,
     );
     const { reloanStateForVisit } = await import("@/lib/loan-reloan");
     const supRow = reloanStateForVisit({ clientRef: "CLI-R1", loanRef: "P-R1", loans: renewed.loans, payments: rPays, date: rDay });
     expect(
       "Supervisor: renglón «Renovado» (no azul «Préstamo»)",
       `${supRow.granted?.ref ?? "-"}:${supRow.renewed?.ref ?? "-"}`,
-      "-:P-R2",
+      `-:${R2}`,
     );
   }
   const { readFileSync: readRenewSrc } = await import("node:fs");
@@ -4943,12 +4914,6 @@ console.log("\n— Renovar sin plata —");
       workspaceSrc.includes("commitLoanRenewal(") &&
       !collectorShellSrc.includes("buildRenewalLoans") &&
       !workspaceSrc.includes("buildRenewalLoans"),
-    true,
-  );
-  expect(
-    "Nube: un cobro tardío no reabre un préstamo renovado",
-    src("../lib/supabase/payment-mirror.ts").includes("loanRenewedInto(loan)") &&
-      src("../lib/supabase/register-loan-payment.ts").includes("keepRenewedLoanClosed(client"),
     true,
   );
   const supervisorSrc = src("../components/SupervisorMobileApp.tsx");
@@ -4972,7 +4937,6 @@ console.log("\n— Cobro del cobrador con la ficha, no con la lista del aparato 
   const { isCollectorDayClosedForPayments } = await import("@/lib/collector-day-auto-close");
   const { businessTodayIso } = await import("@/lib/business-timezone");
   const { addCalendarDaysIso } = await import("@/lib/colombia-holidays");
-  const { withCloudLedger } = await import("@/lib/supabase/catalog-mirror");
   const today = businessTodayIso();
   const jDay = isCollectorDayClosedForPayments(today) ? addCalendarDaysIso(today, 1) : today;
   const jLoan = {
@@ -5048,19 +5012,6 @@ console.log("\n— Cobro del cobrador con la ficha, no con la lista del aparato 
   }
   settled(combo(jHist), "Panel del taller (historial completo, mismo resultado)");
 
-  const mirrorRow = (over) => ({
-    ref: "P-J1", client_ref: "CLI-J1", capital: 500_000, interest: 100_000, total: 600_000,
-    paid: 20_000, balance: 580_000, status: "Activo", kind: "ok", notes: "[[fb:efectivo]]", ...over,
-  });
-  const fromCloud = withCloudLedger(mirrorRow({}), 380_000);
-  expect("Nube: el `paid` de un aparato no pisa los cobros", `${fromCloud.paid}/${fromCloud.balance}/${fromCloud.status}`, "380000/220000/Activo");
-  const early = withCloudLedger(mirrorRow({ paid: 600_000, balance: 0, status: "Finalizado", kind: "paid" }), 380_000);
-  expect("Nube: «Finalizado» antes de que suba el cobro no cierra el préstamo", `${early.balance}/${early.status}`, "220000/Activo");
-  const paidOff = withCloudLedger(mirrorRow({ status: "Alerta 1" }), 600_000);
-  expect("Nube: con los cobros completos queda Finalizado", `${paidOff.balance}/${paidOff.status}`, "0/Finalizado");
-  const renewedOld = withCloudLedger(mirrorRow({ status: "Finalizado", notes: "Cerrado por renovación → P-J2" }), 380_000);
-  expect("Nube: renovado sigue en cero y cerrado", `${renewedOld.balance}/${renewedOld.status}`, "0/Finalizado");
-
   const { readFileSync: readJhonSrc } = await import("node:fs");
   const jSrc = (path) => readJhonSrc(new URL(path, import.meta.url), "utf8");
   expect(
@@ -5068,11 +5019,6 @@ console.log("\n— Cobro del cobrador con la ficha, no con la lista del aparato 
     jSrc("../lib/hydrate-operational-demo.ts").includes("syncDeviceLoans(storedLoans") &&
       jSrc("../lib/hydrate-operational-demo.ts").includes("loansFromFicha: isCollectorLiveDevice()") &&
       jSrc("../lib/operational-sync.ts").includes("syncDeviceLoans(input.loans"),
-    true,
-  );
-  expect(
-    "Nube: actualizar un préstamo pasa por los cobros de la nube",
-    jSrc("../lib/supabase/catalog-mirror.ts").includes("withCloudLedger(row, Number(current.paid)"),
     true,
   );
 }

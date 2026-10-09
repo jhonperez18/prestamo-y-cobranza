@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ModuleId } from "@/lib/navigation";
-import { CLIENTS, COLLECTORS, ACTIVITY, COLLECTOR_ROLE_REF, LOANS, money, newLoanBlockReason, nextLoanCode, nextPaymentCode, nextRouteCode, normalizeRouteNumber, PAYMENTS, ROUTES, routeSlug, catalogRoutes, clientsOnRouteListed, routeIsActive, routeStatusMeta, userForCollector, ensureCollectorsForUsers, collectorViewForUser, USERS, type ClientRow, type CollectorRow, type LoanRow, type PaymentRow, type RouteRow, type UserRow } from "@/lib/mock-data";
+import { CLIENTS, COLLECTORS, ACTIVITY, COLLECTOR_ROLE_REF, LOANS, money, newLoanBlockReason, nextPaymentCode, nextRouteCode, normalizeRouteNumber, PAYMENTS, ROUTES, routeSlug, catalogRoutes, clientsOnRouteListed, routeIsActive, routeStatusMeta, userForCollector, ensureCollectorsForUsers, collectorViewForUser, USERS, type ClientRow, type CollectorRow, type LoanRow, type PaymentRow, type RouteRow, type UserRow } from "@/lib/mock-data";
 import {
   CLIENT_STATUS_ACTIVE,
   clientNavBadges,
@@ -86,7 +86,9 @@ import {
 import type { CashAdjustmentRequest } from "@/lib/commit-cash-adjustment";
 import { reopenSheetToday, type SheetReopenRequest } from "@/lib/save-sheet-reopen";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
-import { queueClientMirror, queueLoanMirror, queueLoansMirror, flushCatalogMirrorQueues } from "@/lib/supabase/catalog-mirror";
+import { queueClientMirror, queueLoanCommand, flushCatalogMirrorQueues } from "@/lib/supabase/catalog-mirror";
+import { LOAN_REF_RENAMED_EVENT, loanCommandKey, loanRefLabel } from "@/lib/loan-command";
+import { useLoanRejectionToast } from "@/hooks/useLoanRejectionToast";
 import {
   commitUsersCatalog,
 } from "@/lib/users-catalog";
@@ -116,7 +118,7 @@ import {
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
 import { refreshLabelsFromCatalog } from "@/lib/project-identity";
-import { deletedLoanRefRows, omitDeleted, readDeletedIds, rememberDeletedId } from "@/lib/deleted-ids";
+import { omitDeleted, readDeletedIds, rememberDeletedId } from "@/lib/deleted-ids";
 import { mergeFresherByRef } from "@/lib/fresher-row";
 import {
   applyWorkspaceRealtimeEvent,
@@ -773,6 +775,16 @@ export function useWorkspace({
     if (!demoHydrated) return;
     writeDemoJson(DEMO_LOANS_KEY, omitDeleted(loans));
   }, [loans, demoHydrated]);
+
+  useLoanRejectionToast(onToast);
+  useEffect(() => {
+    function onLoanRenamed(event: Event) {
+      const { from, to } = (event as CustomEvent<{ from: string; to: string }>).detail;
+      setOpenLoanRef((current) => (current === from ? to : current));
+    }
+    window.addEventListener(LOAN_REF_RENAMED_EVENT, onLoanRenamed);
+    return () => window.removeEventListener(LOAN_REF_RENAMED_EVENT, onLoanRenamed);
+  }, []);
 
   useEffect(() => {
     if (!demoHydrated) return;
@@ -1915,7 +1927,7 @@ export function useWorkspace({
     // Sin pull completo aquí: ya tenemos el PG- local. Solo subir el cobro (rápido).
     await queuePaymentsMirror(paymentsCreated);
     const paidLoan = committed.loans.find((row) => row.ref === committed.payment.loanRef);
-    if (paidLoan) queueLoanMirror(paidLoan);
+    if (paidLoan) void queueLoanCommand(paidLoan, { op: "alerts" });
     const paidClient = committed.clients.find((row) =>
       committed.loans.some(
         (loan) => loan.ref === committed.payment.loanRef && loan.clientRef === row.ref,
@@ -2053,11 +2065,9 @@ export function useWorkspace({
   }
 
   async function renewLoan(loanRef: string) {
-    const newRef = nextLoanCode([...loans, ...deletedLoanRefRows()]);
     const renewal = commitLoanRenewal(
       { loans, clients, routes, collectors, assignments: dailyAssignments, payments },
       loanRef,
-      newRef,
       todayIso(),
     );
     if (!renewal.ok) {
@@ -2068,17 +2078,23 @@ export function useWorkspace({
     setClients(renewal.clients);
     setDailyAssignments(renewal.assignments);
     setRoutes(renewal.routes);
-    queueLoansMirror([renewal.closed, renewal.created]);
+    const sent = queueLoanCommand(renewal.created, renewal.command);
     if (renewal.client) queueClientMirror(renewal.client);
     queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, renewal.assignments));
     queueRoutesMirror(renewal.routes);
     const summary = `Renovado: debía ${money(renewal.created.capital)} + 20 % = ${money(renewal.created.total ?? 0)} · cuota desde mañana`;
     onToast(`${summary} · subiendo…`);
     try {
+      const cloud = await sent;
+      if (cloud.ok && cloud.rejected) {
+        onToast(cloud.message);
+        return;
+      }
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
-      onToast(summary);
-    } catch {
+      onToast(cloud.ok ? `${summary} · ${cloud.ref}` : "Renovado en este aparato; se sube solo a la nube.");
+    } catch (error) {
+      console.error("workspace-renew-mirror", error);
       onToast("Renovado en este aparato; se sube solo a la nube.");
     }
   }
@@ -2205,13 +2221,13 @@ export function useWorkspace({
     );
     setDailyAssignments(planilla.assignments);
     setRoutes(planilla.routes);
-    queueLoanMirror(loan);
+    void queueLoanCommand(loan, { op: "create", key: loanCommandKey() });
     const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
     if (mirroredClient) queueClientMirror(mirroredClient);
     onToast(
       routeCash?.ok
-        ? `Préstamo ${loan.ref} creado · ${money(loan.capital)} a cargo de la caja de ${routeCash.collector.name} · cuota ${money(loan.installment ?? 0)}.`
-        : `Préstamo ${loan.ref} creado · cuota ${money(loan.installment ?? 0)}.`,
+        ? `Préstamo creado (${loanRefLabel(loan.ref)}) · ${money(loan.capital)} a cargo de la caja de ${routeCash.collector.name} · cuota ${money(loan.installment ?? 0)}.`
+        : `Préstamo creado (${loanRefLabel(loan.ref)}) · cuota ${money(loan.installment ?? 0)}.`,
     );
   }
 
@@ -2345,7 +2361,8 @@ export function useWorkspace({
     const removedRef = openLoan.ref;
     setConfirmLoanDelete(false);
     setOpenLoanRef((current) => (current === removedRef ? "" : current));
-    void applyPortfolioCommit(commitDeleteLoan(removedRef, portfolioState()));
+    const by = adminName || session.name || session.username || "admin";
+    void applyPortfolioCommit(commitDeleteLoan(removedRef, portfolioState(), by));
   }
 
   /**
@@ -2476,7 +2493,7 @@ export function useWorkspace({
     onToast(`${label} · guardando en el sistema…`);
     const mirror = await queuePaymentMirror(row);
     const nextLoan = projected.loans.find((entry) => entry.ref === loan.ref);
-    if (nextLoan) queueLoanMirror(nextLoan);
+    if (nextLoan) void queueLoanCommand(nextLoan, { op: "alerts" });
     const cajaClient = nextClients.find((entry) => entry.ref === loan.clientRef);
     if (cajaClient) queueClientMirror(cajaClient);
     queueAssignmentsMirror(projected.assignments);
@@ -2543,7 +2560,7 @@ export function useWorkspace({
     onToast(`${label} guardado · subiendo a la nube…`);
     const mirror = await queuePaymentMirror(committed.payment);
     const nextLoan = projected.loans.find((entry) => entry.ref === loan.ref);
-    if (nextLoan) queueLoanMirror(nextLoan);
+    if (nextLoan) void queueLoanCommand(nextLoan, { op: "alerts" });
     const lateClient = committed.clients.find((entry) => entry.ref === loan.clientRef);
     if (lateClient) queueClientMirror(lateClient);
     queueAssignmentsMirror(projected.assignments);

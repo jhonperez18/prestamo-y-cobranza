@@ -185,11 +185,10 @@ Si se corrige el préstamo, ese renglón se corrige también. Un solo camino: `s
 **Caso Dary / Bader (07/10):** el celular trabado le dio a Bader el P-434 de Dary; su renglón borró
 el de Dary y la pantalla mostró «Dary · 1.000.000» (nombre de la ficha, monto del renglón). Cerrado:
 - `cashLineIsLoanOf`: un renglón es de un préstamo por P- **y** cliente.
-- Nube (`mirrorLoanToSupabase`): alta con `insert` (nunca pisa otra ficha; si otro aparato tomó el
- P- en medio, se vuelve a mirar), baja que no toca la ficha de otro cliente
- (`loan_ref_other_client`), y reintento del mismo préstamo (mismo cliente, día y capital, activo)
- se une a la ficha que ya está (`findCloudLoanTwin`) — así nacían Celina ×5 / Enrique ×2.
-- `renameLoanRefInState`: lo de ese cliente (ficha, cola, visitas, renglón) sigue al P- de la nube.
+- Nube (Fase 1, 09/10): el P- lo da la base (`create_loan`); el aparato usa `P-pend-…` hasta que
+ contesta. El reintento con la misma clave (`idempotency_key`) devuelve el mismo P- — así nacían
+ Celina ×5 / Enrique ×2. Ver «Préstamo = órdenes a la nube».
+- `renameLoanRefInState`: lo de ese cliente (ficha, cola, visitas, renglón, cobros) sigue al P- de la nube.
 - Candado: `assert-cash-chain.mjs` («Choque P-434», «Reintento Celina», «Día abierto … fichas»).
 
 | Caso | Resultado |
@@ -388,9 +387,30 @@ Un solo camino: `commitLoanRenewal` (`lib/commit-loan-renewal.ts`), lo usan cobr
 | Mañana | Día 1 del nuevo: cuota nueva, mora en cero |
 | Pantallas | Recaudo, Historial y planilla del supervisor: «Renovado» (ámbar, «R»), nunca «Préstamo» / «E» (`isCashlessRenewal`, `loanRenewedOnDate`) |
 | Caja | Ningún renglón «Préstamo · P-…» de una renovación cuenta (`isCashlessRenewal`), ni hoy ni en historia |
-| Nube | Un cobro tardío no reabre el renovado (`keepRenewedLoanClosed`, `payment-mirror`) |
+| Nube | Orden `renew_loan` (capital = saldo de la nube, si no `saldo_cambio`). Un cobro tardío no reabre el renovado: lo decide la base (`_loan_settle`) |
 
 - Candado: `assert-cash-chain.mjs` sección 30.
+
+## Préstamo = órdenes a la nube (Fase 1, 09/10)
+
+El préstamo tiene un solo dueño: la base. El aparato no sube la ficha; manda una orden
+(`LoanCommand`, `lib/loan-command.ts`) por `queueLoanCommand` (`catalog-mirror.ts`).
+
+| Orden | Función en la base | Cuándo |
+| --- | --- | --- |
+| `create` | `create_loan` (P- propio, un activo por cliente, misma clave = mismo P-) | Nuevo préstamo (panel, supervisor, cobrador) |
+| `update` | `update_loan_terms` (solo términos; `termsVersion` vieja → `version_conflict`) | Modificar préstamo |
+| `renew` | `renew_loan` | Renovar |
+| `delete` | `delete_loan` (quién y cuándo) | Botón Borrar |
+| `alerts` | `set_loan_alerts` (estado / alertas de cobro) | Después de un cobro |
+
+- Pagado, saldo y estado los calcula la base desde los PG- (`_loan_settle`): cobro, anulación y renovación.
+- Número pendiente `P-pend-…` (se ve «pendiente de número») hasta que la base contesta; entonces todo
+ lo de ese préstamo sigue al P- (`applyLoanRefRename`).
+- Rechazo (`isLoanRejection`): sale de la cola, se carga la ficha de la nube y se avisa en pantalla
+ (`reportLoanRejection`). Nunca en silencio.
+- Un envío por préstamo a la vez (`sendQueuedLoan`); otra modificación del mismo aparato parte de la versión nueva.
+- Aparato con versión anterior (sube ficha sin orden): `legacyLoanCommand` la convierte una vez.
 
 ## Prestar atendido no bloquea el cierre
 
@@ -429,12 +449,12 @@ Candado: `assert-cash-chain.mjs` sección 15.
 | Pieza | Regla |
 | --- | --- |
 | Alta (panel, supervisor, cobrador) | `newLoanBlockReason` → con un préstamo activo no se presta (debe quedar en cero). `buildQuickLoan` y `commitCreateLoan` lo frenan |
-| Nube | `mirrorLoanToSupabase`: alta activa de un cliente con otro activo → `client_has_active_loan` (queda en cola, no entra) |
-| Renovar | Sube primero el viejo «Finalizado», después el nuevo |
+| Nube | `create_loan` bloquea la fila del cliente: con otro activo → `client_has_active_loan` (rechazo con aviso, no entra) |
+| Renovar | Una orden `renew_loan`: la base cierra el viejo y crea el nuevo en la misma transacción |
 | Préstamo activado | El cliente queda **listo para pagar** ese mismo día (cuota por cobrar) si su hoja sigue abierta; con la hoja cerrada entra mañana (no reabre el día) |
 | Haber DSB de Banco | Solo se lee. Ningún aparato arma fichas desde Banco ni da de baja «copias» (caso Albornoz 08/10: P-426/430/433/438/451/452) |
 | Existe | Un préstamo existe si la nube lo tiene. Bajada completa suelta lo que no está ni sube (`dropLoansMissingFromCloud`) |
-| Baja | Solo Borrar (`loanOwnerDeleteRow`, `deleteIntent: "owner"`); otra baja → `loan_delete_not_owner` |
+| Baja | Solo Borrar: orden `delete` con quién (`delete_loan` guarda `deleted_by` / `deleted_at`). Ficha «Eliminado» sin orden (aparato viejo) → `loan_delete_not_owner` |
 | Visita sin cobro | De un P- que la nube no tiene → `loan_missing` (espera en cola) |
 | Reactivar (pedido del dueño) | Ficha viva en la nube con baja aprendida en el aparato → la baja se suelta (`forgetRemoteLoanRevivals`), salvo baja propia en cola |
 - La bajada de la nube **sí** trae los «Eliminado»: así cada aparato aprende el tombstone
@@ -501,7 +521,7 @@ pedazo viejo de cobros y rehacía `paid` con eso.
 | Cobrar en el cobrador | `loanRowAfterLivePay`: ficha + el cobro nuevo; el PG- queda en `livePaidRefs` (no se cuenta dos veces) |
 | Hidratar / proyectar en el cobrador | `syncDeviceLoans` y `loadDemoPaymentsBundle({ loansFromFicha })`: la ficha manda; nunca `syncAllLoans(fichas, cobros del aparato)` |
 | «Terminó hoy → prestar» | `loanSettledOnDate` lee el saldo vivo (`syncCollectorLiveLoan`) |
-| Nube | `mirrorLoanToSupabase` → `withCloudLedger`: al actualizar, `paid` = el de la nube (lo llevan los cobros); saldo = total − eso |
+| Nube | El aparato no escribe `paid` / saldo: la base los calcula desde los PG- (`_loan_settle`) |
 | Panel / supervisor | Siguen con el historial completo (`loanRowAfterPay`) |
 
 - Candado: `assert-cash-chain.mjs` sección 31.

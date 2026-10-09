@@ -1,6 +1,7 @@
 export type { PaymentMethod } from "@/lib/payment-method";
 export type { PaymentEvidenceRef } from "@/lib/payment-evidence";
 import type { PaymentMethod } from "@/lib/payment-method";
+import type { LoanCommand } from "@/lib/loan-command";
 
 export type StatusKind =
   | "paid"
@@ -100,6 +101,10 @@ export type LoanRow = {
   livePaidRefs?: string[];
   /** Solo en la fila de baja: «owner» = botón Borrar. La nube rechaza cualquier otra baja. */
   deleteIntent?: "owner";
+  /** Versión de los términos en la nube (`terms_version`). Modificar la manda; una vieja se rechaza. */
+  termsVersion?: number;
+  /** Solo en la cola: qué hace la nube con esta ficha (crear, modificar, renovar, borrar, alertas). */
+  loanCommand?: LoanCommand;
 };
 
 export type PaymentRow = {

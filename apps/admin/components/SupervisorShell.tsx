@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useActionToast } from "@/hooks/useActionToast";
+import { useLoanRejectionToast } from "@/hooks/useLoanRejectionToast";
 import { SupervisorMobileApp } from "@/components/SupervisorMobileApp";
 import type { AppSession } from "@/lib/auth";
 import {
@@ -40,7 +41,8 @@ import {
   type BankMovement,
 } from "@/lib/bank";
 import { syncBankLedger } from "@/lib/bank-ledger-sync";
-import { queueClientMirror, queueLoanMirror, flushCatalogMirrorQueues } from "@/lib/supabase/catalog-mirror";
+import { queueClientMirror, queueLoanCommand, flushCatalogMirrorQueues } from "@/lib/supabase/catalog-mirror";
+import { loanCommandKey, loanRefLabel } from "@/lib/loan-command";
 import { queuePaymentMirror } from "@/lib/supabase/payment-mirror";
 import { rememberPaymentEvidence, withPaymentEvidence } from "@/lib/payment-evidence-store";
 import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
@@ -115,6 +117,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
   const [bankMovements, setBankMovements] = useState<BankMovement[]>([]);
   const [miscPayments, setMiscPayments] = useState<MiscPayment[]>([]);
   const { showToast, toastNode } = useActionToast();
+  useLoanRejectionToast(showToast);
 
   const supervisor = useMemo(
     () => users.find((row) => row.ref === session.userRef) ?? null,
@@ -457,7 +460,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
     setRoutes(planilla.routes);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, planilla.assignments);
     writeDemoJson(DEMO_ROUTES_KEY, planilla.routes);
-    queueLoanMirror(loan);
+    const sentLoan = queueLoanCommand(loan, { op: "create", key: loanCommandKey() });
     const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
     if (mirroredClient) queueClientMirror(mirroredClient);
     const loanDay = todayIso();
@@ -487,22 +490,29 @@ export function SupervisorShell({ session, onLogout }: Props) {
         clients: nextClients,
       }),
     );
+    const pendingLabel = loanRefLabel(loan.ref);
     showToast(
       routeCash?.ok
-        ? `Préstamo ${loan.ref} · ${money(loan.capital)} a cargo de la caja de ${routeCash.collector.name} · subiendo…`
-        : `Préstamo ${loan.ref} · origen ${loan.fundedBy === "banco" ? "Banco" : "Nequi"} · subiendo…`,
+        ? `Préstamo ${pendingLabel} · ${money(loan.capital)} a cargo de la caja de ${routeCash.collector.name} · subiendo…`
+        : `Préstamo ${pendingLabel} · origen ${loan.fundedBy === "banco" ? "Banco" : "Nequi"} · subiendo…`,
     );
     try {
+      const cloud = await sentLoan;
+      if (cloud.ok && cloud.rejected) {
+        showToast(cloud.message);
+        return;
+      }
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
       await flushOpsMirrorQueues();
       showToast(
-        `Préstamo ${loan.ref} listo · cuota ${money(loan.installment ?? 0)}.`,
+        cloud.ok
+          ? `Préstamo ${cloud.ref} listo · cuota ${money(loan.installment ?? 0)}.`
+          : `Préstamo guardado, ${pendingLabel} (sin nube; se sube solo).`,
       );
-    } catch {
-      showToast(
-        `Préstamo ${loan.ref} guardado (sin nube; en este aparato ya está).`,
-      );
+    } catch (error) {
+      console.error("supervisor-quick-loan-mirror", error);
+      showToast(`Préstamo guardado, ${pendingLabel} (sin nube; se sube solo).`);
     }
   }
 

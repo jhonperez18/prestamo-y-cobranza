@@ -34,7 +34,6 @@ import { normalizePaymentMethod } from "@/lib/payment-method";
 import { parseComboChargeLabel } from "@/lib/payment-combo";
 import { encodeLateChargeLabel, parseLateChargeLabel } from "@/lib/late-payment";
 import { isDeletedRef } from "@/lib/deleted-ids";
-import { loanRenewedInto } from "@/lib/loan-renewal-marks";
 import {
   emitMirrorQueueChanged,
   shouldDropFromMirrorQueue,
@@ -350,17 +349,9 @@ function mirrorRowIsVoided(row: Pick<PaymentMirrorRow, "payment_type" | "charge_
   return row.payment_type === "Anulado" || (row.charge_label || "").startsWith("ANULADO:");
 }
 
-type LoanTotalsRow = {
-  total: number | null;
-  capital: number | null;
-  interest: number | null;
-  status: string | null;
-  notes: string | null;
-};
-
 /**
- * Anulación en la nube: marca el PG- (una anulación no se deshace) y recalcula el préstamo
- * con los cobros vivos, igual que `register_collection` / `loan_collected`.
+ * Anulación en la nube: marca el PG- (una anulación no se deshace) y la base recalcula el
+ * préstamo con los cobros vivos (`_loan_settle`, la misma regla que `register_collection`).
  */
 async function voidPaymentInSupabase(row: PaymentMirrorRow): Promise<MirrorPaymentResult> {
   const client = createMirrorClient();
@@ -385,39 +376,8 @@ async function voidPaymentInSupabase(row: PaymentMirrorRow): Promise<MirrorPayme
     if (inserted.error) return { ok: false, error: inserted.error.message };
   }
 
-  const [livePays, loanRes] = await Promise.all([
-    client.from("payments").select("amount, payment_type").eq("loan_ref", row.loan_ref),
-    client
-      .from("loans")
-      .select("total, capital, interest, status, notes")
-      .eq("ref", row.loan_ref)
-      .maybeSingle<LoanTotalsRow>(),
-  ]);
-  if (livePays.error) return { ok: false, error: livePays.error.message };
-  if (loanRes.error) return { ok: false, error: loanRes.error.message };
-  const loan = loanRes.data;
-  if (!loan || loan.status === "Eliminado") return { ok: true };
-
-  const paid = (livePays.data as { amount: number | null; payment_type: string | null }[])
-    .filter((pay) => (pay.payment_type || "") !== "Anulado")
-    .reduce((sum, pay) => sum + Math.trunc(Number(pay.amount) || 0), 0);
-  const total = Math.trunc(
-    Number(loan.total ?? (Number(loan.capital) || 0) + (Number(loan.interest) || 0)) || 0,
-  );
-  // Renovado: la deuda siguió en el P- de continuación; un cobro tardío no lo reabre.
-  const renewed = Boolean(loanRenewedInto(loan));
-  const status =
-    renewed || total - paid <= 0
-      ? "Finalizado"
-      : loan.status === "Finalizado"
-        ? "Activo"
-        : loan.status;
-  const balance = renewed ? 0 : Math.max(0, total - paid);
-  const updated = await client
-    .from("loans")
-    .update({ paid, balance, status, updated_at: stamp })
-    .eq("ref", row.loan_ref);
-  if (updated.error) return { ok: false, error: updated.error.message };
+  const settled = await client.rpc("_loan_settle", { p_ref: row.loan_ref });
+  if (settled.error) return { ok: false, error: settled.error.message };
   return { ok: true };
 }
 

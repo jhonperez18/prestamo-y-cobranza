@@ -33,7 +33,6 @@ import {
   loansForClient,
   newLoanBlockReason,
   nextClientCode,
-  nextLoanCode,
   normalizeRouteNumber,
   routeIsActive,
   type ClientRow,
@@ -54,11 +53,12 @@ import { resolvedLoanInstallment, syncPermanentRoutePlanilla } from "@/lib/route
 import {
   clientDeletedRow,
   flushCatalogMirrorQueues,
-  loanOwnerDeleteRow,
+  loanDeletedRow,
   queueClientMirror,
-  queueLoanMirror,
+  queueLoanCommand,
 } from "@/lib/supabase/catalog-mirror";
-import { deletedClientRefRows, deletedLoanRefRows, rememberDeletedId } from "@/lib/deleted-ids";
+import { loanCommandKey, pendingLoanRef } from "@/lib/loan-command";
+import { deletedClientRefRows, rememberDeletedId } from "@/lib/deleted-ids";
 import {
   flushOpsMirrorQueues,
   queueAssignmentsMirror,
@@ -234,7 +234,7 @@ function enqueuePortfolioMirrors(
   }
   for (const ref of opts.loanRefs ?? []) {
     const row = state.loans.find((entry) => entry.ref === ref);
-    if (row) queueLoanMirror(row);
+    if (row) void queueLoanCommand(row, { op: "update", termsVersion: row.termsVersion ?? 0 });
   }
   for (const ref of opts.paymentRefs ?? []) {
     const row = state.payments.find((entry) => entry.ref === ref);
@@ -551,6 +551,7 @@ export function commitDeleteClient(
 export function commitDeleteLoan(
   loanRef: string,
   state: PortfolioCatalogState,
+  by: string,
 ): PortfolioCommitResult {
   const removed = state.loans.find((row) => row.ref === loanRef);
   if (!removed) return { ok: false, error: "Préstamo no encontrado." };
@@ -572,7 +573,7 @@ export function commitDeleteLoan(
   let next: PortfolioCatalogState = { ...state, loans, clients, assignments };
   next = projectPlanilla(next);
   persistPortfolio(next);
-  queueLoanMirror(loanOwnerDeleteRow(removed));
+  void queueLoanCommand(loanDeletedRow(removed), { op: "delete", by });
   enqueuePortfolioMirrors(next, { clientRefs: [removed.clientRef], mirrorPlanilla: true });
 
   return {
@@ -609,7 +610,7 @@ export function commitCreateLoan(
     }
   }
 
-  const ref = nextLoanCode([...state.loans, ...deletedLoanRefRows()]);
+  const ref = pendingLoanRef();
   const synced = syncLoan(
     {
       ref,
@@ -702,9 +703,9 @@ export function commitCreateLoan(
   }
 
   persistPortfolio(next);
+  void queueLoanCommand(row, { op: "create", key: loanCommandKey() });
   enqueuePortfolioMirrors(next, {
     clientRefs: [client.ref],
-    loanRefs: [ref],
     mirrorPlanilla: true,
   });
 
