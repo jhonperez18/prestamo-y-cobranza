@@ -7,7 +7,9 @@ import { LoginScreen } from "@/components/LoginScreen";
 import { SupervisorShell } from "@/components/SupervisorShell";
 import {
   clearSession,
+  markSessionActive,
   resumeSession,
+  sessionIdleExpired,
   sessionStillValid,
   stampSession,
   writeSession,
@@ -54,13 +56,33 @@ type Props = {
   channel?: PwaChannelId;
 };
 
-/** Sesión viva: si el Listado la invalidó (clave, rol, baja) o ya es otro día → login. */
-function keepIfValid(session: AppSession | null): AppSession | null {
+type SessionShell = "supervisor" | "cobrador" | "sistema";
+
+function shellFor(session: AppSession, channel: PwaChannelId): SessionShell {
+  if (channel === "supervisor") return "supervisor";
+  if (channel === "cobrador") return "cobrador";
+  if (isCollectorSession(session) && !canAccessAdminPanel(session)) return "cobrador";
+  if (isSupervisorSession(session)) return "supervisor";
+  if (!canAccessAdminPanel(session)) return "cobrador";
+  return "sistema";
+}
+
+/** Apps del celular (cobrador / supervisor): 20 min sin uso → usuario y contraseña. */
+function idleLimited(session: AppSession, channel: PwaChannelId): boolean {
+  return shellFor(session, channel) !== "sistema";
+}
+
+/** Sesión viva: si el Listado la invalidó (clave, rol, baja), ya es otro día o venció la inactividad → login. */
+function keepIfValid(session: AppSession | null, channel: PwaChannelId): AppSession | null {
   if (!session) return null;
-  if (sessionStillValid(session, loadDemoUsers(), businessTodayIso())) return session;
+  const idle = idleLimited(session, channel) && sessionIdleExpired();
+  if (!idle && sessionStillValid(session, loadDemoUsers(), businessTodayIso())) return session;
   clearSession();
   return null;
 }
+
+const ACTIVITY_MARK_EVERY_MS = 15_000;
+const IDLE_CHECK_EVERY_MS = 60_000;
 
 export function AuthGate({ channel = "sistema" }: Props) {
   const [session, setSession] = useState<AppSession | null>(null);
@@ -91,8 +113,10 @@ export function AuthGate({ channel = "sistema" }: Props) {
       writeDemoJson(DEMO_USERS_KEY, users);
       // Volver de WhatsApp / banco (o una recarga) retoma la sesión del día si sigue valiendo.
       const resumed = resumeSession(users, businessTodayIso());
-      if (resumed && sessionAllowedOnChannel(resumed, channel)) {
+      const idle = resumed != null && idleLimited(resumed, channel) && sessionIdleExpired();
+      if (resumed && !idle && sessionAllowedOnChannel(resumed, channel)) {
         writeSession(resumed);
+        markSessionActive();
         setSession(resumed);
       } else {
         clearSession();
@@ -110,7 +134,7 @@ export function AuthGate({ channel = "sistema" }: Props) {
           await pullRemoteUsersIntoDemo();
           if (cancelled) return;
           writeDemoJson(DEMO_USERS_KEY, loadDemoUsers());
-          setSession((prev) => keepIfValid(prev));
+          setSession((prev) => keepIfValid(prev, channel));
         } catch (error) {
           console.error("auth-users-sync", error);
         }
@@ -136,11 +160,36 @@ export function AuthGate({ channel = "sistema" }: Props) {
   useEffect(() => {
     if (!loggedIn) return;
     const onVisible = () => {
-      if (document.visibilityState === "visible") setSession((prev) => keepIfValid(prev));
+      if (document.visibilityState === "visible") setSession((prev) => keepIfValid(prev, channel));
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [loggedIn]);
+  }, [loggedIn, channel]);
+
+  const idleWatch = session != null && idleLimited(session, channel);
+  useEffect(() => {
+    if (!idleWatch) return;
+    let lastMark = 0;
+    const onActivity = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastMark < ACTIVITY_MARK_EVERY_MS) return;
+      lastMark = now;
+      markSessionActive(now);
+    };
+    const check = () => {
+      if (document.visibilityState === "visible") setSession((prev) => keepIfValid(prev, channel));
+    };
+    const events = ["pointerdown", "keydown", "touchstart"] as const;
+    events.forEach((name) =>
+      window.addEventListener(name, onActivity, { capture: true, passive: true }),
+    );
+    const timer = window.setInterval(check, IDLE_CHECK_EVERY_MS);
+    return () => {
+      events.forEach((name) => window.removeEventListener(name, onActivity, { capture: true }));
+      window.clearInterval(timer);
+    };
+  }, [idleWatch, channel]);
 
   if (!ready) {
     return <div className="login-screen login-loading" aria-hidden />;
@@ -155,6 +204,7 @@ export function AuthGate({ channel = "sistema" }: Props) {
           if (!sessionAllowedOnChannel(next, channel)) return;
           const stamped = stampSession(next, loadDemoUsers(), businessTodayIso());
           writeSession(stamped);
+          markSessionActive();
           setSession(stamped);
         }}
       />
@@ -175,28 +225,12 @@ export function AuthGate({ channel = "sistema" }: Props) {
     })();
   };
 
-  // Canal supervisor: solo shell supervisor (nunca admin ni cobrador).
-  if (channel === "supervisor") {
+  // Canal supervisor / cobrador y sus roles: solo su app móvil. Solo admin (truqui) entra al sistema.
+  const shell = shellFor(session, channel);
+  if (shell === "supervisor") {
     return <SupervisorShell session={session} onLogout={logout} />;
   }
-
-  // Canal cobrador: solo shell cobrador.
-  if (channel === "cobrador") {
-    return <CollectorShell session={session} onLogout={logout} />;
-  }
-
-  // Cobradores: únicamente app móvil (PC o celular).
-  if (isCollectorSession(session) && !canAccessAdminPanel(session)) {
-    return <CollectorShell session={session} onLogout={logout} />;
-  }
-
-  // Supervisor: únicamente app móvil (PC o celular).
-  if (isSupervisorSession(session)) {
-    return <SupervisorShell session={session} onLogout={logout} />;
-  }
-
-  // Solo admin (truqui) entra al sistema.
-  if (!canAccessAdminPanel(session)) {
+  if (shell === "cobrador") {
     return <CollectorShell session={session} onLogout={logout} />;
   }
 

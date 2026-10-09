@@ -133,6 +133,26 @@ export function writeSession(session: AppSession) {
 
 export function clearSession() {
   window.localStorage.removeItem(AUTH_SESSION_KEY);
+  window.localStorage.removeItem(AUTH_LAST_ACTIVE_KEY);
+}
+
+/** Último toque en la app (cobrador / supervisor). Celular perdido: sin uso → pide la clave. */
+export const AUTH_LAST_ACTIVE_KEY = "nexo-admin-last-active";
+export const MOBILE_IDLE_LIMIT_MS = 20 * 60_000;
+
+export function markSessionActive(now = Date.now()) {
+  try {
+    window.localStorage.setItem(AUTH_LAST_ACTIVE_KEY, String(now));
+  } catch (error) {
+    console.error("auth-last-active", error);
+  }
+}
+
+/** Sin marca = sesión de antes del reloj de inactividad: el reloj arranca ahora. */
+export function sessionIdleExpired(now = Date.now()): boolean {
+  const last = Number(window.localStorage.getItem(AUTH_LAST_ACTIVE_KEY));
+  if (!Number.isFinite(last) || last <= 0) return false;
+  return now - last >= MOBILE_IDLE_LIMIT_MS;
 }
 
 function credentialStampOf(user: UserRow): string {
