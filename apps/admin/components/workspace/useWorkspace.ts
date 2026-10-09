@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ModuleId } from "@/lib/navigation";
-import { CLIENTS, COLLECTORS, ACTIVITY, COLLECTOR_ROLE_REF, LOANS, money, newLoanBlockReason, nextPaymentCode, nextRouteCode, normalizeRouteNumber, PAYMENTS, ROUTES, routeSlug, catalogRoutes, clientsOnRouteListed, routeIsActive, routeStatusMeta, userForCollector, ensureCollectorsForUsers, collectorViewForUser, USERS, type ClientRow, type CollectorRow, type LoanRow, type PaymentRow, type RouteRow, type UserRow } from "@/lib/mock-data";
+import { CLIENTS, COLLECTORS, ACTIVITY, COLLECTOR_ROLE_REF, LOANS, money, newLoanBlockReason, newPaymentRef, nextRouteCode, normalizeRouteNumber, PAYMENTS, ROUTES, routeSlug, catalogRoutes, clientsOnRouteListed, routeIsActive, routeStatusMeta, userForCollector, ensureCollectorsForUsers, collectorViewForUser, USERS, type ClientRow, type CollectorRow, type LoanRow, type PaymentRow, type RouteRow, type UserRow } from "@/lib/mock-data";
 import {
   CLIENT_STATUS_ACTIVE,
   clientNavBadges,
@@ -2428,7 +2428,7 @@ export function useWorkspace({
     const paidDay = todayIso();
     const row = buildPaymentRow(
       {
-        ref: nextPaymentCode(base),
+        ref: newPaymentRef(),
         loanRef: loan.ref,
         when: `${isoToDispatchLabel(paidDay)} · ${paidTime}`,
         paidDate: paidDay,

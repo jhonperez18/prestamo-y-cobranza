@@ -908,10 +908,16 @@ export const LOANS: LoanRow[] = LOAN_SEEDS.map((loan) => normalizeLoan(loan, PAY
 
 export const ACTIVITY: ActivityRow[] = [];
 
-export function nextPaymentCode(rows: PaymentRow[] = PAYMENTS) {
-  const nums = rows.map((row) => Number(row.ref.replace(/\D/g, ""))).filter((n) => Number.isFinite(n));
-  const next = (nums.length ? Math.max(...nums) : 9000) + 1;
-  return `PG-${next}`;
+/**
+ * Número de cobro único sin mirar la lista del aparato: el cobrador solo guarda el día,
+ * así que «máximo + 1» repite PG- que ya existen en la nube.
+ */
+let lastPaymentRefNumber = 0;
+
+export function newPaymentRef() {
+  const candidate = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+  lastPaymentRefNumber = Math.max(candidate, lastPaymentRefNumber + 1);
+  return `PG-${lastPaymentRefNumber}`;
 }
 
 export function money(value: number, opts?: { symbol?: boolean }) {

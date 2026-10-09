@@ -17,7 +17,7 @@ import { applyPay, cuotaTargetOn, loanRowAfterPay, paymentRowKind } from "@/lib/
 import { chargeLabel } from "@/lib/loan-preview";
 import { collectorCashClosedOn, planillaCollectorRef } from "@/lib/route-collector-cash";
 import {
-  nextPaymentCode,
+  newPaymentRef,
   type ClientRow,
   type CollectorRow,
   type LoanRow,
@@ -143,7 +143,7 @@ export function commitLatePayment(input: LatePaymentInput): LatePaymentResult {
   const stamp = now.toISOString();
   const payment = buildPaymentRow(
     {
-      ref: nextPaymentCode(input.payments),
+      ref: newPaymentRef(),
       loanRef: loan.ref,
       when: `${isoToDispatchLabel(today)} · ${paidTime}`,
       paidDate: today,

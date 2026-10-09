@@ -11,7 +11,7 @@ import { evidenceForMirror } from "@/lib/payment-evidence";
 import { parseComboChargeLabel } from "@/lib/payment-combo";
 import { encodeLateChargeLabel, parseLateChargeLabel } from "@/lib/late-payment";
 import { normalizePaymentMethod, type PaymentMethod } from "@/lib/payment-method";
-import type { PaymentRow, StatusKind } from "@/lib/mock-data";
+import { newPaymentRef, type PaymentRow, type StatusKind } from "@/lib/mock-data";
 import { materializeEvidenceForDatabase } from "@/lib/supabase/payment-evidence-storage";
 
 type RpcPayment = {
@@ -94,6 +94,54 @@ function paymentToRpcPart(payment: PaymentRow): Record<string, unknown> | null {
     evidence: evidenceForMirror(payment.evidence) ?? null,
     idempotency_key: payment.idempotencyKey?.trim() || null,
   };
+}
+
+type MirrorServerClient = NonNullable<ReturnType<typeof createMirrorServerClient>>;
+
+type TakenPaymentRow = {
+  ref: string;
+  loan_ref: string;
+  amount: number;
+  paid_date: string;
+  idempotency_key: string | null;
+};
+
+/**
+ * El PG- con el que entra el cobro. `register_collection` toma un ref existente como reintento:
+ * si ese ref es de otro cobro (otra clave, préstamo, monto o día), este cobro recibe uno nuevo
+ * y el aparato lo adopta. Si la clave ya está en la nube, se devuelve ese mismo cobro.
+ */
+async function claimPaymentRef(
+  client: MirrorServerClient,
+  payment: PaymentRow,
+): Promise<{ ok: true; ref: string } | { ok: false; error: string }> {
+  const key = payment.idempotencyKey?.trim() || "";
+  if (key) {
+    const byKey = await client
+      .from("payments")
+      .select("ref")
+      .eq("idempotency_key", key)
+      .limit(1)
+      .maybeSingle<{ ref: string }>();
+    if (byKey.error) return { ok: false, error: byKey.error.message };
+    if (byKey.data?.ref) return { ok: true, ref: byKey.data.ref };
+  }
+  const byRef = await client
+    .from("payments")
+    .select("ref,loan_ref,amount,paid_date,idempotency_key")
+    .eq("ref", payment.ref)
+    .limit(1)
+    .maybeSingle<TakenPaymentRow>();
+  if (byRef.error) return { ok: false, error: byRef.error.message };
+  const taken = byRef.data;
+  if (!taken) return { ok: true, ref: payment.ref };
+  const paidDate = normalizeHistoryDate(payment.paidDate || "") || payment.paidDate;
+  const samePayment =
+    (!key || !taken.idempotency_key) &&
+    taken.loan_ref === (payment.loanRef || "").trim() &&
+    pesos(Number(taken.amount)) === pesos(payment.amount) &&
+    String(taken.paid_date) === paidDate;
+  return { ok: true, ref: samePayment ? payment.ref : newPaymentRef() };
 }
 
 async function withDbEvidence(payment: PaymentRow): Promise<PaymentRow> {
@@ -229,7 +277,14 @@ export async function registerLoanPaymentInSupabase(
     };
   }
 
-  const prepared = await withDbEvidence({ ...payment, amount: amountCheck.amount, method });
+  const claimed = await claimPaymentRef(client, payment);
+  if (!claimed.ok) return { ok: false, error: claimed.error, status: 500 };
+  const prepared = await withDbEvidence({
+    ...payment,
+    ref: claimed.ref,
+    amount: amountCheck.amount,
+    method,
+  });
   const part = paymentToRpcPart(prepared);
   if (!part) {
     return { ok: false, error: "Pago inválido para registrar.", status: 400 };
@@ -256,7 +311,13 @@ export async function registerLoanPaymentInSupabase(
   });
 
   if (rpc.error) {
-    return { ok: false, error: rpc.error.message || "register_collection", status: 502 };
+    const message = rpc.error.message || "register_collection";
+    const missing = /schema cache|PGRST202|Could not find the function/i.test(message);
+    return {
+      ok: false,
+      error: missing ? "register_collection_missing" : message,
+      status: 502,
+    };
   }
 
   const body = rpc.data as RegisterCollectionRpcBody | null;
@@ -299,14 +360,6 @@ export async function registerCombinedLoanPaymentInSupabase(
     };
   }
 
-  const preparedA = await withDbEvidence({ ...a, amount: checkA.amount, method: methodA });
-  const preparedB = await withDbEvidence({ ...b, amount: checkB.amount, method: methodB });
-  const partA = paymentToRpcPart(preparedA);
-  const partB = paymentToRpcPart(preparedB);
-  if (!partA || !partB) {
-    return { ok: false, error: "Pagos combinados inválidos.", status: 400 };
-  }
-
   const client = createMirrorServerClient();
   if (!client) {
     const { configured: pub } = getSupabasePublicEnv();
@@ -318,6 +371,28 @@ export async function registerCombinedLoanPaymentInSupabase(
           : "supabase_not_configured",
       status: 502,
     };
+  }
+
+  const claimedA = await claimPaymentRef(client, a);
+  if (!claimedA.ok) return { ok: false, error: claimedA.error, status: 500 };
+  const claimedB = await claimPaymentRef(client, b);
+  if (!claimedB.ok) return { ok: false, error: claimedB.error, status: 500 };
+  const preparedA = await withDbEvidence({
+    ...a,
+    ref: claimedA.ref,
+    amount: checkA.amount,
+    method: methodA,
+  });
+  const preparedB = await withDbEvidence({
+    ...b,
+    ref: claimedB.ref,
+    amount: checkB.amount,
+    method: methodB,
+  });
+  const partA = paymentToRpcPart(preparedA);
+  const partB = paymentToRpcPart(preparedB);
+  if (!partA || !partB) {
+    return { ok: false, error: "Pagos combinados inválidos.", status: 400 };
   }
 
   const rpc = await client.rpc("register_combined_collection", {

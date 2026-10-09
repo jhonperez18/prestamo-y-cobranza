@@ -23,7 +23,7 @@ import { validatePaymentEvidence } from "@/lib/payment-evidence";
 import { rememberPaymentEvidence } from "@/lib/payment-evidence-store";
 import { normalizePaymentMethod } from "@/lib/payment-method";
 import {
-  nextPaymentCode,
+  newPaymentRef,
   type ClientRow,
   type CollectorRow,
   type LoanRow,
@@ -232,7 +232,7 @@ export function commitCollectorPayment(
   const result = applyCollectorPaymentResult(loan, safeDraft, route, payments);
   if (!result.ok) return { ok: false, error: result.error };
 
-  const paymentRef = nextPaymentCode(payments);
+  const paymentRef = newPaymentRef();
   const paidTime =
     draft.paidTime?.trim() ||
     new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" });

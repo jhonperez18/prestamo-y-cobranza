@@ -17,12 +17,15 @@ import type { LoanRow, PaymentRow, StatusKind } from "@/lib/mock-data";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import {
+  DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_LOANS_KEY,
   DEMO_PAYMENTS_KEY,
   isVirginRemoteHoldActive,
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
+import { BIG_DEMO_STORE_CHANGED_EVENT } from "@/lib/big-demo-store";
+import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { evidenceForMirror, evidenceHasDurableRef, evidenceHasPreview } from "@/lib/payment-evidence";
 import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
 import {
@@ -382,7 +385,14 @@ async function voidPaymentInSupabase(row: PaymentMirrorRow): Promise<MirrorPayme
 }
 
 export type MirrorPaymentResult =
-  | { ok: true; skipped?: false; duplicate?: boolean; payment?: PaymentRow }
+  | {
+      ok: true;
+      skipped?: false;
+      duplicate?: boolean;
+      payment?: PaymentRow;
+      /** Combinado: los dos tramos, en el orden enviado. */
+      payments?: PaymentRow[];
+    }
   | { ok: true; skipped: true; reason: string }
   | { ok: false; error: string };
 
@@ -421,8 +431,8 @@ export async function mirrorPaymentToSupabase(
     return { ok: true, skipped: true, reason: registered.error };
   }
 
-  // RPC ausente o error de red: fallback upsert por ref (migración vieja).
-  if (registered.status === 502) {
+  // Solo sin la RPC (migración vieja): el upsert por ref pisaría otro cobro con el mismo PG-.
+  if (registered.error === "register_collection_missing") {
     const client = createMirrorClient();
     if (!client) {
       return { ok: true, skipped: true, reason: "supabase_not_configured" };
@@ -474,6 +484,7 @@ export async function mirrorCombinedPaymentsToSupabase(
       ok: true,
       duplicate: combined.duplicate,
       payment: combined.payments[0],
+      payments: combined.payments,
     };
   }
 
@@ -609,6 +620,50 @@ function dequeueMirrorPayment(ref: string) {
   writeMirrorQueue(readMirrorQueue().filter((row) => row.ref !== ref));
 }
 
+/** La nube guardó el cobro con otro PG-: el cobro local y su visita pasan a ese número. */
+function adoptCloudPaymentRefs(
+  sent: PaymentRow[],
+  cloud: (PaymentRow | undefined)[] | undefined,
+) {
+  const renames = new Map<string, string>();
+  sent.forEach((row, index) => {
+    const to = cloud?.[index]?.ref?.trim();
+    if (to && to !== row.ref) renames.set(row.ref, to);
+  });
+  if (!renames.size) return;
+
+  const payments = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []);
+  const present = new Set(payments.map((row) => row.ref));
+  writeDemoJson(
+    DEMO_PAYMENTS_KEY,
+    payments
+      .filter((row) => !(renames.has(row.ref) && present.has(renames.get(row.ref) as string)))
+      .map((row) => (renames.has(row.ref) ? { ...row, ref: renames.get(row.ref) as string } : row)),
+  );
+  for (const row of sent) {
+    const to = renames.get(row.ref);
+    if (to && row.evidence?.length) rememberPaymentEvidence(to, row.evidence);
+  }
+
+  const changed: DailyCollectionAssignment[] = [];
+  const assignments = readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []).map(
+    (row) => {
+      const to = row.paymentRef ? renames.get(row.paymentRef) : undefined;
+      if (!to) return row;
+      const next = { ...row, paymentRef: to };
+      changed.push(next);
+      return next;
+    },
+  );
+  if (changed.length) {
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
+    void import("@/lib/supabase/ops-mirror").then(({ queueAssignmentsMirror }) =>
+      queueAssignmentsMirror(changed),
+    );
+  }
+  window.dispatchEvent(new CustomEvent(BIG_DEMO_STORE_CHANGED_EVENT));
+}
+
 /** POST al API de espejo; si falla, deja el cobro en cola offline. */
 export async function persistPaymentToSupabase(
   payment: PaymentRow,
@@ -639,6 +694,7 @@ export async function persistPaymentToSupabase(
     }
     if (!result.skipped) {
       dequeueMirrorPayment(payload.ref);
+      adoptCloudPaymentRefs([payload], [result.payment]);
     } else if (!shouldDropFromMirrorQueue(result)) {
       // skipped sin escritura real (p. ej. service_role_missing): queda pendiente.
       enqueueMirrorPayment(payload);
@@ -672,10 +728,11 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
         body: JSON.stringify({ payment: payload }),
         signal: AbortSignal.timeout(20_000),
       });
-      const body = (await res.json()) as MirrorApiJson;
+      const body = (await res.json()) as MirrorApiJson & { payment?: PaymentRow };
       // Solo sacar de cola si realmente escribió en Postgres (o skip irrecuperable).
       if (res.ok && shouldDropFromMirrorQueue(body) && !body.skipped) {
         flushed += 1;
+        adoptCloudPaymentRefs([payload], [body.payment]);
       } else if (res.ok && shouldDropFromMirrorQueue(body) && body.skipped) {
         // invalid_payment u otro drop intencional
         flushed += 1;
@@ -871,6 +928,7 @@ export async function queueCombinedPaymentMirror(
     if (!result.skipped) {
       dequeueMirrorPayment(payload[0].ref);
       dequeueMirrorPayment(payload[1].ref);
+      adoptCloudPaymentRefs(payload, result.payments);
     }
     return result;
   } catch (err) {
@@ -1042,6 +1100,7 @@ async function mergeRemotePayments(
         return { ok: false, added: 0, changed: false, reason: "sin espacio en el aparato: cobros" };
       }
     }
+    if (fromDate && !since && !toDate) requeueDayPaymentsMissingFromCloud(fromDate, remote, merged);
     // Misma lista que acaba de bajar: loadLivePaymentRows no re-fetcha en el mismo ciclo.
     livePaymentCache = merged.length > 0 ? merged : livePaymentCache;
     return {
@@ -1061,6 +1120,21 @@ async function mergeRemotePayments(
   } catch (err) {
     const message = err instanceof Error ? err.message : "pull_failed";
     return { ok: false, added: 0, changed: false, reason: message };
+  }
+}
+
+/**
+ * Cobros del día que el aparato dio por subidos y la lista completa de ese día en la nube no
+ * trae: vuelven a la cola. Solo con clave, así un reintento devuelve el mismo cobro.
+ */
+function requeueDayPaymentsMissingFromCloud(day: string, remote: PaymentRow[], local: PaymentRow[]) {
+  const inCloud = new Set(remote.map((row) => row.ref));
+  const queued = new Set(readMirrorQueue().map((row) => row.ref));
+  for (const row of local) {
+    if ((normalizeHistoryDate(row.paidDate || "") || row.paidDate) !== day) continue;
+    if (!row.idempotencyKey?.trim() || paymentIsVoided(row)) continue;
+    if (inCloud.has(row.ref) || queued.has(row.ref)) continue;
+    enqueueMirrorPayment(withPaymentEvidence(row));
   }
 }
 
