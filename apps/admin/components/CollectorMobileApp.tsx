@@ -61,7 +61,11 @@ import {
 import type { CollectorPaymentRegisterInput } from "@/lib/route-sync";
 import { canRenewLoan } from "@/lib/loan-renew";
 import { reloanStateForVisit } from "@/lib/loan-reloan";
-import { pullCollectorHistoryDay, syncCollectorLiveLoan } from "@/lib/collector-live-window";
+import {
+  isCollectorLiveDevice,
+  pullCollectorHistoryDay,
+  syncCollectorLiveLoan,
+} from "@/lib/collector-live-window";
 import {
   assignmentRouteName,
   DECLINED_LOAN_OFFER_TODAY_REASON,
@@ -125,6 +129,7 @@ import {
   openingCashForChainedPlanilla,
   PLANILLA_CASH_CHAIN_HISTORY_EPOCH,
   PLANILLA_CASH_CHAIN_PRIMARY,
+  ROUTE_CASH_BOOK_FROM,
   PLANILLA_CASH_CHAIN_SECONDARY,
   stampHistoryWithPlanillaCashChain,
   type PlanillaCashCloseRecord,
@@ -1654,12 +1659,13 @@ export function CollectorMobileApp({
   const historyVisibleRows = useMemo(() => {
     return dayHistory.filter(
       (row) =>
-        row.cobro > 0 ||
+        row.date >= ROUTE_CASH_BOOK_FROM &&
+        (row.cobro > 0 ||
         row.gasto > 0 ||
         row.prestamo > 0 ||
         row.date === activeDate ||
         openPlanillaDates.has(row.date) ||
-        closedHistoryDates.has(row.date),
+        closedHistoryDates.has(row.date)),
     );
   }, [activeDate, closedHistoryDates, dayHistory, openPlanillaDates]);
 
@@ -1677,21 +1683,40 @@ export function CollectorMobileApp({
 
   /** Historial · M: extracto (Inicial → Saldo). Días previos intactos. */
   const showMInicialColumn = isPlanillaCashChainPrimary(activePlanillaRoute ?? undefined);
+  const mCashBook = useRouteCashBook(
+    collector.ref,
+    showMInicialColumn ? PLANILLA_CASH_CHAIN_PRIMARY : null,
+    `${todayIso()}|${activeDate}`,
+  );
   const historyRowsWithInicial = useMemo(() => {
     if (!showMInicialColumn) return null;
+    const today = date ?? todayIso();
+    // El celular del cobrador solo guarda hoy y el último día cerrado: sin libro del
+    // servidor, los días anteriores quedan en «—» en vez de una cifra rehecha a medias.
+    let keptDay = "";
+    for (const row of dayCloses) {
+      if (row.collectorRef !== collector.ref || !row.ref.startsWith("CIE-") || row.provisional) continue;
+      const day = normalizeHistoryDate(row.date) || row.date;
+      if (day < today && day > keptDay) keptDay = day;
+    }
+    const closingFor = isCollectorLiveDevice()
+      ? (dateIso: string) => (dateIso === keptDay ? primaryClosingFor(dateIso) : null)
+      : primaryClosingFor;
     return annotateMHistoryExtractRows({
       rows: historyVisibleRows,
       collectorRef: collector.ref,
       records: planillaCashCloses,
       epochBootstrapOpening: mCarriedFallbackOpening,
-      todayIso: date ?? todayIso(),
+      todayIso: today,
       dayCloses,
       monthCloses,
-      primaryClosingFor,
+      primaryClosingFor: closingFor,
+      book: mCashBook,
     });
   }, [
     collector.ref,
     date,
+    mCashBook,
     dayCloses,
     historyVisibleRows,
     mCarriedFallbackOpening,

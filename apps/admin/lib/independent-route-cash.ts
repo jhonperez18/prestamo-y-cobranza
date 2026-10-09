@@ -52,14 +52,24 @@ import {
   findFullDayCieClose,
   INDEPENDENT_OWN_LOANS_FROM,
   INDEPENDENT_SALDO_ROUTES,
+  isPlanillaCashChainPrimary,
   isPlanillaCashChainRoute,
+  ROUTE_CASH_BOOK_FROM,
+  type RouteCashBook,
+  type RouteCashBookDay,
 } from "@/lib/planilla-cash-chain";
 
-export { INDEPENDENT_SALDO_ROUTES };
+export { INDEPENDENT_SALDO_ROUTES, ROUTE_CASH_BOOK_FROM };
+export type { RouteCashBook, RouteCashBookDay };
 
 export function isIndependentSaldoRoute(route: string | null | undefined): boolean {
   if (!route || isPlanillaCashChainRoute(route)) return false;
   return INDEPENDENT_SALDO_ROUTES.some((name) => sameRoute(route, name));
+}
+
+/** Cajas con libro del servidor: M de la cadena y las planillas propias A / N. */
+export function hasRouteCashBook(route: string | null | undefined): boolean {
+  return Boolean(route && (isPlanillaCashChainPrimary(route) || isIndependentSaldoRoute(route)));
 }
 
 /** Planilla A/N de este cobrador ese día (pista de la hoja, si no visitas N/A). */
@@ -315,23 +325,6 @@ export type IndependentRouteDay = RouteMovement & {
   /** Ajuste hecho ese mismo día (su `real` es el Inicial de mañana). */
   adjustment: RouteCashAdjustment | null;
 };
-
-/**
- * Libro de caja de A / N calculado por el servidor con la nube completa: un día pasado por
- * fecha. El celular del cobrador solo guarda hoy; con el libro no rehace días que no tiene.
- */
-export type RouteCashBookDay = {
-  date: string;
-  opening: number;
-  closing: number;
-  efectivo: number;
-  gastos: number;
-  prestamos: number;
-};
-export type RouteCashBook = Map<string, RouteCashBookDay>;
-
-/** El libro empieza el 1 de octubre: Inicial = ajuste manual del 30/09. Antes no hay caja propia. */
-export const ROUTE_CASH_BOOK_FROM = "2026-10-01";
 
 function latestBookBefore(
   book: RouteCashBook | null | undefined,

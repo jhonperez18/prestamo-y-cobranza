@@ -158,6 +158,7 @@ import {
   applyCollectorCashHandSaldos,
   openingCashForChainedPlanilla,
   PLANILLA_CASH_CHAIN_HISTORY_EPOCH,
+  ROUTE_CASH_BOOK_FROM,
   PLANILLA_CASH_CHAIN_PRIMARY,
   PLANILLA_CASH_CHAIN_SECONDARY,
   isPlanillaCashChainPrimary,
@@ -2487,7 +2488,7 @@ export function SupervisorMobileApp({
               )
             : undefined,
       },
-    );
+    ).filter((row) => row.date >= ROUTE_CASH_BOOK_FROM);
 
     const primaryClosingFor = (dateIso: string) =>
       primaryClosingForDay(

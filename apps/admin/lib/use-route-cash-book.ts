@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
-  isIndependentSaldoRoute,
+  hasRouteCashBook,
   type RouteCashBook,
   type RouteCashBookDay,
 } from "@/lib/independent-route-cash";
@@ -18,7 +18,7 @@ function toBookDay(raw: unknown): RouteCashBookDay | null {
 }
 
 /**
- * Días pasados de A / N calculados por el servidor (nube completa). Sin señal o con error
+ * Días pasados de una caja (M, A, N) calculados por el servidor (nube completa). Sin señal o con error
  * queda la última lectura buena (o `null`: el celular calcula con lo que tiene).
  */
 export function useRouteCashBook(
@@ -27,7 +27,7 @@ export function useRouteCashBook(
   refreshKey: string,
 ): RouteCashBook | null {
   const [book, setBook] = useState<{ key: string; days: RouteCashBook } | null>(null);
-  const key = route && isIndependentSaldoRoute(route) ? `${collectorRef}|${route.trim().toUpperCase()}` : "";
+  const key = route && hasRouteCashBook(route) ? `${collectorRef}|${route.trim().toUpperCase()}` : "";
 
   useEffect(() => {
     if (!key) return;

@@ -41,6 +41,26 @@ export const INDEPENDENT_SALDO_ROUTES = ["A", "N"] as const;
 export const INDEPENDENT_OWN_LOANS_FROM = "2026-09-30";
 
 /**
+ * Libro de caja: arranca el 1 de octubre con el saldo manual metido el 30/09 (CIE- de M/T,
+ * ajuste de A / N). Antes no hay saldo real: ninguna pantalla lo muestra ni lo arrastra.
+ */
+export const ROUTE_CASH_BOOK_FROM = "2026-10-01";
+
+/**
+ * Un día ya pasado de una caja (M de la cadena, A, N), calculado por el servidor con la nube
+ * completa. El celular del cobrador solo guarda hoy; con el libro no rehace días que no tiene.
+ */
+export type RouteCashBookDay = {
+  date: string;
+  opening: number;
+  closing: number;
+  efectivo: number;
+  gastos: number;
+  prestamos: number;
+};
+export type RouteCashBook = Map<string, RouteCashBookDay>;
+
+/**
  * Monto del seed viejo (ya no se usa). Solo sirve para detectar y sacar
  * basura que aún esté en caché local. Inicial hoy = saldo de ayer, punto.
  */
@@ -807,6 +827,8 @@ export function annotateMHistoryExtractRows(input: {
   monthCloses?: CollectorMonthCloseRecord[];
   /** Caja final de M de un día según el libro (`primaryClosingForDay`). */
   primaryClosingFor?: (dateIso: string) => number | null;
+  /** Días pasados de M calculados por el servidor (celular del cobrador sin historia). */
+  book?: RouteCashBook | null;
 }): Array<{
   date: string;
   dateLabel: string;
@@ -847,23 +869,39 @@ export function annotateMHistoryExtractRows(input: {
 
   for (const row of ascending) {
     if (row.date < today) {
-      // Inmóvil: no recalcular Inicial ni Saldo con fórmulas / cadena vieja.
-      // Saldo de M ayer = caja final de M (Inicial de T), nunca el CIE (saldo final tras T).
-      const isYesterday = row.date === yesterdayIso;
-      const primaryClosing = isYesterday ? (input.primaryClosingFor?.(row.date) ?? null) : null;
-      const saldoShown =
-        primaryClosing != null && Number.isFinite(primaryClosing)
-          ? pesos(primaryClosing)
-          : pesos(row.saldo);
+      // Día cerrado: lee lo sellado, sin arrastre. Inicial = CIE de la víspera;
+      // Saldo = caja final de M (Inicial de T), nunca el CIE (saldo final tras T).
+      const booked = input.book?.get(row.date);
+      if (booked) {
+        annotatedAscending.push({
+          date: row.date,
+          dateLabel: row.dateLabel,
+          cobro: row.cobro,
+          gasto: booked.gastos,
+          prestamo: booked.prestamos,
+          inicial: pesos(booked.opening),
+          saldoShown: pesos(booked.closing),
+        });
+        continue;
+      }
+      const open = openingCashForChainedPlanilla({
+        collectorRef: input.collectorRef,
+        routeName: PLANILLA_CASH_CHAIN_PRIMARY,
+        date: row.date,
+        records: input.records,
+        monthCloses,
+        dayCloses,
+      });
+      const primaryClosing = input.primaryClosingFor?.(row.date) ?? null;
       annotatedAscending.push({
         date: row.date,
         dateLabel: row.dateLabel,
         cobro: row.cobro,
         gasto: row.gasto,
         prestamo: row.prestamo,
-        // No reescribir Inicial del pasado (evita arrastrar -57M, etc.).
-        inicial: null,
-        saldoShown,
+        inicial: open.kind === "chain" && open.ready ? pesos(open.opening) : null,
+        saldoShown:
+          primaryClosing != null && Number.isFinite(primaryClosing) ? pesos(primaryClosing) : null,
       });
       continue;
     }
