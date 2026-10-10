@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ReceiptCapture } from "@/components/ReceiptCapture";
 import { SignaturePad } from "@/components/SignaturePad";
 import {
@@ -118,6 +118,15 @@ function formatAmountInput(value: number | string): string {
     .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 }
 
+function newPayKeys() {
+  return {
+    single: newIdempotencyKey("mob"),
+    combined: newIdempotencyKey("mob-cmb"),
+    partA: newIdempotencyKey("mob-cmb-a"),
+    partB: newIdempotencyKey("mob-cmb-b"),
+  };
+}
+
 function emptyLeg(): ComboLeg {
   return { method: null, rawAmount: "", evidenceItem: undefined };
 }
@@ -142,6 +151,10 @@ export function CollectorPayForm({
   onRenew,
 }: Props) {
   const [renewing, setRenewing] = useState(false);
+  /** Mismas claves mientras el cobro no se entregue: dos toques o un reintento = un solo PG-. */
+  const payKeys = useRef(newPayKeys());
+  /** Candado inmediato: dos toques en el mismo instante no alcanzan a ver `isSubmitting`. */
+  const submitLock = useRef(false);
   const maxAmount = balance != null && balance > 0 ? balance : 0;
   const [internalCombined, setInternalCombined] = useState(false);
   const combined = combinedProp ?? internalCombined;
@@ -297,10 +310,14 @@ export function CollectorPayForm({
   }
 
   async function runSubmit(payload: CollectorPaySubmit) {
+    if (submitLock.current) return;
+    submitLock.current = true;
     setIsSubmitting(true);
     try {
       await onSubmit(payload);
+      payKeys.current = newPayKeys();
     } finally {
+      submitLock.current = false;
       setIsSubmitting(false);
     }
   }
@@ -335,7 +352,7 @@ export function CollectorPayForm({
         kind,
         method: normalizePaymentMethod(legA.method),
         evidence: evidenceA,
-        idempotencyKey: newIdempotencyKey("mob-cmb"),
+        idempotencyKey: payKeys.current.combined,
         combined: {
           comboGroupId,
           paidTime,
@@ -344,13 +361,13 @@ export function CollectorPayForm({
               amount: amountA,
               method: normalizePaymentMethod(legA.method),
               evidence: evidenceA,
-              idempotencyKey: newIdempotencyKey("mob-cmb-a"),
+              idempotencyKey: payKeys.current.partA,
             },
             {
               amount: amountB,
               method: normalizePaymentMethod(legB.method),
               evidence: evidenceB,
-              idempotencyKey: newIdempotencyKey("mob-cmb-b"),
+              idempotencyKey: payKeys.current.partB,
             },
           ],
         },
@@ -365,7 +382,7 @@ export function CollectorPayForm({
       kind,
       method: normalizePaymentMethod(method),
       evidence,
-      idempotencyKey: newIdempotencyKey("mob"),
+      idempotencyKey: payKeys.current.single,
     });
   }
 
