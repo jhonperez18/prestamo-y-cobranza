@@ -1323,16 +1323,19 @@
     .collector-day-loans-head,
     .collector-day-loans-list li {
       display: grid;
-      grid-template-columns: minmax(0, 1.4fr) 4.2rem 4.2rem;
-      gap: 6px;
+      grid-template-columns: minmax(0, 1fr) 5.6rem 4.6rem;
+      gap: 10px;
       align-items: baseline;
       font-size: 12px;
     }
     .collector-day-loans-head {
       font-weight: 700;
       color: #374151;
-      padding: 0 4px 6px;
+      padding: 0 8px 6px;
       border-bottom: 1px solid #d1d5db;
+    }
+    .collector-day-loans-head span:not(:first-child) {
+      text-align: right;
     }
     .collector-day-loans-list {
       list-style: none;
@@ -1340,7 +1343,7 @@
       padding: 0;
     }
     .collector-day-loans-list li {
-      padding: 7px 4px;
+      padding: 7px 8px;
       border-bottom: 1px solid #e2ece7;
       background: var(--row-a);
     }
@@ -3319,7 +3322,7 @@
     /* Lista densa: # | nombre… | saldo | cuota | Cuotas | billete */
     .collector-mobile-dense-row {
       display: grid;
-      grid-template-columns: 1.05rem minmax(0, 1fr) 4.6rem 3.9rem 3.4rem 1.35rem;
+      grid-template-columns: 1.05rem minmax(0, 1fr) 4.1rem 3.3rem 2.8rem 1.6rem;
       grid-template-areas: "ord who saldo cuota alert pay";
       column-gap: 4px;
       row-gap: 0;
@@ -3464,7 +3467,7 @@
       gap: 3px;
     }
     .collector-mobile-card.is-awaiting-loan .collector-mobile-dense-row {
-      grid-template-columns: 1.05rem minmax(0, 1fr) 4.6rem 3.9rem 3.9rem;
+      grid-template-columns: 1.05rem minmax(0, 1fr) 4.1rem 3.3rem 3.9rem;
       grid-template-areas: "ord who saldo cuota pay";
     }
     .collector-mobile-card.is-awaiting-loan .collector-mobile-dense-actions.is-lend-pair {
@@ -3478,8 +3481,8 @@
       background: transparent;
       margin: 0;
       padding: 0;
-      width: 16px;
-      height: 12px;
+      width: 24px;
+      height: 18px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -3488,8 +3491,8 @@
       flex-shrink: 0;
     }
     .collector-mobile-pay-sticker svg {
-      width: 16px;
-      height: 12px;
+      width: 24px;
+      height: 18px;
       display: block;
     }
     .collector-mobile-pay-sticker:disabled {
@@ -3631,6 +3634,17 @@
     }
     .collector-mobile-dense-row.is-recaudo-row .collector-mobile-visit-who {
       grid-area: who;
+    }
+    /* Recaudo: columnas fijas para que montos y medio queden alineados renglón a renglón. */
+    .collector-mobile-card.is-done .collector-mobile-dense-row.is-recaudo-row {
+      grid-template-columns: minmax(0, 1fr) 4.4rem 4.4rem 1.6rem;
+    }
+    .collector-mobile-card.is-done .collector-mobile-ref.is-done-col.is-loan-amount {
+      color: #1e40af;
+      font-weight: 700;
+    }
+    .collector-mobile-card.is-done .collector-mobile-ref.is-done-col.is-loan-amount.is-renewal {
+      color: #92400e;
     }
     /* Lista de cobros en Banco: nombre · préstamo · evidencia · monto · medio */
     .collector-mobile-card.is-done .collector-mobile-dense-row.is-recaudo-row.has-evidence {

@@ -296,18 +296,26 @@ function DayLoanListRow({
               className="collector-reloan-tag is-renewal"
               title={`Renovado ${loan.ref} · debía ${money(loan.capital)} + 20 % · sin plata · cuota desde mañana`}
             >
-              Renovado {money(loan.capital, { symbol: false })}
+              Renovado
             </span>
           ) : (
             <span
               className="collector-reloan-tag"
               title={`Préstamo ${loan.ref} · capital ${money(loan.capital)} · ${loanDisbursementSourceLabel(source)}`}
             >
-              Préstamo {money(loan.capital, { symbol: false })}
+              Prestado
             </span>
           )}
         </span>
-        <span className="collector-mobile-ref is-done-col">—</span>
+        <span
+          className={
+            renewal
+              ? "collector-mobile-ref is-done-col is-loan-amount is-renewal"
+              : "collector-mobile-ref is-done-col is-loan-amount"
+          }
+        >
+          {money(loan.capital, { symbol: false })}
+        </span>
         {renewal ? (
           <Pill label="R" kind="renovado" title="Renovado: sin plata, no toca la caja" />
         ) : source === "efectivo" || source === "banco" || source === "nequi" ? (
