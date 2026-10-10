@@ -2092,11 +2092,13 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     true,
   );
   expect(
-    "Registro Nequi: cobrado, prestado y saldo de la ruta A",
+    "Registro Nequi: cobrado, prestado, gastos y saldo de la ruta A",
     bancoSrc.includes("nequiRouteHistoryDays") &&
       bancoSrc.includes("NEQUI_ROUTE_PIN") &&
       bancoSrc.includes("is-nequi-tres") &&
-      bancoSrc.includes("is-nequi-saldo"),
+      bancoSrc.includes("is-nequi-saldo") &&
+      bancoSrc.includes('pool: "nequi"') &&
+      bancoSrc.includes("(nequiRutaHistoryDays[0]?.saldo ?? 0) - nequiGastado"),
     true,
   );
   expect(
@@ -2111,7 +2113,7 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     "Banco: saldo = rutas M T N − gastos de Banco (INICIO lo suma tal cual)",
     bancoSrc.includes("BANCO_ROUTE_PINS") &&
       bancoSrc.includes("bancoRouteCuadre") &&
-      bancoSrc.includes("bancoPoolGastos") &&
+      bancoSrc.includes('pool: "banco"') &&
       bancoSrc.includes("const bancoSaldo = bancoAcumuladoRutas(bancoRouteCuadres) - bancoGastado") &&
       bancoSrc.includes("(routeN?.enCaja ?? 0) + bancoSaldo") &&
       bancoSrc.includes("Ruta M"),

@@ -7283,7 +7283,25 @@
       grid-template-columns: 1fr 1fr;
     }
     .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-nequi-tres {
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-nequi-tres .is-nequi-gastos {
+      padding: 8px 6px;
+      border: 1px solid #f3c4c4;
+      background: #fef2f2;
+      font: inherit;
+      color: inherit;
+      cursor: pointer;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-nequi-tres .is-nequi-gastos span {
+      font-size: 10px;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-nequi-tres .is-nequi-gastos b {
+      font-size: 13px;
+      color: #b91c1c;
+    }
+    .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid > button.is-nequi-gastos.on {
+      box-shadow: 0 0 0 2px #dc2626;
     }
     .collector-mobile-home-cuadre.is-banco-ruta .collector-mobile-home-cuadre-grid.is-nequi-tres .is-nequi-saldo {
       grid-column: 1 / -1;

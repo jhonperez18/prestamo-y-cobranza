@@ -94,8 +94,8 @@ import {
   DIGITAL_POOL_LABEL,
   NEQUI_ROUTE_PIN,
   bancoAcumuladoRutas,
-  bancoGastosTotal,
-  bancoPoolGastos,
+  digitalPoolGastos,
+  digitalPoolGastosTotal,
   bancoRouteCuadre,
   bancoRouteCobradoHistoryDays,
   bancoRouteHistoryDays,
@@ -108,6 +108,7 @@ import {
   digitalPoolRegisterDays,
   todayDigitalPoolAdjustment,
   type DigitalPool,
+  type DigitalPoolGasto,
   type DigitalPoolRegisterLoan,
 } from "@/lib/digital-pools";
 import type { DigitalPoolAdjustRequest } from "@/lib/save-cash-adjustment";
@@ -1202,7 +1203,9 @@ export function SupervisorMobileApp({
   /** Un solo día abierto en el historial (acordeón). */
   const [bancoRegistroDay, setBancoRegistroDay] = useState<string | null>(null);
   /** Historial Nequi (ruta A): cobrado o prestado. */
-  const [nequiRutaExpand, setNequiRutaExpand] = useState<"cobrado" | "prestado" | null>(null);
+  const [nequiRutaExpand, setNequiRutaExpand] = useState<
+    "cobrado" | "prestado" | "gastos" | null
+  >(null);
   /** Un solo día abierto en el historial Nequi (acordeón). */
   const [nequiRegistroDay, setNequiRegistroDay] = useState<string | null>(null);
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
@@ -1886,6 +1889,40 @@ export function SupervisorMobileApp({
     return `${cobro} · ${prestamos} préstamo${prestamos === 1 ? "" : "s"}`;
   };
 
+  /** Gastos pagados desde la cuenta Banco o Nequi: los mismos que resta su Saldo. */
+  const renderPoolGastos = (
+    pool: DigitalPool,
+    gastos: readonly DigitalPoolGasto[],
+    total: number,
+  ) => {
+    const label = DIGITAL_POOL_LABEL[pool];
+    if (gastos.length === 0) {
+      return <p className="ficha-empty">Sin gastos pagados desde {label} este mes.</p>;
+    }
+    return (
+      <div className="supervisor-banco-hist">
+        <div className="supervisor-banco-gastos-head" aria-hidden>
+          <span>Fecha</span>
+          <span>Concepto</span>
+          <span>Valor</span>
+        </div>
+        <ul className="supervisor-banco-gastos-list" aria-label={`Gastos pagados desde ${label}`}>
+          {gastos.map((row) => (
+            <li key={row.ref}>
+              <span className="is-date">{isoToDisplay(row.date)}</span>
+              <span className="is-label">{row.label}</span>
+              <span className="is-amount">{money(row.amount, { symbol: false })}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="supervisor-banco-gastos-total">
+          <span>Total gastado</span>
+          <b>{money(total, { symbol: false })}</b>
+        </div>
+      </div>
+    );
+  };
+
   /** Ficha de un día del Registro Banco / Nequi: cobros (entran) y préstamos en azul (salen). */
   const renderNequiDayList = (
     items: typeof paymentsWithEvidence,
@@ -2175,7 +2212,8 @@ export function SupervisorMobileApp({
   /** Gastos pagados desde Banco en la misma ventana que las rutas M / T / N (el mes arranca en 0). */
   const bancoGastos = useMemo(
     () =>
-      bancoPoolGastos({
+      digitalPoolGastos({
+        pool: "banco",
         miscPayments,
         accounts: bankAccounts,
         dayCloses,
@@ -2184,7 +2222,7 @@ export function SupervisorMobileApp({
       }),
     [miscPayments, bankAccounts, dayCloses, bancoHistoryFrom, today],
   );
-  const bancoGastado = useMemo(() => bancoGastosTotal(bancoGastos), [bancoGastos]);
+  const bancoGastado = useMemo(() => digitalPoolGastosTotal(bancoGastos), [bancoGastos]);
   /** Saldo de Banco = Ruta M + Ruta T + Ruta N − Gastos. */
   const bancoSaldo = bancoAcumuladoRutas(bancoRouteCuadres) - bancoGastado;
 
@@ -2266,7 +2304,21 @@ export function SupervisorMobileApp({
     () => bancoRouteHistoryTotals(nequiRutaHistoryDays),
     [nequiRutaHistoryDays],
   );
-  const nequiRutaSaldo = nequiRutaHistoryDays[0]?.saldo ?? 0;
+  const nequiGastos = useMemo(
+    () =>
+      digitalPoolGastos({
+        pool: "nequi",
+        miscPayments,
+        accounts: bankAccounts,
+        dayCloses,
+        fromIso: bancoHistoryFrom,
+        toIso: today,
+      }),
+    [miscPayments, bankAccounts, dayCloses, bancoHistoryFrom, today],
+  );
+  const nequiGastado = useMemo(() => digitalPoolGastosTotal(nequiGastos), [nequiGastos]);
+  /** Saldo Nequi = cobrado − prestado (historial de A) − gastos pagados desde Nequi. */
+  const nequiRutaSaldo = (nequiRutaHistoryDays[0]?.saldo ?? 0) - nequiGastado;
   /** Filas de planilla: `#` = posición del cliente en su ruta; `route` para la raya verde. */
   const planillaTableRows = (rows: DailyCollectionAssignment[]): PlanillaTableRow[] =>
     rows.map((row, index) => {
@@ -4926,9 +4978,23 @@ export function SupervisorMobileApp({
               </button>
               <button
                 type="button"
+                className={`is-nequi-gastos is-tap${nequiRutaExpand === "gastos" ? " on" : ""}`}
+                aria-expanded={nequiRutaExpand === "gastos"}
+                title="Gastos pagados desde Nequi"
+                onClick={() => {
+                  suppressGhostClick();
+                  setNequiRegistroDay(null);
+                  setNequiRutaExpand((prev) => (prev === "gastos" ? null : "gastos"));
+                }}
+              >
+                <span>Gastos</span>
+                <b>{money(nequiGastado, { symbol: false })}</b>
+              </button>
+              <button
+                type="button"
                 className="is-nequi-saldo"
-                title="Saldo Nequi ruta A"
-                aria-label="Saldo Nequi ruta A"
+                title="Saldo Nequi ruta A (cobrado − prestado − gastos)"
+                aria-label={`Saldo Nequi ruta A ${money(nequiRutaSaldo, { symbol: false })}`}
               >
                 <span>Saldo</span>
                 <b>{money(nequiRutaSaldo, { symbol: false })}</b>
@@ -5049,6 +5115,9 @@ export function SupervisorMobileApp({
               <p className="ficha-empty">Sin préstamos Nequi en ruta A.</p>
             )
           ) : null}
+          {nequiRutaExpand === "gastos"
+            ? renderPoolGastos("nequi", nequiGastos, nequiGastado)
+            : null}
         </section>
       ) : view === "banco" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
@@ -5076,30 +5145,7 @@ export function SupervisorMobileApp({
             ) : null}
           </div>
           {bancoGastosOpen ? (
-            bancoGastos.length > 0 ? (
-              <div className="supervisor-banco-hist">
-                <div className="supervisor-banco-gastos-head" aria-hidden>
-                  <span>Fecha</span>
-                  <span>Concepto</span>
-                  <span>Valor</span>
-                </div>
-                <ul className="supervisor-banco-gastos-list" aria-label="Gastos pagados desde Banco">
-                  {bancoGastos.map((row) => (
-                    <li key={row.ref}>
-                      <span className="is-date">{isoToDisplay(row.date)}</span>
-                      <span className="is-label">{row.label}</span>
-                      <span className="is-amount">{money(row.amount, { symbol: false })}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="supervisor-banco-gastos-total">
-                  <span>Total gastado</span>
-                  <b>{money(bancoGastado, { symbol: false })}</b>
-                </div>
-              </div>
-            ) : (
-              <p className="ficha-empty">Sin gastos pagados desde Banco este mes.</p>
-            )
+            renderPoolGastos("banco", bancoGastos, bancoGastado)
           ) : !bancoRegistroRoute ? (
             <div
               className="supervisor-banco-home-grid"

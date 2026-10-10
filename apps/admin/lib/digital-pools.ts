@@ -762,7 +762,7 @@ export function bancoAcumuladoRutas(cuadres: readonly BancoRouteCuadre[]): numbe
   return pesos(cuadres.reduce((sum, row) => sum + row.saldo, 0));
 }
 
-export type BancoGasto = {
+export type DigitalPoolGasto = {
   ref: string;
   date: string;
   label: string;
@@ -770,20 +770,20 @@ export type BancoGasto = {
 };
 
 /**
- * Gastos pagados desde la cuenta Banco (pagos varios `PV-` con la cuenta de uso `banco`),
- * después del último cuadre del pool Banco. Con `fromIso` = misma ventana que los saldos
- * M / T / N; vacío = todo desde el cuadre (como `digitalPoolBalances`). Manda la cuenta,
- * no la forma de pago. Más nuevo primero.
+ * Gastos pagados desde la cuenta del pool (pagos varios `PV-` con la cuenta de uso `banco`
+ * o `nequi`), en la misma ventana que el historial de sus rutas: desde `fromIso` y después
+ * del último cuadre de ese pool. Manda la cuenta, no la forma de pago. Más nuevo primero.
  */
-export function bancoPoolGastos(input: {
+export function digitalPoolGastos(input: {
+  pool: DigitalPool;
   miscPayments: readonly MiscPayment[];
   accounts: BankAccount[];
   dayCloses: CollectorDayCloseRecord[];
   fromIso: string;
   toIso: string;
-}): BancoGasto[] {
-  const accountRef = accountForRole(input.accounts, "banco")?.ref;
-  const start = bancoRouteWindowStart(input.dayCloses, input.fromIso);
+}): DigitalPoolGasto[] {
+  const accountRef = accountForRole(input.accounts, input.pool)?.ref;
+  const start = poolRouteWindowStart(input.dayCloses, input.pool, input.fromIso);
   const to = isoOf(input.toIso);
   if (!accountRef || !to) return [];
   return input.miscPayments
@@ -798,7 +798,7 @@ export function bancoPoolGastos(input: {
     .sort((a, b) => b.date.localeCompare(a.date) || b.ref.localeCompare(a.ref, "es", { numeric: true }));
 }
 
-export function bancoGastosTotal(gastos: readonly BancoGasto[]): number {
+export function digitalPoolGastosTotal(gastos: readonly DigitalPoolGasto[]): number {
   return pesos(gastos.reduce((sum, row) => sum + row.amount, 0));
 }
 
