@@ -453,8 +453,18 @@ export type LoanRefRenameResult = LoanRefRenameState & {
   /** `to` ya era una ficha de este cliente: la copia se une, no se renombra. */
   twin: boolean;
   changedAssignments: DailyCollectionAssignment[];
+  /** Claves de cola (`fecha::itemId`) de visitas que ya no existen con ese nombre. */
+  staleAssignmentKeys: string[];
   changedDrafts: CollectorDayExpenseDraft[];
 };
+
+/** La visita se nombra por su préstamo (`fecha:P-…:acum`): con el P- nuevo cambia de nombre. */
+function itemIdForLoanRef(itemId: string, from: string, to: string) {
+  return itemId
+    .split(":")
+    .map((part) => (part === from ? to : part))
+    .join(":");
+}
 
 /**
  * La nube le dio otro P- a una ficha de este aparato (choque con otro cliente) o la unió a la
@@ -468,7 +478,13 @@ export function renameLoanRefInState(
   todayIso: string,
 ): LoanRefRenameResult {
   const from = loan.ref;
-  const unchanged = { ...state, twin: false, changedAssignments: [], changedDrafts: [] };
+  const unchanged = {
+    ...state,
+    twin: false,
+    changedAssignments: [],
+    staleAssignmentKeys: [],
+    changedDrafts: [],
+  };
   if (!from || !to || from === to) return unchanged;
   const mine = (row: Pick<LoanRow, "ref" | "clientRef">) =>
     row.ref === from && (!loan.clientRef || !row.clientRef || row.clientRef === loan.clientRef);
@@ -481,7 +497,10 @@ export function renameLoanRefInState(
       ? rows.filter((row) => !mine(row))
       : rows.map((row) => (mine(row) ? { ...row, ref: to, updatedAt: now } : row));
 
+  // Un solo nombre por visita: si queda el viejo, la nube guarda dos (la vieja con el P- nuevo
+  // y la que el armado crea con el nombre nuevo) y el cliente sale dos veces.
   const changedAssignments: DailyCollectionAssignment[] = [];
+  const staleAssignmentKeys: string[] = [];
   const assignments: DailyCollectionAssignment[] = [];
   for (const row of state.assignments) {
     const ofLoan =
@@ -490,9 +509,14 @@ export function renameLoanRefInState(
       assignments.push(row);
       continue;
     }
+    const staleKey = `${row.dispatchDate}::${row.itemId}`;
     const open = !row.paymentRef && !row.dayClosedAt;
-    if (twin && open) continue;
-    const next = { ...row, loanRef: to };
+    if (twin && open) {
+      staleAssignmentKeys.push(staleKey);
+      continue;
+    }
+    const next = { ...row, loanRef: to, itemId: itemIdForLoanRef(row.itemId, from, to) };
+    if (next.itemId !== row.itemId) staleAssignmentKeys.push(staleKey);
     assignments.push(next);
     changedAssignments.push(next);
   }
@@ -524,6 +548,7 @@ export function renameLoanRefInState(
     drafts,
     twin,
     changedAssignments,
+    staleAssignmentKeys,
     changedDrafts,
   };
 }
@@ -557,8 +582,9 @@ function applyLoanRefRename(loan: Pick<LoanRow, "ref" | "clientRef" | "client">,
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
   }
   if (next.changedDrafts.length) writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, next.drafts);
-  if (next.changedAssignments.length || next.changedDrafts.length) {
-    void import("@/lib/supabase/ops-mirror").then(({ queueAssignmentsMirror, queueDayExpenseMirror }) => {
+  if (next.changedAssignments.length || next.changedDrafts.length || next.staleAssignmentKeys.length) {
+    void import("@/lib/supabase/ops-mirror").then(({ dropQueuedAssignments, queueAssignmentsMirror, queueDayExpenseMirror }) => {
+      dropQueuedAssignments(next.staleAssignmentKeys);
       queueAssignmentsMirror(next.changedAssignments);
       for (const draft of next.changedDrafts) queueDayExpenseMirror(draft);
     });

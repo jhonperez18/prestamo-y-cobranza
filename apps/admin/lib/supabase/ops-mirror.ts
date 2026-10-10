@@ -390,6 +390,18 @@ function pruneAssignmentQueueForDeletedLoans() {
   if (kept.length !== queued.length) writeDemoJson(Q_ASSIGN, kept);
 }
 
+/** Visitas que cambiaron de nombre (P- nuevo de la nube): la clave vieja no sube más. */
+export function dropQueuedAssignments(keys: readonly string[]) {
+  if (typeof window === "undefined" || !keys.length) return;
+  const stale = new Set(keys);
+  for (const key of stale) sentAssignmentSig.delete(key);
+  const queued = readDemoJson<{ ref: string }[]>(Q_ASSIGN, []);
+  const kept = queued.filter((row) => !stale.has(row.ref));
+  if (kept.length === queued.length) return;
+  writeDemoJson(Q_ASSIGN, kept);
+  emitMirrorQueueChanged();
+}
+
 /** Reaperturas de hoy que este aparato conoce (el botón sigue para las otras hojas). */
 const SHEET_REOPENS_KEY = "nexo-demo-sheet-reopens";
 
