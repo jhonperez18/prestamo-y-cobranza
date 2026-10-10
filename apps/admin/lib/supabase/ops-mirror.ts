@@ -5,6 +5,7 @@
  */
 import { createMirrorServerClient } from "@/lib/supabase/admin";
 import type { ClientRow, CollectorRow, PaymentRow, RouteRow, UserRow } from "@/lib/mock-data";
+import { isLoanActive } from "@/lib/mock-data";
 import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
 import {
   applyDayCloseRecordsToAssignments,
@@ -13,9 +14,14 @@ import {
   type CollectorDayExpenseDraft,
 } from "@/lib/collector-day-close";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
-import { DAY_CLOSE_SKIP_REASON, LOAN_GIVEN_TODAY_REASON } from "@/lib/collector-dispatch-sync";
+import {
+  DAY_CLOSE_SKIP_REASON,
+  LOAN_GIVEN_TODAY_REASON,
+  LOAN_RENEWED_TODAY_REASON,
+} from "@/lib/collector-dispatch-sync";
 import { isDeletedRef, readDeletedIdSet } from "@/lib/deleted-ids";
 import { isLoanDeletedStatus } from "@/lib/supabase/catalog-mirror";
+import { loanRenewedInto } from "@/lib/loan-renewal-marks";
 import type { MiscPayment } from "@/lib/misc-payments";
 import {
   ensureManualTLaunchClose,
@@ -843,6 +849,46 @@ async function prestarGhostReason(
 }
 
 /**
+ * Visita sin cobro de un préstamo que la nube ya tiene terminado desde antes de ese día.
+ * Terminado = sin cobros ese día ni después; renovado = desde el día de la renovación.
+ * La armó un aparato con la ficha vieja: no existe. «Renovado hoy» sí entra.
+ */
+async function loanFinishedBeforeVisit(
+  client: MirrorDb,
+  loanRef: string,
+  loan: { status?: string | null; notes?: string | null },
+  row: Record<string, unknown>,
+): Promise<{ finished: boolean; error?: string }> {
+  if (isLoanActive({ status: String(loan.status || "") }) || isLoanDeletedStatus(loan)) {
+    return { finished: false };
+  }
+  if (String(row.skip_reason || "") === LOAN_RENEWED_TODAY_REASON) return { finished: false };
+  const dispatchDate = String(row.dispatch_date || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dispatchDate)) return { finished: false };
+  const { data, error } = await client
+    .from("payments")
+    .select("ref")
+    .eq("loan_ref", loanRef)
+    .gte("paid_date", dispatchDate)
+    .limit(1);
+  if (error) return { finished: false, error: error.message };
+  if ((data ?? []).length) return { finished: false };
+  const renewedInto = loanRenewedInto(loan);
+  if (!renewedInto) return { finished: true };
+  const { data: next, error: nextError } = await client
+    .from("loans")
+    .select("start_date")
+    .eq("ref", renewedInto)
+    .maybeSingle();
+  if (nextError) return { finished: false, error: nextError.message };
+  const renewedOn = loanDisbursementIsoDate({
+    date: next?.start_date || "",
+    start_date: next?.start_date || "",
+  });
+  return { finished: Boolean(renewedOn) && renewedOn < dispatchDate };
+}
+
+/**
  * Espejo de planilla (servidor). Invariantes (no romper nunca):
  * 1) day_closed_at en nube no lo borra una fila abierta de otro celular.
  * 2) omitido (N/P) no lo pisa un «pendiente» sin PG-.
@@ -859,13 +905,18 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
   if (loanRef && !row.payment_ref) {
     const { data: loan, error: loanError } = await client
       .from("loans")
-      .select("status")
+      .select("status, notes")
       .eq("ref", loanRef)
       .maybeSingle();
     if (loanError) return { ok: false as const, error: loanError.message };
     if (!loan) return { ok: true as const, skipped: true as const, reason: "loan_missing" };
     if (!row.day_closed_at && isLoanDeletedStatus(loan)) {
       return { ok: true as const, skipped: true as const, reason: "loan_deleted" };
+    }
+    const finished = await loanFinishedBeforeVisit(client, loanRef, loan, row);
+    if (finished.error) return { ok: false as const, error: finished.error };
+    if (finished.finished) {
+      return { ok: true as const, skipped: true as const, reason: "loan_finished" };
     }
   }
   const ghost = await prestarGhostReason(client, row);
