@@ -77,9 +77,6 @@ type Props = {
   onAdjustTCash?: (
     input: import("@/lib/commit-cash-adjustment").CashAdjustmentRequest,
   ) => Promise<boolean>;
-  onAdjustDigitalPool?: (
-    input: import("@/lib/save-cash-adjustment").DigitalPoolAdjustRequest,
-  ) => Promise<boolean>;
   onReopenSheet?: (input: import("@/lib/save-sheet-reopen").SheetReopenRequest) => Promise<boolean>;
   onPreviewKindChange?: (kind: PreviewKind) => void;
 };
@@ -113,7 +110,6 @@ export function CollectorMobilePreview({
   miscPayments = [],
   onSaveMiscPayment,
   onAdjustTCash,
-  onAdjustDigitalPool,
   onReopenSheet,
   onPreviewKindChange,
 }: Props) {
@@ -323,7 +319,6 @@ export function CollectorMobilePreview({
                   onAttachPaymentEvidence={onAttachPaymentEvidence}
                   onSaveMiscPayment={onSaveMiscPayment}
                   onAdjustTCash={onAdjustTCash}
-                  onAdjustDigitalPool={onAdjustDigitalPool}
                   onReopenSheet={onReopenSheet}
                 />
               ) : collector ? (

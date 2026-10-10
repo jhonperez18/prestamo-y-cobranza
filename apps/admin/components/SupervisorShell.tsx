@@ -88,11 +88,7 @@ import { commitRouteCashLoan, supervisorLoanOrigin } from "@/lib/commit-route-ca
 import { mirrorAutoDayCloseToCloud } from "@/lib/mirror-auto-day-close";
 import type { MiscPayment } from "@/lib/misc-payments";
 import type { CashAdjustmentRequest } from "@/lib/commit-cash-adjustment";
-import {
-  saveCashAdjustment,
-  saveDigitalPoolAdjustment,
-  type DigitalPoolAdjustRequest,
-} from "@/lib/save-cash-adjustment";
+import { saveCashAdjustment } from "@/lib/save-cash-adjustment";
 import { reopenSheetToday, type SheetReopenRequest } from "@/lib/save-sheet-reopen";
 
 type Props = {
@@ -565,20 +561,6 @@ export function SupervisorShell({ session, onLogout }: Props) {
     return true;
   }
 
-  async function adjustDigitalPoolFromMobile(input: DigitalPoolAdjustRequest) {
-    const saved = await saveDigitalPoolAdjustment({
-      ...input,
-      by: supervisor?.name || session.name || session.username || "supervisor",
-    });
-    if (!saved.ok) {
-      showToast(saved.error);
-      return false;
-    }
-    setDayCloses(saved.dayCloses);
-    showToast(saved.message);
-    return true;
-  }
-
   async function reopenSheetFromMobile(input: SheetReopenRequest) {
     const saved = await reopenSheetToday({
       ...input,
@@ -660,7 +642,6 @@ export function SupervisorShell({ session, onLogout }: Props) {
         onAttachPaymentEvidence={attachPaymentEvidence}
         onSaveMiscPayment={saveMiscPaymentFromMobile}
         onAdjustTCash={adjustTCashFromMobile}
-        onAdjustDigitalPool={adjustDigitalPoolFromMobile}
         onReopenSheet={reopenSheetFromMobile}
         onLogout={onLogout}
       />

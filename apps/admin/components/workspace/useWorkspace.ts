@@ -78,11 +78,7 @@ import {
 import { commitVoidPayment } from "@/lib/commit-void-payment";
 import { commitLatePayment, type LatePaymentDraft } from "@/lib/commit-late-payment";
 import { routeCollectorCashTarget } from "@/lib/route-collector-cash";
-import {
-  saveCashAdjustment,
-  saveDigitalPoolAdjustment,
-  type DigitalPoolAdjustRequest,
-} from "@/lib/save-cash-adjustment";
+import { saveCashAdjustment } from "@/lib/save-cash-adjustment";
 import type { CashAdjustmentRequest } from "@/lib/commit-cash-adjustment";
 import { reopenSheetToday, type SheetReopenRequest } from "@/lib/save-sheet-reopen";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
@@ -2590,20 +2586,6 @@ export function useWorkspace({
     return true;
   }
 
-  async function adjustDigitalPoolFromMobile(input: DigitalPoolAdjustRequest) {
-    const saved = await saveDigitalPoolAdjustment({
-      ...input,
-      by: adminName || session.name || session.username || "admin",
-    });
-    if (!saved.ok) {
-      onToast(saved.error);
-      return false;
-    }
-    setDayCloses(saved.dayCloses);
-    onToast(saved.message);
-    return true;
-  }
-
   async function reopenSheetFromMobile(input: SheetReopenRequest) {
     const saved = await reopenSheetToday({
       ...input,
@@ -2836,7 +2818,6 @@ export function useWorkspace({
     panelPayTarget,
     registerLatePayment,
     adjustTCashFromMobile,
-    adjustDigitalPoolFromMobile,
     reopenSheetFromMobile,
     latePayOpen,
     setLatePayOpen,

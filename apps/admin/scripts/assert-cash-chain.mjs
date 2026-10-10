@@ -2048,7 +2048,7 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
   );
   expect(
     "Supervisor Banco no toca el pie de INICIO",
-    bancoSrc.includes("inicioTotalConT") && bancoSrc.includes("bancoPanelAcumulado"),
+    bancoSrc.includes("inicioTotalConT") && bancoSrc.includes("bancoSaldo"),
     true,
   );
   const ledgerSrc = readFileSync(new URL("../lib/day-cash-ledger.ts", import.meta.url), "utf8");

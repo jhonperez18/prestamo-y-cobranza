@@ -322,7 +322,6 @@ export function Workspace(props: WorkspaceProps) {
     panelPayTarget,
     registerLatePayment,
     adjustTCashFromMobile,
-    adjustDigitalPoolFromMobile,
     reopenSheetFromMobile,
     latePayOpen,
     setLatePayOpen,
@@ -1758,7 +1757,6 @@ export function Workspace(props: WorkspaceProps) {
             onToast(`Gasto ${payment.ref} guardado en registros.`);
           }}
           onAdjustTCash={adjustTCashFromMobile}
-          onAdjustDigitalPool={adjustDigitalPoolFromMobile}
           onReopenSheet={reopenSheetFromMobile}
           onPreviewKindChange={onPreviewKindChange}
         />
