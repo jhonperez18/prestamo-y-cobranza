@@ -2128,6 +2128,16 @@
     .collector-mobile-home-cuadre-grid .is-cobrado-means button.is-mean.is-pay-nequi.on {
       box-shadow: 0 0 0 2px #7c3aed;
     }
+    .collector-mobile-home-cuadre-grid .is-cobrado-means .is-mean.is-pay-np {
+      border-color: #fca5a5;
+      background: #fef2f2;
+    }
+    .collector-mobile-home-cuadre-grid .is-cobrado-means .is-mean.is-pay-np span {
+      color: #b91c1c;
+    }
+    .collector-mobile-home-cuadre-grid .is-cobrado-means button.is-mean.is-pay-np.on {
+      box-shadow: 0 0 0 2px #dc2626;
+    }
     .collector-cierre-drop ul.is-cols-3 {
       display: block;
       width: 100%;

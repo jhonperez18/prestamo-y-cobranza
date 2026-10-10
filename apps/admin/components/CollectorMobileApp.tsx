@@ -232,6 +232,21 @@ type Props = {
 };
 
 type ListFilter = "pending" | "done";
+type HomeCierreListKind = "prestamos" | "gastos" | "efectivo" | "digital" | "np";
+const HOME_CIERRE_LIST_TITLE: Record<HomeCierreListKind, (nequi: boolean) => string> = {
+  prestamos: () => "Préstamos",
+  gastos: () => "Gastos",
+  efectivo: () => "Cobros en efectivo",
+  digital: (nequi) => (nequi ? "Cobros en Nequi" : "Cobros en Banco"),
+  np: () => "N/P",
+};
+const HOME_CIERRE_LIST_EMPTY: Record<HomeCierreListKind, (nequi: boolean) => string> = {
+  prestamos: () => "Sin préstamos ese día.",
+  gastos: () => "Sin gastos ese día.",
+  efectivo: () => "Sin cobros en efectivo ese día.",
+  digital: (nequi) => (nequi ? "Sin cobros en Nequi ese día." : "Sin cobros en Banco ese día."),
+  np: () => "Sin N/P ese día.",
+};
 
 function payerName(pay: PaymentRow, loans: LoanRow[], clients: ClientRow[]) {
   const direct = pay.client?.trim();
@@ -384,6 +399,11 @@ export function CollectorMobileApp({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [planillaSearchOpen, setPlanillaSearchOpen] = useState(false);
+  /** Lista desplegada bajo el Cierre (un botón a la vez), atada a ese día y esa hoja. */
+  const [homeCierreList, setHomeCierreList] = useState<{
+    key: string;
+    kind: HomeCierreListKind;
+  } | null>(null);
   const [planillaQuery, setPlanillaQuery] = useState("");
   /** Planilla activa cuando el cobrador tiene más de una ruta (ej. 1 y 1.1). */
   const [planillaRouteFilter, setPlanillaRouteFilter] = useState<string | null>(null);
@@ -1495,6 +1515,34 @@ export function CollectorMobileApp({
       }),
     [activeDate, clients, routeDayPays, loans, routeDispatched, savedExpenses],
   );
+  const homeCierreKey = `${activeDate}|${activePlanillaRoute ?? ""}`;
+  const homeCierreKind =
+    homeCierreList && homeCierreList.key === homeCierreKey ? homeCierreList.kind : null;
+  const toggleHomeCierreList = (kind: HomeCierreListKind) =>
+    setHomeCierreList((prev) =>
+      prev?.key === homeCierreKey && prev.kind === kind ? null : { key: homeCierreKey, kind },
+    );
+  const homeNpRows = useMemo(
+    () => closedPlanilla.filter((row) => row.method === "np"),
+    [closedPlanilla],
+  );
+  /** Efectivo / Banco (Nequi en A) / N/P: la lista sale con las columnas de la planilla del día. */
+  const homeCierreRows = useMemo(() => {
+    if (homeCierreKind === "np") return homeNpRows;
+    if (homeCierreKind !== "efectivo" && homeCierreKind !== "digital") return null;
+    const wantDigital = homeCierreKind === "digital";
+    const pays = routeDayPays.filter((pay) => {
+      const method = normalizePaymentMethod(pay.method);
+      return (method === "nequi" || method === "banco") === wantDigital;
+    });
+    return buildCollectorHistoryPlanillaRows({
+      dateIso: activeDate,
+      dispatched: [],
+      payments: pays,
+      loans,
+      clients,
+    });
+  }, [homeCierreKind, homeNpRows, routeDayPays, activeDate, loans, clients]);
 
   const pendingRouteStarts = routeBlockStarts(visibleItems, (item) =>
     assignmentRouteName(item, clients),
@@ -2296,11 +2344,53 @@ export function CollectorMobileApp({
               Inicio
             </button>
             <div className="collector-mobile-home-cuadre-title-row">
-              <h2>Tu último cierre</h2>
+              <h2>Cierre</h2>
               {queue.closed ? (
                 <p className="collector-mobile-home-cuadre-progress">{queue.dateLabel}</p>
               ) : null}
+              {closedPlanilla.length > 0 ? (
+                <button
+                  type="button"
+                  className={
+                    planillaSearchOpen
+                      ? "collector-history-planilla-search on"
+                      : "collector-history-planilla-search"
+                  }
+                  aria-label="Buscar cliente"
+                  aria-expanded={planillaSearchOpen}
+                  onClick={() => setPlanillaSearchOpen((open) => !open)}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle
+                      cx="10.5"
+                      cy="10.5"
+                      r="6.25"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    />
+                    <path
+                      d="M15.2 15.2 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              ) : null}
             </div>
+            {planillaSearchOpen ? (
+              <input
+                className="collector-history-planilla-query"
+                type="search"
+                value={planillaQuery}
+                placeholder="Buscar cliente"
+                aria-label="Buscar cliente en la planilla"
+                autoFocus
+                onChange={(event) => setPlanillaQuery(event.target.value)}
+              />
+            ) : null}
           </div>
 
           <div className="collector-mobile-home-cuadre-grid is-inicio-triple">
@@ -2310,37 +2400,60 @@ export function CollectorMobileApp({
             >
               <span>{headerInicialProvisional ? "Lo que inició (momentáneo)" : "Lo que inició"}</span>
               <b>{headerInicialReady ? money(headerInicial) : "—"}</b>
-              </div>
-            <div className="is-prestamos">
+            </div>
+            <button
+              type="button"
+              className={`is-prestamos is-tap${homeCierreKind === "prestamos" ? " on" : ""}`}
+              aria-expanded={homeCierreKind === "prestamos"}
+              onClick={() => toggleHomeCierreList("prestamos")}
+            >
               <span>Lo que prestó</span>
               <b>{money(topPrestamos)}</b>
-            </div>
-              <div className="is-gastos">
-                <span>Lo que gastó</span>
+            </button>
+            <button
+              type="button"
+              className={`is-gastos is-tap${homeCierreKind === "gastos" ? " on" : ""}`}
+              aria-expanded={homeCierreKind === "gastos"}
+              onClick={() => toggleHomeCierreList("gastos")}
+            >
+              <span>Lo que gastó</span>
               <b>{money(topGastos)}</b>
-          </div>
+            </button>
 
             <div className="is-cobrado">
               <div className="is-cobrado-head">
                 <span>Lo que cobró</span>
               </div>
               <div className="is-cobrado-means" aria-label="Desglose de lo cobrado">
-                <div className="is-mean is-pay-efectivo">
+                <button
+                  type="button"
+                  className={`is-mean is-pay-efectivo is-tap-mean${homeCierreKind === "efectivo" ? " on" : ""}`}
+                  aria-expanded={homeCierreKind === "efectivo"}
+                  onClick={() => toggleHomeCierreList("efectivo")}
+                >
                   <span>Efectivo</span>
                   <b>{money(planillaRecaudo.efectivo)}</b>
-                </div>
-                {planillaIsA ? (
-                  <div className="is-mean is-pay-nequi">
-                  <span>Nequi</span>
-                    <b>{money(planillaNequiShown)}</b>
-                </div>
-                ) : (
-                  <div className="is-mean is-pay-banco">
-                    <span>Banco</span>
-                    <b>{money(planillaRecaudo.digital)}</b>
-                  </div>
-            )}
-          </div>
+                </button>
+                <button
+                  type="button"
+                  className={`is-mean ${planillaIsA ? "is-pay-nequi" : "is-pay-banco"} is-tap-mean${homeCierreKind === "digital" ? " on" : ""}`}
+                  aria-expanded={homeCierreKind === "digital"}
+                  onClick={() => toggleHomeCierreList("digital")}
+                >
+                  <span>{planillaIsA ? "Nequi" : "Banco"}</span>
+                  <b>{money(planillaIsA ? planillaNequiShown : planillaRecaudo.digital)}</b>
+                </button>
+                <button
+                  type="button"
+                  className={`is-mean is-pay-np is-tap-mean${homeCierreKind === "np" ? " on" : ""}`}
+                  aria-label="N/P del día"
+                  aria-expanded={homeCierreKind === "np"}
+                  onClick={() => toggleHomeCierreList("np")}
+                >
+                  <span>N/P</span>
+                  <b>{homeNpRows.length}</b>
+                </button>
+              </div>
             </div>
 
             <div className="is-saldo">
@@ -2348,22 +2461,58 @@ export function CollectorMobileApp({
               <b>{money(cajaShown)}</b>
             </div>
           </div>
-          <CollectorDayCloseExtras
-            dateLabel={
-              activePlanillaRoute
-                ? `${queue.dateLabel} · ${activePlanillaRoute}`
-                : queue.dateLabel
-            }
-            planillaRows={closedPlanilla}
-            prestamos={dayExpenseSplit.prestamos}
-            prestamosTotal={topPrestamos}
-            otrosGastos={planillaOwnsMovements ? dayExpenseSplit.otros : []}
-            otrosTotal={topGastos}
-            searchOpen={planillaSearchOpen}
-            searchQuery={planillaQuery}
-            onToggleSearch={() => setPlanillaSearchOpen((open) => !open)}
-            onSearchChange={setPlanillaQuery}
-          />
+          {homeCierreKind === "prestamos" ? (
+            dayExpenseSplit.prestamos.length > 0 ? (
+              <CollectorDayCloseExtras
+                dateLabel={queue.dateLabel}
+                planillaRows={[]}
+                prestamos={dayExpenseSplit.prestamos}
+                prestamosTotal={topPrestamos}
+              />
+            ) : (
+              <p className="collector-cierre-drop-empty">Sin préstamos ese día.</p>
+            )
+          ) : homeCierreKind === "gastos" ? (
+            planillaOwnsMovements && dayExpenseSplit.otros.length > 0 ? (
+              <CollectorDayCloseExtras
+                dateLabel={queue.dateLabel}
+                planillaRows={[]}
+                prestamos={[]}
+                prestamosTotal={0}
+                otrosGastos={dayExpenseSplit.otros}
+                otrosTotal={topGastos}
+              />
+            ) : (
+              <p className="collector-cierre-drop-empty">Sin gastos ese día.</p>
+            )
+          ) : homeCierreRows ? (
+            homeCierreRows.length > 0 ? (
+              <CollectorDayCloseExtras
+                dateLabel={queue.dateLabel}
+                planillaRows={homeCierreRows}
+                planillaTitle={HOME_CIERRE_LIST_TITLE[homeCierreKind ?? "np"](planillaIsA)}
+                cierreSheet
+                prestamos={[]}
+                prestamosTotal={0}
+                searchOpen={planillaSearchOpen}
+                searchQuery={planillaQuery}
+              />
+            ) : (
+              <p className="collector-cierre-drop-empty">
+                {HOME_CIERRE_LIST_EMPTY[homeCierreKind ?? "np"](planillaIsA)}
+              </p>
+            )
+          ) : planillaSearchOpen && planillaQuery.trim() ? (
+            <CollectorDayCloseExtras
+              dateLabel={queue.dateLabel}
+              planillaRows={closedPlanilla}
+              planillaTitle="Planilla"
+              prestamos={[]}
+              prestamosTotal={0}
+              searchOpen
+              searchQuery={planillaQuery}
+            />
+          ) : null}
           <p className="collector-mobile-home-cuadre-hint is-ok">
             Este saldo es el que llevas hasta el próximo cobro. Historial para ver otros días.
           </p>
