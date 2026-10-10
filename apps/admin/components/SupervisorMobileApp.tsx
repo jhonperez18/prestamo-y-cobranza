@@ -2145,14 +2145,34 @@ export function SupervisorMobileApp({
     today,
   ]);
 
-  /** INICIO pie: caja viva de T + caja propia de N + total del botón BANCO. */
+  /** Gastos pagados desde Banco después del último cuadre (misma ventana que el total BANCO). */
+  const bancoGastadoDesdeCuadre = useMemo(
+    () =>
+      bancoGastosTotal(
+        bancoPoolGastos({
+          miscPayments,
+          accounts: bankAccounts,
+          dayCloses,
+          fromIso: "",
+          toIso: today,
+        }),
+      ),
+    [miscPayments, bankAccounts, dayCloses, today],
+  );
+
+  /** INICIO pie: caja viva de T + caja propia de N + total del botón BANCO − gastos de Banco. */
   const inicioTotalConT = useMemo(() => {
     const routeT = liquidaciones.find((row) =>
       isPlanillaCashChainSecondary(row.routeName),
     );
     const routeN = liquidaciones.find((row) => sameRoute(row.routeName, "N"));
-    return (routeT?.enCaja ?? 0) + (routeN?.enCaja ?? 0) + bancoPanelAcumulado;
-  }, [liquidaciones, bancoPanelAcumulado]);
+    return (
+      (routeT?.enCaja ?? 0) +
+      (routeN?.enCaja ?? 0) +
+      bancoPanelAcumulado -
+      bancoGastadoDesdeCuadre
+    );
+  }, [liquidaciones, bancoPanelAcumulado, bancoGastadoDesdeCuadre]);
 
   /**
    * Registro Banco por día: hoy abierto; los días anteriores en historial.
@@ -3395,9 +3415,11 @@ export function SupervisorMobileApp({
       setNuevoMsg("Indique el importe del gasto.");
       return;
     }
-    const accountRef = gastoAccountRef || activeBankAccounts[0]?.ref || "";
+    const accountRef = activeBankAccounts.some((row) => row.ref === gastoAccountRef)
+      ? gastoAccountRef
+      : "";
     if (!accountRef) {
-      setNuevoMsg("No hay cuenta bancaria activa.");
+      setNuevoMsg("Elija la cuenta de donde sale el gasto.");
       return;
     }
     const payment = createMiscPayment({
@@ -5351,7 +5373,6 @@ export function SupervisorMobileApp({
                   disabled={!onSaveMiscPayment || activeBankAccounts.length === 0}
                   onClick={() => {
                     resetNuevoFlow();
-                    setGastoAccountRef(activeBankAccounts[0]?.ref ?? "");
                     setNuevoMode("gasto");
                   }}
                 >
@@ -5424,10 +5445,13 @@ export function SupervisorMobileApp({
                   <label className="quick-loan-field">
                     <span>Cuenta</span>
                     <select
-                      value={gastoAccountRef || activeBankAccounts[0]?.ref || ""}
+                      value={gastoAccountRef}
                       onChange={(event) => setGastoAccountRef(event.target.value)}
                       required
                     >
+                      <option value="" disabled>
+                        Elegir cuenta…
+                      </option>
                       {activeBankAccounts.map((account) => (
                         <option key={account.ref} value={account.ref}>
                           {account.name} · {account.bankName}
@@ -5451,7 +5475,7 @@ export function SupervisorMobileApp({
                     </select>
                   </label>
                     <div className="quick-loan-actions">
-                      <button type="submit" className="btn">
+                      <button type="submit" className="btn" disabled={!gastoAccountRef}>
                       Guardar gasto
                       </button>
                     </div>

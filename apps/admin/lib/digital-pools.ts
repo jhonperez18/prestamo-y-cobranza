@@ -771,8 +771,9 @@ export type BancoGasto = {
 
 /**
  * Gastos pagados desde la cuenta Banco (pagos varios `PV-` con la cuenta de uso `banco`),
- * en la misma ventana que los saldos M / T / N. Manda la cuenta, no la forma de pago.
- * Más nuevo primero.
+ * después del último cuadre del pool Banco. Con `fromIso` = misma ventana que los saldos
+ * M / T / N; vacío = todo desde el cuadre (como `digitalPoolBalances`). Manda la cuenta,
+ * no la forma de pago. Más nuevo primero.
  */
 export function bancoPoolGastos(input: {
   miscPayments: readonly MiscPayment[];
@@ -784,7 +785,7 @@ export function bancoPoolGastos(input: {
   const accountRef = accountForRole(input.accounts, "banco")?.ref;
   const start = bancoRouteWindowStart(input.dayCloses, input.fromIso);
   const to = isoOf(input.toIso);
-  if (!accountRef || !start || !to) return [];
+  if (!accountRef || !to) return [];
   return input.miscPayments
     .filter((row) => row.bankAccountRef === accountRef)
     .map((row) => ({
@@ -793,7 +794,7 @@ export function bancoPoolGastos(input: {
       label: row.label,
       amount: pesos(Number(row.amount) || 0),
     }))
-    .filter((row) => row.amount > 0 && row.date >= start && row.date <= to)
+    .filter((row) => row.amount > 0 && (!start || row.date >= start) && row.date <= to)
     .sort((a, b) => b.date.localeCompare(a.date) || b.ref.localeCompare(a.ref, "es", { numeric: true }));
 }
 
