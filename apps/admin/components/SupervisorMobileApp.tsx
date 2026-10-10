@@ -4956,7 +4956,7 @@ export function SupervisorMobileApp({
               clients={clients}
               payments={payments}
               efectivo={informeEfectivo}
-              banco={bancoPanelAcumulado}
+              banco={bancoSaldo}
               corteLabel={todayDisplay}
               history={informeHistory}
             />
