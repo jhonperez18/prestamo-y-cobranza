@@ -2108,12 +2108,12 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     true,
   );
   expect(
-    "Banco: rutas M T N − gastos de Banco = saldo",
+    "Banco: rutas M T N + saldo = total BANCO − gastos de Banco (INICIO lo suma tal cual)",
     bancoSrc.includes("BANCO_ROUTE_PINS") &&
       bancoSrc.includes("bancoRouteCuadre") &&
-      bancoSrc.includes("bancoAcumuladoRutas") &&
       bancoSrc.includes("bancoPoolGastos") &&
-      bancoSrc.includes("Saldo (M + T + N − Gastos)") &&
+      bancoSrc.includes("const bancoSaldo = bancoPanelAcumulado - bancoGastado") &&
+      bancoSrc.includes("(routeN?.enCaja ?? 0) + bancoSaldo") &&
       bancoSrc.includes("Ruta M"),
     true,
   );

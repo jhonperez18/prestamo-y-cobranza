@@ -93,7 +93,6 @@ import {
   BANCO_ROUTE_PINS,
   DIGITAL_POOL_LABEL,
   NEQUI_ROUTE_PIN,
-  bancoAcumuladoRutas,
   bancoGastosTotal,
   bancoPoolGastos,
   bancoRouteCuadre,
@@ -2146,33 +2145,29 @@ export function SupervisorMobileApp({
   ]);
 
   /** Gastos pagados desde Banco después del último cuadre (misma ventana que el total BANCO). */
-  const bancoGastadoDesdeCuadre = useMemo(
+  const bancoGastos = useMemo(
     () =>
-      bancoGastosTotal(
-        bancoPoolGastos({
-          miscPayments,
-          accounts: bankAccounts,
-          dayCloses,
-          fromIso: "",
-          toIso: today,
-        }),
-      ),
+      bancoPoolGastos({
+        miscPayments,
+        accounts: bankAccounts,
+        dayCloses,
+        fromIso: "",
+        toIso: today,
+      }),
     [miscPayments, bankAccounts, dayCloses, today],
   );
+  const bancoGastado = useMemo(() => bancoGastosTotal(bancoGastos), [bancoGastos]);
+  /** Saldo de Banco: real del último cuadre + cobros − préstamos de M / T / N − gastos de Banco. */
+  const bancoSaldo = bancoPanelAcumulado - bancoGastado;
 
-  /** INICIO pie: caja viva de T + caja propia de N + total del botón BANCO − gastos de Banco. */
+  /** INICIO pie: caja viva de T (ya trae M) + caja propia de N + Saldo de Banco. */
   const inicioTotalConT = useMemo(() => {
     const routeT = liquidaciones.find((row) =>
       isPlanillaCashChainSecondary(row.routeName),
     );
     const routeN = liquidaciones.find((row) => sameRoute(row.routeName, "N"));
-    return (
-      (routeT?.enCaja ?? 0) +
-      (routeN?.enCaja ?? 0) +
-      bancoPanelAcumulado -
-      bancoGastadoDesdeCuadre
-    );
-  }, [liquidaciones, bancoPanelAcumulado, bancoGastadoDesdeCuadre]);
+    return (routeT?.enCaja ?? 0) + (routeN?.enCaja ?? 0) + bancoSaldo;
+  }, [liquidaciones, bancoSaldo]);
 
   /**
    * Registro Banco por día: hoy abierto; los días anteriores en historial.
@@ -2200,23 +2195,6 @@ export function SupervisorMobileApp({
         (row) => bancoRegistroRoute && sameRoute(row.route, bancoRegistroRoute),
       ) ?? null,
     [bancoRouteCuadres, bancoRegistroRoute],
-  );
-  const bancoGastos = useMemo(
-    () =>
-      bancoPoolGastos({
-        miscPayments,
-        accounts: bankAccounts,
-        dayCloses,
-        fromIso: bancoHistoryFrom,
-        toIso: today,
-      }),
-    [miscPayments, bankAccounts, dayCloses, bancoHistoryFrom, today],
-  );
-  const bancoGastado = useMemo(() => bancoGastosTotal(bancoGastos), [bancoGastos]);
-  /** Lo que debe haber en Banco: M + T + N − gastos pagados desde Banco. */
-  const bancoSumaSaldos = useMemo(
-    () => bancoAcumuladoRutas(bancoRouteCuadres) - bancoGastado,
-    [bancoRouteCuadres, bancoGastado],
   );
   const bancoRutaHistoryDays = useMemo(
     () =>
@@ -5120,13 +5098,13 @@ export function SupervisorMobileApp({
                 </div>
               </div>
             ) : (
-              <p className="ficha-empty">Sin gastos pagados desde Banco este mes.</p>
+              <p className="ficha-empty">Sin gastos pagados desde Banco desde el último cuadre.</p>
             )
           ) : !bancoRegistroRoute ? (
             <div
               className="supervisor-banco-home-grid"
               role="group"
-              aria-label="Ruta M, Ruta T, Ruta N, Gastos y Saldo (M + T + N − Gastos)"
+              aria-label="Ruta M, Ruta T, Ruta N, Gastos y Saldo de Banco"
             >
               {bancoRouteCuadres.map((row, index) => (
                 <button
@@ -5164,11 +5142,11 @@ export function SupervisorMobileApp({
               <button
                 type="button"
                 className="supervisor-banco-home-btn is-acumulado"
-                title="Saldo (M + T + N − Gastos)"
-                aria-label="Saldo (M + T + N − Gastos)"
+                title="Saldo de Banco (último cuadre + M + T + N − Gastos)"
+                aria-label={`Saldo de Banco ${money(bancoSaldo, { symbol: false })}`}
               >
                 <span>Saldo</span>
-                <span className="is-amount">{money(bancoSumaSaldos, { symbol: false })}</span>
+                <span className="is-amount">{money(bancoSaldo, { symbol: false })}</span>
               </button>
             </div>
           ) : bancoRutaCuadreHoy ? (
