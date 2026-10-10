@@ -803,6 +803,59 @@ export function digitalPoolGastosTotal(gastos: readonly DigitalPoolGasto[]): num
 }
 
 /**
+ * Saldo del pool al cierre de `toIso`: neto de sus rutas (Banco: M + T + N; Nequi: A) desde
+ * `fromIso` y después del último cuadre, menos los gastos pagados desde su cuenta.
+ * Misma cifra que el botón «Saldo» de Banco / Nequi del supervisor.
+ */
+export function digitalPoolSaldo(input: {
+  pool: DigitalPool;
+  payments: PaymentRow[];
+  loans: LoanRow[];
+  clients: ClientRow[];
+  dayCloses: CollectorDayCloseRecord[];
+  miscPayments: readonly MiscPayment[];
+  accounts: BankAccount[];
+  fromIso: string;
+  toIso: string;
+  movements?: BankMovement[];
+}): { rutas: number; gastos: number; saldo: number } {
+  const start = poolRouteWindowStart(input.dayCloses, input.pool, input.fromIso);
+  const to = isoOf(input.toIso);
+  const routes: readonly string[] = input.pool === "nequi" ? [NEQUI_ROUTE_PIN] : BANCO_ROUTE_PINS;
+  const rutas =
+    !start || !to || start > to
+      ? 0
+      : pesos(
+          routes.reduce(
+            (sum, routeName) =>
+              sum +
+              digitalPoolRegisterDays({
+                payments: input.payments,
+                loans: input.loans,
+                clients: input.clients,
+                pool: input.pool,
+                fromIso: start,
+                toIso: to,
+                routeName,
+                movements: input.movements,
+              }).reduce((daySum, day) => daySum + day.total, 0),
+            0,
+          ),
+        );
+  const gastos = digitalPoolGastosTotal(
+    digitalPoolGastos({
+      pool: input.pool,
+      miscPayments: input.miscPayments,
+      accounts: input.accounts,
+      dayCloses: input.dayCloses,
+      fromIso: input.fromIso,
+      toIso: input.toIso,
+    }),
+  );
+  return { rutas, gastos, saldo: pesos(rutas - gastos) };
+}
+
+/**
  * Historial Banco de una ruta: cada día con su inicial (= final de ayer) y su final.
  * Solo esa ruta. No mezcla M/T/N ni toca caja.
  */

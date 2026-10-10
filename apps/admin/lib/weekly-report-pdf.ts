@@ -316,6 +316,7 @@ function drawSheet(doc: jsPDF, report: WeeklyReport, startY: number) {
       ["Inicio de semana", num(report.pool.opening)],
       ["Entró (cobros)", num(report.pool.entro)],
       ["Salió (préstamos)", num(report.pool.salio)],
+      ...(report.pool.gastos !== 0 ? [["Salió (gastos)", num(report.pool.gastos)]] : []),
       ...(report.pool.ajustes !== 0 ? [["Ajustes / otros", num(report.pool.ajustes)]] : []),
     ],
     foot: [["Acumulado al corte", num(report.pool.closing)]],

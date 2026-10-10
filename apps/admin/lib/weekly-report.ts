@@ -6,7 +6,7 @@
  *   Caja A/N  = `independentRouteDay` / `independentRouteMovement`.
  *   Cobros    = `routeCollectedByMethod` (ruta del cliente).
  *   Préstamos = renglones del libro (efectivo) + `dayDigitalLoanRows` (Banco / Nequi).
- *   Banco/Nequi = `digitalPoolBalances` con lo conocido al corte.
+ *   Banco/Nequi = `digitalPoolSaldo` (rutas del mes − gastos de su cuenta), el Saldo del supervisor.
  *   Movimiento por día = `informeRouteHistory` / `informeOwnRouteHistory` (Informe del supervisor).
  */
 import {
@@ -21,7 +21,8 @@ import { normalizeHistoryDate, type RouteCashAdjustment, type RouteExpenseLine }
 import type { DayLoanDisbursementRow } from "@/lib/collector-history-planilla";
 import { buildDayCashLedger, routeCollectedByMethod, type DayCashSources } from "@/lib/day-cash-ledger";
 import { dayDigitalLoanRows } from "@/lib/day-digital-loans";
-import { digitalPoolBalances, type DigitalPool } from "@/lib/digital-pools";
+import type { BankAccount } from "@/lib/bank";
+import { digitalPoolSaldo, type DigitalPool } from "@/lib/digital-pools";
 import { pesos } from "@/lib/finance";
 import { independentRouteDay, independentRouteMovement } from "@/lib/independent-route-cash";
 import {
@@ -35,6 +36,7 @@ import { livePayments } from "@/lib/live-payments";
 import { computeLoanFinancials } from "@/lib/loan-balance";
 import { isoToDisplay, syncLoan } from "@/lib/loan-preview";
 import { isLoanVoided, money, type LoanRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
+import type { MiscPayment } from "@/lib/misc-payments";
 import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import { paymentRecaudoIso } from "@/lib/payment-detail";
 import { findFullDayCieClose } from "@/lib/planilla-cash-chain";
@@ -108,6 +110,8 @@ export type WeeklyPool = {
   opening: number;
   entro: number;
   salio: number;
+  /** Gastos pagados desde la cuenta del pool en la semana. */
+  gastos: number;
   ajustes: number;
   closing: number;
 };
@@ -134,7 +138,11 @@ export type WeeklyReport = {
   movimiento: WeeklyMovement[];
 };
 
-export type WeeklyReportSources = InformeHistorySources & { routes: RouteRow[] };
+export type WeeklyReportSources = InformeHistorySources & {
+  routes: RouteRow[];
+  miscPayments: MiscPayment[];
+  bankAccounts: BankAccount[];
+};
 
 const MOVEMENT_LABELS: Record<InformeHistoryKind, string> = {
   cobrado: "Cobrado",
@@ -364,21 +372,19 @@ function addMove(acc: Acc, routes: string[], route: string, move: RouteMove, top
   addCashLoans(acc, route, move.loanRows, topUps);
 }
 
-function poolAt(src: WeeklyReportSources, pool: DigitalPool, date: string) {
-  return digitalPoolBalances({
-    payments: src.payments.filter((row) => {
-      const iso = paymentRecaudoIso(row);
-      return Boolean(iso) && iso <= date;
-    }),
-    loans: src.loans.filter((loan) => {
-      const iso = loanDisbursementIsoDate(loan);
-      return Boolean(iso) && iso <= date;
-    }),
+/** Saldo del pool al cierre de `date`, con la ventana del mes de `monthOf` (Banco / Nequi arrancan en 0 cada mes). */
+function poolAt(src: WeeklyReportSources, pool: DigitalPool, monthOf: string, date: string) {
+  return digitalPoolSaldo({
+    pool,
+    payments: src.payments,
+    loans: src.loans,
     clients: src.clients,
-    collectors: src.collectors,
-    collectorRefs: src.collectors.map((row) => row.ref),
     dayCloses: src.dayCloses.filter((row) => isoOf(row.date) <= date),
-  })[pool];
+    miscPayments: src.miscPayments,
+    accounts: src.bankAccounts,
+    fromIso: `${monthOf.slice(0, 7)}-01`,
+    toIso: date,
+  });
 }
 
 function adjustmentLine(label: string, date: string, adj: RouteCashAdjustment | { calculated: number; real: number; by: string; reason: string }) {
@@ -531,10 +537,13 @@ export function buildWeeklyReport(
     }))
     .sort((a, b) => b.total - a.total);
 
-  const poolOpening = poolAt(src, pool, addCalendarDaysIso(range.start, -1));
-  const poolClosing = poolAt(src, pool, range.end);
+  const poolBefore = poolAt(src, pool, range.start, addCalendarDaysIso(range.start, -1));
+  const poolAfter = poolAt(src, pool, range.start, range.end);
+  const poolOpening = poolBefore.saldo;
+  const poolClosing = poolAfter.saldo;
   const entro = pesos(cobros.reduce((sum, row) => sum + row.digital, 0));
   const salio = pesos(prestamos.reduce((sum, row) => sum + row.digital, 0));
+  const poolGastos = pesos(poolAfter.gastos - poolBefore.gastos);
   const poolLabel = pool === "nequi" ? "Nequi" : "Banco";
 
   const scopeRoutes = new Set(routes.map((route) => route.toUpperCase()));
@@ -612,7 +621,8 @@ export function buildWeeklyReport(
       opening: poolOpening,
       entro,
       salio,
-      ajustes: pesos(poolClosing - (poolOpening + entro - salio)),
+      gastos: poolGastos,
+      ajustes: pesos(poolClosing - (poolOpening + entro - salio - poolGastos)),
       closing: poolClosing,
     },
     novedades,

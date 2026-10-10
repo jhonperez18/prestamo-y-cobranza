@@ -4967,7 +4967,7 @@ export function SupervisorMobileApp({
               clients={clients}
               payments={payments}
               efectivo={informeAEfectivo}
-              nequi={nequiPanelAcumulado}
+              nequi={nequiRutaSaldo}
               corteLabel={todayDisplay}
               history={informeAHistory}
             />

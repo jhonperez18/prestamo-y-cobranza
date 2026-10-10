@@ -1679,6 +1679,8 @@ export function Workspace(props: WorkspaceProps) {
             dayExpenseDrafts={dayExpenseDrafts}
             planillaCashCloses={planillaCashCloses}
             monthCloses={monthCloses}
+            miscPayments={miscPayments}
+            bankAccounts={bankAccounts}
           />
         );
       }

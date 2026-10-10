@@ -276,6 +276,12 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
                 <td>Salió (préstamos)</td>
                 <td className="is-num">{num(report.pool.salio)}</td>
               </tr>
+              {report.pool.gastos !== 0 ? (
+                <tr>
+                  <td>Salió (gastos)</td>
+                  <td className="is-num">{num(report.pool.gastos)}</td>
+                </tr>
+              ) : null}
               {report.pool.ajustes !== 0 ? (
                 <tr>
                   <td>Ajustes / otros</td>
@@ -384,6 +390,8 @@ export function WeeklyReportView({
   dayExpenseDrafts,
   planillaCashCloses,
   monthCloses,
+  miscPayments,
+  bankAccounts,
 }: Props) {
   const today = businessTodayIso();
   const cortes = useMemo(() => recentWeeklyCortes(today), [today]);
@@ -404,6 +412,8 @@ export function WeeklyReportView({
           dayExpenseDrafts,
           planillaCashCloses,
           monthCloses,
+          miscPayments,
+          bankAccounts,
         },
         scope,
         range,
@@ -420,6 +430,8 @@ export function WeeklyReportView({
       dayExpenseDrafts,
       planillaCashCloses,
       monthCloses,
+      miscPayments,
+      bankAccounts,
       scope,
       range,
       today,

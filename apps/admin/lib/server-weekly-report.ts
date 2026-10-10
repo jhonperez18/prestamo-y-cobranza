@@ -8,8 +8,11 @@
 import { businessTodayIso } from "@/lib/business-timezone";
 import { ADMIN_ROLE_REF } from "@/lib/mock-data";
 import { loadOperationalStateFromCloud } from "@/lib/server-day-rollover";
+import type { MiscPayment } from "@/lib/misc-payments";
 import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { fetchBankAccountsFromSupabase } from "@/lib/supabase/bank-accounts-mirror";
 import { CATALOG_FILE_UPLOAD, downloadCatalogFile } from "@/lib/supabase/catalog-file";
+import { fetchOpsTable, rowToMisc } from "@/lib/supabase/ops-mirror";
 import { fetchUsersFromSupabase } from "@/lib/supabase/user-mirror";
 import {
   buildWeeklyReport,
@@ -139,13 +142,21 @@ export async function sendWeeklyReport(options: WeeklyReportSendOptions = {}): P
   if (!recipients.ok) return { ok: false, cutoff, error: recipients.error };
   if (recipients.emails.length === 0) return { ok: false, cutoff, error: "no_admin_email" };
 
-  const loaded = await loadOperationalStateFromCloud();
+  const [loaded, miscT, accountsT] = await Promise.all([
+    loadOperationalStateFromCloud(),
+    fetchOpsTable("misc_payments"),
+    fetchBankAccountsFromSupabase(),
+  ]);
   if (!loaded.ok) return { ok: false, cutoff, error: loaded.error };
+  if (!miscT.ok) return { ok: false, cutoff, error: `misc_payments: ${"error" in miscT ? miscT.error : "fetch_failed"}` };
+  if (!accountsT.ok) return { ok: false, cutoff, error: `bank_accounts: ${accountsT.error}` };
   const { state } = loaded;
   const sources: WeeklyReportSources = {
     ...state,
     planillaCashCloses: state.planillaCashCloses ?? [],
     monthCloses: state.monthCloses ?? [],
+    miscPayments: (miscT.rows ?? []).map(rowToMisc).filter((row): row is MiscPayment => Boolean(row)),
+    bankAccounts: accountsT.accounts,
   };
   const range = weeklyRangeForCutoff(cutoff, today);
   const reports = SCOPES.map((scope) => buildWeeklyReport(sources, scope, range, today));
