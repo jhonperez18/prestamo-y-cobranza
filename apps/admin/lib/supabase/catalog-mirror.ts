@@ -123,7 +123,6 @@ export type LoanMirrorRow = {
   installment: number | null;
   schedule: LoanRow["schedule"] | null;
   collection_alerts: number;
-  terms_pending: boolean;
   updated_at: string;
   /** Sin valor la nube pone la hora del alta (`default now()`). */
   created_at?: string;
@@ -225,7 +224,6 @@ export function loanRowToMirror(row: LoanRow): LoanMirrorRow | null {
     installment: row.installment ?? null,
     schedule: row.schedule ?? null,
     collection_alerts: Number(row.collectionAlerts) || 0,
-    terms_pending: Boolean(row.termsPending),
     updated_at: row.updatedAt || new Date().toISOString(),
     ...(row.createdAt ? { created_at: row.createdAt } : {}),
   };
@@ -257,7 +255,6 @@ export function mirrorToLoanRow(row: LoanMirrorRow): LoanRow | null {
     installment: row.installment ?? undefined,
     schedule: row.schedule || undefined,
     collectionAlerts: Number(row.collection_alerts) || 0,
-    termsPending: Boolean(row.terms_pending),
     updatedAt: row.updated_at || undefined,
     createdAt: row.created_at || undefined,
     termsVersion: Number(row.terms_version) || 0,
@@ -409,7 +406,6 @@ function loanSignature(row: LoanRow) {
     scheduleKey,
     row.notes ?? "",
     row.fundedBy ?? "",
-    row.termsPending ? 1 : 0,
     Number(row.collectionAlerts) || 0,
     Number(row.termsVersion) || 0,
   ].join("|");

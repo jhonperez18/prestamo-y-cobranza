@@ -9,16 +9,11 @@ import type { StatusKind } from "@/lib/mock-data";
 export function loanStatusPill(loan: {
   status?: string;
   balance?: number;
-  termsPending?: boolean;
   collectionAlerts?: number;
 }): { label: string; kind: StatusKind } {
   const balance = loan.balance ?? 0;
   if (balance <= 0) {
     return { label: "Finalizado", kind: "paid" };
-  }
-
-  if (loan.termsPending) {
-    return { label: "Revisar", kind: "partial" };
   }
 
   const alerts = loanCollectionAlerts(loan);

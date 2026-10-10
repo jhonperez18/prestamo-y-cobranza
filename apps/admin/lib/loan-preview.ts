@@ -71,7 +71,6 @@ export type LoanTermsRow = {
   kind?: string;
   notes?: string;
   collectionAlerts?: number;
-  termsPending?: boolean;
 };
 
 export const LOAN_TERM_OPTIONS: { id: LoanTermMonths; label: string }[] = [

@@ -751,7 +751,6 @@ export function commitUpdateLoan(
       total: draft.total,
       installment: draft.installment,
       schedule: draft.schedule,
-      termsPending: false,
     },
     state.payments,
   ) as LoanRow;
@@ -815,13 +814,11 @@ export function commitUpdateLoan(
   return {
     ok: true,
     state: next,
-    message: openLoan.termsPending
-      ? "Préstamo actualizado. Ya no aparece en alertas de revisión."
-      : next.assignments.some(
-            (entry) => entry.loanRef === loanRef && entry.dispatchDate === todayIso(),
-          )
-        ? "Préstamo actualizado y en planilla del cobrador."
-        : "Préstamo actualizado. Revise que la ruta tenga cobrador asignado.",
+    message: next.assignments.some(
+      (entry) => entry.loanRef === loanRef && entry.dispatchDate === todayIso(),
+    )
+      ? "Préstamo actualizado y en planilla del cobrador."
+      : "Préstamo actualizado. Revise que la ruta tenga cobrador asignado.",
     focusClientRef: client.ref,
     focusLoanRef: loanRef,
     goTo: { moduleId: "prestamos", viewId: "cuenta" },

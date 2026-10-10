@@ -138,7 +138,6 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
       total: preview.total,
       installment: preview.installment,
       schedule: preview.schedule,
-      termsPending: true,
     },
     undefined,
   ) as LoanRow;

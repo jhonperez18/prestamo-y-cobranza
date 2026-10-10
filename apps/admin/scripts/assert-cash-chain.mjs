@@ -1151,7 +1151,6 @@ const nLoanZeroInstallment = {
   balance: 360_000,
   installment: 0,
   status: "Revisar",
-  termsPending: true,
   date: "01/10/2026",
   schedule: [{ date: D, kind: "cuota", paid: 0, amount: 15_000 }],
 };

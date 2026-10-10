@@ -8,10 +8,7 @@ import { todayIso } from "@/lib/daily-dispatch";
 import type { ModuleId } from "@/lib/navigation";
 import type { ClientRow, LoanRow, PaymentRow, StatusKind } from "@/lib/mock-data";
 import { activeLoans } from "@/lib/mock-data";
-import {
-  clientsNeedingProfileCompletion,
-  loansNeedingOfficeReview,
-} from "@/lib/profile-pending";
+import { clientsNeedingProfileCompletion } from "@/lib/profile-pending";
 
 export type AlertRow = {
   id: string;
@@ -58,19 +55,6 @@ export function buildAlerts(
       pill: "Completar",
       kind: "warn",
       module: "clientes",
-      view: "listado",
-    });
-  }
-
-  const loanPending = loansNeedingOfficeReview(loans).length;
-  if (loanPending > 0) {
-    rows.push({
-      id: "prestamo-rapido",
-      when: "Hoy",
-      message: `${loanPending} préstamo${loanPending === 1 ? "" : "s"} rápido${loanPending === 1 ? "" : "s"} por revisar en oficina`,
-      pill: "Revisar",
-      kind: "partial",
-      module: "prestamos",
       view: "listado",
     });
   }

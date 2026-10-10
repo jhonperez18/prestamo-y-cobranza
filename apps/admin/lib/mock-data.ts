@@ -81,10 +81,6 @@ export type LoanRow = {
    */
   collectionAlerts?: number;
   /**
-   * Préstamo rápido / incompleto: opera normal, alerta en oficina para revisar o completar.
-   */
-  termsPending?: boolean;
-  /**
    * Origen del desembolso (≠ método de cobro):
    * - nequi / banco = cuenta del dueño
    * - efectivo = caja del cobrador

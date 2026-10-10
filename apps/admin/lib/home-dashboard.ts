@@ -1,9 +1,6 @@
 import { pendingReviewClients } from "@/lib/client-review";
 import { compareRouteNames, sameRoute } from "@/lib/client-route-order";
-import {
-  clientsNeedingProfileCompletion,
-  loansNeedingOfficeReview,
-} from "@/lib/profile-pending";
+import { clientsNeedingProfileCompletion } from "@/lib/profile-pending";
 import { activityFeed } from "@/lib/collector-preview";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
@@ -132,18 +129,6 @@ export function buildHomePendingActions(
       pill: "Completar",
       kind: "warn",
       module: "clientes",
-      view: "listado",
-    });
-  }
-
-  const loanPending = loansNeedingOfficeReview(loans).length;
-  if (loanPending > 0) {
-    items.push({
-      id: "prestamo-rapido",
-      message: `${loanPending} préstamo${loanPending === 1 ? "" : "s"} rápido${loanPending === 1 ? "" : "s"} por revisar`,
-      pill: "Revisar",
-      kind: "partial",
-      module: "prestamos",
       view: "listado",
     });
   }
