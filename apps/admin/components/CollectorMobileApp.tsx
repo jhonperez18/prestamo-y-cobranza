@@ -2344,9 +2344,8 @@ export function CollectorMobileApp({
               Inicio
             </button>
             <div className="collector-mobile-home-cuadre-title-row">
-              <h2>Cierre</h2>
-              {queue.closed ? (
-                <p className="collector-mobile-home-cuadre-progress">{queue.dateLabel}</p>
+              {activePlanillaRoute ?? planillaRoutePins[0] ? (
+                <h2>Ruta {activePlanillaRoute ?? planillaRoutePins[0]}</h2>
               ) : null}
               {closedPlanilla.length > 0 ? (
                 <button
