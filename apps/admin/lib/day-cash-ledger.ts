@@ -197,7 +197,7 @@ export function routeDigitalCollected(
 function chainDigitalCollected(
   src: DayCashSources,
   routes: string[],
-): { nequi: number; banco: number; own: PaymentRow[] } {
+): { nequi: number; banco: number; own: PaymentRow[]; all: PaymentRow[] } {
   let nequi = 0;
   let banco = 0;
   const lists = routes.map((route) => routeDigitalCollected(src, route));
@@ -209,6 +209,7 @@ function chainDigitalCollected(
     nequi: pesos(nequi),
     banco: pesos(banco),
     own: lists[lists.length - 1]?.payments ?? [],
+    all: lists.flatMap((row) => row.payments),
   };
 }
 
@@ -461,6 +462,8 @@ export type ChainDayCuadre = {
   ownDigital: number;
   /** Cobros Banco / Nequi (renglones) que suma `ownDigital`. */
   ownDigitalPayments: PaymentRow[];
+  /** Cobros Banco / Nequi (renglones) que suman `banco` + `nequi` (T: M + T). */
+  digitalPayments: PaymentRow[];
   /** Cobros en efectivo (renglones) que suman `ownEfectivo`. */
   ownCashPayments: PaymentRow[];
   /** Cobros en efectivo (renglones) que suman `efectivo` (T: M + T). */
@@ -502,6 +505,7 @@ export function chainDayCuadre(
     ownGastos: pesos(side === "secondary" ? ledger.t.gastos : ledger.m.gastos),
     ownDigital: digitalPaymentsTotal(digital.own),
     ownDigitalPayments: digital.own,
+    digitalPayments: digital.all,
     ownCashPayments: routeCashPayments(src, routes[routes.length - 1]),
     cashPayments: routes.flatMap((route) => routeCashPayments(src, route)),
     efectivo: pesos(days.reduce((sum, day) => sum + day.efectivo, 0)),
