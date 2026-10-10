@@ -228,6 +228,9 @@ function EvidenceLightbox({
 
   const zoomLabel = `${Math.round(view.scale * 100)}%`;
   const isZoomed = Math.abs(view.scale - FIT_ZOOM) > 0.02;
+  // Las listas que se cierran «al tocar afuera» escuchan en document: el visor va en portal
+  // y un pellizco no debe cerrarlas (desmontaría la foto).
+  const keepGestureInside = (event: React.SyntheticEvent) => event.stopPropagation();
 
   const node = (
     <div
@@ -239,7 +242,10 @@ function EvidenceLightbox({
         event.stopPropagation();
         onClose();
       }}
-      onTouchMove={(event) => event.stopPropagation()}
+      onPointerDown={keepGestureInside}
+      onMouseDown={keepGestureInside}
+      onTouchStart={keepGestureInside}
+      onTouchMove={keepGestureInside}
     >
       <div
         className="evidence-lightbox-panel"
