@@ -1392,20 +1392,24 @@ export function CollectorMobileApp({
     dayCloses,
     collector.ref,
   );
-  /** Sin planilla abierta → mismo inicio (último cierre + saldo) para todos los cobradores. */
+  /**
+   * Sin planilla abierta → mismo inicio (último cierre + saldo) para todos los cobradores.
+   * Hoja elegida ya cerrada (M con T/A abiertas) → su cierre; los pines siguen para volver a T/A.
+   */
   const showHomeCuadre =
     !preferCobroPlanilla &&
     listFilter === "pending" &&
     !editingExpenses &&
     !reviewingLoans &&
     !confirmingClose &&
-    !todayHasOpenSheet &&
-    (activePlanillaRoute
-      ? planillaLocked ||
-        (routeDispatched.length === 0 &&
-          !collectorHasOpenPlanillaWork(queue) &&
-          queue.closed)
-      : !collectorHasOpenPlanillaWork(queue));
+    (activePlanillaRoute && planillaLocked
+      ? true
+      : !todayHasOpenSheet &&
+        (activePlanillaRoute
+          ? routeDispatched.length === 0 &&
+            !collectorHasOpenPlanillaWork(queue) &&
+            queue.closed
+          : !collectorHasOpenPlanillaWork(queue)));
   const chromeLocked = dayLocked || showHomeCuadre;
 
   /** Cadena M↔T: préstamos y gastos propios de la planilla activa (libro del día). */
@@ -1907,6 +1911,7 @@ export function CollectorMobileApp({
                       setEditingExpenses(false);
                       setConfirmingClose(false);
                       setListFilter("pending");
+                      setPreferCobroPlanilla(false);
                       setPlanillaRouteFilter(name);
                     }}
                   >
