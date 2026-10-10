@@ -1,5 +1,5 @@
 #!/bin/bash
-# Tareas del negocio en el VPS (sellado 23:35 / 00:10 y revisión 6:05, hora Bogotá).
+# Tareas del negocio en el VPS (sellado 23:35 y revisión 6:05, hora Bogotá).
 # Vercel Cron corre las mismas 5 min antes; son idempotentes (un corte = un sellado, un correo).
 # Uso: tarea-ops.sh day-rollover | morning-check
 # Copia en el VPS: /root/tareas/tarea-ops.sh (esta es la versionada).
@@ -16,7 +16,7 @@ for attempt in 1 2 3; do
   CODE=$(printf '%s' "$BODY" | tail -n 1)
   JSON=$(printf '%s' "$BODY" | sed '$d')
   if [ "$CODE" = "200" ] && printf '%s' "$JSON" | grep -q '"ok":true'; then
-    echo "$(date -Is) OK $TASK (intento $attempt) $(printf '%s' "$JSON" | head -c 400)" >> "$LOG"
+    echo "$(date -Is) OK $TASK (intento $attempt) $(printf '%s' "$JSON" | head -c 4000)" >> "$LOG"
     exit 0
   fi
   echo "$(date -Is) REINTENTO $TASK (intento $attempt, HTTP $CODE) $(printf '%s' "$JSON" | head -c 300)" >> "$LOG"

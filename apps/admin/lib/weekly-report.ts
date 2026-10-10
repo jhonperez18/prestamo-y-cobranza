@@ -16,6 +16,7 @@ import {
   utcWeekdayIndex,
 } from "@/lib/colombia-holidays";
 import { clientsOnRouteSorted, sameRoute } from "@/lib/client-route-order";
+import { dayHasReachedAutoClose } from "@/lib/collector-day-auto-close";
 import { normalizeHistoryDate, type RouteCashAdjustment, type RouteExpenseLine } from "@/lib/collector-day-close";
 import type { DayLoanDisbursementRow } from "@/lib/collector-history-planilla";
 import { buildDayCashLedger, routeCollectedByMethod, type DayCashSources } from "@/lib/day-cash-ledger";
@@ -185,13 +186,14 @@ function lastCollectionDayOf(cutoff: string) {
 }
 
 /**
- * Corte cuyo último día de cobro fue `today` o ayer (el cron de 00:05 reintenta el de 23:30).
+ * Corte cuyo último día de cobro fue `today` o ayer (el cron de 00:05 reintenta el de 23:30),
+ * solo si esa jornada ya pasó el corte de las 23:30: a las 00:05 del sábado la semana no cerró.
  * `null` si ninguno de los dos días cerró un período.
  */
-export function weeklyCutoffClosedNear(today: string): string | null {
+export function weeklyCutoffClosedNear(today: string, now: Date): string | null {
   for (const day of [today, addCalendarDaysIso(today, -1)]) {
     const { cutoff } = weeklyPeriodOf(day);
-    if (lastCollectionDayOf(cutoff) === day) return cutoff;
+    if (lastCollectionDayOf(cutoff) === day && dayHasReachedAutoClose(day, now)) return cutoff;
   }
   return null;
 }

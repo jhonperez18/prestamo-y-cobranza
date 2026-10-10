@@ -123,7 +123,7 @@ function generatedLabel(now: Date) {
 export async function sendWeeklyReport(options: WeeklyReportSendOptions = {}): Promise<WeeklyReportSendResult> {
   const now = options.now ?? new Date();
   const today = businessTodayIso(now);
-  const cutoff = options.cutoff ?? weeklyCutoffClosedNear(today);
+  const cutoff = options.cutoff ?? weeklyCutoffClosedNear(today, now);
   if (!cutoff) return { ok: true, skipped: true, reason: "not_cutoff_day" };
 
   const record = options.test ? null : await readSentFile();

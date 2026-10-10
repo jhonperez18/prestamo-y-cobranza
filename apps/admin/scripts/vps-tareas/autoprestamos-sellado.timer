@@ -1,9 +1,8 @@
 [Unit]
-Description=Autoprestamos: sellado 23:35 y 00:10 hora Bogota (Vercel corre 23:30 y 00:05)
+Description=Autoprestamos: sellado 23:35 hora Bogota (Vercel corre 23:30 y 00:05; lo que quede lo sella la revision 6:05)
 
 [Timer]
 OnCalendar=*-*-* 23:35:00 America/Bogota
-OnCalendar=*-*-* 00:10:00 America/Bogota
 Persistent=true
 
 [Install]
