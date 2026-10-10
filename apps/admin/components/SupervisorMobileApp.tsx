@@ -93,6 +93,7 @@ import {
   BANCO_ROUTE_PINS,
   DIGITAL_POOL_LABEL,
   NEQUI_ROUTE_PIN,
+  bancoAcumuladoRutas,
   bancoGastosTotal,
   bancoPoolGastos,
   bancoRouteCuadre,
@@ -2144,31 +2145,6 @@ export function SupervisorMobileApp({
     today,
   ]);
 
-  /** Gastos pagados desde Banco después del último cuadre (misma ventana que el total BANCO). */
-  const bancoGastos = useMemo(
-    () =>
-      bancoPoolGastos({
-        miscPayments,
-        accounts: bankAccounts,
-        dayCloses,
-        fromIso: "",
-        toIso: today,
-      }),
-    [miscPayments, bankAccounts, dayCloses, today],
-  );
-  const bancoGastado = useMemo(() => bancoGastosTotal(bancoGastos), [bancoGastos]);
-  /** Saldo de Banco: real del último cuadre + cobros − préstamos de M / T / N − gastos de Banco. */
-  const bancoSaldo = bancoPanelAcumulado - bancoGastado;
-
-  /** INICIO pie: caja viva de T (ya trae M) + caja propia de N + Saldo de Banco. */
-  const inicioTotalConT = useMemo(() => {
-    const routeT = liquidaciones.find((row) =>
-      isPlanillaCashChainSecondary(row.routeName),
-    );
-    const routeN = liquidaciones.find((row) => sameRoute(row.routeName, "N"));
-    return (routeT?.enCaja ?? 0) + (routeN?.enCaja ?? 0) + bancoSaldo;
-  }, [liquidaciones, bancoSaldo]);
-
   /**
    * Registro Banco por día: hoy abierto; los días anteriores en historial.
    * Cada cobro (incluido Caja / oficina) queda en su paidDate, no en “Hoy” del día siguiente.
@@ -2196,6 +2172,30 @@ export function SupervisorMobileApp({
       ) ?? null,
     [bancoRouteCuadres, bancoRegistroRoute],
   );
+  /** Gastos pagados desde Banco en la misma ventana que las rutas M / T / N (el mes arranca en 0). */
+  const bancoGastos = useMemo(
+    () =>
+      bancoPoolGastos({
+        miscPayments,
+        accounts: bankAccounts,
+        dayCloses,
+        fromIso: bancoHistoryFrom,
+        toIso: today,
+      }),
+    [miscPayments, bankAccounts, dayCloses, bancoHistoryFrom, today],
+  );
+  const bancoGastado = useMemo(() => bancoGastosTotal(bancoGastos), [bancoGastos]);
+  /** Saldo de Banco = Ruta M + Ruta T + Ruta N − Gastos. */
+  const bancoSaldo = bancoAcumuladoRutas(bancoRouteCuadres) - bancoGastado;
+
+  /** INICIO pie: caja viva de T (ya trae M) + caja propia de N + Saldo de Banco. */
+  const inicioTotalConT = useMemo(() => {
+    const routeT = liquidaciones.find((row) =>
+      isPlanillaCashChainSecondary(row.routeName),
+    );
+    const routeN = liquidaciones.find((row) => sameRoute(row.routeName, "N"));
+    return (routeT?.enCaja ?? 0) + (routeN?.enCaja ?? 0) + bancoSaldo;
+  }, [liquidaciones, bancoSaldo]);
   const bancoRutaHistoryDays = useMemo(
     () =>
       bancoRegistroRoute
@@ -5098,7 +5098,7 @@ export function SupervisorMobileApp({
                 </div>
               </div>
             ) : (
-              <p className="ficha-empty">Sin gastos pagados desde Banco desde el último cuadre.</p>
+              <p className="ficha-empty">Sin gastos pagados desde Banco este mes.</p>
             )
           ) : !bancoRegistroRoute ? (
             <div
@@ -5142,7 +5142,7 @@ export function SupervisorMobileApp({
               <button
                 type="button"
                 className="supervisor-banco-home-btn is-acumulado"
-                title="Saldo de Banco (último cuadre + M + T + N − Gastos)"
+                title="Saldo de Banco (M + T + N − Gastos)"
                 aria-label={`Saldo de Banco ${money(bancoSaldo, { symbol: false })}`}
               >
                 <span>Saldo</span>
