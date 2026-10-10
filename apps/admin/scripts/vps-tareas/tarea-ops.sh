@@ -7,7 +7,7 @@ set -uo pipefail
 TASK="${1:?falta la tarea}"
 ENV=/var/www/autoprestamos/apps/admin/.env.local
 LOG=/var/log/autoprestamos-tareas.log
-SECRET=$(grep -E '^CRON_SECRET=' "$ENV" | head -n 1 | cut -d= -f2- | tr -d '"' | tr -d "'")
+SECRET=$(grep -E '^CRON_SECRET=' "$ENV" | head -n 1 | cut -d= -f2- | tr -d "\"'\r")
 [ -n "$SECRET" ] || { echo "$(date -Is) FALLA $TASK: sin CRON_SECRET" >> "$LOG"; exit 1; }
 
 for attempt in 1 2 3; do
