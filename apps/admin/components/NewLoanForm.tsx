@@ -102,7 +102,20 @@ function parsePositiveInt(raw: string) {
 
 const INTEREST_PCT_OPTIONS = [5, 10, 15, 20] as const;
 type InterestPct = (typeof INTEREST_PCT_OPTIONS)[number];
-type InterestInputMode = "pct" | "amount";
+/** pct = 5/10/15/20 · pctOther = porcentaje escrito a mano · amount = monto fijo. */
+type InterestInputMode = "pct" | "pctOther" | "amount";
+
+/** Porcentaje escrito a mano (acepta coma o punto decimal). 0 si no es un número > 0. */
+function parsePct(raw: string) {
+  const value = Number(raw.replace(",", ".").replace(/[^\d.]/g, ""));
+  return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+/** Préstamo guardado con un porcentaje fuera de la lista: se reabre como «Otro %». */
+function matchOtherPct(capital: number, interest: number, rate: number | undefined): number | null {
+  if (!rate || rate <= 0 || capital <= 0 || interest <= 0) return null;
+  return Math.trunc((capital * rate) / 100) === interest ? rate : null;
+}
 
 function matchInterestPct(capital: number, interest: number): InterestPct | null {
   if (capital <= 0 || interest <= 0) return null;
@@ -169,13 +182,18 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
         : 0;
   const seedCapital = syncedLoan?.capital ?? loan?.capital ?? 0;
   const seedPct = matchInterestPct(seedCapital, seedInterest);
+  const seedOtherPct =
+    seedPct == null ? matchOtherPct(seedCapital, seedInterest, syncedLoan?.rate ?? loan?.rate) : null;
   // Interés 0 es valor válido y se guarda; nunca “Elegir…” vacío.
   const [interestMode, setInterestMode] = useState<InterestInputMode>(() =>
-    seedPct != null ? "pct" : "amount",
+    seedPct != null ? "pct" : seedOtherPct != null ? "pctOther" : "amount",
   );
   const [ratePct, setRatePct] = useState<InterestPct | null>(() => seedPct);
+  const [otherPctRaw, setOtherPctRaw] = useState(() =>
+    seedOtherPct != null ? String(seedOtherPct) : "",
+  );
   const [interestRaw, setInterestRaw] = useState(() => {
-    if (seedPct != null) return "";
+    if (seedPct != null || seedOtherPct != null) return "";
     return String(Math.max(0, seedInterest));
   });
   const seedDays = initialTermDays(loan ?? null);
@@ -233,9 +251,10 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
   const [notes, setNotes] = useState(() =>
     stripFundedMarkers(syncedLoan?.notes ?? loan?.notes ?? ""),
   );
-  const [fundedBy, setFundedBy] = useState<LoanDisbursementSource>(() => {
+  // Alta: sin origen hasta que el usuario lo elija (evita guardar Nequi por descuido).
+  const [fundedBy, setFundedBy] = useState<LoanDisbursementSource | "">(() => {
     if (loan) return loanDisbursementSource(loan) ?? "nequi";
-    return "nequi";
+    return "";
   });
   const [askingDelete, setAskingDelete] = useState(false);
   const driversReadyRef = useRef(false);
@@ -258,12 +277,14 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
   );
   const showList = !client;
   const capital = parseMoney(capitalRaw);
+  const pctApplied =
+    interestMode === "pct" ? ratePct ?? 0 : interestMode === "pctOther" ? parsePct(otherPctRaw) : 0;
   const interestFromPct =
-    interestMode === "pct" && ratePct != null && capital > 0
-      ? Math.trunc((capital * ratePct) / 100)
+    interestMode !== "amount" && pctApplied > 0 && capital > 0
+      ? Math.trunc((capital * pctApplied) / 100)
       : 0;
   const interestFromAmount = interestMode === "amount" ? parseMoney(interestRaw) : 0;
-  const interestAuto = interestMode === "pct" ? interestFromPct : interestFromAmount;
+  const interestAuto = interestMode === "amount" ? interestFromAmount : interestFromPct;
   const totalManual = parseMoney(totalRaw);
   const interest =
     totalTouchedRef.current && totalManual > capital
@@ -312,9 +333,11 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
       ? parseMoney(interestRaw) === 0
         ? "0"
         : "amount"
-      : ratePct != null
-        ? String(ratePct)
-        : "";
+      : interestMode === "pctOther"
+        ? "other"
+        : ratePct != null
+          ? String(ratePct)
+          : "";
   const cuotaDisplay = cuotaTouchedRef.current
     ? cuotaRaw
     : autoPreview
@@ -404,6 +427,12 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
       setInterestRaw((prev) => (prev.trim() ? prev : "0"));
       return;
     }
+    if (value === "other") {
+      setInterestMode("pctOther");
+      setRatePct(null);
+      setInterestRaw("");
+      return;
+    }
     const pct = Number(value) as InterestPct;
     setInterestMode("pct");
     setRatePct(pct);
@@ -428,14 +457,14 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!client || !preview) return;
+    if (!client || !preview || !fundedBy) return;
     onSave({
       clientRef: client.ref,
       capital,
       date: isoToDisplay(startIso),
       due: dueLabel === "—" ? isoToDisplay(preview.dates[preview.dates.length - 1] || "") : dueLabel,
       notes: stripFundedMarkers(notes),
-      rate: interestMode === "pct" ? ratePct ?? 0 : 0,
+      rate: interestMode === "amount" ? 0 : pctApplied,
       frequency,
       mode: "cuota_fija",
       pact: "valor",
@@ -601,9 +630,25 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                         {pct}%
                       </option>
                     ))}
+                    <option value="other">Otro %…</option>
                     <option value="amount">Monto fijo…</option>
                   </select>
-                  {interestMode === "pct" ? (
+                  {interestMode === "pctOther" ? (
+                    <input
+                      id="loan-interest-pct"
+                      className="loan-interest-amount-input"
+                      value={otherPctRaw}
+                      onChange={(event) => setOtherPctRaw(event.target.value.replace(/[^\d.,]/g, ""))}
+                      inputMode="decimal"
+                      placeholder="% ej. 12"
+                      title={
+                        interestFromPct > 0
+                          ? `${parsePct(otherPctRaw)} % = ${money(interestFromPct)} de interés`
+                          : "Escriba el porcentaje de interés"
+                      }
+                      autoFocus
+                    />
+                  ) : interestMode === "pct" ? (
                     <input
                       className="loan-interest-result"
                       value={money(interestFromPct)}
@@ -778,8 +823,9 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                       id="loan-funded-by"
                       value={fundedBy}
                       onChange={(event) =>
-                        setFundedBy(event.target.value as LoanDisbursementSource)
+                        setFundedBy(event.target.value as LoanDisbursementSource | "")
                       }
+                      required
                       title={
                         fundedBy === "efectivo"
                           ? "Se descuenta del efectivo / En caja del cobrador de la ruta"
@@ -788,6 +834,9 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                             : "Origen del desembolso"
                       }
                     >
+                      <option value="" disabled>
+                        Elegir origen…
+                      </option>
                       <option value="nequi">Nequi</option>
                       <option value="banco">Banco</option>
                       <option value="efectivo">Efectivo (caja cobrador)</option>
@@ -855,7 +904,12 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                       Borrar
                     </button>
                   ) : null}
-                  <button type="submit" className="btn primary" disabled={!preview}>
+                  <button
+                    type="submit"
+                    className="btn primary"
+                    disabled={!preview || !fundedBy}
+                    title={!fundedBy ? "Elija el origen del préstamo" : undefined}
+                  >
                     Guardar
                   </button>
                 </>
