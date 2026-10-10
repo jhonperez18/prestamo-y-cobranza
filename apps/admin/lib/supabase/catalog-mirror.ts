@@ -283,12 +283,15 @@ function rowUpdatedAtMs(row: { updatedAt?: string }) {
  * 2) Sin local → remoto (alta nueva en nube).
  * 3) Misma firma → meta más nueva; empate → local.
  * 4) Firma distinta → local si local.updatedAt >= remoto; si no, remoto (otro dispositivo).
+ *    `cloudOwns`: el dato lo calcula la base (préstamos) → siempre remoto. El reloj del aparato
+ *    no decide: una ficha vieja con hora local nueva rebobinaba saldos y revivía préstamos pagados.
  */
 function mergeByRefPreferPendingLocal<T extends { ref: string; updatedAt?: string }>(
   local: T[],
   remote: T[],
   pendingByRef: Map<string, T>,
   signature: (row: T) => string,
+  options?: { cloudOwns?: boolean },
 ): { merged: T[]; added: number; changed: boolean } {
   const localByRef = new Map<string, T>();
   for (const row of local) {
@@ -339,7 +342,7 @@ function mergeByRefPreferPendingLocal<T extends { ref: string; updatedAt?: strin
 
     // Contenido distinto: no rebobinar edit fresco del padre.
     // Empate de reloj → local. Remoto solo si es estrictamente más nuevo.
-    const winner = localTs >= remoteTs ? localRow : remoteRow;
+    const winner = options?.cloudOwns || localTs < remoteTs ? remoteRow : localRow;
     if (signature(winner) !== signature(localRow)) changed = true;
     merged.push(winner);
     localByRef.delete(ref);
@@ -1236,7 +1239,15 @@ async function mergeRemoteCatalog(
         (row) => row?.ref && !isLoanDeletedStatus(row),
       );
       const pendingByRef = new Map(pendingLoans.map((row) => [row.ref, row]));
-      const merge = mergeByRefPreferPendingLocal(local, remote, pendingByRef, loanSignature);
+      // Lo que subía al pedir la lista: la respuesta de ese envío ya está en el aparato y es más
+      // nueva que la lista.
+      for (const ref of loansQueuedAtStart) {
+        const row = local.find((entry) => entry.ref === ref);
+        if (row && !pendingByRef.has(ref)) pendingByRef.set(ref, row);
+      }
+      const merge = mergeByRefPreferPendingLocal(local, remote, pendingByRef, loanSignature, {
+        cloudOwns: true,
+      });
       const settled = loansBody.incremental
         ? { loans: merge.merged, dropped: [] as string[] }
         : dropLoansMissingFromCloud(

@@ -30,6 +30,7 @@ import { pendingBalance, pesos } from "@/lib/finance";
 import { paymentVisitDate } from "@/lib/late-payment";
 import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import { readDeletedIdSet } from "@/lib/deleted-ids";
+import { isCollectorLiveDevice, syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import {
   catalogRoutes,
   routeIsActive,
@@ -77,8 +78,19 @@ function collectedForLoan(loanRef: string, payments?: CollectionPaymentTouch[]) 
   return sum;
 }
 
-/** Saldo = total − PG vivos. Un Nequi ya registrado no vuelve como deuda. */
+function isPaymentRow(row: CollectionPaymentTouch): row is PaymentRow {
+  return "ref" in row && Boolean((row as PaymentRow).ref);
+}
+
+/**
+ * Saldo = total − PG vivos. Un Nequi ya registrado no vuelve como deuda.
+ * Cobrador: el aparato solo tiene los cobros de hoy → manda la ficha de la nube
+ * (+ cobro de hoy que aún no está en ella). Restar solo hoy del total inflaba la cuota.
+ */
 function loanOwes(loan: LoanRow, payments?: CollectionPaymentTouch[]) {
+  if (isCollectorLiveDevice()) {
+    return pesos(syncCollectorLiveLoan(loan, (payments ?? []).filter(isPaymentRow)).balance);
+  }
   const collected = collectedForLoan(loan.ref, payments);
   const total = pesos(loan.total ?? 0) || pesos(loan.capital) + pesos(loan.interest ?? 0);
   if (total > 0) return pendingBalance(total, collected);
