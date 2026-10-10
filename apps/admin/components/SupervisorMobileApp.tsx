@@ -94,6 +94,8 @@ import {
   DIGITAL_POOL_LABEL,
   NEQUI_ROUTE_PIN,
   bancoAcumuladoRutas,
+  bancoGastosTotal,
+  bancoPoolGastos,
   bancoRouteCuadre,
   bancoRouteCobradoHistoryDays,
   bancoRouteHistoryDays,
@@ -1193,6 +1195,8 @@ export function SupervisorMobileApp({
   const [nequiRegistroRoute, setNequiRegistroRoute] = useState<string | null>(null);
   /** Registro Banco filtrado por ruta (M / T / N). null = cuatro botones de saldo. */
   const [bancoRegistroRoute, setBancoRegistroRoute] = useState<string | null>(null);
+  /** Listado de gastos pagados desde la cuenta Banco. */
+  const [bancoGastosOpen, setBancoGastosOpen] = useState(false);
   /** Historial desplegado: solo cobrado o solo prestado. */
   const [bancoRutaExpand, setBancoRutaExpand] = useState<"cobrado" | "prestado" | null>(null);
   /** Un solo día abierto en el historial (acordeón). */
@@ -1255,6 +1259,7 @@ export function SupervisorMobileApp({
     setCajaHistoryDayIso(null);
     setNequiRegistroRoute(null);
     setBancoRegistroRoute(null);
+    setBancoGastosOpen(false);
     setBancoRutaExpand(null);
     setBancoRegistroDay(null);
     setNuevoMode("menu");
@@ -2176,9 +2181,22 @@ export function SupervisorMobileApp({
       ) ?? null,
     [bancoRouteCuadres, bancoRegistroRoute],
   );
+  const bancoGastos = useMemo(
+    () =>
+      bancoPoolGastos({
+        miscPayments,
+        accounts: bankAccounts,
+        dayCloses,
+        fromIso: bancoHistoryFrom,
+        toIso: today,
+      }),
+    [miscPayments, bankAccounts, dayCloses, bancoHistoryFrom, today],
+  );
+  const bancoGastado = useMemo(() => bancoGastosTotal(bancoGastos), [bancoGastos]);
+  /** Lo que debe haber en Banco: M + T + N − gastos pagados desde Banco. */
   const bancoSumaSaldos = useMemo(
-    () => bancoAcumuladoRutas(bancoRouteCuadres),
-    [bancoRouteCuadres],
+    () => bancoAcumuladoRutas(bancoRouteCuadres) - bancoGastado,
+    [bancoRouteCuadres, bancoGastado],
   );
   const bancoRutaHistoryDays = useMemo(
     () =>
@@ -3231,6 +3249,7 @@ export function SupervisorMobileApp({
     }
     if (next === "banco") {
       setBancoRegistroRoute(null);
+      setBancoGastosOpen(false);
       setBancoRutaExpand(null);
       setBancoRegistroDay(null);
     }
@@ -3269,6 +3288,7 @@ export function SupervisorMobileApp({
     setClientesLoanClientRef(null);
     setNequiRegistroRoute(null);
     setBancoRegistroRoute(null);
+    setBancoGastosOpen(false);
     setBancoRutaExpand(null);
     setBancoRegistroDay(null);
     resetClientesModify();
@@ -5034,14 +5054,19 @@ export function SupervisorMobileApp({
         <section className="supervisor-mobile-section supervisor-mobile-home">
           <div className="supervisor-nequi-registro-head">
             <h3>
-              {bancoRegistroRoute ? `Banco · Ruta ${bancoRegistroRoute}` : "Banco"}
+              {bancoRegistroRoute
+                ? `Banco · Ruta ${bancoRegistroRoute}`
+                : bancoGastosOpen
+                  ? "Banco · Gastos"
+                  : "Banco"}
             </h3>
-            {bancoRegistroRoute ? (
+            {bancoRegistroRoute || bancoGastosOpen ? (
               <button
                 type="button"
                 className="collector-mobile-pay-link is-back"
                 onClick={() => {
                   setBancoRegistroRoute(null);
+                  setBancoGastosOpen(false);
                   setBancoRutaExpand(null);
                   setBancoRegistroDay(null);
                 }}
@@ -5050,11 +5075,36 @@ export function SupervisorMobileApp({
               </button>
             ) : null}
           </div>
-          {!bancoRegistroRoute ? (
+          {bancoGastosOpen ? (
+            bancoGastos.length > 0 ? (
+              <div className="supervisor-banco-hist">
+                <div className="supervisor-banco-gastos-head" aria-hidden>
+                  <span>Fecha</span>
+                  <span>Concepto</span>
+                  <span>Valor</span>
+                </div>
+                <ul className="supervisor-banco-gastos-list" aria-label="Gastos pagados desde Banco">
+                  {bancoGastos.map((row) => (
+                    <li key={row.ref}>
+                      <span className="is-date">{isoToDisplay(row.date)}</span>
+                      <span className="is-label">{row.label}</span>
+                      <span className="is-amount">{money(row.amount, { symbol: false })}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="supervisor-banco-gastos-total">
+                  <span>Total gastado</span>
+                  <b>{money(bancoGastado, { symbol: false })}</b>
+                </div>
+              </div>
+            ) : (
+              <p className="ficha-empty">Sin gastos pagados desde Banco este mes.</p>
+            )
+          ) : !bancoRegistroRoute ? (
             <div
               className="supervisor-banco-home-grid"
               role="group"
-              aria-label="Ruta M, Ruta T, Ruta N y Acumulado (M + T + N)"
+              aria-label="Ruta M, Ruta T, Ruta N, Gastos y Saldo (M + T + N − Gastos)"
             >
               {bancoRouteCuadres.map((row, index) => (
                 <button
@@ -5076,9 +5126,24 @@ export function SupervisorMobileApp({
               ))}
               <button
                 type="button"
+                className="supervisor-banco-home-btn is-gastos"
+                title="Gastos pagados desde Banco"
+                aria-label={`Gastos ${money(bancoGastado, { symbol: false })}`}
+                onClick={() => {
+                  suppressGhostClick();
+                  setBancoGastosOpen(true);
+                  setBancoRutaExpand(null);
+                  setBancoRegistroDay(null);
+                }}
+              >
+                <span>Gastos</span>
+                <span className="is-amount">{money(bancoGastado, { symbol: false })}</span>
+              </button>
+              <button
+                type="button"
                 className="supervisor-banco-home-btn is-acumulado"
-                title="Acumulado (M + T + N)"
-                aria-label="Acumulado (M + T + N)"
+                title="Saldo (M + T + N − Gastos)"
+                aria-label="Saldo (M + T + N − Gastos)"
               >
                 <span>Saldo</span>
                 <span className="is-amount">{money(bancoSumaSaldos, { symbol: false })}</span>

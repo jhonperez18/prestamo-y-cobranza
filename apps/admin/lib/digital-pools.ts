@@ -27,7 +27,8 @@
  * supervisor entra al instante en la ruta del cliente. M, T y N no se mezclan;
  * A es solo Nequi. No toca caja ni INICIO.
  */
-import type { BankMovement } from "@/lib/bank";
+import { accountForRole, type BankAccount, type BankMovement } from "@/lib/bank";
+import type { MiscPayment } from "@/lib/misc-payments";
 import { sameRoute } from "@/lib/client-route-order";
 import { addCalendarDaysIso } from "@/lib/colombia-holidays";
 import { BUSINESS_TIME_ZONE, businessTodayIso } from "@/lib/business-timezone";
@@ -759,6 +760,45 @@ export function bancoRouteCuadre(input: {
 /** Acumulado Banco = suma de los saldos M + T + N. */
 export function bancoAcumuladoRutas(cuadres: readonly BancoRouteCuadre[]): number {
   return pesos(cuadres.reduce((sum, row) => sum + row.saldo, 0));
+}
+
+export type BancoGasto = {
+  ref: string;
+  date: string;
+  label: string;
+  amount: number;
+};
+
+/**
+ * Gastos pagados desde la cuenta Banco (pagos varios `PV-` con la cuenta de uso `banco`),
+ * en la misma ventana que los saldos M / T / N. Manda la cuenta, no la forma de pago.
+ * Más nuevo primero.
+ */
+export function bancoPoolGastos(input: {
+  miscPayments: readonly MiscPayment[];
+  accounts: BankAccount[];
+  dayCloses: CollectorDayCloseRecord[];
+  fromIso: string;
+  toIso: string;
+}): BancoGasto[] {
+  const accountRef = accountForRole(input.accounts, "banco")?.ref;
+  const start = bancoRouteWindowStart(input.dayCloses, input.fromIso);
+  const to = isoOf(input.toIso);
+  if (!accountRef || !start || !to) return [];
+  return input.miscPayments
+    .filter((row) => row.bankAccountRef === accountRef)
+    .map((row) => ({
+      ref: row.ref,
+      date: isoOf(row.paidDate),
+      label: row.label,
+      amount: pesos(Number(row.amount) || 0),
+    }))
+    .filter((row) => row.amount > 0 && row.date >= start && row.date <= to)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.ref.localeCompare(a.ref, "es", { numeric: true }));
+}
+
+export function bancoGastosTotal(gastos: readonly BancoGasto[]): number {
+  return pesos(gastos.reduce((sum, row) => sum + row.amount, 0));
 }
 
 /**

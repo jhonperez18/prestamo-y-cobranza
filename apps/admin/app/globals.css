@@ -7117,6 +7117,75 @@
       color: #111;
       font-weight: 400;
     }
+    .supervisor-banco-home-btn.is-gastos {
+      background: linear-gradient(180deg, #fef2f2 0%, #fff 42%);
+      border-color: #f3c4c4;
+    }
+    .supervisor-banco-home-btn.is-gastos .is-amount {
+      color: #b91c1c;
+    }
+    .supervisor-banco-gastos-head,
+    .supervisor-banco-gastos-list li {
+      display: grid;
+      grid-template-columns: 4.6rem minmax(0, 1fr) 5.6rem;
+      column-gap: 8px;
+      align-items: center;
+    }
+    .supervisor-banco-gastos-head {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #f3c4c4;
+      background: #fef2f2;
+      font-size: 11px;
+      font-weight: 500;
+      color: #000;
+    }
+    .supervisor-banco-gastos-head span:last-child {
+      text-align: right;
+    }
+    .supervisor-banco-gastos-list {
+      display: grid;
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .supervisor-banco-gastos-list li {
+      padding: 10px 12px;
+      border: 1px solid #f3dede;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 12px;
+      color: #111;
+    }
+    .supervisor-banco-gastos-list .is-date {
+      font-variant-numeric: tabular-nums;
+    }
+    .supervisor-banco-gastos-list .is-label {
+      overflow-wrap: anywhere;
+    }
+    .supervisor-banco-gastos-list .is-amount {
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      color: #b91c1c;
+    }
+    .supervisor-banco-gastos-total {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #fef2f2;
+      border: 1px solid #f3c4c4;
+      font-size: 13px;
+      color: #111;
+    }
+    .supervisor-banco-gastos-total b {
+      font-weight: 600;
+      color: #b91c1c;
+      font-variant-numeric: tabular-nums;
+    }
     .supervisor-banco-day-ini {
       display: flex;
       justify-content: space-between;
