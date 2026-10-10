@@ -3637,14 +3637,26 @@
     }
     /* Recaudo: columnas fijas para que montos y medio queden alineados renglón a renglón. */
     .collector-mobile-card.is-done .collector-mobile-dense-row.is-recaudo-row {
-      grid-template-columns: minmax(0, 1fr) 4.4rem 4.4rem 1.6rem;
+      grid-template-columns: minmax(0, 1fr) 4.4rem 5.2rem 1.6rem;
     }
-    .collector-mobile-card.is-done .collector-mobile-ref.is-done-col.is-loan-amount {
+    .collector-mobile-card.is-done .collector-mobile-dense-row.is-recaudo-row .collector-mobile-ref.is-done-col {
+      margin-right: 12px;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 400;
+      color: #111;
+    }
+    .collector-mobile-card.is-done .collector-mobile-dense-row.is-recaudo-row .collector-mobile-ref.is-done-col.is-loan-amount {
       color: #1e40af;
       font-weight: 700;
     }
-    .collector-mobile-card.is-done .collector-mobile-ref.is-done-col.is-loan-amount.is-renewal {
+    .collector-mobile-card.is-done .collector-mobile-dense-row.is-recaudo-row .collector-mobile-ref.is-done-col.is-loan-amount.is-renewal {
       color: #92400e;
+    }
+    /* Planilla del cobrador: cuotas pagadas / esperadas sin negrilla. */
+    .collector-mobile-dense-row .cuotas-progress,
+    .collector-mobile-dense-row .cuotas-progress-sep {
+      font-weight: 400;
     }
     /* Lista de cobros en Banco: nombre · préstamo · evidencia · monto · medio */
     .collector-mobile-card.is-done .collector-mobile-dense-row.is-recaudo-row.has-evidence {
