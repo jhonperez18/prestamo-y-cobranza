@@ -23,7 +23,7 @@ const MAX_RENEWAL_RATE_PERCENT = 100;
 export type RenewalTerms = {
   ratePercent: number;
   termMonths: LoanTermMonths;
-  /** Primer cobro (ISO). Sin valor: el siguiente día de cobro (`defaultRenewalFirstCollection`). */
+  /** Primer cobro (ISO). Sin valor: el siguiente día de cobro (`firstCollectionIso`). */
   firstCollectionIso?: string;
 };
 
@@ -65,19 +65,6 @@ export function canRenewLoan(loan: LoanRow | null | undefined, today = todayIso(
   return dueIso <= today;
 }
 
-function nextDayIso(iso: string) {
-  const day = new Date(`${iso}T12:00:00Z`);
-  day.setUTCDate(day.getUTCDate() + 1);
-  return day.toISOString().slice(0, 10);
-}
-
-/** Hoy la visita queda «Renovado hoy»: el día 1 del préstamo nuevo es el siguiente día de cobro. */
-export function defaultRenewalFirstCollection(today: string, frequency: PayFrequency) {
-  return frequency === "diario"
-    ? firstCollectionIso(nextDayIso(today), frequency)
-    : firstCollectionIso(today, frequency);
-}
-
 export type RenewalPreview = {
   capital: number;
   interest: number;
@@ -96,8 +83,7 @@ export function renewalPreview(
   if (capital <= 0) return null;
   const interest = pesos((capital * Number(terms.ratePercent)) / 100);
   const frequency = (loan.frequency ?? "diario") as PayFrequency;
-  const firstCollection =
-    terms.firstCollectionIso || defaultRenewalFirstCollection(today, frequency);
+  const firstCollection = terms.firstCollectionIso || firstCollectionIso(today, frequency);
   const preview = previewLoanFlat({
     capital,
     interest,

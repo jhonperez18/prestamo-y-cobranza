@@ -482,7 +482,7 @@ export function collectionDatesForCount(
   startIso: string,
   frequency: PayFrequency,
   count: number,
-  firstCollectionIso?: string,
+  manualFirstIso?: string,
 ): string[] {
   if (!startIso || count < 1) return [];
   const target = Math.trunc(count);
@@ -490,16 +490,14 @@ export function collectionDatesForCount(
   const dates: string[] = [];
   let guard = 0;
   const manualFirst =
-    firstCollectionIso && /^\d{4}-\d{2}-\d{2}$/.test(firstCollectionIso)
-      ? firstCollectionIso
+    manualFirstIso && /^\d{4}-\d{2}-\d{2}$/.test(manualFirstIso)
+      ? manualFirstIso
       : "";
 
   if (frequency === "diario") {
-    // Sin primer cobro a mano: si el desembolso es día hábil, la 1.ª cuota es HOY
-    // (entra a planilla del cobrador al crear el préstamo).
-    let current =
-      manualFirst ||
-      (isDailyCollectionDay(startIso) ? startIso : addDays(startIso, 1));
+    // Sin primer cobro a mano: la 1.ª cuota vence el siguiente día de cobro. El cliente
+    // igual sale hoy en la planilla (por fecha de desembolso) por si paga.
+    let current = manualFirst || firstCollectionIso(startIso, frequency);
     while (dates.length < target && guard < 600) {
       if (isDailyCollectionDay(current)) dates.push(current);
       current = addDays(current, 1);
@@ -565,12 +563,11 @@ export function suggestedInstallmentsForDays(frequency: PayFrequency, termDays: 
 }
 
 /** Primera fecha de cobro según frecuencia (desde el desembolso).
- * Diario en día hábil: mismo día del desembolso (cobra hoy → planilla hoy).
+ * Diario: el siguiente día de cobro (lun–sáb sin festivos). A mano se puede poner el mismo día.
  */
 export function firstCollectionIso(startIso: string, frequency: PayFrequency) {
   if (!startIso) return "";
   if (frequency === "diario") {
-    if (isDailyCollectionDay(startIso)) return startIso;
     let current = addDays(startIso, 1);
     for (let guard = 0; guard < 14; guard += 1) {
       if (isDailyCollectionDay(current)) return current;
