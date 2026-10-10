@@ -129,6 +129,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
 import { commitLoanRenewal } from "@/lib/commit-loan-renewal";
+import { renewalSummary, type RenewalTerms } from "@/lib/loan-renew";
 import {
   buildPaymentRow,
 } from "@/lib/payment-detail";
@@ -2064,11 +2065,12 @@ export function useWorkspace({
     );
   }
 
-  async function renewLoan(loanRef: string) {
+  async function renewLoan(loanRef: string, terms: RenewalTerms) {
     const renewal = commitLoanRenewal(
       { loans, clients, routes, collectors, assignments: dailyAssignments, payments },
       loanRef,
       todayIso(),
+      terms,
     );
     if (!renewal.ok) {
       onToast(renewal.error);
@@ -2082,7 +2084,7 @@ export function useWorkspace({
     if (renewal.client) queueClientMirror(renewal.client);
     queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, renewal.assignments));
     queueRoutesMirror(renewal.routes);
-    const summary = `Renovado: debía ${money(renewal.created.capital)} + 20 % = ${money(renewal.created.total ?? 0)} · cuota desde mañana`;
+    const summary = renewalSummary(renewal.created, terms);
     onToast(`${summary} · subiendo…`);
     try {
       const cloud = await sent;

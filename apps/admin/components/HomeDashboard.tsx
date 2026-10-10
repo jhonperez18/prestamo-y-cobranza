@@ -7,6 +7,7 @@ import { Pill } from "@/components/ui";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { todayIso } from "@/lib/daily-dispatch";
 import { buildHomeDashboard } from "@/lib/home-dashboard";
+import type { RenewalTerms } from "@/lib/loan-renew";
 import type { ModuleId } from "@/lib/navigation";
 import { planillaAssignmentsForRoute } from "@/lib/planilla-day-sync";
 import { compareRouteNames } from "@/lib/client-route-order";
@@ -40,7 +41,7 @@ type Props = {
   collectors?: CollectorRow[];
   activities?: ActivityRow[];
   assignments?: DailyCollectionAssignment[];
-  onRenewLoan?: (loanRef: string) => void;
+  onRenewLoan?: (loanRef: string, terms: RenewalTerms) => void;
   onOpenLoan?: (loanRef: string) => void;
   onOpenClient?: (clientRef: string) => void;
   onOpenPayment?: (ref: string) => void;

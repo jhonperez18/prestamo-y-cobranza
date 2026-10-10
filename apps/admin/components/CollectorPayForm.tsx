@@ -16,8 +16,11 @@ import {
 import { newComboGroupId } from "@/lib/payment-combo";
 import { sameRoute } from "@/lib/client-route-order";
 import { newIdempotencyKey } from "@/lib/finance";
-import { money } from "@/lib/mock-data";
+import { money, type LoanRow } from "@/lib/mock-data";
 import type { PayKind } from "@/lib/loan-pay";
+import type { RenewalTerms } from "@/lib/loan-renew";
+import { todayIso } from "@/lib/daily-dispatch";
+import { LoanRenewForm } from "@/components/LoanRenewForm";
 import { isNavQuiet } from "@/lib/suppress-ghost-click";
 import type { CollectorPaySubmit } from "@/lib/collector-pay-submit";
 
@@ -44,7 +47,10 @@ type Props = {
   onCancel: () => void;
   /** Puede devolver Promise: el formulario espera y bloquea doble envío. */
   onSubmit: (payload: CollectorPaySubmit) => void | Promise<void>;
-  onRenew?: () => void | Promise<void>;
+  /** Préstamo vencido que se renueva: «renovar» abre sus condiciones antes de confirmar. */
+  renewLoan?: LoanRow | null;
+  renewToday?: string;
+  onRenew?: (terms: RenewalTerms) => void | Promise<void>;
 };
 
 type ComboLeg = {
@@ -131,8 +137,11 @@ export function CollectorPayForm({
   onNoPay,
   onCancel,
   onSubmit,
+  renewLoan,
+  renewToday,
   onRenew,
 }: Props) {
+  const [renewing, setRenewing] = useState(false);
   const maxAmount = balance != null && balance > 0 ? balance : 0;
   const [internalCombined, setInternalCombined] = useState(false);
   const combined = combinedProp ?? internalCombined;
@@ -366,14 +375,9 @@ export function CollectorPayForm({
     setAttempted(true);
   }
 
-  async function handleRenewClick() {
-    if (!onRenew || !canRenew || isSubmitting || combined) return;
-    setIsSubmitting(true);
-    try {
-      await onRenew();
-    } finally {
-      setIsSubmitting(false);
-    }
+  function handleRenewClick() {
+    if (!onRenew || !canRenew || !renewLoan || isSubmitting || combined) return;
+    setRenewing(true);
   }
 
   /** Solo pantalla: la opción `nequi` se ve como «Banco» (azul) y `banco` como «Nequi» (morado). */
@@ -599,6 +603,18 @@ export function CollectorPayForm({
         ? "Confirmar cobro"
         : "Confirmar";
 
+  if (renewing && renewLoan && onRenew) {
+    return (
+      <LoanRenewForm
+        loan={renewLoan}
+        today={renewToday || todayIso()}
+        variant={variant}
+        onCancel={() => setRenewing(false)}
+        onConfirm={onRenew}
+      />
+    );
+  }
+
   return (
     <form
       className={
@@ -735,18 +751,16 @@ export function CollectorPayForm({
                 ? "collector-mobile-pay-link collector-pay-renew-link"
                 : "btn compact secondary"
             }
-            disabled={!canRenew || isSubmitting}
-            aria-disabled={!canRenew || isSubmitting}
+            disabled={!canRenew || !renewLoan || isSubmitting}
+            aria-disabled={!canRenew || !renewLoan || isSubmitting}
             title={
               isSubmitting
                 ? "Guardando…"
                 : canRenew
-                  ? "Lo que debe + 20 % a 1 mes · sin plata (no toca la caja) · cuota desde mañana"
+                  ? "Lo que debe + el porcentaje que elija · sin plata (no toca la caja)"
                   : "Disponible cuando se cumpla el plazo del préstamo"
             }
-            onClick={() => {
-              void handleRenewClick();
-            }}
+            onClick={handleRenewClick}
           >
             {inline ? "renovar" : "Renovar"}
           </button>

@@ -396,7 +396,8 @@ Un solo camino: `commitLoanRenewal` (`lib/commit-loan-renewal.ts`), lo usan cobr
 | Viejo (P-10) | Finalizado, «Cerrado por renovación → P-…» (`loanRenewedInto`). Ficha: estado «Renovado», saldo = lo que debía |
 | Orden (dueño 09/10) | Primero se **corta** el actual (lo que debe = saldo), después nace el nuevo. Nunca dos activos |
 | Pagado del viejo | Solo lo cobrado de verdad (PG-). Lo que debía pasa al nuevo; no cuenta como pagado. Lo calcula la base (`_loan_settle`; trigger `loans_paid_balance_owner`) |
-| Nuevo (P-455) | «Renovación de P-…» (`loanRenewalOf`), capital = saldo, +20 %, `[[fb:cartera]]` |
+| Nuevo (P-455) | «Renovación de P-…» (`loanRenewalOf`), capital = saldo (fijo), `[[fb:cartera]]` |
+| Condiciones | Formulario `LoanRenewForm` (cobrador, supervisor y panel): porcentaje (propone 20 %), plazo y primer cobro (propone el siguiente día de cobro). La base acepta lo elegido; el capital lo fija ella |
 | Hoy | La visita queda `omitido` «Renovado hoy» (`LOAN_RENEWED_TODAY_REASON`): sale de por cobrar, no es N/P |
 | Mañana | Día 1 del nuevo: cuota nueva, mora en cero |
 | Pantallas | Recaudo, Historial y planilla del supervisor: «Renovado» (ámbar, «R»), nunca «Préstamo» / «E» (`isCashlessRenewal`, `loanRenewedOnDate`) |

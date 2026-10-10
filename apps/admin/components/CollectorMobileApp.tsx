@@ -59,7 +59,7 @@ import {
   type RouteRow,
 } from "@/lib/mock-data";
 import type { CollectorPaymentRegisterInput } from "@/lib/route-sync";
-import { canRenewLoan } from "@/lib/loan-renew";
+import { canRenewLoan, type RenewalTerms } from "@/lib/loan-renew";
 import { reloanStateForVisit } from "@/lib/loan-reloan";
 import {
   isCollectorLiveDevice,
@@ -219,7 +219,7 @@ type Props = {
   ) => boolean | void | Promise<boolean | void>;
   /** N/P: hoy no tiene plata. Sale de por cobrar y entra a S/N. */
   onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
-  onRenewLoan?: (loanRef: string) => void;
+  onRenewLoan?: (loanRef: string, terms: RenewalTerms) => void;
   onCreateQuickLoan?: (draft: QuickLoanDraft) => void;
   /** Menú ☰ → Nuevo cliente: alta igual que el taller en la ruta de la planilla abierta. */
   onCreateClient?: (draft: RouteClientDraft) => Promise<boolean> | boolean;
@@ -2871,11 +2871,12 @@ export function CollectorMobileApp({
                               : undefined
                           }
                           onCancel={closeCard}
+                          renewLoan={loanForRenew}
                           onRenew={
                             onRenewLoan && loanForRenew
-                              ? () => {
+                              ? (terms) => {
                                   closeCard(true);
-                                  onRenewLoan(loanForRenew.ref);
+                                  onRenewLoan(loanForRenew.ref, terms);
                                 }
                               : undefined
                           }

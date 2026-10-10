@@ -1,6 +1,11 @@
 import { LOAN_RENEWED_TODAY_REASON } from "@/lib/collector-dispatch-sync";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
-import { buildRenewalLoans } from "@/lib/loan-renew";
+import {
+  buildRenewalLoans,
+  defaultRenewalTerms,
+  renewalTermsError,
+  type RenewalTerms,
+} from "@/lib/loan-renew";
 import { loanCommandKey, pendingLoanRef, type LoanCommand } from "@/lib/loan-command";
 import type {
   ClientRow,
@@ -64,10 +69,13 @@ export function commitLoanRenewal(
   state: LoanRenewalState,
   loanRef: string,
   today: string,
+  terms: RenewalTerms = defaultRenewalTerms(),
 ): LoanRenewalCommit {
   const loan = state.loans.find((row) => row.ref === loanRef);
   if (!loan) return { ok: false, error: "Préstamo no encontrado." };
-  const result = buildRenewalLoans(loan, pendingLoanRef(), today);
+  const termsError = renewalTermsError(terms, today);
+  if (termsError) return { ok: false, error: termsError };
+  const result = buildRenewalLoans(loan, pendingLoanRef(), today, terms);
   if (!result) {
     return { ok: false, error: "La renovación se activa cuando se cumpla el plazo del préstamo." };
   }

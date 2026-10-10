@@ -112,6 +112,7 @@ import { usePlanillaDayRollover } from "@/lib/planilla-day-sync";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { todayIso } from "@/lib/daily-dispatch";
 import { commitLoanRenewal } from "@/lib/commit-loan-renewal";
+import { renewalSummary, type RenewalTerms } from "@/lib/loan-renew";
 import {
   CollectorMobileApp,
   type CollectorCloseDayPayload,
@@ -453,12 +454,13 @@ export function CollectorShell({ session, onLogout }: Props) {
     return true;
   }
 
-  async function renewCollectorLoan(loanRef: string) {
+  async function renewCollectorLoan(loanRef: string, terms: RenewalTerms) {
     if (!collector) return;
     const renewal = commitLoanRenewal(
       { loans, clients, routes, collectors, assignments: dailyAssignments, payments },
       loanRef,
       todayIso(),
+      terms,
     );
     if (!renewal.ok) {
       showToast(renewal.error);
@@ -476,7 +478,7 @@ export function CollectorShell({ session, onLogout }: Props) {
     if (renewal.client) queueClientMirror(renewal.client);
     queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, renewal.assignments));
     queueRoutesMirror(renewal.routes);
-    const summary = `Renovado: debía ${money(renewal.created.capital)} + 20 % = ${money(renewal.created.total ?? 0)} · cuota desde mañana`;
+    const summary = renewalSummary(renewal.created, terms);
     showToast(`${summary} · subiendo…`);
     try {
       const cloud = await sent;

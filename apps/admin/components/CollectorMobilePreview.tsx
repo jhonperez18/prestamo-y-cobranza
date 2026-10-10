@@ -18,6 +18,7 @@ import type {
   CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
 import { todayIso } from "@/lib/daily-dispatch";
+import type { RenewalTerms } from "@/lib/loan-renew";
 import type { ClientRow, CollectorRow, LoanRow, PaymentRow, RouteRow, UserRow } from "@/lib/mock-data";
 import type { CollectorPaymentRegisterInput } from "@/lib/route-sync";
 
@@ -43,7 +44,7 @@ type Props = {
     draft: CollectorPaymentRegisterInput,
   ) => boolean | void | Promise<boolean | void>;
   onSkipVisit?: (draft: CollectorSkipVisitDraft) => void;
-  onRenewLoan?: (loanRef: string) => void;
+  onRenewLoan?: (loanRef: string, terms: RenewalTerms) => void;
   onSaveExpenses?: (payload: CollectorSaveExpensesPayload) => void;
   onCloseDay?: (payload: CollectorCloseDayPayload) => boolean | void | Promise<boolean | void>;
   onCloseMonth?: (payload: CollectorCloseMonthPayload) => void;

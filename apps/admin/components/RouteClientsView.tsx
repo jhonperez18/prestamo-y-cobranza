@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Pill } from "@/components/ui";
 import { clientsOnRouteSorted } from "@/lib/client-route-order";
 import { computeLoanFinancials } from "@/lib/loan-balance";
 import { todayIso } from "@/lib/daily-dispatch";
 import { paymentVisitDate } from "@/lib/late-payment";
-import { canRenewLoan } from "@/lib/loan-renew";
+import { canRenewLoan, type RenewalTerms } from "@/lib/loan-renew";
+import { LoanRenewForm } from "@/components/LoanRenewForm";
 import { syncLoan } from "@/lib/loan-preview";
 import { computeLoanCuotasProgress, type CuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
@@ -45,7 +46,7 @@ type Props = {
   onBack?: () => void;
   onOpenClient?: (ref: string) => void;
   onOpenLoan?: (loanRef: string) => void;
-  onRenewLoan?: (loanRef: string) => void;
+  onRenewLoan?: (loanRef: string, terms: RenewalTerms) => void;
 };
 
 type RouteClientRow = {
@@ -173,6 +174,7 @@ export function RouteClientsView({
 }: Props) {
   const today = planillaDate || todayIso();
   const blocked = planillaDayBlockedReason(today);
+  const [renewingRef, setRenewingRef] = useState<string | null>(null);
 
   const planilla = useMemo(
     () => planillaAssignmentsForRoute(assignments, routeName, collectorRef, today),
@@ -276,8 +278,11 @@ export function RouteClientsView({
                 const openClient = onOpenClient
                   ? () => onOpenClient(row.client.ref)
                   : undefined;
+                const renewing =
+                  onRenewLoan && row.renewLoan && renewingRef === row.renewLoan.ref ? row.renewLoan : null;
                 return (
-                  <tr key={row.rowKey}>
+                  <Fragment key={row.rowKey}>
+                  <tr>
                     <td
                       className={`ref${openClient ? " clickable" : ""}`}
                       onClick={openClient}
@@ -334,12 +339,12 @@ export function RouteClientsView({
                           disabled={!canRenew}
                           title={
                             canRenew
-                              ? "Lo que debe + 20 % a 1 mes · sin plata · cuota desde mañana"
+                              ? "Lo que debe + el porcentaje que elija · sin plata"
                               : "Disponible cuando se cumpla el plazo"
                           }
                           onClick={(event) => {
                             event.stopPropagation();
-                            if (row.renewLoan) onRenewLoan(row.renewLoan.ref);
+                            if (row.renewLoan) setRenewingRef(row.renewLoan.ref);
                           }}
                         >
                           renovar
@@ -349,6 +354,22 @@ export function RouteClientsView({
                       )}
                     </td>
                   </tr>
+                  {renewing && onRenewLoan ? (
+                    <tr className="route-clients-renew-row">
+                      <td colSpan={10}>
+                        <LoanRenewForm
+                          loan={renewing}
+                          today={todayIso()}
+                          onCancel={() => setRenewingRef(null)}
+                          onConfirm={(terms) => {
+                            setRenewingRef(null);
+                            onRenewLoan(renewing.ref, terms);
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  ) : null}
+                  </Fragment>
                 );
               })
             )}
