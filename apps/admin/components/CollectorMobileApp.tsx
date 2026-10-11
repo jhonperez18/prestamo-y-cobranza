@@ -517,6 +517,15 @@ export function CollectorMobileApp({
       keepOpenPlanillaRoute(prev, planillaRoutePins, assignments, day, clients),
     );
   }, [planillaRoutePins, assignments, clients, date, selectedDate]);
+  /** Hoja de la vista desde el primer cuadro: sin hoja, el Inicial saldría del cobrador entero. */
+  const shownPlanillaRoute = useMemo(
+    () =>
+      planillaRoutePins.length > 1
+        ? planillaRouteFilter ??
+          keepOpenPlanillaRoute(null, planillaRoutePins, assignments, selectedDate ?? date ?? todayIso(), clients)
+        : null,
+    [planillaRouteFilter, planillaRoutePins, assignments, clients, date, selectedDate],
+  );
 
   const activeDate = useMemo(() => {
     const fallback = date ?? todayIso();
@@ -651,7 +660,7 @@ export function CollectorMobileApp({
    */
   const historyRoute =
     planillaRoutePins.length > 1
-      ? planillaRouteFilter ?? planillaRoutePins[0]
+      ? shownPlanillaRoute ?? planillaRoutePins[0]
       : planillaRoutePins.length === 1 && isIndependentSaldoRoute(planillaRoutePins[0])
         ? planillaRoutePins[0]
         : null;
@@ -840,8 +849,7 @@ export function CollectorMobileApp({
 
   const closedHistoryDates = useMemo(() => {
     const set = new Set<string>();
-    const routeScope =
-      planillaRoutePins.length > 1 ? planillaRouteFilter : null;
+    const routeScope = shownPlanillaRoute;
     for (const row of dayCloses) {
       if (row.collectorRef !== collector.ref) continue;
       const d = normalizeHistoryDate(row.date);
@@ -871,8 +879,7 @@ export function CollectorMobileApp({
     collector.ref,
     dayCloses,
     planillaCashCloses,
-    planillaRouteFilter,
-    planillaRoutePins.length,
+    shownPlanillaRoute,
   ]);
 
   const activePeriod = viewPeriod;
@@ -943,8 +950,7 @@ export function CollectorMobileApp({
   );
 
   /** Ruta de planilla seleccionada (null = una sola ruta / sin pines). */
-  const activePlanillaRoute =
-    planillaRoutePins.length > 1 ? planillaRouteFilter : null;
+  const activePlanillaRoute = shownPlanillaRoute;
   const activeCloseKey = `${activeDate}|${activePlanillaRoute ?? ""}`;
   // Cerrada M, la app pasa sola a T: el panel de M no puede quedar abierto apuntando a T
   // (caso 07/10: un segundo toque en «Confirmar» cerró T sin que nadie lo pidiera).
