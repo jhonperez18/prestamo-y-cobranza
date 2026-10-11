@@ -1,0 +1,9 @@
+[Unit]
+Description=Respaldo diario Supabase (autoprestamos)
+After=network-online.target
+OnFailure=autoprestamos-alarma@%n.service
+[Service]
+Type=oneshot
+ExecStart=/root/respaldo/respaldo-diario.sh
+StandardOutput=append:/var/log/autoprestamos-respaldo.log
+StandardError=append:/var/log/autoprestamos-respaldo.log

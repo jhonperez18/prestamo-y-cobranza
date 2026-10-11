@@ -1,0 +1,6 @@
+[Unit]
+Description=Autoprestamos: alarma por correo (%i no termino bien)
+
+[Service]
+Type=oneshot
+ExecStart=/root/tareas/alarma.sh %i

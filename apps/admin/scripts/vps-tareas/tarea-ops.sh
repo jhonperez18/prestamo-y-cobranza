@@ -1,6 +1,7 @@
 #!/bin/bash
 # Tareas del negocio en el VPS (sellado 23:35 y revisión 6:05, hora Bogotá).
 # Vercel Cron corre las mismas 5 min antes; son idempotentes (un corte = un sellado, un correo).
+# Si sale con error, systemd dispara la alarma por correo (autoprestamos-alarma@.service).
 # Uso: tarea-ops.sh day-rollover | morning-check
 # Copia en el VPS: /root/tareas/tarea-ops.sh (esta es la versionada).
 set -uo pipefail
@@ -17,6 +18,11 @@ for attempt in 1 2 3; do
   JSON=$(printf '%s' "$BODY" | sed '$d')
   if [ "$CODE" = "200" ] && printf '%s' "$JSON" | grep -q '"ok":true'; then
     echo "$(date -Is) OK $TASK (intento $attempt) $(printf '%s' "$JSON" | head -c 4000)" >> "$LOG"
+    # Corrió, pero la revisión encontró algo o el informe semanal no salió: que suene la alarma.
+    if printf '%s' "$JSON" | grep -q -E '"(report|weeklyReport)":\{"ok":false'; then
+      echo "$(date -Is) AVISO $TASK: corrió pero encontró un problema (ver la línea anterior)" >> "$LOG"
+      exit 1
+    fi
     exit 0
   fi
   echo "$(date -Is) REINTENTO $TASK (intento $attempt, HTTP $CODE) $(printf '%s' "$JSON" | head -c 300)" >> "$LOG"

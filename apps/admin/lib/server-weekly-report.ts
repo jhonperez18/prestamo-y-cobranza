@@ -26,8 +26,12 @@ import { buildWeeklyReportPdf } from "@/lib/weekly-report-pdf";
 
 const STORAGE_BUCKET = "app-catalog";
 const SENT_PATH = "weekly-report-sent.json";
-const RESEND_URL = "https://api.resend.com/emails";
+export const RESEND_URL = "https://api.resend.com/emails";
 const DEFAULT_FROM = "CA préstamo <onboarding@resend.dev>";
+
+export function resendFromAddress() {
+  return process.env.WEEKLY_REPORT_FROM?.trim() || DEFAULT_FROM;
+}
 const SCOPES: WeeklyReportScope[] = ["mtn", "a"];
 
 type SentEntry = { at: string; to: string[]; id: string };
@@ -88,7 +92,7 @@ async function markSent(cutoff: string, entry: SentEntry) {
   return { ok: true as const };
 }
 
-async function adminEmails(): Promise<{ ok: true; emails: string[] } | { ok: false; error: string }> {
+export async function adminEmails(): Promise<{ ok: true; emails: string[] } | { ok: false; error: string }> {
   const users = await fetchUsersFromSupabase();
   if (!users.ok) return { ok: false, error: users.error || "users_fetch_failed" };
   const emails = users.rows
@@ -172,7 +176,7 @@ export async function sendWeeklyReport(options: WeeklyReportSendOptions = {}): P
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      from: process.env.WEEKLY_REPORT_FROM?.trim() || DEFAULT_FROM,
+      from: resendFromAddress(),
       to: recipients.emails,
       subject: weeklyReportEmailSubject(reports, Boolean(options.test)),
       html: weeklyReportEmailHtml(reports),

@@ -1,6 +1,7 @@
 [Unit]
 Description=Autoprestamos: revision de la manana (morning-check)
 After=network-online.target
+OnFailure=autoprestamos-alarma@%n.service
 
 [Service]
 Type=oneshot
