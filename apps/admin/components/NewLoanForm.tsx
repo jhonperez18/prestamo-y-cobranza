@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { CloseIcon, PersonMiniIcon, SearchIcon } from "@/components/icons";
 import { money, type ClientRow, type LoanRow } from "@/lib/mock-data";
 import { loanRefLabel } from "@/lib/loan-command";
@@ -154,23 +154,13 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
   const syncedLoan = useMemo(() => (loan ? syncLoan(loan, undefined) : null), [loan]);
   const code = loan ? loanRefLabel(loan.ref) : "P- al guardar";
   const [query, setQuery] = useState("");
-  const [client, setClient] = useState<ClientRow | null>(
+  const [pickedClient, setClient] = useState<ClientRow | null>(
     () => (loan ? (clients.find((row) => row.ref === loan.clientRef) ?? null) : null),
   );
-
-  // Catálogo manda: si renombran el cliente, el picker ya seleccionado se actualiza.
-  useEffect(() => {
-    if (!client) return;
-    const fresh = clients.find((row) => row.ref === client.ref);
-    if (!fresh) return;
-    if (
-      fresh.name !== client.name ||
-      fresh.lastName !== client.lastName ||
-      fresh.routeOrder !== client.routeOrder
-    ) {
-      setClient(fresh);
-    }
-  }, [clients, client]);
+  /** Catálogo manda: si renombran el cliente, el ya elegido se ve con sus datos nuevos. */
+  const client = pickedClient
+    ? (clients.find((row) => row.ref === pickedClient.ref) ?? pickedClient)
+    : null;
   const [capitalRaw, setCapitalRaw] = useState(
     syncedLoan ? String(syncedLoan.capital) : loan ? String(loan.capital) : "",
   );
@@ -201,11 +191,11 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
   const [termDaysRaw, setTermDaysRaw] = useState(String(seedDays));
   const [frequency, setFrequency] = useState<PayFrequency>(seedFreq);
   const seedCuotas = initialCuotas(loan ?? null, seedDays, seedFreq);
-  const [cuotasRaw, setCuotasRaw] = useState(String(seedCuotas));
   /** # cuotas del acuerdo: en edición o si ya difiere de la sugerencia, no se recalcula. */
-  const cuotasTouchedRef = useRef(
-    Boolean(loan) ||
-      seedCuotas !== suggestedInstallmentsForDays(seedFreq, seedDays),
+  const [cuotasManual, setCuotasManual] = useState<string | null>(() =>
+    loan || seedCuotas !== suggestedInstallmentsForDays(seedFreq, seedDays)
+      ? String(seedCuotas)
+      : null,
   );
   const seedCuota =
     syncedLoan?.installment && syncedLoan.installment > 0
@@ -213,9 +203,10 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
       : loan?.installment && loan.installment > 0
         ? loan.installment
         : 0;
-  const [cuotaRaw, setCuotaRaw] = useState(seedCuota > 0 ? String(seedCuota) : "");
   /** Cuota manual del cliente: se respeta al guardar y al reabrir; no se recalcula sola. */
-  const cuotaTouchedRef = useRef(Boolean(loan && seedCuota > 0));
+  const [cuotaManualRaw, setCuotaManualRaw] = useState<string | null>(() =>
+    loan && seedCuota > 0 ? String(seedCuota) : null,
+  );
   const seedStartIso = syncedLoan
     ? displayToIso(syncedLoan.date) || todayIso()
     : loan
@@ -226,27 +217,21 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
       firstCollectionIso(seedStartIso, loan.frequency ?? "diario")
     : "";
   const autoSeedFirstCobro = firstCollectionIso(seedStartIso, seedFreq);
-  const [cobroIso, setCobroIso] = useState(seedFirstCobro || autoSeedFirstCobro);
-  const cobroTouchedRef = useRef(
-    Boolean(seedFirstCobro && autoSeedFirstCobro && seedFirstCobro !== autoSeedFirstCobro),
+  /** Día de cobro a mano: vuelve a automático si cambian desembolso o frecuencia. */
+  const [cobroManual, setCobroManual] = useState<string | null>(() =>
+    seedFirstCobro && autoSeedFirstCobro && seedFirstCobro !== autoSeedFirstCobro
+      ? seedFirstCobro
+      : null,
   );
-  const [dueIso, setDueIso] = useState(
-    loan
-      ? displayToIso(loan.due) ||
-          displayToIso(loan.schedule?.[loan.schedule.length - 1]?.date || "") ||
-          ""
-      : "",
-  );
-  /** Vencimiento sigue el cronograma hasta que el usuario lo edite a mano. */
-  const dueTouchedRef = useRef(false);
-  const seedTotal =
-    syncedLoan?.total && syncedLoan.total > 0
-      ? syncedLoan.total
-      : loan?.total && loan.total > 0
-        ? loan.total
-        : 0;
-  const [totalRaw, setTotalRaw] = useState(seedTotal > 0 ? String(seedTotal) : "");
-  const totalTouchedRef = useRef(false);
+  const seedDueIso = loan
+    ? displayToIso(loan.due) ||
+      displayToIso(loan.schedule?.[loan.schedule.length - 1]?.date || "") ||
+      ""
+    : "";
+  /** Vencimiento a mano: vuelve a automático si cambian desembolso, frecuencia, plazo o # cuotas. */
+  const [dueManual, setDueManual] = useState<string | null>(null);
+  /** Total a mano (capital + interés): vacío = automático. */
+  const [totalManualRaw, setTotalManualRaw] = useState<string | null>(null);
   const [startIso, setStartIso] = useState(seedStartIso);
   const [notes, setNotes] = useState(() =>
     stripFundedMarkers(syncedLoan?.notes ?? loan?.notes ?? ""),
@@ -257,15 +242,6 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
     return "";
   });
   const [askingDelete, setAskingDelete] = useState(false);
-  const driversReadyRef = useRef(false);
-  const scheduleDriversRef = useRef({
-    startIso: seedStartIso,
-    frequency: seedFreq,
-    termDays: seedDays,
-    cuotasCount: seedCuotas,
-    capital: seedCapital,
-    interest: seedInterest,
-  });
 
   const suggestions = useMemo(
     () =>
@@ -285,20 +261,26 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
       : 0;
   const interestFromAmount = interestMode === "amount" ? parseMoney(interestRaw) : 0;
   const interestAuto = interestMode === "amount" ? interestFromAmount : interestFromPct;
-  const totalManual = parseMoney(totalRaw);
+  const totalTouched = totalManualRaw != null;
+  const totalManual = parseMoney(totalManualRaw ?? "");
   const interest =
-    totalTouchedRef.current && totalManual > capital
+    totalTouched && totalManual > capital
       ? totalManual - capital
       : interestAuto;
   const totalDue =
-    totalTouchedRef.current && totalManual > 0 ? totalManual : capital + interestAuto;
+    totalTouched && totalManual > 0 ? totalManual : capital + interestAuto;
   const termDays = parsePositiveInt(termDaysRaw);
+  const cuotasRaw =
+    cuotasManual ??
+    (termDays >= 1 ? String(suggestedInstallmentsForDays(frequency, termDays)) : String(seedCuotas));
   const cuotasCount = parsePositiveInt(cuotasRaw);
-  const cuotaManual = parseMoney(cuotaRaw);
+  const cuotaTouched = cuotaManualRaw != null;
+  const cuotaManual = parseMoney(cuotaManualRaw ?? "");
   const autoFirstCobroIso = firstCollectionIso(startIso, frequency);
+  const cobroIso = cobroManual ?? autoFirstCobroIso;
   // Lo que está en la casilla manda (hoy = cobro hoy); no solo si “tocó” el campo.
   const firstCobroForPreview = cobroIso || undefined;
-  const dueForPreview = dueTouchedRef.current && dueIso ? dueIso : undefined;
+  const dueForPreview = dueManual ?? undefined;
   const previewInput = {
     capital,
     interest,
@@ -311,7 +293,7 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
   };
   const autoPreview = previewLoanFlat(previewInput);
   const preview =
-    cuotaTouchedRef.current && cuotaManual > 0
+    cuotaTouched && cuotaManual > 0
       ? previewLoanFlat({
           ...previewInput,
           installmentAmount: cuotaManual,
@@ -321,10 +303,9 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
     PAY_FREQUENCIES.find((item) => item.id === frequency)?.label ?? "Diario";
   const termLabel = termDays > 0 ? `${termDays} días` : "—";
   const autoDueIso = preview?.dates.length ? preview.dates[preview.dates.length - 1] : "";
-  const dueLabel = dueTouchedRef.current
-    ? dueIso
-      ? isoToDisplay(dueIso)
-      : "—"
+  const dueIso = dueManual ?? (autoDueIso || seedDueIso);
+  const dueLabel = dueManual
+    ? isoToDisplay(dueManual)
     : autoDueIso
       ? isoToDisplay(autoDueIso)
       : "—";
@@ -338,81 +319,17 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
         : ratePct != null
           ? String(ratePct)
           : "";
-  const cuotaDisplay = cuotaTouchedRef.current
-    ? cuotaRaw
+  // Valor cuota manual: NUNCA se limpia por cambio de motor (pedido del cliente).
+  const cuotaDisplay = cuotaTouched
+    ? (cuotaManualRaw ?? "")
     : autoPreview
       ? String(autoPreview.installment)
       : "";
-  const totalDisplay = totalTouchedRef.current
-    ? totalRaw
+  const totalDisplay = totalTouched
+    ? (totalManualRaw ?? "")
     : totalDue > 0
       ? String(totalDue)
       : "";
-  const cobroDisplay = cobroTouchedRef.current ? cobroIso : cobroIso || autoFirstCobroIso;
-
-  useEffect(() => {
-    // En edición el # de cuotas guardado manda; en alta solo auto hasta que el usuario toque.
-    if (editing || cuotasTouchedRef.current) return;
-    if (termDays < 1) return;
-    setCuotasRaw(String(suggestedInstallmentsForDays(frequency, termDays)));
-  }, [editing, frequency, termDays]);
-
-  // Al cambiar desembolso / plazo / cuotas / montos: volver a cálculo automático
-  // (si el usuario editó a mano un campo hijo, solo se respeta hasta el próximo cambio de motor).
-  useEffect(() => {
-    const next = {
-      startIso,
-      frequency,
-      termDays,
-      cuotasCount,
-      capital,
-      interest: interestAuto,
-    };
-    if (!driversReadyRef.current) {
-      driversReadyRef.current = true;
-      scheduleDriversRef.current = next;
-      return;
-    }
-    const prev = scheduleDriversRef.current;
-    const desembolsoChanged = prev.startIso !== next.startIso || prev.frequency !== next.frequency;
-    const termChanged =
-      prev.termDays !== next.termDays ||
-      prev.cuotasCount !== next.cuotasCount ||
-      prev.frequency !== next.frequency;
-
-    if (desembolsoChanged) {
-      cobroTouchedRef.current = false;
-    }
-    if (termChanged || desembolsoChanged) {
-      dueTouchedRef.current = false;
-    }
-    // Valor cuota manual: NUNCA se limpia por cambio de motor (pedido del cliente).
-    scheduleDriversRef.current = next;
-  }, [startIso, frequency, termDays, cuotasCount, capital, interestAuto]);
-
-  useEffect(() => {
-    if (cuotaTouchedRef.current) return;
-    if (!autoPreview?.installment) return;
-    setCuotaRaw(String(autoPreview.installment));
-  }, [autoPreview?.installment]);
-
-  useEffect(() => {
-    if (cobroTouchedRef.current) return;
-    if (!autoFirstCobroIso) return;
-    setCobroIso(autoFirstCobroIso);
-  }, [autoFirstCobroIso]);
-
-  useEffect(() => {
-    if (dueTouchedRef.current) return;
-    if (!autoDueIso) return;
-    setDueIso(autoDueIso);
-  }, [autoDueIso]);
-
-  useEffect(() => {
-    if (totalTouchedRef.current) return;
-    const auto = capital + interestAuto;
-    if (auto > 0) setTotalRaw(String(auto));
-  }, [capital, interestAuto]);
 
   function onInterestSelect(value: string) {
     if (!value || value === "0") {
@@ -677,13 +594,7 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                     value={totalDisplay}
                     onChange={(event) => {
                       const next = event.target.value.replace(/[^\d]/g, "");
-                      if (!next) {
-                        totalTouchedRef.current = false;
-                        setTotalRaw("");
-                        return;
-                      }
-                      totalTouchedRef.current = true;
-                      setTotalRaw(next);
+                      setTotalManualRaw(next || null);
                     }}
                     inputMode="numeric"
                     title="Capital + interés (editable a mano)"
@@ -700,7 +611,11 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                     type="date"
                     required
                     value={startIso}
-                    onChange={(event) => setStartIso(event.target.value)}
+                    onChange={(event) => {
+                      setStartIso(event.target.value);
+                      setCobroManual(null);
+                      setDueManual(null);
+                    }}
                   />
                   <label className="sheet-label" htmlFor="loan-term-days">
                     Tiempo (días)
@@ -708,7 +623,10 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                   <input
                     id="loan-term-days"
                     value={termDaysRaw}
-                    onChange={(event) => setTermDaysRaw(event.target.value.replace(/[^\d]/g, ""))}
+                    onChange={(event) => {
+                      setTermDaysRaw(event.target.value.replace(/[^\d]/g, ""));
+                      setDueManual(null);
+                    }}
                     required
                     inputMode="numeric"
                     min={1}
@@ -721,7 +639,11 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                   <select
                     id="loan-freq"
                     value={frequency}
-                    onChange={(event) => setFrequency(event.target.value as PayFrequency)}
+                    onChange={(event) => {
+                      setFrequency(event.target.value as PayFrequency);
+                      setCobroManual(null);
+                      setDueManual(null);
+                    }}
                   >
                     {PAY_FREQUENCIES.map((item) => (
                       <option key={item.id} value={item.id}>
@@ -739,8 +661,8 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                     id="loan-cuotas"
                     value={cuotasRaw}
                     onChange={(event) => {
-                      cuotasTouchedRef.current = true;
-                      setCuotasRaw(event.target.value.replace(/[^\d]/g, ""));
+                      setCuotasManual(event.target.value.replace(/[^\d]/g, ""));
+                      setDueManual(null);
                     }}
                     required
                     inputMode="numeric"
@@ -754,16 +676,9 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                   <input
                     id="loan-cobro-dia"
                     type="date"
-                    value={cobroDisplay}
+                    value={cobroIso}
                     onChange={(event) => {
-                      const next = event.target.value;
-                      if (!next) {
-                        cobroTouchedRef.current = false;
-                        setCobroIso("");
-                        return;
-                      }
-                      cobroTouchedRef.current = true;
-                      setCobroIso(next);
+                      setCobroManual(event.target.value || null);
                     }}
                     title={
                       frequency === "diario"
@@ -779,13 +694,7 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                     value={cuotaDisplay}
                     onChange={(event) => {
                       const next = event.target.value.replace(/[^\d]/g, "");
-                      if (!next) {
-                        cuotaTouchedRef.current = false;
-                        setCuotaRaw("");
-                        return;
-                      }
-                      cuotaTouchedRef.current = true;
-                      setCuotaRaw(next);
+                      setCuotaManualRaw(next || null);
                     }}
                     inputMode="numeric"
                     placeholder="Monto ÷ cuotas"
@@ -801,17 +710,8 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                     <input
                       id="loan-due"
                       type="date"
-                      value={dueTouchedRef.current ? dueIso : dueIso || autoDueIso}
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        if (!next) {
-                          dueTouchedRef.current = false;
-                          setDueIso("");
-                          return;
-                        }
-                        dueTouchedRef.current = true;
-                        setDueIso(next);
-                      }}
+                      value={dueIso}
+                      onChange={(event) => setDueManual(event.target.value || null)}
                       title="Última cuota (automática; editable a mano)"
                     />
                   </div>
