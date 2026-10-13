@@ -385,6 +385,13 @@ function pickDefaultRoutePin(pins: string[]): string | null {
   return pins.find((name) => sameRoute(name, "1")) ?? pins[0];
 }
 
+/** El pin elegido sigue si la ruta existe; si no, el de siempre. */
+function fitRoutePin(prev: string | null, pins: string[]): string | null {
+  if (pins.length === 0) return null;
+  if (prev && pins.some((name) => sameRoute(name, prev))) return prev;
+  return pickDefaultRoutePin(pins);
+}
+
 type RouteLiquidacion = {
   routeRef: string;
   routeName: string;
@@ -1818,25 +1825,56 @@ export function SupervisorMobileApp({
     return { date: base.date, items, total };
   }, [nequiRegisterTodayAll, nequiRegistroRoute, loans, clients]);
 
-  /** Si los pins llegan después de entrar al panel, arrancar en ruta 1. */
-  useEffect(() => {
-    if (view !== "nequi") return;
-    setNequiRegistroRoute((prev) => {
-      if (nequiOnlyRoutePins.length === 0) return null;
-      if (prev && nequiOnlyRoutePins.some((name) => sameRoute(name, prev))) {
-        return prev;
-      }
-      return pickDefaultRoutePin(nequiOnlyRoutePins);
+  /**
+   * Al entrar al panel o al cambiar sus rutas, el pin se ajusta una vez (arranca en ruta 1).
+   * Se ajusta al dibujar, no en un efecto: así no se ve un cuadro sin ruta antes del pin.
+   */
+  const pinFitKey = (panel: SupervisorView, pins: readonly string[]) =>
+    view === panel ? `${panel}:${pins.join("|")}` : null;
+  const nequiPinKey = pinFitKey("nequi", nequiOnlyRoutePins);
+  const bancoPinKey = pinFitKey("banco", BANCO_ROUTE_PINS);
+  const planillaPinKey = pinFitKey("planilla", planillaRoutePins);
+  const clientesPinKey = pinFitKey("clientes", planillaRoutePins);
+  const prestamosPinKey = pinFitKey("prestamos", planillaRoutePins);
+  const [pinKeysSeen, setPinKeysSeen] = useState({
+    nequi: null as string | null,
+    banco: null as string | null,
+    planilla: null as string | null,
+    clientes: null as string | null,
+    prestamos: null as string | null,
+  });
+  if (
+    pinKeysSeen.nequi !== nequiPinKey ||
+    pinKeysSeen.banco !== bancoPinKey ||
+    pinKeysSeen.planilla !== planillaPinKey ||
+    pinKeysSeen.clientes !== clientesPinKey ||
+    pinKeysSeen.prestamos !== prestamosPinKey
+  ) {
+    if (nequiPinKey && pinKeysSeen.nequi !== nequiPinKey) {
+      setNequiRegistroRoute((prev) => fitRoutePin(prev, nequiOnlyRoutePins));
+    }
+    if (bancoPinKey && pinKeysSeen.banco !== bancoPinKey) {
+      setBancoRegistroRoute((prev) =>
+        prev && BANCO_ROUTE_PINS.some((pin) => sameRoute(pin, prev)) ? prev : null,
+      );
+    }
+    if (planillaPinKey && pinKeysSeen.planilla !== planillaPinKey) {
+      setPlanillaRouteFilter((prev) => fitRoutePin(prev, planillaRoutePins));
+    }
+    if (clientesPinKey && pinKeysSeen.clientes !== clientesPinKey) {
+      setClientesRouteFilter((prev) => fitRoutePin(prev, planillaRoutePins));
+    }
+    if (prestamosPinKey && pinKeysSeen.prestamos !== prestamosPinKey) {
+      setPrestamosRouteFilter((prev) => fitRoutePin(prev, planillaRoutePins));
+    }
+    setPinKeysSeen({
+      nequi: nequiPinKey,
+      banco: bancoPinKey,
+      planilla: planillaPinKey,
+      clientes: clientesPinKey,
+      prestamos: prestamosPinKey,
     });
-  }, [view, nequiOnlyRoutePins]);
-  useEffect(() => {
-    if (view !== "banco") return;
-    setBancoRegistroRoute((prev) => {
-      if (!prev) return null;
-      if (BANCO_ROUTE_PINS.some((pin) => sameRoute(pin, prev))) return prev;
-      return null;
-    });
-  }, [view]);
+  }
   useEffect(() => {
     const openDay =
       view === "banco" ? bancoRegistroDay : view === "nequi" ? nequiRegistroDay : null;
@@ -1851,36 +1889,6 @@ export function SupervisorMobileApp({
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [view, bancoRegistroDay, nequiRegistroDay]);
-  useEffect(() => {
-    if (view !== "planilla") return;
-    setPlanillaRouteFilter((prev) => {
-      if (planillaRoutePins.length === 0) return null;
-      if (prev && planillaRoutePins.some((name) => sameRoute(name, prev))) {
-        return prev;
-      }
-      return pickDefaultRoutePin(planillaRoutePins);
-    });
-  }, [view, planillaRoutePins]);
-  useEffect(() => {
-    if (view !== "clientes") return;
-    setClientesRouteFilter((prev) => {
-      if (planillaRoutePins.length === 0) return null;
-      if (prev && planillaRoutePins.some((name) => sameRoute(name, prev))) {
-        return prev;
-      }
-      return pickDefaultRoutePin(planillaRoutePins);
-    });
-  }, [view, planillaRoutePins]);
-  useEffect(() => {
-    if (view !== "prestamos") return;
-    setPrestamosRouteFilter((prev) => {
-      if (planillaRoutePins.length === 0) return null;
-      if (prev && planillaRoutePins.some((name) => sameRoute(name, prev))) {
-        return prev;
-      }
-      return pickDefaultRoutePin(planillaRoutePins);
-    });
-  }, [view, planillaRoutePins]);
 
   const poolDayCountLabel = (cobros: number, prestamos: number) => {
     const cobro = `${cobros} cobro${cobros === 1 ? "" : "s"}`;
