@@ -398,8 +398,8 @@ Un solo camino: `commitLoanRenewal` (`lib/commit-loan-renewal.ts`), lo usan cobr
 | Pagado del viejo | Solo lo cobrado de verdad (PG-). Lo que debía pasa al nuevo; no cuenta como pagado. Lo calcula la base (`_loan_settle`; trigger `loans_paid_balance_owner`) |
 | Nuevo (P-455) | «Renovación de P-…» (`loanRenewalOf`), capital = saldo (fijo), `[[fb:cartera]]` |
 | Condiciones | Formulario `LoanRenewForm` (cobrador, supervisor y panel): porcentaje (propone 20 %), plazo y primer cobro (propone el siguiente día de cobro). La base acepta lo elegido; el capital lo fija ella |
-| Hoy | La visita queda `omitido` «Renovado hoy» (`LOAN_RENEWED_TODAY_REASON`): sale de por cobrar, no es N/P |
-| Mañana | Día 1 del nuevo: cuota nueva, mora en cero |
+| Hoy | La visita del vencido queda `omitido` «Renovado hoy» (`LOAN_RENEWED_TODAY_REASON`), no es N/P. La cuota del nuevo queda **por cobrar el mismo día** si la hoja sigue abierta, igual que un préstamo nuevo (dueño 14/10). Sin pagar al cierre = N/P |
+| Pantallas | «Renovado» solo en el renglón del vencido (`reloanStateForVisit`); la cuota del nuevo es un cobro normal |
 | Pantallas | Recaudo, Historial y planilla del supervisor: «Renovado» (ámbar, «R»), nunca «Préstamo» / «E» (`isCashlessRenewal`, `loanRenewedOnDate`) |
 | Caja | Ningún renglón «Préstamo · P-…» de una renovación cuenta (`isCashlessRenewal`), ni hoy ni en historia |
 | Nube | Orden `renew_loan` (capital = saldo de la nube, si no `saldo_cambio`). Un cobro tardío no reabre el renovado: lo decide la base (`_loan_settle`) |

@@ -7,7 +7,6 @@ import {
   LOAN_RENEWED_TODAY_REASON,
   upsertDispatchRoute,
 } from "@/lib/collector-dispatch-sync";
-import { loanRenewalOf } from "@/lib/loan-renewal-marks";
 import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
 import {
   collectionAlertLabel,
@@ -207,8 +206,7 @@ function loanItemsForClient(
     if (owes <= 0 && !paidToday) continue;
     if (isPendingReview(client)) continue;
     const startedIso = loanDisbursementIsoDate(loan);
-    // Renovación: el día que se renueva la visita queda «Renovado hoy»; la cuota nueva, mañana.
-    if (startedIso === date && !paidToday && loanRenewalOf(loan)) continue;
+    // Préstamo o renovación de hoy: por cobrar el mismo día si la hoja sigue abierta.
     if (startedIso === date && !paidToday && !sheetOpen) continue;
     if (startedIso !== date && !loanIsCollectibleOn(loan, date)) continue;
 

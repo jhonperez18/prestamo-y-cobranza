@@ -95,7 +95,9 @@ export function reloanStateForVisit(input: {
   const granted = loanGrantedOnDate(clientRef, loans, payments, date);
   if (granted) return { canReloan: false, granted, renewed: null };
   const renewed = loanRenewedOnDate(clientRef, loans, date);
-  if (renewed) return { canReloan: false, granted: null, renewed };
+  // «Renovado» es el renglón del vencido; la cuota del renovado es un cobro normal.
+  if (renewed && renewed.ref !== loanRef) return { canReloan: false, granted: null, renewed };
+  if (renewed) return { canReloan: false, granted: null, renewed: null };
   const loan = loanRef ? loans.find((row) => row.ref === loanRef) ?? null : null;
   if (!loanSettledOnDate(loan, payments, date)) return { canReloan: false, granted: null, renewed: null };
   // El crédito que terminó hoy puede seguir «Activo» hasta proyectar el estado: no cuenta.

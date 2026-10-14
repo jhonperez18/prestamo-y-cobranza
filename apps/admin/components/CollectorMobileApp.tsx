@@ -294,7 +294,7 @@ function DayLoanListRow({
           {renewal ? (
             <span
               className="collector-reloan-tag is-renewal"
-              title={`Renovado ${loan.ref} · debía ${money(loan.capital)} + 20 % · sin plata · cuota desde mañana`}
+              title={`Renovado ${loan.ref} · debía ${money(loan.capital)} + 20 % · sin plata`}
             >
               Renovado
             </span>

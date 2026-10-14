@@ -4793,7 +4793,8 @@ console.log("— Cupo del aparato —");
 
 // ── 30. Renovar (caso Nelson Jefe 08/10): a lo que debe se le suma el 20 % a 1 mes.
 //     No es préstamo nuevo ni sale plata (ni caja, ni Banco, ni Nequi). Hoy la visita
-//     queda «Renovado hoy»; la cuota nueva arranca mañana. El vencido no se reabre.
+//     queda «Renovado hoy» y la cuota nueva queda por cobrar el mismo día (dueño 14/10).
+//     El vencido no se reabre.
 console.log("\n— Renovar sin plata —");
 {
   const { commitLoanRenewal } = await import("@/lib/commit-loan-renewal");
@@ -4862,12 +4863,16 @@ console.log("\n— Renovar sin plata —");
     const renewedRow = todayRows.find((r) => r.loanRef === "P-R1");
     expect("Hoy: la visita queda «Renovado hoy» (sale de por cobrar)", `${renewedRow?.visitStatus}:${renewedRow?.skipReason}`, "omitido:Renovado hoy");
     expect("Hoy: no es N/P", renewedRow ? isNoPayListRow(renewedRow) : null, false);
-    expect("Hoy: sin cuota nueva ni Prestar", todayRows.filter((r) => r.loanRef === R2 || r.itemId.includes(":prestar")).length, 0);
+    expect(
+      "Hoy: la cuota del renovado queda por cobrar (sin Prestar)",
+      todayRows.filter((r) => r.loanRef === R2 || r.itemId.includes(":prestar")).map((r) => `${r.loanRef}:${r.visitStatus}:${r.amountDue}`).join(","),
+      `${R2}:pendiente:${renewed.created.installment}`,
+    );
     const rebuilt = syncPermanentRoutePlanilla(rDay, rRoutes, renewed.clients, renewed.loans, [COB], renewed.assignments, rPays);
     expect(
-      "Hoy: rearmar la planilla deja el renglón «Renovado hoy»",
-      rebuilt.assignments.filter((r) => r.clientRef === "CLI-R1" && r.dispatchDate === rDay).map((r) => `${r.loanRef}:${r.skipReason}`).join(","),
-      "P-R1:Renovado hoy",
+      "Hoy: rearmar la planilla deja «Renovado hoy» y la cuota del renovado",
+      rebuilt.assignments.filter((r) => r.clientRef === "CLI-R1" && r.dispatchDate === rDay).map((r) => `${r.loanRef}:${r.skipReason || r.visitStatus}`).sort().join(","),
+      ["P-R1:Renovado hoy", `${R2}:pendiente`].sort().join(","),
     );
     const tomorrow = syncPermanentRoutePlanilla(rNext, rRoutes, renewed.clients, renewed.loans, [COB], renewed.assignments, rPays);
     const tomorrowRow = tomorrow.assignments.find((r) => r.clientRef === "CLI-R1" && r.dispatchDate === rNext);
@@ -4888,9 +4893,9 @@ console.log("\n— Renovar sin plata —");
       expenses: [{ id: "prestamo", label: `Préstamo · ${R2}`, amount: 180_000, loanRef: R2 }],
     }).filter((r) => r.clientRef === "CLI-R1");
     expect(
-      "Historial: una sola fila «Renovado» (no «Prestado»)",
-      histRows.map((r) => `${r.method}:${r.amount}:${r.lentToday}`).join(","),
-      "renovado:180000:false",
+      "Historial: «Renovado» (no «Prestado») y la cuota del renovado sin pagar como N/P",
+      histRows.map((r) => `${r.method}:${r.amount}:${r.lentToday}`).sort().join(","),
+      [`np:${renewed.created.installment}:false`, "renovado:180000:false"].sort().join(","),
     );
     const recaudo = dayPlanillaLoansWithoutPayment(rDay, "M", renewed.loans, renewed.clients, new Set());
     expect(

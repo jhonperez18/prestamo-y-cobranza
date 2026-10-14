@@ -758,7 +758,7 @@ function PlanillaTable({
                   ) : row.reloan.renewed ? (
                     <span
                       className="supervisor-reloan-tag is-renewal"
-                      title={`Renovado ${row.reloan.renewed.ref} · debía ${money(row.reloan.renewed.capital)} + 20 % · sin plata · cuota desde mañana`}
+                      title={`Renovado ${row.reloan.renewed.ref} · debía ${money(row.reloan.renewed.capital)} + 20 % · sin plata`}
                     >
                       Renovado {money(row.reloan.renewed.capital, { symbol: false })}
                     </span>
