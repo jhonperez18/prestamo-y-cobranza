@@ -210,7 +210,7 @@ export function BankExtractView({
         `¿Abrir ${period} en cero en ${account.name}?\n\n` +
           `Se anota un renglón el día 1 del mes:\n` +
           `«${balanceAdjustmentLabel(priorPeriodForAdjust)}»\n` +
-          `por ${formatBankAmount(amount)}.\n\n` +
+          `por ${formatBankAmount(amount)} (${openZeroOnExtract.openingNegative ? "Debe" : "Haber"}).\n\n` +
           `El extracto del mes anterior no se modifica.`,
       );
     if (!confirmed) return;
@@ -219,6 +219,7 @@ export function BankExtractView({
       period: openZeroOnExtract.period,
       amount,
       priorPeriod: priorPeriodForAdjust,
+      openingNegative: openZeroOnExtract.openingNegative,
     });
     onMovementsChange([...ledgerMovements, row]);
     onToast(`Ajuste anotado · ${account.name} · ${period} queda en cero tras el renglón de apertura.`);

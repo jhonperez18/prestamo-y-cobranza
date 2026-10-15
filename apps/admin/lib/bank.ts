@@ -352,7 +352,8 @@ export function isBalanceAdjustmentMovement(row: Pick<BankMovement, "description
 
 function looksLikeBankIncome(row: BankMovement) {
   if (isPaymentCobroMovement(row)) return true;
-  if (isBalanceAdjustmentMovement(row)) return true;
+  // Ajuste: respeta Debe/Haber según el Inicial que anula (negativo → Debe, positivo → Haber).
+  if (isBalanceAdjustmentMovement(row)) return row.debit > 0 && row.credit <= 0;
   if (row.miscPaymentRef || row.category || row.dayExpenseLineRef) return false;
   const desc = row.description.trim().toLowerCase();
   return desc.includes("cobro") || desc.includes("ingreso");
@@ -360,7 +361,7 @@ function looksLikeBankIncome(row: BankMovement) {
 
 function looksLikeBankExpense(row: BankMovement) {
   if (isPaymentCobroMovement(row)) return false;
-  if (isBalanceAdjustmentMovement(row)) return false;
+  if (isBalanceAdjustmentMovement(row)) return row.credit > 0 && row.debit <= 0;
   if (row.dayExpenseLineRef || row.miscPaymentRef || row.loanDisbursementRef || row.category) {
     return true;
   }
@@ -1400,15 +1401,17 @@ export function findBalanceAdjustment(
 }
 
 /**
- * Renglón de apertura del mes nuevo: Debe = |Inicial negativo| para dejar el saldo vivo en 0.
- * No toca el extracto del mes anterior ni CIE / caja de rutas.
+ * Renglón de apertura del mes: deja el saldo vivo en 0.
+ * Inicial negativo → Debe; Inicial positivo → Haber. No toca CIE / caja de rutas.
  */
 export function addBalanceAdjustment(input: {
   accountRef: string;
   period: string;
-  /** Monto positivo (anula un Inicial negativo). */
+  /** Monto positivo (|Inicial|). */
   amount: number;
   priorPeriod: string;
+  /** true = el Inicial era negativo (Debe); false = era positivo (Haber). */
+  openingNegative: boolean;
 }): BankMovement {
   const amount = Math.round(Math.abs(input.amount));
   const valueDate = `${normalizeBankPeriod(input.period)}-01`;
@@ -1420,8 +1423,8 @@ export function addBalanceAdjustment(input: {
     valueDate,
     opDate: valueDate,
     thirdParty: "Ajuste de saldo",
-    debit: amount,
-    credit: 0,
+    debit: input.openingNegative ? amount : 0,
+    credit: input.openingNegative ? 0 : amount,
     inExtract: true,
     reconciled: false,
     manual: true,
@@ -1453,6 +1456,16 @@ export function openPeriodForBalanceAdjustment(
   ) {
     return current;
   }
+  // Actividad empezó este mes (sin cierre del anterior): igual se puede abrir el mes en curso.
+  if (!isPeriodClosed(reconciliations, accountRef, current)) {
+    const hasCurrent = (movements as BankMovement[]).some(
+      (row) =>
+        row.accountRef === accountRef &&
+        normalizeBankPeriod(row.period) === current &&
+        !row.reconciled,
+    );
+    if (hasCurrent) return current;
+  }
   const withMovements = openPeriodsForAccount(
     movements as BankMovement[],
     reconciliations as BankReconciliation[],
@@ -1466,9 +1479,10 @@ export type OpenZeroTarget = {
   period: string;
   priorPeriod: string;
   amount: number;
+  openingNegative: boolean;
 };
 
-/** Cuenta + mes abierto con Inicial negativo y sin ajuste aún (efectivo, Nequi o Banco). */
+/** Cuenta + mes abierto con Inicial ≠ 0 y sin ajuste aún (efectivo, Nequi o Banco). */
 export function findOpenZeroTarget(
   accounts: readonly BankAccount[],
   movements: readonly BankMovement[],
@@ -1489,17 +1503,25 @@ export function findOpenZeroTarget(
     period: status.period,
     priorPeriod: status.priorPeriod,
     amount: status.amount,
+    openingNegative: status.openingNegative,
   };
 }
 
 export type OpenZeroStatus =
-  | { kind: "ready"; account: BankAccount; period: string; priorPeriod: string; amount: number }
+  | {
+      kind: "ready";
+      account: BankAccount;
+      period: string;
+      priorPeriod: string;
+      amount: number;
+      openingNegative: boolean;
+    }
   | {
       kind: "blocked";
       account: BankAccount;
       period: string;
       opening: number;
-      reason: "no_negativo" | "ya_ajustado" | "mes_anterior_abierto";
+      reason: "ya_en_cero" | "ya_ajustado";
     }
   | null;
 
@@ -1552,23 +1574,25 @@ export function inspectOpenZeroStatus(
       movements as BankMovement[],
       reconciliations as BankReconciliation[],
     );
-    if (opening < 0) {
+    const rounded = Math.round(opening);
+    // Cualquier Inicial ≠ 0 (negativo como caja, o positivo) → se puede dejar el mes en 0.
+    if (rounded !== 0) {
       return {
         kind: "ready",
         account,
         period,
         priorPeriod: prior,
-        amount: Math.round(Math.abs(opening)),
+        amount: Math.abs(rounded),
+        openingNegative: rounded < 0,
       };
     }
     if (preferred) {
-      const priorClosed = isPeriodClosed(reconciliations, account.ref, prior);
       return {
         kind: "blocked",
         account,
         period,
-        opening: Math.round(opening),
-        reason: priorClosed ? "no_negativo" : "mes_anterior_abierto",
+        opening: 0,
+        reason: "ya_en_cero",
       };
     }
   }

@@ -243,9 +243,7 @@ export function BankRecordsHistoryView({
     openZeroStatus?.kind === "blocked"
       ? openZeroStatus.reason === "ya_ajustado"
         ? `${openZeroStatus.account.name} · ${periodLabel(openZeroStatus.period)} ya tiene ajuste de apertura`
-        : openZeroStatus.reason === "mes_anterior_abierto"
-          ? `${openZeroStatus.account.name} · concilie primero el mes anterior; luego podrá abrir en cero`
-          : `${openZeroStatus.account.name} · Inicial ${periodLabel(openZeroStatus.period)}: ${formatBankAmount(openZeroStatus.opening)} · no hace falta ajuste (solo si es negativo)`
+        : `${openZeroStatus.account.name} · ${periodLabel(openZeroStatus.period)} ya inicia en 0 · no hace falta renglón de ajuste`
       : null;
 
   function openRowTarget(row: (typeof history)[number]) {
@@ -292,15 +290,15 @@ export function BankRecordsHistoryView({
 
   function handleOpenMonthAtZero() {
     if (!openZeroTarget) return;
-    const { account, period, priorPeriod, amount } = openZeroTarget;
+    const { account, period, priorPeriod, amount, openingNegative } = openZeroTarget;
     const confirmed =
       typeof window === "undefined" ||
       window.confirm(
-        `¿Abrir ${periodLabel(period)} en cero?\n\n` +
+        `¿Abrir ${periodLabel(period)} en cero en ${account.name}?\n\n` +
           `Se anota en Registros (mes abierto) el día 1:\n` +
           `«${balanceAdjustmentLabel(priorPeriod)}»\n` +
-          `por ${formatBankAmount(amount)}.\n\n` +
-          `El extracto ${periodLabel(priorPeriod)} no se modifica.`,
+          `por ${formatBankAmount(amount)} (${openingNegative ? "Debe" : "Haber"}).\n\n` +
+          `El extracto anterior no se modifica.`,
       );
     if (!confirmed) return;
     const row = addBalanceAdjustment({
@@ -308,6 +306,7 @@ export function BankRecordsHistoryView({
       period,
       amount,
       priorPeriod,
+      openingNegative,
     });
     onMovementsChange([...normalized, row]);
     setScope("open");
@@ -435,7 +434,7 @@ export function BankRecordsHistoryView({
             type="button"
             className="btn compact primary"
             onClick={handleOpenMonthAtZero}
-            title={`Anula el Inicial negativo de ${openZeroTarget.account.name} (mes abierto)`}
+            title={`Deja el Inicial de ${openZeroTarget.account.name} en 0 (mes abierto)`}
           >
             Abrir {periodLabel(openZeroTarget.period)} en cero · {openZeroTarget.account.name}
           </button>
