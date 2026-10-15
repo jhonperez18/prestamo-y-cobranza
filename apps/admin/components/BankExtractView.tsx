@@ -28,7 +28,6 @@ import {
   openingBalanceForPeriod,
   paymentRefForMovement,
   pendingMovementsForAccount,
-  priorBankPeriod,
   reconcilePeriod,
   summarizeMovements,
   syncPaymentsToMovements,
@@ -154,8 +153,7 @@ export function BankExtractView({
 
   const summary = useMemo(() => summarizeMovements(periodRows), [periodRows]);
 
-  const priorPeriod = useMemo(() => priorBankPeriod(period), [period]);
-  const existingAdjustment = useMemo(
+  const existingAdjustment = useMemo
     () => (account ? findBalanceAdjustment(ledgerMovements, account.ref, period) : null),
     [account, ledgerMovements, period],
   );
