@@ -15809,6 +15809,17 @@
       color: #0f766e;
       white-space: nowrap;
     }
+    .bank-open-zero-hint {
+      flex: 1 1 220px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #6b5b2e;
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 6px;
+      padding: 6px 10px;
+      line-height: 1.35;
+    }
     .bank-ledger-panel .head {
       flex-wrap: wrap;
       gap: 8px 12px;

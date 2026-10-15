@@ -1476,6 +1476,41 @@ export function findOpenZeroTarget(
   accountFilter?: string,
   periodFilter?: string,
 ): OpenZeroTarget | null {
+  const status = inspectOpenZeroStatus(
+    accounts,
+    movements,
+    reconciliations,
+    accountFilter,
+    periodFilter,
+  );
+  if (!status || status.kind !== "ready") return null;
+  return {
+    account: status.account,
+    period: status.period,
+    priorPeriod: status.priorPeriod,
+    amount: status.amount,
+  };
+}
+
+export type OpenZeroStatus =
+  | { kind: "ready"; account: BankAccount; period: string; priorPeriod: string; amount: number }
+  | {
+      kind: "blocked";
+      account: BankAccount;
+      period: string;
+      opening: number;
+      reason: "no_negativo" | "ya_ajustado" | "mes_anterior_abierto";
+    }
+  | null;
+
+/** Por qué sale o no el botón «Abrir en cero» (para aviso en pantalla). */
+export function inspectOpenZeroStatus(
+  accounts: readonly BankAccount[],
+  movements: readonly BankMovement[],
+  reconciliations: readonly BankReconciliation[],
+  accountFilter?: string,
+  periodFilter?: string,
+): OpenZeroStatus {
   const preferred = accountFilter?.trim() || "";
   const candidates = preferred
     ? accounts.filter((row) => row.ref === preferred)
@@ -1498,7 +1533,18 @@ export function findOpenZeroTarget(
     if (!period) continue;
     const prior = priorBankPeriod(period);
     if (!prior) continue;
-    if (findBalanceAdjustment(movements, account.ref, period)) continue;
+    if (findBalanceAdjustment(movements, account.ref, period)) {
+      if (preferred) {
+        return {
+          kind: "blocked",
+          account,
+          period,
+          opening: 0,
+          reason: "ya_ajustado",
+        };
+      }
+      continue;
+    }
     const opening = openingBalanceForPeriod(
       account.ref,
       period,
@@ -1506,13 +1552,25 @@ export function findOpenZeroTarget(
       movements as BankMovement[],
       reconciliations as BankReconciliation[],
     );
-    if (!(opening < 0)) continue;
-    return {
-      account,
-      period,
-      priorPeriod: prior,
-      amount: Math.round(Math.abs(opening)),
-    };
+    if (opening < 0) {
+      return {
+        kind: "ready",
+        account,
+        period,
+        priorPeriod: prior,
+        amount: Math.round(Math.abs(opening)),
+      };
+    }
+    if (preferred) {
+      const priorClosed = isPeriodClosed(reconciliations, account.ref, prior);
+      return {
+        kind: "blocked",
+        account,
+        period,
+        opening: Math.round(opening),
+        reason: priorClosed ? "no_negativo" : "mes_anterior_abierto",
+      };
+    }
   }
   return null;
 }

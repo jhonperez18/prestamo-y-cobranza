@@ -19,6 +19,7 @@ import {
   filterBankHistory,
   findOpenZeroTarget,
   formatBankAmount,
+  inspectOpenZeroStatus,
   isBalanceAdjustmentMovement,
   isBankExpenseMovement,
   accountForRole,
@@ -227,6 +228,25 @@ export function BankRecordsHistoryView({
       ),
     [accountFilter, accounts, periodFilter, normalized, reconciliations],
   );
+  const openZeroStatus = useMemo(
+    () =>
+      inspectOpenZeroStatus(
+        accounts,
+        normalized,
+        reconciliations,
+        accountFilter || undefined,
+        periodFilter || undefined,
+      ),
+    [accountFilter, accounts, periodFilter, normalized, reconciliations],
+  );
+  const openZeroHint =
+    openZeroStatus?.kind === "blocked"
+      ? openZeroStatus.reason === "ya_ajustado"
+        ? `${openZeroStatus.account.name} · ${periodLabel(openZeroStatus.period)} ya tiene ajuste de apertura`
+        : openZeroStatus.reason === "mes_anterior_abierto"
+          ? `${openZeroStatus.account.name} · concilie primero el mes anterior; luego podrá abrir en cero`
+          : `${openZeroStatus.account.name} · Inicial ${periodLabel(openZeroStatus.period)}: ${formatBankAmount(openZeroStatus.opening)} · no hace falta ajuste (solo si es negativo)`
+      : null;
 
   function openRowTarget(row: (typeof history)[number]) {
     const paymentRef = paymentRefForMovement(row);
@@ -419,6 +439,10 @@ export function BankRecordsHistoryView({
           >
             Abrir {periodLabel(openZeroTarget.period)} en cero · {openZeroTarget.account.name}
           </button>
+        ) : openZeroHint ? (
+          <span className="bank-open-zero-hint" title={openZeroHint}>
+            {openZeroHint}
+          </span>
         ) : null}
         {reconcileTarget ? (
           <button type="button" className="btn compact" onClick={handleReconcile}>
