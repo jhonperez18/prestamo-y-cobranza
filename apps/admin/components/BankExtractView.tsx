@@ -153,7 +153,7 @@ export function BankExtractView({
 
   const summary = useMemo(() => summarizeMovements(periodRows), [periodRows]);
 
-  const existingAdjustment = useMemo
+  const existingAdjustment = useMemo(
     () => (account ? findBalanceAdjustment(ledgerMovements, account.ref, period) : null),
     [account, ledgerMovements, period],
   );
