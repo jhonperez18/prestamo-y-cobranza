@@ -7,15 +7,14 @@ import { BankSortTh, useBankMovementSort } from "@/components/BankSortTh";
 import { Pill } from "@/components/ui";
 import type { BankAccount, BankExpenseCategory, BankMovement, BankReconciliation } from "@/lib/bank";
 import {
-  addBalanceAdjustment,
   addManualExpense,
+  applyOpenMonthAtZero,
   bankMovementDescriptionText,
   bankMovementPaymentMethodLabel,
   bankMovementsWithDisplayBalance,
   currentPeriod,
   expenseCategoryLabel,
   filterMovements,
-  balanceAdjustmentLabel,
   findBalanceAdjustment,
   findOpenZeroTarget,
   formatBankAmount,
@@ -172,7 +171,6 @@ export function BankExtractView({
     );
   }, [account, accounts, closed, filterMode, ledgerMovements, reconciliations, period]);
   const canOpenAtZero = Boolean(openZeroOnExtract);
-  const priorPeriodForAdjust = openZeroOnExtract?.priorPeriod ?? priorPeriod;
 
   const visibleRefs = useMemo(() => new Set(periodRows.map((row) => row.ref)), [periodRows]);
   const allInExtract =
@@ -201,28 +199,26 @@ export function BankExtractView({
   };
 
   const applyOpeningZeroAdjustment = () => {
-    if (!account || !openZeroOnExtract || !priorPeriodForAdjust) return;
+    if (!account || !openZeroOnExtract) return;
     const amount = openZeroOnExtract.amount;
-    if (!(amount > 0)) return;
     const confirmed =
       typeof window === "undefined" ||
       window.confirm(
         `¿Abrir ${period} en cero en ${account.name}?\n\n` +
-          `Se anota un renglón el día 1 del mes:\n` +
-          `«${balanceAdjustmentLabel(priorPeriodForAdjust)}»\n` +
-          `por ${formatBankAmount(amount)} (${openZeroOnExtract.openingNegative ? "Debe" : "Haber"}).\n\n` +
-          `El extracto del mes anterior no se modifica.`,
+          `El Inicial queda en 0 (sin renglón en Debe ni Haber).\n` +
+          (amount > 0 ? `Se suelta el arrastre de ${formatBankAmount(amount)}.\n` : "") +
+          `Si había un «Ajuste al saldo» inventado, se quita.`,
       );
     if (!confirmed) return;
-    const row = addBalanceAdjustment({
-      accountRef: account.ref,
-      period: openZeroOnExtract.period,
-      amount,
-      priorPeriod: priorPeriodForAdjust,
-      openingNegative: openZeroOnExtract.openingNegative,
-    });
-    onMovementsChange([...ledgerMovements, row]);
-    onToast(`Ajuste anotado · ${account.name} · ${period} queda en cero tras el renglón de apertura.`);
+    const result = applyOpenMonthAtZero(
+      ledgerMovements,
+      reconciliations,
+      account.ref,
+      openZeroOnExtract.period,
+    );
+    onMovementsChange(result.movements);
+    onReconciliationsChange(result.reconciliations);
+    onToast(`${account.name} · ${period} inicia en 0 · sin arrastre en Debe/Haber.`);
   };
 
   const saveExtract = () => {

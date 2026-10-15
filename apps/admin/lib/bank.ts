@@ -241,6 +241,26 @@ export type BankReconciliation = {
   balance: number;
 };
 
+/** Marca «este mes abre en X» sin inventar Debe/Haber en Registros (`closedAt` = OPENING@…). */
+export function isOpeningOverride(row: Pick<BankReconciliation, "closedAt">) {
+  return String(row.closedAt || "").startsWith("OPENING@");
+}
+
+export function findOpeningOverride(
+  reconciliations: readonly BankReconciliation[],
+  accountRef: string,
+  period: string,
+) {
+  return (
+    reconciliations.find(
+      (row) =>
+        row.accountRef === accountRef &&
+        row.period === normalizeBankPeriod(period) &&
+        isOpeningOverride(row),
+    ) ?? null
+  );
+}
+
 export type BankExtractSummary = {
   period: string;
   openingBalance: number;
@@ -582,14 +602,29 @@ export function openingBalanceForPeriod(
   movements: BankMovement[],
   reconciliations: BankReconciliation[],
 ) {
-  const periods = [...periodsForAccount(accountRef, movements, reconciliations)];
-  if (!periods.includes(period)) periods.push(period);
-  periods.sort((a, b) => a.localeCompare(b));
+  const normPeriod = normalizeBankPeriod(period);
+  const override = findOpeningOverride(reconciliations, accountRef, normPeriod);
+  if (override) return override.balance;
+
+  const chainPeriods = [
+    ...new Set([
+      ...movements
+        .filter((row) => row.accountRef === accountRef)
+        .map((row) => normalizeBankPeriod(row.period)),
+      ...reconciliations
+        .filter((row) => row.accountRef === accountRef && !isOpeningOverride(row))
+        .map((row) => normalizeBankPeriod(row.period)),
+    ]),
+  ];
+  if (!chainPeriods.includes(normPeriod)) chainPeriods.push(normPeriod);
+  chainPeriods.sort((a, b) => a.localeCompare(b));
 
   let running = accountOpeningBalance;
-  for (const p of periods) {
-    if (p === period) return running;
-    const recon = reconciliations.find((row) => row.accountRef === accountRef && row.period === p);
+  for (const p of chainPeriods) {
+    if (p === normPeriod) return running;
+    const recon = reconciliations.find(
+      (row) => row.accountRef === accountRef && row.period === p && !isOpeningOverride(row),
+    );
     if (recon) {
       running = recon.balance;
       continue;
@@ -615,8 +650,11 @@ export function listAccountExtracts(
   for (const period of asc) {
     const rows = movementsForAccountPeriod(movements, accountRef, period);
     const summary = summarizeMovements(rows);
-    const recon = reconciliations.find((row) => row.accountRef === accountRef && row.period === period);
-    const openingBalance = runningOpening;
+    const recon = reconciliations.find(
+      (row) => row.accountRef === accountRef && row.period === period && !isOpeningOverride(row),
+    );
+    const openingOverride = findOpeningOverride(reconciliations, accountRef, period);
+    const openingBalance = openingOverride ? openingOverride.balance : runningOpening;
     const closingBalance = recon ? recon.balance : openingBalance + summary.balance;
     if (recon) {
       byPeriod.set(period, {
@@ -783,7 +821,12 @@ export function isPeriodClosed(
   accountRef: string,
   period: string,
 ) {
-  return reconciliations.some((row) => row.accountRef === accountRef && row.period === period);
+  return reconciliations.some(
+    (row) =>
+      row.accountRef === accountRef &&
+      row.period === period &&
+      !isOpeningOverride(row),
+  );
 }
 
 /** Método del cobro en banco: ruta del cliente (A = Nequi, M / T / N = Banco). */
@@ -1401,34 +1444,43 @@ export function findBalanceAdjustment(
 }
 
 /**
- * Renglón de apertura del mes: deja el saldo vivo en 0.
- * Inicial negativo → Debe; Inicial positivo → Haber. No toca CIE / caja de rutas.
+ * Deja el mes en Inicial 0 sin renglón Debe/Haber: quita ajustes inventados
+ * y guarda marca OPENING@ (el extracto anterior no se reescribe).
  */
-export function addBalanceAdjustment(input: {
-  accountRef: string;
-  period: string;
-  /** Monto positivo (|Inicial|). */
-  amount: number;
-  priorPeriod: string;
-  /** true = el Inicial era negativo (Debe); false = era positivo (Haber). */
-  openingNegative: boolean;
-}): BankMovement {
-  const amount = Math.round(Math.abs(input.amount));
-  const valueDate = `${normalizeBankPeriod(input.period)}-01`;
-  return {
-    ref: nextBankMovementRef("AJU"),
-    accountRef: input.accountRef,
-    period: normalizeBankPeriod(input.period),
-    description: balanceAdjustmentLabel(input.priorPeriod),
-    valueDate,
-    opDate: valueDate,
-    thirdParty: "Ajuste de saldo",
-    debit: input.openingNegative ? amount : 0,
-    credit: input.openingNegative ? 0 : amount,
-    inExtract: true,
-    reconciled: false,
-    manual: true,
-  } satisfies BankMovement;
+export function applyOpenMonthAtZero(
+  movements: readonly BankMovement[],
+  reconciliations: readonly BankReconciliation[],
+  accountRef: string,
+  period: string,
+): { movements: BankMovement[]; reconciliations: BankReconciliation[] } {
+  const normPeriod = normalizeBankPeriod(period);
+  const nextMovements = (movements as BankMovement[]).filter(
+    (row) =>
+      !(
+        row.accountRef === accountRef &&
+        normalizeBankPeriod(row.period) === normPeriod &&
+        isBalanceAdjustmentMovement(row)
+      ),
+  );
+  const nextReconciliations = [
+    ...(reconciliations as BankReconciliation[]).filter(
+      (row) =>
+        !(
+          row.accountRef === accountRef &&
+          row.period === normPeriod &&
+          isOpeningOverride(row)
+        ),
+    ),
+    {
+      accountRef,
+      period: normPeriod,
+      closedAt: `OPENING@${new Date().toISOString()}`,
+      totalDebit: 0,
+      totalCredit: 0,
+      balance: 0,
+    },
+  ];
+  return { movements: nextMovements, reconciliations: nextReconciliations };
 }
 
 /**
@@ -1478,11 +1530,11 @@ export type OpenZeroTarget = {
   account: BankAccount;
   period: string;
   priorPeriod: string;
+  /** |Inicial| arrastrado (solo para el aviso); al aplicar queda 0 sin renglón. */
   amount: number;
-  openingNegative: boolean;
 };
 
-/** Cuenta + mes abierto con Inicial ≠ 0 y sin ajuste aún (efectivo, Nequi o Banco). */
+/** Cuenta + mes abierto que aún arrastra Inicial ≠ 0 o tiene ajuste inventado. */
 export function findOpenZeroTarget(
   accounts: readonly BankAccount[],
   movements: readonly BankMovement[],
@@ -1503,7 +1555,6 @@ export function findOpenZeroTarget(
     period: status.period,
     priorPeriod: status.priorPeriod,
     amount: status.amount,
-    openingNegative: status.openingNegative,
   };
 }
 
@@ -1514,14 +1565,13 @@ export type OpenZeroStatus =
       period: string;
       priorPeriod: string;
       amount: number;
-      openingNegative: boolean;
     }
   | {
       kind: "blocked";
       account: BankAccount;
       period: string;
       opening: number;
-      reason: "ya_en_cero" | "ya_ajustado";
+      reason: "ya_en_cero";
     }
   | null;
 
@@ -1553,47 +1603,50 @@ export function inspectOpenZeroStatus(
       periodFilter,
     );
     if (!period) continue;
-    const prior = priorBankPeriod(period);
-    if (!prior) continue;
-    if (findBalanceAdjustment(movements, account.ref, period)) {
+    const prior = priorBankPeriod(period) ?? period;
+    const hasFakeAjuste = Boolean(findBalanceAdjustment(movements, account.ref, period));
+    const hasOverride = Boolean(findOpeningOverride(reconciliations, account.ref, period));
+    if (hasOverride && !hasFakeAjuste) {
       if (preferred) {
-        return {
-          kind: "blocked",
-          account,
-          period,
-          opening: 0,
-          reason: "ya_ajustado",
-        };
+        return { kind: "blocked", account, period, opening: 0, reason: "ya_en_cero" };
       }
       continue;
     }
+    // Sin override: mira el arrastre real (ignorando renglones AJU para no circular).
+    const withoutAjuste = (movements as BankMovement[]).filter(
+      (row) =>
+        !(
+          row.accountRef === account.ref &&
+          normalizeBankPeriod(row.period) === normalizeBankPeriod(period) &&
+          isBalanceAdjustmentMovement(row)
+        ),
+    );
     const opening = openingBalanceForPeriod(
       account.ref,
       period,
       account.openingBalance,
-      movements as BankMovement[],
-      reconciliations as BankReconciliation[],
+      withoutAjuste,
+      (reconciliations as BankReconciliation[]).filter(
+        (row) =>
+          !(
+            row.accountRef === account.ref &&
+            row.period === normalizeBankPeriod(period) &&
+            isOpeningOverride(row)
+          ),
+      ),
     );
     const rounded = Math.round(opening);
-    // Cualquier Inicial ≠ 0 (negativo como caja, o positivo) → se puede dejar el mes en 0.
-    if (rounded !== 0) {
+    if (hasFakeAjuste || rounded !== 0) {
       return {
         kind: "ready",
         account,
         period,
         priorPeriod: prior,
         amount: Math.abs(rounded),
-        openingNegative: rounded < 0,
       };
     }
     if (preferred) {
-      return {
-        kind: "blocked",
-        account,
-        period,
-        opening: 0,
-        reason: "ya_en_cero",
-      };
+      return { kind: "blocked", account, period, opening: 0, reason: "ya_en_cero" };
     }
   }
   return null;
@@ -1851,7 +1904,15 @@ export function reconcilePeriod(
       : row,
   );
   const nextReconciliations = [
-    ...reconciliations.filter((row) => !(row.accountRef === accountRef && row.period === period)),
+    // Conserva marca OPENING@ del mes (Inicial 0); solo reemplaza el cierre real.
+    ...reconciliations.filter(
+      (row) =>
+        !(
+          row.accountRef === accountRef &&
+          row.period === period &&
+          !isOpeningOverride(row)
+        ),
+    ),
     {
       accountRef,
       period: normalizeBankPeriod(period),
