@@ -56,7 +56,7 @@ export function BankRecordsHistoryView({
   movements,
   reconciliations,
   initialAccountRef = null,
-  initialScope = "all",
+  initialScope = "open",
   onOpenPeriod,
   onMovementsChange,
   onReconciliationsChange,
@@ -77,6 +77,7 @@ export function BankRecordsHistoryView({
   const [kindFilter, setKindFilter] = useState<BankHistoryKindFilter>("all");
   const [query, setQuery] = useState("");
   const [pageSize, setPageSize] = useState(50);
+  const [page, setPage] = useState(1);
 
   function handleExportBackup() {
     downloadDemoSnapshot();
@@ -125,15 +126,59 @@ export function BankRecordsHistoryView({
     [normalized, scope, accountFilter, periodFilter, kindFilter, query],
   );
 
-  const { sortKey, sortDir, toggleSort } = useBankMovementSort("valueDate");
+  const { sortKey, sortDir, toggleSort: toggleBankSort } = useBankMovementSort("valueDate");
+  function toggleSort(column: Parameters<typeof toggleBankSort>[0]) {
+    toggleBankSort(column);
+    setPage(1);
+  }
 
   const history = useMemo(
     () => sortBankMovements(filtered, sortKey, sortDir),
     [filtered, sortKey, sortDir],
   );
 
-  const visibleRows = useMemo(() => history.slice(0, pageSize), [history, pageSize]);
+  const totalPages = Math.max(1, Math.ceil(history.length / pageSize) || 1);
+  const safePage = Math.min(page, totalPages);
+  const pageStart = (safePage - 1) * pageSize;
+  const visibleRows = useMemo(
+    () => history.slice(pageStart, pageStart + pageSize),
+    [history, pageStart, pageSize],
+  );
   const summary = useMemo(() => summarizeMovements(filtered), [filtered]);
+
+  function goPage(next: number) {
+    setPage(Math.max(1, Math.min(totalPages, next)));
+  }
+
+  function changeScope(next: BankHistoryScope) {
+    setScope(next);
+    setPage(1);
+  }
+
+  function changeAccountFilter(value: string) {
+    setAccountFilter(value);
+    setPage(1);
+  }
+
+  function changePeriodFilter(value: string) {
+    setPeriodFilter(value);
+    setPage(1);
+  }
+
+  function changeKindFilter(value: BankHistoryKindFilter) {
+    setKindFilter(value);
+    setPage(1);
+  }
+
+  function changeQuery(value: string) {
+    setQuery(value);
+    setPage(1);
+  }
+
+  function changePageSize(value: number) {
+    setPageSize(value);
+    setPage(1);
+  }
 
   const openCount = useMemo(
     () => filterBankHistory(normalized, { scope: "open", accountRef: accountFilter || undefined }).length,
@@ -199,11 +244,13 @@ export function BankRecordsHistoryView({
     onMovementsChange(result.movements);
     onReconciliationsChange(result.reconciliations);
     onToast?.(
-      `Periodo ${periodLabel(period)} conciliado · ${pendingCount} registro(s) en historial.`,
+      `Periodo ${periodLabel(period)} conciliado · ${pendingCount} registro(s) pasaron al extracto. Quedan los pendientes en Registros.`,
     );
-    setScope("closed");
+    // Conciliado → extracto; en Registros solo quedan los pendientes del mes siguiente.
+    setScope("open");
     setAccountFilter(account.ref);
-    setPeriodFilter(period);
+    setPeriodFilter("");
+    setPage(1);
   }
 
   return (
@@ -240,7 +287,7 @@ export function BankRecordsHistoryView({
             role="tab"
             className={scope === "open" ? "is-active" : undefined}
             aria-selected={scope === "open"}
-            onClick={() => setScope("open")}
+            onClick={() => changeScope("open")}
           >
             Pendientes ({openCount})
           </button>
@@ -249,7 +296,7 @@ export function BankRecordsHistoryView({
             role="tab"
             className={scope === "closed" ? "is-active" : undefined}
             aria-selected={scope === "closed"}
-            onClick={() => setScope("closed")}
+            onClick={() => changeScope("closed")}
           >
             Conciliados ({closedCount})
           </button>
@@ -258,7 +305,7 @@ export function BankRecordsHistoryView({
             role="tab"
             className={scope === "all" ? "is-active" : undefined}
             aria-selected={scope === "all"}
-            onClick={() => setScope("all")}
+            onClick={() => changeScope("all")}
           >
             Todos ({normalized.length})
           </button>
@@ -268,7 +315,7 @@ export function BankRecordsHistoryView({
       <div className="bank-history-toolbar">
         <label>
           Cuenta{" "}
-          <select value={accountFilter} onChange={(e) => setAccountFilter(e.target.value)}>
+          <select value={accountFilter} onChange={(e) => changeAccountFilter(e.target.value)}>
             <option value="">Todas</option>
             {accounts.map((row) => (
               <option key={row.ref} value={row.ref}>
@@ -279,7 +326,7 @@ export function BankRecordsHistoryView({
         </label>
         <label>
           Periodo{" "}
-          <select value={periodFilter} onChange={(e) => setPeriodFilter(e.target.value)}>
+          <select value={periodFilter} onChange={(e) => changePeriodFilter(e.target.value)}>
             <option value="">Todos</option>
             {periods.map((period) => (
               <option key={period} value={period}>
@@ -292,7 +339,7 @@ export function BankRecordsHistoryView({
           Tipo{" "}
           <select
             value={kindFilter}
-            onChange={(e) => setKindFilter(e.target.value as BankHistoryKindFilter)}
+            onChange={(e) => changeKindFilter(e.target.value as BankHistoryKindFilter)}
           >
             <option value="all">Todos</option>
             <option value="income">Ingresos</option>
@@ -305,12 +352,12 @@ export function BankRecordsHistoryView({
             type="search"
             value={query}
             placeholder="PG-, cliente, cobrador…"
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => changeQuery(e.target.value)}
           />
         </label>
         <label className="page-size">
           Ver{" "}
-          <select value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
+          <select value={pageSize} onChange={(e) => changePageSize(Number(e.target.value))}>
             <option value={25}>25</option>
             <option value={50}>50</option>
             <option value={100}>100</option>
@@ -506,7 +553,7 @@ export function BankRecordsHistoryView({
                 >
                   Total
                   {history.length > visibleRows.length
-                    ? ` · mostrando ${visibleRows.length} de ${history.length}`
+                    ? ` · ${pageStart + 1}–${pageStart + visibleRows.length} de ${history.length}`
                     : ""}
                 </td>
                 {isVisible("debit") ? (
@@ -521,6 +568,33 @@ export function BankRecordsHistoryView({
           ) : null}
         </table>
       </div>
+
+      {history.length > 0 ? (
+        <div className="bank-history-pager" role="navigation" aria-label="Páginas del registro">
+          <button
+            type="button"
+            className="btn compact"
+            disabled={safePage <= 1}
+            onClick={() => goPage(safePage - 1)}
+          >
+            Anterior
+          </button>
+          <span>
+            Página {safePage} de {totalPages}
+            {history.length > pageSize
+              ? ` · ${pageStart + 1}–${Math.min(pageStart + pageSize, history.length)} de ${history.length}`
+              : ` · ${history.length} registro(s)`}
+          </span>
+          <button
+            type="button"
+            className="btn compact"
+            disabled={safePage >= totalPages}
+            onClick={() => goPage(safePage + 1)}
+          >
+            Siguiente
+          </button>
+        </div>
+      ) : null}
     </section>
   );
 }

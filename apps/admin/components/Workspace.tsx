@@ -1447,6 +1447,7 @@ export function Workspace(props: WorkspaceProps) {
           movements={bankMovements}
           reconciliations={bankReconciliations}
           initialAccountRef={bankRecordsAccountRef}
+          initialScope="open"
           onMovementsChange={setBankMovements}
           onReconciliationsChange={setBankReconciliations}
           onOpenPeriod={(accountRef, period) => {

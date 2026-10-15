@@ -10,6 +10,14 @@ import {
   normalizeBankAccount,
   renameAccountExtractPeriod,
 } from "@/lib/bank";
+
+/** Solo pantalla: 2026-09 → 9-2026. El dato guardado sigue YYYY-MM. */
+function extractRefLabel(period: string) {
+  const [year, month] = period.split("-");
+  const m = Number(month);
+  if (!year || !Number.isFinite(m) || m < 1 || m > 12) return period;
+  return `${m}-${year}`;
+}
 import { BANK_EXTRACT_COLUMNS, BANK_EXTRACT_DEFAULT_COLS } from "@/lib/table-columns";
 
 type Props = {
@@ -171,7 +179,7 @@ export function BankExtractsListView({
                             className="btn-link bank-extract-ref-link"
                             onClick={() => onOpenExtract(account.ref, row.period)}
                           >
-                            {row.period}
+                            {extractRefLabel(row.period)}
                           </button>
                         )}
                       </td>
