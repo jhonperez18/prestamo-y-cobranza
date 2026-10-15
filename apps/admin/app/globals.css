@@ -15785,6 +15785,12 @@
       opacity: 0.45;
       cursor: not-allowed;
     }
+    .bank-extract-ajuste-ok {
+      font-size: 13px;
+      font-weight: 600;
+      color: #0f766e;
+      white-space: nowrap;
+    }
     .bank-ledger-panel .head {
       flex-wrap: wrap;
       gap: 8px 12px;

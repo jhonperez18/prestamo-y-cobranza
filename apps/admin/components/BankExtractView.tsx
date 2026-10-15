@@ -7,6 +7,7 @@ import { BankSortTh, useBankMovementSort } from "@/components/BankSortTh";
 import { Pill } from "@/components/ui";
 import type { BankAccount, BankExpenseCategory, BankMovement, BankReconciliation } from "@/lib/bank";
 import {
+  addBalanceAdjustment,
   addManualExpense,
   bankMovementDescriptionText,
   bankMovementPaymentMethodLabel,
@@ -14,6 +15,8 @@ import {
   currentPeriod,
   expenseCategoryLabel,
   filterMovements,
+  balanceAdjustmentLabel,
+  findBalanceAdjustment,
   formatBankAmount,
   isBankExpenseMovement,
   isBankIncomeMovement,
@@ -24,6 +27,7 @@ import {
   openingBalanceForPeriod,
   paymentRefForMovement,
   pendingMovementsForAccount,
+  priorBankPeriod,
   reconcilePeriod,
   summarizeMovements,
   syncPaymentsToMovements,
@@ -149,6 +153,20 @@ export function BankExtractView({
 
   const summary = useMemo(() => summarizeMovements(periodRows), [periodRows]);
 
+  const priorPeriod = useMemo(() => priorBankPeriod(period), [period]);
+  const existingAdjustment = useMemo(
+    () => (account ? findBalanceAdjustment(ledgerMovements, account.ref, period) : null),
+    [account, ledgerMovements, period],
+  );
+  /** Inicial negativo del mes (arrastre del cierre anterior) → se puede abrir en cero. */
+  const canOpenAtZero =
+    Boolean(account) &&
+    !closed &&
+    filterMode !== "pending" &&
+    periodOpening < 0 &&
+    Boolean(priorPeriod) &&
+    !existingAdjustment;
+
   const visibleRefs = useMemo(() => new Set(periodRows.map((row) => row.ref)), [periodRows]);
   const allInExtract =
     periodRows.length > 0 && periodRows.every((row) => row.inExtract);
@@ -173,6 +191,30 @@ export function BankExtractView({
     onMovementsChange(next);
     const added = next.length - ledgerMovements.length;
     onToast(added > 0 ? `${added} cobro(s) importados al extracto.` : "No hay cobros nuevos para importar.");
+  };
+
+  const applyOpeningZeroAdjustment = () => {
+    if (!account || !priorPeriod || !canOpenAtZero) return;
+    const amount = Math.round(Math.abs(periodOpening));
+    if (!(amount > 0)) return;
+    const confirmed =
+      typeof window === "undefined" ||
+      window.confirm(
+        `¿Abrir ${period} en cero?\n\n` +
+          `Se anota un renglón el día 1 del mes:\n` +
+          `«${balanceAdjustmentLabel(priorPeriod)}»\n` +
+          `por ${formatBankAmount(amount)}.\n\n` +
+          `El extracto del mes anterior no se modifica.`,
+      );
+    if (!confirmed) return;
+    const row = addBalanceAdjustment({
+      accountRef: account.ref,
+      period,
+      amount,
+      priorPeriod,
+    });
+    onMovementsChange([...ledgerMovements, row]);
+    onToast(`Ajuste anotado · ${period} queda en cero tras el renglón de apertura.`);
   };
 
   const saveExtract = () => {
@@ -438,6 +480,21 @@ export function BankExtractView({
               onChange={(event) => onPeriodChange(event.target.value || currentPeriod())}
               aria-label="Periodo"
             />
+            {canOpenAtZero ? (
+              <button
+                type="button"
+                className="btn primary compact"
+                onClick={applyOpeningZeroAdjustment}
+                title="Anula el Inicial negativo con un renglón el día 1 del mes"
+              >
+                Abrir mes en cero
+              </button>
+            ) : null}
+            {existingAdjustment && !closed ? (
+              <span className="bank-extract-ajuste-ok" title={existingAdjustment.description}>
+                Ajuste de apertura listo
+              </span>
+            ) : null}
           </>
         ) : null}
         <input

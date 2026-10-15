@@ -345,8 +345,14 @@ function isPaymentCobroMovement(row: BankMovement) {
   return Boolean(paymentRefForMovement(row));
 }
 
+/** Ajuste de apertura (Debe): no es gasto aunque sea manual. */
+export function isBalanceAdjustmentMovement(row: Pick<BankMovement, "description">) {
+  return /ajuste al saldo/i.test(String(row.description ?? ""));
+}
+
 function looksLikeBankIncome(row: BankMovement) {
   if (isPaymentCobroMovement(row)) return true;
+  if (isBalanceAdjustmentMovement(row)) return true;
   if (row.miscPaymentRef || row.category || row.dayExpenseLineRef) return false;
   const desc = row.description.trim().toLowerCase();
   return desc.includes("cobro") || desc.includes("ingreso");
@@ -354,6 +360,7 @@ function looksLikeBankIncome(row: BankMovement) {
 
 function looksLikeBankExpense(row: BankMovement) {
   if (isPaymentCobroMovement(row)) return false;
+  if (isBalanceAdjustmentMovement(row)) return false;
   if (row.dayExpenseLineRef || row.miscPaymentRef || row.loanDisbursementRef || row.category) {
     return true;
   }
@@ -1343,6 +1350,70 @@ export function addManualExpense(input: {
     debit: 0,
     credit: input.amount,
     category: input.category,
+    inExtract: true,
+    reconciled: false,
+    manual: true,
+  } satisfies BankMovement;
+}
+
+/** Periodo anterior YYYY-MM (para etiquetar el ajuste del mes que cierra). */
+export function priorBankPeriod(period: string): string | null {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(normalizeBankPeriod(period));
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (month === 1) return `${year - 1}-12`;
+  return `${year}-${String(month - 1).padStart(2, "0")}`;
+}
+
+/** Etiqueta fija: «Ajuste al saldo · periodo 9-2026». */
+export function balanceAdjustmentLabel(priorPeriod: string) {
+  const [year, month] = priorPeriod.split("-");
+  const m = Number(month);
+  if (!year || !Number.isFinite(m) || m < 1 || m > 12) {
+    return `Ajuste al saldo · periodo ${priorPeriod}`;
+  }
+  return `Ajuste al saldo · periodo ${m}-${year}`;
+}
+
+export function findBalanceAdjustment(
+  movements: readonly BankMovement[],
+  accountRef: string,
+  period: string,
+) {
+  return (
+    movements.find(
+      (row) =>
+        row.accountRef === accountRef &&
+        row.period === period &&
+        isBalanceAdjustmentMovement(row),
+    ) ?? null
+  );
+}
+
+/**
+ * Renglón de apertura del mes nuevo: Debe = |Inicial negativo| para dejar el saldo vivo en 0.
+ * No toca el extracto del mes anterior ni CIE / caja de rutas.
+ */
+export function addBalanceAdjustment(input: {
+  accountRef: string;
+  period: string;
+  /** Monto positivo (anula un Inicial negativo). */
+  amount: number;
+  priorPeriod: string;
+}): BankMovement {
+  const amount = Math.round(Math.abs(input.amount));
+  const valueDate = `${normalizeBankPeriod(input.period)}-01`;
+  return {
+    ref: nextBankMovementRef("AJU"),
+    accountRef: input.accountRef,
+    period: normalizeBankPeriod(input.period),
+    description: balanceAdjustmentLabel(input.priorPeriod),
+    valueDate,
+    opDate: valueDate,
+    thirdParty: "Ajuste de saldo",
+    debit: amount,
+    credit: 0,
     inExtract: true,
     reconciled: false,
     manual: true,
