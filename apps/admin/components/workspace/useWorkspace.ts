@@ -863,10 +863,6 @@ export function useWorkspace({
   function loanMatchesListFilters(loan: LoanRow) {
     const client = clients.find((entry) => entry.ref === loan.clientRef);
     if (listRouteName && client?.route !== listRouteName) return false;
-    if (listCollectorRef) {
-      const route = catalogRouteList.find((row) => row.name === client?.route);
-      if (!route || route.collectorRef !== listCollectorRef) return false;
-    }
     const iso = displayToIso(loan.date);
     if (iso && listDateFrom && iso < listDateFrom) return false;
     if (iso && listDateTo && iso > listDateTo) return false;

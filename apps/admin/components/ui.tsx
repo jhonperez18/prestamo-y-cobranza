@@ -58,6 +58,8 @@ export function DataTable({
   toolbarEnd,
   showFilters = true,
   filterOptions,
+  searchFirst = false,
+  compactColumns = false,
 }: {
   title: string;
   count: string | number;
@@ -71,6 +73,10 @@ export function DataTable({
   toolbarEnd?: ReactNode;
   showFilters?: boolean;
   filterOptions?: DataTableFilterOptions;
+  /** Búsqueda al inicio de la barra y sin filtro de cobrador. */
+  searchFirst?: boolean;
+  /** Columnas con ancho propio, juntas a la izquierda. */
+  compactColumns?: boolean;
 }) {
   const collectors = filterOptions?.collectors ?? [];
   const routes = filterOptions?.routes ?? [];
@@ -79,6 +85,26 @@ export function DataTable({
   const dateFrom = filterOptions?.dateFrom ?? monthStartIso();
   const dateTo = filterOptions?.dateTo ?? todayIso();
   const query = filterOptions?.query ?? "";
+  const search = (
+    <>
+      <input
+        placeholder="Buscar…"
+        value={query}
+        onChange={(event) => filterOptions?.onQueryChange?.(event.target.value)}
+        aria-label="Buscar"
+      />
+      <button className="go" type="button" aria-label="Buscar">
+        <SearchIcon size={15} />
+      </button>
+    </>
+  );
+  const tableClass = [
+    "data",
+    fixedColumns ? "cols-fixed" : undefined,
+    compactColumns ? "cols-compact" : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
     <section className="panel">
@@ -101,18 +127,22 @@ export function DataTable({
       </div>
       {showFilters ? (
         <div className="filters">
-          <select
-            value={collectorRef}
-            onChange={(event) => filterOptions?.onCollectorChange?.(event.target.value)}
-            aria-label="Filtrar por cobrador"
-          >
-            <option value="">Todos los cobradores</option>
-            {collectors.map((row) => (
-              <option key={row.ref} value={row.ref}>
-                {row.name}
-              </option>
-            ))}
-          </select>
+          {searchFirst ? (
+            search
+          ) : (
+            <select
+              value={collectorRef}
+              onChange={(event) => filterOptions?.onCollectorChange?.(event.target.value)}
+              aria-label="Filtrar por cobrador"
+            >
+              <option value="">Todos los cobradores</option>
+              {collectors.map((row) => (
+                <option key={row.ref} value={row.ref}>
+                  {row.name}
+                </option>
+              ))}
+            </select>
+          )}
           <select
             value={routeName}
             onChange={(event) => filterOptions?.onRouteChange?.(event.target.value)}
@@ -137,19 +167,11 @@ export function DataTable({
             onChange={(event) => filterOptions?.onDateToChange?.(event.target.value)}
             aria-label="Hasta"
           />
-          <input
-            placeholder="Buscar…"
-            value={query}
-            onChange={(event) => filterOptions?.onQueryChange?.(event.target.value)}
-            aria-label="Buscar"
-          />
-          <button className="go" type="button" aria-label="Buscar">
-            <SearchIcon size={15} />
-          </button>
+          {searchFirst ? null : search}
         </div>
       ) : null}
       <div className="table-wrap">
-        <table className={fixedColumns ? "data cols-fixed" : "data"}>
+        <table className={tableClass}>
           {fixedColumns ? (
             <colgroup>
               {headers.map((header) => (

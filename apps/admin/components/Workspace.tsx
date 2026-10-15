@@ -910,6 +910,8 @@ export function Workspace(props: WorkspaceProps) {
           title={viewLabel}
           count={rows.length}
           fixedColumns
+          compactColumns
+          searchFirst
           filterOptions={listFilterOptions}
           toolbarEnd={
             <ColumnPicker
@@ -919,13 +921,13 @@ export function Workspace(props: WorkspaceProps) {
             />
           }
           headers={[
-            { t: "Ref", width: "9%", center: true },
-            { t: "Cliente", width: "22%", left: true },
-            { t: "Desembolso", width: "12%", center: true },
-            { t: "Capital", right: true, width: "13%" },
-            { t: "Valor cuota", right: true, width: "13%" },
-            { t: "Saldo", right: true, width: "13%" },
-            { t: "Estado", center: true, width: "14%" },
+            { t: "Ref", width: "80px", center: true },
+            { t: "Cliente", width: "220px", left: true },
+            { t: "Desembolso", width: "120px", center: true },
+            { t: "Capital", right: true, width: "120px" },
+            { t: "Valor cuota", right: true, width: "120px" },
+            { t: "Saldo", right: true, width: "120px" },
+            { t: "Estado", center: true, width: "110px" },
           ].filter((_, index) => prestamoListColumns.isVisible(PRESTAMO_LIST_COLUMNS[index]!.id))}
           onCreate={() => onGo("prestamos", "nuevo")}
         >

@@ -10297,6 +10297,12 @@
     table.data.cols-fixed col.col-picker-spacer {
       width: 44px;
     }
+    table.data.cols-compact col.col-picker-spacer {
+      width: auto;
+    }
+    table.data.cols-compact .col-picker-cell {
+      text-align: right;
+    }
 
     .pill {
       display: inline-flex; align-items: center;
