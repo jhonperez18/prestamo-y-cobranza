@@ -15213,6 +15213,24 @@
       background: var(--row-expense);
       transition: background 0.12s ease, box-shadow 0.12s ease;
     }
+    /* Ajuste de apertura: ámbar, distinto de ingresos (verde) y gastos (rojo). */
+    .bank-row-ajuste {
+      background: #fde68a;
+      transition: background 0.12s ease, box-shadow 0.12s ease;
+      box-shadow: inset 4px 0 0 #b45309;
+      font-weight: 600;
+    }
+    .bank-table tbody tr.bank-row-ajuste:nth-child(even),
+    .bank-records-table tbody tr.bank-row-ajuste:nth-child(even),
+    table.data.list-grid.bank-extract-table tbody tr.bank-row-ajuste:nth-child(even) {
+      background: #fcd34d !important;
+    }
+    .bank-table tbody tr.bank-row-ajuste:hover,
+    .bank-records-table tbody tr.bank-row-ajuste:hover,
+    table.data.list-grid.bank-extract-table tbody tr.bank-row-ajuste:hover {
+      background: #fbbf24 !important;
+      box-shadow: inset 5px 0 0 #92400e;
+    }
     .bank-table tbody tr.bank-row-income:nth-child(even),
     .bank-records-table tbody tr.bank-row-income:nth-child(even),
     table.data.list-grid.bank-extract-table tbody tr.bank-row-income:nth-child(even),

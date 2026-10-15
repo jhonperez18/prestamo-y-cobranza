@@ -19,6 +19,7 @@ import {
   filterBankHistory,
   findBalanceAdjustment,
   formatBankAmount,
+  isBalanceAdjustmentMovement,
   isBankExpenseMovement,
   accountForRole,
   isBankIncomeMovement,
@@ -537,13 +538,18 @@ export function BankRecordsHistoryView({
             ) : (
               visibleRows.map((row) => {
                 const isExpense = isBankExpenseMovement(row);
+                const isAjuste = isBalanceAdjustmentMovement(row);
                 const paymentRef = paymentRefForMovement(row);
                 const methodLabel = bankMovementPaymentMethodLabel(row);
                 return (
                   <tr
                     key={row.ref}
                     className={[
-                      isExpense ? "bank-row-expense" : "bank-row-income",
+                      isAjuste
+                        ? "bank-row-ajuste"
+                        : isExpense
+                          ? "bank-row-expense"
+                          : "bank-row-income",
                       isExpense && row.category === "prestamo_ruta" ? "is-prestamo-ruta" : "",
                     ]
                       .filter(Boolean)

@@ -18,6 +18,7 @@ import {
   balanceAdjustmentLabel,
   findBalanceAdjustment,
   formatBankAmount,
+  isBalanceAdjustmentMovement,
   isBankExpenseMovement,
   isBankIncomeMovement,
   isPeriodClosed,
@@ -671,7 +672,11 @@ export function BankExtractView({
                   <tr
                     key={row.ref}
                     className={[
-                      isExpense ? "bank-row-expense" : "bank-row-income",
+                      isBalanceAdjustmentMovement(row)
+                        ? "bank-row-ajuste"
+                        : isExpense
+                          ? "bank-row-expense"
+                          : "bank-row-income",
                       isExpense && row.category === "prestamo_ruta" ? "is-prestamo-ruta" : "",
                     ]
                       .filter(Boolean)
