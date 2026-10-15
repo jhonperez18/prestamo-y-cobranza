@@ -468,6 +468,10 @@ export function compareBankMovementsChronological(a: BankMovement, b: BankMoveme
   if (dateCmp !== 0) return dateCmp;
   const periodCmp = a.period.localeCompare(b.period);
   if (periodCmp !== 0) return periodCmp;
+  // Ajuste de apertura el día 1: primero entre los del mismo día.
+  const aAdj = isBalanceAdjustmentMovement(a) ? 0 : 1;
+  const bAdj = isBalanceAdjustmentMovement(b) ? 0 : 1;
+  if (aAdj !== bAdj) return aAdj - bAdj;
   return a.ref.localeCompare(b.ref);
 }
 

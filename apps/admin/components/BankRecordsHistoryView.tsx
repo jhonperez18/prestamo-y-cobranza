@@ -11,10 +11,13 @@ import type {
 import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell, useColumnVisibility } from "@/components/ColumnPicker";
 import { BankSortTh, useBankMovementSort } from "@/components/BankSortTh";
 import {
+  addBalanceAdjustment,
+  balanceAdjustmentLabel,
   bankMovementDescriptionText,
   bankMovementPaymentMethodLabel,
   expenseCategoryLabel,
   filterBankHistory,
+  findBalanceAdjustment,
   formatBankAmount,
   isBankExpenseMovement,
   accountForRole,
@@ -23,9 +26,11 @@ import {
   isoToDisplay,
   normalizeBankMovements,
   normalizeBankPeriod,
+  openingBalanceForPeriod,
   openPeriodsForAccount,
   paymentRefForMovement,
   periodLabel,
+  priorBankPeriod,
   bankVisibleRef,
   reconcilePeriod,
   sortBankMovements,
@@ -211,6 +216,35 @@ export function BankRecordsHistoryView({
     return { account, period, pendingCount: pending.length };
   }, [accountFilter, accounts, periodFilter, normalized, reconciliations]);
 
+  /**
+   * Mes abierto (aún no en Extractos): si el Inicial viene negativo del mes conciliado,
+   * se puede anotar el ajuste aquí en Registros.
+   */
+  const openZeroTarget = useMemo(() => {
+    const accountRef =
+      accountFilter || accountForRole(accounts, "efectivo")?.ref || "";
+    if (!accountRef) return null;
+    const account = accounts.find((row) => row.ref === accountRef);
+    if (!account) return null;
+    const period =
+      periodFilter ||
+      openPeriodsForAccount(normalized, reconciliations, accountRef)[0] ||
+      "";
+    if (!period || isPeriodClosed(reconciliations, accountRef, period)) return null;
+    const prior = priorBankPeriod(period);
+    if (!prior) return null;
+    if (findBalanceAdjustment(normalized, accountRef, period)) return null;
+    const opening = openingBalanceForPeriod(
+      accountRef,
+      period,
+      account.openingBalance,
+      normalized,
+      reconciliations,
+    );
+    if (!(opening < 0)) return null;
+    return { account, period, priorPeriod: prior, amount: Math.round(Math.abs(opening)) };
+  }, [accountFilter, accounts, periodFilter, normalized, reconciliations]);
+
   function openRowTarget(row: (typeof history)[number]) {
     const paymentRef = paymentRefForMovement(row);
     if (paymentRef && isBankIncomeMovement(row) && onOpenPaymentFicha) {
@@ -251,6 +285,35 @@ export function BankRecordsHistoryView({
     setAccountFilter(account.ref);
     setPeriodFilter("");
     setPage(1);
+  }
+
+  function handleOpenMonthAtZero() {
+    if (!openZeroTarget) return;
+    const { account, period, priorPeriod, amount } = openZeroTarget;
+    const confirmed =
+      typeof window === "undefined" ||
+      window.confirm(
+        `¿Abrir ${periodLabel(period)} en cero?\n\n` +
+          `Se anota en Registros (mes abierto) el día 1:\n` +
+          `«${balanceAdjustmentLabel(priorPeriod)}»\n` +
+          `por ${formatBankAmount(amount)}.\n\n` +
+          `El extracto ${periodLabel(priorPeriod)} no se modifica.`,
+      );
+    if (!confirmed) return;
+    const row = addBalanceAdjustment({
+      accountRef: account.ref,
+      period,
+      amount,
+      priorPeriod,
+    });
+    onMovementsChange([...normalized, row]);
+    setScope("open");
+    setAccountFilter(account.ref);
+    setPeriodFilter(period);
+    setPage(1);
+    onToast?.(
+      `Ajuste anotado · ${balanceAdjustmentLabel(priorPeriod)} · el mes ${periodLabel(period)} queda en cero tras ese renglón.`,
+    );
   }
 
   return (
@@ -364,8 +427,18 @@ export function BankRecordsHistoryView({
             <option value={500}>500</option>
           </select>
         </label>
+        {openZeroTarget ? (
+          <button
+            type="button"
+            className="btn compact primary"
+            onClick={handleOpenMonthAtZero}
+            title="Anula el Inicial negativo del mes abierto (aún no conciliado)"
+          >
+            Abrir {periodLabel(openZeroTarget.period)} en cero
+          </button>
+        ) : null}
         {reconcileTarget ? (
-          <button type="button" className="btn compact primary" onClick={handleReconcile}>
+          <button type="button" className="btn compact" onClick={handleReconcile}>
             Conciliar {periodLabel(reconcileTarget.period)}
           </button>
         ) : null}
@@ -376,6 +449,18 @@ export function BankRecordsHistoryView({
             onClick={() => onOpenPeriod(accountFilter, periodFilter)}
           >
             Ver extracto
+          </button>
+        ) : openZeroTarget || reconcileTarget ? (
+          <button
+            type="button"
+            className="btn compact"
+            onClick={() => {
+              const target = openZeroTarget ?? reconcileTarget;
+              if (!target) return;
+              onOpenPeriod(target.account.ref, target.period);
+            }}
+          >
+            Ver mes abierto
           </button>
         ) : null}
       </div>
