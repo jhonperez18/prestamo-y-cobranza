@@ -1424,6 +1424,95 @@ export function addBalanceAdjustment(input: {
   } satisfies BankMovement;
 }
 
+/**
+ * Mes donde se puede anotar el ajuste: periodo filtrado (si sigue abierto),
+ * o el abierto con movimientos, o el mes en curso si el anterior ya está conciliado
+ * (aunque aún no haya cobros Nequi/Banco ese mes).
+ */
+export function openPeriodForBalanceAdjustment(
+  accountRef: string,
+  movements: readonly BankMovement[],
+  reconciliations: readonly BankReconciliation[],
+  periodFilter?: string,
+): string {
+  const filter = periodFilter?.trim() ? normalizeBankPeriod(periodFilter) : "";
+  if (filter && !isPeriodClosed(reconciliations, accountRef, filter)) {
+    return filter;
+  }
+  const current = currentPeriod();
+  const priorOfCurrent = priorBankPeriod(current);
+  // Mes en curso si el anterior ya está en Extractos (aunque Nequi/Banco aún no tengan cobros).
+  if (
+    priorOfCurrent &&
+    isPeriodClosed(reconciliations, accountRef, priorOfCurrent) &&
+    !isPeriodClosed(reconciliations, accountRef, current)
+  ) {
+    return current;
+  }
+  const withMovements = openPeriodsForAccount(
+    movements as BankMovement[],
+    reconciliations as BankReconciliation[],
+    accountRef,
+  );
+  return withMovements[0] ?? "";
+}
+
+export type OpenZeroTarget = {
+  account: BankAccount;
+  period: string;
+  priorPeriod: string;
+  amount: number;
+};
+
+/** Cuenta + mes abierto con Inicial negativo y sin ajuste aún (efectivo, Nequi o Banco). */
+export function findOpenZeroTarget(
+  accounts: readonly BankAccount[],
+  movements: readonly BankMovement[],
+  reconciliations: readonly BankReconciliation[],
+  accountFilter?: string,
+  periodFilter?: string,
+): OpenZeroTarget | null {
+  const preferred = accountFilter?.trim() || "";
+  const candidates = preferred
+    ? accounts.filter((row) => row.ref === preferred)
+    : [
+        accountForRole(accounts as BankAccount[], "efectivo"),
+        accountForRole(accounts as BankAccount[], "nequi"),
+        accountForRole(accounts as BankAccount[], "banco"),
+      ].filter((row): row is BankAccount => Boolean(row));
+
+  const seen = new Set<string>();
+  for (const account of candidates) {
+    if (seen.has(account.ref)) continue;
+    seen.add(account.ref);
+    const period = openPeriodForBalanceAdjustment(
+      account.ref,
+      movements,
+      reconciliations,
+      periodFilter,
+    );
+    if (!period) continue;
+    const prior = priorBankPeriod(period);
+    if (!prior) continue;
+    if (findBalanceAdjustment(movements, account.ref, period)) continue;
+    const opening = openingBalanceForPeriod(
+      account.ref,
+      period,
+      account.openingBalance,
+      movements as BankMovement[],
+      reconciliations as BankReconciliation[],
+    );
+    if (!(opening < 0)) continue;
+    return {
+      account,
+      period,
+      priorPeriod: prior,
+      amount: Math.round(Math.abs(opening)),
+    };
+  }
+  return null;
+}
+
 export function filterMovements(
   movements: BankMovement[],
   accountRef: string,

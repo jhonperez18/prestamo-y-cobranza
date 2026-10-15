@@ -17,6 +17,7 @@ import {
   filterMovements,
   balanceAdjustmentLabel,
   findBalanceAdjustment,
+  findOpenZeroTarget,
   formatBankAmount,
   isBalanceAdjustmentMovement,
   isBankExpenseMovement,
@@ -159,14 +160,19 @@ export function BankExtractView({
     () => (account ? findBalanceAdjustment(ledgerMovements, account.ref, period) : null),
     [account, ledgerMovements, period],
   );
-  /** Inicial negativo del mes (arrastre del cierre anterior) → se puede abrir en cero. */
-  const canOpenAtZero =
-    Boolean(account) &&
-    !closed &&
-    filterMode !== "pending" &&
-    periodOpening < 0 &&
-    Boolean(priorPeriod) &&
-    !existingAdjustment;
+  /** Misma regla que Registros: efectivo, Nequi o Banco con Inicial negativo. */
+  const openZeroOnExtract = useMemo(() => {
+    if (!account || closed || filterMode === "pending") return null;
+    return findOpenZeroTarget(
+      accounts,
+      ledgerMovements,
+      reconciliations,
+      account.ref,
+      period,
+    );
+  }, [account, accounts, closed, filterMode, ledgerMovements, reconciliations, period]);
+  const canOpenAtZero = Boolean(openZeroOnExtract);
+  const priorPeriodForAdjust = openZeroOnExtract?.priorPeriod ?? priorPeriod;
 
   const visibleRefs = useMemo(() => new Set(periodRows.map((row) => row.ref)), [periodRows]);
   const allInExtract =
@@ -195,27 +201,27 @@ export function BankExtractView({
   };
 
   const applyOpeningZeroAdjustment = () => {
-    if (!account || !priorPeriod || !canOpenAtZero) return;
-    const amount = Math.round(Math.abs(periodOpening));
+    if (!account || !openZeroOnExtract || !priorPeriodForAdjust) return;
+    const amount = openZeroOnExtract.amount;
     if (!(amount > 0)) return;
     const confirmed =
       typeof window === "undefined" ||
       window.confirm(
-        `¿Abrir ${period} en cero?\n\n` +
+        `¿Abrir ${period} en cero en ${account.name}?\n\n` +
           `Se anota un renglón el día 1 del mes:\n` +
-          `«${balanceAdjustmentLabel(priorPeriod)}»\n` +
+          `«${balanceAdjustmentLabel(priorPeriodForAdjust)}»\n` +
           `por ${formatBankAmount(amount)}.\n\n` +
           `El extracto del mes anterior no se modifica.`,
       );
     if (!confirmed) return;
     const row = addBalanceAdjustment({
       accountRef: account.ref,
-      period,
+      period: openZeroOnExtract.period,
       amount,
-      priorPeriod,
+      priorPeriod: priorPeriodForAdjust,
     });
     onMovementsChange([...ledgerMovements, row]);
-    onToast(`Ajuste anotado · ${period} queda en cero tras el renglón de apertura.`);
+    onToast(`Ajuste anotado · ${account.name} · ${period} queda en cero tras el renglón de apertura.`);
   };
 
   const saveExtract = () => {

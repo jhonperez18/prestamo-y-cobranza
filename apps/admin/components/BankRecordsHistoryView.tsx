@@ -17,7 +17,7 @@ import {
   bankMovementPaymentMethodLabel,
   expenseCategoryLabel,
   filterBankHistory,
-  findBalanceAdjustment,
+  findOpenZeroTarget,
   formatBankAmount,
   isBalanceAdjustmentMovement,
   isBankExpenseMovement,
@@ -27,11 +27,9 @@ import {
   isoToDisplay,
   normalizeBankMovements,
   normalizeBankPeriod,
-  openingBalanceForPeriod,
   openPeriodsForAccount,
   paymentRefForMovement,
   periodLabel,
-  priorBankPeriod,
   bankVisibleRef,
   reconcilePeriod,
   sortBankMovements,
@@ -217,34 +215,18 @@ export function BankRecordsHistoryView({
     return { account, period, pendingCount: pending.length };
   }, [accountFilter, accounts, periodFilter, normalized, reconciliations]);
 
-  /**
-   * Mes abierto (aún no en Extractos): si el Inicial viene negativo del mes conciliado,
-   * se puede anotar el ajuste aquí en Registros.
-   */
-  const openZeroTarget = useMemo(() => {
-    const accountRef =
-      accountFilter || accountForRole(accounts, "efectivo")?.ref || "";
-    if (!accountRef) return null;
-    const account = accounts.find((row) => row.ref === accountRef);
-    if (!account) return null;
-    const period =
-      periodFilter ||
-      openPeriodsForAccount(normalized, reconciliations, accountRef)[0] ||
-      "";
-    if (!period || isPeriodClosed(reconciliations, accountRef, period)) return null;
-    const prior = priorBankPeriod(period);
-    if (!prior) return null;
-    if (findBalanceAdjustment(normalized, accountRef, period)) return null;
-    const opening = openingBalanceForPeriod(
-      accountRef,
-      period,
-      account.openingBalance,
-      normalized,
-      reconciliations,
-    );
-    if (!(opening < 0)) return null;
-    return { account, period, priorPeriod: prior, amount: Math.round(Math.abs(opening)) };
-  }, [accountFilter, accounts, periodFilter, normalized, reconciliations]);
+  /** Mes abierto con Inicial negativo: efectivo, Nequi o Banco (según filtro Cuenta). */
+  const openZeroTarget = useMemo(
+    () =>
+      findOpenZeroTarget(
+        accounts,
+        normalized,
+        reconciliations,
+        accountFilter || undefined,
+        periodFilter || undefined,
+      ),
+    [accountFilter, accounts, periodFilter, normalized, reconciliations],
+  );
 
   function openRowTarget(row: (typeof history)[number]) {
     const paymentRef = paymentRefForMovement(row);
@@ -433,9 +415,9 @@ export function BankRecordsHistoryView({
             type="button"
             className="btn compact primary"
             onClick={handleOpenMonthAtZero}
-            title="Anula el Inicial negativo del mes abierto (aún no conciliado)"
+            title={`Anula el Inicial negativo de ${openZeroTarget.account.name} (mes abierto)`}
           >
-            Abrir {periodLabel(openZeroTarget.period)} en cero
+            Abrir {periodLabel(openZeroTarget.period)} en cero · {openZeroTarget.account.name}
           </button>
         ) : null}
         {reconcileTarget ? (
