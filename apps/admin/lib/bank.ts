@@ -777,7 +777,11 @@ export function expenseCategoryLabel(category?: BankExpenseCategory) {
   return "Otro";
 }
 
-export function isPeriodClosed(reconciliations: BankReconciliation[], accountRef: string, period: string) {
+export function isPeriodClosed(
+  reconciliations: readonly BankReconciliation[],
+  accountRef: string,
+  period: string,
+) {
   return reconciliations.some((row) => row.accountRef === accountRef && row.period === period);
 }
 
