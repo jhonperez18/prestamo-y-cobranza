@@ -1,33 +1,26 @@
 ---
-description: La caché de páginas se borra siempre. Lo nuevo tiene que cargar en el PC y en el celular.
+description: Lo nuevo tiene que cargar en el PC y en el celular. Sin caché vieja.
 alwaysApply: true
 ---
 
-# Caché — siempre se elimina
+# Caché — nada viejo arrastrado
 
 ## Ley
 
-Cada publicación y cada “versión vieja” **purga la caché**. Sin eso el celular sigue con el HTML/JS anterior.
-
-| Qué se borra | Dónde |
-| --- | --- |
-| CDN + Data | Vercel, proyecto `prestamo-y-cobranza` |
-| Service worker y Cache Storage | El navegador, al abrir la app |
+El VPS (`autoprestamos.org`) sirve las páginas sin caché intermedia (Nginx → Next, `no-store`).
+El navegador suelta service worker y Cache Storage en cada arranque. Si había algo guardado, recarga una vez.
 
 ## Obligatorio
 
-1. Tras Ready: `cd apps/admin && npm run verify:prod` (ya purga al final).
-2. Si un alias falla, **igual** se purga. El fallo no cancela la limpieza.
-3. Si el usuario dice que el celular no actualiza: `cd apps/admin && npm run purge:cache` en el momento, sin esperar otro pedido.
-4. El navegador suelta service worker y Cache Storage en cada arranque. Si había algo guardado, recarga una vez.
-
-5. Versión nueva **obligatoria** en cada aparato (`lib/app-auto-update.ts`): recarga al volver a
+1. Publicar con `cd apps/admin && npm run release`; revisar con `npm run verify:prod`
+ (el `build` servido debe ser el commit).
+2. Versión nueva **obligatoria** en cada aparato (`lib/app-auto-update.ts`): recarga al volver a
  la app, con 2 min quieto, o a los 5 min de publicada en el primer momento sin panel / campo
  abierto. La subida previa tiene tope (15 s): lo pendiente queda en la cola y lo sube la versión
  nueva. Prohibido esperar un flush sin tope antes de recargar (dejó a Yesid una semana en la vieja).
 
 ## Prohibido
 
-- Declarar listo sin purge de CDN.
+- Declarar listo sin ver el `build` del commit en autoprestamos.org.
 - Borrar `localStorage` (`nexo-demo-*` y `-bak`) como si fuera caché. Ahí viven cobros, clientes y usuarios.
 - Un reload en bucle: una recarga por sesión alcanza.

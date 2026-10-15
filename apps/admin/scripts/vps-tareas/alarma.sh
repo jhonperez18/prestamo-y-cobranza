@@ -1,7 +1,6 @@
 #!/bin/bash
 # Alarma de una tarea del VPS que no terminó bien (systemd: OnFailure=autoprestamos-alarma@%n).
-# Pide el correo a Vercel (si el problema es este VPS, Vercel sigue en pie); si Vercel no
-# contesta, lo pide a la app de este VPS. Registro: /var/log/autoprestamos-alarma.log.
+# Pide el correo a la app de este VPS. Registro: /var/log/autoprestamos-alarma.log.
 # Prueba: systemctl start autoprestamos-alarma@prueba.service
 # Copia en el VPS: /root/tareas/alarma.sh (esta es la versionada).
 set -uo pipefail
@@ -23,7 +22,7 @@ BODY=$(/usr/local/bin/node -e \
   'process.stdout.write(JSON.stringify({task:process.argv[1],unit:process.argv[2],host:process.argv[3],detail:process.argv[4]}))' \
   "$TASK" "$UNIT" "$(hostname)" "$DETAIL")
 
-for URL in https://prestamo-y-cobranza.vercel.app/api/ops/alarm http://127.0.0.1:3000/api/ops/alarm; do
+for URL in http://127.0.0.1:3000/api/ops/alarm https://autoprestamos.org/api/ops/alarm; do
   OUT=$(curl -s -m 60 -X POST -H "Authorization: Bearer $SECRET" -H 'Content-Type: application/json' \
     --data "$BODY" -w '\n%{http_code}' "$URL")
   CODE=$(printf '%s' "$OUT" | tail -n 1)

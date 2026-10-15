@@ -1,43 +1,39 @@
-# Producción — contrato fijo (también en docs/deployment.md)
+# Producción — contrato fijo (dueño, 14/10: todo en autoprestamos.org)
 
 ## Fuente de verdad
 
 | Pieza | Valor fijo |
 | --- | --- |
 | Rama | `main` |
-| Proyecto Vercel | **solo** `prestamo-y-cobranza` |
-| Root Directory | `apps/admin` |
-| URL canónica | https://prestamo-y-cobranza.vercel.app |
+| Servidor | VPS propio (PM2 `autoprestamos`, `/var/www/autoprestamos/apps/admin`) |
+| URL única | https://autoprestamos.org |
+| Datos | Supabase |
+| Tareas programadas | systemd del VPS (sellado 23:35, respaldo 23:45, revisión 6:05) |
 | Build en login | commit corto (`NEXT_PUBLIC_APP_BUILD` vía `next.config.ts`) |
 
 ## Flujo diario (el único)
 
 1. Cambios → commit en `main`
-2. `git push origin main`
-3. Esperar Ready en Vercel (`prestamo-y-cobranza`)
-4. **Obligatorio:** `cd apps/admin && npm run verify:prod` (aliases + **purge CDN/data**)
-5. Abrir **https://prestamo-y-cobranza.vercel.app**
-6. Login: `build` = SHA del commit
+2. `cd apps/admin && npm run release` (push + VPS pull/build/reinicio + revisión)
+3. Login de https://autoprestamos.org: `build` = SHA del commit
 
 Dinero operativo (demo): ver `docs/operational-money.md`.  
 Personas / Listado (demo): ver `docs/people-catalog.md`.  
 **Sistema madre** (ley del producto): ver `docs/sistema-madre.md`.  
-**Nube operativa:** Supabase = datos; Git = código; Vercel = app; este PC = taller (`.cursor/rules/nube-operativa.mdc`).  
+**Nube operativa:** Supabase = datos; Git = código; VPS autoprestamos.org = app; este PC = taller (`.cursor/rules/nube-operativa.mdc`).  
 Camino a backend: `docs/demo-to-backend.md`.
 
 ## Prohibido
 
-- Otro proyecto Vercel para este admin (`admin`, etc.)
+- Usar Vercel (desconectado; el dueño no quiere pagar ni depender de él)
 - Dominio `cobros.smokecompany.shop` (fuera: sin DNS/API útiles)
-- Sellos de build manuales / scripts que despliegan a un proyecto y aliasan otro
-- Decir “ya está en prod” sin mirar el `build` del login
-- Push/deploy **sin** purgar caché CDN (arrastra versión vieja en celular)
-- Saltarse el purge si falla el alias, o borrar `localStorage` al limpiar caché
+- Sellos de build manuales
+- Decir “ya está en prod” sin mirar el `build` de autoprestamos.org
+- Borrar `localStorage` al limpiar caché
 
 ## Si el usuario ve versión vieja
 
-1. URL = `prestamo-y-cobranza.vercel.app`
+1. URL = `autoprestamos.org`
 2. Login `build` = SHA de `origin/main`
-3. `npm run verify:prod` + Ctrl+F5 o ventana privada
-4. Planilla “cerrada” / movimientos 0 antes de 23:30 = estado demo (localStorage), no deploy fallido
-5. No crear otro proyecto Vercel
+3. `npm run verify:prod`; si no coincide, `npm run release`
+4. Planilla “cerrada” / movimientos 0 antes de 23:30 = estado del aparato, no deploy fallido

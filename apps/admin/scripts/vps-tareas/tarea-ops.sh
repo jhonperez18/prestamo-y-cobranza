@@ -1,6 +1,6 @@
 #!/bin/bash
 # Tareas del negocio en el VPS (sellado 23:35 y revisión 6:05, hora Bogotá).
-# Vercel Cron corre las mismas 5 min antes; son idempotentes (un corte = un sellado, un correo).
+# Únicas tareas programadas del negocio; idempotentes (un corte = un sellado, un correo).
 # Si sale con error, systemd dispara la alarma por correo (autoprestamos-alarma@.service).
 # Uso: tarea-ops.sh day-rollover | morning-check
 # Copia en el VPS: /root/tareas/tarea-ops.sh (esta es la versionada).

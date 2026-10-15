@@ -1,25 +1,22 @@
 ---
-description: Destino de producción — Vercel del proyecto prestamo-y-cobranza.
+description: Destino de producción — https://autoprestamos.org (VPS propio).
 alwaysApply: true
 ---
 
-# Destino — producción Vercel
+# Destino — producción autoprestamos.org
 
 ## Ley
 
-Todo lo que el cliente usa va a **https://prestamo-y-cobranza.vercel.app**.
-
-Esa es la dirección de trabajo. El dominio `cobros.smokecompany.shop` quedó fuera (DNS/API no sirvieron).
+Todo lo que el cliente usa va a **https://autoprestamos.org** (VPS propio, dominio propio).
+Cobradores, supervisor y panel entran por ahí desde el 10/10. Vercel no se usa (dueño, 14/10).
 
 ## Publicar
 
-1. El proyecto sigue siendo uno: `prestamo-y-cobranza`, raíz `apps/admin`, rama `main`.
-2. Al quedar Ready, el alias de producción es `prestamo-y-cobranza.vercel.app`.
-3. En el taller de este PC: `http://localhost:3000`.
+1. Rama `main`, raíz `apps/admin`. `npm run release` deja el VPS en el commit.
+2. En el taller de este PC: `http://localhost:3000`.
 
 ## Prohibido
 
-- Tratar la carpeta estática de Hostinger como el sistema.
-- Crear otro proyecto Vercel para este admin.
-- Volver a colgar `cobros.smokecompany.shop` sin pedido explícito del dueño.
-- Decir que ya está en prod si el login no muestra el `build` del commit.
+- Volver a mandar usuarios a `prestamo-y-cobranza.vercel.app` o a otro dominio.
+- Gastos nuevos en Vercel (el dueño no quiere pagar nada ahí).
+- Decir que ya está en prod si el login de autoprestamos.org no muestra el `build` del commit.

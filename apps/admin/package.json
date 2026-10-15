@@ -11,9 +11,8 @@
     "lint": "eslint",
     "assert:css": "node scripts/assert-no-bom.mjs",
     "assert:cash-chain": "node scripts/assert-cash-chain.mjs",
+    "release": "node scripts/release.mjs release",
     "verify:prod": "node scripts/release.mjs verify",
-    "release:force": "node scripts/release.mjs force",
-    "purge:cache": "node scripts/release.mjs purge",
     "pwa:icons": "node scripts/generate-pwa-icons.mjs",
     "db:push": "npx supabase db push --workdir ../..",
     "force:cie-cristian": "node scripts/force-cie-cristian.mjs"

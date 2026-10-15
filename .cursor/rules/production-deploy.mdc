@@ -1,55 +1,45 @@
 ---
-description: Contrato fijo de producción (GitHub + Vercel). Una sola URL, sin deploys improvisados.
+description: Contrato fijo de producción (GitHub + VPS autoprestamos.org). Una sola URL, sin deploys improvisados.
 alwaysApply: true
 ---
 
-# Producción — contrato fijo
+# Producción — contrato fijo (dueño, 14/10: todo en autoprestamos.org, nada en Vercel)
 
 ## Fuente de verdad
 
 | Pieza | Valor fijo |
 | --- | --- |
 | Rama | `main` |
-| Proyecto Vercel | **solo** `prestamo-y-cobranza` |
-| Root Directory | `apps/admin` |
-| URL canónica | https://prestamo-y-cobranza.vercel.app |
+| Servidor | VPS `162.35.122.243` (PM2 `autoprestamos`, `/var/www/autoprestamos`) |
+| URL única | https://autoprestamos.org |
+| Datos | Supabase |
+| Tareas programadas | systemd del VPS: sellado 23:35, respaldo 23:45, revisión 6:05 (+ alarma por correo) |
 | Build en login | commit corto (`NEXT_PUBLIC_APP_BUILD` vía `next.config.ts`) |
 
 ## Flujo diario (el único)
 
 1. Cambios en código → commit en `main`
-2. `git push origin main`
-3. Esperar Ready en Vercel del proyecto `prestamo-y-cobranza`
-4. **Obligatorio:** `cd apps/admin && npm run verify:prod` (alineá aliases + **purge CDN/data**)
-5. Abrir **https://prestamo-y-cobranza.vercel.app**
-6. En login debe verse `build` = SHA del commit (ej. `4821362`)
+2. `cd apps/admin && npm run release` (push + VPS pull/build/reinicio + revisión completa)
+3. Si el build del VPS falla, la app sigue con la versión anterior: arreglar y repetir
+4. Solo revisar: `npm run verify:prod`
+5. En login debe verse `build` = SHA del commit
 
-## Prohibido (causa el “versión vieja” de todos los días)
+## Vercel
 
-- Crear o reactivar otro proyecto Vercel (`admin`, previews como producción, etc.)
-- Publicar o aliasar a un dominio custom que no cargue datos/API
+Proyecto `prestamo-y-cobranza` desconectado de GitHub y sin tareas programadas. Nadie entra por ahí.
+No se paga ni se usa. Prohibido volver a ponerlo como producción sin pedido del dueño.
+
+## Prohibido
+
+- Publicar a otro servidor o dominio
 - Editar a mano `APP_BUILD` / inventar sellos de build
-- Scripts de “parche” que despliegan a un proyecto y apuntan el dominio a otro
-- Decir “ya está en prod” sin verificar el `build` del login
-- Hacer push/deploy **sin** purgar caché CDN (arrastra HTML/JS viejo en celular)
-- Saltarse el purge porque falló un alias
+- Decir “ya está en prod” sin verificar el `build` de autoprestamos.org
 - Borrar `localStorage` (`nexo-demo-*`) al “limpiar caché”
-
-## Emergencia
-
-Solo si el push a `main` no disparó deploy:
-
-```bash
-cd apps/admin
-npm run release:force
-```
-
-(`release:force` también purga CDN/data al terminar.)
+- Reiniciar la app del VPS con un build fallido
 
 ## Si el usuario ve versión vieja
 
-1. Confirmar URL = `prestamo-y-cobranza.vercel.app`
-2. Comparar `build` del login vs `git rev-parse --short HEAD` / `origin/main`
-3. Correr `npm run verify:prod` (purge) + Ctrl+F5 o ventana privada
-4. “Cerrar día” debe quedarse cerrado hasta el rollover; el ciclo no reabre jornadas manuales antes de 23:30
-5. No crear un segundo deploy improvisado
+1. Confirmar URL = `autoprestamos.org`
+2. Comparar `build` del login vs `git rev-parse --short origin/main`
+3. `npm run verify:prod`; si no coincide, `npm run release`
+4. La app recarga sola con la versión nueva (`lib/app-auto-update.ts`)

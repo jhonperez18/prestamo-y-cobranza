@@ -1,35 +1,27 @@
 /**
- * Contrato de producción — un solo camino, sin parches.
+ * Contrato de producción — un solo camino: el VPS (https://autoprestamos.org).
  *
- * Uso diario (después de push a main + Ready):
+ * Publicar (después de commit en main):
+ *   cd apps/admin && npm run release
+ *     → git push origin main · VPS: pull + build + reinicio · revisión completa.
+ *
+ * Solo revisar lo que está en el aire:
  *   cd apps/admin && npm run verify:prod
  *
- * Emergencia (forzar rebuild en Vercel):
- *   npm run release:force
- *
- * Siempre: aliases alineados + purge de caché CDN/data (nada viejo arrastrado).
- * Además: espera Ready del commit, comprueba build en login y catálogo SQL.
+ * Si el build del VPS falla, la app sigue con la versión anterior (no se reinicia).
  */
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
+import { homedir } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
-const PROJECT = "prestamo-y-cobranza";
-/** URL de trabajo (sin dominio cobros: API/DNS fallidos). */
-const CANONICAL_HOST = "prestamo-y-cobranza.vercel.app";
-const LEGACY_HOST = "admin-jhon-fredy-perezs-projects.vercel.app";
-const DOMAIN = `https://${CANONICAL_HOST}`;
-const DEPLOY_URL_RE =
-  /https:\/\/prestamo-y-cobranza-[a-z0-9]+-jhon-fredy-perezs-projects\.vercel\.app/;
+const DOMAIN = "https://autoprestamos.org";
+const VPS = process.env.VPS_SSH || "root@162.35.122.243";
+const VPS_KEY = process.env.VPS_SSH_KEY || join(homedir(), ".ssh", "id_ed25519");
+const VPS_APP = "/var/www/autoprestamos";
 
 const adminRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-/** Raíz del monorepo: Vercel Root Directory = apps/admin. */
 const repoRoot = join(adminRoot, "..", "..");
-
-/** BOM en globals.css invalida :root → fondo/colores/login rotos. */
-function assertGlobalsCssNoBom() {
-  run("node scripts/assert-no-bom.mjs", adminRoot);
-}
 
 function run(cmd, cwd = repoRoot) {
   return execSync(cmd, { encoding: "utf8", cwd, stdio: "inherit" });
@@ -40,134 +32,35 @@ function capture(cmd, cwd = repoRoot) {
 }
 
 function sleep(ms) {
-  try {
-    execSync(`powershell -NoProfile -Command "Start-Sleep -Milliseconds ${ms}"`, {
-      stdio: "ignore",
-    });
-  } catch {
-    /* ignore */
-  }
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function ensureLinked() {
-  // Siempre el proyecto canónico. Nunca "admin" u otro.
-  run(`npx vercel link --yes --project ${PROJECT}`, repoRoot);
-  run(`npx vercel link --yes --project ${PROJECT}`, adminRoot);
+function ssh(script) {
+  return execFileSync(
+    "ssh",
+    ["-i", VPS_KEY, "-o", "BatchMode=yes", "-o", "ConnectTimeout=20", VPS, "bash -s"],
+    { input: script.replace(/\r/g, ""), encoding: "utf8", stdio: ["pipe", "inherit", "inherit"] },
+  );
 }
 
-function deploymentSha(row) {
-  return String(
-    row?.meta?.githubCommitSha || row?.meta?.gitCommitSha || row?.meta?.gitlabCommitSha || "",
-  ).slice(0, 7);
-}
-
-function parseCliJson(raw) {
-  const startObj = raw.indexOf("{");
-  const startArr = raw.indexOf("[");
-  const start =
-    startObj < 0 ? startArr : startArr < 0 ? startObj : Math.min(startObj, startArr);
-  if (start < 0) throw new Error("sin json");
-  const slice = raw.slice(start);
-  try {
-    return JSON.parse(slice);
-  } catch (err) {
-    const at = String(err?.message || "").match(/position (\d+)/);
-    if (!at) throw err;
-    return JSON.parse(slice.slice(0, Number(at[1])));
-  }
-}
-
-function listProductionDeployments() {
-  const raw = capture(`npx vercel ls ${PROJECT} --json`, repoRoot);
-  const data = parseCliJson(raw);
-  return Array.isArray(data?.deployments) ? data.deployments : [];
-}
-
-function latestProductionDeployUrl(expectedSha = "") {
-  try {
-    const deployments = listProductionDeployments();
-    const want = String(expectedSha || "").slice(0, 7);
-    if (want) {
-      for (const row of deployments) {
-        const state = String(row.state || row.readyState || "");
-        const urlHost = String(row.url || "");
-        if (urlHost && /READY/i.test(state) && deploymentSha(row) === want) {
-          return urlHost.startsWith("http") ? urlHost : `https://${urlHost}`;
-        }
-      }
-      return "";
-    }
-    for (const row of deployments) {
-      const state = String(row.state || row.readyState || "");
-      const target = String(row.target || "");
-      const urlHost = String(row.url || "");
-      if (!urlHost) continue;
-      const isProd = /production/i.test(target) || Boolean(row.production);
-      if (isProd && /READY/i.test(state)) {
-        return urlHost.startsWith("http") ? urlHost : `https://${urlHost}`;
-      }
-    }
-  } catch (err) {
-    console.warn("Aviso: vercel ls --json falló.", err?.message || err);
-  }
-  return "";
-}
-
-/** Espera Ready del commit esperado (no aliasar deploy viejo ni ERROR). */
-function waitForReadyProduction(expectedSha, timeoutMs = 240000) {
-  const started = Date.now();
-  const want = String(expectedSha || "").slice(0, 7);
-  while (Date.now() - started < timeoutMs) {
-    try {
-      const deployments = listProductionDeployments();
-      const newest = deployments[0];
-      if (newest) {
-        const state = String(newest.state || "");
-        const sha = deploymentSha(newest);
-        console.log(`Deploy ${sha || "?"} → ${state}`);
-        if (want && sha === want && /ERROR|CANCELED/i.test(state)) {
-          console.error(`FALLO: deploy ${want} terminó en ${state}.`);
-          process.exit(1);
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-    const url = latestProductionDeployUrl(want);
-    if (url) {
-      console.log(`Deploy Ready → ${url}`);
-      return url;
-    }
-    console.log("Sin deploy Ready del commit aún… esperando");
-    sleep(10000);
-  }
-  return latestProductionDeployUrl(want);
-}
-
-function syncAliases(deploymentUrl) {
-  if (!deploymentUrl) {
-    console.error("No hay URL de deploy Ready para sincronizar aliases.");
-    process.exit(1);
-  }
-  for (const host of [CANONICAL_HOST, LEGACY_HOST]) {
-    try {
-      run(`npx vercel alias set ${deploymentUrl} ${host}`, repoRoot);
-    } catch (err) {
-      console.warn(`Aviso: alias ${host} no se pudo fijar. La caché se purga igual.`, err?.message || err);
-    }
-  }
-}
-
-/** Obligatorio: sin esto el celular/CDN arrastra HTML/JS viejo. */
-function purgeCaches() {
-  console.log("Purgando caché CDN…");
-  run("npx vercel cache purge --yes --type cdn", repoRoot);
-  console.log("Purgando caché Data…");
-  try {
-    run("npx vercel cache purge --yes --type data", repoRoot);
-  } catch {
-    console.warn("Aviso: no se pudo purgar Data cache (CDN sí se limpió).");
-  }
+/** Pull + build en el VPS. Solo reinicia si el build salió bien. */
+function deployVps(expectedSha) {
+  console.log(`VPS: actualizando a ${expectedSha}…`);
+  ssh(`set -e
+cd ${VPS_APP}
+git pull -q --ff-only
+HEAD=$(git rev-parse --short HEAD)
+if [ "$HEAD" != "${expectedSha}" ]; then echo "FALLO: el VPS quedó en $HEAD, se esperaba ${expectedSha}"; exit 1; fi
+cd apps/admin
+if npm run build > /tmp/build.log 2>&1; then
+  pm2 restart autoprestamos > /dev/null
+  echo "VPS: build OK y app reiniciada"
+else
+  echo "FALLO: build del VPS. La app sigue con la versión anterior. Últimas líneas:"
+  tail -n 30 /tmp/build.log
+  exit 1
+fi
+`);
 }
 
 async function fetchJson(url) {
@@ -176,40 +69,42 @@ async function fetchJson(url) {
   return res.json();
 }
 
+function fail(message) {
+  console.error(`FALLO: ${message}`);
+  process.exit(1);
+}
+
+/** Espera a que el VPS sirva el commit (el reinicio tarda unos segundos). */
+async function assertServedBuild(expectedSha, timeoutMs = 120000) {
+  console.log("Comprobando build servido…");
+  const started = Date.now();
+  let last = "";
+  while (Date.now() - started < timeoutMs) {
+    try {
+      const data = await fetchJson(`${DOMAIN}/api/ops/build-health`);
+      last = String(data.build ?? "");
+      if (last === expectedSha) {
+        console.log(`Build OK → ${last}`);
+        return;
+      }
+    } catch (err) {
+      last = String(err?.message || err);
+    }
+    await sleep(5000);
+  }
+  fail(`build servido=${last || "?"} esperado=${expectedSha}.`);
+}
+
 async function assertServiceRole() {
-  console.log("Comprobando service role (C6.1)…");
+  console.log("Comprobando service role…");
   let data;
   try {
     data = await fetchJson(`${DOMAIN}/api/health/supabase`);
   } catch (err) {
-    console.error(`FALLO: health/supabase → ${err?.message || err}`);
-    process.exit(1);
+    fail(`health/supabase → ${err?.message || err}`);
   }
-  if (!data.serviceRole) {
-    console.error(
-      "FALLO: falta SUPABASE_SERVICE_ROLE_KEY en Vercel. Sin eso los mirrors C6.1 no escriben (anon ya no basta).",
-    );
-    process.exit(1);
-  }
+  if (!data.serviceRole) fail("falta SUPABASE_SERVICE_ROLE_KEY en el VPS (.env.local).");
   console.log("Service role OK");
-}
-
-async function assertLoginBuild(expectedSha) {
-  console.log("Comprobando build servido…");
-  let data;
-  try {
-    data = await fetchJson(`${DOMAIN}/api/ops/build-health`);
-  } catch (err) {
-    console.error(`FALLO: build-health → ${err?.message || err}`);
-    process.exit(1);
-  }
-  if (!data.build || String(data.build) !== String(expectedSha)) {
-    console.error(
-      `FALLO: build servido=${data.build ?? "?"} esperado=${expectedSha}. CDN o alias aún viejos.`,
-    );
-    process.exit(1);
-  }
-  console.log(`Build OK → ${data.build}`);
 }
 
 async function assertCatalogHealth() {
@@ -218,15 +113,11 @@ async function assertCatalogHealth() {
   try {
     data = await fetchJson(`${DOMAIN}/api/ops/catalog-health`);
   } catch (err) {
-    console.error(`FALLO: catalog-health → ${err?.message || err}`);
-    process.exit(1);
+    fail(`catalog-health → ${err?.message || err}`);
   }
   if (!data.ok) {
-    console.error(
-      `FALLO: catálogo incompleto. clients=${data.clients ?? "?"} expectedMin=${data.expectedMin ?? "?"}`,
-    );
     if (data.error) console.error(`  error: ${data.error}`);
-    process.exit(1);
+    fail(`catálogo incompleto. clients=${data.clients ?? "?"} expectedMin=${data.expectedMin ?? "?"}`);
   }
   console.log(`Catálogo OK → ${data.clients} clientes (mín ${data.expectedMin})`);
 }
@@ -237,8 +128,7 @@ async function assertCashChain() {
   try {
     data = await fetchJson(`${DOMAIN}/api/ops/chain-audit`);
   } catch (err) {
-    console.error(`FALLO: chain-audit → ${err?.message || err}`);
-    process.exit(1);
+    fail(`chain-audit → ${err?.message || err}`);
   }
   for (const row of data.rows ?? []) {
     const tag = row.kind === "independent" ? "Caja" : "CIE";
@@ -248,13 +138,12 @@ async function assertCashChain() {
     );
   }
   if (!data.ok) {
-    console.error(`FALLO: regla de inicio rota en ${data.businessDate ?? "hoy"}.${data.error ? ` ${data.error}` : ""}`);
-    process.exit(1);
+    fail(`regla de inicio rota en ${data.businessDate ?? "hoy"}.${data.error ? ` ${data.error}` : ""}`);
   }
   console.log("Regla de inicio OK");
 }
 
-/** Aviso (no frena el deploy: puede ser justo el que lo arregla). */
+/** Aviso (no frena: puede ser justo la versión que lo arregla). */
 async function reportDeviceStorage() {
   console.log("Comprobando aparatos (¿guardan lo que bajan?)…");
   let data;
@@ -271,91 +160,41 @@ async function reportDeviceStorage() {
   console.log(alerts.length ? `Aparatos con alarma: ${alerts.length} (recargar con este build)` : "Aparatos OK");
 }
 
-const mode = process.argv[2] || "verify";
-
-const branch = capture("git rev-parse --abbrev-ref HEAD");
-const sha = capture("git rev-parse --short HEAD");
-const remoteSha = (() => {
-  try {
-    return capture("git rev-parse --short origin/main");
-  } catch {
-    return "";
-  }
-})();
-
-if (branch !== "main") {
-  console.error(`Abortado: estás en "${branch}". Producción solo sale de main.`);
-  process.exit(1);
-}
-
-void (async () => {
-  assertGlobalsCssNoBom();
-if (mode === "purge") {
-  console.log("Purgando caché CDN + data. No toca cobros, clientes ni usuarios.");
-  ensureLinked();
-  purgeCaches();
-  process.exit(0);
-}
-
-if (mode === "verify") {
-  console.log("── Producción (contrato fijo) ──");
-  console.log(`Proyecto Vercel : ${PROJECT}`);
-  console.log(`URL canónica    : ${DOMAIN}`);
-  console.log(`Alias legado    : https://${LEGACY_HOST}`);
-  console.log(`Commit local    : ${sha}`);
-  console.log(`origin/main     : ${remoteSha || "(sin fetch)"}`);
-  console.log("");
-  console.log(`En el login DEBE verse: Código en este sitio: ${remoteSha || sha}`);
-  console.log(`Abrir solo: ${DOMAIN}`);
-  console.log("GitHub muestra código fuente, no la app. La app es Vercel.");
-  console.log("");
-  ensureLinked();
-  const expect = remoteSha || sha;
-  const prod = waitForReadyProduction(expect);
-  if (prod) {
-    console.log(`\nSincronizando aliases → ${prod}`);
-    syncAliases(prod);
-  }
-  purgeCaches();
-  await assertLoginBuild(expect);
+async function verify(expectedSha) {
+  await assertServedBuild(expectedSha);
   await assertServiceRole();
   await assertCatalogHealth();
   await assertCashChain();
   await reportDeviceStorage();
-  console.log(
-    `\nListo de verdad. Login → build ${expect}. Catálogo SQL + service role + regla de inicio verificados.`,
-  );
-  process.exit(0);
+  console.log(`\nListo de verdad. ${DOMAIN} → build ${expectedSha}. Catálogo + service role + regla de inicio verificados.`);
 }
 
-if (mode === "force") {
-  console.log(`Forzando deploy ${sha} → ${DOMAIN}`);
-  ensureLinked();
-  const out = execSync("npx vercel deploy --prod --force --yes", {
-    encoding: "utf8",
-    cwd: repoRoot,
-    stdio: ["inherit", "pipe", "inherit"],
-  });
-  const match = String(out).match(DEPLOY_URL_RE);
-  if (!match?.[0]) {
-    console.error("No se encontró URL del deploy.");
-    process.exit(1);
+const mode = process.argv[2] || "verify";
+
+void (async () => {
+  if (capture("git rev-parse --abbrev-ref HEAD") !== "main") {
+    fail("producción solo sale de main.");
   }
-  syncAliases(match[0]);
-  purgeCaches();
-  await assertLoginBuild(sha);
-  await assertCatalogHealth();
-  await assertCashChain();
-  await reportDeviceStorage();
-  console.log(`\nListo → ${DOMAIN}`);
-  console.log(`Login debe mostrar: Código en este sitio: ${sha}`);
-  process.exit(0);
-}
+  run("node scripts/assert-no-bom.mjs", adminRoot);
+  const sha = capture("git rev-parse --short HEAD");
 
-console.error(`Modo desconocido: ${mode}. Usa verify | force | purge`);
-process.exit(1);
+  if (mode === "release") {
+    console.log(`── Publicar ${sha} → ${DOMAIN} ──`);
+    run("git push origin main");
+    deployVps(sha);
+    await verify(sha);
+    process.exit(0);
+  }
+
+  if (mode === "verify") {
+    const remoteSha = capture("git rev-parse --short origin/main");
+    console.log(`── Revisar ${DOMAIN} (origin/main ${remoteSha}) ──`);
+    await verify(remoteSha);
+    process.exit(0);
+  }
+
+  fail(`modo desconocido: ${mode}. Usa release | verify`);
 })().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-
