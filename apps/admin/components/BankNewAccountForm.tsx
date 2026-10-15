@@ -349,7 +349,7 @@ export function BankNewAccountForm({
 
             <div className="sheet-row">
               <label className="sheet-label" htmlFor="bank-balance">
-                Saldo inicial
+                Saldo inicial de la cuenta
               </label>
               <input
                 id="bank-balance"
@@ -358,6 +358,10 @@ export function BankNewAccountForm({
                 value={form.openingBalance}
                 onChange={(event) => setField("openingBalance", event.target.value)}
               />
+              <p className="sheet-hint">
+                Solo el arranque histórico de la ficha. El Saldo del listado, si abrió el mes en
+                cero desde Registros, parte de ese mes (no de este número).
+              </p>
             </div>
 
             <div className="sheet-row sheet-row-top is-full">

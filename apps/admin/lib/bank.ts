@@ -775,11 +775,27 @@ export function filterBankHistory(
   });
 }
 
-/** Saldo vivo: apertura + debe − haber de todos los movimientos de la cuenta. */
-export function liveBalanceForAccount(account: BankAccount, movements: BankMovement[]) {
-  const ledger = movements.filter((row) => row.accountRef === account.ref);
-  const summary = summarizeMovements(ledger);
-  return account.openingBalance + summary.balance;
+/**
+ * Saldo vivo de la cuenta en el listado.
+ * Si el mes se abrió en cero (marca OPENING@), solo cuenta desde ese mes:
+ * no arrastra el 9 ni un «Saldo inicial» viejo de la ficha.
+ */
+export function liveBalanceForAccount(
+  account: BankAccount,
+  movements: BankMovement[],
+  reconciliations: readonly BankReconciliation[] = [],
+) {
+  const mine = movements.filter((row) => row.accountRef === account.ref);
+  const overrides = reconciliations
+    .filter((row) => row.accountRef === account.ref && isOpeningOverride(row))
+    .sort((a, b) => b.period.localeCompare(a.period));
+  const start = overrides[0];
+  if (start) {
+    const fromPeriod = normalizeBankPeriod(start.period);
+    const ledger = mine.filter((row) => normalizeBankPeriod(row.period) >= fromPeriod);
+    return start.balance + summarizeMovements(ledger).balance;
+  }
+  return account.openingBalance + summarizeMovements(mine).balance;
 }
 
 /** Periodos con movimientos abiertos en una cuenta (más recientes primero). */

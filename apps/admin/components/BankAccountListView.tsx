@@ -39,7 +39,7 @@ export function BankAccountListView({
 
   const rows = accounts.map(normalizeBankAccount);
   const totalBalance = rows.reduce(
-    (sum, row) => sum + liveBalanceForAccount(row, movements),
+    (sum, row) => sum + liveBalanceForAccount(row, movements, reconciliations),
     0,
   );
   const showTotal = rows.length > 1;
@@ -106,7 +106,7 @@ export function BankAccountListView({
                   reconciliations,
                   account.ref,
                 );
-                const liveBalance = liveBalanceForAccount(account, movements);
+                const liveBalance = liveBalanceForAccount(account, movements, reconciliations);
 
                 return (
                   <tr key={account.ref}>
