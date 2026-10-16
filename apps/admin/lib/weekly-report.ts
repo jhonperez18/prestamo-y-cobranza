@@ -1,7 +1,8 @@
 /**
  * Informe semanal (corte sábado). Dos hojas: M · T · N y A aparte.
  * Solo lee a los dueños de cada cifra; aquí no hay fórmula de caja propia:
- *   Cartera   = saldo de cada préstamo al corte (`computeLoanFinancials` con pagos ≤ corte).
+ *   Cartera   = misma que el Informe del supervisor (`portfolioBalanceForClients` /
+ *               préstamos activos + pagos vivos). No fórmula aparte.
  *   Caja M·T  = libro del día (`buildDayCashLedger`); saldo final = CIE- del último día.
  *   Caja A/N  = `independentRouteDay` / `independentRouteMovement`.
  *   Cobros    = `routeCollectedByMethod` (ruta del cliente).
@@ -17,7 +18,7 @@ import {
 } from "@/lib/colombia-holidays";
 import { clientsOnRouteSorted, sameRoute } from "@/lib/client-route-order";
 import { dayHasReachedAutoClose } from "@/lib/collector-day-auto-close";
-import { normalizeHistoryDate, type RouteCashAdjustment, type RouteExpenseLine } from "@/lib/collector-day-close";
+import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import type { DayLoanDisbursementRow } from "@/lib/collector-history-planilla";
 import { buildDayCashLedger, routeCollectedByMethod, type DayCashSources } from "@/lib/day-cash-ledger";
 import { dayDigitalLoanRows } from "@/lib/day-digital-loans";
@@ -31,11 +32,10 @@ import {
   type InformeHistoryKind,
   type InformeHistorySources,
 } from "@/lib/informe-route-days";
-import { isLatePayment } from "@/lib/late-payment";
 import { livePayments } from "@/lib/live-payments";
 import { computeLoanFinancials } from "@/lib/loan-balance";
-import { isoToDisplay, syncLoan } from "@/lib/loan-preview";
-import { isLoanVoided, money, type LoanRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
+import { syncLoan } from "@/lib/loan-preview";
+import { activeLoans, type LoanRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import { paymentRecaudoIso } from "@/lib/payment-detail";
@@ -68,10 +68,19 @@ export type WeeklyClientRow = {
   ref: string;
   order: number;
   name: string;
+  /** Inicio del préstamo con saldo (ISO); para mostrar (dd/mm) junto al nombre. */
+  loanStart: string | null;
   /** Lo que debe al corte. `null` = sin préstamo con saldo («–»). */
   debt: number | null;
-  paidWeek: number;
+  /** Último cobro vivo del cliente con fecha ≤ corte (mismo día = suma). */
+  lastPayment: { date: string; amount: number } | null;
 };
+
+/** Miles de pesos sin punto ni ceros: 200.000 → «200», 1.310.000 → «1310». */
+export function weeklyMiles(value: number | null | undefined) {
+  if (value == null) return "–";
+  return String(Math.round(Number(value) / 1000));
+}
 
 export type WeeklyRouteCartera = {
   route: string;
@@ -103,7 +112,8 @@ function cajaRow(row: Omit<WeeklyCajaRow, "ajustes">): WeeklyCajaRow {
 
 export type WeeklyCobroRow = { route: string; efectivo: number; digital: number; total: number };
 export type WeeklyLoanRow = { route: string; count: number; capital: number; efectivo: number; digital: number };
-export type WeeklyGastoRow = { label: string; byRoute: Record<string, number>; total: number };
+/** Total de gastos operativos de la ruta en la semana (sin desglose por tipo). */
+export type WeeklyGastoRow = { route: string; total: number };
 
 export type WeeklyPool = {
   label: string;
@@ -133,7 +143,6 @@ export type WeeklyReport = {
   prestamos: WeeklyLoanRow[];
   gastos: WeeklyGastoRow[];
   pool: WeeklyPool;
-  novedades: string[];
   resumen: WeeklyResumenRow[];
   movimiento: WeeklyMovement[];
 };
@@ -256,27 +265,23 @@ function groupPaymentsByLoan(payments: PaymentRow[]) {
   return byLoan;
 }
 
-function loanBalanceAt(loan: LoanRow, loanPayments: PaymentRow[], date: string) {
-  const known = loanPayments.filter((row) => {
-    const iso = paymentRecaudoIso(row);
-    return Boolean(iso) && iso <= date;
-  });
-  return computeLoanFinancials(syncLoan(loan, known) as LoanRow, known).balancePending;
-}
-
 type CarteraInput = {
   src: WeeklyReportSources;
   range: WeeklyRange;
   route: string;
   paymentsByLoan: Map<string, PaymentRow[]>;
+  /** Pagos vivos (misma lista que el Informe del supervisor). */
+  live: PaymentRow[];
 };
 
-function routeCartera({ src, range, route, paymentsByLoan }: CarteraInput): WeeklyRouteCartera {
+/**
+ * Cartera por ruta = misma cifra que Supervisor → Informe (`portfolioBalanceForClients`):
+ * solo préstamos activos, saldo con todos los cobros vivos.
+ */
+function routeCartera({ src, range, route, paymentsByLoan, live }: CarteraInput): WeeklyRouteCartera {
   const loansByClient = new Map<string, LoanRow[]>();
-  for (const loan of src.loans) {
-    if (!loan.clientRef || isLoanVoided(loan)) continue;
-    const iso = loanDisbursementIsoDate(loan);
-    if (!iso || iso > range.end) continue;
+  for (const loan of activeLoans(src.loans.map((row) => syncLoan(row, live) as LoanRow))) {
+    if (!loan.clientRef) continue;
     const list = loansByClient.get(loan.clientRef);
     if (list) list.push(loan);
     else loansByClient.set(loan.clientRef, [loan]);
@@ -286,21 +291,38 @@ function routeCartera({ src, range, route, paymentsByLoan }: CarteraInput): Week
     .map((client): WeeklyClientRow => {
       const loans = loansByClient.get(client.ref) ?? [];
       let debt = 0;
-      let paidWeek = 0;
+      let lastDate = "";
+      let lastAmount = 0;
+      let loanStart = "";
+      let topLoanDebt = 0;
       for (const loan of loans) {
-        const loanPayments = paymentsByLoan.get(loan.ref) ?? [];
-        debt += Math.max(0, loanBalanceAt(loan, loanPayments, range.end));
-        for (const pay of loanPayments) {
+        const bal = Math.max(0, computeLoanFinancials(loan, live).balancePending);
+        debt += bal;
+        const start = loanDisbursementIsoDate(loan);
+        if (bal > 0 && start && bal >= topLoanDebt) {
+          topLoanDebt = bal;
+          loanStart = start;
+        }
+        for (const pay of paymentsByLoan.get(loan.ref) ?? []) {
           const paid = paymentRecaudoIso(pay);
-          if (paid >= range.start && paid <= range.end) paidWeek += Number(pay.amount) || 0;
+          if (!paid || paid > range.end) continue;
+          const amount = Number(pay.amount) || 0;
+          if (amount <= 0) continue;
+          if (paid > lastDate) {
+            lastDate = paid;
+            lastAmount = amount;
+          } else if (paid === lastDate) {
+            lastAmount += amount;
+          }
         }
       }
       return {
         ref: client.ref,
         order: client.routeOrder || 0,
         name: `${client.name} ${client.lastName}`.trim() || client.ref,
+        loanStart: loanStart || null,
         debt: debt > 0 ? pesos(debt) : null,
-        paidWeek: pesos(paidWeek),
+        lastPayment: lastDate ? { date: lastDate, amount: pesos(lastAmount) } : null,
       };
     });
   const owner = ownerOf(src.routes, route);
@@ -322,7 +344,6 @@ type Acc = {
   loanCount: Record<string, number>;
   loanEfectivo: Record<string, number>;
   loanDigital: Record<string, number>;
-  gastoByLabel: Map<string, Record<string, number>>;
 };
 
 function emptyAcc(routes: string[]): Acc {
@@ -336,40 +357,23 @@ function emptyAcc(routes: string[]): Acc {
     loanCount: zero(),
     loanEfectivo: zero(),
     loanDigital: zero(),
-    gastoByLabel: new Map(),
   };
 }
 
-function gastoLabel(raw: string) {
-  const clean = raw.replace(/\s+/g, " ").trim().toLowerCase();
-  return clean ? clean.charAt(0).toUpperCase() + clean.slice(1) : "Otros";
-}
-
-function addGastoLines(acc: Acc, routes: string[], route: string, lines: RouteExpenseLine[]) {
-  for (const line of lines) {
-    const label = gastoLabel(line.label);
-    const row = acc.gastoByLabel.get(label) ?? Object.fromEntries(routes.map((name) => [name, 0]));
-    row[route] = (row[route] ?? 0) + (Number(line.amount) || 0);
-    acc.gastoByLabel.set(label, row);
-  }
-}
-
-function addCashLoans(acc: Acc, route: string, rows: DayLoanDisbursementRow[], topUps: DayLoanDisbursementRow[]) {
+function addCashLoans(acc: Acc, route: string, rows: DayLoanDisbursementRow[]) {
   for (const row of rows) {
     acc.loanEfectivo[route] += row.capital;
-    if (row.topUp) topUps.push(row);
-    else acc.loanCount[route] += 1;
+    if (!row.topUp) acc.loanCount[route] += 1;
   }
 }
 
-type RouteMove = { efectivo: number; prestamos: number; gastos: number; gastoLines: RouteExpenseLine[]; loanRows: DayLoanDisbursementRow[] };
+type RouteMove = { efectivo: number; prestamos: number; gastos: number; loanRows: DayLoanDisbursementRow[] };
 
-function addMove(acc: Acc, routes: string[], route: string, move: RouteMove, topUps: DayLoanDisbursementRow[]) {
+function addMove(acc: Acc, route: string, move: RouteMove) {
   acc.efectivo[route] += move.efectivo;
   acc.prestamos[route] += move.prestamos;
   acc.gastos[route] += move.gastos;
-  addGastoLines(acc, routes, route, move.gastoLines);
-  addCashLoans(acc, route, move.loanRows, topUps);
+  addCashLoans(acc, route, move.loanRows);
 }
 
 /** Saldo del pool al cierre de `date`, con la ventana del mes de `monthOf` (Banco / Nequi arrancan en 0 cada mes). */
@@ -385,10 +389,6 @@ function poolAt(src: WeeklyReportSources, pool: DigitalPool, monthOf: string, da
     fromIso: `${monthOf.slice(0, 7)}-01`,
     toIso: date,
   });
-}
-
-function adjustmentLine(label: string, date: string, adj: RouteCashAdjustment | { calculated: number; real: number; by: string; reason: string }) {
-  return `Ajuste ${label} ${isoToDisplay(date).slice(0, 5)}: ${money(adj.calculated)} → ${money(adj.real)} (${adj.by || "—"}${adj.reason ? ` · «${adj.reason}»` : ""})`;
 }
 
 function movementOf(
@@ -417,38 +417,32 @@ export function buildWeeklyReport(
   src: WeeklyReportSources,
   scope: WeeklyReportScope,
   range: WeeklyRange,
-  today: string,
+  _today: string,
 ): WeeklyReport {
   const routes = WEEKLY_SCOPE_ROUTES[scope];
   const pool: DigitalPool = scope === "a" ? "nequi" : "banco";
   const acc = emptyAcc(routes);
-  const topUps: DayLoanDisbursementRow[] = [];
-  const novedades: string[] = [];
 
   const chainRef = scope === "mtn" ? ownerOf(src.routes, "M") || ownerOf(src.routes, "T") : "";
   const ownRoute = scope === "a" ? "A" : "N";
   const ownRef = ownerOf(src.routes, ownRoute);
   const owners = [...new Set([chainRef, ownRef].filter(Boolean))];
-  const nameOf = (ref: string) => src.collectors.find((row) => row.ref === ref)?.name ?? ref;
 
   for (const date of range.days) {
     if (chainRef) {
       const ledger = buildDayCashLedger(daySource(src, chainRef, date));
       if (ledger.chain) {
-        addMove(acc, routes, "M", ledger.m, topUps);
-        addMove(acc, routes, "T", ledger.t, topUps);
+        addMove(acc, "M", ledger.m);
+        addMove(acc, "T", ledger.t);
       }
     }
-    if (ownRef) addMove(acc, routes, ownRoute, independentRouteMovement(daySource(src, ownRef, date), ownRoute), topUps);
+    if (ownRef) addMove(acc, ownRoute, independentRouteMovement(daySource(src, ownRef, date), ownRoute));
     for (const ref of owners) {
       const day = daySource(src, ref, date);
       for (const route of routes) {
         const by = routeCollectedByMethod(day, route);
         acc.cobroEfectivo[route] += by.efectivo;
         acc.cobroDigital[route] += by.banco + by.nequi;
-      }
-      if (date < today && !findFullDayCieClose(src.dayCloses, ref, date)) {
-        novedades.push(`Sin cierre: ${nameOf(ref)} el ${isoToDisplay(date).slice(0, 5)}`);
       }
     }
     for (const route of routes) {
@@ -459,8 +453,9 @@ export function buildWeeklyReport(
     }
   }
 
-  const paymentsByLoan = groupPaymentsByLoan(livePayments(src.payments));
-  const cartera = routes.map((route) => routeCartera({ src, range, route, paymentsByLoan }));
+  const live = livePayments(src.payments);
+  const paymentsByLoan = groupPaymentsByLoan(live);
+  const cartera = routes.map((route) => routeCartera({ src, range, route, paymentsByLoan, live }));
   const carteraTotal = pesos(cartera.reduce((sum, row) => sum + row.total, 0));
 
   const caja: WeeklyCajaRow[] = [];
@@ -529,13 +524,9 @@ export function buildWeeklyReport(
     efectivo: pesos(acc.loanEfectivo[route]),
     digital: pesos(acc.loanDigital[route]),
   }));
-  const gastos = [...acc.gastoByLabel.entries()]
-    .map(([label, byRoute]): WeeklyGastoRow => ({
-      label,
-      byRoute,
-      total: pesos(Object.values(byRoute).reduce((sum, value) => sum + value, 0)),
-    }))
-    .sort((a, b) => b.total - a.total);
+  const gastos = routes.map(
+    (route): WeeklyGastoRow => ({ route, total: pesos(acc.gastos[route]) }),
+  );
 
   const poolBefore = poolAt(src, pool, range.start, addCalendarDaysIso(range.start, -1));
   const poolAfter = poolAt(src, pool, range.start, range.end);
@@ -545,41 +536,6 @@ export function buildWeeklyReport(
   const salio = pesos(prestamos.reduce((sum, row) => sum + row.digital, 0));
   const poolGastos = pesos(poolAfter.gastos - poolBefore.gastos);
   const poolLabel = pool === "nequi" ? "Nequi" : "Banco";
-
-  const scopeRoutes = new Set(routes.map((route) => route.toUpperCase()));
-  const poolRoute = pool === "nequi" ? "POOL-NEQUI" : "POOL-BANCO";
-  const seenAdjustments = new Set<string>();
-  for (const close of src.dayCloses) {
-    const date = isoOf(close.date);
-    if (date < range.start || date > range.end || close.provisional || !close.ref.startsWith("CIE-")) continue;
-    if (chainRef && close.collectorRef === chainRef && close.cashAdjustment) {
-      novedades.push(adjustmentLine("caja M·T", date, close.cashAdjustment));
-    }
-    for (const adj of close.routeCashAdjustments ?? []) {
-      const route = adj.route.trim().toUpperCase();
-      if (!scopeRoutes.has(route) && route !== poolRoute) continue;
-      const key = `${route}|${date}|${adj.at}`;
-      if (seenAdjustments.has(key)) continue;
-      seenAdjustments.add(key);
-      novedades.push(adjustmentLine(route === poolRoute ? poolLabel : `caja ${route}`, date, adj));
-    }
-  }
-  const clientByRef = new Map(src.clients.map((row) => [row.ref, row]));
-  const loanByRef = new Map(src.loans.map((row) => [row.ref, row]));
-  for (const pay of livePayments(src.payments)) {
-    if (!isLatePayment(pay)) continue;
-    const paid = paymentRecaudoIso(pay);
-    if (paid < range.start || paid > range.end) continue;
-    const client = clientByRef.get(loanByRef.get(pay.loanRef ?? "")?.clientRef ?? "");
-    if (!client || !routes.some((route) => sameRoute(client.route, route))) continue;
-    novedades.push(
-      `Pago tardío: ${client.name} ${client.lastName}`.trim() +
-        ` · ${pay.loanRef} · cubre ${isoToDisplay(pay.lateFor?.date ?? "").slice(0, 5)} · ${money(Number(pay.amount) || 0)}`,
-    );
-  }
-  for (const row of topUps) {
-    novedades.push(`Anexo: ${row.clientName} · ${row.loanRef} · +${money(row.capital)}`);
-  }
 
   const resumen: WeeklyResumenRow[] = [
     { kind: "section", label: "Cartera" },
@@ -625,7 +581,6 @@ export function buildWeeklyReport(
       ajustes: pesos(poolClosing - (poolOpening + entro - salio - poolGastos)),
       closing: poolClosing,
     },
-    novedades,
     resumen,
     movimiento,
   };

@@ -27,9 +27,6 @@ function sheetHtml(report: WeeklyReport) {
         : row(line.label, `$ ${money(line.value)}`, line.tone !== "sub"),
     )
     .join("");
-  const novedades = report.novedades.length
-    ? `<ul style="margin:4px 0 0;padding-left:18px">${report.novedades.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`
-    : `<p style="margin:4px 0 0;color:#5b7268">Sin novedades en la semana.</p>`;
   return `
 <h2 style="margin:22px 0 4px;font-size:17px;color:#14201b">${escapeHtml(weeklyScopeTitle(report))}</h2>
 <table style="border-collapse:collapse;font-size:14px;min-width:300px">
@@ -37,9 +34,7 @@ ${row("Cobrado en la semana", `$ ${money(cobrado)}`)}
 ${row(`Préstamos (${prestamos})`, `$ ${money(prestado)}`)}
 ${row("Gastos operativos", `$ ${money(gastado)}`)}
 ${resumen}
-</table>
-<h3 style="margin:14px 0 0;font-size:14px;color:#14201b">Novedades</h3>
-${novedades}`;
+</table>`;
 }
 
 export function weeklyReportEmailSubject(reports: WeeklyReport[], test: boolean) {

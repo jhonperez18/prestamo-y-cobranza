@@ -21,7 +21,12 @@ import {
   stampReportAllFooters,
   stampReportFirstPageHeader,
 } from "@/lib/report-pdf-layout";
-import type { WeeklyRange, WeeklyReport, WeeklyRouteCartera } from "@/lib/weekly-report";
+import {
+  weeklyMiles,
+  type WeeklyRange,
+  type WeeklyReport,
+  type WeeklyRouteCartera,
+} from "@/lib/weekly-report";
 
 const BLOCK_LINE: [number, number, number] = [20, 32, 27];
 const GAP = 8;
@@ -88,7 +93,8 @@ function ensureSpace(doc: jsPDF, y: number, needed: number) {
 function drawCartera(doc: jsPDF, cartera: WeeklyRouteCartera[], startY: number) {
   const width = reportPdfPageWidth(doc) - REPORT_PDF_PAGE_MARGIN * 2;
   const block = width / cartera.length;
-  const numWidth = Math.min(20, block * 0.24);
+  const numWidth = Math.min(12, block * 0.12);
+  const lastPayWidth = Math.min(30, block * 0.34);
   const posWidth = 9;
   const height = Math.max(0, ...cartera.map((route) => route.rows.length));
 
@@ -98,13 +104,17 @@ function drawCartera(doc: jsPDF, cartera: WeeklyRouteCartera[], startY: number) 
       colSpan: 4,
       styles: { halign: "center" as const },
     })),
-    cartera.flatMap(() => ["#", "Cliente", "Debe al corte", "Pagó semana"]),
+    cartera.flatMap(() => ["#", "Nombre", "Debe", "Último pago"]),
   ];
   const body: RowInput[] = Array.from({ length: height }, (_, index) =>
     cartera.flatMap((route) => {
       const row = route.rows[index];
       if (!row) return ["", "", "", ""];
-      return [String(row.order || index + 1), row.name, num(row.debt), row.paidWeek > 0 ? num(row.paidWeek) : "-"];
+      const name = row.loanStart ? `${row.name} (${shortDate(row.loanStart)})` : row.name;
+      const last = row.lastPayment
+        ? `${shortDate(row.lastPayment.date)}   ${weeklyMiles(row.lastPayment.amount)}`
+        : "-";
+      return [String(row.order || index + 1), name, weeklyMiles(row.debt), last];
     }),
   );
   const foot: RowInput[] = [
@@ -119,9 +129,9 @@ function drawCartera(doc: jsPDF, cartera: WeeklyRouteCartera[], startY: number) 
   cartera.forEach((_, blockIndex) => {
     const base = blockIndex * 4;
     columnStyles[base] = { cellWidth: posWidth, halign: "right" };
-    columnStyles[base + 1] = { cellWidth: block - posWidth - numWidth * 2 };
+    columnStyles[base + 1] = { cellWidth: block - posWidth - numWidth - lastPayWidth };
     columnStyles[base + 2] = { cellWidth: numWidth, halign: "right" };
-    columnStyles[base + 3] = { cellWidth: numWidth, halign: "right" };
+    columnStyles[base + 3] = { cellWidth: lastPayWidth, halign: "right" };
   });
 
   autoTable(doc, {
@@ -248,7 +258,7 @@ function drawSheet(doc: jsPDF, report: WeeklyReport, startY: number) {
   doc.text(pdfText(weeklyRangeLabel(report.range)), REPORT_PDF_PAGE_MARGIN, y);
   y += 5;
 
-  y = drawReportSectionTitle(doc, "1. Cartera al corte", y + 2);
+  y = drawReportSectionTitle(doc, "1. Cartera", y + 2);
   y = drawCartera(doc, report.cartera, y);
   if (multi) {
     y = ensureSpace(doc, y, 8);
@@ -300,15 +310,15 @@ function drawSheet(doc: jsPDF, report: WeeklyReport, startY: number) {
     ]),
   };
   const gastos: SideTable = {
-    title: "5. Gastos (solo operativos)",
-    head: [["Tipo", ...report.routes, ...(multi ? ["Total"] : [])]],
-    body: report.gastos.length
-      ? report.gastos.map((row) => [
-          row.label,
-          ...report.routes.map((route) => num(row.byRoute[route] ?? 0)),
-          ...(multi ? [num(row.total)] : []),
-        ])
-      : [[{ content: "Sin gastos en la semana.", colSpan: report.routes.length + (multi ? 2 : 1) }]],
+    title: "5. Gastos (total por ruta)",
+    head: [["Ruta", "Gastó"]],
+    body: report.gastos.every((row) => row.total === 0)
+      ? [["Sin gastos en la semana.", ""]]
+      : report.gastos.map((row) => [row.route, num(row.total)]),
+    foot:
+      multi && !report.gastos.every((row) => row.total === 0)
+        ? [["Total", num(sumOf(report.gastos, (row) => row.total))]]
+        : undefined,
   };
   const pool: SideTable = {
     title: `6. ${report.pool.label}`,
@@ -320,13 +330,6 @@ function drawSheet(doc: jsPDF, report: WeeklyReport, startY: number) {
       ...(report.pool.ajustes !== 0 ? [["Ajustes / otros", num(report.pool.ajustes)]] : []),
     ],
     foot: [["Acumulado al corte", num(report.pool.closing)]],
-  };
-  const novedades: SideTable = {
-    title: "Novedades",
-    body: report.novedades.length
-      ? report.novedades.map((line) => [pdfText(line)])
-      : [["Sin novedades en la semana."]],
-    numericFrom: 99,
   };
   const resumen: SideTable = {
     title: "7. Resumen al corte",
@@ -354,9 +357,15 @@ function drawSheet(doc: jsPDF, report: WeeklyReport, startY: number) {
 
   y = drawPair(doc, [caja], [cobros], y);
   y = drawPair(doc, [prestamos], [gastos], y);
-  y = drawPair(doc, [pool], [novedades], y);
-  y = drawPair(doc, [resumen], movimiento, y);
-  return y;
+  y = drawPair(doc, [pool], [resumen], y);
+  // Movimiento a lo ancho (sin columna vacía a la derecha).
+  const fullWidth = reportPdfPageWidth(doc) - REPORT_PDF_PAGE_MARGIN * 2;
+  let moveY = y;
+  for (const table of movimiento) {
+    moveY = ensureSpace(doc, moveY, 20);
+    moveY = drawSideTable(doc, table, REPORT_PDF_PAGE_MARGIN, fullWidth, moveY);
+  }
+  return moveY;
 }
 
 export type WeeklyReportPdfOptions = {

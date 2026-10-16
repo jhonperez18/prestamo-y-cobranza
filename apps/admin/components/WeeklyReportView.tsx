@@ -12,7 +12,9 @@ import { weekdayLabel } from "@/lib/colombia-holidays";
 import {
   buildWeeklyReport,
   recentWeeklyCortes,
+  weeklyMiles,
   weeklyRangeForCutoff,
+  type WeeklyClientRow,
   type WeeklyReport,
   type WeeklyReportScope,
   type WeeklyReportSources,
@@ -32,6 +34,27 @@ function num(value: number | null) {
 
 function shortDate(iso: string) {
   return isoToDisplay(iso).slice(0, 5);
+}
+
+function clientNameLabel(row: WeeklyClientRow) {
+  if (!row.loanStart) return row.name;
+  return (
+    <>
+      {row.name}{" "}
+      <span className="is-date-sm">({shortDate(row.loanStart)})</span>
+    </>
+  );
+}
+
+function lastPayLabel(row: WeeklyClientRow) {
+  if (!row.lastPayment) return "–";
+  return (
+    <>
+      <span className="is-date-sm">{shortDate(row.lastPayment.date)}</span>
+      <span className="is-last-pay-gap" aria-hidden="true" />
+      <span className="is-last-pay-amt">{weeklyMiles(row.lastPayment.amount)}</span>
+    </>
+  );
 }
 
 function SectionTitle({ n, title, note }: { n: number; title: string; note?: string }) {
@@ -59,9 +82,9 @@ function CarteraTable({ cartera }: { cartera: WeeklyRouteCartera[] }) {
         <tr>
           {cartera.map((route) => [
             <th key={`${route.route}-n`} className="is-pos">#</th>,
-            <th key={`${route.route}-c`}>Cliente</th>,
-            <th key={`${route.route}-d`} className="is-num">Debe al corte</th>,
-            <th key={`${route.route}-p`} className="is-num">Pagó semana</th>,
+            <th key={`${route.route}-c`}>Nombre</th>,
+            <th key={`${route.route}-d`} className="is-num is-debe">Debe</th>,
+            <th key={`${route.route}-p`} className="is-last-pay">Último pago</th>,
           ])}
         </tr>
       </thead>
@@ -77,9 +100,9 @@ function CarteraTable({ cartera }: { cartera: WeeklyRouteCartera[] }) {
               }
               return [
                 <td key={`${route.route}-n`} className="is-pos">{row.order || index + 1}</td>,
-                <td key={`${route.route}-c`} className="is-name">{row.name}</td>,
-                <td key={`${route.route}-d`} className="is-num">{num(row.debt)}</td>,
-                <td key={`${route.route}-p`} className="is-num">{row.paidWeek > 0 ? num(row.paidWeek) : "–"}</td>,
+                <td key={`${route.route}-c`} className="is-name">{clientNameLabel(row)}</td>,
+                <td key={`${route.route}-d`} className="is-num is-debe">{weeklyMiles(row.debt)}</td>,
+                <td key={`${route.route}-p`} className="is-last-pay">{lastPayLabel(row)}</td>,
               ];
             })}
           </tr>
@@ -91,7 +114,7 @@ function CarteraTable({ cartera }: { cartera: WeeklyRouteCartera[] }) {
             <td key={`${route.route}-t`} colSpan={2} className="is-pos-start">
               Total · {route.rows.length} clientes · {route.owing} deben
             </td>,
-            <td key={`${route.route}-v`} className="is-num">{num(route.total)}</td>,
+            <td key={`${route.route}-v`} className="is-num is-debe">{num(route.total)}</td>,
             <td key={`${route.route}-e`} />,
           ])}
         </tr>
@@ -103,6 +126,8 @@ function CarteraTable({ cartera }: { cartera: WeeklyRouteCartera[] }) {
 function ReportSheet({ report }: { report: WeeklyReport }) {
   const { range } = report;
   const multi = report.routes.length > 1;
+  const digital = report.scope === "a" ? "Nequi" : "Banco";
+  const gastosVacios = report.gastos.every((row) => row.total === 0);
   return (
     <article className="weekly-report-sheet">
       <header className="weekly-report-head">
@@ -118,10 +143,12 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
         </p>
       </header>
 
-      <SectionTitle n={1} title="Cartera al corte" note="lo que debe cada cliente" />
+      <SectionTitle n={1} title="Cartera" note="igual que el Informe del supervisor" />
       <CarteraTable cartera={report.cartera} />
       {multi ? (
-        <p className="weekly-report-legend">Cartera total M + T + N: {num(report.carteraTotal)}</p>
+        <p className="weekly-report-legend">
+          Cartera total M + T + N: <strong>{num(report.carteraTotal)}</strong>
+        </p>
       ) : null}
 
       <div className="weekly-report-grid">
@@ -162,7 +189,7 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
               <tr>
                 <th>Ruta</th>
                 <th className="is-num">Efectivo</th>
-                <th className="is-num">{report.scope === "a" ? "Nequi" : "Banco"}</th>
+                <th className="is-num">{digital}</th>
                 <th className="is-num">Total</th>
               </tr>
             </thead>
@@ -198,7 +225,7 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
                 <th className="is-num">Cant.</th>
                 <th className="is-num">Capital</th>
                 <th className="is-num">Efectivo</th>
-                <th className="is-num">{report.scope === "a" ? "Nequi" : "Banco"}</th>
+                <th className="is-num">{digital}</th>
               </tr>
             </thead>
             <tbody>
@@ -227,36 +254,38 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
         </section>
 
         <section>
-          <SectionTitle n={5} title="Gastos" note="solo operativos" />
+          <SectionTitle n={5} title="Gastos" note="total por ruta en la semana" />
           <table className="weekly-report-table">
             <thead>
               <tr>
-                <th>Tipo</th>
-                {report.routes.map((route) => (
-                  <th key={route} className="is-num">{route}</th>
-                ))}
-                {multi ? <th className="is-num">Total</th> : null}
+                <th>Ruta</th>
+                <th className="is-num">Gastó</th>
               </tr>
             </thead>
             <tbody>
-              {report.gastos.length === 0 ? (
+              {gastosVacios ? (
                 <tr>
-                  <td colSpan={report.routes.length + (multi ? 2 : 1)} className="is-empty">
+                  <td colSpan={2} className="is-empty">
                     Sin gastos en la semana.
                   </td>
                 </tr>
               ) : (
                 report.gastos.map((row) => (
-                  <tr key={row.label}>
-                    <td>{row.label}</td>
-                    {report.routes.map((route) => (
-                      <td key={route} className="is-num">{num(row.byRoute[route] ?? 0)}</td>
-                    ))}
-                    {multi ? <td className="is-num">{num(row.total)}</td> : null}
+                  <tr key={row.route}>
+                    <td>{row.route}</td>
+                    <td className="is-num">{num(row.total)}</td>
                   </tr>
                 ))
               )}
             </tbody>
+            {multi && !gastosVacios ? (
+              <tfoot>
+                <tr>
+                  <td>Total</td>
+                  <td className="is-num">{num(report.gastos.reduce((sum, row) => sum + row.total, 0))}</td>
+                </tr>
+              </tfoot>
+            ) : null}
           </table>
         </section>
 
@@ -299,21 +328,6 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
         </section>
 
         <section>
-          <h3 className="weekly-report-section">Novedades</h3>
-          {report.novedades.length === 0 ? (
-            <p className="weekly-report-empty">Sin novedades en la semana.</p>
-          ) : (
-            <ul className="weekly-report-novedades">
-              {report.novedades.map((line) => (
-                <li key={line}>{line}</li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
-
-      <div className="weekly-report-grid is-final">
-        <section>
           <SectionTitle n={7} title="Resumen al corte" />
           <table className="weekly-report-table is-resumen">
             <tbody>
@@ -332,49 +346,50 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
             </tbody>
           </table>
         </section>
-        <section>
-          <h3 className="weekly-report-section">Movimiento de la semana</h3>
-          {report.movimiento.map((move) => (
-            <table key={move.kind} className={`weekly-report-table is-move is-${move.kind}`}>
-              <thead>
-                <tr>
-                  <th>{move.label}</th>
-                  {report.routes.map((route) => (
-                    <th key={route} className="is-num">{route}</th>
-                  ))}
-                  {multi ? <th className="is-num">Total</th> : null}
-                </tr>
-              </thead>
-              <tbody>
-                {move.days.length === 0 ? (
-                  <tr>
-                    <td colSpan={report.routes.length + (multi ? 2 : 1)} className="is-empty">
-                      Sin movimiento.
-                    </td>
-                  </tr>
-                ) : (
-                  move.days.map((day) => (
-                    <tr key={day.date}>
-                      <td>{shortDate(day.date)}</td>
-                      {report.routes.map((route) => (
-                        <td key={route} className="is-num">{num(day.values[route] ?? 0)}</td>
-                      ))}
-                      {multi ? <td className="is-num">{num(day.total)}</td> : null}
-                    </tr>
-                  ))
-                )}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td>Semana</td>
-                  {multi ? <td colSpan={report.routes.length} /> : null}
-                  <td className="is-num">{num(move.total)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          ))}
-        </section>
       </div>
+
+      <section>
+        <h3 className="weekly-report-section">Movimiento de la semana</h3>
+        {report.movimiento.map((move) => (
+          <table key={move.kind} className={`weekly-report-table is-move is-${move.kind}`}>
+            <thead>
+              <tr>
+                <th>{move.label}</th>
+                {report.routes.map((route) => (
+                  <th key={route} className="is-num">{route}</th>
+                ))}
+                {multi ? <th className="is-num">Total</th> : null}
+              </tr>
+            </thead>
+            <tbody>
+              {move.days.length === 0 ? (
+                <tr>
+                  <td colSpan={report.routes.length + (multi ? 2 : 1)} className="is-empty">
+                    Sin movimiento.
+                  </td>
+                </tr>
+              ) : (
+                move.days.map((day) => (
+                  <tr key={day.date}>
+                    <td>{shortDate(day.date)}</td>
+                    {report.routes.map((route) => (
+                      <td key={route} className="is-num">{num(day.values[route] ?? 0)}</td>
+                    ))}
+                    {multi ? <td className="is-num">{num(day.total)}</td> : null}
+                  </tr>
+                ))
+              )}
+            </tbody>
+            <tfoot>
+              <tr>
+                <td>Semana</td>
+                {multi ? <td colSpan={report.routes.length} /> : null}
+                <td className="is-num">{num(move.total)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        ))}
+      </section>
     </article>
   );
 }

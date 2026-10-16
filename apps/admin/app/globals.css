@@ -17016,15 +17016,59 @@
   color: #5b7268;
   text-align: right;
 }
+.weekly-report-table .is-last-pay {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  padding-left: 10px;
+}
 .weekly-report-table .is-name {
-  max-width: 140px;
+  max-width: 160px;
   overflow: hidden;
   text-overflow: ellipsis;
+  padding-right: 2px;
 }
 .weekly-report-table .is-route {
   background: #3f6b52;
   color: #fff;
   text-align: center;
+}
+.weekly-report-table.is-cartera tbody td {
+  color: #111;
+}
+.weekly-report-table.is-cartera tbody td.is-pos {
+  color: #111;
+}
+.weekly-report-table.is-cartera tfoot td {
+  color: #111;
+}
+.weekly-report-table.is-cartera .is-debe {
+  text-align: right;
+  width: 1%;
+  padding-left: 0;
+  padding-right: 4px;
+  white-space: nowrap;
+}
+.weekly-report-table.is-cartera tbody td.is-debe,
+.weekly-report-table.is-cartera th.is-debe {
+  max-width: 2.8em;
+  padding-right: 3px;
+}
+.weekly-report-table.is-cartera tfoot td.is-debe {
+  padding-right: 4px;
+}
+.weekly-report-table.is-cartera .is-date-sm {
+  font-size: 0.7em;
+  font-weight: 400;
+  color: #111;
+  letter-spacing: -0.02em;
+}
+.weekly-report-table.is-cartera .is-last-pay-gap {
+  display: inline-block;
+  width: 0.55em;
+}
+.weekly-report-table.is-cartera .is-last-pay-amt {
+  font-variant-numeric: tabular-nums;
 }
 .weekly-report-table.is-cartera th.is-route,
 .weekly-report-table.is-cartera .is-pos,
@@ -17068,15 +17112,15 @@
   font-size: 11px;
   color: #5b7268;
 }
+.weekly-report-legend strong {
+  color: #111;
+  font-weight: 800;
+}
 .weekly-report-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px 22px;
-}
-.weekly-report-novedades {
-  margin: 0;
-  padding-left: 18px;
-  font-size: 11.5px;
+  align-items: start;
 }
 .weekly-report-empty {
   margin: 0;
