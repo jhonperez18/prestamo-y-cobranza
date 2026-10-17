@@ -179,7 +179,7 @@ function primarySheetSealedToday(
 ): boolean {
   if (
     findPlanillaCashClose(
-      ctx.planillaCashCloses ?? [],
+      [...(ctx.planillaCashCloses ?? [])],
       collectorRef,
       date,
       PLANILLA_CASH_CHAIN_PRIMARY,
