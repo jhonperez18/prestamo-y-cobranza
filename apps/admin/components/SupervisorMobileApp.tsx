@@ -135,6 +135,7 @@ import {
   catalogRoutes,
   isLoanActive,
   isLoanVoided,
+  loansForClient,
   routeIsActive,
   type ClientRow,
   type CollectorRow,
@@ -898,6 +899,32 @@ function currentActiveLoan(
   return synced;
 }
 
+/**
+ * Último préstamo cerrado del cliente (pagó o renovó), excluyendo el activo actual.
+ * Solo lectura — un solo historial anterior, nunca dos a la vez.
+ */
+function previousLoanForClient(
+  clientRef: string,
+  loans: LoanRow[],
+  payments: PaymentRow[],
+): LoanRow | null {
+  const current = currentActiveLoan(clientRef, loans, payments);
+  const currentRef = current?.ref ?? "";
+  const candidates = loansForClient(clientRef, loans)
+    .filter((row) => !isLoanVoided(row))
+    .filter((row) => !currentRef || row.ref !== currentRef)
+    .map((row) => syncLoan(row, payments) as LoanRow)
+    .filter((row) => !isLoanActive(row));
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => {
+    const da = displayToIso(a.due) || displayToIso(a.date) || a.date || "";
+    const db = displayToIso(b.due) || displayToIso(b.date) || b.date || "";
+    if (da !== db) return db.localeCompare(da);
+    return b.ref.localeCompare(a.ref);
+  });
+  return candidates[0] ?? null;
+}
+
 /** Ficha del cliente/préstamo dentro del teléfono (luego se afina legibilidad). */
 function fichaClientTitle(report: ReturnType<typeof buildLoanReport>) {
   const base = report.clientName.trim().replace(/\s+/g, " ");
@@ -906,38 +933,50 @@ function fichaClientTitle(report: ReturnType<typeof buildLoanReport>) {
 
 function SupervisorClientFicha({
   report,
+  clientName,
   onBack,
+  showingPrevious = false,
+  onTogglePrevious,
 }: {
-  report: ReturnType<typeof buildLoanReport>;
+  report: ReturnType<typeof buildLoanReport> | null;
+  clientName?: string;
   onBack: () => void;
+  showingPrevious?: boolean;
+  onTogglePrevious?: () => void;
 }) {
   const shareRootRef = useRef<HTMLDivElement>(null);
   const [sharing, setSharing] = useState(false);
-  const f = report.financials;
-  const clientTitle = fichaClientTitle(report);
+  const f = report?.financials;
+  const clientTitle = report
+    ? fichaClientTitle(report)
+    : (clientName || "Cliente").trim() || "Cliente";
   const cobro =
-    f.installment > 0
+    f && f.installment > 0
       ? money(f.installment, { symbol: false })
       : "—";
-  const cuotas =
-    f.installmentsTotal > 0
+  const cuotas = f
+    ? f.installmentsTotal > 0
       ? `${f.installmentsPaid} / ${f.installmentsTotal}`
-      : String(f.installmentsPaid);
-  const capital = money(report.loan.capital, { symbol: false });
-  const interes = money(f.interestTerm, { symbol: false });
-  const total = money(
-    f.totalAgreement || report.loan.total || report.loan.capital + f.interestTerm,
-    { symbol: false },
-  );
+      : String(f.installmentsPaid)
+    : "—";
+  const capital = report ? money(report.loan.capital, { symbol: false }) : "—";
+  const interes = f ? money(f.interestTerm, { symbol: false }) : "—";
+  const total =
+    report && f
+      ? money(
+          f.totalAgreement || report.loan.total || report.loan.capital + f.interestTerm,
+          { symbol: false },
+        )
+      : "—";
 
   const factPairs: Array<[{ label: string; value: string }, { label: string; value: string }?]> = [
     [
-      { label: "Cédula", value: report.client?.document?.trim() || "—" },
-      { label: "Teléfono", value: report.client?.phone?.trim() || "—" },
+      { label: "Cédula", value: report?.client?.document?.trim() || "—" },
+      { label: "Teléfono", value: report?.client?.phone?.trim() || "—" },
     ],
     [
-      { label: "Desembolso", value: report.loan.date || "—" },
-      { label: "Vencimiento", value: report.loan.due || "—" },
+      { label: "Desembolso", value: report?.loan.date || "—" },
+      { label: "Vencimiento", value: report?.loan.due || "—" },
     ],
     [
       { label: "Valor cobro", value: cobro },
@@ -952,7 +991,7 @@ function SupervisorClientFicha({
 
   async function handleShare() {
     const root = shareRootRef.current;
-    if (!root || sharing) return;
+    if (!root || sharing || !report) return;
     setSharing(true);
     try {
       await shareLoanFichaCapture(root, report);
@@ -961,17 +1000,56 @@ function SupervisorClientFicha({
     }
   }
 
+  const emptyHint = showingPrevious
+    ? "Sin préstamo anterior."
+    : "Sin préstamo activo actual.";
+
   return (
-    <div className="supervisor-client-ficha" ref={shareRootRef}>
+    <div
+      className={
+        showingPrevious
+          ? "supervisor-client-ficha is-previous-loan"
+          : "supervisor-client-ficha"
+      }
+      ref={shareRootRef}
+    >
       <div className="supervisor-mobile-detail-head supervisor-ficha-share-head">
         <h3 className="supervisor-ficha-client-name" title={clientTitle}>
           {clientTitle}
+          {showingPrevious ? (
+            <span className="supervisor-ficha-pa-badge" title="Préstamo anterior">
+              {" "}
+              · P.A
+            </span>
+          ) : null}
         </h3>
         <div className="supervisor-ficha-head-actions">
+          {onTogglePrevious ? (
+            <button
+              type="button"
+              className={
+                showingPrevious
+                  ? "collector-mobile-pay-link is-pa on"
+                  : "collector-mobile-pay-link is-pa"
+              }
+              title={
+                showingPrevious
+                  ? "Volver al préstamo actual"
+                  : "Ver préstamo anterior (solo lectura)"
+              }
+              aria-pressed={showingPrevious}
+              onClick={() => {
+                suppressGhostClick();
+                onTogglePrevious();
+              }}
+            >
+              P.A
+            </button>
+          ) : null}
           <button
             type="button"
             className="collector-mobile-pay-link is-share"
-            disabled={sharing}
+            disabled={sharing || !report}
             onClick={() => {
               void handleShare();
             }}
@@ -979,89 +1057,95 @@ function SupervisorClientFicha({
             {sharing ? "…" : "Compartir"}
           </button>
           <button type="button" className="collector-mobile-pay-link is-back" onClick={onBack}>
-          volver
-        </button>
+            volver
+          </button>
         </div>
       </div>
 
-      <div className="supervisor-client-ficha-block">
-        <dl className="supervisor-client-ficha-facts">
-          {factPairs.map((pair) => {
-            const [left, right] = pair;
-            if (!right) {
-              return (
-                <div key={left.label} className="supervisor-client-ficha-row is-single">
-                  <div className="supervisor-client-ficha-cell">
-                    <dt>{left.label}</dt>
-                    <dd>{left.value}</dd>
+      {!report ? (
+        <p className="ficha-empty">{emptyHint}</p>
+      ) : (
+        <>
+          <div className="supervisor-client-ficha-block">
+            <dl className="supervisor-client-ficha-facts">
+              {factPairs.map((pair) => {
+                const [left, right] = pair;
+                if (!right) {
+                  return (
+                    <div key={left.label} className="supervisor-client-ficha-row is-single">
+                      <div className="supervisor-client-ficha-cell">
+                        <dt>{left.label}</dt>
+                        <dd>{left.value}</dd>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={left.label} className="supervisor-client-ficha-row">
+                    <div className="supervisor-client-ficha-cell">
+                      <dt>{left.label}</dt>
+                      <dd>{left.value}</dd>
+                    </div>
+                    <div className="supervisor-client-ficha-cell">
+                      <dt>{right.label}</dt>
+                      <dd>{right.value}</dd>
+                    </div>
                   </div>
-                </div>
-              );
-            }
-            return (
-              <div key={left.label} className="supervisor-client-ficha-row">
-                <div className="supervisor-client-ficha-cell">
-                  <dt>{left.label}</dt>
-                  <dd>{left.value}</dd>
-                </div>
-                <div className="supervisor-client-ficha-cell">
-                  <dt>{right.label}</dt>
-                  <dd>{right.value}</dd>
-                </div>
-              </div>
-            );
-          })}
-        </dl>
-      </div>
+                );
+              })}
+            </dl>
+          </div>
 
-      <h4 className="supervisor-client-ficha-title">Movimientos</h4>
-      <div className="supervisor-client-ficha-block">
-        {report.movements.length === 0 ? (
-          <p className="ficha-empty">Sin movimientos registrados.</p>
-        ) : (
-          <ul className="supervisor-client-ficha-moves">
-            <li className="is-head" aria-hidden>
-              <span className="is-amount">Monto</span>
-              <span className="is-date">Fecha</span>
-              <span className="is-time">Hora</span>
-              <span className="is-method">M</span>
-            </li>
-            {report.movements.map((row) => {
-              const method = paymentMethodForRoute(row.method, report.client?.route);
-              return (
-              <li key={row.ref}>
-                <span className="is-amount">{money(row.amount, { symbol: false })}</span>
-                <span className="is-date">{row.paidDate || "—"}</span>
-                <span className="is-time">{row.paidTime || "—"}</span>
-                  <span
-                    className={`is-method ${paymentMethodToneClass(method)}`}
-                    title={paymentMethodLabel(method)}
-                  >
-                    {paymentMethodInitial(method)}
-                  </span>
-              </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
+          <h4 className="supervisor-client-ficha-title">Movimientos</h4>
+          <div className="supervisor-client-ficha-block">
+            {report.movements.length === 0 ? (
+              <p className="ficha-empty">Sin movimientos registrados.</p>
+            ) : (
+              <ul className="supervisor-client-ficha-moves">
+                <li className="is-head" aria-hidden>
+                  <span className="is-amount">Monto</span>
+                  <span className="is-date">Fecha</span>
+                  <span className="is-time">Hora</span>
+                  <span className="is-method">M</span>
+                </li>
+                {report.movements.map((row) => {
+                  const method = paymentMethodForRoute(row.method, report.client?.route);
+                  return (
+                    <li key={row.ref}>
+                      <span className="is-amount">{money(row.amount, { symbol: false })}</span>
+                      <span className="is-date">{row.paidDate || "—"}</span>
+                      <span className="is-time">{row.paidTime || "—"}</span>
+                      <span
+                        className={`is-method ${paymentMethodToneClass(method)}`}
+                        title={paymentMethodLabel(method)}
+                      >
+                        {paymentMethodInitial(method)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
 
-      <div className="supervisor-client-ficha-sum">
-        <div>
-          <span>Total préstamo</span>
-          <b>{total}</b>
-        </div>
-        <div>
-          <span>Ya pagado</span>
-          <b>{money(f.paidTotal, { symbol: false })}</b>
-        </div>
-        <div className="is-rest">
-          <span>Resta por pagar</span>
-          <b>{money(f.balancePending, { symbol: false })}</b>
-        </div>
-      </div>
+          <div className="supervisor-client-ficha-sum">
+            <div>
+              <span>Total préstamo</span>
+              <b>{total}</b>
+            </div>
+            <div>
+              <span>Ya pagado</span>
+              <b>{money(report.financials.paidTotal, { symbol: false })}</b>
+            </div>
+            <div className="is-rest">
+              <span>Resta por pagar</span>
+              <b>{money(report.financials.balancePending, { symbol: false })}</b>
+            </div>
+          </div>
 
-      <p className="supervisor-client-ficha-foot">{report.generatedLabel}</p>
+          <p className="supervisor-client-ficha-foot">{report.generatedLabel}</p>
+        </>
+      )}
     </div>
   );
 }
@@ -1233,6 +1317,7 @@ export function SupervisorMobileApp({
   const [planillaRouteFilter, setPlanillaRouteFilter] = useState<string | null>(null);
   const [clientesRouteFilter, setClientesRouteFilter] = useState<string | null>(null);
   const [clientesLoanClientRef, setClientesLoanClientRef] = useState<string | null>(null);
+  const [clientesFichaShowPrevious, setClientesFichaShowPrevious] = useState(false);
   /** CLIENTES → modificar: elegir de la lista y editar ficha en la misma hoja. */
   const [clientesModifyMode, setClientesModifyMode] = useState(false);
   const [clientesEditRef, setClientesEditRef] = useState<string | null>(null);
@@ -1287,6 +1372,7 @@ export function SupervisorMobileApp({
     setClientesSearchOpen(false);
     setClientesRouteFilter(null);
     setClientesLoanClientRef(null);
+    setClientesFichaShowPrevious(false);
     setPlanillaRouteFilter(null);
     setPrestamoFichaRef(null);
     setPrestamosSearch("");
@@ -3488,7 +3574,10 @@ export function SupervisorMobileApp({
   const clientesLoanSynced = clientesLoanClient
     ? currentActiveLoan(clientesLoanClient.ref, loans, payments)
     : null;
-  const clientesPdfReport = useMemo(() => {
+  const clientesPreviousLoan = clientesLoanClient
+    ? previousLoanForClient(clientesLoanClient.ref, loans, payments)
+    : null;
+  const clientesCurrentPdfReport = useMemo(() => {
     if (!clientesLoanSynced || !clientesLoanClient) return null;
     // Ficha al cliente: solo PG- vivos (anulados no se muestran; el saldo ya los excluye).
     return buildLoanReport(
@@ -3498,7 +3587,22 @@ export function SupervisorMobileApp({
       assignments,
     );
   }, [assignments, clientesLoanClient, clientesLoanSynced, paymentsWithEvidence]);
+  const clientesPreviousPdfReport = useMemo(() => {
+    if (!clientesPreviousLoan || !clientesLoanClient) return null;
+    return buildLoanReport(
+      clientesPreviousLoan,
+      clientesLoanClient,
+      livePayments(paymentsWithEvidence),
+      assignments,
+    );
+  }, [assignments, clientesLoanClient, clientesPreviousLoan, paymentsWithEvidence]);
+  const clientesPdfReport = clientesFichaShowPrevious
+    ? clientesPreviousPdfReport
+    : clientesCurrentPdfReport;
   const clientesDetailOpen = Boolean(clientesLoanClientRef);
+  const clientesFichaClientName = clientesLoanClient
+    ? `${clientesLoanClient.name} ${clientesLoanClient.lastName}`.trim()
+    : "";
 
   /** Préstamos actuales (saldo vivo): uno por cliente, el activo a la fecha. */
   const prestamosEnRuta = useMemo(() => {
@@ -5967,30 +6071,20 @@ export function SupervisorMobileApp({
                 </form>
               )}
             </>
-          ) : clientesPdfReport ? (
+          ) : clientesDetailOpen && clientesLoanClient ? (
             <SupervisorClientFicha
               report={clientesPdfReport}
+              clientName={clientesFichaClientName}
+              showingPrevious={clientesFichaShowPrevious}
+              onTogglePrevious={() => {
+                setClientesFichaShowPrevious((prev) => !prev);
+              }}
               onBack={() => {
                 suppressGhostClick();
+                setClientesFichaShowPrevious(false);
                 setClientesLoanClientRef(null);
               }}
             />
-          ) : clientesDetailOpen && clientesLoanClient ? (
-            <div className="supervisor-client-ficha">
-              <div className="supervisor-mobile-detail-head">
-                <h3>{`${clientesLoanClient.name} ${clientesLoanClient.lastName}`.trim()}</h3>
-                <button
-                  type="button"
-                  className="collector-mobile-pay-link is-back"
-                  onClick={() => setClientesLoanClientRef(null)}
-                >
-                  volver
-                </button>
-              </div>
-              <p className="ficha-empty">
-                Sin préstamo activo actual. No hay ficha de cobro para mostrar.
-              </p>
-            </div>
           ) : (
             <>
               <div className="supervisor-planilla-head">
@@ -6101,20 +6195,9 @@ export function SupervisorMobileApp({
                       openClientesEdit(ref);
                       return;
                     }
-                    const row = clientesListRows.find((entry) => entry.ref === ref);
-                    if (row && !row.hasLoan && onCreateQuickLoan) {
-                      const client = clients.find((entry) => entry.ref === ref);
-                      const routeName = String(client?.route || row.route || "").trim();
-                      const board = liquidaciones.find((entry) =>
-                        sameRoute(entry.routeName, routeName),
-                      );
-                      setNuevoMode("prestamo");
-                      setNuevoRouteRef(board?.routeRef ?? null);
-                      setNuevoLoanClientRef(ref);
-                      setNuevoClientSearch("");
-                      goToView("nuevo");
-                      return;
-                    }
+                    // Siempre ficha (solo lectura). Sin activo ni P.A → ambas vacías.
+                    // Nuevo préstamo queda en la pestaña NUEVO.
+                    setClientesFichaShowPrevious(false);
                     setClientesLoanClientRef(ref);
                   }}
                 />
