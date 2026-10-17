@@ -172,6 +172,39 @@ export type SheetReopenContext = {
   clients?: readonly { ref: string; route: string }[];
 };
 
+/**
+ * ¿La planilla ya no tiene cobros pendientes abiertos?
+ * Una visita cobrada sin `day_closed_at` (sello a medias) no bloquea el «cerrada».
+ */
+export function routeSheetClosedForReopen(
+  rows: readonly {
+    dayClosedAt?: string | null;
+    day_closed_at?: string | null;
+    visitStatus?: string | null;
+    visit_status?: string | null;
+    paymentRef?: string | null;
+    payment_ref?: string | null;
+  }[],
+): boolean {
+  if (!rows.length) return false;
+  let sealed = 0;
+  for (const row of rows) {
+    const closed = Boolean(row.dayClosedAt || row.day_closed_at);
+    if (closed) {
+      sealed += 1;
+      continue;
+    }
+    const status = String(row.visitStatus || row.visit_status || "")
+      .trim()
+      .toLowerCase();
+    const paid = Boolean(row.paymentRef || row.payment_ref) || status === "cobrado";
+    const omitted = status === "omitido";
+    // Sigue abierta de verdad: pendiente (o sin estado) y sin cobro.
+    if (!paid && !omitted) return false;
+  }
+  return sealed > 0;
+}
+
 function primarySheetSealedToday(
   collectorRef: string,
   date: string,
@@ -187,12 +220,26 @@ function primarySheetSealedToday(
   ) {
     return true;
   }
-  return primaryChainSheetSealed(
-    [...(ctx.assignments ?? [])],
-    collectorRef,
-    date,
-    [...(ctx.clients ?? [])],
-  );
+  if (
+    primaryChainSheetSealed(
+      [...(ctx.assignments ?? [])],
+      collectorRef,
+      date,
+      [...(ctx.clients ?? [])],
+    )
+  ) {
+    return true;
+  }
+  // Misma regla que la nube: cobrado sin sello no deja la hoja «abierta».
+  const day = normalizeHistoryDate(date) || date;
+  const mine = (ctx.assignments ?? []).filter((row) => {
+    if (row.collectorRef !== collectorRef) return false;
+    if ((normalizeHistoryDate(row.dispatchDate) || row.dispatchDate) !== day) return false;
+    const fromVisit = String(row.clientRoute || "").trim();
+    const fromClient = (ctx.clients ?? []).find((client) => client.ref === row.clientRef)?.route ?? "";
+    return sameRoute(fromVisit || fromClient, PLANILLA_CASH_CHAIN_PRIMARY);
+  });
+  return routeSheetClosedForReopen(mine);
 }
 
 /** Reaperturas de hoy de ese cobrador que ningún cierre posterior dejó atrás. */

@@ -17,6 +17,7 @@ import { createMirrorServerClient } from "@/lib/supabase/admin";
 import {
   dayCloseReopensFromRow,
   encodeSheetReopenRef,
+  routeSheetClosedForReopen,
   routesToReopen,
   secondarySheetClosedToday,
   sheetReopenWindow,
@@ -87,14 +88,13 @@ export async function reopenSheetInCloud(
   if (!row && isPlanillaCashChainPrimary(route)) {
     const { data: mRows, error: mErr } = await client
       .from("daily_assignments")
-      .select("item_id, day_closed_at")
+      .select("item_id, day_closed_at, visit_status, payment_ref")
       .eq("collector_ref", collectorRef)
       .eq("dispatch_date", date)
       .eq("client_route", PLANILLA_CASH_CHAIN_PRIMARY);
     if (mErr) return { ok: false, error: mErr.message, status: 500 };
-    const sealed =
-      (mRows ?? []).length > 0 && (mRows ?? []).every((visit) => Boolean(visit.day_closed_at));
-    if (!sealed) {
+    // Cobrado sin day_closed_at (sello a medias) no bloquea: la hoja ya no tiene pendientes.
+    if (!routeSheetClosedForReopen(mRows ?? [])) {
       return { ok: false, error: "La hoja M de hoy no está cerrada.", status: 409 };
     }
     const opened = await reopenAssignmentsForRoutes(
