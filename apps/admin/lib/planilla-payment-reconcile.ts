@@ -2,13 +2,16 @@
  * Une cobros (PG) con visitas de planilla.
  * Regla: si existe pago vivo del día → visita cobrada.
  * “Del día” = `paymentVisitDate`: un pago tardío cubre su visita, no la de hoy.
- * Si el PG se anula → la visita vuelve a pendiente (reversa).
+ * Si el PG se anula y el préstamo sigue cobrable → la visita vuelve a pendiente.
+ * Si el préstamo ya cerró (finalizado / saldo 0) → PG fantasma no reabre la ruta
+ * (evita cliente doble + rebote al prestar el mismo día).
  */
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { accumulatedDueForLoan } from "@/lib/daily-collection-plan";
+import { readDemoJson } from "@/lib/demo-persist";
 import { paymentVisitDate } from "@/lib/late-payment";
 import { isPaymentLive } from "@/lib/live-payments";
-import type { LoanRow, PaymentRow } from "@/lib/mock-data";
+import { isLoanActive, isLoanVoided, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
 
 function sameDay(a: string | undefined, b: string) {
@@ -73,7 +76,60 @@ function restoreAmountDue(
 }
 
 /**
- * Marca cobrado si hay PG vivo del día; si el PG apuntado fue anulado, revierte a pendiente.
+ * Préstamo que ya no debe cobrar en ruta: finalizado, borrado o saldo 0.
+ * No inventa pagos; solo evita que vuelva a «por cobrar».
+ */
+export function loanSettledOffRoute(
+  loanRef: string | undefined,
+  loans: LoanRow[] | undefined,
+): boolean {
+  const ref = String(loanRef || "").trim();
+  if (!ref || !loans?.length) return false;
+  const loan = loans.find((entry) => entry.ref === ref);
+  if (!loan) return false;
+  if (isLoanVoided(loan)) return true;
+  if (!isLoanActive(loan)) return true;
+  return Number(loan.balance) <= 0;
+}
+
+/** Cobrado cerrado sin PG inventado: fuera de ruta; cobrados reales salen de los PG vivos. */
+export function sealSettledVisit(row: DailyCollectionAssignment): DailyCollectionAssignment {
+  return {
+    ...row,
+    visitStatus: "cobrado",
+    paymentRef: undefined,
+    amountDue: 0,
+    skipReason: undefined,
+  };
+}
+
+function paymentRefStillQueued(ref: string): boolean {
+  if (typeof window === "undefined" || !ref) return false;
+  try {
+    const queue = readDemoJson<{ ref?: string }[]>("nexo-demo-payment-mirror-queue", []);
+    return queue.some((row) => String(row.ref || "").trim() === ref);
+  } catch {
+    return false;
+  }
+}
+
+function reopenToPending(
+  row: DailyCollectionAssignment,
+  loans: LoanRow[] | undefined,
+): DailyCollectionAssignment {
+  return {
+    ...row,
+    visitStatus: "pendiente" as const,
+    paymentRef: undefined,
+    skipReason: undefined,
+    amountDue: restoreAmountDue(row, loans),
+  };
+}
+
+/**
+ * Marca cobrado si hay PG vivo del día; si el PG apuntado fue anulado y el préstamo
+ * sigue cobrable, revierte a pendiente. Préstamo ya liquidado + PG fantasma → sella
+ * fuera de ruta (no reabre, no cliente doble).
  */
 export function reconcilePaymentsOntoPlanilla(
   assignments: DailyCollectionAssignment[],
@@ -91,6 +147,16 @@ export function reconcilePaymentsOntoPlanilla(
     // Jornada/planilla ya cerrada: no reabrir por PG anulado o ausente (otro celular lo vería abierto).
     if (row.dayClosedAt) return row;
 
+    const settled = loanSettledOffRoute(row.loanRef, loans);
+
+    // Cuota pendiente de un préstamo ya cerrado: fuera de ruta (heal tras rebote / fantasma).
+    if (
+      settled &&
+      (row.visitStatus === "pendiente" || row.visitStatus === "parcial" || !row.visitStatus)
+    ) {
+      return sealSettledVisit(row);
+    }
+
     const linkedRef = (row.paymentRef || "").trim();
     const linkedPay = linkedRef ? liveByRef.get(linkedRef) : undefined;
     const linkedOk = Boolean(linkedPay && paymentBelongsToVisit(linkedPay, row));
@@ -100,28 +166,21 @@ export function reconcilePaymentsOntoPlanilla(
       (row.visitStatus === "cobrado" || row.visitStatus === "parcial") &&
       !linkedOk
     ) {
+      // Aún subiendo: no tratar como fantasma.
+      if (paymentRefStillQueued(linkedRef)) return row;
+      // Préstamo liquidado: sella; no vuelve a por cobrar junto al préstamo nuevo.
+      if (settled) return sealSettledVisit(row);
       // PG anulado, ausente o de OTRO préstamo/cliente → vuelve a pendiente.
-      return {
-        ...row,
-        visitStatus: "pendiente" as const,
-        paymentRef: undefined,
-        skipReason: undefined,
-        amountDue: restoreAmountDue(row, loans),
-      };
+      return reopenToPending(row, loans);
     }
 
-    // Cobrado sin PG vivo (ref borrada o anulado): también reabrir.
+    // Cobrado sin PG vivo (ref borrada o anulado).
     if (
       (row.visitStatus === "cobrado" || row.visitStatus === "parcial") &&
       !linkedRef
     ) {
-      return {
-        ...row,
-        visitStatus: "pendiente" as const,
-        paymentRef: undefined,
-        skipReason: undefined,
-        amountDue: restoreAmountDue(row, loans),
-      };
+      if (settled) return sealSettledVisit(row);
+      return reopenToPending(row, loans);
     }
 
     if (row.visitStatus === "cobrado" && linkedOk) {
@@ -152,11 +211,12 @@ export function reconcilePaymentsOntoPlanilla(
 export function sealOpenVisitsWithLaterPayments(
   assignments: DailyCollectionAssignment[],
   payments: PaymentRow[],
-  opts?: { date?: string; collectorRef?: string; untilDate?: string },
+  opts?: { date?: string; collectorRef?: string; untilDate?: string; loans?: LoanRow[] },
 ): DailyCollectionAssignment[] {
   if (!assignments.length || !payments.length) return assignments;
   const until = (opts?.untilDate || "").trim();
   const live = payments.filter(isPaymentLive);
+  const loans = opts?.loans;
 
   return assignments.map((row) => {
     if (opts?.date && row.dispatchDate !== opts.date) return row;
@@ -169,6 +229,8 @@ export function sealOpenVisitsWithLaterPayments(
     if (row.visitStatus === "cobrado" && linkedRef) {
       const linked = live.find((p) => p.ref === linkedRef);
       if (!linked || !paymentBelongsToVisit(linked, row)) {
+        if (paymentRefStillQueued(linkedRef)) return row;
+        if (loanSettledOffRoute(row.loanRef, loans)) return sealSettledVisit(row);
         return {
           ...row,
           visitStatus: "pendiente" as const,

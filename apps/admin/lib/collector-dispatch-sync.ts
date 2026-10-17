@@ -656,7 +656,7 @@ export function closeDispatchDay(
 
   const normDate = normalizeHistoryDate(date) || date;
   const sealedExact = payments.length
-    ? reconcilePaymentsOntoPlanilla(assignments, payments)
+    ? reconcilePaymentsOntoPlanilla(assignments, payments, loans)
     : assignments;
   // Día atrasado: si pagaron después (p.ej. el 08), no marcar omitido al cerrar el 07.
   const sealed = payments.length
@@ -664,6 +664,7 @@ export function closeDispatchDay(
         date: normDate,
         collectorRef,
         untilDate: todayIso(),
+        loans,
       })
     : sealedExact;
 

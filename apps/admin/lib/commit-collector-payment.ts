@@ -298,7 +298,7 @@ export function commitCollectorPayment(
     dispatchDate,
     draft.clientRef,
   );
-  nextAssignments = reconcilePaymentsOntoPlanilla(nextAssignments, [payment]);
+  nextAssignments = reconcilePaymentsOntoPlanilla(nextAssignments, [payment], nextLoans);
 
   let nextRoutes = result.updatedRoute
     ? routes.map((row) => (row.ref === result.updatedRoute!.ref ? result.updatedRoute! : row))

@@ -160,9 +160,14 @@ export function runOperationalDayCycle(
   now = new Date(),
 ): OperationalDayResult {
   const today = businessTodayIso(now);
-  let assignments = reconcilePaymentsOntoPlanilla(state.assignments, state.payments);
+  let assignments = reconcilePaymentsOntoPlanilla(
+    state.assignments,
+    state.payments,
+    state.loans,
+  );
   assignments = sealOpenVisitsWithLaterPayments(assignments, state.payments, {
     untilDate: today,
+    loans: state.loans,
   });
 
   let routes = state.routes;
@@ -297,9 +302,9 @@ export function runOperationalDayCycle(
     state.payments,
   );
   assignments = sealOpenVisitsWithLaterPayments(
-    reconcilePaymentsOntoPlanilla(planilla.assignments, state.payments),
+    reconcilePaymentsOntoPlanilla(planilla.assignments, state.payments, loans),
     state.payments,
-    { untilDate: today },
+    { untilDate: today, loans },
   );
   assignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
 

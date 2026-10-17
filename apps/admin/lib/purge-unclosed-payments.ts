@@ -25,7 +25,11 @@ export function purgeUnclosedPlanillaPayments(input: {
 }): { payments: PaymentRow[]; loans: LoanRow[]; removedRefs: string[] } {
   void input.date;
   void todayIso;
-  const assignments = reconcilePaymentsOntoPlanilla(input.assignments, input.payments);
+  const assignments = reconcilePaymentsOntoPlanilla(
+    input.assignments,
+    input.payments,
+    input.loans,
+  );
   const { payments, removedRefs } = dedupeDailyPaymentsByVisit(input.payments, assignments);
   const loans = syncAllLoans(input.loans, payments) as LoanRow[];
   return { payments, loans, removedRefs };

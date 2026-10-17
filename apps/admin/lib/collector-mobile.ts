@@ -13,7 +13,10 @@ import {
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
-import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
+import {
+  loanSettledOffRoute,
+  reconcilePaymentsOntoPlanilla,
+} from "@/lib/planilla-payment-reconcile";
 import type { ClientRow, CollectorRow, LoanRow, PaymentRow, RouteRow } from "@/lib/mock-data";
 import { paymentsForCollector } from "@/lib/mock-data";
 import { normalizePaymentMethod } from "@/lib/payment-method";
@@ -231,6 +234,8 @@ function queueFromSealedPlanilla(
           );
         }
         if (row.visitStatus === "omitido") return false;
+        // Préstamo ya liquidado: nunca en ruta (aunque quede pendiente por PG fantasma).
+        if (loanSettledOffRoute(row.loanRef, loans)) return false;
         if (isEffectivelyPaid(row)) return false;
         return (
           row.visitStatus === "pendiente" ||

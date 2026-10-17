@@ -4,7 +4,7 @@
  * @see docs/supabase-schema.md
  */
 import { createMirrorServerClient } from "@/lib/supabase/admin";
-import type { ClientRow, CollectorRow, PaymentRow, RouteRow, UserRow } from "@/lib/mock-data";
+import type { ClientRow, CollectorRow, LoanRow, PaymentRow, RouteRow, UserRow } from "@/lib/mock-data";
 import { isLoanActive } from "@/lib/mock-data";
 import { reconcilePaymentsOntoPlanilla } from "@/lib/planilla-payment-reconcile";
 import {
@@ -70,6 +70,7 @@ import {
   DEMO_COLLECTORS_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_MISC_PAYMENTS_KEY,
+  DEMO_LOANS_KEY,
   DEMO_PAYMENTS_KEY,
   DEMO_PLANILLA_CASH_CLOSES_KEY,
   DEMO_ROUTES_KEY,
@@ -2153,10 +2154,26 @@ async function pullOpsBundle(
       sentAssignmentSig.set(key, assignmentMirrorSig(row));
       assignChanged = true;
     }
+    const preReconcile = [...assignMap.values()];
     const stamped = reconcilePaymentsOntoPlanilla(
-      [...assignMap.values()],
+      preReconcile,
       readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []),
+      readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []),
     );
+    // Fantasma sellado (préstamo liquidado): subir para que otros aparatos no lo reabran.
+    const ghostSealed = stamped.filter((row) => {
+      const prev = preReconcile.find(
+        (entry) =>
+          entry.dispatchDate === row.dispatchDate && entry.itemId === row.itemId,
+      );
+      if (!prev) return false;
+      return (
+        row.visitStatus === "cobrado" &&
+        !String(row.paymentRef || "").trim() &&
+        Boolean(String(prev.paymentRef || "").trim())
+      );
+    });
+    if (ghostSealed.length) queueAssignmentsMirror(ghostSealed);
     // Si el CIE- ya llegó y la planilla local sigue abierta (cola / flush a medias), sellar.
     const healed = assignmentsInPlanillaWindow(
       applyDayCloseRecordsToAssignments(stamped, clMerge.merged),

@@ -549,7 +549,11 @@ export function useWorkspace({
     }) => {
       void (async () => {
       const livePayments = await syncPaymentsFromCloud();
-      const assignments = reconcilePaymentsOntoPlanilla(next.assignments, livePayments);
+      const assignments = reconcilePaymentsOntoPlanilla(
+        next.assignments,
+        livePayments,
+        next.loans,
+      );
       setDailyAssignments(assignments);
       setRoutes(next.routes);
       setLoans(next.loans);
@@ -1998,7 +2002,11 @@ export function useWorkspace({
     setDayCloses(projected.dayCloses);
     setBankMovements(projected.bankMovements);
     const livePayments = await syncPaymentsFromCloud(stampedPayments);
-    const assignments = reconcilePaymentsOntoPlanilla(projected.assignments, livePayments);
+    const assignments = reconcilePaymentsOntoPlanilla(
+      projected.assignments,
+      livePayments,
+      projected.loans,
+    );
     setDailyAssignments(assignments);
     writeDemoJson(DEMO_LOANS_KEY, projected.loans);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
@@ -2453,7 +2461,11 @@ export function useWorkspace({
         ? { ...entry, pending: Math.max(0, entry.pending - amountPesos) }
         : entry,
     );
-    const nextAssignments = reconcilePaymentsOntoPlanilla(dailyAssignments, livePayments);
+    const nextAssignments = reconcilePaymentsOntoPlanilla(
+      dailyAssignments,
+      livePayments,
+      nextLoans,
+    );
     const projected = projectOperationalMoney({
       loans: nextLoans,
       payments: livePayments,

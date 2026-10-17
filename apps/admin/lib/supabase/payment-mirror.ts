@@ -680,7 +680,8 @@ function isPaymentRejection(reply: { skipped?: boolean; reason?: string } | null
 
 /**
  * La nube no aceptó el cobro (el préstamo debe menos): ese PG- no existe. Sale de la cola y de
- * los cobros del aparato (caja), su visita abierta vuelve a «por cobrar» y se avisa en pantalla.
+ * los cobros del aparato (caja). Si aún debe → visita vuelve a «por cobrar». Si ya está pagado
+ * (saldo 0) → sella fuera de ruta (no rebote ni cliente doble al prestar el mismo día).
  */
 function dropRejectedPayments(sent: PaymentRow[], balance: number | undefined) {
   const refs = new Set(sent.map((row) => row.ref));
@@ -690,19 +691,29 @@ function dropRejectedPayments(sent: PaymentRow[], balance: number | undefined) {
     readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []).filter((row) => !refs.has(row.ref)),
   );
 
-  const reopened: DailyCollectionAssignment[] = [];
+  const owes = Number(balance || 0);
+  const loanSettled = !(owes > 0);
+  const changed: DailyCollectionAssignment[] = [];
   const assignments = readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []).map(
     (row) => {
       if (!row.paymentRef || !refs.has(row.paymentRef) || row.dayClosedAt) return row;
-      const next: DailyCollectionAssignment = { ...row, visitStatus: "pendiente", paymentRef: undefined };
-      reopened.push(next);
+      const next: DailyCollectionAssignment = loanSettled
+        ? {
+            ...row,
+            visitStatus: "cobrado",
+            paymentRef: undefined,
+            amountDue: 0,
+            skipReason: undefined,
+          }
+        : { ...row, visitStatus: "pendiente", paymentRef: undefined };
+      changed.push(next);
       return next;
     },
   );
-  if (reopened.length) {
+  if (changed.length) {
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
     void import("@/lib/supabase/ops-mirror").then(({ queueAssignmentsMirror }) =>
-      queueAssignmentsMirror(reopened),
+      queueAssignmentsMirror(changed),
     );
   }
   window.dispatchEvent(new CustomEvent(BIG_DEMO_STORE_CHANGED_EVENT));
@@ -710,7 +721,6 @@ function dropRejectedPayments(sent: PaymentRow[], balance: number | undefined) {
   const first = sent[0];
   if (!first) return;
   const total = sent.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-  const owes = Number(balance || 0);
   const why = owes > 0 ? `el préstamo ${first.loanRef} solo debe ${money(owes)}` : `el préstamo ${first.loanRef} ya está pagado`;
   reportPaymentRejection({
     ref: first.ref,
