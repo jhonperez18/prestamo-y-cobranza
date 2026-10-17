@@ -16,6 +16,7 @@ import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { buildLoanReport } from "@/lib/loan-report";
 import { shareLoanFichaCapture } from "@/lib/loan-ficha-share";
+import { livePayments } from "@/lib/live-payments";
 import { routeCoverageSummaries } from "@/lib/collector-preview";
 import {
   assignmentRouteName,
@@ -3489,8 +3490,13 @@ export function SupervisorMobileApp({
     : null;
   const clientesPdfReport = useMemo(() => {
     if (!clientesLoanSynced || !clientesLoanClient) return null;
-    // Misma ficha del sistema: préstamo sincronizado + todos los pagos (con método/evidencia).
-    return buildLoanReport(clientesLoanSynced, clientesLoanClient, paymentsWithEvidence, assignments);
+    // Ficha al cliente: solo PG- vivos (anulados no se muestran; el saldo ya los excluye).
+    return buildLoanReport(
+      clientesLoanSynced,
+      clientesLoanClient,
+      livePayments(paymentsWithEvidence),
+      assignments,
+    );
   }, [assignments, clientesLoanClient, clientesLoanSynced, paymentsWithEvidence]);
   const clientesDetailOpen = Boolean(clientesLoanClientRef);
 
@@ -3554,8 +3560,9 @@ export function SupervisorMobileApp({
     : null;
   const prestamoPdfReport = useMemo(() => {
     if (!prestamoFichaLoan || !prestamoFichaClient) return null;
-    const synced = syncLoan(prestamoFichaLoan, paymentsWithEvidence) as LoanRow;
-    return buildLoanReport(synced, prestamoFichaClient, paymentsWithEvidence, assignments);
+    const live = livePayments(paymentsWithEvidence);
+    const synced = syncLoan(prestamoFichaLoan, live) as LoanRow;
+    return buildLoanReport(synced, prestamoFichaClient, live, assignments);
   }, [assignments, paymentsWithEvidence, prestamoFichaClient, prestamoFichaLoan]);
 
   const nuevoRoute = liquidaciones.find((row) => row.routeRef === nuevoRouteRef) ?? null;
