@@ -141,20 +141,20 @@ export function reconcilePaymentsOntoPlanilla(
   const live = payments.filter(isPaymentLive);
   const liveByRef = new Map(live.map((row) => [row.ref, row] as const));
 
-  return assignments.map((row) => {
-    if (isAssignmentAwaitingLoan(row)) return row;
-    if (row.visitStatus === "omitido") return row;
+  return assignments.flatMap((row) => {
+    if (isAssignmentAwaitingLoan(row)) return [row];
+    if (row.visitStatus === "omitido") return [row];
     // Jornada/planilla ya cerrada: no reabrir por PG anulado o ausente (otro celular lo vería abierto).
-    if (row.dayClosedAt) return row;
+    if (row.dayClosedAt) return [row];
 
     const settled = loanSettledOffRoute(row.loanRef, loans);
 
-    // Cuota pendiente de un préstamo ya cerrado: fuera de ruta (heal tras rebote / fantasma).
+    // Cuota de préstamo ya cerrado sin PG vivo: se elimina (no vuelve a ruta ni a cobrados falsos).
     if (
       settled &&
       (row.visitStatus === "pendiente" || row.visitStatus === "parcial" || !row.visitStatus)
     ) {
-      return sealSettledVisit(row);
+      return [];
     }
 
     const linkedRef = (row.paymentRef || "").trim();
@@ -167,11 +167,11 @@ export function reconcilePaymentsOntoPlanilla(
       !linkedOk
     ) {
       // Aún subiendo: no tratar como fantasma.
-      if (paymentRefStillQueued(linkedRef)) return row;
-      // Préstamo liquidado: sella; no vuelve a por cobrar junto al préstamo nuevo.
-      if (settled) return sealSettledVisit(row);
+      if (paymentRefStillQueued(linkedRef)) return [row];
+      // PG fantasma + préstamo liquidado: fuera para siempre.
+      if (settled) return [];
       // PG anulado, ausente o de OTRO préstamo/cliente → vuelve a pendiente.
-      return reopenToPending(row, loans);
+      return [reopenToPending(row, loans)];
     }
 
     // Cobrado sin PG vivo (ref borrada o anulado).
@@ -179,12 +179,12 @@ export function reconcilePaymentsOntoPlanilla(
       (row.visitStatus === "cobrado" || row.visitStatus === "parcial") &&
       !linkedRef
     ) {
-      if (settled) return sealSettledVisit(row);
-      return reopenToPending(row, loans);
+      if (settled) return [];
+      return [reopenToPending(row, loans)];
     }
 
     if (row.visitStatus === "cobrado" && linkedOk) {
-      return row;
+      return [row];
     }
 
     const day = row.dispatchDate;
@@ -192,14 +192,16 @@ export function reconcilePaymentsOntoPlanilla(
       (pay) => sameDay(paymentVisitDate(pay), day) && paymentMatchesVisit(pay, row),
     );
 
-    if (!match) return row;
-    return {
-      ...row,
-      loanRef: row.loanRef || match.loanRef || "",
-      amountDue: 0,
-      visitStatus: "cobrado" as const,
-      paymentRef: match.ref,
-    };
+    if (!match) return [row];
+    return [
+      {
+        ...row,
+        loanRef: row.loanRef || match.loanRef || "",
+        amountDue: 0,
+        visitStatus: "cobrado" as const,
+        paymentRef: match.ref,
+      },
+    ];
   });
 }
 
@@ -230,6 +232,7 @@ export function sealOpenVisitsWithLaterPayments(
       const linked = live.find((p) => p.ref === linkedRef);
       if (!linked || !paymentBelongsToVisit(linked, row)) {
         if (paymentRefStillQueued(linkedRef)) return row;
+        // Fantasma en préstamo liquidado: se deja cobrado sin ref; el servidor la borra al subir.
         if (loanSettledOffRoute(row.loanRef, loans)) return sealSettledVisit(row);
         return {
           ...row,

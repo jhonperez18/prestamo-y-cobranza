@@ -896,6 +896,20 @@ async function loanFinishedBeforeVisit(
  * 3) Reabrir jornada solo por «Reabrir hoja de hoy» (`/api/ops/reopen-sheet`, marca en el
  *    CIE-); un upsert normal nunca limpia day_closed_at.
  */
+async function deleteAssignmentRow(
+  client: MirrorDb,
+  dispatchDate: unknown,
+  itemId: unknown,
+): Promise<{ ok: true; skipped: true; reason: string } | { ok: false; error: string }> {
+  const { error } = await client
+    .from("daily_assignments")
+    .delete()
+    .eq("dispatch_date", dispatchDate)
+    .eq("item_id", itemId);
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const, skipped: true as const, reason: "payment_ghost_cleared" };
+}
+
 export async function upsertAssignmentRow(row: Record<string, unknown>) {
   const client = createMirrorClient();
   if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
@@ -903,6 +917,42 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
   // tiene (ficha rehecha en un aparato) → espera en cola; si el préstamo sube, entra.
   // Visita abierta de un préstamo dado de baja (copia vieja de otro aparato): no vuelve.
   const loanRef = String(row.loan_ref || "").trim();
+  const payRef = String(row.payment_ref || "").trim();
+
+  // PG fantasma (ref que no existe): préstamo liquidado → sale de la nube para siempre;
+  // préstamo activo → quita el ref y queda pendiente (cobro real puede entrar).
+  if (payRef) {
+    const { data: pay, error: payError } = await client
+      .from("payments")
+      .select("ref")
+      .eq("ref", payRef)
+      .maybeSingle();
+    if (payError) return { ok: false as const, error: payError.message };
+    if (!pay) {
+      if (loanRef) {
+        const { data: loan, error: loanError } = await client
+          .from("loans")
+          .select("status, notes, balance")
+          .eq("ref", loanRef)
+          .maybeSingle();
+        if (loanError) return { ok: false as const, error: loanError.message };
+        const settled =
+          Boolean(loan) &&
+          (!isLoanActive({ status: String(loan?.status || "") }) ||
+            Number(loan?.balance || 0) <= 0);
+        if (settled) {
+          return deleteAssignmentRow(client, row.dispatch_date, row.item_id);
+        }
+      }
+      row = {
+        ...row,
+        payment_ref: null,
+        visit_status: "pendiente",
+        amount_due: row.amount_due ?? 0,
+      };
+    }
+  }
+
   if (loanRef && !row.payment_ref) {
     const { data: loan, error: loanError } = await client
       .from("loans")
@@ -917,6 +967,11 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
     const finished = await loanFinishedBeforeVisit(client, loanRef, loan, row);
     if (finished.error) return { ok: false as const, error: finished.error };
     if (finished.finished) {
+      const status = String(row.visit_status || "");
+      // Sello del aparato (cobrado/omitido sin PG): borra la fila fantasma; no la conserva.
+      if (status === "cobrado" || status === "omitido") {
+        return deleteAssignmentRow(client, row.dispatch_date, row.item_id);
+      }
       return { ok: true as const, skipped: true as const, reason: "loan_finished" };
     }
   }
@@ -2160,20 +2215,31 @@ async function pullOpsBundle(
       readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []),
       readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []),
     );
-    // Fantasma sellado (préstamo liquidado): subir para que otros aparatos no lo reabran.
-    const ghostSealed = stamped.filter((row) => {
-      const prev = preReconcile.find(
-        (entry) =>
-          entry.dispatchDate === row.dispatchDate && entry.itemId === row.itemId,
+    // Fantasma de préstamo liquidado: el reconcile lo quitó → pedir borrado en la nube.
+    const droppedGhosts = preReconcile.filter((prev) => {
+      if (!String(prev.paymentRef || "").trim() && prev.visitStatus !== "cobrado") return false;
+      const still = stamped.some(
+        (row) => row.dispatchDate === prev.dispatchDate && row.itemId === prev.itemId,
       );
-      if (!prev) return false;
-      return (
-        row.visitStatus === "cobrado" &&
-        !String(row.paymentRef || "").trim() &&
-        Boolean(String(prev.paymentRef || "").trim())
-      );
+      if (still) return false;
+      const loanRef = String(prev.loanRef || "").trim();
+      if (!loanRef) return false;
+      const loans = readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []);
+      const loan = loans.find((entry) => entry.ref === loanRef);
+      if (!loan) return false;
+      return !isLoanActive(loan) || Number(loan.balance) <= 0;
     });
-    if (ghostSealed.length) queueAssignmentsMirror(ghostSealed);
+    if (droppedGhosts.length) {
+      queueAssignmentsMirror(
+        droppedGhosts.map((row) => ({
+          ...row,
+          visitStatus: "cobrado" as const,
+          paymentRef: undefined,
+          amountDue: 0,
+          skipReason: undefined,
+        })),
+      );
+    }
     // Si el CIE- ya llegó y la planilla local sigue abierta (cola / flush a medias), sellar.
     const healed = assignmentsInPlanillaWindow(
       applyDayCloseRecordsToAssignments(stamped, clMerge.merged),

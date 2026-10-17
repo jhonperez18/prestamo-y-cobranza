@@ -694,26 +694,34 @@ function dropRejectedPayments(sent: PaymentRow[], balance: number | undefined) {
   const owes = Number(balance || 0);
   const loanSettled = !(owes > 0);
   const changed: DailyCollectionAssignment[] = [];
-  const assignments = readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []).map(
-    (row) => {
+  const removed: DailyCollectionAssignment[] = [];
+  const assignments = readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, [])
+    .map((row) => {
       if (!row.paymentRef || !refs.has(row.paymentRef) || row.dayClosedAt) return row;
-      const next: DailyCollectionAssignment = loanSettled
-        ? {
-            ...row,
-            visitStatus: "cobrado",
-            paymentRef: undefined,
-            amountDue: 0,
-            skipReason: undefined,
-          }
-        : { ...row, visitStatus: "pendiente", paymentRef: undefined };
+      if (loanSettled) {
+        // Préstamo ya en 0: la visita fantasma no vuelve; se quita y la nube la borra.
+        removed.push({
+          ...row,
+          visitStatus: "cobrado",
+          paymentRef: undefined,
+          amountDue: 0,
+          skipReason: undefined,
+        });
+        return null;
+      }
+      const next: DailyCollectionAssignment = {
+        ...row,
+        visitStatus: "pendiente",
+        paymentRef: undefined,
+      };
       changed.push(next);
       return next;
-    },
-  );
-  if (changed.length) {
+    })
+    .filter((row): row is DailyCollectionAssignment => row != null);
+  if (changed.length || removed.length) {
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
     void import("@/lib/supabase/ops-mirror").then(({ queueAssignmentsMirror }) =>
-      queueAssignmentsMirror(changed),
+      queueAssignmentsMirror([...changed, ...removed]),
     );
   }
   window.dispatchEvent(new CustomEvent(BIG_DEMO_STORE_CHANGED_EVENT));
