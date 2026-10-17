@@ -450,7 +450,7 @@ export function applySheetReopensLocally(
     const applied = applySheetReopen(state, reopen, clients);
     if (!applied.changed) continue;
     state = applied;
-    staleCloseRefs.add(reopen.closeRef);
+    if (reopen.closeRef) staleCloseRefs.add(reopen.closeRef);
     for (const key of applied.reopenedKeys) reopenedKeys.add(key);
   }
   if (state === before) return false;

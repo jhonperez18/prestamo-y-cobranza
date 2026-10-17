@@ -1,13 +1,14 @@
 /**
  * Reabrir la hoja de hoy (supervisor / admin).
  *
- * El cobrador cerró una planilla por error (T sin sus cobros). La reapertura no borra
- * nada en la nube: deja en el CIE- del día la marca `REABIERTA@<ruta>:<iso>|<quién>`
- * en `movement_refs`. Un CIE- cuyo `closed_at` no es posterior a la marca no cierra el
- * día; el siguiente cierre del cobrador (o el corte 23:30) lo vuelve a sellar.
+ * El cobrador cerró una planilla por error. La reapertura no borra nada: con CIE- deja
+ * la marca `REABIERTA@<ruta>:<iso>|<quién>` en `movement_refs`. Sin CIE- (M cerró y T
+ * sigue abierta) solo suelta PCE-M y las visitas M.
  *
- * Solo hoy (Bogotá), antes de las 23:30. Reabrir M reabre también T (el saldo final de M
- * es el Inicial de T). Días pasados son historia.
+ * Solo hoy (Bogotá), antes de las 23:30.
+ * · M con T aún abierta → reabre solo M.
+ * · M con T ya cerrada (CIE-) → reabre M y T (el saldo final de M es el Inicial de T).
+ * Días pasados son historia.
  */
 import { businessClockParts } from "@/lib/business-timezone";
 import { sameRoute } from "@/lib/client-route-order";
@@ -20,9 +21,12 @@ import { assignmentRouteName, DAY_CLOSE_SKIP_REASON } from "@/lib/collector-disp
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { ClientRow } from "@/lib/mock-data";
 import {
+  findPlanillaCashClose,
   isPlanillaCashChainPrimary,
+  PLANILLA_CASH_CHAIN_PRIMARY,
   PLANILLA_CASH_CHAIN_SECONDARY,
   planillaCashCloseRef,
+  primaryChainSheetSealed,
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
 
@@ -123,12 +127,72 @@ export function dayCloseReopensFromRow(row: Record<string, unknown>): DayCloseRe
 }
 
 /**
- * Planillas que abre el botón. M arrastra a T: el saldo final de M es el Inicial de T,
- * así que T no puede quedar cerrada sobre una M abierta.
+ * Planillas que abre el botón.
+ * M + T solo si T ya cerró (CIE- vigente); si T sigue abierta, solo M.
  */
-export function routesToReopen(route: string): string[] {
+export function routesToReopen(
+  route: string,
+  opts?: { reopenSecondary?: boolean },
+): string[] {
   const key = routeKey(route);
-  return isPlanillaCashChainPrimary(key) ? [key, PLANILLA_CASH_CHAIN_SECONDARY] : [key];
+  if (!isPlanillaCashChainPrimary(key)) return [key];
+  return opts?.reopenSecondary === false ? [key] : [key, PLANILLA_CASH_CHAIN_SECONDARY];
+}
+
+/**
+ * ¿T está cerrada hoy (CIE- sellando T, sin reapertura viva de T)?
+ * Si no hay CIE-, T aún no cerró la jornada → reabrir M no la toca.
+ */
+export function secondarySheetClosedToday(
+  collectorRef: string,
+  dayCloses: readonly CollectorDayCloseRecord[],
+  reopens: readonly DayCloseReopen[] = [],
+  now = new Date(),
+): boolean {
+  if (!collectorRef) return false;
+  const date = businessClockParts(now).dateIso;
+  const cie = dayCloses.find(
+    (row) => row.ref === dayCloseRef(collectorRef, date) && !row.provisional,
+  );
+  if (!cie) return false;
+  return !liveReopensFor(collectorRef, date, reopens, dayCloses).some((reopen) =>
+    sameRoute(reopen.route, PLANILLA_CASH_CHAIN_SECONDARY),
+  );
+}
+
+export type SheetReopenContext = {
+  planillaCashCloses?: readonly PlanillaCashCloseRecord[];
+  assignments?: readonly {
+    collectorRef: string;
+    dispatchDate: string;
+    clientRoute?: string;
+    clientRef?: string;
+    dayClosedAt?: string;
+  }[];
+  clients?: readonly { ref: string; route: string }[];
+};
+
+function primarySheetSealedToday(
+  collectorRef: string,
+  date: string,
+  ctx: SheetReopenContext,
+): boolean {
+  if (
+    findPlanillaCashClose(
+      ctx.planillaCashCloses ?? [],
+      collectorRef,
+      date,
+      PLANILLA_CASH_CHAIN_PRIMARY,
+    )
+  ) {
+    return true;
+  }
+  return primaryChainSheetSealed(
+    [...(ctx.assignments ?? [])],
+    collectorRef,
+    date,
+    [...(ctx.clients ?? [])],
+  );
 }
 
 /** Reaperturas de hoy de ese cobrador que ningún cierre posterior dejó atrás. */
@@ -153,8 +217,8 @@ export type SheetReopenWindow =
   | { open: false; reason: string };
 
 /**
- * Solo hoy (Bogotá), antes de 23:30, sin ajuste de saldo, con el día del cobrador
- * cerrado (CIE-) o con otra planilla suya ya reabierta hoy.
+ * Solo hoy (Bogotá), antes de 23:30, sin ajuste de saldo.
+ * Con CIE- (o reapertura viva), o —si es M— con la hoja M sellada aunque T siga abierta.
  */
 export function sheetReopenWindow(
   collectorRef: string,
@@ -162,6 +226,7 @@ export function sheetReopenWindow(
   dayCloses: readonly CollectorDayCloseRecord[],
   reopens: readonly DayCloseReopen[] = [],
   now = new Date(),
+  ctx: SheetReopenContext = {},
 ): SheetReopenWindow {
   if (!collectorRef || !route) return { open: false, reason: "Falta cobrador o planilla." };
   const clock = businessClockParts(now);
@@ -174,13 +239,20 @@ export function sheetReopenWindow(
     return { open: false, reason: "El saldo de hoy ya se ajustó a la caja contada: no se reabre." };
   }
   const live = liveReopensFor(collectorRef, clock.dateIso, reopens, dayCloses);
-  if (!cie && !live.length) {
-    return { open: false, reason: "Hoy no hay cierre de jornada de ese cobrador." };
-  }
   if (live.some((reopen) => sameRoute(reopen.route, route))) {
     return { open: false, reason: `La hoja ${routeKey(route)} ya está reabierta.` };
   }
-  return { open: true, date: clock.dateIso };
+  if (cie || live.length) {
+    return { open: true, date: clock.dateIso };
+  }
+  // Sin CIE-: solo M puede reabrirse (cerró y T aún no).
+  if (
+    isPlanillaCashChainPrimary(route) &&
+    primarySheetSealedToday(collectorRef, clock.dateIso, ctx)
+  ) {
+    return { open: true, date: clock.dateIso };
+  }
+  return { open: false, reason: "Hoy no hay cierre de jornada de ese cobrador." };
 }
 
 type ReopenTarget = Pick<DayCloseReopen, "collectorRef" | "date" | "route" | "at" | "closeRef">;

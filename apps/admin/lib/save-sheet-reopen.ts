@@ -4,14 +4,21 @@
  */
 import type { CollectorDayCloseRecord } from "@/lib/collector-day-close";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import type { ClientRow } from "@/lib/mock-data";
 import {
+  DEMO_CLIENTS_KEY,
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
   DEMO_PLANILLA_CASH_CLOSES_KEY,
   readDemoJson,
 } from "@/lib/demo-persist";
 import type { PlanillaCashCloseRecord } from "@/lib/planilla-cash-chain";
-import { routesToReopen, sheetReopenWindow, type DayCloseReopen } from "@/lib/sheet-reopen";
+import {
+  routesToReopen,
+  secondarySheetClosedToday,
+  sheetReopenWindow,
+  type DayCloseReopen,
+} from "@/lib/sheet-reopen";
 import { applySheetReopensLocally, readKnownSheetReopens } from "@/lib/supabase/ops-mirror";
 
 export type SheetReopenRequest = { collectorRef: string; route: string };
@@ -30,14 +37,26 @@ type ReopenApiJson =
   | { ok: true; reopens: DayCloseReopen[]; reopenedVisits: number }
   | { ok: false; error?: string };
 
+function localReopenContext() {
+  return {
+    planillaCashCloses: readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, []),
+    assignments: readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []),
+    clients: readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []),
+  };
+}
+
 export async function reopenSheetToday(
   input: SheetReopenRequest & { by: string },
 ): Promise<SaveSheetReopenResult> {
+  const dayCloses = readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []);
+  const reopens = readKnownSheetReopens();
   const gate = sheetReopenWindow(
     input.collectorRef,
     input.route,
-    readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []),
-    readKnownSheetReopens(),
+    dayCloses,
+    reopens,
+    new Date(),
+    localReopenContext(),
   );
   if (!gate.open) return { ok: false, error: gate.reason };
 
@@ -57,7 +76,8 @@ export async function reopenSheetToday(
   if (!json.ok) return { ok: false, error: json.error || "La nube no reabrió la hoja." };
 
   applySheetReopensLocally(json.reopens);
-  const routes = routesToReopen(input.route).join(" y ");
+  const reopenSecondary = secondarySheetClosedToday(input.collectorRef, dayCloses, reopens);
+  const routes = routesToReopen(input.route, { reopenSecondary }).join(" y ");
   return {
     ok: true,
     dayCloses: readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []),

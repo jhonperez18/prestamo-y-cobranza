@@ -110,7 +110,11 @@ import {
   type DigitalPoolRegisterLoan,
 } from "@/lib/digital-pools";
 import type { SheetReopenRequest } from "@/lib/save-sheet-reopen";
-import { routesToReopen, sheetReopenWindow } from "@/lib/sheet-reopen";
+import {
+  routesToReopen,
+  secondarySheetClosedToday,
+  sheetReopenWindow,
+} from "@/lib/sheet-reopen";
 import { readKnownSheetReopens } from "@/lib/supabase/ops-mirror";
 import { suppressGhostClick } from "@/lib/suppress-ghost-click";
 import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
@@ -267,7 +271,7 @@ type Props = {
   onSaveMiscPayment?: (payment: MiscPayment) => void;
   /** Ajuste de saldo real en T o en A/N (tras cerrar, el mismo día). */
   onAdjustTCash?: (input: CashAdjustmentRequest) => Promise<boolean>;
-  /** Reabrir la hoja de hoy de un cobrador (cerró por error). Nunca M. */
+  /** Reabrir la hoja de hoy de un cobrador (cerró por error). M solo, o M+T si T ya cerró. */
   onReopenSheet?: (input: SheetReopenRequest) => Promise<boolean>;
   onLogout?: () => void;
 };
@@ -2737,19 +2741,37 @@ export function SupervisorMobileApp({
     return ok;
   }
 
-  /** Reabrir la hoja de hoy: solo supervisor/admin, hoy antes de 23:30, día sellado, nunca M. */
+  /** Reabrir hoja de hoy: Historial de M/T/N/A · si T sigue abierta, M sola; si T cerró, M y T. */
   const sheetReopenKey = openRoute ? `${openRoute.collectorRef}|${openRoute.routeName}` : null;
+  const knownSheetReopens = useMemo(() => readKnownSheetReopens(), [dayCloses, assignments]);
   const canReopenSheet = useMemo(() => {
     if (!onReopenSheet || !openRoute) return false;
     return sheetReopenWindow(
       openRoute.collectorRef,
       openRoute.routeName,
       dayCloses,
-      readKnownSheetReopens(),
+      knownSheetReopens,
+      new Date(),
+      { planillaCashCloses, assignments, clients },
     ).open;
-    // `assignments` cambia con cada pull que trae una reapertura nueva.
-  }, [onReopenSheet, openRoute, dayCloses, assignments]);
-  const reopenRoutesLabel = openRoute ? routesToReopen(openRoute.routeName).join(" y ") : "";
+  }, [
+    onReopenSheet,
+    openRoute,
+    dayCloses,
+    knownSheetReopens,
+    planillaCashCloses,
+    assignments,
+    clients,
+  ]);
+  const reopenRoutesLabel = openRoute
+    ? routesToReopen(openRoute.routeName, {
+        reopenSecondary: secondarySheetClosedToday(
+          openRoute.collectorRef,
+          dayCloses,
+          knownSheetReopens,
+        ),
+      }).join(" y ")
+    : "";
 
   async function confirmReopenSheet() {
     if (!onReopenSheet || !openRoute || reopeningSheet) return;
@@ -4122,9 +4144,12 @@ export function SupervisorMobileApp({
               {canReopenSheet && reopenConfirmKey === sheetReopenKey ? (
                 <div className="supervisor-mobile-subhead">
                   <p>
-                    ¿Reabrir la hoja {reopenRoutesLabel} de hoy? Las visitas sin cobrar vuelven a
-                    pendiente; los cobros hechos se quedan. El cobrador cobra y vuelve a cerrar
-                    (el saldo final se recalcula).
+                    ¿Reabrir la hoja {reopenRoutesLabel} de hoy?
+                    {reopenRoutesLabel.includes(" y ")
+                      ? " T ya cerró: se reabren las dos (el Inicial de T depende del cierre de M)."
+                      : ""}{" "}
+                    Las visitas sin cobrar vuelven a pendiente; los cobros hechos se quedan. El
+                    cobrador cobra y vuelve a cerrar (el saldo final se recalcula).
                   </p>
                   <button
                     type="button"
@@ -4150,6 +4175,7 @@ export function SupervisorMobileApp({
                   onClick={() => setReopenConfirmKey(sheetReopenKey)}
                 >
                   Reabrir hoja de hoy
+                  {reopenRoutesLabel.includes(" y ") ? ` (${reopenRoutesLabel})` : ""}
                 </button>
               ) : null}
             </>
