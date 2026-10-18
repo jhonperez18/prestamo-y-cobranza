@@ -1278,7 +1278,7 @@ export function SupervisorMobileApp({
   const [nequiDayBackTo, setNequiDayBackTo] = useState<"totales" | "nequi-historial">(
     "nequi-historial",
   );
-  /** Día ISO del historial de caja (últimos 5 días del cobrador). */
+  /** Día ISO del historial de caja (mes en curso, desde el día 1). */
   const [cajaHistoryDayIso, setCajaHistoryDayIso] = useState<string | null>(null);
   /** Historial · T: formulario de ajuste de saldo real abierto (cobrador del CIE-). */
   const [cashAdjustCollectorRef, setCashAdjustCollectorRef] = useState<string | null>(null);
@@ -2546,6 +2546,9 @@ export function SupervisorMobileApp({
     const isM = isPlanillaCashChainPrimary(openRoute.routeName);
     const isT = isPlanillaCashChainSecondary(openRoute.routeName);
     const epoch = PLANILLA_CASH_CHAIN_HISTORY_EPOCH;
+    // Misma ventana que Banco / Nequi: desde el 1 del mes (no antes del libro).
+    const historyFrom =
+      bancoHistoryFrom >= ROUTE_CASH_BOOK_FROM ? bancoHistoryFrom : ROUTE_CASH_BOOK_FROM;
 
     // Actividad solo de ESTA ruta (T/A/N no heredan préstamos de M).
     const rows = buildCollectorDayHistory(
@@ -2574,7 +2577,7 @@ export function SupervisorMobileApp({
               )
             : undefined,
       },
-    ).filter((row) => row.date >= ROUTE_CASH_BOOK_FROM);
+    ).filter((row) => row.date >= historyFrom);
 
     const primaryClosingFor = (dateIso: string) =>
       primaryClosingForDay(
@@ -2654,7 +2657,7 @@ export function SupervisorMobileApp({
         }
       }
       const tRows = rows
-        .filter((row) => row.date >= epoch && row.date <= today)
+        .filter((row) => row.date >= epoch && row.date <= today && row.date >= historyFrom)
         .map((row) => ({
           ...row,
           // Columnas de T: solo lo suyo (cobro/gasto/préstamo ya vienen filtrados).
@@ -2671,13 +2674,13 @@ export function SupervisorMobileApp({
       const sealed = withSealedDaySaldos(stamped, openRoute.collectorRef, dayCloses, today);
       const ledger = ledgerByCollector.get(openRoute.collectorRef);
       const withToday = ledger ? withLedgerTodaySaldo(sealed, ledger) : sealed;
-      return withToday.slice(0, 6);
+      return withToday;
     }
 
     if (isIndependentSaldoRoute(openRoute.routeName)) {
       // A / N: saldo del día = caja propia de la planilla (misma cifra que la tarjeta).
       return withIndependentRouteHistory(
-        rows.filter((row) => row.date <= today).slice(0, 6),
+        rows.filter((row) => row.date <= today),
         {
           collectorRef: openRoute.collectorRef,
           collectorName: collector.name,
@@ -2696,7 +2699,7 @@ export function SupervisorMobileApp({
     }
 
     if (!isM) {
-      return rows.filter((row) => row.date < today).slice(0, 5);
+      return rows.filter((row) => row.date < today);
     }
 
     // Saldo = caja real de M (efectivo − gasto − préstamo), misma base que la ruta.
@@ -2722,9 +2725,7 @@ export function SupervisorMobileApp({
     const withCashHand = applyCollectorCashHandSaldos(rows, cashByDate);
 
     // M: extracto con hoy incluido (Inicial lleno, Saldo — si aún no cerró).
-    const visible = withCashHand
-      .filter((row) => row.date <= today)
-      .slice(0, 6);
+    const visible = withCashHand.filter((row) => row.date <= today);
     return annotateMHistoryExtractRows({
       rows: visible,
       collectorRef: openRoute.collectorRef,
@@ -2752,6 +2753,7 @@ export function SupervisorMobileApp({
     loans,
     clients,
     today,
+    bancoHistoryFrom,
     planillaCashCloses,
     ledgerByCollector,
   ]);
