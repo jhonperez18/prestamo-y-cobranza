@@ -3071,9 +3071,12 @@ export function SupervisorMobileApp({
   const cierrePrestamos = historyDayChainT
     ? historyDayChainT.ownLoanLines
     : openRouteHistoryDayExpenseSplit.prestamos;
+  /** A/N: misma cifra que Historial (`prestamosRuta`); M/T: solo caja del lado. */
   const cierrePrestamosTotal = historyDayChainT
     ? historyDayChainT.ownPrestamos
-    : openRouteHistoryDayExpenseSplit.prestamosTotal;
+    : openRouteHistoryIndependentDay
+      ? openRouteHistoryIndependentDay.day.prestamosRuta
+      : openRouteHistoryDayExpenseSplit.prestamosTotal;
   const cierreGastos = historyDayChainT
     ? historyDayChainT.ownGastoLines
     : openRouteHistoryDayExpenseSplit.otros;

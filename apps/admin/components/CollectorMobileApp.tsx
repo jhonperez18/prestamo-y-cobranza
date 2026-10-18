@@ -1628,17 +1628,23 @@ export function CollectorMobileApp({
     : planillaOwnsMovements
       ? dayExpenseSplit.otrosTotal
       : 0;
+  /** Solo efectivo: resta de la caja. */
   const topPrestamos = ownRouteDay
     ? ownRouteDay.prestamos
     : planillaOwnsMovements
       ? dayLoanDisbursementTotal(dayLoanRows)
       : 0;
   /**
-   * Préstamos de la planilla: A / N = los de su caja propia; otra planilla fuera de la
+   * Botón «Lo que prestó» / KPI: en A·N = efectivo + Nequi/Banco (`prestamosRuta`).
+   * En M·T el botón sigue siendo caja; Banco va aparte.
+   */
+  const loQuePresto = ownRouteDay ? ownRouteDay.prestamosRuta : topPrestamos;
+  /**
+   * Préstamos de la planilla: A / N = caja + digital de la ruta; otra planilla fuera de la
    * cadena = solo lectura de los préstamos a clientes de esa ruta.
    */
   const viewLoanRows = useMemo(() => {
-    if (ownRouteDay) return ownRouteDay.loanRows;
+    if (ownRouteDay) return [...ownRouteDay.loanRows, ...ownRouteDay.digitalLoanRows];
     if (planillaOwnsMovements || !activePlanillaRoute) return dayLoanRows;
     const routeClients = new Set(
       clients.filter((row) => sameRoute(row.route, activePlanillaRoute)).map((row) => row.ref),
@@ -1661,11 +1667,15 @@ export function CollectorMobileApp({
   /** Banco / Nequi del supervisor a clientes de esta planilla: solo reporte, la caja no los resta. */
   const digitalPool = digitalLoanPoolForRoute(newClientRoute);
   const digitalLoanRows = useMemo(
-    () => dayDigitalLoanRows(activeDate, newClientRoute, loans, clients),
-    [activeDate, newClientRoute, loans, clients],
+    () =>
+      ownRouteDay
+        ? ownRouteDay.digitalLoanRows
+        : dayDigitalLoanRows(activeDate, newClientRoute, loans, clients),
+    [ownRouteDay, activeDate, newClientRoute, loans, clients],
   );
   const digitalPrestamos = dayLoanDisbursementTotal(digitalLoanRows);
-  const prestamosKpi = viewPrestamos + digitalPrestamos;
+  /** Misma cifra que el botón «Lo que prestó» en A/N. */
+  const prestamosKpi = ownRouteDay ? loQuePresto : viewPrestamos + digitalPrestamos;
   /** Caja de la planilla: en la cadena, la cifra del libro (M = caja de M; T = saldo final del día). */
   const planillaCaja =
     chainPlanillaDay && chainOpening.kind === "chain"
@@ -2421,7 +2431,7 @@ export function CollectorMobileApp({
               onClick={() => toggleHomeCierreList("prestamos")}
             >
               <span>Lo que prestó</span>
-              <b>{money(topPrestamos)}</b>
+              <b>{money(loQuePresto)}</b>
             </button>
             <button
               type="button"
@@ -2480,7 +2490,7 @@ export function CollectorMobileApp({
                 dateLabel={queue.dateLabel}
                 planillaRows={[]}
                 prestamos={dayExpenseSplit.prestamos}
-                prestamosTotal={topPrestamos}
+                prestamosTotal={loQuePresto}
               />
             ) : (
               <p className="collector-cierre-drop-empty">Sin préstamos ese día.</p>
