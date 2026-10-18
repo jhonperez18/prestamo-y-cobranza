@@ -137,7 +137,7 @@ export type InformeRouteHistory = Record<InformeHistoryKind, { days: InformeRout
  * Informe de una planilla con caja propia (A · Angélica), día a día de `from` a `to`.
  * Cada día = el Cierre del día de la ruta (Historial → día), mismas funciones:
  *   Cobrado  = «Lo que cobró» (`routeCollectedByMethod`, todos los medios).
- *   Préstamo = «Lo que prestó» (`independentRouteMovement`, caja de la ruta).
+ *   Préstamo = «Lo que prestó» (`prestamosRuta`: efectivo + Banco/Nequi de la planilla).
  *   Gasto    = «Lo que gastó» (`independentRouteMovement`; los de A van a M/T → 0).
  */
 export function informeOwnRouteHistory(
@@ -175,7 +175,7 @@ export function informeOwnRouteHistory(
       const by = routeCollectedByMethod(day, route);
       acc.cobrado += by.efectivo + by.banco + by.nequi;
       const own = independentRouteMovement(day, route);
-      acc.prestamo += own.prestamos;
+      acc.prestamo += own.prestamosRuta;
       acc.gasto += own.gastos;
     }
     for (const kind of ["cobrado", "prestamo", "gasto"] as const) {

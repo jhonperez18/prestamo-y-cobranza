@@ -1611,7 +1611,10 @@ export function SupervisorMobileApp({
               liveDay: isLiveCashDay(collectorRef, today, dayCloses, businessTodayIso()),
             })
           : [];
-      const prestamosHoy = dayLoanDisbursementTotal(cashLoansToday);
+      // A / N: KPI = lo prestado en la ruta (efectivo + Nequi/Banco). Caja sigue con closing.
+      const prestamosHoy = independentDay
+        ? independentDay.prestamosRuta
+        : dayLoanDisbursementTotal(cashLoansToday);
 
       const closeRecord = dayCloses.find(
         (row) => row.collectorRef === collectorRef && row.date === today,

@@ -4,15 +4,17 @@
  * Cada una lleva su propia caja:
  *   Inicial de hoy = saldo real del último ajuste + movimiento de los días siguientes.
  *   Saldo del día  = Inicial + movimiento de hoy.
- * Movimiento del día:
- *   - cobrador de la cadena (A de Cristian): efectivo de la ruta − préstamos a clientes de A
+ * Movimiento del día (caja):
+ *   - cobrador de la cadena (A de Cristian): efectivo de la ruta − préstamos en efectivo a A
  *     (desde `INDEPENDENT_OWN_LOANS_FROM`; antes iban a M). Los gastos siguen en M / T.
- *   - cobrador sin cadena (N de Yesid): efectivo de la ruta − gastos − préstamos.
+ *   - cobrador sin cadena (N de Yesid): efectivo de la ruta − gastos − préstamos en efectivo.
+ * «Lo prestado en la ruta» (Historial / Informe / Cierre) = efectivo + Banco/Nequi de esa
+ * planilla. Nequi/Banco no restan de la caja ni del saldo del Historial.
  * Sin ajuste previo, el Inicial es el de siempre (`fallbackOpening`).
  *
  * El ajuste vive en el CIE- del cobrador de ese día (`routeCashAdjustments`).
  * Al cerrar N, el CIE- sella esa misma caja (`cashFloat` = closing del historial).
- * El neto del día (efectivo − gastos − préstamos) se suma al historial; no es el Inicial.
+ * El neto del día (efectivo − gastos − préstamos en efectivo) se suma al historial; no es el Inicial.
  * No toca la cadena: ni `cashFloat` de M↔T, ni `cashAdjustment` de T, ni PCE-.
  */
 import { businessTodayIso } from "@/lib/business-timezone";
@@ -33,6 +35,7 @@ import {
   loanRowsToExpenseLines,
   type DayLoanDisbursementRow,
 } from "@/lib/collector-history-planilla";
+import { dayDigitalLoanRows } from "@/lib/day-digital-loans";
 import {
   dayLoanScope,
   isChainCollectorDay,
@@ -201,11 +204,33 @@ function latestAnchorBefore(
 type RouteMovement = {
   efectivo: number;
   gastos: number;
+  /** Solo desembolsos en efectivo: restan de la caja. */
   prestamos: number;
+  /** Desembolsos Banco/Nequi de la planilla: no restan de la caja. */
+  prestamosDigital: number;
+  /** Lo prestado en la ruta ese día = efectivo + digital (Historial / Informe / Cierre). */
+  prestamosRuta: number;
   /** Gastos operativos de la planilla (A de la cadena: ninguno, van a M). */
   gastoLines: RouteExpenseLine[];
   loanRows: DayLoanDisbursementRow[];
+  digitalLoanRows: DayLoanDisbursementRow[];
 };
+
+function withRouteLoans(
+  base: Omit<RouteMovement, "prestamosDigital" | "prestamosRuta" | "digitalLoanRows">,
+  date: string,
+  route: string,
+  src: DayCashSources,
+): RouteMovement {
+  const digitalLoanRows = dayDigitalLoanRows(date, route, src.loans, src.clients);
+  const prestamosDigital = pesos(dayLoanDisbursementTotal(digitalLoanRows));
+  return {
+    ...base,
+    digitalLoanRows,
+    prestamosDigital,
+    prestamosRuta: pesos(base.prestamos + prestamosDigital),
+  };
+}
 
 /**
  * ¿Los gastos de este cobrador van a M / T ese día? Solo si trabaja una hoja de la cadena.
@@ -229,7 +254,12 @@ function routeMovement(src: DayCashSources, route: string): RouteMovement {
   const chainCollector = gastosGoToChain(src);
   const ownLoans = date >= INDEPENDENT_OWN_LOANS_FROM;
   if (chainCollector && !ownLoans) {
-    return { efectivo, gastos: 0, prestamos: 0, gastoLines: [], loanRows: [] };
+    return withRouteLoans(
+      { efectivo, gastos: 0, prestamos: 0, gastoLines: [], loanRows: [] },
+      date,
+      route,
+      src,
+    );
   }
   const lines = expensesForCollectorDay(src.collectorRef, date, src.dayCloses, src.dayExpenseDrafts);
   const gastoLines = chainCollector
@@ -239,13 +269,18 @@ function routeMovement(src: DayCashSources, route: string): RouteMovement {
   const loanRows = dayLoanDisbursementRows(date, lines, src.loans, src.clients, dayLoanScope(src)).filter(
     (row) => refs.has(row.clientRef),
   );
-  return {
-    efectivo,
-    gastos: sumExpenseLines(gastoLines),
-    prestamos: pesos(dayLoanDisbursementTotal(loanRows)),
-    gastoLines,
-    loanRows,
-  };
+  return withRouteLoans(
+    {
+      efectivo,
+      gastos: sumExpenseLines(gastoLines),
+      prestamos: pesos(dayLoanDisbursementTotal(loanRows)),
+      gastoLines,
+      loanRows,
+    },
+    date,
+    route,
+    src,
+  );
 }
 
 /** Movimiento propio de A / N ese día (sin Inicial): mismo que suma su caja. */
@@ -279,14 +314,24 @@ export function independentRouteCollected(
   };
 }
 
-/** Renglones de gasto y préstamo del día de la planilla (los mismos que suma su caja). */
+/**
+ * Renglones del Cierre / «Lo que prestó»: gastos de caja + préstamos en efectivo
+ * + préstamos Banco/Nequi de la planilla (estos últimos no restan de la caja).
+ */
 export function independentRouteDayLines(day: IndependentRouteDay): RouteExpenseLine[] {
-  return [...day.gastoLines, ...loanRowsToExpenseLines(day.loanRows)];
+  return [
+    ...day.gastoLines,
+    ...loanRowsToExpenseLines(day.loanRows),
+    ...loanRowsToExpenseLines(day.digitalLoanRows),
+  ];
 }
 
 type HistoryRowLike = { date: string; gasto: number; prestamo: number; saldo: number };
 
-/** Historial de A / N: gasto, préstamo y saldo de la caja propia (misma cifra que la tarjeta). */
+/**
+ * Historial de A / N: gasto y saldo = caja propia (misma cifra que la tarjeta).
+ * Columna PRÉSTAMO = lo prestado en la ruta (efectivo + Banco/Nequi).
+ */
 export function withIndependentRouteHistory<Row extends HistoryRowLike>(
   rows: Row[],
   src: Omit<DayCashSources, "date">,
@@ -295,7 +340,7 @@ export function withIndependentRouteHistory<Row extends HistoryRowLike>(
 ): Row[] {
   return rows.map((row) => {
     const day = independentRouteDay({ ...src, date: row.date }, route, book);
-    return { ...row, gasto: day.gastos, prestamo: day.prestamos, saldo: day.closing };
+    return { ...row, gasto: day.gastos, prestamo: day.prestamosRuta, saldo: day.closing };
   });
 }
 
@@ -365,11 +410,14 @@ export function independentRouteDay(
   const today = routeMovement({ ...src, date }, route);
   const booked = date < businessTodayIso() ? book?.get(date) : undefined;
   if (booked) {
+    const prestamos = pesos(booked.prestamos);
     return {
       ...today,
       efectivo: booked.efectivo,
       gastos: booked.gastos,
-      prestamos: booked.prestamos,
+      prestamos,
+      // Digital siempre desde fichas del día: el libro solo sella la caja (efectivo).
+      prestamosRuta: pesos(prestamos + today.prestamosDigital),
       route,
       date,
       anchored: true,

@@ -275,7 +275,8 @@ A y N llevan su propia caja. Un solo dueño: `lib/independent-route-cash.ts` (`i
 | Pieza | Regla |
 | --- | --- |
 | Inicial hoy | Saldo real del último ajuste de esa planilla + movimiento de los días siguientes. Sin ajuste previo: el de siempre |
-| Movimiento | A (Cristian, cobrador de la cadena): efectivo de A − préstamos a clientes de A (desde `INDEPENDENT_OWN_LOANS_FROM` = 2026-09-30; antes salían de M y esos días no se recalculan). Sus gastos siguen en M/T. N (Yesid, sin cadena): efectivo − gastos − préstamos |
+| Movimiento (caja) | A (Cristian, cobrador de la cadena): efectivo de A − préstamos en efectivo a A (desde `INDEPENDENT_OWN_LOANS_FROM` = 2026-09-30; antes salían de M y esos días no se recalculan). Sus gastos siguen en M/T. N (Yesid, sin cadena): efectivo − gastos − préstamos en efectivo |
+| Lo prestado (Historial / Cierre / Informe A) | `prestamosRuta` = efectivo + Banco/Nequi de esa planilla. Nequi/Banco no restan del saldo de caja |
 | Ajuste | Supervisor → ruta A/N → Historial → saldo de hoy. Solo hoy, con el CIE- del cobrador sellado, antes de medianoche (`routeCashAdjustmentWindow`) |
 | Dónde vive | `routeCashAdjustments` del CIE- del día; nube: entrada `AJUSTE@A:` / `AJUSTE@N:` en `movement_refs` |
 | Qué no | `cashFloat`, ajuste de T, PCE-, libro M→T, cuotas, pagos, días pasados |
@@ -383,7 +384,8 @@ desde el día 1. Un solo dueño: `lib/informe-route-days.ts` (`informeRouteHisto
  `SupervisorOwnRouteReport`): Cartera A · Efectivo A (`independentRouteDay`, la cifra de su tarjeta) ·
  Nequi (`digitalPoolBalances().nequi`) · Gran total. Botones de abajo: `informeOwnRouteHistory`
  = el Cierre del día de A (Historial → día), solo del cobrador de la planilla A: Cobrado = «Lo que cobró»,
- Préstamo = «Lo que prestó», Gasto = «Lo que gastó» (los de A van a M/T). Nada que el cierre no muestre.
+ Préstamo = `prestamosRuta` (efectivo + Nequi de A), Gasto = «Lo que gastó» (los de A van a M/T).
+ Nada que el cierre no muestre.
 
 ## Renovar = sin plata (caso Nelson Jefe 08/10)
 
