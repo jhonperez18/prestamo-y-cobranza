@@ -2977,21 +2977,86 @@ export function CollectorMobileApp({
                           )}
                           <button
                             type="button"
-                            className="collector-mobile-pay-sticker"
+                            className={
+                              renewEnabled
+                                ? "collector-mobile-pay-sticker is-renew-alert"
+                                : "collector-mobile-pay-sticker"
+                            }
                             disabled={!canCollect || !onRegisterPayment}
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
                               togglePay(item);
                             }}
-                            title={isOpen ? "Cobro abierto" : "Pagar"}
-                            aria-label={isOpen ? "Cobro abierto" : "Pagar"}
+                            title={
+                              isOpen
+                                ? "Cobro abierto"
+                                : renewEnabled
+                                  ? "Pagar · listo para renovar"
+                                  : "Pagar"
+                            }
+                            aria-label={
+                              isOpen
+                                ? "Cobro abierto"
+                                : renewEnabled
+                                  ? "Pagar · listo para renovar"
+                                  : "Pagar"
+                            }
                             aria-expanded={isOpen}
                           >
                             <svg viewBox="0 0 16 12" aria-hidden="true" focusable="false">
-                              <rect x="0.5" y="0.5" width="15" height="11" rx="1.5" fill="#dcfce7" stroke="#15803d" strokeWidth="1" />
-                              <circle cx="8" cy="6" r="2.2" fill="none" stroke="#15803d" strokeWidth="1" />
-                              <path d="M3 3.2h1.2M3 8.8h1.2M11.8 3.2H13M11.8 8.8H13" stroke="#15803d" strokeWidth="1" strokeLinecap="round" />
+                              {renewEnabled ? (
+                                <>
+                                  <rect
+                                    x="0.5"
+                                    y="0.5"
+                                    width="15"
+                                    height="11"
+                                    rx="1.5"
+                                    fill="#fef3c7"
+                                    stroke="#d97706"
+                                    strokeWidth="1"
+                                  />
+                                  <path
+                                    d="M3 3.2h1.2M3 8.8h1.2M11.8 3.2H13M11.8 8.8H13"
+                                    stroke="#d97706"
+                                    strokeWidth="1"
+                                    strokeOpacity="0.55"
+                                    strokeLinecap="round"
+                                  />
+                                  <text
+                                    x="8"
+                                    y="8.2"
+                                    textAnchor="middle"
+                                    fill="#b45309"
+                                    fontSize="7.5"
+                                    fontWeight="700"
+                                    fontFamily="system-ui,Segoe UI,sans-serif"
+                                  >
+                                    V
+                                  </text>
+                                </>
+                              ) : (
+                                <>
+                                  <rect
+                                    x="0.5"
+                                    y="0.5"
+                                    width="15"
+                                    height="11"
+                                    rx="1.5"
+                                    fill="#dcfce7"
+                                    stroke="#15803d"
+                                    strokeWidth="1"
+                                  />
+                                  <circle cx="8" cy="6" r="2.2" fill="none" stroke="#15803d" strokeWidth="1" />
+                                  <path
+                                    d="M3 3.2h1.2M3 8.8h1.2M11.8 3.2H13M11.8 8.8H13"
+                                    stroke="#15803d"
+                                    strokeWidth="1"
+                                    strokeLinecap="round"
+                                  />
+                                </>
+                              )}
                             </svg>
                           </button>
                         </>

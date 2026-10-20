@@ -3502,6 +3502,10 @@
     .collector-mobile-pay-sticker:not(:disabled):hover svg rect {
       fill: #bbf7d0;
     }
+    /* Listo para renovar / vencido: billete ámbar con V (solo vista). */
+    .collector-mobile-pay-sticker.is-renew-alert:not(:disabled):hover svg rect {
+      fill: #fde68a;
+    }
     .collector-mobile-pay-sticker.is-lend-check {
       width: 16px;
       height: 16px;
