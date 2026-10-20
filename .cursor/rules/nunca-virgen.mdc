@@ -1,0 +1,29 @@
+---
+description: Prohibido mezclar o mencionar VIRGEN en este producto (autoprestamos / PRESTAMO Y COBRANZA).
+alwaysApply: true
+---
+
+# Nunca VIRGEN — sellado (dueño 19/10/2026)
+
+## Ley
+
+Este repo (**PRESTAMO Y COBRANZA** / autoprestamos.org) y el proyecto **VIRGEN** son
+mundos aparte. **Jamás** se mezclan.
+
+## Prohibido
+
+- Mencionar VIRGEN como ensayo, copia, plantilla o destino de cambios de este producto.
+- Copiar código, datos, `.env`, Supabase, dominio o commits entre este repo y VIRGEN
+  «para probar» algo de cobradores / plata / fases.
+- Sugerir «hazlo primero en VIRGEN» o «ensayo en VIRGEN».
+- Abrir, editar o desplegar VIRGEN desde una conversación de este producto, salvo que el
+  dueño lo pida **explícitamente** con la palabra VIRGEN y un pedido solo de ese proyecto.
+
+## Ensayo de este producto
+
+Si hace falta ensayo: **solo** taller local de este repo (`localhost:3000`) y/o la copia
+de ensayo del **mismo** VPS/producto que indique el dueño — nunca VIRGEN.
+
+## Si el agente lo menciona
+
+Corregirse al instante y no volver a proponerlo.

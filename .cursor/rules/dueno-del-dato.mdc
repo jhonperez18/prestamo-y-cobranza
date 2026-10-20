@@ -36,8 +36,15 @@ Primero dice qué es lo mejor para el negocio, después hace lo que el dueño de
 ## Rumbo (modelo banco)
 
 Modelo: `register_collection` (cobro atómico, idempotente, saldo en la base).
-Pendiente pasar al mismo modelo: préstamos (crear / modificar / renovar / baja), cierres (CIE- + planilla),
-saldos (caja M/T, Inicial, A/N, Banco/Nequi) calculados por la base, catálogo del banco con cuenta de efectivo por marca.
+
+| Pieza | Estado |
+| --- | --- |
+| Préstamos (órdenes + `_loan_settle`) | **CERRADO** — no rehacer (ver `fases-dueno-dato.mdc`) |
+| Cobros (dueño total en la base) | Pendiente |
+| Saldos (caja, Inicial, A/N, Banco/Nequi) | Pendiente |
+| Cierres (CIE- + planilla por orden al servidor) | Pendiente (2a sombra ≠ cerrado) |
+
+Estado firme y prohibiciones: `.cursor/rules/fases-dueno-dato.mdc`.
 
 ## Forma de trabajo
 
