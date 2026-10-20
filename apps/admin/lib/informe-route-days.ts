@@ -1,14 +1,14 @@
 /**
  * Informe del supervisor → historial diario de Cobrado / Préstamo / Gasto por ruta (M · T · N).
  * Solo lee a los dueños de cada cifra; aquí no hay fórmula propia:
- *   Cobrado  = `routeCollectedByMethod` (todos los medios, por ruta del cliente).
+ *   Cobrado  = `routeCobradoDayTotal` (efectivo + pool digital de la ruta, con Caja/oficina).
  *   Préstamo = efectivo del libro (`buildDayCashLedger().m/.t`, N: `independentRouteMovement`)
  *              + Banco / Nequi (`dayDigitalLoanRows`, por ruta del cliente).
  *   Gasto    = gastos operativos del libro (M / T) o de la caja de N (sin capital prestado).
  * A lleva dinero aparte y no entra.
  */
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
-import { chainDayMovements, routeCollectedByMethod, type DayCashSources } from "@/lib/day-cash-ledger";
+import { chainDayMovements, routeCobradoDayTotal, type DayCashSources } from "@/lib/day-cash-ledger";
 import { dayDigitalLoanRows } from "@/lib/day-digital-loans";
 import { pesos } from "@/lib/finance";
 import {
@@ -57,8 +57,7 @@ function emptyDay(): DayAcc {
 
 function collectorDay(src: DayCashSources, acc: DayAcc) {
   for (const route of INFORME_HISTORY_ROUTES) {
-    const by = routeCollectedByMethod(src, route);
-    acc.cobrado[route] += by.efectivo + by.banco + by.nequi;
+    acc.cobrado[route] += routeCobradoDayTotal(src, route);
   }
   if (collectorGastosGoToChain(src)) {
     const { m, t } = chainDayMovements(src);
@@ -136,7 +135,7 @@ export type InformeRouteHistory = Record<InformeHistoryKind, { days: InformeRout
 /**
  * Informe de una planilla con caja propia (A · Angélica), día a día de `from` a `to`.
  * Cada día = el Cierre del día de la ruta (Historial → día), mismas funciones:
- *   Cobrado  = «Lo que cobró» (`routeCollectedByMethod`, todos los medios).
+ *   Cobrado  = «Lo que cobró» (`routeCobradoDayTotal`, efectivo + pool, con Caja/oficina).
  *   Préstamo = «Lo que prestó» (`prestamosRuta`: efectivo + Banco/Nequi de la planilla).
  *   Gasto    = «Lo que gastó» (`independentRouteMovement`; los de A van a M/T → 0).
  */
@@ -172,8 +171,7 @@ export function informeOwnRouteHistory(
         collectorName: collector.name,
         date,
       };
-      const by = routeCollectedByMethod(day, route);
-      acc.cobrado += by.efectivo + by.banco + by.nequi;
+      acc.cobrado += routeCobradoDayTotal(day, route);
       const own = independentRouteMovement(day, route);
       acc.prestamo += own.prestamosRuta;
       acc.gasto += own.gastos;

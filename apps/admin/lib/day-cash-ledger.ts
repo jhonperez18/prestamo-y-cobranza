@@ -271,6 +271,61 @@ export function routeCobradoDayTotal(src: DayCashSources, routeName: string): nu
   );
 }
 
+/**
+ * Desglose del cobrado del día por ruta — UN solo dueño para Total, COBROS,
+ * Informe · Cobrado, Historial · Cobros y recaudo del cobrador en esa planilla.
+ */
+export function routeCobradoBreakdown(
+  src: DayCashSources,
+  routeName: string,
+): {
+  efectivo: number;
+  nequi: number;
+  banco: number;
+  digital: number;
+  total: number;
+  payments: PaymentRow[];
+} {
+  const digital = routeDigitalCollected(src, routeName);
+  const efectivo = routeCashCollected(src, routeName);
+  const payments = routeCobradoDayPayments(src, routeName);
+  const total = pesos(efectivo + digital.nequi + digital.banco);
+  return {
+    efectivo,
+    nequi: digital.nequi,
+    banco: digital.banco,
+    digital: pesos(digital.nequi + digital.banco),
+    total,
+    payments,
+  };
+}
+
+type CobradoHistoryRow = {
+  date: string;
+  cobro: number;
+  cobroEfectivo?: number;
+};
+
+/**
+ * Historial de ruta: columna Cobros = `routeCobradoDayTotal` (misma cifra que Total / COBROS).
+ * No recalcula saldo ni gasto ni préstamo.
+ */
+export function withRouteCobradoHistory<Row extends CobradoHistoryRow>(
+  rows: Row[],
+  src: Omit<DayCashSources, "date">,
+  routeName: string,
+): Row[] {
+  return rows.map((row) => {
+    const day = { ...src, date: row.date };
+    const breakdown = routeCobradoBreakdown(day, routeName);
+    return {
+      ...row,
+      cobro: breakdown.total,
+      ...(row.cobroEfectivo != null ? { cobroEfectivo: breakdown.efectivo } : {}),
+    };
+  });
+}
+
 /** Reparto M↔T del día: préstamos por ruta del cliente; gastos por planilla donde se anotaron. */
 export function chainRouteSplit(
   src: DayCashSources,

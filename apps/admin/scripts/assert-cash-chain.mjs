@@ -2077,8 +2077,10 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     true,
   );
   expect(
-    "INICIO ruta: Banco / Nequi leen routeDigitalCollected",
-    bancoSrc.includes("routeDigitalCollected"),
+    "INICIO ruta: Banco / Nequi leen routeCobradoBreakdown (pool digital dentro)",
+    bancoSrc.includes("routeCobradoBreakdown") &&
+      ledgerSrc.includes("export function routeCobradoBreakdown") &&
+      ledgerSrc.includes("routeDigitalCollected(src, routeName)"),
     true,
   );
   expect(
@@ -3845,19 +3847,23 @@ console.log("— Bajada liviana —");
 console.log("— Informe: historial por ruta —");
 {
   const { informeRouteHistory } = await import("@/lib/informe-route-days");
-  const { routeCollectedByMethod } = await import("@/lib/day-cash-ledger");
+  const { routeCobradoDayTotal } = await import("@/lib/day-cash-ledger");
   const hist = informeRouteHistory(baseT, [COB.ref], D, D);
   const dayOf = (kind) => hist[kind].days.find((row) => row.date === D);
-  const collected = (route) => {
-    const by = routeCollectedByMethod(baseT, route);
-    return by.efectivo + by.banco + by.nequi;
-  };
   expect("Informe · Préstamo M = libro M", dayOf("prestamo")?.M ?? null, ledgerT.m.prestamos);
   expect("Informe · Préstamo T = libro T", dayOf("prestamo")?.T ?? null, ledgerT.t.prestamos);
   expect("Informe · Gasto M = libro M (sin capital prestado)", dayOf("gasto")?.M ?? null, ledgerT.m.gastos);
   expect("Informe · Gasto T = libro T", dayOf("gasto")?.T ?? null, ledgerT.t.gastos);
-  expect("Informe · Cobrado M = cobros de clientes de M", dayOf("cobrado")?.M ?? null, collected("M"));
-  expect("Informe · Cobrado T = cobros de clientes de T", dayOf("cobrado")?.T ?? null, collected("T"));
+  expect(
+    "Informe · Cobrado M = routeCobradoDayTotal (misma cifra que Total / COBROS)",
+    dayOf("cobrado")?.M ?? null,
+    routeCobradoDayTotal(baseT, "M"),
+  );
+  expect(
+    "Informe · Cobrado T = routeCobradoDayTotal (misma cifra que Total / COBROS)",
+    dayOf("cobrado")?.T ?? null,
+    routeCobradoDayTotal(baseT, "T"),
+  );
   expect(
     "Informe · Total del día = T + M + N",
     dayOf("prestamo")?.total ?? null,

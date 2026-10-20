@@ -138,7 +138,11 @@ import {
   buildDayCashLedger,
   chainHistorySplit,
   primaryClosingForDay,
+  routeCashPayments,
+  routeCobradoBreakdown,
+  routeDigitalPayments,
   withLedgerTodaySaldo,
+  withRouteCobradoHistory,
   withSealedDaySaldos,
 } from "@/lib/day-cash-ledger";
 import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
@@ -783,27 +787,32 @@ export function CollectorMobileApp({
       fallbackOpening: mCarriedFallbackOpening,
       primaryClosingByDate,
     });
+    const cobradoSrc = {
+      collectorRef: collector.ref,
+      collectorName: collector.name,
+      payments: livePayments,
+      loans,
+      clients,
+      collectors: [collector] as CollectorRow[],
+      assignments,
+      dayCloses,
+      dayExpenseDrafts,
+      planillaCashCloses,
+      monthCloses,
+    };
     if (routeForHistory && isIndependentSaldoRoute(routeForHistory)) {
       return withIndependentRouteHistory(
         stamped,
-        {
-          collectorRef: collector.ref,
-          collectorName: collector.name,
-          payments: livePayments,
-          loans,
-          clients,
-          collectors: [collector],
-          assignments,
-          dayCloses,
-          dayExpenseDrafts,
-          planillaCashCloses,
-          monthCloses,
-        },
+        cobradoSrc,
         routeForHistory,
         cashBookFor(routeForHistory),
       );
     }
-    if (!isPlanillaCashChainSecondary(routeForHistory ?? undefined)) return stamped;
+    if (!isPlanillaCashChainSecondary(routeForHistory ?? undefined)) {
+      return routeForHistory
+        ? withRouteCobradoHistory(stamped, cobradoSrc, routeForHistory)
+        : stamped;
+    }
     const todayDate = date ?? todayIso();
     const todayLedger = buildDayCashLedger({
       collectorRef: collector.ref,
@@ -821,10 +830,13 @@ export function CollectorMobileApp({
       fallbackOpening:
         todayDate === PLANILLA_CASH_CHAIN_HISTORY_EPOCH ? mCarriedFallbackOpening : undefined,
     });
-    return withLedgerTodaySaldo(
+    const withSaldo = withLedgerTodaySaldo(
       withSealedDaySaldos(stamped, collector.ref, dayCloses, todayDate),
       todayLedger,
     );
+    return routeForHistory
+      ? withRouteCobradoHistory(withSaldo, cobradoSrc, routeForHistory)
+      : withSaldo;
   }, [
     activeDate,
     assignments,
@@ -1135,28 +1147,48 @@ export function CollectorMobileApp({
       return Boolean(loan?.clientRef && routeClientRefs.has(loan.clientRef));
     });
   }, [dayPays, loans, routeClientRefs]);
-  /** Recaudo de la planilla activa (ruta 1.1 sin PG- = ceros, sin inventar). */
+  /** Recaudo de la planilla activa = misma fórmula que Total / COBROS del supervisor. */
   const planillaRecaudo = useMemo(() => {
     if (!activePlanillaRoute) return recaudo;
-    let efectivo = 0;
-    let nequi = 0;
-    let banco = 0;
-    for (const row of routeDayPays) {
-      const amount = Number(row.amount) || 0;
-      const method = normalizePaymentMethod(row.method);
-      if (method === "nequi") nequi += amount;
-      else if (method === "banco") banco += amount;
-      else efectivo += amount;
-    }
+    const breakdown = routeCobradoBreakdown(
+      {
+        collectorRef: collector.ref,
+        collectorName: collector.name,
+        date: activeDate,
+        payments: livePayments,
+        loans,
+        clients,
+        collectors: [collector],
+        assignments,
+        dayCloses,
+        dayExpenseDrafts,
+        planillaCashCloses,
+        monthCloses,
+      },
+      activePlanillaRoute,
+    );
     return {
-      efectivo,
-      nequi,
-      banco,
-      digital: nequi + banco,
-      total: efectivo + nequi + banco,
-      count: routeDayPays.length,
+      efectivo: breakdown.efectivo,
+      nequi: breakdown.nequi,
+      banco: breakdown.banco,
+      digital: breakdown.digital,
+      total: breakdown.total,
+      count: breakdown.payments.length,
     };
-  }, [activePlanillaRoute, routeDayPays, recaudo]);
+  }, [
+    activeDate,
+    activePlanillaRoute,
+    assignments,
+    clients,
+    collector,
+    dayCloses,
+    dayExpenseDrafts,
+    livePayments,
+    loans,
+    monthCloses,
+    planillaCashCloses,
+    recaudo,
+  ]);
   const planillaNequiShown = planillaIsA ? planillaRecaudo.digital : planillaRecaudo.nequi;
   /** Primer PG- del día por crédito: ahí va el botón / etiqueta «Préstamo». */
   const reloanAnchorByLoan = useMemo(() => {
@@ -1540,15 +1572,29 @@ export function CollectorMobileApp({
     () => closedPlanilla.filter((row) => row.method === "np"),
     [closedPlanilla],
   );
-  /** Efectivo / Banco (Nequi en A) / N/P: la lista sale con las columnas de la planilla del día. */
+  /** Efectivo / Banco (Nequi en A) / N/P: mismas listas que el libro de la ruta. */
   const homeCierreRows = useMemo(() => {
     if (homeCierreKind === "np") return homeNpRows;
     if (homeCierreKind !== "efectivo" && homeCierreKind !== "digital") return null;
-    const wantDigital = homeCierreKind === "digital";
-    const pays = routeDayPays.filter((pay) => {
-      const method = normalizePaymentMethod(pay.method);
-      return (method === "nequi" || method === "banco") === wantDigital;
-    });
+    if (!activePlanillaRoute) return null;
+    const daySrc = {
+      collectorRef: collector.ref,
+      collectorName: collector.name,
+      date: activeDate,
+      payments: livePayments,
+      loans,
+      clients,
+      collectors: [collector],
+      assignments,
+      dayCloses,
+      dayExpenseDrafts,
+      planillaCashCloses,
+      monthCloses,
+    };
+    const pays =
+      homeCierreKind === "digital"
+        ? routeDigitalPayments(daySrc, activePlanillaRoute)
+        : routeCashPayments(daySrc, activePlanillaRoute);
     return buildCollectorHistoryPlanillaRows({
       dateIso: activeDate,
       dispatched: [],
@@ -1556,7 +1602,21 @@ export function CollectorMobileApp({
       loans,
       clients,
     });
-  }, [homeCierreKind, homeNpRows, routeDayPays, activeDate, loans, clients]);
+  }, [
+    homeCierreKind,
+    homeNpRows,
+    activePlanillaRoute,
+    activeDate,
+    collector,
+    livePayments,
+    loans,
+    clients,
+    assignments,
+    dayCloses,
+    dayExpenseDrafts,
+    planillaCashCloses,
+    monthCloses,
+  ]);
 
   const pendingRouteStarts = routeBlockStarts(visibleItems, (item) =>
     assignmentRouteName(item, clients),

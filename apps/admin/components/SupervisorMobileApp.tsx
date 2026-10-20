@@ -177,10 +177,9 @@ import {
   buildDayCashLedger,
   chainDayCuadre,
   primaryClosingForDay,
-  routeCashCollected,
+  routeCobradoBreakdown,
   routeCobradoDayPayments,
-  routeCobradoDayTotal,
-  routeDigitalCollected,
+  withRouteCobradoHistory,
   withSealedDaySaldos,
   chainHistorySplit,
   withLedgerTodaySaldo,
@@ -1550,7 +1549,7 @@ export function SupervisorMobileApp({
             enCaja: 0,
           };
 
-      // Una sola fórmula: efectivo (caja) + digital del bolsillo de la ruta (= COBROS).
+      // Una sola fórmula: routeCobradoBreakdown (= Total, COBROS, Informe, Historial).
       const dayCashSrc = collector
         ? {
             collectorRef: collector.ref,
@@ -1567,17 +1566,13 @@ export function SupervisorMobileApp({
             monthCloses,
           }
         : null;
-      const digitalCollected = dayCashSrc
-        ? routeDigitalCollected(dayCashSrc, route.routeName)
-        : { nequi: 0, banco: 0, payments: [] };
-      const cobradoEfectivo = dayCashSrc
-        ? routeCashCollected(dayCashSrc, route.routeName)
-        : 0;
-      const cobradoNequi = digitalCollected.nequi;
-      const cobradoBanco = digitalCollected.banco;
-      const cobradoHoy = dayCashSrc
-        ? routeCobradoDayTotal(dayCashSrc, route.routeName)
-        : 0;
+      const cobrado = dayCashSrc
+        ? routeCobradoBreakdown(dayCashSrc, route.routeName)
+        : { efectivo: 0, nequi: 0, banco: 0, digital: 0, total: 0, payments: [] };
+      const cobradoEfectivo = cobrado.efectivo;
+      const cobradoNequi = cobrado.nequi;
+      const cobradoBanco = cobrado.banco;
+      const cobradoHoy = cobrado.total;
 
       const rawExpenses = expensesForCollectorDay(
         collectorRef,
@@ -2732,7 +2727,23 @@ export function SupervisorMobileApp({
       const sealed = withSealedDaySaldos(stamped, openRoute.collectorRef, dayCloses, today);
       const ledger = ledgerByCollector.get(openRoute.collectorRef);
       const withToday = ledger ? withLedgerTodaySaldo(sealed, ledger) : sealed;
-      return withToday;
+      return withRouteCobradoHistory(
+        withToday,
+        {
+          collectorRef: collector.ref,
+          collectorName: collector.name,
+          payments,
+          loans,
+          clients,
+          collectors: [collector],
+          assignments,
+          dayCloses,
+          dayExpenseDrafts,
+          planillaCashCloses,
+          monthCloses,
+        },
+        openRoute.routeName,
+      );
     }
 
     if (isIndependentSaldoRoute(openRoute.routeName)) {
@@ -2784,7 +2795,7 @@ export function SupervisorMobileApp({
 
     // M: extracto con hoy incluido (Inicial lleno, Saldo — si aún no cerró).
     const visible = withCashHand.filter((row) => row.date <= today);
-    return annotateMHistoryExtractRows({
+    const annotated = annotateMHistoryExtractRows({
       rows: visible,
       collectorRef: openRoute.collectorRef,
       records: planillaCashCloses,
@@ -2799,6 +2810,23 @@ export function SupervisorMobileApp({
       monthCloses,
       primaryClosingFor,
     });
+    return withRouteCobradoHistory(
+      annotated,
+      {
+        collectorRef: collector.ref,
+        collectorName: collector.name,
+        payments,
+        loans,
+        clients,
+        collectors: [collector],
+        assignments,
+        dayCloses,
+        dayExpenseDrafts,
+        planillaCashCloses,
+        monthCloses,
+      },
+      openRoute.routeName,
+    );
   }, [
     openRoute,
     openRouteScope,

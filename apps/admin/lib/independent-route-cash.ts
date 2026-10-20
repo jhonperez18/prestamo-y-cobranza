@@ -42,6 +42,7 @@ import {
   routeCashCollected,
   routeClientRefsForDay,
   routeCashPayments,
+  routeCobradoBreakdown,
   routeCollectedByMethod,
   routeDigitalCollected,
   sealedDayCash,
@@ -326,11 +327,19 @@ export function independentRouteDayLines(day: IndependentRouteDay): RouteExpense
   ];
 }
 
-type HistoryRowLike = { date: string; gasto: number; prestamo: number; saldo: number };
+type HistoryRowLike = {
+  date: string;
+  gasto: number;
+  prestamo: number;
+  saldo: number;
+  cobro?: number;
+  cobroEfectivo?: number;
+};
 
 /**
  * Historial de A / N: gasto y saldo = caja propia (misma cifra que la tarjeta).
  * Columna PRÉSTAMO = lo prestado en la ruta (efectivo + Banco/Nequi).
+ * Columna COBROS = `routeCobradoDayTotal` (misma cifra que Total / COBROS).
  */
 export function withIndependentRouteHistory<Row extends HistoryRowLike>(
   rows: Row[],
@@ -339,8 +348,17 @@ export function withIndependentRouteHistory<Row extends HistoryRowLike>(
   book?: RouteCashBook | null,
 ): Row[] {
   return rows.map((row) => {
-    const day = independentRouteDay({ ...src, date: row.date }, route, book);
-    return { ...row, gasto: day.gastos, prestamo: day.prestamosRuta, saldo: day.closing };
+    const daySrc = { ...src, date: row.date };
+    const day = independentRouteDay(daySrc, route, book);
+    const cobrado = routeCobradoBreakdown(daySrc, route);
+    return {
+      ...row,
+      gasto: day.gastos,
+      prestamo: day.prestamosRuta,
+      saldo: day.closing,
+      ...(row.cobro != null ? { cobro: cobrado.total } : {}),
+      ...(row.cobroEfectivo != null ? { cobroEfectivo: cobrado.efectivo } : {}),
+    };
   });
 }
 
