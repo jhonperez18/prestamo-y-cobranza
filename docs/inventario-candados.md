@@ -77,7 +77,7 @@ Solo se quitan `expect` de **candado** cuya causa ya cubre la base. Las **reglas
 | Lote | Qué | ¿Se toca? | Nota |
 | --- | --- | --- | --- |
 | **1a** | §16 candados Albornoz «no rehace fichas / no da de baja copias» (~6) | **HECHO 19/10** | Quitados del assert; sync nube (drop / loan_missing) se quedó como regla |
-| **1b** | §26 Choque P-434 / Reintento Celina / duplicados (~30) | Segundo lote | Idempotencia `create_loan` ya en base; revisar uno a uno |
+| **1b** | §26 renglón GAS- / rename | **HECHO 19/10 (limpio)** | Nombres de caso genéricos. **Expect se quedan**: el renglón GAS- sigue en el aparato (borrarlos = daño). Borrado funcional → Fase 3 Saldos |
 | **1c** | §30 solo los ~4 candados de renovar (no las reglas +20 % / sin plata) | Tercer lote | `renew_loan` ya en base |
 | **No tocar aún** | §14 Prestar atendido (~12) | Se queda | Es **regla** de planilla |
 | **No tocar aún** | §14 Haber Banco Albornoz (~39) | Se queda | Mezcla Fase **3 Saldos** |

@@ -4413,7 +4413,9 @@ console.log("— Cupo del aparato —");
 }
 
 {
-  console.log("\n— P- chocado entre aparatos: Bader no borra a Dary (M 07/10) —");
+  // Reglas del renglón GAS- / rename (aparato sigue dueño del renglón → se quedan hasta Fase 3).
+  // Lote 1b: nombres de caso limpios; no se borran los expect (dañarían la caja).
+  console.log("\n— Renglón GAS-: mismo P- no pisa a otro cliente; reintento une ficha —");
   const { appendCashDisbursementExpense: appendLoanLine, cashLineIsLoanOf } = await import(
     "@/lib/collector-day-close"
   );
@@ -4423,19 +4425,19 @@ console.log("— Cupo del aparato —");
     date: "2026-10-07",
     routeRef: "M",
   };
-  let drafts = appendLoanLine([], { ...base, loan: { ref: "P-434", client: "Dary Amor", capital: 900_000 } });
-  drafts = appendLoanLine(drafts, { ...base, loan: { ref: "P-434", client: "Bader", capital: 1_000_000 } });
+  let drafts = appendLoanLine([], { ...base, loan: { ref: "P-434", client: "Ana Uno", capital: 900_000 } });
+  drafts = appendLoanLine(drafts, { ...base, loan: { ref: "P-434", client: "Luis Dos", capital: 1_000_000 } });
   const lines = drafts[0]?.expenses ?? [];
   expect(
-    "Mismo P-434 de otro cliente: quedan Dary 900.000 y Bader 1.000.000",
+    "Mismo P- de otro cliente: quedan ambos renglones (900.000 y 1.000.000)",
     lines.map((row) => `${row.label}=${row.amount}`).sort().join(" | "),
-    "Préstamo · P-434 · Bader=1000000 | Préstamo · P-434 · Dary Amor=900000",
+    "Préstamo · P-434 · Ana Uno=900000 | Préstamo · P-434 · Luis Dos=1000000",
   );
-  drafts = appendLoanLine(drafts, { ...base, loan: { ref: "P-434", client: "Dary Amor", capital: 900_000 } });
+  drafts = appendLoanLine(drafts, { ...base, loan: { ref: "P-434", client: "Ana Uno", capital: 900_000 } });
   expect("Mismo préstamo otra vez: no se duplica", drafts[0]?.expenses.length, 2);
   expect(
-    "Renombre P-434 → P-442 de Bader no toca a Dary",
-    cashLineIsLoanOf({ loanRef: "P-434", label: "Préstamo · P-434 · Dary Amor" }, "P-434", "Bader"),
+    "Renombre P-434 → P-442 de un cliente no toca el renglón del otro",
+    cashLineIsLoanOf({ loanRef: "P-434", label: "Préstamo · P-434 · Ana Uno" }, "P-434", "Luis Dos"),
     false,
   );
   const { dayLoanDisbursementRows: loanRowsM, dayLoanDisbursementTotal: loanTotalM } = await import(
@@ -4445,10 +4447,10 @@ console.log("— Cupo del aparato —");
   const mClient = (ref, name) => ({ ref, name, lastName: "", route: "M", status: "Activo" });
   const mClients = [
     mClient("COD-CEC", "Cecilia"),
-    mClient("COD-62", "Dary Amor"),
-    mClient("COD-57", "Enrique"),
-    mClient("COD-65", "Celina"),
-    mClient("COD-37", "Bader"),
+    mClient("COD-62", "Ana Uno"),
+    mClient("COD-57", "Pedro Cuatro"),
+    mClient("COD-65", "María Tres"),
+    mClient("COD-37", "Luis Dos"),
   ];
   const mLoan = (ref, clientRef, client, capital) => ({
     ref,
@@ -4462,15 +4464,15 @@ console.log("— Cupo del aparato —");
   });
   const mLoans = [
     mLoan("P-425", "COD-CEC", "Cecilia", 1_000_000),
-    mLoan("P-434", "COD-62", "Dary Amor", 900_000),
-    mLoan("P-435", "COD-57", "Enrique", 300_000),
-    mLoan("P-437", "COD-65", "Celina", 2_000_000),
-    mLoan("P-442", "COD-37", "Bader", 1_000_000),
+    mLoan("P-434", "COD-62", "Ana Uno", 900_000),
+    mLoan("P-435", "COD-57", "Pedro Cuatro", 300_000),
+    mLoan("P-437", "COD-65", "María Tres", 2_000_000),
+    mLoan("P-442", "COD-37", "Luis Dos", 1_000_000),
   ];
   const brokenLines = [
     { id: "prestamo", label: "Préstamo · P-425 · Cecilia", amount: 1_000_000, loanRef: "P-425", category: "prestamo_ruta" },
-    { id: "prestamo", label: "Préstamo · P-434 · Bader", amount: 1_000_000, loanRef: "P-434", category: "prestamo_ruta" },
-    { id: "prestamo", label: "Préstamo · P-443 · Celina", amount: 2_000_000, loanRef: "P-443", category: "prestamo_ruta" },
+    { id: "prestamo", label: "Préstamo · P-434 · Luis Dos", amount: 1_000_000, loanRef: "P-434", category: "prestamo_ruta" },
+    { id: "prestamo", label: "Préstamo · P-443 · María Tres", amount: 2_000_000, loanRef: "P-443", category: "prestamo_ruta" },
   ];
   const mScope = {
     collectorRef: "COB-0",
@@ -4484,7 +4486,7 @@ console.log("— Cupo del aparato —");
   const liveRows = loanRowsM("2026-10-07", brokenLines, mLoans, mClients, { ...mScope, liveDay: true });
   expect("Día abierto: Préstamos M = fichas (5.200.000), no el renglón dañado", loanTotalM(liveRows), 5_200_000);
   expect(
-    "Día abierto: Dary sale con lo de su ficha (900.000)",
+    "Día abierto: cliente COD-62 sale con lo de su ficha (900.000)",
     liveRows.find((row) => row.clientRef === "COD-62")?.capital ?? null,
     900_000,
   );
@@ -4519,7 +4521,7 @@ console.log("— Cupo del aparato —");
     collectorName: "Edgar",
     date: "2026-10-07",
     routeRef: "RUT-1",
-    expenses: [gasLine("P-434", "Dary Amor", 900_000), gasLine("P-434", "Bader", 1_000_000)],
+    expenses: [gasLine("P-434", "Ana Uno", 900_000), gasLine("P-434", "Luis Dos", 1_000_000)],
     expensesTotal: 1_900_000,
   };
   const visit = (loanRef, clientRef, extra = {}) => ({
@@ -4532,43 +4534,43 @@ console.log("— Cupo del aparato —");
   });
   const clash = renameLoanRefInState(
     {
-      loans: [mLoan("P-434", "COD-37", "Bader", 1_000_000)],
+      loans: [mLoan("P-434", "COD-37", "Luis Dos", 1_000_000)],
       loanQueue: [],
       assignments: [visit("P-434", "COD-62"), visit("P-434", "COD-37")],
       drafts: [gasM],
     },
-    { ref: "P-434", clientRef: "COD-37", client: "Bader" },
+    { ref: "P-434", clientRef: "COD-37", client: "Luis Dos" },
     "P-442",
     "2026-10-07",
   );
   expect(
-    "Choque P-434: Bader pasa a P-442 (ficha, visita y renglón); Dary queda en P-434",
+    "Choque mismo P-: un cliente pasa a P-442; el otro queda en P-434",
     [
       clash.loans.map((row) => row.ref).join(","),
       clash.assignments.map((row) => `${row.clientRef}:${row.loanRef}`).join(","),
       clash.drafts[0].expenses.map((row) => row.label).join(" | "),
       clash.drafts[0].expensesTotal,
     ].join(" / "),
-    "P-442 / COD-62:P-434,COD-37:P-442 / Préstamo · P-434 · Dary Amor | Préstamo · P-442 · Bader / 1900000",
+    "P-442 / COD-62:P-434,COD-37:P-442 / Préstamo · P-434 · Ana Uno | Préstamo · P-442 · Luis Dos / 1900000",
   );
-  const celinaGas = {
+  const twinGas = {
     ...gasM,
-    expenses: [gasLine("P-437", "Celina", 2_000_000), gasLine("P-439", "Celina", 2_000_000)],
+    expenses: [gasLine("P-437", "María Tres", 2_000_000), gasLine("P-439", "María Tres", 2_000_000)],
     expensesTotal: 4_000_000,
   };
   const twin = renameLoanRefInState(
     {
-      loans: [mLoan("P-437", "COD-65", "Celina", 2_000_000), mLoan("P-439", "COD-65", "Celina", 2_000_000)],
-      loanQueue: [mLoan("P-439", "COD-65", "Celina", 2_000_000)],
+      loans: [mLoan("P-437", "COD-65", "María Tres", 2_000_000), mLoan("P-439", "COD-65", "María Tres", 2_000_000)],
+      loanQueue: [mLoan("P-439", "COD-65", "María Tres", 2_000_000)],
       assignments: [visit("P-437", "COD-65"), visit("P-439", "COD-65")],
-      drafts: [celinaGas],
+      drafts: [twinGas],
     },
-    { ref: "P-439", clientRef: "COD-65", client: "Celina" },
+    { ref: "P-439", clientRef: "COD-65", client: "María Tres" },
     "P-437",
     "2026-10-07",
   );
   expect(
-    "Reintento Celina: P-439 se une a P-437 (una ficha, una visita, un renglón de 2.000.000)",
+    "Reintento: dos P- del mismo cliente se unen (una ficha, una visita, un renglón de 2.000.000)",
     [
       twin.twin,
       twin.loans.map((row) => row.ref).join(","),
@@ -4580,6 +4582,17 @@ console.log("— Cupo del aparato —");
   );
   const { readFileSync: readSrc } = await import("node:fs");
   const catalogSrc = readSrc(new URL("../lib/supabase/catalog-mirror.ts", import.meta.url), "utf8");
+  expect(
+    "Renombre de ficha: el renglón del cobrador sigue al P- nuevo y sube a la nube",
+    catalogSrc.includes("renameLoanRefInState(state, loan, to, businessTodayIso())") &&
+      catalogSrc.includes("queueDayExpenseMirror(draft)"),
+    true,
+  );
+}
+
+{
+  console.log("\n— Cierre de hoja y subida en paquetes —");
+  const { readFileSync: readSrc } = await import("node:fs");
   const mobileSrc = readSrc(new URL("../components/CollectorMobileApp.tsx", import.meta.url), "utf8");
   expect(
     "Cerrar M no cierra T: el panel queda amarrado a su hoja, se cierra al cambiar y no acepta doble toque",
@@ -4596,12 +4609,6 @@ console.log("— Cupo del aparato —");
       opsSrc.includes("export const OPS_MIRROR_BATCH_MAX = 20;") &&
       opsRouteSrc.includes('body.kind === "batch"') &&
       opsRouteSrc.includes("await safeMirrorItem(item)"),
-    true,
-  );
-  expect(
-    "Renombre de ficha: el renglón del cobrador sigue al P- nuevo y sube a la nube",
-    catalogSrc.includes("renameLoanRefInState(state, loan, to, businessTodayIso())") &&
-      catalogSrc.includes("queueDayExpenseMirror(draft)"),
     true,
   );
 }
