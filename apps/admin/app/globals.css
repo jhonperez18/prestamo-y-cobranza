@@ -3033,6 +3033,20 @@
     .collector-history-loans.is-otros .is-amount {
       color: inherit;
     }
+    .collector-history-loans li.is-total {
+      margin-top: 2px;
+      padding-top: 6px;
+      border-top: 1px dashed #c3d4cc;
+      font-weight: 400;
+    }
+    .collector-history-loans li.is-total span,
+    .collector-history-loans li.is-total b {
+      color: #111;
+      font-size: 12px;
+      font-weight: 400;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+    }
     .collector-history-loans-note {
       margin: 8px 0 0;
       font-size: 10px;
@@ -6322,7 +6336,7 @@
       display: none;
     }
     .supervisor-clientes-table .is-cuotas {
-      width: 24%;
+      width: 20%;
       text-align: center;
       padding-left: 2px;
       padding-right: 2px;
@@ -6336,8 +6350,42 @@
     .supervisor-clientes-table td.is-cuotas {
       vertical-align: middle;
     }
+    .supervisor-clientes-table .is-renew {
+      width: 1.15rem;
+      min-width: 1.1rem;
+      max-width: 1.25rem;
+      padding-left: 0;
+      padding-right: 0;
+      text-align: center;
+      vertical-align: middle;
+      line-height: 1;
+    }
+    .supervisor-clientes-table th.is-renew {
+      color: #fff;
+      font-size: 9px;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+    .supervisor-clientes-table td.is-renew {
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+    }
+    .supervisor-renew-alert-bill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 0;
+      pointer-events: none;
+      width: 14px;
+      height: 10px;
+    }
+    .supervisor-renew-alert-bill svg {
+      width: 14px;
+      height: 10px;
+      display: block;
+    }
     .supervisor-clientes-table .is-num {
-      width: 27%;
+      width: 25%;
       padding-left: 4px;
       padding-right: 6px;
       font-variant-numeric: tabular-nums;
@@ -6382,15 +6430,21 @@
     }
     .supervisor-mobile .supervisor-clientes-table .is-nombre,
     .supervisor-mobile-app .supervisor-clientes-table .is-nombre {
-      width: 44%;
+      width: 40%;
     }
     .supervisor-mobile .supervisor-clientes-table .is-cuotas,
     .supervisor-mobile-app .supervisor-clientes-table .is-cuotas {
-      width: 26%;
+      width: 22%;
+    }
+    .supervisor-mobile .supervisor-clientes-table .is-renew,
+    .supervisor-mobile-app .supervisor-clientes-table .is-renew {
+      width: 1.15rem;
+      min-width: 1.1rem;
+      max-width: 1.25rem;
     }
     .supervisor-mobile .supervisor-clientes-table .is-num,
     .supervisor-mobile-app .supervisor-clientes-table .is-num {
-      width: 28%;
+      width: 26%;
     }
     .supervisor-clientes-table tbody tr.is-clickable {
       cursor: pointer;
@@ -8640,6 +8694,25 @@
       font-variant-numeric: tabular-nums;
       font-weight: 400;
       padding: 0;
+    }
+    .supervisor-mobile-list.is-loans-today li.is-total {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      grid-template-columns: none;
+      margin: 0;
+      border: 0;
+      border-top: 1px dashed #c3d4cc;
+      background: #fff;
+      font-weight: 400;
+    }
+    .supervisor-mobile-list.is-loans-today li.is-total span,
+    .supervisor-mobile-list.is-loans-today li.is-total b {
+      color: #111;
+      font-size: 12px;
+      font-weight: 400;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
     }
     .supervisor-mobile-list li > div {
       min-width: 0;

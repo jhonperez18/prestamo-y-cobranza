@@ -41,6 +41,7 @@ export function CollectorDayCloseExtras({
   loansSheet = false,
   cierreSheet = false,
   prestamos,
+  prestamosTotal = 0,
   otrosGastos = [],
   otrosTotal = 0,
   searchOpen = false,
@@ -69,6 +70,10 @@ export function CollectorDayCloseExtras({
                 <b className="is-amount">{money(line.amount, { symbol: false })}</b>
               </li>
             ))}
+            <li className="is-total">
+              <span>Saldo del día</span>
+              <b>{money(prestamosTotal, { symbol: false })}</b>
+            </li>
           </ul>
         </div>
       ) : null}
