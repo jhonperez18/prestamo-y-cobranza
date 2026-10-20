@@ -3097,31 +3097,22 @@ expect("Con préstamo en mora: no puede recibir otro", canClientTakeNewLoan("CLI
   const catalogMirrorSrc = read("../lib/supabase/catalog-mirror.ts");
   expect("Nube: préstamo reactivado vuelve a cada aparato", catalogMirrorSrc.includes("forgetRemoteLoanRevivals(remoteAll)"), true);
   const queueSrc = read("../lib/supabase/mirror-queue.ts");
-  // Caso Albornoz 08/10: un préstamo existe si la nube lo tiene. Ningún aparato lo arma ni lo da de baja.
-  const restoreSrc = read("../lib/restore-loans-from-bank-disbursements.ts");
-  for (const [label, src] of [
-    ["registro Banco", restoreSrc],
-    ["hidratar", read("../lib/hydrate-operational-demo.ts")],
-    ["ciclo operativo", read("../lib/operational-sync.ts")],
-  ]) {
-    expect(`Albornoz (${label}): el aparato no rehace fichas desde Banco`, /restoreLoansFromOrphanDisbursements|buildRestoredLoan|siblingTerms/.test(src), false);
-    expect(`Albornoz (${label}): el aparato no da de baja «copias»`, src.includes("collapseDuplicateDigitalLoans"), false);
-  }
+  // Fase 1: la base es dueña del P-. Sync del aparato (se queda; no es candado de caso).
   expect(
-    "Albornoz: bajada completa suelta el préstamo que la nube no tiene",
+    "Bajada completa suelta el préstamo que la nube no tiene",
     catalogMirrorSrc.includes("dropLoansMissingFromCloud(") && catalogMirrorSrc.includes("loansQueuedAtStart"),
     true,
   );
   expect("«loan_delete_not_owner» sale de la cola (el préstamo sigue vivo)", queueSrc.includes('"loan_delete_not_owner"'), true);
   const opsMirrorSrc = read("../lib/supabase/ops-mirror.ts");
   expect(
-    "Albornoz: la nube no acepta visita de un P- que no tiene",
+    "Nube: no acepta visita de un P- que no tiene",
     opsMirrorSrc.includes('reason: "loan_missing"'),
     true,
   );
   expect("«loan_missing» espera en cola (el préstamo puede venir subiendo)", queueSrc.includes('"loan_missing"'), false);
   expect(
-    "Albornoz: la cola suelta visitas de préstamos dados de baja",
+    "Cola suelta visitas de préstamos dados de baja",
     opsMirrorSrc.includes("pruneAssignmentQueueForDeletedLoans()"),
     true,
   );

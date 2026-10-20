@@ -1,5 +1,9 @@
 # Inventario de candados — `apps/admin/scripts/assert-cash-chain.mjs` (09/10/2026)
 
+**Estado firme (19/10):** Fase 1 Préstamos = **CERRADA** en prod. No rehacer.
+Pendiente real: limpiar ~50 candados de esa fase (solo si el dueño lo pide) + Fases 2–4.
+Regla del agente: `.cursor/rules/fases-dueno-dato.mdc`.
+
 683 `expect` en el código (727 al correr: algunos van en ciclos), 33 bloques.
 Cifras por clase: **aproximadas** (las secciones grandes mezclan temas; se contó por título de prueba).
 
@@ -64,3 +68,21 @@ Cifras por clase: **aproximadas** (las secciones grandes mezclan temas; se cont�
 ## Ya resuelto
 
 `findCloudLoanTwin`, `withCloudLedger`, `keepRenewedLoanClosed`: no existen en el código ni en las reglas `.cursor`.
+
+## Plan limpieza Fase 1 (19/10 — solo assert, sin tocar runtime)
+
+**Regla:** un commit aparte, reversible, de noche con rutas cerradas. Cero cambio en cobrador/supervisor/API.
+Solo se quitan `expect` de **candado** cuya causa ya cubre la base. Las **reglas** se quedan.
+
+| Lote | Qué | ¿Se toca? | Nota |
+| --- | --- | --- | --- |
+| **1a** | §16 candados Albornoz «no rehace fichas / no da de baja copias» (~6) | **HECHO 19/10** | Quitados del assert; sync nube (drop / loan_missing) se quedó como regla |
+| **1b** | §26 Choque P-434 / Reintento Celina / duplicados (~30) | Segundo lote | Idempotencia `create_loan` ya en base; revisar uno a uno |
+| **1c** | §30 solo los ~4 candados de renovar (no las reglas +20 % / sin plata) | Tercer lote | `renew_loan` ya en base |
+| **No tocar aún** | §14 Prestar atendido (~12) | Se queda | Es **regla** de planilla |
+| **No tocar aún** | §14 Haber Banco Albornoz (~39) | Se queda | Mezcla Fase **3 Saldos** |
+| **No tocar aún** | §16 `activeLoans` / un préstamo por cliente (~15) | Se queda | Es **regla** (también en UI) |
+| **No tocar aún** | §30 reglas renovar (~14) | Se queda | Negocio: sin plata, +20 % |
+
+Orden: **1a → assert OK en taller → commit → release de noche**. Luego 1b, luego 1c.
+Prohibido mezclar limpieza con Fase 2/3/4 en el mismo commit.
