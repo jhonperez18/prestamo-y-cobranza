@@ -5,10 +5,12 @@ import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
 import { operativeExpenseLines } from "@/lib/expense-lines";
-import { money, type PaymentRow } from "@/lib/mock-data";
+import { money, type ClientRow, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 import { paymentVisitDate } from "@/lib/late-payment";
 import { routeBlockStarts } from "@/lib/client-route-order";
 import {
+  paymentCatalogClientName,
+  paymentDisplayMethod,
   paymentMethodForRoute,
   paymentMethodInitial,
   paymentMethodLabel,
@@ -31,6 +33,13 @@ type Props = {
   visitTotal: number;
   /** Si viene, el reporte de cobros solo muestra ese medio. */
   methodFilter?: PaymentMethod;
+  /**
+   * Lista canónica de PG- del Total Cobrado hoy (ruta). Si viene, COBROS lista y suma
+   * estos pagos — misma cifra que el Total. Sin esto, cae a visitas (legado).
+   */
+  cobroPayments?: PaymentRow[];
+  loans?: LoanRow[];
+  clients?: ClientRow[];
   /** Adjuntar comprobante (Nequi/Banco) desde el recaudo. */
   onAttachPaymentEvidence?: (paymentRef: string, evidence: PaymentEvidenceRef[]) => void;
   onBack: () => void;
@@ -82,23 +91,38 @@ export function CollectorClosedDayReview({
   cobradoCount,
   visitTotal,
   methodFilter,
+  cobroPayments,
+  loans = [],
+  clients = [],
   onAttachPaymentEvidence,
   onBack,
 }: Props) {
-  const cobros = visits.filter((row) => {
-    const pay = paymentForVisit(row, payments);
-    if (!(row.visitStatus === "cobrado" || row.paymentRef || pay)) return false;
-    if (!methodFilter) return true;
-    if (!pay) return methodFilter === "efectivo";
-    return paymentMethodForRoute(pay.method, row.clientRoute) === methodFilter;
-  });
+  const useCanonList = detail === "cobros" && Array.isArray(cobroPayments);
+  const canonPays = useCanonList
+    ? cobroPayments.filter((pay) => {
+        if (!methodFilter) return true;
+        return paymentDisplayMethod(pay, loans, clients) === methodFilter;
+      })
+    : [];
+  const cobros = useCanonList
+    ? []
+    : visits.filter((row) => {
+        const pay = paymentForVisit(row, payments);
+        if (!(row.visitStatus === "cobrado" || row.paymentRef || pay)) return false;
+        if (!methodFilter) return true;
+        if (!pay) return methodFilter === "efectivo";
+        return paymentMethodForRoute(pay.method, row.clientRoute) === methodFilter;
+      });
   const gastoLines = operativeExpenseLines(expenses);
   const expensesTotal = gastoLines.reduce((sum, row) => sum + row.amount, 0);
-  const cobrosTotal = cobros.reduce((sum, item) => {
-    const pay = paymentForVisit(item, payments);
-    if (isOfficeCash(pay, item.clientRoute)) return sum;
-    return sum + (pay?.amount ?? item.amountDue);
-  }, 0);
+  const cobrosTotal = useCanonList
+    ? canonPays.reduce((sum, pay) => sum + (Number(pay.amount) || 0), 0)
+    : cobros.reduce((sum, item) => {
+        const pay = paymentForVisit(item, payments);
+        if (isOfficeCash(pay, item.clientRoute)) return sum;
+        return sum + (pay?.amount ?? item.amountDue);
+      }, 0);
+  const cobrosCountShown = useCanonList ? canonPays.length : cobros.length;
 
   const title =
     detail === "cobros"
@@ -116,8 +140,8 @@ export function CollectorClosedDayReview({
   const subtitle =
     detail === "gastos"
       ? dateLabel
-      : detail === "cobros" && methodFilter
-        ? `${dateLabel} · ${cobros.length} cobro${cobros.length === 1 ? "" : "s"}`
+      : detail === "cobros"
+        ? `${dateLabel} · ${cobrosCountShown} cobro${cobrosCountShown === 1 ? "" : "s"}`
         : `${dateLabel} · ${cobradoCount}/${visitTotal} cobros`;
 
   /** Raya verde entre Ruta 1 y Ruta 1.1 en la planilla cerrada. */
@@ -158,7 +182,63 @@ export function CollectorClosedDayReview({
         )
       ) : null}
 
-      {detail === "cobros" ? (
+      {detail === "cobros" && useCanonList ? (
+        canonPays.length === 0 ? (
+          <p className="collector-closed-review-empty">
+            {methodFilter
+              ? `Sin cobros en ${paymentMethodLabel(methodFilter).toLowerCase()}.`
+              : "Sin cobros registrados."}
+          </p>
+        ) : (
+          <ul className="collector-closed-review-list is-cobros-cols has-evidence is-nequi-day-ficha">
+            {canonPays.map((payRaw) => {
+              const pay = withPaymentEvidence(payRaw);
+              const method = paymentDisplayMethod(pay, loans, clients);
+              const office = !pay.collectorRef?.trim() && method === "efectivo";
+              return (
+                <li key={pay.ref}>
+                  <strong className="is-name">{paymentCatalogClientName(pay, loans, clients)}</strong>
+                  <span
+                    className="is-when"
+                    title={office ? "Pagado en oficina: no está en la caja del cobrador" : undefined}
+                  >
+                    {pay.paidTime?.trim() || "—"}
+                    {office ? " · oficina" : ""}
+                  </span>
+                  <span className="is-loan">{pay.loanRef || "—"}</span>
+                  <em
+                    className={`is-method ${paymentMethodToneClass(method)}`}
+                    title={paymentMethodLabel(method)}
+                  >
+                    {paymentMethodInitial(method)}
+                  </em>
+                  <span className="is-evidence">
+                    <PaymentEvidenceThumb
+                      evidence={pay.evidence}
+                      size={28}
+                      onAttach={
+                        onAttachPaymentEvidence
+                          ? (piece) => onAttachPaymentEvidence(pay.ref, [piece])
+                          : undefined
+                      }
+                    />
+                  </span>
+                  <b className="is-cobro">{money(pay.amount, { symbol: false })}</b>
+                </li>
+              );
+            })}
+            <li className="is-total">
+              <span>
+                Total{" "}
+                {methodFilter ? paymentMethodLabel(methodFilter).toLowerCase() : "cobrado"}
+              </span>
+              <b>{money(cobrosTotal)}</b>
+            </li>
+          </ul>
+        )
+      ) : null}
+
+      {detail === "cobros" && !useCanonList ? (
         cobros.length === 0 ? (
           <p className="collector-closed-review-empty">
             {methodFilter
@@ -228,54 +308,28 @@ export function CollectorClosedDayReview({
             <ul className="collector-closed-review-list">
               {visits.map((item, index) => {
                 const pay = paymentForVisit(item, payments);
-                const method = pay ? paymentMethodForRoute(pay.method, item.clientRoute) : null;
-                const amount = pay?.amount ?? (item.amountDue > 0 ? item.amountDue : 0);
-                const status = item.visitStatus ?? "pendiente";
-                const loanRef = item.loanRef || (item.awaitingLoan ? "Completar" : "—");
-                const methodLabel = method ? paymentMethodLabel(method).toLowerCase() : "";
+                const amount = pay?.amount ?? item.amountDue;
+                const status = visitStatusKind(item);
                 return (
                   <li
                     key={item.itemId}
                     className={visitRouteStarts[index] ? "is-route-start" : undefined}
                   >
                     <div className="collector-closed-review-line">
-                      <strong>{item.clientName}</strong>
-                      <span>
-                        {loanRef}
-                        {methodLabel ? ` en ${methodLabel}` : ""}
-                      </span>
+                      <strong>{payerClientName(item, pay)}</strong>
+                      <span>{item.loanRef || "—"}</span>
                     </div>
                     <div className="collector-closed-review-meta">
-                      <Pill label={visitStatusLabel(status)} kind={visitStatusKind(status)} />
+                      <Pill tone={status === "cobrado" ? "ok" : status === "omitido" ? "warn" : "muted"}>
+                        {visitStatusLabel(item)}
+                      </Pill>
                       {amount > 0 && status === "cobrado" ? (
                         <b className="is-cobro">{money(amount)}</b>
-                      ) : amount > 0 ? (
-                        <b>{money(amount)}</b>
                       ) : null}
                     </div>
                   </li>
                 );
               })}
-            </ul>
-          )}
-
-          <h3 className="collector-closed-review-section">Gastos</h3>
-          {expenses.length === 0 ? (
-            <p className="collector-closed-review-empty">Sin gastos registrados.</p>
-          ) : (
-            <ul className="collector-closed-review-list">
-              {expenses.map((line, index) => (
-                <li key={`${line.id}:${line.lineKey || line.loanRef || line.label}:${index}`}>
-                  <div className="collector-closed-review-line">
-                    <strong>{line.label}</strong>
-                  </div>
-                  <b className="is-gasto">{money(line.amount)}</b>
-                </li>
-              ))}
-              <li className="is-total">
-                <span>Total gastos</span>
-                <b>{money(expensesTotal)}</b>
-              </li>
             </ul>
           )}
         </>

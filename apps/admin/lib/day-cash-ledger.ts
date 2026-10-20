@@ -241,6 +241,36 @@ export function routeCashCollected(src: DayCashSources, routeName: string): numb
   return routeCollectedByMethod(src, routeName).efectivo;
 }
 
+/**
+ * Cobros del día de esa ruta = efectivo (caja del cobrador) + digital del bolsillo
+ * (A → Nequi; M/T/N → Banco, con Caja/oficina). Una sola lista: Total Cobrado hoy
+ * y botón COBROS deben sumar lo mismo. Sin préstamos.
+ */
+export function routeCobradoDayPayments(src: DayCashSources, routeName: string): PaymentRow[] {
+  const byRef = new Map<string, PaymentRow>();
+  for (const pay of routeCashPayments(src, routeName)) {
+    const ref = String(pay.ref || "").trim();
+    if (ref) byRef.set(ref, pay);
+  }
+  for (const pay of routeDigitalPayments(src, routeName)) {
+    const ref = String(pay.ref || "").trim();
+    if (ref) byRef.set(ref, pay);
+  }
+  return [...byRef.values()].sort((a, b) => {
+    const ta = String(a.paidTime || "");
+    const tb = String(b.paidTime || "");
+    if (ta !== tb) return ta.localeCompare(tb);
+    return String(a.ref).localeCompare(String(b.ref));
+  });
+}
+
+/** Suma de `routeCobradoDayPayments` — misma cifra que Total Cobrado hoy de la ruta. */
+export function routeCobradoDayTotal(src: DayCashSources, routeName: string): number {
+  return pesos(
+    routeCobradoDayPayments(src, routeName).reduce((sum, pay) => sum + (Number(pay.amount) || 0), 0),
+  );
+}
+
 /** Reparto M↔T del día: préstamos por ruta del cliente; gastos por planilla donde se anotaron. */
 export function chainRouteSplit(
   src: DayCashSources,

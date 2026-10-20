@@ -177,6 +177,9 @@ import {
   buildDayCashLedger,
   chainDayCuadre,
   primaryClosingForDay,
+  routeCashCollected,
+  routeCobradoDayPayments,
+  routeCobradoDayTotal,
   routeDigitalCollected,
   withSealedDaySaldos,
   chainHistorySplit,
@@ -1547,43 +1550,34 @@ export function SupervisorMobileApp({
             enCaja: 0,
           };
 
-      let cobradoEfectivo = 0;
-      if (collector) {
-        for (const pay of collectorDayPayments(
-          collector.ref,
-          today,
-          payments,
-          [collector],
-        )) {
-          const loan = loans.find((row) => row.ref === pay.loanRef);
-          if (!loan?.clientRef || !clientRefs.has(loan.clientRef)) continue;
-          const amount = Number(pay.amount) || 0;
-          if (!(amount > 0)) continue;
-          if (paymentDisplayMethod(pay, loans, clients) === "efectivo") cobradoEfectivo += amount;
-        }
-      }
-      const digitalCollected = collector
-        ? routeDigitalCollected(
-            {
-              collectorRef: collector.ref,
-              collectorName: collector.name,
-              date: today,
-              payments,
-              loans,
-              clients,
-              collectors: [collector],
-              assignments,
-              dayCloses,
-              dayExpenseDrafts,
-              planillaCashCloses,
-              monthCloses,
-            },
-            route.routeName,
-          )
+      // Una sola fórmula: efectivo (caja) + digital del bolsillo de la ruta (= COBROS).
+      const dayCashSrc = collector
+        ? {
+            collectorRef: collector.ref,
+            collectorName: collector.name,
+            date: today,
+            payments,
+            loans,
+            clients,
+            collectors: [collector],
+            assignments,
+            dayCloses,
+            dayExpenseDrafts,
+            planillaCashCloses,
+            monthCloses,
+          }
+        : null;
+      const digitalCollected = dayCashSrc
+        ? routeDigitalCollected(dayCashSrc, route.routeName)
         : { nequi: 0, banco: 0, payments: [] };
+      const cobradoEfectivo = dayCashSrc
+        ? routeCashCollected(dayCashSrc, route.routeName)
+        : 0;
       const cobradoNequi = digitalCollected.nequi;
       const cobradoBanco = digitalCollected.banco;
-      const cobradoHoy = cobradoEfectivo + cobradoNequi + cobradoBanco;
+      const cobradoHoy = dayCashSrc
+        ? routeCobradoDayTotal(dayCashSrc, route.routeName)
+        : 0;
 
       const rawExpenses = expensesForCollectorDay(
         collectorRef,
@@ -2565,6 +2559,42 @@ export function SupervisorMobileApp({
   ]);
   const openRouteNequiDayPays = openRouteDigitalDayLedger?.items ?? [];
   const openRouteNequiDayLoans = openRouteDigitalDayLedger?.loans ?? [];
+
+  /** Misma lista que Total Cobrado hoy → botón COBROS (PG- de la ruta, no visitas). */
+  const openRouteCobroPayments = useMemo(() => {
+    if (!openRoute) return [];
+    const collector = collectors.find((row) => row.ref === openRoute.collectorRef);
+    if (!collector) return [];
+    return routeCobradoDayPayments(
+      {
+        collectorRef: collector.ref,
+        collectorName: collector.name,
+        date: today,
+        payments: paymentsWithEvidence,
+        loans,
+        clients,
+        collectors: [collector],
+        assignments,
+        dayCloses,
+        dayExpenseDrafts,
+        planillaCashCloses,
+        monthCloses,
+      },
+      openRoute.routeName,
+    );
+  }, [
+    openRoute,
+    collectors,
+    today,
+    paymentsWithEvidence,
+    loans,
+    clients,
+    assignments,
+    dayCloses,
+    dayExpenseDrafts,
+    planillaCashCloses,
+    monthCloses,
+  ]);
 
   const openRouteCajaHistory = useMemo(() => {
     if (!openRoute || !openRouteScope) return [];
@@ -4623,6 +4653,9 @@ export function SupervisorMobileApp({
               visits={openAssignments}
               expenses={openRouteExpenses}
               payments={paymentsWithEvidence}
+              cobroPayments={openRouteCobroPayments}
+              loans={loans}
+              clients={clients}
               cobradoCount={openRoute.done}
               visitTotal={openRoute.planilla}
               methodFilter={cobrosMethodFilter ?? undefined}
