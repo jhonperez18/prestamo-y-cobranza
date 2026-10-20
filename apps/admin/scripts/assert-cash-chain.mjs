@@ -4768,9 +4768,11 @@ console.log("— Cupo del aparato —");
   const { readFileSync: readReopenSrc } = await import("node:fs");
   const supMobileSrc = readReopenSrc(new URL("../components/SupervisorMobileApp.tsx", import.meta.url), "utf8");
   expect(
-    "Cobrado hoy · botón Nequi (A) / Banco: abre solo los cobros de ese medio, nunca el recaudo entero",
-    supMobileSrc.includes("const routeNequiBoxMethod: PaymentMethod = openRouteDigitalPool;") &&
-      supMobileSrc.includes("onClick={() => openCobrosReport(routeNequiBoxMethod)}"),
+    "Cobrado hoy · botón Nequi (A) / Banco: abre solo los cobros del pool (nunca préstamos ni el recaudo entero)",
+    supMobileSrc.includes('onClick={() => openNequiDayFicha(today, "totales")}') &&
+      supMobileSrc.includes('const fromCobradoHoy = nequiDayBackTo === "totales"') &&
+      /const dayLoans = fromCobradoHoy \? \[\] : openRouteNequiDayLoans/.test(supMobileSrc) &&
+      /dayTotal = fromCobradoHoy[\s\S]*?openRouteDigitalDayLedger\?\.inflow/.test(supMobileSrc),
     true,
   );
   const opsReopenSrc = readReopenSrc(new URL("../lib/supabase/ops-mirror.ts", import.meta.url), "utf8");
