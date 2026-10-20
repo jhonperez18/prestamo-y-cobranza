@@ -308,8 +308,11 @@ export function CollectorClosedDayReview({
             <ul className="collector-closed-review-list">
               {visits.map((item, index) => {
                 const pay = paymentForVisit(item, payments);
-                const amount = pay?.amount ?? item.amountDue;
-                const status = visitStatusKind(item);
+                const method = pay ? paymentMethodForRoute(pay.method, item.clientRoute) : null;
+                const amount = pay?.amount ?? (item.amountDue > 0 ? item.amountDue : 0);
+                const status = item.visitStatus ?? "pendiente";
+                const loanRef = item.loanRef || (item.awaitingLoan ? "Completar" : "—");
+                const methodLabel = method ? paymentMethodLabel(method).toLowerCase() : "";
                 return (
                   <li
                     key={item.itemId}
@@ -317,19 +320,42 @@ export function CollectorClosedDayReview({
                   >
                     <div className="collector-closed-review-line">
                       <strong>{payerClientName(item, pay)}</strong>
-                      <span>{item.loanRef || "—"}</span>
+                      <span>
+                        {loanRef}
+                        {methodLabel ? ` en ${methodLabel}` : ""}
+                      </span>
                     </div>
                     <div className="collector-closed-review-meta">
-                      <Pill tone={status === "cobrado" ? "ok" : status === "omitido" ? "warn" : "muted"}>
-                        {visitStatusLabel(item)}
-                      </Pill>
+                      <Pill label={visitStatusLabel(status)} kind={visitStatusKind(status)} />
                       {amount > 0 && status === "cobrado" ? (
                         <b className="is-cobro">{money(amount)}</b>
+                      ) : amount > 0 ? (
+                        <b>{money(amount)}</b>
                       ) : null}
                     </div>
                   </li>
                 );
               })}
+            </ul>
+          )}
+
+          <h3 className="collector-closed-review-section">Gastos</h3>
+          {expenses.length === 0 ? (
+            <p className="collector-closed-review-empty">Sin gastos registrados.</p>
+          ) : (
+            <ul className="collector-closed-review-list">
+              {expenses.map((line, index) => (
+                <li key={`${line.id}:${line.lineKey || line.loanRef || line.label}:${index}`}>
+                  <div className="collector-closed-review-line">
+                    <strong>{line.label}</strong>
+                  </div>
+                  <b className="is-gasto">{money(line.amount)}</b>
+                </li>
+              ))}
+              <li className="is-total">
+                <span>Total gastos</span>
+                <b>{money(expensesTotal)}</b>
+              </li>
             </ul>
           )}
         </>
