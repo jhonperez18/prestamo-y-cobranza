@@ -3225,6 +3225,7 @@ expect("Misma inconsistencia = misma firma", health({ assignments: withoutR3 }).
 
 // ── 18. Gasto del cobrador: nunca se pierde en silencio. La cola solo suelta lo que la nube
 //     confirmó (no lo encolado durante un flush), sin keepalive y sin borrar colas por espacio.
+//     Lote 2b: nombres limpios; expects se quedan (aparato sigue dueño del flush).
 console.log("\n— Gasto: la cola no pierde lo que no subió —");
 {
   const store = new Map([["nexo-demo-virgin-ops-v1", "1"]]);
@@ -3249,7 +3250,7 @@ console.log("\n— Gasto: la cola no pierde lo que no subió —");
   const { mirrorDayExpenseNow, flushOpsMirrorQueues } = await import("@/lib/supabase/ops-mirror");
   const { writeDemoJson, DEMO_COLLECTOR_DAY_EXPENSES_KEY } = await import("@/lib/demo-persist");
   const gas = {
-    ref: "GAS-COB-1-2026-10-01", collectorRef: "COB-1", collectorName: "Yesid", date: "2026-10-01",
+    ref: "GAS-COB-1-2026-10-01", collectorRef: "COB-1", collectorName: "Cobrador Gasto", date: "2026-10-01",
     routeRef: "RUT-N", expenses: [{ id: "almuerzo", label: "Almuerzo", category: "almuerzo", amount: 9000 }],
     expensesTotal: 9000, updatedAt: "2026-10-01T20:00:00.000Z",
   };
@@ -3287,8 +3288,8 @@ console.log("\n— Gasto: la cola no pierde lo que no subió —");
 
   const Q_CLI = "nexo-demo-client-mirror-queue";
   const { flushCatalogMirrorQueues } = await import("@/lib/supabase/catalog-mirror");
-  const ficha = { ref: "COD-900", name: "Ana", route: "N", docs: [{ previewUrl: "data:image/png;base64,AAA" }] };
-  const fichaNueva = { ...ficha, name: "Ana María" };
+  const ficha = { ref: "COD-900", name: "Cliente", route: "N", docs: [{ previewUrl: "data:image/png;base64,AAA" }] };
+  const fichaNueva = { ...ficha, name: "Cliente Editado" };
   store.set(Q_CLI, JSON.stringify([ficha]));
   globalThis.fetch = async (url, init) => {
     if (init?.keepalive) keepalive = true;
@@ -3297,7 +3298,7 @@ console.log("\n— Gasto: la cola no pierde lo que no subió —");
   };
   await flushCatalogMirrorQueues();
   const cliQueue = JSON.parse(store.get(Q_CLI) ?? "[]");
-  expect("Ficha editada mientras subía la anterior: sigue en cola", cliQueue.map((r) => r.name).join(","), "Ana María");
+  expect("Ficha editada mientras subía la anterior: sigue en cola", cliQueue.map((r) => r.name).join(","), "Cliente Editado");
   globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ ok: true }) });
   await flushCatalogMirrorQueues();
   expect("Ficha con foto confirmada: sale de cola", queued(Q_CLI), "");

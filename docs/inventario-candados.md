@@ -92,6 +92,8 @@ Prohibido mezclar limpieza con Fase 2/3/4 en el mismo commit.
 | Lote | Qué | Estado |
 | --- | --- | --- |
 | **2a** | §31 cobro por ficha: nombres limpios + quitar candado grep hidratar | **HECHO 19/10** |
-| **2b** | §18 gasto cola (revisar uno a uno; no dañar flush) | Pendiente |
+| **2b** | §18 gasto cola | **HECHO 19/10 (limpio)** | Nombres genéricos. **Expect se quedan**: cola/flush sigue en el aparato. Borrado funcional → cuando el gasto sea orden a la base |
 | **No tocar aún** | §11 cobro en T / M cerrada | Regla operativa de planilla |
 | **No tocar aún** | Expects de saldo ficha en §31 | Regla (aparato muestra ficha) |
+
+**Limpieza assert Fase 2 (2a–2b) = cerrada 19/10.** Más limpieza de cobros/gastos requiere dueño en la base (no solo assert).
