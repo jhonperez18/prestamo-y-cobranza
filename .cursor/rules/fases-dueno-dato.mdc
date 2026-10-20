@@ -31,8 +31,8 @@ Inventario de candados: `docs/inventario-candados.md`.
 
 ## Limpieza de candados
 
-- Los ~50 candados de **Fase 1** se borran solo cuando el dueño lo pida, en **commit aparte**,
-  tras semana estable. **No** es rehacer Fase 1.
+- Limpieza assert **Fase 1** (lotes 1a–1c) = **CERRADA** 19/10. No reabrir.
+  Expect del renglón GAS- se quedan hasta Fase 3 (aparato aún dueño del renglón).
 - Candados de fases 2–4 **no** se borran hasta que esa fase esté CERRADA en prod.
 - **Cero** candados nuevos. Actualizar un expect que ya existía (misma regla) ≠ sumar sección.
 
