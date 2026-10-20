@@ -4915,10 +4915,8 @@ console.log("\n— Renovar sin plata —");
   // Se quedan las reglas de negocio: +20 %, sin plata, Renovado hoy, no reabre.
 }
 
-// ── 31. Cobro en el celular del cobrador (caso Jhon Flaca 08/10): paga todo lo que debe
-//     (220.000 = 130.000 efectivo + 90.000 Banco) para volver a prestar. El celular solo tiene
-//     el día (o un pedazo viejo): el saldo sale de la ficha, nunca de su lista de cobros.
-//     La nube tampoco acepta el `paid` de un aparato: lo llevan sus cobros.
+// ── 31. Cobro en el celular: el saldo sale de la ficha, nunca de su lista de cobros.
+//     La nube no acepta el `paid` de un aparato: lo llevan sus cobros (`_loan_settle`).
 console.log("\n— Cobro del cobrador con la ficha, no con la lista del aparato —");
 {
   const { commitCollectorPayment, commitCollectorCombinedPayment } = await import("@/lib/commit-collector-payment");
@@ -4930,7 +4928,7 @@ console.log("\n— Cobro del cobrador con la ficha, no con la lista del aparato 
   const today = businessTodayIso();
   const jDay = isCollectorDayClosedForPayments(today) ? addCalendarDaysIso(today, 1) : today;
   const jLoan = {
-    ref: "P-J1", clientRef: "CLI-J1", client: "Jhon Flaca", date: "05/09/2026", due: "05/10/2026",
+    ref: "P-J1", clientRef: "CLI-J1", client: "Cliente Cobra", date: "05/09/2026", due: "05/10/2026",
     capital: 500_000, interest: 100_000, total: 600_000, installment: 20_000, days: 30, frequency: "diario",
     paid: 380_000, balance: 220_000, status: "Alerta 1", kind: "warn", collectionAlerts: 1,
     notes: "[[fb:efectivo]]", updatedAt: "2026-09-30T12:00:00.000Z",
@@ -4946,13 +4944,13 @@ console.log("\n— Cobro del cobrador con la ficha, no con la lista del aparato 
   const signature = [{ id: "EV-F", kind: "firma", fileId: "f-f", previewUrl: "data:image/png;base64,iVBORw0KGgo=", capturedAt: `${jDay}T15:00:00.000Z` }];
   const part = (key, method, amount, evidence = signature) => ({
     idempotencyKey: key, routeRef: jRoute.ref, clientRef: "CLI-J1", loanRef: "P-J1", dispatchDate: jDay,
-    amount, kind: "cuota", method, evidence, collectorRef: COB.ref, collectorName: COB.name, clientName: "Jhon Flaca",
+    amount, kind: "cuota", method, evidence, collectorRef: COB.ref, collectorName: COB.name, clientName: "Cliente Cobra",
   });
   const combo = (cache) =>
     commitCollectorCombinedPayment({
       parts: [part("K-A", "efectivo", 130_000), part("K-B", "banco", 90_000, receipt)],
       comboGroupId: "CMB-J", paidTime: "10:00",
-      payments: cache, loans: [jLoan], clients: [{ ref: "CLI-J1", name: "Jhon", lastName: "Flaca", route: "M", pending: 220_000 }],
+      payments: cache, loans: [jLoan], clients: [{ ref: "CLI-J1", name: "Cliente", lastName: "Cobra", route: "M", pending: 220_000 }],
       routes: [jRoute], assignments: [jVisit], collectors: [COB],
     });
   const settled = (result, label) => {
@@ -5001,16 +4999,8 @@ console.log("\n— Cobro del cobrador con la ficha, no con la lista del aparato 
     delete globalThis.window;
   }
   settled(combo(jHist), "Panel del taller (historial completo, mismo resultado)");
-
-  const { readFileSync: readJhonSrc } = await import("node:fs");
-  const jSrc = (path) => readJhonSrc(new URL(path, import.meta.url), "utf8");
-  expect(
-    "Hidratar / proyectar en el cobrador no rehace la ficha con su lista de cobros",
-    jSrc("../lib/hydrate-operational-demo.ts").includes("syncDeviceLoans(storedLoans") &&
-      jSrc("../lib/hydrate-operational-demo.ts").includes("loansFromFicha: isCollectorLiveDevice()") &&
-      jSrc("../lib/operational-sync.ts").includes("syncDeviceLoans(input.loans"),
-    true,
-  );
+  // Lote 2a: quitado candado grep hidratar/proyectar. Reglas de ficha/saldo se quedan.
+  // `register_collection` + `_loan_settle` ya mandan el paid en la nube.
 }
 
 // ── 32. Celular del cobrador liviano: cerrada la jornada (y subida) suelta lo anterior a ese

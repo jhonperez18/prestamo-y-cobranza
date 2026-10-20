@@ -86,3 +86,12 @@ Solo se quitan `expect` de **candado** cuya causa ya cubre la base. Las **reglas
 
 Orden: **1a → assert OK en taller → commit → release de noche**. Luego 1b, luego 1c.
 Prohibido mezclar limpieza con Fase 2/3/4 en el mismo commit.
+
+## Plan limpieza Fase 2 Cobros (19/10 — solo assert; `register_collection` ya en prod)
+
+| Lote | Qué | Estado |
+| --- | --- | --- |
+| **2a** | §31 cobro por ficha: nombres limpios + quitar candado grep hidratar | **HECHO 19/10** |
+| **2b** | §18 gasto cola (revisar uno a uno; no dañar flush) | Pendiente |
+| **No tocar aún** | §11 cobro en T / M cerrada | Regla operativa de planilla |
+| **No tocar aún** | Expects de saldo ficha en §31 | Regla (aparato muestra ficha) |
