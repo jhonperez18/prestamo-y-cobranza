@@ -4791,7 +4791,7 @@ console.log("— Cupo del aparato —");
   expect("Visita sellada que llega antes del CIE- nuevo: reintenta (no se descarta)", reopenQueueSrc.includes('"hoja_reabierta"'), false);
 }
 
-// ── 30. Renovar (caso Nelson Jefe 08/10): a lo que debe se le suma el 20 % a 1 mes.
+// ── 30. Renovar: a lo que debe se le suma el 20 % a 1 mes.
 //     No es préstamo nuevo ni sale plata (ni caja, ni Banco, ni Nequi). Hoy la visita
 //     queda «Renovado hoy» y la cuota nueva queda por cobrar el mismo día (dueño 14/10).
 //     El vencido no se reabre.
@@ -4807,11 +4807,11 @@ console.log("\n— Renovar sin plata —");
   const rDay = "2026-10-08";
   const rNext = "2026-10-09";
   const rClients = [
-    { ref: "CLI-R1", name: "Nelson", lastName: "Jefe", route: "M", status: "Activo", routeOrder: 1, total: 240_000, pending: 180_000 },
+    { ref: "CLI-R1", name: "Cliente", lastName: "Renueva", route: "M", status: "Activo", routeOrder: 1, total: 240_000, pending: 180_000 },
   ];
   const rRoutes = [{ ref: "RUT-M", name: "M", collectorRef: COB.ref, collector: COB.name, status: "Activa", stops: [] }];
   const rOld = {
-    ref: "P-R1", clientRef: "CLI-R1", client: "Nelson Jefe", date: "21/09/2026", due: "06/10/2026",
+    ref: "P-R1", clientRef: "CLI-R1", client: "Cliente Renueva", date: "21/09/2026", due: "06/10/2026",
     capital: 200_000, interest: 40_000, total: 240_000, installment: 20_000, frequency: "diario",
     paid: 60_000, balance: 180_000, status: "Activo", notes: "[[fb:efectivo]]",
   };
@@ -4911,25 +4911,8 @@ console.log("\n— Renovar sin plata —");
       `-:${R2}`,
     );
   }
-  const { readFileSync: readRenewSrc } = await import("node:fs");
-  const src = (path) => readRenewSrc(new URL(path, import.meta.url), "utf8");
-  const collectorShellSrc = src("../components/CollectorShell.tsx");
-  const workspaceSrc = src("../components/workspace/useWorkspace.ts");
-  expect(
-    "Cobrador y panel renuevan por un solo camino, sin renglón de caja ni Nequi",
-    collectorShellSrc.includes("commitLoanRenewal(") &&
-      workspaceSrc.includes("commitLoanRenewal(") &&
-      !collectorShellSrc.includes("buildRenewalLoans") &&
-      !workspaceSrc.includes("buildRenewalLoans"),
-    true,
-  );
-  const supervisorSrc = src("../components/SupervisorMobileApp.tsx");
-  expect(
-    "Supervisor: préstamos / renovados de hoy por fecha ISO (la nube no trae dd/mm/aaaa)",
-    supervisorSrc.includes("loanDisbursementIsoDate(loan) === today") &&
-      !supervisorSrc.includes("loan.date === todayDisplay"),
-    true,
-  );
+  // Lote 1c: quitados candados de grep a pantallas (camino único / ISO).
+  // Se quedan las reglas de negocio: +20 %, sin plata, Renovado hoy, no reabre.
 }
 
 // ── 31. Cobro en el celular del cobrador (caso Jhon Flaca 08/10): paga todo lo que debe

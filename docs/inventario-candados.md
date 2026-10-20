@@ -1,8 +1,8 @@
 # Inventario de candados — `apps/admin/scripts/assert-cash-chain.mjs` (09/10/2026)
 
 **Estado firme (19/10):** Fase 1 Préstamos = **CERRADA** en prod. No rehacer.
-Pendiente real: limpiar ~50 candados de esa fase (solo si el dueño lo pide) + Fases 2–4.
-Regla del agente: `.cursor/rules/fases-dueno-dato.mdc`.
+Limpieza assert Fase 1 (lotes 1a–1c) = **CERRADA** 19/10. Renglón GAS- (expect) se queda hasta Fase 3.
+Pendiente real: Fases 2–4. Regla del agente: `.cursor/rules/fases-dueno-dato.mdc`.
 
 683 `expect` en el código (727 al correr: algunos van en ciclos), 33 bloques.
 Cifras por clase: **aproximadas** (las secciones grandes mezclan temas; se contó por título de prueba).
@@ -78,7 +78,7 @@ Solo se quitan `expect` de **candado** cuya causa ya cubre la base. Las **reglas
 | --- | --- | --- | --- |
 | **1a** | §16 candados Albornoz «no rehace fichas / no da de baja copias» (~6) | **HECHO 19/10** | Quitados del assert; sync nube (drop / loan_missing) se quedó como regla |
 | **1b** | §26 renglón GAS- / rename | **HECHO 19/10 (limpio)** | Nombres de caso genéricos. **Expect se quedan**: el renglón GAS- sigue en el aparato (borrarlos = daño). Borrado funcional → Fase 3 Saldos |
-| **1c** | §30 solo los ~4 candados de renovar (no las reglas +20 % / sin plata) | Tercer lote | `renew_loan` ya en base |
+| **1c** | §30 candados grep renovar (~2–4) | **HECHO 19/10** | Quitados expects de pantallas. Reglas +20 % / sin plata / Renovado hoy se quedan. Nombre de caso genérico |
 | **No tocar aún** | §14 Prestar atendido (~12) | Se queda | Es **regla** de planilla |
 | **No tocar aún** | §14 Haber Banco Albornoz (~39) | Se queda | Mezcla Fase **3 Saldos** |
 | **No tocar aún** | §16 `activeLoans` / un préstamo por cliente (~15) | Se queda | Es **regla** (también en UI) |
