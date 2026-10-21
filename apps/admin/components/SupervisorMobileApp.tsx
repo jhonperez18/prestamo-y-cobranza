@@ -81,7 +81,6 @@ import {
 } from "@/lib/planilla-display";
 import { reloanStateForVisit, type ReloanState } from "@/lib/loan-reloan";
 import { loanRenewalOf } from "@/lib/loan-renewal-marks";
-import { canRenewLoan } from "@/lib/loan-renew";
 import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
@@ -814,29 +813,7 @@ function PlanillaTable({
   );
 }
 
-/** Billete ámbar con V: vencido / renovar (solo vista; misma regla que canRenewLoan). */
-function RenewAlertBill() {
-  return (
-    <span className="supervisor-renew-alert-bill" title="Vencido · renovar" aria-label="Vencido · renovar">
-      <svg viewBox="0 0 16 12" aria-hidden="true" focusable="false">
-        <rect x="0.5" y="0.5" width="15" height="11" rx="1.5" fill="#fef3c7" stroke="#d97706" strokeWidth="1.1" />
-        <text
-          x="8"
-          y="8.4"
-          textAnchor="middle"
-          fill="#b45309"
-          fontSize="8"
-          fontWeight="700"
-          fontFamily="system-ui,Segoe UI,sans-serif"
-        >
-          V
-        </text>
-      </svg>
-    </span>
-  );
-}
-
-/** Lista de clientes para app supervisor: # (ruta), nombre, mora, alerta renovar, saldo vivo. */
+/** Lista de clientes para app supervisor: # (ruta), nombre, mora, saldo vivo. */
 function ClientesTable({
   rows,
   onOpen,
@@ -850,8 +827,6 @@ function ClientesTable({
     cuotas: ReturnType<typeof computeLoanCuotasProgress>;
     saldo: number | null;
     hasLoan: boolean;
-    /** Plazo vencido con saldo: misma señal que el billete del cobrador. */
-    renewAlert: boolean;
   }>;
   onOpen?: (clientRef: string) => void;
 }) {
@@ -864,9 +839,6 @@ function ClientesTable({
             <th className="is-ruta">#</th>
             <th className="is-nombre">Nombre</th>
             <th className="is-cuotas">Mora</th>
-            <th className="is-renew" aria-label="Vencido">
-              {" "}
-            </th>
             <th className="is-num">Saldo</th>
           </tr>
         </thead>
@@ -900,7 +872,6 @@ function ClientesTable({
                     <CuotasProgressCell progress={row.cuotas} />
                   )}
                 </td>
-                <td className="is-renew">{row.renewAlert ? <RenewAlertBill /> : null}</td>
                 <td className="is-num">
                   {awaitingLoan
                     ? "—"
@@ -3635,7 +3606,6 @@ export function SupervisorMobileApp({
         cuotas,
         saldo: loan ? loan.balance : null,
         hasLoan: Boolean(loan),
-        renewAlert: canRenewLoan(loan, today),
       };
     });
   }, [clients, clientesRouteFilter, loans, payments, today]);
@@ -3791,7 +3761,6 @@ export function SupervisorMobileApp({
           cuotas,
           saldo: loan ? loan.balance : null,
           hasLoan: Boolean(loan),
-          renewAlert: canRenewLoan(loan, today),
         };
       }),
     [eligibleLoanClients, loans, payments, today],
