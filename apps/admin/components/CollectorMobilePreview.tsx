@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import {
   CollectorMobileApp,
   type CollectorCloseDayPayload,
@@ -114,6 +114,8 @@ export function CollectorMobilePreview({
   onPreviewKindChange,
 }: Props) {
   const [kind, setKind] = useState<PreviewKind>("collector");
+  /** La app del supervisor se arma una vez y se queda. Cambiar de vista no la reconstruye. */
+  const [supervisorReady, setSupervisorReady] = useState(false);
   useEffect(() => {
     onPreviewKindChange?.(kind);
   }, [kind, onPreviewKindChange]);
@@ -181,13 +183,17 @@ export function CollectorMobilePreview({
 
   function pickCollector(ref: string) {
     setKind("collector");
-    onSelect(ref);
+    if (ref !== selectedRef) onSelect(ref);
   }
 
   function pickSupervisor(ref: string) {
     setKind("supervisor");
-    setPanelEpoch((n) => n + 1);
-    setSupervisorRef(ref);
+    if (supervisorReady && ref === supervisorRef) return;
+    startTransition(() => {
+      setSupervisorReady(true);
+      if (supervisorRef && supervisorRef !== ref) setPanelEpoch((n) => n + 1);
+      setSupervisorRef(ref);
+    });
   }
 
   const phoneTitle =
@@ -292,7 +298,8 @@ export function CollectorMobilePreview({
             <p className="ficha-empty">Crea un usuario con rol Supervisor para previsualizar.</p>
           ) : (
             <MobilePreviewFrame title={phoneTitle}>
-              {kind === "supervisor" && supervisor ? (
+              {supervisorReady && supervisor ? (
+                <div hidden={kind !== "supervisor"}>
                 <SupervisorMobileApp
                   key={supervisorPanelKey}
                   supervisor={supervisor}
@@ -321,7 +328,10 @@ export function CollectorMobilePreview({
                   onAdjustTCash={onAdjustTCash}
                   onReopenSheet={onReopenSheet}
                 />
-              ) : collector ? (
+                </div>
+              ) : null}
+              {collector ? (
+                <div hidden={kind !== "collector"}>
                 <CollectorMobileApp
                   key={collectorPanelKey}
                   collector={collector}
@@ -349,6 +359,7 @@ export function CollectorMobilePreview({
                   onCloseDay={onCloseDay}
                   onCloseMonth={onCloseMonth}
                 />
+                </div>
               ) : null}
             </MobilePreviewFrame>
           )}
