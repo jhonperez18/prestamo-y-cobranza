@@ -11,6 +11,7 @@ import { findFullDayCieClose } from "@/lib/planilla-cash-chain";
 import { planillaWindowStartIso } from "@/lib/planilla-window";
 import { auditChainFromState } from "@/lib/server-chain-audit";
 import { loadOperationalStateFromCloud, runServerDayRollover } from "@/lib/server-day-rollover";
+import { informeSealDetail, maybeSealInformeMonth, type InformeSealResult } from "@/lib/server-seal-informe-month";
 import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { CATALOG_FILE_UPLOAD, downloadCatalogFile } from "@/lib/supabase/catalog-file";
 import { listDeviceStatuses } from "@/lib/supabase/device-status-mirror";
@@ -121,6 +122,26 @@ export async function runServerMorningCheck(now = new Date()): Promise<MorningCh
     items.push({ label: "Lectura de la nube", ok: false, detail: loaded.error });
   } else {
     items.push(...evaluateMorningState(loaded.state, businessDate, planillaWindowStartIso(now)));
+  }
+  const informe = await maybeSealInformeMonth({
+    businessDate,
+    state: loaded.ok ? loaded.state : undefined,
+  }).catch((error: unknown): InformeSealResult => {
+    const message = error instanceof Error ? error.message : "informe_month_failed";
+    console.error("informe-month", error);
+    return { attempted: true, ok: false, day: businessDate, error: message };
+  });
+  if (informe.saved) {
+    items.push({ label: "Informe del mes", ok: true, detail: informeSealDetail(informe) });
+  } else if (informe.attempted && !informe.ok) {
+    items.push({ label: "Informe del mes", ok: false, detail: informeSealDetail(informe) });
+  } else if (
+    informe.attempted &&
+    informe.skipped === "not_ready" &&
+    informe.day &&
+    businessDate > informe.day
+  ) {
+    items.push({ label: "Informe del mes", ok: false, detail: informeSealDetail(informe) });
   }
   items.push(await devicesStorageItem(now));
   return { ok: items.every((item) => item.ok), ranAt, businessDate, items };

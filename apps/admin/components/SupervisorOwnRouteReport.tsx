@@ -10,6 +10,8 @@ import { useMemo, useState } from "react";
 import { sameRoute } from "@/lib/client-route-order";
 import type { DigitalPoolGasto } from "@/lib/digital-pools";
 import type { InformeHistoryKind, InformeRouteHistory } from "@/lib/informe-route-days";
+import type { InformeMonthSnapshot } from "@/lib/informe-month-snapshot";
+import { informePeriodName } from "@/lib/informe-month-snapshot";
 import { isoToDisplay } from "@/lib/loan-preview";
 import { money, type ClientRow, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 import { portfolioBalanceForClients } from "@/lib/portfolio-stats";
@@ -27,6 +29,8 @@ type Props = {
   /** Misma lista que Nequi → Gastos. No entra a la caja ni al Inicial. */
   nequiGastos: readonly DigitalPoolGasto[];
   nequiGastado: number;
+  /** Mes ya cerrado. Si viene, la pantalla lee esta copia y no recalcula. */
+  snapshot?: InformeMonthSnapshot | null;
 };
 
 const HISTORY_BUTTONS: { kind: InformeHistoryKind; label: string }[] = [
@@ -50,10 +54,12 @@ export function SupervisorOwnRouteReport({
   history,
   nequiGastos,
   nequiGastado,
+  snapshot = null,
 }: Props) {
+  const frozen = snapshot?.scope === "angelica" ? snapshot : null;
   const [openKind, setOpenKind] = useState<InformeHistoryKind | null>(null);
   const [nequiGastosOpen, setNequiGastosOpen] = useState(false);
-  const rows = useMemo((): ReportRow[] => {
+  const liveRows = useMemo((): ReportRow[] => {
     const refs = new Set(clients.filter((row) => sameRoute(row.route, route)).map((row) => row.ref));
     const cartera = portfolioBalanceForClients(loans, payments, refs);
     return [
@@ -69,13 +75,20 @@ export function SupervisorOwnRouteReport({
       { kind: "line", label: "Cartera + efectivo + nequi", value: cartera + efectivo + nequi, tone: "grand" },
     ];
   }, [route, loans, clients, payments, efectivo, nequi]);
+  const rows: ReportRow[] = frozen ? (frozen.rows as ReportRow[]) : liveRows;
+  const shownHistory = frozen ? (frozen.history as InformeRouteHistory) : history;
+  const shownGastos = frozen ? frozen.poolGastos : nequiGastos;
+  const shownGastado = frozen ? frozen.poolGastado : nequiGastado;
+  const shownCorte = frozen ? frozen.corteLabel : corteLabel;
 
   return (
     <div className="supervisor-informe">
       <header className="supervisor-informe-head">
         <h3>Informe mensual</h3>
         <p>
-          Ruta {route} · corte {corteLabel}
+          {frozen
+            ? `Ruta ${route} · ${informePeriodName(frozen.period)} · cierre ${shownCorte}`
+            : `Ruta ${route} · corte ${shownCorte}`}
         </p>
       </header>
       <div className="supervisor-liq-wrap">
@@ -115,7 +128,7 @@ export function SupervisorOwnRouteReport({
             }}
           >
             <span>{label}</span>
-            <b>{history ? money(history[kind].total, { symbol: false }) : "…"}</b>
+            <b>{shownHistory ? money(shownHistory[kind].total, { symbol: false }) : "…"}</b>
           </button>
         ))}
         <button
@@ -128,11 +141,11 @@ export function SupervisorOwnRouteReport({
           }}
         >
           <span>Gasto nequi</span>
-          <b>{money(nequiGastado, { symbol: false })}</b>
+          <b>{money(shownGastado, { symbol: false })}</b>
         </button>
       </div>
       {nequiGastosOpen ? (
-        nequiGastos.length === 0 ? (
+        shownGastos.length === 0 ? (
           <p className="ficha-empty">Sin gastos pagados desde Nequi este mes.</p>
         ) : (
           <div className="supervisor-banco-hist">
@@ -142,7 +155,7 @@ export function SupervisorOwnRouteReport({
               <span>Valor</span>
             </div>
             <ul className="supervisor-banco-gastos-list" aria-label="Gastos pagados desde Nequi">
-              {nequiGastos.map((row) => (
+              {shownGastos.map((row) => (
                 <li key={row.ref}>
                   <span className="is-date">{isoToDisplay(row.date)}</span>
                   <span className="is-label">{row.label}</span>
@@ -152,7 +165,7 @@ export function SupervisorOwnRouteReport({
             </ul>
             <div className="supervisor-banco-gastos-total">
               <span>Total gastado</span>
-              <b>{money(nequiGastado, { symbol: false })}</b>
+              <b>{money(shownGastado, { symbol: false })}</b>
             </div>
           </div>
         )
@@ -167,14 +180,14 @@ export function SupervisorOwnRouteReport({
               </tr>
             </thead>
             <tbody>
-              {!history || history[openKind].days.length === 0 ? (
+              {!shownHistory || shownHistory[openKind].days.length === 0 ? (
                 <tr>
                   <td colSpan={2} className="is-empty">
-                    {history ? "Sin movimientos este mes." : "Calculando…"}
+                    {shownHistory ? "Sin movimientos este mes." : "Calculando…"}
                   </td>
                 </tr>
               ) : (
-                history[openKind].days.map((day) => (
+                shownHistory[openKind].days.map((day) => (
                   <tr key={day.date}>
                     <td className="is-dia">{day.date.slice(8, 10)}</td>
                     <td className="is-num is-total">{money(day.total, { symbol: false })}</td>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runServerDayRollover } from "@/lib/server-day-rollover";
-import { businessClockParts } from "@/lib/business-timezone";
+import { maybeSealInformeMonth } from "@/lib/server-seal-informe-month";
+import { businessClockParts, businessTodayIso } from "@/lib/business-timezone";
 import { isCronAuthorized } from "@/lib/cron-auth";
 import { sendWeeklyReport, type WeeklyReportSendResult } from "@/lib/server-weekly-report";
 export const dynamic = "force-dynamic";
@@ -28,6 +29,13 @@ export async function POST(request: Request) {
     const clock = businessClockParts();
     const now = new Date();
     const result = await runServerDayRollover(now);
+    const informeMonth = await maybeSealInformeMonth({
+      businessDate: businessTodayIso(now),
+    }).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : "informe_month_failed";
+      console.error("informe-month", error);
+      return { attempted: true, ok: false, error: message };
+    });
     const weeklyReport = result.ok
       ? await sendWeeklyReport({
           now,
@@ -41,6 +49,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ...result,
       weeklyReport,
+      informeMonth,
       clock,
     });
   } catch (error) {

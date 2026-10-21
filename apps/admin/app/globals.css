@@ -6121,6 +6121,52 @@
       border-color: #3f6b52;
       color: #fff;
     }
+    .supervisor-informe-historial {
+      margin: 0 0 8px;
+    }
+    .supervisor-informe-historial > button {
+      appearance: none;
+      width: 100%;
+      padding: 7px 10px;
+      border-radius: 10px;
+      border: 1px dashed #9fbfae;
+      background: #fff;
+      color: #1f3b2b;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .supervisor-informe-historial > button.on {
+      background: #e6efe9;
+      border-style: solid;
+      border-color: #3f6b52;
+    }
+    .supervisor-informe-historial-months {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .supervisor-informe-historial-months button {
+      appearance: none;
+      padding: 6px 12px;
+      border-radius: 999px;
+      border: 1px solid #9fbfae;
+      background: #f3f8f5;
+      color: #1f3b2b;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .supervisor-informe-historial-months button.on {
+      background: #3f6b52;
+      border-color: #3f6b52;
+      color: #fff;
+    }
     .supervisor-liq-table.is-informe-days th,
     .supervisor-liq-table.is-informe-days td {
       padding: 3px 1px !important;

@@ -69,6 +69,7 @@ import {
   normalizeHistoryDate,
   openingSaldoForPeriod,
   periodFromDateIso,
+  lastCollectionDayOfPeriod,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
@@ -84,6 +85,11 @@ import { loanRenewalOf } from "@/lib/loan-renewal-marks";
 import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
+import {
+  informePeriodName,
+  normalizeInformeSnapshot,
+  type InformeMonthSnapshot,
+} from "@/lib/informe-month-snapshot";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import {
   loanDisbursementIsoDate,
@@ -2156,6 +2162,38 @@ export function SupervisorMobileApp({
 
   /** Informe → General (M · T · N, tal cual) o Angélica (solo A: caja propia + Nequi). */
   const [informeTab, setInformeTab] = useState<"general" | "angelica">("general");
+  const [historialOpen, setHistorialOpen] = useState(false);
+  const [informeSnapshots, setInformeSnapshots] = useState<InformeMonthSnapshot[] | null>(null);
+  const [informeSnapshotError, setInformeSnapshotError] = useState("");
+  const [informePeriod, setInformePeriod] = useState<string | null>(null);
+  useEffect(() => {
+    if (view !== "informe" || !historialOpen || informeSnapshots) return;
+    let cancelled = false;
+    fetch("/api/ops/informe-snapshots", { cache: "no-store" })
+      .then(async (res) => {
+        const body = (await res.json()) as { ok?: boolean; snapshots?: unknown };
+        if (!res.ok || !body.ok || !Array.isArray(body.snapshots)) {
+          throw new Error("informe_snapshots_failed");
+        }
+        return body.snapshots
+          .map((row) => normalizeInformeSnapshot(row))
+          .filter((row): row is InformeMonthSnapshot => Boolean(row));
+      })
+      .then((rows) => {
+        if (!cancelled) setInformeSnapshots(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setInformeSnapshotError("No se pudo leer el historial.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, historialOpen, informeSnapshots]);
+  const informeScope = informeTab === "angelica" ? "angelica" : "general";
+  const informeMonths = (informeSnapshots ?? []).filter((row) => row.scope === informeScope);
+  const openInformeSnapshot =
+    informeMonths.find((row) => row.period === informePeriod) ?? null;
+  const informeSealDay = lastCollectionDayOfPeriod(today.slice(0, 7));
   const informeARows = useMemo(
     () => liquidaciones.filter((row) => sameRoute(row.routeName, INFORME_A_ROUTE)),
     [liquidaciones],
@@ -5111,6 +5149,47 @@ export function SupervisorMobileApp({
               Angélica
             </button>
           </div>
+          <div className="supervisor-informe-historial">
+            <button
+              type="button"
+              className={historialOpen ? "on" : undefined}
+              aria-expanded={historialOpen}
+              onClick={() => {
+                setHistorialOpen((prev) => !prev);
+                if (historialOpen) setInformePeriod(null);
+              }}
+            >
+              Historial
+            </button>
+            {historialOpen ? (
+              informeSnapshotError ? (
+                <p className="ficha-empty">{informeSnapshotError}</p>
+              ) : informeSnapshots === null ? (
+                <p className="ficha-empty">Leyendo…</p>
+              ) : informeMonths.length === 0 ? (
+                <p className="ficha-empty">
+                  {informePeriodName(today.slice(0, 7))} se guarda al cerrar la última ruta del{" "}
+                  {informeSealDay ? isoToDisplay(informeSealDay) : "último día"}.
+                </p>
+              ) : (
+                <div className="supervisor-informe-historial-months" role="list">
+                  {informeMonths.map((row) => (
+                    <button
+                      key={row.ref}
+                      type="button"
+                      role="listitem"
+                      className={informePeriod === row.period ? "on" : undefined}
+                      onClick={() =>
+                        setInformePeriod((prev) => (prev === row.period ? null : row.period))
+                      }
+                    >
+                      {informePeriodName(row.period)}
+                    </button>
+                  ))}
+                </div>
+              )
+            ) : null}
+          </div>
           {informeTab === "general" ? (
             <SupervisorMonthlyReport
               loans={loans}
@@ -5122,6 +5201,7 @@ export function SupervisorMobileApp({
               history={informeHistory}
               bancoGastos={bancoGastos}
               bancoGastado={bancoGastado}
+              snapshot={openInformeSnapshot}
             />
           ) : (
             <SupervisorOwnRouteReport
@@ -5135,6 +5215,7 @@ export function SupervisorMobileApp({
               history={informeAHistory}
               nequiGastos={nequiGastos}
               nequiGastado={nequiGastado}
+              snapshot={openInformeSnapshot}
             />
           )}
         </section>

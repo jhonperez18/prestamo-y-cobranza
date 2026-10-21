@@ -14,6 +14,8 @@ import {
   type InformeHistory,
   type InformeHistoryKind,
 } from "@/lib/informe-route-days";
+import type { InformeMonthSnapshot } from "@/lib/informe-month-snapshot";
+import { informePeriodName } from "@/lib/informe-month-snapshot";
 import { isoToDisplay } from "@/lib/loan-preview";
 import { money, type ClientRow, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 import { portfolioBalanceForClients } from "@/lib/portfolio-stats";
@@ -32,6 +34,8 @@ type Props = {
   /** Misma lista que Banco → Gastos. No entra a la caja ni al Inicial. */
   bancoGastos: readonly DigitalPoolGasto[];
   bancoGastado: number;
+  /** Mes ya cerrado. Si viene, la pantalla lee esta copia y no recalcula. */
+  snapshot?: InformeMonthSnapshot | null;
 };
 
 const HISTORY_BUTTONS: { kind: InformeHistoryKind; label: string }[] = [
@@ -68,10 +72,12 @@ export function SupervisorMonthlyReport({
   history,
   bancoGastos,
   bancoGastado,
+  snapshot = null,
 }: Props) {
+  const frozen = snapshot?.scope === "general" ? snapshot : null;
   const [openKind, setOpenKind] = useState<InformeHistoryKind | null>(null);
   const [bancoGastosOpen, setBancoGastosOpen] = useState(false);
-  const rows = useMemo((): ReportRow[] => {
+  const liveRows = useMemo((): ReportRow[] => {
     const cartera = INFORME_ROUTES.map((route) => ({
       route,
       value: carteraOfRoute(route, loans, clients, payments),
@@ -99,12 +105,21 @@ export function SupervisorMonthlyReport({
       },
     ];
   }, [loans, clients, payments, efectivo, banco]);
+  const rows: ReportRow[] = frozen ? (frozen.rows as ReportRow[]) : liveRows;
+  const shownHistory = frozen ? (frozen.history as InformeHistory) : history;
+  const shownGastos = frozen ? frozen.poolGastos : bancoGastos;
+  const shownGastado = frozen ? frozen.poolGastado : bancoGastado;
+  const shownCorte = frozen ? frozen.corteLabel : corteLabel;
 
   return (
     <div className="supervisor-informe">
       <header className="supervisor-informe-head">
         <h3>Informe mensual</h3>
-        <p>Rutas M · T · N · corte {corteLabel}</p>
+        <p>
+          {frozen
+            ? `Rutas M · T · N · ${informePeriodName(frozen.period)} · cierre ${shownCorte}`
+            : `Rutas M · T · N · corte ${shownCorte}`}
+        </p>
       </header>
       <div className="supervisor-liq-wrap">
         <table className="supervisor-liq-table is-informe">
@@ -143,7 +158,7 @@ export function SupervisorMonthlyReport({
             }}
           >
             <span>{label}</span>
-            <b>{history ? money(history[kind].total, { symbol: false }) : "…"}</b>
+            <b>{shownHistory ? money(shownHistory[kind].total, { symbol: false }) : "…"}</b>
           </button>
         ))}
         <button
@@ -156,11 +171,11 @@ export function SupervisorMonthlyReport({
           }}
         >
           <span>Gasto banco</span>
-          <b>{money(bancoGastado, { symbol: false })}</b>
+          <b>{money(shownGastado, { symbol: false })}</b>
         </button>
       </div>
       {bancoGastosOpen ? (
-        bancoGastos.length === 0 ? (
+        shownGastos.length === 0 ? (
           <p className="ficha-empty">Sin gastos pagados desde Banco este mes.</p>
         ) : (
           <div className="supervisor-banco-hist">
@@ -170,7 +185,7 @@ export function SupervisorMonthlyReport({
               <span>Valor</span>
             </div>
             <ul className="supervisor-banco-gastos-list" aria-label="Gastos pagados desde Banco">
-              {bancoGastos.map((row) => (
+              {shownGastos.map((row) => (
                 <li key={row.ref}>
                   <span className="is-date">{isoToDisplay(row.date)}</span>
                   <span className="is-label">{row.label}</span>
@@ -180,7 +195,7 @@ export function SupervisorMonthlyReport({
             </ul>
             <div className="supervisor-banco-gastos-total">
               <span>Total gastado</span>
-              <b>{money(bancoGastado, { symbol: false })}</b>
+              <b>{money(shownGastado, { symbol: false })}</b>
             </div>
           </div>
         )
@@ -207,14 +222,14 @@ export function SupervisorMonthlyReport({
               </tr>
             </thead>
             <tbody>
-              {!history || history[openKind].days.length === 0 ? (
+              {!shownHistory || shownHistory[openKind].days.length === 0 ? (
                 <tr>
                   <td colSpan={INFORME_HISTORY_ROUTES.length + 2} className="is-empty">
-                    {history ? "Sin movimientos este mes." : "Calculando…"}
+                    {shownHistory ? "Sin movimientos este mes." : "Calculando…"}
                   </td>
                 </tr>
               ) : (
-                history[openKind].days.map((day) => (
+                shownHistory[openKind].days.map((day) => (
                   <tr key={day.date}>
                     <td className="is-dia">{day.date.slice(8, 10)}</td>
                     {INFORME_HISTORY_ROUTES.map((route) => (
