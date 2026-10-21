@@ -89,6 +89,7 @@ import { loanCommandKey, loanRefLabel } from "@/lib/loan-command";
 import {
   assignmentsChangedFrom,
   flushOpsMirrorQueues,
+  mirrorClosedRouteSheet,
   queueAssignmentsMirror,
   queueDayCloseMirror,
   queueDayExpenseMirror,
@@ -781,6 +782,13 @@ export function CollectorShell({ session, onLogout }: Props) {
       // Encolar primero, luego flush (con un reintento): el cierre debe salir a la nube.
       await flushOpsMirrorQueues();
       await flushOpsMirrorQueues();
+      // La base sella la hoja entera, también la visita que este celular ya no tiene.
+      await mirrorClosedRouteSheet({
+        collectorRef: payload.collectorRef,
+        date: payload.date,
+        route: payload.planillaRoute,
+        assignments: closedAssignments,
+      });
     } catch {
       /* cola offline reintenta */
     }

@@ -1302,15 +1302,16 @@ function dayClosedLabel(closedAtIso: string) {
  * (mismo criterio que `applyDayCloseRecordsToAssignments`). No depende de que las visitas
  * selladas del celular lleguen antes o después del CIE-.
  */
-async function sealReclosedSheets(
+/** Sella las visitas aún abiertas de esas rutas. No toca las que ya tienen marca. */
+async function stampOpenRouteVisits(
   client: MirrorDb,
-  cie: Record<string, unknown>,
-  routes: string[],
+  input: { collectorRef: string; date: string; routes: string[]; label: string },
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const collectorRef = String(cie.collector_ref || "").trim();
-  const date = String(cie.close_date || "").trim();
-  if (!collectorRef || !date || !routes.length) return { ok: true };
-  const label = dayClosedLabel(String(cie.closed_at || ""));
+  const collectorRef = input.collectorRef.trim();
+  const date = input.date.trim();
+  const routes = input.routes.map((route) => route.trim()).filter(Boolean);
+  const label = input.label.trim();
+  if (!collectorRef || !date || !routes.length || !label) return { ok: true };
   const stamp = new Date().toISOString();
   const { error: skipError } = await client
     .from("daily_assignments")
@@ -1347,6 +1348,60 @@ async function sealReclosedSheets(
     .is("day_closed_at", null);
   if (sealError) return { ok: false, error: sealError.message };
   return { ok: true };
+}
+
+async function sealReclosedSheets(
+  client: MirrorDb,
+  cie: Record<string, unknown>,
+  routes: string[],
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const collectorRef = String(cie.collector_ref || "").trim();
+  const date = String(cie.close_date || "").trim();
+  if (!collectorRef || !date || !routes.length) return { ok: true };
+  return stampOpenRouteVisits(client, {
+    collectorRef,
+    date,
+    routes,
+    label: dayClosedLabel(String(cie.closed_at || "")),
+  });
+}
+
+/**
+ * Cierre de una hoja (M, T, A o N): la base sella todas las visitas de esa ruta
+ * en el día, también la que el celular ya no tiene en la mano.
+ * Solo hoy. Un día pasado no se toca. Si el supervisor reabrió esa hoja, no la vuelve a cerrar.
+ */
+export async function sealRouteSheetInCloud(row: {
+  collectorRef?: string;
+  date?: string;
+  route?: string;
+  closedAt?: string;
+}) {
+  const client = createMirrorClient();
+  if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  const collectorRef = String(row.collectorRef || "").trim();
+  const date = normalizeHistoryDate(String(row.date || "")) || String(row.date || "").trim();
+  const route = String(row.route || "").trim();
+  if (!collectorRef || !date || !route) {
+    return { ok: false as const, error: "seal_route_incomplete" };
+  }
+  if (date !== businessTodayIso()) {
+    return { ok: true as const, skipped: true as const, reason: "historia" };
+  }
+  const { data: cie, error: cieError } = await client
+    .from("day_closes")
+    .select("ref, closed_at, movement_refs")
+    .eq("collector_ref", collectorRef)
+    .eq("close_date", date)
+    .like("ref", "CIE-%")
+    .limit(1)
+    .maybeSingle();
+  if (cieError) return { ok: false as const, error: cieError.message };
+  if (cie?.ref && !cieClosesRoute(cie, route)) {
+    return { ok: true as const, skipped: true as const, reason: "hoja_reabierta" };
+  }
+  const label = String(row.closedAt || "").trim() || dayClosedLabel(new Date().toISOString());
+  return stampOpenRouteVisits(client, { collectorRef, date, routes: [route], label });
 }
 
 /**
@@ -1799,6 +1854,37 @@ export function queueAssignmentsMirror(rows: DailyCollectionAssignment[]) {
   let closes: CollectorDayCloseRecord[] | null = null;
   const readCloses = () => (closes ??= readLocalDayCloses());
   for (const row of rows) queueAssignmentMirror(row, readCloses);
+}
+
+/**
+ * El cierre de la hoja le dice a la base que selle esa ruta entera.
+ * No depende de que el celular todavía tenga cada visita en la mano.
+ */
+export async function mirrorClosedRouteSheet(input: {
+  collectorRef: string;
+  date: string;
+  route?: string;
+  assignments: DailyCollectionAssignment[];
+}): Promise<void> {
+  const route = String(input.route || "").trim();
+  if (!route || !input.collectorRef || !input.date) return;
+  const day = normalizeHistoryDate(input.date) || input.date;
+  const closedAt =
+    input.assignments.find(
+      (row) =>
+        row.collectorRef === input.collectorRef &&
+        (normalizeHistoryDate(row.dispatchDate) || row.dispatchDate) === day &&
+        row.clientRoute === route &&
+        row.dayClosedAt,
+    )?.dayClosedAt || "";
+  try {
+    await postMirror("/api/ops/mirror", {
+      kind: "seal_route",
+      row: { collectorRef: input.collectorRef, date: day, route, closedAt },
+    });
+  } catch (error) {
+    console.error("seal-route", error);
+  }
 }
 
 export async function flushOpsMirrorQueues(): Promise<{ flushed: number; left: number }> {

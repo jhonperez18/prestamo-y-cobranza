@@ -101,6 +101,7 @@ import {
 import {
   assignmentsChangedFrom,
   flushOpsMirrorQueues,
+  mirrorClosedRouteSheet,
   queueAssignmentsMirror,
   queueCollectorMirror,
   queueDayCloseMirror,
@@ -1795,6 +1796,12 @@ export function useWorkspace({
       // Sin esto el cobrador se ve cerrado y el dueño nunca recibe el CIE/planilla.
       await flushOpsMirrorQueues();
       await flushOpsMirrorQueues();
+      await mirrorClosedRouteSheet({
+        collectorRef: payload.collectorRef,
+        date: payload.date,
+        route: payload.planillaRoute,
+        assignments: closedAssignments,
+      });
     } catch {
       /* cola offline reintenta */
     }

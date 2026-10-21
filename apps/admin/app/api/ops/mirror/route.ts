@@ -8,6 +8,7 @@ import {
   miscToRow,
   OPS_MIRROR_BATCH_MAX,
   routeToRow,
+  sealRouteSheetInCloud,
   upsertAssignmentRow,
   upsertDayCloseIdempotent,
   upsertDayExpenseIdempotent,
@@ -39,7 +40,14 @@ type Body = MirrorItem & {
 
 type ItemOutcome = { status: number; json: Record<string, unknown> };
 
-const VIRGIN_LOCKED_KINDS = new Set(["day_close", "day_expense", "misc_payment", "assignment", "route"]);
+const VIRGIN_LOCKED_KINDS = new Set([
+  "day_close",
+  "day_expense",
+  "misc_payment",
+  "assignment",
+  "route",
+  "seal_route",
+]);
 
 async function deleteByRef(table: "routes" | "collectors", row: unknown): Promise<ItemOutcome> {
   const ref = String((row as { ref?: string })?.ref || "").trim();
@@ -63,7 +71,8 @@ async function mirrorItem(item: MirrorItem): Promise<ItemOutcome> {
 
   let result:
     | Awaited<ReturnType<typeof upsertOpsRow>>
-    | Awaited<ReturnType<typeof upsertAssignmentRow>>;
+    | Awaited<ReturnType<typeof upsertAssignmentRow>>
+    | Awaited<ReturnType<typeof sealRouteSheetInCloud>>;
 
   switch (kind) {
     case "collector":
@@ -93,6 +102,16 @@ async function mirrorItem(item: MirrorItem): Promise<ItemOutcome> {
       const raw = item.row as DailyCollectionAssignment & { ref?: string };
       // Un N/P del cobrador no lo pisa una fila «pendiente» sin PG-.
       result = await upsertAssignmentRow(assignmentToRow(raw));
+      break;
+    }
+    case "seal_route": {
+      const raw = item.row as {
+        collectorRef?: string;
+        date?: string;
+        route?: string;
+        closedAt?: string;
+      };
+      result = await sealRouteSheetInCloud(raw);
       break;
     }
     default:
