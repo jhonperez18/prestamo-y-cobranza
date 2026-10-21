@@ -114,7 +114,7 @@ export function CollectorMobilePreview({
   onPreviewKindChange,
 }: Props) {
   const [kind, setKind] = useState<PreviewKind>("collector");
-  /** La app del supervisor se arma una vez y se queda. Cambiar de vista no la reconstruye. */
+  /** Se arma una vez, oculto, y se queda. El clic solo lo muestra: no hay pantalla en blanco. */
   const [supervisorReady, setSupervisorReady] = useState(false);
   useEffect(() => {
     onPreviewKindChange?.(kind);
@@ -181,19 +181,28 @@ export function CollectorMobilePreview({
     }
   }, [kind, supervisor, supervisorRef]);
 
+  // Arma el supervisor mientras se ve el cobrador. El clic no espera ni deja el hueco vacío.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      startTransition(() => setSupervisorReady(true));
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   function pickCollector(ref: string) {
     setKind("collector");
     if (ref !== selectedRef) onSelect(ref);
   }
 
   function pickSupervisor(ref: string) {
-    setKind("supervisor");
-    if (supervisorReady && ref === supervisorRef) return;
-    startTransition(() => {
-      setSupervisorReady(true);
+    const show = () => {
       if (supervisorRef && supervisorRef !== ref) setPanelEpoch((n) => n + 1);
       setSupervisorRef(ref);
-    });
+      setSupervisorReady(true);
+      setKind("supervisor");
+    };
+    if (supervisorReady) show();
+    else startTransition(show);
   }
 
   const phoneTitle =
