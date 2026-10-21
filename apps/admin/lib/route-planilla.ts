@@ -368,6 +368,73 @@ export function planillaDayBlockedReason(date: string) {
  * Planilla del día desde asignación permanente ruta → cobrador.
  * Lun–sáb (sin festivos). Se envía sola a la APP (dispatched).
  */
+function visitIsOpenPending(row: DailyCollectionAssignment) {
+  return row.visitStatus === "pendiente" || row.visitStatus === "parcial" || !row.visitStatus;
+}
+
+/** Mayor saldo gana. Empate: el préstamo más nuevo, luego el P- más alto. */
+function pendingVisitBeats(
+  row: DailyCollectionAssignment,
+  other: DailyCollectionAssignment,
+  index: PlanillaLoanIndex,
+  owesFor: (loan: LoanRow) => number,
+) {
+  const rank = (visit: DailyCollectionAssignment) => {
+    const loan = visit.loanRef ? index.loanByRef.get(visit.loanRef) : undefined;
+    const owes = loan ? owesFor(loan) : 0;
+    const started = loan ? loanDisbursementIsoDate(loan) : "";
+    const refNum = Number(String(visit.loanRef || "").replace(/\D/g, "")) || 0;
+    return { owes, started, refNum };
+  };
+  const a = rank(row);
+  const b = rank(other);
+  if (a.owes !== b.owes) return a.owes > b.owes;
+  if (a.started !== b.started) return a.started > b.started;
+  return a.refNum > b.refNum;
+}
+
+/**
+ * Día abierto: un cliente, una visita por cobrar.
+ * Prestar se queda solo cuando no hay cuota. Las cobradas y las omitidas
+ * siguen (son el recaudo del día, no otra fila por cobrar).
+ */
+function oneOpenVisitPerClient(
+  rows: DailyCollectionAssignment[],
+  date: string,
+  index: PlanillaLoanIndex,
+  owesFor: (loan: LoanRow) => number,
+) {
+  const groups = new Map<string, DailyCollectionAssignment[]>();
+  const kept: DailyCollectionAssignment[] = [];
+  for (const row of rows) {
+    if (row.dispatchDate !== date || row.dayClosedAt) {
+      kept.push(row);
+      continue;
+    }
+    const key = `${row.collectorRef}|${row.clientRef}`;
+    const list = groups.get(key);
+    if (list) list.push(row);
+    else groups.set(key, [row]);
+  }
+  for (const group of groups.values()) {
+    const cuotas = group.filter((row) => !isAssignmentAwaitingLoan(row));
+    if (!cuotas.length) {
+      const decided = group.find((row) => row.visitStatus === "omitido" || row.visitStatus === "cobrado");
+      kept.push(decided ?? group[0]);
+      continue;
+    }
+    const pending = cuotas.filter(visitIsOpenPending);
+    kept.push(...cuotas.filter((row) => !visitIsOpenPending(row)));
+    if (!pending.length) continue;
+    kept.push(
+      pending.reduce((best, row) =>
+        pendingVisitBeats(row, best, index, owesFor) ? row : best,
+      ),
+    );
+  }
+  return kept;
+}
+
 export function syncPermanentRoutePlanilla(
   date: string,
   routes: RouteRow[],
@@ -478,23 +545,12 @@ export function syncPermanentRoutePlanilla(
       let dayItems = items;
       // `canClientTakeNewLoan` sobre el índice: libre ⇔ cero préstamos activos.
       const canTakeNewLoan = !(index.activeByClient.get(client.ref)?.length);
-      const finishedToday = items.some((item) => {
-        if (!item.loanRef) return false;
-        const loan = index.loanByRef.get(item.loanRef);
-        if (!loan) return false;
-        return loanPaidOnDate(loan.ref, date, index.paymentsFor(loan.ref)) && owesFor(loan) <= 0;
-      });
       const declinedPrestarToday = declinedPrestarKeys.has(`${collector.ref}|${client.ref}`);
-      // Sin crédito abierto: oferta Prestar (azul). Terminar hoy no la quita;
-      // solo el visto rojo (declinar) saca de la lista del día.
+      // Prestar solo si es la única visita. Al lado de una cuota (pendiente o ya
+      // cobrada) es la segunda fila del mismo cliente.
       const unloadedLoanToday = clientsWithUnloadedLoanToday.has(`${collector.ref}|${client.ref}`);
-      if (canTakeNewLoan && !declinedPrestarToday && !unloadedLoanToday) {
-        const offer = awaitingLoanItemForClient(client, date);
-        if (!dayItems.length) {
-          dayItems = [offer];
-        } else if (finishedToday && !dayItems.some((item) => item.id.includes(":prestar"))) {
-          dayItems = [...dayItems, offer];
-        }
+      if (canTakeNewLoan && !declinedPrestarToday && !unloadedLoanToday && !dayItems.length) {
+        dayItems = [awaitingLoanItemForClient(client, date)];
       }
       for (const item of dayItems) {
         const base = {
@@ -614,23 +670,13 @@ export function syncPermanentRoutePlanilla(
   }
 
   const built = [...builtMap.values()];
-  const cuotaAbiertaHoy = new Set(
-    built
-      .filter(
-        (row) =>
-          row.dispatchDate === date &&
-          !isAssignmentAwaitingLoan(row) &&
-          (row.visitStatus === "pendiente" || row.visitStatus === "parcial" || !row.visitStatus),
-      )
+  // Una persona, una visita en el día que se está armando. Prestar solo si es
+  // la única. Dos cuotas pendientes: se queda la del préstamo que más debe.
+  const builtUnique = oneOpenVisitPerClient(built, date, index, owesFor);
+  const conCuota = new Set(
+    builtUnique
+      .filter((row) => row.dispatchDate === date && !isAssignmentAwaitingLoan(row))
       .map((row) => `${row.collectorRef}|${row.clientRef}`),
-  );
-  // Una persona, una visita por cobrar. Si la cuota sigue pendiente, la fila
-  // Prestar no se guarda al lado: eso es el cliente doble. Quien ya pagó hoy
-  // conserva la oferta de prestar. Si Prestar es la única visita, se queda.
-  const builtUnique = built.filter(
-    (row) =>
-      !isAssignmentAwaitingLoan(row) ||
-      !cuotaAbiertaHoy.has(`${row.collectorRef}|${row.clientRef}`),
   );
 
   const kept = existing.filter((row) => {
@@ -638,7 +684,7 @@ export function syncPermanentRoutePlanilla(
     if (!row.dayClosedAt) return false;
     if (
       isAssignmentAwaitingLoan(row) &&
-      cuotaAbiertaHoy.has(`${row.collectorRef}|${row.clientRef}`)
+      conCuota.has(`${row.collectorRef}|${row.clientRef}`)
     ) {
       return false;
     }

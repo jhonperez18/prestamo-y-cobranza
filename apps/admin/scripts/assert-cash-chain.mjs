@@ -3025,25 +3025,42 @@ expect(
   expect("Caja T: préstamo Banco de Albornoz no sale de efectivo", cashWithAlb.dayFinal, cashBase.dayFinal);
   expect("Caja T: el millón de Albornoz no entra al libro de efectivo", cashWithAlb.t.prestamos, 0);
 }
-// Terminó hoy + Prestar hecho: se guarda las dos filas (el pull no revive Prestar abierta),
-// la lista cuenta una sola persona.
-const { visiblePlanillaAssignments } = await import("@/lib/planilla-dedupe");
-const twin = [
-  visit(`${pDate}:P-OLD:acum`, "CLI-P1", "M", pDate, { visitStatus: "cobrado", loanRef: "P-OLD", paymentRef: "PG-OLD" }),
-  visit(`${pDate}:CLI-P1:prestar`, "CLI-P1", "M", pDate, {
-    visitStatus: "omitido",
-    awaitingLoan: true,
-    chargeLabel: "Prestar",
-    skipReason: "Préstamo hecho hoy",
-  }),
+// Una persona, una visita por cobrar. Dos préstamos activos no dejan dos filas.
+// Se queda el que más debe. Prestar al lado de una cuota no se guarda.
+const dobleLoans = [
+  { ref: "P-CHICO", clientRef: "CLI-P1", client: "Flaca M", date: "20/09/2026", capital: 100_000, total: 15_000, installment: 15_000, status: "Activo", balance: 15_000 },
+  { ref: "P-GRANDE", clientRef: "CLI-P1", client: "Flaca M", date: "01/09/2026", capital: 300_000, total: 115_000, installment: 15_000, status: "Activo", balance: 115_000 },
 ];
-expect("Prestar hecho hoy: las dos filas se guardan", twin.length, 2);
-expect("Prestar hecho hoy: la lista no lo duplica", visiblePlanillaAssignments(twin).length, 1);
-expect(
-  "Prestar hecho hoy: queda la cuota, no el Prestar",
-  visiblePlanillaAssignments(twin)[0]?.loanRef ?? null,
-  "P-OLD",
+const doble = syncPermanentRoutePlanilla(
+  pDate,
+  pRoutes,
+  pClients.slice(0, 1),
+  dobleLoans,
+  [COB],
+  [
+    visit(`${pDate}:P-CHICO:acum`, "CLI-P1", "M", pDate, { visitStatus: "pendiente", loanRef: "P-CHICO" }),
+    visit(`${pDate}:P-GRANDE:acum`, "CLI-P1", "M", pDate, { visitStatus: "pendiente", loanRef: "P-GRANDE" }),
+    visit(`${pDate}:CLI-P1:prestar`, "CLI-P1", "M", pDate, { visitStatus: "pendiente", awaitingLoan: true, chargeLabel: "Prestar" }),
+  ],
+  [],
 );
+const dobleRows = doble.assignments.filter(
+  (row) => row.dispatchDate === pDate && row.clientRef === "CLI-P1" && (row.visitStatus === "pendiente" || !row.visitStatus),
+);
+expect("Una persona, una visita por cobrar", dobleRows.length, 1);
+expect("Se queda el préstamo que más debe", dobleRows[0]?.loanRef ?? null, "P-GRANDE");
+expect("Prestar no se guarda al lado de la cuota", dobleRows.some((row) => String(row.itemId || "").includes(":prestar")), false);
+{
+  const { readFileSync } = await import("node:fs");
+  const opsMirrorSrc = readFileSync(new URL("../lib/supabase/ops-mirror.ts", import.meta.url), "utf8");
+  expect(
+    "Nube: borra la visita sobrante de hoy",
+    opsMirrorSrc.includes("collapseTodayOpenVisits") && opsMirrorSrc.includes('reason: "visita_duplicada"'),
+    true,
+  );
+  const pullSrc = readFileSync(new URL("../lib/supabase/ops-mirror.ts", import.meta.url), "utf8");
+  expect("Pull completo no conserva la visita que la nube ya soltó", pullSrc.includes("remoteClients"), true);
+}
 
 // ── 15. Día 1 del mes: el cobro nunca se bloquea si el mes anterior quedó sellado por
 //     el CIE- de su último día de cobro, aunque el cierre de mes falte en ese aparato.
@@ -3150,7 +3167,7 @@ for (const prevStatus of ["pendiente", "omitido"]) {
   const order = ["CLI-R1", "CLI-R2", "CLI-R3"].map((ref) => rows.findIndex((r) => r.clientRef === ref));
   expect(`Borrado con cuota hoy (${prevStatus}): visible y en su lugar de la ruta`, order.every((i, k) => i >= 0 && (k === 0 || i > order[k - 1])), true);
 }
-// Terminó de pagar hoy: su visita cobrada no le quita el Prestar.
+// Terminó de pagar hoy: queda el cobro. Prestar al lado sería el cliente doble.
 const fSynced = syncPermanentRoutePlanilla(
   rDate,
   pRoutes,
@@ -3162,7 +3179,8 @@ const fSynced = syncPermanentRoutePlanilla(
 );
 const fRows = rDayRows(fSynced);
 expect("Terminó hoy: queda el cobro", fRows.some((r) => r.loanRef === "P-F1" && r.visitStatus === "cobrado"), true);
-expect("Terminó hoy: Prestar habilitado", fRows.find((r) => r.itemId === `${rDate}:CLI-R1:prestar`)?.visitStatus ?? null, "pendiente");
+expect("Terminó hoy: una sola visita", fRows.filter((r) => r.clientRef === "CLI-R1").length, 1);
+expect("Terminó hoy: sin fila Prestar", fRows.some((r) => String(r.itemId || "").includes(":prestar")), false);
 
 // ── 17. Auto-evaluación: la planilla que arma el sistema siempre pasa la revisión;
 //     cada regla detecta su inconsistencia. El motor nunca borra datos locales.

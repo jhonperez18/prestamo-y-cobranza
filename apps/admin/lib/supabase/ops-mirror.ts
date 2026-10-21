@@ -896,6 +896,216 @@ async function loanFinishedBeforeVisit(
  * 3) Reabrir jornada solo por «Reabrir hoja de hoy» (`/api/ops/reopen-sheet`, marca en el
  *    CIE-); un upsert normal nunca limpia day_closed_at.
  */
+type OpenVisitLoan = {
+  ref?: string | null;
+  status?: string | null;
+  balance?: number | null;
+  start_date?: string | null;
+};
+
+function openVisitRank(
+  itemId: string,
+  loanRef: string,
+  loans: Map<string, OpenVisitLoan>,
+): [number, string, number] {
+  if (itemId.includes(":prestar") || !loanRef) return [-1, "", 0];
+  const loan = loans.get(loanRef);
+  const active = Boolean(loan && isLoanActive({ status: String(loan.status || "") }));
+  const balance = active ? Number(loan?.balance) || 0 : 0;
+  const started = String(loan?.start_date || "");
+  const refNum = Number(loanRef.replace(/\D/g, "")) || 0;
+  return [balance, started, refNum];
+}
+
+function rankBeats(left: [number, string, number], right: [number, string, number]) {
+  if (left[0] !== right[0]) return left[0] > right[0];
+  if (left[1] !== right[1]) return left[1] > right[1];
+  return left[2] > right[2];
+}
+
+function isOpenPendingStatus(status: unknown) {
+  const value = String(status || "pendiente");
+  return value === "pendiente" || value === "parcial";
+}
+
+async function deleteOpenPendingVisit(client: MirrorDb, dispatchDate: string, itemId: string) {
+  if (!itemId) return { ok: true as const };
+  const { error } = await client
+    .from("daily_assignments")
+    .delete()
+    .eq("dispatch_date", dispatchDate)
+    .eq("item_id", itemId)
+    .is("day_closed_at", null)
+    .is("payment_ref", null);
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const };
+}
+
+/**
+ * Hoy, hoja abierta: un cliente, una visita por cobrar.
+ * La que se queda es la del préstamo activo que más debe. Prestar al lado de
+ * una cuota no se guarda. No toca días cerrados ni filas con cobro.
+ */
+async function keepOneTodayVisit(
+  client: MirrorDb,
+  row: Record<string, unknown>,
+): Promise<{ ok: false; error: string } | { ok: true; skipped: true; reason: string } | null> {
+  const dispatchDate = String(row.dispatch_date || "").trim();
+  const clientRef = String(row.client_ref || "").trim();
+  if (!clientRef || dispatchDate !== businessTodayIso() || row.day_closed_at) return null;
+  const itemId = String(row.item_id || "");
+  const isPrestar = itemId.includes(":prestar");
+  const open = !row.payment_ref && isOpenPendingStatus(row.visit_status);
+
+  if (!isPrestar) {
+    const { error } = await client
+      .from("daily_assignments")
+      .delete()
+      .eq("dispatch_date", dispatchDate)
+      .eq("client_ref", clientRef)
+      .like("item_id", "%:prestar")
+      .in("visit_status", ["pendiente", "parcial"])
+      .is("day_closed_at", null)
+      .is("payment_ref", null);
+    if (error) return { ok: false, error: error.message };
+  }
+  if (!open) return null;
+
+  const { data, error } = await client
+    .from("daily_assignments")
+    .select("item_id, loan_ref")
+    .eq("dispatch_date", dispatchDate)
+    .eq("client_ref", clientRef)
+    .in("visit_status", ["pendiente", "parcial"])
+    .is("day_closed_at", null)
+    .is("payment_ref", null);
+  if (error) return { ok: false, error: error.message };
+  const others = (data ?? []).filter((entry) => String(entry.item_id || "") !== itemId);
+
+  if (isPrestar) {
+    const pendingCuota = others.some((entry) => !String(entry.item_id || "").includes(":prestar"));
+    let hasCuota = pendingCuota;
+    if (!hasCuota) {
+      const { data: anyCuota, error: cuotaError } = await client
+        .from("daily_assignments")
+        .select("item_id")
+        .eq("dispatch_date", dispatchDate)
+        .eq("client_ref", clientRef)
+        .not("item_id", "like", "%:prestar")
+        .limit(1);
+      if (cuotaError) return { ok: false, error: cuotaError.message };
+      hasCuota = (anyCuota ?? []).length > 0;
+    }
+    if (!hasCuota && !others.length) return null;
+    const removed = await deleteOpenPendingVisit(client, dispatchDate, itemId);
+    if (!removed.ok) return removed;
+    return { ok: true, skipped: true, reason: "prestar_ghost" };
+  }
+
+  const cuotaOthers = others.filter((entry) => !String(entry.item_id || "").includes(":prestar"));
+  if (!cuotaOthers.length) return null;
+
+  const refs = [String(row.loan_ref || ""), ...cuotaOthers.map((entry) => String(entry.loan_ref || ""))].filter(
+    Boolean,
+  );
+  const { data: loans, error: loanError } = await client
+    .from("loans")
+    .select("ref, status, balance, start_date")
+    .in("ref", refs);
+  if (loanError) return { ok: false, error: loanError.message };
+  const byRef = new Map((loans ?? []).map((loan) => [String(loan.ref || ""), loan]));
+  const incomingRank = openVisitRank(itemId, String(row.loan_ref || ""), byRef);
+  const loser = cuotaOthers.some((entry) =>
+    rankBeats(
+      openVisitRank(String(entry.item_id || ""), String(entry.loan_ref || ""), byRef),
+      incomingRank,
+    ),
+  );
+  if (loser) {
+    const removed = await deleteOpenPendingVisit(client, dispatchDate, itemId);
+    if (!removed.ok) return removed;
+    return { ok: true, skipped: true, reason: "visita_duplicada" };
+  }
+  for (const entry of cuotaOthers) {
+    const removed = await deleteOpenPendingVisit(client, dispatchDate, String(entry.item_id || ""));
+    if (!removed.ok) return removed;
+  }
+  return null;
+}
+
+function assignmentRowIsOpenPending(row: Record<string, unknown>, today: string) {
+  return (
+    String(row.dispatch_date || "") === today &&
+    !row.day_closed_at &&
+    !row.payment_ref &&
+    isOpenPendingStatus(row.visit_status) &&
+    Boolean(String(row.client_ref || "").trim())
+  );
+}
+
+/**
+ * Bajada completa de hoy: si un cliente tiene dos visitas por cobrar, borra la
+ * sobrante en la base. Sin esto el pull la devuelve y el cliente sale dos veces.
+ * No corre en la bajada parcial (ahí no están las dos filas).
+ */
+export async function collapseTodayOpenVisits(rows: Record<string, unknown>[]) {
+  const db = createMirrorClient();
+  if (!db) return rows;
+  const today = businessTodayIso();
+  const groups = new Map<string, Record<string, unknown>[]>();
+  for (const row of rows) {
+    if (!assignmentRowIsOpenPending(row, today)) continue;
+    const clientRef = String(row.client_ref || "").trim();
+    const list = groups.get(clientRef);
+    if (list) list.push(row);
+    else groups.set(clientRef, [row]);
+  }
+  const crowded = [...groups.values()].filter((list) => list.length > 1);
+  if (!crowded.length) return rows;
+
+  const refs = [
+    ...new Set(
+      crowded
+        .flatMap((list) => list.map((row) => String(row.loan_ref || "").trim()))
+        .filter((ref) => ref && !ref.includes(":prestar")),
+    ),
+  ];
+  const byRef = new Map<string, OpenVisitLoan>();
+  if (refs.length) {
+    const { data, error } = await db.from("loans").select("ref, status, balance, start_date").in("ref", refs);
+    if (error) return rows;
+    for (const loan of data ?? []) byRef.set(String(loan.ref || ""), loan);
+  }
+
+  const dropIds: string[] = [];
+  for (const list of crowded) {
+    const ranked = [...list].sort((left, right) => {
+      const leftRank = openVisitRank(String(left.item_id || ""), String(left.loan_ref || ""), byRef);
+      const rightRank = openVisitRank(String(right.item_id || ""), String(right.loan_ref || ""), byRef);
+      if (rankBeats(leftRank, rightRank)) return -1;
+      if (rankBeats(rightRank, leftRank)) return 1;
+      return 0;
+    });
+    for (const row of ranked.slice(1)) {
+      const itemId = String(row.item_id || "");
+      if (itemId) dropIds.push(itemId);
+    }
+  }
+  if (!dropIds.length) return rows;
+  const { error } = await db
+    .from("daily_assignments")
+    .delete()
+    .eq("dispatch_date", today)
+    .in("item_id", dropIds)
+    .is("day_closed_at", null)
+    .is("payment_ref", null);
+  if (error) return rows;
+  const drop = new Set(dropIds);
+  return rows.filter(
+    (row) => !(String(row.dispatch_date || "") === today && drop.has(String(row.item_id || ""))),
+  );
+}
+
 async function deleteAssignmentRow(
   client: MirrorDb,
   dispatchDate: unknown,
@@ -992,41 +1202,8 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
     }
     return { ok: true as const, skipped: true as const, reason: "prestar_ghost" };
   }
-  // La cuota es la visita. Una fila Prestar al lado no se guarda: el pull la
-  // devolvía y el cliente salía dos veces. Prestar sola (sin cuota) sí entra.
-  const dispatchDate = String(row.dispatch_date || "").trim();
-  const clientRef = String(row.client_ref || "").trim();
-  const isPrestar = String(row.item_id || "").includes(":prestar");
-  if (clientRef && dispatchDate) {
-    if (isPrestar) {
-      const { data: cuota, error: cuotaError } = await client
-        .from("daily_assignments")
-        .select("item_id")
-        .eq("dispatch_date", dispatchDate)
-        .eq("client_ref", clientRef)
-        .not("item_id", "like", "%:prestar")
-        .in("visit_status", ["pendiente", "parcial"])
-        .limit(1);
-      if (cuotaError) return { ok: false as const, error: cuotaError.message };
-      if ((cuota ?? []).length) {
-        const removed = await deleteAssignmentRow(client, dispatchDate, row.item_id);
-        if (!removed.ok) return removed;
-        return { ok: true as const, skipped: true as const, reason: "prestar_ghost" };
-      }
-    } else {
-      const incoming = String(row.visit_status || "pendiente");
-      if (incoming === "pendiente" || incoming === "parcial") {
-        const { error: dropError } = await client
-          .from("daily_assignments")
-          .delete()
-          .eq("dispatch_date", dispatchDate)
-          .eq("client_ref", clientRef)
-          .like("item_id", "%:prestar")
-          .in("visit_status", ["pendiente", "parcial"]);
-        if (dropError) return { ok: false as const, error: dropError.message };
-      }
-    }
-  }
+  const singleVisit = await keepOneTodayVisit(client, row);
+  if (singleVisit) return singleVisit;
   const { data, error } = await client
     .from("daily_assignments")
     .select("visit_status, skip_reason, day_closed_at, payment_ref, collector_ref, dispatch_date")
@@ -2243,6 +2420,24 @@ async function pullOpsBundle(
       assignMap.set(key, row);
       sentAssignmentSig.set(key, assignmentMirrorSig(row));
       assignChanged = true;
+    }
+    // Bajada completa: la nube ya dejó una visita por cliente hoy. La copia
+    // local de la otra fila no se conserva (si se conserva, el reconcile la
+    // vuelve a subir). Una visita nueva, todavía en cola, sí se queda.
+    if (full) {
+      const today = businessTodayIso();
+      const remoteToday = remoteAssign.filter((row) => row.dispatchDate === today);
+      const remoteKeys = new Set(remoteToday.map((row) => `${row.dispatchDate}::${row.itemId}`));
+      const remoteClients = new Set(remoteToday.map((row) => row.clientRef).filter(Boolean));
+      for (const [key, row] of [...assignMap.entries()]) {
+        if (row.dispatchDate !== today || row.dayClosedAt) continue;
+        if (String(row.paymentRef || "").trim()) continue;
+        if (row.visitStatus === "cobrado" || row.visitStatus === "omitido") continue;
+        if (remoteKeys.has(key) || pendingAssign.has(key)) continue;
+        if (!row.clientRef || !remoteClients.has(row.clientRef)) continue;
+        assignMap.delete(key);
+        assignChanged = true;
+      }
     }
     const preReconcile = [...assignMap.values()];
     const stamped = reconcilePaymentsOntoPlanilla(
