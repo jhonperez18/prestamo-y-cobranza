@@ -431,17 +431,19 @@ El préstamo tiene un solo dueño: la base. El aparato no sube la ficha; manda u
 
 ## Prestar atendido no bloquea el cierre
 
-Si un cliente con visita «Prestar» recibe préstamo ese día, la visita **no desaparece**:
-queda `omitido` con motivo «Préstamo hecho hoy» (`LOAN_GIVEN_TODAY_REASON`), y si su hoja
-ya cerró, queda cerrada con ella (`syncPermanentRoutePlanilla`). Si se descartara, la copia
-abierta de la nube volvía por el pull y la jornada quedaba sin CIE-. No entra a N/P.
-Solo si el préstamo salió **ese día** (`loan.date` = día). Préstamo de días anteriores →
-la fila «Prestar» es fantasma y se descarta (si no, cada cliente sale doble). Quien ya tiene
-visita de cuota hoy no recibe oferta Prestar aunque el aparato no haya cargado sus préstamos.
-Servidor (`prestarGhostReason` en `upsertAssignmentRow`): rechaza «Prestar» pendiente /
-«Cierre de jornada» de cliente con préstamo abierto anterior (sin pago ese día) y «Préstamo
-hecho hoy» sin préstamo de ese día (`prestar_ghost`, sale de cola). Las decisiones del
-cobrador siempre entran. Candado: `assert-cash-chain.mjs` sección 14.
+Si un cliente ya tiene la cuota **por cobrar**, la fila Prestar de ese día **no se guarda**.
+Esa segunda fila es el cliente doble: el programa la reescribía cada mañana y el
+pull la devolvía. El servidor la borra al guardar la cuota pendiente, así no hay
+nada que devolver. Quien ya pagó hoy conserva la oferta de prestar (su cuota está
+cobrada). La fila Prestar también se queda si es la única visita: la hoja ya cerró
+y el préstamo entra mañana. No entra a N/P.
+Préstamo de días anteriores → la fila «Prestar» es fantasma y se descarta.
+Quien ya tiene visita de cuota hoy no recibe oferta Prestar aunque el aparato no
+haya cargado sus préstamos.
+Servidor (`upsertAssignmentRow`): rechaza la Prestar fantasma y borra la Prestar
+pendiente cuando ese cliente ya tiene la cuota por cobrar. Las decisiones del
+cobrador entran cuando Prestar es su única visita.
+Candado: `assert-cash-chain.mjs` sección 14.
 
 ## Día 1 del mes — el cobro no se bloquea por un aparato
 

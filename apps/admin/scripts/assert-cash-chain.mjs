@@ -2538,9 +2538,9 @@ if (poolAdj.ok) {
   );
 }
 
-// ── 14. Prestar atendido: el cliente recibió préstamo hoy. Su visita «Prestar» queda
-//     resuelta (y cerrada si su hoja ya cerró); no desaparece para que la copia abierta
-//     de la nube no bloquee el sello de la jornada (CIE-).
+// ── 14. Prestar atendido: si la hoja ya cerró, la visita Prestar queda resuelta
+//     (es la única fila; el préstamo entra mañana). Si la hoja sigue abierta y ya
+//     hay cuota, Prestar no se guarda al lado: un cliente, una visita.
 console.log("\n— Prestar atendido no bloquea el cierre —");
 const { syncPermanentRoutePlanilla } = await import("@/lib/route-planilla");
 const { collectorDayVisitsFullyClosed } = await import("@/lib/collector-dispatch-sync");
@@ -2607,8 +2607,11 @@ expect(
   nowRows.some((r) => r.loanRef === "P-P1" && r.visitStatus === "pendiente" && r.amountDue === 15_000),
   true,
 );
-expect("Préstamo de hoy, hoja abierta: Prestar queda resuelto", nowRows.find((r) => r.itemId.includes(":prestar"))?.skipReason ?? null, "Préstamo hecho hoy");
-expect("Préstamo de hoy: nunca disponible para prestar", nowRows.some((r) => r.itemId.includes(":prestar") && r.visitStatus === "pendiente"), false);
+expect(
+  "Préstamo de hoy, hoja abierta: la cuota es la única visita",
+  nowRows.some((r) => r.itemId.includes(":prestar")),
+  false,
+);
 expect(
   "Préstamo de hoy, hoja ya cerrada: entra mañana (no reabre el día)",
   pSynced.assignments.some((r) => r.loanRef === "P-P1" && r.dispatchDate === pDate),

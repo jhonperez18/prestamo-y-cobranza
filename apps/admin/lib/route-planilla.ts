@@ -614,16 +614,39 @@ export function syncPermanentRoutePlanilla(
   }
 
   const built = [...builtMap.values()];
+  const cuotaAbiertaHoy = new Set(
+    built
+      .filter(
+        (row) =>
+          row.dispatchDate === date &&
+          !isAssignmentAwaitingLoan(row) &&
+          (row.visitStatus === "pendiente" || row.visitStatus === "parcial" || !row.visitStatus),
+      )
+      .map((row) => `${row.collectorRef}|${row.clientRef}`),
+  );
+  // Una persona, una visita por cobrar. Si la cuota sigue pendiente, la fila
+  // Prestar no se guarda al lado: eso es el cliente doble. Quien ya pagó hoy
+  // conserva la oferta de prestar. Si Prestar es la única visita, se queda.
+  const builtUnique = built.filter(
+    (row) =>
+      !isAssignmentAwaitingLoan(row) ||
+      !cuotaAbiertaHoy.has(`${row.collectorRef}|${row.clientRef}`),
+  );
 
   const kept = existing.filter((row) => {
     if (row.dispatchDate !== date) return true;
-    if (row.dayClosedAt) return true;
-    // Sustituye solo el día abierto actual; historial y cierres se conservan siempre.
-    return false;
+    if (!row.dayClosedAt) return false;
+    if (
+      isAssignmentAwaitingLoan(row) &&
+      cuotaAbiertaHoy.has(`${row.collectorRef}|${row.clientRef}`)
+    ) {
+      return false;
+    }
+    return true;
   });
 
   // Solo valida/purga filas del día abierto recién armado; no toca otros días.
-  const todayClean = purgeInvalidPlanillaAssignments(built, clients, loans);
+  const todayClean = purgeInvalidPlanillaAssignments(builtUnique, clients, loans);
   const assignments = dedupePlanillaAssignments([...kept, ...todayClean]);
 
   let nextRoutes = routes;
