@@ -6146,28 +6146,33 @@
       border-color: #3f6b52;
       color: #fff;
     }
-    .supervisor-informe-historial {
-      margin: 0 0 8px;
-    }
-    .supervisor-informe-historial > button {
+    .supervisor-informe-switch .supervisor-informe-historial-btn {
+      grid-column: 1;
+      justify-self: center;
+      width: 50%;
       appearance: none;
-      width: 100%;
-      padding: 7px 10px;
-      border-radius: 10px;
-      border: 1px dashed #9fbfae;
+      padding: 3px 2px;
+      border-radius: 8px;
+      border: 1px solid #9fbfae;
       background: #fff;
       color: #1f3b2b;
       font: inherit;
-      font-size: 12px;
+      font-size: 9px;
       font-weight: 800;
-      letter-spacing: 0.04em;
+      letter-spacing: 0.03em;
       text-transform: uppercase;
       cursor: pointer;
     }
-    .supervisor-informe-historial > button.on {
-      background: #e6efe9;
-      border-style: solid;
+    .supervisor-informe-switch.is-angelica .supervisor-informe-historial-btn {
+      grid-column: 2;
+    }
+    .supervisor-informe-switch .supervisor-informe-historial-btn.on {
+      background: #3f6b52;
       border-color: #3f6b52;
+      color: #fff;
+    }
+    .supervisor-informe-historial {
+      margin: 0 0 8px;
     }
     .supervisor-informe-historial-months {
       display: flex;

@@ -5129,13 +5129,20 @@ export function SupervisorMobileApp({
         </section>
       ) : view === "informe" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
-          <div className="supervisor-informe-switch" role="tablist" aria-label="Informe">
+          <div
+            className={`supervisor-informe-switch${informeTab === "angelica" ? " is-angelica" : ""}`}
+            role="tablist"
+            aria-label="Informe"
+          >
             <button
               type="button"
               role="tab"
               aria-selected={informeTab === "general"}
               className={informeTab === "general" ? "on" : undefined}
-              onClick={() => setInformeTab("general")}
+              onClick={() => {
+                setInformeTab("general");
+                setInformePeriod(null);
+              }}
             >
               General
             </button>
@@ -5144,25 +5151,28 @@ export function SupervisorMobileApp({
               role="tab"
               aria-selected={informeTab === "angelica"}
               className={informeTab === "angelica" ? "on" : undefined}
-              onClick={() => setInformeTab("angelica")}
+              onClick={() => {
+                setInformeTab("angelica");
+                setInformePeriod(null);
+              }}
             >
               Angélica
             </button>
-          </div>
-          <div className="supervisor-informe-historial">
             <button
               type="button"
-              className={historialOpen ? "on" : undefined}
+              className={`supervisor-informe-historial-btn${historialOpen ? " on" : ""}`}
               aria-expanded={historialOpen}
               onClick={() => {
                 setHistorialOpen((prev) => !prev);
-                if (historialOpen) setInformePeriod(null);
+                setInformePeriod(null);
               }}
             >
               Historial
             </button>
-            {historialOpen ? (
-              informeSnapshotError ? (
+          </div>
+          {historialOpen ? (
+            <div className="supervisor-informe-historial">
+              {informeSnapshotError ? (
                 <p className="ficha-empty">{informeSnapshotError}</p>
               ) : informeSnapshots === null ? (
                 <p className="ficha-empty">Leyendo…</p>
@@ -5187,10 +5197,11 @@ export function SupervisorMobileApp({
                     </button>
                   ))}
                 </div>
-              )
-            ) : null}
-          </div>
-          {informeTab === "general" ? (
+              )}
+            </div>
+          ) : null}
+          {!historialOpen || openInformeSnapshot ? (
+            informeTab === "general" ? (
             <SupervisorMonthlyReport
               loans={loans}
               clients={clients}
@@ -5201,7 +5212,7 @@ export function SupervisorMobileApp({
               history={informeHistory}
               bancoGastos={bancoGastos}
               bancoGastado={bancoGastado}
-              snapshot={openInformeSnapshot}
+              snapshot={historialOpen ? openInformeSnapshot : null}
             />
           ) : (
             <SupervisorOwnRouteReport
@@ -5215,9 +5226,10 @@ export function SupervisorMobileApp({
               history={informeAHistory}
               nequiGastos={nequiGastos}
               nequiGastado={nequiGastado}
-              snapshot={openInformeSnapshot}
+              snapshot={historialOpen ? openInformeSnapshot : null}
             />
-          )}
+          )
+          ) : null}
         </section>
       ) : view === "nequi" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
