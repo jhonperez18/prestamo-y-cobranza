@@ -6109,30 +6109,49 @@
     }
     .supervisor-liq-table.is-informe-days th,
     .supervisor-liq-table.is-informe-days td {
-      padding-left: 3px !important;
-      padding-right: 3px !important;
+      padding: 3px 1px !important;
+      letter-spacing: 0 !important;
+      font-variant-numeric: tabular-nums;
+      overflow: hidden !important;
+      text-overflow: clip !important;
     }
     .supervisor-liq-table.is-informe-days td {
       color: #111 !important;
       font-weight: 400 !important;
-      font-size: 11px;
+      font-size: 7px !important;
     }
     .supervisor-liq-table.is-informe-days .is-dia {
-      width: 12%;
+      width: 4.4rem !important;
     }
+    .supervisor-liq-table.is-informe-days th.is-dia,
     .supervisor-liq-table.is-informe-days td.is-dia {
-      text-align: left !important;
-      font-size: 9.5px;
+      text-align: center !important;
+      font-size: 8px !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+    }
+    .supervisor-liq-table.is-informe-days .is-route {
+      width: 16% !important;
+    }
+    .supervisor-liq-table.is-informe-days th.is-route,
+    .supervisor-liq-table.is-informe-days td.is-route {
+      font-size: 7px !important;
     }
     .supervisor-liq-table.is-informe-days .is-num {
-      width: 22%;
       border-left: 1px solid #cfded6;
+    }
+    .supervisor-liq-table.is-informe-days .is-total {
+      width: auto;
+    }
+    .supervisor-liq-table.is-informe-days th.is-total,
+    .supervisor-liq-table.is-informe-days td.is-total {
+      font-size: 9px !important;
     }
     .supervisor-liq-table.is-informe-days td.is-num {
       text-align: right !important;
     }
     .supervisor-liq-table.is-informe-days thead th {
-      color: #111 !important;
+      color: #fff !important;
       text-align: center !important;
     }
     .supervisor-liq-table.is-informe-days td.is-empty {
@@ -17225,4 +17244,35 @@
   margin: 0;
   font-size: 11.5px;
   color: #5b7268;
+}
+
+/* Informe por día: va al final para ganar al formato de 13px de todas las tablas. */
+.supervisor-liq-table.is-informe-days col.is-dia { width: 4.4rem; }
+.supervisor-liq-table.is-informe-days col.is-route { width: 16%; }
+.supervisor-liq-table.is-informe-days th,
+.supervisor-liq-table.is-informe-days td {
+  padding: 2px 0 !important;
+  letter-spacing: 0 !important;
+  font-size: 7px !important;
+  font-variant-numeric: tabular-nums;
+  text-overflow: clip !important;
+  overflow: hidden !important;
+}
+.supervisor-liq-table.is-informe-days th.is-dia,
+.supervisor-liq-table.is-informe-days td.is-dia {
+  width: 4.4rem !important;
+  font-size: 8px !important;
+  text-align: center !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+.supervisor-liq-table.is-informe-days th.is-route,
+.supervisor-liq-table.is-informe-days td.is-route {
+  width: 16% !important;
+  font-size: 7px !important;
+}
+.supervisor-liq-table.is-informe-days th.is-total,
+.supervisor-liq-table.is-informe-days td.is-total {
+  width: auto !important;
+  font-size: 9px !important;
 }

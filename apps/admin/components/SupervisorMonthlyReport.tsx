@@ -140,11 +140,18 @@ export function SupervisorMonthlyReport({
       {openKind ? (
         <div className="supervisor-liq-wrap">
           <table className="supervisor-liq-table is-informe-days">
+            <colgroup>
+              <col className="is-dia" />
+              {INFORME_HISTORY_ROUTES.map((route) => (
+                <col key={route} className="is-route" />
+              ))}
+              <col className="is-total" />
+            </colgroup>
             <thead>
               <tr>
                 <th className="is-dia">Día</th>
                 {INFORME_HISTORY_ROUTES.map((route) => (
-                  <th key={route} className="is-num">
+                  <th key={route} className="is-num is-route">
                     {route}
                   </th>
                 ))}
@@ -163,7 +170,7 @@ export function SupervisorMonthlyReport({
                   <tr key={day.date}>
                     <td className="is-dia">{isoToDisplay(day.date).slice(0, 5)}</td>
                     {INFORME_HISTORY_ROUTES.map((route) => (
-                      <td key={route} className="is-num">
+                      <td key={route} className="is-num is-route">
                         {money(day[route], { symbol: false })}
                       </td>
                     ))}
