@@ -114,6 +114,8 @@ export function CollectorMobilePreview({
   onPreviewKindChange,
 }: Props) {
   const [kind, setKind] = useState<PreviewKind>("collector");
+  /** El supervisor se arma la primera vez que se elige y se queda. Volver a él no lo reconstruye. */
+  const [supervisorMounted, setSupervisorMounted] = useState(false);
   useEffect(() => {
     onPreviewKindChange?.(kind);
   }, [kind, onPreviewKindChange]);
@@ -179,6 +181,7 @@ export function CollectorMobilePreview({
 
   function pickSupervisor(ref: string) {
     setSupervisorRef(ref);
+    setSupervisorMounted(true);
     setKind("supervisor");
   }
 
@@ -284,7 +287,8 @@ export function CollectorMobilePreview({
             <p className="ficha-empty">Crea un usuario con rol Supervisor para previsualizar.</p>
           ) : (
             <MobilePreviewFrame title={phoneTitle}>
-              {kind === "supervisor" && supervisor ? (
+              {supervisorMounted && supervisor ? (
+                <div hidden={kind !== "supervisor"}>
                 <SupervisorMobileApp
                   key={supervisorPanelKey}
                   supervisor={supervisor}
@@ -313,7 +317,10 @@ export function CollectorMobilePreview({
                   onAdjustTCash={onAdjustTCash}
                   onReopenSheet={onReopenSheet}
                 />
-              ) : collector ? (
+                </div>
+              ) : null}
+              {collector ? (
+                <div hidden={kind !== "collector"}>
                 <CollectorMobileApp
                   key={collectorPanelKey}
                   collector={collector}
@@ -341,6 +348,7 @@ export function CollectorMobilePreview({
                   onCloseDay={onCloseDay}
                   onCloseMonth={onCloseMonth}
                 />
+                </div>
               ) : null}
             </MobilePreviewFrame>
           )}

@@ -1422,6 +1422,14 @@ export function SupervisorMobileApp({
     for (const collectorRef of collectorRefsForLive) {
       const collector = collectors.find((row) => row.ref === collectorRef);
       if (!collector) continue;
+      const openingKnown = openingCashForChainedPlanilla({
+        collectorRef,
+        routeName: PLANILLA_CASH_CHAIN_PRIMARY,
+        date: today,
+        records: planillaCashCloses,
+        monthCloses,
+        dayCloses,
+      });
       const ledger = buildDayCashLedger({
         collectorRef,
         collectorName: collector.name,
@@ -1435,14 +1443,17 @@ export function SupervisorMobileApp({
         dayExpenseDrafts,
         planillaCashCloses,
         monthCloses,
-        fallbackOpening: cajaDelDia(
-          collector,
-          today,
-          payments,
-          dayCloses,
-          dayExpenseDrafts,
-          monthCloses,
-        ).saldoInicial,
+        fallbackOpening:
+          openingKnown.kind === "chain" && openingKnown.ready
+            ? undefined
+            : cajaDelDia(
+                collector,
+                today,
+                payments,
+                dayCloses,
+                dayExpenseDrafts,
+                monthCloses,
+              ).saldoInicial,
       });
       byCollector.set(collectorRef, ledger);
     }
@@ -1506,17 +1517,27 @@ export function SupervisorMobileApp({
       const renewals = loansToday.filter(isRenewalLoan);
       const newLoans = loansToday.filter((loan) => !isRenewalLoan(loan));
 
-      const fullCaja = collector
-        ? cajaDelDia(collector, today, payments, dayCloses, dayExpenseDrafts, monthCloses)
-        : {
-            saldoInicial: 0,
-            cobradoHoy: 0,
-            cobradoEfectivo: 0,
-            cobradoNequi: 0,
-            cobradoBanco: 0,
-            gastosHoy: 0,
-            enCaja: 0,
-          };
+      const openingKnown = collectorRef
+        ? openingCashForChainedPlanilla({
+            collectorRef,
+            routeName: route.routeName,
+            date: today,
+            records: planillaCashCloses,
+            monthCloses,
+            dayCloses,
+            primaryLiveClosing: isPlanillaCashChainSecondary(route.routeName)
+              ? primaryLiveByCollector.get(collectorRef)
+              : undefined,
+          })
+        : null;
+      const historyFallback =
+        (openingKnown?.kind === "chain" && openingKnown.ready) ||
+        isIndependentSaldoRoute(route.routeName)
+          ? 0
+          : collector
+            ? cajaDelDia(collector, today, payments, dayCloses, dayExpenseDrafts, monthCloses)
+                .saldoInicial
+            : 0;
 
       // Una sola fórmula: routeCobradoBreakdown (= Total, COBROS, Informe, Historial).
       const dayCashSrc = collector
@@ -1612,20 +1633,22 @@ export function SupervisorMobileApp({
       const closed = Boolean(closeRecord && isPrimary) || planillaClosed;
 
       const chainOpen =
-        collectorRef
-          ? openingCashForChainedPlanilla({
-              collectorRef,
-              routeName: route.routeName,
-              date: today,
-              records: planillaCashCloses,
-              monthCloses,
-              dayCloses,
-              primaryLiveClosing: isPlanillaCashChainSecondary(route.routeName)
-                ? primaryLiveByCollector.get(collectorRef)
-                : undefined,
-              fallbackOpening: fullCaja.saldoInicial,
-            })
-          : ({ kind: "independent" } as const);
+        openingKnown?.kind === "chain" && openingKnown.ready
+          ? openingKnown
+          : collectorRef
+            ? openingCashForChainedPlanilla({
+                collectorRef,
+                routeName: route.routeName,
+                date: today,
+                records: planillaCashCloses,
+                monthCloses,
+                dayCloses,
+                primaryLiveClosing: isPlanillaCashChainSecondary(route.routeName)
+                  ? primaryLiveByCollector.get(collectorRef)
+                  : undefined,
+                fallbackOpening: historyFallback,
+              })
+            : ({ kind: "independent" } as const);
 
       const saldoInicial =
         chainOpen.kind === "chain"
@@ -1633,7 +1656,7 @@ export function SupervisorMobileApp({
           : independentDay
             ? independentDay.opening
             : isPrimary
-              ? fullCaja.saldoInicial
+              ? historyFallback
               : 0;
       // Cuadre de ruta: Inicial + efectivo − gasto − préstamo. M de la cadena = libro del día
       // (la misma cifra que recibe T como Inicial).

@@ -28,6 +28,7 @@ import {
   collectorHasOpenRouteSheet,
   collectorMobileQueue,
   collectorMobileRoutes,
+  openTodayMobileRoute,
   collectorDayPayments,
   collectorRecaudoBreakdown,
   defaultMobileRouteDate,
@@ -471,10 +472,43 @@ export function CollectorMobileApp({
     };
   }, [menuOpen]);
 
-  const routeOptions = useMemo(
-    () => collectorMobileRoutes(collector.ref, assignments, loans, clients, routes, dayCloses, livePayments),
-    [assignments, clients, collector.ref, dayCloses, loans, livePayments, routes],
-  );
+  const routeOptions = useMemo(() => {
+    const today = date ?? todayIso();
+    // Hoja de hoy abierta: no armar una cola por cada día pasado solo para saber la fecha.
+    if (!selectedDate && !historyOpen) {
+      const openToday = openTodayMobileRoute(
+        collector.ref,
+        today,
+        assignments,
+        loans,
+        clients,
+        routes,
+        dayCloses,
+        livePayments,
+      );
+      if (openToday) return [openToday];
+    }
+    return collectorMobileRoutes(
+      collector.ref,
+      assignments,
+      loans,
+      clients,
+      routes,
+      dayCloses,
+      livePayments,
+    );
+  }, [
+    assignments,
+    clients,
+    collector.ref,
+    date,
+    dayCloses,
+    historyOpen,
+    loans,
+    livePayments,
+    routes,
+    selectedDate,
+  ]);
 
   /** Pines 1 / 1.1…: rutas del catálogo asignadas a ESTE cobrador. */
   const planillaRoutePins = useMemo(
@@ -522,10 +556,17 @@ export function CollectorMobileApp({
   const viewPeriod = periodFromDateIso(activeDate);
 
   /**
-   * Una sola pasada del historial de caja. El inicial arrastrado y el saldo por fecha
-   * salen de esas mismas filas (antes se calculaban dos veces, iguales).
+   * El historial completo solo hace falta al abrirlo o al cerrar el mes.
+   * La lista de hoy lee el CIE y el movimiento del día, no este recorrido.
    */
+  const historyOnScreen = historyOpen || isLastCalendarDayOfMonth(activeDate);
   const collectorCashHand = useMemo(() => {
+    if (!historyOnScreen && activeDate !== PLANILLA_CASH_CHAIN_HISTORY_EPOCH) {
+      return {
+        opening: openingSaldoForPeriod(collector.ref, viewPeriod, monthCloses),
+        byDate: new Map<string, number>(),
+      };
+    }
     const extraDates = [
       ...routeOptions.map((row) => row.date),
       date ?? todayIso(),
@@ -565,6 +606,7 @@ export function CollectorMobileApp({
     date,
     dayCloses,
     dayExpenseDrafts,
+    historyOnScreen,
     livePayments,
     loans,
     monthCloses,
@@ -626,6 +668,7 @@ export function CollectorMobileApp({
   );
 
   const dayHistory = useMemo(() => {
+    if (!historyOnScreen) return [];
     const extraDates = [
       ...routeOptions.map((row) => row.date),
       date ?? todayIso(),
@@ -794,6 +837,7 @@ export function CollectorMobileApp({
     date,
     dayCloses,
     dayExpenseDrafts,
+    historyOnScreen,
     historyRoute,
     loans,
     mCarriedFallbackOpening,
@@ -871,6 +915,7 @@ export function CollectorMobileApp({
     openingSaldoForPeriod(collector.ref, activePeriod, monthCloses),
   );
   const priorMonthClosingSaldo = useMemo(() => {
+    if (!monthBlock && !showSaveMonth) return 0;
     const rows = buildCollectorDayHistory(
       collector.ref,
       livePayments,
@@ -886,7 +931,17 @@ export function CollectorMobileApp({
       rows,
       openingSaldoForPeriod(collector.ref, previousMonth, monthCloses),
     );
-  }, [assignments, collector, dayCloses, dayExpenseDrafts, livePayments, monthCloses, previousMonth]);
+  }, [
+    assignments,
+    collector,
+    dayCloses,
+    dayExpenseDrafts,
+    livePayments,
+    monthBlock,
+    monthCloses,
+    previousMonth,
+    showSaveMonth,
+  ]);
 
   const activeRoute =
     routeOptions.find((row) => row.date === activeDate) ??

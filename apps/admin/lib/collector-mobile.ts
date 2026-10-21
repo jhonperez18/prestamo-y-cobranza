@@ -298,6 +298,46 @@ function queueFromSealedPlanilla(
   };
 }
 
+/**
+ * Hoy con hoja abierta. La vista de por cobrar usa este día y no recorre
+ * los días pasados. Si hoy ya cerró, devuelve null y hay que mirar el resto.
+ */
+export function openTodayMobileRoute(
+  collectorRef: string,
+  today: string,
+  assignments: DailyCollectionAssignment[],
+  loans: LoanRow[],
+  clients: ClientRow[],
+  routes: RouteRow[],
+  dayCloses: CollectorDayCloseRecord[],
+  payments: PaymentRow[],
+): CollectorMobileRouteOption | null {
+  const day = normalizeHistoryDate(today) || today;
+  if (!day || hasDayCloseRecord(dayCloses, collectorRef, day)) return null;
+  const sheet = assignmentsForCollectorDate(
+    sealedPlanilla(assignments, loans, dayCloses, payments),
+    collectorRef,
+    day,
+    loans,
+    clients,
+    payments,
+  ).filter((row) => row.dispatched || row.dayClosedAt);
+  if (!sheet.length || sheet.every((row) => Boolean(row.dayClosedAt))) return null;
+  const routeRef = dispatchRouteRef(collectorRef, day);
+  const route = routes.find((row) => row.ref === routeRef) ?? null;
+  return {
+    date: day,
+    dateLabel: isoToDispatchLabel(day),
+    routeRef: route?.ref ?? routeRef,
+    routeName: route?.name ?? `Cobros · ${isoToDispatchLabel(day)}`,
+    pending: 0,
+    done: 0,
+    total: sheet.length,
+    closed: false,
+    allDone: false,
+  };
+}
+
 /** Rutas enviadas al cobrador (una por fecha de despacho). */
 export function collectorMobileRoutes(
   collectorRef: string,
