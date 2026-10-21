@@ -5141,6 +5141,7 @@ export function SupervisorMobileApp({
               className={informeTab === "general" ? "on" : undefined}
               onClick={() => {
                 setInformeTab("general");
+                setHistorialOpen(false);
                 setInformePeriod(null);
               }}
             >
@@ -5153,6 +5154,7 @@ export function SupervisorMobileApp({
               className={informeTab === "angelica" ? "on" : undefined}
               onClick={() => {
                 setInformeTab("angelica");
+                setHistorialOpen(false);
                 setInformePeriod(null);
               }}
             >
@@ -5163,7 +5165,7 @@ export function SupervisorMobileApp({
               className={`supervisor-informe-historial-btn${historialOpen ? " on" : ""}`}
               aria-expanded={historialOpen}
               onClick={() => {
-                setHistorialOpen((prev) => !prev);
+                setHistorialOpen(true);
                 setInformePeriod(null);
               }}
             >

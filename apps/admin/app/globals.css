@@ -6150,17 +6150,23 @@
       grid-column: 1;
       justify-self: center;
       width: 50%;
+      max-width: 50%;
+      box-sizing: border-box;
+      overflow: hidden;
       appearance: none;
-      padding: 3px 2px;
+      margin: 0;
+      padding: 2px 0;
       border-radius: 8px;
       border: 1px solid #9fbfae;
       background: #fff;
       color: #1f3b2b;
       font: inherit;
-      font-size: 9px;
-      font-weight: 800;
-      letter-spacing: 0.03em;
+      font-size: 7px;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: 0;
       text-transform: uppercase;
+      white-space: nowrap;
       cursor: pointer;
     }
     .supervisor-informe-switch.is-angelica .supervisor-informe-historial-btn {
