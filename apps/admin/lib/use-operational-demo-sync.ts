@@ -241,14 +241,13 @@ export function useOperationalDemoSync(
       } else {
         await flushCatalogMirrorQueues();
       }
-      // Primera sincronización del día: cupo libre antes de la bajada completa.
+      // Primera sincronización del día: suelta copias -bak. No vuelve a bajar el archivo.
       if (tuneupDay) compactDeviceForDay();
 
-      const full = Boolean(tuneupDay);
-      const payments = await pullRemotePaymentsIntoDemo({ full });
+      const payments = await pullRemotePaymentsIntoDemo();
       const [catalog, ops, users, banks, months] = await Promise.all([
-        pullRemoteCatalogIntoDemo({ full }),
-        pullRemoteOpsIntoDemo({ full }),
+        pullRemoteCatalogIntoDemo(),
+        pullRemoteOpsIntoDemo(),
         pullRemoteUsersIntoDemo(),
         pullRemoteBankAccountsIntoDemo(),
         pullRemoteMonthClosesIntoDemo(),
@@ -283,12 +282,9 @@ export function useOperationalDemoSync(
       if (tuneupDay && pullOk && isCollectorLiveDevice()) {
         changed = releaseClosedDaysOnDevice().released > 0 || changed;
       }
-      // Sin cambios no se rehace toda la pantalla. Eso era la lentitud en reposo.
-      // La puesta a punto del día rehidrata siempre (planilla del día con todo fresco).
-      if (changed || tuneupDay) commitHydrate();
-      if (tuneupDay && pullOk && payments.full && catalog.full && ops.full) {
-        markDeviceTuneupDone(tuneupDay);
-      }
+      // Sin cambios no se rehace toda la pantalla.
+      if (changed) commitHydrate();
+      if (tuneupDay && pullOk) markDeviceTuneupDone(tuneupDay);
       try {
         // Solo la cola: el historial no se reenvía.
         await reconcileLocalPaymentsToRemote();

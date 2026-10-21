@@ -11,7 +11,7 @@ import {
   isCollectorLiveDevice,
   withDateWindowParam,
 } from "@/lib/collector-live-window";
-import { createIncrementalPull, withSinceParam } from "@/lib/incremental-pull";
+import { createIncrementalPull, resumeSinceIso, withSinceParam } from "@/lib/incremental-pull";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { money, type LoanRow, type PaymentRow, type StatusKind } from "@/lib/mock-data";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
@@ -1061,8 +1061,8 @@ export type PullPaymentsResult = {
 let livePaymentCache: PaymentRow[] | null = null;
 type PaymentListBody = { rows: PaymentMirrorRow[]; full: boolean; cursor: string | null };
 const paymentListFlights = new Map<string, Promise<PaymentListBody | null>>();
-/** Lista completa al abrir, cada 60 min y en la puesta a punto; entre medio solo lo cambiado. */
-const paymentsPull = createIncrementalPull();
+/** Lista completa si el aparato está vacío o se repara; si ya hay copia, solo lo cambiado. */
+const paymentsPull = createIncrementalPull("payments");
 
 /** Una sola bajada por corte. Las llamadas que coinciden esperan la misma. */
 function fetchPaymentListBody(
@@ -1120,7 +1120,7 @@ export async function loadLivePaymentRows(): Promise<PaymentRow[]> {
 }
 
 /**
- * `full`: lista completa (al abrir, cada 60 min, puesta a punto); si no, solo lo cambiado.
+ * `full`: lista completa (aparato vacío o reparar). Si ya hay copia, solo lo cambiado.
  * Una bajada parcial nunca borra cobros locales y no trae `remoteRefs` (el reconcile
  * solo compara contra la lista completa).
  */
@@ -1132,8 +1132,10 @@ export async function pullRemotePaymentsIntoDemo(
   }
 
   const startedAt = Date.now();
-  const localCount = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []).length;
-  const since = paymentsPull.sinceFor(Boolean(opts.full) || localCount === 0);
+  const force =
+    Boolean(opts.full) ||
+    (!paymentsPull.hasCursor() && readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []).length === 0);
+  const since = paymentsPull.sinceFor(force) ?? (force ? null : resumeSinceIso());
   const fromDate = !since && isCollectorLiveDevice() ? collectorLiveDayIso() : null;
   const result = await mergeRemotePayments(since, fromDate);
   paymentsPull.settle(

@@ -36,7 +36,7 @@ import {
   isSupervisorLiveDevice,
   withDateWindowParam,
 } from "@/lib/collector-live-window";
-import { createIncrementalPull, withSinceParam } from "@/lib/incremental-pull";
+import { createIncrementalPull, resumeSinceIso, withSinceParam } from "@/lib/incremental-pull";
 import {
   assignmentsInPlanillaWindow,
   planillaWindowStartIso,
@@ -1943,7 +1943,7 @@ export type PullOpsResult = {
 };
 
 /** Antes cada aparato bajaba ~3,3 MB (4.000+ visitas) cada 45 s. */
-const opsPull = createIncrementalPull();
+const opsPull = createIncrementalPull("ops");
 
 /** Une lo que cambió con lo local: una bajada parcial nunca borra lo que no vino. */
 function upsertByRef<T extends { ref: string }>(local: T[], changed: T[]): T[] {
@@ -2143,13 +2143,17 @@ export async function reconcileLocalOpsToRemote(
 
 /**
  * Pull catálogo operativo + CIE + planilla + PV-.
- * `full`: lista completa (al abrir, cada 60 min, al reparar); si no, solo lo que cambió.
+ * `full`: lista completa (aparato vacío o reparar). Si ya hay copia, solo lo que cambió.
  */
 export async function pullRemoteOpsIntoDemo(
   opts: { full?: boolean } = {},
 ): Promise<PullOpsResult> {
   if (typeof window === "undefined") return { ok: true, changed: false, reason: "ssr" };
-  const since = opsPull.sinceFor(Boolean(opts.full));
+  const localEmpty =
+    !opsPull.hasCursor() &&
+    readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []).length === 0;
+  const force = Boolean(opts.full) || localEmpty;
+  const since = opsPull.sinceFor(force) ?? (force ? null : resumeSinceIso());
   const startedAt = Date.now();
   const fromDate = !since && isCollectorLiveDevice() ? collectorLiveDayIso() : null;
   const result = await pullOpsBundle(since, fromDate);

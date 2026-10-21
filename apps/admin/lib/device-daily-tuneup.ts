@@ -1,7 +1,7 @@
 /**
  * Puesta a punto del aparato en su primera sincronización del día (Bogotá):
- * subir lo pendiente → soltar copias que la nube rehace → bajar todo completo → rehidratar.
- * Así ningún celular arranca la jornada con el cupo lleno ni con caché del día anterior.
+ * subir lo pendiente → soltar copias que la nube rehace.
+ * No vuelve a bajar el archivo: la copia ya está en el aparato.
  * Nunca borra cobros, clientes, préstamos, cierres ni colas de subida.
  */
 import { businessTodayIso } from "@/lib/business-timezone";

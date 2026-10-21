@@ -4,7 +4,7 @@
  */
 import { createMirrorServerClient, mirrorUsesServiceRole } from "@/lib/supabase/admin";
 import { fetchAllRows, fetchRowsChangedSince } from "@/lib/supabase/changed-since";
-import { createIncrementalPull, withSinceParam } from "@/lib/incremental-pull";
+import { createIncrementalPull, resumeSinceIso, withSinceParam } from "@/lib/incremental-pull";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { type ClientRow, type LoanRow, type PaymentRow, type StatusKind } from "@/lib/mock-data";
 import {
@@ -1145,8 +1145,8 @@ type CatalogListBody<Key extends "clients" | "loans", Row> = {
   cursor?: string;
 } & { [K in Key]?: Row[] };
 
-/** Lista completa al abrir, cada 60 min, al reparar y en la puesta a punto; entre medio solo lo cambiado. */
-const catalogPull = createIncrementalPull();
+/** Lista completa si el aparato está vacío o se repara; si ya hay copia, solo lo cambiado. */
+const catalogPull = createIncrementalPull("catalog");
 
 /**
  * Pull clientes + préstamos. Cola/escudo y updatedAt local ganan sobre remoto viejo.
@@ -1160,9 +1160,11 @@ export async function pullRemoteCatalogIntoDemo(
   }
   const startedAt = Date.now();
   const localEmpty =
-    readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []).length === 0 ||
-    readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []).length === 0;
-  const since = catalogPull.sinceFor(Boolean(opts.full) || localEmpty);
+    !catalogPull.hasCursor() &&
+    (readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []).length === 0 ||
+      readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []).length === 0);
+  const force = Boolean(opts.full) || localEmpty;
+  const since = catalogPull.sinceFor(force) ?? (force ? null : resumeSinceIso());
   const { cursor, ...result } = await mergeRemoteCatalog(since);
   catalogPull.settle({ ok: result.ok, full: Boolean(result.full), cursor }, startedAt);
   return result;

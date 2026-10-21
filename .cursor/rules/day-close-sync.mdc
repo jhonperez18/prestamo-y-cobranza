@@ -36,10 +36,10 @@ Misma fuerza que un cobro `PG-`: local primero, luego nube; el pull no reabre.
 | Pieza | Regla |
 | --- | --- |
 | Revisión 6:00 | Vercel Cron `0 11 * * *` → `/api/ops/morning-check`: sella lo pendiente (mismo motor 23:30) y revisa hojas pasadas abiertas, días cerrados sin CIE-, Inicial de hoy. No borra nada. Informe en Configuración → Aparatos |
-| Aparato, 1.ª sync del día | `device-daily-tuneup`: subir cola → `compactRebuildableStorage` (solo copias -bak que la nube rehace) → bajada completa → rehidratar |
-| Bajada liviana (planilla, cobros, clientes, préstamos) | Completa al abrir, cada 60 min, al reparar y en la puesta a punto; entre medio `?since=` (`lib/incremental-pull.ts`). **Cobrador:** “completa” = el día (planilla + cobros de hoy); el historial no viaja |
+| Aparato, 1.ª sync del día | `device-daily-tuneup`: subir cola → `compactRebuildableStorage` (solo copias -bak que la nube rehace). No vuelve a bajar el archivo ni rehidrata si nada cambió |
+| Bajada liviana (planilla, cobros, clientes, préstamos) | Una copia. El corte queda guardado (`nexo-pull-cursor:*`): abrir de nuevo pide solo `?since=`. Completa si el aparato está vacío o al reparar. Sin corte todavía, y ya hay copia: desde anteayer, no el archivo entero. **Cobrador vacío:** “completa” = el día (planilla + cobros de hoy); el historial no viaja |
 | Qué trae la parcial | Filas con `updated_at` **o** `created_at` ≥ corte − 2 min (`lib/supabase/changed-since.ts`). El corte es la hora del servidor, nunca la del celular. `created_at` atrapa el alta que sube tarde con hora vieja |
-| Qué no hace la parcial | No borra lo que no vino; no corre reconcile de historial. Reconcile de cobros = **cola**, nunca reenviar PG- viejos. Si no entra al aparato → la próxima es completa |
+| Qué no hace la parcial | No borra lo que no vino; no corre reconcile de historial. Reconcile de cobros = **cola**, nunca reenviar PG- viejos. Si no entra al aparato → se suelta el corte y la próxima es completa |
 
 - Candado: `assert-cash-chain.mjs` secciones 23, 24, 27 y 28.
 

@@ -3802,33 +3802,39 @@ console.log("— Revisión de la mañana y puesta a punto —");
   }
 }
 
-// 24. Bajada liviana (cobros, clientes, préstamos, planilla): completa al abrir, cada 60 min,
-//     al reparar y en la puesta a punto; entre medio solo lo que cambió o se creó desde el
-//     corte del servidor. Una parcial nunca borra lo que no vino.
+// 24. Bajada liviana: una copia. El corte queda guardado. Abrir de nuevo, una hora
+//     después, no vuelve a pedir el archivo. Completa solo al reparar o si no hay corte.
+//     Si falla, se suelta el corte. Una parcial nunca borra lo que no vino.
 console.log("— Bajada liviana —");
 {
-  const { createIncrementalPull, withSinceParam, FULL_PULL_EVERY_MS } = await import("@/lib/incremental-pull");
+  const { createIncrementalPull, withSinceParam } = await import("@/lib/incremental-pull");
   const { readChangedSince, changedSinceFilter, CHANGED_SINCE_OVERLAP_MS } = await import(
     "@/lib/supabase/changed-since"
   );
   const { mergePaymentsByRef } = await import("@/lib/supabase/payment-mirror");
 
-  const pull = createIncrementalPull();
+  const saved = new Map();
+  globalThis.window = {
+    localStorage: {
+      getItem: (key) => (saved.has(key) ? saved.get(key) : null),
+      setItem: (key, value) => saved.set(key, String(value)),
+      removeItem: (key) => saved.delete(key),
+    },
+  };
+  const pull = createIncrementalPull("assert-ops");
   const t0 = Date.parse("2026-10-03T11:00:00.000Z");
-  expect("Bajada: sin corte = completa", pull.sinceFor(false, t0), null);
+  expect("Bajada: sin corte = completa", pull.sinceFor(false), null);
   pull.settle({ ok: true, full: true, cursor: "2026-10-03T11:00:00.000Z" }, t0);
-  expect("Bajada: tras la completa = parcial con el corte del servidor", pull.sinceFor(false, t0 + 45_000), "2026-10-03T11:00:00.000Z");
-  expect("Bajada: forzada (reparar / puesta a punto) = completa", pull.sinceFor(true, t0 + 45_000), null);
-  expect("Bajada: a los 60 min = completa", pull.sinceFor(false, t0 + FULL_PULL_EVERY_MS), null);
-  expect(
-    "Bajada: a los 10 min sigue parcial (la completa de 5,6 MB trababa el celular)",
-    pull.sinceFor(false, t0 + 10 * 60_000),
-    "2026-10-03T11:00:00.000Z",
-  );
+  expect("Bajada: tras la completa = parcial con el corte del servidor", pull.sinceFor(false), "2026-10-03T11:00:00.000Z");
+  expect("Bajada: forzada (reparar) = completa", pull.sinceFor(true), null);
+  expect("Bajada: una hora después sigue el mismo corte", pull.sinceFor(false), "2026-10-03T11:00:00.000Z");
+  const reopened = createIncrementalPull("assert-ops");
+  expect("Bajada: cerrar y abrir no vuelve a bajar el archivo", reopened.sinceFor(false), "2026-10-03T11:00:00.000Z");
   pull.settle({ ok: true, full: false, cursor: "2026-10-03T11:00:45.000Z" }, t0 + 45_000);
-  expect("Bajada: la parcial no reinicia el reloj de la completa", pull.sinceFor(false, t0 + FULL_PULL_EVERY_MS), null);
+  expect("Bajada: la parcial deja el corte nuevo", pull.sinceFor(false), "2026-10-03T11:00:45.000Z");
   pull.settle({ ok: false, full: false, cursor: "2026-10-03T11:01:30.000Z" }, t0 + 90_000);
-  expect("Bajada: si falla (o no entró al aparato), la próxima es completa", pull.sinceFor(false, t0 + 120_000), null);
+  expect("Bajada: si falla (o no entró al aparato), la próxima es completa", pull.sinceFor(false), null);
+  delete globalThis.window;
 
   const req = new Request(`http://x/api/payments?since=${encodeURIComponent("2026-10-03T11:00:00.000Z")}`);
   expect(

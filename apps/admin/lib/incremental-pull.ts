@@ -1,10 +1,12 @@
 /**
- * Bajada completa al abrir, cada 60 min, al reparar y en la puesta a punto del día;
- * entre medio solo lo que cambió (`?since=` con el corte que devolvió el servidor).
- * La completa pesa ~5,6 MB por aparato (planilla de 16 días ≈ 3,5 MB): cada 10 min trababa
- * el celular y agotaba la transferencia de Vercel. Lo nuevo llega igual por la parcial.
+ * Una copia en el aparato. Lo nuevo entra con `?since=` (corte del servidor).
+ * El corte se guarda: cerrar y volver a abrir no vuelve a bajar la planilla ni los cobros.
+ * Completa solo la primera vez (aparato vacío) o al reparar. Si la bajada falla, la
+ * próxima es completa: una parcial a medias no cuenta como copia.
  */
-export const FULL_PULL_EVERY_MS = 60 * 60_000;
+import { businessDaysAgoIso } from "@/lib/business-timezone";
+
+const CURSOR_PREFIX = "nexo-pull-cursor:";
 
 export type IncrementalPullOutcome = {
   ok: boolean;
@@ -13,27 +15,64 @@ export type IncrementalPullOutcome = {
 };
 
 export type IncrementalPull = {
+  hasCursor(): boolean;
   /** `null` = toca bajada completa. */
-  sinceFor(forceFull: boolean, now?: number): string | null;
+  sinceFor(forceFull: boolean): string | null;
   settle(outcome: IncrementalPullOutcome, startedAt: number): void;
 };
 
-export function createIncrementalPull(everyMs = FULL_PULL_EVERY_MS): IncrementalPull {
-  let cursor: string | null = null;
-  let lastFullAt = 0;
+function readCursor(storageKey: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(CURSOR_PREFIX + storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { cursor?: unknown };
+    return typeof parsed.cursor === "string" && parsed.cursor ? parsed.cursor : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCursor(storageKey: string, cursor: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    const id = CURSOR_PREFIX + storageKey;
+    if (!cursor) window.localStorage.removeItem(id);
+    else window.localStorage.setItem(id, JSON.stringify({ cursor }));
+  } catch {
+    /* esta pestaña sigue con el corte en memoria */
+  }
+}
+
+/**
+ * Medianoche de anteayer en Bogotá, en hora de servidor.
+ * Sirve una sola vez: el aparato ya tiene la copia y todavía no guardó el corte.
+ * Cubre el cierre de anoche sin volver a pedir el archivo entero.
+ */
+export function resumeSinceIso(now = new Date()): string {
+  const day = businessDaysAgoIso(2, now);
+  const [year, month, date] = day.split("-").map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, date || 1, 5, 0, 0)).toISOString();
+}
+
+export function createIncrementalPull(storageKey: string): IncrementalPull {
+  let cursor: string | null = readCursor(storageKey);
   return {
-    sinceFor(forceFull, now = Date.now()) {
-      if (forceFull || !cursor || now - lastFullAt >= everyMs) return null;
+    hasCursor() {
+      return Boolean(cursor);
+    },
+    sinceFor(forceFull) {
+      if (forceFull) return null;
       return cursor;
     },
-    settle(outcome, startedAt) {
-      // Lo que no entró al aparato no vuelve en una bajada parcial: la próxima es completa.
+    settle(outcome) {
       if (!outcome.ok || !outcome.cursor) {
         cursor = null;
+        writeCursor(storageKey, null);
         return;
       }
-      if (outcome.full) lastFullAt = startedAt;
       cursor = outcome.cursor;
+      writeCursor(storageKey, cursor);
     },
   };
 }
