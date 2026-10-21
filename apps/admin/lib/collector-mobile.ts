@@ -1,8 +1,8 @@
 import { sameRoute } from "@/lib/client-route-order";
 import {
   assignmentRouteName,
+  assignmentRoutePositionComparator,
   assignmentsForCollector,
-  assignmentsForCollectorDate,
   dispatchRouteRef,
 } from "@/lib/collector-dispatch-sync";
 import {
@@ -13,6 +13,8 @@ import {
 import { isoToDispatchLabel } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
+import { isValidPlanillaAssignment } from "@/lib/planilla-eligibility";
+import { visiblePlanillaAssignments } from "@/lib/planilla-dedupe";
 import {
   loanSettledOffRoute,
   reconcilePaymentsOntoPlanilla,
@@ -170,6 +172,48 @@ function sealedPlanilla(
   return rows;
 }
 
+/** Visitas del día tal como quedaron guardadas. Abrir la lista no las cruza con los cobros. */
+function storedCollectorDayRows(
+  assignments: DailyCollectionAssignment[],
+  collectorRef: string,
+  date: string,
+  loans: LoanRow[],
+  clients: ClientRow[],
+): DailyCollectionAssignment[] {
+  const day = normalizeHistoryDate(date) || date;
+  const compare = assignmentRoutePositionComparator(clients);
+  const rows = visiblePlanillaAssignments(
+    assignments.filter(
+      (row) =>
+        row.collectorRef === collectorRef &&
+        (normalizeHistoryDate(row.dispatchDate) || row.dispatchDate) === day &&
+        isValidPlanillaAssignment(row, clients, loans),
+    ),
+  );
+  return rows.sort(
+    (a, b) =>
+      compare(a, b) ||
+      a.clientName.localeCompare(b.clientName, "es") ||
+      String(a.loanRef || "").localeCompare(String(b.loanRef || "")),
+  );
+}
+
+/** Chip «Cerrado»: el CIE o la hoja ya sellada. No reconstruye la planilla. */
+export function collectorDayClosedFromStore(
+  collectorRef: string,
+  date: string,
+  assignments: DailyCollectionAssignment[],
+  dayCloses: CollectorDayCloseRecord[],
+  loans: LoanRow[] = [],
+  clients: ClientRow[] = [],
+): boolean {
+  if (hasDayCloseRecord(dayCloses, collectorRef, date)) return true;
+  const sheet = storedCollectorDayRows(assignments, collectorRef, date, loans, clients).filter(
+    (row) => row.dispatched || row.dayClosedAt,
+  );
+  return sheet.length > 0 && sheet.every((row) => Boolean(row.dayClosedAt));
+}
+
 export function collectorMobileQueue(
   collectorRef: string,
   date: string,
@@ -183,7 +227,7 @@ export function collectorMobileQueue(
   return queueFromSealedPlanilla(
     collectorRef,
     date,
-    sealedPlanilla(assignments, loans, dayCloses, payments),
+    storedCollectorDayRows(assignments, collectorRef, date, loans, clients),
     loans,
     clients,
     routes,
@@ -202,13 +246,11 @@ function queueFromSealedPlanilla(
   dayCloses: CollectorDayCloseRecord[],
   payments: PaymentRow[],
 ): CollectorMobileQueue {
-  const dayItems = assignmentsForCollectorDate(
-    sealedAssignments,
-    collectorRef,
-    date,
-    loans,
-    clients,
-    payments,
+  const day = normalizeHistoryDate(date) || date;
+  const dayItems = sealedAssignments.filter(
+    (row) =>
+      row.collectorRef === collectorRef &&
+      (normalizeHistoryDate(row.dispatchDate) || row.dispatchDate) === day,
   );
   const closedByCie = hasDayCloseRecord(dayCloses, collectorRef, date);
   // Si el CIE ya existe, toda la hoja del día cuenta aunque falte flag dispatched.
@@ -314,14 +356,9 @@ export function openTodayMobileRoute(
 ): CollectorMobileRouteOption | null {
   const day = normalizeHistoryDate(today) || today;
   if (!day || hasDayCloseRecord(dayCloses, collectorRef, day)) return null;
-  const sheet = assignmentsForCollectorDate(
-    sealedPlanilla(assignments, loans, dayCloses, payments),
-    collectorRef,
-    day,
-    loans,
-    clients,
-    payments,
-  ).filter((row) => row.dispatched || row.dayClosedAt);
+  const sheet = storedCollectorDayRows(assignments, collectorRef, day, loans, clients).filter(
+    (row) => row.dispatched || row.dayClosedAt,
+  );
   if (!sheet.length || sheet.every((row) => Boolean(row.dayClosedAt))) return null;
   const routeRef = dispatchRouteRef(collectorRef, day);
   const route = routes.find((row) => row.ref === routeRef) ?? null;

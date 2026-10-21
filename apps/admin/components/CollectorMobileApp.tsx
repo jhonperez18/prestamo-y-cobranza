@@ -65,7 +65,6 @@ import { reloanStateForVisit } from "@/lib/loan-reloan";
 import {
   isCollectorLiveDevice,
   pullCollectorHistoryDay,
-  syncCollectorLiveLoan,
 } from "@/lib/collector-live-window";
 import {
   assignmentRouteName,
@@ -346,7 +345,7 @@ function visitIdentity(
     : item.loanRef
       ? loans.find((row) => row.ref === item.loanRef) ?? null
       : null;
-  const loan = rawLoan ? syncCollectorLiveLoan(rawLoan, payments, today) : null;
+  const loan = rawLoan;
   const cuota = awaitingLoan ? 0 : planillaLiveCuota(item, loan, payments, today);
   const balance = awaitingLoan ? 0 : loan?.balance ?? 0;
   const cuotas = awaitingLoan

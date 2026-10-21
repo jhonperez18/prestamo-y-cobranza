@@ -10,7 +10,7 @@ import {
 } from "@/components/CollectorMobileApp";
 import { MobilePreviewFrame } from "@/components/MobilePreviewFrame";
 import { SupervisorMobileApp } from "@/components/SupervisorMobileApp";
-import { collectorMobileQueue } from "@/lib/collector-mobile";
+import { collectorDayClosedFromStore } from "@/lib/collector-mobile";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type {
   CollectorDayCloseRecord,
@@ -130,20 +130,13 @@ export function CollectorMobilePreview({
   const closedByCollector = useMemo(() => {
     const map = new Map<string, boolean>();
     for (const row of mobileCollectors) {
-      const queue = collectorMobileQueue(
+      map.set(
         row.ref,
-        today,
-        assignments,
-        loans,
-        clients,
-        routes,
-        dayCloses,
-        payments,
+        collectorDayClosedFromStore(row.ref, today, assignments, dayCloses, loans, clients),
       );
-      map.set(row.ref, queue.closed);
     }
     return map;
-  }, [assignments, clients, dayCloses, loans, mobileCollectors, payments, routes, today]);
+  }, [assignments, clients, dayCloses, loans, mobileCollectors, today]);
 
   const supervisors = useMemo(
     () =>
