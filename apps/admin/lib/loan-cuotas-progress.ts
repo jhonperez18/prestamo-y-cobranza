@@ -36,6 +36,7 @@ import {
   syncLoan,
 } from "@/lib/loan-preview";
 import type { LoanRow, PaymentRow } from "@/lib/mock-data";
+import { paymentsForLoan } from "@/lib/payment-by-loan";
 
 export const CUOTAS_LAG_YELLOW_FROM = 3;
 export const CUOTAS_INTENSITY_MAX = 4;
@@ -125,8 +126,9 @@ export function computeLoanCuotasProgress(
   };
   if (!loan?.ref || !asOf) return empty;
 
-  // Misma normalización que la ficha del préstamo.
-  const synced = syncLoan(loan, payments) as LoanRow;
+  // El cronograma guardado en la ficha. Solo se arma si la fila todavía no lo trae.
+  const synced =
+    (loan.schedule?.length ?? 0) > 0 ? loan : (syncLoan(loan, payments) as LoanRow);
   const asOfIso = toCollectionIso(asOf) || asOf;
 
   const dates = uniqueSortedIsos(
@@ -137,9 +139,8 @@ export function computeLoanCuotasProgress(
   const total = dates.length || interestChargeCount(synced.schedule ?? []);
   const expected = Math.min(total, dates.filter((d) => d <= asOfIso).length);
 
-  const paySum = payments
+  const paySum = paymentsForLoan(payments, synced.ref)
     .filter((row) => {
-      if (row.loanRef !== synced.ref) return false;
       if ((Number(row.amount) || 0) <= 0) return false;
       const payDay = toCollectionIso(row.paidDate || "");
       if (!payDay) return true;

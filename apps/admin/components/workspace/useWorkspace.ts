@@ -371,6 +371,8 @@ export function useWorkspace({
   }, [syncDeletedIdsFromStorage]);
 
   const pendingMirrorToastAtRef = useRef(0);
+  /** El primer pintado no reescribe el archivo: esa copia ya está en el aparato. */
+  const persistArmedRef = useRef(false);
   const { hydrated: demoHydrated } = useOperationalDemoSync(
     applyOperationalSnapshot,
     {
@@ -648,7 +650,7 @@ export function useWorkspace({
 
   // Una sola sincronización banco ← cobros / gastos / pagos varios (idempotente).
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     setBankMovements((rows) =>
       applyBankLedgerSync(rows, {
         payments,
@@ -663,32 +665,32 @@ export function useWorkspace({
   }, [demoHydrated, payments, dayExpenseDrafts, dayCloses, bankAccounts, miscPayments, loans, clients]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     commitUsersCatalog(users);
   }, [users, demoHydrated]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     writeDemoJson(DEMO_COLLECTORS_KEY, collectors);
   }, [collectors, demoHydrated]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     writeDemoJson(DEMO_ROUTES_KEY, omitDeleted(routes));
   }, [routes, demoHydrated]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     writeDemoJson(DEMO_DAILY_LOGS_KEY, dailyLogs);
   }, [dailyLogs, demoHydrated]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, dayCloses);
   }, [dayCloses, demoHydrated]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, planillaCashCloses);
   }, [planillaCashCloses, demoHydrated]);
 
@@ -740,17 +742,17 @@ export function useWorkspace({
   ]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, dayExpenseDrafts);
   }, [dayExpenseDrafts, demoHydrated]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     writeDemoJson(DEMO_COLLECTOR_MONTH_CLOSES_KEY, monthCloses);
   }, [monthCloses, demoHydrated]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     if (clients.length === 0) return;
     writeDemoJson(DEMO_CLIENTS_KEY, omitDeleted(clients));
   }, [clients, demoHydrated]);
@@ -765,12 +767,12 @@ export function useWorkspace({
   }, [clients, loans, demoHydrated, onNavBadges]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, dailyAssignments);
   }, [dailyAssignments, demoHydrated]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     const stored = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []);
     const { merged, added } = mergePaymentsByRef(omitDeleted(payments), omitDeleted(stored));
     writeDemoJson(DEMO_PAYMENTS_KEY, merged);
@@ -778,7 +780,7 @@ export function useWorkspace({
   }, [payments, demoHydrated]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     writeDemoJson(DEMO_LOANS_KEY, omitDeleted(loans));
   }, [loans, demoHydrated]);
 
@@ -793,7 +795,7 @@ export function useWorkspace({
   }, []);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     writeDemoJson(DEMO_BANK_ACCOUNTS_KEY, bankAccounts);
   }, [bankAccounts, demoHydrated]);
 
@@ -804,19 +806,24 @@ export function useWorkspace({
   }, [moduleId, viewId]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, bankMovements);
   }, [bankMovements, demoHydrated]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     writeDemoJson(DEMO_BANK_RECONCILIATIONS_KEY, bankReconciliations);
   }, [bankReconciliations, demoHydrated]);
 
   useEffect(() => {
-    if (!demoHydrated) return;
+    if (!demoHydrated || !persistArmedRef.current) return;
     writeDemoJson(DEMO_MISC_PAYMENTS_KEY, miscPayments);
   }, [miscPayments, demoHydrated]);
+
+  useEffect(() => {
+    if (!demoHydrated) return;
+    persistArmedRef.current = true;
+  }, [demoHydrated]);
 
   useEffect(() => {
     if (

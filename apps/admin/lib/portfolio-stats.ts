@@ -1,7 +1,5 @@
 import { todayIso } from "@/lib/daily-dispatch";
-import { computeLoanFinancials } from "@/lib/loan-balance";
 import { loanStatusPill } from "@/lib/loan-status";
-import { syncLoan } from "@/lib/loan-preview";
 import { livePayments } from "@/lib/live-payments";
 import { activeLoans, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 
@@ -16,11 +14,6 @@ export type PortfolioStats = {
   monthLabel: string;
 };
 
-function syncedActiveLoans(loans: LoanRow[], payments: PaymentRow[]) {
-  const live = livePayments(payments);
-  return activeLoans(loans.map((loan) => syncLoan(loan, live) as LoanRow));
-}
-
 function paymentMonthKey(payment: PaymentRow, fallbackYear: number) {
   if (payment.paidDate) return payment.paidDate.slice(0, 7);
   const match = payment.when.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);
@@ -33,14 +26,13 @@ function paymentMonthKey(payment: PaymentRow, fallbackYear: number) {
 /** Saldo por cobrar de los préstamos activos cuyos clientes están en `clientRefs`. */
 export function portfolioBalanceForClients(
   loans: LoanRow[],
-  payments: PaymentRow[],
+  _payments: PaymentRow[],
   clientRefs: ReadonlySet<string>,
 ): number {
-  const live = livePayments(payments);
   let total = 0;
-  for (const loan of syncedActiveLoans(loans, live)) {
+  for (const loan of activeLoans(loans)) {
     if (!loan.clientRef || !clientRefs.has(loan.clientRef)) continue;
-    const balance = computeLoanFinancials(loan, live).balancePending;
+    const balance = Number(loan.balance) || 0;
     if (balance > 0) total += balance;
   }
   return total;
@@ -56,8 +48,9 @@ export function buildPortfolioStats(
   payments: PaymentRow[],
   now = new Date(),
 ): PortfolioStats {
+  const today = todayIso(now);
   const live = livePayments(payments);
-  const currentMonth = todayIso(now).slice(0, 7);
+  const currentMonth = today.slice(0, 7);
   const monthRaw = now.toLocaleDateString("es-CO", { month: "long" });
   const monthLabel = monthRaw.charAt(0).toLowerCase() + monthRaw.slice(1);
 
@@ -68,14 +61,14 @@ export function buildPortfolioStats(
   let moraBalance = 0;
   let moraCount = 0;
 
-  for (const loan of syncedActiveLoans(loans, live)) {
-    const balance = computeLoanFinancials(loan, live).balancePending;
+  for (const loan of activeLoans(loans)) {
+    const balance = Number(loan.balance) || 0;
     if (balance <= 0) continue;
 
     activeCount += 1;
     totalBalance += balance;
 
-    if (loanStatusPill(loan).kind === "overdue") {
+    if (loanStatusPill(loan, today).kind === "overdue") {
       moraBalance += balance;
       moraCount += 1;
     } else {

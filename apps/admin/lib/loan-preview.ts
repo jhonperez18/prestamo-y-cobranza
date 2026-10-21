@@ -1,4 +1,5 @@
 import { isDailyCollectionDay } from "@/lib/colombia-holidays";
+import { paymentsForLoan } from "@/lib/payment-by-loan";
 import { reconcileLoanCollectionAlerts } from "@/lib/collection-alerts";
 import { pendingBalance, sumPesos } from "@/lib/finance";
 import { loanRenewedInto } from "@/lib/loan-renewal-marks";
@@ -948,8 +949,8 @@ export function applyPaymentsToSchedule(
   payments: { loanRef?: string; dueDate?: string; amount: number; voidedAt?: string }[],
   loanRef: string,
 ): LoanScheduleEntry[] {
-  const loanPayments = payments.filter(
-    (row) => row.loanRef === loanRef && row.dueDate && !String(row.voidedAt || "").trim(),
+  const loanPayments = paymentsForLoan(payments, loanRef).filter(
+    (row) => row.dueDate && !String(row.voidedAt || "").trim(),
   );
   if (loanPayments.length === 0) return schedule;
   return schedule.map((line) => {
@@ -966,8 +967,8 @@ function paidFromPayments(
   loanRef: string,
 ) {
   return sumPesos(
-    payments
-      .filter((row) => row.loanRef === loanRef && !String(row.voidedAt || "").trim())
+    paymentsForLoan(payments, loanRef)
+      .filter((row) => !String(row.voidedAt || "").trim())
       .map((row) => row.amount),
   );
 }

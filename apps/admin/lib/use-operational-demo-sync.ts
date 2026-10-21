@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  hydrateOperationalDemo,
   OPERATIONAL_DEMO_STORAGE_PREFIX,
+  readOperationalDemoSnapshot,
   type OperationalDemoSnapshot,
 } from "@/lib/hydrate-operational-demo";
 import { BIG_DEMO_STORE_CHANGED_EVENT } from "@/lib/big-demo-store";
@@ -92,8 +92,8 @@ const TABLE_PULL_GROUP: Record<LiveTable, PullGroup> = {
 };
 
 /**
- * Sync C5+C6 — local primero (arranque rápido), luego flush/pull en fondo.
- * Rehidrata al terminar el pull (sin dejar UI vacía: el local ya pintó).
+ * Sync C5+C6 — pinta la copia del aparato y después habla con la nube.
+ * La pantalla no espera fotos, ni un recálculo del archivo, ni el pull.
  *
  * Invariante: el flush de colas mirror NO depende del pull.
  * Si el pull falla o tarda, igual se sube lo pendiente a Supabase.
@@ -130,9 +130,13 @@ export function useOperationalDemoSync(
   const healerRef = useRef<SelfHealer | null>(null);
 
   const commitHydrate = useCallback(() => {
-    const snapshot = hydrateOperationalDemo();
-    snapshotRef.current = snapshot;
-    applyRef.current(snapshot);
+    try {
+      const snapshot = readOperationalDemoSnapshot();
+      snapshotRef.current = snapshot;
+      applyRef.current(snapshot);
+    } catch (error) {
+      console.error("ops-hydrate", error);
+    }
     setHydrated(true);
   }, []);
 
@@ -372,6 +376,9 @@ export function useOperationalDemoSync(
 
   useEffect(() => {
     let cancel = false;
+    // 1) Pintar ya lo que este aparato ya tiene. Sin esto la hoja se queda en blanco.
+    commitHydrate();
+    refreshPending();
     void (async () => {
       try {
         await loadPaymentEvidenceStore();
@@ -379,10 +386,7 @@ export function useOperationalDemoSync(
         console.error("evidence-store", error);
       }
       if (cancel) return;
-      // 1) Pintar local al instante (sistema madre: local primero).
-      commitHydrate();
-      refreshPending();
-      // 2) Sync nube en segundo plano.
+      // 2) La nube sigue en segundo plano. No es la puerta de la pantalla.
       void runHydrateWithRemotePull();
     })();
     return () => {

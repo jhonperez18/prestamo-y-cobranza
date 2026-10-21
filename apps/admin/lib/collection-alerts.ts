@@ -19,6 +19,7 @@ import {
 import { todayIso } from "@/lib/daily-dispatch";
 import { paymentVisitDate } from "@/lib/late-payment";
 import type { LoanRow, StatusKind } from "@/lib/mock-data";
+import { paymentsForLoan } from "@/lib/payment-by-loan";
 
 /** 4.º día hábil sin pago → mora. Alertas visibles: 1, 2 y 3. */
 export const COLLECTION_ALERTS_BEFORE_MORA = 4;
@@ -70,7 +71,7 @@ export function loanPaidOnDate(
   date = todayIso(),
 ) {
   if (!loanRef || !payments?.length) return false;
-  return payments.some(
+  return paymentsForLoan(payments, loanRef).some(
     (row) =>
       row.loanRef === loanRef &&
       paymentDateIso(paymentVisitDate(row)) === date &&
@@ -85,8 +86,7 @@ export function lastPaymentDateIso(
 ) {
   if (!loanRef || !payments?.length) return "";
   let latest = "";
-  for (const row of payments) {
-    if (row.loanRef !== loanRef) continue;
+  for (const row of paymentsForLoan(payments, loanRef)) {
     if ((Number(row.amount) || 0) <= 0) continue;
     const day = paymentDateIso(paymentVisitDate(row));
     if (!day) continue;

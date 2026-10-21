@@ -64,7 +64,6 @@ import {
   PRESTAMO_LIST_COLUMNS,
 } from "@/lib/table-columns";
 import { loanStatusPill } from "@/lib/loan-status";
-import { syncLoan } from "@/lib/loan-preview";
 import {
   queueBankAccountMirror,
   flushBankAccountMirrorQueues,
@@ -932,11 +931,9 @@ export function Workspace(props: WorkspaceProps) {
           onCreate={() => onGo("prestamos", "nuevo")}
         >
           {rows.map((row) => {
-            const synced = syncLoan(row, payments) as LoanRow;
-            const status = loanStatusPill(synced);
-            const financials = computeLoanFinancials(synced, payments);
-            const balance = financials.balancePending;
-            const installment = financials.installment;
+            const status = loanStatusPill(row);
+            const balance = Number(row.balance) || 0;
+            const installment = Number(row.installment) || 0;
             return (
             <tr key={row.ref} onClick={() => openLoanAccount(row.ref)}>
               {prestamoListColumns.isVisible("ref") ? <td className="ref">{row.ref}</td> : null}

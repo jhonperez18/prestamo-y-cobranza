@@ -11,6 +11,7 @@ import {
   type LoanScheduleEntry,
 } from "@/lib/loan-preview";
 import type { LoanRow, PaymentRow } from "@/lib/mock-data";
+import { paymentsForLoan } from "@/lib/payment-by-loan";
 
 export type LoanScheduleSnapshotLine = {
   dateIso: string;
@@ -102,9 +103,7 @@ function buildScheduleLines(
 
 /** Una sola fuente de verdad: plantilla + movimientos. Recaudado + saldo = monto del acuerdo. */
 export function computeLoanFinancials(loan: LoanRow, payments: PaymentRow[]): LoanFinancials {
-  const loanPayments = payments.filter(
-    (row) => row.loanRef === loan.ref && !row.voidedAt?.trim(),
-  );
+  const loanPayments = paymentsForLoan(payments, loan.ref).filter((row) => !row.voidedAt?.trim());
   const paidTotal = sumPesos(loanPayments.map((row) => row.amount));
   const preview = resolvePreview(loan);
   const schedule = buildScheduleLines(loan, loanPayments, preview);

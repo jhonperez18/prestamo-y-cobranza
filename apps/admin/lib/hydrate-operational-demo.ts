@@ -111,8 +111,9 @@ export type OperationalDemoSnapshot = {
 export const OPERATIONAL_DEMO_STORAGE_PREFIX = "nexo-demo-";
 
 /**
- * Lee localStorage → ciclo operativo → sync banco/cierres → escribe de vuelta.
- * Misma función para admin / cobrador / supervisor.
+ * Ciclo completo: recupera, rehace préstamos, cierra y reescribe el archivo.
+ * Abrir el panel no lo llama. Eso mantenía Resumen en blanco.
+ * La pantalla lee con `readOperationalDemoSnapshot`.
  */
 export function hydrateOperationalDemo(): OperationalDemoSnapshot {
   syncDemoStorageToServedBuild();
@@ -325,5 +326,41 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
     bankMovements: synced.bankMovements,
     bankReconciliations: nextReconciliations,
     miscPayments: misc,
+  };
+}
+
+/**
+ * Lo que ya está en el aparato, para pintar.
+ * No rearma préstamos, no recupera cobros, no corre el ciclo del día y no vuelve a escribir el archivo.
+ * Eso, en cada apertura, era la pantalla en blanco.
+ */
+export function readOperationalDemoSnapshot(): OperationalDemoSnapshot {
+  syncDemoStorageToServedBuild();
+  return {
+    users: readDemoJson<UserRow[]>(DEMO_USERS_KEY, []),
+    collectors: readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, []).map((row) => ({
+      ...row,
+      zone: COLLECTOR_UNASSIGNED_ZONE,
+    })),
+    clients: omitDeleted(readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, [])),
+    routes: omitDeleted(readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, [])),
+    loans: omitDeleted(readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, [])),
+    payments: omitDeleted(readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, [])),
+    assignments: assignmentsInPlanillaWindow(
+      readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []),
+    ),
+    dayCloses: readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []),
+    dayExpenseDrafts: readDemoJson<CollectorDayExpenseDraft[]>(
+      DEMO_COLLECTOR_DAY_EXPENSES_KEY,
+      [],
+    ),
+    dailyLogs: readDemoJson<CollectorDailyLogRow[]>(DEMO_DAILY_LOGS_KEY, []),
+    monthCloses: readDemoJson<CollectorMonthCloseRecord[]>(DEMO_COLLECTOR_MONTH_CLOSES_KEY, []),
+    bankAccounts: ensureBankAccounts(
+      readDemoJson<BankAccount[]>(DEMO_BANK_ACCOUNTS_KEY, []).map(normalizeBankAccount),
+    ),
+    bankMovements: readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []),
+    bankReconciliations: readDemoJson<BankReconciliation[]>(DEMO_BANK_RECONCILIATIONS_KEY, []),
+    miscPayments: readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []),
   };
 }

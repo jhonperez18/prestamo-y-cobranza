@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
+import { businessClockParts } from "@/lib/business-timezone";
 import {
   runOperationalDayCycle,
   type OperationalDayState,
@@ -167,6 +168,7 @@ export function usePlanillaDayRollover(
   const lastOutputRef = useRef<string>("");
   const outputCacheRef = useRef<{ parts: unknown[]; key: string } | null>(null);
   const lastRunAtRef = useRef(0);
+  const ranTriggerRef = useRef("");
   const trigger = useMemo(
     () => inputKey(state),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- la firma solo lee estas listas
@@ -210,19 +212,36 @@ export function usePlanillaDayRollover(
       });
     }
 
-    syncNow();
+    let cancelled = false;
+    function syncIfDue() {
+      if (cancelled) return;
+      const clock = businessClockParts();
+      const closeWindow = clock.minutesSinceMidnight >= 23 * 60 + 30;
+      if (ranTriggerRef.current === trigger && !closeWindow) return;
+      ranTriggerRef.current = trigger;
+      syncNow();
+    }
+
+    // Después de pintar. Rehacer la planilla en el mismo instante dejaba el clic muerto.
+    let idleHandle = 0;
+    const useIdle = typeof window.requestIdleCallback === "function";
+    if (useIdle) idleHandle = window.requestIdleCallback(() => syncIfDue(), { timeout: 1200 });
+    else idleHandle = window.setTimeout(syncIfDue, 0);
 
     // Al volver a la app llegan `visibilitychange` y `focus` juntos: un solo ciclo.
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
       if (Date.now() - lastRunAtRef.current < 1_000) return;
-      syncNow();
+      syncIfDue();
     };
-    const interval = window.setInterval(syncNow, 30_000);
+    const interval = window.setInterval(syncIfDue, 30_000);
 
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", onVisible);
     return () => {
+      cancelled = true;
+      if (useIdle) window.cancelIdleCallback(idleHandle);
+      else window.clearTimeout(idleHandle);
       window.clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("focus", onVisible);

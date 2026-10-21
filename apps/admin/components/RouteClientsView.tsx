@@ -3,13 +3,12 @@
 import { Fragment, useMemo, useState } from "react";
 import { Pill } from "@/components/ui";
 import { clientsOnRouteSorted } from "@/lib/client-route-order";
-import { computeLoanFinancials } from "@/lib/loan-balance";
 import { todayIso } from "@/lib/daily-dispatch";
 import { paymentVisitDate } from "@/lib/late-payment";
 import { canRenewLoan, type RenewalTerms } from "@/lib/loan-renew";
 import { LoanRenewForm } from "@/components/LoanRenewForm";
-import { syncLoan } from "@/lib/loan-preview";
 import { computeLoanCuotasProgress, type CuotasProgress } from "@/lib/loan-cuotas-progress";
+import { paymentsForLoan } from "@/lib/payment-by-loan";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { planillaCuotaPactada } from "@/lib/planilla-display";
 import {
@@ -79,10 +78,13 @@ function paymentsTodayForClient(
   payments: PaymentRow[],
   today: string,
 ) {
-  const loanRefs = new Set(loansForClient(clientRef, loans).map((row) => row.ref));
-  return payments.filter(
-    (row) => row.loanRef && loanRefs.has(row.loanRef) && paymentVisitDate(row) === today,
-  );
+  const todayRows: PaymentRow[] = [];
+  for (const loan of loansForClient(clientRef, loans)) {
+    for (const row of paymentsForLoan(payments, loan.ref)) {
+      if (paymentVisitDate(row) === today) todayRows.push(row);
+    }
+  }
+  return todayRows;
 }
 
 function rowFromAssignment(
@@ -108,17 +110,15 @@ function rowFromAssignment(
   let balance = 0;
   let renewLoan: LoanRow | null = null;
   for (const loan of active) {
-    const synced = syncLoan(loan, payments) as LoanRow;
-    const financials = computeLoanFinancials(synced, payments);
-    balance += financials.balancePending;
-    if (!renewLoan && canRenewLoan(synced)) renewLoan = synced;
+    balance += Number(loan.balance) || 0;
+    if (!renewLoan && canRenewLoan(loan)) renewLoan = loan;
   }
 
   const primary =
     (assignment.loanRef
       ? (loans.find((row) => row.ref === assignment.loanRef) ?? null)
       : primaryLoanForClient(client.ref, loans)) ?? null;
-  const loan = primary ? (syncLoan(primary, payments) as LoanRow) : null;
+  const loan = primary;
   const todayPays = paymentsTodayForClient(client.ref, loans, payments, today);
   const cobradoHoy = todayPays.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
   const lastToday =

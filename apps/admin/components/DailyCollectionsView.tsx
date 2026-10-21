@@ -15,7 +15,6 @@ import {
 import { dayCloseSummary } from "@/lib/collector-dispatch-sync";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import { paymentVisitDate } from "@/lib/late-payment";
-import { syncLoan } from "@/lib/loan-preview";
 import {
   dispatchDateHint,
   isoToDispatchLabel,
@@ -163,14 +162,9 @@ export function DailyCollectionsView({
     [collectors],
   );
 
-  const syncedLoans = useMemo(
-    () => loans.map((loan) => syncLoan(loan, payments) as LoanRow),
-    [loans, payments],
-  );
-
   const allItems = useMemo(
-    () => buildDailyCollectionList(syncedLoans, clients, selectedDate, payments),
-    [syncedLoans, clients, selectedDate, payments],
+    () => buildDailyCollectionList(loans, clients, selectedDate, payments),
+    [loans, clients, selectedDate, payments],
   );
 
   const catalog = useMemo(() => catalogRoutes(routes), [routes]);
