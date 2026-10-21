@@ -8,7 +8,6 @@
  */
 import { useMemo, useState } from "react";
 import { sameRoute } from "@/lib/client-route-order";
-import { isoToDisplay } from "@/lib/loan-preview";
 import {
   INFORME_HISTORY_ROUTES,
   type InformeHistory,
@@ -168,7 +167,7 @@ export function SupervisorMonthlyReport({
               ) : (
                 history[openKind].days.map((day) => (
                   <tr key={day.date}>
-                    <td className="is-dia">{isoToDisplay(day.date).slice(0, 5)}</td>
+                    <td className="is-dia">{day.date.slice(8, 10)}</td>
                     {INFORME_HISTORY_ROUTES.map((route) => (
                       <td key={route} className="is-num is-route">
                         {money(day[route], { symbol: false })}

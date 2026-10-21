@@ -6121,7 +6121,7 @@
       font-size: 10px !important;
     }
     .supervisor-liq-table.is-informe-days .is-dia {
-      width: 4.4rem !important;
+      width: 2.2rem !important;
     }
     .supervisor-liq-table.is-informe-days th.is-dia,
     .supervisor-liq-table.is-informe-days td.is-dia {
@@ -6131,7 +6131,7 @@
       padding-right: 0 !important;
     }
     .supervisor-liq-table.is-informe-days .is-route {
-      width: 18% !important;
+      width: 22% !important;
     }
     .supervisor-liq-table.is-informe-days th.is-route,
     .supervisor-liq-table.is-informe-days td.is-route {
@@ -17247,8 +17247,8 @@
 }
 
 /* Informe por día: va al final para ganar al formato de 13px de todas las tablas. */
-.supervisor-liq-table.is-informe-days col.is-dia { width: 4.4rem; }
-.supervisor-liq-table.is-informe-days col.is-route { width: 18%; }
+.supervisor-liq-table.is-informe-days col.is-dia { width: 2.2rem; }
+.supervisor-liq-table.is-informe-days col.is-route { width: 22%; }
 .supervisor-liq-table.is-informe-days th,
 .supervisor-liq-table.is-informe-days td {
   padding: 2px 0 !important;
@@ -17260,7 +17260,7 @@
 }
 .supervisor-liq-table.is-informe-days th.is-dia,
 .supervisor-liq-table.is-informe-days td.is-dia {
-  width: 4.4rem !important;
+  width: 2.2rem !important;
   font-size: 11px !important;
   text-align: center !important;
   padding-left: 0 !important;
@@ -17268,7 +17268,7 @@
 }
 .supervisor-liq-table.is-informe-days th.is-route,
 .supervisor-liq-table.is-informe-days td.is-route {
-  width: 18% !important;
+  width: 22% !important;
   font-size: 10px !important;
 }
 .supervisor-liq-table.is-informe-days th.is-total,

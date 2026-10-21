@@ -8,7 +8,6 @@
  */
 import { useMemo, useState } from "react";
 import { sameRoute } from "@/lib/client-route-order";
-import { isoToDisplay } from "@/lib/loan-preview";
 import type { InformeHistoryKind, InformeRouteHistory } from "@/lib/informe-route-days";
 import { money, type ClientRow, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 import { portfolioBalanceForClients } from "@/lib/portfolio-stats";
@@ -128,7 +127,7 @@ export function SupervisorOwnRouteReport({
               ) : (
                 history[openKind].days.map((day) => (
                   <tr key={day.date}>
-                    <td className="is-dia">{isoToDisplay(day.date).slice(0, 5)}</td>
+                    <td className="is-dia">{day.date.slice(8, 10)}</td>
                     <td className="is-num is-total">{money(day.total, { symbol: false })}</td>
                   </tr>
                 ))
