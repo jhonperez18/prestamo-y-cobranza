@@ -6,6 +6,7 @@ import {
   type OperationalDayState,
 } from "@/lib/collector-day-auto-close";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import { collapseCompanionVisits } from "@/lib/planilla-dedupe";
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
 import type {
   CollectorDayCloseRecord,
@@ -229,7 +230,7 @@ export function usePlanillaDayRollover(
   }, [enabled, trigger]);
 }
 
-/** Asignaciones despachadas de una ruta en una fecha (espejo de lo enviado a la app). */
+/** Asignaciones despachadas de una ruta en una fecha. Una persona, una fila: la cuota manda sobre Prestar. */
 export function planillaAssignmentsForRoute(
   assignments: DailyCollectionAssignment[],
   routeName: string,
@@ -238,7 +239,7 @@ export function planillaAssignmentsForRoute(
 ) {
   if (!collectorRef) return [];
   const seen = new Set<string>();
-  return assignments
+  const rows = assignments
     .filter(
       (row) =>
         row.dispatchDate === date &&
@@ -253,7 +254,8 @@ export function planillaAssignmentsForRoute(
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
-    })
-    .slice()
-    .sort((a, b) => a.clientName.localeCompare(b.clientName, "es"));
+    });
+  return collapseCompanionVisits(rows).sort((a, b) =>
+    a.clientName.localeCompare(b.clientName, "es"),
+  );
 }

@@ -46,7 +46,7 @@ import {
   visitStatusLabelShort,
 } from "@/lib/collector-mobile";
 import { todayIso } from "@/lib/daily-dispatch";
-import { visiblePlanillaAssignments } from "@/lib/planilla-dedupe";
+import { collapseCompanionVisits, visiblePlanillaAssignments } from "@/lib/planilla-dedupe";
 import { isValidPlanillaAssignment } from "@/lib/planilla-eligibility";
 import {
   clientsOnRouteSorted,
@@ -3573,18 +3573,19 @@ export function SupervisorMobileApp({
 
   const planillaAssignments = useMemo(() => {
     const compare = assignmentRoutePositionComparator(clients);
-    if (!planillaRouteFilter) return todayAssignments.slice().sort(compare);
+    const people = (rows: typeof todayAssignments) => collapseCompanionVisits(rows).sort(compare);
+    if (!planillaRouteFilter) return people(todayAssignments);
     // Filtro por ruta = solo esa ruta (Ruta 1 no arrastra a Ruta 1.1 del mismo cobrador).
     const onRoute = todayAssignments.filter((row) =>
       sameRoute(assignmentRouteName(row, clients), planillaRouteFilter),
     );
-    if (onRoute.length > 0) return onRoute.sort(compare);
+    if (onRoute.length > 0) return people(onRoute);
     const fromCatalog = catalogRoutes(routes).find((row) =>
       sameRoute(row.name, planillaRouteFilter),
     );
     const collectorRef = fromCatalog?.collectorRef || "";
     return collectorRef
-      ? todayAssignments.filter((row) => row.collectorRef === collectorRef).sort(compare)
+      ? people(todayAssignments.filter((row) => row.collectorRef === collectorRef))
       : [];
   }, [clients, todayAssignments, planillaRouteFilter, routes]);
 
