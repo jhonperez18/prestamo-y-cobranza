@@ -578,8 +578,13 @@ export function useWorkspace({
         return merged;
       });
       setDayExpenseDrafts(next.dayExpenseDrafts);
+      const previousAssignments = readDemoJson<DailyCollectionAssignment[]>(
+        DEMO_DAILY_ASSIGNMENTS_KEY,
+        [],
+      );
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
-      queueAssignmentsMirror(assignments);
+      const changedAssignments = assignmentsChangedFrom(previousAssignments, assignments);
+      if (changedAssignments.length) queueAssignmentsMirror(changedAssignments);
       writeDemoJson(DEMO_ROUTES_KEY, next.routes);
       writeDemoJson(DEMO_LOANS_KEY, next.loans);
       writeDemoJson(DEMO_DAILY_LOGS_KEY, next.logs);
@@ -1479,7 +1484,7 @@ export function useWorkspace({
     setRoutes(synced.routes);
     setDailyAssignments(synced.assignments);
     queueRoutesMirror(synced.routes);
-    queueAssignmentsMirror(synced.assignments);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, synced.assignments));
     const route = synced.routes.find((row) => row.ref === routeRef) ?? catalogRouteList.find((row) => row.ref === routeRef);
     onToast(
       collector
@@ -1502,7 +1507,7 @@ export function useWorkspace({
     setRoutes(synced.routes);
     setDailyAssignments(synced.assignments);
     queueRoutesMirror(synced.routes);
-    queueAssignmentsMirror(synced.assignments);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, synced.assignments));
 
     if (!announce) return;
 
@@ -1605,7 +1610,7 @@ export function useWorkspace({
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, closedAssignments);
     setRoutes(result.routes);
     writeDemoJson(DEMO_ROUTES_KEY, result.routes);
-    queueAssignmentsMirror(closedAssignments);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, closedAssignments));
     queueRoutesMirror(result.routes);
     try {
       await flushOpsMirrorQueues();
@@ -1778,7 +1783,7 @@ export function useWorkspace({
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, closedAssignments);
     setRoutes(result.routes);
     writeDemoJson(DEMO_ROUTES_KEY, result.routes);
-    queueAssignmentsMirror(closedAssignments);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, closedAssignments));
     queueRoutesMirror(result.routes);
     try {
       // Sin esto el cobrador se ve cerrado y el dueño nunca recibe el CIE/planilla.
@@ -1931,7 +1936,7 @@ export function useWorkspace({
       ),
     );
     if (paidClient) queueClientMirror(paidClient);
-    queueAssignmentsMirror(projected.assignments);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, projected.assignments));
     try {
       let payFlush = await flushPaymentMirrorQueue();
       if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();
@@ -2010,7 +2015,7 @@ export function useWorkspace({
     setDailyAssignments(assignments);
     writeDemoJson(DEMO_LOANS_KEY, projected.loans);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
-    queueAssignmentsMirror(assignments);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, assignments));
     const mirror = await queuePaymentMirror({ ...result.payment, updatedAt: voidedAtStamp });
     if (!mirror.ok) {
       onToast(`Anulado en local · nube pendiente: ${mirror.error || "sin red"}`);
@@ -2052,7 +2057,7 @@ export function useWorkspace({
     setRoutes(nextRoutes);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, nextAssignments);
     writeDemoJson(DEMO_ROUTES_KEY, nextRoutes);
-    queueAssignmentsMirror(nextAssignments);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, nextAssignments));
     queueRoutesMirror(nextRoutes);
     onToast(
       declinedOffer
@@ -2259,7 +2264,7 @@ export function useWorkspace({
     if (labeled.payments !== result.state.payments) writeDemoJson(DEMO_PAYMENTS_KEY, labeled.payments);
     if (labeled.assignments !== dailyAssignments) {
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, labeled.assignments);
-      queueAssignmentsMirror(labeled.assignments);
+      queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, labeled.assignments));
     }
     setUsers(result.state.users);
     setCollectors(result.state.collectors);
@@ -2315,7 +2320,7 @@ export function useWorkspace({
     if (labeled.loans !== loans) writeDemoJson(DEMO_LOANS_KEY, labeled.loans);
     if (labeled.assignments !== synced.assignments) {
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, labeled.assignments);
-      queueAssignmentsMirror(labeled.assignments);
+      queueAssignmentsMirror(assignmentsChangedFrom(synced.assignments, labeled.assignments));
     }
     if (labeled.routes !== synced.routes) writeDemoJson(DEMO_ROUTES_KEY, labeled.routes);
     if (labeled.payments !== result.state.payments) writeDemoJson(DEMO_PAYMENTS_KEY, labeled.payments);
@@ -2502,7 +2507,7 @@ export function useWorkspace({
     if (nextLoan) void queueLoanCommand(nextLoan, { op: "alerts" });
     const cajaClient = nextClients.find((entry) => entry.ref === loan.clientRef);
     if (cajaClient) queueClientMirror(cajaClient);
-    queueAssignmentsMirror(projected.assignments);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, projected.assignments));
     const inCloud = (await flushMoneyMovementToCloud("pago-panel")) && mirror.ok;
     onToast(
       inCloud
@@ -2569,7 +2574,7 @@ export function useWorkspace({
     if (nextLoan) void queueLoanCommand(nextLoan, { op: "alerts" });
     const lateClient = committed.clients.find((entry) => entry.ref === loan.clientRef);
     if (lateClient) queueClientMirror(lateClient);
-    queueAssignmentsMirror(projected.assignments);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, projected.assignments));
     const inCloud = (await flushMoneyMovementToCloud("pago-tardio")) && mirror.ok;
     onToast(
       inCloud
