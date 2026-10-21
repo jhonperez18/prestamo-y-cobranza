@@ -5210,7 +5210,6 @@ export function SupervisorMobileApp({
               payments={payments}
               efectivo={informeEfectivo}
               banco={bancoSaldo}
-              corteLabel={todayDisplay}
               history={informeHistory}
               bancoGastos={bancoGastos}
               bancoGastado={bancoGastado}

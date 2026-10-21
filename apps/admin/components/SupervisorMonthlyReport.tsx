@@ -15,7 +15,6 @@ import {
   type InformeHistoryKind,
 } from "@/lib/informe-route-days";
 import type { InformeMonthSnapshot } from "@/lib/informe-month-snapshot";
-import { informePeriodName } from "@/lib/informe-month-snapshot";
 import { isoToDisplay } from "@/lib/loan-preview";
 import { money, type ClientRow, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 import { portfolioBalanceForClients } from "@/lib/portfolio-stats";
@@ -28,7 +27,6 @@ type Props = {
   payments: PaymentRow[];
   efectivo: InformeEfectivo;
   banco: number;
-  corteLabel: string;
   /** Historial diario por ruta desde el día 1 del mes (Cobrado / Préstamo / Gasto). `null` = calculando. */
   history: InformeHistory | null;
   /** Misma lista que Banco → Gastos. No entra a la caja ni al Inicial. */
@@ -68,7 +66,6 @@ export function SupervisorMonthlyReport({
   payments,
   efectivo,
   banco,
-  corteLabel,
   history,
   bancoGastos,
   bancoGastado,
@@ -109,18 +106,9 @@ export function SupervisorMonthlyReport({
   const shownHistory = frozen ? (frozen.history as InformeHistory) : history;
   const shownGastos = frozen ? frozen.poolGastos : bancoGastos;
   const shownGastado = frozen ? frozen.poolGastado : bancoGastado;
-  const shownCorte = frozen ? frozen.corteLabel : corteLabel;
 
   return (
     <div className="supervisor-informe">
-      <header className="supervisor-informe-head">
-        <h3>Informe mensual</h3>
-        <p>
-          {frozen
-            ? `Rutas M · T · N · ${informePeriodName(frozen.period)} · cierre ${shownCorte}`
-            : `Rutas M · T · N · corte ${shownCorte}`}
-        </p>
-      </header>
       <div className="supervisor-liq-wrap">
         <table className="supervisor-liq-table is-informe">
           <thead>
