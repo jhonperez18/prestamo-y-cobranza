@@ -6082,7 +6082,8 @@
       background: #f6c6d0;
       border-color: #c9566e;
     }
-    .supervisor-informe-history-btn.is-gasto-banco {
+    .supervisor-informe-history-btn.is-gasto-banco,
+    .supervisor-informe-history-btn.is-gasto-nequi {
       grid-column: 1 / -1;
       flex-direction: row;
       justify-content: space-between;
@@ -6090,7 +6091,8 @@
       background: #fbe6ea;
       border-color: #eaa4b2;
     }
-    .supervisor-informe-history-btn.is-gasto-banco.on {
+    .supervisor-informe-history-btn.is-gasto-banco.on,
+    .supervisor-informe-history-btn.is-gasto-nequi.on {
       background: #f6c6d0;
       border-color: #c9566e;
     }

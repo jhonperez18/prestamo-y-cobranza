@@ -5133,6 +5133,8 @@ export function SupervisorMobileApp({
               nequi={nequiRutaSaldo}
               corteLabel={todayDisplay}
               history={informeAHistory}
+              nequiGastos={nequiGastos}
+              nequiGastado={nequiGastado}
             />
           )}
         </section>
