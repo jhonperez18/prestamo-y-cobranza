@@ -521,8 +521,11 @@ export function CollectorMobileApp({
 
   const viewPeriod = periodFromDateIso(activeDate);
 
-  /** Caja real del cobrador (efectivo − gasto − préstamo). Misma base que Cierre del día. */
-  const mCarriedFallbackOpening = useMemo(() => {
+  /**
+   * Una sola pasada del historial de caja. El inicial arrastrado y el saldo por fecha
+   * salen de esas mismas filas (antes se calculaban dos veces, iguales).
+   */
+  const collectorCashHand = useMemo(() => {
     const extraDates = [
       ...routeOptions.map((row) => row.date),
       date ?? todayIso(),
@@ -547,8 +550,13 @@ export function CollectorMobileApp({
     );
     const ascending = [...rows].sort((a, b) => a.date.localeCompare(b.date));
     const prior = ascending.filter((row) => row.date < activeDate);
-    if (prior.length) return prior[prior.length - 1].saldo;
-    return openingSaldoForPeriod(collector.ref, viewPeriod, monthCloses);
+    const opening = prior.length
+      ? prior[prior.length - 1].saldo
+      : openingSaldoForPeriod(collector.ref, viewPeriod, monthCloses);
+    return {
+      opening,
+      byDate: new Map(rows.map((row) => [row.date, row.saldo])),
+    };
   }, [
     activeDate,
     assignments,
@@ -563,46 +571,8 @@ export function CollectorMobileApp({
     routeOptions,
     viewPeriod,
   ]);
-
-  /** Mapa fecha → Saldo en caja real (misma fuente que KPI Préstamo / ruta). */
-  const collectorCashHandByDate = useMemo(() => {
-    const extraDates = [
-      ...routeOptions.map((row) => row.date),
-      date ?? todayIso(),
-      activeDate,
-    ];
-    const rows = buildCollectorDayHistory(
-      collector.ref,
-      livePayments,
-      dayCloses,
-      [collector],
-      extraDates,
-      dayExpenseDrafts,
-      monthCloses,
-      viewPeriod,
-      {
-        assignments,
-        rolling: true,
-        loans,
-        clients,
-        includeOperatingExpenses: true,
-      },
-    );
-    return new Map(rows.map((row) => [row.date, row.saldo]));
-  }, [
-    activeDate,
-    assignments,
-    clients,
-    collector,
-    date,
-    dayCloses,
-    dayExpenseDrafts,
-    livePayments,
-    loans,
-    monthCloses,
-    routeOptions,
-    viewPeriod,
-  ]);
+  const mCarriedFallbackOpening = collectorCashHand.opening;
+  const collectorCashHandByDate = collectorCashHand.byDate;
 
   const primaryClosingFor = useCallback(
     (dateIso: string) =>

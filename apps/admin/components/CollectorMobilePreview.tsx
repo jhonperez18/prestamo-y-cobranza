@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CollectorMobileApp,
   type CollectorCloseDayPayload,
@@ -114,14 +114,10 @@ export function CollectorMobilePreview({
   onPreviewKindChange,
 }: Props) {
   const [kind, setKind] = useState<PreviewKind>("collector");
-  /** Se arma una vez, oculto, y se queda. El clic solo lo muestra: no hay pantalla en blanco. */
-  const [supervisorReady, setSupervisorReady] = useState(false);
   useEffect(() => {
     onPreviewKindChange?.(kind);
   }, [kind, onPreviewKindChange]);
   const [supervisorRef, setSupervisorRef] = useState("");
-  /** Sube al cambiar persona → remount total (no hereda Recaudo/Historial). */
-  const [panelEpoch, setPanelEpoch] = useState(0);
 
   const mobileCollectors = useMemo(
     () => collectors.filter((row) => row.mobileAccess && row.active),
@@ -170,24 +166,11 @@ export function CollectorMobilePreview({
     }
   }, [kind, collector, selectedRef, onSelect]);
 
-  // Si el cobrador cambia desde fuera (Workspace), también remonta el panel.
-  useEffect(() => {
-    setPanelEpoch((n) => n + 1);
-  }, [selectedRef]);
-
   useEffect(() => {
     if (kind === "supervisor" && supervisor && supervisor.ref !== supervisorRef) {
       setSupervisorRef(supervisor.ref);
     }
   }, [kind, supervisor, supervisorRef]);
-
-  // Arma el supervisor mientras se ve el cobrador. El clic no espera ni deja el hueco vacío.
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      startTransition(() => setSupervisorReady(true));
-    }, 400);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   function pickCollector(ref: string) {
     setKind("collector");
@@ -195,14 +178,8 @@ export function CollectorMobilePreview({
   }
 
   function pickSupervisor(ref: string) {
-    const show = () => {
-      if (supervisorRef && supervisorRef !== ref) setPanelEpoch((n) => n + 1);
-      setSupervisorRef(ref);
-      setSupervisorReady(true);
-      setKind("supervisor");
-    };
-    if (supervisorReady) show();
-    else startTransition(show);
+    setSupervisorRef(ref);
+    setKind("supervisor");
   }
 
   const phoneTitle =
@@ -210,10 +187,10 @@ export function CollectorMobilePreview({
       ? `${supervisor?.name ?? "Supervisor"} · app`
       : `${collector?.name ?? "Cobrador"} · app`;
 
-  // Solo remount al cambiar persona (panelEpoch). Nunca meter sync/hydrate epoch:
-  // eso cerraba el panel Pagar al refrescar datos.
-  const collectorPanelKey = `cob-${collector?.ref ?? "x"}-${panelEpoch}`;
-  const supervisorPanelKey = `sup-${supervisor?.ref ?? "x"}-${panelEpoch}`;
+  // La clave es solo la persona. Cambiar cobrador no rearma al supervisor, ni al revés.
+  // Sin epoch de sync: eso cerraba el panel Pagar al refrescar datos.
+  const collectorPanelKey = `cob-${collector?.ref ?? "x"}`;
+  const supervisorPanelKey = `sup-${supervisor?.ref ?? "x"}`;
 
   return (
     <section className="panel collector-mobile-preview-panel is-compact">
@@ -307,8 +284,7 @@ export function CollectorMobilePreview({
             <p className="ficha-empty">Crea un usuario con rol Supervisor para previsualizar.</p>
           ) : (
             <MobilePreviewFrame title={phoneTitle}>
-              {supervisorReady && supervisor ? (
-                <div hidden={kind !== "supervisor"}>
+              {kind === "supervisor" && supervisor ? (
                 <SupervisorMobileApp
                   key={supervisorPanelKey}
                   supervisor={supervisor}
@@ -337,10 +313,7 @@ export function CollectorMobilePreview({
                   onAdjustTCash={onAdjustTCash}
                   onReopenSheet={onReopenSheet}
                 />
-                </div>
-              ) : null}
-              {collector ? (
-                <div hidden={kind !== "collector"}>
+              ) : collector ? (
                 <CollectorMobileApp
                   key={collectorPanelKey}
                   collector={collector}
@@ -368,7 +341,6 @@ export function CollectorMobilePreview({
                   onCloseDay={onCloseDay}
                   onCloseMonth={onCloseMonth}
                 />
-                </div>
               ) : null}
             </MobilePreviewFrame>
           )}
