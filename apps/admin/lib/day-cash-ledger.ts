@@ -272,6 +272,26 @@ export function routeCobradoDayTotal(src: DayCashSources, routeName: string): nu
 }
 
 /**
+ * Cobrado de la ruta con varios cobradores (Informe y semanal).
+ * El efectivo es de cada uno. El Banco / Nequi de la ruta es uno solo:
+ * sumarlo dentro del bucle de cobradores lo repetía (Edgar + Yesid).
+ */
+export function routeCobradoAcrossCollectors(
+  src: DayCashSources,
+  routeName: string,
+  collectorRefs: readonly string[],
+): { efectivo: number; digital: number; total: number } {
+  let efectivo = 0;
+  for (const collectorRef of new Set(collectorRefs.filter(Boolean))) {
+    efectivo += routeCashCollected({ ...src, collectorRef }, routeName);
+  }
+  const poolName = digitalLoanPoolForRoute(routeName);
+  const pool = routeDigitalCollected(src, routeName);
+  const digital = poolName === "nequi" ? pool.nequi : pool.banco;
+  return { efectivo: pesos(efectivo), digital: pesos(digital), total: pesos(efectivo + digital) };
+}
+
+/**
  * Desglose del cobrado del día por ruta — UN solo dueño para Total, COBROS,
  * Informe · Cobrado, Historial · Cobros y recaudo del cobrador en esa planilla.
  */
@@ -286,15 +306,17 @@ export function routeCobradoBreakdown(
   total: number;
   payments: PaymentRow[];
 } {
+  const poolName = digitalLoanPoolForRoute(routeName);
   const digital = routeDigitalCollected(src, routeName);
+  const digitalAmount = poolName === "nequi" ? digital.nequi : digital.banco;
   const efectivo = routeCashCollected(src, routeName);
   const payments = routeCobradoDayPayments(src, routeName);
-  const total = pesos(efectivo + digital.nequi + digital.banco);
+  const total = pesos(efectivo + digitalAmount);
   return {
     efectivo,
-    nequi: digital.nequi,
-    banco: digital.banco,
-    digital: pesos(digital.nequi + digital.banco),
+    nequi: poolName === "nequi" ? digitalAmount : 0,
+    banco: poolName === "banco" ? digitalAmount : 0,
+    digital: pesos(digitalAmount),
     total,
     payments,
   };

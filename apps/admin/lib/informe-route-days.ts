@@ -1,14 +1,18 @@
 /**
  * Informe del supervisor → historial diario de Cobrado / Préstamo / Gasto por ruta (M · T · N).
  * Solo lee a los dueños de cada cifra; aquí no hay fórmula propia:
- *   Cobrado  = `routeCobradoDayTotal` (efectivo + pool digital de la ruta, con Caja/oficina).
+ *   Cobrado  = `routeCobradoAcrossCollectors` (efectivo de cada cobrador + Banco/Nequi de la ruta, una vez).
  *   Préstamo = efectivo del libro (`buildDayCashLedger().m/.t`, N: `independentRouteMovement`)
  *              + Banco / Nequi (`dayDigitalLoanRows`, por ruta del cliente).
  *   Gasto    = gastos operativos del libro (M / T) o de la caja de N (sin capital prestado).
  * A lleva dinero aparte y no entra.
  */
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
-import { chainDayMovements, routeCobradoDayTotal, type DayCashSources } from "@/lib/day-cash-ledger";
+import {
+  chainDayMovements,
+  routeCobradoAcrossCollectors,
+  type DayCashSources,
+} from "@/lib/day-cash-ledger";
 import { dayDigitalLoanRows } from "@/lib/day-digital-loans";
 import { pesos } from "@/lib/finance";
 import {
@@ -56,9 +60,6 @@ function emptyDay(): DayAcc {
 }
 
 function collectorDay(src: DayCashSources, acc: DayAcc) {
-  for (const route of INFORME_HISTORY_ROUTES) {
-    acc.cobrado[route] += routeCobradoDayTotal(src, route);
-  }
   if (collectorGastosGoToChain(src)) {
     const { m, t } = chainDayMovements(src);
     acc.prestamo.M += m.prestamos;
@@ -94,21 +95,29 @@ export function informeRouteHistory(
     const dayAssignments = assignmentsByDay.get(date) ?? [];
     const payments = paymentsByDay.get(date) ?? [];
     // Un cobrador con varias rutas (M, T, A) llega una vez por ruta: se cuenta una sola vez.
+    const daySrc: DayCashSources = {
+      ...src,
+      assignments: dayAssignments,
+      payments,
+      date,
+      collectorRef: "",
+    };
     for (const collectorRef of new Set(collectorRefs)) {
       const collector = src.collectors.find((row) => row.ref === collectorRef);
       if (!collector) continue;
       collectorDay(
         {
-          ...src,
+          ...daySrc,
           assignments: dayAssignments.filter((row) => row.collectorRef === collectorRef),
-          payments,
           collectors: [collector],
           collectorRef,
           collectorName: collector.name,
-          date,
         },
         acc,
       );
+    }
+    for (const route of INFORME_HISTORY_ROUTES) {
+      acc.cobrado[route] += routeCobradoAcrossCollectors(daySrc, route, collectorRefs).total;
     }
     for (const route of INFORME_HISTORY_ROUTES) {
       for (const row of dayDigitalLoanRows(date, route, src.loans, src.clients)) {
@@ -171,11 +180,21 @@ export function informeOwnRouteHistory(
         collectorName: collector.name,
         date,
       };
-      acc.cobrado += routeCobradoDayTotal(day, route);
       const own = independentRouteMovement(day, route);
       acc.prestamo += own.prestamosRuta;
       acc.gasto += own.gastos;
     }
+    acc.cobrado += routeCobradoAcrossCollectors(
+      {
+        ...src,
+        assignments: dayAssignments,
+        payments,
+        date,
+        collectorRef: "",
+      },
+      route,
+      collectorRefs,
+    ).total;
     for (const kind of ["cobrado", "prestamo", "gasto"] as const) {
       if (acc[kind] === 0) continue;
       const total = pesos(acc[kind]);

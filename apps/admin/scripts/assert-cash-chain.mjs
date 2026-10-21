@@ -3867,6 +3867,12 @@ console.log("— Informe: historial por ruta —");
     dayOf("cobrado")?.T ?? null,
     routeCobradoDayTotal(baseT, "T"),
   );
+  const twoCollectors = informeRouteHistory(baseT, [COB.ref, "COB-1"], D, D);
+  expect(
+    "Informe · Cobrado M con dos cobradores = una vez (no duplica Banco)",
+    twoCollectors.cobrado.days.find((row) => row.date === D)?.M ?? null,
+    routeCobradoDayTotal(baseT, "M"),
+  );
   expect(
     "Informe · Total del día = T + M + N",
     dayOf("prestamo")?.total ?? null,

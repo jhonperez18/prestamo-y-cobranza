@@ -5,7 +5,7 @@
  *               préstamos activos + pagos vivos). No fórmula aparte.
  *   Caja M·T  = libro del día (`buildDayCashLedger`); saldo final = CIE- del último día.
  *   Caja A/N  = `independentRouteDay` / `independentRouteMovement`.
- *   Cobros    = `routeCollectedByMethod` (ruta del cliente).
+ *   Cobros    = `routeCobradoAcrossCollectors` (efectivo de cada cobrador + Banco/Nequi de la ruta, una vez).
  *   Préstamos = renglones del libro (efectivo) + `dayDigitalLoanRows` (Banco / Nequi).
  *   Banco/Nequi = `digitalPoolSaldo` (rutas del mes − gastos de su cuenta), el Saldo del supervisor.
  *   Movimiento por día = `informeRouteHistory` / `informeOwnRouteHistory` (Informe del supervisor).
@@ -20,7 +20,7 @@ import { clientsOnRouteSorted, sameRoute } from "@/lib/client-route-order";
 import { dayHasReachedAutoClose } from "@/lib/collector-day-auto-close";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import type { DayLoanDisbursementRow } from "@/lib/collector-history-planilla";
-import { buildDayCashLedger, routeCollectedByMethod, type DayCashSources } from "@/lib/day-cash-ledger";
+import { buildDayCashLedger, routeCobradoAcrossCollectors, type DayCashSources } from "@/lib/day-cash-ledger";
 import { dayDigitalLoanRows } from "@/lib/day-digital-loans";
 import type { BankAccount } from "@/lib/bank";
 import { digitalPoolSaldo, type DigitalPool } from "@/lib/digital-pools";
@@ -437,13 +437,11 @@ export function buildWeeklyReport(
       }
     }
     if (ownRef) addMove(acc, ownRoute, independentRouteMovement(daySource(src, ownRef, date), ownRoute));
-    for (const ref of owners) {
-      const day = daySource(src, ref, date);
-      for (const route of routes) {
-        const by = routeCollectedByMethod(day, route);
-        acc.cobroEfectivo[route] += by.efectivo;
-        acc.cobroDigital[route] += by.banco + by.nequi;
-      }
+    const cobroDay = daySource(src, owners[0] || "", date);
+    for (const route of routes) {
+      const cobro = routeCobradoAcrossCollectors(cobroDay, route, owners);
+      acc.cobroEfectivo[route] += cobro.efectivo;
+      acc.cobroDigital[route] += cobro.digital;
     }
     for (const route of routes) {
       for (const row of dayDigitalLoanRows(date, route, src.loans, src.clients)) {

@@ -2349,16 +2349,16 @@ export function SupervisorMobileApp({
     });
 
   const openRoute = liquidaciones.find((row) => row.routeRef === openRouteRef) ?? null;
-  /** «Cobrado hoy»: A cobra por Nequi (valor `banco`); M, T y N por Banco (valor `nequi`). Con plata del otro, se muestra igual. */
+  /** A muestra solo Nequi. M, T y N muestran solo Banco. El otro no se suma. */
   const openRouteIsA = openRoute ? sameRoute(openRoute.routeName, "A") : false;
-  /** A cobra solo Efectivo y Nequi: lo que no es efectivo se muestra en un solo recuadro Nequi. */
-  /** Digital por ruta: A = cajita Nequi; M / T / N = cajita Banco (nunca las dos). */
   const openRouteDigitalPool: "banco" | "nequi" = openRouteIsA ? "nequi" : "banco";
   const openRouteDigitalLabel = openRouteIsA ? "Nequi" : "Banco";
   const routeMeansShowNequiValue = !openRouteIsA;
   const routeMeansShowBancoValue = openRouteIsA;
-  const routeDigitalAmount = (openRoute?.cobradoBanco ?? 0) + (openRoute?.cobradoNequi ?? 0);
-  const routeNequiBoxAmount = routeDigitalAmount;
+  const routeDigitalAmount = openRouteIsA
+    ? (openRoute?.cobradoNequi ?? 0)
+    : (openRoute?.cobradoBanco ?? 0);
+  const routeNequiBoxAmount = openRouteIsA ? (openRoute?.cobradoNequi ?? 0) : 0;
 
   /** N/P solo de la ruta abierta (nunca mezclar M con T/A/N). */
   const openRouteNpByDay = useMemo(() => {
@@ -3080,12 +3080,13 @@ export function SupervisorMobileApp({
 
   const historyDayShowNequiValue = !openRouteIsA;
   const historyDayShowBancoValue = openRouteIsA;
-  /** A = solo Nequi; M / T / N = solo Banco (T muestra M+T en el recuadro conjunto). */
+  /** A = solo Nequi. M / T / N = solo Banco. El otro instrumento no entra a la cifra. */
   const historyDayDigitalAmount = openRouteIsA
     ? (openRouteHistoryDayCuadre?.cobradoNequi ?? 0)
-    : (openRouteHistoryDayCuadre?.cobradoBanco ?? 0) +
-      (openRouteHistoryDayCuadre?.cobradoNequi ?? 0);
-  const historyDayNequiBoxAmount = historyDayDigitalAmount;
+    : (openRouteHistoryDayCuadre?.cobradoBanco ?? 0);
+  const historyDayNequiBoxAmount = openRouteIsA
+    ? (openRouteHistoryDayCuadre?.cobradoNequi ?? 0)
+    : 0;
   /** Cierre del día de T: lo propio de T arriba; totales M+T en «Lo que cobró». */
   const historyDayChainT = openRouteCajaHistoryIsT ? openRouteHistoryChainDay : null;
   const historyDayMeansCount =
