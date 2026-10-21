@@ -134,6 +134,7 @@ function clearMirrorQueues() {
     "nexo-demo-ops-day-expenses-queue",
     "nexo-demo-ops-misc-queue",
     "nexo-demo-ops-assignments-queue",
+    "nexo-demo-ops-seal-route-queue",
     "nexo-demo-supervisor-route-seen",
     "nexo-dispatch-date",
     "nexo-demo-nequi-pool",

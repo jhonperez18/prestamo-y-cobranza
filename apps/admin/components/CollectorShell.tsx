@@ -778,17 +778,17 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_ROUTES_KEY, result.routes);
     queueAssignmentsMirror(closedAssignments);
     queueRoutesMirror(result.routes);
+    // La orden queda en cola hasta que la base sella la ruta entera.
+    const routeSealed = await mirrorClosedRouteSheet({
+      collectorRef: payload.collectorRef,
+      date: payload.date,
+      route: payload.planillaRoute,
+      assignments: closedAssignments,
+    });
     try {
       // Encolar primero, luego flush (con un reintento): el cierre debe salir a la nube.
       await flushOpsMirrorQueues();
       await flushOpsMirrorQueues();
-      // La base sella la hoja entera, también la visita que este celular ya no tiene.
-      await mirrorClosedRouteSheet({
-        collectorRef: payload.collectorRef,
-        date: payload.date,
-        route: payload.planillaRoute,
-        assignments: closedAssignments,
-      });
     } catch {
       /* cola offline reintenta */
     }
@@ -807,8 +807,9 @@ export function CollectorShell({ session, onLogout }: Props) {
       const label = payload.planillaRoute
         ? `Planilla ${payload.planillaRoute} cerrada`
         : "Planilla cerrada";
+      const pendingSeal = Boolean(payload.planillaRoute) && !routeSealed;
       showToast(
-        `${label} · sigue otra hoja abierta. ${formatCloseDayAlertSummary(alertResult.alerted, alertResult.toMora) || ""}`.trim(),
+        `${pendingSeal ? `${label} en este aparato · se termina de subir sola` : `${label} · sigue otra hoja abierta`}. ${formatCloseDayAlertSummary(alertResult.alerted, alertResult.toMora) || ""}`.trim(),
       );
       return false;
     }

@@ -274,6 +274,7 @@ function preserveProgress(
   next: DailyCollectionAssignment,
   previous: DailyCollectionAssignment | undefined,
   livePaymentsByRef?: Map<string, { loanRef?: string }>,
+  voidedPaymentRefs?: Set<string>,
 ): DailyCollectionAssignment {
   // Visita «prestar»: nunca heredar loanRef / monto de una fila vieja.
   const nextAwaiting =
@@ -315,12 +316,16 @@ function preserveProgress(
     paymentStillLive &&
     (previous.visitStatus === "cobrado" || Boolean(linkedRef));
   const omitted = previous.visitStatus === "omitido";
+  const knownVoid = Boolean(linkedRef && voidedPaymentRefs?.has(linkedRef));
+  const collectedOnSheet =
+    !knownVoid && previous.visitStatus === "cobrado" && Boolean(linkedRef);
   const voidedPaid =
     !paymentStillLive &&
+    !collectedOnSheet &&
     (previous.visitStatus === "cobrado" || Boolean(linkedRef));
 
   let visitStatus = previous.visitStatus ?? next.visitStatus;
-  if (paid) visitStatus = "cobrado";
+  if (paid || collectedOnSheet) visitStatus = "cobrado";
   else if (omitted) visitStatus = "omitido";
   else if (voidedPaid) visitStatus = "pendiente";
 
@@ -330,7 +335,7 @@ function preserveProgress(
     visitStatus,
     skipReason: previous.skipReason,
     dayClosedAt: previous.dayClosedAt,
-    paymentRef: paid ? previous.paymentRef : undefined,
+    paymentRef: paid || collectedOnSheet ? previous.paymentRef : undefined,
     amountDue: paid || omitted ? 0 : next.amountDue,
     alertCount: paid || omitted ? 0 : next.alertCount,
     kind: paid || omitted ? ("cuota" as const) : next.kind,
@@ -466,10 +471,13 @@ export function syncPermanentRoutePlanilla(
       .filter((row) => row.dispatchDate === date && row.clientRef)
       .map((row) => [`${row.clientRef}:${row.loanRef || ""}`, row] as const),
   );
+  const voidedPaymentRefs = new Set<string>();
   const livePaymentsByRef = new Map(
     (payments ?? [])
       .filter((row) => {
+        const ref = "ref" in row ? String((row as PaymentRow).ref || "").trim() : "";
         const voided = "voidedAt" in row ? String((row as PaymentRow).voidedAt || "").trim() : "";
+        if (ref && voided) voidedPaymentRefs.add(ref);
         return !voided;
       })
       .filter((row) => "ref" in row && Boolean((row as PaymentRow).ref))
@@ -565,6 +573,7 @@ export function syncPermanentRoutePlanilla(
             previousByClientLoan.get(`${item.clientRef}:${item.loanRef}`) ??
             previousByClientLoan.get(`${item.clientRef}:`),
           livePaymentsByRef,
+          voidedPaymentRefs,
         );
         const paidTodayRef = paymentRefOnDate(item.loanRef, date, index.paymentsFor(item.loanRef));
         builtMap.set(
@@ -632,14 +641,20 @@ export function syncPermanentRoutePlanilla(
       (!prev.loanRef || !linkedPay?.loanRef || linkedPay.loanRef === prev.loanRef);
     const omitted = prev.visitStatus === "omitido";
     const paid = paymentStillLive && (prev.visitStatus === "cobrado" || Boolean(linkedRef));
-    if (!paid && !omitted) continue;
+    // Cobrado de hoy con PG: se queda hasta el cierre. Si este pase no trae el pago,
+    // no se cambia por Prestar: esa visita abierta en la base impide cerrar la hoja.
+    // Solo se suelta si este pase ve el PG anulado.
+    const knownVoid = Boolean(linkedRef && voidedPaymentRefs.has(linkedRef));
+    const collectedOnSheet =
+      !knownVoid && prev.visitStatus === "cobrado" && Boolean(linkedRef);
+    if (!paid && !omitted && !collectedOnSheet) continue;
     // Cuota de un préstamo borrado sin plata de por medio: el cliente queda libre (Prestar).
-    if (!paid && index.loanVoided(String(prev.loanRef || ""))) continue;
+    if (!paid && !collectedOnSheet && index.loanVoided(String(prev.loanRef || ""))) continue;
     const prevLoan = prev.loanRef ? index.loanByRef.get(prev.loanRef) : undefined;
     const prevPaidToday = loanPaidOnDate(prev.loanRef, date, index.paymentsFor(prev.loanRef));
     const paidOffEarlier =
       Boolean(prev.loanRef && prevLoan && owesFor(prevLoan) <= 0) && !prevPaidToday;
-    if (paidOffEarlier) continue;
+    if (paidOffEarlier && !collectedOnSheet) continue;
     // La oferta Prestar de quien terminó hoy no reemplaza su cobro: se compara por préstamo.
     const loanAlreadyListed = [...builtMap.values()].some(
       (row) =>
@@ -663,7 +678,7 @@ export function syncPermanentRoutePlanilla(
       ...prev,
       amountDue: 0,
       visitStatus: omitted ? ("omitido" as const) : ("cobrado" as const),
-      paymentRef: paid ? prev.paymentRef : undefined,
+      paymentRef: paid || collectedOnSheet ? prev.paymentRef : undefined,
       dispatched: true,
       dispatchedAt: prev.dispatchedAt ?? at,
     });

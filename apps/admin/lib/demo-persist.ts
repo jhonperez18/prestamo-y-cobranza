@@ -209,6 +209,7 @@ const MIRROR_QUEUE_KEYS = [
   "nexo-demo-ops-day-expenses-queue",
   "nexo-demo-ops-misc-queue",
   "nexo-demo-ops-assignments-queue",
+  "nexo-demo-ops-seal-route-queue",
   "nexo-demo-bank-account-mirror-queue",
   "nexo-demo-month-close-mirror-queue",
 ] as const;

@@ -209,6 +209,9 @@ export function reconcilePaymentsOntoPlanilla(
     ) {
       // Aún subiendo: no tratar como fantasma.
       if (queued.has(linkedRef)) return [row];
+      // Cobrado con PG y préstamo ya en cero: se queda. Botarlo deja la visita
+      // abierta en la base y la hoja no cierra. Si el PG no existe, la base lo resuelve.
+      if (settled && row.visitStatus === "cobrado" && linkedRef) return [row];
       // PG fantasma + préstamo liquidado: fuera para siempre.
       if (settled) return [];
       // PG anulado, ausente o de OTRO préstamo/cliente → vuelve a pendiente.

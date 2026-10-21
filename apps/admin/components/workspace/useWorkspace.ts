@@ -1792,16 +1792,16 @@ export function useWorkspace({
     writeDemoJson(DEMO_ROUTES_KEY, result.routes);
     queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, closedAssignments));
     queueRoutesMirror(result.routes);
+    const routeSealed = await mirrorClosedRouteSheet({
+      collectorRef: payload.collectorRef,
+      date: payload.date,
+      route: payload.planillaRoute,
+      assignments: closedAssignments,
+    });
     try {
       // Sin esto el cobrador se ve cerrado y el dueño nunca recibe el CIE/planilla.
       await flushOpsMirrorQueues();
       await flushOpsMirrorQueues();
-      await mirrorClosedRouteSheet({
-        collectorRef: payload.collectorRef,
-        date: payload.date,
-        route: payload.planillaRoute,
-        assignments: closedAssignments,
-      });
     } catch {
       /* cola offline reintenta */
     }
@@ -1819,8 +1819,9 @@ export function useWorkspace({
       const label = payload.planillaRoute
         ? `Planilla ${payload.planillaRoute} cerrada`
         : "Planilla cerrada";
+      const pendingSeal = Boolean(payload.planillaRoute) && !routeSealed;
       onToast(
-        `${label} · sigue otra hoja abierta. ${formatCloseDayAlertSummary(alertResult.alerted, alertResult.toMora) || ""}`.trim(),
+        `${pendingSeal ? `${label} en este aparato · se termina de subir sola` : `${label} · sigue otra hoja abierta`}. ${formatCloseDayAlertSummary(alertResult.alerted, alertResult.toMora) || ""}`.trim(),
       );
       return false;
     }

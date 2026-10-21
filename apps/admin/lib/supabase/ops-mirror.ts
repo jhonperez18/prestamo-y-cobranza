@@ -480,6 +480,7 @@ const Q_CLOSES = "nexo-demo-ops-day-closes-queue";
 const Q_EXPENSES = "nexo-demo-ops-day-expenses-queue";
 const Q_MISC = "nexo-demo-ops-misc-queue";
 const Q_ASSIGN = "nexo-demo-ops-assignments-queue";
+const Q_SEAL = "nexo-demo-ops-seal-route-queue";
 
 // —— mappers ——
 
@@ -1858,6 +1859,7 @@ export function queueAssignmentsMirror(rows: DailyCollectionAssignment[]) {
 
 /**
  * El cierre de la hoja le dice a la base que selle esa ruta entera.
+ * Queda en cola hasta que la base confirma, igual que un cobro.
  * No depende de que el celular todavía tenga cada visita en la mano.
  */
 export async function mirrorClosedRouteSheet(input: {
@@ -1865,9 +1867,9 @@ export async function mirrorClosedRouteSheet(input: {
   date: string;
   route?: string;
   assignments: DailyCollectionAssignment[];
-}): Promise<void> {
+}): Promise<boolean> {
   const route = String(input.route || "").trim();
-  if (!route || !input.collectorRef || !input.date) return;
+  if (!route || !input.collectorRef || !input.date) return true;
   const day = normalizeHistoryDate(input.date) || input.date;
   const closedAt =
     input.assignments.find(
@@ -1877,14 +1879,12 @@ export async function mirrorClosedRouteSheet(input: {
         row.clientRoute === route &&
         row.dayClosedAt,
     )?.dayClosedAt || "";
-  try {
-    await postMirror("/api/ops/mirror", {
-      kind: "seal_route",
-      row: { collectorRef: input.collectorRef, date: day, route, closedAt },
-    });
-  } catch (error) {
-    console.error("seal-route", error);
-  }
+  const ref = `SEAL-${input.collectorRef}-${day}-${route}`;
+  return persistKind(
+    Q_SEAL,
+    { kind: "seal_route", row: { ref, collectorRef: input.collectorRef, date: day, route, closedAt } },
+    ref,
+  );
 }
 
 export async function flushOpsMirrorQueues(): Promise<{ flushed: number; left: number }> {
@@ -1953,6 +1953,7 @@ export async function flushOpsMirrorQueues(): Promise<{ flushed: number; left: n
     { key: Q_CLOSES, kind: "day_close" },
     { key: Q_EXPENSES, kind: "day_expense" },
     { key: Q_MISC, kind: "misc_payment" },
+    { key: Q_SEAL, kind: "seal_route" },
     { key: Q_ASSIGN, kind: "assignment" },
   ];
   const localAssignByKey = new Map<string, DailyCollectionAssignment>(

@@ -38,6 +38,7 @@ const DROP_ON_SKIP_REASON = new Set([
   "cloud_cie_past_day_sealed",
   "provisional_day_close",
   "cie_reopened",
+  "historia",
   ...LOAN_SILENT_SKIPS,
   ...LOAN_REJECTION_REASONS,
 ]);
@@ -101,6 +102,7 @@ const OPS_QUEUE_KEYS = [
   "nexo-demo-ops-day-expenses-queue",
   "nexo-demo-ops-misc-queue",
   "nexo-demo-ops-assignments-queue",
+  "nexo-demo-ops-seal-route-queue",
   Q_MONTH_CLOSES,
 ] as const;
 
