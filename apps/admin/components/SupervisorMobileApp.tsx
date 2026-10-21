@@ -5120,6 +5120,8 @@ export function SupervisorMobileApp({
               banco={bancoSaldo}
               corteLabel={todayDisplay}
               history={informeHistory}
+              bancoGastos={bancoGastos}
+              bancoGastado={bancoGastado}
             />
           ) : (
             <SupervisorOwnRouteReport

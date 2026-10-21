@@ -8,11 +8,13 @@
  */
 import { useMemo, useState } from "react";
 import { sameRoute } from "@/lib/client-route-order";
+import type { DigitalPoolGasto } from "@/lib/digital-pools";
 import {
   INFORME_HISTORY_ROUTES,
   type InformeHistory,
   type InformeHistoryKind,
 } from "@/lib/informe-route-days";
+import { isoToDisplay } from "@/lib/loan-preview";
 import { money, type ClientRow, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 import { portfolioBalanceForClients } from "@/lib/portfolio-stats";
 
@@ -27,6 +29,9 @@ type Props = {
   corteLabel: string;
   /** Historial diario por ruta desde el día 1 del mes (Cobrado / Préstamo / Gasto). `null` = calculando. */
   history: InformeHistory | null;
+  /** Misma lista que Banco → Gastos. No entra a la caja ni al Inicial. */
+  bancoGastos: readonly DigitalPoolGasto[];
+  bancoGastado: number;
 };
 
 const HISTORY_BUTTONS: { kind: InformeHistoryKind; label: string }[] = [
@@ -61,8 +66,11 @@ export function SupervisorMonthlyReport({
   banco,
   corteLabel,
   history,
+  bancoGastos,
+  bancoGastado,
 }: Props) {
   const [openKind, setOpenKind] = useState<InformeHistoryKind | null>(null);
+  const [bancoGastosOpen, setBancoGastosOpen] = useState(false);
   const rows = useMemo((): ReportRow[] => {
     const cartera = INFORME_ROUTES.map((route) => ({
       route,
@@ -129,13 +137,54 @@ export function SupervisorMonthlyReport({
             type="button"
             className={`supervisor-informe-history-btn is-${kind}${openKind === kind ? " on" : ""}`}
             aria-expanded={openKind === kind}
-            onClick={() => setOpenKind((prev) => (prev === kind ? null : kind))}
+            onClick={() => {
+              setBancoGastosOpen(false);
+              setOpenKind((prev) => (prev === kind ? null : kind));
+            }}
           >
             <span>{label}</span>
             <b>{history ? money(history[kind].total, { symbol: false }) : "…"}</b>
           </button>
         ))}
+        <button
+          type="button"
+          className={`supervisor-informe-history-btn is-gasto-banco${bancoGastosOpen ? " on" : ""}`}
+          aria-expanded={bancoGastosOpen}
+          onClick={() => {
+            setOpenKind(null);
+            setBancoGastosOpen((prev) => !prev);
+          }}
+        >
+          <span>Gasto banco</span>
+          <b>{money(bancoGastado, { symbol: false })}</b>
+        </button>
       </div>
+      {bancoGastosOpen ? (
+        bancoGastos.length === 0 ? (
+          <p className="ficha-empty">Sin gastos pagados desde Banco este mes.</p>
+        ) : (
+          <div className="supervisor-banco-hist">
+            <div className="supervisor-banco-gastos-head" aria-hidden>
+              <span>Fecha</span>
+              <span>Concepto</span>
+              <span>Valor</span>
+            </div>
+            <ul className="supervisor-banco-gastos-list" aria-label="Gastos pagados desde Banco">
+              {bancoGastos.map((row) => (
+                <li key={row.ref}>
+                  <span className="is-date">{isoToDisplay(row.date)}</span>
+                  <span className="is-label">{row.label}</span>
+                  <span className="is-amount">{money(row.amount, { symbol: false })}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="supervisor-banco-gastos-total">
+              <span>Total gastado</span>
+              <b>{money(bancoGastado, { symbol: false })}</b>
+            </div>
+          </div>
+        )
+      ) : null}
       {openKind ? (
         <div className="supervisor-liq-wrap">
           <table className="supervisor-liq-table is-informe-days">
