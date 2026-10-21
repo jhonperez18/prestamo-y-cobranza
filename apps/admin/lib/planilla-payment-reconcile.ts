@@ -14,10 +14,6 @@ import { isPaymentLive } from "@/lib/live-payments";
 import { isLoanActive, isLoanVoided, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 import { isAssignmentAwaitingLoan } from "@/lib/planilla-display";
 
-function sameDay(a: string | undefined, b: string) {
-  return (a || "").trim() === b.trim();
-}
-
 function normalizePersonName(value: string) {
   return value
     .trim()
@@ -140,6 +136,51 @@ export function reconcilePaymentsOntoPlanilla(
 
   const live = payments.filter(isPaymentLive);
   const liveByRef = new Map(live.map((row) => [row.ref, row] as const));
+  const loanByRef = new Map<string, LoanRow>();
+  for (const loan of loans ?? []) {
+    if (loan.ref) loanByRef.set(loan.ref, loan);
+  }
+  const byDay = new Map<string, PaymentRow[]>();
+  const byDayLoan = new Map<string, PaymentRow[]>();
+  for (const pay of live) {
+    const day = paymentVisitDate(pay);
+    if (!day) continue;
+    const dayList = byDay.get(day);
+    if (dayList) dayList.push(pay);
+    else byDay.set(day, [pay]);
+    const loanKey = `${day}|${pay.loanRef || ""}`;
+    const loanList = byDayLoan.get(loanKey);
+    if (loanList) loanList.push(pay);
+    else byDayLoan.set(loanKey, [pay]);
+  }
+  const queued = new Set<string>();
+  if (typeof window !== "undefined") {
+    try {
+      const queue = readDemoJson<{ ref?: string }[]>("nexo-demo-payment-mirror-queue", []);
+      for (const entry of queue) {
+        const ref = String(entry.ref || "").trim();
+        if (ref) queued.add(ref);
+      }
+    } catch {
+      /* sin cola */
+    }
+  }
+  const settledOffRoute = (loanRef: string | undefined) => {
+    const ref = String(loanRef || "").trim();
+    if (!ref) return false;
+    const loan = loanByRef.get(ref);
+    if (!loan) return false;
+    if (isLoanVoided(loan)) return true;
+    if (!isLoanActive(loan)) return true;
+    return Number(loan.balance) <= 0;
+  };
+  const matchVisit = (row: DailyCollectionAssignment) => {
+    const day = row.dispatchDate;
+    const candidates = row.loanRef
+      ? (byDayLoan.get(`${day}|${row.loanRef}`) ?? [])
+      : (byDay.get(day) ?? []);
+    return candidates.find((pay) => paymentMatchesVisit(pay, row));
+  };
 
   return assignments.flatMap((row) => {
     if (isAssignmentAwaitingLoan(row)) return [row];
@@ -147,7 +188,7 @@ export function reconcilePaymentsOntoPlanilla(
     // Jornada/planilla ya cerrada: no reabrir por PG anulado o ausente (otro celular lo vería abierto).
     if (row.dayClosedAt) return [row];
 
-    const settled = loanSettledOffRoute(row.loanRef, loans);
+    const settled = settledOffRoute(row.loanRef);
 
     // Cuota de préstamo ya cerrado sin PG vivo: se elimina (no vuelve a ruta ni a cobrados falsos).
     if (
@@ -167,7 +208,7 @@ export function reconcilePaymentsOntoPlanilla(
       !linkedOk
     ) {
       // Aún subiendo: no tratar como fantasma.
-      if (paymentRefStillQueued(linkedRef)) return [row];
+      if (queued.has(linkedRef)) return [row];
       // PG fantasma + préstamo liquidado: fuera para siempre.
       if (settled) return [];
       // PG anulado, ausente o de OTRO préstamo/cliente → vuelve a pendiente.
@@ -187,10 +228,7 @@ export function reconcilePaymentsOntoPlanilla(
       return [row];
     }
 
-    const day = row.dispatchDate;
-    const match = live.find(
-      (pay) => sameDay(paymentVisitDate(pay), day) && paymentMatchesVisit(pay, row),
-    );
+    const match = matchVisit(row);
 
     if (!match) return [row];
     return [

@@ -78,10 +78,6 @@ import {
   routeBlockStarts,
   sameRoute,
 } from "@/lib/client-route-order";
-import {
-  mergePaymentsByRef,
-  pullRemotePaymentsIntoDemo,
-} from "@/lib/supabase/payment-mirror";
 import { suppressGhostClick, isNavQuiet } from "@/lib/suppress-ghost-click";
 import { createNavIntent, navButtonProps } from "@/lib/nav-intent";
 import {
@@ -425,28 +421,9 @@ export function CollectorMobileApp({
   /** Hoja de Recaudo abierta desde «Banco»: solo los cobros que no son efectivo. */
   const [recaudoOnlyBanco, setRecaudoOnlyBanco] = useState(false);
   const [creatingClient, setCreatingClient] = useState(false);
-  const [apiPayments, setApiPayments] = useState<PaymentRow[]>([]);
   const menuRef = useRef<HTMLDivElement>(null);
-  const livePayments = useMemo(() => {
-    if (!apiPayments.length) return payments;
-    if (!payments.length) return apiPayments;
-    return mergePaymentsByRef(payments, apiPayments).merged;
-  }, [apiPayments, payments]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const result = await pullRemotePaymentsIntoDemo();
-        if (!cancelled && result.rows?.length) setApiPayments(result.rows);
-      } catch (error) {
-        console.error("collector-recaudo", error);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [collector.ref]);
+  // Los cobros ya están en el panel. Bajarlos otra vez al abrir la persona era la espera.
+  const livePayments = payments;
 
   const viewingDate = selectedDate || date || todayIso();
   useEffect(() => {

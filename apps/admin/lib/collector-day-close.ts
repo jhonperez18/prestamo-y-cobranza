@@ -1135,11 +1135,15 @@ export function buildCollectorDayHistory(
 ): CollectorDayHistoryRow[] {
   const scopeRefs = extras.clientRefs;
   const scopeLoans = extras.loans ?? [];
+  const loanClientByRef = new Map<string, string>();
+  for (const loan of scopeLoans) {
+    if (loan.ref) loanClientByRef.set(loan.ref, loan.clientRef ?? "");
+  }
   const chainSplit = extras.chainSplit;
   const includeOperating = chainSplit ? true : extras.includeOperatingExpenses !== false;
   const loanClientRef = (loanRef: string | undefined) => {
     if (!loanRef) return "";
-    return scopeLoans.find((row) => row.ref === loanRef)?.clientRef ?? "";
+    return loanClientByRef.get(loanRef) ?? "";
   };
   const paymentInScope = (loanRef: string | undefined) => {
     if (!scopeRefs) return true;

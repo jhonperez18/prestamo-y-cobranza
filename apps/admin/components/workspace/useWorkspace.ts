@@ -376,7 +376,6 @@ export function useWorkspace({
   const { hydrated: demoHydrated } = useOperationalDemoSync(
     applyOperationalSnapshot,
     {
-      resyncActive: moduleId === "inicio" && viewId === "vista-movil",
       onEvidenceSync: ({ pushed, failed }) => {
         if (pushed > 0) {
           onToast(

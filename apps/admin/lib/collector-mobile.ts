@@ -137,16 +137,37 @@ function recaudoFromDayPayments(
  * 2) CIE sella el resto de la hoja.
  * No depende de la fecha: la lista de días lo hace una vez para todas.
  */
+let sealedInputs: {
+  assignments: DailyCollectionAssignment[];
+  loans: LoanRow[];
+  dayCloses: CollectorDayCloseRecord[];
+  payments: PaymentRow[];
+} | null = null;
+let sealedRows: DailyCollectionAssignment[] | null = null;
+
 function sealedPlanilla(
   assignments: DailyCollectionAssignment[],
   loans: LoanRow[],
   dayCloses: CollectorDayCloseRecord[],
   payments: PaymentRow[],
 ) {
-  return applyDayCloseRecordsToAssignments(
+  if (
+    sealedRows &&
+    sealedInputs &&
+    sealedInputs.assignments === assignments &&
+    sealedInputs.loans === loans &&
+    sealedInputs.dayCloses === dayCloses &&
+    sealedInputs.payments === payments
+  ) {
+    return sealedRows;
+  }
+  const rows = applyDayCloseRecordsToAssignments(
     reconcilePaymentsOntoPlanilla(assignments, payments, loans),
     dayCloses,
   );
+  sealedInputs = { assignments, loans, dayCloses, payments };
+  sealedRows = rows;
+  return rows;
 }
 
 export function collectorMobileQueue(

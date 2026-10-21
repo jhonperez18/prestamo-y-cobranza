@@ -892,13 +892,11 @@ function ClientesTable({
 function currentActiveLoan(
   clientRef: string,
   loans: LoanRow[],
-  payments: PaymentRow[],
+  _payments: PaymentRow[],
 ): LoanRow | null {
   const raw = primaryLoanForClient(clientRef, loans);
-  if (!raw) return null;
-  const synced = syncLoan(raw, payments) as LoanRow;
-  if (!isLoanActive(synced) || synced.balance <= 0) return null;
-  return synced;
+  if (!raw || !isLoanActive(raw) || (Number(raw.balance) || 0) <= 0) return null;
+  return raw;
 }
 
 /**
@@ -3591,7 +3589,8 @@ export function SupervisorMobileApp({
   }, [clients, todayAssignments, planillaRouteFilter, routes]);
 
   const supervisorClientRows = useMemo(() => {
-    // Lista = todos los clientes operativos del sistema (filtro de ruta opcional).
+    // Solo al abrir Clientes. En Inicio no se recorre toda la cartera.
+    if (view !== "clientes") return [];
     const base = clientesRouteFilter
       ? clientsOnRouteSorted(clients, clientesRouteFilter).filter(isOperationalClient)
       : clients.filter(isOperationalClient).slice().sort(compareClientsByRoutePosition);
@@ -3610,7 +3609,7 @@ export function SupervisorMobileApp({
         hasLoan: Boolean(loan),
       };
     });
-  }, [clients, clientesRouteFilter, loans, payments, today]);
+  }, [clients, clientesRouteFilter, loans, payments, today, view]);
 
   const clientesSearchActive = clientesModifyMode || clientesSearchOpen;
   const clientesModifyRows = useMemo(() => {
