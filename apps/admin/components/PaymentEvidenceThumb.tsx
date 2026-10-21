@@ -13,6 +13,48 @@ import {
 } from "@/lib/payment-evidence";
 import { suppressGhostClick } from "@/lib/suppress-ghost-click";
 
+/** Una miniatura por cobro pedía su URL al montarse: cientos a la vez dejaban el navegador sin conexiones y la cola de planilla no subía. */
+const SIGNED_URL_LIMIT = 4;
+const signedUrlCache = new Map<string, string>();
+const signedUrlWait = new Map<string, Promise<string | null>>();
+let signedUrlActive = 0;
+const signedUrlQueue: Array<() => void> = [];
+
+function fetchSignedEvidenceUrl(path: string): Promise<string | null> {
+  const cached = signedUrlCache.get(path);
+  if (cached) return Promise.resolve(cached);
+  const inflight = signedUrlWait.get(path);
+  if (inflight) return inflight;
+  const promise = new Promise<string | null>((resolve) => {
+    const start = () => {
+      signedUrlActive += 1;
+      void (async () => {
+        try {
+          const res = await fetch(
+            `/api/payments/evidence-url?path=${encodeURIComponent(path)}`,
+            { method: "GET", cache: "no-store" },
+          );
+          const body = (await res.json()) as { ok?: boolean; url?: string };
+          const url = body.ok && body.url ? body.url : null;
+          if (url) signedUrlCache.set(path, url);
+          resolve(url);
+        } catch {
+          resolve(null);
+        } finally {
+          signedUrlActive -= 1;
+          signedUrlWait.delete(path);
+          const next = signedUrlQueue.shift();
+          if (next) next();
+        }
+      })();
+    };
+    if (signedUrlActive < SIGNED_URL_LIMIT) start();
+    else signedUrlQueue.push(start);
+  });
+  signedUrlWait.set(path, promise);
+  return promise;
+}
+
 type Props = {
   evidence?: PaymentEvidenceRef[];
   /** Tamaño de la miniatura en px (solo variant thumb). */
@@ -373,7 +415,9 @@ export function PaymentEvidenceThumb({
   const [busy, setBusy] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
+  const [onScreen, setOnScreen] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const hostRef = useRef<HTMLElement | null>(null);
   const inputId = useId();
   const item = primaryPaymentEvidence(evidence) ?? evidence?.[0] ?? null;
   const directPreview = item ? resolvePaymentEvidencePreview(item) : null;
@@ -386,9 +430,30 @@ export function PaymentEvidenceThumb({
     setOpenUrl(null);
   }, []);
 
+  const setHost = useCallback((node: HTMLElement | null) => {
+    hostRef.current = node;
+  }, []);
+
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    const node = hostRef.current;
+    if (!node) return;
+    if (typeof IntersectionObserver === "undefined") {
+      setOnScreen(true);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) setOnScreen(true);
+      },
+      { rootMargin: "160px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [item?.id, previewUrl]);
 
   useEffect(() => {
     let cancel = false;
@@ -407,25 +472,17 @@ export function PaymentEvidenceThumb({
         cancel = true;
       };
     }
+    if (!onScreen) return;
 
     setResolvedUrl(null);
-    void (async () => {
-      try {
-        const res = await fetch(
-          `/api/payments/evidence-url?path=${encodeURIComponent(path)}`,
-          { method: "GET", cache: "no-store" },
-        );
-        const body = (await res.json()) as { ok?: boolean; url?: string };
-        if (!cancel && body.ok && body.url) setResolvedUrl(body.url);
-      } catch {
-        if (!cancel) setResolvedUrl(null);
-      }
-    })();
+    void fetchSignedEvidenceUrl(path).then((url) => {
+      if (!cancel) setResolvedUrl(url);
+    });
 
     return () => {
       cancel = true;
     };
-  }, [item?.id, item?.fileId, item?.previewUrl]);
+  }, [item?.id, item?.fileId, item?.previewUrl, onScreen]);
 
   async function onPhoto(file: File | undefined) {
     if (!file || !onAttach) return;
@@ -451,7 +508,7 @@ export function PaymentEvidenceThumb({
   if (!item || !previewUrl) {
     if (onAttach) {
       return (
-        <span className="payment-evidence-attach">
+        <span ref={setHost} className="payment-evidence-attach">
           <input
             id={inputId}
             ref={fileRef}
@@ -479,7 +536,11 @@ export function PaymentEvidenceThumb({
         </span>
       );
     }
-    return <span className="payment-evidence-empty">{emptyLabel}</span>;
+    return (
+      <span ref={setHost} className="payment-evidence-empty">
+        {emptyLabel}
+      </span>
+    );
   }
 
   const sizeHint = formatEvidenceSize(item.byteSize);
@@ -501,7 +562,7 @@ export function PaymentEvidenceThumb({
   if (variant === "panel") {
     return (
       <>
-        <div className="payment-evidence-panel">
+        <div ref={setHost} className="payment-evidence-panel">
           <button
             type="button"
             className={
@@ -526,6 +587,7 @@ export function PaymentEvidenceThumb({
   return (
     <>
       <button
+        ref={setHost}
         type="button"
         className={isSignature ? "payment-evidence-thumb is-signature" : "payment-evidence-thumb"}
         title={title}
