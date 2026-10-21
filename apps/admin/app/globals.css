@@ -6088,13 +6088,38 @@
       flex-direction: row;
       justify-content: space-between;
       padding: 8px 12px;
-      background: #fbe6ea;
-      border-color: #eaa4b2;
     }
-    .supervisor-informe-history-btn.is-gasto-banco.on,
+    .supervisor-informe-history-btn.is-gasto-banco {
+      background: #e8f0fe;
+      border-color: #bfdbfe;
+      color: #1d4ed8;
+    }
+    .supervisor-informe-history-btn.is-gasto-banco b {
+      color: #1d4ed8;
+    }
+    .supervisor-informe-history-btn.is-gasto-banco.on {
+      background: #d4e4fc;
+      border-color: #2563eb;
+      color: #1e40af;
+    }
+    .supervisor-informe-history-btn.is-gasto-banco.on b {
+      color: #1e40af;
+    }
+    .supervisor-informe-history-btn.is-gasto-nequi {
+      background: #f1e9fb;
+      border-color: #d4c0ef;
+      color: #5b3d8a;
+    }
+    .supervisor-informe-history-btn.is-gasto-nequi b {
+      color: #5b3d8a;
+    }
     .supervisor-informe-history-btn.is-gasto-nequi.on {
-      background: #f6c6d0;
-      border-color: #c9566e;
+      background: #e4d4f7;
+      border-color: #7c3aed;
+      color: #5b21b6;
+    }
+    .supervisor-informe-history-btn.is-gasto-nequi.on b {
+      color: #5b21b6;
     }
     .supervisor-informe-switch {
       display: grid;
