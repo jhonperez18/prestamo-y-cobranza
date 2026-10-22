@@ -100,7 +100,6 @@ import { primaryLoanForClient } from "@/lib/route-sync";
 import {
   loanDisbursementIsoDate,
   loanDisbursementSource,
-  loanDisbursementSourceLabel,
 } from "@/lib/nequi-pool";
 import { dayDigitalLoanRows, digitalLoanPoolForRoute } from "@/lib/day-digital-loans";
 import {
@@ -236,13 +235,15 @@ import {
 } from "@/lib/collector-connection";
 import { useDeviceStatuses } from "@/lib/use-device-statuses";
 import type { RouteClientDraft } from "@/lib/commit-portfolio-catalog";
-/** Fecha corta para listados: 05/09/2026 → 5/9 */
+/** Día/mes, sin año: 2026-10-22 y 22/10/2026 → 22/10. */
 function formatLoanListDate(raw?: string | null) {
   const text = String(raw ?? "").trim();
   if (!text) return "—";
-  const m = text.match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?$/);
-  if (!m) return text;
-  return `${Number(m[1])}/${Number(m[2])}`;
+  const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return `${Number(iso[3])}/${Number(iso[2])}`;
+  const dmy = text.match(/^(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?$/);
+  if (dmy) return `${Number(dmy[1])}/${Number(dmy[2])}`;
+  return text;
 }
 
 type Props = {
@@ -6222,8 +6223,14 @@ export function SupervisorMobileApp({
                           <span className="is-date">{dateShort}</span>
                           <em className={`is-origin ${originClass}`}>
                             {origin === "efectivo"
-                              ? "Efec"
-                              : loanDisbursementSourceLabel(origin)}
+                              ? "E"
+                              : origin === "banco"
+                                ? "B"
+                                : origin === "cartera"
+                                  ? "C"
+                                  : origin === "nequi"
+                                    ? "N"
+                                    : "—"}
                           </em>
                           <b className={`is-amount ${originClass}`} title="Total a cobrar (capital + interés)">
                             {money(totalCobrar, { symbol: false })}
