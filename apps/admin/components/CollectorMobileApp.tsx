@@ -17,7 +17,7 @@ import {
 import { useRouteCashBook } from "@/lib/use-route-cash-book";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import type { QuickLoanDraft } from "@/lib/street-client-loan";
-import { Pill } from "@/components/ui";
+import { CloseClock, Pill } from "@/components/ui";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { CollectorNewClientSheet } from "@/components/CollectorNewClientSheet";
 import type { RouteClientDraft } from "@/lib/commit-portfolio-catalog";
@@ -94,6 +94,7 @@ import {
   planillaLiveCuotasProgress,
 } from "@/lib/planilla-display";
 import { businessTodayIso } from "@/lib/business-timezone";
+import { routeCloseClocks } from "@/lib/route-close-clock";
 import type {
   RouteExpenseLine,
   CollectorDayCloseRecord,
@@ -1793,6 +1794,12 @@ export function CollectorMobileApp({
     [routeOptions],
   );
 
+  const routeCloseClockByDate = useMemo(() => {
+    const route = activePlanillaRoute || historyRoute || "";
+    if (!route) return new Map<string, string>();
+    return routeCloseClocks(assignments, clients, collector.ref, route);
+  }, [activePlanillaRoute, assignments, clients, collector.ref, historyRoute]);
+
   const historyVisibleRows = useMemo(() => {
     return dayHistory.filter(
       (row) =>
@@ -2154,6 +2161,7 @@ export function CollectorMobileApp({
                           : money(row.saldoShown, { symbol: false })}
                       </span>
                     </button>
+                    <CloseClock clock={routeCloseClockByDate.get(row.date) ?? ""} />
                   </li>
                 ))
               ) : (
@@ -2188,6 +2196,7 @@ export function CollectorMobileApp({
                         {money(row.saldo, { symbol: false })}
                       </span>
                     </button>
+                    <CloseClock clock={routeCloseClockByDate.get(row.date) ?? ""} />
                   </li>
                     {adjustment ? (
                       <li>
@@ -2600,6 +2609,7 @@ export function CollectorMobileApp({
           <p className="collector-mobile-home-cuadre-hint is-ok">
             Este saldo es el que llevas hasta el próximo cobro. Historial para ver otros días.
           </p>
+          <CloseClock foot clock={routeCloseClockByDate.get(activeDate) ?? ""} />
         </section>
       ) : null}
 

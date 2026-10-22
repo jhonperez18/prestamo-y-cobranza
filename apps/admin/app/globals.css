@@ -8523,6 +8523,26 @@
       transform: scale(0.92);
       transform-origin: left center;
     }
+    .route-close-clock {
+      font-size: 10px;
+      font-weight: 500;
+      font-style: normal;
+      color: #3d4a44;
+      line-height: 1.1;
+      letter-spacing: 0.01em;
+    }
+    .collector-mobile-day-history-list > li > .route-close-clock {
+      display: block;
+      margin: 0 8px 4px;
+      font-size: 9px;
+      text-align: right;
+    }
+    .route-close-clock.is-foot {
+      display: block;
+      margin: 8px 2px 0;
+      text-align: right;
+      font-size: 11px;
+    }
     .supervisor-route-board-ruta {
       font-size: 11px;
       font-weight: 700;

@@ -9,7 +9,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { Pill } from "@/components/ui";
+import { CloseClock, Pill } from "@/components/ui";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import { CollectorClosedDayReview } from "@/components/CollectorClosedDayReview";
 import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
@@ -76,6 +76,7 @@ import {
   type RouteExpenseLine,
 } from "@/lib/collector-day-close";
 import { businessTodayIso } from "@/lib/business-timezone";
+import { closeClockFromStamps, routeCloseClocks } from "@/lib/route-close-clock";
 import {
   enrichSupervisorPlanillaRow,
   paidThousandsLabel,
@@ -433,6 +434,8 @@ type RouteLiquidacion = {
   renewals: LoanRow[];
   statusLabel: string;
   statusKind: StatusKind;
+  /** Hora del sello de esta ruta, «21:01». Vacío si la hoja no cerró. */
+  closeClock: string;
 };
 
 function LiquidacionTable({
@@ -562,6 +565,7 @@ function RouteBoardCard({
                 {row.statusLabel ? (
                   <Pill label={row.statusLabel} kind={row.statusKind} />
                 ) : null}
+                {row.statusLabel === "Cerrado" ? <CloseClock clock={row.closeClock} /> : null}
               </div>
               <strong className="supervisor-route-board-name">
                 {row.collectorName}
@@ -1666,6 +1670,7 @@ export function SupervisorMobileApp({
       const planillaClosed =
         mine.length > 0 && mine.every((row) => Boolean(row.dayClosedAt));
       const closed = Boolean(closeRecord && isPrimary) || planillaClosed;
+      const closeClock = closed ? closeClockFromStamps(mine.map((row) => row.dayClosedAt)) : "";
 
       const chainOpen =
         openingKnown?.kind === "chain" && openingKnown.ready
@@ -1762,6 +1767,7 @@ export function SupervisorMobileApp({
         renewals,
         statusLabel,
         statusKind,
+        closeClock,
       };
     });
 
@@ -2912,6 +2918,15 @@ export function SupervisorMobileApp({
   const openRouteCajaHistoryIsIndependent = Boolean(
     openRoute && isIndependentSaldoRoute(openRoute.routeName),
   );
+  const routeCloseClockByDate = useMemo(() => {
+    if (!openRoute?.collectorRef || !openRoute.routeName) return new Map<string, string>();
+    return routeCloseClocks(
+      assignments,
+      clients,
+      openRoute.collectorRef,
+      openRoute.routeName,
+    );
+  }, [assignments, clients, openRoute]);
 
   /** Historial · T / A / N: renglón del día + renglón de ajuste (si lo hubo). */
   const openRouteAdjustHistory = useMemo(() => {
@@ -4286,6 +4301,7 @@ export function SupervisorMobileApp({
                                 : money(extract.saldoShown, { symbol: false })}
                             </span>
                           </button>
+                          <CloseClock clock={routeCloseClockByDate.get(extract.date) ?? ""} />
                         </li>
                       );
                     })
@@ -4358,6 +4374,7 @@ export function SupervisorMobileApp({
                                 {money(plain.saldo, { symbol: false })}
                               </span>
                             </button>
+                            <CloseClock clock={routeCloseClockByDate.get(plain.date) ?? ""} />
                           </li>
                           {adjustment ? (
                             <li>
@@ -4682,6 +4699,10 @@ export function SupervisorMobileApp({
                   )}
                 </div>
               ) : null}
+              <CloseClock
+                foot
+                clock={cajaHistoryDayIso ? (routeCloseClockByDate.get(cajaHistoryDayIso) ?? "") : ""}
+              />
             </section>
           ) : detailMode === "historial-dia" ? (
             <p className="ficha-empty">Sin datos de cierre para ese día.</p>

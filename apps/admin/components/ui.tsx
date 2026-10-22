@@ -20,6 +20,12 @@ export function Pill({
   );
 }
 
+/** Hora real del cierre de la ruta. Vacío si esa hoja no tiene sello. */
+export function CloseClock({ clock, foot }: { clock: string; foot?: boolean }) {
+  if (!clock) return null;
+  return <em className={foot ? "route-close-clock is-foot" : "route-close-clock"}>({clock})</em>;
+}
+
 type Header = {
   t: string;
   /** Columna de nombre/cliente — alineada a la izquierda. */
