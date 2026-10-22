@@ -9,6 +9,7 @@ import { fetchAllRows, fetchRowsChangedSince } from "@/lib/supabase/changed-sinc
 import {
   collectorLiveDayIso,
   isCollectorLiveDevice,
+  isSupervisorLiveDevice,
   withDateWindowParam,
 } from "@/lib/collector-live-window";
 import { createIncrementalPull, resumeSinceIso, withSinceParam } from "@/lib/incremental-pull";
@@ -1063,6 +1064,11 @@ type PaymentListBody = { rows: PaymentMirrorRow[]; full: boolean; cursor: string
 const paymentListFlights = new Map<string, Promise<PaymentListBody | null>>();
 /** Lista completa si el aparato está vacío o se repara; si ya hay copia, solo lo cambiado. */
 const paymentsPull = createIncrementalPull("payments");
+/**
+ * El celular del supervisor conserva cobros que la base no tiene y con esos arma otra cifra.
+ * Una vez por apertura baja el libro y suelta esa copia. No se repite en cada ciclo.
+ */
+let supervisorPaymentBookThisOpen = false;
 
 /** Una sola bajada por corte. Las llamadas que coinciden esperan la misma. */
 function fetchPaymentListBody(
@@ -1132,12 +1138,17 @@ export async function pullRemotePaymentsIntoDemo(
   }
 
   const startedAt = Date.now();
+  const supervisorBook = isSupervisorLiveDevice() && !supervisorPaymentBookThisOpen;
   const force =
     Boolean(opts.full) ||
+    supervisorBook ||
     (!paymentsPull.hasCursor() && readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []).length === 0);
   const since = paymentsPull.sinceFor(force) ?? (force ? null : resumeSinceIso());
   const fromDate = !since && isCollectorLiveDevice() ? collectorLiveDayIso() : null;
   const result = await mergeRemotePayments(since, fromDate);
+  if (supervisorBook && result.ok && result.full && (result.rows?.length ?? 0) > 0) {
+    supervisorPaymentBookThisOpen = true;
+  }
   paymentsPull.settle(
     { ok: result.ok && !result.skipped, full: Boolean(result.full), cursor: result.cursor },
     startedAt,
@@ -1178,7 +1189,18 @@ async function mergeRemotePayments(
         reason: "virgin_hold_empty",
       };
     }
-    const { merged, added, changed } = mergePaymentsByRef(local, remote, readMirrorQueue());
+    const mergedPayments = mergePaymentsByRef(local, remote, readMirrorQueue());
+    let { merged, added, changed } = mergedPayments;
+    // Libro entero: el cobro que la base no tiene y este celular no está subiendo no se sigue viendo.
+    if (body.full && !fromDate && isSupervisorLiveDevice() && remote.length > 0) {
+      const remoteRefs = new Set(remote.map((row) => row.ref));
+      const queued = new Set(readMirrorQueue().map((row) => row.ref));
+      const kept = merged.filter((row) => remoteRefs.has(row.ref) || queued.has(row.ref));
+      if (kept.length !== merged.length) {
+        merged = kept;
+        changed = true;
+      }
+    }
     if (changed || merged.length !== local.length) {
       // Lo que no entró al aparato no vuelve en una bajada parcial: el pull no es OK.
       if (!writeDemoJson(DEMO_PAYMENTS_KEY, merged)) {

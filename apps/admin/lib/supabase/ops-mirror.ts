@@ -2358,8 +2358,21 @@ async function pullOpsBundle(
       readDemoJson<CollectorDayCloseRecord[]>(DEMO_COLLECTOR_DAY_CLOSES_KEY, []),
       closes,
     );
-    if (clMerge.changed) {
-      persist(DEMO_COLLECTOR_DAY_CLOSES_KEY, clMerge.merged);
+    const queuedCloseRefs = new Set(
+      readDemoJson<{ ref?: string }[]>(Q_CLOSES, [])
+        .map((row) => row.ref)
+        .filter((ref): ref is string => Boolean(ref)),
+    );
+    const supervisorCloses =
+      isSupervisorLiveDevice() && closes.length > 0
+        ? clMerge.merged.filter((row) => {
+            if (queuedCloseRefs.has(row.ref)) return true;
+            if (String(row.ref).startsWith("PCE-")) return true;
+            return closes.some((remote) => remote.ref === row.ref);
+          })
+        : clMerge.merged;
+    if (clMerge.changed || supervisorCloses.length !== clMerge.merged.length) {
+      persist(DEMO_COLLECTOR_DAY_CLOSES_KEY, supervisorCloses);
       changed = true;
     }
     // CIE- de nube → PCE-T local (Inicial M = misma cifra en todos los aparatos).
@@ -2367,7 +2380,7 @@ async function pullOpsBundle(
       const before = readDemoJson<PlanillaCashCloseRecord[]>(DEMO_PLANILLA_CASH_CLOSES_KEY, []);
       const projected = projectPceTFromDayCloses(
         ensureManualTLaunchClose(before),
-        clMerge.merged,
+        supervisorCloses,
       );
       const beforeSig = before.map((r) => `${r.ref}:${r.closingCash}`).sort().join("|");
       const afterSig = projected.map((r) => `${r.ref}:${r.closingCash}`).sort().join("|");
@@ -2473,7 +2486,9 @@ async function pullOpsBundle(
         pendingAssign.delete(key);
       }
       // La hoja abierta de la nube no reabre un cierre de este PC. El resto sí entra, para que el otro aparato se vea igual.
-      if (prev.dayClosedAt && !row.dayClosedAt) continue;
+      // El celular del supervisor no guarda ese cierre propio: si no está en su cola, se ve la hoja que entró.
+      const supervisorTakesCloud = isSupervisorLiveDevice() && !pendingAssign.has(key);
+      if (prev.dayClosedAt && !row.dayClosedAt && !supervisorTakesCloud) continue;
       // Un N/P / omisión marcada en este aparato no la reabre una fila "pendiente" vieja de otro aparato.
       // Solo un cobro (PG-) o un cierre de jornada cambian ese estado desde afuera.
       if (
@@ -2528,6 +2543,15 @@ async function pullOpsBundle(
       const today = businessTodayIso();
       const remoteToday = remoteAssign.filter((row) => row.dispatchDate === today);
       const remoteKeys = new Set(remoteToday.map((row) => `${row.dispatchDate}::${row.itemId}`));
+      // Supervisor: la hoja de hoy es la que entró. Una copia local (sellada o abierta) que la base no tiene no se sigue viendo.
+      if (isSupervisorLiveDevice()) {
+        for (const [key, row] of [...assignMap.entries()]) {
+          if (row.dispatchDate !== today) continue;
+          if (remoteKeys.has(key) || pendingAssign.has(key)) continue;
+          assignMap.delete(key);
+          assignChanged = true;
+        }
+      }
       const remoteClients = new Set(remoteToday.map((row) => row.clientRef).filter(Boolean));
       const remoteSealedClients = new Set(
         remoteToday
