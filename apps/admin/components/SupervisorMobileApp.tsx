@@ -1710,17 +1710,17 @@ export function SupervisorMobileApp({
       if (closed) {
         statusLabel = "Cerrado";
         statusKind = "closed";
-      } else if (mine.length) {
-        if (pending === 0) {
-          statusLabel = "Al día";
-          statusKind = "ok";
-        } else if (done > 0 || cobradoHoy > 0) {
+      } else if (mine.length && pending > 0) {
+        if (done > 0 || cobradoHoy > 0) {
           statusLabel = "En ruta";
           statusKind = "pending";
         } else {
           statusLabel = "";
           statusKind = "draft";
         }
+      } else if (mine.length) {
+        statusLabel = "";
+        statusKind = "draft";
       } else if (isPrimary) {
         const lastClose = dayCloses
           .filter((row) => row.collectorRef === collectorRef)
