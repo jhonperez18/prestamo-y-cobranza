@@ -6451,7 +6451,7 @@
       display: none;
     }
     .supervisor-clientes-table .is-cuotas {
-      width: 24%;
+      width: 20%;
       text-align: center;
       padding-left: 2px;
       padding-right: 2px;
@@ -6500,7 +6500,7 @@
       display: block;
     }
     .supervisor-clientes-table .is-num {
-      width: 27%;
+      width: 25%;
       padding-left: 4px;
       padding-right: 6px;
       font-variant-numeric: tabular-nums;
@@ -6545,15 +6545,21 @@
     }
     .supervisor-mobile .supervisor-clientes-table .is-nombre,
     .supervisor-mobile-app .supervisor-clientes-table .is-nombre {
-      width: 44%;
+      width: 40%;
     }
     .supervisor-mobile .supervisor-clientes-table .is-cuotas,
     .supervisor-mobile-app .supervisor-clientes-table .is-cuotas {
-      width: 26%;
+      width: 22%;
+    }
+    .supervisor-mobile .supervisor-clientes-table .is-renew,
+    .supervisor-mobile-app .supervisor-clientes-table .is-renew {
+      width: 1.15rem;
+      min-width: 1.1rem;
+      max-width: 1.25rem;
     }
     .supervisor-mobile .supervisor-clientes-table .is-num,
     .supervisor-mobile-app .supervisor-clientes-table .is-num {
-      width: 28%;
+      width: 26%;
     }
     .supervisor-clientes-table tbody tr.is-clickable {
       cursor: pointer;
