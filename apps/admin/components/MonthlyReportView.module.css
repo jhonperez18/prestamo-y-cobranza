@@ -3,25 +3,58 @@
   max-height: calc(100vh - 188px);
 }
 
+.table {
+  width: max-content;
+  border-collapse: collapse;
+}
+
+.table:global(.data) th,
+.table:global(.data) td {
+  border-right: 1px solid #d5ddd8;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+}
+
+.table:global(.data) th:last-child,
+.table:global(.data) td:last-child {
+  border-right: none;
+}
+
 .table thead th {
   position: sticky;
   top: 0;
   z-index: 2;
 }
 
-.table th.day,
-.table td.day {
-  min-width: 5rem;
+.table:global(.data) th.pos,
+.table:global(.data) td.pos {
+  width: 2ch;
+  min-width: 1.7rem;
+  padding-left: 2px !important;
+  padding-right: 2px !important;
 }
 
-.table th.is-nombre,
-.table td.is-nombre {
-  min-width: 9.5rem;
+.table:global(.data) th.day,
+.table:global(.data) td.day {
+  width: 2ch;
+  min-width: 1.85rem;
+  padding-left: 2px !important;
+  padding-right: 2px !important;
 }
 
-.table th.money,
-.table td.money {
-  min-width: 6.4rem;
+.table:global(.data) th.sum,
+.table:global(.data) td.sum {
+  width: 4ch;
+  min-width: 2.6rem;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+}
+
+.table:global(.data) th.is-nombre,
+.table:global(.data) td.is-nombre {
+  min-width: 7.5rem;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
 }
 
 .renewal {
