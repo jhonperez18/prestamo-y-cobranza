@@ -741,9 +741,9 @@ export function Workspace(props: WorkspaceProps) {
     }
 
     if (moduleId === "prestamos" && viewId === "cuenta") {
-      const shownLoan = loanFicha.book?.loan.ref === openLoan?.ref ? loanFicha.book.loan : openLoan;
-      const shownPayments =
-        loanFicha.book?.loan.ref === openLoan?.ref ? loanFicha.book.payments : payments;
+      const book = loanFicha.book;
+      const shownLoan = book?.loan.ref === openLoan?.ref ? book.loan : openLoan;
+      const shownPayments = book?.loan.ref === openLoan?.ref ? book.payments : payments;
       const loanPays = shownLoan
         ? sortPaymentsNewestFirst(shownPayments.filter((row) => row.loanRef === shownLoan.ref))
         : [];

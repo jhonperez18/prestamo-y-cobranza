@@ -591,7 +591,7 @@ export async function fetchPaymentsFromSupabase(options?: {
         .order("id", { ascending: true })
         .range(from, from + 999);
       if (error) return { ok: false, error: error.message, rows: [] };
-      const page = (data ?? []) as PaymentMirrorRow[];
+      const page = (data ?? []) as unknown as PaymentMirrorRow[];
       rows.push(...page);
       if (page.length < 1000) break;
     }
