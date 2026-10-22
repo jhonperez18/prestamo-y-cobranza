@@ -33,10 +33,9 @@
   border-right: none;
 }
 
-.table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+.table:global(.data) tbody tr,
+.table:global(.data) tbody td {
+  cursor: default;
 }
 
 .table:global(.data) th {
