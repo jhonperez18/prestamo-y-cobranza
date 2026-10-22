@@ -977,7 +977,7 @@ export function Workspace(props: WorkspaceProps) {
             const balance = Number(row.balance) || 0;
             const installment = Number(row.installment) || 0;
             return (
-            <tr key={row.ref} onClick={() => openLoanAccount(row.ref)}>
+            <tr key={row.ref} className="clickable" onClick={() => openLoanAccount(row.ref)}>
               {prestamoListColumns.isVisible("ref") ? <td className="ref">{row.ref}</td> : null}
               {prestamoListColumns.isVisible("client") ? (
                 <td className="is-nombre">{row.client}</td>

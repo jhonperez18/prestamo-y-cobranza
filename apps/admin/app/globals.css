@@ -10504,7 +10504,7 @@
     table.list-data-table tbody tr:nth-child(even) {
       background: var(--row-b);
     }
-    table.data tbody tr { cursor: pointer; transition: background 0.12s ease, box-shadow 0.12s ease; }
+    table.data tbody tr { cursor: default; transition: background 0.12s ease, box-shadow 0.12s ease; }
     table.data tbody tr:hover {
       background: var(--row-h);
       box-shadow: inset 4px 0 0 #0f766e;
@@ -11670,6 +11670,7 @@
       font-variant-numeric: tabular-nums;
     }
     .loan-ficha-grid table.loan-ficha-table tbody tr { cursor: pointer; }
+    .loan-ficha-grid table.loan-ficha-table tbody tr.empty-row { cursor: default; }
     .loan-ficha-grid table.loan-ficha-table tbody tr.on { background: #dceee4; }
     .loan-ficha-grid table.loan-ficha-table tbody tr.on:nth-child(even) { background: #d4e8dd; }
     .loan-ficha-grid table.loan-ficha-table td .pill {
@@ -12712,8 +12713,9 @@
       font-weight: 600;
       white-space: nowrap;
     }
-    .collector-grid tbody tr { cursor: pointer; }
-    .collector-grid tbody tr:hover td { background: #f4faf7; }
+    table.data.collector-grid tbody tr { cursor: pointer; }
+    table.data.collector-grid tbody tr.empty-row { cursor: default; }
+    table.data.collector-grid tbody tr:hover td { background: #f4faf7; }
 
     .zone-cards {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -13048,7 +13050,9 @@
     .perm-group code {
       font-size: 12px; color: #0f766e; background: #eef5f1; padding: 2px 6px; border-radius: 4px;
     }
-    .list-grid tbody tr.clickable { cursor: pointer; }
+    table.data tbody tr.clickable,
+    table.list-grid tbody tr.clickable,
+    table.list-data-table tbody tr.clickable { cursor: pointer; }
     .list-grid tbody tr.clickable:hover {
       background: var(--row-h);
       box-shadow: inset 4px 0 0 #0f766e;
