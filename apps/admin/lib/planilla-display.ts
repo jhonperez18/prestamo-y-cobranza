@@ -14,7 +14,6 @@ import {
   type CuotasProgress,
 } from "@/lib/loan-cuotas-progress";
 import { isPaymentLive } from "@/lib/live-payments";
-import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import { paymentVisitDate } from "@/lib/late-payment";
 import type { LoanRow, PaymentRow } from "@/lib/mock-data";
 import { todayIso } from "@/lib/daily-dispatch";
@@ -118,20 +117,21 @@ export function planillaLiveCuota(
   if (isAssignmentAwaitingLoan(row) || !loan) return 0;
   const pactada = planillaCuotaPactada(loan);
   if (pactada > 0) return pactada;
-  // Visita reabierta / Alerta con amountDue 0: no dejar la cuota en blanco.
+  const balance = Math.trunc(Number((syncLoan(loan) as LoanRow).balance) || 0);
+  if (balance <= 0) return 0;
+  // Visita reabierta / Alerta sin cuota en la ficha: usa el monto de la visita.
   return Math.max(0, Math.trunc(Number(row.amountDue) || 0));
 }
 
 export function planillaSyncedLoan(
   loans: LoanRow[],
   loanRef: string | undefined,
-  payments: PaymentRow[],
 ): LoanRow | null {
   if (!loanRef?.trim()) return null;
   const raw = loans.find((row) => row.ref === loanRef);
   if (!raw) return null;
-  // El celular del supervisor no tiene el libro de cobros: el saldo es el de la ficha.
-  return (syncLoan(raw, isSupervisorLiveDevice() ? undefined : payments) as LoanRow);
+  // El saldo es el de la ficha. La lista de cobros del aparato no lo rehace.
+  return syncLoan(raw) as LoanRow;
 }
 
 export function enrichSupervisorPlanillaRow(
@@ -142,8 +142,8 @@ export function enrichSupervisorPlanillaRow(
   today = todayIso(),
 ) {
   const awaitingLoan = isAssignmentAwaitingLoan(row);
-  const loan = awaitingLoan ? null : planillaSyncedLoan(loans, row.loanRef, payments);
-  const cuotas = planillaLiveCuotasProgress(loan, payments, today);
+  const loan = awaitingLoan ? null : planillaSyncedLoan(loans, row.loanRef);
+  const cuotas = planillaLiveCuotasProgress(loan, [], today);
   const cuota = planillaLiveCuota(row, loan, payments, today);
   const saldo = awaitingLoan ? 0 : loan?.balance ?? 0;
   const pay = awaitingLoan ? undefined : planillaLivePaymentForVisit(row, payments, today);

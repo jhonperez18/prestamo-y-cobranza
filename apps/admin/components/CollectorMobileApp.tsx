@@ -15,6 +15,8 @@ import {
   withIndependentRouteHistory,
 } from "@/lib/independent-route-cash";
 import { useRouteCashBook } from "@/lib/use-route-cash-book";
+import { useRouteSheet } from "@/lib/use-route-sheet";
+import { syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import type { QuickLoanDraft } from "@/lib/street-client-loan";
 import { CloseClock, Pill } from "@/components/ui";
@@ -346,7 +348,7 @@ function visitIdentity(
     : item.loanRef
       ? loans.find((row) => row.ref === item.loanRef) ?? null
       : null;
-  const loan = rawLoan;
+  const loan = rawLoan ? syncCollectorLiveLoan(rawLoan, payments, today) : null;
   const cuota = awaitingLoan ? 0 : planillaLiveCuota(item, loan, payments, today);
   const balance = awaitingLoan ? 0 : loan?.balance ?? 0;
   const cuotas = awaitingLoan
@@ -1125,9 +1127,11 @@ export function CollectorMobileApp({
   const routeRef = queue.routeRef ?? dispatchRouteRef(collector.ref, activeDate);
   const visibleItems = listFilter === "done" ? queue.done : routePending;
   /** La ficha de cada fila no cambia al abrir/cerrar un panel: solo cuando cambian los datos. */
+  const fichaSheet = useRouteSheet(true);
+  const saldoLoans = fichaSheet.sheet?.loans ?? loans;
   const visibleIdentities = useMemo(
-    () => visibleItems.map((item) => visitIdentity(item, clients, loans, livePayments, activeDate)),
-    [visibleItems, clients, loans, livePayments, activeDate],
+    () => visibleItems.map((item) => visitIdentity(item, clients, saldoLoans, livePayments, activeDate)),
+    [visibleItems, clients, saldoLoans, livePayments, activeDate],
   );
   const recaudo = useMemo(
     () => collectorRecaudoBreakdown(collector.ref, activeDate, livePayments, [collector]),
@@ -2867,7 +2871,9 @@ export function CollectorMobileApp({
 
           {listFilter !== "done" ? (
           <ul className="collector-mobile-list compact">
-            {visibleItems.length === 0 ? (
+            {fichaSheet.status === "loading" && !fichaSheet.sheet ? (
+              <li className="collector-mobile-empty-inline">Cargando la hoja del sistema…</li>
+            ) : visibleItems.length === 0 ? (
               <li className="collector-mobile-empty-inline">
                 {dayLocked
                     ? "Jornada cerrada. Elige otra fecha en Historial si tienes más."

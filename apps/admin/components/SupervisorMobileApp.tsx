@@ -1312,7 +1312,9 @@ export function SupervisorMobileApp({
   /** Regla: al ingresar siempre INICIO (no restaurar otra pestaña). */
   const [view, setView] = useState<SupervisorView>("inicio");
   const supervisorDirect = isSupervisorLiveDevice();
-  const routeSheet = useRouteSheet(view === "clientes" || view === "prestamos");
+  const routeSheet = useRouteSheet(
+    view === "clientes" || view === "prestamos" || view === "planilla",
+  );
   const sheetClients = routeSheet.sheet?.clients ?? null;
   const sheetLoans = routeSheet.sheet?.loans ?? null;
   const serverToday = useSupervisorToday(supervisorDirect, view);
@@ -2450,7 +2452,7 @@ export function SupervisorMobileApp({
       const position =
         client?.routeOrder && client.routeOrder > 0 ? client.routeOrder : index + 1;
       return {
-        ...enrichSupervisorPlanillaRow(row, position, loans, payments, today),
+        ...enrichSupervisorPlanillaRow(row, position, sheetLoans ?? loans, payments, today),
         route: assignmentRouteName(row, clients),
         clientRef: row.clientRef,
         loanRef: row.loanRef ?? "",
@@ -5117,6 +5119,12 @@ export function SupervisorMobileApp({
               ) : null}
               {openAssignments.length === 0 ? (
                 <p className="ficha-empty">Sin planilla enviada hoy.</p>
+              ) : routeSheet.status !== "ready" || !sheetLoans ? (
+                <p className="ficha-empty">
+                  {routeSheet.status === "error"
+                    ? "No se pudo cargar la hoja del sistema."
+                    : "Cargando la hoja del sistema…"}
+                </p>
               ) : (
                 <PlanillaTable
                   rows={planillaTableRows(openAssignments)}
@@ -5197,6 +5205,12 @@ export function SupervisorMobileApp({
           </div>
           {planillaAssignments.length === 0 ? (
             <p className="ficha-empty">No hay cobros en planilla hoy.</p>
+          ) : routeSheet.status !== "ready" || !sheetLoans ? (
+            <p className="ficha-empty">
+              {routeSheet.status === "error"
+                ? "No se pudo cargar la hoja del sistema."
+                : "Cargando la hoja del sistema…"}
+            </p>
           ) : (
             <PlanillaTable rows={planillaTableRows(planillaAssignments)} />
           )}

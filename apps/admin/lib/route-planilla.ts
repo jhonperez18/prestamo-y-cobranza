@@ -25,7 +25,7 @@ import {
   purgeInvalidPlanillaAssignments,
 } from "@/lib/planilla-eligibility";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
-import { pendingBalance, pesos } from "@/lib/finance";
+import { pesos } from "@/lib/finance";
 import { paymentVisitDate } from "@/lib/late-payment";
 import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import { loanIsClosedHistory } from "@/lib/loan-renewal-marks";
@@ -69,33 +69,21 @@ function paymentIsLive(pay: CollectionPaymentTouch) {
   return true;
 }
 
-function collectedForLoan(loanRef: string, payments?: CollectionPaymentTouch[]) {
-  let sum = 0;
-  for (const pay of payments ?? []) {
-    if ((pay.loanRef || "") !== loanRef || !paymentIsLive(pay)) continue;
-    sum += pesos(pay.amount ?? 0);
-  }
-  return sum;
-}
-
 function isPaymentRow(row: CollectionPaymentTouch): row is PaymentRow {
   return "ref" in row && Boolean((row as PaymentRow).ref);
 }
 
 /**
- * Saldo = total − PG vivos. Un Nequi ya registrado no vuelve como deuda.
- * Cobrador: el aparato solo tiene los cobros de hoy → manda la ficha de la nube
- * (+ cobro de hoy que aún no está en ella). Restar solo hoy del total inflaba la cuota.
+ * Saldo = el de la ficha. Una lista de cobros a la que le faltan días
+ * (el 21 y el 22) inflaba la deuda. El cobrador suma solo el cobro de hoy
+ * que la ficha todavía no trae.
  */
 function loanOwes(loan: LoanRow, payments?: CollectionPaymentTouch[]) {
   if (loanIsClosedHistory(loan)) return 0;
   if (isCollectorLiveDevice()) {
     return pesos(syncCollectorLiveLoan(loan, (payments ?? []).filter(isPaymentRow)).balance);
   }
-  const collected = collectedForLoan(loan.ref, payments);
-  const total = pesos(loan.total ?? 0) || pesos(loan.capital) + pesos(loan.interest ?? 0);
-  if (total > 0) return pendingBalance(total, collected);
-  return pendingBalance(pesos(loan.balance) + collected, collected);
+  return pesos(loan.balance);
 }
 
 function paymentTouchesLoanOnDate(
