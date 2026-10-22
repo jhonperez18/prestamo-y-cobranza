@@ -93,7 +93,12 @@
 }
 
 .today {
-  background: #d0d0d0 !important;
+  background: #e7ebe9 !important;
+}
+
+.table:global(.data) th.today {
+  background: #5f8774 !important;
+  color: #14201b !important;
 }
 
 .renewal {
