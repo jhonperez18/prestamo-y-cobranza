@@ -19,6 +19,7 @@ import {
 } from "@/lib/daily-dispatch";
 import { deletedClientRefRows } from "@/lib/deleted-ids";
 import { loanIsClosedHistory } from "@/lib/loan-renewal-marks";
+import { finalizeSupersededLoans } from "@/lib/route-sync";
 import { userDeleteGuard } from "@/lib/collector-preview";
 import { NewClientForm } from "@/components/NewClientForm";
 import { CollectorActivityView } from "@/components/CollectorActivityView";
@@ -523,7 +524,7 @@ export function Workspace(props: WorkspaceProps) {
       const fileTitle = fileTabs.find((tab) => tab.id === fileTab)?.label ?? "Ficha";
       const initials = `${openClient.name.charAt(0)}${openClient.lastName.charAt(0)}`.toUpperCase();
       const address = [openClient.address, openClient.city].filter(Boolean).join(", ");
-      const clientLoans = loansForClient(openClient.ref, loans);
+      const clientLoans = finalizeSupersededLoans(loansForClient(openClient.ref, loans));
       const liveClientLoans = activeLoans(clientLoans).filter((loan) => !loanIsClosedHistory(loan));
       const hasActiveLoans = liveClientLoans.length > 0;
       const hasLoanHistory = clientLoans.length > 0;
@@ -719,7 +720,9 @@ export function Workspace(props: WorkspaceProps) {
       const loanAddress = loanClient
         ? [loanClient.address, loanClient.barrio, loanClient.city].filter(Boolean).join(", ")
         : "";
-      const clientLoans = loanClient ? loansForClient(loanClient.ref, loans) : [];
+      const clientLoans = loanClient
+        ? finalizeSupersededLoans(loansForClient(loanClient.ref, loans))
+        : [];
       const canPay = Boolean(openLoan && openLoan.balance > 0 && isLoanActive(openLoan));
       const canPayCuota = Boolean(canPay && openLoan && cuotaTarget(openLoan));
       const loanTabs: { id: LoanTab; label: string }[] = [

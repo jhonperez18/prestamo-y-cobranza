@@ -8,6 +8,51 @@ import type { PaymentMethod } from "@/lib/payment-method";
 import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
 import { validatePaymentEvidence } from "@/lib/payment-evidence";
 
+function loanRefNum(ref: string): number {
+  const match = /(\d+)\s*$/.exec(ref);
+  return match ? Number(match[1]) : 0;
+}
+
+/**
+ * Un cliente tiene un préstamo de ahora. Los anteriores que este aparato
+ * todavía trata como activos pasan a Finalizado: verlos en mora al lado
+ * del vigente es lo que confunde (P-0 junto a P-75). No toca plata.
+ */
+export function finalizeSupersededLoans(loans: LoanRow[]): LoanRow[] {
+  const keep = new Set<string>();
+  const byClient = new Map<string, LoanRow[]>();
+  for (const loan of loans) {
+    if (!loan?.clientRef || !isLoanOpenNow(loan)) continue;
+    const list = byClient.get(loan.clientRef) ?? [];
+    list.push(loan);
+    byClient.set(loan.clientRef, list);
+  }
+  for (const list of byClient.values()) {
+    if (list.length === 1) {
+      keep.add(list[0].ref);
+      continue;
+    }
+    const ranked = [...list].sort((a, b) => {
+      const da = displayToIso(a.date) || a.date || "";
+      const db = displayToIso(b.date) || b.date || "";
+      if (da !== db) return da < db ? -1 : 1;
+      return loanRefNum(a.ref) - loanRefNum(b.ref);
+    });
+    keep.add(ranked[ranked.length - 1].ref);
+  }
+  let changed = false;
+  const next = loans.map((loan) => {
+    if (!loan?.ref || !isLoanOpenNow(loan) || keep.has(loan.ref)) return loan;
+    changed = true;
+    return { ...loan, status: "Finalizado", kind: "paid" as const };
+  });
+  return changed ? next : loans;
+}
+
+function isLoanOpenNow(loan: LoanRow): boolean {
+  return activeLoans([loan]).length > 0 && !loanIsClosedHistory(loan);
+}
+
 export function primaryLoanForClient(clientRef: string, loans: LoanRow[]) {
   const active = activeLoans(loansForClient(clientRef, loans)).filter(
     (loan) => !loanIsClosedHistory(loan),

@@ -55,6 +55,7 @@ import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { restoreSealedVisitsFromPrior } from "@/lib/planilla-sealed-visits";
 import { refreshLabelsFromCatalog } from "@/lib/project-identity";
 import { omitDeleted } from "@/lib/deleted-ids";
+import { finalizeSupersededLoans } from "@/lib/route-sync";
 import { dedupeDailyPaymentsByVisit } from "@/lib/planilla-payment-reconcile";
 import { stripRemovedPaymentMovements } from "@/lib/purge-unclosed-payments";
 import {
@@ -344,7 +345,7 @@ export function readOperationalDemoSnapshot(): OperationalDemoSnapshot {
     })),
     clients: omitDeleted(readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, [])),
     routes: omitDeleted(readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, [])),
-    loans: omitDeleted(readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, [])),
+    loans: finalizeSupersededLoans(omitDeleted(readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []))),
     payments: omitDeleted(readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, [])),
     assignments: assignmentsInPlanillaWindow(
       readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []),

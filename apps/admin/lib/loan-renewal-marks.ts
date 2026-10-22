@@ -34,13 +34,15 @@ export function loanIsClosedHistory(loan: {
   const status = String(loan.status ?? "")
     .toLowerCase()
     .replace(/\s+/g, "");
-  if (status === "finalizado" || status === "renovado") return true;
   const balance = Number(loan.balance);
   const paid = Number(loan.paid);
   const total = Number(loan.total);
   const safeBalance = Number.isFinite(balance) ? balance : 0;
   const safePaid = Number.isFinite(paid) ? paid : 0;
   const safeTotal = Number.isFinite(total) ? total : 0;
+  if (status === "finalizado") return true;
+  // «Renovado» en el viejo es historial. En la continuación, con saldo, es el préstamo de ahora.
+  if (status === "renovado" && !(loanRenewalOf(loan) && safeBalance > 0)) return true;
   if ((status === "eliminado" || status === "cancelado") && safeBalance <= 0) return true;
   return safeBalance <= 0 && safeTotal > 0 && safePaid >= safeTotal;
 }

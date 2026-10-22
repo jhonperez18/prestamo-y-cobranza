@@ -9,6 +9,7 @@ import { pesos } from "@/lib/finance";
 import { paymentVisitDate } from "@/lib/late-payment";
 import { isPaymentLive } from "@/lib/live-payments";
 import { syncAllLoans, syncLoan } from "@/lib/loan-preview";
+import { finalizeSupersededLoans } from "@/lib/route-sync";
 import {
   COLLECTOR_ROLE_REF,
   SUPERVISOR_ROLE_REF,
@@ -92,7 +93,7 @@ export function deviceTrustsLoanFicha(): boolean {
  * calcula la base. Nadie los rehace con la lista de cobros del aparato.
  */
 export function syncDeviceLoans(loans: LoanRow[], _payments: PaymentRow[]): LoanRow[] {
-  return syncAllLoans(loans);
+  return finalizeSupersededLoans(syncAllLoans(loans));
 }
 
 /** Al abrir un día del historial: baja solo ese día y lo deja para leer. */
