@@ -2015,6 +2015,8 @@ export type OpsBundleBody = {
   daily_assignments?: Record<string, unknown>[];
   /** true = solo filas cambiadas desde `since` (no es la lista completa). */
   incremental?: boolean;
+  /** La lista de cobradores viene entera, también en una bajada parcial. */
+  collectorsComplete?: boolean;
   /** Mayor `updated_at` bajado: `since` de la próxima bajada. */
   cursor?: string | null;
 };
@@ -2300,9 +2302,12 @@ async function pullOpsBundle(
         .filter(Boolean),
     );
     const localCollectors = readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, []);
+    // Lista entera: el que ya no está en la nube sale, aunque la bajada sea parcial.
+    // Una lista vacía no cuenta: no se borra el catálogo por un paquete roto.
+    const collectorsAreComplete = body.collectorsComplete === true && collectors.length > 0;
     const cMerge = mergeRemoteAuthority(
       localCollectors,
-      full ? collectors : upsertByRef(localCollectors, collectors),
+      full || collectorsAreComplete ? collectors : upsertByRef(localCollectors, collectors),
       pendingCollectors,
       (r) => `${r.ref}|${r.name}|${r.active}|${r.zone}|${r.userRef ?? ""}|${r.login ?? ""}`,
       pendingCollectorRows,

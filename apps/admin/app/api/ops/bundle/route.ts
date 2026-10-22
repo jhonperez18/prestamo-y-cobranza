@@ -48,7 +48,9 @@ export async function GET(request: Request) {
     const parts: OpsTablePart[] = await Promise.all(
       since
         ? [
-            changed("collectors"),
+            // Catálogo chico, igual que el CIE: la lista entera. Un cobrador borrado
+            // no viaja en `since` y el aparato lo seguiría mostrando.
+            fetchOpsTable("collectors"),
             changed("routes"),
             changed("day_closes"),
             changed("day_expenses", { column: "expense_date", since: expenseSince }),
@@ -88,6 +90,7 @@ export async function GET(request: Request) {
       ok: true,
       incremental: Boolean(since),
       cursor,
+      collectorsComplete: true,
       collectors: collectors.rows,
       routes: routes.rows,
       day_closes: day_closes.rows,
