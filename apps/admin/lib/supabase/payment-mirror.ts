@@ -347,6 +347,21 @@ export function mergePaymentsByRef(
   return { merged, added, changed };
 }
 
+/**
+ * Deja en este aparato un cobro que la bajada parcial no trajo (el 21 y el 22
+ * de septiembre quedaron con hora vieja). Solo agrega el PG- que no está.
+ * No toca montos, ni el saldo de la ficha, ni la caja.
+ */
+export function rememberMissingLoanPayments(rows: PaymentRow[]): number {
+  if (typeof window === "undefined" || rows.length === 0) return 0;
+  const stored = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []);
+  const have = new Set(stored.map((row) => row.ref));
+  const extra = rows.filter((row) => row.ref && !have.has(row.ref) && !isDeletedRef(row.ref));
+  if (extra.length === 0) return 0;
+  if (!writeDemoJson(DEMO_PAYMENTS_KEY, [...stored, ...extra])) return 0;
+  return extra.length;
+}
+
 function createMirrorClient() {
   return createMirrorServerClient();
 }
@@ -550,6 +565,7 @@ export async function fetchPaymentsFromSupabase(options?: {
   since?: string | null;
   fromDate?: string | null;
   toDate?: string | null;
+  loanRef?: string | null;
 }): Promise<FetchPaymentsResult> {
   const client = createMirrorClient();
   if (!client) {
@@ -560,6 +576,26 @@ export async function fetchPaymentsFromSupabase(options?: {
       reason: pub && !mirrorUsesServiceRole() ? "service_role_missing" : "supabase_not_configured",
       rows: [],
     };
+  }
+
+  const loanRef = options?.loanRef?.trim() ?? "";
+  if (loanRef) {
+    const columns = options?.evidence ? `${PAYMENT_MONEY_COLUMNS},evidence` : PAYMENT_MONEY_COLUMNS;
+    const rows: PaymentMirrorRow[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await client
+        .from("payments")
+        .select(columns)
+        .eq("loan_ref", loanRef)
+        .order("paid_date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, from + 999);
+      if (error) return { ok: false, error: error.message, rows: [] };
+      const page = (data ?? []) as PaymentMirrorRow[];
+      rows.push(...page);
+      if (page.length < 1000) break;
+    }
+    return { ok: true, rows };
   }
 
   if (options?.since) {

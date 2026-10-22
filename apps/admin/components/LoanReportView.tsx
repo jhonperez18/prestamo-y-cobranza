@@ -13,6 +13,7 @@ import {
 } from "@/lib/loan-payment-columns";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { ClientRow, LoanRow, PaymentRow } from "@/lib/mock-data";
+import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
 
 type Props = {
   loan: LoanRow;
@@ -75,13 +76,16 @@ function ReportBody({
 }
 
 export function LoanReportView({ loan, client, payments, assignments = [], onBack }: Props) {
+  const ficha = useLoanFichaBook(loan.ref);
+  const reportLoan = ficha.book?.loan ?? loan;
+  const reportPayments = ficha.book?.payments ?? payments;
   const report = useMemo(() => {
-    const built = buildLoanReport(loan, client, payments, assignments);
+    const built = buildLoanReport(reportLoan, client, reportPayments, assignments);
     return {
       ...built,
       movements: built.movements.map((row) => ({ ...row, paidTime: militaryTimeLabel(row.paidTime) })),
     };
-  }, [loan, client, payments, assignments]);
+  }, [reportLoan, client, reportPayments, assignments]);
   const columnVisibility = useColumnVisibility(LOAN_REPORT_COLUMNS, LOAN_REPORT_DEFAULT_COLS, {
     storageKey: LOAN_REPORT_COLUMNS_STORAGE_KEY,
   });
@@ -95,19 +99,32 @@ export function LoanReportView({ loan, client, payments, assignments = [], onBac
             <button type="button" className="btn ghost" onClick={onBack}>
               Volver
             </button>
-            <button type="button" className="btn primary compact" onClick={() => setPdfPreviewOpen(true)}>
+            <button
+              type="button"
+              className="btn primary compact"
+              disabled={!ficha.book}
+              onClick={() => setPdfPreviewOpen(true)}
+            >
               Vista previa PDF
             </button>
           </div>
         </div>
-        <ReportBody
-          report={report}
-          payments={payments}
-          clientRoute={client?.route}
-          columnVisibility={columnVisibility}
-        />
+        {ficha.failed ? (
+          <p className="ficha-empty">
+            No se pudo cargar la ficha. Los cobros siguen en la base; vuelve a abrir el informe.
+          </p>
+        ) : !ficha.book ? (
+          <p className="ficha-empty">Cargando los cobros de la ficha…</p>
+        ) : (
+          <ReportBody
+            report={report}
+            payments={reportPayments}
+            clientRoute={client?.route}
+            columnVisibility={columnVisibility}
+          />
+        )}
       </div>
-      {pdfPreviewOpen ? (
+      {pdfPreviewOpen && ficha.book ? (
         <LoanReportPdfPreview
           report={report}
           visibleCols={columnVisibility.visibleCols}

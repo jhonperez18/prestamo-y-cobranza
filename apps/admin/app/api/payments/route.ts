@@ -16,11 +16,22 @@ export const fetchCache = "force-no-store";
 export async function GET(request: Request) {
   try {
     const cursor = changedSinceCursor();
-    const evidence = new URL(request.url).searchParams.get("evidence") === "1";
-    const since = evidence ? null : readChangedSince(request);
+    const url = new URL(request.url);
+    const evidence = url.searchParams.get("evidence") === "1";
+    const loanRef = url.searchParams.get("loanRef")?.trim() ?? "";
+    if (loanRef && !/^P-[A-Za-z0-9-]+$/.test(loanRef)) {
+      return jsonNoStore({ ok: false, error: "loan_ref", payments: [] }, { status: 400 });
+    }
+    const since = evidence || loanRef ? null : readChangedSince(request);
     const fromDate = since ? null : readIsoDateParam(request, "fromDate");
     const toDate = since ? null : readIsoDateParam(request, "toDate");
-    const result = await fetchPaymentsFromSupabase({ evidence, since, fromDate, toDate });
+    const result = await fetchPaymentsFromSupabase({
+      evidence,
+      since,
+      fromDate,
+      toDate,
+      loanRef: loanRef || null,
+    });
     if ("skipped" in result && result.skipped) {
       return jsonNoStore({
         ok: true,

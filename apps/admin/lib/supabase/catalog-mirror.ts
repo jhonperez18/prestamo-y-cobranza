@@ -842,6 +842,17 @@ export async function fetchClientsFromSupabase(since: string | null = null) {
   return { ok: true as const, rows: all.rows };
 }
 
+/** Una ficha. No baja el libro entero. */
+export async function fetchLoanByRefFromSupabase(ref: string) {
+  const supabase = createMirrorClient();
+  if (!supabase) {
+    return { ok: true as const, skipped: true as const, reason: mirrorSkipReason(), rows: [] as LoanMirrorRow[] };
+  }
+  const { data, error } = await supabase.from("loans").select("*").eq("ref", ref).maybeSingle();
+  if (error) return { ok: false as const, error: error.message, rows: [] as LoanMirrorRow[] };
+  return { ok: true as const, rows: data ? [data as LoanMirrorRow] : [] };
+}
+
 export async function fetchLoansFromSupabase(since: string | null = null) {
   const supabase = createMirrorClient();
   if (!supabase) return { ok: true as const, skipped: true as const, reason: mirrorSkipReason(), rows: [] as LoanMirrorRow[] };

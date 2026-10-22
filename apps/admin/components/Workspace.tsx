@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import type { ModuleId } from "@/lib/navigation";
 import { ADMIN_ROLE_REF, ASSIGNABLE_ROLES, COLLECTOR_ROLE_REF, activeLoans, isLoanActive, loansForClient, money, nextClientCode, roleByRef, ROLES, clientsOnRouteListed, routeIsActive, collectorViewForUser, type LoanRow } from "@/lib/mock-data";
 import {
@@ -34,6 +35,7 @@ import { LoanPayForm } from "@/components/LoanPayForm";
 import { LatePayForm } from "@/components/LatePayForm";
 import { PaymentFicha } from "@/components/PaymentFicha";
 import { LoanReportView } from "@/components/LoanReportView";
+import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
 import { WeeklyReportView } from "@/components/WeeklyReportView";
 import { DataTable, Pill } from "@/components/ui";
 import { ClientList } from "@/components/ClientList";
@@ -332,6 +334,37 @@ export function Workspace(props: WorkspaceProps) {
     startPay,
     demoHydrated,
   } = useWorkspace(props);
+
+  const loanFicha = useLoanFichaBook(openLoan?.ref ?? "");
+  useEffect(() => {
+    const book = loanFicha.book;
+    if (!book) return;
+    setLoans((current) => {
+      const index = current.findIndex((row) => row.ref === book.loan.ref);
+      if (index < 0) return current;
+      const row = current[index];
+      if (!row) return current;
+      if (row.paid === book.loan.paid && row.balance === book.loan.balance && row.status === book.loan.status) {
+        return current;
+      }
+      const next = current.slice();
+      next[index] = {
+        ...row,
+        paid: book.loan.paid,
+        balance: book.loan.balance,
+        status: book.loan.status,
+        kind: book.loan.kind,
+        total: book.loan.total ?? row.total,
+      };
+      return next;
+    });
+    setPayments((current) => {
+      const have = new Set(current.map((row) => row.ref));
+      const extra = book.payments.filter((row) => row.ref && !have.has(row.ref));
+      if (extra.length === 0) return current;
+      return [...current, ...extra];
+    });
+  }, [loanFicha.book, setLoans, setPayments]);
 
   if (!viewAllowed) {
     return (
@@ -708,10 +741,13 @@ export function Workspace(props: WorkspaceProps) {
     }
 
     if (moduleId === "prestamos" && viewId === "cuenta") {
-      const loanPays = openLoan
-        ? sortPaymentsNewestFirst(payments.filter((row) => row.loanRef === openLoan.ref))
+      const shownLoan = loanFicha.book?.loan.ref === openLoan?.ref ? loanFicha.book.loan : openLoan;
+      const shownPayments =
+        loanFicha.book?.loan.ref === openLoan?.ref ? loanFicha.book.payments : payments;
+      const loanPays = shownLoan
+        ? sortPaymentsNewestFirst(shownPayments.filter((row) => row.loanRef === shownLoan.ref))
         : [];
-      const loanFinancials = openLoan ? computeLoanFinancials(openLoan, payments) : null;
+      const loanFinancials = shownLoan ? computeLoanFinancials(shownLoan, shownPayments) : null;
       const paySummary = loanFinancials ? loanPaySummaryRows(loanFinancials, money) : [];
       const loanClient = openLoan ? clients.find((row) => row.ref === openLoan.clientRef) : null;
       const loanInitials = loanClient
@@ -723,8 +759,8 @@ export function Workspace(props: WorkspaceProps) {
       const clientLoans = loanClient
         ? finalizeSupersededLoans(loansForClient(loanClient.ref, loans))
         : [];
-      const canPay = Boolean(openLoan && openLoan.balance > 0 && isLoanActive(openLoan));
-      const canPayCuota = Boolean(canPay && openLoan && cuotaTarget(openLoan));
+      const canPay = Boolean(shownLoan && shownLoan.balance > 0 && isLoanActive(shownLoan));
+      const canPayCuota = Boolean(canPay && shownLoan && cuotaTarget(shownLoan));
       const loanTabs: { id: LoanTab; label: string }[] = [
         { id: "ficha", label: "Ficha" },
         { id: "prestamos", label: "Préstamos" },

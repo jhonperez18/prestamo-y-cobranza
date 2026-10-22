@@ -88,6 +88,7 @@ import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import { useRouteSheet } from "@/lib/use-route-sheet";
+import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
 import { useSupervisorToday } from "@/lib/use-supervisor-today";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import {
@@ -957,7 +958,7 @@ function previousLoanForClient(
   const candidates = loansForClient(clientRef, loans)
     .filter((row) => !isLoanVoided(row))
     .filter((row) => !currentRef || row.ref !== currentRef)
-    .map((row) => syncLoan(row, isSupervisorLiveDevice() ? undefined : payments) as LoanRow)
+    .map((row) => syncLoan(row) as LoanRow)
     .filter((row) => !isLoanActive(row));
   if (candidates.length === 0) return null;
   candidates.sort((a, b) => {
@@ -3767,19 +3768,22 @@ export function SupervisorMobileApp({
   const clientesLoanSynced = clientesLoanClient
     ? currentActiveLoan(clientesLoanClient.ref, sheetLoans ?? loans, payments)
     : null;
+  const openSheetLoanRef =
+    view === "prestamos" ? prestamoFichaRef || "" : clientesLoanSynced?.ref || "";
+  const openSheetFicha = useLoanFichaBook(openSheetLoanRef);
   const clientesPreviousLoan = clientesLoanClient
     ? previousLoanForClient(clientesLoanClient.ref, sheetLoans ?? loans, payments)
     : null;
   const clientesCurrentPdfReport = useMemo(() => {
     if (!clientesLoanSynced || !clientesLoanClient) return null;
-    // Ficha al cliente: solo PG- vivos (anulados no se muestran; el saldo ya los excluye).
+    const fromBase = openSheetFicha.book?.loan.ref === clientesLoanSynced.ref ? openSheetFicha.book : null;
     return buildLoanReport(
-      clientesLoanSynced,
+      fromBase?.loan ?? clientesLoanSynced,
       clientesLoanClient,
-      livePayments(paymentsWithEvidence),
+      fromBase?.payments ?? livePayments(paymentsWithEvidence),
       assignments,
     );
-  }, [assignments, clientesLoanClient, clientesLoanSynced, paymentsWithEvidence]);
+  }, [assignments, clientesLoanClient, clientesLoanSynced, openSheetFicha.book, paymentsWithEvidence]);
   const clientesPreviousPdfReport = useMemo(() => {
     if (!clientesPreviousLoan || !clientesLoanClient) return null;
     return buildLoanReport(
@@ -3849,10 +3853,15 @@ export function SupervisorMobileApp({
     : null;
   const prestamoPdfReport = useMemo(() => {
     if (!prestamoFichaLoan || !prestamoFichaClient) return null;
-    const live = livePayments(paymentsWithEvidence);
-    const synced = syncLoan(prestamoFichaLoan) as LoanRow;
-    return buildLoanReport(synced, prestamoFichaClient, live, assignments);
-  }, [assignments, paymentsWithEvidence, prestamoFichaClient, prestamoFichaLoan]);
+    const fromBase = openSheetFicha.book?.loan.ref === prestamoFichaLoan.ref ? openSheetFicha.book : null;
+    const synced = syncLoan(fromBase?.loan ?? prestamoFichaLoan) as LoanRow;
+    return buildLoanReport(
+      synced,
+      prestamoFichaClient,
+      fromBase?.payments ?? livePayments(paymentsWithEvidence),
+      assignments,
+    );
+  }, [assignments, openSheetFicha.book, paymentsWithEvidence, prestamoFichaClient, prestamoFichaLoan]);
 
   const nuevoRoute = liquidaciones.find((row) => row.routeRef === nuevoRouteRef) ?? null;
 

@@ -674,8 +674,8 @@ export function loadDemoPayments(loans?: LoanRow[]): PaymentRow[] {
 
 /**
  * Carga pagos y préstamos sincronizados (fuente única para el panel).
- * `loansFromFicha`: cobrador (solo el día) y supervisor (su lista no es el libro).
- * El saldo lo manda la ficha. El panel, con el libro entero, sí lo rehace.
+ * Pagado y saldo los calcula la base. Ni el panel ni el celular los rehacen
+ * con su lista de cobros: una lista a la que le faltan días cambiaría la deuda.
  */
 export function loadDemoPaymentsBundle(options?: { loansFromFicha?: boolean }) {
   disarmLegacyWipes();
@@ -701,8 +701,8 @@ export function loadDemoPaymentsBundle(options?: { loansFromFicha?: boolean }) {
 
 /** Préstamos: usa guardados; si no hay clave / quedó [], semilla. Nunca vacía datos existentes. */
 export function loadDemoLoans(
-  payments: PaymentRow[] = loadDemoPayments(),
-  options?: { fromFicha?: boolean },
+  _payments: PaymentRow[] = loadDemoPayments(),
+  _options?: { fromFicha?: boolean },
 ): LoanRow[] {
   disarmLegacyWipes();
   const packaged = isCanonicalPackageFlag();
@@ -711,7 +711,7 @@ export function loadDemoLoans(
   const filtered = packaged
     ? base.filter((row) => isAllowedPackagedClientRef(row.clientRef))
     : base;
-  return options?.fromFicha ? syncAllLoans(filtered) : syncAllLoans(filtered, payments);
+  return syncAllLoans(filtered);
 }
 
 /** Cierres de jornada: recupera -bak si la clave quedó vacía. */

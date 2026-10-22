@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchLoansFromSupabase } from "@/lib/supabase/catalog-mirror";
+import { fetchLoanByRefFromSupabase, fetchLoansFromSupabase } from "@/lib/supabase/catalog-mirror";
 import { changedSinceCursor, readChangedSince } from "@/lib/supabase/changed-since";
 import { isVirginWriteLocked, virginWriteLockPayload } from "@/lib/virgin-lock";
 import { processCollectorPayApi } from "@/lib/supabase/process-collector-pay-api";
@@ -19,6 +19,20 @@ export const fetchCache = "force-no-store";
 export async function GET(request: Request) {
   try {
     const cursor = changedSinceCursor();
+    const ref = new URL(request.url).searchParams.get("ref")?.trim() ?? "";
+    if (ref) {
+      if (!/^P-[A-Za-z0-9-]+$/.test(ref)) {
+        return NextResponse.json({ ok: false, error: "loan_ref", loans: [] }, { status: 400 });
+      }
+      const one = await fetchLoanByRefFromSupabase(ref);
+      if ("skipped" in one && one.skipped) {
+        return NextResponse.json({ ok: true, skipped: true, reason: one.reason, loans: [] });
+      }
+      if (!one.ok) {
+        return NextResponse.json({ ok: false, error: one.error, loans: [] }, { status: 502 });
+      }
+      return NextResponse.json({ ok: true, incremental: false, cursor, loans: one.rows });
+    }
     const since = readChangedSince(request);
     const result = await fetchLoansFromSupabase(since);
     if ("skipped" in result && result.skipped) {
