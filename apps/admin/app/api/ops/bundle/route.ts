@@ -52,7 +52,10 @@ export async function GET(request: Request) {
             // no viaja en `since` y el aparato lo seguiría mostrando.
             fetchOpsTable("collectors"),
             changed("routes"),
-            changed("day_closes"),
+            // CIE completo, igual que el cobrador: pocos registros. Un corte ya
+            // pasado no vuelve a traer el cierre de hoy y el sistema principal
+            // se queda con la hoja abierta.
+            fetchOpsTable("day_closes"),
             changed("day_expenses", { column: "expense_date", since: expenseSince }),
             changed("misc_payments"),
             changed("daily_assignments", { column: "dispatch_date", since: assignSince }),

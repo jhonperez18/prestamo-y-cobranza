@@ -2520,21 +2520,39 @@ async function pullOpsBundle(
       sentAssignmentSig.set(key, assignmentMirrorSig(row));
       assignChanged = true;
     }
-    // Bajada completa: la nube ya dejó una visita por cliente hoy. La copia
-    // local de la otra fila no se conserva (si se conserva, el reconcile la
-    // vuelve a subir). Una visita nueva, todavía en cola, sí se queda.
+    // La hoja de hoy ya vino entera. La otra fila del mismo cliente no se
+    // conserva: si se conserva, el reconcile la vuelve a subir y la ruta
+    // cerrada se ve abierta. La copia en cola de ese cliente tampoco.
     const todaySheetComplete = body.assignmentsTodayComplete === true;
     if (full || todaySheetComplete) {
       const today = businessTodayIso();
       const remoteToday = remoteAssign.filter((row) => row.dispatchDate === today);
       const remoteKeys = new Set(remoteToday.map((row) => `${row.dispatchDate}::${row.itemId}`));
       const remoteClients = new Set(remoteToday.map((row) => row.clientRef).filter(Boolean));
+      const remoteSealedClients = new Set(
+        remoteToday
+          .filter((row) => row.dayClosedAt && row.clientRef)
+          .map((row) => `${row.collectorRef}|${row.clientRef}`),
+      );
       for (const [key, row] of [...assignMap.entries()]) {
         if (row.dispatchDate !== today || row.dayClosedAt) continue;
-        if (String(row.paymentRef || "").trim()) continue;
-        if (row.visitStatus === "cobrado" || row.visitStatus === "omitido") continue;
-        if (remoteKeys.has(key) || pendingAssign.has(key)) continue;
-        if (!row.clientRef || !remoteClients.has(row.clientRef)) continue;
+        if (remoteKeys.has(key)) continue;
+        const sealedTwin =
+          Boolean(row.clientRef) &&
+          remoteSealedClients.has(`${row.collectorRef}|${row.clientRef}`);
+        const openTwin =
+          !sealedTwin &&
+          !String(row.paymentRef || "").trim() &&
+          row.visitStatus !== "cobrado" &&
+          row.visitStatus !== "omitido" &&
+          !pendingAssign.has(key) &&
+          Boolean(row.clientRef) &&
+          remoteClients.has(row.clientRef);
+        if (!sealedTwin && !openTwin) continue;
+        if (pendingAssign.has(key)) {
+          dequeue(Q_ASSIGN, key);
+          pendingAssign.delete(key);
+        }
         assignMap.delete(key);
         assignChanged = true;
       }

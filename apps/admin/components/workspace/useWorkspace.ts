@@ -439,16 +439,27 @@ export function useWorkspace({
           const raw = eventType === "DELETE" ? payload.old : payload.new;
           const record =
             raw && typeof raw === "object" ? (raw as Record<string, unknown>) : null;
-          const next = applyWorkspaceRealtimeEvent(table, eventType, record, live);
+          // La pantalla guarda su copia al oír un cliente o un préstamo. Si esa
+          // copia es la de antes del cierre, pisaba el sello que el pull acaba
+          // de bajar. La hoja y los cierres se leen del archivo.
+          const storedCloses = readDemoJson<CollectorDayCloseRecord[]>(
+            DEMO_COLLECTOR_DAY_CLOSES_KEY,
+            [],
+          );
+          const next = applyWorkspaceRealtimeEvent(table, eventType, record, {
+            ...live,
+            assignments: readDemoJson<DailyCollectionAssignment[]>(DEMO_DAILY_ASSIGNMENTS_KEY, []),
+            dayCloses: storedCloses,
+          });
           if (!next) return;
           syncDeletedIdsFromStorage();
-          liveRef.current = next;
+          liveRef.current = { ...next, dayCloses: storedCloses };
           setClients(next.clients);
           setLoans(next.loans);
           setPayments(next.payments.map((row) => withPaymentEvidence(row)));
           setRoutes(next.routes);
           setDailyAssignments(next.assignments);
-          const split = splitDayClosesAndPlanillaCash(next.dayCloses);
+          const split = splitDayClosesAndPlanillaCash(storedCloses);
           setDayCloses(split.dayCloses);
           if (split.planillaCash.length > 0) {
             setPlanillaCashCloses((prev) => {
@@ -468,7 +479,6 @@ export function useWorkspace({
           writeDemoJson(DEMO_PAYMENTS_KEY, next.payments);
           writeDemoJson(DEMO_ROUTES_KEY, next.routes);
           writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
-          writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, split.dayCloses);
           writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, next.bankMovements);
         } catch (error) {
           console.error("realtime-workspace", error);
