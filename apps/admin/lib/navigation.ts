@@ -199,6 +199,7 @@ export const MODULES: AppModule[] = [
           { id: "cartera", label: "Cartera" },
           { id: "mora", label: "Mora" },
           { id: "semanal", label: "Semanal" },
+          { id: "mensual", label: "Mensual" },
         ],
       },
     ],

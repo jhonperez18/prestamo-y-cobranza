@@ -36,6 +36,7 @@ import { LatePayForm } from "@/components/LatePayForm";
 import { PaymentFicha } from "@/components/PaymentFicha";
 import { LoanReportView } from "@/components/LoanReportView";
 import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
+import { MonthlyReportView } from "@/components/MonthlyReportView";
 import { WeeklyReportView } from "@/components/WeeklyReportView";
 import { DataTable, Pill } from "@/components/ui";
 import { ClientList } from "@/components/ClientList";
@@ -1705,6 +1706,9 @@ export function Workspace(props: WorkspaceProps) {
             onGo={onGo}
           />
         );
+      }
+      if (viewId === "mensual") {
+        return <MonthlyReportView />;
       }
       if (viewId === "semanal") {
         return (

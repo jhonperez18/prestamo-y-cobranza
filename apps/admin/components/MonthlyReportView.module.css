@@ -1,0 +1,135 @@
+.wrap {
+  overflow: auto;
+  max-height: calc(100vh - 168px);
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.table th,
+.table td {
+  padding: 2px 3px;
+  border-bottom: 1px solid #ece7df;
+  white-space: nowrap;
+  background: #fff;
+}
+
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f4f1ea;
+  font-weight: 650;
+  text-align: center;
+  font-size: 10px;
+}
+
+.pos {
+  width: 26px;
+  min-width: 26px;
+  max-width: 26px;
+  text-align: right;
+  color: #6b7280;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
+
+.name {
+  width: 120px;
+  min-width: 120px;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+  position: sticky;
+  left: 26px;
+  z-index: 1;
+}
+
+.money {
+  width: 42px;
+  min-width: 42px;
+  max-width: 46px;
+  text-align: right;
+  font-weight: 650;
+}
+
+.ini {
+  position: sticky;
+  left: 146px;
+  z-index: 1;
+}
+
+.end {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  box-shadow: -4px 0 6px rgba(0, 0, 0, 0.04);
+}
+
+.day {
+  width: 28px;
+  min-width: 28px;
+  max-width: 32px;
+  text-align: right;
+  font-size: 10px;
+  padding-left: 1px;
+  padding-right: 2px;
+}
+
+.table thead .pos,
+.table thead .name,
+.table thead .ini,
+.table thead .end {
+  z-index: 3;
+  background: #f4f1ea;
+}
+
+.table tbody tr:nth-child(even) td {
+  background: #f7f6f3;
+}
+
+.table tbody tr:nth-child(even) .renewal {
+  background: #fde68a;
+}
+
+.renewal {
+  background: #fde68a;
+  color: #92400e;
+  font-weight: 700;
+}
+
+.loan {
+  color: #1e3a5f;
+  font-weight: 650;
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.note {
+  margin: 0 0 8px;
+  color: #4b5563;
+  font-size: 12px;
+}
+
+.months {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
