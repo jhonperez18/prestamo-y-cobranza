@@ -4,7 +4,7 @@ import {
   collectionAlertLabel,
   loanCollectionAlerts,
 } from "@/lib/collection-alerts";
-import { loanRenewalOf } from "@/lib/loan-renewal-marks";
+import { loanIsClosedHistory, loanRenewalOf } from "@/lib/loan-renewal-marks";
 import type { StatusKind } from "@/lib/mock-data";
 
 function loanDayIso(raw?: string | null) {
@@ -30,8 +30,8 @@ export function loanStatusPill(
   },
   today = businessTodayIso(),
 ): { label: string; kind: StatusKind } {
-  const balance = loan.balance ?? 0;
-  if (balance <= 0) {
+  // Renovado (el viejo) o pagado por completo: solo historial. Ningún otro estado.
+  if (loanIsClosedHistory(loan) || (loan.balance ?? 0) <= 0) {
     return { label: "Finalizado", kind: "paid" };
   }
 

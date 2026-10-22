@@ -60,9 +60,7 @@ export function LoanFichaGrid({ loans, payments, selectedRef, onSelect }: Props)
                 });
                 // Renovado: el saldo de la fila es lo que debía al renovar (siguió en la continuación).
                 const renewedInto = loanRenewedInto(loan);
-                const status = renewedInto
-                  ? { label: "Renovado", kind: "paid" as const }
-                  : loanStatusPill(synced);
+                const status = loanStatusPill(synced);
                 const selected = loan.ref === selectedRef;
                 return (
                   <tr

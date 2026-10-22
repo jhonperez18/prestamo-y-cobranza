@@ -81,7 +81,7 @@ import {
   paidThousandsLabel,
 } from "@/lib/planilla-display";
 import { reloanStateForVisit, type ReloanState } from "@/lib/loan-reloan";
-import { loanRenewalOf } from "@/lib/loan-renewal-marks";
+import { loanIsClosedHistory, loanRenewalOf } from "@/lib/loan-renewal-marks";
 import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
@@ -1023,9 +1023,9 @@ function SupervisorClientFicha({
         <h3 className="supervisor-ficha-client-name" title={clientTitle}>
           {clientTitle}
           {showingPrevious ? (
-            <span className="supervisor-ficha-pa-badge" title="Préstamo anterior">
+            <span className="supervisor-ficha-pa-badge" title="Préstamo anterior, cerrado">
               {" "}
-              · P.A
+              · {report && loanIsClosedHistory(report.loan) ? "Finalizado" : "P.A"}
             </span>
           ) : null}
         </h3>

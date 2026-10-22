@@ -2,7 +2,7 @@ import { isDailyCollectionDay } from "@/lib/colombia-holidays";
 import { paymentsForLoan } from "@/lib/payment-by-loan";
 import { reconcileLoanCollectionAlerts } from "@/lib/collection-alerts";
 import { pendingBalance, sumPesos } from "@/lib/finance";
-import { loanRenewedInto } from "@/lib/loan-renewal-marks";
+import { loanIsClosedHistory } from "@/lib/loan-renewal-marks";
 import { loanStatusPill } from "@/lib/loan-status";
 import type { LoanRow } from "@/lib/mock-data";
 
@@ -975,21 +975,16 @@ function paidFromPayments(
 
 /**
  * Préstamo ya cerrado: manda la ficha (saldo 0).
- * Renovado: lo que debía siguió en el P- de continuación.
- * Una lista de cobros incompleta no lo reabre ni le inventa un saldo.
+ * Renovado o pagado por completo. Una lista de cobros incompleta no lo reabre.
  */
 export function settledLoanLedger(loan: {
   status?: string;
   balance?: number;
   paid?: number;
+  total?: number;
   notes?: string | null;
 }): { paid: number; balance: number } | null {
-  const status = String(loan.status ?? "")
-    .toLowerCase()
-    .replace(/\s+/g, "");
-  const closed = status === "finalizado" || status === "eliminado" || status === "cancelado";
-  const balance = pesos(loan.balance ?? 0);
-  if (!loanRenewedInto(loan) && !(closed && balance <= 0)) return null;
+  if (!loanIsClosedHistory(loan)) return null;
   return { paid: pesos(loan.paid ?? 0), balance: 0 };
 }
 

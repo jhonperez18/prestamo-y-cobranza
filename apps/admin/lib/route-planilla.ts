@@ -28,6 +28,7 @@ import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 import { pendingBalance, pesos } from "@/lib/finance";
 import { paymentVisitDate } from "@/lib/late-payment";
 import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
+import { loanIsClosedHistory } from "@/lib/loan-renewal-marks";
 import { readDeletedIdSet } from "@/lib/deleted-ids";
 import { isCollectorLiveDevice, syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import {
@@ -87,6 +88,7 @@ function isPaymentRow(row: CollectionPaymentTouch): row is PaymentRow {
  * (+ cobro de hoy que aún no está en ella). Restar solo hoy del total inflaba la cuota.
  */
 function loanOwes(loan: LoanRow, payments?: CollectionPaymentTouch[]) {
+  if (loanIsClosedHistory(loan)) return 0;
   if (isCollectorLiveDevice()) {
     return pesos(syncCollectorLiveLoan(loan, (payments ?? []).filter(isPaymentRow)).balance);
   }
@@ -151,6 +153,7 @@ function buildPlanillaLoanIndex(
 ): PlanillaLoanIndex {
   const activeByClient = new Map<string, LoanRow[]>();
   for (const loan of activeLoans(loans)) {
+    if (loanIsClosedHistory(loan)) continue;
     const list = activeByClient.get(loan.clientRef);
     if (list) list.push(loan);
     else activeByClient.set(loan.clientRef, [loan]);
