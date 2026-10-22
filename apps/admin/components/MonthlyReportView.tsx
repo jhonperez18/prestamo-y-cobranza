@@ -178,10 +178,6 @@ export function MonthlyReportView() {
       ) : null}
       {showSheet ? (
       <>
-      <p className={styles.note}>
-        Los días van en miles, sin punto: 70 es 70.000. Inicial y saldo van con punto: 1.500.000. Si ese día no pagó, va «-».
-        La celda ámbar es una renovación: el total nuevo, y de ahí se sigue restando.
-      </p>
       {loading ? (
         <p className="ficha-empty">Cargando la hoja del sistema…</p>
       ) : failed || !sheet ? (
