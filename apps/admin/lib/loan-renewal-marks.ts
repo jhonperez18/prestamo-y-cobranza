@@ -34,7 +34,7 @@ export function loanIsClosedHistory(loan: {
   const status = String(loan.status ?? "")
     .toLowerCase()
     .replace(/\s+/g, "");
-  if (status === "finalizado") return true;
+  if (status === "finalizado" || status === "renovado") return true;
   const balance = Number(loan.balance);
   const paid = Number(loan.paid);
   const total = Number(loan.total);

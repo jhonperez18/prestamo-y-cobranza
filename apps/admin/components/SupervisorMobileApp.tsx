@@ -929,15 +929,17 @@ function ClientesTable({
   );
 }
 
-/** Préstamo activo actual (con saldo), sincronizado con todos los pagos del sistema. */
+/** Préstamo vivo del cliente: el más reciente que no esté renovado ni finalizado. El saldo es el de la ficha. */
 function currentActiveLoan(
   clientRef: string,
   loans: LoanRow[],
   _payments: PaymentRow[],
 ): LoanRow | null {
   const raw = primaryLoanForClient(clientRef, loans);
-  if (!raw || !isLoanActive(raw) || (Number(raw.balance) || 0) <= 0) return null;
-  return raw;
+  if (!raw) return null;
+  const synced = syncLoan(raw) as LoanRow;
+  if (!isLoanActive(synced) || (Number(synced.balance) || 0) <= 0) return null;
+  return synced;
 }
 
 /**
@@ -3794,21 +3796,12 @@ export function SupervisorMobileApp({
   /** Préstamos actuales (saldo vivo): uno por cliente, el activo a la fecha. */
   const prestamosEnRuta = useMemo(() => {
     const byClient = new Map<string, LoanRow>();
+    const seen = new Set<string>();
     for (const loan of loans) {
-      if (!loan.clientRef) continue;
-      const synced = syncLoan(loan, isSupervisorLiveDevice() ? undefined : payments) as LoanRow;
-      if (!isLoanActive(synced)) continue;
-      if (!(Number(synced.balance) > 0)) continue;
-      const prev = byClient.get(loan.clientRef);
-      if (!prev) {
-        byClient.set(loan.clientRef, synced);
-        continue;
-      }
-      const da = displayToIso(synced.date) || synced.date || "";
-      const db = displayToIso(prev.date) || prev.date || "";
-      if (da.localeCompare(db) > 0 || (da === db && synced.ref.localeCompare(prev.ref) > 0)) {
-        byClient.set(loan.clientRef, synced);
-      }
+      if (!loan.clientRef || seen.has(loan.clientRef)) continue;
+      seen.add(loan.clientRef);
+      const synced = currentActiveLoan(loan.clientRef, loans, payments);
+      if (synced) byClient.set(loan.clientRef, synced);
     }
     let rows = [...byClient.values()];
     if (prestamosRouteFilter) {

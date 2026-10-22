@@ -1,4 +1,6 @@
 import { activeLoans, loansForClient, type LoanRow, type PaymentRow, type RouteRow, type RouteStop } from "@/lib/mock-data";
+import { displayToIso } from "@/lib/loan-preview";
+import { loanIsClosedHistory } from "@/lib/loan-renewal-marks";
 import { applyPay, cuotaTarget, validatePay, type ApplyPaySuccess, type PayKind } from "@/lib/loan-pay";
 import { isPaymentLive } from "@/lib/live-payments";
 import { paymentVisitDate } from "@/lib/late-payment";
@@ -7,7 +9,15 @@ import type { PaymentEvidenceRef } from "@/lib/payment-evidence";
 import { validatePaymentEvidence } from "@/lib/payment-evidence";
 
 export function primaryLoanForClient(clientRef: string, loans: LoanRow[]) {
-  const active = activeLoans(loansForClient(clientRef, loans));
+  const active = activeLoans(loansForClient(clientRef, loans)).filter(
+    (loan) => !loanIsClosedHistory(loan),
+  );
+  active.sort((a, b) => {
+    const da = displayToIso(a.date) || a.date || "";
+    const db = displayToIso(b.date) || b.date || "";
+    if (da !== db) return db.localeCompare(da);
+    return b.ref.localeCompare(a.ref);
+  });
   return active[0] ?? null;
 }
 
