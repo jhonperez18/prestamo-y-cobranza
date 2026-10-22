@@ -1,4 +1,5 @@
 import { displayToIso, isoToDisplay } from "@/lib/loan-preview";
+import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import { lineRemaining, type ScheduleEntry } from "@/lib/loan-pay";
 import {
   COLLECTION_ALERTS_BEFORE_MORA,
@@ -32,11 +33,18 @@ export function firstScheduleCollectionIso(loan: LoanRow) {
   return dates[0] ?? null;
 }
 
+function spacedFrequency(frequency: string | undefined) {
+  const value = String(frequency || "").trim().toLowerCase();
+  return value === "semanal" || value === "quincenal" || value === "mensual";
+}
+
 /**
- * ¿Hay cuota ese día?
- * El cronograma es la orden de cobro. Si trae fechas, solo entra un día que esté ahí:
- * desembolso hoy y primer cobro mañana no es cobro de hoy.
- * Sin cronograma, sigue el cobro de siempre.
+ * Día de cobro.
+ * Diario (o sin frecuencia): desde la primera cuota, todos los días, aunque la
+ * lista finita ya no nombre hoy. La primera cuota que todavía no llega no entra.
+ * Semanal, quincenal y mensual: solo el día que está en la ficha.
+ * El desembolso de hoy no entra si hoy no está en el cronograma. La renovación
+ * de hoy se decide antes, en la planilla. Sin cronograma, sigue el cobro de siempre.
  */
 export function loanIsCollectibleOn(loan: LoanRow, selectedDate: string) {
   const day = scheduleDateToIso(selectedDate);
@@ -46,7 +54,12 @@ export function loanIsCollectibleOn(loan: LoanRow, selectedDate: string) {
     .filter((line) => (line.kind ?? "cuota") !== "capital")
     .map((line) => scheduleDateToIso(line.date))
     .filter((iso) => /^\d{4}-\d{2}-\d{2}$/.test(iso));
-  if (dates.length > 0) return dates.includes(day);
+  if (dates.includes(day)) return true;
+  if (dates.length === 0) return true;
+  if (loanDisbursementIsoDate(loan) === day) return false;
+  if (spacedFrequency(loan.frequency)) return false;
+  const first = [...dates].sort()[0];
+  if (first && first > day) return false;
   return true;
 }
 

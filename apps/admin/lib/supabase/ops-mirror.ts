@@ -13,7 +13,7 @@ import {
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
 } from "@/lib/collector-day-close";
-import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import { loanIsCollectibleOn, type DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
   DAY_CLOSE_SKIP_REASON,
   LOAN_GIVEN_TODAY_REASON,
@@ -1107,27 +1107,49 @@ export async function collapseTodayOpenVisits(rows: Record<string, unknown>[]) {
   );
 }
 
-function cuotaDatesFromSchedule(schedule: unknown): string[] {
-  if (!Array.isArray(schedule)) return [];
-  const dates: string[] = [];
-  for (const line of schedule) {
-    if (!line || typeof line !== "object") continue;
-    const rec = line as { kind?: string; date?: string };
-    if ((rec.kind || "cuota") === "capital") continue;
-    const raw = String(rec.date || "").trim();
-    const iso = /^\d{4}-\d{2}-\d{2}/.test(raw)
-      ? raw.slice(0, 10)
-      : /^\d{2}\/\d{2}\/\d{4}$/.test(raw)
-        ? `${raw.slice(6, 10)}-${raw.slice(3, 5)}-${raw.slice(0, 2)}`
-        : "";
-    if (iso) dates.push(iso);
-  }
-  return dates;
+function loanFromCloudSchedule(loan: {
+  schedule?: unknown;
+  notes?: string | null;
+  start_date?: string | null;
+  frequency?: string | null;
+}): LoanRow {
+  const frequency = String(loan.frequency || "").trim().toLowerCase();
+  const known: LoanRow["frequency"] =
+    frequency === "diario" ||
+    frequency === "semanal" ||
+    frequency === "quincenal" ||
+    frequency === "mensual"
+      ? frequency
+      : undefined;
+  return {
+    date: String(loan.start_date || ""),
+    schedule: Array.isArray(loan.schedule) ? (loan.schedule as LoanRow["schedule"]) : [],
+    frequency: known,
+    notes: String(loan.notes || ""),
+  } as LoanRow;
+}
+
+/** Cuota abierta que hoy no toca: misma regla que la planilla. Diario pasado sigue. */
+function openCuotaOffDay(
+  loan: {
+    schedule?: unknown;
+    notes?: string | null;
+    start_date?: string | null;
+    frequency?: string | null;
+  },
+  day: string,
+) {
+  if (!day) return false;
+  const row = loanFromCloudSchedule(loan);
+  if (loanIsCollectibleOn(row, day)) return false;
+  if (isCashlessRenewal(row) && loanDisbursementIsoDate(row) === day) return false;
+  return true;
 }
 
 /**
- * Visita abierta y sin pago cuyo cronograma no trae cuota ese día.
- * El préstamo con cronograma ya quedó; esa fila no es cobro si el día no está en la ficha.
+ * Visita abierta y sin pago que hoy no toca (`loanIsCollectibleOn`).
+ * Diario sigue aunque el cronograma finito ya no nombre el día.
+ * Semanal, quincenal y mensual solo el día de la ficha.
  * La renovación de hoy sí se cobra hoy. El día cerrado no se toca.
  */
 export async function dropOpenCuotasNotDue(rows: Record<string, unknown>[]) {
@@ -1143,29 +1165,19 @@ export async function dropOpenCuotasNotDue(rows: Record<string, unknown>[]) {
   });
   if (!open.length) return rows;
   const refs = [...new Set(open.map((row) => String(row.loan_ref || "").trim()))];
-  const { data, error } = await db.from("loans").select("ref, schedule, notes, start_date").in("ref", refs);
+  const { data, error } = await db
+    .from("loans")
+    .select("ref, schedule, notes, start_date, frequency")
+    .in("ref", refs);
   if (error || !data) return rows;
-  const byRef = new Map(
-    data.map((loan) => [
-      String(loan.ref || ""),
-      {
-        dates: cuotaDatesFromSchedule(loan.schedule),
-        renewalToday: isCashlessRenewal({ notes: String(loan.notes || "") }),
-        started: loanDisbursementIsoDate({
-          date: String(loan.start_date || ""),
-          start_date: String(loan.start_date || ""),
-        }),
-      },
-    ]),
-  );
+  const byRef = new Map(data.map((loan) => [String(loan.ref || ""), loan]));
   const dropKeys = new Set<string>();
   for (const row of open) {
     const info = byRef.get(String(row.loan_ref || "").trim());
-    if (!info || !info.dates.length) continue;
+    if (!info) continue;
     const day = String(row.dispatch_date || "").slice(0, 10);
     const itemId = String(row.item_id || "");
-    if (!day || !itemId || info.dates.includes(day)) continue;
-    if (info.renewalToday && info.started === day) continue;
+    if (!day || !itemId || !openCuotaOffDay(info, day)) continue;
     dropKeys.add(`${day}::${itemId}`);
   }
   if (!dropKeys.size) return rows;
@@ -1254,7 +1266,7 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
   if (loanRef && !row.payment_ref) {
     const { data: loan, error: loanError } = await client
       .from("loans")
-      .select("status, notes, schedule, start_date")
+      .select("status, notes, schedule, start_date, frequency")
       .eq("ref", loanRef)
       .maybeSingle();
     if (loanError) return { ok: false as const, error: loanError.message };
@@ -1280,16 +1292,8 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
       itemId &&
       !itemId.includes(":prestar")
     ) {
-      const dates = cuotaDatesFromSchedule(loan?.schedule);
       const day = String(row.dispatch_date || "").slice(0, 10);
-      const renewalToday =
-        day &&
-        isCashlessRenewal({ notes: String(loan?.notes || "") }) &&
-        loanDisbursementIsoDate({
-          date: String(loan?.start_date || ""),
-          start_date: String(loan?.start_date || ""),
-        }) === day;
-      if (dates.length > 0 && day && !dates.includes(day) && !renewalToday) {
+      if (day && openCuotaOffDay(loan, day)) {
         return deleteAssignmentRow(client, row.dispatch_date, row.item_id);
       }
     }
