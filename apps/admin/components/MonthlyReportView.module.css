@@ -59,6 +59,7 @@
 .table:global(.data) td.sum {
   padding-left: 8px !important;
   padding-right: 8px !important;
+  text-align: right !important;
 }
 
 .table:global(.data) th.is-nombre,
