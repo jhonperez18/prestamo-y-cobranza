@@ -29,7 +29,7 @@ import {
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
 import { businessDaysAgoIso, businessTodayIso } from "@/lib/business-timezone";
-import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
+import { isCashlessRenewal, loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import {
   collectorLiveDayIso,
   isCollectorLiveDevice,
@@ -1107,6 +1107,93 @@ export async function collapseTodayOpenVisits(rows: Record<string, unknown>[]) {
   );
 }
 
+function cuotaDatesFromSchedule(schedule: unknown): string[] {
+  if (!Array.isArray(schedule)) return [];
+  const dates: string[] = [];
+  for (const line of schedule) {
+    if (!line || typeof line !== "object") continue;
+    const rec = line as { kind?: string; date?: string };
+    if ((rec.kind || "cuota") === "capital") continue;
+    const raw = String(rec.date || "").trim();
+    const iso = /^\d{4}-\d{2}-\d{2}/.test(raw)
+      ? raw.slice(0, 10)
+      : /^\d{2}\/\d{2}\/\d{4}$/.test(raw)
+        ? `${raw.slice(6, 10)}-${raw.slice(3, 5)}-${raw.slice(0, 2)}`
+        : "";
+    if (iso) dates.push(iso);
+  }
+  return dates;
+}
+
+/**
+ * Visita abierta y sin pago cuyo cronograma no trae cuota ese día.
+ * El préstamo con cronograma ya quedó; esa fila no es cobro si el día no está en la ficha.
+ * La renovación de hoy sí se cobra hoy. El día cerrado no se toca.
+ */
+export async function dropOpenCuotasNotDue(rows: Record<string, unknown>[]) {
+  const db = createMirrorClient();
+  if (!db || !rows.length) return rows;
+  const open = rows.filter((row) => {
+    if (row.day_closed_at || row.payment_ref) return false;
+    const status = String(row.visit_status || "pendiente");
+    if (status !== "pendiente" && status !== "parcial") return false;
+    const itemId = String(row.item_id || "");
+    if (!itemId || itemId.includes(":prestar")) return false;
+    return Boolean(String(row.loan_ref || "").trim());
+  });
+  if (!open.length) return rows;
+  const refs = [...new Set(open.map((row) => String(row.loan_ref || "").trim()))];
+  const { data, error } = await db.from("loans").select("ref, schedule, notes, start_date").in("ref", refs);
+  if (error || !data) return rows;
+  const byRef = new Map(
+    data.map((loan) => [
+      String(loan.ref || ""),
+      {
+        dates: cuotaDatesFromSchedule(loan.schedule),
+        renewalToday: isCashlessRenewal({ notes: String(loan.notes || "") }),
+        started: loanDisbursementIsoDate({
+          date: String(loan.start_date || ""),
+          start_date: String(loan.start_date || ""),
+        }),
+      },
+    ]),
+  );
+  const dropKeys = new Set<string>();
+  for (const row of open) {
+    const info = byRef.get(String(row.loan_ref || "").trim());
+    if (!info || !info.dates.length) continue;
+    const day = String(row.dispatch_date || "").slice(0, 10);
+    const itemId = String(row.item_id || "");
+    if (!day || !itemId || info.dates.includes(day)) continue;
+    if (info.renewalToday && info.started === day) continue;
+    dropKeys.add(`${day}::${itemId}`);
+  }
+  if (!dropKeys.size) return rows;
+  const byDay = new Map<string, string[]>();
+  for (const key of dropKeys) {
+    const split = key.indexOf("::");
+    const day = key.slice(0, split);
+    const itemId = key.slice(split + 2);
+    const list = byDay.get(day) ?? [];
+    list.push(itemId);
+    byDay.set(day, list);
+  }
+  for (const [day, itemIds] of byDay) {
+    const { error: delError } = await db
+      .from("daily_assignments")
+      .delete()
+      .eq("dispatch_date", day)
+      .in("item_id", itemIds)
+      .is("day_closed_at", null)
+      .is("payment_ref", null);
+    if (delError) return rows;
+  }
+  return rows.filter((row) => {
+    const key = `${String(row.dispatch_date || "").slice(0, 10)}::${String(row.item_id || "")}`;
+    return !dropKeys.has(key);
+  });
+}
+
 async function deleteAssignmentRow(
   client: MirrorDb,
   dispatchDate: unknown,
@@ -1167,7 +1254,7 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
   if (loanRef && !row.payment_ref) {
     const { data: loan, error: loanError } = await client
       .from("loans")
-      .select("status, notes")
+      .select("status, notes, schedule, start_date")
       .eq("ref", loanRef)
       .maybeSingle();
     if (loanError) return { ok: false as const, error: loanError.message };
@@ -1184,6 +1271,27 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
         return deleteAssignmentRow(client, row.dispatch_date, row.item_id);
       }
       return { ok: true as const, skipped: true as const, reason: "loan_finished" };
+    }
+    const visitStatus = String(row.visit_status || "pendiente");
+    const itemId = String(row.item_id || "");
+    if (
+      !row.day_closed_at &&
+      (visitStatus === "pendiente" || visitStatus === "parcial") &&
+      itemId &&
+      !itemId.includes(":prestar")
+    ) {
+      const dates = cuotaDatesFromSchedule(loan?.schedule);
+      const day = String(row.dispatch_date || "").slice(0, 10);
+      const renewalToday =
+        day &&
+        isCashlessRenewal({ notes: String(loan?.notes || "") }) &&
+        loanDisbursementIsoDate({
+          date: String(loan?.start_date || ""),
+          start_date: String(loan?.start_date || ""),
+        }) === day;
+      if (dates.length > 0 && day && !dates.includes(day) && !renewalToday) {
+        return deleteAssignmentRow(client, row.dispatch_date, row.item_id);
+      }
     }
   }
   const ghost = await prestarGhostReason(client, row);

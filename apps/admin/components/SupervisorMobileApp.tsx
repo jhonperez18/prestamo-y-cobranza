@@ -702,10 +702,18 @@ function PlanillaTable({
             };
             const reloanOpen = Boolean(reloanClientRef) && reloanClientRef === row.clientRef;
             /** Renglón del préstamo nuevo; el del crédito pagado muestra solo lo cobrado. */
+            const grantedLoan = row.reloan.granted;
+            const collectingGranted = Boolean(
+              grantedLoan &&
+                row.loanRef === grantedLoan.ref &&
+                !row.awaitingLoan &&
+                row.visitStatus !== "omitido" &&
+                row.paidAmount <= 0 &&
+                row.cuota > 0,
+            );
             const grantedHere =
-              row.reloan.granted &&
-              (row.loanRef === row.reloan.granted.ref || row.paidAmount <= 0)
-                ? row.reloan.granted
+              grantedLoan && !collectingGranted && (row.loanRef === grantedLoan.ref || row.paidAmount <= 0)
+                ? grantedLoan
                 : null;
             const rowClass = [
               routeStarts[index] ? "is-route-start" : "",

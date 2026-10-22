@@ -27,7 +27,7 @@ import {
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
 import { pendingBalance, pesos } from "@/lib/finance";
 import { paymentVisitDate } from "@/lib/late-payment";
-import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
+import { isCashlessRenewal, loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import { loanIsClosedHistory } from "@/lib/loan-renewal-marks";
 import { syncLoan } from "@/lib/loan-preview";
 import { readDeletedIdSet } from "@/lib/deleted-ids";
@@ -182,9 +182,10 @@ function buildPlanillaLoanIndex(
 }
 
 /**
- * `sheetOpen`: la hoja de ese cobrador y ruta sigue abierta hoy. Préstamo activo = cliente
- * listo para pagar, aunque se haya prestado hoy. Con la hoja ya cerrada, el préstamo de hoy
- * entra mañana (no reabre el día ni queda en N/P).
+ * `sheetOpen`: la hoja de ese cobrador y ruta sigue abierta hoy.
+ * El préstamo ya salió de la ruta. La cuota entra si el cronograma la tiene ese día
+ * (día de cobro = desembolso) o si no hay cronograma. La renovación queda por cobrar
+ * hoy con la hoja abierta. Con la hoja ya cerrada, el préstamo de hoy entra mañana.
  */
 function loanItemsForClient(
   client: ClientRow,
@@ -201,9 +202,12 @@ function loanItemsForClient(
     if (owes <= 0 && !paidToday) continue;
     if (isPendingReview(client)) continue;
     const startedIso = loanDisbursementIsoDate(loan);
-    // Préstamo o renovación de hoy: por cobrar el mismo día si la hoja sigue abierta.
+    // Hoja ya cerrada: el préstamo de hoy no reabre el día.
     if (startedIso === date && !paidToday && !sheetOpen) continue;
-    if (startedIso !== date && !loanIsCollectibleOn(loan, date)) continue;
+    // Renovación: la cuota nueva queda por cobrar hoy si la hoja sigue abierta.
+    const renewalDueToday = startedIso === date && sheetOpen && isCashlessRenewal(loan);
+    // Préstamo con cronograma: solo el día de cobro que trae la ficha.
+    if (!renewalDueToday && !loanIsCollectibleOn(loan, date)) continue;
 
     const installment = resolvedLoanInstallment(loan);
     const pactada = paidToday && owes <= 0 ? 0 : Math.min(installment > 0 ? installment : owes, owes);

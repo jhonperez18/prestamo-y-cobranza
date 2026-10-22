@@ -33,33 +33,20 @@ export function firstScheduleCollectionIso(loan: LoanRow) {
 }
 
 /**
- * ¿Ya puede entrar a planilla/cobro ese día?
- * - Si el cronograma trae cuota ese día → sí.
- * - Si desembolsó HOY y tiene saldo → sí (aparece al crear el préstamo).
+ * ¿Hay cuota ese día?
+ * El cronograma es la orden de cobro. Si trae fechas, solo entra un día que esté ahí:
+ * desembolso hoy y primer cobro mañana no es cobro de hoy.
+ * Sin cronograma, sigue el cobro de siempre.
  */
 export function loanIsCollectibleOn(loan: LoanRow, selectedDate: string) {
   const day = scheduleDateToIso(selectedDate);
   if (!day) return true;
 
-  const balance = Number(loan.balance) || 0;
-  const disbursed = scheduleDateToIso(loan.date);
-
-  const lines = loan.schedule ?? [];
-  for (const line of lines) {
-    if ((line.kind ?? "cuota") === "capital") continue;
-    if (scheduleDateToIso(line.date) === day) return true;
-  }
-
-  // Desembolso del día + saldo: entra ya a la planilla (cuota se resuelve aparte).
-  if (disbursed && disbursed === day && balance > 0) {
-    return true;
-  }
-
-  const first = firstScheduleCollectionIso(loan);
-  if (!first || first <= day) return true;
-
-  if (disbursed && disbursed === day) return false;
-
+  const dates = (loan.schedule ?? [])
+    .filter((line) => (line.kind ?? "cuota") !== "capital")
+    .map((line) => scheduleDateToIso(line.date))
+    .filter((iso) => /^\d{4}-\d{2}-\d{2}$/.test(iso));
+  if (dates.length > 0) return dates.includes(day);
   return true;
 }
 

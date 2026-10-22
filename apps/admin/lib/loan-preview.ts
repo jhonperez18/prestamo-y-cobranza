@@ -495,8 +495,7 @@ export function collectionDatesForCount(
       : "";
 
   if (frequency === "diario") {
-    // Sin primer cobro a mano: la 1.ª cuota vence el siguiente día de cobro. El cliente
-    // igual sale hoy en la planilla (por fecha de desembolso) por si paga.
+    // Sin primer cobro a mano: la 1.ª cuota vence el siguiente día de cobro.
     let current = manualFirst || firstCollectionIso(startIso, frequency);
     while (dates.length < target && guard < 600) {
       if (isDailyCollectionDay(current)) dates.push(current);

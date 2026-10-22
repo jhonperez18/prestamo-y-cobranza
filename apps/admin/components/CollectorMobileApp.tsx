@@ -39,7 +39,6 @@ import {
 } from "@/lib/collector-mobile";
 import {
   buildCollectorHistoryPlanillaRows,
-  clientRefsLentOnDate,
   dayLoanDisbursementRows,
   dayLoanDisbursementTotal,
   expensesWithDayLoans,
@@ -1550,10 +1549,6 @@ export function CollectorMobileApp({
     () => splitDayExpenses(planillaExpenses),
     [planillaExpenses],
   );
-  const lentClientRefs = useMemo(
-    () => clientRefsLentOnDate(activeDate, savedExpensesRaw, loans, clients, loanScope),
-    [activeDate, savedExpensesRaw, loans, clients, loanScope],
-  );
 
   const closedPlanilla = useMemo(
     () =>
@@ -2892,7 +2887,6 @@ export function CollectorMobileApp({
                   !dayLocked &&
                   canCollect &&
                   Boolean(onCreateQuickLoan);
-                const lentToday = lentClientRefs.has(item.clientRef);
                 const canAct =
                   !identity.awaitingLoan &&
                   item.visitStatus !== "omitido" &&
@@ -2913,7 +2907,6 @@ export function CollectorMobileApp({
                           ? "collector-mobile-card is-open is-dense"
                           : "collector-mobile-card is-dense",
                       identity.awaitingLoan ? "is-awaiting-loan" : "",
-                      lentToday ? "is-lent-today" : "",
                       routeStart ? "is-route-start" : "",
                     ]
                       .filter(Boolean)

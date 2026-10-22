@@ -1,4 +1,4 @@
-import { collapseTodayOpenVisits, fetchOpsTable, fetchOpsTableSince } from "@/lib/supabase/ops-mirror";
+import { collapseTodayOpenVisits, dropOpenCuotasNotDue, fetchOpsTable, fetchOpsTableSince } from "@/lib/supabase/ops-mirror";
 import { createMirrorServerClient } from "@/lib/supabase/admin";
 import {
   changedSinceCursor,
@@ -115,8 +115,11 @@ export async function GET(request: Request) {
       assignmentsTodayComplete = true;
     }
     const daily_assignments = since
-      ? { ...assignmentsPart, rows: assignmentRows }
-      : { ...assignmentsPart, rows: await collapseTodayOpenVisits(assignmentsPart.rows) };
+      ? { ...assignmentsPart, rows: await dropOpenCuotasNotDue(assignmentRows) }
+      : {
+          ...assignmentsPart,
+          rows: await dropOpenCuotasNotDue(await collapseTodayOpenVisits(assignmentsPart.rows)),
+        };
 
     return jsonNoStore({
       ok: true,
