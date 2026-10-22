@@ -70,10 +70,10 @@ export function BankAccountListView({
         <table className="data list-grid bank-accounts-table">
           <thead>
             <tr className="col-titles">
-              {isVisible("ref") ? <th>Ref.</th> : null}
-              {isVisible("name") ? <th>Etiqueta</th> : null}
-              {isVisible("type") ? <th>Tipo</th> : null}
-              {isVisible("bank") ? <th>Banco</th> : null}
+              {isVisible("ref") ? <th className="left">Ref.</th> : null}
+              {isVisible("name") ? <th className="left">Etiqueta</th> : null}
+              {isVisible("type") ? <th className="left">Tipo</th> : null}
+              {isVisible("bank") ? <th className="left">Banco</th> : null}
               {isVisible("number") ? <th>Número</th> : null}
               {isVisible("pending") ? <th className="center">Registro a conciliar</th> : null}
               {isVisible("balance") ? <th className="right">Saldo</th> : null}
@@ -111,7 +111,7 @@ export function BankAccountListView({
                 return (
                   <tr key={account.ref}>
                     {isVisible("ref") ? (
-                      <td className="ref">
+                      <td className="ref left">
                         <button
                           type="button"
                           className="bank-inline-link"
@@ -122,9 +122,9 @@ export function BankAccountListView({
                         </button>
                       </td>
                     ) : null}
-                    {isVisible("name") ? <td>{account.name}</td> : null}
-                    {isVisible("type") ? <td>{bankAccountTypeLabel(account.accountType)}</td> : null}
-                    {isVisible("bank") ? <td>{account.bankName}</td> : null}
+                    {isVisible("name") ? <td className="left">{account.name}</td> : null}
+                    {isVisible("type") ? <td className="left">{bankAccountTypeLabel(account.accountType)}</td> : null}
+                    {isVisible("bank") ? <td className="left">{account.bankName}</td> : null}
                     {isVisible("number") ? <td>{account.accountNumber}</td> : null}
                     {isVisible("pending") ? (
                       <td className="center">

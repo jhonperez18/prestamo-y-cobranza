@@ -15900,6 +15900,10 @@
     table.data.list-grid.bank-accounts-table td {
       color: #111;
     }
+    table.data.list-grid.bank-accounts-table th.left,
+    table.data.list-grid.bank-accounts-table td.left {
+      text-align: left !important;
+    }
     .bank-accounts-table .bank-account-edit-btn {
       height: 18px !important;
       min-height: 0 !important;
