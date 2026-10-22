@@ -71,6 +71,28 @@
   text-align: right !important;
 }
 
+.table:global(.data) thead th.saldoHead {
+  overflow: visible;
+  white-space: normal;
+  line-height: 1.15;
+  vertical-align: bottom;
+}
+
+.saldoTotal {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
 .table:global(.data) th.is-nombre,
 .table:global(.data) td.is-nombre {
   padding-left: 6px !important;

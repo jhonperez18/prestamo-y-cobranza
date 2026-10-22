@@ -206,7 +206,12 @@ export function MonthlyReportView() {
                     {Number(iso.slice(8, 10))}
                   </th>
                 ))}
-                <th className={styles.sum}>Saldo</th>
+                <th className={`${styles.sum} ${styles.saldoHead}`}>
+                  <span className={styles.saldoTotal}>
+                    {pesos(sheet.rows.reduce((sum, row) => sum + (Number(row.saldo) || 0), 0))}
+                  </span>
+                  Saldo
+                </th>
               </tr>
             </thead>
             <tbody>
