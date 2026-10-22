@@ -83,6 +83,12 @@
   font-weight: 700;
 }
 
+.loan {
+  background: #8ec8f0 !important;
+  color: #111;
+  font-weight: 700;
+}
+
 .head {
   display: flex;
   flex-wrap: wrap;

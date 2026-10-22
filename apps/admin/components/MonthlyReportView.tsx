@@ -218,7 +218,13 @@ export function MonthlyReportView() {
                   {row.cells.map((cell, index) => (
                     <td
                       key={sheet.days[index] ?? index}
-                      className={cell?.kind === "renewal" ? `${styles.day} ${styles.renewal}` : styles.day}
+                      className={
+                        cell?.kind === "renewal"
+                          ? `${styles.day} ${styles.renewal}`
+                          : cell?.kind === "loan"
+                            ? `${styles.day} ${styles.loan}`
+                            : styles.day
+                      }
                       title={cell ? cellTitle(cell) : "No pagó"}
                     >
                       {cell ? miles(cell.amount) : "-"}
