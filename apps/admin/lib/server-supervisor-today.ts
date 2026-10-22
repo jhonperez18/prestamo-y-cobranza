@@ -36,16 +36,16 @@ export async function loadSupervisorToday(
     fetchOpsTableSince("day_expenses", "expense_date", date, date),
   ]);
   if (!paymentsT.ok || ("skipped" in paymentsT && paymentsT.skipped)) {
-    return { ok: false, error: "error" in paymentsT ? paymentsT.error : "payments_failed" };
+    return { ok: false, error: ("error" in paymentsT && paymentsT.error) || "payments_failed" };
   }
   if (!assignsT.ok || ("skipped" in assignsT && assignsT.skipped)) {
-    return { ok: false, error: "error" in assignsT ? assignsT.error : "assignments_failed" };
+    return { ok: false, error: ("error" in assignsT && assignsT.error) || "assignments_failed" };
   }
   if (!closesT.ok || ("skipped" in closesT && closesT.skipped)) {
-    return { ok: false, error: "error" in closesT ? closesT.error : "closes_failed" };
+    return { ok: false, error: ("error" in closesT && closesT.error) || "closes_failed" };
   }
   if (!expensesT.ok || ("skipped" in expensesT && expensesT.skipped)) {
-    return { ok: false, error: "error" in expensesT ? expensesT.error : "expenses_failed" };
+    return { ok: false, error: ("error" in expensesT && expensesT.error) || "expenses_failed" };
   }
 
   return {
