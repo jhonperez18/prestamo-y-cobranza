@@ -87,6 +87,7 @@ import { canRenewLoan } from "@/lib/loan-renew";
 import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
+import { useRouteSheet } from "@/lib/use-route-sheet";
 import { useSupervisorToday } from "@/lib/use-supervisor-today";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import {
@@ -1310,6 +1311,9 @@ export function SupervisorMobileApp({
   /** Regla: al ingresar siempre INICIO (no restaurar otra pestaña). */
   const [view, setView] = useState<SupervisorView>("inicio");
   const supervisorDirect = isSupervisorLiveDevice();
+  const routeSheet = useRouteSheet(view === "clientes" || view === "prestamos");
+  const sheetClients = routeSheet.sheet?.clients ?? null;
+  const sheetLoans = routeSheet.sheet?.loans ?? null;
   const serverToday = useSupervisorToday(supervisorDirect, view);
   const serverDay = serverToday.data?.date === today ? serverToday.data : null;
   const paymentsLive = serverDay
@@ -3711,15 +3715,15 @@ export function SupervisorMobileApp({
   }, [clients, todayAssignments, planillaRouteFilter, routes]);
 
   const supervisorClientRows = useMemo(() => {
-    // Solo al abrir Clientes. En Inicio no se recorre toda la cartera.
-    if (view !== "clientes") return [];
+    // Solo al abrir Clientes. La hoja es la ficha del sistema, no la copia del aparato.
+    if (view !== "clientes" || !sheetClients || !sheetLoans) return [];
     const base = clientesRouteFilter
-      ? clientsOnRouteSorted(clients, clientesRouteFilter).filter(isOperationalClient)
-      : clients.filter(isOperationalClient).slice().sort(compareClientsByRoutePosition);
+      ? clientsOnRouteSorted(sheetClients, clientesRouteFilter).filter(isOperationalClient)
+      : sheetClients.filter(isOperationalClient).slice().sort(compareClientsByRoutePosition);
 
     return base.map((row) => {
-      const loan = currentActiveLoan(row.ref, loans, payments);
-      const cuotas = computeLoanCuotasProgress(loan, payments, today);
+      const loan = currentActiveLoan(row.ref, sheetLoans, payments);
+      const cuotas = computeLoanCuotasProgress(loan, [], today);
       return {
         ref: row.ref,
         route: String(row.route || "").trim(),
@@ -3732,7 +3736,7 @@ export function SupervisorMobileApp({
         renewAlert: canRenewLoan(loan, today),
       };
     });
-  }, [clients, clientesRouteFilter, loans, payments, today, view]);
+  }, [clientesRouteFilter, payments, sheetClients, sheetLoans, today, view]);
 
   const clientesSearchActive = clientesModifyMode || clientesSearchOpen;
   const clientesModifyRows = useMemo(() => {
@@ -3759,12 +3763,12 @@ export function SupervisorMobileApp({
   );
 
   const clientesLoanClient =
-    clients.find((row) => row.ref === clientesLoanClientRef) ?? null;
+    (sheetClients ?? clients).find((row) => row.ref === clientesLoanClientRef) ?? null;
   const clientesLoanSynced = clientesLoanClient
-    ? currentActiveLoan(clientesLoanClient.ref, loans, payments)
+    ? currentActiveLoan(clientesLoanClient.ref, sheetLoans ?? loans, payments)
     : null;
   const clientesPreviousLoan = clientesLoanClient
-    ? previousLoanForClient(clientesLoanClient.ref, loans, payments)
+    ? previousLoanForClient(clientesLoanClient.ref, sheetLoans ?? loans, payments)
     : null;
   const clientesCurrentPdfReport = useMemo(() => {
     if (!clientesLoanSynced || !clientesLoanClient) return null;
@@ -3795,30 +3799,31 @@ export function SupervisorMobileApp({
 
   /** Préstamos actuales (saldo vivo): uno por cliente, el activo a la fecha. */
   const prestamosEnRuta = useMemo(() => {
+    if (!sheetClients || !sheetLoans) return [];
     const byClient = new Map<string, LoanRow>();
     const seen = new Set<string>();
-    for (const loan of loans) {
+    for (const loan of sheetLoans) {
       if (!loan.clientRef || seen.has(loan.clientRef)) continue;
       seen.add(loan.clientRef);
-      const synced = currentActiveLoan(loan.clientRef, loans, payments);
+      const synced = currentActiveLoan(loan.clientRef, sheetLoans, payments);
       if (synced) byClient.set(loan.clientRef, synced);
     }
     let rows = [...byClient.values()];
     if (prestamosRouteFilter) {
       rows = rows.filter((loan) => {
-        const client = clients.find((row) => row.ref === loan.clientRef);
+        const client = sheetClients.find((row) => row.ref === loan.clientRef);
         return sameRoute(client?.route, prestamosRouteFilter);
       });
     }
     return rows.sort((a, b) => {
-      const clientA = clients.find((row) => row.ref === a.clientRef);
-      const clientB = clients.find((row) => row.ref === b.clientRef);
+      const clientA = sheetClients.find((row) => row.ref === a.clientRef);
+      const clientB = sheetClients.find((row) => row.ref === b.clientRef);
       const byRoute = compareRouteNames(clientA?.route || "", clientB?.route || "");
       if (byRoute) return byRoute;
       if (clientA && clientB) return compareClientsByRoutePosition(clientA, clientB);
       return (a.client || "").localeCompare(b.client || "", "es");
     });
-  }, [clients, loans, payments, prestamosRouteFilter]);
+  }, [payments, prestamosRouteFilter, sheetClients, sheetLoans]);
 
   /** Suma de saldos de la ruta del pin activo (1 / 1.1 / 2). */
   const prestamosSaldoRuta = useMemo(
@@ -3837,7 +3842,7 @@ export function SupervisorMobileApp({
   }, [prestamosEnRuta, prestamosSearch]);
 
   const prestamoFichaLoan = prestamoFichaRef
-    ? loans.find((row) => row.ref === prestamoFichaRef) ?? null
+    ? (sheetLoans ?? loans).find((row) => row.ref === prestamoFichaRef) ?? null
     : null;
   const prestamoFichaClient = prestamoFichaLoan
     ? clients.find((row) => row.ref === prestamoFichaLoan.clientRef) ?? null
@@ -3845,7 +3850,7 @@ export function SupervisorMobileApp({
   const prestamoPdfReport = useMemo(() => {
     if (!prestamoFichaLoan || !prestamoFichaClient) return null;
     const live = livePayments(paymentsWithEvidence);
-    const synced = syncLoan(prestamoFichaLoan, isSupervisorLiveDevice() ? undefined : live) as LoanRow;
+    const synced = syncLoan(prestamoFichaLoan) as LoanRow;
     return buildLoanReport(synced, prestamoFichaClient, live, assignments);
   }, [assignments, paymentsWithEvidence, prestamoFichaClient, prestamoFichaLoan]);
 
@@ -6134,11 +6139,15 @@ export function SupervisorMobileApp({
               </div>
               {prestamosActuales.length === 0 ? (
                 <p className="ficha-empty">
-                  {prestamosSearch.trim()
-                    ? "No hay préstamos activos con ese filtro."
-                    : prestamosRouteFilter
-                      ? `Sin préstamos activos en ruta ${prestamosRouteFilter}.`
-                      : "Sin préstamos activos."}
+                  {routeSheet.status === "loading"
+                    ? "Cargando la hoja del sistema…"
+                    : routeSheet.status === "error"
+                      ? "No se pudo cargar la hoja del sistema."
+                      : prestamosSearch.trim()
+                        ? "No hay préstamos activos con ese filtro."
+                        : prestamosRouteFilter
+                          ? `Sin préstamos activos en ruta ${prestamosRouteFilter}.`
+                          : "Sin préstamos activos."}
                 </p>
               ) : (
                 <ul
@@ -6445,11 +6454,15 @@ export function SupervisorMobileApp({
               ) : null}
               {clientesListRows.length === 0 ? (
                 <p className="ficha-empty">
-                  {clientesSearchActive && clientesEditSearch.trim()
-                    ? "No hay clientes con ese filtro."
-                    : clientesRouteFilter
-                    ? `No hay clientes en la ruta ${clientesRouteFilter}.`
-                    : "No hay clientes activos."}
+                  {routeSheet.status === "loading"
+                    ? "Cargando la hoja del sistema…"
+                    : routeSheet.status === "error"
+                      ? "No se pudo cargar la hoja del sistema."
+                      : clientesSearchActive && clientesEditSearch.trim()
+                        ? "No hay clientes con ese filtro."
+                        : clientesRouteFilter
+                          ? `No hay clientes en la ruta ${clientesRouteFilter}.`
+                          : "No hay clientes activos."}
                 </p>
               ) : (
                 <ClientesTable
