@@ -18,7 +18,7 @@ import {
   type MonthlyRouteName,
   type MonthSheetCell,
 } from "@/lib/monthly-route-sheet";
-import { type PaymentRow } from "@/lib/mock-data";
+import { money, type PaymentRow } from "@/lib/mock-data";
 import { useRouteSheet } from "@/lib/use-route-sheet";
 import type { PaymentMirrorRow } from "@/lib/supabase/payment-mirror";
 import styles from "./MonthlyReportView.module.css";
@@ -50,6 +50,10 @@ function paymentFromMirror(row: PaymentMirrorRow): PaymentRow | null {
 
 function miles(value: number) {
   return sheetMiles(value) || "0";
+}
+
+function pesos(value: number) {
+  return money(value, { symbol: false });
 }
 
 function cellTitle(cell: MonthSheetCell) {
@@ -173,7 +177,7 @@ export function MonthlyReportView() {
         )
       ) : null}
       <p className={styles.note}>
-        Números en miles, sin punto: 70 es 70.000. Si ese día no pagó, va «-». El saldo resta esos pagos del inicial.
+        Los días van en miles, sin punto: 70 es 70.000. Inicial y saldo van con punto: 1.500.000. Si ese día no pagó, va «-».
         La celda ámbar es una renovación: el total nuevo, y de ahí se sigue restando.
       </p>
       {loading ? (
@@ -212,7 +216,7 @@ export function MonthlyReportView() {
                 <tr key={row.clientRef}>
                   <td className={styles.pos}>{row.order || ""}</td>
                   <td className="is-nombre" title={row.name}>{row.name}</td>
-                  <td className={styles.sum}>{miles(row.inicial)}</td>
+                  <td className={styles.sum}>{pesos(row.inicial)}</td>
                   {row.cells.map((cell, index) => (
                     <td
                       key={sheet.days[index] ?? index}
@@ -222,7 +226,7 @@ export function MonthlyReportView() {
                       {cell ? miles(cell.amount) : "-"}
                     </td>
                   ))}
-                  <td className={styles.sum}>{miles(row.saldo)}</td>
+                  <td className={styles.sum}>{pesos(row.saldo)}</td>
                 </tr>
               ))}
             </tbody>
