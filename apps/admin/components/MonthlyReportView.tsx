@@ -14,12 +14,11 @@ import {
   monthLabel,
   monthStartIso,
   recentMonths,
-  sheetMiles,
   type MonthlyRouteName,
   type MonthSheetCell,
 } from "@/lib/monthly-route-sheet";
+import { money, type PaymentRow } from "@/lib/mock-data";
 import { useRouteSheet } from "@/lib/use-route-sheet";
-import type { PaymentRow } from "@/lib/mock-data";
 import type { PaymentMirrorRow } from "@/lib/supabase/payment-mirror";
 import styles from "./MonthlyReportView.module.css";
 
@@ -46,6 +45,10 @@ function paymentFromMirror(row: PaymentMirrorRow): PaymentRow | null {
     collector: "",
     kind: "pending",
   };
+}
+
+function pesos(value: number) {
+  return money(value, { symbol: false });
 }
 
 function cellTitle(cell: MonthSheetCell) {
@@ -159,11 +162,8 @@ export function MonthlyReportView() {
         </div>
       ) : null}
       <p className={styles.note}>
-        Miles de pesos, sin punto. Solo días de cobro. El inicial es lo que debía el día 1.
-        {sheet?.open
-          ? " El saldo es el corte de hoy; al cerrar el mes, ese número es el inicial del mes siguiente."
-          : " El saldo de este mes es el inicial del mes siguiente."}
-        {" "}La celda ámbar es una renovación: el total nuevo, y de ahí se resta.
+        Inicial es lo que debía el día 1. Si ese día no pagó, va «-». El saldo resta esos pagos del inicial.
+        La celda ámbar es una renovación: el total nuevo, y de ahí se sigue restando.
       </p>
       {loading ? (
         <p className="ficha-empty">Cargando la hoja del sistema…</p>
@@ -173,42 +173,36 @@ export function MonthlyReportView() {
         <p className="ficha-empty">Sin saldo en la ruta {route} este mes.</p>
       ) : (
         <div className={styles.wrap}>
-          <table className={styles.table}>
+          <table className={`data ${styles.table}`}>
             <thead>
-              <tr>
-                <th className={styles.pos}>#</th>
-                <th className={styles.name}>Nombre</th>
-                <th className={`${styles.money} ${styles.ini}`}>Inicial</th>
+              <tr className="col-titles">
+                <th>#</th>
+                <th className="is-nombre">Nombre</th>
+                <th className="money">Inicial</th>
                 {sheet.days.map((iso) => (
                   <th key={iso} className={styles.day} title={`${weekdayLabel(iso)} ${isoToDisplay(iso)}`}>
                     {Number(iso.slice(8, 10))}
                   </th>
                 ))}
-                <th className={`${styles.money} ${styles.end}`}>Saldo</th>
+                <th className="money">Saldo</th>
               </tr>
             </thead>
             <tbody>
               {sheet.rows.map((row) => (
                 <tr key={row.clientRef}>
-                  <td className={styles.pos}>{row.order || ""}</td>
-                  <td className={styles.name} title={row.name}>{row.name}</td>
-                  <td className={`${styles.money} ${styles.ini}`}>{sheetMiles(row.inicial)}</td>
+                  <td>{row.order || ""}</td>
+                  <td className="is-nombre" title={row.name}>{row.name}</td>
+                  <td className="money">{pesos(row.inicial)}</td>
                   {row.cells.map((cell, index) => (
                     <td
                       key={sheet.days[index] ?? index}
-                      className={
-                        cell?.kind === "renewal"
-                          ? `${styles.day} ${styles.renewal}`
-                          : cell?.kind === "loan"
-                            ? `${styles.day} ${styles.loan}`
-                            : styles.day
-                      }
-                      title={cell ? cellTitle(cell) : undefined}
+                      className={cell?.kind === "renewal" ? `${styles.day} ${styles.renewal}` : styles.day}
+                      title={cell ? cellTitle(cell) : "No pagó"}
                     >
-                      {cell ? sheetMiles(cell.amount) : ""}
+                      {cell ? pesos(cell.amount) : "-"}
                     </td>
                   ))}
-                  <td className={`${styles.money} ${styles.end}`}>{sheetMiles(row.saldo) || "0"}</td>
+                  <td className="money">{pesos(row.saldo)}</td>
                 </tr>
               ))}
             </tbody>
