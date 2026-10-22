@@ -7,6 +7,7 @@ import {
   isFlatLoanTerms,
   loanPreviewFromRow,
   mergeSchedulePaid,
+  settledLoanLedger,
   type LoanPreview,
   type LoanScheduleEntry,
 } from "@/lib/loan-preview";
@@ -149,18 +150,19 @@ export function computeLoanFinancials(loan: LoanRow, payments: PaymentRow[]): Lo
   const installment = installmentValue;
   const days = loan.days ?? preview?.days;
   const previewTotal = loan.total ?? preview?.total ?? totalAgreement;
+  const settled = settledLoanLedger(loan);
 
   return {
     schedule,
     totalAgreement,
-    paidTotal,
-    balancePending,
+    paidTotal: settled ? settled.paid : paidTotal,
+    balancePending: settled ? 0 : balancePending,
     interestTotal,
     interestPaid,
-    interestPending,
+    interestPending: settled ? 0 : interestPending,
     capitalTotal,
     capitalPaid,
-    capitalPending,
+    capitalPending: settled ? 0 : capitalPending,
     capitalDueDate,
     installmentsTotal,
     installmentsPaid,

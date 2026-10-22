@@ -973,12 +973,35 @@ function paidFromPayments(
   );
 }
 
+/**
+ * Préstamo ya cerrado: manda la ficha (saldo 0).
+ * Renovado: lo que debía siguió en el P- de continuación.
+ * Una lista de cobros incompleta no lo reabre ni le inventa un saldo.
+ */
+export function settledLoanLedger(loan: {
+  status?: string;
+  balance?: number;
+  paid?: number;
+  notes?: string | null;
+}): { paid: number; balance: number } | null {
+  const status = String(loan.status ?? "")
+    .toLowerCase()
+    .replace(/\s+/g, "");
+  const closed = status === "finalizado" || status === "eliminado" || status === "cancelado";
+  const balance = pesos(loan.balance ?? 0);
+  if (!loanRenewedInto(loan) && !(closed && balance <= 0)) return null;
+  return { paid: pesos(loan.paid ?? 0), balance: 0 };
+}
+
 /** Recaudado y saldo alineados con movimientos reales cuando hay pagos. */
 function resolveLoanLedger(
   terms: LoanTermsRow,
   total: number,
   payments?: LoanPaymentTouch[],
 ) {
+  const settled = settledLoanLedger(terms);
+  if (settled) return settled;
+
   if (payments === undefined) {
     const paid = pesos(terms.paid ?? 0);
     return { paid, balance: pendingBalance(total, paid) };
@@ -1038,8 +1061,7 @@ export function normalizeLoan<T extends LoanTermsRow>(
     pact: flat ? ("valor" as const) : effectivePact("interes", terms.pact),
     rate: flat ? 0 : effectivePact("interes", terms.pact) === "tasa" ? (terms.rate ?? 0) : 0,
     paid: ledger.paid,
-    // Renovado: su deuda siguió en el P- de continuación. Recalcular con sus cobros no lo reabre.
-    balance: loanRenewedInto(terms) ? 0 : ledger.balance,
+    balance: ledger.balance,
   };
   const reconciled = reconcileLoanCollectionAlerts(
     merged as LoanRow,
