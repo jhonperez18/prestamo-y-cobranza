@@ -183,9 +183,10 @@ function buildPlanillaLoanIndex(
 
 /**
  * `sheetOpen`: la hoja de ese cobrador y ruta sigue abierta hoy.
- * El préstamo ya salió de la ruta. La cuota entra si el cronograma la tiene ese día
- * (día de cobro = desembolso) o si no hay cronograma. La renovación queda por cobrar
- * hoy con la hoja abierta. Con la hoja ya cerrada, el préstamo de hoy entra mañana.
+ * El préstamo de hoy sale de la ruta si el cronograma no cobra hoy. El resto sigue
+ * la regla de inicio: pasada la primera cuota, entra todos los días. La renovación
+ * queda por cobrar hoy con la hoja abierta. Con la hoja ya cerrada, el préstamo de
+ * hoy entra mañana.
  */
 function loanItemsForClient(
   client: ClientRow,
@@ -206,7 +207,7 @@ function loanItemsForClient(
     if (startedIso === date && !paidToday && !sheetOpen) continue;
     // Renovación: la cuota nueva queda por cobrar hoy si la hoja sigue abierta.
     const renewalDueToday = startedIso === date && sheetOpen && isCashlessRenewal(loan);
-    // Préstamo con cronograma: solo el día de cobro que trae la ficha.
+    // Regla de inicio: pasada la primera cuota, sigue en la ruta.
     if (!renewalDueToday && !loanIsCollectibleOn(loan, date)) continue;
 
     const installment = resolvedLoanInstallment(loan);

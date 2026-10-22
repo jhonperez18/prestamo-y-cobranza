@@ -33,33 +33,24 @@ export function firstScheduleCollectionIso(loan: LoanRow) {
   return dates[0] ?? null;
 }
 
-function spacedFrequency(frequency: string | undefined) {
-  const value = String(frequency || "").trim().toLowerCase();
-  return value === "semanal" || value === "quincenal" || value === "mensual";
-}
-
 /**
- * Día de cobro.
- * Diario (o sin frecuencia): desde la primera cuota, todos los días, aunque la
- * lista finita ya no nombre hoy. La primera cuota que todavía no llega no entra.
- * Semanal, quincenal y mensual: solo el día que está en la ficha.
- * El desembolso de hoy no entra si hoy no está en el cronograma. La renovación
- * de hoy se decide antes, en la planilla. Sin cronograma, sigue el cobro de siempre.
+ * Día de cobro. La regla de inicio no cambia: pasada la primera cuota, el
+ * cliente sigue en la ruta todos los días, en cualquier frecuencia.
+ * Sin cronograma, también. El préstamo de hoy sale de la ruta si hoy no está
+ * en el cronograma. La renovación de hoy se decide antes, en la planilla.
  */
 export function loanIsCollectibleOn(loan: LoanRow, selectedDate: string) {
   const day = scheduleDateToIso(selectedDate);
   if (!day) return true;
 
-  const dates = (loan.schedule ?? [])
-    .filter((line) => (line.kind ?? "cuota") !== "capital")
-    .map((line) => scheduleDateToIso(line.date))
-    .filter((iso) => /^\d{4}-\d{2}-\d{2}$/.test(iso));
-  if (dates.includes(day)) return true;
-  if (dates.length === 0) return true;
+  const lines = loan.schedule ?? [];
+  for (const line of lines) {
+    if ((line.kind ?? "cuota") === "capital") continue;
+    if (scheduleDateToIso(line.date) === day) return true;
+  }
+
+  if (!lines.length) return true;
   if (loanDisbursementIsoDate(loan) === day) return false;
-  if (spacedFrequency(loan.frequency)) return false;
-  const first = [...dates].sort()[0];
-  if (first && first > day) return false;
   return true;
 }
 

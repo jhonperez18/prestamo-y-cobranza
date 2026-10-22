@@ -1148,8 +1148,8 @@ function openCuotaOffDay(
 
 /**
  * Visita abierta y sin pago que hoy no toca (`loanIsCollectibleOn`).
- * Diario sigue aunque el cronograma finito ya no nombre el día.
- * Semanal, quincenal y mensual solo el día de la ficha.
+ * Misma regla de inicio de la planilla: pasada la primera cuota, sigue.
+ * El préstamo de hoy sin esa fecha en el cronograma no se queda.
  * La renovación de hoy sí se cobra hoy. El día cerrado no se toca.
  */
 export async function dropOpenCuotasNotDue(rows: Record<string, unknown>[]) {
