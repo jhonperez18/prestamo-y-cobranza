@@ -156,7 +156,7 @@ export function MonthlyReportView() {
       </div>
       {historyOpen ? (
         months.length === 0 ? (
-          <p className={styles.note}>Todavía no hay un mes cerrado. El primero es octubre y se corta el último día.</p>
+          <p className={styles.note}>Todavía no hay un mes cerrado.</p>
         ) : (
           <div className={`weekly-report-scopes ${styles.months}`}>
             {months.map((item) => (
@@ -185,6 +185,15 @@ export function MonthlyReportView() {
       ) : (
         <div className={styles.wrap}>
           <table className={`data ${styles.table}`}>
+            <colgroup>
+              <col className={styles.colPos} />
+              <col className={styles.colName} />
+              <col className={styles.colSum} />
+              {sheet.days.map((iso) => (
+                <col key={iso} />
+              ))}
+              <col className={styles.colSum} />
+            </colgroup>
             <thead>
               <tr className="col-titles">
                 <th className={styles.pos}>#</th>

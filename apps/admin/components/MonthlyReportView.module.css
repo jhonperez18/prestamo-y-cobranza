@@ -4,8 +4,21 @@
 }
 
 .table {
-  width: max-content;
+  width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
+}
+
+.colPos {
+  width: 2.8rem;
+}
+
+.colName {
+  width: 10.5rem;
+}
+
+.colSum {
+  width: 5.6rem;
 }
 
 .table:global(.data) th,
@@ -26,35 +39,32 @@
   z-index: 2;
 }
 
+.table:global(.data) th {
+  white-space: nowrap;
+}
+
 .table:global(.data) th.pos,
 .table:global(.data) td.pos {
-  width: 2ch;
-  min-width: 1.7rem;
-  padding-left: 2px !important;
-  padding-right: 2px !important;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
 }
 
 .table:global(.data) th.day,
 .table:global(.data) td.day {
-  width: 2ch;
-  min-width: 1.85rem;
   padding-left: 2px !important;
   padding-right: 2px !important;
 }
 
 .table:global(.data) th.sum,
 .table:global(.data) td.sum {
-  width: 4ch;
-  min-width: 2.6rem;
-  padding-left: 4px !important;
-  padding-right: 4px !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
 }
 
 .table:global(.data) th.is-nombre,
 .table:global(.data) td.is-nombre {
-  min-width: 7.5rem;
-  padding-left: 8px !important;
-  padding-right: 8px !important;
+  padding-left: 6px !important;
+  padding-right: 4px !important;
 }
 
 .renewal {
