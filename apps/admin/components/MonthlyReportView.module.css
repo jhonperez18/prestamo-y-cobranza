@@ -14,11 +14,11 @@
 }
 
 .colName {
-  width: 10.5rem;
+  width: 8rem;
 }
 
 .colSum {
-  width: 7.4rem;
+  width: 6.6rem;
 }
 
 .table:global(.data) th,
@@ -55,6 +55,10 @@
   padding-right: 2px !important;
 }
 
+.table:global(.data) td.day {
+  text-align: right !important;
+}
+
 .table:global(.data) th.sum,
 .table:global(.data) td.sum {
   padding-left: 8px !important;
@@ -65,7 +69,7 @@
 .table:global(.data) th.is-nombre,
 .table:global(.data) td.is-nombre {
   padding-left: 6px !important;
-  padding-right: 4px !important;
+  padding-right: 2px !important;
 }
 
 .renewal {
