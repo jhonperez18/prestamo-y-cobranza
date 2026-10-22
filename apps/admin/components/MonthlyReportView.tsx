@@ -185,6 +185,10 @@ export function MonthlyReportView() {
       ) : sheet.rows.length === 0 ? (
         <p className="ficha-empty">Sin saldo en la ruta {route} este mes.</p>
       ) : (
+        <>
+        <div className={styles.saldoTotal}>
+          {pesos(sheet.rows.reduce((sum, row) => sum + (Number(row.saldo) || 0), 0))}
+        </div>
         <div className={styles.wrap}>
           <table className={`data ${styles.table}`}>
             <colgroup>
@@ -206,12 +210,7 @@ export function MonthlyReportView() {
                     {Number(iso.slice(8, 10))}
                   </th>
                 ))}
-                <th className={`${styles.sum} ${styles.saldoHead}`}>
-                  <span className={styles.saldoTotal}>
-                    {pesos(sheet.rows.reduce((sum, row) => sum + (Number(row.saldo) || 0), 0))}
-                  </span>
-                  Saldo
-                </th>
+                <th className={styles.sum}>Saldo</th>
               </tr>
             </thead>
             <tbody>
@@ -241,6 +240,7 @@ export function MonthlyReportView() {
             </tbody>
           </table>
         </div>
+        </>
       )}
       </>
       ) : null}

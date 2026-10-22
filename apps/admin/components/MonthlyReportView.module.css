@@ -71,25 +71,18 @@
   text-align: right !important;
 }
 
-.table:global(.data) thead th.saldoHead {
-  overflow: visible;
-  white-space: normal;
-  line-height: 1.15;
-  vertical-align: bottom;
-}
-
 .saldoTotal {
-  display: block;
-  margin: 0;
-  padding: 0;
+  margin: 0 0 2px;
+  padding: 0 8px 0 0;
   border: 0;
   background: none;
   box-shadow: none;
   color: #fff;
-  font-size: 12px;
+  font-size: 22px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  line-height: 1.15;
+  line-height: 1.1;
+  text-align: right;
   white-space: nowrap;
 }
 
