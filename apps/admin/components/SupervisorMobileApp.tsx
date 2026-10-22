@@ -1731,7 +1731,7 @@ export function SupervisorMobileApp({
           statusKind = "closed";
         }
       }
-      if (!closed && loansToday.length > 0 && statusKind !== "ok") {
+      if (!closed && loansToday.length > 0) {
         statusLabel =
           loansToday.length === 1
             ? "1 préstamo hoy"
