@@ -65,9 +65,9 @@ function loadRouteSheetOnce(): Promise<RouteSheet | null> {
 }
 
 /**
- * Clientes y préstamos de las hojas CLIENTES y PRÉSTAMOS.
+ * Clientes y préstamos de CLIENTES, PRÉSTAMOS y de la cartera del informe.
  * Una sola lectura de la ficha por apertura. No se guarda en el aparato:
- * la copia local no puede pintar otra hoja.
+ * la copia local no puede pintar otra hoja ni otra cartera.
  */
 export function useRouteSheet(active: boolean): RouteSheetState {
   const [state, setState] = useState<RouteSheetState>(() =>

@@ -1322,7 +1322,7 @@ export function SupervisorMobileApp({
   const [view, setView] = useState<SupervisorView>("inicio");
   const supervisorDirect = isSupervisorLiveDevice();
   const routeSheet = useRouteSheet(
-    view === "clientes" || view === "prestamos" || view === "planilla",
+    view === "clientes" || view === "prestamos" || view === "planilla" || view === "informe",
   );
   const sheetClients = routeSheet.sheet?.clients ?? null;
   const sheetLoans = routeSheet.sheet?.loans ?? null;
@@ -5300,10 +5300,16 @@ export function SupervisorMobileApp({
             </div>
           ) : null}
           {!historialOpen || openInformeSnapshot ? (
-            informeTab === "general" ? (
+            !historialOpen && (!sheetLoans || !sheetClients) ? (
+            <p className="ficha-empty">
+              {routeSheet.status === "error"
+                ? "No se pudo cargar la cartera."
+                : "Cargando la cartera…"}
+            </p>
+          ) : informeTab === "general" ? (
             <SupervisorMonthlyReport
-              loans={loans}
-              clients={clients}
+              loans={sheetLoans ?? loans}
+              clients={sheetClients ?? clients}
               payments={payments}
               efectivo={informeEfectivo}
               banco={bancoSaldo}
@@ -5315,8 +5321,8 @@ export function SupervisorMobileApp({
           ) : (
             <SupervisorOwnRouteReport
               route={INFORME_A_ROUTE}
-              loans={loans}
-              clients={clients}
+              loans={sheetLoans ?? loans}
+              clients={sheetClients ?? clients}
               payments={payments}
               efectivo={informeAEfectivo}
               nequi={nequiRutaSaldo}
