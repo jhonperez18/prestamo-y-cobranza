@@ -53,7 +53,7 @@ export function buildCarteraPortfolioLoanRows(
 ): CarteraPortfolioLoanRow[] {
   const clientByRef = new Map(clients.map((client) => [client.ref, client]));
 
-  return activeLoans(loans.map((loan) => syncLoan(loan, payments) as LoanRow))
+  return activeLoans(loans.map((loan) => syncLoan(loan) as LoanRow))
     .map((loan) => {
       const balance = computeLoanFinancials(loan, payments).balancePending;
       if (balance <= 0) return null;

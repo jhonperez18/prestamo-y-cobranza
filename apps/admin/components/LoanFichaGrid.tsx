@@ -52,7 +52,7 @@ export function LoanFichaGrid({ loans, payments, selectedRef, onSelect }: Props)
               </tr>
             ) : (
               ordered.map((loan) => {
-                const synced = syncLoan(loan, payments) as LoanRow;
+                const synced = syncLoan(loan) as LoanRow;
                 const financials = computeLoanFinancials(synced, payments);
                 const cells = loanFichaRow(synced, money, {
                   paid: financials.paidTotal,

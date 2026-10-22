@@ -80,20 +80,19 @@ export function syncCollectorLiveLoan(
 }
 
 /**
- * El saldo que se muestra es el de la ficha (la base), no la suma de los cobros
- * que este celular tenga. El cobrador solo guarda el día. El supervisor guarda
- * una lista que no es el libro: rehacer el saldo con ella lo cambia al minuto.
+ * El cobrador y el supervisor no rehacen el saldo con su lista de cobros.
+ * El panel tampoco: `syncDeviceLoans` usa la ficha en todos.
  */
 export function deviceTrustsLoanFicha(): boolean {
   return isCollectorLiveDevice() || isSupervisorLiveDevice();
 }
 
 /**
- * Fichas del aparato tras hidratar / proyectar. En el cobrador y en el supervisor
- * la ficha manda el saldo. El panel, con el libro entero, sí lo rehace desde los cobros.
+ * Fichas del aparato tras hidratar / proyectar. Pagado, saldo y estado los
+ * calcula la base. Nadie los rehace con la lista de cobros del aparato.
  */
-export function syncDeviceLoans(loans: LoanRow[], payments: PaymentRow[]): LoanRow[] {
-  return deviceTrustsLoanFicha() ? syncAllLoans(loans) : syncAllLoans(loans, payments);
+export function syncDeviceLoans(loans: LoanRow[], _payments: PaymentRow[]): LoanRow[] {
+  return syncAllLoans(loans);
 }
 
 /** Al abrir un día del historial: baja solo ese día y lo deja para leer. */

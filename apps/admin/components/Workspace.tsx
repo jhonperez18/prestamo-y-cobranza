@@ -18,6 +18,7 @@ import {
   todayIso,
 } from "@/lib/daily-dispatch";
 import { deletedClientRefRows } from "@/lib/deleted-ids";
+import { loanIsClosedHistory } from "@/lib/loan-renewal-marks";
 import { userDeleteGuard } from "@/lib/collector-preview";
 import { NewClientForm } from "@/components/NewClientForm";
 import { CollectorActivityView } from "@/components/CollectorActivityView";
@@ -523,7 +524,8 @@ export function Workspace(props: WorkspaceProps) {
       const initials = `${openClient.name.charAt(0)}${openClient.lastName.charAt(0)}`.toUpperCase();
       const address = [openClient.address, openClient.city].filter(Boolean).join(", ");
       const clientLoans = loansForClient(openClient.ref, loans);
-      const hasActiveLoans = activeLoans(clientLoans).length > 0;
+      const liveClientLoans = activeLoans(clientLoans).filter((loan) => !loanIsClosedHistory(loan));
+      const hasActiveLoans = liveClientLoans.length > 0;
       const hasLoanHistory = clientLoans.length > 0;
       const canDelete = !hasActiveLoans && !hasLoanHistory;
       const pendingReview = isPendingReview(openClient);
@@ -626,7 +628,7 @@ export function Workspace(props: WorkspaceProps) {
               ) : null}
               {fileTab === "activos" ? (
                 <LoanFichaGrid
-                  loans={activeLoans(clientLoans)}
+                  loans={liveClientLoans}
                   payments={payments}
                   onSelect={openLoanAccount}
                 />

@@ -15,8 +15,8 @@ type Props = {
   payments?: PaymentRow[];
 };
 
-export function LoanDetailView({ loan, payments }: Props) {
-  const synced = useMemo(() => syncLoan(loan, payments), [loan, payments]);
+export function LoanDetailView({ loan }: Props) {
+  const synced = useMemo(() => syncLoan(loan), [loan]);
   const schedule = synced.schedule ?? [];
   const interestCount = interestChargeCount(schedule);
 

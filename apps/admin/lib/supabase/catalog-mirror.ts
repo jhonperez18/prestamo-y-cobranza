@@ -36,7 +36,7 @@ import {
   type RouteExpenseLine,
 } from "@/lib/collector-day-close";
 import { businessTodayIso } from "@/lib/business-timezone";
-import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
+import { isCollectorLiveDevice } from "@/lib/collector-live-window";
 import { forgetDeletedId, isDeletedRef, readDeletedIdSet, rememberDeletedId } from "@/lib/deleted-ids";
 import {
   emitMirrorQueueChanged,
@@ -1149,11 +1149,17 @@ type CatalogListBody<Key extends "clients" | "loans", Row> = {
 /** Lista completa si el aparato está vacío o se repara; si ya hay copia, solo lo cambiado. */
 const catalogPull = createIncrementalPull("catalog");
 /**
- * El celular del supervisor rehizo saldos con una lista de cobros incompleta y los guardó.
- * Una vez por apertura baja el libro de préstamos (la ficha real) y de ahí sigue solo cambios.
- * No se repite en cada ciclo: el libro entero cada 45 s se come la salida.
+ * El aparato rehizo saldos con una lista de cobros incompleta y los guardó
+ * (un finalizado quedó en mora). Una vez por apertura baja el libro de préstamos
+ * (la ficha real) y de ahí sigue solo cambios. No se repite en cada ciclo:
+ * el libro entero cada 45 s se come la salida. El cobrador no lo baja: solo el día.
  */
-let supervisorLoanBookThisOpen = false;
+let loanBookThisOpen = false;
+
+/** Una orden de alertas no es una ficha editada: no tapa el préstamo de la base. */
+function pendingLoanHidesCloudFicha(row: LoanRow): boolean {
+  return row.loanCommand?.op !== "alerts";
+}
 
 /**
  * Pull clientes + préstamos. Cola/escudo y updatedAt local ganan sobre remoto viejo.
@@ -1203,9 +1209,10 @@ async function mergeRemoteCatalog(
 ): Promise<PullCatalogResult & { cursor?: string | null }> {
   try {
     // Lo que estaba subiendo al pedir la lista: si sube en medio, la lista puede no traerlo aún.
-    const loansQueuedAtStart = readQueue<LoanRow>(DEMO_LOAN_MIRROR_QUEUE_KEY).map((row) => row.ref);
+    const queuedAtStart = readQueue<LoanRow>(DEMO_LOAN_MIRROR_QUEUE_KEY);
+    const loansQueuedAtStart = queuedAtStart.map((row) => row.ref);
     const loansSince =
-      isSupervisorLiveDevice() && !supervisorLoanBookThisOpen ? null : since;
+      !isCollectorLiveDevice() && !loanBookThisOpen ? null : since;
     const [clientsRes, loansRes] = await Promise.all([
       fetch(withSinceParam("/api/clients", since), { cache: "no-store" }),
       fetch(withSinceParam("/api/loans", loansSince), { cache: "no-store" }),
@@ -1269,12 +1276,15 @@ async function mergeRemoteCatalog(
       const remote = remoteAll.filter((row) => !isLoanDeletedStatus(row));
       const local = readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []);
       const pendingLoans = readDemoJson<LoanRow[]>(DEMO_LOAN_MIRROR_QUEUE_KEY, []).filter(
-        (row) => row?.ref && !isLoanDeletedStatus(row),
+        (row) => row?.ref && !isLoanDeletedStatus(row) && pendingLoanHidesCloudFicha(row),
       );
       const pendingByRef = new Map(pendingLoans.map((row) => [row.ref, row]));
       // Lo que subía al pedir la lista: la respuesta de ese envío ya está en el aparato y es más
-      // nueva que la lista.
+      // nueva que la lista. Una orden de alertas no esconde la ficha de la base.
+      const queuedByRef = new Map(queuedAtStart.map((row) => [row.ref, row]));
       for (const ref of loansQueuedAtStart) {
+        const queued = queuedByRef.get(ref);
+        if (queued && !pendingLoanHidesCloudFicha(queued)) continue;
         const row = local.find((entry) => entry.ref === ref);
         if (row && !pendingByRef.has(ref)) pendingByRef.set(ref, row);
       }
@@ -1302,7 +1312,7 @@ async function mergeRemoteCatalog(
       return { ok: false, changed, full, reason: `sin espacio en el aparato: ${unsaved.join(", ")}` };
     }
     if (loansOk && loansSince === null && !loansBody.incremental) {
-      supervisorLoanBookThisOpen = true;
+      loanBookThisOpen = true;
     }
 
     const complete = loansOk && !clientsBody.skipped && !loansBody.skipped;

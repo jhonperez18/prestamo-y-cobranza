@@ -202,7 +202,7 @@ export function applyPay(
 export function loanRowAfterPay(
   loan: LoanRow,
   pay: ApplyPaySuccess,
-  payments?: { loanRef?: string; dueDate?: string; amount: number }[],
+  _payments?: { loanRef?: string; dueDate?: string; amount: number }[],
 ): LoanRow {
   const cleared = clearCollectionAlertsOnPay({
     ...loan,
@@ -212,7 +212,7 @@ export function loanRowAfterPay(
     kind: pay.kind,
     schedule: pay.schedule ?? loan.schedule,
   });
-  return syncLoan(cleared, payments) as LoanRow;
+  return syncLoan(cleared) as LoanRow;
 }
 
 /**

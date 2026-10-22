@@ -208,7 +208,7 @@ export function commitCollectorPayment(
   const loan = resolved.loan
     ? ((isCollectorLiveDevice()
         ? syncCollectorLiveLoan(resolved.loan, payments, dispatchDate)
-        : syncLoan(resolved.loan, payments)) as LoanRow)
+        : syncLoan(resolved.loan)) as LoanRow)
     : null;
   const route = resolved.route;
   if (!loan || loan.balance <= 0) {
@@ -407,7 +407,7 @@ export function commitCollectorCombinedPayment(input: {
   const loan = resolved.loan
     ? ((isCollectorLiveDevice()
         ? syncCollectorLiveLoan(resolved.loan, input.payments, dispatchDate)
-        : syncLoan(resolved.loan, input.payments)) as LoanRow)
+        : syncLoan(resolved.loan)) as LoanRow)
     : null;
   if (!loan || loan.balance <= 0) {
     return { ok: false, error: "No hay préstamo activo para este cliente. No se registró el cobro." };

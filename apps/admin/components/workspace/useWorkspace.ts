@@ -857,7 +857,7 @@ export function useWorkspace({
 
   const openClient = clients.find((row) => row.ref === openRef) ?? null;
   const rawOpenLoan = loans.find((row) => row.ref === openLoanRef) ?? null;
-  const openLoan = rawOpenLoan ? (syncLoan(rawOpenLoan, payments) as LoanRow) : null;
+  const openLoan = rawOpenLoan ? (syncLoan(rawOpenLoan) as LoanRow) : null;
   const openUser = users.find((row) => row.ref === openUserRef) ?? null;
   /** Cobrador de la ficha: siempre el del usuario abierto (sin cruzar con otro). */
   const openCollector = openUser ? collectorViewForUser(openUser, collectors) : null;

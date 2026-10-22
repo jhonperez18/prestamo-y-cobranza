@@ -40,7 +40,7 @@ export function buildCarteraMoraRows(
   const clientByRef = new Map(clients.map((client) => [client.ref, client]));
 
   const rows = loans
-    .map((loan) => syncLoan(loan, payments) as LoanRow)
+    .map((loan) => syncLoan(loan) as LoanRow)
     .filter((loan) => isLoanInCollectionMora(loan))
     .map((loan) => {
       const client = clientByRef.get(loan.clientRef);
