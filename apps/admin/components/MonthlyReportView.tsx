@@ -13,7 +13,7 @@ import {
   isMonthlyRouteName,
   monthLabel,
   monthStartIso,
-  recentMonths,
+  closedMonths,
   sheetMiles,
   type MonthlyRouteName,
   type MonthSheetCell,
@@ -60,7 +60,8 @@ function cellTitle(cell: MonthSheetCell) {
 
 export function MonthlyReportView() {
   const today = businessTodayIso();
-  const months = useMemo(() => recentMonths(today), [today]);
+  const months = useMemo(() => closedMonths(today), [today]);
+  const currentMonth = today.slice(0, 7);
   const [route, setRoute] = useState<MonthlyRouteName>("M");
   const [month, setMonth] = useState(() => today.slice(0, 7));
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -145,22 +146,31 @@ export function MonthlyReportView() {
           >
             Historial
           </button>
+          {month !== currentMonth ? (
+            <button type="button" onClick={() => setMonth(currentMonth)}>
+              Este mes
+            </button>
+          ) : null}
         </div>
         <strong>{monthLabel(month)}</strong>
       </div>
       {historyOpen ? (
-        <div className={`weekly-report-scopes ${styles.months}`}>
-          {months.map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={item === month ? "on" : undefined}
-              onClick={() => setMonth(item)}
-            >
-              {item === today.slice(0, 7) ? "Este mes" : monthLabel(item)}
-            </button>
-          ))}
-        </div>
+        months.length === 0 ? (
+          <p className={styles.note}>Todavía no hay un mes cerrado. El primero es octubre y se corta el último día.</p>
+        ) : (
+          <div className={`weekly-report-scopes ${styles.months}`}>
+            {months.map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={item === month ? "on" : undefined}
+                onClick={() => setMonth(item)}
+              >
+                {monthLabel(item)}
+              </button>
+            ))}
+          </div>
+        )
       ) : null}
       <p className={styles.note}>
         Números en miles, sin punto: 70 es 70.000. Si ese día no pagó, va «-». El saldo resta esos pagos del inicial.

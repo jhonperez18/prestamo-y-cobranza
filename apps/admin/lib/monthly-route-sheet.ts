@@ -13,7 +13,7 @@ import { loanRenewalOf, loanRenewedInto } from "@/lib/loan-renewal-marks";
 import { isLoanDeletedStatus } from "@/lib/supabase/catalog-mirror";
 import type { ClientRow, LoanRow, PaymentRow } from "@/lib/mock-data";
 
-export const MONTHLY_SHEET_FROM = "2026-09";
+export const MONTHLY_SHEET_FROM = "2026-10";
 
 const ROUTES = ["M", "T", "N", "A"] as const;
 export type MonthlyRouteName = (typeof ROUTES)[number];
@@ -70,10 +70,11 @@ export function collectionDaysOfMonth(month: string) {
   return days;
 }
 
-export function recentMonths(today: string) {
+/** Meses ya vencidos, del más reciente al primero. El mes en curso no entra. */
+export function closedMonths(today: string) {
   const current = today.slice(0, 7);
   const months: string[] = [];
-  for (let month = current; month >= MONTHLY_SHEET_FROM; month = previousMonth(month)) {
+  for (let month = previousMonth(current); month >= MONTHLY_SHEET_FROM; month = previousMonth(month)) {
     months.push(month);
   }
   return months;
@@ -98,7 +99,9 @@ export function buildMonthlyRouteSheet(input: {
 }): MonthSheet {
   const monthStart = monthStartIso(input.month);
   const monthEnd = monthEndIso(input.month);
-  const today = input.today < monthStart ? monthStart : input.today;
+  const realToday = input.today;
+  const closed = input.month < realToday.slice(0, 7);
+  const cut = closed ? monthEnd : realToday < monthStart ? monthStart : realToday;
   const days = collectionDaysOfMonth(input.month);
   const loansByClient = new Map<string, LoanRow[]>();
   for (const loan of input.loans) {
@@ -111,7 +114,7 @@ export function buildMonthlyRouteSheet(input: {
   for (const pay of input.payments) {
     if (!pay.loanRef || !isPaymentLive(pay)) continue;
     const day = (pay.paidDate || "").slice(0, 10);
-    if (!day || day < monthStart || day > today) continue;
+    if (!day || day < monthStart || day > realToday) continue;
     const list = paysByLoan.get(pay.loanRef) ?? [];
     list.push(pay);
     paysByLoan.set(pay.loanRef, list);
@@ -121,7 +124,7 @@ export function buildMonthlyRouteSheet(input: {
   for (const client of clientsOnRouteSorted(input.clients, input.route)) {
     const loans = loansByClient.get(client.ref) ?? [];
     if (!loans.length) continue;
-    const row = sheetRow(client, loans, paysByLoan, days, monthStart, monthEnd, today);
+    const row = sheetRow(client, loans, paysByLoan, days, monthStart, monthEnd, cut, realToday);
     if (!row.inicial && !row.saldo && row.cells.every((cell) => !cell)) continue;
     rows.push(row);
   }
@@ -131,7 +134,7 @@ export function buildMonthlyRouteSheet(input: {
     month: input.month,
     days,
     rows,
-    open: input.month === input.today.slice(0, 7),
+    open: !closed,
   };
 }
 
@@ -142,11 +145,12 @@ function sheetRow(
   days: string[],
   monthStart: string,
   monthEnd: string,
-  today: string,
+  cut: string,
+  realToday: string,
 ): MonthSheetRow {
   const cells: Array<MonthSheetCell | null> = days.map(() => null);
   const active = loanActiveAtStart(loans, monthStart);
-  const inicial = active ? openingBalance(active, paysByLoan, monthStart, today) : 0;
+  const inicial = active ? openingBalance(active, paysByLoan, monthStart, realToday) : 0;
   let running = inicial;
   let current = active;
 
@@ -159,14 +163,14 @@ function sheetRow(
 
   for (let index = 0; index < days.length; index += 1) {
     const day = days[index] ?? "";
-    if (!day || day > today) break;
+    if (!day || day > cut) break;
     const bornToday = bornInMonth.filter(
       (loan) => placeOnSheet(loanDisbursementIsoDate(loan), days) === day,
     );
     const born = bornToday.find((loan) => loanRenewalOf(loan)) ?? bornToday[0];
     if (born && loanDisbursementIsoDate(born) > (current ? loanDisbursementIsoDate(current) : "")) {
       const total = loanTotal(born);
-      const sameDay = paySum(paysByLoan.get(born.ref), day, days);
+      const sameDay = paySum(paysByLoan.get(born.ref), day, days, cut);
       cells[index] = loanRenewalOf(born)
         ? { kind: "renewal", amount: total }
         : { kind: "loan", amount: total };
@@ -175,7 +179,7 @@ function sheetRow(
       continue;
     }
     if (!current) continue;
-    const paid = paySum(paysByLoan.get(current.ref), day, days);
+    const paid = paySum(paysByLoan.get(current.ref), day, days, cut);
     if (paid > 0) {
       cells[index] = { kind: "pay", amount: paid };
       running = Math.max(0, running - paid);
@@ -226,10 +230,11 @@ function openingBalance(
   return Math.max(0, total - (paid - settledSeen));
 }
 
-function paySum(pays: PaymentRow[] | undefined, day: string, days: string[]) {
+function paySum(pays: PaymentRow[] | undefined, day: string, days: string[], cut: string) {
   let sum = 0;
   for (const pay of pays ?? []) {
     const paid = (pay.paidDate || "").slice(0, 10);
+    if (!paid || paid > cut) continue;
     if (placeOnSheet(paid, days) === day) sum += pesos(pay.amount);
   }
   return sum;
