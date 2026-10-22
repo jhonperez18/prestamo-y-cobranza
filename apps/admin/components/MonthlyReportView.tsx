@@ -206,7 +206,11 @@ export function MonthlyReportView() {
                 <th className="is-nombre">Nombre</th>
                 <th className={styles.sum}>Inicial</th>
                 {sheet.days.map((iso) => (
-                  <th key={iso} className={styles.day} title={`${weekdayLabel(iso)} ${isoToDisplay(iso)}`}>
+                  <th
+                    key={iso}
+                    className={iso === today ? `${styles.day} ${styles.today}` : styles.day}
+                    title={`${weekdayLabel(iso)} ${isoToDisplay(iso)}`}
+                  >
                     {Number(iso.slice(8, 10))}
                   </th>
                 ))}
@@ -222,13 +226,12 @@ export function MonthlyReportView() {
                   {row.cells.map((cell, index) => (
                     <td
                       key={sheet.days[index] ?? index}
-                      className={
-                        cell?.kind === "renewal"
-                          ? `${styles.day} ${styles.renewal}`
-                          : cell?.kind === "loan"
-                            ? `${styles.day} ${styles.loan}`
-                            : styles.day
-                      }
+                      className={[
+                        styles.day,
+                        sheet.days[index] === today ? styles.today : "",
+                        cell?.kind === "renewal" ? styles.renewal : "",
+                        cell?.kind === "loan" ? styles.loan : "",
+                      ].filter(Boolean).join(" ")}
                       title={cell ? cellTitle(cell) : "No pagó"}
                     >
                       {cell ? miles(cell.amount) : "-"}
