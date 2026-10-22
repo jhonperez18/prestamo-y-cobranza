@@ -87,6 +87,7 @@ import { canRenewLoan } from "@/lib/loan-renew";
 import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
+import { useSupervisorToday } from "@/lib/use-supervisor-today";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import {
   informePeriodName,
@@ -1306,6 +1307,19 @@ export function SupervisorMobileApp({
   const navIntent = useMemo(() => createNavIntent(), []);
   /** Regla: al ingresar siempre INICIO (no restaurar otra pestaña). */
   const [view, setView] = useState<SupervisorView>("inicio");
+  const supervisorDirect = isSupervisorLiveDevice();
+  const serverToday = useSupervisorToday(supervisorDirect, view);
+  const serverDay = serverToday.data?.date === today ? serverToday.data : null;
+  const paymentsLive = serverDay
+    ? [...payments.filter((row) => String(row.paidDate || "").slice(0, 10) !== today), ...serverDay.payments]
+    : payments;
+  const dayClosesLive = serverDay ? serverDay.dayCloses : dayCloses;
+  const expensesLive = serverDay
+    ? [...dayExpenseDrafts.filter((row) => row.date !== today), ...serverDay.expenses]
+    : dayExpenseDrafts;
+  const assignmentsLive = serverDay
+    ? [...assignments.filter((row) => row.dispatchDate !== today), ...serverDay.assignments]
+    : assignments;
   const [openRouteRef, setOpenRouteRef] = useState<string | null>(null);
   /** Cliente que terminó hoy con el formulario «Préstamo» abierto (Caja → ruta → planilla). */
   const [reloanClientRef, setReloanClientRef] = useState<string | null>(null);
@@ -1433,14 +1447,14 @@ export function SupervisorMobileApp({
   const todayAssignments = useMemo(
     () =>
       visiblePlanillaAssignments(
-        assignments.filter(
+        assignmentsLive.filter(
           (row) =>
             row.dispatched &&
             row.dispatchDate === today &&
             isValidPlanillaAssignment(row, clients, loans),
         ),
       ),
-    [assignments, today, clients, loans],
+    [assignmentsLive, today, clients, loans],
   );
 
   const assignedCoverage = useMemo(
@@ -1468,19 +1482,19 @@ export function SupervisorMobileApp({
         date: today,
         records: planillaCashCloses,
         monthCloses,
-        dayCloses,
+        dayCloses: dayClosesLive,
       });
       const ledger = buildDayCashLedger({
         collectorRef,
         collectorName: collector.name,
         date: today,
-        payments,
+        payments: paymentsLive,
         loans,
         clients,
         collectors: [collector],
         assignments: todayAssignments,
-        dayCloses,
-        dayExpenseDrafts,
+        dayCloses: dayClosesLive,
+        dayExpenseDrafts: expensesLive,
         planillaCashCloses,
         monthCloses,
         fallbackOpening:
@@ -1489,9 +1503,9 @@ export function SupervisorMobileApp({
             : cajaDelDia(
                 collector,
                 today,
-                payments,
-                dayCloses,
-                dayExpenseDrafts,
+                paymentsLive,
+                dayClosesLive,
+                expensesLive,
                 monthCloses,
               ).saldoInicial,
       });
@@ -1502,12 +1516,12 @@ export function SupervisorMobileApp({
     assignedCoverage,
     collectors,
     today,
-    payments,
+    paymentsLive,
     loans,
     clients,
     todayAssignments,
-    dayCloses,
-    dayExpenseDrafts,
+    dayClosesLive,
+    expensesLive,
     planillaCashCloses,
     monthCloses,
   ]);
@@ -1564,7 +1578,7 @@ export function SupervisorMobileApp({
             date: today,
             records: planillaCashCloses,
             monthCloses,
-            dayCloses,
+            dayCloses: dayClosesLive,
             primaryLiveClosing: isPlanillaCashChainSecondary(route.routeName)
               ? primaryLiveByCollector.get(collectorRef)
               : undefined,
@@ -1575,7 +1589,7 @@ export function SupervisorMobileApp({
         isIndependentSaldoRoute(route.routeName)
           ? 0
           : collector
-            ? cajaDelDia(collector, today, payments, dayCloses, dayExpenseDrafts, monthCloses)
+            ? cajaDelDia(collector, today, paymentsLive, dayClosesLive, expensesLive, monthCloses)
                 .saldoInicial
             : 0;
 
@@ -1585,13 +1599,13 @@ export function SupervisorMobileApp({
             collectorRef: collector.ref,
             collectorName: collector.name,
             date: today,
-            payments,
+            payments: paymentsLive,
             loans,
             clients,
             collectors: [collector],
-            assignments,
-            dayCloses,
-            dayExpenseDrafts,
+            assignments: assignmentsLive,
+            dayCloses: dayClosesLive,
+            dayExpenseDrafts: expensesLive,
             planillaCashCloses,
             monthCloses,
           }
@@ -1607,8 +1621,8 @@ export function SupervisorMobileApp({
       const rawExpenses = expensesForCollectorDay(
         collectorRef,
         today,
-        dayCloses,
-        dayExpenseDrafts,
+        dayClosesLive,
+        expensesLive,
       );
       // Cadena M↔T: cada planilla con sus propios préstamos y gastos (libro del día).
       const routeLedger = collectorRef ? ledgerByCollector.get(collectorRef) : undefined;
@@ -1627,13 +1641,13 @@ export function SupervisorMobileApp({
                 collectorRef: collector.ref,
                 collectorName: collector.name,
                 date: today,
-                payments,
+                payments: paymentsLive,
                 loans,
                 clients,
                 collectors: [collector],
-                assignments,
-                dayCloses,
-                dayExpenseDrafts,
+                assignments: assignmentsLive,
+                dayCloses: dayClosesLive,
+                dayExpenseDrafts: expensesLive,
                 planillaCashCloses,
                 monthCloses,
               },
@@ -1657,7 +1671,7 @@ export function SupervisorMobileApp({
           ? dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
               collectorRef,
               assignments: todayAssignments,
-              liveDay: isLiveCashDay(collectorRef, today, dayCloses, businessTodayIso()),
+              liveDay: isLiveCashDay(collectorRef, today, dayClosesLive, businessTodayIso()),
             })
           : [];
       // A / N: KPI = lo prestado en la ruta (efectivo + Nequi/Banco). Caja sigue con closing.
@@ -1665,7 +1679,7 @@ export function SupervisorMobileApp({
         ? independentDay.prestamosRuta
         : dayLoanDisbursementTotal(cashLoansToday);
 
-      const closeRecord = dayCloses.find(
+      const closeRecord = dayClosesLive.find(
         (row) => row.collectorRef === collectorRef && row.date === today,
       );
       const planillaClosed =
@@ -1683,7 +1697,7 @@ export function SupervisorMobileApp({
                 date: today,
                 records: planillaCashCloses,
                 monthCloses,
-                dayCloses,
+                dayCloses: dayClosesLive,
                 primaryLiveClosing: isPlanillaCashChainSecondary(route.routeName)
                   ? primaryLiveByCollector.get(collectorRef)
                   : undefined,
@@ -1792,13 +1806,13 @@ export function SupervisorMobileApp({
     });
   }, [
     assignedCoverage,
-    assignments,
+    assignmentsLive,
     todayAssignments,
     today,
     todayDisplay,
-    payments,
-    dayCloses,
-    dayExpenseDrafts,
+    paymentsLive,
+    dayClosesLive,
+    expensesLive,
     monthCloses,
     planillaCashCloses,
     clients,
@@ -6478,6 +6492,8 @@ export function SupervisorMobileApp({
                 setConnectionRouteRef(null);
               }}
             />
+          ) : supervisorDirect && !serverDay && serverToday.status !== "error" ? (
+            <p className="ficha-empty">Cargando el día desde el sistema…</p>
           ) : liquidaciones.length === 0 ? (
             <p className="ficha-empty">No hay rutas con cobrador.</p>
           ) : (
