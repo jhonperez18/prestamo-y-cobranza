@@ -25,10 +25,11 @@ import {
   purgeInvalidPlanillaAssignments,
 } from "@/lib/planilla-eligibility";
 import { dedupePlanillaAssignments } from "@/lib/planilla-dedupe";
-import { pesos } from "@/lib/finance";
+import { pendingBalance, pesos } from "@/lib/finance";
 import { paymentVisitDate } from "@/lib/late-payment";
 import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import { loanIsClosedHistory } from "@/lib/loan-renewal-marks";
+import { syncLoan } from "@/lib/loan-preview";
 import { readDeletedIdSet } from "@/lib/deleted-ids";
 import { isCollectorLiveDevice, syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import {
@@ -83,7 +84,10 @@ function loanOwes(loan: LoanRow, payments?: CollectionPaymentTouch[]) {
   if (isCollectorLiveDevice()) {
     return pesos(syncCollectorLiveLoan(loan, (payments ?? []).filter(isPaymentRow)).balance);
   }
-  return pesos(loan.balance);
+  const synced = syncLoan(loan) as LoanRow;
+  if (Number.isFinite(Number(synced.balance))) return pesos(synced.balance);
+  const total = pesos(loan.total ?? 0) || pesos(loan.capital) + pesos(loan.interest ?? 0);
+  return pendingBalance(total, pesos(loan.paid ?? 0));
 }
 
 function paymentTouchesLoanOnDate(
