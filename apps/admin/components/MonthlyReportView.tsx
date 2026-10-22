@@ -67,8 +67,10 @@ export function MonthlyReportView() {
   const months = useMemo(() => closedMonths(today), [today]);
   const currentMonth = today.slice(0, 7);
   const [route, setRoute] = useState<MonthlyRouteName>("M");
-  const [month, setMonth] = useState(() => today.slice(0, 7));
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyMonth, setHistoryMonth] = useState<string | null>(null);
+  const month = historyOpen && historyMonth ? historyMonth : currentMonth;
+  const showSheet = !historyOpen || historyMonth !== null;
   const sheetBook = useRouteSheet(true);
   const [payments, setPayments] = useState<PaymentRow[] | null>(() => payCache.get(monthStartIso(today.slice(0, 7))) ?? null);
   const [payState, setPayState] = useState<"ready" | "loading" | "error">(
@@ -146,17 +148,15 @@ export function MonthlyReportView() {
             type="button"
             className={historyOpen ? "on" : undefined}
             aria-expanded={historyOpen}
-            onClick={() => setHistoryOpen((open) => !open)}
+            onClick={() => {
+              setHistoryMonth(null);
+              setHistoryOpen((open) => !open);
+            }}
           >
             Historial
           </button>
-          {month !== currentMonth ? (
-            <button type="button" onClick={() => setMonth(currentMonth)}>
-              Este mes
-            </button>
-          ) : null}
         </div>
-        <strong>{monthLabel(month)}</strong>
+        {showSheet ? <strong>{monthLabel(month)}</strong> : null}
       </div>
       {historyOpen ? (
         months.length === 0 ? (
@@ -167,8 +167,8 @@ export function MonthlyReportView() {
               <button
                 key={item}
                 type="button"
-                className={item === month ? "on" : undefined}
-                onClick={() => setMonth(item)}
+                className={item === historyMonth ? "on" : undefined}
+                onClick={() => setHistoryMonth(item)}
               >
                 {monthLabel(item)}
               </button>
@@ -176,6 +176,8 @@ export function MonthlyReportView() {
           </div>
         )
       ) : null}
+      {showSheet ? (
+      <>
       <p className={styles.note}>
         Los días van en miles, sin punto: 70 es 70.000. Inicial y saldo van con punto: 1.500.000. Si ese día no pagó, va «-».
         La celda ámbar es una renovación: el total nuevo, y de ahí se sigue restando.
@@ -233,6 +235,8 @@ export function MonthlyReportView() {
           </table>
         </div>
       )}
+      </>
+      ) : null}
     </section>
   );
 }
