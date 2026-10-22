@@ -2017,6 +2017,8 @@ export type OpsBundleBody = {
   incremental?: boolean;
   /** La lista de cobradores viene entera, también en una bajada parcial. */
   collectorsComplete?: boolean;
+  /** La hoja de hoy viene entera, aunque la bajada sea parcial. */
+  assignmentsTodayComplete?: boolean;
   /** Mayor `updated_at` bajado: `since` de la próxima bajada. */
   cursor?: string | null;
 };
@@ -2504,9 +2506,10 @@ async function pullOpsBundle(
           prev.visitStatus === "parcial") &&
           !String(prev.paymentRef || "").trim());
       if (!localOpen && prev && sig(prev) === sig(row)) continue;
+      const remoteCloseWins = Boolean(row.dayClosedAt) && !prev?.dayClosedAt;
       if (!localOpen && prev?.visitStatus === "omitido" && row.visitStatus === "cobrado") {
         // Cobro real gana sobre N/P.
-      } else if (!localOpen) {
+      } else if (!localOpen && !remoteCloseWins) {
         continue;
       }
       if (pendingAssign.has(key)) {
@@ -2520,7 +2523,8 @@ async function pullOpsBundle(
     // Bajada completa: la nube ya dejó una visita por cliente hoy. La copia
     // local de la otra fila no se conserva (si se conserva, el reconcile la
     // vuelve a subir). Una visita nueva, todavía en cola, sí se queda.
-    if (full) {
+    const todaySheetComplete = body.assignmentsTodayComplete === true;
+    if (full || todaySheetComplete) {
       const today = businessTodayIso();
       const remoteToday = remoteAssign.filter((row) => row.dispatchDate === today);
       const remoteKeys = new Set(remoteToday.map((row) => `${row.dispatchDate}::${row.itemId}`));

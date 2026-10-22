@@ -7,7 +7,7 @@ import {
 } from "@/lib/supabase/changed-since";
 import { getSupabasePublicEnv } from "@/lib/supabase/env";
 import { jsonNoStore } from "@/lib/api-no-store";
-import { businessDaysAgoIso } from "@/lib/business-timezone";
+import { businessDaysAgoIso, businessTodayIso } from "@/lib/business-timezone";
 import { planillaWindowStartIso } from "@/lib/planilla-window";
 import { readIsoDateParam } from "@/lib/collector-live-window";
 
@@ -82,8 +82,37 @@ export async function GET(request: Request) {
       }
     }
     const [collectors, routes, day_closes, day_expenses, misc_payments, assignmentsPart] = parts;
+    // La hoja de hoy va entera. Un corte ya pasado no vuelve a traer el sello
+    // de una ruta cerrada, y el sistema principal se queda con la lista vieja.
+    let assignmentRows = assignmentsPart.rows;
+    let assignmentsTodayComplete = false;
+    if (since) {
+      const todaySheet = await fetchOpsTableSince(
+        "daily_assignments",
+        "dispatch_date",
+        businessTodayIso(),
+        businessTodayIso(),
+      );
+      if (!todaySheet.ok) {
+        return jsonNoStore(
+          { ok: false, error: "error" in todaySheet ? todaySheet.error : "fetch_failed" },
+          { status: 502 },
+        );
+      }
+      const byId = new Map<string, Record<string, unknown>>();
+      for (const row of assignmentRows) {
+        const id = String(row.id || "");
+        byId.set(id || `changed-${byId.size}`, row);
+      }
+      for (const row of todaySheet.rows) {
+        const id = String(row.id || "");
+        byId.set(id || `today-${byId.size}`, row);
+      }
+      assignmentRows = [...byId.values()];
+      assignmentsTodayComplete = true;
+    }
     const daily_assignments = since
-      ? assignmentsPart
+      ? { ...assignmentsPart, rows: assignmentRows }
       : { ...assignmentsPart, rows: await collapseTodayOpenVisits(assignmentsPart.rows) };
 
     return jsonNoStore({
@@ -91,6 +120,7 @@ export async function GET(request: Request) {
       incremental: Boolean(since),
       cursor,
       collectorsComplete: true,
+      assignmentsTodayComplete,
       collectors: collectors.rows,
       routes: routes.rows,
       day_closes: day_closes.rows,
