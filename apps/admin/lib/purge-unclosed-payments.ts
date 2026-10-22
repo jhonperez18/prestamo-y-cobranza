@@ -31,7 +31,7 @@ export function purgeUnclosedPlanillaPayments(input: {
     input.loans,
   );
   const { payments, removedRefs } = dedupeDailyPaymentsByVisit(input.payments, assignments);
-  const loans = syncAllLoans(input.loans, payments) as LoanRow[];
+  const loans = syncAllLoans(input.loans) as LoanRow[];
   return { payments, loans, removedRefs };
 }
 

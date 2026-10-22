@@ -36,7 +36,6 @@ import {
   syncLoan,
 } from "@/lib/loan-preview";
 import type { LoanRow, PaymentRow } from "@/lib/mock-data";
-import { paymentsForLoan } from "@/lib/payment-by-loan";
 
 export const CUOTAS_LAG_YELLOW_FROM = 3;
 export const CUOTAS_INTENSITY_MAX = 4;
@@ -128,7 +127,7 @@ export function computeLoanCuotasProgress(
 
   // El cronograma guardado en la ficha. Solo se arma si la fila todavía no lo trae.
   const synced =
-    (loan.schedule?.length ?? 0) > 0 ? loan : (syncLoan(loan, payments) as LoanRow);
+    (loan.schedule?.length ?? 0) > 0 ? loan : (syncLoan(loan) as LoanRow);
   const asOfIso = toCollectionIso(asOf) || asOf;
 
   const dates = uniqueSortedIsos(
@@ -139,16 +138,9 @@ export function computeLoanCuotasProgress(
   const total = dates.length || interestChargeCount(synced.schedule ?? []);
   const expected = Math.min(total, dates.filter((d) => d <= asOfIso).length);
 
-  const paySum = paymentsForLoan(payments, synced.ref)
-    .filter((row) => {
-      if ((Number(row.amount) || 0) <= 0) return false;
-      const payDay = toCollectionIso(row.paidDate || "");
-      if (!payDay) return true;
-      return payDay <= asOfIso;
-    })
-    .reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
-  const catalogPaid = pesos(Number(synced.paid) || 0);
-  const paidTotal = payments.length > 0 ? Math.max(paySum, catalogPaid) : catalogPaid;
+  // La mora sale de lo pagado en la ficha. Sumar la lista del aparato la infla o la baja.
+  void payments;
+  const paidTotal = pesos(Number(synced.paid) || 0);
 
   const installment = pesos(Number(synced.installment) || 0);
   const covered =

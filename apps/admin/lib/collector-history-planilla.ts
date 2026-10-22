@@ -437,7 +437,7 @@ export function buildCollectorHistoryPlanillaRows(input: {
     const rawLoan = item.loanRef
       ? loans.find((row) => row.ref === item.loanRef)
       : undefined;
-    const loan = rawLoan ? (syncLoan(rawLoan, payments) as LoanRow) : null;
+    const loan = rawLoan ? (syncLoan(rawLoan) as LoanRow) : null;
     const cuota = isHistoryFiller(item)
       ? 0
       : planillaLiveCuota(item, loan, payments, dateIso);

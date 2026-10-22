@@ -22,7 +22,7 @@ import { isCashlessRenewal, loanDisbursementIsoDate } from "@/lib/nequi-pool";
 function liveBalance(loan: LoanRow, payments: PaymentRow[], date: string) {
   const synced = isCollectorLiveDevice()
     ? syncCollectorLiveLoan(loan, payments, date)
-    : (syncLoan(loan, payments) as LoanRow);
+    : (syncLoan(loan) as LoanRow);
   return Number(synced.balance ?? 0);
 }
 

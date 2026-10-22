@@ -1,7 +1,7 @@
 import { isDailyCollectionDay } from "@/lib/colombia-holidays";
 import { paymentsForLoan } from "@/lib/payment-by-loan";
 import { reconcileLoanCollectionAlerts } from "@/lib/collection-alerts";
-import { pendingBalance, sumPesos } from "@/lib/finance";
+import { pendingBalance } from "@/lib/finance";
 import { loanIsClosedHistory } from "@/lib/loan-renewal-marks";
 import { loanStatusPill } from "@/lib/loan-status";
 import type { LoanRow } from "@/lib/mock-data";
@@ -962,17 +962,6 @@ export function applyPaymentsToSchedule(
   });
 }
 
-function paidFromPayments(
-  payments: { loanRef?: string; amount: number; voidedAt?: string }[],
-  loanRef: string,
-) {
-  return sumPesos(
-    paymentsForLoan(payments, loanRef)
-      .filter((row) => !String(row.voidedAt || "").trim())
-      .map((row) => row.amount),
-  );
-}
-
 /**
  * Préstamo ya cerrado: manda la ficha (saldo 0).
  * Renovado o pagado por completo. Una lista de cobros incompleta no lo reabre.
@@ -988,21 +977,11 @@ export function settledLoanLedger(loan: {
   return { paid: pesos(loan.paid ?? 0), balance: 0 };
 }
 
-/** Recaudado y saldo alineados con movimientos reales cuando hay pagos. */
-function resolveLoanLedger(
-  terms: LoanTermsRow,
-  total: number,
-  payments?: LoanPaymentTouch[],
-) {
+/** Recaudado y saldo = la ficha. Una lista de cobros no puede cambiarlos. */
+function resolveLoanLedger(terms: LoanTermsRow, total: number) {
   const settled = settledLoanLedger(terms);
   if (settled) return settled;
-
-  if (payments === undefined) {
-    const paid = pesos(terms.paid ?? 0);
-    return { paid, balance: pendingBalance(total, paid) };
-  }
-
-  const paid = terms.ref ? paidFromPayments(payments, terms.ref) : 0;
+  const paid = pesos(terms.paid ?? 0);
   return { paid, balance: pendingBalance(total, paid) };
 }
 
@@ -1013,15 +992,13 @@ function resolveLoanLedger(
  */
 export function normalizeLoan<T extends LoanTermsRow>(
   loan: T,
-  payments?: LoanPaymentTouch[],
+  _payments?: LoanPaymentTouch[],
 ): T {
   const terms = standardizeLoanTerms(loan);
   const preview = loanPreviewFromRow(terms);
   if (!preview) return terms;
-  let schedule = mergeSchedulePaid(preview.schedule, terms.schedule);
-  if (payments && terms.ref) {
-    schedule = applyPaymentsToSchedule(schedule, payments, terms.ref);
-  }
+  // El cronograma guardado se conserva. La lista de cobros no mueve cuotas de fecha.
+  const schedule = mergeSchedulePaid(preview.schedule, terms.schedule);
   const flat = isFlatLoanTerms(terms);
   const dueIso = preview.dates[preview.dates.length - 1];
   // Interés explícito (incluido 0) manda sobre cualquier recálculo.
@@ -1042,7 +1019,7 @@ export function normalizeLoan<T extends LoanTermsRow>(
             (terms.schedule ?? []).find((line) => (line.kind ?? "cuota") !== "capital" && line.amount > 0)
               ?.amount ?? 0,
           );
-  const ledger = resolveLoanLedger(terms, pinnedTotal, payments);
+  const ledger = resolveLoanLedger(terms, pinnedTotal);
   const merged = {
     ...terms,
     days: terms.days != null && terms.days > 0 ? Math.trunc(terms.days) : preview.days,
@@ -1058,11 +1035,7 @@ export function normalizeLoan<T extends LoanTermsRow>(
     paid: ledger.paid,
     balance: ledger.balance,
   };
-  const reconciled = reconcileLoanCollectionAlerts(
-    merged as LoanRow,
-    undefined,
-    payments as { loanRef?: string; paidDate?: string; amount?: number }[] | undefined,
-  );
+  const reconciled = reconcileLoanCollectionAlerts(merged as LoanRow);
   const pill = loanStatusPill(reconciled);
   return {
     ...reconciled,
@@ -1072,7 +1045,10 @@ export function normalizeLoan<T extends LoanTermsRow>(
   } as T;
 }
 
-/** Préstamo con cronograma y totales recalculados (formato unificado P-8). */
+/**
+ * Préstamo con cronograma y totales de la ficha.
+ * `payments` se acepta para no romper llamadas viejas: no cambia paid, saldo ni fechas.
+ */
 export function syncLoan(loan: LoanTermsRow, payments?: LoanPaymentTouch[]) {
   return normalizeLoan(standardizeLoanTerms(loan), payments);
 }
