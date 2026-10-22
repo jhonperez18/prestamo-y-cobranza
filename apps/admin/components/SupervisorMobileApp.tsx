@@ -86,6 +86,7 @@ import { loanIsClosedHistory, loanRenewalOf } from "@/lib/loan-renewal-marks";
 import { canRenewLoan } from "@/lib/loan-renew";
 import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
+import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import {
   informePeriodName,
@@ -952,7 +953,7 @@ function previousLoanForClient(
   const candidates = loansForClient(clientRef, loans)
     .filter((row) => !isLoanVoided(row))
     .filter((row) => !currentRef || row.ref !== currentRef)
-    .map((row) => syncLoan(row, payments) as LoanRow)
+    .map((row) => syncLoan(row, isSupervisorLiveDevice() ? undefined : payments) as LoanRow)
     .filter((row) => !isLoanActive(row));
   if (candidates.length === 0) return null;
   candidates.sort((a, b) => {
@@ -3781,7 +3782,7 @@ export function SupervisorMobileApp({
     const byClient = new Map<string, LoanRow>();
     for (const loan of loans) {
       if (!loan.clientRef) continue;
-      const synced = syncLoan(loan, payments) as LoanRow;
+      const synced = syncLoan(loan, isSupervisorLiveDevice() ? undefined : payments) as LoanRow;
       if (!isLoanActive(synced)) continue;
       if (!(Number(synced.balance) > 0)) continue;
       const prev = byClient.get(loan.clientRef);
@@ -3837,7 +3838,7 @@ export function SupervisorMobileApp({
   const prestamoPdfReport = useMemo(() => {
     if (!prestamoFichaLoan || !prestamoFichaClient) return null;
     const live = livePayments(paymentsWithEvidence);
-    const synced = syncLoan(prestamoFichaLoan, live) as LoanRow;
+    const synced = syncLoan(prestamoFichaLoan, isSupervisorLiveDevice() ? undefined : live) as LoanRow;
     return buildLoanReport(synced, prestamoFichaClient, live, assignments);
   }, [assignments, paymentsWithEvidence, prestamoFichaClient, prestamoFichaLoan]);
 

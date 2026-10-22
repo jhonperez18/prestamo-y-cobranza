@@ -36,6 +36,7 @@ import {
   type RouteExpenseLine,
 } from "@/lib/collector-day-close";
 import { businessTodayIso } from "@/lib/business-timezone";
+import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import { forgetDeletedId, isDeletedRef, readDeletedIdSet, rememberDeletedId } from "@/lib/deleted-ids";
 import {
   emitMirrorQueueChanged,
@@ -1147,6 +1148,12 @@ type CatalogListBody<Key extends "clients" | "loans", Row> = {
 
 /** Lista completa si el aparato está vacío o se repara; si ya hay copia, solo lo cambiado. */
 const catalogPull = createIncrementalPull("catalog");
+/**
+ * El celular del supervisor rehizo saldos con una lista de cobros incompleta y los guardó.
+ * Una vez por apertura baja el libro de préstamos (la ficha real) y de ahí sigue solo cambios.
+ * No se repite en cada ciclo: el libro entero cada 45 s se come la salida.
+ */
+let supervisorLoanBookThisOpen = false;
 
 /**
  * Pull clientes + préstamos. Cola/escudo y updatedAt local ganan sobre remoto viejo.
@@ -1197,9 +1204,11 @@ async function mergeRemoteCatalog(
   try {
     // Lo que estaba subiendo al pedir la lista: si sube en medio, la lista puede no traerlo aún.
     const loansQueuedAtStart = readQueue<LoanRow>(DEMO_LOAN_MIRROR_QUEUE_KEY).map((row) => row.ref);
+    const loansSince =
+      isSupervisorLiveDevice() && !supervisorLoanBookThisOpen ? null : since;
     const [clientsRes, loansRes] = await Promise.all([
       fetch(withSinceParam("/api/clients", since), { cache: "no-store" }),
-      fetch(withSinceParam("/api/loans", since), { cache: "no-store" }),
+      fetch(withSinceParam("/api/loans", loansSince), { cache: "no-store" }),
     ]);
     const clientsBody = (await clientsRes.json()) as CatalogListBody<"clients", ClientMirrorRow>;
     const loansBody = (await loansRes.json()) as CatalogListBody<"loans", LoanMirrorRow>;
@@ -1291,6 +1300,9 @@ async function mergeRemoteCatalog(
     // Lo que no entró al aparato no vuelve en una bajada parcial: el pull no es OK.
     if (unsaved.length) {
       return { ok: false, changed, full, reason: `sin espacio en el aparato: ${unsaved.join(", ")}` };
+    }
+    if (loansOk && loansSince === null && !loansBody.incremental) {
+      supervisorLoanBookThisOpen = true;
     }
 
     const complete = loansOk && !clientsBody.skipped && !loansBody.skipped;

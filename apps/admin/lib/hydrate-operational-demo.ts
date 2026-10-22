@@ -50,7 +50,7 @@ import {
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
-import { isCollectorLiveDevice, syncDeviceLoans } from "@/lib/collector-live-window";
+import { deviceTrustsLoanFicha, syncDeviceLoans } from "@/lib/collector-live-window";
 import { synchronizeOperationalState } from "@/lib/operational-sync";
 import { restoreSealedVisitsFromPrior } from "@/lib/planilla-sealed-visits";
 import { refreshLabelsFromCatalog } from "@/lib/project-identity";
@@ -119,7 +119,7 @@ export function hydrateOperationalDemo(): OperationalDemoSnapshot {
   syncDemoStorageToServedBuild();
 
   const { payments: storedPayments, loans: storedLoans } = loadDemoPaymentsBundle({
-    loansFromFicha: isCollectorLiveDevice(),
+    loansFromFicha: deviceTrustsLoanFicha(),
   });
   const storedCollectors = readDemoJson<CollectorRow[]>(DEMO_COLLECTORS_KEY, []).map((row) => ({
     ...row,

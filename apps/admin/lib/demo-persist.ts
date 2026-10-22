@@ -674,7 +674,8 @@ export function loadDemoPayments(loans?: LoanRow[]): PaymentRow[] {
 
 /**
  * Carga pagos y préstamos sincronizados (fuente única para el panel).
- * `loansFromFicha`: celular del cobrador, cuya lista de cobros es solo el día; el saldo lo manda la ficha.
+ * `loansFromFicha`: cobrador (solo el día) y supervisor (su lista no es el libro).
+ * El saldo lo manda la ficha. El panel, con el libro entero, sí lo rehace.
  */
 export function loadDemoPaymentsBundle(options?: { loansFromFicha?: boolean }) {
   disarmLegacyWipes();

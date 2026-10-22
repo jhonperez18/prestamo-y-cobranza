@@ -14,6 +14,7 @@ import {
   type CuotasProgress,
 } from "@/lib/loan-cuotas-progress";
 import { isPaymentLive } from "@/lib/live-payments";
+import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import { paymentVisitDate } from "@/lib/late-payment";
 import type { LoanRow, PaymentRow } from "@/lib/mock-data";
 import { todayIso } from "@/lib/daily-dispatch";
@@ -128,7 +129,9 @@ export function planillaSyncedLoan(
 ): LoanRow | null {
   if (!loanRef?.trim()) return null;
   const raw = loans.find((row) => row.ref === loanRef);
-  return raw ? (syncLoan(raw, payments) as LoanRow) : null;
+  if (!raw) return null;
+  // El celular del supervisor no tiene el libro de cobros: el saldo es el de la ficha.
+  return (syncLoan(raw, isSupervisorLiveDevice() ? undefined : payments) as LoanRow);
 }
 
 export function enrichSupervisorPlanillaRow(

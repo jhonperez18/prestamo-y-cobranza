@@ -1,3 +1,4 @@
+import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import { pendingBalance, pesos, sumPesos } from "@/lib/finance";
 import { lineStatus } from "@/lib/loan-pay";
 import {
@@ -105,7 +106,11 @@ function buildScheduleLines(
 /** Una sola fuente de verdad: plantilla + movimientos. Recaudado + saldo = monto del acuerdo. */
 export function computeLoanFinancials(loan: LoanRow, payments: PaymentRow[]): LoanFinancials {
   const loanPayments = paymentsForLoan(payments, loan.ref).filter((row) => !row.voidedAt?.trim());
-  const paidTotal = sumPesos(loanPayments.map((row) => row.amount));
+  // Supervisor: la ficha de la base es el saldo. La lista de cobros del celular no lo es.
+  const fichaSaldo = isSupervisorLiveDevice();
+  const paidTotal = fichaSaldo
+    ? pesos(loan.paid ?? 0)
+    : sumPesos(loanPayments.map((row) => row.amount));
   const preview = resolvePreview(loan);
   const schedule = buildScheduleLines(loan, loanPayments, preview);
   const flat = isFlatLoanTerms(loan);
@@ -131,7 +136,9 @@ export function computeLoanFinancials(loan: LoanRow, payments: PaymentRow[]): Lo
     : (capitalLine?.paid ?? 0);
   const capitalPending = Math.max(0, capitalTotal - capitalPaid);
 
-  const balancePending = pendingBalance(pesos(totalAgreement), paidTotal);
+  const balancePending = fichaSaldo
+    ? Math.max(0, pesos(loan.balance ?? 0))
+    : pendingBalance(pesos(totalAgreement), paidTotal);
 
   const installmentsTotal = flat
     ? interestLines.length || preview?.count || 0
