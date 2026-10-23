@@ -359,10 +359,20 @@ export function commitCreateClient(
     };
   }
 
+  const today = todayIso();
+  const onSheet = next.assignments.some(
+    (entry) =>
+      entry.clientRef === ref &&
+      entry.dispatchDate === today &&
+      !entry.dayClosedAt &&
+      (entry.awaitingLoan || String(entry.itemId || "").includes(":prestar")),
+  );
   return {
     ok: true,
     state: next,
-    message: `Cliente creado en ruta ${draft.route}, posición ${draft.routeOrder}.`,
+    message: onSheet
+      ? `Cliente creado en ruta ${draft.route}. Ya está en la hoja de hoy para prestar.`
+      : `Cliente creado en ruta ${draft.route}, posición ${draft.routeOrder}.`,
     focusClientRef: ref,
     goTo: { moduleId: "clientes", viewId: "ficha" },
   };

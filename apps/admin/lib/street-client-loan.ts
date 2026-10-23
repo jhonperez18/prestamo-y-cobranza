@@ -44,6 +44,8 @@ export type QuickLoanDraft = {
   termMonths: LoanTermMonths;
   /** Cuota pactada a mano; si falta, se calcula sola. */
   installmentAmount?: number;
+  /** Primer cobro (ISO). Sin valor: el siguiente día de cobro. Hoy = cuota hoy. */
+  firstCollectionIso?: string;
   /** Al prestar: el cliente queda en esta ruta (planilla). */
   routeName?: string;
   /** Origen del desembolso. Por defecto Nequi (supervisor/admin). */
@@ -101,6 +103,10 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
     startIso,
     frequency: draft.frequency,
     termMonths: draft.termMonths,
+    firstCollectionIso:
+      draft.firstCollectionIso && /^\d{4}-\d{2}-\d{2}$/.test(draft.firstCollectionIso)
+        ? draft.firstCollectionIso
+        : undefined,
     installmentAmount:
       draft.installmentAmount != null && draft.installmentAmount > 0
         ? draft.installmentAmount

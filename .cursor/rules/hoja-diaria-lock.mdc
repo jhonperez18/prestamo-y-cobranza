@@ -1,0 +1,39 @@
+---
+description: Hoja diaria — nace a las 00:00 y durante el día no se rearma. El alta de hoy entra sola a Prestar; si la primera cuota es hoy, queda por cobrar. Intocable salvo pedido explícito del dueño.
+alwaysApply: true
+---
+
+# Hoja diaria — sellada (dueño 22/10/2026)
+
+## Ley
+
+Esta regla **no se cambia**. Ni el código, ni un comentario, ni un candado, ni “una mejora”.
+Solo si el dueño lo pide **en ese mensaje**, con estas palabras.
+
+## Cómo nace y cómo se queda
+
+| Momento | Qué |
+| --- | --- |
+| **00:00** | Nace la hoja del día, completa. Todos los clientes de cada ruta: con préstamo (aunque sea semanal, quincenal o mensual y hoy no sea su fecha) y sin préstamo (Prestar). Saldos al día. |
+| **Durante el día** | **No se rearma** el resto de la ruta. Cobro, N/P y préstamo marcan a esa persona y la sacan de por cobrar. |
+| **Cliente nuevo** | Alta de hoy, hoja abierta, sin préstamo: entra **solo él**, en el acto, listo para prestar. (dueño 23/10/2026) |
+| **Préstamo** | Si la primera cuota es otro día, sale y no vuelve hoy. Entra en la ruta nueva de las 00:00. |
+| **Misma fecha** | Si el primer cobro es el mismo día del préstamo, queda **listo para cobrar** en el acto. Si cobra, sale. |
+| **Por cobrar** | Una fila por cliente. Las dos o tres líneas (préstamo, cuota, pago combinado) viven en el recaudo. |
+| **23:30 y 00:00** | Los relojes se quedan. No se tocan. |
+
+## Calle y caja
+
+- Una ruta que **ya tiene visitas hoy** no se vuelve a montar. Se conserva la lista que lleva el cobrador. La excepción es el cliente creado hoy: entra solo él a Prestar, y si le prestan con la primera cuota hoy, esa fila pasa a cobro.
+- Hoja ya cerrada (más selladas que abiertas) no recibe visitas nuevas. M cerrada se queda cerrada.
+- Reglas de inicio intactas: no se toca `cash_float`, Inicial, CIE, orden de ruta ni historia de días cerrados.
+
+Dueño del armado: `syncPermanentRoutePlanilla` y `loanIsCollectibleOn`.
+
+## Prohibido
+
+- `loanIsCollectibleOn` que devuelva siempre verdadero (eso rearma la ruta todo el día).
+- Recorrer el catálogo y sumar clientes a una hoja que ya salió. El alta de hoy es una sola fila, no el catálogo.
+- Sacar de las 00:00 al semanal, quincenal o mensual porque hoy no está en su fecha.
+- Borrar desde el servidor las visitas de la hoja que ya salió a la calle.
+- Mover caja, Inicial o CIE para “cuadrar” la hoja.

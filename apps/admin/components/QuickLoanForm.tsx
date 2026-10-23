@@ -7,6 +7,7 @@ import {
 } from "@/lib/street-client-loan";
 import type { LoanDisbursementSource as AnyDisbursementSource } from "@/lib/nequi-pool";
 import {
+  firstCollectionIso,
   PAY_FREQUENCIES,
   previewLoanFlat,
   type PayFrequency,
@@ -72,6 +73,9 @@ export function QuickLoanForm({
   const [fundedBy, setFundedBy] = useState<LoanDisbursementSource>(initial);
   const [cuotaRaw, setCuotaRaw] = useState("");
   const cuotaTouchedRef = useRef(false);
+  const startIso = todayIso();
+  const [firstCobro, setFirstCobro] = useState(() => firstCollectionIso(todayIso(), "diario"));
+  const firstTouchedRef = useRef(false);
 
   const capital = parseMoney(capitalRaw);
   const ratePct = parseDecimal(rateRaw);
@@ -86,12 +90,13 @@ export function QuickLoanForm({
         ? previewLoanFlat({
             capital,
             interest,
-            startIso: todayIso(),
+            startIso,
             frequency,
             termMonths,
+            firstCollectionIso: firstCobro || undefined,
           })
         : null,
-    [capital, interest, frequency, termMonths],
+    [capital, interest, frequency, termMonths, startIso, firstCobro],
   );
 
   const preview = useMemo(
@@ -100,15 +105,21 @@ export function QuickLoanForm({
         ? previewLoanFlat({
             capital,
             interest,
-            startIso: todayIso(),
+            startIso,
             frequency,
             termMonths,
+            firstCollectionIso: firstCobro || undefined,
             installmentAmount:
               cuotaTouchedRef.current && cuotaManual > 0 ? cuotaManual : undefined,
           })
         : null,
-    [capital, interest, frequency, termMonths, cuotaManual, cuotaRaw],
+    [capital, interest, frequency, termMonths, cuotaManual, cuotaRaw, startIso, firstCobro],
   );
+
+  useEffect(() => {
+    if (firstTouchedRef.current) return;
+    setFirstCobro(firstCollectionIso(startIso, frequency));
+  }, [frequency, startIso]);
 
   // Cuota automática al cambiar capital / interés / plazo / frecuencia (si el usuario no la fijó a mano).
   useEffect(() => {
@@ -120,6 +131,7 @@ export function QuickLoanForm({
     setCuotaRaw(formatMiles(String(autoPreview.installment)));
   }, [autoPreview?.installment]);
 
+  const firstOk = /^\d{4}-\d{2}-\d{2}$/.test(firstCobro) && firstCobro >= startIso;
   const canSave = Boolean(
     preview &&
       capital > 0 &&
@@ -127,7 +139,8 @@ export function QuickLoanForm({
       Number.isFinite(ratePct) &&
       ratePct >= 0 &&
       Number.isFinite(termMonths) &&
-      termMonths > 0,
+      termMonths > 0 &&
+      firstOk,
   );
   const showOriginPicker = options.length > 1;
 
@@ -145,6 +158,7 @@ export function QuickLoanForm({
           rate: ratePct,
           frequency,
           termMonths,
+          firstCollectionIso: firstCobro,
           fundedBy,
           installmentAmount:
             cuotaManual > 0 ? cuotaManual : preview.installment > 0 ? preview.installment : undefined,
@@ -208,6 +222,7 @@ export function QuickLoanForm({
             value={frequency}
             onChange={(event) => {
               cuotaTouchedRef.current = false;
+              firstTouchedRef.current = false;
               setFrequency(event.target.value as PayFrequency);
             }}
           >
@@ -217,6 +232,23 @@ export function QuickLoanForm({
               </option>
             ))}
           </select>
+        </label>
+      </div>
+
+      <div className="quick-loan-row">
+        <label className="quick-loan-field">
+          <span>Primer cobro</span>
+          <input
+            type="date"
+            value={firstCobro}
+            min={startIso}
+            onChange={(event) => {
+              firstTouchedRef.current = true;
+              cuotaTouchedRef.current = false;
+              setFirstCobro(event.target.value);
+            }}
+            aria-label="Fecha del primer cobro"
+          />
         </label>
       </div>
 

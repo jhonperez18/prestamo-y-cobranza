@@ -543,12 +543,14 @@ export function collectionDatesForTerm(
   startIso: string,
   frequency: PayFrequency,
   termMonths: LoanTermMonths,
+  manualFirstIso?: string,
 ): string[] {
   if (!startIso || !(Number(termMonths) > 0)) return [];
   return collectionDatesForCount(
     startIso,
     frequency,
     installmentCountForTerm(frequency, termMonths),
+    manualFirstIso,
   );
 }
 
@@ -683,7 +685,7 @@ export function previewLoanFlat(input: {
     manualCount > 0
       ? collectionDatesForCount(startIso, frequency, manualCount, firstIso)
       : termMonths != null
-        ? collectionDatesForTerm(startIso, frequency, termMonths)
+        ? collectionDatesForTerm(startIso, frequency, termMonths, firstIso)
         : [];
   if (dates.length === 0) return null;
 

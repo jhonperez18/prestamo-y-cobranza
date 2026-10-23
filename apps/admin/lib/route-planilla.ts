@@ -28,7 +28,7 @@ import { pendingBalance, pesos } from "@/lib/finance";
 import { paymentVisitDate } from "@/lib/late-payment";
 import { isCashlessRenewal, loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import { loanIsClosedHistory } from "@/lib/loan-renewal-marks";
-import { syncLoan } from "@/lib/loan-preview";
+import { displayToIso, syncLoan } from "@/lib/loan-preview";
 import { readDeletedIdSet } from "@/lib/deleted-ids";
 import { isCollectorLiveDevice, syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import {
@@ -45,6 +45,12 @@ import {
 
 function clientLabel(client: ClientRow) {
   return `${client.name} ${client.lastName}`.trim();
+}
+
+/** Alta del cliente en el día de la hoja (DD/MM/AAAA o ISO). */
+function clientBornOn(client: ClientRow, date: string) {
+  const alta = displayToIso(String(client.alta || ""));
+  return Boolean(date) && alta === date;
 }
 
 export { isValidPlanillaAssignment, purgeInvalidPlanillaAssignments } from "@/lib/planilla-eligibility";
@@ -539,7 +545,8 @@ export function syncPermanentRoutePlanilla(
 
     const sheetOpen = !closedAtByCollectorRoute.has(`${collector.ref}|${routeName}`);
     // Ya hay hoja: no se vuelve a armar. Se conserva lo que el cobrador lleva.
-    // El préstamo de hoy se resuelve abajo: sale, y solo vuelve si se cobra hoy.
+    // El alta de hoy entra sola, lista para prestar. El préstamo de hoy sale,
+    // y solo vuelve si la primera cuota es ese mismo día.
     if (routeVisits.length > 0) {
       for (const prev of routeVisits) {
         if (prev.dayClosedAt) continue;
@@ -566,12 +573,18 @@ export function syncPermanentRoutePlanilla(
       if (!isOperationalClient(client)) continue;
       if (routeVisits.length > 0 && !loanGivenOnDate(client.ref)) {
         const own = routeVisits.filter((row) => row.clientRef === client.ref);
-        if (!own.length) continue;
-        const hasActive = (index.activeByClient.get(client.ref)?.length ?? 0) > 0;
-        const openCuota = own.some(
-          (row) => !row.dayClosedAt && !isAssignmentAwaitingLoan(row),
-        );
-        if (hasActive && openCuota) continue;
+        if (!own.length) {
+          // Cliente creado hoy, hoja abierta, sin préstamo: entra solo él a Prestar.
+          const bornToday = sheetOpen && clientBornOn(client, date);
+          const free = !(index.activeByClient.get(client.ref)?.length);
+          if (!bornToday || !free) continue;
+        } else {
+          const hasActive = (index.activeByClient.get(client.ref)?.length ?? 0) > 0;
+          const openCuota = own.some(
+            (row) => !row.dayClosedAt && !isAssignmentAwaitingLoan(row),
+          );
+          if (hasActive && openCuota) continue;
+        }
       }
       const items = loanItemsForClient(client, index, date, sheetOpen);
       // El préstamo de hoy no se queda en por cobrar. El cobro de hoy sí queda.
