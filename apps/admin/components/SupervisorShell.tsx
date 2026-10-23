@@ -301,7 +301,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
     );
     if (!result.ok) {
       showToast(result.error);
-      return false;
+      return result.error;
     }
     setClients(result.state.clients);
     setRoutes(result.state.routes);

@@ -9,7 +9,7 @@ import {
   clientRefsWithRouteOrderChange,
   sameRoute,
 } from "@/lib/client-route-order";
-import { clientNameFieldsTitleCase, toClientNameTitleCase } from "@/lib/client-name-case";
+import { clientNameFieldsTitleCase, clientFullNameKey, toClientNameTitleCase } from "@/lib/client-name-case";
 import {
   CLIENT_STATUS_ACTIVE,
   CLIENT_STATUS_REVIEW,
@@ -281,6 +281,23 @@ export function commitCreateClient(
   const name = toClientNameTitleCase(draft.name.trim());
   const lastName = toClientNameTitleCase(draft.lastName.trim());
   if (!name) return { ok: false, error: "El nombre del cliente es obligatorio." };
+
+  const nameKey = clientFullNameKey(name, lastName);
+  if (draft.route.trim() && nameKey) {
+    const twin = state.clients.find(
+      (row) =>
+        String(row.status || "").trim() !== "Eliminado" &&
+        sameRoute(row.route, draft.route) &&
+        clientFullNameKey(row.name, row.lastName) === nameKey,
+    );
+    if (twin) {
+      const shown = `${twin.name} ${twin.lastName}`.replace(/\s+/g, " ").trim();
+      return {
+        ok: false,
+        error: `Ya existe en la ruta ${draft.route}: ${shown}.`,
+      };
+    }
+  }
 
   const review = opts.canApprove
     ? { status: CLIENT_STATUS_ACTIVE, kind: clientStatusKind(CLIENT_STATUS_ACTIVE) }

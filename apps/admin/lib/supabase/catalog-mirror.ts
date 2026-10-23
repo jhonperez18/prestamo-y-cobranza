@@ -2,6 +2,8 @@
  * C5: clientes y préstamos compartidos (Postgres raíz; local = caché + cola offline).
  * @see docs/demo-to-backend.md
  */
+import { clientFullNameKey } from "@/lib/client-name-case";
+import { sameRoute } from "@/lib/client-route-order";
 import { createMirrorServerClient, mirrorUsesServiceRole } from "@/lib/supabase/admin";
 import { fetchAllRows, fetchRowsChangedSince } from "@/lib/supabase/changed-since";
 import { createIncrementalPull, resumeSinceIso, withSinceParam } from "@/lib/incremental-pull";
@@ -432,6 +434,33 @@ export async function mirrorClientToSupabase(client: ClientRow) {
     if (readError) return { ok: false as const, error: readError.message };
     if (isClientDeletedStatus(current)) {
       return { ok: true as const, skipped: true as const, reason: "client_deleted" };
+    }
+    if (!current && row.route.trim()) {
+      const nameKey = clientFullNameKey(row.name, row.last_name);
+      if (nameKey) {
+        const { data: mates, error: matesError } = await supabase
+          .from("clients")
+          .select("ref, name, last_name, route, status")
+          .eq("route", row.route);
+        if (matesError) return { ok: false as const, error: matesError.message };
+        const twin = (mates ?? []).find((mate) => {
+          const mateName = String(mate.name ?? "");
+          const mateLast = String(mate.last_name ?? "");
+          return (
+            mate.ref !== row.ref &&
+            !isClientDeletedStatus(mate) &&
+            sameRoute(String(mate.route ?? ""), row.route) &&
+            clientFullNameKey(mateName, mateLast) === nameKey
+          );
+        });
+        if (twin) {
+          return {
+            ok: true as const,
+            skipped: true as const,
+            reason: "nombre_en_ruta",
+          };
+        }
+      }
     }
   }
   const { error } = await supabase.from("clients").upsert(row, { onConflict: "ref" });

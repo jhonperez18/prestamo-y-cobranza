@@ -224,7 +224,7 @@ type Props = {
   onRenewLoan?: (loanRef: string, terms: RenewalTerms) => void;
   onCreateQuickLoan?: (draft: QuickLoanDraft) => void;
   /** Menú ☰ → Nuevo cliente: alta igual que el taller en la ruta de la planilla abierta. */
-  onCreateClient?: (draft: RouteClientDraft) => Promise<boolean> | boolean;
+  onCreateClient?: (draft: RouteClientDraft) => Promise<boolean | string> | boolean | string;
   onSaveExpenses?: (payload: CollectorSaveExpensesPayload) => void;
   onCloseDay?: (
     payload: CollectorCloseDayPayload,
@@ -1395,9 +1395,10 @@ export function CollectorMobileApp({
   async function saveNewClient(draft: RouteClientDraft) {
     if (!onCreateClient) return false;
     const ok = await onCreateClient(draft);
-    if (ok) {
+    if (ok === true) {
       setCreatingClient(false);
       setListFilter("pending");
+      return true;
     }
     return ok;
   }

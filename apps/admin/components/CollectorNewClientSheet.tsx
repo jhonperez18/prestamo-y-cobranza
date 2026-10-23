@@ -11,7 +11,7 @@ type Props = {
   /** Supervisor: rutas a elegir. Sin esto la ruta es fija (planilla abierta del cobrador). */
   routeOptions?: string[];
   onCancel: () => void;
-  onSave: (draft: RouteClientDraft) => Promise<boolean> | boolean;
+  onSave: (draft: RouteClientDraft) => Promise<boolean | string> | boolean | string;
 };
 
 /** Nuevo cliente desde el cobrador: nombre, posición en la ruta (como el taller) y ruta fija. */
@@ -56,7 +56,9 @@ export function CollectorNewClientSheet({
     setError("");
     try {
       const ok = await onSave({ name: trimmed, route, routeOrder: pos });
-      if (!ok) setError("No se pudo crear el cliente.");
+      if (ok !== true) {
+        setError(typeof ok === "string" && ok ? ok : "No se pudo crear el cliente.");
+      }
     } catch (err) {
       console.error("[nuevo cliente]", err);
       setError("No se pudo crear el cliente.");

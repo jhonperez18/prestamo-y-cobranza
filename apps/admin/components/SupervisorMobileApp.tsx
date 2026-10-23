@@ -266,7 +266,7 @@ type Props = {
   /** Pagos varios ya montados (para el siguiente PV-). */
   miscPayments?: MiscPayment[];
   /** Nuevo cliente: mismo alta del cobrador (ruta + posición), local + cola + nube. */
-  onCreateRouteClient?: (draft: RouteClientDraft) => Promise<boolean> | boolean;
+  onCreateRouteClient?: (draft: RouteClientDraft) => Promise<boolean | string> | boolean | string;
   onCreateQuickLoan?: (draft: QuickLoanDraft) => void;
   /** Editar ficha de cliente desde CLIENTES (raíz + cola nube). */
   onUpdateClient?: (draft: {
@@ -3915,7 +3915,7 @@ export function SupervisorMobileApp({
   async function saveNuevoRouteClient(draft: RouteClientDraft) {
     if (!onCreateRouteClient) return false;
     const ok = await onCreateRouteClient(draft);
-    if (!ok) return false;
+    if (ok !== true) return typeof ok === "string" ? ok : false;
     setNuevoMsg(`Listo: ${draft.name} quedó en la ruta ${draft.route}, posición ${draft.routeOrder}.`);
     setNuevoMode("menu");
     return true;

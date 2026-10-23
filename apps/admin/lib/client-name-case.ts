@@ -17,6 +17,11 @@ export function toClientNameTitleCase(raw: string): string {
     .join("");
 }
 
+/** Nombre completo para comparar altas: sin mayúsculas ni espacios de más. */
+export function clientFullNameKey(name: string, lastName = ""): string {
+  return `${name} ${lastName}`.replace(/\s+/g, " ").trim().toLocaleLowerCase("es-CO");
+}
+
 export function clientNameFieldsTitleCase<
   T extends { name?: string; lastName?: string; nickname?: string },
 >(row: T): T {

@@ -2131,8 +2131,13 @@ export function useWorkspace({
   }
 
   function createRouteClientFromMobile(draft: RouteClientDraft, createdBy?: string) {
-    return applyPortfolioCommit(
-      commitCreateRouteClient(draft, portfolioState(), createdBy ?? sessionUser?.name),
+    const committed = commitCreateRouteClient(
+      draft,
+      portfolioState(),
+      createdBy ?? sessionUser?.name,
+    );
+    return applyPortfolioCommit(committed).then((ok) =>
+      ok === true ? true : committed.ok ? false : committed.error,
     );
   }
 

@@ -27,6 +27,7 @@ const DROP_ON_SKIP_REASON = new Set([
   "invalid_payment",
   "invalid_client",
   "client_deleted",
+  "nombre_en_ruta",
   "invalid_loan",
   "loan_deleted",
   "loan_finished",
