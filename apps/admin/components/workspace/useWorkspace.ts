@@ -596,7 +596,19 @@ export function useWorkspace({
       );
       writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
       const changedAssignments = assignmentsChangedFrom(previousAssignments, assignments);
-      if (changedAssignments.length) queueAssignmentsMirror(changedAssignments);
+      // La hoja nace en el servidor (23:35, lista del día siguiente). Este aparato
+      // no sube una ruta que aquí no existía: esa copia vieja dejaba la lista a medias.
+      const alreadyOut = new Set(
+        previousAssignments.map(
+          (row) => `${row.dispatchDate}|${String(row.clientRoute || "").trim()}`,
+        ),
+      );
+      const toMirror = changedAssignments.filter((row) => {
+        const route = String(row.clientRoute || "").trim();
+        if (!route || row.dayClosedAt || row.paymentRef) return true;
+        return alreadyOut.has(`${row.dispatchDate}|${route}`);
+      });
+      if (toMirror.length) queueAssignmentsMirror(toMirror);
       writeDemoJson(DEMO_ROUTES_KEY, next.routes);
       writeDemoJson(DEMO_LOANS_KEY, next.loans);
       writeDemoJson(DEMO_DAILY_LOGS_KEY, next.logs);

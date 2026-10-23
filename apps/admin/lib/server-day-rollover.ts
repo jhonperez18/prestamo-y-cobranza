@@ -3,10 +3,13 @@
  * No depende de que haya un celular o este PC abierto a las 23:30 Bogotá.
  */
 import {
+  DAY_AUTO_CLOSE_AT,
   runOperationalDayCycle,
   type OperationalDayState,
 } from "@/lib/collector-day-auto-close";
-import { businessTodayIso } from "@/lib/business-timezone";
+import { businessClockParts, businessTodayIso } from "@/lib/business-timezone";
+import { addCalendarDaysIso } from "@/lib/colombia-holidays";
+import { persistDaySheet } from "@/lib/server-day-sheet";
 import {
   dayCloseAsPlanillaCashClose,
   isPlanillaCashCloseRef,
@@ -46,6 +49,9 @@ export type ServerDayRolloverResult = {
   autoClosed?: Array<{ collectorRef: string; date: string }>;
   sealedAssignments?: number;
   upsertedCloses?: number;
+  /** Visitas escritas de la hoja que abre a las 00:00. Cero si esa ruta ya tenía lista. */
+  sheetMounted?: number;
+  sheetDate?: string;
   errors?: string[];
 };
 
@@ -138,18 +144,6 @@ export async function runServerDayRollover(
   }
 
   const result = runOperationalDayCycle(loaded.state, now);
-  if (result.autoClosed.length === 0) {
-    return {
-      ok: true,
-      skipped: true,
-      reason: "nothing_to_close",
-      businessDate,
-      autoClosed: [],
-      sealedAssignments: 0,
-      upsertedCloses: 0,
-    };
-  }
-
   const errors: string[] = [];
   let upsertedCloses = 0;
   let sealedAssignments = 0;
@@ -194,14 +188,34 @@ export async function runServerDayRollover(
     }
   }
 
+  // 23:35: la lista de mañana, completa, desde la ficha. A las 00:00 ya está.
+  // De día: solo si esa fecha todavía no tiene visitas (el sellado de anoche no corrió).
+  const clock = businessClockParts(now);
+  const night = clock.minutesSinceMidnight >= DAY_AUTO_CLOSE_AT.hour * 60 + DAY_AUTO_CLOSE_AT.minute;
+  const sheetDate = night ? addCalendarDaysIso(businessDate, 1) : businessDate;
+  const birth = await persistDaySheet(
+    { ...loaded.state, loans: result.loans },
+    sheetDate,
+    night,
+  );
+  if (!birth.ok) errors.push(`hoja ${sheetDate}: ${birth.error}`);
+
+  const nothingToClose = result.autoClosed.length === 0;
   return {
     ok: errors.length === 0,
+    skipped: nothingToClose && birth.mounted === 0 ? true : undefined,
+    reason: errors.length
+      ? "partial_errors"
+      : nothingToClose && birth.mounted === 0
+        ? "nothing_to_close"
+        : undefined,
     businessDate,
     autoClosed: result.autoClosed,
     sealedAssignments,
     upsertedCloses,
+    sheetMounted: birth.mounted,
+    sheetDate,
     errors: errors.length ? errors : undefined,
-    reason: errors.length ? "partial_errors" : undefined,
   };
 }
 

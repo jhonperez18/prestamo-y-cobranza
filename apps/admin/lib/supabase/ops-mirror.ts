@@ -1432,6 +1432,27 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
   return upsertOpsRow("daily_assignments", row, "dispatch_date,item_id");
 }
 
+/**
+ * Alta de la hoja del día. Si la fila ya existe, no se toca:
+ * un cobro o un N/P de esa visita se queda.
+ */
+export async function insertAssignmentRowsNew(rows: DailyCollectionAssignment[]) {
+  const client = createMirrorClient();
+  if (!client) return { ok: false as const, error: "supabase_not_configured", mounted: 0 };
+  const payload = rows.map((row) => assignmentToRow(row));
+  let mounted = 0;
+  for (let index = 0; index < payload.length; index += 200) {
+    const part = payload.slice(index, index + 200);
+    const { data, error } = await client
+      .from("daily_assignments")
+      .upsert(part, { onConflict: "dispatch_date,item_id", ignoreDuplicates: true })
+      .select("item_id");
+    if (error) return { ok: false as const, error: error.message, mounted };
+    mounted += data?.length ?? 0;
+  }
+  return { ok: true as const, mounted };
+}
+
 export async function upsertOpsRow(
   table: string,
   row: Record<string, unknown>,
