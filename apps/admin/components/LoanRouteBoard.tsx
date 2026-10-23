@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { PlusIcon } from "@/components/icons";
-import { compareRouteNames, sameRoute } from "@/lib/client-route-order";
+import { clientsOnRouteSorted, compareRouteNames, sameRoute } from "@/lib/client-route-order";
 import { loanIsClosedHistory, loanRenewalOf } from "@/lib/loan-renewal-marks";
 import { isLoanActive, money, type ClientRow, type LoanRow } from "@/lib/mock-data";
 
@@ -72,6 +72,7 @@ export function LoanRouteBoard({
   clients,
   routeNames,
   onOpen,
+  onOpenClient,
   onCreate,
 }: {
   title: string;
@@ -79,11 +80,22 @@ export function LoanRouteBoard({
   clients: ClientRow[];
   routeNames: string[];
   onOpen: (ref: string) => void;
+  onOpenClient?: (ref: string) => void;
   onCreate?: () => void;
 }) {
   const [query, setQuery] = useState("");
+  const [freeQuery, setFreeQuery] = useState("");
   const q = query.trim().toLowerCase();
+  const freeQ = freeQuery.trim().toLowerCase();
   const current = vigenteLoans(loans);
+  const withLoan = new Set(current.map((loan) => loan.clientRef.trim()).filter(Boolean));
+  const freeRoutes = [...new Set(routeNames.map((name) => name.trim()).filter(Boolean))]
+    .sort(compareRouteNames)
+    .map((name) => ({
+      name,
+      rows: clientsOnRouteSorted(clients, name).filter((client) => !withLoan.has(client.ref)),
+    }));
+  const freeTotal = freeRoutes.reduce((sum, route) => sum + route.rows.length, 0);
   const names = [...new Set([...routeNames, ...current.map((loan) => routeOf(loan, clients))])]
     .map((name) => name.trim())
     .filter(Boolean)
@@ -93,6 +105,7 @@ export function LoanRouteBoard({
   );
 
   return (
+    <>
     <section className="panel loan-route-board">
       <div className="head is-client-board">
         <div className="client-board-title">
@@ -173,5 +186,70 @@ export function LoanRouteBoard({
         })}
       </div>
     </section>
+    <section className="panel loan-route-board is-sin-prestamo">
+      <div className="head is-client-board">
+        <div className="client-board-title">
+          <h1>Sin préstamos</h1>
+          <span className="count">{freeTotal}</span>
+        </div>
+        <input
+          className="client-board-search"
+          value={freeQuery}
+          placeholder="Buscar"
+          aria-label="Buscar sin préstamos"
+          onChange={(event) => setFreeQuery(event.target.value)}
+        />
+      </div>
+      <div className="client-route-board">
+        {freeRoutes.map((route) => {
+          const list = freeQ
+            ? route.rows.filter((client) => {
+                const hay = `${client.name} ${client.lastName} ${client.document ?? ""}`.toLowerCase();
+                return hay.includes(freeQ);
+              })
+            : route.rows;
+          return (
+            <section key={route.name} className="client-route-col">
+              <div className="client-route-col-head">
+                <span className="client-route-tab">
+                  Ruta {route.name} <strong>{route.rows.length}</strong>
+                </span>
+              </div>
+              <div className="table-wrap">
+                <table className="data list-grid">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th className="is-nombre">Nombre</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {list.length ? (
+                      list.map((client) => (
+                        <tr
+                          key={client.ref}
+                          className={onOpenClient ? "clickable" : undefined}
+                          onClick={() => onOpenClient?.(client.ref)}
+                        >
+                          <td className="ref">{client.routeOrder}</td>
+                          <td className="is-nombre">{`${client.name} ${client.lastName}`.trim()}</td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={2} className="is-nombre">
+                          Todos con préstamo
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    </section>
+    </>
   );
 }

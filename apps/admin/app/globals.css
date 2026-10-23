@@ -10189,6 +10189,19 @@
       padding: 2px 6px 2px 2px !important;
       white-space: nowrap;
     }
+    .loan-route-board.is-sin-prestamo {
+      margin-top: 22px;
+    }
+    .loan-route-board.is-sin-prestamo .client-route-col table.list-grid th:first-child,
+    .loan-route-board.is-sin-prestamo .client-route-col table.list-grid td:first-child {
+      width: 58px;
+      min-width: 58px;
+      max-width: 58px;
+      font-size: inherit !important;
+      text-align: center !important;
+      padding-left: 4px !important;
+      padding-right: 4px !important;
+    }
     .loan-route-board .loan-board-fin {
       color: #8b9890;
       font-weight: 600;

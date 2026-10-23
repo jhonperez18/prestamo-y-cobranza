@@ -955,6 +955,7 @@ export function Workspace(props: WorkspaceProps) {
             clients={clients}
             routeNames={activeCatalogRoutes.map((route) => route.name)}
             onOpen={(ref) => openLoanAccount(ref)}
+            onOpenClient={openFicha}
             onCreate={() => onGo("prestamos", "nuevo")}
           />
         );
