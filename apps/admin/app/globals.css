@@ -10160,19 +10160,27 @@
     }
     .loan-route-board .client-route-col table.list-grid th:first-child,
     .loan-route-board .client-route-col table.list-grid td:first-child {
-      width: 78px;
-      min-width: 78px;
+      width: 46px;
+      min-width: 46px;
+      max-width: 46px;
+      font-size: 11px !important;
       text-align: left !important;
-      padding-left: 8px !important;
+      padding: 2px 2px 2px 6px !important;
+    }
+    .loan-route-board .client-route-col table.list-grid th.is-nombre,
+    .loan-route-board .client-route-col table.list-grid td.is-nombre {
+      width: auto;
+      padding-left: 6px !important;
+      padding-right: 4px !important;
     }
     .loan-route-board .client-route-col table.list-grid th:nth-child(3),
     .loan-route-board .client-route-col table.list-grid td:nth-child(3),
     .loan-route-board .client-route-col table.list-grid th:nth-child(4),
     .loan-route-board .client-route-col table.list-grid td:nth-child(4) {
-      width: 78px;
-      font-size: 12px;
+      width: 74px;
+      font-size: 12px !important;
       text-align: right !important;
-      padding-right: 6px !important;
+      padding: 2px 6px 2px 2px !important;
       white-space: nowrap;
     }
     .loan-route-board .loan-board-fin {
