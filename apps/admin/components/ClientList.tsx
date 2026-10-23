@@ -150,6 +150,7 @@ export function ClientList({
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
   const [selected, setSelected] = useState<string[]>([]);
+  const [routeQuery, setRouteQuery] = useState<Record<string, string>>({});
 
   // Botones de ruta: catálogo + cualquier ruta que aún tenga clientes.
   const routeNames = useMemo(
@@ -159,16 +160,6 @@ export function ClientList({
         : [],
     [routeTabs, rows],
   );
-  const [routeTab, setRouteTab] = useState<string | null>(null);
-  // Arranca en la primera ruta; si la ruta elegida desaparece, vuelve a la primera.
-  const activeRoute =
-    routeNames.length === 0
-      ? null
-      : routeTab === ""
-        ? null
-        : routeTab && routeNames.includes(routeTab)
-          ? routeTab
-          : routeNames[0] ?? null;
   const routeCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const name of routeNames) {
@@ -210,8 +201,7 @@ export function ClientList({
   );
 
   const visible = useMemo(() => {
-    const onRoute = activeRoute ? rows.filter((row) => sameRoute(row.route, activeRoute)) : rows;
-    const filtered = onRoute.filter((row) =>
+    const filtered = rows.filter((row) =>
       CLIENT_COLUMNS.every((col) => {
         const query = applied[col.id];
         if (!query) return true;
@@ -221,14 +211,21 @@ export function ClientList({
     );
     // Orden sagrado = ruta + # (routeOrder). Misma ley en planilla/app/supervisor.
     return filtered.slice().sort(compareClientsByRoutePosition);
-  }, [activeRoute, applied, rows]);
+  }, [applied, rows]);
   /** Vista total: raya verde oscura donde arranca cada ruta (1 → 1.1 → 2). */
   const routeStarts = useMemo(() => routeBlockStarts(visible, (row) => row.route), [visible]);
 
-  function pickRoute(name: string) {
-    // Volver a tocar la ruta activa muestra el total (ambas rutas, una tras otra).
-    setRouteTab(activeRoute === name ? "" : name);
-    setSelected([]);
+  function rowsOfRoute(name: string) {
+    const query = (routeQuery[name] ?? "").trim().toLowerCase();
+    const onRoute = rows.filter((row) => sameRoute(row.route, name));
+    const filtered = query
+      ? onRoute.filter((row) => {
+          const label = clientListDisplayName(row).toLowerCase();
+          const order = String(row.routeOrder || "");
+          return label.includes(query) || order.includes(query);
+        })
+      : onRoute;
+    return filtered.slice().sort(compareClientsByRoutePosition);
   }
 
   const allChecked = visible.length > 0 && visible.every((row) => selected.includes(row.ref));
@@ -335,22 +332,6 @@ export function ClientList({
       <div className="head">
         <h1>{title}</h1>
         <span className="count">{count}</span>
-        {routeNames.length > 0 ? (
-          <div className="client-route-tabs" role="group" aria-label="Filtrar por ruta">
-            {routeNames.map((name) => (
-              <button
-                key={name}
-                type="button"
-                className={`client-route-tab${activeRoute === name ? " on" : ""}`}
-                aria-pressed={activeRoute === name}
-                onClick={() => pickRoute(name)}
-              >
-                Ruta {name}
-                <span className="client-route-tab-count">{routeCounts.get(name) ?? 0}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
         {isRevision && selected.length > 0 ? (
           <div className="client-review-actions">
             <button
@@ -386,6 +367,58 @@ export function ClientList({
         </button>
       </div>
 
+      {routeNames.length > 0 ? (
+        <div className="client-route-board">
+          {routeNames.map((name) => {
+            const list = rowsOfRoute(name);
+            return (
+              <section key={name} className="client-route-col" aria-label={`Ruta ${name}`}>
+                <div className="client-route-col-top">
+                  <div className="client-route-tab">
+                    Ruta {name}
+                    <span className="client-route-tab-count">{routeCounts.get(name) ?? 0}</span>
+                  </div>
+                  <input
+                    className="client-route-search"
+                    value={routeQuery[name] ?? ""}
+                    placeholder="Buscar"
+                    aria-label={`Buscar en ruta ${name}`}
+                    onChange={(event) =>
+                      setRouteQuery((current) => ({ ...current, [name]: event.target.value }))
+                    }
+                  />
+                </div>
+                <div className="table-wrap">
+                  <table className="data list-grid">
+                    <thead>
+                      <tr className="col-titles">
+                        <th>#</th>
+                        <th className="is-nombre">Nombre</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.length === 0 ? (
+                        <tr className="empty-row">
+                          <td colSpan={2}>Sin clientes</td>
+                        </tr>
+                      ) : (
+                        list.map((row) => (
+                          <tr key={row.ref} className="clickable" onClick={() => onOpen(row.ref)}>
+                            <td>{row.routeOrder || "—"}</td>
+                            <td className="is-nombre" title={clientListDisplayName(row)}>
+                              {clientListDisplayName(row)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      ) : (
       <div className="table-wrap">
         <table className="data list-grid">
           <thead>
@@ -487,6 +520,7 @@ export function ClientList({
           </tbody>
         </table>
       </div>
+      )}
     </section>
   );
 }

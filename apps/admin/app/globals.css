@@ -10067,12 +10067,79 @@
       background: #dce8e1; padding: 2px 8px; border-radius: 999px;
     }
     .head .grow, .loan-line .grow { flex: 1; }
-    /* Listado de clientes: una ruta a la vez (cada ruta tiene su # 1…N). */
+    /* Listado: las cuatro rutas a la vez. Cada una: botón, búsqueda, # y nombre. */
     .client-route-tabs {
       display: flex;
       align-items: center;
       gap: 6px;
       margin-left: 6px;
+    }
+    .client-route-board {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+    .client-route-col {
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      height: calc(100vh - 148px);
+    }
+    .client-route-col-top {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 10px 10px 8px;
+      background: #fff;
+      flex: 0 0 auto;
+    }
+    .client-route-col .client-route-tab {
+      margin: 0;
+    }
+    .client-route-search {
+      width: 148px;
+      max-width: 100%;
+      height: 28px;
+      padding: 2px 8px;
+      border: 1px solid #b8cfc4;
+      border-radius: 4px;
+      background: #fff;
+      color: #14201b;
+      font-size: 13px;
+    }
+    .client-route-col .table-wrap {
+      flex: 1 1 auto;
+      overflow: auto;
+      min-height: 0;
+      border-radius: 0;
+    }
+    .client-route-col table.list-grid thead th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    .client-route-col table.list-grid th:first-child,
+    .client-route-col table.list-grid td:first-child {
+      width: 42px;
+      text-align: left;
+      padding-left: 10px;
+    }
+    .client-route-col td.is-nombre {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 0;
+    }
+    .shell.is-phone-layout .client-route-board {
+      grid-template-columns: 1fr;
+    }
+    .shell.is-phone-layout .client-route-col {
+      max-height: 70vh;
     }
     .client-route-tab {
       display: inline-flex;
