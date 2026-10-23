@@ -10165,14 +10165,14 @@
       text-align: left !important;
       padding-left: 8px !important;
     }
-    .loan-route-board .client-route-col {
-      height: calc(100vh - 204px);
-    }
     .loan-route-board .client-route-col table.list-grid th:nth-child(3),
-    .loan-route-board .client-route-col table.list-grid td:nth-child(3) {
-      width: 108px;
+    .loan-route-board .client-route-col table.list-grid td:nth-child(3),
+    .loan-route-board .client-route-col table.list-grid th:nth-child(4),
+    .loan-route-board .client-route-col table.list-grid td:nth-child(4) {
+      width: 78px;
+      font-size: 12px;
       text-align: right !important;
-      padding-right: 8px !important;
+      padding-right: 6px !important;
       white-space: nowrap;
     }
     .loan-route-board .loan-board-fin {

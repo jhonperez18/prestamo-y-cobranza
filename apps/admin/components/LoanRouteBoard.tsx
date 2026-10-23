@@ -1,7 +1,7 @@
 "use client";
 
-import { PlusIcon, SearchIcon } from "@/components/icons";
-import type { DataTableFilterOptions } from "@/components/ui";
+import { useState } from "react";
+import { PlusIcon } from "@/components/icons";
 import { compareRouteNames, sameRoute } from "@/lib/client-route-order";
 import { money, type ClientRow, type LoanRow } from "@/lib/mock-data";
 
@@ -23,16 +23,24 @@ function finishedWithoutBalance(loan: LoanRow) {
   return status === "finalizado" && !(Number(loan.balance) > 0);
 }
 
+function matchesQuery(loan: LoanRow, clients: ClientRow[], query: string) {
+  const client = clients.find((row) => row.ref === loan.clientRef);
+  const hay = [loan.ref, loan.client, client?.name, client?.lastName, client?.document]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(query);
+}
+
 /**
  * Listado de préstamos en las cuatro rutas.
- * Solo pinta. El filtro, el clic y el alta son los de siempre.
+ * Solo pinta. El clic y el alta son los de siempre.
  */
 export function LoanRouteBoard({
   title,
   loans,
   clients,
   routeNames,
-  filters,
   onOpen,
   onCreate,
 }: {
@@ -40,10 +48,11 @@ export function LoanRouteBoard({
   loans: LoanRow[];
   clients: ClientRow[];
   routeNames: string[];
-  filters?: DataTableFilterOptions;
   onOpen: (ref: string) => void;
   onCreate?: () => void;
 }) {
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
   const names = [...new Set([...routeNames, ...loans.map((loan) => routeOf(loan, clients))])]
     .map((name) => name.trim())
     .filter(Boolean)
@@ -51,61 +60,35 @@ export function LoanRouteBoard({
   const loose = loans.filter(
     (loan) => !names.some((name) => sameRoute(routeOf(loan, clients), name)),
   );
-  const query = filters?.query ?? "";
-  const routeName = filters?.routeName ?? "";
-  const dateFrom = filters?.dateFrom ?? "";
-  const dateTo = filters?.dateTo ?? "";
 
   return (
     <section className="panel loan-route-board">
-      <div className="head">
-        <h1>{title}</h1>
-        <span className="count">{loans.length}</span>
-        <div className="grow" />
+      <div className="head is-client-board">
+        <div className="client-board-title">
+          <h1>{title}</h1>
+          <span className="count">{loans.length}</span>
+        </div>
+        <input
+          className="client-board-search"
+          value={query}
+          placeholder="Buscar"
+          aria-label="Buscar en las cuatro rutas"
+          onChange={(event) => setQuery(event.target.value)}
+        />
         {onCreate ? (
           <button className="plus" title="Crear" onClick={onCreate}>
             <PlusIcon />
           </button>
         ) : null}
       </div>
-      <div className="filters">
-        <input
-          placeholder="Buscar…"
-          value={query}
-          onChange={(event) => filters?.onQueryChange?.(event.target.value)}
-          aria-label="Buscar"
-        />
-        <button className="go" type="button" aria-label="Buscar">
-          <SearchIcon size={15} />
-        </button>
-        <select
-          value={routeName}
-          onChange={(event) => filters?.onRouteChange?.(event.target.value)}
-          aria-label="Filtrar por ruta"
-        >
-          <option value="">Todas las rutas</option>
-          {(filters?.routes ?? names).map((name) => (
-            <option key={name} value={name}>
-              Ruta {name}
-            </option>
-          ))}
-        </select>
-        <input
-          type="date"
-          value={dateFrom}
-          onChange={(event) => filters?.onDateFromChange?.(event.target.value)}
-          aria-label="Desde"
-        />
-        <input
-          type="date"
-          value={dateTo}
-          onChange={(event) => filters?.onDateToChange?.(event.target.value)}
-          aria-label="Hasta"
-        />
-      </div>
       <div className="client-route-board">
         {[...names, ...(loose.length ? ["Sin ruta"] : [])].map((name) => {
-          const list = (name === "Sin ruta" ? loose : loans.filter((loan) => sameRoute(routeOf(loan, clients), name)))
+          const onRoute =
+            name === "Sin ruta"
+              ? loose
+              : loans.filter((loan) => sameRoute(routeOf(loan, clients), name));
+          const list = (q ? onRoute.filter((loan) => matchesQuery(loan, clients, q)) : onRoute)
+            .slice()
             .sort(
               (a, b) =>
                 positionOf(a, clients) - positionOf(b, clients) ||
@@ -115,7 +98,7 @@ export function LoanRouteBoard({
             <section key={name} className="client-route-col">
               <div className="client-route-col-head">
                 <span className="client-route-tab">
-                  {name === "Sin ruta" ? "Sin ruta" : `Ruta ${name}`} <strong>{list.length}</strong>
+                  {name === "Sin ruta" ? "Sin ruta" : `Ruta ${name}`} <strong>{onRoute.length}</strong>
                 </span>
               </div>
               <div className="table-wrap">
@@ -124,6 +107,7 @@ export function LoanRouteBoard({
                     <tr>
                       <th>Ref</th>
                       <th className="is-nombre">Nombre</th>
+                      <th className="right">Presto</th>
                       <th className="right">Saldo</th>
                     </tr>
                   </thead>
@@ -133,6 +117,7 @@ export function LoanRouteBoard({
                         <tr key={row.ref} className="clickable" onClick={() => onOpen(row.ref)}>
                           <td className="ref">{row.ref}</td>
                           <td className="is-nombre">{row.client}</td>
+                          <td className="money">{money(Number(row.capital) || 0)}</td>
                           <td className="money">
                             {finishedWithoutBalance(row) ? (
                               <span className="loan-board-fin">fin</span>
@@ -144,7 +129,7 @@ export function LoanRouteBoard({
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={3} className="is-nombre">
+                        <td colSpan={4} className="is-nombre">
                           Sin préstamos
                         </td>
                       </tr>

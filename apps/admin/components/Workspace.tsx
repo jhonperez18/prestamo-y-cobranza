@@ -951,10 +951,9 @@ export function Workspace(props: WorkspaceProps) {
         return (
           <LoanRouteBoard
             title={viewLabel}
-            loans={rows}
+            loans={baseRows}
             clients={clients}
             routeNames={activeCatalogRoutes.map((route) => route.name)}
-            filters={listFilterOptions}
             onOpen={(ref) => openLoanAccount(ref)}
             onCreate={() => onGo("prestamos", "nuevo")}
           />
