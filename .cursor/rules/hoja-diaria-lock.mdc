@@ -30,7 +30,16 @@ Solo si el dueño lo pide **en ese mensaje**, con estas palabras.
 - Hoja cerrada = el cobrador pulsó Cerrar planilla, o ya son las 23:30. No se crea el cliente. M cerrada se queda cerrada; T, A y N siguen hasta su propio cierre.
 - Reglas de inicio intactas: no se toca `cash_float`, Inicial, CIE, orden de ruta ni historia de días cerrados.
 
-Dueño del armado: `syncPermanentRoutePlanilla` y `loanIsCollectibleOn`.
+## Número de la ruta — una sola cuenta (dueño 23/10/2026)
+
+El total de una ruta es la gente **viva**. La misma cifra en Clientes, Inicio, supervisor y cobrador. Cada ruta cuenta la suya.
+
+| Qué | Regla |
+| --- | --- |
+| Cuenta | `clientsOnRouteSorted` / `clientsOnRoute`. Sin eliminados y sin pendientes de revisión. |
+| Eliminado | No suma, aunque su visita de hoy siga guardada. |
+| Hoja del día | No es el total de la ruta. A las 00:00 nace igual. Después solo marca a la persona del movimiento. |
+| Vistas | Sistema, supervisor y cobrador leen esa lista. No se arma un conteo aparte por pantalla. |
 
 ## Prohibido
 
@@ -39,3 +48,7 @@ Dueño del armado: `syncPermanentRoutePlanilla` y `loanIsCollectibleOn`.
 - Sacar de las 00:00 al semanal, quincenal o mensual porque hoy no está en su fecha.
 - Borrar desde el servidor las visitas de la hoja que ya salió a la calle.
 - Mover caja, Inicial o CIE para “cuadrar” la hoja.
+- Usar las visitas de la hoja de hoy como total de clientes de la ruta.
+- Contar a un eliminado en Clientes, Inicio, supervisor o cobrador.
+
+Dueño del armado: `syncPermanentRoutePlanilla` y `loanIsCollectibleOn`. El número de la ruta: `clientsOnRouteSorted`.
