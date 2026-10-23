@@ -1799,7 +1799,13 @@
     }
     .collector-mobile-day-history.is-chain-m .collector-mobile-day-history-head,
     .collector-mobile-day-history.is-chain-m .collector-mobile-day-history-row {
-      grid-template-columns: 1.7rem minmax(0, 0.85fr) minmax(0, 0.8fr) minmax(0, 0.8fr) minmax(0, 0.95fr) minmax(0, 1fr);
+      grid-template-columns: 1.5rem repeat(5, minmax(0, 1fr));
+      column-gap: 3px;
+      padding: 6px 4px;
+    }
+    .collector-mobile-day-history.is-chain-m .collector-mobile-day-history-head {
+      letter-spacing: 0;
+      font-size: 9px;
     }
     .collector-mobile-day-history-head {
       border-bottom: 1px solid #e5e7eb;
