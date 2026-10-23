@@ -176,10 +176,12 @@ export function RouteClientsView({
   const blocked = planillaDayBlockedReason(today);
   const [renewingRef, setRenewingRef] = useState<string | null>(null);
 
-  const planilla = useMemo(
-    () => planillaAssignmentsForRoute(assignments, routeName, collectorRef, today),
-    [assignments, routeName, collectorRef, today],
-  );
+  const planilla = useMemo(() => {
+    const living = new Set(clientsOnRouteSorted(clients, routeName).map((row) => row.ref));
+    return planillaAssignmentsForRoute(assignments, routeName, collectorRef, today).filter((row) =>
+      living.has(row.clientRef),
+    );
+  }, [assignments, routeName, collectorRef, today, clients]);
 
   const rows = useMemo(() => {
     if (!collectorRef || blocked) return [];

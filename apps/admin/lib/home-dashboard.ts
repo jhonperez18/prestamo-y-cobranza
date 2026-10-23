@@ -1,5 +1,5 @@
 import { pendingReviewClients } from "@/lib/client-review";
-import { compareRouteNames, sameRoute } from "@/lib/client-route-order";
+import { clientsOnRouteSorted, compareRouteNames } from "@/lib/client-route-order";
 import { clientsNeedingProfileCompletion } from "@/lib/profile-pending";
 import { activityFeed } from "@/lib/collector-preview";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
@@ -16,7 +16,6 @@ import { buildPortfolioStats, moraStats } from "@/lib/portfolio-stats";
 import type { ModuleId } from "@/lib/navigation";
 import {
   catalogRoutes,
-  clientsOnRouteListed,
   money,
   routeIsActive,
   type ActivityRow,
@@ -191,21 +190,17 @@ function routeCard(
   assignments: DailyCollectionAssignment[],
   today: string,
 ): HomeRouteCard {
-  const catalogClients = clientsOnRouteListed(route.name, clients);
+  const catalogClients = clientsOnRouteSorted(clients, route.name);
   const catalogCount = catalogClients.length;
   const routeClientRefs = new Set(catalogClients.map((row) => row.ref));
-  // Cada tarjeta cuenta solo su ruta: si el cobrador tiene «1» y «1.1»,
-  // las filas se reparten por el cliente/ruta, no por el cobrador.
   const dayRows = assignments.filter((row) => {
     if (!row.dispatched) return false;
     const date = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
     if (date !== today) return false;
-    if (routeClientRefs.has(row.clientRef)) return true;
-    if (row.clientRoute) return sameRoute(row.clientRoute, route.name);
-    return Boolean(route.collectorRef && row.collectorRef === route.collectorRef);
+    return routeClientRefs.has(row.clientRef);
   });
-  // En campo = solo planilla/cobros del día (nunca el catálogo CLIENTES).
-  // Si no hay visitas cobrables, total 0 — no “saltar” a 81 del catálogo.
+  // El número de la ruta es el de clientes vivos, el mismo de Clientes.
+  // Quien está eliminado no cuenta, aunque su visita de hoy siga guardada.
   const total = dayRows.length || route.stops.filter((stop) => Boolean(stop.loanRef)).length;
   const visited = dayRows.length
     ? dayRows.filter((row) => row.visitStatus === "cobrado" || row.visitStatus === "parcial").length
@@ -220,7 +215,7 @@ function routeCard(
     ref: route.ref,
     zone: route.name || route.zone,
     collector: route.collectorRef && route.collector !== "—" ? route.collector : "Sin cobrador",
-    clients: total,
+    clients: catalogCount,
     visited,
     pending,
     progress: total ? Math.round((visited / total) * 100) : 0,

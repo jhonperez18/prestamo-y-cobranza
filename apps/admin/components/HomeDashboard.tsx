@@ -9,11 +9,9 @@ import { todayIso } from "@/lib/daily-dispatch";
 import { buildHomeDashboard } from "@/lib/home-dashboard";
 import type { RenewalTerms } from "@/lib/loan-renew";
 import type { ModuleId } from "@/lib/navigation";
-import { planillaAssignmentsForRoute } from "@/lib/planilla-day-sync";
-import { compareRouteNames } from "@/lib/client-route-order";
+import { clientsOnRouteSorted, compareRouteNames } from "@/lib/client-route-order";
 import {
   catalogRoutes,
-  clientsOnRouteListed,
   money,
   routeIsActive,
   type ActivityRow,
@@ -98,28 +96,22 @@ export function HomeDashboard({
       .slice()
       .sort((a, b) => compareRouteNames(a.name, b.name))
       .map((route, index) => {
-        const catalogCount = clientsOnRouteListed(route.name, clients).length;
-        const planillaCount = planillaAssignmentsForRoute(
-          assignments,
-          route.name,
-          route.collectorRef,
-          today,
-        ).length;
         const collector =
           route.collectorRef && route.collector && route.collector !== "—"
             ? route.collector
             : "Sin cobrador";
+        const count = clientsOnRouteSorted(clients, route.name).length;
         return {
           ref: route.ref,
           name: route.name,
           collectorRef: route.collectorRef || "",
           collector,
-          catalogCount,
-          count: planillaCount,
+          catalogCount: count,
+          count,
           tone: ROUTE_CHIP_TONE[route.name] ?? TONES[index % TONES.length]!,
         };
       });
-  }, [clients, routes, assignments, today]);
+  }, [clients, routes]);
 
   const [selectedRoute, setSelectedRoute] = useState("");
 
