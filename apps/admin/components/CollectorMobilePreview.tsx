@@ -52,7 +52,7 @@ type Props = {
   onCreateRouteClient?: (
     draft: import("@/lib/commit-portfolio-catalog").RouteClientDraft,
     createdBy?: string,
-  ) => Promise<boolean>;
+  ) => Promise<boolean | string>;
   onUpdateClient?: (draft: {
     ref: string;
     name: string;
