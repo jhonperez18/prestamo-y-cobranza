@@ -1,4 +1,5 @@
-import { clientsOnRouteSorted } from "@/lib/client-route-order";
+import { clientsOnRouteSorted, sameRoute } from "@/lib/client-route-order";
+import { businessClockParts } from "@/lib/business-timezone";
 import {
   assignmentFromItem,
   buildDispatchRoute,
@@ -51,6 +52,31 @@ function clientLabel(client: ClientRow) {
 function clientBornOn(client: ClientRow, date: string) {
   const alta = displayToIso(String(client.alta || ""));
   return Boolean(date) && alta === date;
+}
+
+const SHEET_CLOSE_MINUTES = 23 * 60 + 30;
+
+/**
+ * La hoja de esa ruta ya cerró: el cobrador le dio Cerrar planilla,
+ * o ya son las 23:30 (Bogotá). Mientras no pase eso, sigue abierta.
+ */
+export function routeSheetClosed(
+  assignments: Pick<DailyCollectionAssignment, "dispatchDate" | "clientRoute" | "dayClosedAt">[],
+  route: string,
+  now = new Date(),
+) {
+  const routeName = String(route || "").trim();
+  if (!routeName) return false;
+  const clock = businessClockParts(now);
+  if (clock.minutesSinceMidnight >= SHEET_CLOSE_MINUTES) return true;
+  const visits = assignments.filter(
+    (row) =>
+      String(row.dispatchDate || "").slice(0, 10) === clock.dateIso &&
+      sameRoute(String(row.clientRoute || ""), routeName),
+  );
+  if (!visits.length) return false;
+  const sealed = visits.filter((row) => row.dayClosedAt).length;
+  return sealed > 0 && sealed > visits.length - sealed;
 }
 
 export { isValidPlanillaAssignment, purgeInvalidPlanillaAssignments } from "@/lib/planilla-eligibility";

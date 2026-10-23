@@ -16,7 +16,9 @@ Solo si el dueño lo pide **en ese mensaje**, con estas palabras.
 | --- | --- |
 | **00:00** | Nace la hoja del día, completa. Todos los clientes de cada ruta: con préstamo (aunque sea semanal, quincenal o mensual y hoy no sea su fecha) y sin préstamo (Prestar). Saldos al día. |
 | **Durante el día** | **No se rearma** el resto de la ruta. Cobro, N/P y préstamo marcan a esa persona y la sacan de por cobrar. |
+| **Hoja abierta** | Mientras el cobrador no le dé Cerrar planilla y no sean las 23:30, el cobrador usa sus permisos: cobrar en efectivo, cobrar en banco, prestar, cobro combinado y crear cliente. El supervisor y el sistema principal también. |
 | **Cliente nuevo** | Alta de hoy, hoja abierta, sin préstamo: entra **solo él**, en el acto, listo para prestar. (dueño 23/10/2026) |
+| **Hoja cerrada** | Cerrar planilla o las 23:30. No se crea el cliente. No entra nadie. Reabrir es otra regla y no se toca. |
 | **Préstamo** | Si la primera cuota es otro día, sale y no vuelve hoy. Entra en la ruta nueva de las 00:00. |
 | **Misma fecha** | Si el primer cobro es el mismo día del préstamo, queda **listo para cobrar** en el acto. Si cobra, sale. |
 | **Por cobrar** | Una fila por cliente. Las dos o tres líneas (préstamo, cuota, pago combinado) viven en el recaudo. |
@@ -25,7 +27,7 @@ Solo si el dueño lo pide **en ese mensaje**, con estas palabras.
 ## Calle y caja
 
 - Una ruta que **ya tiene visitas hoy** no se vuelve a montar. Se conserva la lista que lleva el cobrador. La excepción es el cliente creado hoy: entra solo él a Prestar, y si le prestan con la primera cuota hoy, esa fila pasa a cobro.
-- Hoja ya cerrada (más selladas que abiertas) no recibe visitas nuevas. M cerrada se queda cerrada.
+- Hoja cerrada = el cobrador pulsó Cerrar planilla, o ya son las 23:30. No se crea el cliente. M cerrada se queda cerrada; T, A y N siguen hasta su propio cierre.
 - Reglas de inicio intactas: no se toca `cash_float`, Inicial, CIE, orden de ruta ni historia de días cerrados.
 
 Dueño del armado: `syncPermanentRoutePlanilla` y `loanIsCollectibleOn`.

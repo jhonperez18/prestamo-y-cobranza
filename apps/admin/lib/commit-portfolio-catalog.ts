@@ -50,7 +50,7 @@ import {
   markLoanFundedByNequi,
 } from "@/lib/nequi-pool";
 import { existingDigitalDisbursementTwin } from "@/lib/restore-loans-from-bank-disbursements";
-import { resolvedLoanInstallment, syncPermanentRoutePlanilla } from "@/lib/route-planilla";
+import { resolvedLoanInstallment, routeSheetClosed, syncPermanentRoutePlanilla } from "@/lib/route-planilla";
 import {
   clientDeletedRow,
   flushCatalogMirrorQueues,
@@ -303,6 +303,17 @@ export function commitCreateClient(
   const review = opts.canApprove
     ? { status: CLIENT_STATUS_ACTIVE, kind: clientStatusKind(CLIENT_STATUS_ACTIVE) }
     : { status: CLIENT_STATUS_REVIEW, kind: clientStatusKind(CLIENT_STATUS_REVIEW) };
+
+  if (
+    review.status === CLIENT_STATUS_ACTIVE &&
+    draft.route.trim() &&
+    routeSheetClosed(state.assignments, draft.route)
+  ) {
+    return {
+      ok: false,
+      error: `La hoja de la ruta ${draft.route.trim()} ya cerró. No se crea el cliente.`,
+    };
+  }
 
   const ref = nextClientCode([...state.clients, ...deletedClientRefRows()]);
   const row = stampCatalogRow({
