@@ -74,6 +74,7 @@ export function LoanRouteBoard({
   onOpen,
   onOpenClient,
   onCreate,
+  showWithoutLoan = false,
 }: {
   title: string;
   loans: LoanRow[];
@@ -82,6 +83,8 @@ export function LoanRouteBoard({
   onOpen: (ref: string) => void;
   onOpenClient?: (ref: string) => void;
   onCreate?: () => void;
+  /** Vista del sidebar: quien no debe, en las cuatro rutas. */
+  showWithoutLoan?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [freeQuery, setFreeQuery] = useState("");
@@ -104,8 +107,81 @@ export function LoanRouteBoard({
     (loan) => !names.some((name) => sameRoute(routeOf(loan, clients), name)),
   );
 
+  if (showWithoutLoan) {
+    return (
+      <section className="panel loan-route-board is-sin-prestamo">
+        <div className="head is-client-board">
+          <div className="client-board-title">
+            <h1>{title}</h1>
+            <span className="count">{freeTotal}</span>
+          </div>
+          <input
+            className="client-board-search"
+            value={freeQuery}
+            placeholder="Buscar"
+            aria-label="Buscar sin préstamos"
+            onChange={(event) => setFreeQuery(event.target.value)}
+          />
+          {onCreate ? (
+            <button className="plus" title="Crear" onClick={onCreate}>
+              <PlusIcon />
+            </button>
+          ) : null}
+        </div>
+        <div className="client-route-board">
+          {freeRoutes.map((route) => {
+            const list = freeQ
+              ? route.rows.filter((client) => {
+                  const hay = `${client.name} ${client.lastName} ${client.document ?? ""}`.toLowerCase();
+                  return hay.includes(freeQ);
+                })
+              : route.rows;
+            return (
+              <section key={route.name} className="client-route-col">
+                <div className="client-route-col-head">
+                  <span className="client-route-tab">
+                    Ruta {route.name} <strong>{route.rows.length}</strong>
+                  </span>
+                </div>
+                <div className="table-wrap">
+                  <table className="data list-grid">
+                    <thead>
+                      <tr>
+                        <th>#</th>
+                        <th className="is-nombre">Nombre</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.length ? (
+                        list.map((client) => (
+                          <tr
+                            key={client.ref}
+                            className={onOpenClient ? "clickable" : undefined}
+                            onClick={() => onOpenClient?.(client.ref)}
+                          >
+                            <td className="ref">{client.routeOrder}</td>
+                            <td className="is-nombre">{`${client.name} ${client.lastName}`.trim()}</td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={2} className="is-nombre">
+                            Todos con préstamo
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <>
     <section className="panel loan-route-board">
       <div className="head is-client-board">
         <div className="client-board-title">
@@ -186,70 +262,5 @@ export function LoanRouteBoard({
         })}
       </div>
     </section>
-    <section className="panel loan-route-board is-sin-prestamo">
-      <div className="head is-client-board">
-        <div className="client-board-title">
-          <h1>Sin préstamos</h1>
-          <span className="count">{freeTotal}</span>
-        </div>
-        <input
-          className="client-board-search"
-          value={freeQuery}
-          placeholder="Buscar"
-          aria-label="Buscar sin préstamos"
-          onChange={(event) => setFreeQuery(event.target.value)}
-        />
-      </div>
-      <div className="client-route-board">
-        {freeRoutes.map((route) => {
-          const list = freeQ
-            ? route.rows.filter((client) => {
-                const hay = `${client.name} ${client.lastName} ${client.document ?? ""}`.toLowerCase();
-                return hay.includes(freeQ);
-              })
-            : route.rows;
-          return (
-            <section key={route.name} className="client-route-col">
-              <div className="client-route-col-head">
-                <span className="client-route-tab">
-                  Ruta {route.name} <strong>{route.rows.length}</strong>
-                </span>
-              </div>
-              <div className="table-wrap">
-                <table className="data list-grid">
-                  <thead>
-                    <tr>
-                      <th>#</th>
-                      <th className="is-nombre">Nombre</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {list.length ? (
-                      list.map((client) => (
-                        <tr
-                          key={client.ref}
-                          className={onOpenClient ? "clickable" : undefined}
-                          onClick={() => onOpenClient?.(client.ref)}
-                        >
-                          <td className="ref">{client.routeOrder}</td>
-                          <td className="is-nombre">{`${client.name} ${client.lastName}`.trim()}</td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan={2} className="is-nombre">
-                          Todos con préstamo
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          );
-        })}
-      </div>
-    </section>
-    </>
   );
 }

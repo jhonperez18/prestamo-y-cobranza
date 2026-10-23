@@ -947,13 +947,14 @@ export function Workspace(props: WorkspaceProps) {
             ? loans.filter((row) => row.status === "Finalizado")
             : loans;
       const rows = baseRows.filter(loanMatchesListFilters);
-      if (viewId === "listado") {
+      if (viewId === "listado" || viewId === "sin-prestamo") {
         return (
           <LoanRouteBoard
             title={viewLabel}
             loans={baseRows}
             clients={clients}
             routeNames={activeCatalogRoutes.map((route) => route.name)}
+            showWithoutLoan={viewId === "sin-prestamo"}
             onOpen={(ref) => openLoanAccount(ref)}
             onOpenClient={openFicha}
             onCreate={() => onGo("prestamos", "nuevo")}

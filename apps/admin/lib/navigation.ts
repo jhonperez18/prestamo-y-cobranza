@@ -123,6 +123,7 @@ export const MODULES: AppModule[] = [
         items: [
           { id: "nuevo", label: "Nuevo préstamo" },
           { id: "listado", label: "Listado" },
+          { id: "sin-prestamo", label: "Sin préstamos" },
           { id: "activos", label: "Activos" },
           { id: "finalizados", label: "Finalizados" },
         ],

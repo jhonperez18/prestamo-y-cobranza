@@ -59,6 +59,7 @@ const VIEW_PERMISSIONS: Partial<Record<ModuleId, Record<string, ViewPerm>>> = {
   prestamos: {
     nuevo: "prestamos.crear",
     listado: "prestamos.ver",
+    "sin-prestamo": "prestamos.ver",
     activos: "prestamos.ver",
     finalizados: "prestamos.ver",
     cuenta: "prestamos.ver",
