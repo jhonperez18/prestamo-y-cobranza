@@ -10067,7 +10067,7 @@
       background: #dce8e1; padding: 2px 8px; border-radius: 999px;
     }
     .head .grow, .loan-line .grow { flex: 1; }
-    /* Listado: las cuatro rutas a la vez. Cada una: botón, búsqueda, # y nombre. */
+    /* Listado: las cuatro rutas a la vez. Arriba, un buscar para las cuatro. */
     .client-route-tabs {
       display: flex;
       align-items: center;
@@ -10103,17 +10103,36 @@
       margin: 0;
       flex: 0 0 auto;
     }
-    .client-route-search {
-      width: 96px;
-      height: 24px;
-      padding: 0 10px;
+    .head.is-client-board {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      padding-left: 72px;
+      padding-right: 72px;
+    }
+    .client-board-title {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      justify-self: end;
+      padding-right: 36px;
+    }
+    .head.is-client-board .plus {
+      justify-self: start;
+      margin-left: 36px;
+    }
+    .client-board-search {
+      width: 196px;
+      height: 28px;
+      padding: 0 12px;
       border: 1px solid #d3e0d8;
       border-radius: 999px;
       background: #f7faf8;
       color: #14201b;
-      font-size: 12px;
+      font-size: 13px;
+      justify-self: center;
     }
-    .client-route-search::placeholder {
+    .client-board-search::placeholder {
       color: #8aa094;
     }
     .client-route-col .table-wrap {
@@ -10154,8 +10173,22 @@
     .shell.is-phone-layout .client-route-col {
       max-height: 70vh;
     }
-    .shell.is-phone-layout .client-route-col-top {
-      flex-wrap: wrap;
+    .shell.is-phone-layout .head.is-client-board {
+      grid-template-columns: 1fr auto;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+    .shell.is-phone-layout .client-board-title {
+      justify-self: start;
+      padding-right: 0;
+    }
+    .shell.is-phone-layout .head.is-client-board .plus {
+      justify-self: end;
+      margin-left: 0;
+    }
+    .shell.is-phone-layout .client-board-search {
+      grid-column: 1 / -1;
+      width: 100%;
     }
     .client-route-tab {
       display: inline-flex;

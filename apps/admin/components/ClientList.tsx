@@ -150,7 +150,7 @@ export function ClientList({
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
   const [selected, setSelected] = useState<string[]>([]);
-  const [routeQuery, setRouteQuery] = useState<Record<string, string>>({});
+  const [boardQuery, setBoardQuery] = useState("");
 
   // Botones de ruta: catálogo + cualquier ruta que aún tenga clientes.
   const routeNames = useMemo(
@@ -216,7 +216,7 @@ export function ClientList({
   const routeStarts = useMemo(() => routeBlockStarts(visible, (row) => row.route), [visible]);
 
   function rowsOfRoute(name: string) {
-    const query = (routeQuery[name] ?? "").trim().toLowerCase();
+    const query = boardQuery.trim().toLowerCase();
     const onRoute = rows.filter((row) => sameRoute(row.route, name));
     const filtered = query
       ? onRoute.filter((row) => {
@@ -327,11 +327,22 @@ export function ClientList({
     setSelected([]);
   }
 
+  const board = routeNames.length > 0;
+
   return (
     <section className="panel">
-      <div className="head">
-        <h1>{title}</h1>
-        <span className="count">{count}</span>
+      <div className={board ? "head is-client-board" : "head"}>
+        {board ? (
+          <div className="client-board-title">
+            <h1>{title}</h1>
+            <span className="count">{count}</span>
+          </div>
+        ) : (
+          <>
+            <h1>{title}</h1>
+            <span className="count">{count}</span>
+          </>
+        )}
         {isRevision && selected.length > 0 ? (
           <div className="client-review-actions">
             <button
@@ -354,14 +365,26 @@ export function ClientList({
             ) : null}
           </div>
         ) : null}
-        <div className="grow" />
-        <label className="page-size">
-          Ver{" "}
-          <select defaultValue="25">
-            <option>25</option>
-            <option>50</option>
-          </select>
-        </label>
+        {board ? (
+          <input
+            className="client-board-search"
+            value={boardQuery}
+            placeholder="Buscar"
+            aria-label="Buscar en las cuatro rutas"
+            onChange={(event) => setBoardQuery(event.target.value)}
+          />
+        ) : (
+          <>
+            <div className="grow" />
+            <label className="page-size">
+              Ver{" "}
+              <select defaultValue="25">
+                <option>25</option>
+                <option>50</option>
+              </select>
+            </label>
+          </>
+        )}
         <button className="plus" title="Crear" onClick={onCreate}>
           <PlusIcon />
         </button>
@@ -378,15 +401,6 @@ export function ClientList({
                     Ruta {name}
                     <span className="client-route-tab-count">{routeCounts.get(name) ?? 0}</span>
                   </div>
-                  <input
-                    className="client-route-search"
-                    value={routeQuery[name] ?? ""}
-                    placeholder="Buscar"
-                    aria-label={`Buscar en ruta ${name}`}
-                    onChange={(event) =>
-                      setRouteQuery((current) => ({ ...current, [name]: event.target.value }))
-                    }
-                  />
                 </div>
                 <div className="table-wrap">
                   <table className="data list-grid">
