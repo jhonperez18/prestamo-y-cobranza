@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { PlusIcon } from "@/components/icons";
 import { compareRouteNames, sameRoute } from "@/lib/client-route-order";
-import { money, type ClientRow, type LoanRow } from "@/lib/mock-data";
+import { loanIsClosedHistory, loanRenewalOf } from "@/lib/loan-renewal-marks";
+import { isLoanActive, money, type ClientRow, type LoanRow } from "@/lib/mock-data";
 
 function routeOf(loan: LoanRow, clients: ClientRow[]) {
   return clients.find((row) => row.ref === loan.clientRef)?.route ?? "";
@@ -21,6 +22,35 @@ function finishedWithoutBalance(loan: LoanRow) {
     .toLowerCase()
     .replace(/\s+/g, "");
   return status === "finalizado" && !(Number(loan.balance) > 0);
+}
+
+/** El de ahora: sigue debiendo. El viejo (finalizado, renovado o en cero) no entra. */
+function owesNow(loan: LoanRow) {
+  return isLoanActive(loan) && Number(loan.balance) > 0 && !loanIsClosedHistory(loan);
+}
+
+/** Si un cliente trae dos vigentes, se queda el de ahora. */
+function pickCurrent(rows: LoanRow[]) {
+  return rows.reduce((best, row) => {
+    if (loanRenewalOf(row) === best.ref) return row;
+    if (loanRenewalOf(best) === row.ref) return best;
+    const left = row.createdAt || row.updatedAt || "";
+    const right = best.createdAt || best.updatedAt || "";
+    if (left !== right) return left > right ? row : best;
+    return row.ref.localeCompare(best.ref, "es", { numeric: true }) > 0 ? row : best;
+  });
+}
+
+function vigenteLoans(loans: LoanRow[]) {
+  const groups = new Map<string, LoanRow[]>();
+  for (const loan of loans) {
+    if (!owesNow(loan)) continue;
+    const key = loan.clientRef.trim() || loan.ref;
+    const list = groups.get(key) ?? [];
+    list.push(loan);
+    groups.set(key, list);
+  }
+  return [...groups.values()].map((rows) => (rows.length === 1 ? rows[0]! : pickCurrent(rows)));
 }
 
 function matchesQuery(loan: LoanRow, clients: ClientRow[], query: string) {
@@ -53,11 +83,12 @@ export function LoanRouteBoard({
 }) {
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
-  const names = [...new Set([...routeNames, ...loans.map((loan) => routeOf(loan, clients))])]
+  const current = vigenteLoans(loans);
+  const names = [...new Set([...routeNames, ...current.map((loan) => routeOf(loan, clients))])]
     .map((name) => name.trim())
     .filter(Boolean)
     .sort(compareRouteNames);
-  const loose = loans.filter(
+  const loose = current.filter(
     (loan) => !names.some((name) => sameRoute(routeOf(loan, clients), name)),
   );
 
@@ -66,7 +97,7 @@ export function LoanRouteBoard({
       <div className="head is-client-board">
         <div className="client-board-title">
           <h1>{title}</h1>
-          <span className="count">{loans.length}</span>
+          <span className="count">{current.length}</span>
         </div>
         <input
           className="client-board-search"
@@ -86,7 +117,7 @@ export function LoanRouteBoard({
           const onRoute =
             name === "Sin ruta"
               ? loose
-              : loans.filter((loan) => sameRoute(routeOf(loan, clients), name));
+              : current.filter((loan) => sameRoute(routeOf(loan, clients), name));
           const list = (q ? onRoute.filter((loan) => matchesQuery(loan, clients, q)) : onRoute)
             .slice()
             .sort(
