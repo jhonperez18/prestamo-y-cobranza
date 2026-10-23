@@ -1,6 +1,6 @@
 import type { ClientRow } from "@/lib/mock-data";
 import { normalizeRouteNumber } from "@/lib/mock-data";
-import { isPendingReview } from "@/lib/client-review";
+import { isDeletedClient, isPendingReview } from "@/lib/client-review";
 
 const LEGACY_ROUTE_MAP: Record<string, string> = {
   norte: "1",
@@ -119,7 +119,7 @@ export function routeBlockStarts<T>(rows: T[], routeOf: (row: T) => string | und
 /** Clientes de una ruta ordenados por posición (1…N). Sin pendientes de revisión. */
 export function clientsOnRouteSorted(clients: ClientRow[], routeName: string) {
   return dedupeClientsByRef(clients)
-    .filter((row) => sameRoute(row.route, routeName) && !isPendingReview(row))
+    .filter((row) => sameRoute(row.route, routeName) && !isPendingReview(row) && !isDeletedClient(row))
     .slice()
     .sort(compareClientsByRoutePosition);
 }
@@ -134,6 +134,7 @@ export function routeOrdersNeedNormalize(clients: ClientRow[]): boolean {
   const unique = dedupeClientsByRef(clients);
   const byRoute = new Map<string, ClientRow[]>();
   for (const row of unique) {
+    if (isDeletedClient(row)) continue;
     if (isPendingReview(row)) {
       if ((row.routeOrder || 0) !== 0) return true;
       continue;
@@ -162,8 +163,8 @@ export function routeOrdersNeedNormalize(clients: ClientRow[]): boolean {
 
 /**
  * Normaliza posiciones 1…N por cada ruta (rellena huecos / duplicados).
- * Conserva el orden relativo actual. Si ya está 1…N limpio → no toca nada
- * (no reescribe updatedAt ni “mueve” al cliente).
+ * El eliminado no ocupa número: los de atrás suben. Conserva el orden relativo.
+ * Si los que siguen en la ruta ya están 1…N → no toca nada.
  */
 export function normalizeAllRouteOrders(clients: ClientRow[]): ClientRow[] {
   const unique = dedupeClientsByRef(clients);
@@ -171,7 +172,7 @@ export function normalizeAllRouteOrders(clients: ClientRow[]): ClientRow[] {
 
   const byRoute = new Map<string, ClientRow[]>();
   for (const row of unique) {
-    if (isPendingReview(row)) continue;
+    if (isDeletedClient(row) || isPendingReview(row)) continue;
     const key = migrateLegacyRouteName(row.route || "") || row.route || "";
     const list = byRoute.get(key) ?? [];
     list.push(row);
@@ -186,6 +187,7 @@ export function normalizeAllRouteOrders(clients: ClientRow[]): ClientRow[] {
 
   const stampedAt = new Date().toISOString();
   return unique.map((row) => {
+    if (isDeletedClient(row)) return row;
     if (isPendingReview(row)) {
       if ((row.routeOrder || 0) === 0) return row;
       return { ...row, routeOrder: 0, updatedAt: stampedAt };
@@ -234,7 +236,7 @@ export function placeClientOnRoute(
 
   const onRoute = clientsOnRouteSorted(others, routeName);
   const offRoute = others.filter(
-    (row) => isPendingReview(row) || !sameRoute(row.route, routeName),
+    (row) => isDeletedClient(row) || isPendingReview(row) || !sameRoute(row.route, routeName),
   );
 
   const maxPos = onRoute.length + 1;

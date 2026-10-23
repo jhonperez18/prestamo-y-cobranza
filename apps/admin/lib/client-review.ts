@@ -3,6 +3,11 @@ import { roleByRef, type ClientRow, type RoleRow, type UserRow } from "@/lib/moc
 export const CLIENT_STATUS_REVIEW = "Pte. revisión";
 export const CLIENT_STATUS_ACTIVE = "Activo";
 export const CLIENT_STATUS_CLOSED = "Cerrado";
+export const CLIENT_STATUS_DELETED = "Eliminado";
+
+export function isDeletedClient(row: { status?: string | null } | null | undefined) {
+  return String(row?.status || "").trim() === CLIENT_STATUS_DELETED;
+}
 
 const LEGACY_ACTIVE_STATUSES = new Set([
   "Pagada",
@@ -96,7 +101,7 @@ export function clientsForView(view: string, rows: ClientRow[]): ClientRow[] {
     return rows.filter((row) => row.status === CLIENT_STATUS_CLOSED);
   }
   if (view === "listado") {
-    return rows.filter((row) => !isPendingReview(row));
+    return rows.filter((row) => !isPendingReview(row) && !isDeletedClient(row));
   }
   return rows;
 }

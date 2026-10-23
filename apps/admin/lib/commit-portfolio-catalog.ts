@@ -6,6 +6,7 @@ import type { ModuleId } from "@/lib/navigation";
 import {
   placeClientOnRoute,
   nextRouteOrder,
+  normalizeAllRouteOrders,
   clientRefsWithRouteOrderChange,
   sameRoute,
 } from "@/lib/client-route-order";
@@ -545,11 +546,13 @@ export function commitDeleteClient(
     return { ok: false, error: "No se puede eliminar: el cliente tiene préstamos." };
   }
   rememberDeletedId(clientRef);
-  const clients = state.clients.filter((row) => row.ref !== clientRef);
+  const clients = normalizeAllRouteOrders(state.clients.filter((row) => row.ref !== clientRef));
+  const shifted = clientRefsWithRouteOrderChange(state.clients, clients);
   let next: PortfolioCatalogState = { ...state, clients };
   next = projectPlanilla(next);
   persistPortfolio(next);
   queueClientMirror(clientDeletedRow(openClient));
+  enqueuePortfolioMirrors(next, { clientRefs: shifted });
   enqueuePortfolioMirrors(next, { clientRefs: [clientRef], mirrorPlanilla: true });
 
   return {
