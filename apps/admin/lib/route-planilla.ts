@@ -2,7 +2,6 @@ import { clientsOnRouteSorted } from "@/lib/client-route-order";
 import {
   assignmentFromItem,
   buildDispatchRoute,
-  DECLINED_LOAN_OFFER_TODAY_REASON,
   LOAN_GIVEN_TODAY_REASON,
   LOAN_RENEWED_TODAY_REASON,
   upsertDispatchRoute,
@@ -183,10 +182,9 @@ function buildPlanillaLoanIndex(
 
 /**
  * `sheetOpen`: la hoja de ese cobrador y ruta sigue abierta hoy.
- * El préstamo de hoy sale de la ruta si el cronograma no cobra hoy. El resto sigue
- * la regla de inicio: pasada la primera cuota, entra todos los días. La renovación
- * queda por cobrar hoy con la hoja abierta. Con la hoja ya cerrada, el préstamo de
- * hoy entra mañana.
+ * Todo cliente de la ruta entra en la hoja del día. Con préstamo, como cuota.
+ * Sin préstamo, como Prestar. La renovación queda por cobrar hoy con la hoja
+ * abierta. Con la hoja ya cerrada, el préstamo de hoy entra mañana.
  */
 function loanItemsForClient(
   client: ClientRow,
@@ -207,7 +205,6 @@ function loanItemsForClient(
     if (startedIso === date && !paidToday && !sheetOpen) continue;
     // Renovación: la cuota nueva queda por cobrar hoy si la hoja sigue abierta.
     const renewalDueToday = startedIso === date && sheetOpen && isCashlessRenewal(loan);
-    // Regla de inicio: pasada la primera cuota, sigue en la ruta.
     if (!renewalDueToday && !loanIsCollectibleOn(loan, date)) continue;
 
     const installment = resolvedLoanInstallment(loan);
@@ -517,17 +514,6 @@ export function syncPermanentRoutePlanilla(
       )
       .map((prev) => `${prev.collectorRef}|${prev.clientRef}`),
   );
-  const declinedPrestarKeys = new Set(
-    existing
-      .filter(
-        (prev) =>
-          prev.dispatchDate === date &&
-          prev.visitStatus === "omitido" &&
-          prev.skipReason !== LOAN_GIVEN_TODAY_REASON &&
-          (prev.skipReason === DECLINED_LOAN_OFFER_TODAY_REASON || isAssignmentAwaitingLoan(prev)),
-      )
-      .map((prev) => `${prev.collectorRef}|${prev.clientRef}`),
-  );
 
   const closedAtByCollectorRoute = new Map<string, string>();
   for (const row of existing) {
@@ -553,11 +539,9 @@ export function syncPermanentRoutePlanilla(
       let dayItems = items;
       // `canClientTakeNewLoan` sobre el índice: libre ⇔ cero préstamos activos.
       const canTakeNewLoan = !(index.activeByClient.get(client.ref)?.length);
-      const declinedPrestarToday = declinedPrestarKeys.has(`${collector.ref}|${client.ref}`);
-      // Prestar solo si es la única visita. Al lado de una cuota (pendiente o ya
-      // cobrada) es la segunda fila del mismo cliente.
+      // Sin cuota: queda en la hoja para prestar. Si no, no hay a quién prestarle.
       const unloadedLoanToday = clientsWithUnloadedLoanToday.has(`${collector.ref}|${client.ref}`);
-      if (canTakeNewLoan && !declinedPrestarToday && !unloadedLoanToday && !dayItems.length) {
+      if (!dayItems.length && canTakeNewLoan && !unloadedLoanToday) {
         dayItems = [awaitingLoanItemForClient(client, date)];
       }
       for (const item of dayItems) {

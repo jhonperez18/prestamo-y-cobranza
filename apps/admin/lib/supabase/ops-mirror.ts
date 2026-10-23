@@ -1147,10 +1147,8 @@ function openCuotaOffDay(
 }
 
 /**
- * Visita abierta y sin pago que hoy no toca (`loanIsCollectibleOn`).
- * Misma regla de inicio de la planilla: pasada la primera cuota, sigue.
- * El préstamo de hoy sin esa fecha en el cronograma no se queda.
- * La renovación de hoy sí se cobra hoy. El día cerrado no se toca.
+ * Visita abierta que la hoja de hoy no lleva (`loanIsCollectibleOn`).
+ * La ruta diaria lleva a todos sus clientes. El día cerrado no se toca.
  */
 export async function dropOpenCuotasNotDue(rows: Record<string, unknown>[]) {
   const db = createMirrorClient();
