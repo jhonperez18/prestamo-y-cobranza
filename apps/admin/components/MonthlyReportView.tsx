@@ -183,7 +183,7 @@ export function MonthlyReportView() {
       ) : failed || !sheet ? (
         <p className="ficha-empty">No se pudo cargar la hoja del sistema.</p>
       ) : sheet.rows.length === 0 ? (
-        <p className="ficha-empty">Sin saldo en la ruta {route} este mes.</p>
+        <p className="ficha-empty">Sin clientes en la ruta {route}.</p>
       ) : (
         <>
         <div className={styles.saldoTotal}>

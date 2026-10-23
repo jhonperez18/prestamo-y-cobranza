@@ -1,5 +1,7 @@
 /**
  * Hoja mensual de una ruta. Solo lectura: no escribe pagos, fichas ni caja.
+ * La lista es toda la ruta, en su orden. Quien no tiene préstamo o quedó en cero
+ * igual sale: Inicial 0, los días en blanco y Saldo 0.
  * Inicial = lo que debía al empezar el mes. Cada día de cobro resta el pago.
  * Una renovación pone el total nuevo en esa celda y de ahí sigue la resta.
  * El saldo del corte es el inicial del mes siguiente.
@@ -123,10 +125,7 @@ export function buildMonthlyRouteSheet(input: {
   const rows: MonthSheetRow[] = [];
   for (const client of clientsOnRouteSorted(input.clients, input.route)) {
     const loans = loansByClient.get(client.ref) ?? [];
-    if (!loans.length) continue;
-    const row = sheetRow(client, loans, paysByLoan, days, monthStart, monthEnd, cut, realToday);
-    if (!row.inicial && !row.saldo && row.cells.every((cell) => !cell)) continue;
-    rows.push(row);
+    rows.push(sheetRow(client, loans, paysByLoan, days, monthStart, monthEnd, cut, realToday));
   }
 
   return {
