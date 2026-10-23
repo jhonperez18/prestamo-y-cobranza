@@ -1,8 +1,8 @@
 /**
  * Informe semanal (corte sábado). Dos hojas: M · T · N y A aparte.
  * Solo lee a los dueños de cada cifra; aquí no hay fórmula de caja propia:
- *   Cartera   = misma que el Informe del supervisor (`portfolioBalanceForClients` /
- *               préstamos activos + pagos vivos). No fórmula aparte.
+ *   Cartera   = saldo de la ficha (`loan.balance`), la misma lectura que el Informe
+ *               (`portfolioBalanceForClients`). No se rearma con total − pagado.
  *   Caja M·T  = libro del día (`buildDayCashLedger`); saldo final = CIE- del último día.
  *   Caja A/N  = `independentRouteDay` / `independentRouteMovement`.
  *   Cobros    = `routeCobradoAcrossCollectors` (efectivo de cada cobrador + Banco/Nequi de la ruta, una vez).
@@ -33,9 +33,7 @@ import {
   type InformeHistorySources,
 } from "@/lib/informe-route-days";
 import { livePayments } from "@/lib/live-payments";
-import { computeLoanFinancials } from "@/lib/loan-balance";
-import { syncLoan } from "@/lib/loan-preview";
-import { activeLoans, type LoanRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
+import { activeLoans, type ClientRow, type LoanRow, type PaymentRow, type RouteRow } from "@/lib/mock-data";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import { paymentRecaudoIso } from "@/lib/payment-detail";
@@ -151,6 +149,9 @@ export type WeeklyReportSources = InformeHistorySources & {
   routes: RouteRow[];
   miscPayments: MiscPayment[];
   bankAccounts: BankAccount[];
+  /** Ficha de la nube para la cartera. Si no viene, se leen `loans` y `clients`. */
+  carteraLoans?: LoanRow[];
+  carteraClients?: ClientRow[];
 };
 
 const MOVEMENT_LABELS: Record<InformeHistoryKind, string> = {
@@ -270,23 +271,23 @@ type CarteraInput = {
   range: WeeklyRange;
   route: string;
   paymentsByLoan: Map<string, PaymentRow[]>;
-  /** Pagos vivos (misma lista que el Informe del supervisor). */
-  live: PaymentRow[];
 };
 
 /**
- * Cartera por ruta = misma cifra que Supervisor → Informe (`portfolioBalanceForClients`):
- * solo préstamos activos, saldo con todos los cobros vivos.
+ * Cartera por ruta = saldo guardado en la ficha, igual que el Informe
+ * (`portfolioBalanceForClients`). No se recalcula con total − pagado.
  */
-function routeCartera({ src, range, route, paymentsByLoan, live }: CarteraInput): WeeklyRouteCartera {
+function routeCartera({ src, range, route, paymentsByLoan }: CarteraInput): WeeklyRouteCartera {
+  const fichaLoans = src.carteraLoans ?? src.loans;
+  const fichaClients = src.carteraClients ?? src.clients;
   const loansByClient = new Map<string, LoanRow[]>();
-  for (const loan of activeLoans(src.loans.map((row) => syncLoan(row, live) as LoanRow))) {
+  for (const loan of activeLoans(fichaLoans)) {
     if (!loan.clientRef) continue;
     const list = loansByClient.get(loan.clientRef);
     if (list) list.push(loan);
     else loansByClient.set(loan.clientRef, [loan]);
   }
-  const rows = clientsOnRouteSorted(src.clients, route)
+  const rows = clientsOnRouteSorted(fichaClients, route)
     .filter((client) => !isClientDeletedStatus(client))
     .map((client): WeeklyClientRow => {
       const loans = loansByClient.get(client.ref) ?? [];
@@ -296,7 +297,7 @@ function routeCartera({ src, range, route, paymentsByLoan, live }: CarteraInput)
       let loanStart = "";
       let topLoanDebt = 0;
       for (const loan of loans) {
-        const bal = Math.max(0, computeLoanFinancials(loan, live).balancePending);
+        const bal = Math.max(0, Number(loan.balance) || 0);
         debt += bal;
         const start = loanDisbursementIsoDate(loan);
         if (bal > 0 && start && bal >= topLoanDebt) {
@@ -453,7 +454,7 @@ export function buildWeeklyReport(
 
   const live = livePayments(src.payments);
   const paymentsByLoan = groupPaymentsByLoan(live);
-  const cartera = routes.map((route) => routeCartera({ src, range, route, paymentsByLoan, live }));
+  const cartera = routes.map((route) => routeCartera({ src, range, route, paymentsByLoan }));
   const carteraTotal = pesos(cartera.reduce((sum, row) => sum + row.total, 0));
 
   const caja: WeeklyCajaRow[] = [];

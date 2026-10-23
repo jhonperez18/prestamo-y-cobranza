@@ -24,7 +24,8 @@ type RouteSheetState = {
 let cached: RouteSheet | null = null;
 let pending: Promise<RouteSheet | null> | null = null;
 
-async function loadRouteSheet(): Promise<RouteSheet | null> {
+/** Lectura de la ficha en la nube. Cada llamada trae el saldo actual. */
+export async function fetchRouteSheet(): Promise<RouteSheet | null> {
   try {
     const [clientsRes, loansRes] = await Promise.all([
       fetch("/api/clients", { cache: "no-store" }),
@@ -52,7 +53,7 @@ async function loadRouteSheet(): Promise<RouteSheet | null> {
 function loadRouteSheetOnce(): Promise<RouteSheet | null> {
   if (cached) return Promise.resolve(cached);
   if (!pending) {
-    pending = loadRouteSheet()
+    pending = fetchRouteSheet()
       .then((next) => {
         if (next) cached = next;
         return next;

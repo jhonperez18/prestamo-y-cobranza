@@ -4,10 +4,11 @@
  * Reportes → Informes → Semanal. Vista previa de la hoja (corte sábado o fin de mes) con datos reales.
  * Todas las cifras salen de `buildWeeklyReport`; esta vista solo pinta.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { businessTodayIso } from "@/lib/business-timezone";
 import { isoToDisplay } from "@/lib/loan-preview";
-import { money } from "@/lib/mock-data";
+import { money, type ClientRow, type LoanRow } from "@/lib/mock-data";
+import { fetchRouteSheet } from "@/lib/use-route-sheet";
 import { weekdayLabel } from "@/lib/colombia-holidays";
 import {
   buildWeeklyReport,
@@ -412,29 +413,55 @@ export function WeeklyReportView({
   const cortes = useMemo(() => recentWeeklyCortes(today), [today]);
   const [cutoff, setCutoff] = useState(() => cortes[cortes[0] > today ? 1 : 0] ?? cortes[0]);
   const [scope, setScope] = useState<WeeklyReportScope>("mtn");
+  const [ficha, setFicha] = useState<{ loans: LoanRow[]; clients: ClientRow[] } | null>(null);
+  const [fichaState, setFichaState] = useState<"loading" | "ready" | "error">("loading");
   const range = useMemo(() => weeklyRangeForCutoff(cutoff, today), [cutoff, today]);
+
+  useEffect(() => {
+    let alive = true;
+    setFichaState("loading");
+    void fetchRouteSheet().then((sheet) => {
+      if (!alive) return;
+      if (!sheet) {
+        setFicha(null);
+        setFichaState("error");
+        return;
+      }
+      setFicha({ loans: sheet.loans, clients: sheet.clients });
+      setFichaState("ready");
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const report = useMemo(
     () =>
-      buildWeeklyReport(
-        {
-          payments,
-          loans,
-          clients,
-          collectors,
-          routes,
-          assignments,
-          dayCloses,
-          dayExpenseDrafts,
-          planillaCashCloses,
-          monthCloses,
-          miscPayments,
-          bankAccounts,
-        },
-        scope,
-        range,
-        today,
-      ),
+      ficha
+        ? buildWeeklyReport(
+            {
+              payments,
+              loans,
+              clients,
+              collectors,
+              routes,
+              assignments,
+              dayCloses,
+              dayExpenseDrafts,
+              planillaCashCloses,
+              monthCloses,
+              miscPayments,
+              bankAccounts,
+              carteraLoans: ficha.loans,
+              carteraClients: ficha.clients,
+            },
+            scope,
+            range,
+            today,
+          )
+        : null,
     [
+      ficha,
       payments,
       loans,
       clients,
@@ -487,7 +514,15 @@ export function WeeklyReportView({
         </div>
         <p className="weekly-report-hint">Vista previa de la hoja. Al cerrar cada corte se envía por correo al administrador (PDF + resumen).</p>
       </div>
-      <ReportSheet report={report} />
+      {report ? (
+        <ReportSheet report={report} />
+      ) : (
+        <p className="weekly-report-hint">
+          {fichaState === "error"
+            ? "No se pudo leer la cartera de la ficha."
+            : "Leyendo la cartera de la ficha…"}
+        </p>
+      )}
     </section>
   );
 }
