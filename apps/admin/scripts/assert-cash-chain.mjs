@@ -2599,17 +2599,63 @@ expect(
   hSynced.assignments.some((r) => r.clientRef === "CLI-P1" && r.itemId.includes(":prestar")),
   false,
 );
-// Préstamo activado hoy con la hoja abierta: el cliente queda listo para pagar ya (no al día siguiente).
+// Préstamo de hoy sin fecha de cobro hoy: sale. Solo vuelve si el cronograma cobra ese día.
 const nowSynced = syncPermanentRoutePlanilla(pDate, pRoutes, pClients.slice(0, 1), pLoans, [COB], [pExisting[0]], []);
 const nowRows = nowSynced.assignments.filter((r) => r.clientRef === "CLI-P1" && r.dispatchDate === pDate);
 expect(
-  "Préstamo de hoy, hoja abierta: cuota por cobrar hoy",
+  "Préstamo de hoy sin fecha de hoy: no vuelve a por cobrar",
   nowRows.some((r) => r.loanRef === "P-P1" && r.visitStatus === "pendiente" && r.amountDue === 15_000),
+  false,
+);
+expect(
+  "Préstamo de hoy sin fecha de hoy: queda el registro y sale de por cobrar",
+  nowRows.some((r) => r.itemId.includes(":prestar") && r.visitStatus === "omitido"),
+  true,
+);
+const sameDayLoan = {
+  ...pLoans[0],
+  schedule: [{ date: pDate, kind: "cuota", paid: 0, amount: 15_000 }],
+};
+const sameDaySynced = syncPermanentRoutePlanilla(
+  pDate,
+  pRoutes,
+  pClients.slice(0, 1),
+  [sameDayLoan],
+  [COB],
+  [pExisting[0]],
+  [],
+);
+const sameDayRows = sameDaySynced.assignments.filter(
+  (r) => r.clientRef === "CLI-P1" && r.dispatchDate === pDate,
+);
+expect(
+  "Préstamo de hoy con fecha de hoy: vuelve una cuota",
+  sameDayRows.some(
+    (r) => r.loanRef === "P-P1" && r.visitStatus === "pendiente" && r.amountDue === 15_000,
+  ),
+  true,
+);
+const birth = syncPermanentRoutePlanilla(pDate, pRoutes, pClients.slice(0, 1), gLoans, [COB], [], []);
+expect(
+  "00:00: entra aunque hoy no sea su fecha",
+  birth.assignments.some(
+    (r) => r.clientRef === "CLI-P1" && r.dispatchDate === pDate && r.loanRef === "P-G1",
+  ),
+  true,
+);
+const mountedKeep = syncPermanentRoutePlanilla(pDate, pRoutes, pClients, gLoans, [COB], [
+  visit(`${pDate}:P-G1:acum`, "CLI-P1", "M", pDate, { visitStatus: "pendiente", loanRef: "P-G1" }),
+], []);
+expect(
+  "Hoja ya montada: el que ya está sigue",
+  mountedKeep.assignments.some(
+    (r) => r.clientRef === "CLI-P1" && r.loanRef === "P-G1" && r.visitStatus === "pendiente",
+  ),
   true,
 );
 expect(
-  "Préstamo de hoy, hoja abierta: la cuota es la única visita",
-  nowRows.some((r) => r.itemId.includes(":prestar")),
+  "Hoja ya montada: no se le suman clientes",
+  mountedKeep.assignments.some((r) => r.clientRef === "CLI-P2" && r.dispatchDate === pDate),
   false,
 );
 expect(
@@ -3164,8 +3210,11 @@ for (const prevStatus of ["pendiente", "omitido"]) {
   const offer = rows.find((r) => r.itemId === `${rDate}:CLI-R2:prestar`);
   expect(`Borrado con cuota hoy (${prevStatus}): Prestar habilitado`, offer?.visitStatus ?? null, "pendiente");
   expect(`Borrado con cuota hoy (${prevStatus}): sin cuota del préstamo borrado`, rows.some((r) => r.loanRef === "P-R2"), false);
-  const order = ["CLI-R1", "CLI-R2", "CLI-R3"].map((ref) => rows.findIndex((r) => r.clientRef === ref));
-  expect(`Borrado con cuota hoy (${prevStatus}): visible y en su lugar de la ruta`, order.every((i, k) => i >= 0 && (k === 0 || i > order[k - 1])), true);
+  expect(
+    `Borrado con cuota hoy (${prevStatus}): la hoja ya montada no suma a los demás`,
+    rows.some((r) => r.clientRef === "CLI-R1" || r.clientRef === "CLI-R3"),
+    false,
+  );
 }
 // Terminó de pagar hoy: queda el cobro. Prestar al lado sería el cliente doble.
 const fSynced = syncPermanentRoutePlanilla(

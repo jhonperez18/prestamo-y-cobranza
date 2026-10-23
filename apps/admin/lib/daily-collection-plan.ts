@@ -1,4 +1,5 @@
 import { displayToIso, isoToDisplay } from "@/lib/loan-preview";
+import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import { lineRemaining, type ScheduleEntry } from "@/lib/loan-pay";
 import {
   COLLECTION_ALERTS_BEFORE_MORA,
@@ -33,9 +34,18 @@ export function firstScheduleCollectionIso(loan: LoanRow) {
 }
 
 /**
- * La hoja diaria lleva a todo el que debe. El cronograma no saca a nadie de la ruta.
+ * La ruta nace a las 00:00 con todos los que deben, aunque hoy no sea su fecha.
+ * Un préstamo hecho hoy sale. Solo vuelve si el cronograma cobra ese mismo día.
  */
-export function loanIsCollectibleOn(_loan: LoanRow, _selectedDate: string) {
+export function loanIsCollectibleOn(loan: LoanRow, selectedDate: string) {
+  const day = scheduleDateToIso(selectedDate);
+  if (!day) return true;
+  const dates = (loan.schedule ?? [])
+    .filter((line) => (line.kind ?? "cuota") !== "capital")
+    .map((line) => scheduleDateToIso(line.date))
+    .filter((iso) => /^\d{4}-\d{2}-\d{2}$/.test(iso));
+  if (dates.includes(day)) return true;
+  if (loanDisbursementIsoDate(loan) === day) return false;
   return true;
 }
 

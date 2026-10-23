@@ -1143,12 +1143,14 @@ function openCuotaOffDay(
   const row = loanFromCloudSchedule(loan);
   if (loanIsCollectibleOn(row, day)) return false;
   if (isCashlessRenewal(row) && loanDisbursementIsoDate(row) === day) return false;
+  // La hoja que ya salió a la calle no se desarma desde el servidor.
+  if (loanDisbursementIsoDate(row) === day) return false;
   return true;
 }
 
 /**
  * Visita abierta que la hoja de hoy no lleva (`loanIsCollectibleOn`).
- * La ruta diaria lleva a todos sus clientes. El día cerrado no se toca.
+ * La hoja montada a las 00:00 no se borra desde aquí. El día cerrado no se toca.
  */
 export async function dropOpenCuotasNotDue(rows: Record<string, unknown>[]) {
   const db = createMirrorClient();
