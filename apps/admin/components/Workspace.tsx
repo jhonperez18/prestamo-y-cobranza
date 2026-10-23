@@ -40,6 +40,7 @@ import { MonthlyReportView } from "@/components/MonthlyReportView";
 import { WeeklyReportView } from "@/components/WeeklyReportView";
 import { DataTable, Pill } from "@/components/ui";
 import { ClientList } from "@/components/ClientList";
+import { LoanRouteBoard } from "@/components/LoanRouteBoard";
 import { HomeDashboard } from "@/components/HomeDashboard";
 import { AssignRouteCollectorView } from "@/components/AssignRouteCollectorView";
 import { PermissionsPanel, RolePanel } from "@/components/RolePanel";
@@ -946,6 +947,19 @@ export function Workspace(props: WorkspaceProps) {
             ? loans.filter((row) => row.status === "Finalizado")
             : loans;
       const rows = baseRows.filter(loanMatchesListFilters);
+      if (viewId === "listado") {
+        return (
+          <LoanRouteBoard
+            title={viewLabel}
+            loans={rows}
+            clients={clients}
+            routeNames={activeCatalogRoutes.map((route) => route.name)}
+            filters={listFilterOptions}
+            onOpen={(ref) => openLoanAccount(ref)}
+            onCreate={() => onGo("prestamos", "nuevo")}
+          />
+        );
+      }
       return (
         <DataTable
           title={viewLabel}

@@ -10158,6 +10158,28 @@
       padding-left: 4px !important;
       padding-right: 4px !important;
     }
+    .loan-route-board .client-route-col table.list-grid th:first-child,
+    .loan-route-board .client-route-col table.list-grid td:first-child {
+      width: 78px;
+      min-width: 78px;
+      text-align: left !important;
+      padding-left: 8px !important;
+    }
+    .loan-route-board .client-route-col {
+      height: calc(100vh - 204px);
+    }
+    .loan-route-board .client-route-col table.list-grid th:nth-child(3),
+    .loan-route-board .client-route-col table.list-grid td:nth-child(3) {
+      width: 108px;
+      text-align: right !important;
+      padding-right: 8px !important;
+      white-space: nowrap;
+    }
+    .loan-route-board .loan-board-fin {
+      color: #8b9890;
+      font-weight: 600;
+      font-size: 12px;
+    }
     .client-route-col table.list-grid th.is-nombre,
     .client-route-col table.list-grid td.is-nombre {
       text-align: left !important;
