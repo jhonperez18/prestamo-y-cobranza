@@ -525,6 +525,17 @@ export function syncPermanentRoutePlanilla(
   for (const route of owned) {
     const collector = collectors.find((row) => row.ref === route.collectorRef);
     if (!collector) continue;
+    const routeName = String(route.name || "").trim();
+    const routeVisits = existing.filter(
+      (row) =>
+        row.dispatchDate === date &&
+        row.collectorRef === collector.ref &&
+        String(row.clientRoute || "").trim() === routeName,
+    );
+    const sealedCount = routeVisits.filter((row) => row.dayClosedAt).length;
+    const openCount = routeVisits.length - sealedCount;
+    // Hoja ya cerrada: no se le agregan visitas. Las selladas vuelven solas.
+    if (sealedCount > 0 && sealedCount > openCount) continue;
 
     for (const client of clientsOnRouteSorted(clients, route.name)) {
       if (!isOperationalClient(client)) continue;

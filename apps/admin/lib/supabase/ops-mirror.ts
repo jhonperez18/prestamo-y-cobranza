@@ -1218,9 +1218,53 @@ async function deleteAssignmentRow(
   return { ok: true as const, skipped: true as const, reason: "payment_ghost_cleared" };
 }
 
+/**
+ * Hoja ya cerrada (más visitas selladas que abiertas): una visita nueva abierta no entra.
+ * No toca una hoja que sigue trabajando.
+ */
+async function rejectOpenVisitOnClosedSheet(client: MirrorDb, row: Record<string, unknown>) {
+  if (row.day_closed_at || row.payment_ref) return null;
+  const status = String(row.visit_status || "pendiente");
+  if (status !== "pendiente" && status !== "parcial") return null;
+  const route = String(row.client_route || "").trim();
+  const collectorRef = String(row.collector_ref || "").trim();
+  const day = String(row.dispatch_date || "").slice(0, 10);
+  const itemId = String(row.item_id || "").trim();
+  if (!route || !collectorRef || !day || !itemId) return null;
+  const sealed = await client
+    .from("daily_assignments")
+    .select("item_id", { count: "exact", head: true })
+    .eq("collector_ref", collectorRef)
+    .eq("dispatch_date", day)
+    .eq("client_route", route)
+    .not("day_closed_at", "is", null);
+  const open = await client
+    .from("daily_assignments")
+    .select("item_id", { count: "exact", head: true })
+    .eq("collector_ref", collectorRef)
+    .eq("dispatch_date", day)
+    .eq("client_route", route)
+    .is("day_closed_at", null);
+  if (sealed.error || open.error) return null;
+  const sealedCount = sealed.count ?? 0;
+  const openCount = open.count ?? 0;
+  if (sealedCount === 0 || sealedCount <= openCount) return null;
+  const { error } = await client
+    .from("daily_assignments")
+    .delete()
+    .eq("dispatch_date", day)
+    .eq("item_id", itemId)
+    .is("day_closed_at", null)
+    .is("payment_ref", null);
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const, skipped: true as const, reason: "hoja_cerrada" };
+}
+
 export async function upsertAssignmentRow(row: Record<string, unknown>) {
   const client = createMirrorClient();
   if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  const closedSheet = await rejectOpenVisitOnClosedSheet(client, row);
+  if (closedSheet) return closedSheet;
   // La visita sin cobro existe solo si su préstamo existe en la nube. P- que la nube no
   // tiene (ficha rehecha en un aparato) → espera en cola; si el préstamo sube, entra.
   // Visita abierta de un préstamo dado de baja (copia vieja de otro aparato): no vuelve.
