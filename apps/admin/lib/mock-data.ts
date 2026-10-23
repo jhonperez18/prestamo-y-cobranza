@@ -856,17 +856,19 @@ export function routeSlug(name: string) {
     .replace(/^-|-$/g, "");
 }
 
+/** Clientes vivos de la ruta. El eliminado y el pendiente de revisión no cuentan. */
 export function clientsOnRoute(routeName: string, rows: ClientRow[] = CLIENTS) {
   const seen = new Set<string>();
   return rows.filter((row) => {
-    if (row.route !== routeName || row.status === "Pte. revisión") return false;
+    const status = String(row.status || "").trim();
+    if (row.route !== routeName || status === "Pte. revisión" || status === "Eliminado") return false;
     if (seen.has(row.ref)) return false;
     seen.add(row.ref);
     return true;
   });
 }
 
-/** Clientes de ruta visibles en listado operativo (sin pendientes de revisión). */
+/** Misma lista que Clientes: vivos de la ruta, sin eliminados ni pendientes de revisión. */
 export function clientsOnRouteListed(routeName: string, rows: ClientRow[] = CLIENTS) {
   return clientsOnRoute(routeName, rows);
 }
