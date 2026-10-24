@@ -1100,11 +1100,6 @@ type PaymentListBody = { rows: PaymentMirrorRow[]; full: boolean; cursor: string
 const paymentListFlights = new Map<string, Promise<PaymentListBody | null>>();
 /** Lista completa si el aparato está vacío o se repara; si ya hay copia, solo lo cambiado. */
 const paymentsPull = createIncrementalPull("payments");
-/**
- * El celular del supervisor conserva cobros que la base no tiene y con esos arma otra cifra.
- * Una vez por apertura baja el libro y suelta esa copia. No se repite en cada ciclo.
- */
-let supervisorPaymentBookThisOpen = false;
 
 /** Una sola bajada por corte. Las llamadas que coinciden esperan la misma. */
 function fetchPaymentListBody(
@@ -1174,17 +1169,14 @@ export async function pullRemotePaymentsIntoDemo(
   }
 
   const startedAt = Date.now();
-  const supervisorBook = isSupervisorLiveDevice() && !supervisorPaymentBookThisOpen;
+  const localPayments = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []);
+  // Aparato vacío o reparar: libro completo. Si ya hay copia, solo lo cambiado.
+  // El supervisor no vuelve a bajar el archivo en cada apertura: eso dejaba el celular cargando.
   const force =
-    Boolean(opts.full) ||
-    supervisorBook ||
-    (!paymentsPull.hasCursor() && readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []).length === 0);
+    Boolean(opts.full) || (!paymentsPull.hasCursor() && localPayments.length === 0);
   const since = paymentsPull.sinceFor(force) ?? (force ? null : resumeSinceIso());
   const fromDate = !since && isCollectorLiveDevice() ? collectorLiveDayIso() : null;
   const result = await mergeRemotePayments(since, fromDate);
-  if (supervisorBook && result.ok && result.full && (result.rows?.length ?? 0) > 0) {
-    supervisorPaymentBookThisOpen = true;
-  }
   paymentsPull.settle(
     { ok: result.ok && !result.skipped, full: Boolean(result.full), cursor: result.cursor },
     startedAt,
