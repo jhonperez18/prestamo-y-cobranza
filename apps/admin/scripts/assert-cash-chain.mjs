@@ -3320,6 +3320,8 @@ console.log("\n— Gasto: la cola no pierde lo que no subió —");
   const Q_EXP = "nexo-demo-ops-day-expenses-queue";
   const Q_CIE = "nexo-demo-ops-day-closes-queue";
   const { mirrorDayExpenseNow, flushOpsMirrorQueues } = await import("@/lib/supabase/ops-mirror");
+  const { businessTodayIso } = await import("@/lib/business-timezone");
+  const liveDay = businessTodayIso();
   const { writeDemoJson, DEMO_COLLECTOR_DAY_EXPENSES_KEY } = await import("@/lib/demo-persist");
   const gas = {
     ref: "GAS-COB-1-2026-10-01", collectorRef: "COB-1", collectorName: "Cobrador Gasto", date: "2026-10-01",
@@ -3341,7 +3343,7 @@ console.log("\n— Gasto: la cola no pierde lo que no subió —");
     return { ok: true, status: 200, json: async () => reply };
   };
 
-  store.set(Q_CIE, JSON.stringify([{ ref: "CIE-COB-1-2026-09-30" }]));
+  store.set(Q_CIE, JSON.stringify([{ ref: `CIE-COB-1-${liveDay}`, date: liveDay }]));
   await flushOpsMirrorQueues();
   expect("Gasto sin red encolado durante un flush: sigue en cola", queued(Q_EXP), gas.ref);
   expect("Envío directo sin red: avisa que no llegó", await midFlush, false);

@@ -325,29 +325,38 @@ function dequeueSent(key: string, sent: readonly { ref: string }[]) {
  * del amigo en la nube.
  */
 /**
- * Cobrador: su cola sube planilla de hoy y de ayer. Días más viejos son historia ya
- * sellada en la nube; reenviarlos (cientos de filas, una petición cada una) dejaba el
- * celular trabado sin bajar nada (Yesid 07/10: filas del 23/09 al 02/10).
+ * Hoy y ayer sí suben (el cierre de anoche puede seguir en camino).
+ * Lo anterior es historia ya sellada: reenviarlo (miles de visitas y CIE de hace
+ * un mes) deja la cola creciendo y no cambia la nube.
  */
 export function collectorQueueKeepsAssignment(
-  row: { ref?: string; dispatchDate?: string },
+  row: { ref?: string; dispatchDate?: string; date?: string },
   todayIso: string,
 ): boolean {
-  const raw = String(row.dispatchDate || String(row.ref || "").split("::")[0] || "");
-  const date = normalizeHistoryDate(raw) || raw;
+  const explicit = normalizeHistoryDate(String(row.dispatchDate || row.date || ""));
+  const fromRef = String(row.ref || "").match(/(\d{4}-\d{2}-\d{2})/);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(explicit) ? explicit : fromRef?.[1] || "";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return true;
   const yesterday = new Date(`${todayIso}T12:00:00Z`);
   yesterday.setUTCDate(yesterday.getUTCDate() - 1);
   return date >= yesterday.toISOString().slice(0, 10);
 }
 
+/** Suelta de la cola, sin subir, visitas y CIE anteriores a ayer. En todos los aparatos. */
 function pruneCollectorHistoryQueue() {
-  if (typeof window === "undefined" || !isCollectorLiveDevice()) return;
-  const queued = readDemoJson<{ ref: string; dispatchDate?: string }[]>(Q_ASSIGN, []);
-  if (!queued.length) return;
+  if (typeof window === "undefined") return;
   const today = businessTodayIso();
-  const kept = queued.filter((row) => collectorQueueKeepsAssignment(row, today));
-  if (kept.length !== queued.length) writeDemoJson(Q_ASSIGN, kept);
+  const queued = readDemoJson<{ ref: string; dispatchDate?: string; date?: string }[]>(Q_ASSIGN, []);
+  if (queued.length) {
+    const kept = queued.filter((row) => collectorQueueKeepsAssignment(row, today));
+    if (kept.length !== queued.length) writeDemoJson(Q_ASSIGN, kept);
+  }
+  const closes = readDemoJson<{ ref: string; date?: string }[]>(Q_CLOSES, []);
+  if (!closes.length) return;
+  const keptCloses = closes.filter((row) =>
+    collectorQueueKeepsAssignment({ ref: row.ref, dispatchDate: row.date }, today),
+  );
+  if (keptCloses.length !== closes.length) writeDemoJson(Q_CLOSES, keptCloses);
 }
 
 function pruneOpenAssignmentQueueAgainstLocalCloses() {
@@ -1939,16 +1948,23 @@ export function queueRouteDeleteMirror(ref: string) {
   })();
 }
 
+function dayCloseIsLiveWindow(c: { ref?: string; date?: string }) {
+  return collectorQueueKeepsAssignment({ ref: c.ref, dispatchDate: c.date }, businessTodayIso());
+}
+
 export function queueDayCloseMirror(c: CollectorDayCloseRecord) {
   // PCE- no cabe en day_closes (check ^CIE-). Encolarlos solo genera 502 y tapa el flush.
   if (String(c.ref || "").startsWith("PCE-")) return;
   // Reconstruido desde planilla: no es saldo sellado, nunca sube.
   if (c.provisional) return;
+  // Un CIE de hace un mes ya está sellado. No se vuelve a subir.
+  if (!dayCloseIsLiveWindow(c)) return;
   void persistKind(Q_CLOSES, { kind: "day_close", row: c }, c.ref);
 }
 /** Cola + subida esperada del CIE-. `true` solo si la nube lo escribió de verdad. */
 export async function mirrorDayCloseNow(c: CollectorDayCloseRecord): Promise<boolean> {
   if (!String(c.ref || "").startsWith("CIE-") || c.provisional) return false;
+  if (!dayCloseIsLiveWindow(c)) return false;
   return persistKind(Q_CLOSES, { kind: "day_close", row: c }, c.ref);
 }
 /** Cola + subida esperada. true = el borrador ya está en Supabase. */
@@ -2000,7 +2016,8 @@ export function queueAssignmentMirror(
 ) {
   // No encolar planilla abierta si este PC ya tiene el CIE- del día (evita reabrir en nube).
   if (localCieCoversAssignment(a, readCloses)) return;
-  if (isCollectorLiveDevice() && !collectorQueueKeepsAssignment(a, businessTodayIso())) return;
+  // Panel, supervisor y cobrador: antes de ayer no se reenvía.
+  if (!collectorQueueKeepsAssignment(a, businessTodayIso())) return;
   const ref = `${a.dispatchDate}::${a.itemId}`;
   const sig = assignmentMirrorSig(a);
   if (sentAssignmentSig.get(ref) === sig) return;
@@ -2326,6 +2343,9 @@ export async function reconcileLocalOpsToRemote(
       // Solo huérfanos. Si la nube ya tiene el CIE-, su saldo manda y entra por pull;
       // un saldo local distinto nunca se re-sube solo (así volvía el 2.090.000).
       if (!remoteClose.has(row.ref)) {
+        if (!collectorQueueKeepsAssignment({ ref: row.ref, dispatchDate: row.date }, businessTodayIso())) {
+          continue;
+        }
         jobs.push({ kind: "day_close", row, key: row.ref });
       }
     }
@@ -2358,6 +2378,7 @@ export async function reconcileLocalOpsToRemote(
         // No subir hoja abierta «huérfana» si ya hay CIE- local: reabriría el día en la nube.
         if (localCieCoversAssignment(row, readCloses)) continue;
         if (!row?.itemId || !date) continue;
+        if (!collectorQueueKeepsAssignment({ ref: key, dispatchDate: date }, businessTodayIso())) continue;
         const remote = remoteAssignMeta.get(key);
         const localSealed = Boolean(row.dayClosedAt);
         // Historia fuera de ventana: no re-subir como huérfano.
