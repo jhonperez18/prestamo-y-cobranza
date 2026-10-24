@@ -1,0 +1,10 @@
+[Unit]
+Description=Autoprestamos: la reparacion puede empezar a las 23:35, cuando sella el dia
+
+[Timer]
+OnCalendar=2026-10-24 23:35:00 America/Bogota
+Persistent=true
+Unit=autoprestamos-reparacion.service
+
+[Install]
+WantedBy=timers.target

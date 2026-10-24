@@ -15,6 +15,7 @@ import { bindMoneyRealtime, type RealtimeMoneyTable } from "@/lib/realtime-money
 import { businessTodayIso } from "@/lib/business-timezone";
 import { isCollectorLiveDevice, isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import { releaseClosedDaysOnDevice } from "@/lib/collector-device-release";
+import { loadSupervisorBookFromCloud } from "@/lib/supervisor-book";
 import {
   mergePaymentsWindowIntoDemo,
   pullRemotePaymentsIntoDemo,
@@ -324,6 +325,14 @@ export function useOperationalDemoSync(
       // Pull falló: igual intentar subir lo pendiente.
       await runMirrorFlush();
     } finally {
+      if (isSupervisorLiveDevice()) {
+        try {
+          const book = await loadSupervisorBookFromCloud();
+          if (book) commitHydrate();
+        } catch (error) {
+          console.error("supervisor-book", error);
+        }
+      }
       pullInFlightRef.current = false;
       setHydrated(true);
       void healthCycleThenReport(pullOk, pullError);

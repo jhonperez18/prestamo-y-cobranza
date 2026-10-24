@@ -1,0 +1,9 @@
+[Unit]
+Description=Autoprestamos: publicar la reparacion del supervisor despues del sellado (solo 24/10/2026)
+After=network-online.target
+OnFailure=autoprestamos-alarma@%n.service
+
+[Service]
+Type=oneshot
+ExecStart=/root/tareas/reparacion-supervisor.sh
+TimeoutStartSec=3600
