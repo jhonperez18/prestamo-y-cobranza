@@ -2445,7 +2445,10 @@ export async function pullRemoteOpsIntoDemo(
   const since = opsPull.sinceFor(force) ?? (force ? null : resumeSinceIso());
   const startedAt = Date.now();
   const fromDate = !since && isCollectorLiveDevice() ? collectorLiveDayIso() : null;
-  const result = await pullOpsBundle(since, fromDate);
+  // Sin pagos varios guardados, el corte viejo no puede dejar Gastos de Banco en 0.
+  const miscMissing =
+    readDemoJson<MiscPayment[]>(DEMO_MISC_PAYMENTS_KEY, []).length === 0;
+  const result = await pullOpsBundle(since, fromDate, null, Boolean(since) && miscMissing);
   opsPull.settle(
     {
       ok: result.ok && result.reason !== "skipped",
@@ -2466,12 +2469,12 @@ async function pullOpsBundle(
   since: string | null,
   fromDate: string | null = null,
   toDate: string | null = null,
+  miscFull = false,
 ): Promise<PullOpsResult> {
   try {
-    const res = await fetch(
-      withDateWindowParam(withSinceParam("/api/ops/bundle", since), fromDate, toDate),
-      { cache: "no-store" },
-    );
+    let path = withDateWindowParam(withSinceParam("/api/ops/bundle", since), fromDate, toDate);
+    if (miscFull) path += `${path.includes("?") ? "&" : "?"}miscFull=1`;
+    const res = await fetch(path, { cache: "no-store" });
     const body = (await res.json()) as OpsBundleBody;
     if (!res.ok || !body.ok) {
       return { ok: false, changed: false, reason: body.error || `http_${res.status}` };

@@ -38,6 +38,8 @@ export async function GET(request: Request) {
     const assignSince = liveFrom ?? planillaWindowStartIso();
     const expenseSince = liveFrom ?? businessDaysAgoIso(EXPENSES_LOOKBACK_DAYS);
     const since = readChangedSince(request);
+    // Lista de pagos varios vacía en el aparato: la actual manda, aunque el corte sea viejo.
+    const miscFull = new URL(request.url).searchParams.get("miscFull") === "1";
     const client = since ? createMirrorServerClient() : null;
     if (since && !client) {
       return jsonNoStore({ ok: true, skipped: true, reason: "service_role_missing" });
@@ -57,7 +59,7 @@ export async function GET(request: Request) {
             // se queda con la hoja abierta.
             fetchOpsTable("day_closes"),
             changed("day_expenses", { column: "expense_date", since: expenseSince }),
-            changed("misc_payments"),
+            miscFull ? fetchOpsTable("misc_payments") : changed("misc_payments"),
             changed("daily_assignments", { column: "dispatch_date", since: assignSince }),
           ]
         : [
