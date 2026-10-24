@@ -231,19 +231,21 @@ export function useOperationalDemoSync(
   const runHydrateWithRemotePull = useCallback(async () => {
     if (pullInFlightRef.current) return;
     pullInFlightRef.current = true;
+    lastVisiblePullAtRef.current = Date.now();
     // El pull completo cubre todo lo avisado hasta ahora.
     pendingGroupsRef.current.clear();
     let pullOk = false;
     let pullError = "";
     const tuneupDay = deviceTuneupDueDay();
     try {
-      // Cobrador / taller: subir cola antes de bajar.
-      // Supervisor: bajar cobros primero (no espera el flush de planilla).
-      // Sus préstamos en cola sí suben antes: la bajada completa suelta lo que la nube no tiene.
-      if (!isSupervisorLiveDevice()) {
+      // Cobrador: subir la cola antes de bajar (un cobro sin señal no se pierde).
+      // Supervisor: bajar cobros primero. El panel no espera la cola: pinta y sube atrás.
+      if (isCollectorLiveDevice()) {
         await runMirrorFlush();
-      } else {
+      } else if (isSupervisorLiveDevice()) {
         await flushCatalogMirrorQueues();
+      } else {
+        void runMirrorFlush();
       }
       // Primera sincronización del día: suelta copias -bak. No vuelve a bajar el archivo.
       if (tuneupDay) compactDeviceForDay();
@@ -344,7 +346,6 @@ export function useOperationalDemoSync(
       if (groups.has("payments")) {
         const today = businessTodayIso();
         await mergePaymentsWindowIntoDemo(today, today);
-        await pullRemotePaymentsIntoDemo();
       }
       const [catalog, ops] = await Promise.all([
         groups.has("catalog") ? pullRemoteCatalogIntoDemo() : null,
@@ -417,12 +418,20 @@ export function useOperationalDemoSync(
     function refreshFromCloud() {
       if (document.visibilityState !== "visible") return;
       const now = Date.now();
+      // El panel no rearma todo al volver a la ventana. El poll de 45 s y el timbre alcanzan.
+      if (!isCollectorLiveDevice() && !isSupervisorLiveDevice()) {
+        if (now - lastVisiblePullAtRef.current >= CLOUD_POLL_MS) {
+          void runHydrateWithRemotePull();
+          return;
+        }
+        void runMirrorFlush();
+        return;
+      }
       // Cobrador ↔ supervisor: al volver a la app, bajar planilla/cierre sin esperar el poll.
       if (now - lastVisiblePullAtRef.current < VISIBLE_PULL_MIN_MS) {
         void runMirrorFlush();
         return;
       }
-      lastVisiblePullAtRef.current = now;
       void runHydrateWithRemotePull();
     }
     function onOnline() {
@@ -440,7 +449,10 @@ export function useOperationalDemoSync(
         refreshPending();
       }
     }
-    const poll = window.setInterval(refreshFromCloud, CLOUD_POLL_MS);
+    const poll = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void runHydrateWithRemotePull();
+    }, CLOUD_POLL_MS);
     const flushPoll = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
       if (!navigator.onLine) return;

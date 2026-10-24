@@ -1344,8 +1344,9 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
   const hydrateFn = syncSrc.slice(syncSrc.indexOf("const runHydrateWithRemotePull"));
   expect(
     "Supervisor: baja la nube antes de vaciar la cola de planilla",
-    hydrateFn.includes("isSupervisorLiveDevice") &&
-      hydrateFn.includes("if (!isSupervisorLiveDevice())"),
+    /else if \(isSupervisorLiveDevice\(\)\) \{\s*await flushCatalogMirrorQueues\(\);/.test(
+      hydrateFn,
+    ) && !/isSupervisorLiveDevice\(\)\) \{\s*await runMirrorFlush\(\)/.test(hydrateFn),
     true,
   );
   const opsSrc = readFileSync(new URL("../lib/supabase/ops-mirror.ts", import.meta.url), "utf8");
@@ -4199,8 +4200,9 @@ console.log("— Cupo del aparato —");
   const syncSrc = readFileSync(new URL("../lib/use-operational-demo-sync.ts", import.meta.url), "utf8");
   const targeted = syncSrc.slice(syncSrc.indexOf("const runTargetedPull"));
   expect(
-    "Supervisor: el timbre baja los cobros de hoy (no espera since)",
-    targeted.includes("mergePaymentsWindowIntoDemo"),
+    "Supervisor: el timbre baja los cobros de hoy (no el archivo ni el flush)",
+    targeted.includes("mergePaymentsWindowIntoDemo") &&
+      !targeted.includes("pullRemotePaymentsIntoDemo"),
     true,
   );
   expect(
