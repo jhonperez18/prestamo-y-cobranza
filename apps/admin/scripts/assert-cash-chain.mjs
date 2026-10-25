@@ -3217,7 +3217,7 @@ for (const prevStatus of ["pendiente", "omitido"]) {
     false,
   );
 }
-// Terminó de pagar hoy: queda el cobro. Prestar al lado sería el cliente doble.
+// Terminó de pagar hoy (saldo 0): queda el cobro y vuelve a Prestar.
 const fSynced = syncPermanentRoutePlanilla(
   rDate,
   pRoutes,
@@ -3228,9 +3228,23 @@ const fSynced = syncPermanentRoutePlanilla(
   [pay("PG-F1", "P-F1", 360_000, rDate)],
 );
 const fRows = rDayRows(fSynced);
+const fPrestar = fRows.find((r) => String(r.itemId || "").includes(":prestar"));
 expect("Terminó hoy: queda el cobro", fRows.some((r) => r.loanRef === "P-F1" && r.visitStatus === "cobrado"), true);
-expect("Terminó hoy: una sola visita", fRows.filter((r) => r.clientRef === "CLI-R1").length, 1);
-expect("Terminó hoy: sin fila Prestar", fRows.some((r) => String(r.itemId || "").includes(":prestar")), false);
+expect("Terminó hoy: vuelve a Prestar", fPrestar?.visitStatus ?? null, "pendiente");
+const stillOwes = syncPermanentRoutePlanilla(
+  rDate,
+  pRoutes,
+  rClients.slice(0, 1),
+  [{ ...rLoan("P-F2", "CLI-R1", "Activo"), balance: 200_000, paid: 15_000 }],
+  [COB],
+  [visit(`${rDate}:P-F2:acum`, "CLI-R1", "M", rDate, { visitStatus: "cobrado", loanRef: "P-F2", paymentRef: "PG-F2" })],
+  [pay("PG-F2", "P-F2", 15_000, rDate)],
+);
+expect(
+  "Pagó la cuota y sigue debiendo: sin Prestar",
+  rDayRows(stillOwes).some((r) => String(r.itemId || "").includes(":prestar")),
+  false,
+);
 
 // ── 17. Auto-evaluación: la planilla que arma el sistema siempre pasa la revisión;
 //     cada regla detecta su inconsistencia. El motor nunca borra datos locales.

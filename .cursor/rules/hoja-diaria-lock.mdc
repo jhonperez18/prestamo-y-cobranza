@@ -16,6 +16,7 @@ Solo si el dueño lo pide **en ese mensaje**, con estas palabras.
 | --- | --- |
 | **00:00** | Nace la hoja del día, completa. Todos los clientes de cada ruta: con préstamo (aunque sea semanal, quincenal o mensual y hoy no sea su fecha) y sin préstamo (Prestar). Saldos al día. |
 | **Durante el día** | **No se rearma** el resto de la ruta. Cobro, N/P y préstamo marcan a esa persona y la sacan de por cobrar. |
+| **Pagó todo** | Sale de por cobrar. Si el saldo queda en cero, en la misma hoja abierta vuelve como Prestar. Si le prestan y la primera cuota es hoy, queda por cobrar; si es otro día, sale y entra a las 00:00. Si solo pagó la cuota y sigue debiendo, no vuelve a Prestar. (dueño 25/10/2026) |
 | **Hoja abierta** | Mientras el cobrador no le dé Cerrar planilla y no sean las 23:30, el cobrador usa sus permisos: cobrar en efectivo, cobrar en banco, prestar, cobro combinado y crear cliente. El supervisor y el sistema principal también. |
 | **Cliente nuevo** | Alta de hoy, hoja abierta, sin préstamo: entra **solo él**, en el acto, listo para prestar. (dueño 23/10/2026) |
 | **Hoja cerrada** | Cerrar planilla o las 23:30. No se crea el cliente. No entra nadie. Reabrir es otra regla y no se toca. |

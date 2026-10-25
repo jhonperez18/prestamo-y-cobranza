@@ -811,8 +811,8 @@ async function loanStartedOn(client: MirrorDb, clientRef: string, dispatchDate: 
 /**
  * Fila «Prestar» fantasma: la armó un aparato con los préstamos a medio cargar.
  * - «Préstamo hecho hoy» sin préstamo que empiece ese día.
- * - Pendiente o «Cierre de jornada» de un cliente con préstamo abierto de días
- *   anteriores (saldo > 0, sin pago ese día). Esas filas dejaban a cada cliente doble.
+ * - Pendiente o «Cierre de jornada» de un cliente que todavía debe (saldo > 0).
+ *   Pagar el total (saldo 0) sí deja Prestar. Pagar solo la cuota, no.
  * Las decisiones del cobrador («Hoy no quiere préstamo», cobrado) siempre entran.
  */
 async function prestarGhostReason(
@@ -845,16 +845,7 @@ async function prestarGhostReason(
       Number(loan.balance) > 0 &&
       !/finaliz|pagad|cancel/i.test(String(loan.status || "")),
   );
-  if (open.length) {
-    const { data: paidToday, error: payError } = await client
-      .from("payments")
-      .select("ref")
-      .in("loan_ref", open.map((loan) => loan.ref))
-      .eq("paid_date", dispatchDate)
-      .limit(1);
-    if (payError) return { ghost: false, error: payError.message };
-    if (!(paidToday ?? []).length) return { ghost: true };
-  }
+  if (open.length) return { ghost: true };
 
   return { ghost: false };
 }
@@ -954,7 +945,8 @@ async function deleteOpenPendingVisit(client: MirrorDb, dispatchDate: string, it
 /**
  * Hoy, hoja abierta: un cliente, una visita por cobrar.
  * La que se queda es la del préstamo activo que más debe. Prestar al lado de
- * una cuota no se guarda. No toca días cerrados ni filas con cobro.
+ * una cuota pendiente no se guarda. Si ya pagó el total, Prestar sí se queda.
+ * No toca días cerrados ni el cobro ya hecho.
  */
 async function keepOneTodayVisit(
   client: MirrorDb,
@@ -967,7 +959,7 @@ async function keepOneTodayVisit(
   const isPrestar = itemId.includes(":prestar");
   const open = !row.payment_ref && isOpenPendingStatus(row.visit_status);
 
-  if (!isPrestar) {
+  if (!isPrestar && open) {
     const { error } = await client
       .from("daily_assignments")
       .delete()
@@ -994,19 +986,20 @@ async function keepOneTodayVisit(
 
   if (isPrestar) {
     const pendingCuota = others.some((entry) => !String(entry.item_id || "").includes(":prestar"));
-    let hasCuota = pendingCuota;
-    if (!hasCuota) {
-      const { data: anyCuota, error: cuotaError } = await client
-        .from("daily_assignments")
-        .select("item_id")
-        .eq("dispatch_date", dispatchDate)
-        .eq("client_ref", clientRef)
-        .not("item_id", "like", "%:prestar")
-        .limit(1);
-      if (cuotaError) return { ok: false, error: cuotaError.message };
-      hasCuota = (anyCuota ?? []).length > 0;
+    if (!pendingCuota && !others.length) {
+      const { data: loans, error: loanError } = await client
+        .from("loans")
+        .select("status, balance")
+        .eq("client_ref", clientRef);
+      if (loanError) return { ok: false, error: loanError.message };
+      const stillOwes = (loans ?? []).some((loan) => {
+        const status = String(loan.status || "");
+        if (isLoanDeletedStatus(loan)) return false;
+        if (/finaliz|pagad|cancel/i.test(status)) return false;
+        return Number(loan.balance) > 0;
+      });
+      if (!stillOwes) return null;
     }
-    if (!hasCuota && !others.length) return null;
     const removed = await deleteOpenPendingVisit(client, dispatchDate, itemId);
     if (!removed.ok) return removed;
     return { ok: true, skipped: true, reason: "prestar_ghost" };

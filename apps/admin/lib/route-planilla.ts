@@ -429,8 +429,8 @@ function pendingVisitBeats(
 
 /**
  * Día abierto: un cliente, una visita por cobrar.
- * Prestar se queda solo cuando no hay cuota. Las cobradas y las omitidas
- * siguen (son el recaudo del día, no otra fila por cobrar).
+ * Prestar al lado de una cuota pendiente no se guarda.
+ * Si pagó el total (saldo 0), el cobro se queda y vuelve Prestar.
  */
 function oneOpenVisitPerClient(
   rows: DailyCollectionAssignment[],
@@ -459,7 +459,19 @@ function oneOpenVisitPerClient(
     }
     const pending = cuotas.filter(visitIsOpenPending);
     kept.push(...cuotas.filter((row) => !visitIsOpenPending(row)));
-    if (!pending.length) continue;
+    if (!pending.length) {
+      const paidOff = cuotas.every((row) => {
+        const loan = row.loanRef ? index.loanByRef.get(row.loanRef) : undefined;
+        return Boolean(loan) && owesFor(loan) <= 0;
+      });
+      if (paidOff) {
+        const prestar = group.find(
+          (row) => isAssignmentAwaitingLoan(row) && visitIsOpenPending(row),
+        );
+        if (prestar) kept.push(prestar);
+      }
+      continue;
+    }
     kept.push(
       pending.reduce((best, row) =>
         pendingVisitBeats(row, best, index, owesFor) ? row : best,
