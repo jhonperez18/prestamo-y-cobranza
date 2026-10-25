@@ -371,9 +371,9 @@ function mirrorRowIsVoided(row: Pick<PaymentMirrorRow, "payment_type" | "charge_
 }
 
 /**
- * Anulación. Un solo camino: el PG- queda anulado y la base recalcula el préstamo
- * con los cobros vivos (`_loan_settle`). No cambia monto, fecha ni método.
- * Si el cobro aún no está, entra ya anulado. Si acaba de guardarse, solo se marca.
+ * Anulación. Una sola orden a la base (`void_collection`): el PG- queda anulado
+ * y el saldo sale de los cobros vivos. No cambia monto, fecha ni método.
+ * Si el cobro aún no está, entra ya anulado.
  */
 async function voidPaymentInSupabase(row: PaymentMirrorRow): Promise<MirrorPaymentResult> {
   const client = createMirrorClient();
@@ -382,30 +382,26 @@ async function voidPaymentInSupabase(row: PaymentMirrorRow): Promise<MirrorPayme
   const loanRef = row.loan_ref?.trim() || "";
   if (!ref || !loanRef) return { ok: true, skipped: true, reason: "invalid_payment" };
 
-  const stamp = new Date().toISOString();
-  const mark = {
-    payment_type: "Anulado",
-    charge_label: row.charge_label,
-    updated_at: stamp,
-  };
-
-  const marked = await client.from("payments").update(mark).eq("ref", ref).select("ref");
-  if (marked.error) return { ok: false, error: marked.error.message };
-
-  if (!marked.data?.length) {
-    const { evidence: _evidence, ...withoutEvidence } = row;
-    const inserted = await client.from("payments").insert({
-      ...withoutEvidence,
-      ...mark,
-    });
-    if (inserted.error) {
-      const again = await client.from("payments").update(mark).eq("ref", ref).select("ref");
-      if (again.error || !again.data?.length) return { ok: false, error: inserted.error.message };
-    }
-  }
-
-  const settled = await client.rpc("_loan_settle", { p_ref: loanRef });
-  if (settled.error) return { ok: false, error: settled.error.message };
+  const rpc = await client.rpc("void_collection", {
+    p_ref: ref,
+    p_loan_ref: loanRef,
+    p_amount: row.amount,
+    p_paid_date: row.paid_date,
+    p_method: row.method,
+    p_charge_label: row.charge_label,
+    p_idempotency_key: row.idempotency_key ?? null,
+    p_client_ref: row.client_ref,
+    p_collector_ref: row.collector_ref,
+    p_collector_name: row.collector_name,
+    p_paid_time: row.paid_time,
+    p_due_date: row.due_date,
+    p_source: row.source,
+    p_payment_kind: row.payment_kind,
+    p_route_ref: row.route_ref,
+  });
+  if (rpc.error) return { ok: false, error: rpc.error.message };
+  const body = rpc.data as { ok?: boolean; error?: string } | null;
+  if (!body || body.ok !== true) return { ok: false, error: body?.error || "void_collection" };
   return { ok: true };
 }
 
