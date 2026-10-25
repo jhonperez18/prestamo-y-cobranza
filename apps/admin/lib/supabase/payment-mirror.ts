@@ -371,33 +371,40 @@ function mirrorRowIsVoided(row: Pick<PaymentMirrorRow, "payment_type" | "charge_
 }
 
 /**
- * Anulación en la nube: marca el PG- (una anulación no se deshace) y la base recalcula el
- * préstamo con los cobros vivos (`_loan_settle`, la misma regla que `register_collection`).
+ * Anulación. Un solo camino: el PG- queda anulado y la base recalcula el préstamo
+ * con los cobros vivos (`_loan_settle`). No cambia monto, fecha ni método.
+ * Si el cobro aún no está, entra ya anulado. Si acaba de guardarse, solo se marca.
  */
 async function voidPaymentInSupabase(row: PaymentMirrorRow): Promise<MirrorPaymentResult> {
   const client = createMirrorClient();
   if (!client) return { ok: true, skipped: true, reason: "supabase_not_configured" };
-  const stamp = new Date().toISOString();
+  const ref = row.ref?.trim() || "";
+  const loanRef = row.loan_ref?.trim() || "";
+  if (!ref || !loanRef) return { ok: true, skipped: true, reason: "invalid_payment" };
 
-  const marked = await client
-    .from("payments")
-    .update({
-      payment_type: "Anulado",
-      charge_label: row.charge_label,
-      updated_at: stamp,
-    })
-    .eq("ref", row.ref)
-    .select("ref");
+  const stamp = new Date().toISOString();
+  const mark = {
+    payment_type: "Anulado",
+    charge_label: row.charge_label,
+    updated_at: stamp,
+  };
+
+  const marked = await client.from("payments").update(mark).eq("ref", ref).select("ref");
   if (marked.error) return { ok: false, error: marked.error.message };
+
   if (!marked.data?.length) {
     const { evidence: _evidence, ...withoutEvidence } = row;
-    const inserted = await client
-      .from("payments")
-      .upsert({ ...withoutEvidence, updated_at: stamp }, { onConflict: "ref" });
-    if (inserted.error) return { ok: false, error: inserted.error.message };
+    const inserted = await client.from("payments").insert({
+      ...withoutEvidence,
+      ...mark,
+    });
+    if (inserted.error) {
+      const again = await client.from("payments").update(mark).eq("ref", ref).select("ref");
+      if (again.error || !again.data?.length) return { ok: false, error: inserted.error.message };
+    }
   }
 
-  const settled = await client.rpc("_loan_settle", { p_ref: row.loan_ref });
+  const settled = await client.rpc("_loan_settle", { p_ref: loanRef });
   if (settled.error) return { ok: false, error: settled.error.message };
   return { ok: true };
 }
