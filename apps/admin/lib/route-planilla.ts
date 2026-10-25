@@ -462,7 +462,8 @@ function oneOpenVisitPerClient(
     if (!pending.length) {
       const paidOff = cuotas.every((row) => {
         const loan = row.loanRef ? index.loanByRef.get(row.loanRef) : undefined;
-        return Boolean(loan) && owesFor(loan) <= 0;
+        if (!loan) return false;
+        return owesFor(loan) <= 0;
       });
       if (paidOff) {
         const prestar = group.find(
