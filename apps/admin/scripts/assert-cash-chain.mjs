@@ -2101,7 +2101,7 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       bancoSrc.includes("is-nequi-tres") &&
       bancoSrc.includes("is-nequi-saldo") &&
       bancoSrc.includes('pool: "nequi"') &&
-      bancoSrc.includes("(nequiRutaHistoryDays[0]?.saldo ?? 0) - nequiGastado"),
+      bancoSrc.includes("nequiBase?.saldo"),
     true,
   );
   expect(
@@ -4205,8 +4205,8 @@ console.log("— Cupo del aparato —");
     ],
     "2026-10-06",
   );
-  expect("Saldo cobrador = ficha + cobro de hoy que aún no está en la ficha", live.paid, 520000);
-  expect("Saldo restante tras el cobro de hoy", live.balance, 80000);
+  expect("Saldo cobrador = la ficha, sin sumar la lista local", live.paid, 500000);
+  expect("El celular no resta un cobro que la base no devolvió", live.balance, 100000);
 }
 
 {
@@ -5080,9 +5080,18 @@ console.log("\n— Cobro del cobrador con la ficha, no con la lista del aparato 
     dispatchEvent: () => true,
   };
   try {
-    settled(combo(jHist), "Celular con todo el historial");
-    settled(combo(jHist.slice(1)), "Celular con un pedazo viejo (daba «mayor a lo pendiente»)");
-    settled(combo([]), "Celular solo con el día");
+    const held = (result, label) => {
+      expect(`${label}: el cobro entra`, result.ok || result.error, true);
+      if (!result.ok) return;
+      const loan = result.loans.find((l) => l.ref === "P-J1");
+      const live = syncCollectorLiveLoan(loan, result.payments, jDay);
+      expect(`${label}: la ficha no se reescribe`, `${loan.paid}/${loan.balance}/${loan.status}`, "380000/220000/Alerta 1");
+      expect(`${label}: el saldo vivo es la ficha`, live.balance, 220000);
+      expect(`${label}: sin saldo de la base no queda en cero`, loanSettledOnDate(loan, result.payments, jDay), false);
+    };
+    held(combo(jHist), "Celular con todo el historial");
+    held(combo(jHist.slice(1)), "Celular con un pedazo viejo (daba «mayor a lo pendiente»)");
+    held(combo([]), "Celular solo con el día");
     const first = commitCollectorPayment({
       draft: part("K-1", "efectivo", 100_000), payments: [], loans: [jLoan], clients: [],
       routes: [jRoute], assignments: [jVisit], collectors: [COB],
@@ -5093,13 +5102,13 @@ console.log("\n— Cobro del cobrador con la ficha, no con la lista del aparato 
         draft: { ...part("K-2", "efectivo", 120_000), kind: "abono" }, payments: first.payments, loans: first.loans,
         clients: [], routes: first.routes, assignments: first.assignments, collectors: [COB],
       });
-      settled(second, "Dos cobros sueltos el mismo día");
+      held(second, "Dos cobros sueltos el mismo día");
       if (second.ok) {
         const third = commitCollectorPayment({
           draft: { ...part("K-3", "efectivo", 1_000), kind: "abono" }, payments: second.payments, loans: second.loans,
           clients: [], routes: second.routes, assignments: second.assignments, collectors: [COB],
         });
-        expect("Pagado en cero: no acepta un peso más", third.ok, false);
+        expect("Sin saldo de la base el celular no cierra el préstamo", third.ok, true);
       }
     }
   } finally {
