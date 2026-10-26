@@ -543,6 +543,23 @@
       min-height: 100%;
       height: 100%;
     }
+    /*
+     * En el PC la vista previa no hereda alto (hay un div de por medio).
+     * Al abrir Historial el panel queda en una línea y la lista solo se asoma.
+     * Con alto real, la lista ocupa el teléfono. El celular no usa is-preview.
+     */
+    .shell:not(.is-phone-layout) .collector-mobile-app.is-preview:has(.collector-mobile-history-panel) {
+      height: min(70vh, 720px);
+      min-height: min(70vh, 720px);
+    }
+    .shell:not(.is-phone-layout) .collector-mobile-app.is-preview .collector-mobile-history-panel {
+      min-height: 100%;
+    }
+    .shell:not(.is-phone-layout) .collector-mobile-app.is-preview .collector-mobile-day-history.is-panel .collector-mobile-day-history-list {
+      flex: 1 1 auto;
+      max-height: none;
+      overflow: auto;
+    }
     /* Margen derecha fija: la lista no se ensancha cuando no hay barra de desplazamiento. */
     .collector-shell-mobile > .collector-mobile-app {
       scrollbar-gutter: stable;
