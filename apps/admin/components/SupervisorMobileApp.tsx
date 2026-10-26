@@ -6582,8 +6582,6 @@ export function SupervisorMobileApp({
                 setConnectionRouteRef(null);
               }}
             />
-          ) : supervisorDirect && !serverDay && serverToday.status !== "error" ? (
-            <p className="ficha-empty">Cargando el día desde el sistema…</p>
           ) : liquidaciones.length === 0 ? (
             <p className="ficha-empty">No hay rutas con cobrador.</p>
           ) : (
