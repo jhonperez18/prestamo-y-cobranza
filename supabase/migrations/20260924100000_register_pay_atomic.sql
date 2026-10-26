@@ -78,9 +78,8 @@ declare
   v_key text := nullif(btrim(coalesce(p_idempotency_key, '')), '');
   v_amount numeric(14, 2) := trunc(p_amount);
   v_existing public.payments%rowtype;
-  v_paid numeric(14, 2);
+  v_updated_loan public.loans;
   v_total numeric(14, 2);
-  v_balance numeric(14, 2);
   v_open numeric(14, 2);
 begin
   if p_ref is null or btrim(p_ref) = '' or p_ref !~ '^PG-' then
@@ -107,10 +106,14 @@ begin
   limit 1;
 
   if found then
+    select * into v_updated_loan from public.loans where ref = p_loan_ref;
     return jsonb_build_object(
       'ok', true,
       'duplicate', true,
       'ref', v_existing.ref,
+      'paid', v_updated_loan.paid,
+      'balance', v_updated_loan.balance,
+      'total', trunc(coalesce(v_updated_loan.total, v_updated_loan.capital + coalesce(v_updated_loan.interest, 0), 0)),
       'payment', public.payment_row_json(v_existing)
     );
   end if;
@@ -172,42 +175,29 @@ begin
          or (v_key is not null and idempotency_key = v_key)
       limit 1;
       if found then
+        select * into v_updated_loan from public.loans where ref = p_loan_ref;
         return jsonb_build_object(
           'ok', true,
           'duplicate', true,
           'ref', v_existing.ref,
+          'paid', v_updated_loan.paid,
+          'balance', v_updated_loan.balance,
+          'total', trunc(coalesce(v_updated_loan.total, v_updated_loan.capital + coalesce(v_updated_loan.interest, 0), 0)),
           'payment', public.payment_row_json(v_existing)
         );
       end if;
       return jsonb_build_object('ok', false, 'error', 'conflicto_unico', 'code', 409);
   end;
 
-  v_paid := public.loan_collected(p_loan_ref);
-
-  update public.loans l
-  set
-    paid = v_paid,
-    balance = greatest(0, trunc(coalesce(l.total, l.capital + coalesce(l.interest, 0), 0)) - v_paid),
-    status = case
-      when trunc(coalesce(l.total, l.capital + coalesce(l.interest, 0), 0)) - v_paid <= 0
-        then 'Finalizado'
-      when l.status = 'Finalizado' then 'Activo'
-      else l.status
-    end,
-    updated_at = now()
-  where l.ref = p_loan_ref
-  returning
-    trunc(coalesce(total, capital + coalesce(interest, 0), 0)),
-    balance
-  into v_total, v_balance;
+  v_updated_loan := public._loan_settle(p_loan_ref);
 
   return jsonb_build_object(
     'ok', true,
     'duplicate', false,
     'ref', v_existing.ref,
-    'paid', v_paid,
-    'total', v_total,
-    'balance', v_balance,
+    'paid', v_updated_loan.paid,
+    'balance', v_updated_loan.balance,
+    'total', trunc(coalesce(v_updated_loan.total, v_updated_loan.capital + coalesce(v_updated_loan.interest, 0), 0)),
     'payment', public.payment_row_json(v_existing)
   );
 end;

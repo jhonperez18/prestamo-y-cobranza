@@ -76,8 +76,9 @@ export type MirrorApiJson = {
   /** Alta de préstamo: si el P- ya era de otro cliente, la nube asignó otro. */
   ref?: string;
   rekeyed?: boolean;
-  /** Cobro rechazado (`saldo_excedido`): lo que el préstamo debe en la nube. */
+  /** Cobro rechazado (`saldo_excedido`) o saldo que devolvió `register_collection`. */
   balance?: number;
+  paid?: number;
 };
 
 /**

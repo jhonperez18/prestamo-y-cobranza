@@ -14,7 +14,6 @@ import { isCollectorLiveDevice, syncCollectorLiveLoan } from "@/lib/collector-li
 import { chargeLabel, syncLoan } from "@/lib/loan-preview";
 import {
   cuotaTarget,
-  loanRowAfterLivePay,
   loanRowAfterPay,
   paymentRowKind,
 } from "@/lib/loan-pay";
@@ -54,7 +53,30 @@ export type CollectorPaymentCommitInput = {
    * solo si ya existe un vivo con el mismo comboGroupId.
    */
   allowComboSibling?: boolean;
+  /** Saldo que devolvió `register_collection`. Sin este número el celular no pinta otro saldo. */
+  serverBalance?: number | null;
+  serverPaid?: number | null;
 };
+
+/** Pinta el saldo del préstamo solo con lo que devolvió la base. */
+export function applyServerLoanBalance(
+  loans: LoanRow[],
+  loanRef: string,
+  serverBalance: number | null | undefined,
+  serverPaid: number | null | undefined,
+): { ok: true; loans: LoanRow[] } | { ok: false; error: string } {
+  if (serverBalance == null || !Number.isFinite(serverBalance)) {
+    return { ok: false, error: "Sin el saldo de la base. No se anotó en la pantalla." };
+  }
+  return {
+    ok: true,
+    loans: loans.map((row) =>
+      row.ref !== loanRef
+        ? row
+        : { ...row, balance: serverBalance, paid: serverPaid ?? row.paid },
+    ),
+  };
+}
 
 export type CollectorPaymentCommitResult =
   | { ok: false; error: string; duplicate?: boolean }
@@ -281,12 +303,21 @@ export function commitCollectorPayment(
 
   const nextPayments = [payment, ...payments];
   const live = isCollectorLiveDevice();
-  const nextLoans = loans.map((row) => {
-    if (row.ref !== loan.ref) return row;
-    return live
-      ? loanRowAfterLivePay(row, result.pay, payment)
-      : loanRowAfterPay(row, result.pay, nextPayments);
-  });
+  const painted = live
+    ? applyServerLoanBalance(loans, loan.ref, input.serverBalance, input.serverPaid)
+    : null;
+  if (live && input.serverBalance != null && painted && !painted.ok) {
+    return { ok: false, error: painted.error };
+  }
+  const nextLoans =
+    painted && painted.ok
+      ? painted.loans
+      : live
+        ? loans
+        : loans.map((row) => {
+            if (row.ref !== loan.ref) return row;
+            return loanRowAfterPay(row, result.pay, nextPayments);
+          });
   const nextClients = clients.map((entry) => {
     if (entry.ref !== draft.clientRef) return entry;
     return { ...entry, pending: Math.max(0, entry.pending - draft.amount) };
@@ -425,9 +456,7 @@ export function commitCollectorCombinedPayment(input: {
     input.payments,
   );
   if (!simFirst.ok) return { ok: false, error: simFirst.error };
-  const loanAfterFirst = isCollectorLiveDevice()
-    ? loanRowAfterLivePay(loan, simFirst.pay, { ref: "", amount: amountA })
-    : loanRowAfterPay(loan, simFirst.pay, input.payments);
+  const loanAfterFirst = loanRowAfterPay(loan, simFirst.pay, input.payments);
   const simSecond = applyCollectorPaymentResult(
     loanAfterFirst,
     {

@@ -98,10 +98,12 @@ import {
 import { mirrorAutoDayCloseToCloud } from "@/lib/mirror-auto-day-close";
 import {
   assignmentsForCreatedPayments,
+  applyServerLoanBalance,
   commitCollectorPayment,
   commitCollectorCombinedPayment,
   paymentsFromCollectorCommit,
 } from "@/lib/commit-collector-payment";
+import { isCollectorLiveDevice } from "@/lib/collector-live-window";
 import { type OperationalDemoSnapshot } from "@/lib/hydrate-operational-demo";
 import { useOperationalDemoSync } from "@/lib/use-operational-demo-sync";
 import {
@@ -443,6 +445,23 @@ export function CollectorShell({ session, onLogout }: Props) {
         void Promise.all([flushCatalogMirrorQueues(), flushOpsMirrorQueues()]).catch(() => {
           /* reintenta el poll / siguiente cobro */
         });
+        if (isCollectorLiveDevice()) {
+          const fromBase = payFlush.balances.find(
+            (row) => row.loanRef === committed.payment.loanRef,
+          );
+          const painted = applyServerLoanBalance(
+            committed.loans,
+            committed.payment.loanRef,
+            fromBase?.balance,
+            fromBase?.paid,
+          );
+          if (!painted.ok) {
+            showToast(painted.error);
+          } else {
+            setLoans(painted.loans);
+            writeDemoJson(DEMO_LOANS_KEY, painted.loans);
+          }
+        }
         if (payFlush.left > 0) {
           showToast(`Cobro ${toastRefs} guardado (sin nube; reintenta solo).`);
         } else {

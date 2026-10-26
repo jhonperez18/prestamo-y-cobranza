@@ -2463,10 +2463,6 @@ export function SupervisorMobileApp({
     () => bancoRoutePrestadoHistoryDays(nequiRutaHistoryDays, today),
     [nequiRutaHistoryDays, today],
   );
-  const nequiRutaTotales = useMemo(
-    () => bancoRouteHistoryTotals(nequiRutaHistoryDays),
-    [nequiRutaHistoryDays],
-  );
   const nequiGastos = useMemo(
     () =>
       digitalPoolGastos({
@@ -2479,14 +2475,10 @@ export function SupervisorMobileApp({
       }),
     [miscPayments, bankAccounts, dayCloses, bancoHistoryFrom, today],
   );
-  const nequiGastado = useMemo(() => digitalPoolGastosTotal(nequiGastos), [nequiGastos]);
-  /** Saldo Nequi = cobrado − prestado (historial de A) − gastos pagados desde Nequi. */
-  const nequiRutaSaldo = (nequiRutaHistoryDays[0]?.saldo ?? 0) - nequiGastado;
-  /** La base manda. La copia del celular solo se ve si el servidor no contesta. */
-  const nequiCobradoShown = nequiBase?.cobrado ?? nequiRutaTotales.cobrado;
-  const nequiPrestadoShown = nequiBase?.prestado ?? nequiRutaTotales.prestado;
-  const nequiGastosShown = nequiBase?.gastos ?? nequiGastado;
-  const nequiSaldoShown = nequiBase?.saldo ?? nequiRutaSaldo;
+  const nequiCobradoShown = nequiBase?.cobrado;
+  const nequiPrestadoShown = nequiBase?.prestado;
+  const nequiGastosShown = nequiBase?.gastos;
+  const nequiSaldoShown = nequiBase?.saldo;
   /** Filas de planilla: `#` = posición del cliente en su ruta; `route` para la raya verde. */
   const planillaTableRows = (rows: DailyCollectionAssignment[]): PlanillaTableRow[] =>
     rows.map((row, index) => {
@@ -5365,11 +5357,11 @@ export function SupervisorMobileApp({
               clients={sheetClients ?? clients}
               payments={payments}
               efectivo={informeAEfectivo}
-              nequi={nequiSaldoShown}
+              nequi={nequiSaldoShown ?? 0}
               corteLabel={todayDisplay}
               history={informeAHistory}
               nequiGastos={nequiGastos}
-              nequiGastado={nequiGastosShown}
+              nequiGastado={nequiGastosShown ?? 0}
               snapshot={historialOpen ? openInformeSnapshot : null}
             />
           )
@@ -5396,7 +5388,7 @@ export function SupervisorMobileApp({
                 }}
               >
                 <span>Cobrado</span>
-                <b>{money(nequiCobradoShown, { symbol: false })}</b>
+                <b>{nequiCobradoShown == null ? "—" : money(nequiCobradoShown, { symbol: false })}</b>
               </button>
               <button
                 type="button"
@@ -5409,7 +5401,7 @@ export function SupervisorMobileApp({
                 }}
               >
                 <span>Prestado</span>
-                <b>{money(nequiPrestadoShown, { symbol: false })}</b>
+                <b>{nequiPrestadoShown == null ? "—" : money(nequiPrestadoShown, { symbol: false })}</b>
               </button>
               <button
                 type="button"
@@ -5423,16 +5415,16 @@ export function SupervisorMobileApp({
                 }}
               >
                 <span>Gastos</span>
-                <b>{money(nequiGastosShown, { symbol: false })}</b>
+                <b>{nequiGastosShown == null ? "—" : money(nequiGastosShown, { symbol: false })}</b>
               </button>
               <button
                 type="button"
                 className="is-nequi-saldo"
                 title="Saldo Nequi ruta A (cobrado − prestado − gastos)"
-                aria-label={`Saldo Nequi ruta A ${money(nequiSaldoShown, { symbol: false })}`}
+                aria-label={`Saldo Nequi ruta A ${nequiSaldoShown == null ? "sin conexión" : money(nequiSaldoShown, { symbol: false })}`}
               >
                 <span>Saldo</span>
-                <b>{money(nequiSaldoShown, { symbol: false })}</b>
+                <b>{nequiSaldoShown == null ? "—" : money(nequiSaldoShown, { symbol: false })}</b>
               </button>
             </div>
           </section>
@@ -5551,7 +5543,7 @@ export function SupervisorMobileApp({
             )
           ) : null}
           {nequiRutaExpand === "gastos"
-            ? renderPoolGastos("nequi", nequiGastos, nequiGastosShown)
+            ? renderPoolGastos("nequi", nequiGastos, nequiGastosShown ?? 0)
             : null}
         </section>
       ) : view === "banco" ? (

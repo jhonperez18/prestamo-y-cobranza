@@ -413,6 +413,8 @@ export type MirrorPaymentResult =
       payment?: PaymentRow;
       /** Combinado: los dos tramos, en el orden enviado. */
       payments?: PaymentRow[];
+      balance?: number;
+      paid?: number;
     }
   | { ok: true; skipped: true; reason: string; balance?: number }
   | { ok: false; error: string };
@@ -441,6 +443,8 @@ export async function mirrorPaymentToSupabase(
       ok: true,
       duplicate: registered.duplicate,
       payment: registered.payments[0],
+      balance: registered.balance,
+      paid: registered.paid,
     };
   }
 
@@ -828,13 +832,18 @@ export async function persistPaymentToSupabase(
 }
 
 /** C4: intenta subir la cola offline (no tumba la UX). Reintentable. */
-export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left: number }> {
-  if (typeof window === "undefined") return { flushed: 0, left: 0 };
+export async function flushPaymentMirrorQueue(): Promise<{
+  flushed: number;
+  left: number;
+  balances: { loanRef: string; balance: number; paid?: number }[];
+}> {
+  if (typeof window === "undefined") return { flushed: 0, left: 0, balances: [] };
   const queue = readMirrorQueue();
-  if (!queue.length) return { flushed: 0, left: 0 };
+  if (!queue.length) return { flushed: 0, left: 0, balances: [] };
 
   let flushed = 0;
   const left: PaymentRow[] = [];
+  const balances: { loanRef: string; balance: number; paid?: number }[] = [];
   const rejected: { payment: PaymentRow; balance?: number }[] = [];
   for (const payment of queue) {
     const payload = withPaymentEvidence(payment);
@@ -853,6 +862,13 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
       } else if (res.ok && shouldDropFromMirrorQueue(body) && !body.skipped) {
         flushed += 1;
         adoptCloudPaymentRefs([payload], [body.payment]);
+        if (typeof body.balance === "number" && payload.loanRef) {
+          balances.push({
+            loanRef: payload.loanRef,
+            balance: body.balance,
+            paid: typeof body.paid === "number" ? body.paid : undefined,
+          });
+        }
       } else if (res.ok && shouldDropFromMirrorQueue(body) && body.skipped) {
         // invalid_payment u otro drop intencional
         flushed += 1;
@@ -865,7 +881,7 @@ export async function flushPaymentMirrorQueue(): Promise<{ flushed: number; left
   }
   writeMirrorQueue(left);
   for (const row of rejected) dropRejectedPayments([row.payment], row.balance);
-  return { flushed, left: left.length };
+  return { flushed, left: left.length, balances };
 }
 
 /**

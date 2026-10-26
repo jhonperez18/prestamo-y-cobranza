@@ -5,9 +5,6 @@
 import { readSession } from "@/lib/auth";
 import { BIG_DEMO_STORE_CHANGED_EVENT } from "@/lib/big-demo-store";
 import { businessTodayIso } from "@/lib/business-timezone";
-import { pesos } from "@/lib/finance";
-import { paymentVisitDate } from "@/lib/late-payment";
-import { isPaymentLive } from "@/lib/live-payments";
 import { syncAllLoans, syncLoan } from "@/lib/loan-preview";
 import { finalizeSupersededLoans } from "@/lib/route-sync";
 import {
@@ -50,34 +47,15 @@ export function withDateWindowParam(
 }
 
 /**
- * Saldo del cobrador = ficha del préstamo (nube) + cobros de hoy que aún no están en esa ficha.
- * No suma el historial: si solo está el día, el saldo no se infla.
- * Un cobro de este aparato ya sumado a la ficha (`livePaidRefs`) no se cuenta dos veces.
+ * Saldo del cobrador = la ficha que bajó la base.
+ * El celular no suma ni resta cobros de su copia.
  */
 export function syncCollectorLiveLoan(
   loan: LoanRow,
-  dayPayments: PaymentRow[],
-  today = collectorLiveDayIso(),
+  _dayPayments?: PaymentRow[],
+  _today?: string,
 ): LoanRow {
-  const base = syncLoan(loan) as LoanRow;
-  const catalogAt = Date.parse(String(loan.updatedAt || "")) || 0;
-  const inFicha = new Set(loan.livePaidRefs ?? []);
-  let add = 0;
-  for (const row of dayPayments) {
-    if (row.loanRef !== loan.ref || !isPaymentLive(row)) continue;
-    if (inFicha.has(row.ref)) continue;
-    const day = paymentVisitDate(row) || row.paidDate || "";
-    if (day !== today) continue;
-    const payAt = Date.parse(String(row.updatedAt || "")) || 0;
-    if (catalogAt && payAt && payAt <= catalogAt) continue;
-    add += pesos(row.amount);
-  }
-  if (add <= 0) return base;
-  return {
-    ...base,
-    paid: pesos(base.paid) + add,
-    balance: Math.max(0, pesos(base.balance) - add),
-  };
+  return syncLoan(loan) as LoanRow;
 }
 
 /**
