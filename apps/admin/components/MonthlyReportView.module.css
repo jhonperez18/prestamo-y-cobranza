@@ -1,6 +1,5 @@
 .wrap {
-  overflow: auto;
-  max-height: calc(100vh - 188px);
+  overflow: visible;
 }
 
 .table {
