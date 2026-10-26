@@ -445,13 +445,12 @@ export function CollectorShell({ session, onLogout }: Props) {
         void Promise.all([flushCatalogMirrorQueues(), flushOpsMirrorQueues()]).catch(() => {
           /* reintenta el poll / siguiente cobro */
         });
-        if (isCollectorLiveDevice()) {
-          const fromBase = payFlush.balances.find(
-            (row) => row.loanRef === committed.payment.loanRef,
-          );
+        const loanRef = committed.payment.loanRef;
+        if (isCollectorLiveDevice() && loanRef) {
+          const fromBase = payFlush.balances.find((row) => row.loanRef === loanRef);
           const painted = applyServerLoanBalance(
             committed.loans,
-            committed.payment.loanRef,
+            loanRef,
             fromBase?.balance,
             fromBase?.paid,
           );
@@ -461,6 +460,8 @@ export function CollectorShell({ session, onLogout }: Props) {
             setLoans(painted.loans);
             writeDemoJson(DEMO_LOANS_KEY, painted.loans);
           }
+        } else if (isCollectorLiveDevice()) {
+          showToast("Sin el saldo de la base. No se anotó en la pantalla.");
         }
         if (payFlush.left > 0) {
           showToast(`Cobro ${toastRefs} guardado (sin nube; reintenta solo).`);
