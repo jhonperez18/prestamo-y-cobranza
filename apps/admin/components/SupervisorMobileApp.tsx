@@ -45,6 +45,7 @@ import {
   visitStatusLabel,
   visitStatusLabelShort,
 } from "@/lib/collector-mobile";
+import { previousCalendarIso } from "@/lib/collector-day-auto-close";
 import { todayIso } from "@/lib/daily-dispatch";
 import { collapseCompanionVisits, visiblePlanillaAssignments } from "@/lib/planilla-dedupe";
 import { isValidPlanillaAssignment } from "@/lib/planilla-eligibility";
@@ -89,7 +90,7 @@ import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import { useRouteSheet } from "@/lib/use-route-sheet";
 import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
-import { useSupervisorToday } from "@/lib/use-supervisor-today";
+import { useRouteAAnchor, useSupervisorToday } from "@/lib/use-supervisor-today";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import {
   informePeriodName,
@@ -182,6 +183,7 @@ import {
   isPlanillaCashChainSecondary,
   stampHistoryWithPlanillaCashChain,
   type PlanillaCashCloseRecord,
+  type RouteCashBook,
 } from "@/lib/planilla-cash-chain";
 import {
   buildDayCashLedger,
@@ -1290,6 +1292,13 @@ const INFORME_A_ROUTE = "A";
 /** Lista omitida = la misma referencia siempre (`= []` nuevo por render dispara los efectos sin fin). */
 const NO_ROWS: never[] = [];
 
+/** Ayer ya cerrado en la base. Hoy se suma encima, sin rehacer el mes. */
+function routeAAnchorBook(date: string, saldo: number): RouteCashBook {
+  return new Map([
+    [date, { date, opening: saldo, closing: saldo, efectivo: 0, gastos: 0, prestamos: 0 }],
+  ]);
+}
+
 /** App móvil del supervisor: caja + planilla + préstamos/renovaciones en vivo. */
 export function SupervisorMobileApp({
   supervisor,
@@ -1326,7 +1335,7 @@ export function SupervisorMobileApp({
   );
   const sheetClients = routeSheet.sheet?.clients ?? null;
   const sheetLoans = routeSheet.sheet?.loans ?? null;
-  const serverToday = useSupervisorToday(supervisorDirect, view);
+  const serverToday = useSupervisorToday(supervisorDirect, today);
   const serverDay = serverToday.data?.date === today ? serverToday.data : null;
   const paymentsLive = serverDay
     ? [...payments.filter((row) => String(row.paidDate || "").slice(0, 10) !== today), ...serverDay.payments]
@@ -1482,6 +1491,17 @@ export function SupervisorMobileApp({
       ),
     [coverage],
   );
+
+  const aCollectorRefs = useMemo(() => {
+    const refs = new Set<string>();
+    for (const route of assignedCoverage) {
+      if (!sameRoute(route.routeName, "A")) continue;
+      const ref = route.collector?.ref || route.collectorRef || "";
+      if (ref) refs.add(ref);
+    }
+    return [...refs];
+  }, [assignedCoverage]);
+  const aAnchors = useRouteAAnchor(true, aCollectorRefs, today);
 
   /** Libro de caja del día por cobrador: misma cifra que la app del cobrador, el cierre y el Historial. */
   const ledgerByCollector = useMemo(() => {
@@ -1652,6 +1672,11 @@ export function SupervisorMobileApp({
             ? routeLedger.m
             : null;
       // A / N: caja propia (Inicial = saldo real del último ajuste + arrastre).
+      const aAnchor = sameRoute(route.routeName, "A") ? aAnchors[collectorRef] : undefined;
+      const aBook =
+        aAnchor && aAnchor.date === previousCalendarIso(today)
+          ? routeAAnchorBook(aAnchor.date, aAnchor.saldo)
+          : undefined;
       const independentDay =
         collector && isIndependentSaldoRoute(route.routeName)
           ? independentRouteDay(
@@ -1670,6 +1695,7 @@ export function SupervisorMobileApp({
                 monthCloses,
               },
               route.routeName,
+              aBook,
             )
           : null;
       let gastosHoy = independentDay ? independentDay.gastos : chainDay ? chainDay.gastos : 0;
@@ -1836,6 +1862,7 @@ export function SupervisorMobileApp({
     clients,
     loans,
     ledgerByCollector,
+    aAnchors,
   ]);
 
   const deviceStatuses = useDeviceStatuses();
@@ -2959,7 +2986,7 @@ export function SupervisorMobileApp({
       openRoute.collectorRef,
       openRoute.routeName,
     );
-  }, [assignments, clients, openRoute]);
+  }, [assignments, clients, openRoute, today]);
 
   /** Historial · T / A / N: renglón del día + renglón de ajuste (si lo hubo). */
   const openRouteAdjustHistory = useMemo(() => {
@@ -3093,7 +3120,12 @@ export function SupervisorMobileApp({
       planillaCashCloses,
       monthCloses,
     };
-    const day = independentRouteDay(src, openRoute.routeName);
+    const anchor = sameRoute(openRoute.routeName, "A") ? aAnchors[openRoute.collectorRef] : undefined;
+    const aBook =
+      cajaHistoryDayIso === today && anchor && anchor.date === previousCalendarIso(today)
+        ? routeAAnchorBook(anchor.date, anchor.saldo)
+        : undefined;
+    const day = independentRouteDay(src, openRoute.routeName, aBook);
     return {
       day,
       collected: independentRouteCollected(src, openRoute.routeName),
@@ -3111,6 +3143,8 @@ export function SupervisorMobileApp({
     dayExpenseDrafts,
     planillaCashCloses,
     monthCloses,
+    aAnchors,
+    today,
   ]);
 
   /**

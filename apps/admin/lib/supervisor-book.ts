@@ -43,9 +43,20 @@ function queuedMisc(): MiscPayment[] {
   return readDemoJson<MiscPayment[]>(MISC_QUEUE_KEY, []).filter((row) => row?.ref && row.paidDate);
 }
 
+const BOOK_DAY_KEY = "nexo-supervisor-book-day";
+
 export async function loadSupervisorBookFromCloud(): Promise<SupervisorBook | null> {
   if (typeof window === "undefined" || (paymentsLoadedThisOpen && miscLoadedThisOpen)) return null;
   const today = businessTodayIso();
+  let bookDay = "";
+  try {
+    bookDay = localStorage.getItem(BOOK_DAY_KEY) || "";
+  } catch {
+    bookDay = "";
+  }
+  if (bookDay === today && readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []).length > 0) {
+    paymentsLoadedThisOpen = true;
+  }
   const [payRes, miscRes] = await Promise.all([
     paymentsLoadedThisOpen
       ? Promise.resolve(null)
@@ -98,6 +109,11 @@ export async function loadSupervisorBookFromCloud(): Promise<SupervisorBook | nu
   if (payments) {
     writeDemoJson(DEMO_PAYMENTS_KEY, nextPayments);
     paymentsLoadedThisOpen = true;
+    try {
+      localStorage.setItem(BOOK_DAY_KEY, today);
+    } catch {
+      /* el día siguiente lo vuelve a bajar */
+    }
   }
   if (misc) {
     writeDemoJson(DEMO_MISC_PAYMENTS_KEY, nextMisc);
