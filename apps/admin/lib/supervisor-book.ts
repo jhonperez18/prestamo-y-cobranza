@@ -149,6 +149,60 @@ function mergeBookPayments(
   return merged;
 }
 
+let historyPaymentsCache: PaymentRow[] | null = null;
+let historyPaymentsDay = "";
+
+/**
+ * Cobros del libro (desde el 01/10) para el Historial del supervisor.
+ * No escribe el disco ni la cola. Si el libro de hoy ya está en el aparato, lo reutiliza.
+ */
+export async function loadSupervisorHistoryPayments(): Promise<PaymentRow[] | null> {
+  if (typeof window === "undefined") return null;
+  const today = businessTodayIso();
+  if (historyPaymentsCache && historyPaymentsDay === today) return historyPaymentsCache;
+  if (paymentsLoadedThisOpen) {
+    let bookDay = "";
+    try {
+      bookDay = localStorage.getItem(BOOK_DAY_KEY) || "";
+    } catch {
+      bookDay = "";
+    }
+    if (bookDay === today) {
+      const stored = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, []).filter((row) => row?.ref);
+      if (stored.length > 0) {
+        historyPaymentsCache = stored;
+        historyPaymentsDay = today;
+        return stored;
+      }
+    }
+  }
+  try {
+    const res = await fetch(
+      `/api/payments?fromDate=${encodeURIComponent(ROUTE_CASH_BOOK_FROM)}&toDate=${encodeURIComponent(today)}`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return null;
+    const body = (await res.json()) as {
+      ok?: boolean;
+      skipped?: boolean;
+      payments?: PaymentMirrorRow[];
+    };
+    if (!body.ok || body.skipped || !Array.isArray(body.payments) || body.payments.length === 0) {
+      return null;
+    }
+    const rows = body.payments
+      .map((row) => mirrorRowToPaymentRow(row))
+      .filter((row): row is PaymentRow => Boolean(row));
+    if (rows.length === 0) return null;
+    historyPaymentsCache = rows;
+    historyPaymentsDay = today;
+    return rows;
+  } catch (error) {
+    console.error("supervisor-history-payments", error);
+    return null;
+  }
+}
+
 function mergeBookMisc(remote: MiscPayment[], queued: MiscPayment[]): MiscPayment[] {
   const remoteRefs = new Set(remote.map((row) => row.ref));
   const pending = queued.filter((row) => !remoteRefs.has(row.ref));

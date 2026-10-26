@@ -88,6 +88,7 @@ import { canRenewLoan } from "@/lib/loan-renew";
 import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
+import { loadSupervisorHistoryPayments } from "@/lib/supervisor-book";
 import { useRouteSheet } from "@/lib/use-route-sheet";
 import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
 import { useNequiSaldo, useRouteAAnchor, useSupervisorToday } from "@/lib/use-supervisor-today";
@@ -1373,6 +1374,18 @@ export function SupervisorMobileApp({
   /** Panel al que vuelve al salir del detalle de ruta (inicio / caja / nequi). */
   const [routeReturnView, setRouteReturnView] = useState<SupervisorView>("inicio");
   const [detailMode, setDetailMode] = useState<RouteDetailMode>("totales");
+  const [historyBookPayments, setHistoryBookPayments] = useState<PaymentRow[] | null>(null);
+  useEffect(() => {
+    if (!supervisorDirect) return;
+    if (detailMode !== "historial" && detailMode !== "historial-dia") return;
+    let cancel = false;
+    void loadSupervisorHistoryPayments().then((rows) => {
+      if (!cancel && rows && rows.length > 0) setHistoryBookPayments(rows);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [supervisorDirect, detailMode]);
   const [cobrosMethodFilter, setCobrosMethodFilter] = useState<PaymentMethod | null>(null);
   /** Día ISO seleccionado en historial Nequi de una ruta. */
   const [nequiDayIso, setNequiDayIso] = useState<string | null>(null);
@@ -2744,7 +2757,26 @@ export function SupervisorMobileApp({
     monthCloses,
   ]);
 
+  const historyPayments = useMemo(() => {
+    if (!historyBookPayments) return payments;
+    const seen = new Set<string>();
+    const merged: PaymentRow[] = [];
+    for (const row of [...historyBookPayments, ...paymentsLive]) {
+      if (!row.ref || seen.has(row.ref)) continue;
+      seen.add(row.ref);
+      merged.push(row);
+    }
+    return merged;
+  }, [historyBookPayments, payments, paymentsLive]);
+  const historyCloses = historyBookPayments ? dayClosesLive : dayCloses;
+  const historyExpenses = historyBookPayments ? expensesLive : dayExpenseDrafts;
+  const historyAssignments = historyBookPayments ? assignmentsLive : assignments;
+
   const openRouteCajaHistory = useMemo(() => {
+    const payments = historyPayments;
+    const dayCloses = historyCloses;
+    const dayExpenseDrafts = historyExpenses;
+    const assignments = historyAssignments;
     if (!openRoute || !openRouteScope) return [];
     if (detailMode !== "historial" && detailMode !== "historial-dia") return [];
     const collector = collectors.find((row) => row.ref === openRoute.collectorRef);
@@ -2986,11 +3018,11 @@ export function SupervisorMobileApp({
     openRouteScope,
     detailMode,
     collectors,
-    payments,
-    dayCloses,
-    dayExpenseDrafts,
+    historyPayments,
+    historyCloses,
+    historyExpenses,
     monthCloses,
-    assignments,
+    historyAssignments,
     loans,
     clients,
     today,
@@ -3020,6 +3052,7 @@ export function SupervisorMobileApp({
 
   /** Historial · T / A / N: renglón del día + renglón de ajuste (si lo hubo). */
   const openRouteAdjustHistory = useMemo(() => {
+    const dayCloses = historyCloses;
     if (!openRoute) return null;
     const rows = openRouteCajaHistory as Array<{
       date: string;
@@ -3039,7 +3072,7 @@ export function SupervisorMobileApp({
     openRouteCajaHistoryIsT,
     openRouteCajaHistoryIsIndependent,
     openRouteCajaHistory,
-    dayCloses,
+    historyCloses,
   ]);
 
   /** Ajuste de saldo: solo supervisor/admin, la planilla ya cerró hoy y antes de medianoche. */
@@ -3131,6 +3164,10 @@ export function SupervisorMobileApp({
 
   /** Día del historial de A / N: solo la planilla (nada de las otras rutas del cobrador). */
   const openRouteHistoryIndependentDay = useMemo(() => {
+    const payments = historyPayments;
+    const dayCloses = historyCloses;
+    const dayExpenseDrafts = historyExpenses;
+    const assignments = historyAssignments;
     if (!openRoute || !cajaHistoryDayIso || !isIndependentSaldoRoute(openRoute.routeName)) {
       return null;
     }
@@ -3165,12 +3202,12 @@ export function SupervisorMobileApp({
     openRoute,
     cajaHistoryDayIso,
     collectors,
-    payments,
+    historyPayments,
     loans,
     clients,
-    assignments,
-    dayCloses,
-    dayExpenseDrafts,
+    historyAssignments,
+    historyCloses,
+    historyExpenses,
     planillaCashCloses,
     monthCloses,
     aAnchors,
@@ -3183,6 +3220,10 @@ export function SupervisorMobileApp({
    * M = saldo de la mañana (Inicial de T).
    */
   const openRouteHistoryChainDay = useMemo(() => {
+    const payments = historyPayments;
+    const dayCloses = historyCloses;
+    const dayExpenseDrafts = historyExpenses;
+    const assignments = historyAssignments;
     if (!openRoute || !cajaHistoryDayIso) return null;
     const isT = isPlanillaCashChainSecondary(openRoute.routeName);
     if (!isT && !isPlanillaCashChainPrimary(openRoute.routeName)) return null;
@@ -3225,17 +3266,20 @@ export function SupervisorMobileApp({
     openRouteCajaHistory,
     cajaHistoryDayIso,
     collectors,
-    payments,
+    historyPayments,
     loans,
     clients,
-    assignments,
-    dayCloses,
-    dayExpenseDrafts,
+    historyAssignments,
+    historyCloses,
+    historyExpenses,
     planillaCashCloses,
     monthCloses,
   ]);
 
   const openRouteHistoryDayCuadre = useMemo(() => {
+    const payments = historyPayments;
+    const dayCloses = historyCloses;
+    const dayExpenseDrafts = historyExpenses;
     if (!openRoute || !cajaHistoryDayIso) return null;
     if (openRouteHistoryChainDay) {
       return {
@@ -3272,9 +3316,9 @@ export function SupervisorMobileApp({
     openRouteHistoryIndependentDay,
     cajaHistoryDayIso,
     collectors,
-    payments,
-    dayCloses,
-    dayExpenseDrafts,
+    historyPayments,
+    historyCloses,
+    historyExpenses,
     monthCloses,
   ]);
 
@@ -3298,6 +3342,9 @@ export function SupervisorMobileApp({
     historyDayMeansCount === 2 ? " is-two" : historyDayMeansCount >= 4 ? " is-four" : "";
 
   const openRouteHistoryDayExpenses = useMemo(() => {
+    const dayCloses = historyCloses;
+    const dayExpenseDrafts = historyExpenses;
+    const assignments = historyAssignments;
     if (!openRoute || !cajaHistoryDayIso) return [];
     if (openRouteHistoryChainDay) return openRouteHistoryChainDay.lines;
     if (openRouteHistoryIndependentDay) return openRouteHistoryIndependentDay.lines;
@@ -3316,11 +3363,11 @@ export function SupervisorMobileApp({
     openRouteHistoryChainDay,
     openRouteHistoryIndependentDay,
     cajaHistoryDayIso,
-    dayCloses,
-    dayExpenseDrafts,
+    historyCloses,
+    historyExpenses,
     loans,
     clients,
-    assignments,
+    historyAssignments,
   ]);
 
   const openRouteHistoryDayExpenseSplit = useMemo(
@@ -3437,6 +3484,8 @@ export function SupervisorMobileApp({
   }, [cierreListKind]);
 
   const openRouteHistoryDayPlanilla = useMemo(() => {
+    const payments = historyPayments;
+    const assignments = historyAssignments;
     if (!openRoute || !cajaHistoryDayIso || !openRouteScope) return [];
     const dayVisits = assignments.filter(
       (row) =>
@@ -3465,8 +3514,8 @@ export function SupervisorMobileApp({
     openRoute,
     openRouteScope,
     cajaHistoryDayIso,
-    assignments,
-    payments,
+    historyAssignments,
+    historyPayments,
     collectors,
     loans,
     clients,
