@@ -90,7 +90,7 @@ import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import { useRouteSheet } from "@/lib/use-route-sheet";
 import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
-import { useRouteAAnchor, useSupervisorToday } from "@/lib/use-supervisor-today";
+import { useNequiSaldo, useRouteAAnchor, useSupervisorToday } from "@/lib/use-supervisor-today";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import {
   informePeriodName,
@@ -1336,6 +1336,7 @@ export function SupervisorMobileApp({
   const sheetClients = routeSheet.sheet?.clients ?? null;
   const sheetLoans = routeSheet.sheet?.loans ?? null;
   const serverToday = useSupervisorToday(supervisorDirect, today);
+  const nequiBase = useNequiSaldo(true);
   const serverDay = serverToday.data?.date === today ? serverToday.data : null;
   const paymentsLive = serverDay
     ? [...payments.filter((row) => String(row.paidDate || "").slice(0, 10) !== today), ...serverDay.payments]
@@ -2481,6 +2482,11 @@ export function SupervisorMobileApp({
   const nequiGastado = useMemo(() => digitalPoolGastosTotal(nequiGastos), [nequiGastos]);
   /** Saldo Nequi = cobrado − prestado (historial de A) − gastos pagados desde Nequi. */
   const nequiRutaSaldo = (nequiRutaHistoryDays[0]?.saldo ?? 0) - nequiGastado;
+  /** La base manda. La copia del celular solo se ve si el servidor no contesta. */
+  const nequiCobradoShown = nequiBase?.cobrado ?? nequiRutaTotales.cobrado;
+  const nequiPrestadoShown = nequiBase?.prestado ?? nequiRutaTotales.prestado;
+  const nequiGastosShown = nequiBase?.gastos ?? nequiGastado;
+  const nequiSaldoShown = nequiBase?.saldo ?? nequiRutaSaldo;
   /** Filas de planilla: `#` = posición del cliente en su ruta; `route` para la raya verde. */
   const planillaTableRows = (rows: DailyCollectionAssignment[]): PlanillaTableRow[] =>
     rows.map((row, index) => {
@@ -5359,11 +5365,11 @@ export function SupervisorMobileApp({
               clients={sheetClients ?? clients}
               payments={payments}
               efectivo={informeAEfectivo}
-              nequi={nequiRutaSaldo}
+              nequi={nequiSaldoShown}
               corteLabel={todayDisplay}
               history={informeAHistory}
               nequiGastos={nequiGastos}
-              nequiGastado={nequiGastado}
+              nequiGastado={nequiGastosShown}
               snapshot={historialOpen ? openInformeSnapshot : null}
             />
           )
@@ -5390,7 +5396,7 @@ export function SupervisorMobileApp({
                 }}
               >
                 <span>Cobrado</span>
-                <b>{money(nequiRutaTotales.cobrado, { symbol: false })}</b>
+                <b>{money(nequiCobradoShown, { symbol: false })}</b>
               </button>
               <button
                 type="button"
@@ -5403,7 +5409,7 @@ export function SupervisorMobileApp({
                 }}
               >
                 <span>Prestado</span>
-                <b>{money(nequiRutaTotales.prestado, { symbol: false })}</b>
+                <b>{money(nequiPrestadoShown, { symbol: false })}</b>
               </button>
               <button
                 type="button"
@@ -5417,16 +5423,16 @@ export function SupervisorMobileApp({
                 }}
               >
                 <span>Gastos</span>
-                <b>{money(nequiGastado, { symbol: false })}</b>
+                <b>{money(nequiGastosShown, { symbol: false })}</b>
               </button>
               <button
                 type="button"
                 className="is-nequi-saldo"
                 title="Saldo Nequi ruta A (cobrado − prestado − gastos)"
-                aria-label={`Saldo Nequi ruta A ${money(nequiRutaSaldo, { symbol: false })}`}
+                aria-label={`Saldo Nequi ruta A ${money(nequiSaldoShown, { symbol: false })}`}
               >
                 <span>Saldo</span>
-                <b>{money(nequiRutaSaldo, { symbol: false })}</b>
+                <b>{money(nequiSaldoShown, { symbol: false })}</b>
               </button>
             </div>
           </section>
@@ -5545,7 +5551,7 @@ export function SupervisorMobileApp({
             )
           ) : null}
           {nequiRutaExpand === "gastos"
-            ? renderPoolGastos("nequi", nequiGastos, nequiGastado)
+            ? renderPoolGastos("nequi", nequiGastos, nequiGastosShown)
             : null}
         </section>
       ) : view === "banco" ? (

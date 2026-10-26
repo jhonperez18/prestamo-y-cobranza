@@ -114,3 +114,47 @@ export function useRouteAAnchor(enabled: boolean, collectorRefs: readonly string
 
   return anchors;
 }
+
+export type NequiSaldo = {
+  cobrado: number;
+  prestado: number;
+  gastos: number;
+  saldo: number;
+};
+
+/**
+ * Nequi de la ruta A, leído en el servidor al abrir.
+ * Si no contesta, la pantalla sigue con su copia.
+ */
+export function useNequiSaldo(enabled: boolean): NequiSaldo | null {
+  const [saldo, setSaldo] = useState<NequiSaldo | null>(null);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/ops/nequi-saldo", { cache: "no-store" });
+        const body = (await res.json()) as NequiSaldo & { ok?: boolean };
+        if (!res.ok || body.ok !== true) return;
+        const next = {
+          cobrado: Math.trunc(Number(body.cobrado)),
+          prestado: Math.trunc(Number(body.prestado)),
+          gastos: Math.trunc(Number(body.gastos)),
+          saldo: Math.trunc(Number(body.saldo)),
+        };
+        if (Object.values(next).some((value) => !Number.isFinite(value))) return;
+        if (!alive) return;
+        setSaldo(next);
+      } catch (error) {
+        console.error("nequi-saldo", error);
+      }
+    };
+    void load();
+    return () => {
+      alive = false;
+    };
+  }, [enabled]);
+
+  return saldo;
+}
