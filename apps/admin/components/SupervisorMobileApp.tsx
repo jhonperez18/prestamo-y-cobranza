@@ -1338,16 +1338,35 @@ export function SupervisorMobileApp({
   const serverToday = useSupervisorToday(supervisorDirect, today);
   const nequiBase = useNequiSaldo(true);
   const serverDay = serverToday.data?.date === today ? serverToday.data : null;
-  const paymentsLive = serverDay
-    ? [...payments.filter((row) => String(row.paidDate || "").slice(0, 10) !== today), ...serverDay.payments]
-    : payments;
-  const dayClosesLive = serverDay ? serverDay.dayCloses : dayCloses;
-  const expensesLive = serverDay
-    ? [...dayExpenseDrafts.filter((row) => row.date !== today), ...serverDay.expenses]
-    : dayExpenseDrafts;
-  const assignmentsLive = serverDay
-    ? [...assignments.filter((row) => row.dispatchDate !== today), ...serverDay.assignments]
-    : assignments;
+  // Misma mezcla de siempre. Sin esto cada botón arma listas nuevas y rehace la caja.
+  const paymentsLive = useMemo(
+    () =>
+      serverDay
+        ? [
+            ...payments.filter((row) => String(row.paidDate || "").slice(0, 10) !== today),
+            ...serverDay.payments,
+          ]
+        : payments,
+    [serverDay, payments, today],
+  );
+  const dayClosesLive = useMemo(
+    () => (serverDay ? serverDay.dayCloses : dayCloses),
+    [serverDay, dayCloses],
+  );
+  const expensesLive = useMemo(
+    () =>
+      serverDay
+        ? [...dayExpenseDrafts.filter((row) => row.date !== today), ...serverDay.expenses]
+        : dayExpenseDrafts,
+    [serverDay, dayExpenseDrafts, today],
+  );
+  const assignmentsLive = useMemo(
+    () =>
+      serverDay
+        ? [...assignments.filter((row) => row.dispatchDate !== today), ...serverDay.assignments]
+        : assignments,
+    [serverDay, assignments, today],
+  );
   const [openRouteRef, setOpenRouteRef] = useState<string | null>(null);
   /** Cliente que terminó hoy con el formulario «Préstamo» abierto (Caja → ruta → planilla). */
   const [reloanClientRef, setReloanClientRef] = useState<string | null>(null);
@@ -1935,9 +1954,17 @@ export function SupervisorMobileApp({
       playSupervisorPaymentChime();
     }
     unreadTotalRef.current = total;
-    setUnreadByRoute(next);
-    setUnreadByRouteNequi(nextNequi);
-    setUnreadByRouteBanco(nextBanco);
+    const sameCount = (prev: Record<string, number>, fresh: Record<string, number>) => {
+      const prevKeys = Object.keys(prev);
+      const freshKeys = Object.keys(fresh);
+      return (
+        prevKeys.length === freshKeys.length &&
+        freshKeys.every((key) => prev[key] === fresh[key])
+      );
+    };
+    setUnreadByRoute((prev) => (sameCount(prev, next) ? prev : next));
+    setUnreadByRouteNequi((prev) => (sameCount(prev, nextNequi) ? prev : nextNequi));
+    setUnreadByRouteBanco((prev) => (sameCount(prev, nextBanco) ? prev : nextBanco));
   }, [liquidaciones, collectors, paymentsWithEvidence, loans, clients, today]);
 
   const totals = useMemo(() => {
@@ -2436,16 +2463,19 @@ export function SupervisorMobileApp({
   );
   const nequiRutaHistoryDays = useMemo(
     () =>
-      nequiRouteHistoryDays({
-        payments: paymentsWithEvidence,
-        loans,
-        clients,
-        dayCloses,
-        fromIso: bancoHistoryFrom,
-        toIso: today,
-        movements: bankMovements,
-      }),
+      view === "nequi"
+        ? nequiRouteHistoryDays({
+            payments: paymentsWithEvidence,
+            loans,
+            clients,
+            dayCloses,
+            fromIso: bancoHistoryFrom,
+            toIso: today,
+            movements: bankMovements,
+          })
+        : [],
     [
+      view,
       paymentsWithEvidence,
       loans,
       clients,
@@ -2716,6 +2746,7 @@ export function SupervisorMobileApp({
 
   const openRouteCajaHistory = useMemo(() => {
     if (!openRoute || !openRouteScope) return [];
+    if (detailMode !== "historial" && detailMode !== "historial-dia") return [];
     const collector = collectors.find((row) => row.ref === openRoute.collectorRef);
     if (!collector) return [];
     const period = periodFromDateIso(today);
@@ -2953,6 +2984,7 @@ export function SupervisorMobileApp({
   }, [
     openRoute,
     openRouteScope,
+    detailMode,
     collectors,
     payments,
     dayCloses,
