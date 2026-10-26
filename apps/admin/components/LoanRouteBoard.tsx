@@ -214,12 +214,17 @@ export function LoanRouteBoard({
                 positionOf(a, clients) - positionOf(b, clients) ||
                 a.ref.localeCompare(b.ref, "es", { numeric: true }),
             );
+          const saldoTotal = onRoute.reduce(
+            (sum, loan) => sum + (Number(loan.balance) || 0),
+            0,
+          );
           return (
             <section key={name} className="client-route-col">
               <div className="client-route-col-head">
                 <span className="client-route-tab">
                   {name === "Sin ruta" ? "Sin ruta" : `Ruta ${name}`} <strong>{onRoute.length}</strong>
                 </span>
+                <strong className="loan-route-sheet-total">{money(saldoTotal)}</strong>
               </div>
               <div className="table-wrap">
                 <table className="data list-grid">

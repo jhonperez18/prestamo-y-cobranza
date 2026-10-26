@@ -10216,6 +10216,22 @@
       padding-left: 4px !important;
       padding-right: 4px !important;
     }
+    .loan-route-board .client-route-col-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 6px 4px 8px;
+      background: #fff;
+    }
+    .loan-route-board .loan-route-sheet-total {
+      font-size: 13px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: #14201b;
+      text-align: right;
+      white-space: nowrap;
+    }
     .loan-route-board .loan-board-fin {
       color: #8b9890;
       font-weight: 600;
