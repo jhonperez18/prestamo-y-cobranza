@@ -1317,7 +1317,7 @@ export function CollectorMobileApp({
     if (isNavQuiet()) return;
     // Jornada cerrada: solo lectura, sin acceso a listas ni edición.
     if (dayLocked) return;
-    if (!planillaOwnsMovements) return;
+    if (!planillaOwnsMovements && !planillaIsA) return;
     if (!onSaveExpenses) return;
     setExpandedKey(null);
     setConfirmingClose(false);
@@ -1346,12 +1346,22 @@ export function CollectorMobileApp({
     // Conservar desembolsos de préstamo (no se editan en el sheet de gastos).
     const prestamos = savedExpenses.filter((row) => isPrestamoRutaExpense(row));
     // Gastos de la otra planilla de la cadena quedan intactos; los de T llevan su marca.
+    const editingPlanilla = onSecondaryChainPlanilla ? "T" : planillaIsA ? "A" : "M";
+    const planillaOf = (row: RouteExpenseLine) =>
+      isSecondaryOperativeLine(row, PLANILLA_CASH_CHAIN_SECONDARY)
+        ? "T"
+        : sameRoute(row.route, "A")
+          ? "A"
+          : "M";
     const otherPlanilla = operativeExpenseLines(savedExpensesRaw).filter(
-      (row) =>
-        isSecondaryOperativeLine(row, PLANILLA_CASH_CHAIN_SECONDARY) !== onSecondaryChainPlanilla,
+      (row) => planillaOf(row) !== editingPlanilla,
     );
     const operativos = operativeExpenseLines(expenses).map((row) =>
-      onSecondaryChainPlanilla ? { ...row, route: PLANILLA_CASH_CHAIN_SECONDARY } : row,
+      editingPlanilla === "T"
+        ? { ...row, route: PLANILLA_CASH_CHAIN_SECONDARY }
+        : editingPlanilla === "A"
+          ? { ...row, route: "A" }
+          : { ...row, route: undefined },
     );
     onSaveExpenses({
       date: activeDate,
@@ -2368,14 +2378,14 @@ export function CollectorMobileApp({
           disabled={
             chromeLocked
               ? true
-              : !onSaveExpenses || !planillaOwnsMovements || !queue.dispatched.length
+              : !onSaveExpenses || (!planillaOwnsMovements && !planillaIsA) || !queue.dispatched.length
           }
           title={
             chromeLocked
               ? "Jornada cerrada"
               : !onSaveExpenses
                 ? "Sin permiso para gastos"
-                : !planillaOwnsMovements
+                : !planillaOwnsMovements && !planillaIsA
                   ? "Gastos en la planilla principal"
                   : !queue.dispatched.length
                   ? "Sin planilla"

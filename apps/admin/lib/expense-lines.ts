@@ -44,10 +44,20 @@ export function isSecondaryOperativeLine(
   return Boolean(route) && sameRoute(route, secondaryRoute);
 }
 
+/** Gasto anotado en A o N. No entra a M ni a T. Sin marca sigue siendo de M. */
+export function isOwnPlanillaOperativeLine(
+  line: Pick<RouteExpenseLine, "category" | "id" | "route">,
+) {
+  if (isPrestamoRutaExpense(line)) return false;
+  const route = String(line.route || "").trim();
+  return sameRoute(route, "A") || sameRoute(route, "N");
+}
+
 export function operativeLineOnSide(
   line: Pick<RouteExpenseLine, "category" | "id" | "route">,
   split: ChainRouteSplit,
 ) {
+  if (isOwnPlanillaOperativeLine(line)) return false;
   return isSecondaryOperativeLine(line, split.secondaryRoute) === (split.side === "secondary");
 }
 

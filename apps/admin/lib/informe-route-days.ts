@@ -146,7 +146,7 @@ export type InformeRouteHistory = Record<InformeHistoryKind, { days: InformeRout
  * Cada día = el Cierre del día de la ruta (Historial → día), mismas funciones:
  *   Cobrado  = «Lo que cobró» (`routeCobradoDayTotal`, efectivo + pool, con Caja/oficina).
  *   Préstamo = «Lo que prestó» (`prestamosRuta`: efectivo + Banco/Nequi de la planilla).
- *   Gasto    = «Lo que gastó» (`independentRouteMovement`; los de A van a M/T → 0).
+ *   Gasto    = «Lo que gastó» (`independentRouteMovement`; un gasto marcado en A sale de A).
  */
 export function informeOwnRouteHistory(
   src: InformeHistorySources,

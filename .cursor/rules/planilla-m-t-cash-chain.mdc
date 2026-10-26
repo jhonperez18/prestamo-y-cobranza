@@ -384,7 +384,7 @@ desde el día 1. Un solo dueño: `lib/informe-route-days.ts` (`informeRouteHisto
  `SupervisorOwnRouteReport`): Cartera A · Efectivo A (`independentRouteDay`, la cifra de su tarjeta) ·
  Nequi (`digitalPoolBalances().nequi`) · Gran total. Botones de abajo: `informeOwnRouteHistory`
  = el Cierre del día de A (Historial → día), solo del cobrador de la planilla A: Cobrado = «Lo que cobró»,
- Préstamo = `prestamosRuta` (efectivo + Nequi de A), Gasto = «Lo que gastó» (los de A van a M/T).
+ Préstamo = `prestamosRuta` (efectivo + Nequi de A), Gasto = «Lo que gastó» (marcado en A sale de la caja de A; sin marca sigue en M).
  Nada que el cierre no muestre.
 
 ## Renovar = sin plata (caso Nelson Jefe 08/10)

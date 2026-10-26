@@ -5,8 +5,9 @@
  *   Inicial de hoy = saldo real del último ajuste + movimiento de los días siguientes.
  *   Saldo del día  = Inicial + movimiento de hoy.
  * Movimiento del día (caja):
- *   - cobrador de la cadena (A de Cristian): efectivo de la ruta − préstamos en efectivo a A
- *     (desde `INDEPENDENT_OWN_LOANS_FROM`; antes iban a M). Los gastos siguen en M / T.
+ *   - cobrador de la cadena (A): efectivo de la ruta − préstamos en efectivo a A
+ *     (desde `INDEPENDENT_OWN_LOANS_FROM`; antes iban a M). Un gasto marcado en A
+ *     sale de esta caja. Sin marca sigue en M; el de T sigue en T.
  *   - cobrador sin cadena (N de Yesid): efectivo de la ruta − gastos − préstamos en efectivo.
  * «Lo prestado en la ruta» (Historial / Informe / Cierre) = efectivo + Banco/Nequi de esa
  * planilla. Nequi/Banco no restan de la caja ni del saldo del Historial.
@@ -211,7 +212,7 @@ type RouteMovement = {
   prestamosDigital: number;
   /** Lo prestado en la ruta ese día = efectivo + digital (Historial / Informe / Cierre). */
   prestamosRuta: number;
-  /** Gastos operativos de la planilla (A de la cadena: ninguno, van a M). */
+  /** Gastos operativos de esta planilla. En A, solo los marcados en A. */
   gastoLines: RouteExpenseLine[];
   loanRows: DayLoanDisbursementRow[];
   digitalLoanRows: DayLoanDisbursementRow[];
@@ -263,9 +264,11 @@ function routeMovement(src: DayCashSources, route: string): RouteMovement {
     );
   }
   const lines = expensesForCollectorDay(src.collectorRef, date, src.dayCloses, src.dayExpenseDrafts);
+  const operative = lines.filter((line) => (Number(line.amount) || 0) > 0 && !isPrestamoRutaExpense(line));
+  // Trabaja M o T: lo sin marca es de M y lo de T es de T. Lo marcado en esta planilla sale de aquí.
   const gastoLines = chainCollector
-    ? []
-    : lines.filter((line) => (Number(line.amount) || 0) > 0 && !isPrestamoRutaExpense(line));
+    ? operative.filter((line) => sameRoute(line.route, route))
+    : operative;
   const refs = routeClientRefsForDay(src, route);
   const loanRows = dayLoanDisbursementRows(date, lines, src.loans, src.clients, dayLoanScope(src)).filter(
     (row) => refs.has(row.clientRef),
