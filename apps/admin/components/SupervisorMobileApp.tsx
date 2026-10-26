@@ -3925,33 +3925,35 @@ export function SupervisorMobileApp({
     ? `${clientesLoanClient.name} ${clientesLoanClient.lastName}`.trim()
     : "";
 
-  /** Préstamos actuales (saldo vivo): uno por cliente, el activo a la fecha. */
+  /**
+   * Préstamos actuales: la misma lista que el timbre ya actualiza y que suma el PC.
+   * No usa la hoja aparte: esa no oye el aviso de un préstamo nuevo.
+   */
   const prestamosEnRuta = useMemo(() => {
-    if (!sheetClients || !sheetLoans) return [];
     const byClient = new Map<string, LoanRow>();
     const seen = new Set<string>();
-    for (const loan of sheetLoans) {
+    for (const loan of loans) {
       if (!loan.clientRef || seen.has(loan.clientRef)) continue;
       seen.add(loan.clientRef);
-      const synced = currentActiveLoan(loan.clientRef, sheetLoans, payments);
+      const synced = currentActiveLoan(loan.clientRef, loans, payments);
       if (synced) byClient.set(loan.clientRef, synced);
     }
     let rows = [...byClient.values()];
     if (prestamosRouteFilter) {
       rows = rows.filter((loan) => {
-        const client = sheetClients.find((row) => row.ref === loan.clientRef);
+        const client = clients.find((row) => row.ref === loan.clientRef);
         return sameRoute(client?.route, prestamosRouteFilter);
       });
     }
     return rows.sort((a, b) => {
-      const clientA = sheetClients.find((row) => row.ref === a.clientRef);
-      const clientB = sheetClients.find((row) => row.ref === b.clientRef);
+      const clientA = clients.find((row) => row.ref === a.clientRef);
+      const clientB = clients.find((row) => row.ref === b.clientRef);
       const byRoute = compareRouteNames(clientA?.route || "", clientB?.route || "");
       if (byRoute) return byRoute;
       if (clientA && clientB) return compareClientsByRoutePosition(clientA, clientB);
       return (a.client || "").localeCompare(b.client || "", "es");
     });
-  }, [payments, prestamosRouteFilter, sheetClients, sheetLoans]);
+  }, [clients, loans, payments, prestamosRouteFilter]);
 
   /** Suma de saldos de la ruta del pin activo (1 / 1.1 / 2). */
   const prestamosSaldoRuta = useMemo(
@@ -3970,7 +3972,7 @@ export function SupervisorMobileApp({
   }, [prestamosEnRuta, prestamosSearch]);
 
   const prestamoFichaLoan = prestamoFichaRef
-    ? (sheetLoans ?? loans).find((row) => row.ref === prestamoFichaRef) ?? null
+    ? loans.find((row) => row.ref === prestamoFichaRef) ?? null
     : null;
   const prestamoFichaClient = prestamoFichaLoan
     ? clients.find((row) => row.ref === prestamoFichaLoan.clientRef) ?? null
@@ -6290,15 +6292,11 @@ export function SupervisorMobileApp({
               </div>
               {prestamosActuales.length === 0 ? (
                 <p className="ficha-empty">
-                  {routeSheet.status === "loading"
-                    ? "Cargando la hoja del sistema…"
-                    : routeSheet.status === "error"
-                      ? "No se pudo cargar la hoja del sistema."
-                      : prestamosSearch.trim()
-                        ? "No hay préstamos activos con ese filtro."
-                        : prestamosRouteFilter
-                          ? `Sin préstamos activos en ruta ${prestamosRouteFilter}.`
-                          : "Sin préstamos activos."}
+                  {prestamosSearch.trim()
+                    ? "No hay préstamos activos con ese filtro."
+                    : prestamosRouteFilter
+                      ? `Sin préstamos activos en ruta ${prestamosRouteFilter}.`
+                      : "Sin préstamos activos."}
                 </p>
               ) : (
                 <ul
