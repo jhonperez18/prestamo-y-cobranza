@@ -13,6 +13,7 @@ import {
 import { hasRouteCashBook, independentRouteDay } from "@/lib/independent-route-cash";
 import {
   isPlanillaCashChainPrimary,
+  PLANILLA_CASH_CHAIN_PRIMARY,
   ROUTE_CASH_BOOK_FROM,
   type RouteCashBook,
   type RouteCashBookDay,
