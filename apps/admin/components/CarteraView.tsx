@@ -209,7 +209,7 @@ export function CarteraView({
                         <tr key={row.ref}>
                           {resumenPaymentColumns.isVisible("ref") ? <td className="ref">{row.ref}</td> : null}
                           {resumenPaymentColumns.isVisible("fecha") ? <td>{row.when}</td> : null}
-                          {resumenPaymentColumns.isVisible("client") ? <td>{row.client}</td> : null}
+                          {resumenPaymentColumns.isVisible("client") ? <td className="is-nombre">{row.client}</td> : null}
                           {resumenPaymentColumns.isVisible("collector") ? <td>{row.collector}</td> : null}
                           {resumenPaymentColumns.isVisible("amount") ? (
                             <td className="money right">{money(row.amount)}</td>
@@ -254,7 +254,7 @@ export function CarteraView({
                       (resumenDrill === "al-dia" ? onTimeRows : totalRows).map((row) => (
                         <tr key={row.loanRef}>
                           {resumenLoanColumns.isVisible("client") ? (
-                            <td>
+                            <td className="is-nombre">
                               <button
                                 type="button"
                                 className="btn-link"
