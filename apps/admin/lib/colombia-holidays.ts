@@ -50,36 +50,76 @@ function nextMonday(iso: string) {
   return addDaysIso(iso, delta);
 }
 
+export type ColombiaHoliday = { fecha: string; nombre: string };
+
 const holidayCache = new Map<number, Set<string>>();
+const holidayListCache = new Map<number, ColombiaHoliday[]>();
+
+/** Festivos del año, con nombre. Si dos caen el mismo día, se queda el primero. */
+export function colombiaHolidayEntries(year: number): ColombiaHoliday[] {
+  const cached = holidayListCache.get(year);
+  if (cached) return cached;
+
+  const easter = easterSunday(year);
+  const raw: ColombiaHoliday[] = [
+    { fecha: toIso(year, 1, 1), nombre: "Año Nuevo" },
+    { fecha: nextMonday(toIso(year, 1, 6)), nombre: "Reyes Magos" },
+    { fecha: nextMonday(toIso(year, 3, 19)), nombre: "San José" },
+    { fecha: addDaysIso(easter, -3), nombre: "Jueves Santo" },
+    { fecha: addDaysIso(easter, -2), nombre: "Viernes Santo" },
+    { fecha: toIso(year, 5, 1), nombre: "Día del Trabajo" },
+    { fecha: nextMonday(addDaysIso(easter, 39)), nombre: "Ascensión" },
+    { fecha: nextMonday(addDaysIso(easter, 60)), nombre: "Corpus Christi" },
+    { fecha: nextMonday(addDaysIso(easter, 71)), nombre: "Sagrado Corazón" },
+    { fecha: nextMonday(toIso(year, 6, 29)), nombre: "San Pedro y San Pablo" },
+    { fecha: toIso(year, 7, 20), nombre: "Independencia" },
+    { fecha: toIso(year, 8, 7), nombre: "Batalla de Boyacá" },
+    { fecha: nextMonday(toIso(year, 8, 15)), nombre: "Asunción" },
+    { fecha: nextMonday(toIso(year, 10, 12)), nombre: "Día de la Raza" },
+    { fecha: nextMonday(toIso(year, 11, 1)), nombre: "Todos los Santos" },
+    { fecha: nextMonday(toIso(year, 11, 11)), nombre: "Independencia de Cartagena" },
+    { fecha: toIso(year, 12, 8), nombre: "Inmaculada Concepción" },
+    { fecha: toIso(year, 12, 25), nombre: "Navidad" },
+  ];
+  const seen = new Set<string>();
+  const list: ColombiaHoliday[] = [];
+  for (const row of raw) {
+    if (seen.has(row.fecha)) continue;
+    seen.add(row.fecha);
+    list.push(row);
+  }
+  holidayListCache.set(year, list);
+  return list;
+}
 
 export function colombiaHolidaysForYear(year: number): Set<string> {
   const cached = holidayCache.get(year);
   if (cached) return cached;
-
-  const easter = easterSunday(year);
-  const set = new Set<string>([
-    toIso(year, 1, 1), // Año Nuevo
-    nextMonday(toIso(year, 1, 6)), // Reyes
-    nextMonday(toIso(year, 3, 19)), // San José
-    addDaysIso(easter, -3), // Jueves Santo
-    addDaysIso(easter, -2), // Viernes Santo
-    toIso(year, 5, 1), // Día del Trabajo
-    nextMonday(addDaysIso(easter, 39)), // Ascensión
-    nextMonday(addDaysIso(easter, 60)), // Corpus Christi
-    nextMonday(addDaysIso(easter, 71)), // Sagrado Corazón
-    nextMonday(toIso(year, 6, 29)), // San Pedro y San Pablo
-    toIso(year, 7, 20), // Independencia
-    toIso(year, 8, 7), // Batalla de Boyacá
-    nextMonday(toIso(year, 8, 15)), // Asunción
-    nextMonday(toIso(year, 10, 12)), // Día de la Raza
-    nextMonday(toIso(year, 11, 1)), // Todos los Santos
-    nextMonday(toIso(year, 11, 11)), // Independencia de Cartagena
-    toIso(year, 12, 8), // Inmaculada Concepción
-    toIso(year, 12, 25), // Navidad
-  ]);
-
+  const set = new Set(colombiaHolidayEntries(year).map((row) => row.fecha));
   holidayCache.set(year, set);
   return set;
+}
+
+export type CalendarClosureRow = {
+  fecha: string;
+  tipo: "domingo" | "festivo";
+  nombre: string;
+};
+
+/** Domingos y festivos de un año. Un festivo que cae en domingo queda como festivo. */
+export function calendarClosureRows(year: number): CalendarClosureRow[] {
+  const holidays = new Map(colombiaHolidayEntries(year).map((row) => [row.fecha, row.nombre]));
+  const rows: CalendarClosureRow[] = [];
+  for (let month = 1; month <= 12; month += 1) {
+    const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    for (let day = 1; day <= last; day += 1) {
+      const fecha = toIso(year, month, day);
+      const festivo = holidays.get(fecha);
+      if (festivo) rows.push({ fecha, tipo: "festivo", nombre: festivo });
+      else if (utcWeekday(fecha) === 0) rows.push({ fecha, tipo: "domingo", nombre: "Domingo" });
+    }
+  }
+  return rows;
 }
 
 export function isColombiaHoliday(iso: string) {
