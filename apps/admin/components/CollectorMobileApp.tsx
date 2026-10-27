@@ -107,6 +107,8 @@ import {
   buildCollectorDayHistory,
   expensesForCollectorDay,
   findMonthClose,
+  historyDayLabel,
+  historyKeepCutoffIso,
   isLastCalendarDayOfMonth,
   isLiveCashDay,
   monthClosingSaldoFromHistory,
@@ -116,6 +118,7 @@ import {
   periodFromDateIso,
   periodHadCollectorActivity,
   previousPeriod,
+  type CollectorDayHistoryRow,
 } from "@/lib/collector-day-close";
 import {
   annotateMHistoryExtractRows,
@@ -131,6 +134,8 @@ import {
   PLANILLA_CASH_CHAIN_SECONDARY,
   stampHistoryWithPlanillaCashChain,
   type PlanillaCashCloseRecord,
+  type RouteCashBook,
+  type RouteCashBookDay,
 } from "@/lib/planilla-cash-chain";
 import {
   buildDayCashLedger,
@@ -370,6 +375,29 @@ function visitIdentity(
     awaitingLoan,
     cuotas,
   };
+}
+
+/** Días del libro que esta pantalla no tiene. Un día que ya está no se toca. */
+function historyRowsFromBook<T extends { date: string }>(
+  rows: T[],
+  book: RouteCashBook | null,
+  today: string,
+  viewPeriod: string,
+  make: (day: RouteCashBookDay, label: string) => T,
+): T[] {
+  if (!book || book.size === 0) return rows;
+  const seen = new Set(rows.map((row) => row.date));
+  const cutoff = historyKeepCutoffIso(today);
+  const extras: T[] = [];
+  for (const day of book.values()) {
+    if (day.date >= today || day.date < cutoff || day.date < ROUTE_CASH_BOOK_FROM) continue;
+    if (seen.has(day.date)) continue;
+    const cobro = day.cobrado ?? day.efectivo;
+    if (!(cobro > 0 || day.gastos > 0 || day.prestamos > 0)) continue;
+    extras.push(make(day, historyDayLabel(day.date, viewPeriod)));
+  }
+  if (extras.length === 0) return rows;
+  return [...rows, ...extras].sort((a, b) => b.date.localeCompare(a.date));
 }
 
 export function CollectorMobileApp({
@@ -1826,14 +1854,31 @@ export function CollectorMobileApp({
   /** Historial · T: renglón del cierre + ajuste de saldo del supervisor (solo lectura). */
   const historyRowsWithAdjustment = useMemo(() => {
     const route = historyRoute;
+    const today = date ?? todayIso();
+    const rows = historyRowsFromBook(
+      historyVisibleRows,
+      route && isIndependentSaldoRoute(route) ? cashBookFor(route) : null,
+      today,
+      viewPeriod,
+      (day, label): CollectorDayHistoryRow => ({
+        date: day.date,
+        dateLabel: label,
+        cobro: day.cobrado ?? day.efectivo,
+        cobroEfectivo: day.efectivo,
+        cobroNequi: 0,
+        gasto: day.gastos,
+        prestamo: day.prestamos,
+        saldo: day.closing,
+      }),
+    );
     if (route && isIndependentSaldoRoute(route)) {
-      return attachRouteCashAdjustments(historyVisibleRows, collector.ref, route, dayCloses);
+      return attachRouteCashAdjustments(rows, collector.ref, route, dayCloses);
     }
     if (!isPlanillaCashChainSecondary(route ?? undefined)) {
-      return historyVisibleRows.map((row) => ({ row, adjustment: null }));
+      return rows.map((row) => ({ row, adjustment: null }));
     }
-    return attachCashAdjustments(historyVisibleRows, collector.ref, dayCloses);
-  }, [collector.ref, dayCloses, historyVisibleRows, historyRoute]);
+    return attachCashAdjustments(rows, collector.ref, dayCloses);
+  }, [cashBookFor, collector.ref, date, dayCloses, historyRoute, historyVisibleRows, viewPeriod]);
 
   /** Historial · M: extracto (Inicial → Saldo). Días previos intactos. */
   const showMInicialColumn = isPlanillaCashChainPrimary(activePlanillaRoute ?? undefined);
@@ -1856,7 +1901,7 @@ export function CollectorMobileApp({
     const closingFor = isCollectorLiveDevice()
       ? (dateIso: string) => (dateIso === keptDay ? primaryClosingFor(dateIso) : null)
       : primaryClosingFor;
-    return annotateMHistoryExtractRows({
+    const annotated = annotateMHistoryExtractRows({
       rows: historyVisibleRows,
       collectorRef: collector.ref,
       records: planillaCashCloses,
@@ -1867,6 +1912,15 @@ export function CollectorMobileApp({
       primaryClosingFor: closingFor,
       book: mCashBook,
     });
+    return historyRowsFromBook(annotated, mCashBook, today, viewPeriod, (day, label) => ({
+      date: day.date,
+      dateLabel: label,
+      cobro: day.cobrado ?? day.efectivo,
+      gasto: day.gastos,
+      prestamo: day.prestamos,
+      inicial: day.opening,
+      saldoShown: day.closing,
+    }));
   }, [
     collector.ref,
     date,
@@ -1878,6 +1932,7 @@ export function CollectorMobileApp({
     planillaCashCloses,
     primaryClosingFor,
     showMInicialColumn,
+    viewPeriod,
   ]);
 
   return (

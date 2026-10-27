@@ -4,7 +4,12 @@
  */
 import { businessTodayIso } from "@/lib/business-timezone";
 import { previousCalendarIso, type OperationalDayState } from "@/lib/collector-day-auto-close";
-import { buildDayCashLedger, primaryClosingForDay, type DayCashSources } from "@/lib/day-cash-ledger";
+import {
+  buildDayCashLedger,
+  primaryClosingForDay,
+  routeCobradoBreakdown,
+  type DayCashSources,
+} from "@/lib/day-cash-ledger";
 import { hasRouteCashBook, independentRouteDay } from "@/lib/independent-route-cash";
 import {
   isPlanillaCashChainPrimary,
@@ -77,6 +82,7 @@ function chainPrimaryDay(src: DayCashSources): RouteCashBookDay | null {
     efectivo: ledger.m.efectivo,
     gastos: ledger.m.gastos,
     prestamos: ledger.m.prestamos,
+    cobrado: routeCobradoBreakdown(src, PLANILLA_CASH_CHAIN_PRIMARY).total,
   };
 }
 
@@ -90,6 +96,7 @@ function independentDay(src: DayCashSources, route: string, book: RouteCashBook)
     efectivo: day.efectivo,
     gastos: day.gastos,
     prestamos: day.prestamos,
+    cobrado: routeCobradoBreakdown(src, route).total,
   };
 }
 

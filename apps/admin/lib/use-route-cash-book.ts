@@ -14,7 +14,16 @@ function toBookDay(raw: unknown): RouteCashBookDay | null {
   const nums = [row.opening, row.closing, row.efectivo, row.gastos, row.prestamos].map(Number);
   if (!date || nums.some((n) => !Number.isFinite(n))) return null;
   const [opening, closing, efectivo, gastos, prestamos] = nums;
-  return { date, opening, closing, efectivo, gastos, prestamos };
+  const cobrado = Number(row.cobrado);
+  return {
+    date,
+    opening,
+    closing,
+    efectivo,
+    gastos,
+    prestamos,
+    ...(Number.isFinite(cobrado) ? { cobrado } : {}),
+  };
 }
 
 /**

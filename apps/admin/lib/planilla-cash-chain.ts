@@ -57,6 +57,8 @@ export type RouteCashBookDay = {
   efectivo: number;
   gastos: number;
   prestamos: number;
+  /** Cobros de la ruta (efectivo + banco o Nequi). Si falta, el efectivo alcanza. */
+  cobrado?: number;
 };
 export type RouteCashBook = Map<string, RouteCashBookDay>;
 
