@@ -127,6 +127,7 @@ function CarteraTable({ cartera }: { cartera: WeeklyRouteCartera[] }) {
 function ReportSheet({ report }: { report: WeeklyReport }) {
   const { range } = report;
   const multi = report.routes.length > 1;
+  const section = (n: number) => (multi ? n - 1 : n);
   const digital = report.scope === "a" ? "Nequi" : "Banco";
   const gastosVacios = report.gastos.every((row) => row.total === 0);
   return (
@@ -153,7 +154,7 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
 
       <div className="weekly-report-grid">
         <section>
-          <SectionTitle n={2} title="Caja de la semana" />
+          <SectionTitle n={section(2)} title="Caja de la semana" />
           <table className="weekly-report-table">
             <thead>
               <tr>
@@ -183,7 +184,7 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
         </section>
 
         <section>
-          <SectionTitle n={3} title="Cobros" />
+          <SectionTitle n={section(3)} title="Cobros" />
           <table className="weekly-report-table">
             <thead>
               <tr>
@@ -217,7 +218,7 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
         </section>
 
         <section>
-          <SectionTitle n={4} title="Préstamos" />
+          <SectionTitle n={section(4)} title="Préstamos" />
           <table className="weekly-report-table">
             <thead>
               <tr>
@@ -254,7 +255,7 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
         </section>
 
         <section>
-          <SectionTitle n={5} title="Gastos" note="total por ruta en la semana" />
+          <SectionTitle n={section(5)} title="Gastos" note="total por ruta en la semana" />
           <table className="weekly-report-table">
             <thead>
               <tr>
@@ -290,7 +291,7 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
         </section>
 
         <section>
-          <SectionTitle n={6} title={report.pool.label} />
+          <SectionTitle n={section(6)} title={report.pool.label} />
           <table className="weekly-report-table">
             <tbody>
               <tr>
@@ -328,7 +329,7 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
         </section>
 
         <section>
-          <SectionTitle n={7} title="Resumen al corte" />
+          <SectionTitle n={section(7)} title="Resumen al corte" />
           <table className="weekly-report-table is-resumen">
             <tbody>
               {report.resumen.map((row, index) =>

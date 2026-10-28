@@ -249,6 +249,7 @@ function sumOf<Row>(rows: Row[], pick: (row: Row) => number) {
 
 function drawSheet(doc: jsPDF, report: WeeklyReport, startY: number) {
   const multi = report.routes.length > 1;
+  const section = (n: number) => (multi ? n - 1 : n);
   const digital = report.scope === "a" ? "Nequi" : "Banco";
 
   let y = drawReportSectionTitle(doc, `Informe semanal · ${weeklyScopeTitle(report)}`, startY);
@@ -264,7 +265,7 @@ function drawSheet(doc: jsPDF, report: WeeklyReport, startY: number) {
   }
 
   const caja: SideTable = {
-    title: "2. Caja de la semana",
+    title: `${section(2)}. Caja de la semana`,
     head: [["Ruta", "Inicial", "Cobró ef.", "Prestó ef.", "Gastó", "Ajustes / dif.", "Saldo final"]],
     body: report.caja.map((row) => [
       row.sub ? `   ${row.label}` : row.label,
@@ -277,7 +278,7 @@ function drawSheet(doc: jsPDF, report: WeeklyReport, startY: number) {
     ]),
   };
   const cobros: SideTable = {
-    title: "3. Cobros",
+    title: `${section(3)}. Cobros`,
     head: [["Ruta", "Efectivo", digital, "Total"]],
     body: report.cobros.map((row) => [row.route, num(row.efectivo), num(row.digital), num(row.total)]),
     foot: routeTotalsFoot(multi, [
@@ -287,7 +288,7 @@ function drawSheet(doc: jsPDF, report: WeeklyReport, startY: number) {
     ]),
   };
   const prestamos: SideTable = {
-    title: "4. Préstamos",
+    title: `${section(4)}. Préstamos`,
     head: [["Ruta", "Cant.", "Capital", "Efectivo", digital]],
     body: report.prestamos.map((row) => [
       row.route,
@@ -304,7 +305,7 @@ function drawSheet(doc: jsPDF, report: WeeklyReport, startY: number) {
     ]),
   };
   const gastos: SideTable = {
-    title: "5. Gastos (total por ruta)",
+    title: `${section(5)}. Gastos (total por ruta)`,
     head: [["Ruta", "Gastó"]],
     body: report.gastos.every((row) => row.total === 0)
       ? [["Sin gastos en la semana.", ""]]
@@ -315,7 +316,7 @@ function drawSheet(doc: jsPDF, report: WeeklyReport, startY: number) {
         : undefined,
   };
   const pool: SideTable = {
-    title: `6. ${report.pool.label}`,
+    title: `${section(6)}. ${report.pool.label}`,
     body: [
       ["Inicio de semana", num(report.pool.opening)],
       ["Entró (cobros)", num(report.pool.entro)],
@@ -326,7 +327,7 @@ function drawSheet(doc: jsPDF, report: WeeklyReport, startY: number) {
     foot: [["Acumulado al corte", num(report.pool.closing)]],
   };
   const resumen: SideTable = {
-    title: "7. Resumen al corte",
+    title: `${section(7)}. Resumen al corte`,
     body: report.resumen.map((row) =>
       row.kind === "section"
         ? [{ content: row.label.toUpperCase(), colSpan: 2, styles: { fontStyle: "bold", fillColor: REPORT_PDF_THEME.rowA } }]
