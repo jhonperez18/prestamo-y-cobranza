@@ -3,6 +3,7 @@ import { runServerDayRollover } from "@/lib/server-day-rollover";
 import { maybeSealInformeMonth } from "@/lib/server-seal-informe-month";
 import { businessClockParts, businessTodayIso } from "@/lib/business-timezone";
 import { isCronAuthorized } from "@/lib/cron-auth";
+import { sendMonthlyReport, type MonthlyReportSendResult } from "@/lib/server-monthly-report";
 import { sendWeeklyReport, type WeeklyReportSendResult } from "@/lib/server-weekly-report";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -46,9 +47,15 @@ export async function POST(request: Request) {
         })
       : ({ ok: false, skipped: true, reason: "rollover_not_ok" } satisfies WeeklyReportSendResult);
     if (!weeklyReport.ok) console.error("weekly-report", weeklyReport);
+    const monthlyReport = await sendMonthlyReport({ now }).catch((error: unknown): MonthlyReportSendResult => {
+      console.error("monthly-report", error);
+      return { ok: false, error: error instanceof Error ? error.message : "monthly_report_failed" };
+    });
+    if (!monthlyReport.ok) console.error("monthly-report", monthlyReport);
     return NextResponse.json({
       ...result,
       weeklyReport,
+      monthlyReport,
       informeMonth,
       clock,
     });

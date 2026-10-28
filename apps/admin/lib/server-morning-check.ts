@@ -12,6 +12,7 @@ import { planillaWindowStartIso } from "@/lib/planilla-window";
 import { auditChainFromState } from "@/lib/server-chain-audit";
 import { loadOperationalStateFromCloud, runServerDayRollover } from "@/lib/server-day-rollover";
 import { informeSealDetail, maybeSealInformeMonth, type InformeSealResult } from "@/lib/server-seal-informe-month";
+import { sendMonthlyReport, type MonthlyReportSendResult } from "@/lib/server-monthly-report";
 import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { CATALOG_FILE_UPLOAD, downloadCatalogFile } from "@/lib/supabase/catalog-file";
 import { listDeviceStatuses } from "@/lib/supabase/device-status-mirror";
@@ -142,6 +143,33 @@ export async function runServerMorningCheck(now = new Date()): Promise<MorningCh
     businessDate > informe.day
   ) {
     items.push({ label: "Informe del mes", ok: false, detail: informeSealDetail(informe) });
+  }
+  const monthly = await sendMonthlyReport({
+    now,
+    state: loaded.ok ? loaded.state : undefined,
+  }).catch((error: unknown): MonthlyReportSendResult => {
+    const message = error instanceof Error ? error.message : "monthly_report_failed";
+    console.error("monthly-report", error);
+    return { ok: false, error: message };
+  });
+  if (monthly.id) {
+    items.push({
+      label: "Correo del mensual",
+      ok: true,
+      detail: `Enviado · ${monthly.period ?? ""}`,
+    });
+  } else if (!monthly.ok) {
+    items.push({
+      label: "Correo del mensual",
+      ok: false,
+      detail: monthly.error || "No se envió",
+    });
+  } else if (monthly.reason === "not_ready" && monthly.day && businessDate > monthly.day) {
+    items.push({
+      label: "Correo del mensual",
+      ok: false,
+      detail: "Falta cerrar una ruta del último día",
+    });
   }
   items.push(await devicesStorageItem(now));
   return { ok: items.every((item) => item.ok), ranAt, businessDate, items };
