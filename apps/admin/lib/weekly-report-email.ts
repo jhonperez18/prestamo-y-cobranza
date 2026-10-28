@@ -51,7 +51,7 @@ export function weeklyReportEmailHtml(reports: WeeklyReport[]) {
 <h1 style="margin:0;font-size:20px">CA préstamo · Informe semanal</h1>
 <p style="margin:6px 0 0;color:#5b7268;font-size:13px">${range ? escapeHtml(weeklyRangeLabel(range)) : ""}</p>
 ${reports.map(sheetHtml).join("")}
-<p style="margin:22px 0 0;color:#5b7268;font-size:12px">La hoja completa (cartera por cliente, caja, cobros, préstamos, gastos y movimiento diario) va en los PDF adjuntos.</p>
+<p style="margin:22px 0 0;color:#5b7268;font-size:12px">La hoja completa (caja, cobros, préstamos, gastos y movimiento diario) va en los PDF adjuntos. La ruta A incluye la cartera por cliente.</p>
 </div>
 </body></html>`;
 }

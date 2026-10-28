@@ -258,15 +258,9 @@ function drawSheet(doc: jsPDF, report: WeeklyReport, startY: number) {
   doc.text(pdfText(weeklyRangeLabel(report.range)), REPORT_PDF_PAGE_MARGIN, y);
   y += 5;
 
-  y = drawReportSectionTitle(doc, "1. Cartera", y + 2);
-  y = drawCartera(doc, report.cartera, y);
-  if (multi) {
-    y = ensureSpace(doc, y, 8);
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(9);
-    doc.setTextColor(...REPORT_PDF_THEME.ink);
-    doc.text(`Cartera total M + T + N: ${num(report.carteraTotal)}`, REPORT_PDF_PAGE_MARGIN, y + 5);
-    y += 8;
+  if (!multi) {
+    y = drawReportSectionTitle(doc, "1. Cartera", y + 2);
+    y = drawCartera(doc, report.cartera, y);
   }
 
   const caja: SideTable = {

@@ -144,13 +144,12 @@ function ReportSheet({ report }: { report: WeeklyReport }) {
         </p>
       </header>
 
-      <SectionTitle n={1} title="Cartera" note="igual que el Informe del supervisor" />
-      <CarteraTable cartera={report.cartera} />
-      {multi ? (
-        <p className="weekly-report-legend">
-          Cartera total M + T + N: <strong>{num(report.carteraTotal)}</strong>
-        </p>
-      ) : null}
+      {multi ? null : (
+        <>
+          <SectionTitle n={1} title="Cartera" note="igual que el Informe del supervisor" />
+          <CarteraTable cartera={report.cartera} />
+        </>
+      )}
 
       <div className="weekly-report-grid">
         <section>
