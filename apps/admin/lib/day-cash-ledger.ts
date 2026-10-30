@@ -49,6 +49,7 @@ import {
 import { pesos } from "@/lib/finance";
 import type { ClientRow, CollectorRow, LoanRow, PaymentRow } from "@/lib/mock-data";
 import { normalizePaymentMethod } from "@/lib/payment-method";
+import { getCloudDayCashFigure } from "@/lib/cloud-day-cash-figure";
 import {
   findFullDayCieClose,
   INDEPENDENT_OWN_LOANS_FROM,
@@ -490,7 +491,7 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
   const opening = mOpening.kind === "chain" ? mOpening.opening : 0;
   const { m, t } = chainDayMovements(src);
   const mClosing = pesos(opening + m.efectivo - m.gastos - m.prestamos);
-  return {
+  const local: DayCashLedger = {
     collectorRef: src.collectorRef,
     date,
     chain: isChainCollectorDay(src),
@@ -502,6 +503,32 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
     cashAdjustment:
       findFullDayCieClose(src.dayCloses, src.collectorRef, date)?.cashAdjustment ?? null,
   };
+  // Fase 3.2: si la base ya calculó la caja del día, mClosing / dayFinal mandan.
+  // Con CIE- sellado, saldo = cash_float (historia); el movimiento desglosado sigue local.
+  const cloud = getCloudDayCashFigure(src.collectorRef, date);
+  if (
+    cloud?.ready &&
+    cloud.mClosing != null &&
+    cloud.dayFinal != null &&
+    Number.isFinite(cloud.mClosing) &&
+    Number.isFinite(cloud.dayFinal)
+  ) {
+    return {
+      ...local,
+      mOpening:
+        cloud.opening != null
+          ? {
+              kind: "chain",
+              opening: pesos(cloud.opening),
+              ready: true,
+              provisional: false,
+            }
+          : local.mOpening,
+      mClosing: pesos(cloud.mClosing),
+      dayFinal: pesos(cloud.cie != null ? cloud.cie : cloud.dayFinal),
+    };
+  }
+  return local;
 }
 
 /**

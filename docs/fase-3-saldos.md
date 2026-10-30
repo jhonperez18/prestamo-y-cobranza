@@ -3,7 +3,7 @@
 **Estado oficial:** PENDIENTE (`.cursor/rules/fases-dueno-dato.mdc`).  
 No vender cerrada hasta caja M/T, Inicial, A/N y Banco/Nequi lean de la base.
 
-## Corte 3.1 — Inicial M (este arranque)
+## Corte 3.1 — Inicial M (**en prod** · build `efd99c0`)
 
 **Migración:** `supabase/migrations/20261030233000_fase3_chain_m_opening.sql`
 
@@ -20,8 +20,17 @@ App: `/api/ops/chain-m-opening` → caché `cloud-chain-m-opening` → `openingC
 
 SQL Editor → pegar el `.sql` → **Run** → Success → publicar app.
 
-## Después (3.2+)
+## Corte 3.2 — caja viva M / dayFinal (**pegar SQL**)
 
-- Caja viva M / dayFinal leídos de base
+**Migración:** `supabase/migrations/20261030234500_fase3_day_cash_figure_ready.sql`
+
+| Qué | Detalle |
+| --- | --- |
+| RPC | `day_cash_figure` endurecido: Inicial = `chain_m_opening`; `ready` |
+| Cifras | `m_closing`, `day_final`; si hay CIE del día → `saldo` = CIE |
+| App | `/api/ops/day-cash-figure` → caché → `buildDayCashLedger` prefiere la base |
+
+## Después (3.3+)
+
 - A/N y Banco/Nequi como única fuente de pantalla
 - Fase 4: sellar CIE por orden (el aparato deja de subir `cash_float`)

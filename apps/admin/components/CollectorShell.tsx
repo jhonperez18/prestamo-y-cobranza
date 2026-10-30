@@ -296,10 +296,18 @@ export function CollectorShell({ session, onLogout }: Props) {
   useEffect(() => {
     if (!hydrated || !session.collectorRef) return;
     let alive = true;
-    void import("@/lib/cloud-chain-m-opening").then(({ refreshCloudChainMOpening }) => {
+    void Promise.all([
+      import("@/lib/cloud-chain-m-opening"),
+      import("@/lib/cloud-day-cash-figure"),
+    ]).then(([{ refreshCloudChainMOpening }, { refreshCloudDayCashFigure }]) => {
       if (!alive) return;
-      void refreshCloudChainMOpening(session.collectorRef!, todayIso()).then((row) => {
-        if (alive && row) setChainMOpeningEpoch((n) => n + 1);
+      const ref = session.collectorRef!;
+      const day = todayIso();
+      void Promise.all([
+        refreshCloudChainMOpening(ref, day),
+        refreshCloudDayCashFigure(ref, day),
+      ]).then((rows) => {
+        if (alive && rows.some(Boolean)) setChainMOpeningEpoch((n) => n + 1);
       });
     });
     return () => {

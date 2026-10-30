@@ -94,8 +94,14 @@ export function useChainMOpening(
     let alive = true;
     const load = async () => {
       const { refreshCloudChainMOpening } = await import("@/lib/cloud-chain-m-opening");
+      const { refreshCloudDayCashFigure } = await import("@/lib/cloud-day-cash-figure");
       const refs = key.split(",").filter(Boolean);
-      await Promise.all(refs.map((ref) => refreshCloudChainMOpening(ref, today)));
+      await Promise.all(
+        refs.flatMap((ref) => [
+          refreshCloudChainMOpening(ref, today),
+          refreshCloudDayCashFigure(ref, today),
+        ]),
+      );
       if (!alive) return;
       setEpoch((n) => n + 1);
     };
