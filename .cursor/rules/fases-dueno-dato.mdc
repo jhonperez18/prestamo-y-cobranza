@@ -22,7 +22,7 @@ Fase 1/2/3/4 aquí. Si hay que nombrarlos, otro nombre.
 | Fase | Qué | Estado | Prohibido |
 | --- | --- | --- | --- |
 | **1 Préstamos** | Órdenes a la base (`create_loan`, `update_loan_terms`, `renew_loan`, `delete_loan`, `set_loan_alerts`); pagado/saldo solo `_loan_settle` | **CERRADA** (prod ~09–10/10) | Rehacer, «falta Fase 1», reescribir préstamos como si el aparato fuera dueño |
-| **2 Cobros** | Cobro / anulación / gasto como dueño total en la base (modelo `register_collection` completo) | **PENDIENTE** | Decir que ya está hecha |
+| **2 Cobros** | Cobro / anulación / gasto como dueño total en la base (modelo `register_collection` completo) | **PENDIENTE** (corte **2.1** listo en repo: sella visita + Prestar al liquidar — `docs/fase-2-cobros.md`; falta aplicar SQL en Supabase) | Decir que ya está hecha |
 | **3 Saldos** | Caja M/T, Inicial, A/N, Banco/Nequi calculados por la base | **PENDIENTE** | Decir que ya está hecha |
 | **4 Cierres** | CIE- + planilla sellados solo por orden al servidor (`seal_day_close` / close-sheet) | **PENDIENTE** (2a = sombra/cálculo; **no** es dueño todavía) | Vender 2a como «cierres listos» |
 
