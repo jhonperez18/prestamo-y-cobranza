@@ -2117,7 +2117,8 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     bancoSrc.includes("BANCO_ROUTE_PINS") &&
       bancoSrc.includes("bancoRouteCuadre") &&
       bancoSrc.includes('pool: "banco"') &&
-      bancoSrc.includes("const bancoSaldo = bancoAcumuladoRutas(bancoRouteCuadres) - bancoGastado") &&
+      bancoSrc.includes("bancoAcumuladoRutas(bancoRouteCuadres) - bancoGastado") &&
+      bancoSrc.includes("getCloudDigitalPoolBalances") &&
       bancoSrc.includes("(routeN?.enCaja ?? 0) + bancoSaldo") &&
       bancoSrc.includes("Ruta M"),
     true,
@@ -4705,7 +4706,8 @@ console.log("— Cupo del aparato —");
     "Cerrar M no cierra T: el panel queda amarrado a su hoja, se cierra al cambiar y no acepta doble toque",
     mobileSrc.includes("setCloseTargetKey(activeCloseKey);") &&
       mobileSrc.includes("closeTargetKey !== activeCloseKey") &&
-      mobileSrc.includes("closingDayRef.current = true;\n    setConfirmingClose(false);"),
+      mobileSrc.includes("closingDayRef.current = true;") &&
+      mobileSrc.includes("setConfirmingClose(false)"),
     true,
   );
   const opsSrc = readSrc(new URL("../lib/supabase/ops-mirror.ts", import.meta.url), "utf8");
