@@ -1770,19 +1770,23 @@ export function SupervisorMobileApp({
           gastosHoy += amount;
         }
       }
-      // Lista del botón Préstamo: misma suma que prestamosHoy (A/N = efectivo + digital).
+      // Lista = efectivo + Banco/Nequi de la ruta. Misma suma que el total. Caja solo resta efectivo.
+      const digitalToday = dayDigitalLoanRows(today, route.routeName, loans, clients);
       const cashLoansToday = independentDay
         ? [...independentDay.loanRows, ...independentDay.digitalLoanRows]
         : chainDay
-        ? chainDay.loanRows
-        : isPrimary
-          ? dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
-              collectorRef,
-              assignments: todayAssignments,
-              liveDay: isLiveCashDay(collectorRef, today, dayClosesLive, businessTodayIso()),
-            })
-          : [];
-      // A / N: KPI = lo prestado en la ruta (efectivo + Nequi/Banco). Caja sigue con closing.
+          ? [...chainDay.loanRows, ...digitalToday]
+          : isPrimary
+            ? [
+                ...dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
+                  collectorRef,
+                  assignments: todayAssignments,
+                  liveDay: isLiveCashDay(collectorRef, today, dayClosesLive, businessTodayIso()),
+                }),
+                ...digitalToday,
+              ]
+            : digitalToday;
+      // A / N: prestamosRuta. M / T / resto: suma de la lista (efectivo + digital).
       const prestamosHoy = independentDay
         ? independentDay.prestamosRuta
         : dayLoanDisbursementTotal(cashLoansToday);

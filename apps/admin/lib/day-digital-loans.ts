@@ -55,7 +55,10 @@ export function dayPlanillaLoansWithoutPayment(
     const renewal = isCashlessRenewal(loan);
     if (isLoanVoided(loan) || (loanIsExistingPortfolio(loan) && !renewal)) continue;
     if (loanDisbursementIsoDate(loan) !== dateIso) continue;
-    if (!loan.clientRef || paidClientRefs.has(loan.clientRef)) continue;
+    if (!loan.clientRef) continue;
+    // Renovado se queda en recaudo aunque ya cobren la cuota nueva (cobro ≠ renovación).
+    // Préstamo con plata: si ya hay PG- del cliente hoy, el renglón va bajo ese cobro.
+    if (!renewal && paidClientRefs.has(loan.clientRef)) continue;
     if (!((Number(loan.capital) || 0) > 0)) continue;
     const client = clientByRef.get(loan.clientRef);
     if (!client || !sameRoute(client.route, route)) continue;
