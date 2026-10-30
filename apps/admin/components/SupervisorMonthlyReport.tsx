@@ -11,8 +11,10 @@ import { sameRoute } from "@/lib/client-route-order";
 import type { DigitalPoolGasto } from "@/lib/digital-pools";
 import {
   INFORME_HISTORY_ROUTES,
+  informePrestamoSourceLabel,
   type InformeHistory,
   type InformeHistoryKind,
+  type InformePrestamoLine,
 } from "@/lib/informe-route-days";
 import type { InformeMonthSnapshot } from "@/lib/informe-month-snapshot";
 import { isoToDisplay } from "@/lib/loan-preview";
@@ -27,14 +29,42 @@ type Props = {
   payments: PaymentRow[];
   efectivo: InformeEfectivo;
   banco: number;
-  /** Historial diario por ruta desde el día 1 del mes (Cobrado / Préstamo / Gasto). `null` = calculando. */
+  /** Historial diario por ruta desde el día 1 del mes (Cobrado / Préstamo / Gasto). `null` = leyendo. */
   history: InformeHistory | null;
+  /** Si la lectura falló. No se sustituye por otra suma. */
+  historyNote?: string;
   /** Misma lista que Banco → Gastos. No entra a la caja ni al Inicial. */
   bancoGastos: readonly DigitalPoolGasto[];
   bancoGastado: number;
   /** Mes ya cerrado. Si viene, la pantalla lee esta copia y no recalcula. */
   snapshot?: InformeMonthSnapshot | null;
 };
+
+export function InformePrestamoLines({ lines }: { lines: readonly InformePrestamoLine[] }) {
+  if (!lines.length) return null;
+  return (
+    <div className="supervisor-prestamo-lines">
+      <div className="supervisor-prestamo-lines-head" aria-hidden>
+        <span>Día</span>
+        <span>Préstamo</span>
+        <span>Valor</span>
+      </div>
+      <ul className="supervisor-prestamo-lines-list" aria-label="Préstamos del mes">
+        {lines.map((row, index) => (
+          <li key={`${row.date}|${row.route}|${row.ref}|${row.source}|${row.anexo ? "anexo" : "capital"}|${index}`}>
+            <span className="is-date">{isoToDisplay(row.date)}</span>
+            <span className="is-label">
+              {row.anexo ? `Anexo · ${row.ref}` : row.ref}
+              {row.name ? ` · ${row.name}` : ""}
+              {` · ${row.route} · ${informePrestamoSourceLabel(row.source)}`}
+            </span>
+            <span className="is-amount">{money(row.capital, { symbol: false })}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 const HISTORY_BUTTONS: { kind: InformeHistoryKind; label: string }[] = [
   { kind: "cobrado", label: "Cobrado" },
@@ -67,6 +97,7 @@ export function SupervisorMonthlyReport({
   efectivo,
   banco,
   history,
+  historyNote = "",
   bancoGastos,
   bancoGastado,
   snapshot = null,
@@ -213,7 +244,7 @@ export function SupervisorMonthlyReport({
               {!shownHistory || shownHistory[openKind].days.length === 0 ? (
                 <tr>
                   <td colSpan={INFORME_HISTORY_ROUTES.length + 2} className="is-empty">
-                    {shownHistory ? "Sin movimientos este mes." : "Calculando…"}
+                    {shownHistory ? "Sin movimientos este mes." : historyNote || "Leyendo…"}
                   </td>
                 </tr>
               ) : (
@@ -232,6 +263,9 @@ export function SupervisorMonthlyReport({
             </tbody>
           </table>
         </div>
+      ) : null}
+      {openKind === "prestamo" ? (
+        <InformePrestamoLines lines={shownHistory?.prestamo.lines ?? []} />
       ) : null}
     </div>
   );

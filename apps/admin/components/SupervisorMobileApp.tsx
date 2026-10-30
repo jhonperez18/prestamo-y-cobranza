@@ -221,8 +221,7 @@ import {
   type InformeEfectivo,
 } from "@/components/SupervisorMonthlyReport";
 import {
-  informeOwnRouteHistory,
-  informeRouteHistory,
+  readSupervisorInformePayload,
   type InformeHistory,
   type InformeRouteHistory,
 } from "@/lib/informe-route-days";
@@ -2276,48 +2275,10 @@ export function SupervisorMobileApp({
   }, [liquidaciones]);
 
   /**
-   * Informe: Cobrado / Préstamo / Gasto por ruta, día a día desde el 1 del mes (libro de cada día).
-   * Se calcula después de pintar: a fin de mes son ~31 días × cobradores y no debe trabar la pestaña.
+   * Informe: Cobrado / Préstamo / Gasto los lee el servidor con el mismo libro.
+   * Una sola lista. Si no llega, no se rearma con la copia del celular.
    */
   const [informeHistory, setInformeHistory] = useState<InformeHistory | null>(null);
-  useEffect(() => {
-    if (view !== "informe") return;
-    const timer = window.setTimeout(() => {
-      setInformeHistory(
-        informeRouteHistory(
-          {
-            payments: paymentsLive,
-            loans,
-            clients,
-            collectors,
-            assignments: assignmentsLive,
-            dayCloses: dayClosesLive,
-            dayExpenseDrafts: expensesLive,
-            planillaCashCloses,
-            monthCloses,
-          },
-          poolCollectors.map((row) => row.ref),
-          bancoHistoryFrom,
-          today,
-        ),
-      );
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [
-    view,
-    paymentsLive,
-    loans,
-    clients,
-    collectors,
-    assignmentsLive,
-    dayClosesLive,
-    expensesLive,
-    planillaCashCloses,
-    monthCloses,
-    poolCollectors,
-    bancoHistoryFrom,
-    today,
-  ]);
 
   /** Informe → General (M · T · N, tal cual) o Angélica (solo A: caja propia + Nequi). */
   const [informeTab, setInformeTab] = useState<"general" | "angelica">("general");
@@ -2361,52 +2322,36 @@ export function SupervisorMobileApp({
     () => informeARows.reduce((sum, row) => sum + (row.enCaja ?? 0), 0),
     [informeARows],
   );
-  /** Solo el cobrador dueño de la planilla A: un cobrador sin hoja M/T (N) carga sus gastos a su propia ruta. */
-  const informeACollectorRefs = useMemo(
-    () => [...new Set(informeARows.map((row) => row.collectorRef).filter(Boolean))],
-    [informeARows],
-  );
   const [informeAHistory, setInformeAHistory] = useState<InformeRouteHistory | null>(null);
+  const [informeReadError, setInformeReadError] = useState("");
   useEffect(() => {
-    if (view !== "informe" || informeTab !== "angelica") return;
-    const timer = window.setTimeout(() => {
-      setInformeAHistory(
-        informeOwnRouteHistory(
-          {
-            payments: paymentsLive,
-            loans,
-            clients,
-            collectors,
-            assignments: assignmentsLive,
-            dayCloses: dayClosesLive,
-            dayExpenseDrafts: expensesLive,
-            planillaCashCloses,
-            monthCloses,
-          },
-          informeACollectorRefs,
-          INFORME_A_ROUTE,
-          bancoHistoryFrom,
-          today,
-        ),
-      );
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [
-    view,
-    informeTab,
-    paymentsLive,
-    loans,
-    clients,
-    collectors,
-    assignmentsLive,
-    dayClosesLive,
-    expensesLive,
-    planillaCashCloses,
-    monthCloses,
-    informeACollectorRefs,
-    bancoHistoryFrom,
-    today,
-  ]);
+    if (view !== "informe") return;
+    let cancelled = false;
+    setInformeHistory(null);
+    setInformeAHistory(null);
+    setInformeReadError("");
+    const from = bancoHistoryFrom;
+    const to = today;
+    fetch(`/api/ops/supervisor-informe?from=${from}&to=${to}`, { cache: "no-store" })
+      .then(async (res) => {
+        const body: unknown = await res.json();
+        const parsed = readSupervisorInformePayload(body);
+        if (!res.ok || !parsed) throw new Error("informe_failed");
+        return parsed;
+      })
+      .then((parsed) => {
+        if (cancelled) return;
+        setInformeHistory(parsed.general);
+        setInformeAHistory(parsed.angelica);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setInformeReadError("No se pudo leer el informe.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [view, bancoHistoryFrom, today]);
 
   /**
    * Registro Banco por día: hoy abierto; los días anteriores en historial.
@@ -5433,6 +5378,7 @@ export function SupervisorMobileApp({
               efectivo={informeEfectivo}
               banco={bancoSaldo}
               history={informeHistory}
+              historyNote={informeReadError}
               bancoGastos={bancoGastos}
               bancoGastado={bancoGastado}
               snapshot={historialOpen ? openInformeSnapshot : null}
@@ -5447,6 +5393,7 @@ export function SupervisorMobileApp({
               nequi={nequiSaldoShown ?? 0}
               corteLabel={todayDisplay}
               history={informeAHistory}
+              historyNote={informeReadError}
               nequiGastos={nequiGastos}
               nequiGastado={nequiGastosShown ?? 0}
               snapshot={historialOpen ? openInformeSnapshot : null}

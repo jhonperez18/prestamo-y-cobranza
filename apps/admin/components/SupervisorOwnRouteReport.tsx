@@ -7,6 +7,7 @@
  * Nequi = total acumulado NEQUI (`digitalPoolBalances`): A cobra por Nequi, no por Banco.
  */
 import { useMemo, useState } from "react";
+import { InformePrestamoLines } from "@/components/SupervisorMonthlyReport";
 import { sameRoute } from "@/lib/client-route-order";
 import type { DigitalPoolGasto } from "@/lib/digital-pools";
 import type { InformeHistoryKind, InformeRouteHistory } from "@/lib/informe-route-days";
@@ -24,8 +25,10 @@ type Props = {
   efectivo: number;
   nequi: number;
   corteLabel: string;
-  /** Historial diario de la ruta desde el día 1 del mes. `null` = calculando. */
+  /** Historial diario de la ruta desde el día 1 del mes. `null` = leyendo. */
   history: InformeRouteHistory | null;
+  /** Si la lectura falló. No se sustituye por otra suma. */
+  historyNote?: string;
   /** Misma lista que Nequi → Gastos. No entra a la caja ni al Inicial. */
   nequiGastos: readonly DigitalPoolGasto[];
   nequiGastado: number;
@@ -52,6 +55,7 @@ export function SupervisorOwnRouteReport({
   nequi,
   corteLabel,
   history,
+  historyNote = "",
   nequiGastos,
   nequiGastado,
   snapshot = null,
@@ -183,7 +187,7 @@ export function SupervisorOwnRouteReport({
               {!shownHistory || shownHistory[openKind].days.length === 0 ? (
                 <tr>
                   <td colSpan={2} className="is-empty">
-                    {shownHistory ? "Sin movimientos este mes." : "Calculando…"}
+                    {shownHistory ? "Sin movimientos este mes." : historyNote || "Leyendo…"}
                   </td>
                 </tr>
               ) : (
@@ -197,6 +201,9 @@ export function SupervisorOwnRouteReport({
             </tbody>
           </table>
         </div>
+      ) : null}
+      {openKind === "prestamo" ? (
+        <InformePrestamoLines lines={shownHistory?.prestamo.lines ?? []} />
       ) : null}
     </div>
   );
