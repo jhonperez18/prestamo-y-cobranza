@@ -778,7 +778,13 @@ export async function upsertDayExpenseIdempotent(row: Record<string, unknown>) {
   });
   if (!error) {
     const body = data as { ok?: boolean; error?: string } | null;
-    if (body && body.ok === false) return { ok: false as const, error: body.error || "register_day_expense" };
+    if (body && body.ok === false) {
+      // Día con CIE-: la base no reescribe (Fase 2.3). Sale de la cola sin reintento eterno.
+      if (body.error === "dia_sellado") {
+        return { ok: true as const, kept: true as const, reason: "dia_sellado" };
+      }
+      return { ok: false as const, error: body.error || "register_day_expense" };
+    }
     return { ok: true as const };
   }
   const msg = error.message || "";
