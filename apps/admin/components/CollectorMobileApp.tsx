@@ -158,6 +158,7 @@ import {
 } from "@/lib/day-digital-loans";
 import {
   isCashlessRenewal,
+  loanDisbursementIsoDate,
   loanDisbursementSource,
   loanDisbursementSourceLabel,
   type LoanDisbursementSource,
@@ -2833,20 +2834,22 @@ export function CollectorMobileApp({
                 !pay.loanRef || reloanAnchorByLoan.get(pay.loanRef) === pay.ref;
               // Recaudo informa Fin; prestar solo en la hoja de ruta (chulitos).
               const showFin = isReloanAnchor && reloan.canReloan;
-              const renewalLoan =
-                payLoan &&
-                (isCashlessRenewal(payLoan) || renewalByLoanRef.has(String(pay.loanRef || "")))
-                  ? payLoan
-                  : null;
+              // Solo renovación hecha HOY (misma regla que el supervisor). Renovaciones
+              // viejas con cobro de cuota no pintan otra vez «Renovado».
+              const renewedToday =
+                Boolean(payLoan) &&
+                isCashlessRenewal(payLoan) &&
+                loanDisbursementIsoDate(payLoan) === activeDate;
               const renewalBeside =
                 !recaudoOnlyBanco &&
                 pay.loanRef &&
                 firstPayRefByLoan.get(pay.loanRef) === pay.ref &&
-                renewalLoan
+                renewedToday &&
+                payLoan
                   ? renewalByLoanRef.get(pay.loanRef) ?? {
-                      loan: renewalLoan,
+                      loan: payLoan,
                       clientName: payerName(pay, loans, clients),
-                      source: loanDisbursementSource(renewalLoan),
+                      source: loanDisbursementSource(payLoan),
                       renewal: true as const,
                     }
                   : null;
