@@ -78,8 +78,8 @@ function paymentToRpcPart(payment: PaymentRow): Record<string, unknown> | null {
   return {
     ref: payment.ref,
     loan_ref: loanRef,
-    // La base sella la visita / abre Prestar con el cliente del PG- o, si falta, el del P-.
-    client_ref: payment.clientRef?.trim() || null,
+    // PaymentRow no lleva COD-; la base completa client_ref desde el P- (Fase 2.1).
+    client_ref: null,
     collector_ref: payment.collectorRef?.trim() || null,
     collector_name: payment.collector?.trim() || null,
     amount,
