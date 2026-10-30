@@ -2,6 +2,25 @@
   overflow: visible;
 }
 
+:global(.shell.is-phone-layout) .wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+  overscroll-behavior-x: contain;
+}
+
+:global(.shell.is-phone-layout) .table {
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}
+
+:global(.shell.is-phone-layout) .colName {
+  width: auto;
+}
+
 .table {
   width: 100%;
   table-layout: fixed;

@@ -17601,3 +17601,65 @@
   width: auto !important;
   font-size: 12px !important;
 }
+
+/*
+ * Celular — Clientes, Préstamos y Reportes.
+ * La hoja conserva el ancho de sus columnas y se corre a la derecha.
+ * El escritorio no cambia.
+ */
+.shell.is-phone-layout .table-wrap,
+.shell.is-phone-layout .bank-table-wrap,
+.shell.is-phone-layout .route-clients-table-wrap,
+.shell.is-phone-layout .weekly-report-sheet {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+  overscroll-behavior-x: contain;
+}
+.shell.is-phone-layout table.data.list-grid,
+.shell.is-phone-layout table.data.list-data-table,
+.shell.is-phone-layout table.data.mini-grid,
+.shell.is-phone-layout .weekly-report table.data,
+.shell.is-phone-layout .weekly-report-table {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  table-layout: auto;
+}
+.shell.is-phone-layout table.data.list-grid th,
+.shell.is-phone-layout table.data.list-grid td,
+.shell.is-phone-layout table.data.list-data-table th,
+.shell.is-phone-layout table.data.list-data-table td,
+.shell.is-phone-layout table.data.mini-grid th,
+.shell.is-phone-layout table.data.mini-grid td,
+.shell.is-phone-layout .weekly-report table.data th,
+.shell.is-phone-layout .weekly-report table.data td,
+.shell.is-phone-layout .weekly-report-table th,
+.shell.is-phone-layout .weekly-report-table td {
+  overflow: visible;
+  text-overflow: clip;
+  max-width: none;
+  white-space: nowrap;
+  touch-action: pan-x pan-y;
+}
+.shell.is-phone-layout .weekly-report-sheet {
+  margin: 0;
+  padding: 12px;
+}
+.shell.is-phone-layout .weekly-report-head {
+  margin: -12px -12px 12px;
+  padding: 12px;
+}
+.shell.is-phone-layout .weekly-report-grid {
+  grid-template-columns: 1fr;
+}
+.shell.is-phone-layout .weekly-report-scopes {
+  display: flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.shell.is-phone-layout .weekly-report-table .is-name {
+  max-width: none;
+}
