@@ -77,6 +77,36 @@ export type RouteAAnchor = { date: string; saldo: number };
  * Caja de A al cierre de ayer, leída en la base. El celular no rehace el mes.
  * Si no contesta, la pantalla sigue con su copia.
  */
+/**
+ * Inicial M del día desde la base (Fase 3.1). Rellena la caché que lee
+ * openingCashForChainedPlanilla. Devuelve un epoch para re-pintar el libro.
+ * Si no contesta, sigue el CIE local.
+ */
+export function useChainMOpening(
+  enabled: boolean,
+  collectorRefs: readonly string[],
+  today: string,
+): number {
+  const key = collectorRefs.filter(Boolean).slice().sort().join(",");
+  const [epoch, setEpoch] = useState(0);
+  useEffect(() => {
+    if (!enabled || !key || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return;
+    let alive = true;
+    const load = async () => {
+      const { refreshCloudChainMOpening } = await import("@/lib/cloud-chain-m-opening");
+      const refs = key.split(",").filter(Boolean);
+      await Promise.all(refs.map((ref) => refreshCloudChainMOpening(ref, today)));
+      if (!alive) return;
+      setEpoch((n) => n + 1);
+    };
+    void load();
+    return () => {
+      alive = false;
+    };
+  }, [enabled, key, today]);
+  return epoch;
+}
+
 export function useRouteAAnchor(enabled: boolean, collectorRefs: readonly string[], today: string) {
   const key = collectorRefs.filter(Boolean).slice().sort().join(",");
   const [anchors, setAnchors] = useState<Record<string, RouteAAnchor>>({});

@@ -90,7 +90,12 @@ import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import { loadSupervisorHistoryPayments } from "@/lib/supervisor-book";
 import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
-import { useNequiSaldo, useRouteAAnchor, useSupervisorToday } from "@/lib/use-supervisor-today";
+import {
+  useChainMOpening,
+  useNequiSaldo,
+  useRouteAAnchor,
+  useSupervisorToday,
+} from "@/lib/use-supervisor-today";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import {
   informePeriodName,
@@ -180,6 +185,7 @@ import {
   PLANILLA_CASH_CHAIN_PRIMARY,
   PLANILLA_CASH_CHAIN_SECONDARY,
   isPlanillaCashChainPrimary,
+  isPlanillaCashChainRoute,
   isPlanillaCashChainSecondary,
   stampHistoryWithPlanillaCashChain,
   type PlanillaCashCloseRecord,
@@ -1589,6 +1595,16 @@ export function SupervisorMobileApp({
     return [...refs];
   }, [assignedCoverage]);
   const aAnchors = useRouteAAnchor(true, aCollectorRefs, today);
+  const chainCollectorRefs = useMemo(() => {
+    const refs = new Set<string>();
+    for (const route of assignedCoverage) {
+      if (!isPlanillaCashChainRoute(route.routeName)) continue;
+      const ref = route.collector?.ref || route.collectorRef || "";
+      if (ref) refs.add(ref);
+    }
+    return [...refs];
+  }, [assignedCoverage]);
+  const chainMOpeningEpoch = useChainMOpening(true, chainCollectorRefs, today);
 
   /** Libro de caja del día por cobrador: misma cifra que la app del cobrador, el cierre y el Historial. */
   const ledgerByCollector = useMemo(() => {
@@ -1649,6 +1665,7 @@ export function SupervisorMobileApp({
     expensesLive,
     planillaCashCloses,
     monthCloses,
+    chainMOpeningEpoch,
   ]);
 
   const liquidaciones = useMemo((): RouteLiquidacion[] => {

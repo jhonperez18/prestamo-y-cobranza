@@ -291,6 +291,23 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, dailyAssignments);
   }, [dailyAssignments, hydrated]);
 
+  // Fase 3.1: Inicial M desde la base (CIE ayer). Sin red sigue el CIE local.
+  const [chainMOpeningEpoch, setChainMOpeningEpoch] = useState(0);
+  useEffect(() => {
+    if (!hydrated || !session.collectorRef) return;
+    let alive = true;
+    void import("@/lib/cloud-chain-m-opening").then(({ refreshCloudChainMOpening }) => {
+      if (!alive) return;
+      void refreshCloudChainMOpening(session.collectorRef!, todayIso()).then((row) => {
+        if (alive && row) setChainMOpeningEpoch((n) => n + 1);
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [hydrated, session.collectorRef, dayCloses.length]);
+  void chainMOpeningEpoch;
+
   useEffect(() => {
     if (!hydrated) return;
     // No pisar CIE/cierres ya en disco con [] del arranque (mismo fallo que pagos).
