@@ -427,7 +427,18 @@ export function CollectorShell({ session, onLogout }: Props) {
       ),
     );
     if (paidClient) queueClientMirror(paidClient);
-    queueAssignmentsMirror(assignmentsForCreatedPayments(committed.assignments, paymentsCreated));
+    // Cobro + Prestar si liquidó (hoja-diaria: vuelve a la ruta, no al recaudo).
+    const payDate = primaryDraft.dispatchDate?.trim() || committed.payment.paidDate;
+    const clientDayRows = committed.assignments.filter(
+      (row) =>
+        row.clientRef === primaryDraft.clientRef &&
+        row.dispatchDate === payDate,
+    );
+    queueAssignmentsMirror(
+      clientDayRows.length
+        ? clientDayRows
+        : assignmentsForCreatedPayments(committed.assignments, paymentsCreated),
+    );
     void (async () => {
       try {
         try {

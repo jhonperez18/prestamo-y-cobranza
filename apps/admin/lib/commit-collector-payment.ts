@@ -10,6 +10,7 @@ import {
   applyPaymentToAssignments,
   dispatchRouteRef,
 } from "@/lib/collector-dispatch-sync";
+import { ensurePrestarAfterPaidOff } from "@/lib/route-planilla";
 import { isCollectorLiveDevice, syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import { chargeLabel, syncLoan } from "@/lib/loan-preview";
 import {
@@ -330,6 +331,17 @@ export function commitCollectorPayment(
     draft.clientRef,
   );
   nextAssignments = reconcilePaymentsOntoPlanilla(nextAssignments, [payment], nextLoans);
+  // Pagó todo → Prestar en la ruta (no en recaudo). Misma hoja abierta.
+  nextAssignments = ensurePrestarAfterPaidOff({
+    date: dispatchDate,
+    clientRef: draft.clientRef,
+    collectorRef: draft.collectorRef,
+    assignments: nextAssignments,
+    clients: nextClients,
+    loans: nextLoans,
+    payments: nextPayments,
+    collectors: input.collectors,
+  });
 
   let nextRoutes = result.updatedRoute
     ? routes.map((row) => (row.ref === result.updatedRoute!.ref ? result.updatedRoute! : row))

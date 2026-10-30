@@ -818,6 +818,123 @@ export function syncPermanentRoutePlanilla(
 }
 
 /**
+ * Pagó todo hoy, hoja abierta → vuelve Prestar en la ruta (chulitos).
+ * No rearma la ruta: sella la cuota liquidada de ese cliente y abre Prestar.
+ * Recaudo no presta; la oferta vive solo aquí (hoja-diaria-lock).
+ */
+export function ensurePrestarAfterPaidOff(input: {
+  date: string;
+  clientRef: string;
+  collectorRef: string;
+  assignments: DailyCollectionAssignment[];
+  clients: ClientRow[];
+  loans: LoanRow[];
+  payments: PaymentRow[];
+  collectors: CollectorRow[];
+}): DailyCollectionAssignment[] {
+  const {
+    date,
+    clientRef,
+    collectorRef,
+    clients,
+    loans,
+    payments,
+    collectors,
+  } = input;
+  let assignments = input.assignments;
+  const client = clients.find((row) => row.ref === clientRef);
+  if (!client || !isOperationalClient(client)) return assignments;
+  const collector = collectors.find((row) => row.ref === collectorRef);
+  if (!collector) return assignments;
+
+  const routeName = String(client.route || "").trim();
+  const routeVisits = assignments.filter(
+    (row) =>
+      row.dispatchDate === date &&
+      row.collectorRef === collectorRef &&
+      String(row.clientRoute || "").trim() === routeName,
+  );
+  if (routeVisits.length > 0 && routeVisits.every((row) => Boolean(row.dayClosedAt))) {
+    return assignments;
+  }
+
+  const index = buildPlanillaLoanIndex(loans, payments);
+  // Libre = nadie con saldo vivo. Ficha «Activo» en 0 (o cobro de hoy que la deja en 0) no bloquea.
+  const stillOwes = (index.activeByClient.get(clientRef) ?? []).some(
+    (loan) => owesForLoan(loan, index) > 0,
+  );
+  if (stillOwes) return assignments;
+
+  assignments = assignments.map((row) => {
+    if (row.dispatchDate !== date) return row;
+    if (row.collectorRef !== collectorRef) return row;
+    if (row.clientRef !== clientRef) return row;
+    if (row.dayClosedAt) return row;
+    if (isAssignmentAwaitingLoan(row)) return row;
+    if (row.visitStatus === "cobrado" || row.visitStatus === "omitido") return row;
+    const loanRef = String(row.loanRef || "").trim();
+    if (!loanRef) return row;
+    const loan = index.loanByRef.get(loanRef);
+    if (!loan) return row;
+    if (owesForLoan(loan, index) > 0) return row;
+    const payRef = paymentRefOnDate(loanRef, date, index.paymentsFor(loanRef));
+    if (!payRef && !loanPaidOnDate(loanRef, date, index.paymentsFor(loanRef))) {
+      return row;
+    }
+    return {
+      ...row,
+      amountDue: 0,
+      alertCount: 0,
+      visitStatus: "cobrado" as const,
+      paymentRef: row.paymentRef || payRef || undefined,
+    };
+  });
+
+  const openPrestar = assignments.some(
+    (row) =>
+      row.dispatchDate === date &&
+      row.collectorRef === collectorRef &&
+      row.clientRef === clientRef &&
+      isAssignmentAwaitingLoan(row) &&
+      !row.dayClosedAt &&
+      row.skipReason !== LOAN_GIVEN_TODAY_REASON &&
+      (row.visitStatus === "pendiente" ||
+        row.visitStatus === "parcial" ||
+        !row.visitStatus),
+  );
+  if (openPrestar) return assignments;
+
+  const openCuota = assignments.some(
+    (row) =>
+      row.dispatchDate === date &&
+      row.collectorRef === collectorRef &&
+      row.clientRef === clientRef &&
+      !isAssignmentAwaitingLoan(row) &&
+      !row.dayClosedAt &&
+      (row.visitStatus === "pendiente" ||
+        row.visitStatus === "parcial" ||
+        !row.visitStatus),
+  );
+  if (openCuota) return assignments;
+
+  const at = new Date().toISOString();
+  const item = awaitingLoanItemForClient(client, date);
+  return [
+    ...assignments,
+    {
+      ...assignmentFromItem(item, collector, date),
+      awaitingLoan: true,
+      dispatched: true,
+      dispatchedAt: at,
+    },
+  ];
+}
+
+function owesForLoan(loan: LoanRow, index: PlanillaLoanIndex) {
+  return loanOwes(loan, index.paymentsFor(loan.ref));
+}
+
+/**
  * Asigna el cobrador a una ruta de catálogo. Un cobrador puede tener varias
  * rutas (ej. «1» mañana y «1.1» tarde): la planilla del día las une en ese orden.
  */

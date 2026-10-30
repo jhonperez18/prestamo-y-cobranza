@@ -768,19 +768,28 @@ function PlanillaTable({
                 </td>
                 <td className="is-estado">
                   {row.awaitingLoan ? (
-                    <span className="supervisor-prestar-tag" title="Sin préstamo · listo para prestar">
-                      Prestar
-                    </span>
-                  ) : onReloan && row.reloan.canReloan ? (
-                    <button
-                      type="button"
-                      className={reloanOpen ? "supervisor-reloan-btn on" : "supervisor-reloan-btn"}
-                      title="Terminó su crédito: prestarle ahora (Nequi / Banco)"
-                      aria-expanded={reloanOpen}
-                      onClick={() => onReloan(row.clientRef)}
+                    onReloan ? (
+                      <button
+                        type="button"
+                        className={reloanOpen ? "supervisor-reloan-btn on" : "supervisor-prestar-tag is-btn"}
+                        title="Sin préstamo · listo para prestar"
+                        aria-expanded={reloanOpen}
+                        onClick={() => onReloan(row.clientRef)}
+                      >
+                        Prestar
+                      </button>
+                    ) : (
+                      <span className="supervisor-prestar-tag" title="Sin préstamo · listo para prestar">
+                        Prestar
+                      </span>
+                    )
+                  ) : row.reloan.canReloan ? (
+                    <span
+                      className="supervisor-termino-tag"
+                      title="Terminó su crédito · prestar en la fila Prestar"
                     >
-                      Préstamo
-                    </button>
+                      Fin
+                    </span>
                   ) : grantedHere ? (
                     <em
                       className="supervisor-planilla-method is-pay-prestamo"

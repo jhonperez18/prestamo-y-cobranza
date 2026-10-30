@@ -447,7 +447,6 @@ export function CollectorMobileApp({
   const [planillaRouteFilter, setPlanillaRouteFilter] = useState<string | null>(null);
   /** Desde «Inicio» del cuadre → ir a la hoja de cobro (Por cobrar). */
   const [preferCobroPlanilla, setPreferCobroPlanilla] = useState(false);
-  const [reloanPayRef, setReloanPayRef] = useState<string | null>(null);
   /** Hoja de Recaudo abierta desde «Banco»: solo los cobros que no son efectivo. */
   const [recaudoOnlyBanco, setRecaudoOnlyBanco] = useState(false);
   const [creatingClient, setCreatingClient] = useState(false);
@@ -482,7 +481,6 @@ export function CollectorMobileApp({
     setMenuOpen(false);
     setPlanillaRouteFilter(null);
     setPreferCobroPlanilla(false);
-    setReloanPayRef(null);
   }, [collector.ref]);
 
   useEffect(() => {
@@ -2487,7 +2485,6 @@ export function CollectorMobileApp({
                 setConfirmingClose(false);
                 setHistoryOpen(false);
                 setExpandedKey(null);
-                setReloanPayRef(null);
                 if (planillaRoutePins.length > 1) {
                   setPlanillaRouteFilter(
                     defaultOpenPlanillaRoute(
@@ -2800,9 +2797,6 @@ export function CollectorMobileApp({
             recaudoRows.map((pay, index) => {
               const method = paymentDisplayMethod(pay, loans, clients);
               const payLoan = loans.find((row) => row.ref === pay.loanRef);
-              const payClient = payLoan
-                ? clients.find((row) => row.ref === payLoan.clientRef)
-                : undefined;
               const reloan = reloanStateForVisit({
                 clientRef: payLoan?.clientRef ?? "",
                 loanRef: pay.loanRef,
@@ -2810,15 +2804,10 @@ export function CollectorMobileApp({
                 payments: livePayments,
                 date: activeDate,
               });
-              const reloanOpen = reloanPayRef === pay.ref;
               const isReloanAnchor =
                 !pay.loanRef || reloanAnchorByLoan.get(pay.loanRef) === pay.ref;
-              const canOfferReloan =
-                isReloanAnchor &&
-                reloan.canReloan &&
-                Boolean(payClient) &&
-                Boolean(onCreateQuickLoan) &&
-                !dayLocked;
+              // Recaudo informa Fin; prestar solo en la hoja de ruta (chulitos).
+              const showFin = isReloanAnchor && reloan.canReloan;
               const payRow = (
                 <li
                   key={pay.ref}
@@ -2826,7 +2815,6 @@ export function CollectorMobileApp({
                     "collector-mobile-card",
                     "is-done",
                     "is-dense",
-                    reloanOpen ? "is-open" : "",
                     doneRouteStarts[index] ? "is-route-start" : "",
                   ]
                     .filter(Boolean)
@@ -2849,16 +2837,13 @@ export function CollectorMobileApp({
                       ) : null}
                     </div>
                     <span className="is-done-loan">
-                      {canOfferReloan ? (
-                        <button
-                          type="button"
-                          className={reloanOpen ? "collector-reloan-btn on" : "collector-reloan-btn"}
-                          title="Terminó su crédito: prestarle ahora (sale del efectivo del día)"
-                          aria-expanded={reloanOpen}
-                          onClick={() => setReloanPayRef(reloanOpen ? null : pay.ref)}
+                      {showFin ? (
+                        <span
+                          className="collector-termino-tag"
+                          title="Terminó su crédito · prestar en la hoja de ruta"
                         >
-                          Préstamo
-                        </button>
+                          Fin
+                        </span>
                       ) : null}
                     </span>
                     {recaudoOnlyBanco ? (
@@ -2875,21 +2860,6 @@ export function CollectorMobileApp({
                       title={paymentMethodLabel(method)}
                     />
                   </div>
-                  {reloanOpen && canOfferReloan && payClient && onCreateQuickLoan ? (
-                    <div className="collector-mobile-pay-inline">
-                      <QuickLoanForm
-                        clientName={payerName(pay, loans, clients)}
-                        clientRef={payClient.ref}
-                        fundedByOptions={["efectivo"]}
-                        defaultFundedBy="efectivo"
-                        onCancel={() => setReloanPayRef(null)}
-                        onSave={(draft) => {
-                          setReloanPayRef(null);
-                          onCreateQuickLoan({ ...draft, routeName: payClient.route });
-                        }}
-                      />
-                    </div>
-                  ) : null}
                 </li>
               );
               const grantedRow =

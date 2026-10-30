@@ -434,9 +434,12 @@ export function applyPaymentToAssignments(
   function rowMatches(row: DailyCollectionAssignment, date: string) {
     if (row.dispatchDate !== date) return false;
     if (row.visitStatus === "omitido") return false;
+    // Prestar no es cobro: no sellar la oferta con el PG- de la cuota.
+    if (isAssignmentAwaitingLoan(row)) return false;
     if (collectorRef && row.collectorRef !== collectorRef) return false;
     if (row.loanRef && row.loanRef === paymentLoanRef) return true;
-    if (targetClient && row.clientRef === targetClient) return true;
+    if (targetClient && row.clientRef === targetClient && !row.loanRef) return true;
+    if (targetClient && row.clientRef === targetClient && row.loanRef === paymentLoanRef) return true;
     return false;
   }
 
@@ -464,9 +467,13 @@ export function applyPaymentToAssignments(
     if (row.visitStatus === "omitido" || row.visitStatus === "cobrado") return row;
     if (row.dayClosedAt) return row;
     if (row.paymentRef) return row;
+    if (isAssignmentAwaitingLoan(row)) return row;
     if (collectorRef && row.collectorRef !== collectorRef) return row;
     const loanOk = row.loanRef === paymentLoanRef;
-    const clientOk = Boolean(targetClient) && row.clientRef === targetClient;
+    const clientOk =
+      Boolean(targetClient) &&
+      row.clientRef === targetClient &&
+      (!row.loanRef || row.loanRef === paymentLoanRef);
     if (!loanOk && !clientOk) return row;
     return {
       ...row,

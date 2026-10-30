@@ -1,5 +1,5 @@
 ---
-description: Hoja diaria — nace a las 00:00 y durante el día no se rearma. El alta de hoy entra sola a Prestar; si la primera cuota es hoy, queda por cobrar. Intocable salvo pedido explícito del dueño.
+description: Hoja diaria — nace a las 00:00 y durante el día no se rearma. Pagó todo → Prestar en la ruta (no en recaudo). Alta de hoy y primera cuota hoy. Intocable salvo pedido explícito del dueño.
 alwaysApply: true
 ---
 
@@ -16,7 +16,8 @@ Solo si el dueño lo pide **en ese mensaje**, con estas palabras.
 | --- | --- |
 | **00:00** | Nace la hoja del día, completa. Todos los clientes de cada ruta: con préstamo (aunque sea semanal, quincenal o mensual y hoy no sea su fecha) y sin préstamo (Prestar). Saldos al día. |
 | **Durante el día** | **No se rearma** el resto de la ruta. Cobro, N/P y préstamo marcan a esa persona y la sacan de por cobrar. |
-| **Pagó todo** | Sale de por cobrar. Si el saldo queda en cero, en la misma hoja abierta vuelve como Prestar. Si le prestan y la primera cuota es hoy, queda por cobrar; si es otro día, sale y entra a las 00:00. Si solo pagó la cuota y sigue debiendo, no vuelve a Prestar. (dueño 25/10/2026) |
+| **Pagó todo** | Sale de por cobrar. Si el saldo queda en cero, en la misma hoja abierta vuelve como **Prestar** (chulito azul / rojo). Ahí se presta. Si le prestan y la primera cuota es hoy, queda por cobrar; si es otro día, sale y entra a las 00:00. Si solo pagó la cuota y sigue debiendo, no vuelve a Prestar. (dueño 25/10/2026; precisión 30/10/2026) |
+| **Recaudo (terminó)** | Se ve el cobro que liquidó. Etiqueta **Fin**. **No** botón «Préstamo». Prestar no vive en la hoja de cobros. (dueño 30/10/2026) |
 | **Hoja abierta** | Mientras el cobrador no le dé Cerrar planilla y no sean las 23:30, el cobrador usa sus permisos: cobrar en efectivo, cobrar en banco, prestar, cobro combinado y crear cliente. El supervisor y el sistema principal también. |
 | **Cliente nuevo** | Alta de hoy, hoja abierta, sin préstamo: entra **solo él**, en el acto, listo para prestar. (dueño 23/10/2026) |
 | **Hoja cerrada** | Cerrar planilla o las 23:30. No se crea el cliente. No entra nadie. Reabrir es otra regla y no se toca. |
@@ -42,6 +43,17 @@ El total de una ruta es la gente **viva**. La misma cifra en Clientes, Inicio, s
 | Hoja del día | No es el total de la ruta. A las 00:00 nace igual. Después solo marca a la persona del movimiento. |
 | Vistas | Sistema, supervisor y cobrador leen esa lista. No se arma un conteo aparte por pantalla. |
 
+## Cadena limpia (un solo lugar por paso)
+
+| Paso | Dónde | Qué |
+| --- | --- | --- |
+| 1 Cobrar | Hoja de ruta (billete) | Cuota / combinado |
+| 2 Terminó | Recaudo | Cobro liquidado + etiqueta **Fin** |
+| 3 Listo para prestar | Hoja de ruta · fila **Prestar** | Chulito azul (sí) / rojo (no hoy) |
+| 4 Prestó | Sale de Prestar | 1.ª cuota hoy → por cobrar; otro día → sale hasta las 00:00 |
+
+Un cliente libre no se ofrece dos veces. Recaudo informa; la ruta presta.
+
 ## Prohibido
 
 - `loanIsCollectibleOn` que devuelva siempre verdadero (eso rearma la ruta todo el día).
@@ -51,5 +63,7 @@ El total de una ruta es la gente **viva**. La misma cifra en Clientes, Inicio, s
 - Mover caja, Inicial o CIE para “cuadrar” la hoja.
 - Usar las visitas de la hoja de hoy como total de clientes de la ruta.
 - Contar a un eliminado en Clientes, Inicio, supervisor o cobrador.
+- Botón «Préstamo» (u otra oferta de prestar) en la hoja de **recaudo** / cobros del día.
+- Dejar a quien pagó todo sin fila Prestar mientras la hoja sigue abierta.
 
 Dueño del armado: `syncPermanentRoutePlanilla` y `loanIsCollectibleOn`. El número de la ruta: `clientsOnRouteSorted`.
