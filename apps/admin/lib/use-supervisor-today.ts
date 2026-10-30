@@ -72,11 +72,8 @@ export function useSupervisorToday(enabled: boolean, refreshKey: string): Superv
 }
 
 export type RouteAAnchor = { date: string; saldo: number };
+export type RouteOwnAnchor = { date: string; saldo: number; route: "A" | "N" };
 
-/**
- * Caja de A al cierre de ayer, leída en la base. El celular no rehace el mes.
- * Si no contesta, la pantalla sigue con su copia.
- */
 /**
  * Inicial M del día desde la base (Fase 3.1). Rellena la caché que lee
  * openingCashForChainedPlanilla. Devuelve un epoch para re-pintar el libro.
@@ -113,42 +110,85 @@ export function useChainMOpening(
   return epoch;
 }
 
-export function useRouteAAnchor(enabled: boolean, collectorRefs: readonly string[], today: string) {
+/**
+ * Fase 3.3: Banco / Nequi desde la base. Epoch para re-pintar totales.
+ */
+export function useDigitalPoolBalancesCloud(enabled: boolean): number {
+  const [epoch, setEpoch] = useState(0);
+  useEffect(() => {
+    if (!enabled) return;
+    let alive = true;
+    void import("@/lib/cloud-digital-pool-balances").then(({ refreshCloudDigitalPoolBalances }) => {
+      void refreshCloudDigitalPoolBalances().then((row) => {
+        if (alive && row) setEpoch((n) => n + 1);
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [enabled]);
+  return epoch;
+}
+
+/**
+ * Caja A/N: ancla de ayer + saldo de hoy en caché (route_own_box).
+ * Sin red, la pantalla sigue con su copia local.
+ */
+export function useRouteOwnAnchor(
+  enabled: boolean,
+  collectorRefs: readonly string[],
+  today: string,
+  route: "A" | "N",
+) {
   const key = collectorRefs.filter(Boolean).slice().sort().join(",");
-  const [anchors, setAnchors] = useState<Record<string, RouteAAnchor>>({});
+  const [anchors, setAnchors] = useState<Record<string, RouteOwnAnchor>>({});
+  const [, setEpoch] = useState(0);
 
   useEffect(() => {
-    if (!enabled || !key) return;
+    if (!enabled || !key || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return;
     let alive = true;
     const yesterday = previousCalendarIso(today);
     const load = async () => {
+      const { refreshCloudRouteOwnBox } = await import("@/lib/cloud-route-own-box");
       const refs = key.split(",").filter(Boolean);
-      const next: Record<string, RouteAAnchor> = {};
+      const next: Record<string, RouteOwnAnchor> = {};
       await Promise.all(
         refs.map(async (collectorRef) => {
-          try {
-            const res = await fetch(
-              `/api/ops/route-a-box?collectorRef=${encodeURIComponent(collectorRef)}&date=${yesterday}`,
-              { cache: "no-store" },
-            );
-            const body = (await res.json()) as { ok?: boolean; saldo?: number };
-            if (!res.ok || body.ok !== true || !Number.isFinite(Number(body.saldo))) return;
-            next[collectorRef] = { date: yesterday, saldo: Math.trunc(Number(body.saldo)) };
-          } catch (error) {
-            console.error("route-a-box", error);
+          const [yesterdayRow, todayRow] = await Promise.all([
+            refreshCloudRouteOwnBox(collectorRef, yesterday, route),
+            refreshCloudRouteOwnBox(collectorRef, today, route),
+          ]);
+          if (yesterdayRow) {
+            next[collectorRef] = {
+              date: yesterday,
+              saldo: yesterdayRow.saldo,
+              route,
+            };
           }
+          void todayRow;
         }),
       );
-      if (!alive || Object.keys(next).length === 0) return;
-      setAnchors(next);
+      if (!alive) return;
+      if (Object.keys(next).length > 0) setAnchors(next);
+      setEpoch((n) => n + 1);
     };
     void load();
     return () => {
       alive = false;
     };
-  }, [enabled, key, today]);
+  }, [enabled, key, today, route]);
 
   return anchors;
+}
+
+/** Compat: ancla de A (ayer). */
+export function useRouteAAnchor(enabled: boolean, collectorRefs: readonly string[], today: string) {
+  return useRouteOwnAnchor(enabled, collectorRefs, today, "A");
+}
+
+/** Ancla de N (ayer) + saldo de hoy en caché. */
+export function useRouteNAnchor(enabled: boolean, collectorRefs: readonly string[], today: string) {
+  return useRouteOwnAnchor(enabled, collectorRefs, today, "N");
 }
 
 export type NequiSaldo = {

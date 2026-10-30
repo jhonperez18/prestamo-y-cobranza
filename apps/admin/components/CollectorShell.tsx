@@ -299,17 +299,34 @@ export function CollectorShell({ session, onLogout }: Props) {
     void Promise.all([
       import("@/lib/cloud-chain-m-opening"),
       import("@/lib/cloud-day-cash-figure"),
-    ]).then(([{ refreshCloudChainMOpening }, { refreshCloudDayCashFigure }]) => {
-      if (!alive) return;
-      const ref = session.collectorRef!;
-      const day = todayIso();
-      void Promise.all([
-        refreshCloudChainMOpening(ref, day),
-        refreshCloudDayCashFigure(ref, day),
-      ]).then((rows) => {
-        if (alive && rows.some(Boolean)) setChainMOpeningEpoch((n) => n + 1);
-      });
-    });
+      import("@/lib/cloud-route-own-box"),
+      import("@/lib/cloud-digital-pool-balances"),
+      import("@/lib/collector-day-auto-close"),
+    ]).then(
+      ([
+        { refreshCloudChainMOpening },
+        { refreshCloudDayCashFigure },
+        { refreshCloudRouteOwnBox },
+        { refreshCloudDigitalPoolBalances },
+        { previousCalendarIso },
+      ]) => {
+        if (!alive) return;
+        const ref = session.collectorRef!;
+        const day = todayIso();
+        const yesterday = previousCalendarIso(day);
+        void Promise.all([
+          refreshCloudChainMOpening(ref, day),
+          refreshCloudDayCashFigure(ref, day),
+          refreshCloudRouteOwnBox(ref, day, "A"),
+          refreshCloudRouteOwnBox(ref, yesterday, "A"),
+          refreshCloudRouteOwnBox(ref, day, "N"),
+          refreshCloudRouteOwnBox(ref, yesterday, "N"),
+          refreshCloudDigitalPoolBalances(),
+        ]).then((rows) => {
+          if (alive && rows.some(Boolean)) setChainMOpeningEpoch((n) => n + 1);
+        });
+      },
+    );
     return () => {
       alive = false;
     };

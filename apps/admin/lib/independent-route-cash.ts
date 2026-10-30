@@ -21,6 +21,7 @@
 import { businessTodayIso } from "@/lib/business-timezone";
 import { mergeRouteCashAdjustments } from "@/lib/cash-adjustment";
 import { sameRoute } from "@/lib/client-route-order";
+import { getCloudRouteOwnBox } from "@/lib/cloud-route-own-box";
 import { assignmentRouteName } from "@/lib/collector-dispatch-sync";
 import {
   expensesForCollectorDay,
@@ -457,13 +458,21 @@ export function independentRouteDay(
     }
   }
   const sealedClosing = date < businessTodayIso() ? sealedRouteClosing(src, route, date) : null;
+  const localClosing =
+    sealedClosing ?? pesos(opening + today.efectivo - today.gastos - today.prestamos);
+  // Fase 3.3: día vivo — si la base contestó route_own_box, esa cifra manda.
+  // Días sellados siguen el CIE (historia sagrada).
+  const cloud =
+    sealedClosing == null ? getCloudRouteOwnBox(src.collectorRef, date, route) : null;
+  const closing =
+    cloud && Number.isFinite(cloud.saldo) ? pesos(cloud.saldo) : localClosing;
   return {
     ...today,
     route,
     date,
-    anchored: Boolean(anchor),
+    anchored: Boolean(anchor) || Boolean(cloud),
     opening,
-    closing: sealedClosing ?? pesos(opening + today.efectivo - today.gastos - today.prestamos),
+    closing,
     adjustment: findRouteCashAdjustment(src.dayCloses, src.collectorRef, date, route),
   };
 }

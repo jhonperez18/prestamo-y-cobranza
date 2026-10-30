@@ -32,6 +32,7 @@ import type { MiscPayment } from "@/lib/misc-payments";
 import { sameRoute } from "@/lib/client-route-order";
 import { addCalendarDaysIso } from "@/lib/colombia-holidays";
 import { BUSINESS_TIME_ZONE, businessTodayIso } from "@/lib/business-timezone";
+import { getCloudDigitalPoolBalances } from "@/lib/cloud-digital-pool-balances";
 import { listOrphanDisbursementOutflows } from "@/lib/restore-loans-from-bank-disbursements";
 import { mergeRouteCashAdjustments } from "@/lib/cash-adjustment";
 import {
@@ -189,6 +190,17 @@ export function latestDigitalPoolAnchor(
  * siguientes. `before` = calcular sin los ajustes de ese día (saldo «calculado»).
  */
 export function digitalPoolBalances(src: DigitalPoolSources, before?: string): DigitalPoolTotals {
+  // Fase 3.3: saldo vivo (sin `before`) = RPC de la base si ya contestó.
+  if (!before) {
+    const cloud = getCloudDigitalPoolBalances();
+    if (
+      cloud &&
+      Number.isFinite(cloud.banco) &&
+      Number.isFinite(cloud.nequi)
+    ) {
+      return { banco: pesos(cloud.banco), nequi: pesos(cloud.nequi) };
+    }
+  }
   const anchors: Record<DigitalPool, PoolAnchor | null> = {
     banco: latestDigitalPoolAnchor(src.dayCloses, "banco", before),
     nequi: latestDigitalPoolAnchor(src.dayCloses, "nequi", before),

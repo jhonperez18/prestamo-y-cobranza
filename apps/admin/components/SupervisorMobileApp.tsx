@@ -92,8 +92,10 @@ import { loadSupervisorHistoryPayments } from "@/lib/supervisor-book";
 import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
 import {
   useChainMOpening,
+  useDigitalPoolBalancesCloud,
   useNequiSaldo,
   useRouteAAnchor,
+  useRouteNAnchor,
   useSupervisorToday,
 } from "@/lib/use-supervisor-today";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
@@ -108,6 +110,7 @@ import {
   loanDisbursementSource,
 } from "@/lib/nequi-pool";
 import { dayDigitalLoanRows, digitalLoanPoolForRoute } from "@/lib/day-digital-loans";
+import { getCloudDigitalPoolBalances } from "@/lib/cloud-digital-pool-balances";
 import {
   BANCO_ROUTE_PINS,
   DIGITAL_POOL_LABEL,
@@ -1330,7 +1333,7 @@ const INFORME_A_ROUTE = "A";
 const NO_ROWS: never[] = [];
 
 /** Ayer ya cerrado en la base. Hoy se suma encima, sin rehacer el mes. */
-function routeAAnchorBook(date: string, saldo: number): RouteCashBook {
+function routeOwnAnchorBook(date: string, saldo: number): RouteCashBook {
   return new Map([
     [date, { date, opening: saldo, closing: saldo, efectivo: 0, gastos: 0, prestamos: 0 }],
   ]);
@@ -1594,7 +1597,18 @@ export function SupervisorMobileApp({
     }
     return [...refs];
   }, [assignedCoverage]);
+  const nCollectorRefs = useMemo(() => {
+    const refs = new Set<string>();
+    for (const route of assignedCoverage) {
+      if (!sameRoute(route.routeName, "N")) continue;
+      const ref = route.collector?.ref || route.collectorRef || "";
+      if (ref) refs.add(ref);
+    }
+    return [...refs];
+  }, [assignedCoverage]);
   const aAnchors = useRouteAAnchor(true, aCollectorRefs, today);
+  const nAnchors = useRouteNAnchor(true, nCollectorRefs, today);
+  const digitalPoolEpoch = useDigitalPoolBalancesCloud(true);
   const chainCollectorRefs = useMemo(() => {
     const refs = new Set<string>();
     for (const route of assignedCoverage) {
@@ -1605,6 +1619,7 @@ export function SupervisorMobileApp({
     return [...refs];
   }, [assignedCoverage]);
   const chainMOpeningEpoch = useChainMOpening(true, chainCollectorRefs, today);
+  void chainMOpeningEpoch;
 
   /** Libro de caja del día por cobrador: misma cifra que la app del cobrador, el cierre y el Historial. */
   const ledgerByCollector = useMemo(() => {
@@ -1776,10 +1791,14 @@ export function SupervisorMobileApp({
             ? routeLedger.m
             : null;
       // A / N: caja propia (Inicial = saldo real del último ajuste + arrastre).
-      const aAnchor = sameRoute(route.routeName, "A") ? aAnchors[collectorRef] : undefined;
-      const aBook =
-        aAnchor && aAnchor.date === previousCalendarIso(today)
-          ? routeAAnchorBook(aAnchor.date, aAnchor.saldo)
+      const ownAnchor = sameRoute(route.routeName, "A")
+        ? aAnchors[collectorRef]
+        : sameRoute(route.routeName, "N")
+          ? nAnchors[collectorRef]
+          : undefined;
+      const ownBook =
+        ownAnchor && ownAnchor.date === previousCalendarIso(today)
+          ? routeOwnAnchorBook(ownAnchor.date, ownAnchor.saldo)
           : undefined;
       const independentDay =
         collector && isIndependentSaldoRoute(route.routeName)
@@ -1799,7 +1818,7 @@ export function SupervisorMobileApp({
                 monthCloses,
               },
               route.routeName,
-              aBook,
+              ownBook,
             )
           : null;
       let gastosHoy = independentDay ? independentDay.gastos : chainDay ? chainDay.gastos : 0;
@@ -1971,6 +1990,7 @@ export function SupervisorMobileApp({
     loans,
     ledgerByCollector,
     aAnchors,
+    nAnchors,
   ]);
 
   const deviceStatuses = useDeviceStatuses();
@@ -2447,8 +2467,14 @@ export function SupervisorMobileApp({
     [miscPayments, bankAccounts, dayClosesLive, bancoHistoryFrom, today],
   );
   const bancoGastado = useMemo(() => digitalPoolGastosTotal(bancoGastos), [bancoGastos]);
-  /** Saldo de Banco = Ruta M + Ruta T + Ruta N − Gastos. */
-  const bancoSaldo = bancoAcumuladoRutas(bancoRouteCuadres) - bancoGastado;
+  /** Saldo de Banco: Fase 3.3 prefiere la base; si no, M+T+N − Gastos. */
+  const bancoSaldo = useMemo(() => {
+    const cloud = getCloudDigitalPoolBalances();
+    if (cloud && Number.isFinite(cloud.banco)) {
+      return Math.trunc(cloud.banco) - bancoGastado;
+    }
+    return bancoAcumuladoRutas(bancoRouteCuadres) - bancoGastado;
+  }, [bancoRouteCuadres, bancoGastado, digitalPoolEpoch]);
 
   /** INICIO pie: caja viva de T (ya trae M) + caja propia de N + Saldo de Banco. */
   const inicioTotalConT = useMemo(() => {
@@ -3208,12 +3234,16 @@ export function SupervisorMobileApp({
       planillaCashCloses,
       monthCloses,
     };
-    const anchor = sameRoute(openRoute.routeName, "A") ? aAnchors[openRoute.collectorRef] : undefined;
-    const aBook =
-      cajaHistoryDayIso === today && anchor && anchor.date === previousCalendarIso(today)
-        ? routeAAnchorBook(anchor.date, anchor.saldo)
+    const anchor = sameRoute(openRoute.routeName, "A")
+      ? aAnchors[openRoute.collectorRef]
+      : sameRoute(openRoute.routeName, "N")
+        ? nAnchors[openRoute.collectorRef]
         : undefined;
-    const day = independentRouteDay(src, openRoute.routeName, aBook);
+    const ownBook =
+      cajaHistoryDayIso === today && anchor && anchor.date === previousCalendarIso(today)
+        ? routeOwnAnchorBook(anchor.date, anchor.saldo)
+        : undefined;
+    const day = independentRouteDay(src, openRoute.routeName, ownBook);
     return {
       day,
       collected: independentRouteCollected(src, openRoute.routeName),
@@ -3232,6 +3262,7 @@ export function SupervisorMobileApp({
     planillaCashCloses,
     monthCloses,
     aAnchors,
+    nAnchors,
     today,
   ]);
 

@@ -30,7 +30,20 @@ SQL Editor → pegar el `.sql` → **Run** → Success → publicar app.
 | Cifras | `m_closing`, `day_final`; si hay CIE del día → `saldo` = CIE |
 | App | `/api/ops/day-cash-figure` → caché → `buildDayCashLedger` prefiere la base |
 
-## Después (3.3+)
+## Corte 3.3 — A/N y Banco/Nequi (**SQL listo · pegar → Run → release**)
 
-- A/N y Banco/Nequi como única fuente de pantalla
+**Migración:** `supabase/migrations/20261030240000_fase3_route_own_box_pools.sql`
+
+| Qué | Detalle |
+| --- | --- |
+| RPC | `route_own_box(collector, date, 'A'\|'N')`; wrappers `route_a_box` / `route_n_box` |
+| Cifra A/N | Ajuste `AJUSTE@A` / `AJUSTE@N` + efectivo − préstamos − gastos (GAS abierto incluido) |
+| RPC pools | `digital_pool_balances` (ya existía; app lo prefiere) |
+| App | `/api/ops/route-own-box`, `/api/ops/digital-pool-balances` → caché → `independentRouteDay` / `digitalPoolBalances` |
+| Escritura | **Ninguna** — no toca `cash_float` (Fase 4) |
+
+Sin red: sigue el libro local. Días sellados A/N: CIE manda (historia).
+
+## Después
+
 - Fase 4: sellar CIE por orden (el aparato deja de subir `cash_float`)
