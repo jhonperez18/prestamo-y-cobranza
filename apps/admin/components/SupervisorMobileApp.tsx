@@ -717,11 +717,18 @@ function PlanillaTable({
               grantedLoan && !collectingGranted && (row.loanRef === grantedLoan.ref || row.paidAmount <= 0)
                 ? grantedLoan
                 : null;
+            // Oferta Prestar solo si sigue abierta. «Préstamo hecho hoy» deja
+            // awaitingLoan=true en la fila, pero ya no es oferta (cobrador la saca).
+            const openPrestar =
+              Boolean(row.awaitingLoan) &&
+              !grantedLoan &&
+              row.visitStatus !== "omitido" &&
+              row.visitStatus !== "cobrado";
             const rowClass = [
               routeStarts[index] ? "is-route-start" : "",
               grantedHere ? "is-reloan" : "",
               row.reloan.renewed ? "is-renewed" : "",
-              row.awaitingLoan ? "is-awaiting-loan" : "",
+              openPrestar ? "is-awaiting-loan" : "",
             ]
               .filter(Boolean)
               .join(" ");
@@ -732,8 +739,14 @@ function PlanillaTable({
                   {row.clientName}
                 </td>
                 <td className="is-num">
-                  {row.awaitingLoan ? (
+                  {openPrestar ? (
                     "—"
+                  ) : grantedHere ? (
+                    <span className="supervisor-planilla-saldo-new">
+                      {money(Number(grantedHere.balance) || Number(grantedHere.capital) || 0, {
+                        symbol: false,
+                      })}
+                    </span>
                   ) : row.reloan.canReloan ? (
                     <span
                       className="supervisor-planilla-saldo-fin"
@@ -742,16 +755,12 @@ function PlanillaTable({
                       <span className="supervisor-termino-tag">Fin</span>
                       <b>{money(row.saldo, { symbol: false })}</b>
                     </span>
-                  ) : grantedHere ? (
-                    <span className="supervisor-planilla-saldo-new">
-                      {money(row.saldo, { symbol: false })}
-                    </span>
                   ) : (
                     money(row.saldo, { symbol: false })
                   )}
                 </td>
                 <td className="is-metodo">
-                  {grantedHere && !row.awaitingLoan && row.paidAmount <= 0 ? (
+                  {grantedHere && row.paidAmount <= 0 ? (
                     <em className="supervisor-planilla-method is-pay-prestamo" title="Préstamo nuevo">
                       P
                     </em>
@@ -772,7 +781,7 @@ function PlanillaTable({
                   )}
                 </td>
                 <td className="is-cuotas">
-                  {row.awaitingLoan ? (
+                  {openPrestar || (grantedHere && row.awaitingLoan) ? (
                     "—"
                   ) : row.reloan.renewed ? (
                     <CuotasProgressCell
@@ -788,7 +797,7 @@ function PlanillaTable({
                   )}
                 </td>
                 <td className="is-estado">
-                  {row.awaitingLoan ? (
+                  {openPrestar ? (
                     onReloan ? (
                       <button
                         type="button"
