@@ -62,11 +62,13 @@ import {
   applyDayCloseRecordsToAssignments,
   appendCashDisbursementExpense,
   buildMonthCloseRecord,
+  upsertAndTrimCollectorDayClose,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
 import { sealCollectorDay } from "@/lib/collector-day-close-seal";
+import { planillaCashCloseAsDayClose } from "@/lib/planilla-cash-chain";
 import { releaseClosedDaysOnDevice } from "@/lib/collector-device-release";
 import { BIG_DEMO_STORE_CHANGED_EVENT } from "@/lib/big-demo-store";
 import { commitDayExpenseDraft, dayExpenseSavedMessage } from "@/lib/commit-day-expense";
@@ -829,12 +831,17 @@ export function CollectorShell({ session, onLogout }: Props) {
     if (sealed.sealedLinks.length) {
       setPlanillaCashCloses(sealed.planillaCashCloses);
       writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, sealed.planillaCashCloses);
+      for (const link of sealed.sealedLinks) {
+        queueDayCloseMirror(planillaCashCloseAsDayClose(link));
+      }
     }
 
+    let closesForUi = nextCloses;
     if (record) {
-      writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, nextCloses);
-      setDayCloses(nextCloses);
-      queueDayCloseMirror(record);
+      writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, closesForUi);
+      setDayCloses(closesForUi);
+      // Fase 4.1: el CIE lo escribe seal_day_close (cash_float de la base).
+      // No encolar el float del aparato hasta fallar la orden.
 
       const nextDrafts = sealed.dayExpenseDrafts;
       writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
@@ -843,7 +850,7 @@ export function CollectorShell({ session, onLogout }: Props) {
 
     const closedAssignments = applyDayCloseRecordsToAssignments(
       result.assignments,
-      nextCloses,
+      closesForUi,
     );
     setDailyAssignments(closedAssignments);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, closedAssignments);
@@ -859,11 +866,56 @@ export function CollectorShell({ session, onLogout }: Props) {
       assignments: closedAssignments,
     });
     try {
-      // Encolar primero, luego flush (con un reintento): el cierre debe salir a la nube.
       await flushOpsMirrorQueues();
       await flushOpsMirrorQueues();
     } catch {
       /* cola offline reintenta */
+    }
+
+    // Fase 4.1: orden al servidor. Si hay red, el saldo del CIE manda la base.
+    const closeKey = `close|${payload.collectorRef}|${payload.date}|${payload.planillaRoute || "*"}`;
+    let serverSealed = false;
+    try {
+      const res = await fetch("/api/ops/close-sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          collectorRef: payload.collectorRef,
+          date: payload.date,
+          route: payload.planillaRoute,
+          routeRef: payload.routeRef,
+          key: closeKey,
+          by: payload.collectorName || payload.collectorRef,
+        }),
+      });
+      const body = (await res.json()) as {
+        ok?: boolean;
+        cashFloat?: number | null;
+        cieRef?: string | null;
+      };
+      if (res.ok && body.ok === true) {
+        serverSealed = true;
+        if (record && body.cashFloat != null && Number.isFinite(Number(body.cashFloat))) {
+          const adopted: CollectorDayCloseRecord = {
+            ...record,
+            ref: body.cieRef || record.ref,
+            cashFloat: Math.trunc(Number(body.cashFloat)),
+          };
+          closesForUi = upsertAndTrimCollectorDayClose(closesForUi, adopted);
+          writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, closesForUi);
+          setDayCloses(closesForUi);
+        }
+      }
+    } catch (error) {
+      console.error("close-sheet", error);
+    }
+    if (record && !serverSealed) {
+      queueDayCloseMirror(record);
+      try {
+        await flushOpsMirrorQueues();
+      } catch {
+        /* cola offline */
+      }
     }
     setDailyLogs(result.logs);
 
@@ -892,15 +944,18 @@ export function CollectorShell({ session, onLogout }: Props) {
       window.dispatchEvent(new CustomEvent(BIG_DEMO_STORE_CHANGED_EVENT));
     }
 
+    const sealedCie =
+      (record && closesForUi.find((row) => row.ref === record.ref)) || record;
     const parts = [
-      record ? `saldo final ${money(record.cashFloat)}` : null,
-      record && record.expensesTotal > 0
-        ? `gastos ${money(record.expensesTotal)} (Haber)`
+      sealedCie ? `saldo final ${money(sealedCie.cashFloat)}` : null,
+      sealedCie && sealedCie.expensesTotal > 0
+        ? `gastos ${money(sealedCie.expensesTotal)} (Haber)`
         : null,
       formatCloseDayAlertSummary(alertResult.alerted, alertResult.toMora),
-      !accounts.length && record && record.expensesTotal > 0
+      !accounts.length && sealedCie && sealedCie.expensesTotal > 0
         ? "sin cuenta banco: gastos quedan en cierre"
         : null,
+      serverSealed ? "saldo de la base" : null,
     ].filter(Boolean);
     showToast(`Día cerrado · ${parts.join(" · ")}.`);
     return true;

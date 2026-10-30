@@ -1,7 +1,6 @@
 # Fase 3 Saldos — dueño en la base
 
-**Estado oficial:** PENDIENTE (`.cursor/rules/fases-dueno-dato.mdc`).  
-No vender cerrada hasta caja M/T, Inicial, A/N y Banco/Nequi lean de la base.
+**Estado oficial:** lectura **en prod** (3.1–3.3). La escritura del CIE es Fase 4.
 
 ## Corte 3.1 — Inicial M (**en prod** · build `efd99c0`)
 
