@@ -20,7 +20,7 @@ App: `/api/ops/chain-m-opening` → caché `cloud-chain-m-opening` → `openingC
 
 SQL Editor → pegar el `.sql` → **Run** → Success → publicar app.
 
-## Corte 3.2 — caja viva M / dayFinal (**pegar SQL**)
+## Corte 3.2 — caja viva M / dayFinal (**en prod** · build `06cc209`)
 
 **Migración:** `supabase/migrations/20261030234500_fase3_day_cash_figure_ready.sql`
 
