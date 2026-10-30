@@ -30,7 +30,7 @@ SQL Editor → pegar el `.sql` → **Run** → Success → publicar app.
 | Cifras | `m_closing`, `day_final`; si hay CIE del día → `saldo` = CIE |
 | App | `/api/ops/day-cash-figure` → caché → `buildDayCashLedger` prefiere la base |
 
-## Corte 3.3 — A/N y Banco/Nequi (**SQL listo · pegar → Run → release**)
+## Corte 3.3 — A/N y Banco/Nequi (**en prod** · build `c7d378e`)
 
 **Migración:** `supabase/migrations/20261030240000_fase3_route_own_box_pools.sql`
 
