@@ -2837,7 +2837,7 @@ export function CollectorMobileApp({
               // Solo renovación hecha HOY (misma regla que el supervisor). Renovaciones
               // viejas con cobro de cuota no pintan otra vez «Renovado».
               const renewedToday =
-                Boolean(payLoan) &&
+                payLoan != null &&
                 isCashlessRenewal(payLoan) &&
                 loanDisbursementIsoDate(payLoan) === activeDate;
               const renewalBeside =
