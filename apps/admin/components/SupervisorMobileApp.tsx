@@ -89,7 +89,6 @@ import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import { loadSupervisorHistoryPayments } from "@/lib/supervisor-book";
-import { useRouteSheet } from "@/lib/use-route-sheet";
 import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
 import { useNequiSaldo, useRouteAAnchor, useSupervisorToday } from "@/lib/use-supervisor-today";
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
@@ -1331,43 +1330,67 @@ export function SupervisorMobileApp({
   /** Regla: al ingresar siempre INICIO (no restaurar otra pestaña). */
   const [view, setView] = useState<SupervisorView>("inicio");
   const supervisorDirect = isSupervisorLiveDevice();
-  const routeSheet = useRouteSheet(
-    view === "clientes" || view === "prestamos" || view === "planilla" || view === "informe",
-  );
-  const sheetClients = routeSheet.sheet?.clients ?? null;
-  const sheetLoans = routeSheet.sheet?.loans ?? null;
   const serverToday = useSupervisorToday(supervisorDirect, today);
   const nequiBase = useNequiSaldo(true);
   const serverDay = serverToday.data?.date === today ? serverToday.data : null;
-  // Misma mezcla de siempre. Sin esto cada botón arma listas nuevas y rehace la caja.
-  const paymentsLive = useMemo(
-    () =>
-      serverDay
-        ? [
-            ...payments.filter((row) => String(row.paidDate || "").slice(0, 10) !== today),
-            ...serverDay.payments,
-          ]
-        : payments,
-    [serverDay, payments, today],
-  );
-  const dayClosesLive = useMemo(
-    () => (serverDay ? serverDay.dayCloses : dayCloses),
-    [serverDay, dayCloses],
-  );
-  const expensesLive = useMemo(
-    () =>
-      serverDay
-        ? [...dayExpenseDrafts.filter((row) => row.date !== today), ...serverDay.expenses]
-        : dayExpenseDrafts,
-    [serverDay, dayExpenseDrafts, today],
-  );
-  const assignmentsLive = useMemo(
-    () =>
-      serverDay
-        ? [...assignments.filter((row) => row.dispatchDate !== today), ...serverDay.assignments]
-        : assignments,
-    [serverDay, assignments, today],
-  );
+  // Hoy junta la bajada del servidor con lo que la sync ya trajo después.
+  // La lista vieja no borra un cobro nuevo, ni el celular esconde uno que ya está en la base.
+  const paymentsLive = useMemo(() => {
+    if (!serverDay) return payments;
+    const older = payments.filter(
+      (row) => (normalizeHistoryDate(row.paidDate || "") || "") !== today,
+    );
+    const byRef = new Map<string, (typeof payments)[number]>();
+    for (const row of payments) {
+      if (!row.ref || (normalizeHistoryDate(row.paidDate || "") || "") !== today) continue;
+      byRef.set(row.ref, row);
+    }
+    for (const row of serverDay.payments) {
+      if (!row.ref) continue;
+      byRef.set(row.ref, row);
+    }
+    return [...older, ...byRef.values()];
+  }, [serverDay, payments, today]);
+  const dayClosesLive = useMemo(() => {
+    if (!serverDay) return dayCloses;
+    const byRef = new Map<string, (typeof dayCloses)[number]>();
+    for (const row of dayCloses) {
+      if (row.ref) byRef.set(row.ref, row);
+    }
+    for (const row of serverDay.dayCloses) {
+      if (row.ref) byRef.set(row.ref, row);
+    }
+    return [...byRef.values()];
+  }, [serverDay, dayCloses]);
+  const expensesLive = useMemo(() => {
+    if (!serverDay) return dayExpenseDrafts;
+    const older = dayExpenseDrafts.filter((row) => row.date !== today);
+    const byRef = new Map<string, (typeof dayExpenseDrafts)[number]>();
+    for (const row of dayExpenseDrafts) {
+      if (!row.ref || row.date !== today) continue;
+      byRef.set(row.ref, row);
+    }
+    for (const row of serverDay.expenses) {
+      if (!row.ref) continue;
+      byRef.set(row.ref, row);
+    }
+    return [...older, ...byRef.values()];
+  }, [serverDay, dayExpenseDrafts, today]);
+  const assignmentsLive = useMemo(() => {
+    if (!serverDay) return assignments;
+    const older = assignments.filter((row) => row.dispatchDate !== today);
+    const byKey = new Map<string, (typeof assignments)[number]>();
+    for (const row of assignments) {
+      if (row.dispatchDate !== today || !row.itemId) continue;
+      byKey.set(`${row.dispatchDate}::${row.itemId}`, row);
+    }
+    for (const row of serverDay.assignments) {
+      if (!row.itemId) continue;
+      const date = row.dispatchDate || today;
+      byKey.set(`${date}::${row.itemId}`, row);
+    }
+    return [...older, ...byKey.values()];
+  }, [serverDay, assignments, today]);
   const [openRouteRef, setOpenRouteRef] = useState<string | null>(null);
   /** Cliente que terminó hoy con el formulario «Préstamo» abierto (Caja → ruta → planilla). */
   const [reloanClientRef, setReloanClientRef] = useState<string | null>(null);
@@ -2529,7 +2552,7 @@ export function SupervisorMobileApp({
       const position =
         client?.routeOrder && client.routeOrder > 0 ? client.routeOrder : index + 1;
       return {
-        ...enrichSupervisorPlanillaRow(row, position, sheetLoans ?? loans, payments, today),
+        ...enrichSupervisorPlanillaRow(row, position, loans, paymentsLive, today),
         route: assignmentRouteName(row, clients),
         clientRef: row.clientRef,
         loanRef: row.loanRef ?? "",
@@ -2537,7 +2560,7 @@ export function SupervisorMobileApp({
           clientRef: row.clientRef,
           loanRef: row.loanRef,
           loans,
-          payments,
+          payments: paymentsLive,
           date: today,
         }),
       };
@@ -3840,14 +3863,13 @@ export function SupervisorMobileApp({
   }, [clients, todayAssignments, planillaRouteFilter, routes]);
 
   const supervisorClientRows = useMemo(() => {
-    // Solo al abrir Clientes. La hoja es la ficha del sistema, no la copia del aparato.
-    if (view !== "clientes" || !sheetClients || !sheetLoans) return [];
+    if (view !== "clientes") return [];
     const base = clientesRouteFilter
-      ? clientsOnRouteSorted(sheetClients, clientesRouteFilter).filter(isOperationalClient)
-      : sheetClients.filter(isOperationalClient).slice().sort(compareClientsByRoutePosition);
+      ? clientsOnRouteSorted(clients, clientesRouteFilter).filter(isOperationalClient)
+      : clients.filter(isOperationalClient).slice().sort(compareClientsByRoutePosition);
 
     return base.map((row) => {
-      const loan = currentActiveLoan(row.ref, sheetLoans, payments);
+      const loan = currentActiveLoan(row.ref, loans, paymentsLive);
       const cuotas = computeLoanCuotasProgress(loan, [], today);
       return {
         ref: row.ref,
@@ -3861,7 +3883,7 @@ export function SupervisorMobileApp({
         renewAlert: canRenewLoan(loan, today),
       };
     });
-  }, [clientesRouteFilter, payments, sheetClients, sheetLoans, today, view]);
+  }, [clientesRouteFilter, clients, loans, paymentsLive, today, view]);
 
   const clientesSearchActive = clientesModifyMode || clientesSearchOpen;
   const clientesModifyRows = useMemo(() => {
@@ -3888,15 +3910,15 @@ export function SupervisorMobileApp({
   );
 
   const clientesLoanClient =
-    (sheetClients ?? clients).find((row) => row.ref === clientesLoanClientRef) ?? null;
+    clients.find((row) => row.ref === clientesLoanClientRef) ?? null;
   const clientesLoanSynced = clientesLoanClient
-    ? currentActiveLoan(clientesLoanClient.ref, sheetLoans ?? loans, payments)
+    ? currentActiveLoan(clientesLoanClient.ref, loans, paymentsLive)
     : null;
   const openSheetLoanRef =
     view === "prestamos" ? prestamoFichaRef || "" : clientesLoanSynced?.ref || "";
   const openSheetFicha = useLoanFichaBook(openSheetLoanRef);
   const clientesPreviousLoan = clientesLoanClient
-    ? previousLoanForClient(clientesLoanClient.ref, sheetLoans ?? loans, payments)
+    ? previousLoanForClient(clientesLoanClient.ref, loans, paymentsLive)
     : null;
   const clientesCurrentPdfReport = useMemo(() => {
     if (!clientesLoanSynced || !clientesLoanClient) return null;
@@ -5243,12 +5265,6 @@ export function SupervisorMobileApp({
               ) : null}
               {openAssignments.length === 0 ? (
                 <p className="ficha-empty">Sin planilla enviada hoy.</p>
-              ) : routeSheet.status !== "ready" || !sheetLoans ? (
-                <p className="ficha-empty">
-                  {routeSheet.status === "error"
-                    ? "No se pudo cargar la hoja del sistema."
-                    : "Cargando la hoja del sistema…"}
-                </p>
               ) : (
                 <PlanillaTable
                   rows={planillaTableRows(openAssignments)}
@@ -5329,12 +5345,6 @@ export function SupervisorMobileApp({
           </div>
           {planillaAssignments.length === 0 ? (
             <p className="ficha-empty">No hay cobros en planilla hoy.</p>
-          ) : routeSheet.status !== "ready" || !sheetLoans ? (
-            <p className="ficha-empty">
-              {routeSheet.status === "error"
-                ? "No se pudo cargar la hoja del sistema."
-                : "Cargando la hoja del sistema…"}
-            </p>
           ) : (
             <PlanillaTable rows={planillaTableRows(planillaAssignments)} />
           )}
@@ -5415,17 +5425,11 @@ export function SupervisorMobileApp({
             </div>
           ) : null}
           {!historialOpen || openInformeSnapshot ? (
-            !historialOpen && (!sheetLoans || !sheetClients) ? (
-            <p className="ficha-empty">
-              {routeSheet.status === "error"
-                ? "No se pudo cargar la cartera."
-                : "Cargando la cartera…"}
-            </p>
-          ) : informeTab === "general" ? (
+            informeTab === "general" ? (
             <SupervisorMonthlyReport
-              loans={sheetLoans ?? loans}
-              clients={sheetClients ?? clients}
-              payments={payments}
+              loans={loans}
+              clients={clients}
+              payments={paymentsLive}
               efectivo={informeEfectivo}
               banco={bancoSaldo}
               history={informeHistory}
@@ -5436,9 +5440,9 @@ export function SupervisorMobileApp({
           ) : (
             <SupervisorOwnRouteReport
               route={INFORME_A_ROUTE}
-              loans={sheetLoans ?? loans}
-              clients={sheetClients ?? clients}
-              payments={payments}
+              loans={loans}
+              clients={clients}
+              payments={paymentsLive}
               efectivo={informeAEfectivo}
               nequi={nequiSaldoShown ?? 0}
               corteLabel={todayDisplay}
@@ -6609,15 +6613,11 @@ export function SupervisorMobileApp({
               ) : null}
               {clientesListRows.length === 0 ? (
                 <p className="ficha-empty">
-                  {routeSheet.status === "loading"
-                    ? "Cargando la hoja del sistema…"
-                    : routeSheet.status === "error"
-                      ? "No se pudo cargar la hoja del sistema."
-                      : clientesSearchActive && clientesEditSearch.trim()
-                        ? "No hay clientes con ese filtro."
-                        : clientesRouteFilter
-                          ? `No hay clientes en la ruta ${clientesRouteFilter}.`
-                          : "No hay clientes activos."}
+                  {clientesSearchActive && clientesEditSearch.trim()
+                    ? "No hay clientes con ese filtro."
+                    : clientesRouteFilter
+                      ? `No hay clientes en la ruta ${clientesRouteFilter}.`
+                      : "No hay clientes activos."}
                 </p>
               ) : (
                 <ClientesTable
