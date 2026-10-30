@@ -157,6 +157,7 @@ import {
   digitalLoanPoolLabel,
 } from "@/lib/day-digital-loans";
 import {
+  isCashlessRenewal,
   loanDisbursementSource,
   loanDisbursementSourceLabel,
   type LoanDisbursementSource,
@@ -298,14 +299,7 @@ function DayLoanListRow({
           <strong>{clientName}</strong>
         </div>
         <span className="is-done-loan">
-          {renewal ? (
-            <span
-              className="collector-reloan-tag is-renewal"
-              title={`Renovado ${loan.ref} · debía ${money(loan.capital)} + 20 % · sin plata`}
-            >
-              Renovado
-            </span>
-          ) : (
+          {renewal ? null : (
             <span
               className="collector-reloan-tag"
               title={`Préstamo ${loan.ref} · capital ${money(loan.capital)} · ${loanDisbursementSourceLabel(source)}`}
@@ -1696,6 +1690,28 @@ export function CollectorMobileApp({
     }
     return dayPlanillaLoansWithoutPayment(activeDate, newClientRoute, loans, clients, paid);
   }, [recaudoOnlyBanco, recaudoRows, loans, clients, activeDate, newClientRoute]);
+  /** Renovado va junto al primer cobro de esa cuota; si aún no cobró, queda al final. */
+  const renewalByLoanRef = useMemo(() => {
+    const map = new Map<string, (typeof unpaidDayLoans)[number]>();
+    for (const row of unpaidDayLoans) {
+      if (row.renewal) map.set(row.loan.ref, row);
+    }
+    return map;
+  }, [unpaidDayLoans]);
+  const paidLoanRefsToday = useMemo(() => {
+    const refs = new Set<string>();
+    for (const pay of recaudoRows) {
+      if (pay.loanRef) refs.add(pay.loanRef);
+    }
+    return refs;
+  }, [recaudoRows]);
+  const trailingDayLoans = useMemo(
+    () =>
+      unpaidDayLoans.filter(
+        (row) => !row.renewal || !paidLoanRefsToday.has(row.loan.ref),
+      ),
+    [unpaidDayLoans, paidLoanRefsToday],
+  );
   /** Último cobro del día por crédito: debajo va la fila del préstamo nuevo (cobro ≠ préstamo). */
   const lastPayRefByLoan = useMemo(() => {
     const last = new Map<string, string>();
@@ -1703,6 +1719,14 @@ export function CollectorMobileApp({
       if (pay.loanRef) last.set(pay.loanRef, pay.ref);
     }
     return last;
+  }, [recaudoRows]);
+  /** Primer cobro del día por crédito renovado: encima va «Renovado». */
+  const firstPayRefByLoan = useMemo(() => {
+    const first = new Map<string, string>();
+    for (const pay of recaudoRows) {
+      if (pay.loanRef && !first.has(pay.loanRef)) first.set(pay.loanRef, pay.ref);
+    }
+    return first;
   }, [recaudoRows]);
   const doneRouteStarts = routeBlockStarts(recaudoRows, (pay) => {
     const loan = loans.find((row) => row.ref === pay.loanRef);
@@ -2794,7 +2818,8 @@ export function CollectorMobileApp({
               {recaudoOnlyBanco ? "Aún no hay cobros en Banco hoy." : "Aún no hay cobros del día."}
             </li>
           ) : (
-            recaudoRows.map((pay, index) => {
+            <>
+            {recaudoRows.map((pay, index) => {
               const method = paymentDisplayMethod(pay, loans, clients);
               const payLoan = loans.find((row) => row.ref === pay.loanRef);
               const reloan = reloanStateForVisit({
@@ -2808,9 +2833,25 @@ export function CollectorMobileApp({
                 !pay.loanRef || reloanAnchorByLoan.get(pay.loanRef) === pay.ref;
               // Recaudo informa Fin; prestar solo en la hoja de ruta (chulitos).
               const showFin = isReloanAnchor && reloan.canReloan;
+              const renewalLoan =
+                payLoan &&
+                (isCashlessRenewal(payLoan) || renewalByLoanRef.has(String(pay.loanRef || "")))
+                  ? payLoan
+                  : null;
+              const renewalBeside =
+                !recaudoOnlyBanco &&
+                pay.loanRef &&
+                firstPayRefByLoan.get(pay.loanRef) === pay.ref &&
+                renewalLoan
+                  ? renewalByLoanRef.get(pay.loanRef) ?? {
+                      loan: renewalLoan,
+                      clientName: payerName(pay, loans, clients),
+                      source: loanDisbursementSource(renewalLoan),
+                      renewal: true as const,
+                    }
+                  : null;
               const payRow = (
                 <li
-                  key={pay.ref}
                   className={[
                     "collector-mobile-card",
                     "is-done",
@@ -2866,30 +2907,39 @@ export function CollectorMobileApp({
                 reloan.granted && !recaudoOnlyBanco && lastPayRefByLoan.get(pay.loanRef ?? "") === pay.ref
                   ? reloan.granted
                   : null;
-              return grantedRow ? (
+              return (
                 <Fragment key={pay.ref}>
+                  {renewalBeside ? (
+                    <DayLoanListRow
+                      loan={renewalBeside.loan}
+                      clientName={renewalBeside.clientName}
+                      source={renewalBeside.source}
+                      renewal
+                    />
+                  ) : null}
                   {payRow}
-                  <DayLoanListRow
-                    loan={grantedRow}
-                    clientName={payerName(pay, loans, clients)}
-                    source={loanDisbursementSource(grantedRow)}
-                    renewal={false}
-                  />
+                  {grantedRow ? (
+                    <DayLoanListRow
+                      loan={grantedRow}
+                      clientName={payerName(pay, loans, clients)}
+                      source={loanDisbursementSource(grantedRow)}
+                      renewal={false}
+                    />
+                  ) : null}
                 </Fragment>
-              ) : (
-                payRow
               );
-            })
+            })}
+            {trailingDayLoans.map(({ loan, clientName, source, renewal }) => (
+              <DayLoanListRow
+                key={`loan-${loan.ref}`}
+                loan={loan}
+                clientName={clientName}
+                source={source}
+                renewal={renewal}
+              />
+            ))}
+            </>
           )}
-          {unpaidDayLoans.map(({ loan, clientName, source, renewal }) => (
-            <DayLoanListRow
-              key={`loan-${loan.ref}`}
-              loan={loan}
-              clientName={clientName}
-              source={source}
-              renewal={renewal}
-            />
-          ))}
         </ul>
       ) : null}
 

@@ -17218,7 +17218,7 @@
       border-top: 4px solid var(--bar-bg) !important;
     }
 
-    /* Terminó hoy: recaudo muestra «Fin». Prestar vive en la hoja de ruta. */
+    /* Terminó hoy: recaudo / saldo muestran «Fin». Prestar vive en la hoja de ruta. */
     .collector-termino-tag,
     .supervisor-termino-tag {
       display: inline-flex;
@@ -17236,6 +17236,17 @@
     }
     .collector-termino-tag {
       margin: 0 auto;
+    }
+    /* Planilla: Fin antes del saldo 0; el cobro queda en la columna Estado. */
+    .supervisor-planilla-saldo-fin {
+      display: inline-flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 6px;
+      flex-wrap: nowrap;
+    }
+    .supervisor-planilla-saldo-fin > b {
+      font-weight: 700;
     }
     /* Prestar (ruta) / préstamo ya entregado → azul. */
     .collector-reloan-btn,

@@ -734,6 +734,14 @@ function PlanillaTable({
                 <td className="is-num">
                   {row.awaitingLoan ? (
                     "—"
+                  ) : row.reloan.canReloan ? (
+                    <span
+                      className="supervisor-planilla-saldo-fin"
+                      title="Terminó su crédito · prestar en la fila Prestar"
+                    >
+                      <span className="supervisor-termino-tag">Fin</span>
+                      <b>{money(row.saldo, { symbol: false })}</b>
+                    </span>
                   ) : grantedHere ? (
                     <span className="supervisor-planilla-saldo-new">
                       {money(row.saldo, { symbol: false })}
@@ -764,7 +772,20 @@ function PlanillaTable({
                   )}
                 </td>
                 <td className="is-cuotas">
-                  {row.awaitingLoan ? "—" : <CuotasProgressCell progress={cuotas} />}
+                  {row.awaitingLoan ? (
+                    "—"
+                  ) : row.reloan.renewed ? (
+                    <CuotasProgressCell
+                      progress={{
+                        label: "0/0",
+                        intensity: 0,
+                        title: "Renovado hoy · al día (sin mora)",
+                        expected: 1,
+                      }}
+                    />
+                  ) : (
+                    <CuotasProgressCell progress={cuotas} />
+                  )}
                 </td>
                 <td className="is-estado">
                   {row.awaitingLoan ? (
@@ -783,13 +804,6 @@ function PlanillaTable({
                         Prestar
                       </span>
                     )
-                  ) : row.reloan.canReloan ? (
-                    <span
-                      className="supervisor-termino-tag"
-                      title="Terminó su crédito · prestar en la fila Prestar"
-                    >
-                      Fin
-                    </span>
                   ) : grantedHere ? (
                     <em
                       className="supervisor-planilla-method is-pay-prestamo"
@@ -802,7 +816,7 @@ function PlanillaTable({
                       className="supervisor-reloan-tag is-renewal"
                       title={`Renovado ${row.reloan.renewed.ref} · debía ${money(row.reloan.renewed.capital)} + 20 % · sin plata`}
                     >
-                      Renovado {money(row.reloan.renewed.capital, { symbol: false })}
+                      {money(row.reloan.renewed.capital, { symbol: false })}
                     </span>
                   ) : (
                     <span
@@ -832,10 +846,10 @@ function PlanillaTable({
                               ? paidThousandsLabel(row.paidAmount)
                               : visitStatusLabelShort(row.visitStatus)
                           }
-                      kind={visitStatusKind(row.visitStatus)}
-                    />
+                          kind={visitStatusKind(row.visitStatus)}
+                        />
                       )}
-                  </span>
+                    </span>
                   )}
                 </td>
               </tr>
