@@ -262,6 +262,42 @@ export function informeOwnRouteHistory(
   return out;
 }
 
+/**
+ * El botón Préstamo es la suma de sus renglones. Cada día también.
+ * Si no cuadra, no hay un total sin nombre.
+ */
+export function prestamoListIsTheTotal(
+  bucket: { total: number; days: readonly { date: string; total: number }[]; lines?: readonly InformePrestamoLine[] },
+  routes: readonly string[] | null,
+): boolean {
+  const lines = bucket.lines;
+  if (!lines) return false;
+  const byDate = new Map<string, Record<string, number>>();
+  let sum = 0;
+  for (const line of lines) {
+    const capital = pesos(line.capital);
+    sum += capital;
+    if (routes && !routes.includes(line.route)) return false;
+    const day = byDate.get(line.date) ?? {};
+    day[line.route] = (day[line.route] ?? 0) + capital;
+    byDate.set(line.date, day);
+  }
+  if (sum !== pesos(bucket.total) || byDate.size !== bucket.days.length) return false;
+  for (const day of bucket.days) {
+    const got = byDate.get(day.date);
+    if (!got) return false;
+    const cells = day as { date: string; total: number } & Record<string, number>;
+    if (routes) {
+      for (const route of routes) {
+        if ((got[route] ?? 0) !== pesos(cells[route] ?? 0)) return false;
+      }
+    }
+    const daySum = Object.values(got).reduce((part, value) => part + value, 0);
+    if (pesos(daySum) !== pesos(day.total)) return false;
+  }
+  return true;
+}
+
 function isPrestamoLine(row: unknown): row is InformePrestamoLine {
   if (!row || typeof row !== "object") return false;
   const line = row as Partial<InformePrestamoLine>;
@@ -300,5 +336,9 @@ export function readSupervisorInformePayload(
     return null;
   }
   if (!general.prestamo?.lines || !angelica.prestamo?.lines) return null;
-  return { general: general as InformeHistory, angelica: angelica as InformeRouteHistory };
+  const generalHistory = general as InformeHistory;
+  const angelicaHistory = angelica as InformeRouteHistory;
+  if (!prestamoListIsTheTotal(generalHistory.prestamo, INFORME_HISTORY_ROUTES)) return null;
+  if (!prestamoListIsTheTotal(angelicaHistory.prestamo, null)) return null;
+  return { general: generalHistory, angelica: angelicaHistory };
 }

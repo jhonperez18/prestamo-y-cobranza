@@ -1,7 +1,8 @@
 /**
  * Informe del mes, leído en el servidor con las mismas funciones de la pantalla.
  * Préstamos completos: un cobro de octubre puede ser de un préstamo anterior.
- * Solo lectura. No escribe. El botón Préstamo es la suma de esas fichas, cada una con su referencia.
+ * Solo lectura. No escribe. El botón Préstamo es la suma de esas fichas.
+ * Si la lista no suma el botón, no contesta: no hay un total sin nombre.
  */
 import { sameRoute } from "@/lib/client-route-order";
 import type { CollectorDayCloseRecord, CollectorDayExpenseDraft } from "@/lib/collector-day-close";
@@ -9,6 +10,8 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
   informeOwnRouteHistory,
   informeRouteHistory,
+  prestamoListIsTheTotal,
+  INFORME_HISTORY_ROUTES,
   type InformeHistory,
   type InformeRouteHistory,
 } from "@/lib/informe-route-days";
@@ -248,11 +251,10 @@ export async function loadSupervisorInforme(from: string, to: string): Promise<S
     monthCloses: [] as [],
   };
 
-  return {
-    ok: true,
-    from,
-    to,
-    general: informeRouteHistory(src, collectorRefs, from, to),
-    angelica: informeOwnRouteHistory(src, angelicaRefs, ROUTE_A, from, to),
-  };
+  const general = informeRouteHistory(src, collectorRefs, from, to);
+  const angelica = informeOwnRouteHistory(src, angelicaRefs, ROUTE_A, from, to);
+  if (!prestamoListIsTheTotal(general.prestamo, INFORME_HISTORY_ROUTES)) return fail("prestamo_list_mismatch");
+  if (!prestamoListIsTheTotal(angelica.prestamo, null)) return fail("prestamo_list_mismatch");
+
+  return { ok: true, from, to, general, angelica };
 }
