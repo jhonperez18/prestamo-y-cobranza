@@ -3,7 +3,7 @@
 **Estado oficial:** PENDIENTE (`.cursor/rules/fases-dueno-dato.mdc`).  
 No vender cerrada hasta que el aparato **deje de subir** `cash_float`.
 
-## Corte 4.1 — orden `close-sheet` + `seal_day_close` (**SQL listo · pegar → Run → release**)
+## Corte 4.1 — orden `close-sheet` + `seal_day_close` (**en prod** · build `4c71d21`)
 
 **Migración:** `supabase/migrations/20261030250000_fase4_seal_day_close.sql`
 
