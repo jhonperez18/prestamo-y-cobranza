@@ -1300,3 +1300,15 @@ export async function mergePaymentsWindowIntoDemo(fromDate: string, toDate = fro
     return day >= fromDate && day <= toDate;
   });
 }
+
+/**
+ * El corte incremental no vuelve atrás. Un cobro de hoy que esa bajada se saltó
+ * sigue faltando aunque se cierre el navegador. Al entrar, el panel mezcla el día
+ * de la base (una sola vez por apertura, no en cada poll).
+ */
+export async function fillTodayPaymentsIntoDemo(
+  day: string,
+): Promise<{ ok: boolean; changed: boolean }> {
+  const result = await mergeRemotePayments(null, day, day);
+  return { ok: Boolean(result.ok), changed: Boolean(result.changed) };
+}

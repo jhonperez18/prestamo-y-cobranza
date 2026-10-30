@@ -17,6 +17,7 @@ import { isCollectorLiveDevice, isSupervisorLiveDevice } from "@/lib/collector-l
 import { releaseClosedDaysOnDevice } from "@/lib/collector-device-release";
 import { loadSupervisorBookFromCloud } from "@/lib/supervisor-book";
 import {
+  fillTodayPaymentsIntoDemo,
   mergePaymentsWindowIntoDemo,
   pullRemotePaymentsIntoDemo,
   pullRemoteEvidenceIntoIdb,
@@ -110,6 +111,8 @@ export function useOperationalDemoSync(
   );
   useAppAutoUpdate(hydrated);
   const evidenceOnceRef = useRef(false);
+  /** Una mezcla del día por apertura. El poll de 45 s no vuelve a bajar el día. */
+  const todayPaymentsOnceRef = useRef(false);
   const applyRef = useRef(apply);
   applyRef.current = apply;
   const onEvidenceSyncRef = useRef(onEvidenceSync);
@@ -284,6 +287,18 @@ export function useOperationalDemoSync(
       if (!Array.isArray(localBanks) || localBanks.length === 0) {
         const again = await pullRemoteBankAccountsIntoDemo();
         changed = changed || again.changed;
+      }
+      // Panel: el día de hoy sale de la base. El corte no recupera un cobro que se saltó.
+      if (!isCollectorLiveDevice() && !todayPaymentsOnceRef.current) {
+        todayPaymentsOnceRef.current = true;
+        try {
+          const filled = await fillTodayPaymentsIntoDemo(businessTodayIso());
+          if (!filled.ok) todayPaymentsOnceRef.current = false;
+          else changed = changed || filled.changed;
+        } catch (error) {
+          todayPaymentsOnceRef.current = false;
+          console.error("today-payments", error);
+        }
       }
       // Cobrador: arranca el día con su último cierre y hoy (cierre sin señal / corte 23:30).
       if (tuneupDay && pullOk && isCollectorLiveDevice()) {
