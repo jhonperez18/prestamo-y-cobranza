@@ -39,7 +39,19 @@ App: `POST /api/ops/close-sheet` → tras flush de cola. Sin red: sigue el CIE l
 
 Necesario tras 4.2: el mirror ya no puede cambiar `cash_float`; el ajuste de T debe ir por esta orden.
 
-## Pendiente (no es 4.1–4.3)
+## Corte 4.4 — reabrir hoja por orden (**pendiente de SQL + release**)
 
-- Reabrir hoja como orden atómica en la base
+**Migración:** `supabase/migrations/20261030270000_fase4_reopen_day_sheet.sql`
+
+| Qué | Detalle |
+| --- | --- |
+| RPC | `reopen_day_sheet(collector, route, by, key?)` |
+| Hoy Bogotá | Solo hoy, antes de 23:30 |
+| Con CIE- | Marca `REABIERTA@ruta` (+ T si se reabre M y T ya cerró); suelta `day_closed_at` |
+| Sin CIE- | Solo M (cerró y T aún abierta): solo visitas M |
+| Bloqueo | Ajuste `AJUSTE:` de T → no reabre |
+| App | `POST /api/ops/reopen-sheet` → RPC (misma pantalla supervisor) |
+
+## Pendiente (después de 4.4)
+
 - Quitar candados viejos de float cuando todos los aparatos estén en 4.x

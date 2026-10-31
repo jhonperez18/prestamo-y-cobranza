@@ -41,7 +41,7 @@ Modelo: `register_collection` (cobro atómico, idempotente, saldo en la base).
 | Préstamos (órdenes + `_loan_settle`) | **CERRADO** — no rehacer (ver `fases-dueno-dato.mdc`) |
 | Cobros (dueño total en la base) | Cortes 2.1–2.3 en prod (Realtime planilla puede faltar) |
 | Saldos (caja, Inicial, A/N, Banco/Nequi) | Lectura **CERRADA** (3.1–3.3) |
-| Cierres (CIE- + planilla + ajuste por orden) | Cortes 4.1–4.3 en prod (falta reabrir como orden) |
+| Cierres (CIE- + planilla + ajuste + reabrir por orden) | 4.1–4.3 en prod; 4.4 SQL+release pendiente |
 
 Estado firme y prohibiciones: `.cursor/rules/fases-dueno-dato.mdc`.
 
