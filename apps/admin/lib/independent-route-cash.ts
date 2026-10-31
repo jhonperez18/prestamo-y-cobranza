@@ -154,6 +154,7 @@ const INDEPENDENT_CIE_SEALS_FROM = "2026-10-08";
 /**
  * Caja de la planilla sellada en el CIE- de ese día. Manda sobre el recálculo: el celular
  * del cobrador solo guarda los cobros de hoy y no puede rehacer los días pasados.
+ * Cadena M/T (Edgar): el CIE- es saldo M↔T — no sella A. Solo N (sin M/T ese día).
  */
 function sealedRouteClosing(src: DayCashSources, route: string, day: string): number | null {
   if (day < INDEPENDENT_CIE_SEALS_FROM) return null;
@@ -457,21 +458,34 @@ export function independentRouteDay(
       opening = pesos(opening + move.efectivo - move.gastos - move.prestamos);
     }
   }
-  const sealedClosing = date < businessTodayIso() ? sealedRouteClosing(src, route, date) : null;
+  const todayIso = businessTodayIso();
+  const sealedClosing = date < todayIso ? sealedRouteClosing(src, route, date) : null;
   const localClosing =
     sealedClosing ?? pesos(opening + today.efectivo - today.gastos - today.prestamos);
-  // Fase 3.3: día vivo — la base manda si cuadra con Inicial + movimiento del día.
-  // Si no (AJUSTE@ viejo ignorando CIE reciente), gana el libro local: Inicial = saldo.
+  // Fase 3.3: día vivo — la base manda (route_own_box). Evita el flash negativo del
+  // libro local incompleto al arrancar (antes solo aceptaba nube si coincidía con local).
   const cloud =
     sealedClosing == null ? getCloudRouteOwnBox(src.collectorRef, date, route) : null;
+  const liveDay = date >= todayIso;
+  if (cloud && liveDay && sealedClosing == null) {
+    const cloudClosing = pesos(cloud.saldo);
+    const cloudOpening = Number.isFinite(cloud.opening)
+      ? pesos(cloud.opening)
+      : pesos(cloudClosing - cloud.efectivo + cloud.prestamos + cloud.gastos);
+    return {
+      ...today,
+      route,
+      date,
+      anchored: true,
+      opening: cloudOpening,
+      closing: cloudClosing,
+      adjustment: findRouteCashAdjustment(src.dayCloses, src.collectorRef, date, route),
+    };
+  }
   const cloudSaldo =
     cloud && Number.isFinite(cloud.saldo) ? pesos(cloud.saldo) : null;
   const closing =
-    cloudSaldo != null && cloudSaldo === localClosing
-      ? cloudSaldo
-      : cloudSaldo != null && !anchor
-        ? cloudSaldo
-        : localClosing;
+    cloudSaldo != null && !anchor ? cloudSaldo : localClosing;
   return {
     ...today,
     route,

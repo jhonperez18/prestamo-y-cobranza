@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { CollectorDayCloseRecord, CollectorDayExpenseDraft } from "@/lib/collector-day-close";
 import { previousCalendarIso } from "@/lib/collector-day-auto-close";
+import { getCloudRouteOwnBox } from "@/lib/cloud-route-own-box";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { PaymentRow } from "@/lib/mock-data";
 
@@ -132,7 +133,7 @@ export function useDigitalPoolBalancesCloud(enabled: boolean): number {
 
 /**
  * Caja A/N: ancla de ayer + saldo de hoy en caché (route_own_box).
- * Sin red, la pantalla sigue con su copia local.
+ * Sin red, la pantalla sigue con su copia local (o la última de esta sesión).
  */
 export function useRouteOwnAnchor(
   enabled: boolean,
@@ -141,7 +142,20 @@ export function useRouteOwnAnchor(
   route: "A" | "N",
 ) {
   const key = collectorRefs.filter(Boolean).slice().sort().join(",");
-  const [anchors, setAnchors] = useState<Record<string, RouteOwnAnchor>>({});
+  const [anchors, setAnchors] = useState<Record<string, RouteOwnAnchor>>(() => {
+    if (!enabled || !key || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return {};
+    const yesterday = previousCalendarIso(today);
+    const next: Record<string, RouteOwnAnchor> = {};
+    // Calentamiento síncrono (sessionStorage): el primer paint ya usa la cifra de la base.
+    for (const collectorRef of key.split(",").filter(Boolean)) {
+      const yesterdayRow = getCloudRouteOwnBox(collectorRef, yesterday, route);
+      if (yesterdayRow) {
+        next[collectorRef] = { date: yesterday, saldo: yesterdayRow.saldo, route };
+      }
+      void getCloudRouteOwnBox(collectorRef, today, route);
+    }
+    return next;
+  });
   const [, setEpoch] = useState(0);
 
   useEffect(() => {
@@ -169,7 +183,7 @@ export function useRouteOwnAnchor(
         }),
       );
       if (!alive) return;
-      if (Object.keys(next).length > 0) setAnchors(next);
+      setAnchors(next);
       setEpoch((n) => n + 1);
     };
     void load();

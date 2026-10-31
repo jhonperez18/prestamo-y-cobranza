@@ -8,6 +8,7 @@ export type RouteOwnBoxResult =
       ok: true;
       route: "A" | "N";
       saldo: number;
+      opening: number;
       efectivo: number;
       prestamos: number;
       gastos: number;
@@ -38,6 +39,7 @@ export async function readRouteOwnBox(
     ok?: boolean;
     route?: string;
     saldo?: number;
+    opening?: number;
     efectivo?: number;
     prestamos?: number;
     gastos?: number;
@@ -49,13 +51,21 @@ export async function readRouteOwnBox(
   if (!body || body.ok !== true || !Number.isFinite(saldo)) {
     return { ok: false, error: body?.error || "sin_caja" };
   }
+  const efectivo = Math.trunc(Number(body.efectivo) || 0);
+  const prestamos = Math.trunc(Number(body.prestamos) || 0);
+  const gastos = Math.trunc(Number(body.gastos) || 0);
+  const openingRaw = Number(body.opening);
+  const opening = Number.isFinite(openingRaw)
+    ? Math.trunc(openingRaw)
+    : Math.trunc(saldo) - efectivo + prestamos + gastos;
   return {
     ok: true,
     route: pin,
     saldo: Math.trunc(saldo),
-    efectivo: Math.trunc(Number(body.efectivo) || 0),
-    prestamos: Math.trunc(Number(body.prestamos) || 0),
-    gastos: Math.trunc(Number(body.gastos) || 0),
+    opening,
+    efectivo,
+    prestamos,
+    gastos,
     anchor: body.anchor ? String(body.anchor).slice(0, 10) : null,
     anchorReal:
       body.anchor_real == null || !Number.isFinite(Number(body.anchor_real))

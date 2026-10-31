@@ -1,6 +1,9 @@
 -- Urgencia 31/10: route_own_box anclaba solo en AJUSTE@A/N (ej. 30/09) e ignoraba el CIE-
 -- reciente → Inicial 3.279.500 (CIE ayer) pero saldo nube 5.091.000 con cobro/préstamo/gasto 0.
 -- Misma regla que el aparato: ancla = el más reciente entre AJUSTE@ruta y CIE- (desde 2026-10-08).
+--
+-- SUPERSEDIDO en parte por 20261031124500: CIE solo si el día no es cadena M/T
+-- (si no, A de Edgar tomaba el cash_float de la cadena). Dejar este archivo por historial.
 
 create or replace function public.route_own_box(
   p_collector_ref text,

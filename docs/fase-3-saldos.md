@@ -31,17 +31,21 @@ SQL Editor → pegar el `.sql` → **Run** → Success → publicar app.
 
 ## Corte 3.3 — A/N y Banco/Nequi (**en prod** · build `c7d378e`)
 
-**Migración:** `supabase/migrations/20261030240000_fase3_route_own_box_pools.sql`
+**Migración base:** `supabase/migrations/20261030240000_fase3_route_own_box_pools.sql`  
+**Ancla CIE (N):** `20261031123000_fase3_route_own_box_cie_anchor.sql`  
+**Independencia A (31/10):** `20261031124500_fase3_route_own_box_no_chain_cie.sql`
 
 | Qué | Detalle |
 | --- | --- |
 | RPC | `route_own_box(collector, date, 'A'\|'N')`; wrappers `route_a_box` / `route_n_box` |
-| Cifra A/N | Ajuste `AJUSTE@A` / `AJUSTE@N` + efectivo − préstamos − gastos (GAS abierto incluido) |
+| Cifra A/N | Ancla + efectivo − préstamos − gastos (GAS abierto incluido) |
+| Ancla | `AJUSTE@ruta` **o** CIE- solo si ese día el cobrador **no** tuvo visitas M/T (Yesid → N). Edgar M/T/A: el CIE- es cadena; **A no lo usa** |
+| Independencia | Solo M↔T mezclan saldos (Inicial). A y N son cajas propias |
 | RPC pools | `digital_pool_balances` (ya existía; app lo prefiere) |
 | App | `/api/ops/route-own-box`, `/api/ops/digital-pool-balances` → caché → `independentRouteDay` / `digitalPoolBalances` |
 | Escritura | **Ninguna** — no toca `cash_float` (Fase 4) |
 
-Sin red: sigue el libro local. Días sellados A/N: CIE manda (historia).
+Sin red: sigue el libro local (o la última cifra de la sesión). Día vivo: la base manda al pintar (sin flash del libro incompleto). Días sellados: N (sin cadena) → CIE manda; A con cobrador de cadena → `AJUSTE@A` + movimiento (nunca el `cash_float` M↔T).
 
 ## Hecho después
 
