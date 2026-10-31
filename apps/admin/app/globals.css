@@ -5606,7 +5606,7 @@
       min-width: 1.4rem;
       max-width: 1.8rem;
       text-align: center;
-      padding-left: 1px;
+      padding-left: 3px;
       padding-right: 1px;
     }
     .supervisor-mobile .supervisor-planilla-table .is-renew,
@@ -6436,11 +6436,19 @@
     }
     .supervisor-mobile .supervisor-planilla-table .is-metodo,
     .supervisor-mobile-app .supervisor-planilla-table .is-metodo {
-      width: 12%;
+      width: 11%;
+      padding-right: 6px !important;
     }
+    /* Mora + V un poco a la derecha: no pegados a Método. */
     .supervisor-mobile .supervisor-planilla-table .is-cuotas,
     .supervisor-mobile-app .supervisor-planilla-table .is-cuotas {
       width: 15%;
+      padding-left: 8px !important;
+    }
+    .supervisor-mobile .supervisor-planilla-table .is-renew,
+    .supervisor-mobile-app .supervisor-planilla-table .is-renew {
+      padding-left: 4px !important;
+      padding-right: 2px !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-estado,
     .supervisor-mobile-app .supervisor-planilla-table .is-estado {
@@ -6977,7 +6985,7 @@
     .supervisor-planilla-table .is-cuotas {
       width: 14%;
       text-align: center;
-      padding-left: 2px;
+      padding-left: 6px;
       padding-right: 2px;
       white-space: nowrap;
     }
