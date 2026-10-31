@@ -43,7 +43,8 @@ Modelo: `register_collection` (cobro atómico, idempotente, saldo en la base).
 | Saldos (caja, Inicial, A/N, Banco/Nequi) | Lectura **CERRADA** (3.1–3.3) |
 | Cierres (CIE- + planilla + ajuste + reabrir por orden) | Cortes 4.1–4.4 en prod; **limpieza candados float PENDIENTE** (dejar así, 30/10) |
 
-Estado firme y prohibiciones: `.cursor/rules/fases-dueno-dato.mdc`.
+Estado firme y prohibiciones: `.cursor/rules/fases-dueno-dato.mdc`.  
+Pendientes vivos (tabla): `docs/pendientes.md`.
 
 ## Forma de trabajo
 
