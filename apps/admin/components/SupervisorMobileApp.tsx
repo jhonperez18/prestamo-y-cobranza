@@ -782,11 +782,12 @@ function PlanillaTable({
                   )}
                 </td>
                 <td className="is-metodo">
-                  {grantedHere && row.paidAmount <= 0 ? (
+                  {(grantedHere && row.paidAmount <= 0) ||
+                  row.methodToneClass === "is-pay-prestamo" ? (
                     <em className="supervisor-planilla-method is-pay-prestamo" title="Préstamo nuevo">
                       P
                     </em>
-                  ) : row.reloan.renewed ? (
+                  ) : row.reloan.renewed || row.methodToneClass === "is-pay-renovado" ? (
                     <em className="supervisor-planilla-method is-pay-renovado" title="Renovado: sin plata">
                       R
                     </em>
@@ -805,7 +806,7 @@ function PlanillaTable({
                 <td className="is-cuotas">
                   {openPrestar || (grantedHere && row.awaitingLoan) ? (
                     "—"
-                  ) : row.reloan.renewed ? (
+                  ) : row.reloan.renewed || row.methodToneClass === "is-pay-renovado" ? (
                     <CuotasProgressCell
                       progress={{
                         label: "0/0",
@@ -840,19 +841,27 @@ function PlanillaTable({
                         Prestar
                       </span>
                     )
-                  ) : grantedHere ? (
-                    <em
-                      className="supervisor-planilla-method is-pay-prestamo"
-                      title={`Préstamo ${grantedHere.ref} · capital ${money(grantedHere.capital)}`}
+                  ) : grantedHere || row.methodToneClass === "is-pay-prestamo" ? (
+                    <span
+                      className="supervisor-reloan-tag"
+                      title={
+                        grantedHere
+                          ? `Préstamo ${grantedHere.ref} · capital ${money(grantedHere.capital)}`
+                          : "Préstamo nuevo"
+                      }
                     >
-                      {paidThousandsLabel(grantedHere.capital)}
-                    </em>
-                  ) : row.reloan.renewed ? (
+                      Prestado
+                    </span>
+                  ) : row.reloan.renewed || row.methodToneClass === "is-pay-renovado" ? (
                     <span
                       className="supervisor-reloan-tag is-renewal"
-                      title={`Renovado ${row.reloan.renewed.ref} · debía ${money(row.reloan.renewed.capital)} + 20 % · sin plata`}
+                      title={
+                        row.reloan.renewed
+                          ? `Renovado ${row.reloan.renewed.ref} · debía ${money(row.reloan.renewed.capital)} + 20 % · sin plata`
+                          : "Renovado: sin plata"
+                      }
                     >
-                      {money(row.reloan.renewed.capital, { symbol: false })}
+                      Renovado
                     </span>
                   ) : (
                     <span
@@ -2616,7 +2625,9 @@ export function SupervisorMobileApp({
         renewAlert: canRenewLoan(loanForRenew, today),
       };
     });
-    return expandSupervisorRutaSheetRows(base).sort(compareRutaSheetRows);
+    return expandSupervisorRutaSheetRows(base, loans, paymentsLive, today).sort(
+      compareRutaSheetRows,
+    );
   };
 
   const openRoute = liquidaciones.find((row) => row.routeRef === openRouteRef) ?? null;

@@ -1,12 +1,17 @@
 /**
  * Hoja Ruta del supervisor — solo vista.
- * Misma lógica visual que el cobrador: varias líneas por cliente cuando hoy hubo
- * Renovado, cobro, préstamo nuevo (P), cobro combinado o Fin + Prestar.
+ * Misma lógica visual que el cobrador: Renovado (R), P azul, cobro combinado,
+ * Fin + Prestar. Renovado aparece aunque aún no haya cobro del crédito nuevo
+ * (caso Caña: cobrador muestra R; supervisor no puede dejarlo en S/C).
  */
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { CuotasProgress } from "@/lib/loan-cuotas-progress";
-import type { ReloanState } from "@/lib/loan-reloan";
-import type { PaymentMethod } from "@/lib/mock-data";
+import {
+  loanGrantedOnDate,
+  loanRenewedOnDate,
+  type ReloanState,
+} from "@/lib/loan-reloan";
+import type { LoanRow, PaymentMethod, PaymentRow } from "@/lib/mock-data";
 import {
   paymentMethodInitial,
   paymentMethodLabel,
@@ -60,75 +65,123 @@ function stripGranted(reloan: ReloanState): ReloanState {
   return { ...reloan, granted: null };
 }
 
+function renovadoLine(
+  row: SupervisorRutaSheetRow,
+  renewalLoan: LoanRow,
+  date: string,
+): SupervisorRutaSheetRow {
+  return {
+    ...row,
+    key: `renovado|${row.clientRef}|${renewalLoan.ref}|${date}`,
+    saldo: Math.trunc(Number(renewalLoan.capital) || 0),
+    cuota: 0,
+    method: null,
+    methodLabel: "R",
+    methodToneClass: "is-pay-renovado",
+    methodTitle: "Renovado: sin plata",
+    cuotas: emptyCuotas("Renovado hoy · al día (sin mora)"),
+    visitStatus: "omitido",
+    awaitingLoan: false,
+    paidAmount: 0,
+    paidParts: [],
+    loanRef: renewalLoan.ref,
+    reloan: { canReloan: false, granted: null, renewed: renewalLoan },
+    renewAlert: false,
+  };
+}
+
+function prestadoLine(
+  row: SupervisorRutaSheetRow,
+  granted: LoanRow,
+  date: string,
+): SupervisorRutaSheetRow {
+  return {
+    ...row,
+    key: `prestamo|${row.clientRef}|${granted.ref}|${date}`,
+    saldo: Math.trunc(Number(granted.balance) || Number(granted.capital) || 0),
+    cuota: 0,
+    method: null,
+    methodLabel: "P",
+    methodToneClass: "is-pay-prestamo",
+    methodTitle: "Préstamo nuevo",
+    cuotas: emptyCuotas(),
+    visitStatus: "omitido",
+    awaitingLoan: false,
+    paidAmount: 0,
+    paidParts: [],
+    loanRef: granted.ref,
+    reloan: { canReloan: false, granted, renewed: null },
+    renewAlert: false,
+  };
+}
+
 /**
- * Parte una fila enriquecida en las líneas que el cobrador muestra por separado.
- * No inventa visitas: solo desdobla lo que ya está en la fila / reloan / paidParts.
+ * Parte / completa las líneas que el cobrador muestra por separado.
+ * Renovado y Prestado (P) salen aunque no haya cobro todavía ese día.
  */
 export function expandSupervisorRutaSheetRows(
   rows: SupervisorRutaSheetRow[],
+  loans: LoanRow[],
+  payments: PaymentRow[],
+  date: string,
 ): SupervisorRutaSheetRow[] {
   const out: SupervisorRutaSheetRow[] = [];
+  const renovadoDone = new Set<string>();
+  const prestadoDone = new Set<string>();
+
   for (const row of rows) {
+    const renewalLoan = loanRenewedOnDate(row.clientRef, loans, date);
+    if (renewalLoan && !renovadoDone.has(row.clientRef)) {
+      renovadoDone.add(row.clientRef);
+      out.push(renovadoLine(row, renewalLoan, date));
+    }
+
+    // Visita «Renovado hoy» del crédito viejo: ya quedó la línea R; no duplicar.
+    if (
+      renewalLoan &&
+      row.visitStatus === "omitido" &&
+      row.loanRef &&
+      row.loanRef !== renewalLoan.ref &&
+      row.paidAmount <= 0 &&
+      !row.awaitingLoan
+    ) {
+      continue;
+    }
+
+    const granted = loanGrantedOnDate(row.clientRef, loans, payments, date);
+    // P azul una vez por cliente (préstamo con plata hoy), como «Prestado» del cobrador.
+    if (granted && !prestadoDone.has(row.clientRef)) {
+      prestadoDone.add(row.clientRef);
+      out.push(prestadoLine(row, granted, date));
+    }
+
     const renewed = row.reloan.renewed;
-    // Renovado (R) encima del primer cobro del crédito nuevo — igual que el cobrador.
+    // Renovado encima del cobro del crédito nuevo (si reloan lo traía distinto).
     if (
       renewed &&
       !row.awaitingLoan &&
       row.paidAmount > 0 &&
       row.loanRef &&
-      renewed.ref !== row.loanRef
+      renewed.ref !== row.loanRef &&
+      !renovadoDone.has(row.clientRef)
     ) {
-      out.push({
-        ...row,
-        key: `${row.key}|renovado|${renewed.ref}`,
-        saldo: Number(renewed.capital) || 0,
-        cuota: 0,
-        method: null,
-        methodLabel: "R",
-        methodToneClass: "is-pay-renovado",
-        methodTitle: "Renovado: sin plata",
-        cuotas: emptyCuotas("Renovado hoy · al día (sin mora)"),
-        visitStatus: "omitido",
-        awaitingLoan: false,
-        paidAmount: 0,
-        paidParts: [],
-        loanRef: renewed.ref,
-        reloan: { canReloan: false, granted: null, renewed },
-        renewAlert: false,
-      });
+      renovadoDone.add(row.clientRef);
+      out.push(renovadoLine(row, renewed, date));
       out.push({
         ...row,
         key: `${row.key}|post-renovado`,
-        reloan: stripRenewed(row.reloan),
+        reloan: stripRenewed(stripGranted(row.reloan)),
       });
       continue;
     }
 
-    const granted = row.reloan.granted;
-    // P azul + cobro del mismo día del préstamo nuevo → dos líneas.
+    // Cobro del préstamo nuevo el mismo día → ya hay P arriba; el cobro debajo.
     if (
       granted &&
       !row.awaitingLoan &&
       row.loanRef === granted.ref &&
       row.paidAmount > 0
     ) {
-      out.push({
-        ...row,
-        key: `${row.key}|prestamo|${granted.ref}`,
-        saldo: Number(granted.balance) || Number(granted.capital) || 0,
-        cuota: 0,
-        method: null,
-        methodLabel: "P",
-        methodToneClass: "is-pay-prestamo",
-        methodTitle: "Préstamo nuevo",
-        cuotas: emptyCuotas(),
-        visitStatus: "omitido",
-        awaitingLoan: false,
-        paidAmount: 0,
-        paidParts: [],
-        reloan: { canReloan: false, granted, renewed: null },
-        renewAlert: false,
-      });
       const payBase = {
         ...row,
         key: `${row.key}|post-prestamo`,
@@ -136,9 +189,7 @@ export function expandSupervisorRutaSheetRows(
       };
       if (payBase.paidParts.length >= 2) {
         for (let i = 0; i < payBase.paidParts.length; i++) {
-          const part = payBase.paidParts[i];
-          const isLast = i === payBase.paidParts.length - 1;
-          out.push(payPartLine(payBase, part, i, isLast));
+          out.push(payPartLine(payBase, payBase.paidParts[i], i, i === payBase.paidParts.length - 1));
         }
       } else {
         out.push(payBase);
@@ -146,17 +197,18 @@ export function expandSupervisorRutaSheetRows(
       continue;
     }
 
-    // Cobro combinado → una línea por medio (B+E, etc.).
     if (row.paidParts.length >= 2 && !row.awaitingLoan) {
       for (let i = 0; i < row.paidParts.length; i++) {
-        const part = row.paidParts[i];
-        const isLast = i === row.paidParts.length - 1;
-        out.push(payPartLine(row, part, i, isLast));
+        out.push(payPartLine(row, row.paidParts[i], i, i === row.paidParts.length - 1));
       }
       continue;
     }
 
-    out.push(row);
+    // Cuota del renovado / resto: sin volver a marcar Renovado en la misma fila.
+    out.push({
+      ...row,
+      reloan: stripRenewed(row.reloan),
+    });
   }
   return out;
 }
@@ -177,12 +229,12 @@ function payPartLine(
     methodToneClass: paymentMethodToneClass(part.method),
     methodTitle: `${paymentMethodLabel(part.method)} · ${part.amount}`,
     reloan: keepFin
-      ? row.reloan
+      ? stripRenewed(row.reloan)
       : { canReloan: false, granted: row.reloan.granted, renewed: null },
   };
 }
 
-/** Orden dentro del mismo cliente: Renovado → cobro/Fin → P → Prestar. */
+/** Orden dentro del mismo cliente: Renovado → cobro/Fin → P → cuota → Prestar. */
 export function compareRutaSheetRows(a: SupervisorRutaSheetRow, b: SupervisorRutaSheetRow): number {
   const route = a.route.localeCompare(b.route, "es");
   if (route) return route;
@@ -195,7 +247,7 @@ function rutaLineRank(row: SupervisorRutaSheetRow): number {
   if (row.reloan.renewed && row.paidAmount <= 0) return 0;
   if (row.methodLabel === "R" || row.methodToneClass === "is-pay-renovado") return 0;
   if (row.awaitingLoan) return 5;
-  if (row.reloan.granted && row.paidAmount <= 0 && row.methodLabel === "P") return 3;
+  if (row.methodLabel === "P" || row.methodToneClass === "is-pay-prestamo") return 3;
   if (row.reloan.granted && row.paidAmount <= 0) return 3;
   if (row.reloan.canReloan) return 1;
   if (row.paidAmount > 0) return 2;
