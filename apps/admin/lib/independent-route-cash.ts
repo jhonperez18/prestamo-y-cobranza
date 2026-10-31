@@ -460,12 +460,18 @@ export function independentRouteDay(
   const sealedClosing = date < businessTodayIso() ? sealedRouteClosing(src, route, date) : null;
   const localClosing =
     sealedClosing ?? pesos(opening + today.efectivo - today.gastos - today.prestamos);
-  // Fase 3.3: día vivo — si la base contestó route_own_box, esa cifra manda.
-  // Días sellados siguen el CIE (historia sagrada).
+  // Fase 3.3: día vivo — la base manda si cuadra con Inicial + movimiento del día.
+  // Si no (AJUSTE@ viejo ignorando CIE reciente), gana el libro local: Inicial = saldo.
   const cloud =
     sealedClosing == null ? getCloudRouteOwnBox(src.collectorRef, date, route) : null;
+  const cloudSaldo =
+    cloud && Number.isFinite(cloud.saldo) ? pesos(cloud.saldo) : null;
   const closing =
-    cloud && Number.isFinite(cloud.saldo) ? pesos(cloud.saldo) : localClosing;
+    cloudSaldo != null && cloudSaldo === localClosing
+      ? cloudSaldo
+      : cloudSaldo != null && !anchor
+        ? cloudSaldo
+        : localClosing;
   return {
     ...today,
     route,
