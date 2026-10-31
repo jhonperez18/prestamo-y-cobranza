@@ -26,7 +26,7 @@ App: `POST /api/ops/close-sheet` → tras flush de cola. Sin red: sigue el CIE l
 | 23:30 | `runServerDayRollover` sella CIE con `callSealDayClose` (mismo dueño) |
 | PCE | Siguen por upsert con `force` del servidor |
 
-## Corte 4.3 — ajuste de saldo por orden (**SQL listo · pegar → Run → release**)
+## Corte 4.3 — ajuste de saldo por orden (**en prod** · build `b223282`)
 
 **Migración:** `supabase/migrations/20261030260000_fase4_adjust_day_cash.sql`
 
