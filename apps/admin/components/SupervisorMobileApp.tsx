@@ -47,7 +47,11 @@ import {
 } from "@/lib/collector-mobile";
 import { previousCalendarIso } from "@/lib/collector-day-auto-close";
 import { todayIso } from "@/lib/daily-dispatch";
-import { collapseCompanionVisits, visiblePlanillaAssignments } from "@/lib/planilla-dedupe";
+import { visiblePlanillaAssignments } from "@/lib/planilla-dedupe";
+import {
+  compareRutaSheetRows,
+  expandSupervisorRutaSheetRows,
+} from "@/lib/supervisor-ruta-sheet";
 import { isValidPlanillaAssignment } from "@/lib/planilla-eligibility";
 import {
   clientsOnRouteSorted,
@@ -2583,9 +2587,12 @@ export function SupervisorMobileApp({
   const nequiPrestadoShown = nequiBase?.prestado;
   const nequiGastosShown = nequiBase?.gastos;
   const nequiSaldoShown = nequiBase?.saldo;
-  /** Filas de planilla: `#` = posición del cliente en su ruta; `route` para la raya verde. */
-  const planillaTableRows = (rows: DailyCollectionAssignment[]): PlanillaTableRow[] =>
-    rows.map((row, index) => {
+  /**
+   * Hoja Ruta: mismas visitas visibles que el cobrador (sin colapsar Fin+Prestar),
+   * luego se desdoblan Renovado / P / combinado en varias líneas.
+   */
+  const planillaTableRows = (rows: DailyCollectionAssignment[]): PlanillaTableRow[] => {
+    const base = rows.map((row, index) => {
       const client = clients.find((entry) => entry.ref === row.clientRef);
       const position =
         client?.routeOrder && client.routeOrder > 0 ? client.routeOrder : index + 1;
@@ -2609,6 +2616,8 @@ export function SupervisorMobileApp({
         renewAlert: canRenewLoan(loanForRenew, today),
       };
     });
+    return expandSupervisorRutaSheetRows(base).sort(compareRutaSheetRows);
+  };
 
   const openRoute = liquidaciones.find((row) => row.routeRef === openRouteRef) ?? null;
   /** A muestra solo Nequi. M, T y N muestran solo Banco. El otro no se suma. */
@@ -3903,9 +3912,11 @@ export function SupervisorMobileApp({
 
   const planillaAssignments = useMemo(() => {
     const compare = assignmentRoutePositionComparator(clients);
-    const people = (rows: typeof todayAssignments) => collapseCompanionVisits(rows).sort(compare);
+    // No colapsar por cliente: Fin + Prestar (y cuota + préstamo) son líneas distintas,
+    // igual que la hoja del cobrador. Solo se oculta el Prestar fantasma.
+    const people = (rows: typeof todayAssignments) =>
+      visiblePlanillaAssignments(rows).sort(compare);
     if (!planillaRouteFilter) return people(todayAssignments);
-    // Filtro por ruta = solo esa ruta (Ruta 1 no arrastra a Ruta 1.1 del mismo cobrador).
     const onRoute = todayAssignments.filter((row) =>
       sameRoute(assignmentRouteName(row, clients), planillaRouteFilter),
     );

@@ -9,7 +9,7 @@
 | --- | --- |
 | Nace | La misma hoja del día que ya genera el sistema para el cobrador |
 | Día a día | Se marca lo que el cobrador hace (cobró, N/P, prestó, V, Prestar…) en vivo |
-| Mejoras | Etiqueta **V** (vencido), **Prestar**, señales del cobrador |
+| Mejoras | **V**, **Prestar**, **Renovado (R)**, **P** azul, cobro combinado en 2 líneas, Fin + Prestar en 2 (o 3 si prestó el mismo día) — alineado al cobrador |
 | Botón Planilla | **Quitado** — no reabrir sin pedido |
 | Historial | Aparte; no es el duplicado |
 
