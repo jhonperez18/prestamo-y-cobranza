@@ -17,7 +17,7 @@ No vender cerrada hasta que el aparato **deje de subir** `cash_float`.
 
 App: `POST /api/ops/close-sheet` → tras flush de cola. Sin red: sigue el CIE local + cola (compat).
 
-## Corte 4.2 — mirror no escribe float; rollover usa `seal_day_close` (**app · sin SQL nuevo**)
+## Corte 4.2 — mirror no escribe float; rollover usa `seal_day_close` (**en prod** · build `07b24f3`)
 
 | Qué | Detalle |
 | --- | --- |
