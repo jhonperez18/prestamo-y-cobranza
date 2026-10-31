@@ -59,11 +59,19 @@ Cifras por clase: **aproximadas** (las secciones grandes mezclan temas; se cont�
 | 3 Saldos | ~80 | 10, 11 (N / PCE-T), 12 (DSB), 13, 22, 27 |
 | 4 Cierres | ~40 | 2, 4b, 7 (nube), 11 (ajustes nube), 15, 23, 29 |
 
+## Limpieza Fase 4 (float) — **PENDIENTE** (dueño 30/10/2026: dejar así por ahora)
+
+Cortes 4.1–4.4 ya en prod. **No borrar** aún asserts / frenos de float
+(`keepSealedCashFloat`, `cloud_cie_past_day_sealed`, `cloud_cie_keeps_cash_float`, etc.).
+Solo cuando el dueño lo pida y todos los aparatos vivos estén ≥ 4.2 (~1 semana estable).
+Ver `docs/fase-4-cierres.md` § Pendiente.
+
 ## Reglas de trabajo
 
 1. Una fase borra sus candados **una semana después** de correr estable en producción, en commit aparte (reversible).
 2. Las reglas no se borran: pasan a prueba de la base (se ensayan en la copia de ensayo del VPS).
 3. Ninguna fase suma candados. Si una fase lo pide, está mal hecha.
+4. Limpieza Fase 4 float: **no empezar** sin pedido explícito del dueño.
 
 ## Ya resuelto
 

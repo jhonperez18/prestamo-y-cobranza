@@ -52,6 +52,8 @@ Necesario tras 4.2: el mirror ya no puede cambiar `cash_float`; el ajuste de T d
 | Bloqueo | Ajuste `AJUSTE:` de T → no reabre |
 | App | `POST /api/ops/reopen-sheet` → RPC (misma pantalla supervisor) |
 
-## Pendiente (después de 4.4)
+## Pendiente (después de 4.4) — **dejado así por ahora** (dueño 30/10/2026)
 
-- Quitar candados viejos de float cuando todos los aparatos estén en 4.x
+- **Limpieza de candados viejos de float** (`keepSealedCashFloat`, `cloud_cie_*`, asserts §2 / 4b / 7 / …): **PENDIENTE**. No tocar hasta que el dueño lo pida.
+- Condición: todos los aparatos **vivos** (últimas 36 h en autoprestamos.org) en build ≥ `07b24f3` (4.2) y, ideal, ≥ `4c5db46` (4.4); luego ~1 semana estable; noche; commit aparte.
+- Revisión 30/10: Edgar / Yesid / admin en `4c5db46`; supervisor Carlos aún en `4c71d21` (solo 4.1) → **no limpia**.
