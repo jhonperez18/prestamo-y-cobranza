@@ -1387,6 +1387,10 @@ export async function upsertAssignmentRow(row: Record<string, unknown>) {
   if (!error && current?.day_closed_at && !row.day_closed_at) {
     return { ok: true as const, kept: true as const };
   }
+  // Primer sello manda: si M cerró a las 16:00, el corte 23:30 no pisa esa hora.
+  if (!error && current?.day_closed_at && row.day_closed_at) {
+    row = { ...row, day_closed_at: current.day_closed_at };
+  }
   // Historia: día pasado ya cerrado en nube no se reescribe con la copia de un aparato.
   // Solo entra un cobro (PG-) que la nube aún no tenía.
   if (

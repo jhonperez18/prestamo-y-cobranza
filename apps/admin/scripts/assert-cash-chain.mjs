@@ -1240,6 +1240,39 @@ expect("Cobro en T no toca M (sello)", mAfter?.dayClosedAt || "", `${mixDay}T18:
 expect("Cobro en T no toca M (pago)", mAfter?.paymentRef || "", "PG-M-old");
 expect("Cobro en T no toca A", `${aAfter?.visitStatus || ""}:${aAfter?.paymentRef || ""}`, "pendiente:");
 expect("Cobro en T solo sella T", tAfter?.visitStatus || "", "cobrado");
+{
+  const { closeDispatchDay } = await import("@/lib/collector-dispatch-sync");
+  const stamped = `${mixDay}T16:05:00.000-05:00`;
+  const beforeClose = [
+    visit("V-M-lock", "CLI-M1", "M", mixDay, {
+      dayClosedAt: stamped,
+      visitStatus: "cobrado",
+      paymentRef: "PG-M-old",
+      loanRef: "P-M1",
+    }),
+    visit("V-T-open", "CLI-T1", "T", mixDay, {
+      dayClosedAt: null,
+      visitStatus: "pendiente",
+      loanRef: "P-T1",
+      amountDue: 20_000,
+    }),
+  ];
+  const closed = closeDispatchDay(
+    beforeClose,
+    [],
+    [],
+    mixDay,
+    [COB],
+    [],
+    chainClients,
+    COB.ref,
+    [],
+  );
+  const mKept = closed.assignments.find((r) => r.itemId === "V-M-lock");
+  const tSealed = closed.assignments.find((r) => r.itemId === "V-T-open");
+  expect("Corte 23:30 no pisa hora de M ya cerrada", mKept?.dayClosedAt || "", stamped);
+  expect("Corte 23:30 sí sella T abierta", Boolean(tSealed?.dayClosedAt), true);
+}
 expect(
   "Confirmar en T solo encola la visita cobrada (no M+T+A)",
   assignmentsForCreatedPayments(

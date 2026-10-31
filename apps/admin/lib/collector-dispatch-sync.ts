@@ -700,6 +700,8 @@ export function closeDispatchDay(
     ) {
       return row;
     }
+    // Ya cerró esa visita (ej. M a las 16:00): el corte 23:30 no pisa la hora.
+    if (row.dayClosedAt) return row;
     // Cierra aunque falte el flag dispatched (planillas viejas / recuperadas).
     let next: DailyCollectionAssignment = {
       ...row,
