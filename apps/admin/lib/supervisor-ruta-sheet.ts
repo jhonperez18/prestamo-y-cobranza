@@ -3,6 +3,7 @@
  * Misma lógica visual que el cobrador: varias líneas por cliente cuando hoy hubo
  * Renovado, cobro, préstamo nuevo (P), cobro combinado o Fin + Prestar.
  */
+import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { CuotasProgress } from "@/lib/loan-cuotas-progress";
 import type { ReloanState } from "@/lib/loan-reloan";
 import type { PaymentMethod } from "@/lib/mock-data";
@@ -11,6 +12,8 @@ import {
   paymentMethodLabel,
   paymentMethodToneClass,
 } from "@/lib/payment-method";
+
+type VisitStatus = NonNullable<DailyCollectionAssignment["visitStatus"]>;
 
 export type SupervisorRutaSheetRow = {
   key: string;
@@ -23,7 +26,7 @@ export type SupervisorRutaSheetRow = {
   methodToneClass: string;
   methodTitle: string | undefined;
   cuotas: CuotasProgress;
-  visitStatus: string;
+  visitStatus: VisitStatus;
   awaitingLoan: boolean;
   paidAmount: number;
   paidParts: Array<{ method: PaymentMethod; amount: number }>;
