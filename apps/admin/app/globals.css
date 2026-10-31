@@ -5591,10 +5591,29 @@
       opacity: 0.6;
       cursor: not-allowed;
     }
+    .supervisor-route-act.is-hoja-ruta {
+      background: #c8e6d0;
+      border-color: #7fbf8f;
+      color: #0a3320;
+    }
     .supervisor-route-act.is-planilla {
-      background: #d6ecda;
-      border-color: #9fcfa9;
-      color: #0f3f22;
+      background: #e8efe9;
+      border-color: #b7c9bb;
+      color: #3a4f40;
+    }
+    .supervisor-planilla-table .is-renew {
+      width: 1.6rem;
+      min-width: 1.4rem;
+      max-width: 1.8rem;
+      text-align: center;
+      padding-left: 1px;
+      padding-right: 1px;
+    }
+    .supervisor-mobile .supervisor-planilla-table .is-renew,
+    .supervisor-mobile-app .supervisor-planilla-table .is-renew {
+      width: 1.5rem;
+      min-width: 1.5rem;
+      max-width: 1.7rem;
     }
     .supervisor-route-act.is-gastos {
       background: #fddcd7;

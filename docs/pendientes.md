@@ -16,6 +16,7 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 | 9 | **CIE huérfano / Inicial en 0 al amanecer** (31/10: Edgar M/T = 0) | **HECHO 31/10** | SQL `day_closed_at` text + CIE 30/10 sellados (Edgar 4.238.000 · Yesid 3.279.500) + morning-check sella huérfanos | `20261031120000_…`, `server-seal-orphan-cie.ts` |
 | 10 | **N Inicial ≠ saldo** (AJUSTE@ viejo > CIE) | **HECHO 31/10** | `route_own_box` ancla al más reciente AJUSTE@ / CIE; N hoy = 3.279.500 | `20261031123000_…` |
 | 11 | **A dañada por ancla CIE de cadena** (Edgar CIE 4.238.000 ≠ caja A) | **HECHO 31/10** | CIE ancla solo si el día **no** es M/T; A → AJUSTE@A + movimiento (hoy 747.000). Contrato: solo M↔T mezclan; A y N independientes | `20261031124500_…`, `docs/fase-3-saldos.md` |
+| 12 | **Supervisor: hoja Ruta = espejo cobrador** (V, Prestar, vivo); sin botón Planilla | **EN TALLER** · listo para publicar a pedido | Solo vista. Menú RUTA + ficha → RUTA. Publicar cuando diga OK | `docs/supervisor-ruta-vs-planilla.md` |
 
 ## Ya no es pendiente (no reabrir)
 

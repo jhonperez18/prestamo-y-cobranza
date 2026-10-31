@@ -355,7 +355,6 @@ const CIERRE_LIST_EMPTY: Record<CierreListKind, string> = {
 };
 type RouteDetailMode =
   | "totales"
-  | "planilla"
   | "prestamos"
   | "renovados"
   | "gastos"
@@ -656,25 +655,30 @@ function RouteBoardCard({
 }
 
 /**
- * Fila de planilla con su ruta (raya verde donde cambia: Ruta 1 → Ruta 1.1) y el
- * estado «Préstamo al terminar» (terminó hoy → botón; ya prestado → renglón azul).
+ * Fila de hoja del día (misma fuente que el cobrador). Raya verde al cambiar de ruta.
+ * Prestar / V solo en la vista Ruta (Planilla queda sin salidas de escritura).
  */
 type PlanillaTableRow = ReturnType<typeof enrichSupervisorPlanillaRow> & {
   route: string;
   clientRef: string;
   loanRef: string;
   reloan: ReloanState;
+  /** Plazo vencido con saldo: misma señal V que el cobrador / Clientes. */
+  renewAlert: boolean;
 };
 
 function PlanillaTable({
   rows,
   onReloan,
   reloanClientRef,
+  showRenewColumn = false,
 }: {
   rows: PlanillaTableRow[];
-  /** Presente solo donde el supervisor puede prestar (Caja → ruta → planilla). */
+  /** Solo hoja Ruta: abre el mismo QuickLoanForm (commit intacto). */
   onReloan?: (clientRef: string) => void;
   reloanClientRef?: string | null;
+  /** Columna V (vencido). Solo en Ruta. */
+  showRenewColumn?: boolean;
 }) {
   const routeStarts = routeBlockStarts(rows, (row) => row.route);
   return (
@@ -687,6 +691,11 @@ function PlanillaTable({
             <th className="is-num">Saldo</th>
             <th className="is-metodo">Método</th>
             <th className="is-cuotas">Mora</th>
+            {showRenewColumn ? (
+              <th className="is-renew" aria-label="Vencido">
+                {" "}
+              </th>
+            ) : null}
             <th className="is-estado">Estado</th>
           </tr>
         </thead>
@@ -805,6 +814,11 @@ function PlanillaTable({
                     <CuotasProgressCell progress={cuotas} />
                   )}
                 </td>
+                {showRenewColumn ? (
+                  <td className="is-renew">
+                    {row.renewAlert && !openPrestar ? <RenewAlertBill /> : null}
+                  </td>
+                ) : null}
                 <td className="is-estado">
                   {openPrestar ? (
                     onReloan ? (
@@ -818,7 +832,7 @@ function PlanillaTable({
                         Prestar
                       </button>
                     ) : (
-                      <span className="supervisor-prestar-tag" title="Sin préstamo · listo para prestar">
+                      <span className="supervisor-prestar-tag" title="Sin préstamo · listo para prestar · usar hoja Ruta">
                         Prestar
                       </span>
                     )
@@ -1432,7 +1446,7 @@ export function SupervisorMobileApp({
     return [...older, ...byKey.values()];
   }, [serverDay, assignments, today]);
   const [openRouteRef, setOpenRouteRef] = useState<string | null>(null);
-  /** Cliente que terminó hoy con el formulario «Préstamo» abierto (Caja → ruta → planilla). */
+  /** Cliente que terminó hoy con el formulario «Préstamo» abierto (hoja Ruta). */
   const [reloanClientRef, setReloanClientRef] = useState<string | null>(null);
   /** Panel al que vuelve al salir del detalle de ruta (inicio / caja / nequi). */
   const [routeReturnView, setRouteReturnView] = useState<SupervisorView>("inicio");
@@ -2575,8 +2589,13 @@ export function SupervisorMobileApp({
       const client = clients.find((entry) => entry.ref === row.clientRef);
       const position =
         client?.routeOrder && client.routeOrder > 0 ? client.routeOrder : index + 1;
+      const enriched = enrichSupervisorPlanillaRow(row, position, loans, paymentsLive, today);
+      const loanForRenew =
+        enriched.awaitingLoan || !row.loanRef
+          ? null
+          : loans.find((entry) => entry.ref === row.loanRef) ?? null;
       return {
-        ...enrichSupervisorPlanillaRow(row, position, loans, paymentsLive, today),
+        ...enriched,
         route: assignmentRouteName(row, clients),
         clientRef: row.clientRef,
         loanRef: row.loanRef ?? "",
@@ -2587,6 +2606,7 @@ export function SupervisorMobileApp({
           payments: paymentsLive,
           date: today,
         }),
+        renewAlert: canRenewLoan(loanForRenew, today),
       };
     });
 
@@ -2643,11 +2663,10 @@ export function SupervisorMobileApp({
     return openRouteNpByDay.past.find((day) => day.date === snDay)?.rows ?? [];
   }, [openRouteNpByDay, snDay, today]);
 
-  /** Cliente de la planilla abierta al que el supervisor le va a prestar (terminó hoy). */
-  const reloanClient =
-    openRoute && reloanClientRef
-      ? clients.find((row) => row.ref === reloanClientRef) ?? null
-      : null;
+  /** Cliente con formulario Prestar abierto (hoja Ruta · INICIO o menú RUTA). */
+  const reloanClient = reloanClientRef
+    ? clients.find((row) => row.ref === reloanClientRef) ?? null
+    : null;
   const openRouteScope = useMemo(() => {
     if (!openRoute) return null;
     const clientRefs = new Set(
@@ -3668,6 +3687,11 @@ export function SupervisorMobileApp({
     // Misma pestaña sin detalle de ruta: no resetear (evita click fantasma).
     if (next === view && !openRouteRef && !connectionRouteRef) return;
     suppressGhostClick(420);
+    // Si venía de una ficha (ej. M · Edgar) y abre RUTA del menú, deja el pin de esa ruta.
+    const routeNameLeaving =
+      next === "planilla" && openRouteRef
+        ? liquidaciones.find((row) => row.routeRef === openRouteRef)?.routeName ?? null
+        : null;
     setOpenRouteRef(null);
     setConnectionRouteRef(null);
     setRouteReturnView("inicio");
@@ -3688,7 +3712,11 @@ export function SupervisorMobileApp({
     setGastoMethod("efectivo");
     setGastoDate(displayToday());
     if (next === "planilla") {
-      setPlanillaRouteFilter(pickDefaultRoutePin(planillaRoutePins));
+      setPlanillaRouteFilter(
+        routeNameLeaving && planillaRoutePins.some((name) => sameRoute(name, routeNameLeaving))
+          ? routeNameLeaving
+          : pickDefaultRoutePin(planillaRoutePins),
+      );
     } else {
       setPlanillaRouteFilter(null);
     }
@@ -5105,17 +5133,6 @@ export function SupervisorMobileApp({
               <div className="supervisor-mobile-actions has-historial has-np">
                 <button
                   type="button"
-                  className="supervisor-route-act is-planilla"
-                  disabled={openAssignments.length === 0}
-                  onClick={() => {
-                    foldSnHistory();
-                    setDetailMode("planilla");
-                  }}
-                >
-                  <b>PLANILLA</b>
-                </button>
-                <button
-                  type="button"
                   className="supervisor-route-act is-gastos"
                   onClick={() => {
                     foldSnHistory();
@@ -5247,66 +5264,6 @@ export function SupervisorMobileApp({
                 </ul>
               )}
             </>
-          ) : detailMode === "planilla" ? (
-            <>
-              <p className="supervisor-mobile-detail-meta">
-                <span>Planilla</span>
-                <span className="supervisor-mobile-detail-sep" aria-hidden>
-                  ·
-                </span>
-                <span>
-                  {openRoute.done}/{openRoute.planilla}
-                </span>
-                <span className="supervisor-mobile-detail-sep" aria-hidden>
-                  ·
-                </span>
-                <span>En caja {money(openRoute.enCaja, { symbol: false })}</span>
-              </p>
-              {reloanClient && onCreateQuickLoan ? (
-                <div className="supervisor-reloan-panel" aria-label="Préstamo al terminar">
-                  <div className="supervisor-mobile-detail-head">
-                    <h3>{`${reloanClient.name} ${reloanClient.lastName}`.trim()}</h3>
-                    <button
-                      type="button"
-                      className="collector-mobile-pay-link"
-                      onClick={() => setReloanClientRef(null)}
-                    >
-                      cerrar
-                    </button>
-                  </div>
-                  <p className="supervisor-mobile-subhead">
-                    Terminó su crédito hoy · Ruta {reloanClient.route || openRoute.routeName} ·{" "}
-                    {openRoute.collectorName}
-                  </p>
-                  <QuickLoanForm
-                    key={reloanClient.ref}
-                    clientName={`${reloanClient.name} ${reloanClient.lastName}`.trim()}
-                    clientRef={reloanClient.ref}
-                    fundedByOptions={["nequi", "banco", "efectivo"]}
-                    defaultFundedBy="nequi"
-                    onCancel={() => setReloanClientRef(null)}
-                    onSave={(draft) => {
-                      onCreateQuickLoan({ ...draft, routeName: reloanClient.route });
-                      setReloanClientRef(null);
-                    }}
-                  />
-                </div>
-              ) : null}
-              {openAssignments.length === 0 ? (
-                <p className="ficha-empty">Sin planilla enviada hoy.</p>
-              ) : (
-                <PlanillaTable
-                  rows={planillaTableRows(openAssignments)}
-                  onReloan={
-                    onCreateQuickLoan
-                      ? (clientRef) =>
-                          setReloanClientRef((prev) => (prev === clientRef ? null : clientRef))
-                      : undefined
-                  }
-                  reloanClientRef={reloanClientRef}
-                />
-              )}
-            </>
           ) : (
             <>
               <p className="supervisor-mobile-detail-meta">
@@ -5342,7 +5299,7 @@ export function SupervisorMobileApp({
       ) : view === "planilla" ? (
         <section className="supervisor-mobile-section">
           <div className="supervisor-planilla-head">
-            <h3>Planilla de hoy</h3>
+            <h3>Ruta de hoy</h3>
             {planillaRoutePins.length > 0 ? (
               <div
                 className="supervisor-planilla-route-btns"
@@ -5358,11 +5315,12 @@ export function SupervisorMobileApp({
                         ? "collector-mobile-route-pin on"
                         : "collector-mobile-route-pin"
                     }
-                    onClick={() =>
+                    onClick={() => {
+                      setReloanClientRef(null);
                       setPlanillaRouteFilter((prev) =>
                         prev && sameRoute(prev, name) ? null : name,
-                      )
-                    }
+                      );
+                    }}
                     title={`Ruta ${name}`}
                     aria-label={`Ruta ${name}`}
                   >
@@ -5372,10 +5330,49 @@ export function SupervisorMobileApp({
               </div>
             ) : null}
           </div>
+          {reloanClient && onCreateQuickLoan ? (
+            <div className="supervisor-reloan-panel" aria-label="Préstamo al terminar">
+              <div className="supervisor-mobile-detail-head">
+                <h3>{`${reloanClient.name} ${reloanClient.lastName}`.trim()}</h3>
+                <button
+                  type="button"
+                  className="collector-mobile-pay-link"
+                  onClick={() => setReloanClientRef(null)}
+                >
+                  cerrar
+                </button>
+              </div>
+              <p className="supervisor-mobile-subhead">
+                Terminó su crédito hoy · Ruta {reloanClient.route || "—"}
+              </p>
+              <QuickLoanForm
+                key={reloanClient.ref}
+                clientName={`${reloanClient.name} ${reloanClient.lastName}`.trim()}
+                clientRef={reloanClient.ref}
+                fundedByOptions={["nequi", "banco", "efectivo"]}
+                defaultFundedBy="nequi"
+                onCancel={() => setReloanClientRef(null)}
+                onSave={(draft) => {
+                  onCreateQuickLoan({ ...draft, routeName: reloanClient.route });
+                  setReloanClientRef(null);
+                }}
+              />
+            </div>
+          ) : null}
           {planillaAssignments.length === 0 ? (
-            <p className="ficha-empty">No hay cobros en planilla hoy.</p>
+            <p className="ficha-empty">No hay hoja de ruta hoy.</p>
           ) : (
-            <PlanillaTable rows={planillaTableRows(planillaAssignments)} />
+            <PlanillaTable
+              rows={planillaTableRows(planillaAssignments)}
+              showRenewColumn
+              onReloan={
+                onCreateQuickLoan
+                  ? (clientRef) =>
+                      setReloanClientRef((prev) => (prev === clientRef ? null : clientRef))
+                  : undefined
+              }
+              reloanClientRef={reloanClientRef}
+            />
           )}
         </section>
       ) : view === "informe" ? (
