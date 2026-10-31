@@ -746,10 +746,16 @@ function PlanillaTable({
               !grantedLoan &&
               row.visitStatus !== "omitido" &&
               row.visitStatus !== "cobrado";
+            const showFin =
+              Boolean(row.reloan.canReloan) &&
+              !openPrestar &&
+              !grantedHere &&
+              !(row.reloan.renewed || row.methodToneClass === "is-pay-renovado");
             const rowClass = [
               routeStarts[index] ? "is-route-start" : "",
               grantedHere ? "is-reloan" : "",
               row.reloan.renewed ? "is-renewed" : "",
+              showFin ? "is-finished" : "",
               openPrestar ? "is-awaiting-loan" : "",
             ]
               .filter(Boolean)
@@ -769,7 +775,7 @@ function PlanillaTable({
                         symbol: false,
                       })}
                     </span>
-                  ) : row.reloan.canReloan ? (
+                  ) : showFin ? (
                     <span
                       className="supervisor-planilla-saldo-fin"
                       title="Terminó su crédito · prestar en la fila Prestar"

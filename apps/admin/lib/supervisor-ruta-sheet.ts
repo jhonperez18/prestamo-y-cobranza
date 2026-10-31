@@ -9,6 +9,7 @@ import type { CuotasProgress } from "@/lib/loan-cuotas-progress";
 import {
   loanGrantedOnDate,
   loanRenewedOnDate,
+  loanSettledOnDate,
   type ReloanState,
 } from "@/lib/loan-reloan";
 import type { LoanRow, PaymentMethod, PaymentRow } from "@/lib/mock-data";
@@ -63,6 +64,31 @@ function stripRenewed(reloan: ReloanState): ReloanState {
 
 function stripGranted(reloan: ReloanState): ReloanState {
   return { ...reloan, granted: null };
+}
+
+/**
+ * Cobro que liquidó el crédito hoy → Fin (antes del 0), aunque debajo haya Prestado.
+ * El P azul vive en su propia línea; aquí no se arrastra `granted`.
+ */
+function reloanForPayLine(
+  row: SupervisorRutaSheetRow,
+  loans: LoanRow[],
+  payments: PaymentRow[],
+  date: string,
+  granted: LoanRow | null,
+): ReloanState {
+  const loan = row.loanRef ? loans.find((entry) => entry.ref === row.loanRef) ?? null : null;
+  const settledOld =
+    Boolean(loan) &&
+    row.paidAmount > 0 &&
+    !row.awaitingLoan &&
+    (!granted || loan!.ref !== granted.ref) &&
+    loanSettledOnDate(loan, payments, date);
+  return {
+    canReloan: settledOld || row.reloan.canReloan,
+    granted: null,
+    renewed: null,
+  };
 }
 
 function renovadoLine(
@@ -170,7 +196,7 @@ export function expandSupervisorRutaSheetRows(
       out.push({
         ...row,
         key: `${row.key}|post-renovado`,
-        reloan: stripRenewed(stripGranted(row.reloan)),
+        reloan: reloanForPayLine(row, loans, payments, date, granted),
       });
       continue;
     }
@@ -198,16 +224,24 @@ export function expandSupervisorRutaSheetRows(
     }
 
     if (row.paidParts.length >= 2 && !row.awaitingLoan) {
-      for (let i = 0; i < row.paidParts.length; i++) {
-        out.push(payPartLine(row, row.paidParts[i], i, i === row.paidParts.length - 1));
+      const payBase = {
+        ...row,
+        reloan: reloanForPayLine(row, loans, payments, date, granted),
+      };
+      for (let i = 0; i < payBase.paidParts.length; i++) {
+        out.push(
+          payPartLine(payBase, payBase.paidParts[i], i, i === payBase.paidParts.length - 1),
+        );
       }
       continue;
     }
 
-    // Cuota del renovado / resto: sin volver a marcar Renovado en la misma fila.
+    // Cobro / cuota: Fin si liquidó hoy; sin Renovado ni P en la misma fila.
     out.push({
       ...row,
-      reloan: stripRenewed(row.reloan),
+      reloan: row.paidAmount > 0
+        ? reloanForPayLine(row, loans, payments, date, granted)
+        : stripGranted(stripRenewed(row.reloan)),
     });
   }
   return out;
@@ -249,6 +283,7 @@ function rutaLineRank(row: SupervisorRutaSheetRow): number {
   if (row.awaitingLoan) return 5;
   if (row.methodLabel === "P" || row.methodToneClass === "is-pay-prestamo") return 3;
   if (row.reloan.granted && row.paidAmount <= 0) return 3;
+  // Fin (liquidó) va antes del Prestado, con el 0 del crédito cerrado.
   if (row.reloan.canReloan) return 1;
   if (row.paidAmount > 0) return 2;
   return 4;
