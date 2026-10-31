@@ -25,6 +25,7 @@ import {
   mirrorToLoanRow,
 } from "@/lib/supabase/catalog-mirror";
 import { fetchPaymentsFromSupabase, mirrorRowToPaymentRow } from "@/lib/supabase/payment-mirror";
+import { callSealDayClose } from "@/lib/server-seal-day-close";
 import {
   assignmentToRow,
   dayCloseToRow,
@@ -150,23 +151,42 @@ export async function runServerDayRollover(
 
   const closeRefs = new Set(result.autoClosed.map((p) => `${p.collectorRef}::${p.date}`));
 
-  for (const row of result.dayCloses) {
-    const key = `${row.collectorRef}::${normalizeDate(row.date)}`;
-    if (!closeRefs.has(key) && !result.autoClosed.some((p) => p.collectorRef === row.collectorRef)) {
-      continue;
+  // Fase 4.2: CIE por seal_day_close (cash_float de la base), no el float del ciclo local.
+  for (const pair of result.autoClosed) {
+    const date = normalizeDate(pair.date);
+    const planned = result.dayCloses.find(
+      (row) =>
+        row.collectorRef === pair.collectorRef &&
+        normalizeDate(row.date) === date &&
+        String(row.ref || "").startsWith("CIE-") &&
+        !isPlanillaCashCloseRef(row.ref),
+    );
+    const sealed = await callSealDayClose({
+      collectorRef: pair.collectorRef,
+      date,
+      route: "",
+      key: `rollover|${pair.collectorRef}|${date}`,
+      by: "day-rollover",
+      writeCie: true,
+      routeRef: planned?.routeRef,
+      collectorName: planned?.collectorName,
+      collected: planned?.collected,
+      expenses: planned?.expenses,
+      expensesTotal: planned?.expensesTotal,
+      movementRefs: planned?.movementRefs,
+    });
+    if (!sealed.ok) {
+      errors.push(`CIE ${pair.collectorRef} ${date}: ${sealed.error}`);
+    } else if (!sealed.idempotent) {
+      upsertedCloses += 1;
     }
-    if (isPlanillaCashCloseRef(row.ref)) continue;
-    const mapped = dayCloseToRow(row);
-    const up = await upsertDayCloseIdempotent(mapped);
-    if (!up.ok) errors.push(`CIE ${row.ref}: ${"error" in up ? up.error : "fail"}`);
-    else if (!("skipped" in up && up.skipped)) upsertedCloses += 1;
   }
 
   for (const row of result.planillaCashCloses ?? []) {
     const key = `${row.collectorRef}::${normalizeDate(row.date)}`;
     if (!closeRefs.has(key)) continue;
     const mapped = dayCloseToRow(planillaCashCloseAsDayClose(row));
-    const up = await upsertDayCloseIdempotent(mapped);
+    const up = await upsertDayCloseIdempotent(mapped, { force: true });
     if (!up.ok) {
       const msg = "error" in up ? String(up.error) : "fail";
       // Esquema viejo sin PCE-: no tumbar el rollover; CIE + planilla ya sellan.

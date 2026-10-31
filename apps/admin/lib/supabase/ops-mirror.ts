@@ -1597,7 +1597,10 @@ export async function sealRouteSheetInCloud(row: {
  * Blindaje CIE: no dejar que un aparato con cash_float viejo (ej. 2.090.000)
  * pise el CIE ya sellado en nube (ej. 2.704.000) si el de nube es más reciente.
  *
- * `force: true` (solo taller / force-sync): la PC principal pisa la nube con el float local.
+ * Fase 4.2: sin `force`, el aparato **nunca** escribe `cash_float`.
+ * Alta nueva → `cie_use_close_sheet`. Ajustes A/N / T sí unen refs.
+ *
+ * `force: true` (taller / PCE servidor / force-sync): pisa con el float enviado.
  */
 export async function upsertDayCloseIdempotent(
   row: Record<string, unknown>,
@@ -1617,6 +1620,10 @@ export async function upsertDayCloseIdempotent(
       .eq("ref", ref)
       .maybeSingle();
     if (readError) return { ok: false as const, error: readError.message };
+    // Fase 4.2: sin CIE en nube, el aparato no lo crea con su float.
+    if (!existing && !force) {
+      return { ok: true as const, skipped: true as const, reason: "cie_use_close_sheet" };
+    }
     if (existing) {
       const cloudRefs = splitCashAdjustmentRefs(
         Array.isArray(existing.movement_refs) ? (existing.movement_refs as string[]) : [],
@@ -1642,8 +1649,10 @@ export async function upsertDayCloseIdempotent(
         }
         reclosedRoutes = liveReopens.map((reopen) => reopen.route);
       }
+      // Fase 4.2: el float de la nube manda; el aparato solo puede aportar ajustes en refs.
       incomingRow = {
         ...row,
+        cash_float: force ? row.cash_float : existing.cash_float,
         movement_refs: joinCashAdjustmentRefs(
           [...withoutSheetReopenRefs(incomingRefs.movementRefs), ...cloudReopenRefs],
           incomingRefs.cashAdjustment,
@@ -1691,21 +1700,9 @@ export async function upsertDayCloseIdempotent(
         ) {
           return skipKeepingRouteAdjustments("cloud_cie_keeps_cash_adjustment");
         }
+        // Float distinto del aparato: no pisa. Solo entra si hay ajuste de ruta nuevo.
         if (cloudFloat !== incomingFloat) {
-          const cloudTs = dayCloseFreshnessMs(
-            String(existing.closed_at || existing.updated_at || ""),
-            cloudAdjustment,
-          );
-          const incomingTs = dayCloseFreshnessMs(
-            String(row.closed_at || row.updated_at || ""),
-            incomingAdjustment,
-          );
-          const cloudWins =
-            Number.isFinite(cloudTs) &&
-            (!Number.isFinite(incomingTs) || cloudTs >= incomingTs);
-          if (cloudWins) {
-            return skipKeepingRouteAdjustments("cloud_cie_keeps_cash_float");
-          }
+          return skipKeepingRouteAdjustments("cloud_cie_keeps_cash_float");
         }
       }
     }

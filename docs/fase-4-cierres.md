@@ -17,8 +17,16 @@ No vender cerrada hasta que el aparato **deje de subir** `cash_float`.
 
 App: `POST /api/ops/close-sheet` → tras flush de cola. Sin red: sigue el CIE local + cola (compat).
 
-## Después (4.2+)
+## Corte 4.2 — mirror no escribe float; rollover usa `seal_day_close` (**app · sin SQL nuevo**)
 
-- Cerrar escritura directa de `cash_float` desde el mirror del aparato
-- Corte 23:30 / 6:00 llaman la misma RPC
-- Quitar candados `cloud_cie_keeps_cash_float` cuando todos estén en esta versión
+| Qué | Detalle |
+| --- | --- |
+| Mirror CIE | Sin CIE en nube → `cie_use_close_sheet` → orden `executeCloseSheet` / `seal_day_close` |
+| CIE ya en nube | El aparato **no** cambia `cash_float`; solo une ajustes en `movement_refs` |
+| 23:30 | `runServerDayRollover` sella CIE con `callSealDayClose` (mismo dueño) |
+| PCE | Siguen por upsert con `force` del servidor |
+
+## Después (4.3+)
+
+- Quitar candados viejos de float cuando todos los aparatos estén en esta versión
+- Reabrir / ajuste de saldo como órdenes atómicas en la base

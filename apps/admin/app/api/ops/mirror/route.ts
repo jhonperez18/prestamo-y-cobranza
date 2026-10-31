@@ -19,8 +19,12 @@ import type {
   CollectorDayCloseRecord,
   CollectorDayExpenseDraft,
 } from "@/lib/collector-day-close";
+import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { MiscPayment } from "@/lib/misc-payments";
+import { businessTodayIso } from "@/lib/business-timezone";
+import { isPlanillaCashCloseRef } from "@/lib/planilla-cash-chain";
+import { callSealDayClose } from "@/lib/server-seal-day-close";
 import { isVirginWriteLocked, virginWriteLockPayload } from "@/lib/virgin-lock";
 import { jsonNoStore } from "@/lib/api-no-store";
 
@@ -86,9 +90,41 @@ async function mirrorItem(item: MirrorItem): Promise<ItemOutcome> {
     case "collector_delete":
       return deleteByRef("collectors", item.row);
     case "day_close": {
-      result = await upsertDayCloseIdempotent(dayCloseToRow(item.row as CollectorDayCloseRecord));
+      const closeRow = item.row as CollectorDayCloseRecord;
+      const closeRef = String(closeRow.ref || "");
+      // Fase 4.2: CIE del aparato → seal_day_close (cash_float de la base). Sin bajar el archivo.
+      if (closeRef.startsWith("CIE-") && !isPlanillaCashCloseRef(closeRef)) {
+        const date = normalizeHistoryDate(closeRow.date) || closeRow.date;
+        if (date !== businessTodayIso()) {
+          result = { ok: true as const, skipped: true as const, reason: "cie_use_close_sheet" };
+          break;
+        }
+        const sealed = await callSealDayClose({
+          collectorRef: closeRow.collectorRef,
+          date,
+          route: "",
+          key: `mirror|${closeRef}`,
+          by: closeRow.collectorName || "mirror",
+          writeCie: true,
+          routeRef: closeRow.routeRef,
+          collectorName: closeRow.collectorName,
+          collected: closeRow.collected,
+          expenses: closeRow.expenses,
+          expensesTotal: closeRow.expensesTotal,
+          movementRefs: closeRow.movementRefs,
+        });
+        if (sealed.ok) {
+          result = { ok: true as const };
+          await auditDayCloseInCloud(closeRow);
+          break;
+        }
+        // no_listo / cie_faltante: reintenta. ya_sellado pasado no aplica (solo hoy).
+        result = { ok: false as const, error: sealed.error };
+        break;
+      }
+      result = await upsertDayCloseIdempotent(dayCloseToRow(closeRow));
       if (result.ok && !("skipped" in result && result.skipped)) {
-        await auditDayCloseInCloud(item.row as CollectorDayCloseRecord);
+        await auditDayCloseInCloud(closeRow);
       }
       break;
     }

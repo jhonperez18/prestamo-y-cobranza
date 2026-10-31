@@ -37,6 +37,7 @@ const DROP_ON_SKIP_REASON = new Set([
   "cloud_cie_keeps_cash_float",
   "cloud_cie_keeps_cash_adjustment",
   "cloud_cie_past_day_sealed",
+  "cie_use_close_sheet",
   "provisional_day_close",
   "cie_reopened",
   "historia",
