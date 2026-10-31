@@ -1,7 +1,7 @@
 # Fase 4 Cierres — dueño en la base
 
-**Estado oficial:** PENDIENTE (`.cursor/rules/fases-dueno-dato.mdc`).  
-No vender cerrada hasta que el aparato **deje de subir** `cash_float`.
+**Estado oficial:** cortes **4.1–4.3 en prod** (`.cursor/rules/fases-dueno-dato.mdc`).  
+No vender “cerrada al 100 %” mientras falte reabrir como orden y quitar candados viejos.
 
 ## Corte 4.1 — orden `close-sheet` + `seal_day_close` (**en prod** · build `4c71d21`)
 
@@ -39,7 +39,7 @@ App: `POST /api/ops/close-sheet` → tras flush de cola. Sin red: sigue el CIE l
 
 Necesario tras 4.2: el mirror ya no puede cambiar `cash_float`; el ajuste de T debe ir por esta orden.
 
-## Después
+## Pendiente (no es 4.1–4.3)
 
 - Reabrir hoja como orden atómica en la base
 - Quitar candados viejos de float cuando todos los aparatos estén en 4.x

@@ -26,12 +26,11 @@ Primero dice qué es lo mejor para el negocio, después hace lo que el dueño de
 | Raíz | El dato pasa a tener un solo dueño en la nube (función atómica, regla en la base, saldo calculado por la base) |
 | Parche / candado | Un `if`, un filtro, un assert o una regla que frena **un caso** con el aparato todavía como dueño |
 
-- Si se hace un parche por urgencia → decirlo con la palabra **«parche»** y anotar el arreglo de fondo pendiente.
+- **Antes de un parche, parar (dueño, 2026-10-24).** Decir que es **parche**, la causa y la otra forma (el dato en la base). No se programa ni se publica hasta que el dueño lo mire y elija. Ni por urgencia ni “para este celular”.
 - Prohibido presentar un candado como «arreglado de raíz».
 - Cada fase que pase un dato a la nube **quita** los candados de ese dato. Los candados bajan, no suben.
 - **Cero candados nuevos (dueño, 2026-10-09).** Una falla se arregla moviendo ese dato a la nube.
-  Prohibido sumar secciones a `assert-cash-chain.mjs` o `if` de un caso. Si hay urgencia que pierde
-  plata → avisar al dueño y pedir permiso antes del parche.
+  Prohibido sumar secciones a `assert-cash-chain.mjs` o `if` de un caso.
 
 ## Rumbo (modelo banco)
 
@@ -40,9 +39,9 @@ Modelo: `register_collection` (cobro atómico, idempotente, saldo en la base).
 | Pieza | Estado |
 | --- | --- |
 | Préstamos (órdenes + `_loan_settle`) | **CERRADO** — no rehacer (ver `fases-dueno-dato.mdc`) |
-| Cobros (dueño total en la base) | Pendiente |
-| Saldos (caja, Inicial, A/N, Banco/Nequi) | Pendiente |
-| Cierres (CIE- + planilla por orden al servidor) | Pendiente (2a sombra ≠ cerrado) |
+| Cobros (dueño total en la base) | Cortes 2.1–2.3 en prod (Realtime planilla puede faltar) |
+| Saldos (caja, Inicial, A/N, Banco/Nequi) | Lectura **CERRADA** (3.1–3.3) |
+| Cierres (CIE- + planilla + ajuste por orden) | Cortes 4.1–4.3 en prod (falta reabrir como orden) |
 
 Estado firme y prohibiciones: `.cursor/rules/fases-dueno-dato.mdc`.
 

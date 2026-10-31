@@ -1,6 +1,6 @@
 # Fase 3 Saldos — dueño en la base
 
-**Estado oficial:** lectura **en prod** (3.1–3.3). La escritura del CIE es Fase 4.
+**Estado oficial:** lectura **CERRADA** en prod (3.1–3.3). Escritura del CIE = Fase 4 (4.1–4.3 en prod).
 
 ## Corte 3.1 — Inicial M (**en prod** · build `efd99c0`)
 
@@ -43,6 +43,6 @@ SQL Editor → pegar el `.sql` → **Run** → Success → publicar app.
 
 Sin red: sigue el libro local. Días sellados A/N: CIE manda (historia).
 
-## Después
+## Hecho después
 
-- Fase 4: sellar CIE por orden (el aparato deja de subir `cash_float`)
+Fase 4.1–4.3 en prod (`docs/fase-4-cierres.md`): cierre, mirror y ajuste por orden.
