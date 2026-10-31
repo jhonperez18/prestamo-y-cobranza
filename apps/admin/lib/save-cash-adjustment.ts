@@ -9,6 +9,7 @@ import type {
 } from "@/lib/collector-day-close";
 import { commitCashAdjustment, type CashAdjustmentRequest } from "@/lib/commit-cash-adjustment";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import { businessTodayIso } from "@/lib/business-timezone";
 import {
   DEMO_CLIENTS_KEY,
   DEMO_COLLECTOR_DAY_CLOSES_KEY,
@@ -36,6 +37,39 @@ import {
 } from "@/lib/mock-data";
 import type { PlanillaCashCloseRecord } from "@/lib/planilla-cash-chain";
 import { flushOpsMirrorQueues, mirrorDayCloseNow } from "@/lib/supabase/ops-mirror";
+
+/** Fase 4.3: manda el ajuste a la base. Si falla la red, queda el commit local + cola. */
+async function pushAdjustDayCash(input: {
+  collectorRef: string;
+  date: string;
+  real: number;
+  by: string;
+  reason: string;
+  route?: string;
+  calculated?: number;
+}): Promise<boolean> {
+  try {
+    const res = await fetch("/api/ops/adjust-day-cash", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        collectorRef: input.collectorRef,
+        date: input.date,
+        real: input.real,
+        by: input.by,
+        reason: input.reason,
+        route: input.route,
+        key: `adj|${input.collectorRef}|${input.date}|${input.route || "T"}|${input.real}`,
+        calculated: input.calculated,
+      }),
+    });
+    const body = (await res.json()) as { ok?: boolean };
+    return Boolean(res.ok && body.ok === true);
+  } catch (error) {
+    console.error("adjust-day-cash", error);
+    return false;
+  }
+}
 
 export type SaveCashAdjustmentInput = CashAdjustmentRequest & { by: string };
 
@@ -95,25 +129,35 @@ async function saveRouteCashAdjustment(
   const adjustWindow = routeCashAdjustmentWindow(input.collectorRef, input.route, dayCloses);
   if (!adjustWindow.open) return { ok: false, error: adjustWindow.reason };
 
+  const calculated = calculatedRouteSaldo(
+    input.collectorRef,
+    input.route,
+    adjustWindow.date,
+    dayCloses,
+    planillaCashCloses,
+  );
   const result = commitRouteCashAdjustment({
     collectorRef: input.collectorRef,
     route: input.route,
     real: input.real,
     reason: input.reason,
     by: input.by,
-    calculated: calculatedRouteSaldo(
-      input.collectorRef,
-      input.route,
-      adjustWindow.date,
-      dayCloses,
-      planillaCashCloses,
-    ),
+    calculated,
     dayCloses,
   });
   if (!result.ok) return result;
 
   writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, result.dayCloses);
-  const cloud = await mirrorAdjustedClose(result.record);
+  const cloud =
+    (await pushAdjustDayCash({
+      collectorRef: input.collectorRef,
+      date: adjustWindow.date || businessTodayIso(),
+      real: input.real,
+      by: input.by,
+      reason: input.reason,
+      route: input.route,
+      calculated,
+    })) || (await mirrorAdjustedClose(result.record));
   const real = money(input.real);
   return {
     ok: true,
@@ -141,7 +185,15 @@ export async function saveCashAdjustment(
   writeDemoJson(DEMO_COLLECTOR_DAY_CLOSES_KEY, result.dayCloses);
   writeDemoJson(DEMO_PLANILLA_CASH_CLOSES_KEY, result.planillaCashCloses);
 
-  const cloud = await mirrorAdjustedClose(result.record);
+  const cloud =
+    (await pushAdjustDayCash({
+      collectorRef: input.collectorRef,
+      date: businessTodayIso(),
+      real: result.record.cashFloat,
+      by: input.by,
+      reason: input.reason,
+      calculated: result.record.cashAdjustment?.calculated,
+    })) || (await mirrorAdjustedClose(result.record));
   const real = money(result.record.cashFloat);
   return {
     ok: true,

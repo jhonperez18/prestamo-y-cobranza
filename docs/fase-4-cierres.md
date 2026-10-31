@@ -26,7 +26,20 @@ App: `POST /api/ops/close-sheet` → tras flush de cola. Sin red: sigue el CIE l
 | 23:30 | `runServerDayRollover` sella CIE con `callSealDayClose` (mismo dueño) |
 | PCE | Siguen por upsert con `force` del servidor |
 
-## Después (4.3+)
+## Corte 4.3 — ajuste de saldo por orden (**SQL listo · pegar → Run → release**)
 
-- Quitar candados viejos de float cuando todos los aparatos estén en esta versión
-- Reabrir / ajuste de saldo como órdenes atómicas en la base
+**Migración:** `supabase/migrations/20261030260000_fase4_adjust_day_cash.sql`
+
+| Qué | Detalle |
+| --- | --- |
+| RPC | `adjust_day_cash(collector, date, real, by, reason, route?, key?, calculated?)` |
+| T | `cash_float` = real + `AJUSTE:` (Inicial M mañana) |
+| A/N/pools | Solo `AJUSTE@ruta:` (no toca el float de la cadena) |
+| App | `POST /api/ops/adjust-day-cash` desde `saveCashAdjustment` (sin red: cola local) |
+
+Necesario tras 4.2: el mirror ya no puede cambiar `cash_float`; el ajuste de T debe ir por esta orden.
+
+## Después
+
+- Reabrir hoja como orden atómica en la base
+- Quitar candados viejos de float cuando todos los aparatos estén en 4.x
