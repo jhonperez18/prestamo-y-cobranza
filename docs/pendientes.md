@@ -13,6 +13,7 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 | 6 | **Limpieza candados Fase 2 / 3** (assert) | **PENDIENTE** | Cuando esa fase esté CERRADA en prod + pedido; lotes 2a–2b assert ya hechos; queda runtime / expects que aún dependen del aparato | `docs/inventario-candados.md` |
 | 7 | **Expect renglón GAS-** (Fase 1 leftover) | **PENDIENTE** | Hasta que la caja / renglón no dependa del aparato (escritura saldos); no borrar antes | `inventario-candados.md` §1b |
 | 8 | **Declarar Fase 4 “cerrada al 100 %”** | **PENDIENTE** | Después de #1 (candados float) y aparatos vivos en 4.x | `fases-dueno-dato.mdc` |
+| 9 | **CIE huérfano / Inicial en 0 al amanecer** (31/10: Edgar M/T = 0) | **HECHO 31/10** | SQL `day_closed_at` text + CIE 30/10 sellados (Edgar 4.238.000 · Yesid 3.279.500) + morning-check sella huérfanos | `20261031120000_…`, `server-seal-orphan-cie.ts` |
 
 ## Ya no es pendiente (no reabrir)
 

@@ -11,6 +11,7 @@ import { findFullDayCieClose } from "@/lib/planilla-cash-chain";
 import { planillaWindowStartIso } from "@/lib/planilla-window";
 import { auditChainFromState } from "@/lib/server-chain-audit";
 import { loadOperationalStateFromCloud, runServerDayRollover } from "@/lib/server-day-rollover";
+import { sealOrphanDayCloses } from "@/lib/server-seal-orphan-cie";
 import { informeSealDetail, maybeSealInformeMonth, type InformeSealResult } from "@/lib/server-seal-informe-month";
 import { sendMonthlyReport, type MonthlyReportSendResult } from "@/lib/server-monthly-report";
 import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -122,6 +123,22 @@ export async function runServerMorningCheck(now = new Date()): Promise<MorningCh
   if (!loaded.ok) {
     items.push({ label: "Lectura de la nube", ok: false, detail: loaded.error });
   } else {
+    // Hueco Fase 4.2: hoja sellada sin CIE- → Inicial del día siguiente en 0.
+    const orphans = await sealOrphanDayCloses(loaded.state, now);
+    const okOrphans = orphans.sealed.filter((row) => !row.error);
+    items.push({
+      label: "CIE huérfanos sellados",
+      ok: orphans.ok,
+      detail: orphans.sealed.length
+        ? [
+            ...okOrphans.map(
+              (row) =>
+                `${row.collectorName} ${row.date}${row.cashFloat != null ? ` = ${moneyLabel(row.cashFloat)}` : ""}`,
+            ),
+            ...orphans.errors,
+          ].join(" · ")
+        : "Ninguno",
+    });
     items.push(...evaluateMorningState(loaded.state, businessDate, planillaWindowStartIso(now)));
   }
   const informe = await maybeSealInformeMonth({
