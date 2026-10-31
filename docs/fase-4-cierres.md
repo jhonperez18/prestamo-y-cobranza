@@ -1,7 +1,7 @@
 # Fase 4 Cierres — dueño en la base
 
-**Estado oficial:** cortes **4.1–4.3 en prod** (`.cursor/rules/fases-dueno-dato.mdc`).  
-No vender “cerrada al 100 %” mientras falte reabrir como orden y quitar candados viejos.
+**Estado oficial:** cortes **4.1–4.4 en prod** (`.cursor/rules/fases-dueno-dato.mdc`).  
+No vender “cerrada al 100 %” mientras queden candados viejos de float.
 
 ## Corte 4.1 — orden `close-sheet` + `seal_day_close` (**en prod** · build `4c71d21`)
 
@@ -39,7 +39,7 @@ App: `POST /api/ops/close-sheet` → tras flush de cola. Sin red: sigue el CIE l
 
 Necesario tras 4.2: el mirror ya no puede cambiar `cash_float`; el ajuste de T debe ir por esta orden.
 
-## Corte 4.4 — reabrir hoja por orden (**pendiente de SQL + release**)
+## Corte 4.4 — reabrir hoja por orden (**en prod** · build `4c5db46`)
 
 **Migración:** `supabase/migrations/20261030270000_fase4_reopen_day_sheet.sql`
 
