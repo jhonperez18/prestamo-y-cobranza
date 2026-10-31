@@ -3,6 +3,7 @@
  * Misma lógica visual que el cobrador: varias líneas por cliente cuando hoy hubo
  * Renovado, cobro, préstamo nuevo (P), cobro combinado o Fin + Prestar.
  */
+import type { CuotasProgress } from "@/lib/loan-cuotas-progress";
 import type { ReloanState } from "@/lib/loan-reloan";
 import type { PaymentMethod } from "@/lib/mock-data";
 import {
@@ -21,18 +22,7 @@ export type SupervisorRutaSheetRow = {
   methodLabel: string | null;
   methodToneClass: string;
   methodTitle: string | undefined;
-  cuotas: {
-    label: string;
-    intensity: number;
-    title: string;
-    expected: number;
-    paid?: number;
-    total?: number;
-    covered?: number;
-    paidTotal?: number;
-    installment?: number;
-    lagDays?: number;
-  };
+  cuotas: CuotasProgress;
   visitStatus: string;
   awaitingLoan: boolean;
   paidAmount: number;
@@ -44,12 +34,12 @@ export type SupervisorRutaSheetRow = {
   renewAlert: boolean;
 };
 
-function emptyCuotas(title = "") {
+function emptyCuotas(title = ""): CuotasProgress {
   return {
-    label: "",
+    label: title ? "0/0" : "",
     intensity: 0,
     title,
-    expected: 0,
+    expected: title ? 1 : 0,
     paid: 0,
     total: 0,
     covered: 0,
