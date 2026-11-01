@@ -103,6 +103,7 @@ import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import { loadSupervisorHistoryPayments } from "@/lib/supervisor-book";
 import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
+import { getCloudChainMOpening } from "@/lib/cloud-chain-m-opening";
 import {
   useChainMOpening,
   useDigitalPoolBalancesCloud,
@@ -455,6 +456,11 @@ type RouteLiquidacion = {
   /** Filas de desembolso en caja (misma fuente que prestamosHoy). */
   cashLoansToday: DayLoanDisbursementRow[];
   enCaja: number;
+  /**
+   * Inicial M/T aún no llegó de la base: no pintar CIE local fantasma.
+   * La tarjeta muestra «…» en Inicial / caja.
+   */
+  figuresPending?: boolean;
   closed: boolean;
   newLoans: LoanRow[];
   renewals: LoanRow[];
@@ -606,7 +612,7 @@ function RouteBoardCard({
               </strong>
             </div>
             <div className="supervisor-caja-hero is-row is-money-lg">
-              <b>{money(row.enCaja, { symbol: false })}</b>
+              <b>{row.figuresPending ? "…" : money(row.enCaja, { symbol: false })}</b>
             </div>
           </div>
 
@@ -630,7 +636,7 @@ function RouteBoardCard({
           >
             <div>
               <span>Inicial</span>
-              <b>{money(row.saldoInicial, { symbol: false })}</b>
+              <b>{row.figuresPending ? "…" : money(row.saldoInicial, { symbol: false })}</b>
             </div>
             <div>
               <span>Cobrado</span>
@@ -1689,7 +1695,9 @@ export function SupervisorMobileApp({
     }
     return [...refs];
   }, [assignedCoverage]);
-  const chainMOpeningEpoch = useChainMOpening(true, chainCollectorRefs, today);
+  const chainMOpeningState = useChainMOpening(true, chainCollectorRefs, today);
+  const chainMOpeningEpoch = chainMOpeningState.epoch;
+  const chainMOpeningSettled = chainMOpeningState.settled;
 
   /** Libro de caja del día por cobrador: misma cifra que la app del cobrador, el cierre y el Historial. */
   const ledgerByCollector = useMemo(() => {
@@ -1702,6 +1710,9 @@ export function SupervisorMobileApp({
     for (const collectorRef of collectorRefsForLive) {
       const collector = collectors.find((row) => row.ref === collectorRef);
       if (!collector) continue;
+      // Sin chain_m_opening aún: no armar el libro con CIE local fantasma.
+      const holdLocalCie =
+        !getCloudChainMOpening(collectorRef, today) && !chainMOpeningSettled;
       const openingKnown = openingCashForChainedPlanilla({
         collectorRef,
         routeName: PLANILLA_CASH_CHAIN_PRIMARY,
@@ -1709,6 +1720,7 @@ export function SupervisorMobileApp({
         records: planillaCashCloses,
         monthCloses,
         dayCloses: dayClosesLive,
+        holdLocalCieUntilCloud: holdLocalCie,
       });
       const ledger = buildDayCashLedger({
         collectorRef,
@@ -1723,8 +1735,9 @@ export function SupervisorMobileApp({
         dayExpenseDrafts: expensesLive,
         planillaCashCloses,
         monthCloses,
+        holdLocalCieUntilCloud: holdLocalCie,
         fallbackOpening:
-          openingKnown.kind === "chain" && openingKnown.ready
+          holdLocalCie || (openingKnown.kind === "chain" && openingKnown.ready)
             ? undefined
             : cajaDelDia(
                 collector,
@@ -1751,6 +1764,7 @@ export function SupervisorMobileApp({
     planillaCashCloses,
     monthCloses,
     chainMOpeningEpoch,
+    chainMOpeningSettled,
     routeOwnBoxEpoch,
   ]);
 
@@ -1799,6 +1813,11 @@ export function SupervisorMobileApp({
       const renewals = loansToday.filter(isRenewalLoan);
       const newLoans = loansToday.filter((loan) => !isRenewalLoan(loan));
 
+      const holdLocalCie =
+        Boolean(collectorRef) &&
+        isPlanillaCashChainRoute(route.routeName) &&
+        !getCloudChainMOpening(collectorRef, today) &&
+        !chainMOpeningSettled;
       const openingKnown = collectorRef
         ? openingCashForChainedPlanilla({
             collectorRef,
@@ -1810,6 +1829,7 @@ export function SupervisorMobileApp({
             primaryLiveClosing: isPlanillaCashChainSecondary(route.routeName)
               ? primaryLiveByCollector.get(collectorRef)
               : undefined,
+            holdLocalCieUntilCloud: holdLocalCie,
           })
         : null;
       const historyFallback =
@@ -2038,6 +2058,7 @@ export function SupervisorMobileApp({
         prestamosHoy,
         cashLoansToday,
         enCaja,
+        figuresPending: holdLocalCie,
         closed,
         newLoans,
         renewals,
@@ -2055,6 +2076,13 @@ export function SupervisorMobileApp({
     }
     return built.map((row) => {
       if (!isPlanillaCashChainSecondary(row.routeName) || !row.collectorRef) return row;
+      const mRow = built.find(
+        (r) =>
+          r.collectorRef === row.collectorRef && isPlanillaCashChainPrimary(r.routeName),
+      );
+      if (mRow?.figuresPending) {
+        return { ...row, figuresPending: true, saldoInicial: 0, enCaja: 0 };
+      }
       const mFinal = mFinalByCollector.get(row.collectorRef);
       if (mFinal == null || !Number.isFinite(mFinal)) return row;
       const saldoInicial = mFinal;
@@ -2083,6 +2111,7 @@ export function SupervisorMobileApp({
     nAnchors,
     routeOwnBoxEpoch,
     chainMOpeningEpoch,
+    chainMOpeningSettled,
   ]);
 
   const deviceStatuses = useDeviceStatuses();
@@ -2591,13 +2620,24 @@ export function SupervisorMobileApp({
   );
 
   /** INICIO pie: caja viva de T (ya trae M) + caja propia de N + Saldo de Banco. */
+  const inicioTotalPending = useMemo(
+    () =>
+      liquidaciones.some(
+        (row) =>
+          row.figuresPending &&
+          (isPlanillaCashChainPrimary(row.routeName) ||
+            isPlanillaCashChainSecondary(row.routeName)),
+      ),
+    [liquidaciones],
+  );
   const inicioTotalConT = useMemo(() => {
+    if (inicioTotalPending) return null;
     const routeT = liquidaciones.find((row) =>
       isPlanillaCashChainSecondary(row.routeName),
     );
     const routeN = liquidaciones.find((row) => sameRoute(row.routeName, "N"));
     return (routeT?.enCaja ?? 0) + (routeN?.enCaja ?? 0) + bancoSaldo;
-  }, [liquidaciones, bancoSaldo]);
+  }, [liquidaciones, bancoSaldo, inicioTotalPending]);
   const bancoRutaHistoryDays = useMemo(
     () =>
       bancoRegistroRoute
@@ -7900,9 +7940,17 @@ export function SupervisorMobileApp({
             <div
               className="supervisor-caja-hero is-row is-money-lg supervisor-inicio-total"
               title="Saldo ruta T + ruta N + Banco"
-              aria-label={`Total ruta T más ruta N más Banco: ${money(inicioTotalConT, { symbol: false })}`}
+              aria-label={
+                inicioTotalConT == null
+                  ? "Cargando total de cajas"
+                  : `Total ruta T más ruta N más Banco: ${money(inicioTotalConT, { symbol: false })}`
+              }
             >
-              <b>{money(inicioTotalConT, { symbol: false })}</b>
+              <b>
+                {inicioTotalConT == null
+                  ? "…"
+                  : money(inicioTotalConT, { symbol: false })}
+              </b>
             </div>
         </footer>
           )}

@@ -399,6 +399,11 @@ export function openingCashForChainedPlanilla(input: {
   fallbackOpening?: number;
   /** CIE- en nube/local: Inicial M = cash_float del día anterior si falta PCE-T. */
   dayCloses?: CollectorDayCloseRecord[];
+  /**
+   * Supervisor INICIO: sin `chain_m_opening` en caché, no usar CIE local
+   * (evita flash 5.428k → 82k). El cobrador no lo pasa (offline con CIE).
+   */
+  holdLocalCieUntilCloud?: boolean;
 }): ChainOpeningResult {
   const route = String(input.routeName || "").trim();
   if (!isPlanillaCashChainRoute(route)) return { kind: "independent" };
@@ -446,6 +451,8 @@ export function openingCashForChainedPlanilla(input: {
   // Si existe CIE- del día anterior, ESE cash_float es el Inicial de M.
   // Un PCE local jamás lo pisa. Fallo que ya dañó: taller 2.704k vs Vercel 2.090k.
   // Fase 3.1: si la base ya contestó chain_m_opening, esa cifra manda.
+  // Si aún no hay respuesta en caché y el caller pidió no usar CIE local
+  // (`holdLocalCieUntilCloud`), no pintar un Inicial fantasma (5.428k → 82k).
   const cloudOpening = getCloudChainMOpening(input.collectorRef, date);
   if (cloudOpening) {
     if (cloudOpening.ready && cloudOpening.opening != null) {
@@ -465,6 +472,15 @@ export function openingCashForChainedPlanilla(input: {
         blockReason: missingCieMessage(cloudOpening.missingDay),
       };
     }
+  }
+  if (input.holdLocalCieUntilCloud) {
+    return {
+      kind: "chain",
+      opening: 0,
+      ready: false,
+      provisional: true,
+      blockReason: "Cargando Inicial de la base…",
+    };
   }
   const prevCie = findLatestFullDayCieBefore(
     input.dayCloses ?? [],

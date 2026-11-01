@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { CollectorDayCloseRecord, CollectorDayExpenseDraft } from "@/lib/collector-day-close";
 import { previousCalendarIso } from "@/lib/collector-day-auto-close";
+import { getCloudChainMOpening } from "@/lib/cloud-chain-m-opening";
 import { getCloudRouteOwnBox } from "@/lib/cloud-route-own-box";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { PaymentRow } from "@/lib/mock-data";
@@ -75,18 +76,33 @@ export function useSupervisorToday(enabled: boolean, refreshKey: string): Superv
 export type RouteAAnchor = { date: string; saldo: number };
 export type RouteOwnAnchor = { date: string; saldo: number; route: "A" | "N" };
 
+export type ChainMOpeningState = {
+  /** Sube al terminar la bajada (ok o fallo) → re-pintar INICIO. */
+  epoch: number;
+  /**
+   * true cuando ya se intentó bajar (o había caché de sesión).
+   * Mientras sea false, INICIO no pinta CIE local (evita 5.428k → 82k).
+   */
+  settled: boolean;
+};
+
 /**
  * Inicial M del día desde la base (Fase 3.1). Rellena la caché que lee
- * openingCashForChainedPlanilla. Devuelve un epoch para re-pintar el libro.
- * Si no contesta, sigue el CIE local.
+ * openingCashForChainedPlanilla. Con sessionStorage el primer paint ya puede
+ * ser el de la base; si no hay caché, `settled` frena el CIE local fantasma.
  */
 export function useChainMOpening(
   enabled: boolean,
   collectorRefs: readonly string[],
   today: string,
-): number {
+): ChainMOpeningState {
   const key = collectorRefs.filter(Boolean).slice().sort().join(",");
   const [epoch, setEpoch] = useState(0);
+  const [settled, setSettled] = useState(() => {
+    if (!enabled || !key || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return false;
+    const refs = key.split(",").filter(Boolean);
+    return refs.length > 0 && refs.every((ref) => Boolean(getCloudChainMOpening(ref, today)));
+  });
   useEffect(() => {
     if (!enabled || !key || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return;
     let alive = true;
@@ -94,6 +110,10 @@ export function useChainMOpening(
       const { refreshCloudChainMOpening } = await import("@/lib/cloud-chain-m-opening");
       const { refreshCloudDayCashFigure } = await import("@/lib/cloud-day-cash-figure");
       const refs = key.split(",").filter(Boolean);
+      // Si la sesión ya tiene el Inicial, el primer paint es confiable.
+      if (refs.every((ref) => Boolean(getCloudChainMOpening(ref, today)))) {
+        if (alive) setSettled(true);
+      }
       await Promise.all(
         refs.flatMap((ref) => [
           refreshCloudChainMOpening(ref, today),
@@ -101,6 +121,7 @@ export function useChainMOpening(
         ]),
       );
       if (!alive) return;
+      setSettled(true);
       setEpoch((n) => n + 1);
     };
     void load();
@@ -108,7 +129,7 @@ export function useChainMOpening(
       alive = false;
     };
   }, [enabled, key, today]);
-  return epoch;
+  return { epoch, settled };
 }
 
 /**

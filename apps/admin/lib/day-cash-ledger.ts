@@ -82,6 +82,8 @@ export type DayCashSources = {
   fallbackOpening?: number;
   /** Hoy en Bogotá (pruebas); por defecto `businessTodayIso()`. */
   todayIso?: string;
+  /** Supervisor: no usar CIE local hasta tener chain_m_opening. */
+  holdLocalCieUntilCloud?: boolean;
 };
 
 /** Préstamos del día del cobrador: hoy sin sellar, la ficha manda; lo sellado es historia. */
@@ -474,6 +476,7 @@ export function primaryOpeningForDay(src: DayCashSources): ChainOpeningResult {
     monthCloses: src.monthCloses,
     dayCloses: src.dayCloses,
     fallbackOpening: src.fallbackOpening,
+    holdLocalCieUntilCloud: src.holdLocalCieUntilCloud,
   });
 }
 
