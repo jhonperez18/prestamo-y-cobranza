@@ -774,6 +774,35 @@ export function bancoAcumuladoRutas(cuadres: readonly BancoRouteCuadre[]): numbe
   return pesos(cuadres.reduce((sum, row) => sum + row.saldo, 0));
 }
 
+/**
+ * Saldo visible del pool (dueño 01/11/2026) — una sola lógica siempre:
+ * Banco = M + T + N − Gastos. Nequi = ruta A − Gastos.
+ * Historial (cierre del mes) y mes vivo usan la misma fórmula; el cierre del mes
+ * anterior es el Inicial del mes nuevo. No usa `digital_pool_balances` de la nube.
+ */
+export function poolVisibleSaldo(input: {
+  pool: DigitalPool;
+  payments: PaymentRow[];
+  loans: LoanRow[];
+  clients: ClientRow[];
+  dayCloses: CollectorDayCloseRecord[];
+  miscPayments: readonly MiscPayment[];
+  accounts: BankAccount[];
+  fromIso: string;
+  toIso: string;
+  movements?: BankMovement[];
+}): number {
+  return digitalPoolSaldo(input).saldo;
+}
+
+/** Banco: M+T+N − Gastos de las tarjetas (misma cifra que se ve en pantalla). */
+export function bancoVisibleSaldoFromCards(
+  routeCuadres: readonly BancoRouteCuadre[],
+  gastado: number,
+): number {
+  return pesos(bancoAcumuladoRutas(routeCuadres) - gastado);
+}
+
 export type DigitalPoolGasto = {
   ref: string;
   date: string;

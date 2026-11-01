@@ -106,7 +106,6 @@ import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
 import {
   useChainMOpening,
   useDigitalPoolBalancesCloud,
-  useNequiSaldo,
   useRouteAAnchor,
   useRouteNAnchor,
   useSupervisorToday,
@@ -123,12 +122,10 @@ import {
   loanDisbursementSource,
 } from "@/lib/nequi-pool";
 import { dayDigitalLoanRows, digitalLoanPoolForRoute } from "@/lib/day-digital-loans";
-import { getCloudDigitalPoolBalances } from "@/lib/cloud-digital-pool-balances";
 import {
   BANCO_ROUTE_PINS,
   DIGITAL_POOL_LABEL,
   NEQUI_ROUTE_PIN,
-  bancoAcumuladoRutas,
   digitalPoolGastos,
   digitalPoolGastosTotal,
   bancoRouteCuadre,
@@ -139,7 +136,8 @@ import {
   nequiRouteHistoryDays,
   digitalPoolDayLedger,
   digitalPoolRegisterDays,
-  digitalPoolSaldo,
+  poolVisibleSaldo,
+  bancoVisibleSaldoFromCards,
   type DigitalPool,
   type DigitalPoolGasto,
   type DigitalPoolRegisterLoan,
@@ -1416,7 +1414,6 @@ export function SupervisorMobileApp({
   // Siempre bajar el día (también en preview del panel). Sin eso, el 01/11
   // pintaba CIE viejos / A en 0 mientras la base ya tenía el cierre de ayer.
   const serverToday = useSupervisorToday(true, today);
-  const nequiBase = useNequiSaldo(true);
   const serverDay = serverToday.data?.date === today ? serverToday.data : null;
   // Hoy junta la bajada del servidor con lo que la sync ya trajo después.
   // La lista vieja no borra un cobro nuevo, ni el celular esconde uno que ya está en la base.
@@ -2560,14 +2557,36 @@ export function SupervisorMobileApp({
     [miscPayments, bankAccounts, dayClosesLive, bancoHistoryFrom, today],
   );
   const bancoGastado = useMemo(() => digitalPoolGastosTotal(bancoGastos), [bancoGastos]);
-  /** Saldo de Banco: Fase 3.3 prefiere la base; si no, M+T+N − Gastos. */
-  const bancoSaldo = useMemo(() => {
-    const cloud = getCloudDigitalPoolBalances();
-    if (cloud && Number.isFinite(cloud.banco)) {
-      return Math.trunc(cloud.banco) - bancoGastado;
-    }
-    return bancoAcumuladoRutas(bancoRouteCuadres) - bancoGastado;
-  }, [bancoRouteCuadres, bancoGastado, digitalPoolEpoch]);
+  /**
+   * Saldo Banco = M + T + N − Gastos (siempre).
+   * Mes nuevo: arrastra el cierre del mes anterior; cobrado/gastos del mes van en 0 hasta que haya movimiento.
+   */
+  const bancoSaldo = useMemo(
+    () =>
+      poolVisibleSaldo({
+        pool: "banco",
+        payments: paymentsWithEvidence,
+        loans,
+        clients,
+        dayCloses: dayClosesLive,
+        miscPayments,
+        accounts: bankAccounts,
+        fromIso: ROUTE_CASH_BOOK_FROM,
+        toIso: today,
+        movements: bankMovements,
+      }),
+    [
+      paymentsWithEvidence,
+      loans,
+      clients,
+      dayClosesLive,
+      miscPayments,
+      bankAccounts,
+      today,
+      bankMovements,
+      digitalPoolEpoch,
+    ],
+  );
 
   /** INICIO pie: caja viva de T (ya trae M) + caja propia de N + Saldo de Banco. */
   const inicioTotalConT = useMemo(() => {
@@ -2670,35 +2689,33 @@ export function SupervisorMobileApp({
   const nequiCobradoShown = nequiMonthTotales.cobrado;
   const nequiPrestadoShown = nequiMonthTotales.prestado;
   const nequiGastosShown = nequiGastadoMes;
-  /** Saldo Nequi arrastra (cierre del mes anterior = Inicial de este mes). No es el cobrado del mes. */
-  const nequiSaldoShown = useMemo(() => {
-    if (nequiBase != null && Number.isFinite(nequiBase.saldo)) {
-      return Math.trunc(nequiBase.saldo);
-    }
-    return digitalPoolSaldo({
-      pool: "nequi",
-      payments: paymentsWithEvidence,
+  /** Saldo Nequi = ruta A − Gastos (siempre). Arrastra el cierre del mes anterior. */
+  const nequiSaldoShown = useMemo(
+    () =>
+      poolVisibleSaldo({
+        pool: "nequi",
+        payments: paymentsWithEvidence,
+        loans,
+        clients,
+        dayCloses: dayClosesLive,
+        miscPayments,
+        accounts: bankAccounts,
+        fromIso: ROUTE_CASH_BOOK_FROM,
+        toIso: today,
+        movements: bankMovements,
+      }),
+    [
+      paymentsWithEvidence,
       loans,
       clients,
-      dayCloses: dayClosesLive,
+      dayClosesLive,
       miscPayments,
-      accounts: bankAccounts,
-      fromIso: ROUTE_CASH_BOOK_FROM,
-      toIso: today,
-      movements: bankMovements,
-    }).saldo;
-  }, [
-    nequiBase,
-    paymentsWithEvidence,
-    loans,
-    clients,
-    dayClosesLive,
-    miscPayments,
-    bankAccounts,
-    today,
-    bankMovements,
-    digitalPoolEpoch,
-  ]);
+      bankAccounts,
+      today,
+      bankMovements,
+      digitalPoolEpoch,
+    ],
+  );
   /**
    * Hoja Ruta: mismas visitas visibles que el cobrador (sin colapsar Fin+Prestar),
    * luego se desdoblan Renovado / P / combinado en varias líneas.
@@ -3445,7 +3462,7 @@ export function SupervisorMobileApp({
     () => digitalPoolGastosTotal(bancoPoolHistGastos),
     [bancoPoolHistGastos],
   );
-  /** Saldo final del mes en historial Banco = el que arrastra al mes siguiente (home). */
+  /** Saldo historial Banco = M + T + N − Gastos (lo de las tarjetas). Ese cierre arrastra al mes vivo. */
   const bancoPoolHistSaldo = useMemo(() => {
     if (
       (bancoPoolHistNav !== "mes" && bancoPoolHistNav !== "ruta") ||
@@ -3453,38 +3470,12 @@ export function SupervisorMobileApp({
     ) {
       return 0;
     }
-    const prior = previousPeriod(periodFromDateIso(today));
-    if (bancoPoolHistPeriod === prior) {
-      const cloud = getCloudDigitalPoolBalances();
-      if (cloud && Number.isFinite(cloud.banco)) {
-        return Math.trunc(cloud.banco);
-      }
-    }
-    const { to } = periodHistWindow(bancoPoolHistPeriod);
-    return digitalPoolSaldo({
-      pool: "banco",
-      payments: paymentsWithEvidence,
-      loans,
-      clients,
-      dayCloses: dayClosesLive,
-      miscPayments,
-      accounts: bankAccounts,
-      fromIso: ROUTE_CASH_BOOK_FROM,
-      toIso: to,
-      movements: bankMovements,
-    }).saldo;
+    return bancoVisibleSaldoFromCards(bancoPoolHistRouteCards, bancoPoolHistGastado);
   }, [
     bancoPoolHistNav,
     bancoPoolHistPeriod,
-    today,
-    paymentsWithEvidence,
-    loans,
-    clients,
-    dayClosesLive,
-    miscPayments,
-    bankAccounts,
-    bankMovements,
-    digitalPoolEpoch,
+    bancoPoolHistRouteCards,
+    bancoPoolHistGastado,
   ]);
 
   /** Movimiento Nequi del mes abierto en historial (ruta A). */
@@ -3554,15 +3545,11 @@ export function SupervisorMobileApp({
     () => digitalPoolGastosTotal(nequiPoolHistGastos),
     [nequiPoolHistGastos],
   );
-  /** Saldo final del mes en historial Nequi = el que arrastra al mes siguiente (home). */
+  /** Saldo historial Nequi = ruta A − Gastos al cierre del mes (arrastra al mes vivo). */
   const nequiPoolHistSaldo = useMemo(() => {
     if (nequiPoolHistNav !== "mes" || !nequiPoolHistPeriod) return 0;
-    const prior = previousPeriod(periodFromDateIso(today));
-    if (nequiPoolHistPeriod === prior && nequiSaldoShown != null) {
-      return nequiSaldoShown;
-    }
     const { to } = periodHistWindow(nequiPoolHistPeriod);
-    return digitalPoolSaldo({
+    return poolVisibleSaldo({
       pool: "nequi",
       payments: paymentsWithEvidence,
       loans,
@@ -3573,12 +3560,10 @@ export function SupervisorMobileApp({
       fromIso: ROUTE_CASH_BOOK_FROM,
       toIso: to,
       movements: bankMovements,
-    }).saldo;
+    });
   }, [
     nequiPoolHistNav,
     nequiPoolHistPeriod,
-    today,
-    nequiSaldoShown,
     paymentsWithEvidence,
     loans,
     clients,

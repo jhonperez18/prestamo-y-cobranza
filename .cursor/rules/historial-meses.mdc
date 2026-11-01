@@ -1,5 +1,5 @@
 ---
-description: Historial supervisor — lista de meses luego contenido (caja, banco por ruta, nequi); cada mes/día/año sin hardcodear.
+description: Historial supervisor — lista de meses; Saldo Banco/Nequi = rutas − gastos siempre; arrastre al mes nuevo.
 alwaysApply: true
 ---
 
@@ -12,15 +12,29 @@ Misma puerta (botón «historial» → lista de meses), **contenido distinto** s
 | Pantalla | Después del mes |
 | --- | --- |
 | **Caja** (ruta → historial) | Movimiento de caja del mes. Inicial día 1 = último saldo del mes anterior de **esa** ruta |
-| **BANCO** | **Rutas M · T · N por separado** (nunca sumadas) + **Saldo** final del mes (arrastra al mes vivo). Dentro de la ruta: cobrado / prestado del mes |
-| **NEQUI** | Una sola ruta (A): cobrado / prestado / gastos del mes + **Saldo** final. Sin lista de rutas |
+| **BANCO** | **Rutas M · T · N por separado** (nunca sumadas) + Gastos + **Saldo** |
+| **NEQUI** | Una sola ruta (A): cobrado / prestado / gastos + **Saldo** |
+
+## Saldo Banco / Nequi — una sola lógica (sagrada)
+
+| Pool | Fórmula | Dónde |
+| --- | --- | --- |
+| **Banco** | **M + T + N − Gastos** | Historial (cierre del mes) y mes vivo (home) |
+| **Nequi** | **Ruta A − Gastos** | Historial y mes vivo |
+
+1. El **Saldo del historial** (cierre del mes) = el **Saldo del mes nuevo** al abrir (Inicial). Arrastra.
+2. En el mes vivo, cobrado / prestado / gastos del mes empiezan en **0**; el Saldo no se pone en 0.
+3. **Prohibido** usar `digital_pool_balances` (nube) para esta cifra de Saldo en supervisor.
+4. Dueño de código: `poolVisibleSaldo` / `bancoVisibleSaldoFromCards` (`lib/digital-pools.ts`).
+
+Ejemplo Octubre → Noviembre: si M+T+N−Gastos = 2.208.000 en historial, el home de noviembre abre con Saldo **2.208.000**.
 
 ## Mes vivo (pantalla home Banco / Nequi)
 
 | Pieza | Regla |
 | --- | --- |
-| Cobrado / Prestado / Gastos | Solo el **mes en curso**. Sin movimiento hoy → **0**. Lo del mes anterior vive en historial |
-| Saldo | Arrastra: final del mes anterior = Inicial de este mes (no se pone en 0) |
+| Cobrado / Prestado / Gastos (y tarjetas Ruta M/T/N) | Solo el **mes en curso**. Sin movimiento → **0**. Lo anterior vive en historial |
+| Saldo | Misma fórmula acumulada desde el libro; arrastra el cierre del mes anterior |
 
 ## Flujo fijo
 
@@ -34,38 +48,31 @@ home / detallado  →  historial  →  lista de meses  →  mes  →  contenido
 home  →  historial  →  lista de meses  →  mes  →  Ruta M | Ruta T | Ruta N  →  cobrado / prestado
 ```
 
-1. **Lista de meses** primero. No pestañas de mes sueltas.
-2. **Banco: prohibido** juntar M+T+N en un solo total de historial.
+1. **Lista de meses** primero.
+2. **Banco: prohibido** juntar M+T+N en un solo total de movimiento (sí se suman solo para el Saldo).
 3. **volver**: ruta → mes → meses → home (Banco); mes → meses → home (Nequi / caja).
 4. Botones **historial** / **volver** compactos, misma línea del título.
-5. Fila del mes baja de altura.
 
 ## Cada mes, cada día, cada año
 
 | Pieza | Regla |
 | --- | --- |
-| Meses listados | `historyMonthOptions`: desde `ROUTE_CASH_BOOK_FROM` hasta el **mes anterior** a hoy (Bogotá). Más reciente primero |
+| Meses listados | `historyMonthOptions`: desde `ROUTE_CASH_BOOK_FROM` hasta el mes anterior a hoy. Más reciente primero |
 | Hoy en noviembre | Solo octubre (y anteriores). Noviembre = pantalla viva |
-| Año nuevo | Diciembre del año que cerró entra solo; **cero** hardcode «Octubre» |
+| Año nuevo | Entra solo; **cero** hardcode «Octubre» |
 | Ventana del mes | `periodHistWindow(period)` = día 1…último día |
-| Banco · saldo tarjeta | `bancoRouteCuadre` al último día del mes, **por pin**, desde el libro. No `bancoAcumuladoRutas` en historial |
-| Banco · arrastre | Saldo cierre ruta X del mes N = Inicial día 1 ruta X del mes N+1 |
-| Nequi | Una ruta; no inventar M/T/N |
-
-Dueño UI: `SupervisorMobileApp.tsx` (`cajaHistoryNav`, `bancoPoolHistNav` + `bancoPoolHistRoute`, `nequiPoolHistNav`).
 
 ## Obligatorio
 
 1. Misma lista de meses en caja / banco / nequi.
 2. `goToView` resetea la nav de historial.
-3. Banco historial = por ruta. Nequi = una sola.
+3. Saldo siempre = rutas − gastos (Banco / Nequi).
 
 ## Prohibido
 
 - Hardcodear un mes.
-- Sumar M+T+N en el historial de Banco.
+- Saldo tomado de la nube (`digital_pool_balances`) en estas pantallas.
+- Una fórmula de Saldo en historial y otra en el mes vivo.
 - Tratar Nequi como si tuviera tres rutas.
-- Saltar la lista de meses.
-- Meter el mes en curso en la lista de historial.
 - Engordar botones o la fila del mes.
 ---

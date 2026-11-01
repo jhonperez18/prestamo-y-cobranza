@@ -2136,9 +2136,10 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       bancoSrc.includes('pool: "nequi"') &&
       bancoSrc.includes("nequiMonthTotales") &&
       bancoSrc.includes("nequiGastadoMes") &&
-      bancoSrc.includes("nequiBase.saldo") &&
+      bancoSrc.includes("poolVisibleSaldo") &&
       bancoSrc.includes("nequiPoolHistSaldo") &&
-      bancoSrc.includes("bancoPoolHistSaldo"),
+      bancoSrc.includes("bancoPoolHistSaldo") &&
+      bancoSrc.includes("bancoVisibleSaldoFromCards"),
     true,
   );
   expect(
@@ -2150,14 +2151,16 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     true,
   );
   expect(
-    "Banco: saldo = rutas M T N − gastos de Banco (INICIO lo suma tal cual)",
+    "Banco: saldo = M+T+N − Gastos siempre (historial y mes vivo; no nube)",
     bancoSrc.includes("BANCO_ROUTE_PINS") &&
       bancoSrc.includes("bancoRouteCuadre") &&
       bancoSrc.includes('pool: "banco"') &&
-      bancoSrc.includes("bancoAcumuladoRutas(bancoRouteCuadres) - bancoGastado") &&
-      bancoSrc.includes("getCloudDigitalPoolBalances") &&
+      bancoSrc.includes("poolVisibleSaldo") &&
+      bancoSrc.includes("bancoVisibleSaldoFromCards") &&
+      bancoSrc.includes("ROUTE_CASH_BOOK_FROM") &&
       bancoSrc.includes("(routeN?.enCaja ?? 0) + bancoSaldo") &&
-      bancoSrc.includes("Ruta M"),
+      bancoSrc.includes("Ruta M") &&
+      !bancoSrc.includes("getCloudDigitalPoolBalances"),
     true,
   );
   const wsSrc = readFileSync(new URL("../components/workspace/useWorkspace.ts", import.meta.url), "utf8");
