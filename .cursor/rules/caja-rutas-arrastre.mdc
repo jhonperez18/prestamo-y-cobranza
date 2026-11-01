@@ -27,6 +27,7 @@ A y N **no** se mezclan entre sí ni con M/T.
 3. Cambios de plata en M/T: respetar regla de inicio (`planilla-m-t-cash-chain.mdc`). No “alinear” M/T desde el arrastre de A/N.
 4. **Saldo que arrastra (A/N)** = `independentRouteFinalSaldo`: si ese día tiene `AJUSTE@A` / `AJUSTE@N`, manda el **`real`** contado; si no, el `closing`. Prohibido usar solo `.closing` cuando hubo ajuste (caso 01/11: Oct 31 real 827k → Nov día 1 salía −170).
 5. **Historial A/N**: con `route_own_box` en caché (hoy, ayer o mes prefetch), la base manda el Saldo. No pintar el recálculo local incompleto en rojo encima de la nube.
+6. **Informe por correo (semanal / sello mensual)**: antes de armar cifras A/N, calentar `route_own_box` en el servidor. **Sin caja de la base → no se envía / no se sella.** Misma cifra que la pantalla; prohibido un cálculo paralelo “para el PDF”.
 
 ## Prohibido
 

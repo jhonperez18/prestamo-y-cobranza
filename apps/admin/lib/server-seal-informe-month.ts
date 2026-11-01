@@ -69,6 +69,39 @@ export async function maybeSealInformeMonth(input: {
   const miscPayments = (miscT.rows ?? [])
     .map(rowToMisc)
     .filter((row): row is MiscPayment => Boolean(row));
+
+  // Caja A/N del corte = route_own_box (misma cifra que pantalla). Sin inventar.
+  const { warmRouteOwnBoxDay, requireWarmedRouteOwnBox } = await import(
+    "@/lib/server-warm-route-own-box"
+  );
+  const { sameRoute } = await import("@/lib/client-route-order");
+  const ownerOf = (pin: string) =>
+    loaded.state.routes.find((row) => sameRoute(row.name, pin))?.collectorRef?.trim() || "";
+  const aRef = ownerOf("A");
+  const nRef = ownerOf("N");
+  if (aRef) {
+    await warmRouteOwnBoxDay(aRef, day, "A");
+    if (!requireWarmedRouteOwnBox(aRef, day, "A")) {
+      return {
+        attempted: true,
+        ok: false,
+        day,
+        error: "route_own_box_A_missing: no se sella informe con caja A inventada",
+      };
+    }
+  }
+  if (nRef) {
+    await warmRouteOwnBoxDay(nRef, day, "N");
+    if (!requireWarmedRouteOwnBox(nRef, day, "N")) {
+      return {
+        attempted: true,
+        ok: false,
+        day,
+        error: "route_own_box_N_missing: no se sella informe con caja N inventada",
+      };
+    }
+  }
+
   const built = buildInformeMonthSnapshots({
     state: loaded.state,
     sealedOn: day,

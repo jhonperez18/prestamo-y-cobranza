@@ -14,7 +14,10 @@ import {
   type DigitalPoolGasto,
 } from "@/lib/digital-pools";
 import { pesos } from "@/lib/finance";
-import { independentRouteDay } from "@/lib/independent-route-cash";
+import {
+  independentRouteDay,
+  independentRouteFinalSaldo,
+} from "@/lib/independent-route-cash";
 import { informeOwnRouteHistory, informeRouteHistory } from "@/lib/informe-route-days";
 import {
   informeSnapshotRef,
@@ -103,11 +106,15 @@ export function buildInformeMonthSnapshots(input: {
     : 0;
   const nCollector = collectorOf(state, "N");
   const efectivoN = nCollector
-    ? independentRouteDay(sources(state, nCollector, sealedOn), "N").closing
+    ? independentRouteFinalSaldo(
+        independentRouteDay(sources(state, nCollector, sealedOn), "N"),
+      )
     : 0;
   const aCollector = collectorOf(state, "A");
   const efectivoA = aCollector
-    ? independentRouteDay(sources(state, aCollector, sealedOn), "A").closing
+    ? independentRouteFinalSaldo(
+        independentRouteDay(sources(state, aCollector, sealedOn), "A"),
+      )
     : 0;
 
   const cartera = GENERAL_ROUTES.map((route) => ({

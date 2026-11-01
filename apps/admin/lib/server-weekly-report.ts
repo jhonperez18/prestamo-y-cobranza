@@ -6,6 +6,7 @@
  * Registro de enviados: Storage `app-catalog/weekly-report-sent.json` (un corte = un correo).
  */
 import { businessTodayIso } from "@/lib/business-timezone";
+import { sameRoute } from "@/lib/client-route-order";
 import { ADMIN_ROLE_REF } from "@/lib/mock-data";
 import { loadOperationalStateFromCloud } from "@/lib/server-day-rollover";
 import type { MiscPayment } from "@/lib/misc-payments";
@@ -163,6 +164,36 @@ export async function sendWeeklyReport(options: WeeklyReportSendOptions = {}): P
     bankAccounts: accountsT.accounts,
   };
   const range = weeklyRangeForCutoff(cutoff, today);
+
+  // Caja A/N = misma fuente que la pantalla (route_own_box). Sin eso no se envía.
+  const { warmRouteOwnBoxRange, requireWarmedRouteOwnBox } = await import(
+    "@/lib/server-warm-route-own-box"
+  );
+  const ownerOf = (pin: string) =>
+    state.routes.find((row) => sameRoute(row.name, pin))?.collectorRef?.trim() || "";
+  const aRef = ownerOf("A");
+  const nRef = ownerOf("N");
+  if (aRef) {
+    await warmRouteOwnBoxRange(aRef, "A", range.start, range.end);
+    if (!requireWarmedRouteOwnBox(aRef, range.end, "A")) {
+      return {
+        ok: false,
+        cutoff,
+        error: "route_own_box_A_missing: no se envía informe con caja A inventada",
+      };
+    }
+  }
+  if (nRef) {
+    await warmRouteOwnBoxRange(nRef, "N", range.start, range.end);
+    if (!requireWarmedRouteOwnBox(nRef, range.end, "N")) {
+      return {
+        ok: false,
+        cutoff,
+        error: "route_own_box_N_missing: no se envía informe con caja N inventada",
+      };
+    }
+  }
+
   const reports = SCOPES.map((scope) => buildWeeklyReport(sources, scope, range, today));
 
   const logoDataUrl = await loadLogo(options.logoUrl);

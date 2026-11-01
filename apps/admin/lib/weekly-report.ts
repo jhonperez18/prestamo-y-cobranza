@@ -4,7 +4,9 @@
  *   Cartera   = saldo de la ficha (`loan.balance`), la misma lectura que el Informe
  *               (`portfolioBalanceForClients`). No se rearma con total − pagado.
  *   Caja M·T  = libro del día (`buildDayCashLedger`); saldo final = CIE- del último día.
- *   Caja A/N  = `independentRouteDay` / `independentRouteMovement`.
+ *   Caja A/N  = `independentRouteDay` (con `route_own_box` calentado en el servidor) /
+ *               `independentRouteMovement`. Saldo final = `independentRouteFinalSaldo`
+ *               (real del ajuste si hubo). Prohibido enviar el correo sin caja de la base.
  *   Cobros    = `routeCobradoAcrossCollectors` (efectivo de cada cobrador + Banco/Nequi de la ruta, una vez).
  *   Préstamos = renglones del libro (efectivo) + `dayDigitalLoanRows` (Banco / Nequi).
  *   Banco/Nequi = `digitalPoolSaldo` (rutas del mes − gastos de su cuenta), el Saldo del supervisor.
@@ -25,7 +27,11 @@ import { dayDigitalLoanRows } from "@/lib/day-digital-loans";
 import type { BankAccount } from "@/lib/bank";
 import { digitalPoolSaldo, type DigitalPool } from "@/lib/digital-pools";
 import { pesos } from "@/lib/finance";
-import { independentRouteDay, independentRouteMovement } from "@/lib/independent-route-cash";
+import {
+  independentRouteDay,
+  independentRouteFinalSaldo,
+  independentRouteMovement,
+} from "@/lib/independent-route-cash";
 import {
   informeOwnRouteHistory,
   informeRouteHistory,
@@ -492,7 +498,8 @@ export function buildWeeklyReport(
   if (ownRef) {
     const first = independentRouteDay(daySource(src, ownRef, range.start), ownRoute);
     const last = independentRouteDay(daySource(src, ownRef, range.end), ownRoute);
-    const closing = last.adjustment?.real ?? last.closing;
+    // Misma cifra que historial / INICIO: real del ajuste o closing de la base.
+    const closing = independentRouteFinalSaldo(last);
     caja.push(
       cajaRow({
         label: ownRoute,
