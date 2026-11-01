@@ -57,6 +57,17 @@ export async function writeInformeSnapshotOnce(snapshot: InformeMonthSnapshot) {
   return { ok: true as const, kept: false as const };
 }
 
+/** Reescribe la copia (solo para alinear Banco/Nequi a `poolVisibleSaldo`; no reabre el mes). */
+export async function writeInformeSnapshotUpsert(snapshot: InformeMonthSnapshot) {
+  const supabase = storageClient();
+  if (!supabase) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  const { error } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .upload(pathOf(snapshot.ref), Buffer.from(JSON.stringify(snapshot), "utf8"), CATALOG_FILE_UPLOAD);
+  if (error) return { ok: false as const, error: error.message };
+  return { ok: true as const };
+}
+
 export async function listInformeSnapshots(): Promise<
   { ok: true; snapshots: InformeMonthSnapshot[] } | { ok: false; error: string }
 > {

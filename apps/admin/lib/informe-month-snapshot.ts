@@ -203,3 +203,47 @@ export function normalizeInformeSnapshot(raw: unknown): InformeMonthSnapshot | n
     poolGastado: num(raw.poolGastado),
   };
 }
+
+/**
+ * Saldo Banco / Nequi del informe = `poolVisibleSaldo` (cierre del mes = apertura del siguiente).
+ * Corrige filas viejas selladas con otra fórmula; no toca cartera, efectivo ni historial del mes.
+ */
+export function withInformePoolSaldo(
+  snapshot: InformeMonthSnapshot,
+  poolSaldo: number,
+): InformeMonthSnapshot {
+  const poolLabel = snapshot.scope === "general" ? "Banco" : "Nequi";
+  const grandLabel =
+    snapshot.scope === "general"
+      ? "Cartera + efectivo + banco"
+      : "Cartera + efectivo + nequi";
+  let carteraTotal = 0;
+  let efectivoTotal = 0;
+  let section: "none" | "cartera" | "efectivo" | "pool" = "none";
+  for (const row of snapshot.rows) {
+    if (row.kind === "section") {
+      const label = row.label.trim().toLowerCase();
+      section =
+        label === "cartera"
+          ? "cartera"
+          : label === "efectivo"
+            ? "efectivo"
+            : label === "banco" || label === "nequi"
+              ? "pool"
+              : "none";
+      continue;
+    }
+    if (row.tone === "total" && section === "cartera") carteraTotal = num(row.value);
+    if (row.tone === "total" && section === "efectivo") efectivoTotal = num(row.value);
+  }
+  const saldo = num(poolSaldo);
+  const rows = snapshot.rows.map((row) => {
+    if (row.kind !== "line") return row;
+    if (row.label === poolLabel) return { ...row, value: saldo, tone: row.tone ?? "total" };
+    if (row.label === grandLabel) {
+      return { ...row, value: carteraTotal + efectivoTotal + saldo, tone: row.tone ?? "grand" };
+    }
+    return row;
+  });
+  return { ...snapshot, rows };
+}

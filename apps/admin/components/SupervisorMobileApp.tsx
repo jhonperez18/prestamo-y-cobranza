@@ -115,6 +115,7 @@ import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import {
   informePeriodName,
   normalizeInformeSnapshot,
+  withInformePoolSaldo,
   type InformeMonthSnapshot,
 } from "@/lib/informe-month-snapshot";
 import { primaryLoanForClient } from "@/lib/route-sync";
@@ -2507,6 +2508,35 @@ export function SupervisorMobileApp({
   const informeMonths = (informeSnapshots ?? []).filter((row) => row.scope === informeScope);
   const openInformeSnapshot =
     informeMonths.find((row) => row.period === informePeriod) ?? null;
+  /**
+   * Historial del mes: Banco/Nequi = `poolVisibleSaldo` al día del cierre
+   * (misma cifra que el mes vivo sin movimientos). Cartera/efectivo/cobrado quedan sellados.
+   */
+  const openInformeSnapshotShown = useMemo(() => {
+    if (!openInformeSnapshot) return null;
+    const pool = poolVisibleSaldo({
+      pool: openInformeSnapshot.scope === "general" ? "banco" : "nequi",
+      payments: paymentsWithEvidence,
+      loans,
+      clients,
+      dayCloses: dayClosesLive,
+      miscPayments,
+      accounts: bankAccounts,
+      fromIso: ROUTE_CASH_BOOK_FROM,
+      toIso: openInformeSnapshot.sealedOn,
+      movements: bankMovements,
+    });
+    return withInformePoolSaldo(openInformeSnapshot, pool);
+  }, [
+    openInformeSnapshot,
+    paymentsWithEvidence,
+    loans,
+    clients,
+    dayClosesLive,
+    miscPayments,
+    bankAccounts,
+    bankMovements,
+  ]);
   const informeSealDay = lastCollectionDayOfPeriod(today.slice(0, 7));
   const informeARows = useMemo(
     () => liquidaciones.filter((row) => sameRoute(row.routeName, INFORME_A_ROUTE)),
@@ -6114,7 +6144,7 @@ export function SupervisorMobileApp({
               )}
             </div>
           ) : null}
-          {!historialOpen || openInformeSnapshot ? (
+          {!historialOpen || openInformeSnapshotShown ? (
             informeTab === "general" ? (
             <SupervisorMonthlyReport
               loans={loans}
@@ -6126,7 +6156,7 @@ export function SupervisorMobileApp({
               historyNote={informeReadError}
               bancoGastos={bancoGastos}
               bancoGastado={bancoGastado}
-              snapshot={historialOpen ? openInformeSnapshot : null}
+              snapshot={historialOpen ? openInformeSnapshotShown : null}
             />
           ) : (
             <SupervisorOwnRouteReport
@@ -6141,7 +6171,7 @@ export function SupervisorMobileApp({
               historyNote={informeReadError}
               nequiGastos={nequiGastos}
               nequiGastado={nequiGastosShown ?? 0}
-              snapshot={historialOpen ? openInformeSnapshot : null}
+              snapshot={historialOpen ? openInformeSnapshotShown : null}
             />
           )
           ) : null}

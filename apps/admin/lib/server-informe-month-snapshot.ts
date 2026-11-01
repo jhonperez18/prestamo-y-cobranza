@@ -1,19 +1,17 @@
 /**
  * Arma el informe General y el de Angélica con las mismas funciones que la pantalla.
  * No escribe caja, CIE ni Inicial. Solo devuelve la copia que se guarda.
+ * Banco / Nequi = `poolVisibleSaldo` (cierre del mes = Saldo del mes siguiente).
  */
 import { sameRoute } from "@/lib/client-route-order";
 import type { OperationalDayState } from "@/lib/collector-day-auto-close";
 import { buildDayCashLedger } from "@/lib/day-cash-ledger";
 import {
-  bancoAcumuladoRutas,
-  bancoRouteCuadre,
   digitalPoolGastos,
   digitalPoolGastosTotal,
-  nequiRouteHistoryDays,
+  poolVisibleSaldo,
   type DigitalPoolGasto,
 } from "@/lib/digital-pools";
-import { pesos } from "@/lib/finance";
 import {
   independentRouteDay,
   independentRouteFinalSaldo,
@@ -28,6 +26,7 @@ import { isoToDisplay } from "@/lib/loan-preview";
 import type { BankAccount } from "@/lib/bank";
 import type { MiscPayment } from "@/lib/misc-payments";
 import type { CollectorRow } from "@/lib/mock-data";
+import { ROUTE_CASH_BOOK_FROM } from "@/lib/planilla-cash-chain";
 import { portfolioBalanceForClients } from "@/lib/portfolio-stats";
 
 const GENERAL_ROUTES = ["M", "T", "N"] as const;
@@ -123,30 +122,28 @@ export function buildInformeMonthSnapshots(input: {
   }));
   const carteraTotal = cartera.reduce((sum, row) => sum + row.value, 0);
   const efectivoTotal = efectivoT + efectivoN;
+  const accounts = input.accounts as BankAccount[];
   const bancoGastos = digitalPoolGastos({
     pool: "banco",
     miscPayments: input.miscPayments,
-    accounts: input.accounts as BankAccount[],
+    accounts,
     dayCloses: state.dayCloses,
     fromIso: from,
     toIso: sealedOn,
   });
   const bancoGastado = digitalPoolGastosTotal(bancoGastos);
-  const banco = pesos(
-    bancoAcumuladoRutas(
-      GENERAL_ROUTES.map((pin) =>
-        bancoRouteCuadre({
-          payments: state.payments,
-          loans: state.loans,
-          clients: state.clients,
-          dayCloses: state.dayCloses,
-          dateIso: sealedOn,
-          routeName: pin,
-          fromIso: from,
-        }),
-      ),
-    ) - bancoGastado,
-  );
+  /** Misma cifra que Informe vivo / home Banco (arrastre al mes siguiente). */
+  const banco = poolVisibleSaldo({
+    pool: "banco",
+    payments: state.payments,
+    loans: state.loans,
+    clients: state.clients,
+    dayCloses: state.dayCloses,
+    miscPayments: input.miscPayments,
+    accounts,
+    fromIso: ROUTE_CASH_BOOK_FROM,
+    toIso: sealedOn,
+  });
   const generalRows: InformeSnapshotRow[] = [
     { kind: "section", label: "Cartera" },
     ...cartera.map(
@@ -172,21 +169,23 @@ export function buildInformeMonthSnapshots(input: {
   const nequiGastos = digitalPoolGastos({
     pool: "nequi",
     miscPayments: input.miscPayments,
-    accounts: input.accounts as BankAccount[],
+    accounts,
     dayCloses: state.dayCloses,
     fromIso: from,
     toIso: sealedOn,
   });
   const nequiGastado = digitalPoolGastosTotal(nequiGastos);
-  const nequiDays = nequiRouteHistoryDays({
+  const nequi = poolVisibleSaldo({
+    pool: "nequi",
     payments: state.payments,
     loans: state.loans,
     clients: state.clients,
     dayCloses: state.dayCloses,
-    fromIso: from,
+    miscPayments: input.miscPayments,
+    accounts,
+    fromIso: ROUTE_CASH_BOOK_FROM,
     toIso: sealedOn,
   });
-  const nequi = pesos((nequiDays[0]?.saldo ?? 0) - nequiGastado);
   const angelicaRows: InformeSnapshotRow[] = [
     { kind: "section", label: "Cartera" },
     { kind: "line", label: "A", value: carteraA, tone: "sub" },
