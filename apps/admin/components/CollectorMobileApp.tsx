@@ -1006,6 +1006,20 @@ export function CollectorMobileApp({
     sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "M") ||
     sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "T");
 
+  /** Caja M/T desde la base (Fase 3.2): Cierre e Historial leen la misma cifra. */
+  const [dayCashFigureEpoch, setDayCashFigureEpoch] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    void import("@/lib/cloud-day-cash-figure").then(({ refreshCloudDayCashFigure }) => {
+      void refreshCloudDayCashFigure(collector.ref, activeDate).then((row) => {
+        if (alive && row) setDayCashFigureEpoch((n) => n + 1);
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [collector.ref, activeDate]);
+
   /**
    * Libro de caja del día (único dueño del saldo): Inicial M = CIE de ayer;
    * caja viva de M = Inicial de T. Misma cifra que supervisor, panel y cierre.
@@ -1042,6 +1056,7 @@ export function CollectorMobileApp({
       mCarriedFallbackOpening,
       monthCloses,
       planillaCashCloses,
+      dayCashFigureEpoch,
     ],
   );
   const primaryLiveClosing = dayLedger.mClosing;
@@ -1746,11 +1761,15 @@ export function CollectorMobileApp({
     [activeDate, chainPlanillaDay, isPrimaryPlanilla, savedExpensesRaw, loans, clients, loanScope],
   );
   // Cadena M↔T: cada planilla muestra solo lo suyo; entre ellas solo pasa el saldo.
+  // El total sale del libro (base): si las líneas locales están vacías (planilla soltada)
+  // igual se ve el gasto (caso T 31/10: 212k en Historial y 0 en Cierre).
   const topGastos = ownRouteDay
     ? ownRouteDay.gastos
-    : planillaOwnsMovements
-      ? dayExpenseSplit.otrosTotal
-      : 0;
+    : chainPlanillaDay
+      ? chainPlanillaDay.gastos
+      : planillaOwnsMovements
+        ? dayExpenseSplit.otrosTotal
+        : 0;
   /** Solo efectivo: resta de la caja. */
   const topPrestamos = ownRouteDay
     ? ownRouteDay.prestamos

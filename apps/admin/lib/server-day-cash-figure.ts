@@ -13,6 +13,12 @@ export type DayCashFigureResult =
       dayFinal: number;
       cie: number | null;
       saldo: number;
+      mEfectivo: number;
+      mPrestamos: number;
+      mGastos: number;
+      tEfectivo: number;
+      tPrestamos: number;
+      tGastos: number;
       priorCieRef?: string;
       priorCieDate?: string;
     }
@@ -50,6 +56,12 @@ export async function readDayCashFigure(
     day_final?: number;
     cie?: number | null;
     saldo?: number;
+    m_efectivo?: number;
+    m_prestamos?: number;
+    m_gastos?: number;
+    t_efectivo?: number;
+    t_prestamos?: number;
+    t_gastos?: number;
     error?: string;
     missing_day?: string;
     prior_cie_ref?: string;
@@ -77,6 +89,12 @@ export async function readDayCashFigure(
     dayFinal: Math.trunc(Number(body.day_final) || 0),
     cie: body.cie == null ? null : Math.trunc(Number(body.cie)),
     saldo: Math.trunc(Number(body.saldo) || 0),
+    mEfectivo: Math.trunc(Number(body.m_efectivo) || 0),
+    mPrestamos: Math.trunc(Number(body.m_prestamos) || 0),
+    mGastos: Math.trunc(Number(body.m_gastos) || 0),
+    tEfectivo: Math.trunc(Number(body.t_efectivo) || 0),
+    tPrestamos: Math.trunc(Number(body.t_prestamos) || 0),
+    tGastos: Math.trunc(Number(body.t_gastos) || 0),
     priorCieRef: body.prior_cie_ref,
     priorCieDate: body.prior_cie_date,
   };

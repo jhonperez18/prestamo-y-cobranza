@@ -455,6 +455,10 @@ export function isChainCollectorDay(src: DayCashSources): boolean {
   ) {
     return true;
   }
+  // Sin visitas M/T en el aparato (p. ej. ya soltó la planilla): la base manda.
+  // Nunca usar solo CIE- aquí — Yesid (solo N) también tiene CIE y no es cadena.
+  const cloud = getCloudDayCashFigure(src.collectorRef, date);
+  if (cloud?.ready && cloud.chain === true) return true;
   if (!src.assignments.some((row) => assignmentOnChainSheet(src, row))) return false;
   if (
     src.planillaCashCloses.some(
@@ -494,10 +498,11 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
   const opening = mOpening.kind === "chain" ? mOpening.opening : 0;
   const { m, t } = chainDayMovements(src);
   const mClosing = pesos(opening + m.efectivo - m.gastos - m.prestamos);
+  const cloud = getCloudDayCashFigure(src.collectorRef, date);
   const local: DayCashLedger = {
     collectorRef: src.collectorRef,
     date,
-    chain: isChainCollectorDay(src),
+    chain: isChainCollectorDay(src) || Boolean(cloud?.ready && cloud.chain),
     mOpening,
     m,
     mClosing,
@@ -506,9 +511,7 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
     cashAdjustment:
       findFullDayCieClose(src.dayCloses, src.collectorRef, date)?.cashAdjustment ?? null,
   };
-  // Fase 3.2: si la base ya calculó la caja del día, mClosing / dayFinal mandan.
-  // Con CIE- sellado, saldo = cash_float (historia); el movimiento desglosado sigue local.
-  const cloud = getCloudDayCashFigure(src.collectorRef, date);
+  // Fase 3.2: la base manda saldo Y movimiento M/T (Cierre = Historial = CIE).
   if (
     cloud?.ready &&
     cloud.mClosing != null &&
@@ -516,8 +519,25 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
     Number.isFinite(cloud.mClosing) &&
     Number.isFinite(cloud.dayFinal)
   ) {
+    const mCloud: RouteCashDay = {
+      efectivo: cloud.mEfectivo != null ? pesos(cloud.mEfectivo) : local.m.efectivo,
+      prestamos: cloud.mPrestamos != null ? pesos(cloud.mPrestamos) : local.m.prestamos,
+      gastos: cloud.mGastos != null ? pesos(cloud.mGastos) : local.m.gastos,
+      gastoLines: local.m.gastoLines,
+      loanRows: local.m.loanRows,
+    };
+    const tCloud: RouteCashDay = {
+      efectivo: cloud.tEfectivo != null ? pesos(cloud.tEfectivo) : local.t.efectivo,
+      prestamos: cloud.tPrestamos != null ? pesos(cloud.tPrestamos) : local.t.prestamos,
+      gastos: cloud.tGastos != null ? pesos(cloud.tGastos) : local.t.gastos,
+      gastoLines: local.t.gastoLines,
+      loanRows: local.t.loanRows,
+    };
     return {
       ...local,
+      chain: true,
+      m: mCloud,
+      t: tCloud,
       mOpening:
         cloud.opening != null
           ? {
