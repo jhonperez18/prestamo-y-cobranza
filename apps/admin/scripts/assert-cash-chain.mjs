@@ -2128,13 +2128,17 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     true,
   );
   expect(
-    "Registro Nequi: cobrado, prestado, gastos y saldo de la ruta A",
+    "Registro Nequi: mes vivo solo Saldo arrastra; cobrado/prestado/gasto del mes",
     bancoSrc.includes("nequiRouteHistoryDays") &&
       bancoSrc.includes("NEQUI_ROUTE_PIN") &&
       bancoSrc.includes("is-nequi-tres") &&
       bancoSrc.includes("is-nequi-saldo") &&
       bancoSrc.includes('pool: "nequi"') &&
-      bancoSrc.includes("nequiBase?.saldo"),
+      bancoSrc.includes("nequiMonthTotales") &&
+      bancoSrc.includes("nequiGastadoMes") &&
+      bancoSrc.includes("nequiBase.saldo") &&
+      bancoSrc.includes("nequiPoolHistSaldo") &&
+      bancoSrc.includes("bancoPoolHistSaldo"),
     true,
   );
   expect(
