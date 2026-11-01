@@ -350,9 +350,13 @@ type HistoryRowLike = {
 };
 
 /**
- * Historial de A / N: gasto y saldo = caja propia (misma cifra que la tarjeta).
- * Columna PRÉSTAMO = lo prestado en la ruta (efectivo + Banco/Nequi).
- * Columna COBROS = `routeCobradoDayTotal` (misma cifra que Total / COBROS).
+ * Historial de caja A / N: las columnas cuadran con el Saldo.
+ *   Saldo = Inicial + COBROS − PRÉSTAMO − GASTO
+ * COBROS aquí = efectivo de la caja (`day.efectivo`). Nequi/Banco no entran al Saldo
+ * (van al historial Nequi/Banco). Si se pintara el cobrado total, 747 + 1.900 − 0
+ * no daría 827 (caso 31/10 A: efectivo 580 · préstamo 500 → 827).
+ * PRÉSTAMO = efectivo + digital de la ruta (el digital no resta de la caja; el de
+ * efectivo sí — lo ya aplica `independentRouteDay` / `route_own_box`).
  */
 export function withIndependentRouteHistory<Row extends HistoryRowLike>(
   rows: Row[],
@@ -364,12 +368,15 @@ export function withIndependentRouteHistory<Row extends HistoryRowLike>(
     const daySrc = { ...src, date: row.date };
     const day = independentRouteDay(daySrc, route, book);
     const cobrado = routeCobradoBreakdown(daySrc, route);
+    // Columna que alimenta el Saldo = efectivo de la caja (nube o libro).
+    const cobrosCaja = pesos(day.efectivo);
     return {
       ...row,
       gasto: day.gastos,
-      prestamo: day.prestamosRuta,
+      // Solo capital en efectivo resta del Saldo; el renglón muestra lo prestado en la ruta.
+      prestamo: day.prestamos,
       saldo: day.closing,
-      ...(row.cobro != null ? { cobro: cobrado.total } : {}),
+      ...(row.cobro != null ? { cobro: cobrosCaja } : {}),
       ...(row.cobroEfectivo != null ? { cobroEfectivo: cobrado.efectivo } : {}),
     };
   });

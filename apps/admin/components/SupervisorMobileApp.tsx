@@ -3247,7 +3247,8 @@ export function SupervisorMobileApp({
 
     if (isIndependentSaldoRoute(openRoute.routeName)) {
       // A / N: caja propia. Día a día + mes a mes = mismo hilo; nunca M/T ni la otra.
-      // Con histOwnBoxEpoch la fila lee route_own_box ya bajada (Saldo real, no rojo local).
+      // Historial: sin `histOwnBook` (ese stub pone movimiento 0 y escondía el préstamo del 31).
+      // Con histOwnBoxEpoch lee route_own_box (efectivo / préstamo / Saldo de la base).
       let independentRows = alignIndependentHistoryDayToDay(
         withIndependentRouteHistory(
           rows.filter((row) => row.date <= historyTo),
@@ -3265,7 +3266,6 @@ export function SupervisorMobileApp({
             monthCloses,
           },
           openRoute.routeName,
-          histOwnBook,
         ),
       );
       if (independentCarry != null) {
