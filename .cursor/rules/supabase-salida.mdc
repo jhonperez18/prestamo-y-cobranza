@@ -1,0 +1,31 @@
+---
+description: Supabase gratis — no subir la salida; meta <5 GB/mes
+alwaysApply: true
+---
+
+# Supabase — no pagar (salida)
+
+## Ley
+
+El dueño quiere seguir en el plan **gratis**. El tope que nos saca de gratis es la **salida** (egress): **5 GB/mes**.
+
+Supabase sigue siendo la verdad de los datos. El VPS solo ejecuta la app.
+
+## Ya hecho
+
+- Bajada del celular: completa al abrir y cada 60 min; entre medio solo cambios (`?since=`).
+- Cobrador no baja el historial entero: solo el día.
+
+## Ya hecho (libro)
+
+- `route-cash-book` calcula con RPC (`day_cash_figure` / `route_own_box`), **sin** `loadOperationalStateFromCloud()`.
+
+## Pendiente (no inventar otra bajada completa)
+
+1. Medir la salida en el panel de Supabase. Si **1–2 meses** quedan bajo **3–4 GB**, ahí se decide volver a gratis si hoy se está pagando.
+2. No sumar lecturas nuevas de tablas enteras “por si acaso”.
+
+## Prohibido
+
+- Volver a bajar planilla + cobros + clientes completos en cada sync del celular.
+- Declarar “ya estamos bajo 5 GB” sin la cifra del panel de Supabase.

@@ -27,8 +27,8 @@ function toBookDay(raw: unknown): RouteCashBookDay | null {
 }
 
 /**
- * Días pasados de una caja (M, A, N) calculados por el servidor (nube completa). Sin señal o con error
- * queda la última lectura buena (o `null`: el celular calcula con lo que tiene).
+ * Días pasados de una caja (M, A, N) vía RPC del servidor (sin bajar toda la base).
+ * Sin señal o con error queda la última lectura buena (o `null`: el celular usa lo local).
  */
 export function useRouteCashBook(
   collectorRef: string,

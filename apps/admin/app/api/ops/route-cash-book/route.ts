@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-/** Libro de caja de A / N desde la nube completa (solo montos por día; no escribe). */
+/** Libro de caja M / A / N por RPC (day_cash_figure / route_own_box). Solo montos; no escribe. */
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const collectorRef = url.searchParams.get("collectorRef") || "";

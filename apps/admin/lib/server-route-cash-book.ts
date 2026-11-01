@@ -1,6 +1,7 @@
 /**
- * Libro de caja con la nube completa (lo que ve el supervisor): un día por fecha, desde
- * `ROUTE_CASH_BOOK_FROM` hasta ayer. M = libro de la cadena; A / N = caja propia. Solo lee.
+ * Libro de caja (M / A / N) desde `ROUTE_CASH_BOOK_FROM` hasta ayer.
+ * Solo lee. No baja planilla + cobros + clientes enteros: usa las RPC de la base
+ * (`day_cash_figure` para M, `route_own_box` para A/N) — misma cifra que la pantalla.
  */
 import { businessTodayIso } from "@/lib/business-timezone";
 import { previousCalendarIso, type OperationalDayState } from "@/lib/collector-day-auto-close";
@@ -18,11 +19,15 @@ import {
   type RouteCashBook,
   type RouteCashBookDay,
 } from "@/lib/planilla-cash-chain";
-import { loadOperationalStateFromCloud } from "@/lib/server-day-rollover";
+import { pesos } from "@/lib/finance";
+import { readDayCashFigure } from "@/lib/server-day-cash-figure";
+import { readRouteOwnBox } from "@/lib/server-route-own-box";
 
 export type RouteCashBookResult =
   | { ok: true; collectorRef: string; route: string; days: RouteCashBookDay[] }
   | { ok: false; error: string };
+
+const RPC_BATCH = 8;
 
 export async function runRouteCashBook(
   collectorRef: string,
@@ -30,14 +35,26 @@ export async function runRouteCashBook(
   now = new Date(),
 ): Promise<RouteCashBookResult> {
   const routeKey = route.trim().toUpperCase();
-  if (!collectorRef || !hasRouteCashBook(routeKey)) return { ok: false, error: "route_without_book" };
-  const loaded = await loadOperationalStateFromCloud();
-  if (!loaded.ok) return { ok: false, error: loaded.error };
-  const days = routeCashBookFromState(loaded.state, collectorRef, routeKey, businessTodayIso(now));
-  if (!days) return { ok: false, error: "collector_not_found" };
-  return { ok: true, collectorRef, route: routeKey, days };
+  const ref = collectorRef.trim();
+  if (!ref || !hasRouteCashBook(routeKey)) return { ok: false, error: "route_without_book" };
+
+  const today = businessTodayIso(now);
+  const last = previousCalendarIso(today);
+  const dates = datesInclusive(ROUTE_CASH_BOOK_FROM, last);
+  if (dates.length === 0) {
+    return { ok: true, collectorRef: ref, route: routeKey, days: [] };
+  }
+
+  const days = isPlanillaCashChainPrimary(routeKey)
+    ? await bookChainPrimary(ref, dates)
+    : await bookIndependent(ref, routeKey, dates);
+
+  return { ok: true, collectorRef: ref, route: routeKey, days };
 }
 
+/**
+ * Misma lógica en memoria (ensayos / assert). Producción usa `runRouteCashBook` (RPC).
+ */
 export function routeCashBookFromState(
   state: OperationalDayState,
   collectorRef: string,
@@ -71,6 +88,53 @@ export function routeCashBookFromState(
   return [...book.values()];
 }
 
+async function bookChainPrimary(
+  collectorRef: string,
+  dates: readonly string[],
+): Promise<RouteCashBookDay[]> {
+  const rows = await mapInBatches(dates, RPC_BATCH, async (date) => {
+    const fig = await readDayCashFigure(collectorRef, date);
+    if (!fig.ok || !fig.ready || !fig.chain) return null;
+    // Misma caja final de M que `primaryClosingOf`: CIE − (dayFinal − mClosing).
+    const closing =
+      fig.cie != null
+        ? pesos(fig.cie - (fig.dayFinal - fig.mClosing))
+        : fig.mClosing;
+    return {
+      date,
+      opening: fig.opening,
+      closing,
+      efectivo: fig.mEfectivo,
+      gastos: fig.mGastos,
+      prestamos: fig.mPrestamos,
+      cobrado: fig.mEfectivo,
+    } satisfies RouteCashBookDay;
+  });
+  return rows.filter((row): row is RouteCashBookDay => Boolean(row));
+}
+
+async function bookIndependent(
+  collectorRef: string,
+  route: string,
+  dates: readonly string[],
+): Promise<RouteCashBookDay[]> {
+  const rows = await mapInBatches(dates, RPC_BATCH, async (date) => {
+    const box = await readRouteOwnBox(collectorRef, date, route);
+    if (!box.ok) return null;
+    return {
+      date,
+      opening: box.opening,
+      closing: box.saldo,
+      efectivo: box.efectivo,
+      gastos: box.gastos,
+      prestamos: box.prestamos,
+      /** Historial de caja A/N: COBROS = efectivo (Nequi/Banco van al pool). */
+      cobrado: box.efectivo,
+    } satisfies RouteCashBookDay;
+  });
+  return rows.filter((row): row is RouteCashBookDay => Boolean(row));
+}
+
 /** M: Inicial = CIE de la víspera; Saldo = caja final de M (CIE − movimiento de T). */
 function chainPrimaryDay(src: DayCashSources): RouteCashBookDay | null {
   const ledger = buildDayCashLedger(src);
@@ -101,7 +165,28 @@ function independentDay(src: DayCashSources, route: string, book: RouteCashBook)
   };
 }
 
+function datesInclusive(from: string, to: string): string[] {
+  if (!from || !to || from > to) return [];
+  const out: string[] = [];
+  for (let date = from; date <= to; date = nextIso(date)) out.push(date);
+  return out;
+}
+
 function nextIso(iso: string) {
   const [y, m, d] = iso.split("-").map(Number);
   return new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + 1)).toISOString().slice(0, 10);
+}
+
+async function mapInBatches<T, R>(
+  items: readonly T[],
+  size: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = [];
+  for (let i = 0; i < items.length; i += size) {
+    const chunk = items.slice(i, i + size);
+    const part = await Promise.all(chunk.map((item) => fn(item)));
+    out.push(...part);
+  }
+  return out;
 }
