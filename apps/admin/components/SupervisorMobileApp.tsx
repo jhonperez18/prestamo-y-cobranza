@@ -1506,6 +1506,8 @@ export function SupervisorMobileApp({
   const [cajaHistoryNav, setCajaHistoryNav] = useState<"detallado" | "meses" | "mes">("detallado");
   /** Período `YYYY-MM` abierto dentro de historial (ej. 2026-10). */
   const [cajaHistoryPeriodPick, setCajaHistoryPeriodPick] = useState<string | null>(null);
+  /** Cajas A/N del mes bajadas para el historial (route_own_box). */
+  const [histOwnBoxEpoch, setHistOwnBoxEpoch] = useState(0);
   /** Historial · T: formulario de ajuste de saldo real abierto (cobrador del CIE-). */
   const [cashAdjustCollectorRef, setCashAdjustCollectorRef] = useState<string | null>(null);
   /** BANCO / NEQUI: cuadre del total acumulado abierto. */
@@ -2751,6 +2753,47 @@ export function SupervisorMobileApp({
   };
 
   const openRoute = liquidaciones.find((row) => row.routeRef === openRouteRef) ?? null;
+
+  // Historial A/N: baja route_own_box del mes visible (la base manda; sin esto todo sale en rojo).
+  useEffect(() => {
+    if (!openRoute || !isIndependentSaldoRoute(openRoute.routeName)) return;
+    if (detailMode !== "historial" && detailMode !== "historial-dia") return;
+    if (cajaHistoryNav === "meses") return;
+    const pin = openRoute.routeName.trim().toUpperCase();
+    if (pin !== "A" && pin !== "N") return;
+    const viewingPastMonth = cajaHistoryNav === "mes" && Boolean(cajaHistoryPeriodPick);
+    const period = viewingPastMonth
+      ? (cajaHistoryPeriodPick as string)
+      : periodFromDateIso(today);
+    const periodStart = `${period}-01`;
+    const from =
+      periodStart >= ROUTE_CASH_BOOK_FROM ? periodStart : ROUTE_CASH_BOOK_FROM;
+    const to = viewingPastMonth
+      ? lastCalendarDayOfPeriod(period) || from
+      : today;
+    let alive = true;
+    void (async () => {
+      const { refreshCloudRouteOwnBoxRange } = await import("@/lib/cloud-route-own-box");
+      const hit = await refreshCloudRouteOwnBoxRange(
+        openRoute.collectorRef,
+        pin,
+        from,
+        to,
+      );
+      if (!alive) return;
+      if (hit > 0) setHistOwnBoxEpoch((n) => n + 1);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [
+    openRoute,
+    detailMode,
+    cajaHistoryNav,
+    cajaHistoryPeriodPick,
+    today,
+  ]);
+
   /** A muestra solo Nequi. M, T y N muestran solo Banco. El otro no se suma. */
   const openRouteIsA = openRoute ? sameRoute(openRoute.routeName, "A") : false;
   const openRouteDigitalPool: "banco" | "nequi" = openRouteIsA ? "nequi" : "banco";
@@ -3008,6 +3051,18 @@ export function SupervisorMobileApp({
       ? calendarDaysInPeriod(period, historyFrom, historyTo)
       : [today];
 
+    // Solo A/N: ancla de nube (ayer) para no recalcular el arrastre con un aparato incompleto.
+    const histAnchor = sameRoute(openRoute.routeName, "A")
+      ? aAnchors[collector.ref]
+      : sameRoute(openRoute.routeName, "N")
+        ? nAnchors[collector.ref]
+        : undefined;
+    const histOwnBook =
+      histAnchor &&
+      (histAnchor.date === previousCalendarIso(today) || histAnchor.date === today)
+        ? routeOwnAnchorBook(histAnchor.date, histAnchor.saldo)
+        : undefined;
+
     // Solo A/N en DETALLADO (día 1): arrastre propio. M↔T no se toca.
     const independentCarry =
       isIndependentSaldoRoute(openRoute.routeName) && !viewingPastMonth
@@ -3025,6 +3080,7 @@ export function SupervisorMobileApp({
             }),
             openRoute.routeName,
             currentPeriod,
+            histOwnBook,
           )
         : null;
 
@@ -3191,6 +3247,7 @@ export function SupervisorMobileApp({
 
     if (isIndependentSaldoRoute(openRoute.routeName)) {
       // A / N: caja propia. Día a día + mes a mes = mismo hilo; nunca M/T ni la otra.
+      // Con histOwnBoxEpoch la fila lee route_own_box ya bajada (Saldo real, no rojo local).
       let independentRows = alignIndependentHistoryDayToDay(
         withIndependentRouteHistory(
           rows.filter((row) => row.date <= historyTo),
@@ -3208,6 +3265,7 @@ export function SupervisorMobileApp({
             monthCloses,
           },
           openRoute.routeName,
+          histOwnBook,
         ),
       );
       if (independentCarry != null) {
@@ -3305,6 +3363,10 @@ export function SupervisorMobileApp({
     cajaHistoryPeriodPick,
     planillaCashCloses,
     ledgerByCollector,
+    aAnchors,
+    nAnchors,
+    routeOwnBoxEpoch,
+    histOwnBoxEpoch,
   ]);
 
   const openRouteCajaHistoryIsM = Boolean(

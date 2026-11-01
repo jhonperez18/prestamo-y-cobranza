@@ -140,3 +140,48 @@ export async function refreshCloudRouteOwnBox(
     return null;
   }
 }
+
+function nextIsoDay(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + 1));
+  return dt.toISOString().slice(0, 10);
+}
+
+function daysInclusive(fromIso: string, toIso: string): string[] {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fromIso) || !/^\d{4}-\d{2}-\d{2}$/.test(toIso)) {
+    return [];
+  }
+  if (fromIso > toIso) return [];
+  const out: string[] = [];
+  for (let day = fromIso; day <= toIso; day = nextIsoDay(day)) {
+    out.push(day);
+    if (out.length > 62) break;
+  }
+  return out;
+}
+
+/**
+ * Baja cajas A/N de un rango (historial del mes). Lotes de 6 para no saturar.
+ * Devuelve cuántas filas nuevas entraron a caché.
+ */
+export async function refreshCloudRouteOwnBoxRange(
+  collectorRef: string,
+  route: string,
+  fromIso: string,
+  toIso: string,
+): Promise<number> {
+  const days = daysInclusive(fromIso, toIso);
+  if (!days.length) return 0;
+  let hit = 0;
+  const chunk = 6;
+  for (let i = 0; i < days.length; i += chunk) {
+    const batch = days.slice(i, i + chunk);
+    const rows = await Promise.all(
+      batch.map((date) => refreshCloudRouteOwnBox(collectorRef, date, route)),
+    );
+    for (const row of rows) {
+      if (row) hit += 1;
+    }
+  }
+  return hit;
+}

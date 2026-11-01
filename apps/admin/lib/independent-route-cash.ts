@@ -396,9 +396,13 @@ export type IndependentRouteDay = RouteMovement & {
   /** Hay un ajuste previo o un CIE- sellado: el Inicial sale de él (no del `fallbackOpening`). */
   anchored: boolean;
   opening: number;
-  /** Inicial + efectivo − gastos − préstamos. */
+  /** Inicial + efectivo − gastos − préstamos (sin aplicar el ajuste del mismo día). */
   closing: number;
-  /** Ajuste hecho ese mismo día (su `real` es el Inicial de mañana). */
+  /**
+   * Ajuste hecho ese mismo día.
+   * Su `real` es el Saldo que arrastra (= Inicial de mañana / día 1 del mes) vía
+   * `independentRouteFinalSaldo` — no usar solo `closing` si hay ajuste.
+   */
   adjustment: RouteCashAdjustment | null;
 };
 
@@ -470,18 +474,22 @@ export function independentRouteDay(
   const sealedClosing = date < todayIso ? sealedRouteClosing(src, route, date) : null;
   const localClosing =
     sealedClosing ?? pesos(opening + today.efectivo - today.gastos - today.prestamos);
-  // Fase 3.3: día vivo — la base manda (route_own_box). Evita el flash negativo del
-  // libro local incompleto al arrancar (antes solo aceptaba nube si coincidía con local).
+  // Fase 3.3: la base manda (route_own_box) en vivo y en días pasados.
+  // Sin esto el historial A recalcula con un aparato incompleto → todo en rojo
+  // aunque la nube tenga el Saldo real (caso 01/11: Oct rojo + Nov día 1 en −170).
   const cloud =
     sealedClosing == null ? getCloudRouteOwnBox(src.collectorRef, date, route) : null;
-  const liveDay = date >= todayIso;
-  if (cloud && liveDay && sealedClosing == null) {
+  if (cloud && sealedClosing == null) {
     const cloudClosing = pesos(cloud.saldo);
     const cloudOpening = Number.isFinite(cloud.opening)
       ? pesos(cloud.opening)
       : pesos(cloudClosing - cloud.efectivo + cloud.prestamos + cloud.gastos);
     return {
       ...today,
+      efectivo: pesos(cloud.efectivo),
+      gastos: pesos(cloud.gastos),
+      prestamos: pesos(cloud.prestamos),
+      prestamosRuta: pesos(cloud.prestamos + today.prestamosDigital),
       route,
       date,
       anchored: true,
@@ -490,19 +498,25 @@ export function independentRouteDay(
       adjustment: findRouteCashAdjustment(src.dayCloses, src.collectorRef, date, route),
     };
   }
-  const cloudSaldo =
-    cloud && Number.isFinite(cloud.saldo) ? pesos(cloud.saldo) : null;
-  const closing =
-    cloudSaldo != null && !anchor ? cloudSaldo : localClosing;
   return {
     ...today,
     route,
     date,
-    anchored: Boolean(anchor) || Boolean(cloud),
+    anchored: Boolean(anchor),
     opening,
-    closing,
+    closing: localClosing,
     adjustment: findRouteCashAdjustment(src.dayCloses, src.collectorRef, date, route),
   };
+}
+
+/**
+ * Saldo que alimenta el Inicial de mañana / del día 1 del mes siguiente.
+ * Si ese día tuvo ajuste de planilla A/N, manda el `real` contado (no el closing calculado).
+ */
+export function independentRouteFinalSaldo(day: IndependentRouteDay): number {
+  const real = day.adjustment?.real;
+  if (real != null && Number.isFinite(real)) return pesos(real);
+  return pesos(day.closing);
 }
 
 export type RouteCashAdjustmentWindow =

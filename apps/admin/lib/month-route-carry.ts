@@ -44,6 +44,7 @@ import { type DayCashSources } from "@/lib/day-cash-ledger";
 import { pesos } from "@/lib/finance";
 import {
   independentRouteDay,
+  independentRouteFinalSaldo,
   isIndependentSaldoRoute,
 } from "@/lib/independent-route-cash";
 import {
@@ -84,8 +85,9 @@ export function routePriorDayCarryOpening(
   if (!date || date <= ROUTE_CASH_BOOK_FROM) return null;
   const prior = previousCalendarIso(date);
   if (!prior || prior < ROUTE_CASH_BOOK_FROM) return null;
-  return pesos(
-    independentRouteDay({ ...src, date: prior }, route, book).closing,
+  // Ajuste del día previo (si lo hubo) = Inicial de hoy; si no, su closing.
+  return independentRouteFinalSaldo(
+    independentRouteDay({ ...src, date: prior }, route, book),
   );
 }
 
@@ -105,8 +107,9 @@ export function routeMonthCarryOpening(
   const lastDay = previousMonthLastDayIso(period);
   if (!lastDay || lastDay < ROUTE_CASH_BOOK_FROM) return null;
 
-  return pesos(
-    independentRouteDay({ ...src, date: lastDay }, route, book).closing,
+  // Misma regla día a día: AJUSTE@A/N.real del cierre manda sobre el closing calculado.
+  return independentRouteFinalSaldo(
+    independentRouteDay({ ...src, date: lastDay }, route, book),
   );
 }
 

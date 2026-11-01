@@ -805,9 +805,14 @@ const {
   independentRouteCollected,
   independentRouteDay,
   independentRouteDayLines,
+  independentRouteFinalSaldo,
   routeCashAdjustmentWindow,
   withIndependentRouteHistory,
 } = await import("@/lib/independent-route-cash");
+const {
+  monthCarrySrcFrom,
+  routePriorDayCarryOpening,
+} = await import("@/lib/month-route-carry");
 const { mergeRouteCashAdjustments } = await import("@/lib/cash-adjustment");
 const cieAfterT26 = afterT.dayCloses.find((r) => r.ref === cieRef26);
 expect("A/N: sin cierre no se puede", routeCashAdjustmentWindow(COB.ref, "A", [cie25], adjNow).open, false);
@@ -878,6 +883,59 @@ if (aAdj.ok) {
   );
   expect("A 27: Inicial = saldo real del 26", aDay27.opening, 80_000);
   expect("A 27: caja = real + efectivo de A", aDay27.closing, 110_000);
+  const aDay26AfterAdj = independentRouteDay(
+    { ...base, dayCloses: aAdj.dayCloses },
+    "A",
+  );
+  expect(
+    "A: Saldo que arrastra = real del ajuste (no closing calculado)",
+    independentRouteFinalSaldo(aDay26AfterAdj),
+    80_000,
+  );
+  expect(
+    "A: closing del día con ajuste sigue siendo el calculado (Historial)",
+    aDay26AfterAdj.closing,
+    50_000,
+  );
+  // Libro A desde 01/10: el arrastre usa finalSaldo (real del AJUSTE), no el closing.
+  const cieA31 = {
+    ...aAdj.record,
+    ref: "CIE-COB-0-20261031",
+    date: "2026-10-31",
+    cashFloat: 82_000,
+    routeCashAdjustments: [
+      {
+        route: "A",
+        calculated: -170_000,
+        real: 827_000,
+        by: "reparacion-01nov",
+        at: "2026-11-01T12:00:00.000Z",
+        reason: "cierre A no pisa CIE cadena",
+      },
+    ],
+  };
+  const aCarrySrc = monthCarrySrcFrom(COB.ref, COB.name, {
+    payments,
+    loans,
+    clients,
+    collectors: [COB],
+    assignments,
+    dayCloses: [cieA31],
+    dayExpenseDrafts: drafts,
+    planillaCashCloses: afterT.planillaCashCloses,
+    monthCloses: [],
+  });
+  expect(
+    "A: arrastre día a día = real del ajuste (caso Nov −170)",
+    routePriorDayCarryOpening(aCarrySrc, "A", "2026-11-01"),
+    827_000,
+  );
+  const { routeMonthCarryOpening: monthCarryA } = await import("@/lib/month-route-carry");
+  expect(
+    "A: arrastre mes a mes = real del 31 (Inicial día 1)",
+    monthCarryA(aCarrySrc, "A", "2026-11"),
+    827_000,
+  );
   const aDay28 = independentRouteDay(
     { ...base, date: "2026-09-28", dayCloses: aAdj.dayCloses, payments: [...payments, pay27] },
     "A",

@@ -25,6 +25,8 @@ A y N **no** se mezclan entre sí ni con M/T.
 1. Día a día y mes a mes son **el mismo hilo** (el cierre de ayer / del último día alimenta el Inicial de hoy / del día 1).
 2. Historial y tarjeta de una ruta leen la **misma** caja de esa ruta.
 3. Cambios de plata en M/T: respetar regla de inicio (`planilla-m-t-cash-chain.mdc`). No “alinear” M/T desde el arrastre de A/N.
+4. **Saldo que arrastra (A/N)** = `independentRouteFinalSaldo`: si ese día tiene `AJUSTE@A` / `AJUSTE@N`, manda el **`real`** contado; si no, el `closing`. Prohibido usar solo `.closing` cuando hubo ajuste (caso 01/11: Oct 31 real 827k → Nov día 1 salía −170).
+5. **Historial A/N**: con `route_own_box` en caché (hoy, ayer o mes prefetch), la base manda el Saldo. No pintar el recálculo local incompleto en rojo encima de la nube.
 
 ## Prohibido
 
@@ -32,3 +34,5 @@ A y N **no** se mezclan entre sí ni con M/T.
 - Mezclar Saldo de A con N (o al revés).
 - Recalcular o pisar Inicial M / T con lógica de A/N.
 - Inventar un segundo arrastre paralelo en la UI.
+- Arrastrar el `closing` calculado de un día con ajuste ignorando el `real`.
+- Dejar el historial A/N solo con el libro local cuando la base ya tiene la caja.
