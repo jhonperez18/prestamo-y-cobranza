@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import type { CollectorDayCloseRecord, CollectorDayExpenseDraft } from "@/lib/collector-day-close";
 import { previousCalendarIso } from "@/lib/collector-day-auto-close";
-import { getCloudChainMOpening } from "@/lib/cloud-chain-m-opening";
+import {
+  getCloudChainMOpening,
+  refreshCloudChainMOpening,
+} from "@/lib/cloud-chain-m-opening";
+import { refreshCloudDayCashFigure } from "@/lib/cloud-day-cash-figure";
 import { getCloudRouteOwnBox } from "@/lib/cloud-route-own-box";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { PaymentRow } from "@/lib/mock-data";
@@ -98,22 +102,25 @@ export function useChainMOpening(
 ): ChainMOpeningState {
   const key = collectorRefs.filter(Boolean).slice().sort().join(",");
   const [epoch, setEpoch] = useState(0);
+  const warmReady = (refs: string[]) =>
+    refs.length > 0 &&
+    refs.every((ref) => {
+      const row = getCloudChainMOpening(ref, today);
+      return Boolean(row?.ready && row.opening != null);
+    });
   const [settled, setSettled] = useState(() => {
     if (!enabled || !key || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return false;
-    const refs = key.split(",").filter(Boolean);
-    return refs.length > 0 && refs.every((ref) => Boolean(getCloudChainMOpening(ref, today)));
+    return warmReady(key.split(",").filter(Boolean));
   });
   useEffect(() => {
     if (!enabled || !key || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return;
     let alive = true;
+    const refs = key.split(",").filter(Boolean);
+    // Caché de sesión con Inicial listo → primer paint ya es el real (sin «…»).
+    if (warmReady(refs)) {
+      setSettled(true);
+    }
     const load = async () => {
-      const { refreshCloudChainMOpening } = await import("@/lib/cloud-chain-m-opening");
-      const { refreshCloudDayCashFigure } = await import("@/lib/cloud-day-cash-figure");
-      const refs = key.split(",").filter(Boolean);
-      // Si la sesión ya tiene el Inicial, el primer paint es confiable.
-      if (refs.every((ref) => Boolean(getCloudChainMOpening(ref, today)))) {
-        if (alive) setSettled(true);
-      }
       await Promise.all(
         refs.flatMap((ref) => [
           refreshCloudChainMOpening(ref, today),

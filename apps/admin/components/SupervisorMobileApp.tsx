@@ -612,7 +612,7 @@ function RouteBoardCard({
               </strong>
             </div>
             <div className="supervisor-caja-hero is-row is-money-lg">
-              <b>{row.figuresPending ? "…" : money(row.enCaja, { symbol: false })}</b>
+              <b>{money(row.enCaja, { symbol: false })}</b>
             </div>
           </div>
 
@@ -636,7 +636,7 @@ function RouteBoardCard({
           >
             <div>
               <span>Inicial</span>
-              <b>{row.figuresPending ? "…" : money(row.saldoInicial, { symbol: false })}</b>
+              <b>{money(row.saldoInicial, { symbol: false })}</b>
             </div>
             <div>
               <span>Cobrado</span>
@@ -7905,6 +7905,10 @@ export function SupervisorMobileApp({
             />
           ) : liquidaciones.length === 0 ? (
             <p className="ficha-empty">No hay rutas con cobrador.</p>
+          ) : !chainMOpeningSettled && chainCollectorRefs.length > 0 ? (
+            <p className="ficha-empty" aria-live="polite">
+              Cargando saldos…
+            </p>
           ) : (
             <div className="supervisor-route-boards">
               {liquidaciones.map((row, index) => (
@@ -7941,13 +7945,13 @@ export function SupervisorMobileApp({
               className="supervisor-caja-hero is-row is-money-lg supervisor-inicio-total"
               title="Saldo ruta T + ruta N + Banco"
               aria-label={
-                inicioTotalConT == null
+                !chainMOpeningSettled || inicioTotalConT == null
                   ? "Cargando total de cajas"
                   : `Total ruta T más ruta N más Banco: ${money(inicioTotalConT, { symbol: false })}`
               }
             >
               <b>
-                {inicioTotalConT == null
+                {!chainMOpeningSettled || inicioTotalConT == null
                   ? "…"
                   : money(inicioTotalConT, { symbol: false })}
               </b>
