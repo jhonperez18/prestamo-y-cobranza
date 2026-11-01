@@ -92,15 +92,16 @@ async function bookChainPrimary(
   collectorRef: string,
   dates: readonly string[],
 ): Promise<RouteCashBookDay[]> {
-  const rows = await mapInBatches(dates, RPC_BATCH, async (date) => {
+  const rows: RouteCashBookDay[] = [];
+  await mapInBatches(dates, RPC_BATCH, async (date) => {
     const fig = await readDayCashFigure(collectorRef, date);
-    if (!fig.ok || !fig.ready || !fig.chain) return null;
+    if (!fig.ok || !fig.ready || !fig.chain) return;
     // Misma caja final de M que `primaryClosingOf`: CIE − (dayFinal − mClosing).
     const closing =
       fig.cie != null
         ? pesos(fig.cie - (fig.dayFinal - fig.mClosing))
         : fig.mClosing;
-    return {
+    rows.push({
       date,
       opening: fig.opening,
       closing,
@@ -108,9 +109,9 @@ async function bookChainPrimary(
       gastos: fig.mGastos,
       prestamos: fig.mPrestamos,
       cobrado: fig.mEfectivo,
-    } satisfies RouteCashBookDay;
+    });
   });
-  return rows.filter((row): row is RouteCashBookDay => Boolean(row));
+  return rows.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 async function bookIndependent(
@@ -118,10 +119,11 @@ async function bookIndependent(
   route: string,
   dates: readonly string[],
 ): Promise<RouteCashBookDay[]> {
-  const rows = await mapInBatches(dates, RPC_BATCH, async (date) => {
+  const rows: RouteCashBookDay[] = [];
+  await mapInBatches(dates, RPC_BATCH, async (date) => {
     const box = await readRouteOwnBox(collectorRef, date, route);
-    if (!box.ok) return null;
-    return {
+    if (!box.ok) return;
+    rows.push({
       date,
       opening: box.opening,
       closing: box.saldo,
@@ -130,9 +132,9 @@ async function bookIndependent(
       prestamos: box.prestamos,
       /** Historial de caja A/N: COBROS = efectivo (Nequi/Banco van al pool). */
       cobrado: box.efectivo,
-    } satisfies RouteCashBookDay;
+    });
   });
-  return rows.filter((row): row is RouteCashBookDay => Boolean(row));
+  return rows.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 /** M: Inicial = CIE de la víspera; Saldo = caja final de M (CIE − movimiento de T). */
@@ -177,16 +179,13 @@ function nextIso(iso: string) {
   return new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + 1)).toISOString().slice(0, 10);
 }
 
-async function mapInBatches<T, R>(
+async function mapInBatches<T>(
   items: readonly T[],
   size: number,
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const out: R[] = [];
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
   for (let i = 0; i < items.length; i += size) {
     const chunk = items.slice(i, i + size);
-    const part = await Promise.all(chunk.map((item) => fn(item)));
-    out.push(...part);
+    await Promise.all(chunk.map((item) => fn(item)));
   }
-  return out;
 }
