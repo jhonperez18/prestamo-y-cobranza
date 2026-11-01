@@ -1403,7 +1403,9 @@ export function SupervisorMobileApp({
   /** Regla: al ingresar siempre INICIO (no restaurar otra pestaña). */
   const [view, setView] = useState<SupervisorView>("inicio");
   const supervisorDirect = isSupervisorLiveDevice();
-  const serverToday = useSupervisorToday(supervisorDirect, today);
+  // Siempre bajar el día (también en preview del panel). Sin eso, el 01/11
+  // pintaba CIE viejos / A en 0 mientras la base ya tenía el cierre de ayer.
+  const serverToday = useSupervisorToday(true, today);
   const nequiBase = useNequiSaldo(true);
   const serverDay = serverToday.data?.date === today ? serverToday.data : null;
   // Hoy junta la bajada del servidor con lo que la sync ya trajo después.
@@ -1639,8 +1641,11 @@ export function SupervisorMobileApp({
     }
     return [...refs];
   }, [assignedCoverage]);
-  const aAnchors = useRouteAAnchor(true, aCollectorRefs, today);
-  const nAnchors = useRouteNAnchor(true, nCollectorRefs, today);
+  const aOwnBox = useRouteAAnchor(true, aCollectorRefs, today);
+  const nOwnBox = useRouteNAnchor(true, nCollectorRefs, today);
+  const aAnchors = aOwnBox.anchors;
+  const nAnchors = nOwnBox.anchors;
+  const routeOwnBoxEpoch = aOwnBox.epoch + nOwnBox.epoch;
   const digitalPoolEpoch = useDigitalPoolBalancesCloud(true);
   const chainCollectorRefs = useMemo(() => {
     const refs = new Set<string>();
@@ -1652,7 +1657,6 @@ export function SupervisorMobileApp({
     return [...refs];
   }, [assignedCoverage]);
   const chainMOpeningEpoch = useChainMOpening(true, chainCollectorRefs, today);
-  void chainMOpeningEpoch;
 
   /** Libro de caja del día por cobrador: misma cifra que la app del cobrador, el cierre y el Historial. */
   const ledgerByCollector = useMemo(() => {
@@ -1714,6 +1718,7 @@ export function SupervisorMobileApp({
     planillaCashCloses,
     monthCloses,
     chainMOpeningEpoch,
+    routeOwnBoxEpoch,
   ]);
 
   const liquidaciones = useMemo((): RouteLiquidacion[] => {
@@ -1830,7 +1835,8 @@ export function SupervisorMobileApp({
           ? nAnchors[collectorRef]
           : undefined;
       const ownBook =
-        ownAnchor && ownAnchor.date === previousCalendarIso(today)
+        ownAnchor &&
+        (ownAnchor.date === previousCalendarIso(today) || ownAnchor.date === today)
           ? routeOwnAnchorBook(ownAnchor.date, ownAnchor.saldo)
           : undefined;
       const independentDay =
@@ -2024,6 +2030,8 @@ export function SupervisorMobileApp({
     ledgerByCollector,
     aAnchors,
     nAnchors,
+    routeOwnBoxEpoch,
+    chainMOpeningEpoch,
   ]);
 
   const deviceStatuses = useDeviceStatuses();
@@ -3308,6 +3316,7 @@ export function SupervisorMobileApp({
     monthCloses,
     aAnchors,
     nAnchors,
+    routeOwnBoxEpoch,
     today,
   ]);
 

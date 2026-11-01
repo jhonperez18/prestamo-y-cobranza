@@ -131,16 +131,23 @@ export function useDigitalPoolBalancesCloud(enabled: boolean): number {
   return epoch;
 }
 
+export type RouteOwnAnchorState = {
+  anchors: Record<string, RouteOwnAnchor>;
+  /** Sube cuando llegó route_own_box (ayer o hoy) → re-pintar INICIO. */
+  epoch: number;
+};
+
 /**
  * Caja A/N: ancla de ayer + saldo de hoy en caché (route_own_box).
  * Sin red, la pantalla sigue con su copia local (o la última de esta sesión).
+ * El `epoch` manda: si solo llega el saldo de hoy, igual se re-pinta (A no puede quedar en 0).
  */
 export function useRouteOwnAnchor(
   enabled: boolean,
   collectorRefs: readonly string[],
   today: string,
   route: "A" | "N",
-) {
+): RouteOwnAnchorState {
   const key = collectorRefs.filter(Boolean).slice().sort().join(",");
   const [anchors, setAnchors] = useState<Record<string, RouteOwnAnchor>>(() => {
     if (!enabled || !key || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return {};
@@ -156,7 +163,7 @@ export function useRouteOwnAnchor(
     }
     return next;
   });
-  const [, setEpoch] = useState(0);
+  const [epoch, setEpoch] = useState(0);
 
   useEffect(() => {
     if (!enabled || !key || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return;
@@ -178,8 +185,14 @@ export function useRouteOwnAnchor(
               saldo: yesterdayRow.saldo,
               route,
             };
+          } else if (todayRow) {
+            // Día 1 / sin ancla de ayer en caché: el saldo de hoy de la base basta.
+            next[collectorRef] = {
+              date: today,
+              saldo: todayRow.opening,
+              route,
+            };
           }
-          void todayRow;
         }),
       );
       if (!alive) return;
@@ -192,7 +205,7 @@ export function useRouteOwnAnchor(
     };
   }, [enabled, key, today, route]);
 
-  return anchors;
+  return { anchors, epoch };
 }
 
 /** Compat: ancla de A (ayer). */
