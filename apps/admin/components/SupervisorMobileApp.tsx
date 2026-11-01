@@ -1531,6 +1531,20 @@ export function SupervisorMobileApp({
   >(null);
   /** Un solo día abierto en el historial Nequi (acordeón). */
   const [nequiRegistroDay, setNequiRegistroDay] = useState<string | null>(null);
+  /** BANCO: home → historial (meses) → mes (movimiento). */
+  const [bancoPoolHistNav, setBancoPoolHistNav] = useState<"home" | "meses" | "mes">("home");
+  const [bancoPoolHistPeriod, setBancoPoolHistPeriod] = useState<string | null>(null);
+  const [bancoPoolHistExpand, setBancoPoolHistExpand] = useState<
+    "cobrado" | "prestado" | "gastos" | null
+  >(null);
+  const [bancoPoolHistDay, setBancoPoolHistDay] = useState<string | null>(null);
+  /** NEQUI: home → historial (meses) → mes (movimiento). */
+  const [nequiPoolHistNav, setNequiPoolHistNav] = useState<"home" | "meses" | "mes">("home");
+  const [nequiPoolHistPeriod, setNequiPoolHistPeriod] = useState<string | null>(null);
+  const [nequiPoolHistExpand, setNequiPoolHistExpand] = useState<
+    "cobrado" | "prestado" | "gastos" | null
+  >(null);
+  const [nequiPoolHistDay, setNequiPoolHistDay] = useState<string | null>(null);
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [gastoLabel, setGastoLabel] = useState("Gasto");
@@ -3244,8 +3258,8 @@ export function SupervisorMobileApp({
   const openRouteCajaHistoryIsIndependent = Boolean(
     openRoute && isIndependentSaldoRoute(openRoute.routeName),
   );
-  /** Meses ya generados en el historial (desde el libro; el más reciente primero). */
-  const cajaHistoryMonthOptions = useMemo(() => {
+  /** Meses ya generados (caja / banco / nequi): desde el libro; el más reciente primero. */
+  const historyMonthOptions = useMemo(() => {
     const from = ROUTE_CASH_BOOK_FROM.slice(0, 7);
     const out: string[] = [];
     let period = previousPeriod(periodFromDateIso(today));
@@ -3257,12 +3271,199 @@ export function SupervisorMobileApp({
     }
     return out;
   }, [today]);
+  const cajaHistoryMonthOptions = historyMonthOptions;
   const cajaHistoryPeriod =
     cajaHistoryNav === "mes" && cajaHistoryPeriodPick
       ? cajaHistoryPeriodPick
       : periodFromDateIso(today);
   const cajaHistoryMonthTitle = `${informePeriodName(cajaHistoryPeriod)} ${cajaHistoryPeriod.slice(0, 4)}`;
   const viewingHistorialMonth = cajaHistoryNav === "mes";
+
+  function periodHistWindow(period: string): { from: string; to: string } {
+    const start = `${period}-01`;
+    const from = start >= ROUTE_CASH_BOOK_FROM ? start : ROUTE_CASH_BOOK_FROM;
+    const end = lastCalendarDayOfPeriod(period) || start;
+    return { from, to: end };
+  }
+
+  const bancoPoolHistMonthTitle =
+    bancoPoolHistPeriod != null
+      ? `${informePeriodName(bancoPoolHistPeriod)} ${bancoPoolHistPeriod.slice(0, 4)}`
+      : "";
+  const nequiPoolHistMonthTitle =
+    nequiPoolHistPeriod != null
+      ? `${informePeriodName(nequiPoolHistPeriod)} ${nequiPoolHistPeriod.slice(0, 4)}`
+      : "";
+
+  /** Movimiento Banco del mes abierto en historial (M+T+N juntos). */
+  const bancoPoolHistDays = useMemo(() => {
+    if (bancoPoolHistNav !== "mes" || !bancoPoolHistPeriod) return [];
+    const { from, to } = periodHistWindow(bancoPoolHistPeriod);
+    const byDate = new Map<
+      string,
+      {
+        route: string;
+        date: string;
+        cobrado: number;
+        prestado: number;
+        items: PaymentRow[];
+        loans: ReturnType<typeof bancoRouteHistoryDays>[number]["loans"];
+      }
+    >();
+    for (const pin of BANCO_ROUTE_PINS) {
+      const days = bancoRouteHistoryDays({
+        payments: paymentsWithEvidence,
+        loans,
+        clients,
+        dayCloses: dayClosesLive,
+        fromIso: from,
+        toIso: to,
+        routeName: pin,
+        movements: bankMovements,
+      });
+      for (const day of days) {
+        const cur = byDate.get(day.date);
+        if (cur) {
+          cur.cobrado += day.cobrado;
+          cur.prestado += day.prestado;
+          cur.items.push(...day.items);
+          cur.loans.push(...day.loans);
+        } else {
+          byDate.set(day.date, {
+            route: "BANCO",
+            date: day.date,
+            cobrado: day.cobrado,
+            prestado: day.prestado,
+            items: [...day.items],
+            loans: [...day.loans],
+          });
+        }
+      }
+    }
+    return [...byDate.values()].sort((a, b) => b.date.localeCompare(a.date));
+  }, [
+    bancoPoolHistNav,
+    bancoPoolHistPeriod,
+    paymentsWithEvidence,
+    loans,
+    clients,
+    dayClosesLive,
+    bankMovements,
+  ]);
+  /** Solo el mes elegido (el arrastre previo queda en la serie completa). */
+  const bancoPoolHistDaysInPeriod = useMemo(() => {
+    if (!bancoPoolHistPeriod) return [];
+    const { from, to } = periodHistWindow(bancoPoolHistPeriod);
+    return bancoPoolHistDays.filter((day) => day.date >= from && day.date <= to);
+  }, [bancoPoolHistDays, bancoPoolHistPeriod]);
+  const bancoPoolHistCobradoDays = useMemo(() => {
+    if (!bancoPoolHistPeriod) return [];
+    const { from, to } = periodHistWindow(bancoPoolHistPeriod);
+    return bancoRouteCobradoHistoryDays(bancoPoolHistDays, "").filter(
+      (day) => day.date >= from && day.date <= to,
+    );
+  }, [bancoPoolHistDays, bancoPoolHistPeriod]);
+  const bancoPoolHistPrestadoDays = useMemo(() => {
+    if (!bancoPoolHistPeriod) return [];
+    const { from, to } = periodHistWindow(bancoPoolHistPeriod);
+    return bancoRoutePrestadoHistoryDays(bancoPoolHistDays, "").filter(
+      (day) => day.date >= from && day.date <= to,
+    );
+  }, [bancoPoolHistDays, bancoPoolHistPeriod]);
+  const bancoPoolHistTotales = useMemo(
+    () => bancoRouteHistoryTotals(bancoPoolHistDaysInPeriod),
+    [bancoPoolHistDaysInPeriod],
+  );
+  const bancoPoolHistGastos = useMemo(() => {
+    if (bancoPoolHistNav !== "mes" || !bancoPoolHistPeriod) return [];
+    const { from, to } = periodHistWindow(bancoPoolHistPeriod);
+    return digitalPoolGastos({
+      pool: "banco",
+      miscPayments,
+      accounts: bankAccounts,
+      dayCloses: dayClosesLive,
+      fromIso: from,
+      toIso: to,
+    });
+  }, [
+    bancoPoolHistNav,
+    bancoPoolHistPeriod,
+    miscPayments,
+    bankAccounts,
+    dayClosesLive,
+  ]);
+  const bancoPoolHistGastado = useMemo(
+    () => digitalPoolGastosTotal(bancoPoolHistGastos),
+    [bancoPoolHistGastos],
+  );
+
+  /** Movimiento Nequi del mes abierto en historial (ruta A). */
+  const nequiPoolHistDays = useMemo(() => {
+    if (nequiPoolHistNav !== "mes" || !nequiPoolHistPeriod) return [];
+    const { from, to } = periodHistWindow(nequiPoolHistPeriod);
+    return nequiRouteHistoryDays({
+      payments: paymentsWithEvidence,
+      loans,
+      clients,
+      dayCloses: dayClosesLive,
+      fromIso: from,
+      toIso: to,
+      movements: bankMovements,
+    });
+  }, [
+    nequiPoolHistNav,
+    nequiPoolHistPeriod,
+    paymentsWithEvidence,
+    loans,
+    clients,
+    dayClosesLive,
+    bankMovements,
+  ]);
+  const nequiPoolHistDaysInPeriod = useMemo(() => {
+    if (!nequiPoolHistPeriod) return [];
+    const { from, to } = periodHistWindow(nequiPoolHistPeriod);
+    return nequiPoolHistDays.filter((day) => day.date >= from && day.date <= to);
+  }, [nequiPoolHistDays, nequiPoolHistPeriod]);
+  const nequiPoolHistCobradoDays = useMemo(() => {
+    if (!nequiPoolHistPeriod) return [];
+    const { from, to } = periodHistWindow(nequiPoolHistPeriod);
+    return bancoRouteCobradoHistoryDays(nequiPoolHistDays, "").filter(
+      (day) => day.date >= from && day.date <= to,
+    );
+  }, [nequiPoolHistDays, nequiPoolHistPeriod]);
+  const nequiPoolHistPrestadoDays = useMemo(() => {
+    if (!nequiPoolHistPeriod) return [];
+    const { from, to } = periodHistWindow(nequiPoolHistPeriod);
+    return bancoRoutePrestadoHistoryDays(nequiPoolHistDays, "").filter(
+      (day) => day.date >= from && day.date <= to,
+    );
+  }, [nequiPoolHistDays, nequiPoolHistPeriod]);
+  const nequiPoolHistTotales = useMemo(
+    () => bancoRouteHistoryTotals(nequiPoolHistDaysInPeriod),
+    [nequiPoolHistDaysInPeriod],
+  );
+  const nequiPoolHistGastos = useMemo(() => {
+    if (nequiPoolHistNav !== "mes" || !nequiPoolHistPeriod) return [];
+    const { from, to } = periodHistWindow(nequiPoolHistPeriod);
+    return digitalPoolGastos({
+      pool: "nequi",
+      miscPayments,
+      accounts: bankAccounts,
+      dayCloses: dayClosesLive,
+      fromIso: from,
+      toIso: to,
+    });
+  }, [
+    nequiPoolHistNav,
+    nequiPoolHistPeriod,
+    miscPayments,
+    bankAccounts,
+    dayClosesLive,
+  ]);
+  const nequiPoolHistGastado = useMemo(
+    () => digitalPoolGastosTotal(nequiPoolHistGastos),
+    [nequiPoolHistGastos],
+  );
   const routeCloseClockByDate = useMemo(() => {
     if (!openRoute?.collectorRef || !openRoute.routeName) return new Map<string, string>();
     return routeCloseClocks(
@@ -3858,6 +4059,16 @@ export function SupervisorMobileApp({
     setNequiDayIso(null);
     setNequiDayBackTo("nequi-historial");
     setCajaHistoryDayIso(null);
+    setCajaHistoryNav("detallado");
+    setCajaHistoryPeriodPick(null);
+    setBancoPoolHistNav("home");
+    setBancoPoolHistPeriod(null);
+    setBancoPoolHistExpand(null);
+    setBancoPoolHistDay(null);
+    setNequiPoolHistNav("home");
+    setNequiPoolHistPeriod(null);
+    setNequiPoolHistExpand(null);
+    setNequiPoolHistDay(null);
     setInformeTab("general");
     setNuevoRouteRef(null);
     setNuevoMsg("");
@@ -4561,15 +4772,15 @@ export function SupervisorMobileApp({
       {openRoute ? (
         <section className="supervisor-mobile-section">
           {detailMode !== "gastos" && detailMode !== "cobros" ? (
-          <div className="supervisor-mobile-detail-head-stack">
           <div className="supervisor-mobile-detail-head">
             <h3>
               Ruta {openRoute.routeName} · {openRoute.collectorName}
             </h3>
-            <button
-              type="button"
-                className="collector-mobile-pay-link is-back"
-              onClick={() => {
+            <div className="supervisor-mobile-detail-actions">
+              <button
+                type="button"
+                className="collector-mobile-pay-link is-back is-compact"
+                onClick={() => {
                   if (detailMode === "nequi-dia") {
                     setNequiDayIso(null);
                     setDetailMode(nequiDayBackTo);
@@ -4610,23 +4821,21 @@ export function SupervisorMobileApp({
                   }
                   if (detailMode !== "totales") setDetailMode("totales");
                   else closeRouteDetail();
-              }}
-            >
-              volver
-            </button>
-          </div>
-          {(detailMode === "historial" || detailMode === "historial-dia") &&
-          cajaHistoryNav === "detallado" ? (
-            <div className="supervisor-caja-mes-anterior">
-              <button
-                type="button"
-                className="supervisor-caja-historial-btn"
-                onClick={() => openCajaHistorialMeses()}
+                }}
               >
-                historial
+                volver
               </button>
+              {(detailMode === "historial" || detailMode === "historial-dia") &&
+              cajaHistoryNav === "detallado" ? (
+                <button
+                  type="button"
+                  className="supervisor-caja-historial-btn"
+                  onClick={() => openCajaHistorialMeses()}
+                >
+                  historial
+                </button>
+              ) : null}
             </div>
-          ) : null}
           </div>
           ) : null}
 
@@ -5729,8 +5938,252 @@ export function SupervisorMobileApp({
       ) : view === "nequi" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
           <div className="supervisor-nequi-registro-head">
-            <h3>Nequi · Ruta {NEQUI_ROUTE_PIN}</h3>
+            <h3>
+              {nequiPoolHistNav === "meses"
+                ? "Historial · Nequi"
+                : nequiPoolHistNav === "mes"
+                  ? `Nequi · ${nequiPoolHistMonthTitle}`
+                  : `Nequi · Ruta ${NEQUI_ROUTE_PIN}`}
+            </h3>
+            <div className="supervisor-mobile-detail-actions">
+              {nequiPoolHistNav !== "home" ? (
+                <button
+                  type="button"
+                  className="collector-mobile-pay-link is-back is-compact"
+                  onClick={() => {
+                    if (nequiPoolHistNav === "mes") {
+                      setNequiPoolHistPeriod(null);
+                      setNequiPoolHistExpand(null);
+                      setNequiPoolHistDay(null);
+                      setNequiPoolHistNav("meses");
+                      return;
+                    }
+                    setNequiPoolHistNav("home");
+                    setNequiPoolHistPeriod(null);
+                    setNequiPoolHistExpand(null);
+                    setNequiPoolHistDay(null);
+                  }}
+                >
+                  volver
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="supervisor-caja-historial-btn"
+                  onClick={() => {
+                    suppressGhostClick();
+                    setNequiRutaExpand(null);
+                    setNequiRegistroDay(null);
+                    setNequiPoolHistExpand(null);
+                    setNequiPoolHistDay(null);
+                    setNequiPoolHistPeriod(null);
+                    setNequiPoolHistNav("meses");
+                  }}
+                >
+                  historial
+                </button>
+              )}
+            </div>
           </div>
+          {nequiPoolHistNav === "meses" ? (
+            historyMonthOptions.length === 0 ? (
+              <p className="ficha-empty">Aún no hay meses cerrados en el historial.</p>
+            ) : (
+              <ul className="supervisor-caja-meses-list" aria-label="Meses del historial Nequi">
+                {historyMonthOptions.map((period) => (
+                  <li key={period}>
+                    <button
+                      type="button"
+                      className="supervisor-caja-mes-row"
+                      onClick={() => {
+                        suppressGhostClick();
+                        setNequiPoolHistPeriod(period);
+                        setNequiPoolHistExpand(null);
+                        setNequiPoolHistDay(null);
+                        setNequiPoolHistNav("mes");
+                      }}
+                    >
+                      <b>
+                        {informePeriodName(period)} {period.slice(0, 4)}
+                      </b>
+                      <span>ver</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : nequiPoolHistNav === "mes" ? (
+            <>
+              <div className="supervisor-caja-mes-banner" aria-label={nequiPoolHistMonthTitle}>
+                <b>{nequiPoolHistMonthTitle}</b>
+                <span>Nequi · Ruta {NEQUI_ROUTE_PIN}</span>
+              </div>
+              <section
+                className="collector-mobile-home-cuadre is-supervisor-caja-day is-banco-ruta"
+                aria-label={`Nequi ${nequiPoolHistMonthTitle}`}
+              >
+                <div className="collector-mobile-home-cuadre-grid is-banco-dos is-nequi-tres">
+                  <button
+                    type="button"
+                    className={`is-banco-cobrado is-tap${nequiPoolHistExpand === "cobrado" ? " on" : ""}`}
+                    aria-expanded={nequiPoolHistExpand === "cobrado"}
+                    onClick={() => {
+                      suppressGhostClick();
+                      setNequiPoolHistDay(null);
+                      setNequiPoolHistExpand((prev) => (prev === "cobrado" ? null : "cobrado"));
+                    }}
+                  >
+                    <span>Cobrado</span>
+                    <b>{money(nequiPoolHistTotales.cobrado, { symbol: false })}</b>
+                  </button>
+                  <button
+                    type="button"
+                    className={`is-prestamos is-tap${nequiPoolHistExpand === "prestado" ? " on" : ""}`}
+                    aria-expanded={nequiPoolHistExpand === "prestado"}
+                    onClick={() => {
+                      suppressGhostClick();
+                      setNequiPoolHistDay(null);
+                      setNequiPoolHistExpand((prev) => (prev === "prestado" ? null : "prestado"));
+                    }}
+                  >
+                    <span>Prestado</span>
+                    <b>{money(nequiPoolHistTotales.prestado, { symbol: false })}</b>
+                  </button>
+                  <button
+                    type="button"
+                    className={`is-nequi-gastos is-tap${nequiPoolHistExpand === "gastos" ? " on" : ""}`}
+                    aria-expanded={nequiPoolHistExpand === "gastos"}
+                    onClick={() => {
+                      suppressGhostClick();
+                      setNequiPoolHistDay(null);
+                      setNequiPoolHistExpand((prev) => (prev === "gastos" ? null : "gastos"));
+                    }}
+                  >
+                    <span>Gastos</span>
+                    <b>{money(nequiPoolHistGastado, { symbol: false })}</b>
+                  </button>
+                </div>
+              </section>
+              {nequiPoolHistExpand === "cobrado" ? (
+                nequiPoolHistCobradoDays.length > 0 ? (
+                  <div className="supervisor-banco-hist">
+                    <div className="supervisor-banco-hist-head" aria-hidden>
+                      <span>Fecha</span>
+                      <span>Inicial</span>
+                      <span>Cobrado</span>
+                      <span>Final</span>
+                    </div>
+                    <ul
+                      className="supervisor-nequi-day-list is-banco is-cobrado-hist"
+                      aria-label="Cobrado del mes"
+                    >
+                      {nequiPoolHistCobradoDays.map((day) => {
+                        const open = nequiPoolHistDay === day.date;
+                        return (
+                          <li key={day.date}>
+                            <button
+                              type="button"
+                              className={
+                                open ? "supervisor-nequi-day-row on" : "supervisor-nequi-day-row"
+                              }
+                              aria-expanded={open}
+                              onClick={() => {
+                                suppressGhostClick();
+                                setNequiPoolHistDay((prev) =>
+                                  prev === day.date ? null : day.date,
+                                );
+                              }}
+                            >
+                              <span className="is-date">{isoToDisplay(day.date)}</span>
+                              <span className="is-ini">
+                                {money(day.inicio, { symbol: false })}
+                              </span>
+                              <span className="is-cob">
+                                {money(day.cobrado, { symbol: false })}
+                              </span>
+                              <span className="is-fin">
+                                {money(day.final, { symbol: false })}
+                              </span>
+                            </button>
+                            {open ? (
+                              <div className="supervisor-banco-day-drop">
+                                {renderNequiDayList(day.items, [], undefined)}
+                              </div>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="ficha-empty">
+                    Sin cobros Nequi en {informePeriodName(nequiPoolHistPeriod || "")}.
+                  </p>
+                )
+              ) : null}
+              {nequiPoolHistExpand === "prestado" ? (
+                nequiPoolHistPrestadoDays.length > 0 ? (
+                  <div className="supervisor-banco-hist">
+                    <div className="supervisor-banco-hist-head" aria-hidden>
+                      <span>Fecha</span>
+                      <span>Inicial</span>
+                      <span>Prestado</span>
+                      <span>Final</span>
+                    </div>
+                    <ul
+                      className="supervisor-nequi-day-list is-banco is-prestado-hist"
+                      aria-label="Prestado del mes"
+                    >
+                      {nequiPoolHistPrestadoDays.map((day) => {
+                        const open = nequiPoolHistDay === day.date;
+                        return (
+                          <li key={day.date}>
+                            <button
+                              type="button"
+                              className={
+                                open ? "supervisor-nequi-day-row on" : "supervisor-nequi-day-row"
+                              }
+                              aria-expanded={open}
+                              onClick={() => {
+                                suppressGhostClick();
+                                setNequiPoolHistDay((prev) =>
+                                  prev === day.date ? null : day.date,
+                                );
+                              }}
+                            >
+                              <span className="is-date">{isoToDisplay(day.date)}</span>
+                              <span className="is-ini">
+                                {money(day.inicio, { symbol: false })}
+                              </span>
+                              <span className="is-pre">
+                                {money(day.prestado, { symbol: false })}
+                              </span>
+                              <span className="is-fin">
+                                {money(day.final, { symbol: false })}
+                              </span>
+                            </button>
+                            {open ? (
+                              <div className="supervisor-banco-day-drop">
+                                {renderNequiDayList([], day.loans, undefined)}
+                              </div>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="ficha-empty">
+                    Sin préstamos Nequi en {informePeriodName(nequiPoolHistPeriod || "")}.
+                  </p>
+                )
+              ) : null}
+              {nequiPoolHistExpand === "gastos"
+                ? renderPoolGastos("nequi", nequiPoolHistGastos, nequiPoolHistGastado)
+                : null}
+            </>
+          ) : (
+            <>
           <section
             className="collector-mobile-home-cuadre is-supervisor-caja-day is-banco-ruta"
             aria-label={`Nequi ruta ${NEQUI_ROUTE_PIN}`}
@@ -5904,33 +6357,276 @@ export function SupervisorMobileApp({
           {nequiRutaExpand === "gastos"
             ? renderPoolGastos("nequi", nequiGastos, nequiGastosShown ?? 0)
             : null}
+            </>
+          )}
         </section>
       ) : view === "banco" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
           <div className="supervisor-nequi-registro-head">
             <h3>
-              {bancoRegistroRoute
-                ? `Banco · Ruta ${bancoRegistroRoute}`
-                : bancoGastosOpen
-                  ? "Banco · Gastos"
-                  : "Banco"}
+              {bancoPoolHistNav === "meses"
+                ? "Historial · Banco"
+                : bancoPoolHistNav === "mes"
+                  ? `Banco · ${bancoPoolHistMonthTitle}`
+                  : bancoRegistroRoute
+                    ? `Banco · Ruta ${bancoRegistroRoute}`
+                    : bancoGastosOpen
+                      ? "Banco · Gastos"
+                      : "Banco"}
             </h3>
-            {bancoRegistroRoute || bancoGastosOpen ? (
-              <button
-                type="button"
-                className="collector-mobile-pay-link is-back"
-                onClick={() => {
-                  setBancoRegistroRoute(null);
-                  setBancoGastosOpen(false);
-                  setBancoRutaExpand(null);
-                  setBancoRegistroDay(null);
-                }}
-              >
-                volver
-              </button>
-            ) : null}
+            <div className="supervisor-mobile-detail-actions">
+              {bancoPoolHistNav !== "home" ? (
+                <button
+                  type="button"
+                  className="collector-mobile-pay-link is-back is-compact"
+                  onClick={() => {
+                    if (bancoPoolHistNav === "mes") {
+                      setBancoPoolHistPeriod(null);
+                      setBancoPoolHistExpand(null);
+                      setBancoPoolHistDay(null);
+                      setBancoPoolHistNav("meses");
+                      return;
+                    }
+                    setBancoPoolHistNav("home");
+                    setBancoPoolHistPeriod(null);
+                    setBancoPoolHistExpand(null);
+                    setBancoPoolHistDay(null);
+                  }}
+                >
+                  volver
+                </button>
+              ) : bancoRegistroRoute || bancoGastosOpen ? (
+                <button
+                  type="button"
+                  className="collector-mobile-pay-link is-back is-compact"
+                  onClick={() => {
+                    setBancoRegistroRoute(null);
+                    setBancoGastosOpen(false);
+                    setBancoRutaExpand(null);
+                    setBancoRegistroDay(null);
+                  }}
+                >
+                  volver
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="supervisor-caja-historial-btn"
+                  onClick={() => {
+                    suppressGhostClick();
+                    setBancoRegistroRoute(null);
+                    setBancoGastosOpen(false);
+                    setBancoRutaExpand(null);
+                    setBancoRegistroDay(null);
+                    setBancoPoolHistExpand(null);
+                    setBancoPoolHistDay(null);
+                    setBancoPoolHistPeriod(null);
+                    setBancoPoolHistNav("meses");
+                  }}
+                >
+                  historial
+                </button>
+              )}
+            </div>
           </div>
-          {bancoGastosOpen ? (
+          {bancoPoolHistNav === "meses" ? (
+            historyMonthOptions.length === 0 ? (
+              <p className="ficha-empty">Aún no hay meses cerrados en el historial.</p>
+            ) : (
+              <ul className="supervisor-caja-meses-list" aria-label="Meses del historial Banco">
+                {historyMonthOptions.map((period) => (
+                  <li key={period}>
+                    <button
+                      type="button"
+                      className="supervisor-caja-mes-row"
+                      onClick={() => {
+                        suppressGhostClick();
+                        setBancoPoolHistPeriod(period);
+                        setBancoPoolHistExpand(null);
+                        setBancoPoolHistDay(null);
+                        setBancoPoolHistNav("mes");
+                      }}
+                    >
+                      <b>
+                        {informePeriodName(period)} {period.slice(0, 4)}
+                      </b>
+                      <span>ver</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : bancoPoolHistNav === "mes" ? (
+            <>
+              <div className="supervisor-caja-mes-banner" aria-label={bancoPoolHistMonthTitle}>
+                <b>{bancoPoolHistMonthTitle}</b>
+                <span>Banco · M + T + N</span>
+              </div>
+              <section
+                className="collector-mobile-home-cuadre is-supervisor-caja-day is-banco-ruta"
+                aria-label={`Banco ${bancoPoolHistMonthTitle}`}
+              >
+                <div className="collector-mobile-home-cuadre-grid is-banco-dos is-nequi-tres">
+                  <button
+                    type="button"
+                    className={`is-banco-cobrado is-tap${bancoPoolHistExpand === "cobrado" ? " on" : ""}`}
+                    aria-expanded={bancoPoolHistExpand === "cobrado"}
+                    onClick={() => {
+                      suppressGhostClick();
+                      setBancoPoolHistDay(null);
+                      setBancoPoolHistExpand((prev) => (prev === "cobrado" ? null : "cobrado"));
+                    }}
+                  >
+                    <span>Cobrado</span>
+                    <b>{money(bancoPoolHistTotales.cobrado, { symbol: false })}</b>
+                  </button>
+                  <button
+                    type="button"
+                    className={`is-prestamos is-tap${bancoPoolHistExpand === "prestado" ? " on" : ""}`}
+                    aria-expanded={bancoPoolHistExpand === "prestado"}
+                    onClick={() => {
+                      suppressGhostClick();
+                      setBancoPoolHistDay(null);
+                      setBancoPoolHistExpand((prev) => (prev === "prestado" ? null : "prestado"));
+                    }}
+                  >
+                    <span>Prestado</span>
+                    <b>{money(bancoPoolHistTotales.prestado, { symbol: false })}</b>
+                  </button>
+                  <button
+                    type="button"
+                    className={`is-nequi-gastos is-tap${bancoPoolHistExpand === "gastos" ? " on" : ""}`}
+                    aria-expanded={bancoPoolHistExpand === "gastos"}
+                    onClick={() => {
+                      suppressGhostClick();
+                      setBancoPoolHistDay(null);
+                      setBancoPoolHistExpand((prev) => (prev === "gastos" ? null : "gastos"));
+                    }}
+                  >
+                    <span>Gastos</span>
+                    <b>{money(bancoPoolHistGastado, { symbol: false })}</b>
+                  </button>
+                </div>
+              </section>
+              {bancoPoolHistExpand === "cobrado" ? (
+                bancoPoolHistCobradoDays.length > 0 ? (
+                  <div className="supervisor-banco-hist">
+                    <div className="supervisor-banco-hist-head" aria-hidden>
+                      <span>Fecha</span>
+                      <span>Inicial</span>
+                      <span>Cobrado</span>
+                      <span>Final</span>
+                    </div>
+                    <ul
+                      className="supervisor-nequi-day-list is-banco is-cobrado-hist"
+                      aria-label="Cobrado Banco del mes"
+                    >
+                      {bancoPoolHistCobradoDays.map((day) => {
+                        const open = bancoPoolHistDay === day.date;
+                        return (
+                          <li key={day.date}>
+                            <button
+                              type="button"
+                              className={
+                                open ? "supervisor-nequi-day-row on" : "supervisor-nequi-day-row"
+                              }
+                              aria-expanded={open}
+                              onClick={() => {
+                                suppressGhostClick();
+                                setBancoPoolHistDay((prev) =>
+                                  prev === day.date ? null : day.date,
+                                );
+                              }}
+                            >
+                              <span className="is-date">{isoToDisplay(day.date)}</span>
+                              <span className="is-ini">
+                                {money(day.inicio, { symbol: false })}
+                              </span>
+                              <span className="is-cob">
+                                {money(day.cobrado, { symbol: false })}
+                              </span>
+                              <span className="is-fin">
+                                {money(day.final, { symbol: false })}
+                              </span>
+                            </button>
+                            {open ? (
+                              <div className="supervisor-banco-day-drop">
+                                {renderNequiDayList(day.items, [], undefined)}
+                              </div>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="ficha-empty">
+                    Sin cobros Banco en {informePeriodName(bancoPoolHistPeriod || "")}.
+                  </p>
+                )
+              ) : null}
+              {bancoPoolHistExpand === "prestado" ? (
+                bancoPoolHistPrestadoDays.length > 0 ? (
+                  <div className="supervisor-banco-hist">
+                    <div className="supervisor-banco-hist-head" aria-hidden>
+                      <span>Fecha</span>
+                      <span>Inicial</span>
+                      <span>Prestado</span>
+                      <span>Final</span>
+                    </div>
+                    <ul
+                      className="supervisor-nequi-day-list is-banco is-prestado-hist"
+                      aria-label="Prestado Banco del mes"
+                    >
+                      {bancoPoolHistPrestadoDays.map((day) => {
+                        const open = bancoPoolHistDay === day.date;
+                        return (
+                          <li key={day.date}>
+                            <button
+                              type="button"
+                              className={
+                                open ? "supervisor-nequi-day-row on" : "supervisor-nequi-day-row"
+                              }
+                              aria-expanded={open}
+                              onClick={() => {
+                                suppressGhostClick();
+                                setBancoPoolHistDay((prev) =>
+                                  prev === day.date ? null : day.date,
+                                );
+                              }}
+                            >
+                              <span className="is-date">{isoToDisplay(day.date)}</span>
+                              <span className="is-ini">
+                                {money(day.inicio, { symbol: false })}
+                              </span>
+                              <span className="is-pre">
+                                {money(day.prestado, { symbol: false })}
+                              </span>
+                              <span className="is-fin">
+                                {money(day.final, { symbol: false })}
+                              </span>
+                            </button>
+                            {open ? (
+                              <div className="supervisor-banco-day-drop">
+                                {renderNequiDayList([], day.loans, undefined)}
+                              </div>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="ficha-empty">
+                    Sin préstamos Banco en {informePeriodName(bancoPoolHistPeriod || "")}.
+                  </p>
+                )
+              ) : null}
+              {bancoPoolHistExpand === "gastos"
+                ? renderPoolGastos("banco", bancoPoolHistGastos, bancoPoolHistGastado)
+                : null}
+            </>
+          ) : bancoGastosOpen ? (
             renderPoolGastos("banco", bancoGastos, bancoGastado)
           ) : !bancoRegistroRoute ? (
             <div

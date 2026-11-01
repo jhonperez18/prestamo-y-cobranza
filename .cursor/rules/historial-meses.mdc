@@ -1,0 +1,58 @@
+---
+description: Historial supervisor — lista de meses luego contenido (caja, banco, nequi); cada mes/día/año sin hardcodear.
+alwaysApply: true
+---
+
+# Historial por meses — caja, banco y nequi (sellado dueño 01/11/2026)
+
+## Ley
+
+Misma navegación en **tres** sitios del supervisor móvil:
+
+| Pantalla | Qué muestra el mes |
+| --- | --- |
+| **Caja** (ruta → historial) | Movimiento de caja del mes (día a día; Inicial día 1 = último saldo del mes anterior) |
+| **BANCO** | Cobrado / prestado / gastos Banco del mes (M + T + N) |
+| **NEQUI** | Cobrado / prestado / gastos Nequi del mes (ruta A) |
+
+## Flujo fijo (no otro)
+
+```
+home / detallado  →  botón «historial»  →  lista de meses  →  toca un mes  →  contenido de ese mes
+```
+
+1. **Lista de meses** primero. No meter nombres de mes como pestaña ni toggle suelto.
+2. **Dentro del mes**: totales + días de ese período (cobrado / prestado / gastos o filas de caja).
+3. **volver**: mes → lista de meses → home / detallado.
+4. Botones **historial** / **volver** compactos, en la misma línea del título.
+5. Fila del mes (ej. «Octubre 2026») baja de altura; sin tarjetones.
+
+## Cada mes, cada día, cada año
+
+| Pieza | Regla |
+| --- | --- |
+| Meses listados | `historyMonthOptions`: desde `ROUTE_CASH_BOOK_FROM` hasta el **mes anterior** al día de hoy (Bogotá). El más reciente primero. |
+| Hoy en noviembre | Solo aparece octubre (y los anteriores que existan). Noviembre vive en la pantalla viva (home). |
+| Pasa diciembre | Aparece noviembre. Pasa enero → aparece diciembre del año que cerró. **No** hardcodear un mes. |
+| Ventana del mes | `periodHistWindow(period)` = día 1…último día del período (recortado al libro). |
+| Totales del mes | Solo días `date` dentro de esa ventana. |
+| Inicial / Final en Banco·Nequi | La serie completa arrastra; al pintar se filtra al mes (el día 1 no nace en 0 si hubo movimiento antes). |
+| Caja mes a mes | Último saldo del mes anterior = Inicial del día 1 (ver `caja-rutas-arrastre.mdc`). |
+
+Dueño UI: `SupervisorMobileApp.tsx` (`cajaHistoryNav`, `bancoPoolHistNav`, `nequiPoolHistNav`).  
+Estilos: `.supervisor-caja-historial-btn`, `.supervisor-caja-mes-row`, `.supervisor-caja-mes-banner`, `.supervisor-mobile-detail-actions`.
+
+## Obligatorio
+
+1. Caja, Banco y Nequi usan el **mismo** patrón y la **misma** lista de meses.
+2. Al cambiar de pestaña del menú (`goToView`) se resetea la nav de historial a home / detallado.
+3. Un mes nuevo del calendario entra **solo** porque `today` avanzó; cero listas fijas «Octubre».
+
+## Prohibido
+
+- Hardcodear «Octubre» / un solo mes en el código.
+- Saltar la lista de meses y abrir el contenido directo.
+- Un historial distinto por pantalla (otra UX, otra fuente de meses).
+- Meter el mes en curso en la lista de historial (ese mes es la pantalla viva).
+- Engordar de nuevo los botones o la fila del mes.
+---

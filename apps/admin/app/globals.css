@@ -5143,38 +5143,47 @@
     .supervisor-mobile-kpi.is-money b {
       font-size: 11px;
     }
-    .supervisor-mobile-detail-head-stack {
-      margin-bottom: 4px;
-    }
     .supervisor-mobile-detail-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
-      margin-bottom: 2px;
+      margin-bottom: 6px;
     }
     .supervisor-mobile-detail-head h3 {
       margin: 0;
+      min-width: 0;
+      flex: 1 1 auto;
     }
-    .supervisor-caja-mes-anterior {
+    .supervisor-mobile-detail-actions {
       display: flex;
+      flex-direction: row;
+      align-items: center;
       justify-content: flex-end;
-      margin: 0 0 8px;
+      flex: 0 0 auto;
+      gap: 6px;
+    }
+    .supervisor-mobile-detail-actions .collector-mobile-pay-link.is-back.is-compact {
+      padding: 4px 8px;
+      font-size: 11px;
+      line-height: 1.2;
+      min-height: 0;
     }
     .supervisor-caja-historial-btn {
       appearance: none;
       margin: 0;
-      padding: 6px 12px;
+      padding: 4px 8px;
       border: 1px solid #8fd3c5;
-      border-radius: 8px;
+      border-radius: 6px;
       background: #cdeee6;
       color: #073330;
       font: inherit;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.02em;
       line-height: 1.2;
       text-transform: lowercase;
+      white-space: nowrap;
       cursor: pointer;
     }
     .supervisor-caja-historial-btn.on,
@@ -5188,7 +5197,7 @@
       padding: 0;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
     }
     .supervisor-caja-mes-row {
       appearance: none;
@@ -5196,11 +5205,11 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
+      gap: 8px;
       margin: 0;
-      padding: 12px 14px;
+      padding: 6px 10px;
       border: 1px solid #b7e0d6;
-      border-radius: 10px;
+      border-radius: 8px;
       background: linear-gradient(180deg, #eefaf6 0%, #e4f5f0 100%);
       color: #073330;
       font: inherit;
@@ -5208,11 +5217,12 @@
       cursor: pointer;
     }
     .supervisor-caja-mes-row b {
-      font-size: 15px;
+      font-size: 13px;
       font-weight: 800;
+      line-height: 1.2;
     }
     .supervisor-caja-mes-row span {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
       color: #0f766e;
       text-transform: lowercase;
@@ -5224,24 +5234,24 @@
     .supervisor-caja-mes-banner {
       display: flex;
       flex-direction: column;
-      gap: 2px;
-      margin: 0 0 10px;
-      padding: 10px 12px;
+      gap: 1px;
+      margin: 0 0 8px;
+      padding: 6px 10px;
       border: 1px solid #b7e0d6;
-      border-radius: 10px;
+      border-radius: 8px;
       background: linear-gradient(180deg, #eefaf6 0%, #e4f5f0 100%);
     }
     .supervisor-caja-mes-banner b {
-      font-size: 16px;
+      font-size: 14px;
       font-weight: 800;
       letter-spacing: 0.01em;
       color: #073330;
       line-height: 1.2;
     }
     .supervisor-caja-mes-banner span {
-      font-size: 12px;
+      font-size: 11px;
       color: #3d5c55;
-      line-height: 1.3;
+      line-height: 1.2;
     }
     .supervisor-mobile-detail-meta.is-carry {
       margin: 0 0 8px;
