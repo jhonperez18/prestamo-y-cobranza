@@ -185,6 +185,27 @@ export function previousPeriod(period: string) {
   return `${y}-${String(m - 1).padStart(2, "0")}`;
 }
 
+/** Último día de calendario de un período `YYYY-MM` (aunque no sea día de cobro). */
+export function lastCalendarDayOfPeriod(period: string) {
+  const [y, m] = period.split("-").map(Number);
+  if (!y || !m) return "";
+  const last = new Date(y, m, 0).getDate();
+  return `${period}-${String(last).padStart(2, "0")}`;
+}
+
+/** Días ISO del período entre `fromIso` y `toIso` (inclusive). */
+export function calendarDaysInPeriod(period: string, fromIso: string, toIso: string) {
+  const last = lastCalendarDayOfPeriod(period);
+  if (!last) return [] as string[];
+  const out: string[] = [];
+  for (let d = 1; d <= Number(last.slice(8, 10)); d += 1) {
+    const iso = `${period}-${String(d).padStart(2, "0")}`;
+    if (iso < fromIso || iso > toIso) continue;
+    out.push(iso);
+  }
+  return out;
+}
+
 export function monthCloseRef(collectorRef: string, period: string) {
   return `MES-${collectorRef}-${period}`;
 }
@@ -947,6 +968,8 @@ export type CollectorHistoryExtras = {
    * Manda sobre `includeOperatingExpenses`.
    */
   chainSplit?: ChainRouteSplit;
+  /** Tope de días a listar (por defecto `COLLECTOR_HISTORY_KEEP_DAYS`). */
+  keepDays?: number;
 };
 
 /**
@@ -1285,8 +1308,13 @@ export function buildCollectorDayHistory(
     ]),
   ].sort((a, b) => a.localeCompare(b));
 
+  const keepDays =
+    Number.isFinite(extras.keepDays) && (extras.keepDays as number) > 0
+      ? Math.floor(extras.keepDays as number)
+      : COLLECTOR_HISTORY_KEEP_DAYS;
+
   if (extras.rolling) {
-    const cutoff = historyKeepCutoffIso();
+    const cutoff = historyKeepCutoffIso(undefined, keepDays);
     const byPeriod = new Map<string, string[]>();
     for (const date of dates) {
       const bucketPeriod = periodFromDateIso(date);
@@ -1321,7 +1349,7 @@ export function buildCollectorDayHistory(
         });
       }
     }
-    return ascending.slice(-COLLECTOR_HISTORY_KEEP_DAYS).reverse();
+    return ascending.slice(-keepDays).reverse();
   }
 
   const period =
@@ -1335,7 +1363,7 @@ export function buildCollectorDayHistory(
   let running = opening;
 
   // Solo últimos N días en el historial del cobrador; el saldo arrastra lo anterior.
-  const dropCount = Math.max(0, dates.length - COLLECTOR_HISTORY_KEEP_DAYS);
+  const dropCount = Math.max(0, dates.length - keepDays);
   for (let i = 0; i < dropCount; i += 1) {
     const date = dates[i];
     running = verifyCashClose({

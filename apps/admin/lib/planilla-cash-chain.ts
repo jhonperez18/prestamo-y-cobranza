@@ -7,6 +7,14 @@
  * 4. Inicial M mañana = CIE de ayer. PCE local nunca pisa al CIE.
  * 5. Ayer y atrás inmóviles: no recalcular saldos viejos.
  *
+ * Día a día y mes a mes son el mismo hilo:
+ *   Inicial M hoy     = final T ayer (CIE-)
+ *   Inicial T hoy     = final M hoy
+ *   Inicial M día 1   = CIE- del último día del mes anterior
+ *
+ * A y N no entran aquí: cajas propias (`independent-route-cash` /
+ * `month-route-carry`). No mezclar.
+ *
  * La caja viva de M, el Inicial de T y el `cash_float` que sella el CIE- se
  * calculan SOLO en `day-cash-ledger.ts`. Aquí no se suman cobros ni préstamos.
  */

@@ -18,6 +18,7 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 | 11 | **A dañada por ancla CIE de cadena** (Edgar CIE 4.238.000 ≠ caja A) | **HECHO 31/10** | CIE ancla solo si el día **no** es M/T; A → AJUSTE@A + movimiento (hoy 747.000). Contrato: solo M↔T mezclan; A y N independientes | `20261031124500_…`, `docs/fase-3-saldos.md` |
 | 12 | **Supervisor: hoja Ruta = espejo cobrador** (V, Prestar, vivo); sin botón Planilla | **HECHO 31/10** · build `f184527` | Solo vista. Un RUTA (menú). Ficha INICIO sin botón doble | `docs/supervisor-ruta-vs-planilla.md` |
 | 13 | **CIE Edgar 31/10 = caja A** (cierre A pisó cadena) | **HECHO 01/11** · dato + SQL | CIE cadena = 82.000; A = 827.000 (`AJUSTE@A`). Pegar `20261101120000_seal_day_close_a_no_pisa_cie.sql` | `seal_day_close` |
+| 14 | **MES- octubre 2026** faltaba al cruzar mes | **HECHO 01/11** | `MES-COB-0-2026-10` = 82.000 · `MES-COB-1-2026-10` = 1.311.500 | `month-closes/` |
 
 ## Ya no es pendiente (no reabrir)
 

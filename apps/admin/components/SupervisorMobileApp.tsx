@@ -74,12 +74,21 @@ import {
   normalizeHistoryDate,
   openingSaldoForPeriod,
   periodFromDateIso,
+  previousPeriod,
   lastCollectionDayOfPeriod,
+  lastCalendarDayOfPeriod,
+  calendarDaysInPeriod,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
   type RouteExpenseLine,
 } from "@/lib/collector-day-close";
+import {
+  alignIndependentDay1ToCarry,
+  alignIndependentHistoryDayToDay,
+  monthCarrySrcFrom,
+  routeMonthCarryOpening,
+} from "@/lib/month-route-carry";
 import { businessTodayIso } from "@/lib/business-timezone";
 import { closeClockFromStamps, routeCloseClocks } from "@/lib/route-close-clock";
 import {
@@ -1492,6 +1501,8 @@ export function SupervisorMobileApp({
   );
   /** Día ISO del historial de caja (mes en curso, desde el día 1). */
   const [cajaHistoryDayIso, setCajaHistoryDayIso] = useState<string | null>(null);
+  /** Historial bajo «volver»: mes anterior (último saldo = Inicial del día 1). */
+  const [cajaHistoryShowPrevious, setCajaHistoryShowPrevious] = useState(false);
   /** Historial · T: formulario de ajuste de saldo real abierto (cobrador del CIE-). */
   const [cashAdjustCollectorRef, setCashAdjustCollectorRef] = useState<string | null>(null);
   /** BANCO / NEQUI: cuadre del total acumulado abierto. */
@@ -1855,6 +1866,24 @@ export function SupervisorMobileApp({
                 dayExpenseDrafts: expensesLive,
                 planillaCashCloses,
                 monthCloses,
+                // Solo A/N: día 1 sin ancla → Inicial = último Saldo propio del mes anterior.
+                fallbackOpening:
+                  routeMonthCarryOpening(
+                    monthCarrySrcFrom(collector.ref, collector.name, {
+                      payments: paymentsLive,
+                      loans,
+                      clients,
+                      collectors: [collector],
+                      assignments: assignmentsLive,
+                      dayCloses: dayClosesLive,
+                      dayExpenseDrafts: expensesLive,
+                      planillaCashCloses,
+                      monthCloses,
+                    }),
+                    route.routeName,
+                    periodFromDateIso(today),
+                    ownBook,
+                  ) ?? undefined,
               },
               route.routeName,
               ownBook,
@@ -2881,13 +2910,44 @@ export function SupervisorMobileApp({
     if (detailMode !== "historial" && detailMode !== "historial-dia") return [];
     const collector = collectors.find((row) => row.ref === openRoute.collectorRef);
     if (!collector) return [];
-    const period = periodFromDateIso(today);
+    const currentPeriod = periodFromDateIso(today);
+    const period = cajaHistoryShowPrevious
+      ? previousPeriod(currentPeriod)
+      : currentPeriod;
     const isM = isPlanillaCashChainPrimary(openRoute.routeName);
     const isT = isPlanillaCashChainSecondary(openRoute.routeName);
     const epoch = PLANILLA_CASH_CHAIN_HISTORY_EPOCH;
-    // Misma ventana que Banco / Nequi: desde el 1 del mes (no antes del libro).
+    // Mes en curso: desde el 1. Mes anterior: todo el mes (último saldo = Inicial día 1).
+    const periodStart = `${period}-01`;
     const historyFrom =
-      bancoHistoryFrom >= ROUTE_CASH_BOOK_FROM ? bancoHistoryFrom : ROUTE_CASH_BOOK_FROM;
+      periodStart >= ROUTE_CASH_BOOK_FROM ? periodStart : ROUTE_CASH_BOOK_FROM;
+    const historyTo = cajaHistoryShowPrevious
+      ? lastCalendarDayOfPeriod(period) || historyFrom
+      : today;
+    // Mes anterior: todos los días del libro (último saldo = Inicial del día 1).
+    const extraDates = cajaHistoryShowPrevious
+      ? calendarDaysInPeriod(period, historyFrom, historyTo)
+      : [today];
+
+    // Solo A/N: arrastre propio del mes. M↔T no se toca (regla de inicio).
+    const independentCarry =
+      isIndependentSaldoRoute(openRoute.routeName) && !cajaHistoryShowPrevious
+        ? routeMonthCarryOpening(
+            monthCarrySrcFrom(collector.ref, collector.name, {
+              payments,
+              loans,
+              clients,
+              collectors: [collector],
+              assignments,
+              dayCloses,
+              dayExpenseDrafts,
+              planillaCashCloses,
+              monthCloses,
+            }),
+            openRoute.routeName,
+            currentPeriod,
+          )
+        : null;
 
     // Actividad solo de ESTA ruta (T/A/N no heredan préstamos de M).
     const rows = buildCollectorDayHistory(
@@ -2895,13 +2955,14 @@ export function SupervisorMobileApp({
       payments,
       dayCloses,
       [collector],
-      [today],
+      extraDates.length > 0 ? extraDates : [today],
       dayExpenseDrafts,
       monthCloses,
       period,
       {
         assignments,
-        rolling: true,
+        rolling: !cajaHistoryShowPrevious,
+        keepDays: 40,
         clientRefs: openRouteScope.clientRefs,
         loans,
         clients,
@@ -2916,7 +2977,12 @@ export function SupervisorMobileApp({
               )
             : undefined,
       },
-    ).filter((row) => row.date >= historyFrom);
+    ).filter(
+      (row) =>
+        row.date >= historyFrom &&
+        row.date <= historyTo &&
+        periodFromDateIso(row.date) === period,
+    );
 
     const primaryClosingFor = (dateIso: string) =>
       primaryClosingForDay(
@@ -2944,28 +3010,36 @@ export function SupervisorMobileApp({
         payments,
         dayCloses,
         [collector],
-        [today],
+        extraDates.length > 0 ? extraDates : [today],
         dayExpenseDrafts,
         monthCloses,
         period,
         {
           assignments,
-          rolling: true,
+          rolling: !cajaHistoryShowPrevious,
+          keepDays: 40,
           loans,
           clients,
           includeOperatingExpenses: true,
           chainSplit: chainHistorySplit("primary", openRoute.collectorRef, clients, assignments),
         },
+      ).filter(
+        (row) =>
+          row.date >= historyFrom &&
+          row.date <= historyTo &&
+          periodFromDateIso(row.date) === period,
+      );
+      // M↔T: arrastre = CIE / openingCash (regla de inicio). No usar carry de A/N.
+      const mMonthOpen = openingSaldoForPeriod(
+        openRoute.collectorRef,
+        period,
+        monthCloses,
       );
       const mAnnotated = annotateMHistoryExtractRows({
         rows: mRows,
         collectorRef: openRoute.collectorRef,
         records: planillaCashCloses,
-        epochBootstrapOpening: openingSaldoForPeriod(
-          openRoute.collectorRef,
-          period,
-          monthCloses,
-        ),
+        epochBootstrapOpening: mMonthOpen,
         todayIso: today,
         epoch,
         dayCloses,
@@ -2978,11 +3052,7 @@ export function SupervisorMobileApp({
         rows: mRows,
         records: planillaCashCloses,
         monthCloses,
-        fallbackOpening: openingSaldoForPeriod(
-          openRoute.collectorRef,
-          period,
-          monthCloses,
-        ),
+        fallbackOpening: mMonthOpen,
       });
       const primaryClosingByDate = new Map<string, number>();
       for (const row of mAnnotated) {
@@ -2996,7 +3066,12 @@ export function SupervisorMobileApp({
         }
       }
       const tRows = rows
-        .filter((row) => row.date >= epoch && row.date <= today && row.date >= historyFrom)
+        .filter(
+          (row) =>
+            row.date >= epoch &&
+            row.date >= historyFrom &&
+            row.date <= historyTo,
+        )
         .map((row) => ({
           ...row,
           // Columnas de T: solo lo suyo (cobro/gasto/préstamo ya vienen filtrados).
@@ -3012,7 +3087,10 @@ export function SupervisorMobileApp({
       });
       const sealed = withSealedDaySaldos(stamped, openRoute.collectorRef, dayCloses, today);
       const ledger = ledgerByCollector.get(openRoute.collectorRef);
-      const withToday = ledger ? withLedgerTodaySaldo(sealed, ledger) : sealed;
+      const withToday =
+        !cajaHistoryShowPrevious && ledger
+          ? withLedgerTodaySaldo(sealed, ledger)
+          : sealed;
       return withRouteCobradoHistory(
         withToday,
         {
@@ -3033,28 +3111,40 @@ export function SupervisorMobileApp({
     }
 
     if (isIndependentSaldoRoute(openRoute.routeName)) {
-      // A / N: saldo del día = caja propia de la planilla (misma cifra que la tarjeta).
-      return withIndependentRouteHistory(
-        rows.filter((row) => row.date <= today),
-        {
-          collectorRef: openRoute.collectorRef,
-          collectorName: collector.name,
-          payments,
-          loans,
-          clients,
-          collectors: [collector],
-          assignments,
-          dayCloses,
-          dayExpenseDrafts,
-          planillaCashCloses,
-          monthCloses,
-        },
-        openRoute.routeName,
+      // A / N: caja propia. Día a día + mes a mes = mismo hilo; nunca M/T ni la otra.
+      let independentRows = alignIndependentHistoryDayToDay(
+        withIndependentRouteHistory(
+          rows.filter((row) => row.date <= historyTo),
+          {
+            collectorRef: openRoute.collectorRef,
+            collectorName: collector.name,
+            payments,
+            loans,
+            clients,
+            collectors: [collector],
+            assignments,
+            dayCloses,
+            dayExpenseDrafts,
+            planillaCashCloses,
+            monthCloses,
+          },
+          openRoute.routeName,
+        ),
       );
+      if (independentCarry != null) {
+        independentRows = alignIndependentDay1ToCarry(
+          independentRows,
+          currentPeriod,
+          independentCarry,
+        );
+      }
+      return independentRows;
     }
 
     if (!isM) {
-      return rows.filter((row) => row.date < today);
+      return rows.filter((row) =>
+        cajaHistoryShowPrevious ? row.date <= historyTo : row.date < today,
+      );
     }
 
     // Saldo = caja real de M (efectivo − gasto − préstamo), misma base que la ruta.
@@ -3063,24 +3153,30 @@ export function SupervisorMobileApp({
       payments,
       dayCloses,
       [collector],
-      [today],
+      extraDates.length > 0 ? extraDates : [today],
       dayExpenseDrafts,
       monthCloses,
       period,
       {
         assignments,
-        rolling: true,
+        rolling: !cajaHistoryShowPrevious,
+        keepDays: 40,
         loans,
         clients,
         includeOperatingExpenses: true,
         chainSplit: chainHistorySplit("primary", openRoute.collectorRef, clients, assignments),
       },
+    ).filter(
+      (row) =>
+        row.date >= historyFrom &&
+        row.date <= historyTo &&
+        periodFromDateIso(row.date) === period,
     );
     const cashByDate = new Map(cashHand.map((row) => [row.date, row.saldo]));
     const withCashHand = applyCollectorCashHandSaldos(rows, cashByDate);
 
     // M: extracto con hoy incluido (Inicial lleno, Saldo — si aún no cerró).
-    const visible = withCashHand.filter((row) => row.date <= today);
+    const visible = withCashHand.filter((row) => row.date <= historyTo);
     const annotated = annotateMHistoryExtractRows({
       rows: visible,
       collectorRef: openRoute.collectorRef,
@@ -3126,7 +3222,7 @@ export function SupervisorMobileApp({
     loans,
     clients,
     today,
-    bancoHistoryFrom,
+    cajaHistoryShowPrevious,
     planillaCashCloses,
     ledgerByCollector,
   ]);
@@ -4161,6 +4257,7 @@ export function SupervisorMobileApp({
     setNequiDayIso(null);
     setNequiDayBackTo("nequi-historial");
     setCajaHistoryDayIso(null);
+    setCajaHistoryShowPrevious(false);
     foldSnHistory();
     setRouteReturnView("inicio");
     setView(backTo);
@@ -4169,6 +4266,21 @@ export function SupervisorMobileApp({
   function openCajaHistorial() {
     suppressGhostClick();
     setCajaHistoryDayIso(null);
+    setCajaHistoryShowPrevious(false);
+    setDetailMode("historial");
+  }
+
+  function openCajaHistorialMesAnterior() {
+    suppressGhostClick();
+    setCajaHistoryDayIso(null);
+    setCajaHistoryShowPrevious(true);
+    setDetailMode("historial");
+  }
+
+  function openCajaHistorialMesEnCurso() {
+    suppressGhostClick();
+    setCajaHistoryDayIso(null);
+    setCajaHistoryShowPrevious(false);
     setDetailMode("historial");
   }
 
@@ -4415,6 +4527,7 @@ export function SupervisorMobileApp({
       {openRoute ? (
         <section className="supervisor-mobile-section">
           {detailMode !== "gastos" && detailMode !== "cobros" ? (
+          <div className="supervisor-mobile-detail-head-stack">
           <div className="supervisor-mobile-detail-head">
             <h3>
               Ruta {openRoute.routeName} · {openRoute.collectorName}
@@ -4438,7 +4551,8 @@ export function SupervisorMobileApp({
                     return;
                   }
                   if (detailMode === "historial") {
-                  setDetailMode("totales");
+                    setCajaHistoryShowPrevious(false);
+                    setDetailMode("totales");
                     return;
                   }
                   if (detailMode === "np-dia") {
@@ -4456,6 +4570,25 @@ export function SupervisorMobileApp({
             >
               volver
             </button>
+          </div>
+          {detailMode === "historial" || detailMode === "historial-dia" ? (
+            <div className="supervisor-caja-mes-anterior">
+              <button
+                type="button"
+                className={
+                  cajaHistoryShowPrevious
+                    ? "supervisor-caja-historial-btn on"
+                    : "supervisor-caja-historial-btn"
+                }
+                onClick={() => {
+                  if (cajaHistoryShowPrevious) openCajaHistorialMesEnCurso();
+                  else openCajaHistorialMesAnterior();
+                }}
+              >
+                {cajaHistoryShowPrevious ? "mes en curso" : "historial"}
+              </button>
+            </div>
+          ) : null}
           </div>
           ) : null}
 
@@ -4494,8 +4627,17 @@ export function SupervisorMobileApp({
           ) : detailMode === "historial" ? (
             <>
               <p className="supervisor-mobile-detail-meta">
-                Historial · Ruta {openRoute.routeName} · {openRoute.collectorName}
+                {cajaHistoryShowPrevious
+                  ? `Historial · ${informePeriodName(previousPeriod(periodFromDateIso(today)))} · Ruta ${openRoute.routeName} · ${openRoute.collectorName}`
+                  : `Historial · Ruta ${openRoute.routeName} · ${openRoute.collectorName}`}
               </p>
+              {cajaHistoryShowPrevious &&
+              openRouteCajaHistory.length > 0 &&
+              openRouteCajaHistoryIsIndependent ? (
+                <p className="supervisor-mobile-detail-meta is-carry">
+                  Esta ruta es independiente: el Saldo del último día = Inicial del día 1
+                </p>
+              ) : null}
               <div
                 className={
                   openRouteCajaHistoryIsM
@@ -4514,7 +4656,9 @@ export function SupervisorMobileApp({
                 <ul className="collector-mobile-day-history-list">
                   {openRouteCajaHistory.length === 0 ? (
                     <li className="collector-mobile-day-history-empty">
-                      Sin cierres en los últimos 5 días.
+                      {cajaHistoryShowPrevious
+                        ? "Sin movimientos en el mes anterior."
+                        : "Sin cierres en este mes."}
                     </li>
                   ) : openRouteCajaHistoryIsM ? (
                     openRouteCajaHistory.map((row) => {
@@ -5208,7 +5352,7 @@ export function SupervisorMobileApp({
                     openCajaHistorial();
                   }}
                 >
-                  <b>HISTORIAL</b>
+                  <b>DETALLADO</b>
                 </button>
                 <button
                   type="button"

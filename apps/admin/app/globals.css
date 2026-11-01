@@ -5143,6 +5143,9 @@
     .supervisor-mobile-kpi.is-money b {
       font-size: 11px;
     }
+    .supervisor-mobile-detail-head-stack {
+      margin-bottom: 4px;
+    }
     .supervisor-mobile-detail-head {
       display: flex;
       align-items: center;
@@ -5152,6 +5155,36 @@
     }
     .supervisor-mobile-detail-head h3 {
       margin: 0;
+    }
+    .supervisor-caja-mes-anterior {
+      display: flex;
+      justify-content: flex-end;
+      margin: 0 0 8px;
+    }
+    .supervisor-caja-historial-btn {
+      appearance: none;
+      margin: 0;
+      padding: 6px 12px;
+      border: 1px solid #8fd3c5;
+      border-radius: 8px;
+      background: #cdeee6;
+      color: #073330;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      line-height: 1.2;
+      cursor: pointer;
+    }
+    .supervisor-caja-historial-btn.on,
+    .supervisor-caja-historial-btn:hover {
+      background: #b7e6db;
+      border-color: #6fc4b3;
+    }
+    .supervisor-mobile-detail-meta.is-carry {
+      margin: 0 0 8px;
+      font-size: 11px;
+      color: #0f766e;
     }
     .supervisor-ficha-share-head {
       align-items: flex-start;

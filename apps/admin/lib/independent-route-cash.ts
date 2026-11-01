@@ -1,6 +1,14 @@
 /**
  * Saldo de las planillas fuera de la cadena M→T (A y N) — único dueño.
  *
+ * A y N son independientes entre sí y de la cadena M↔T. Nunca se mezclan.
+ *
+ * Día a día (mismo hilo que mes a mes):
+ *   Inicial hoy = Saldo de ayer de ESA misma ruta.
+ * Mes a mes:
+ *   Inicial día 1 = Saldo del último día del mes anterior de ESA ruta
+ *   (`routeMonthCarryOpening` en `month-route-carry.ts`).
+ *
  * Cada una lleva su propia caja:
  *   Inicial de hoy = saldo real del último ajuste + movimiento de los días siguientes.
  *   Saldo del día  = Inicial + movimiento de hoy.

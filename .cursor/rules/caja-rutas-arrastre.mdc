@@ -1,0 +1,34 @@
+# Cajas por ruta — día a día y mes a mes
+
+## Ley
+
+Tres cajas distintas. **Sin cruces.**
+
+| Caja | Quién | Día a día | Mes a mes |
+| --- | --- | --- | --- |
+| **Cadena M↔T** | M y T del mismo cobrador | Inicial M = final T ayer (CIE-). Inicial T = final M hoy | Inicial M día 1 = CIE- del último día del mes anterior |
+| **A** | Solo planilla A | Inicial hoy = Saldo de ayer de **A** | Inicial día 1 = Saldo del último día del mes anterior de **A** |
+| **N** | Solo planilla N | Inicial hoy = Saldo de ayer de **N** | Inicial día 1 = Saldo del último día del mes anterior de **N** |
+
+A y N **no** se mezclan entre sí ni con M/T.
+
+## Dueños (no inventar otro)
+
+| Pieza | Módulo |
+| --- | --- |
+| Cadena M↔T (Inicial / CIE / libro) | `planilla-cash-chain.ts` + `day-cash-ledger.ts` |
+| Día vivo A / N | `independent-route-cash.ts` → `independentRouteDay` |
+| Cruce de mes A / N + mapa | `month-route-carry.ts` |
+
+## Obligatorio
+
+1. Día a día y mes a mes son **el mismo hilo** (el cierre de ayer / del último día alimenta el Inicial de hoy / del día 1).
+2. Historial y tarjeta de una ruta leen la **misma** caja de esa ruta.
+3. Cambios de plata en M/T: respetar regla de inicio (`planilla-m-t-cash-chain.mdc`). No “alinear” M/T desde el arrastre de A/N.
+
+## Prohibido
+
+- Usar el MES- / CIE de la cadena como Inicial de A o de N.
+- Mezclar Saldo de A con N (o al revés).
+- Recalcular o pisar Inicial M / T con lógica de A/N.
+- Inventar un segundo arrastre paralelo en la UI.
