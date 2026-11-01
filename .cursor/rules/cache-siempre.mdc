@@ -18,9 +18,15 @@ El navegador suelta service worker y Cache Storage en cada arranque. Si había a
  la app, con 2 min quieto, o a los 5 min de publicada en el primer momento sin panel / campo
  abierto. La subida previa tiene tope (15 s): lo pendiente queda en la cola y lo sube la versión
  nueva. Prohibido esperar un flush sin tope antes de recargar (dejó a Yesid una semana en la vieja).
+3. **Sistema principal** al arrancar: suelta service worker + Cache Storage; suelta copias `-bak`
+ (`compactCatalogBackupsOnBoot`); **espera el pull** y pinta una sola vez. Prohibido el
+ pantallazo de datos viejos y las filas fantasma por `mergeFresherByRef` sobre el snapshot.
+4. Cobrador / supervisor: local primero (offline); la nube va atrás.
 
 ## Prohibido
 
 - Declarar listo sin ver el `build` del commit en autoprestamos.org.
-- Borrar `localStorage` (`nexo-demo-*` y `-bak`) como si fuera caché. Ahí viven cobros, clientes y usuarios.
+- Borrar la clave principal `nexo-demo-*` (cobros, clientes, usuarios, préstamos) como si fuera caché.
+  Las copias `-bak` sí se sueltan: la nube las rehace.
 - Un reload en bucle: una recarga por sesión alcanza.
+- Mergear el snapshot de storage encima del estado React dejando filas que ya no están en storage.

@@ -116,7 +116,6 @@ import {
 } from "@/lib/hydrate-operational-demo";
 import { refreshLabelsFromCatalog } from "@/lib/project-identity";
 import { omitDeleted, readDeletedIds, rememberDeletedId } from "@/lib/deleted-ids";
-import { mergeFresherByRef } from "@/lib/fresher-row";
 import {
   applyWorkspaceRealtimeEvent,
   REALTIME_WORKSPACE_TABLES,
@@ -338,13 +337,15 @@ export function useWorkspace({
   const applyOperationalSnapshot = useCallback((snap: OperationalDemoSnapshot) => {
     syncDeletedIdsFromStorage();
     const gone = deletedIdsRef.current;
-    setClients((current) => mergeFresherByRef(current, omitDeleted(snap.clients, gone)));
+    // Sustituir, no mergear con el estado React: el merge dejaba filas viejas
+    // «por debajo» tras el pull (copias que ya no están en storage/nube).
+    setClients(omitDeleted(snap.clients, gone));
     setUsers(snap.users);
     setCollectors(snap.collectors);
-    setRoutes((current) => mergeFresherByRef(current, omitDeleted(snap.routes, gone)));
-    setLoans((current) => mergeFresherByRef(current, omitDeleted(snap.loans, gone)));
-    setPayments((current) =>
-      mergeFresherByRef(current, omitDeleted(snap.payments, gone)).map((row) => withPaymentEvidence(row)),
+    setRoutes(omitDeleted(snap.routes, gone));
+    setLoans(omitDeleted(snap.loans, gone));
+    setPayments(
+      omitDeleted(snap.payments, gone).map((row) => withPaymentEvidence(row)),
     );
     setDailyAssignments(snap.assignments);
     const split = splitDayClosesAndPlanillaCash(snap.dayCloses);

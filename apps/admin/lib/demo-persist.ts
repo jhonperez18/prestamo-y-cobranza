@@ -279,6 +279,17 @@ export function compactRebuildableStorage() {
 }
 
 /**
+ * Sistema principal al arrancar: suelta también -bak de catálogo (cobros/préstamos/
+ * clientes/usuarios). La nube las rehace; evita que una copia vieja se pinte
+ * «por debajo» del dato real. Nunca toca la clave principal ni las colas.
+ */
+export function compactCatalogBackupsOnBoot() {
+  if (typeof window === "undefined") return;
+  freeDemoBackups();
+  freeCatalogBackups();
+}
+
+/**
  * Cupo lleno, paso 2: copias -bak de cobros, préstamos, clientes y usuarios. La nube las
  * rehace; la clave principal y las colas siguen. Sin esto el pull no entraba y el aparato
  * se quedaba con el día anterior (supervisor 03/10).

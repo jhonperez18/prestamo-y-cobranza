@@ -47,6 +47,7 @@ import {
   deviceTuneupDueDay,
   markDeviceTuneupDone,
 } from "@/lib/device-daily-tuneup";
+import { compactCatalogBackupsOnBoot } from "@/lib/demo-persist";
 import {
   createSelfHealer,
   type SelfHealer,
@@ -401,8 +402,6 @@ export function useOperationalDemoSync(
 
   useEffect(() => {
     let cancel = false;
-    // 1) Pintar ya lo que este aparato ya tiene. Sin esto la hoja se queda en blanco.
-    commitHydrate();
     refreshPending();
     void (async () => {
       try {
@@ -411,7 +410,28 @@ export function useOperationalDemoSync(
         console.error("evidence-store", error);
       }
       if (cancel) return;
-      // 2) La nube sigue en segundo plano. No es la puerta de la pantalla.
+      /**
+       * Sistema principal (taller/admin): no pintar la copia local vieja.
+       * Suelta -bak, baja la nube y pinta una sola vez — sin pantallazo de datos viejos
+       * ni filas fantasma «por debajo».
+       * Cobrador / supervisor: local primero (offline), nube atrás.
+       */
+      const sistemaPrincipal =
+        !isCollectorLiveDevice() && !isSupervisorLiveDevice();
+      if (sistemaPrincipal && getSupabasePublicEnv().configured) {
+        try {
+          compactCatalogBackupsOnBoot();
+        } catch (error) {
+          console.error("compact-catalog-bak", error);
+        }
+        await runHydrateWithRemotePull();
+        if (cancel) return;
+        commitHydrate();
+        return;
+      }
+      // 1) Celular: pintar ya lo del aparato.
+      commitHydrate();
+      // 2) Nube en segundo plano.
       void runHydrateWithRemotePull();
     })();
     return () => {
