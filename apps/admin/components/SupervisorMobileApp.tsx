@@ -3236,6 +3236,15 @@ export function SupervisorMobileApp({
   const openRouteCajaHistoryIsIndependent = Boolean(
     openRoute && isIndependentSaldoRoute(openRoute.routeName),
   );
+  /** Mes que se lista en DETALLADO / historial (organizado por meses). */
+  const cajaHistoryPeriod = cajaHistoryShowPrevious
+    ? previousPeriod(periodFromDateIso(today))
+    : periodFromDateIso(today);
+  const cajaHistoryMonthTitle = `${informePeriodName(cajaHistoryPeriod)} ${cajaHistoryPeriod.slice(0, 4)}`;
+  const cajaHistoryOtherPeriod = cajaHistoryShowPrevious
+    ? periodFromDateIso(today)
+    : previousPeriod(periodFromDateIso(today));
+  const cajaHistoryOtherMonthBtn = informePeriodName(cajaHistoryOtherPeriod);
   const routeCloseClockByDate = useMemo(() => {
     if (!openRoute?.collectorRef || !openRoute.routeName) return new Map<string, string>();
     return routeCloseClocks(
@@ -4585,7 +4594,7 @@ export function SupervisorMobileApp({
                   else openCajaHistorialMesAnterior();
                 }}
               >
-                {cajaHistoryShowPrevious ? "mes en curso" : "historial"}
+                {cajaHistoryOtherMonthBtn}
               </button>
             </div>
           ) : null}
@@ -4626,16 +4635,17 @@ export function SupervisorMobileApp({
             </>
           ) : detailMode === "historial" ? (
             <>
-              <p className="supervisor-mobile-detail-meta">
-                {cajaHistoryShowPrevious
-                  ? `Historial · ${informePeriodName(previousPeriod(periodFromDateIso(today)))} · Ruta ${openRoute.routeName} · ${openRoute.collectorName}`
-                  : `Historial · Ruta ${openRoute.routeName} · ${openRoute.collectorName}`}
-              </p>
+              <div className="supervisor-caja-mes-banner" aria-label={`Mes ${cajaHistoryMonthTitle}`}>
+                <b>{cajaHistoryMonthTitle}</b>
+                <span>
+                  Ruta {openRoute.routeName} · {openRoute.collectorName}
+                </span>
+              </div>
               {cajaHistoryShowPrevious &&
               openRouteCajaHistory.length > 0 &&
               openRouteCajaHistoryIsIndependent ? (
                 <p className="supervisor-mobile-detail-meta is-carry">
-                  Esta ruta es independiente: el Saldo del último día = Inicial del día 1
+                  Último Saldo de {informePeriodName(cajaHistoryPeriod)} = Inicial del día 1
                 </p>
               ) : null}
               <div
@@ -4656,9 +4666,7 @@ export function SupervisorMobileApp({
                 <ul className="collector-mobile-day-history-list">
                   {openRouteCajaHistory.length === 0 ? (
                     <li className="collector-mobile-day-history-empty">
-                      {cajaHistoryShowPrevious
-                        ? "Sin movimientos en el mes anterior."
-                        : "Sin cierres en este mes."}
+                      {`Sin movimientos en ${informePeriodName(cajaHistoryPeriod)}.`}
                     </li>
                   ) : openRouteCajaHistoryIsM ? (
                     openRouteCajaHistory.map((row) => {
