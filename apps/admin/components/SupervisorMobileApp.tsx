@@ -139,6 +139,7 @@ import {
   nequiRouteHistoryDays,
   digitalPoolDayLedger,
   digitalPoolRegisterDays,
+  digitalPoolSaldo,
   type DigitalPool,
   type DigitalPoolGasto,
   type DigitalPoolRegisterLoan,
@@ -2657,10 +2658,47 @@ export function SupervisorMobileApp({
       }),
     [miscPayments, bankAccounts, dayClosesLive, bancoHistoryFrom, today],
   );
-  const nequiCobradoShown = nequiBase?.cobrado;
-  const nequiPrestadoShown = nequiBase?.prestado;
-  const nequiGastosShown = nequiBase?.gastos;
-  const nequiSaldoShown = nequiBase?.saldo;
+  /** Mes vivo: cobrado / prestado / gastos solo del mes en curso (hoy sin movimiento → 0). */
+  const nequiMonthTotales = useMemo(
+    () => bancoRouteHistoryTotals(nequiRutaHistoryDays),
+    [nequiRutaHistoryDays],
+  );
+  const nequiGastadoMes = useMemo(
+    () => digitalPoolGastosTotal(nequiGastos),
+    [nequiGastos],
+  );
+  const nequiCobradoShown = nequiMonthTotales.cobrado;
+  const nequiPrestadoShown = nequiMonthTotales.prestado;
+  const nequiGastosShown = nequiGastadoMes;
+  /** Saldo Nequi arrastra (cierre del mes anterior = Inicial de este mes). No es el cobrado del mes. */
+  const nequiSaldoShown = useMemo(() => {
+    if (nequiBase != null && Number.isFinite(nequiBase.saldo)) {
+      return Math.trunc(nequiBase.saldo);
+    }
+    return digitalPoolSaldo({
+      pool: "nequi",
+      payments: paymentsWithEvidence,
+      loans,
+      clients,
+      dayCloses: dayClosesLive,
+      miscPayments,
+      accounts: bankAccounts,
+      fromIso: ROUTE_CASH_BOOK_FROM,
+      toIso: today,
+      movements: bankMovements,
+    }).saldo;
+  }, [
+    nequiBase,
+    paymentsWithEvidence,
+    loans,
+    clients,
+    dayClosesLive,
+    miscPayments,
+    bankAccounts,
+    today,
+    bankMovements,
+    digitalPoolEpoch,
+  ]);
   /**
    * Hoja Ruta: mismas visitas visibles que el cobrador (sin colapsar Fin+Prestar),
    * luego se desdoblan Renovado / P / combinado en varias líneas.
@@ -3407,17 +3445,58 @@ export function SupervisorMobileApp({
     () => digitalPoolGastosTotal(bancoPoolHistGastos),
     [bancoPoolHistGastos],
   );
+  /** Saldo final del mes en historial Banco = el que arrastra al mes siguiente (home). */
+  const bancoPoolHistSaldo = useMemo(() => {
+    if (
+      (bancoPoolHistNav !== "mes" && bancoPoolHistNav !== "ruta") ||
+      !bancoPoolHistPeriod
+    ) {
+      return 0;
+    }
+    const prior = previousPeriod(periodFromDateIso(today));
+    if (bancoPoolHistPeriod === prior) {
+      const cloud = getCloudDigitalPoolBalances();
+      if (cloud && Number.isFinite(cloud.banco)) {
+        return Math.trunc(cloud.banco);
+      }
+    }
+    const { to } = periodHistWindow(bancoPoolHistPeriod);
+    return digitalPoolSaldo({
+      pool: "banco",
+      payments: paymentsWithEvidence,
+      loans,
+      clients,
+      dayCloses: dayClosesLive,
+      miscPayments,
+      accounts: bankAccounts,
+      fromIso: ROUTE_CASH_BOOK_FROM,
+      toIso: to,
+      movements: bankMovements,
+    }).saldo;
+  }, [
+    bancoPoolHistNav,
+    bancoPoolHistPeriod,
+    today,
+    paymentsWithEvidence,
+    loans,
+    clients,
+    dayClosesLive,
+    miscPayments,
+    bankAccounts,
+    bankMovements,
+    digitalPoolEpoch,
+  ]);
 
   /** Movimiento Nequi del mes abierto en historial (ruta A). */
   const nequiPoolHistDays = useMemo(() => {
     if (nequiPoolHistNav !== "mes" || !nequiPoolHistPeriod) return [];
-    const { from, to } = periodHistWindow(nequiPoolHistPeriod);
+    const { to } = periodHistWindow(nequiPoolHistPeriod);
     return nequiRouteHistoryDays({
       payments: paymentsWithEvidence,
       loans,
       clients,
       dayCloses: dayClosesLive,
-      fromIso: from,
+      fromIso: ROUTE_CASH_BOOK_FROM,
       toIso: to,
       movements: bankMovements,
     });
@@ -3475,6 +3554,39 @@ export function SupervisorMobileApp({
     () => digitalPoolGastosTotal(nequiPoolHistGastos),
     [nequiPoolHistGastos],
   );
+  /** Saldo final del mes en historial Nequi = el que arrastra al mes siguiente (home). */
+  const nequiPoolHistSaldo = useMemo(() => {
+    if (nequiPoolHistNav !== "mes" || !nequiPoolHistPeriod) return 0;
+    const prior = previousPeriod(periodFromDateIso(today));
+    if (nequiPoolHistPeriod === prior && nequiSaldoShown != null) {
+      return nequiSaldoShown;
+    }
+    const { to } = periodHistWindow(nequiPoolHistPeriod);
+    return digitalPoolSaldo({
+      pool: "nequi",
+      payments: paymentsWithEvidence,
+      loans,
+      clients,
+      dayCloses: dayClosesLive,
+      miscPayments,
+      accounts: bankAccounts,
+      fromIso: ROUTE_CASH_BOOK_FROM,
+      toIso: to,
+      movements: bankMovements,
+    }).saldo;
+  }, [
+    nequiPoolHistNav,
+    nequiPoolHistPeriod,
+    today,
+    nequiSaldoShown,
+    paymentsWithEvidence,
+    loans,
+    clients,
+    dayClosesLive,
+    miscPayments,
+    bankAccounts,
+    bankMovements,
+  ]);
   const routeCloseClockByDate = useMemo(() => {
     if (!openRoute?.collectorRef || !openRoute.routeName) return new Map<string, string>();
     return routeCloseClocks(
@@ -6028,7 +6140,7 @@ export function SupervisorMobileApp({
             <>
               <div className="supervisor-caja-mes-banner" aria-label={nequiPoolHistMonthTitle}>
                 <b>{nequiPoolHistMonthTitle}</b>
-                <span>Nequi · Ruta {NEQUI_ROUTE_PIN}</span>
+                <span>Nequi · Ruta {NEQUI_ROUTE_PIN} · Saldo final arrastra</span>
               </div>
               <section
                 className="collector-mobile-home-cuadre is-supervisor-caja-day is-banco-ruta"
@@ -6073,6 +6185,15 @@ export function SupervisorMobileApp({
                   >
                     <span>Gastos</span>
                     <b>{money(nequiPoolHistGastado, { symbol: false })}</b>
+                  </button>
+                  <button
+                    type="button"
+                    className="is-nequi-saldo"
+                    title="Saldo final del mes (pasa como Inicial al mes siguiente)"
+                    aria-label={`Saldo final Nequi ${money(nequiPoolHistSaldo, { symbol: false })}`}
+                  >
+                    <span>Saldo</span>
+                    <b>{money(nequiPoolHistSaldo, { symbol: false })}</b>
                   </button>
                 </div>
               </section>
@@ -6524,6 +6645,15 @@ export function SupervisorMobileApp({
                 >
                   <span>Gastos</span>
                   <span className="is-amount">{money(bancoPoolHistGastado, { symbol: false })}</span>
+                </button>
+                <button
+                  type="button"
+                  className="supervisor-banco-home-btn is-acumulado"
+                  title="Saldo final del mes (pasa como Inicial al mes siguiente)"
+                  aria-label={`Saldo final ${money(bancoPoolHistSaldo, { symbol: false })}`}
+                >
+                  <span>Saldo</span>
+                  <span className="is-amount">{money(bancoPoolHistSaldo, { symbol: false })}</span>
                 </button>
               </div>
               {bancoPoolHistExpand === "gastos"

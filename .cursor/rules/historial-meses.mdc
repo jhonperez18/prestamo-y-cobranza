@@ -12,8 +12,15 @@ Misma puerta (botón «historial» → lista de meses), **contenido distinto** s
 | Pantalla | Después del mes |
 | --- | --- |
 | **Caja** (ruta → historial) | Movimiento de caja del mes. Inicial día 1 = último saldo del mes anterior de **esa** ruta |
-| **BANCO** | **Rutas M · T · N por separado** (nunca sumadas). Cada tarjeta = saldo al cierre del mes de **esa** ruta. Ese saldo = Inicial del día 1 del mes siguiente de la misma ruta. Dentro de la ruta: cobrado / prestado del mes |
-| **NEQUI** | Una sola ruta (A): cobrado / prestado / gastos del mes. Sin lista de rutas |
+| **BANCO** | **Rutas M · T · N por separado** (nunca sumadas) + **Saldo** final del mes (arrastra al mes vivo). Dentro de la ruta: cobrado / prestado del mes |
+| **NEQUI** | Una sola ruta (A): cobrado / prestado / gastos del mes + **Saldo** final. Sin lista de rutas |
+
+## Mes vivo (pantalla home Banco / Nequi)
+
+| Pieza | Regla |
+| --- | --- |
+| Cobrado / Prestado / Gastos | Solo el **mes en curso**. Sin movimiento hoy → **0**. Lo del mes anterior vive en historial |
+| Saldo | Arrastra: final del mes anterior = Inicial de este mes (no se pone en 0) |
 
 ## Flujo fijo
 
