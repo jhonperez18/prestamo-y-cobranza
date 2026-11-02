@@ -51,7 +51,14 @@ export async function listDeviceStatuses(): Promise<
     .from(STORAGE_BUCKET)
     .list(DEVICES_FOLDER, { limit: 200 });
   if (error) return { ok: false, error: error.message };
-  const entries = (files ?? []).filter((file) => file.name.endsWith(".json"));
+  const now = Date.now();
+  // No descargar JSON viejo: cada apertura del panel / morning-check gastaba egress.
+  const entries = (files ?? []).filter((file) => {
+    if (!file.name.endsWith(".json")) return false;
+    const stamp = Date.parse(String(file.updated_at || file.created_at || ""));
+    if (Number.isFinite(stamp) && now - stamp > DEVICE_ALERT_WINDOW_MS) return false;
+    return true;
+  });
   const rows = await Promise.all(
     entries.map(async ({ name, created_at: createdAt }) => {
       try {
@@ -70,7 +77,6 @@ export async function listDeviceStatuses(): Promise<
       }
     }),
   );
-  const now = Date.now();
   const devices = rows
     .filter((row): row is DeviceStatus => Boolean(row))
     // Fantasmas: Vercel / prueba / sin reporte reciente (no bajar ni pintar basura).
