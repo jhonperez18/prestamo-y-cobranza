@@ -1384,6 +1384,33 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
     /queueAssignmentsMirror\((planilla\.assignments|nextAssignments)\)/.test(shellSrc),
     false,
   );
+  expect(
+    "Fase 2 remate: cobro del cobrador no encola planilla (register_collection + Realtime)",
+    /queueAssignmentsMirror/.test(payFn),
+    false,
+  );
+  const workspaceSrc = readFileSync(
+    new URL("../components/workspace/useWorkspace.ts", import.meta.url),
+    "utf8",
+  );
+  const workspacePayFn = workspaceSrc.slice(
+    workspaceSrc.indexOf("async function registerCollectorPayment"),
+    workspaceSrc.indexOf("function attachPaymentEvidence"),
+  );
+  const workspaceVoidFn = workspaceSrc.slice(
+    workspaceSrc.indexOf("async function voidPayment"),
+    workspaceSrc.indexOf("function skipCollectorVisit"),
+  );
+  expect(
+    "Fase 2 remate: cobro del panel no encola planilla",
+    /queueAssignmentsMirror/.test(workspacePayFn),
+    false,
+  );
+  expect(
+    "Fase 2 remate: anulación no encola planilla (void_collection + Realtime)",
+    /queueAssignmentsMirror/.test(workspaceVoidFn),
+    false,
+  );
   const updateSrc = readFileSync(new URL("../lib/app-auto-update.ts", import.meta.url), "utf8");
   expect(
     "Versión nueva obligatoria: la subida previa tiene tope (no cuelga la actualización)",

@@ -99,7 +99,6 @@ import {
 } from "@/lib/supabase/ops-mirror";
 import { mirrorAutoDayCloseToCloud } from "@/lib/mirror-auto-day-close";
 import {
-  assignmentsForCreatedPayments,
   applyServerLoanBalance,
   commitCollectorPayment,
   commitCollectorCombinedPayment,
@@ -471,18 +470,8 @@ export function CollectorShell({ session, onLogout }: Props) {
       ),
     );
     if (paidClient) queueClientMirror(paidClient);
-    // Cobro + Prestar si liquidó (hoja-diaria: vuelve a la ruta, no al recaudo).
-    const payDate = primaryDraft.dispatchDate?.trim() || committed.payment.paidDate;
-    const clientDayRows = committed.assignments.filter(
-      (row) =>
-        row.clientRef === primaryDraft.clientRef &&
-        row.dispatchDate === payDate,
-    );
-    queueAssignmentsMirror(
-      clientDayRows.length
-        ? clientDayRows
-        : assignmentsForCreatedPayments(committed.assignments, paymentsCreated),
-    );
+    // Fase 2 remate: register_collection ya selló visita (+ Prestar si liquidó).
+    // Este aparato pinta local; los demás adoptan planilla por Realtime (ops).
     void (async () => {
       try {
         try {

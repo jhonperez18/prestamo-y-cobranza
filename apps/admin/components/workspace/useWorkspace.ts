@@ -1973,7 +1973,7 @@ export function useWorkspace({
       ),
     );
     if (paidClient) queueClientMirror(paidClient);
-    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, projected.assignments));
+    // Fase 2 remate: register_collection sella la visita; planilla de otros = Realtime ops.
     try {
       let payFlush = await flushPaymentMirrorQueue();
       if (payFlush.left > 0) payFlush = await flushPaymentMirrorQueue();
@@ -2052,7 +2052,7 @@ export function useWorkspace({
     setDailyAssignments(assignments);
     writeDemoJson(DEMO_LOANS_KEY, projected.loans);
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
-    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, assignments));
+    // Fase 2 remate: void_collection rearma la planilla; otros aparatos por Realtime ops.
     const mirror = await queuePaymentMirror({ ...result.payment, updatedAt: voidedAtStamp });
     if (!mirror.ok) {
       onToast(`Anulado en local · nube pendiente: ${mirror.error || "sin red"}`);
@@ -2549,7 +2549,7 @@ export function useWorkspace({
     if (nextLoan) void queueLoanCommand(nextLoan, { op: "alerts" });
     const cajaClient = nextClients.find((entry) => entry.ref === loan.clientRef);
     if (cajaClient) queueClientMirror(cajaClient);
-    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, projected.assignments));
+    // Fase 2 remate: register_collection sella; planilla de otros = Realtime ops.
     const inCloud = (await flushMoneyMovementToCloud("pago-panel")) && mirror.ok;
     onToast(
       inCloud
@@ -2616,7 +2616,7 @@ export function useWorkspace({
     if (nextLoan) void queueLoanCommand(nextLoan, { op: "alerts" });
     const lateClient = committed.clients.find((entry) => entry.ref === loan.clientRef);
     if (lateClient) queueClientMirror(lateClient);
-    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, projected.assignments));
+    // Fase 2 remate: register_collection sella; planilla de otros = Realtime ops.
     const inCloud = (await flushMoneyMovementToCloud("pago-tardio")) && mirror.ok;
     onToast(
       inCloud

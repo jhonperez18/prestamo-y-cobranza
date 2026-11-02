@@ -7,7 +7,7 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 | --- | --- | --- | --- | --- |
 | 1 | **Limpieza candados float (Fase 4)** — asserts / `keepSealedCashFloat` / `cloud_cie_*` | **PENDIENTE** · dejado así | Solo a pedido. Todos los aparatos vivos ≥ build `07b24f3` (ideal `4c5db46`); ~1 semana estable; noche; commit aparte | `docs/fase-4-cierres.md`, `docs/inventario-candados.md`, `fases-dueno-dato.mdc` |
 | 2 | **Aparatos en build atrasado** | **Casi listo 02/11** | Dueño + Carlos supervisor ya en `1dafd66`. Queda **Edgar** abrir app una vez (hoy sin ruta). Yesid al abrir mañana | Configuración → Aparatos |
-| 3 | **Fase 2 · Realtime** — adoptar planilla solo desde Realtime (remate) | **PENDIENTE** | Revisar / cerrar cuando el dueño pida rematar Fase 2; no vender “2 cerrada al 100 %” antes | `docs/fase-2-cobros.md`, `fases-dueno-dato.mdc` |
+| 3 | **Fase 2 · Realtime** — adoptar planilla solo desde Realtime (remate) | **HECHO 02/11** · corte 2.4 | Cobro/anulación/panel/tardío ya no encolan planilla; otros por Realtime ops. N/P·Prestar·cierre siguen encolando | `docs/fase-2-cobros.md` |
 | 4 | **Libro de caja (`route-cash-book`)** sin bajar toda la base | **HECHO 01/11** | RPC `day_cash_figure` (M) / `route_own_box` (A/N); sin `loadOperationalStateFromCloud()` | `supabase-salida.mdc`, `server-route-cash-book.ts` |
 | 5 | **Salida (egress) Supabase** | **MEDIDO 01/11** · 12,75 GB (Pro). Sync + ventana + monitor limpio. **Mirar panel 9/11** | Panel Usage · `supabase-salida.mdc` |
 | 15 | **chain-audit verde vacío** (domingo sin CIE calendario) | **HECHO 02/11** · `cf0c975` | Ancla al último CIE real; verify falla si no hay filas. Edgar 82k · Yesid 1.311.500 | `server-chain-audit.ts` |
@@ -26,7 +26,7 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 | Tema | Estado |
 | --- | --- |
 | Fase 1 Préstamos | **CERRADA** |
-| Fase 2 cortes 2.1–2.3 (cobro / void / gasto) | **En prod** |
+| Fase 2 cortes 2.1–2.4 (cobro / void / gasto / Realtime planilla) | **En prod** |
 | Fase 3 lectura 3.1–3.3 | **CERRADA** (lectura) |
 | Fase 4 cortes 4.1–4.4 (sellar / mirror / ajuste / reabrir) | **En prod** |
 | Limpieza assert Fase 1 (1a–1c) y assert Fase 2 (2a–2b) | **CERRADA** 19/10 |
