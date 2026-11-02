@@ -1391,8 +1391,10 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
     true,
   );
   expect(
-    "Versión nueva obligatoria: al volver a la app y a los 5 min, sin esperar 2 min quieto",
-    updateSrc.includes("FORCE_AFTER_MS") && updateSrc.includes("tick(true)"),
+    "Versión nueva obligatoria: al volver a la app y a los 2 min, sin esperar 2 min quieto",
+    updateSrc.includes("FORCE_AFTER_MS") &&
+      updateSrc.includes("2 * 60_000") &&
+      updateSrc.includes("tick(true)"),
     true,
   );
   const mobileSrc = readFileSync(new URL("../components/CollectorMobileApp.tsx", import.meta.url), "utf8");

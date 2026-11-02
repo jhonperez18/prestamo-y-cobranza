@@ -11,14 +11,14 @@ import { flushAllMirrorQueues } from "@/lib/supabase/mirror-queue";
  * código viejo (sin los arreglos del taller y con colas que el servidor nuevo rechaza).
  *
  * Nunca interrumpe un cobro: no recarga con panel / diálogo / campo abierto.
- * Obligatoria: recarga al volver a la app, con 2 min sin tocar, o a los 5 min de
- * publicada en el primer momento libre. La subida previa tiene tope: lo que no subió
- * sigue en la cola del aparato y lo sube la versión nueva (antes una petición colgada
- * dejaba el celular en la versión vieja para siempre).
+ * Obligatoria: recarga al volver a la app, con 2 min sin tocar, o a los 2 min de
+ * publicada en el primer momento libre (antes 5: dejaba celulares atrasados horas).
+ * La subida previa tiene tope: lo que no subió sigue en la cola del aparato y lo
+ * sube la versión nueva.
  */
 const CHECK_MS = 60_000;
 const IDLE_MS = 120_000;
-const FORCE_AFTER_MS = 5 * 60_000;
+const FORCE_AFTER_MS = 2 * 60_000;
 const FLUSH_CAP_MS = 15_000;
 const BUILD_CHECK_TIMEOUT_MS = 10_000;
 const TARGET_KEY = "nexo-auto-update-target";
