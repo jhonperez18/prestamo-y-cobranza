@@ -68,10 +68,10 @@ type Options = {
 
 /**
  * Realtime es la vía viva; el poll solo respalda si el canal se cae.
- * 5 min (antes 45 s): con `?since=` el poll seguía bajando CIE + hoja de hoy
- * enteros → salida a ~GB/mes. Visibilidad / foco siguen bajando al volver.
+ * 10 min (antes 45 s → 5 min): Realtime ya baja ops al cobrador; el poll es
+ * respaldo. Visibilidad / foco siguen bajando al volver.
  */
-const CLOUD_POLL_MS = 5 * 60_000;
+const CLOUD_POLL_MS = 10 * 60_000;
 /** Completa (sin `since`) cada hora: borra/tombstones que no viajan en el corte. */
 const FULL_PULL_MS = 60 * 60_000;
 /** Flush de colas independiente del pull (cobros/CIE no se quedan atrapados). */
