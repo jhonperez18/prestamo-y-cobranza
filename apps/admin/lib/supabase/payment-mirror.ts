@@ -709,11 +709,10 @@ function adoptCloudPaymentRefs(
       return next;
     },
   );
+  // Solo local: register_collection ya dejó el payment_ref en la base.
+  // Re-espejar la visita es el eco que el remate 2.4 cortó (otros = Realtime ops).
   if (changed.length) {
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, assignments);
-    void import("@/lib/supabase/ops-mirror").then(({ queueAssignmentsMirror }) =>
-      queueAssignmentsMirror(changed),
-    );
   }
   window.dispatchEvent(new CustomEvent(BIG_DEMO_STORE_CHANGED_EVENT));
 }

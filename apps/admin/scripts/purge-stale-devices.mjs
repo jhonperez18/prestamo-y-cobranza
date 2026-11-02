@@ -1,7 +1,7 @@
 /**
- * Borra reportes de aparatos con más de 7 días sin reportar.
+ * 1) Basura >7 días sin reportar.
+ * 2) Duplicados vivos: misma persona+host → deja el reporte más reciente.
  * No toca plata ni usuarios: solo Storage `app-catalog/devices/*.json`.
- * Así el monitor / morning-check no re-descarga basura (egress).
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 
 const MAX_AGE_MS = 7 * 24 * 60 * 60_000;
+const LIVE_MS = 36 * 60 * 60_000;
 const root = path.dirname(fileURLToPath(import.meta.url));
 const env = Object.fromEntries(
   fs
@@ -40,6 +41,8 @@ if (listErr) {
 }
 
 const toRemove = [];
+const live = [];
+
 for (const file of (files ?? []).filter((f) => f.name.endsWith(".json"))) {
   const pathName = `${FOLDER}/${file.name}`;
   const { data, error } = await client.storage.from(BUCKET).download(pathName);
@@ -51,24 +54,59 @@ for (const file of (files ?? []).filter((f) => f.name.endsWith(".json"))) {
     continue;
   }
   const at = Date.parse(String(row?.reportedAt || ""));
-  if (!Number.isFinite(at) || now - at <= MAX_AGE_MS) continue;
-  toRemove.push({
+  if (!Number.isFinite(at)) continue;
+  if (now - at > MAX_AGE_MS) {
+    toRemove.push({
+      path: pathName,
+      why: ">7d",
+      userName: row?.userName,
+      host: row?.host,
+      reportedAt: row?.reportedAt,
+      deviceId: row?.deviceId || file.name,
+    });
+    continue;
+  }
+  if (now - at > LIVE_MS) continue;
+  const userRef = String(row?.userRef || "").trim();
+  const host = String(row?.host || "").trim();
+  if (!userRef || /vercel\.app/i.test(host)) continue;
+  live.push({
     path: pathName,
+    userKey: `${userRef}|${host}`.toLowerCase(),
+    at,
     userName: row?.userName,
-    host: row?.host,
+    host,
     reportedAt: row?.reportedAt,
     deviceId: row?.deviceId || file.name,
   });
 }
 
+const best = new Map();
+for (const row of live) {
+  const prev = best.get(row.userKey);
+  if (!prev || row.at > prev.at) best.set(row.userKey, row);
+}
+const keep = new Set([...best.values()].map((row) => row.path));
+for (const row of live) {
+  if (keep.has(row.path)) continue;
+  toRemove.push({
+    path: row.path,
+    why: "duplicado",
+    userName: row.userName,
+    host: row.host,
+    reportedAt: row.reportedAt,
+    deviceId: row.deviceId,
+  });
+}
+
 if (!toRemove.length) {
-  console.log("Nada que borrar (>7 días).");
+  console.log("Nada que borrar (>7 días ni duplicados).");
   process.exit(0);
 }
 
 console.log(`A borrar: ${toRemove.length}`);
 for (const row of toRemove) {
-  console.log(`  - ${row.deviceId} · ${row.userName} · ${row.reportedAt}`);
+  console.log(`  - [${row.why}] ${row.deviceId} · ${row.userName} · ${row.reportedAt}`);
 }
 
 const { error: delErr } = await client.storage.from(BUCKET).remove(toRemove.map((r) => r.path));
@@ -76,4 +114,4 @@ if (delErr) {
   console.error("remove", delErr.message);
   process.exit(1);
 }
-console.log(`OK: borrados ${toRemove.length} reportes viejos.`);
+console.log(`OK: borrados ${toRemove.length} reportes.`);

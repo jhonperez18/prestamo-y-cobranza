@@ -93,6 +93,61 @@ export async function listDeviceStatuses(): Promise<
 /** Basura >7 días: la quita la revisión 6:00 para no acumular egress. */
 const STALE_DEVICE_MS = 7 * 24 * 60 * 60_000;
 
+/**
+ * Un vivo por persona+host (Yesid/Edgar reinstaló → otro deviceId).
+ * El monitor ya pinta un renglón; el Storage debe quedar igual (egress + verdad).
+ */
+export async function purgeSupersededDeviceStatuses(
+  now = Date.now(),
+): Promise<{ ok: true; removed: number } | { ok: false; error: string }> {
+  const supabase = storageClient();
+  if (!supabase) return { ok: true, removed: 0 };
+  const { data: files, error } = await supabase.storage
+    .from(STORAGE_BUCKET)
+    .list(DEVICES_FOLDER, { limit: 500 });
+  if (error) return { ok: false, error: error.message };
+  type Live = { path: string; userKey: string; at: number };
+  const live: Live[] = [];
+  for (const file of files ?? []) {
+    if (!file.name.endsWith(".json")) continue;
+    const pathName = `${DEVICES_FOLDER}/${file.name}`;
+    const stamp = Date.parse(String(file.updated_at || file.created_at || ""));
+    if (!Number.isFinite(stamp) || now - stamp > DEVICE_ALERT_WINDOW_MS) continue;
+    try {
+      const { data, error: readError } = await downloadCatalogFile(
+        supabase,
+        STORAGE_BUCKET,
+        pathName,
+      );
+      if (readError || !data) continue;
+      const row = normalizeDeviceStatus(JSON.parse(await data.text()));
+      if (!row || isRetiredHost(row.host) || !isLiveReport(row, now)) continue;
+      const userKey =
+        `${String(row.userRef || "").trim()}|${String(row.host || "").trim()}`.toLowerCase();
+      if (!String(row.userRef || "").trim()) continue;
+      const at = Date.parse(row.reportedAt);
+      live.push({
+        path: pathName,
+        userKey,
+        at: Number.isFinite(at) ? at : stamp,
+      });
+    } catch (err) {
+      console.error("device-status-supersede-read", file.name, err);
+    }
+  }
+  const best = new Map<string, Live>();
+  for (const row of live) {
+    const prev = best.get(row.userKey);
+    if (!prev || row.at > prev.at) best.set(row.userKey, row);
+  }
+  const keep = new Set([...best.values()].map((row) => row.path));
+  const doomed = live.map((row) => row.path).filter((pathName) => !keep.has(pathName));
+  if (!doomed.length) return { ok: true, removed: 0 };
+  const { error: delErr } = await supabase.storage.from(STORAGE_BUCKET).remove(doomed);
+  if (delErr) return { ok: false, error: delErr.message };
+  return { ok: true, removed: doomed.length };
+}
+
 export async function purgeStaleDeviceStatuses(
   now = Date.now(),
 ): Promise<{ ok: true; removed: number } | { ok: false; error: string }> {

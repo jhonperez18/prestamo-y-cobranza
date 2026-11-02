@@ -37,7 +37,8 @@ Tras `register_collection` / `void_collection` la base ya escribió la planilla.
 | Pieza | Regla |
 | --- | --- |
 | Aparato que cobró / anuló | Pinta local al instante; **no** `queueAssignmentsMirror` de esa visita |
+| Rename PG- local | Solo local; **no** re-espeja planilla (`adoptCloudPaymentRefs`) |
 | Otros aparatos | Adoptan `daily_assignments` por Realtime (`ops`) + poll de respaldo |
-| Sigue encolando planilla | N/P, Prestar (sí/no), cierre de hoja, préstamo nuevo, renovar, alta cliente |
+| Sigue encolando planilla | N/P, Prestar (sí/no), cierre de hoja, préstamo nuevo, renovar, alta cliente; rechazo de cobro sí rearma visita |
 
 **Candado:** `assert-cash-chain.mjs` («Fase 2 remate: cobro…», «anulación…»).

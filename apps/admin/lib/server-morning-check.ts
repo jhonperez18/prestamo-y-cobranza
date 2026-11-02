@@ -22,7 +22,11 @@ import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supab
 import { CATALOG_FILE_UPLOAD, downloadCatalogFile } from "@/lib/supabase/catalog-file";
 import { APP_BUILD } from "@/lib/app-build";
 import { deviceStorageAlerts } from "@/lib/device-storage-alerts";
-import { listDeviceStatuses, purgeStaleDeviceStatuses } from "@/lib/supabase/device-status-mirror";
+import {
+  listDeviceStatuses,
+  purgeStaleDeviceStatuses,
+  purgeSupersededDeviceStatuses,
+} from "@/lib/supabase/device-status-mirror";
 
 export type MorningCheckItem = { label: string; ok: boolean; detail: string };
 
@@ -210,7 +214,8 @@ export async function runServerMorningCheck(now = new Date()): Promise<MorningCh
 
 async function devicesStorageItem(now: Date): Promise<MorningCheckItem> {
   const label = "Aparatos (espacio / build / host)";
-  const purged = await purgeStaleDeviceStatuses(now.getTime());
+  const purgedStale = await purgeStaleDeviceStatuses(now.getTime());
+  const purgedDup = await purgeSupersededDeviceStatuses(now.getTime());
   const listed = await listDeviceStatuses();
   if (!listed.ok) return { label, ok: false, detail: `No se pudo leer el monitor: ${listed.error}` };
   const expectedBuild = APP_BUILD && APP_BUILD !== "dev" ? APP_BUILD : "";
@@ -218,8 +223,9 @@ async function devicesStorageItem(now: Date): Promise<MorningCheckItem> {
     now: now.getTime(),
     expectedBuild,
   });
-  const purgeNote =
-    purged.ok && purged.removed > 0 ? ` · basura quitada: ${purged.removed}` : "";
+  const removed =
+    (purgedStale.ok ? purgedStale.removed : 0) + (purgedDup.ok ? purgedDup.removed : 0);
+  const purgeNote = removed > 0 ? ` · basura quitada: ${removed}` : "";
   return {
     label,
     ok: alerts.length === 0,

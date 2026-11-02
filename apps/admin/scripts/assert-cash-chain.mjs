@@ -1389,6 +1389,28 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
     /queueAssignmentsMirror/.test(payFn),
     false,
   );
+  const payMirrorSrc = readFileSync(
+    new URL("../lib/supabase/payment-mirror.ts", import.meta.url),
+    "utf8",
+  );
+  const adoptFn = payMirrorSrc.slice(
+    payMirrorSrc.indexOf("function adoptCloudPaymentRefs"),
+    payMirrorSrc.indexOf("function isPaymentRejection"),
+  );
+  expect(
+    "Fase 2 remate: rename PG- no re-espeja planilla (solo local)",
+    /queueAssignmentsMirror/.test(adoptFn),
+    false,
+  );
+  const morningSrc = readFileSync(
+    new URL("../lib/server-morning-check.ts", import.meta.url),
+    "utf8",
+  );
+  expect(
+    "Monitor: revisión 6:00 quita deviceId duplicado (misma persona+host)",
+    morningSrc.includes("purgeSupersededDeviceStatuses"),
+    true,
+  );
   const workspaceSrc = readFileSync(
     new URL("../components/workspace/useWorkspace.ts", import.meta.url),
     "utf8",
