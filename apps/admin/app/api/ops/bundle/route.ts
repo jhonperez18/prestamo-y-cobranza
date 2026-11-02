@@ -85,11 +85,12 @@ export async function GET(request: Request) {
       }
     }
     const [collectors, routes, day_closes, day_expenses, misc_payments, assignmentsPart] = parts;
-    // La hoja de hoy va entera. Un corte ya pasado no vuelve a traer el sello
-    // de una ruta cerrada, y el sistema principal se queda con la lista vieja.
+    // Hoja de hoy entera solo si hubo cambios de planilla (o bajada completa).
+    // Sin cambios: el sello llega en `changed` (updated_at) o en la completa horaria.
+    // Evita reenviar toda la ruta en cada poll quieto.
     let assignmentRows = assignmentsPart.rows;
     let assignmentsTodayComplete = false;
-    if (since) {
+    if (since && assignmentsPart.rows.length > 0) {
       const todaySheet = await fetchOpsTableSince(
         "daily_assignments",
         "dispatch_date",

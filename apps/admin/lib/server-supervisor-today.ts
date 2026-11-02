@@ -4,13 +4,12 @@
  * El Inicial lo sigue armando `openingCashForChainedPlanilla` con estos CIE
  * (Inicial de M = CIE de ayer). No baja el libro entero de cobros.
  */
-import { businessTodayIso } from "@/lib/business-timezone";
+import { businessDaysAgoIso, businessTodayIso } from "@/lib/business-timezone";
 import type { CollectorDayCloseRecord, CollectorDayExpenseDraft } from "@/lib/collector-day-close";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { PaymentRow } from "@/lib/mock-data";
 import { fetchPaymentsFromSupabase, mirrorRowToPaymentRow } from "@/lib/supabase/payment-mirror";
 import {
-  fetchOpsTable,
   fetchOpsTableSince,
   rowToAssignment,
   rowToDayClose,
@@ -29,10 +28,12 @@ export async function loadSupervisorToday(
   date = businessTodayIso(),
 ): Promise<{ ok: true; payload: SupervisorTodayPayload } | { ok: false; error: string }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: "bad_date" };
+  // CIE: ayer + hoy (Inicial M = CIE ayer). No toda la tabla en cada apertura.
+  const closesFrom = businessDaysAgoIso(1, new Date(`${date}T12:00:00-05:00`));
   const [paymentsT, assignsT, closesT, expensesT] = await Promise.all([
     fetchPaymentsFromSupabase({ fromDate: date, toDate: date }),
     fetchOpsTableSince("daily_assignments", "dispatch_date", date, date),
-    fetchOpsTable("day_closes"),
+    fetchOpsTableSince("day_closes", "close_date", closesFrom, date),
     fetchOpsTableSince("day_expenses", "expense_date", date, date),
   ]);
   if (!paymentsT.ok || ("skipped" in paymentsT && paymentsT.skipped)) {

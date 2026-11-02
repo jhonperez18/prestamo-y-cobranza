@@ -16,7 +16,8 @@ Supabase sigue siendo la verdad de los datos. El VPS solo ejecuta la app.
 - Bajada del celular: con corte `?since=`; completa si vacío / reparar / **cada 60 min** de sesión.
 - Poll de respaldo **5 min** (antes 45 s). Realtime + foco siguen al instante.
 - Cobrador no baja el historial entero: solo el día.
-- Bundle incremental: CIE solo cambios (no toda `day_closes`); hoja de hoy sigue entera.
+- Bundle incremental: CIE solo cambios; hoja de hoy entera **solo si** hubo cambios de planilla.
+- `supervisor-today`: CIE solo ayer+hoy (no toda `day_closes`).
 
 ## Ya hecho (libro + auditoría + crons)
 
