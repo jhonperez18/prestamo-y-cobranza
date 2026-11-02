@@ -7,15 +7,17 @@ import {
   runOperationalDayCycle,
   type OperationalDayState,
 } from "@/lib/collector-day-auto-close";
-import { businessClockParts, businessTodayIso } from "@/lib/business-timezone";
+import { businessClockParts, businessDaysAgoIso, businessTodayIso } from "@/lib/business-timezone";
 import { addCalendarDaysIso } from "@/lib/colombia-holidays";
 import { persistDaySheet } from "@/lib/server-day-sheet";
 import {
   dayCloseAsPlanillaCashClose,
   isPlanillaCashCloseRef,
   planillaCashCloseAsDayClose,
+  ROUTE_CASH_BOOK_FROM,
   type PlanillaCashCloseRecord,
 } from "@/lib/planilla-cash-chain";
+import { planillaWindowStartIso } from "@/lib/planilla-window";
 import {
   fetchClientsFromSupabase,
   fetchLoansFromSupabase,
@@ -30,6 +32,7 @@ import {
   assignmentToRow,
   dayCloseToRow,
   fetchOpsTable,
+  fetchOpsTableSince,
   rowToAssignment,
   rowToCollector,
   rowToDayClose,
@@ -41,6 +44,9 @@ import {
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
 import type { CollectorMonthCloseRecord } from "@/lib/collector-day-close";
 import type { ClientRow, LoanRow, PaymentRow } from "@/lib/mock-data";
+
+/** Misma ventana de gastos que el bundle ops (90 días). */
+const EXPENSES_LOOKBACK_DAYS = 90;
 
 export type ServerDayRolloverResult = {
   ok: boolean;
@@ -61,18 +67,28 @@ export type ServerDayRolloverResult = {
   state?: OperationalDayState;
 };
 
+/**
+ * Estado operativo para cron / cierre de hoja.
+ * No baja el historial eterno: planilla 45 d, gastos 90 d, cobros desde el libro (01/10).
+ * CIE / catálogo sí enteros (chicos; Inicial M necesita CIE de ayer sin huecos).
+ */
 export async function loadOperationalStateFromCloud(): Promise<
   | { ok: true; state: OperationalDayState }
   | { ok: false; error: string }
 > {
+  const assignSince = planillaWindowStartIso();
+  const expenseSince = businessDaysAgoIso(EXPENSES_LOOKBACK_DAYS);
   const [collectorsT, routesT, closesT, expensesT, assignsT, paymentsT, clientsT, loansT] =
     await Promise.all([
       fetchOpsTable("collectors"),
       fetchOpsTable("routes"),
       fetchOpsTable("day_closes"),
-      fetchOpsTable("day_expenses"),
-      fetchOpsTable("daily_assignments"),
-      fetchPaymentsFromSupabase({ evidence: false }),
+      fetchOpsTableSince("day_expenses", "expense_date", expenseSince),
+      fetchOpsTableSince("daily_assignments", "dispatch_date", assignSince),
+      fetchPaymentsFromSupabase({
+        evidence: false,
+        fromDate: ROUTE_CASH_BOOK_FROM,
+      }),
       fetchClientsFromSupabase(),
       fetchLoansFromSupabase(),
     ]);

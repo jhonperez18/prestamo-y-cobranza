@@ -23,7 +23,8 @@ Supabase sigue siendo la verdad de los datos. El VPS solo ejecuta la app.
 
 - `route-cash-book` calcula con RPC (`day_cash_figure` / `route_own_box`), **sin** `loadOperationalStateFromCloud()`.
 - `chain-audit` (verify:prod): solo collectors + CIE + RPC; **sin** bajar cobros/planilla/clientes.
-- Morning-check / day-rollover: **una** bajada completa por corrida; informe/semanal/mensual reutilizan ese estado.
+- Morning-check / day-rollover / close-sheet: **una** bajada por corrida con ventana
+  (planilla 45 d, gastos 90 d, cobros desde `ROUTE_CASH_BOOK_FROM`); informe reutiliza estado.
 
 ## Medido (panel, 01/11/2026)
 
