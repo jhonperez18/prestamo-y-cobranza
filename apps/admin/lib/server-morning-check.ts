@@ -102,7 +102,9 @@ export function evaluateMorningState(
                 `${row.collectorName}: ${row.todayOpening == null ? "—" : moneyLabel(row.todayOpening)}${row.ok ? "" : ` (${row.kind === "independent" ? "Caja" : "CIE"} ${moneyLabel(row.yesterdayCieFloat)})`}`,
             )
             .join(" · ")
-        : "Sin cierre ayer (día sin cobro)",
+        : chain.error === "sin_cie_previo"
+          ? "Sin CIE previo (falta ancla de Inicial)"
+          : "Sin filas de auditoría",
     },
   ];
 }

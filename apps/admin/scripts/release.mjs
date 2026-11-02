@@ -130,7 +130,13 @@ async function assertCashChain() {
   } catch (err) {
     fail(`chain-audit → ${err?.message || err}`);
   }
-  for (const row of data.rows ?? []) {
+  const rows = data.rows ?? [];
+  if (!rows.length) {
+    fail(
+      `regla de inicio: sin filas en ${data.businessDate ?? "hoy"} (¿faltan CIE?).${data.error ? ` ${data.error}` : ""}`,
+    );
+  }
+  for (const row of rows) {
     const tag = row.kind === "independent" ? "Caja" : "CIE";
     const tLabel = row.kind === "independent" ? "Caja hoy" : "Inicial T";
     console.log(

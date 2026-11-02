@@ -8,14 +8,14 @@
  */
 import { businessTodayIso } from "@/lib/business-timezone";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
-import { previousCalendarIso, type OperationalDayState } from "@/lib/collector-day-auto-close";
+import type { OperationalDayState } from "@/lib/collector-day-auto-close";
 import { buildDayCashLedger, isChainCollectorDay, type DayCashSources } from "@/lib/day-cash-ledger";
 import {
   independentRouteDay,
   independentRouteForCollectorDay,
 } from "@/lib/independent-route-cash";
 import {
-  findFullDayCieClose,
+  findLatestFullDayCieBefore,
   isPlanillaCashCloseRef,
 } from "@/lib/planilla-cash-chain";
 import type { CollectorRow } from "@/lib/mock-data";
@@ -48,7 +48,8 @@ const OWN_ROUTES = ["N", "A"] as const;
 
 export async function runServerChainAudit(now = new Date()): Promise<ChainAuditResult> {
   const businessDate = businessTodayIso(now);
-  const yesterday = previousCalendarIso(businessDate);
+  // Regla de inicio: Inicial = último CIE sellado **antes de hoy** (no el calendario
+  // de ayer). Domingo sin cobro → ancla al viernes/sábado; un `[]` vacío no es OK.
 
   const [collectorsT, closesT] = await Promise.all([
     fetchOpsTable("collectors"),
@@ -83,9 +84,9 @@ export async function runServerChainAudit(now = new Date()): Promise<ChainAuditR
 
   const rows: ChainAuditRow[] = [];
   for (const collector of collectors) {
-    const cie = findFullDayCieClose(dayCloses, collector.ref, yesterday);
+    const cie = findLatestFullDayCieBefore(dayCloses, collector.ref, businessDate);
     if (!cie) continue;
-    const yesterdayLabel = normalizeHistoryDate(cie.date) || cie.date;
+    const priorDate = normalizeHistoryDate(cie.date) || cie.date;
     const yesterdayCieFloat = Number(cie.cashFloat) || 0;
 
     const fig = await readDayCashFigure(collector.ref, businessDate);
@@ -96,7 +97,7 @@ export async function runServerChainAudit(now = new Date()): Promise<ChainAuditR
       rows.push({
         collectorRef: collector.ref,
         collectorName: collector.name,
-        yesterday: yesterdayLabel,
+        yesterday: priorDate,
         yesterdayCieFloat,
         todayOpening,
         todayMClosing: fig.mClosing,
@@ -107,12 +108,12 @@ export async function runServerChainAudit(now = new Date()): Promise<ChainAuditR
       continue;
     }
 
-    const own = await readIndependentPair(collector.ref, yesterday, businessDate);
+    const own = await readIndependentPair(collector.ref, priorDate, businessDate);
     if (!own) continue;
     rows.push({
       collectorRef: collector.ref,
       collectorName: collector.name,
-      yesterday: yesterdayLabel,
+      yesterday: priorDate,
       yesterdayCieFloat: own.yesterdayClosing,
       todayOpening: own.todayOpening,
       todayMClosing: own.todayClosing,
@@ -122,6 +123,14 @@ export async function runServerChainAudit(now = new Date()): Promise<ChainAuditR
     });
   }
 
+  if (!rows.length) {
+    return {
+      ok: false,
+      businessDate,
+      rows: [],
+      error: "sin_cie_previo",
+    };
+  }
   return { ok: rows.every((row) => row.ok), businessDate, rows };
 }
 
@@ -154,23 +163,21 @@ export function auditChainFromState(
   state: OperationalDayState,
   businessDate: string,
 ): ChainAuditResult {
-  const yesterday = previousCalendarIso(businessDate);
-
   const rows: ChainAuditRow[] = [];
   for (const collector of state.collectors) {
-    const cie = findFullDayCieClose(state.dayCloses, collector.ref, yesterday);
+    const cie = findLatestFullDayCieBefore(state.dayCloses, collector.ref, businessDate);
     if (!cie) continue;
+    const priorDate = normalizeHistoryDate(cie.date) || cie.date;
     const todaySrc = sourcesOf(state, collector, businessDate);
-    const yesterdaySrc = sourcesOf(state, collector, yesterday);
-    const yesterdayLabel = normalizeHistoryDate(cie.date) || cie.date;
-    if (isChainCollectorDay(todaySrc) || isChainCollectorDay(yesterdaySrc)) {
+    const priorSrc = sourcesOf(state, collector, priorDate);
+    if (isChainCollectorDay(todaySrc) || isChainCollectorDay(priorSrc)) {
       const ledger = buildDayCashLedger(todaySrc);
       const todayOpening = ledger.mOpening.kind === "chain" ? ledger.mOpening.opening : null;
       const yesterdayCieFloat = Number(cie.cashFloat) || 0;
       rows.push({
         collectorRef: collector.ref,
         collectorName: collector.name,
-        yesterday: yesterdayLabel,
+        yesterday: priorDate,
         yesterdayCieFloat,
         todayOpening,
         todayMClosing: ledger.mClosing,
@@ -181,15 +188,15 @@ export function auditChainFromState(
       continue;
     }
     const route =
-      independentRouteForCollectorDay(yesterdaySrc) ??
+      independentRouteForCollectorDay(priorSrc) ??
       independentRouteForCollectorDay(todaySrc);
     if (!route) continue;
-    const yDay = independentRouteDay(yesterdaySrc, route);
+    const yDay = independentRouteDay(priorSrc, route);
     const tDay = independentRouteDay(todaySrc, route);
     rows.push({
       collectorRef: collector.ref,
       collectorName: collector.name,
-      yesterday: yesterdayLabel,
+      yesterday: priorDate,
       yesterdayCieFloat: yDay.closing,
       todayOpening: tDay.opening,
       todayMClosing: tDay.closing,
@@ -199,6 +206,9 @@ export function auditChainFromState(
     });
   }
 
+  if (!rows.length) {
+    return { ok: false, businessDate, rows: [], error: "sin_cie_previo" };
+  }
   return { ok: rows.every((row) => row.ok), businessDate, rows };
 }
 
