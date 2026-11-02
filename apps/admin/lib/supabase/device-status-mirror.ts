@@ -1,6 +1,8 @@
 /**
  * Estado de cada aparato (versión, último sync, cola sin subir) en Storage:
  * `app-catalog/devices/<deviceId>.json`. Un archivo por aparato: sin carreras entre celulares.
+ *
+ * Vercel (`*.vercel.app`) ya no es producción: no se aceptan reportes ni se listan.
  */
 import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { CATALOG_FILE_UPLOAD, downloadCatalogFile } from "@/lib/supabase/catalog-file";
@@ -13,9 +15,17 @@ function storageClient() {
   return createSupabaseAdminClient() ?? createMirrorServerClient();
 }
 
+function isRetiredHost(host: string) {
+  return /vercel\.app/i.test(host);
+}
+
 export async function writeDeviceStatus(raw: unknown) {
   const status = normalizeDeviceStatus(raw);
   if (!status) return { ok: true as const, skipped: true as const, reason: "invalid_device" };
+  // Mundo viejo: no guardar reportes desde Vercel (no pueden volver a aparecer).
+  if (isRetiredHost(status.host)) {
+    return { ok: true as const, skipped: true as const, reason: "vercel_retired" };
+  }
   const supabase = storageClient();
   if (!supabase) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
   const stamped: DeviceStatus = { ...status, reportedAt: new Date().toISOString(), firstSeenAt: "" };
@@ -56,6 +66,8 @@ export async function listDeviceStatuses(): Promise<
   );
   const devices = rows
     .filter((row): row is DeviceStatus => Boolean(row))
+    // Fantasmas de Vercel / prueba: no pintar (aunque quede un archivo viejo).
+    .filter((row) => !isRetiredHost(row.host) && !/^cristian$/i.test(String(row.userName || "").trim()))
     .sort((a, b) => b.reportedAt.localeCompare(a.reportedAt));
   return { ok: true, devices };
 }
