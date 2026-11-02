@@ -4215,10 +4215,11 @@ console.log("— Cupo del aparato —");
   const nowMs = Date.parse("2026-10-03T18:00:00Z");
   const device = (over) => ({
     deviceId: "dev-12345678",
+    userRef: "USR-4",
     userName: "Carlos",
     roleName: "Supervisor",
-    host: "prestamo-y-cobranza.vercel.app",
-    build: "x",
+    host: "autoprestamos.org",
+    build: "abc1234",
     lastPullOk: true,
     lastPullError: "",
     storageUsedKb: 1000,
@@ -4236,6 +4237,21 @@ console.log("— Cupo del aparato —");
   expect(
     "Alarma: aparato que no se usa hace días no cuenta",
     deviceStorageAlerts([device({ lastPullOk: false, lastPullError: "sin espacio", reportedAt: "2026-09-30T10:00:00Z" })], nowMs).length,
+    0,
+  );
+  expect(
+    "Alarma: sigue en Vercel",
+    deviceStorageAlerts([device({ host: "prestamo-y-cobranza.vercel.app" })], nowMs).length,
+    1,
+  );
+  expect(
+    "Alarma: build atrasado",
+    deviceStorageAlerts([device({ build: "viejo" })], { now: nowMs, expectedBuild: "abc1234" }).length,
+    1,
+  );
+  expect(
+    "Alarma: build al día no alerta",
+    deviceStorageAlerts([device({})], { now: nowMs, expectedBuild: "abc1234" }).length,
     0,
   );
 }

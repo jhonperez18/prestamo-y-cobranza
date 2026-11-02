@@ -6,7 +6,7 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 | # | Tema | Estado | Cuándo / condición | Dónde |
 | --- | --- | --- | --- | --- |
 | 1 | **Limpieza candados float (Fase 4)** — asserts / `keepSealedCashFloat` / `cloud_cie_*` | **PENDIENTE** · dejado así | Solo a pedido. Todos los aparatos vivos ≥ build `07b24f3` (ideal `4c5db46`); ~1 semana estable; noche; commit aparte | `docs/fase-4-cierres.md`, `docs/inventario-candados.md`, `fases-dueno-dato.mdc` |
-| 2 | **Aparatos en build atrasado** (Carlos `794eb9b`, Edgar `9f11b8c`, Yesid `4e3ca62`) | **PENDIENTE** operativo | Ya tienen Fase 4 (≥`4c5db46`). Abrir app / volver al foco → auto-update a `f542866` (egress). No hace falta borrar caché a mano | Configuración → Aparatos |
+| 2 | **Aparatos en build atrasado** (Carlos / Edgar / Yesid; Cristian aún en Vercel) | **EN CURSO** | Abrir app → auto-update. Alarma 6:00 + `verify:prod` avisan build atrasado y host Vercel. Cristian: salir de `vercel.app` → solo autoprestamos.org | Configuración → Aparatos · `device-storage-alerts.ts` |
 | 3 | **Fase 2 · Realtime** — adoptar planilla solo desde Realtime (remate) | **PENDIENTE** | Revisar / cerrar cuando el dueño pida rematar Fase 2; no vender “2 cerrada al 100 %” antes | `docs/fase-2-cobros.md`, `fases-dueno-dato.mdc` |
 | 4 | **Libro de caja (`route-cash-book`)** sin bajar toda la base | **HECHO 01/11** | RPC `day_cash_figure` (M) / `route_own_box` (A/N); sin `loadOperationalStateFromCloud()` | `supabase-salida.mdc`, `server-route-cash-book.ts` |
 | 5 | **Salida (egress) Supabase** | **MEDIDO 01/11** · 12,75 GB (Pro). Sync: poll 5 min, CIE parcial, hoja hoy solo si cambió, supervisor-today CIE ayer+hoy. **Mirar panel 9/11** | Panel Usage · `supabase-salida.mdc` |

@@ -1,4 +1,5 @@
 import { jsonNoStore } from "@/lib/api-no-store";
+import { APP_BUILD } from "@/lib/app-build";
 import { listDeviceStatuses, writeDeviceStatus } from "@/lib/supabase/device-status-mirror";
 import { deviceStorageAlerts } from "@/lib/device-storage-alerts";
 
@@ -9,7 +10,11 @@ export async function GET() {
   try {
     const result = await listDeviceStatuses();
     if (!result.ok) return jsonNoStore(result, { status: 502 });
-    return jsonNoStore({ ...result, storageAlerts: deviceStorageAlerts(result.devices) });
+    const expectedBuild = APP_BUILD && APP_BUILD !== "dev" ? APP_BUILD : "";
+    return jsonNoStore({
+      ...result,
+      storageAlerts: deviceStorageAlerts(result.devices, { expectedBuild }),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";
     return jsonNoStore({ ok: false, error: message }, { status: 500 });

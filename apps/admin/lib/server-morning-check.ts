@@ -21,6 +21,7 @@ import { sendMonthlyReport, type MonthlyReportSendResult } from "@/lib/server-mo
 import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { CATALOG_FILE_UPLOAD, downloadCatalogFile } from "@/lib/supabase/catalog-file";
 import { listDeviceStatuses } from "@/lib/supabase/device-status-mirror";
+import { APP_BUILD } from "@/lib/app-build";
 import { deviceStorageAlerts } from "@/lib/device-storage-alerts";
 
 export type MorningCheckItem = { label: string; ok: boolean; detail: string };
@@ -206,16 +207,20 @@ export async function runServerMorningCheck(now = new Date()): Promise<MorningCh
 }
 
 async function devicesStorageItem(now: Date): Promise<MorningCheckItem> {
-  const label = "Aparatos guardan lo que bajan";
+  const label = "Aparatos (espacio / build / host)";
   const listed = await listDeviceStatuses();
   if (!listed.ok) return { label, ok: false, detail: `No se pudo leer el monitor: ${listed.error}` };
-  const alerts = deviceStorageAlerts(listed.devices, now.getTime());
+  const expectedBuild = APP_BUILD && APP_BUILD !== "dev" ? APP_BUILD : "";
+  const alerts = deviceStorageAlerts(listed.devices, {
+    now: now.getTime(),
+    expectedBuild,
+  });
   return {
     label,
     ok: alerts.length === 0,
     detail: alerts.length
       ? alerts.map((a) => `${a.userName} (${a.roleName}, ${a.host}): ${a.reason}`).join(" · ")
-      : "Todos con espacio",
+      : "Todos al día",
   };
 }
 
