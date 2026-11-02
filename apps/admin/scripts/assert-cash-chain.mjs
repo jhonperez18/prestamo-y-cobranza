@@ -4324,10 +4324,16 @@ console.log("— Cupo del aparato —");
   expect("App cobrador no baja la lista entera al abrir", appSrc.includes("loadLivePaymentRows"), false);
   expect("App cobrador pide el historial al tocarlo", appSrc.includes("pullCollectorHistoryDay"), true);
   expect(
-    "Cobrador 1 ruta (Yesid·N): Efectivo/Banco del cierre leen saldoRouteName, no activePlanilla null",
-    /homeCierreRows[\s\S]*?routeDigitalPayments\(daySrc, saldoRouteName\)/.test(appSrc) &&
-      /homeCierreRows[\s\S]*?routeCashPayments\(daySrc, saldoRouteName\)/.test(appSrc) &&
-      /planillaRecaudo[\s\S]*?if \(!saldoRouteName\) return recaudo/.test(appSrc),
+    "Cobrador 1 ruta: el pin único ES activePlanillaRoute (cero null + fallback paralelo)",
+    /planillaRoutePins\.length > 1\s*\?[\s\S]*?:\s*planillaRoutePins\[0\]\s*\?\?\s*null/.test(
+      appSrc,
+    ),
+    true,
+  );
+  expect(
+    "Cierre Efectivo/Banco = routeCash/Digital de activePlanillaRoute (mismo dueño)",
+    /homeCierreRows[\s\S]*?routeDigitalPayments\(daySrc, activePlanillaRoute\)/.test(appSrc) &&
+      /homeCierreRows[\s\S]*?routeCashPayments\(daySrc, activePlanillaRoute\)/.test(appSrc),
     true,
   );
 
