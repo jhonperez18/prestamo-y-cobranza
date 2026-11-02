@@ -7,6 +7,7 @@
  */
 import { businessTodayIso } from "@/lib/business-timezone";
 import { sameRoute } from "@/lib/client-route-order";
+import type { OperationalDayState } from "@/lib/collector-day-auto-close";
 import { ADMIN_ROLE_REF } from "@/lib/mock-data";
 import { loadOperationalStateFromCloud } from "@/lib/server-day-rollover";
 import type { MiscPayment } from "@/lib/misc-payments";
@@ -48,6 +49,8 @@ export type WeeklyReportSendOptions = {
   test?: boolean;
   /** URL absoluta del logo para el encabezado del PDF. */
   logoUrl?: string;
+  /** Estado ya bajado (cron de cierre): evita otra bajada completa. */
+  state?: OperationalDayState;
 };
 
 export type WeeklyReportSendResult = {
@@ -148,7 +151,9 @@ export async function sendWeeklyReport(options: WeeklyReportSendOptions = {}): P
   if (recipients.emails.length === 0) return { ok: false, cutoff, error: "no_admin_email" };
 
   const [loaded, miscT, accountsT] = await Promise.all([
-    loadOperationalStateFromCloud(),
+    options.state
+      ? Promise.resolve({ ok: true as const, state: options.state })
+      : loadOperationalStateFromCloud(),
     fetchOpsTable("misc_payments"),
     fetchBankAccountsFromSupabase(),
   ]);

@@ -30,8 +30,11 @@ export async function POST(request: Request) {
     const clock = businessClockParts();
     const now = new Date();
     const result = await runServerDayRollover(now);
+    // `state` es solo para reutilizar en el mismo proceso (menos egress). No va al JSON.
+    const { state, ...publicResult } = result;
     const informeMonth = await maybeSealInformeMonth({
       businessDate: businessTodayIso(now),
+      state,
     }).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : "informe_month_failed";
       console.error("informe-month", error);
@@ -40,6 +43,7 @@ export async function POST(request: Request) {
     const weeklyReport = result.ok
       ? await sendWeeklyReport({
           now,
+          state,
           logoUrl: new URL("/logo-ca-prestamo.png", new URL(request.url).origin).toString(),
         }).catch((error: unknown): WeeklyReportSendResult => {
           console.error("weekly-report", error);
@@ -47,13 +51,15 @@ export async function POST(request: Request) {
         })
       : ({ ok: false, skipped: true, reason: "rollover_not_ok" } satisfies WeeklyReportSendResult);
     if (!weeklyReport.ok) console.error("weekly-report", weeklyReport);
-    const monthlyReport = await sendMonthlyReport({ now }).catch((error: unknown): MonthlyReportSendResult => {
-      console.error("monthly-report", error);
-      return { ok: false, error: error instanceof Error ? error.message : "monthly_report_failed" };
-    });
+    const monthlyReport = await sendMonthlyReport({ now, state }).catch(
+      (error: unknown): MonthlyReportSendResult => {
+        console.error("monthly-report", error);
+        return { ok: false, error: error instanceof Error ? error.message : "monthly_report_failed" };
+      },
+    );
     if (!monthlyReport.ok) console.error("monthly-report", monthlyReport);
     return NextResponse.json({
-      ...result,
+      ...publicResult,
       weeklyReport,
       monthlyReport,
       informeMonth,

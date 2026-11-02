@@ -54,6 +54,11 @@ export type ServerDayRolloverResult = {
   sheetMounted?: number;
   sheetDate?: string;
   errors?: string[];
+  /**
+   * Estado operativo de esta corrida (proceso). No mandar al cliente HTTP:
+   * la ruta `/api/ops/day-rollover` debe omitirlo al responder.
+   */
+  state?: OperationalDayState;
 };
 
 export async function loadOperationalStateFromCloud(): Promise<
@@ -221,6 +226,31 @@ export async function runServerDayRollover(
   if (!birth.ok) errors.push(`hoja ${sheetDate}: ${birth.error}`);
 
   const nothingToClose = result.autoClosed.length === 0;
+  let state: OperationalDayState = {
+    ...loaded.state,
+    assignments: result.assignments,
+    dayCloses: result.dayCloses,
+    dayExpenseDrafts: result.dayExpenseDrafts ?? loaded.state.dayExpenseDrafts,
+    planillaCashCloses: result.planillaCashCloses ?? loaded.state.planillaCashCloses ?? [],
+    loans: result.loans,
+  };
+  // Si se escribió CIE-/PCE- en la nube, refrescar solo cierres (no cobros/clientes).
+  if (upsertedCloses > 0 || result.autoClosed.length > 0) {
+    const closesT = await fetchOpsTable("day_closes");
+    if (closesT.ok) {
+      const dayClosesAll = (closesT.rows ?? [])
+        .map(rowToDayClose)
+        .filter((row): row is NonNullable<typeof row> => Boolean(row));
+      const dayCloses = dayClosesAll.filter((row) => !isPlanillaCashCloseRef(row.ref));
+      const planillaCashCloses: PlanillaCashCloseRecord[] = [];
+      for (const row of dayClosesAll) {
+        const link = dayCloseAsPlanillaCashClose(row);
+        if (link) planillaCashCloses.push(link);
+      }
+      state = { ...state, dayCloses, planillaCashCloses };
+    }
+  }
+
   return {
     ok: errors.length === 0,
     skipped: nothingToClose && birth.mounted === 0 ? true : undefined,
@@ -236,6 +266,7 @@ export async function runServerDayRollover(
     sheetMounted: birth.mounted,
     sheetDate,
     errors: errors.length ? errors : undefined,
+    state,
   };
 }
 

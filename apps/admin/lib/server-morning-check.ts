@@ -10,7 +10,11 @@ import { normalizeHistoryDate } from "@/lib/collector-day-close";
 import { findFullDayCieClose } from "@/lib/planilla-cash-chain";
 import { planillaWindowStartIso } from "@/lib/planilla-window";
 import { auditChainFromState } from "@/lib/server-chain-audit";
-import { loadOperationalStateFromCloud, runServerDayRollover } from "@/lib/server-day-rollover";
+import {
+  loadOperationalStateFromCloud,
+  runServerDayRollover,
+  type ServerDayRolloverResult,
+} from "@/lib/server-day-rollover";
 import { sealOrphanDayCloses } from "@/lib/server-seal-orphan-cie";
 import { informeSealDetail, maybeSealInformeMonth, type InformeSealResult } from "@/lib/server-seal-informe-month";
 import { sendMonthlyReport, type MonthlyReportSendResult } from "@/lib/server-monthly-report";
@@ -102,6 +106,14 @@ export function evaluateMorningState(
   ];
 }
 
+async function morningStateFromRollover(
+  rollover: ServerDayRolloverResult,
+): Promise<{ ok: true; state: OperationalDayState } | { ok: false; error: string }> {
+  if (rollover.state) return { ok: true, state: rollover.state };
+  // Rollover no trajo estado (falló la 1.ª lectura): un solo reintento.
+  return loadOperationalStateFromCloud();
+}
+
 export async function runServerMorningCheck(now = new Date()): Promise<MorningCheckReport> {
   const businessDate = businessTodayIso(now);
   const ranAt = now.toISOString();
@@ -119,12 +131,13 @@ export async function runServerMorningCheck(now = new Date()): Promise<MorningCh
     },
   ];
 
-  const loaded = await loadOperationalStateFromCloud();
-  if (!loaded.ok) {
-    items.push({ label: "Lectura de la nube", ok: false, detail: loaded.error });
+  // Una sola bajada completa: la del rollover. Solo si falló se intenta otra.
+  const stateBundle = await morningStateFromRollover(rollover);
+  if (!stateBundle.ok) {
+    items.push({ label: "Lectura de la nube", ok: false, detail: stateBundle.error });
   } else {
     // Hueco Fase 4.2: hoja sellada sin CIE- → Inicial del día siguiente en 0.
-    const orphans = await sealOrphanDayCloses(loaded.state, now);
+    const orphans = await sealOrphanDayCloses(stateBundle.state, now);
     const okOrphans = orphans.sealed.filter((row) => !row.error);
     items.push({
       label: "CIE huérfanos sellados",
@@ -139,11 +152,11 @@ export async function runServerMorningCheck(now = new Date()): Promise<MorningCh
           ].join(" · ")
         : "Ninguno",
     });
-    items.push(...evaluateMorningState(loaded.state, businessDate, planillaWindowStartIso(now)));
+    items.push(...evaluateMorningState(stateBundle.state, businessDate, planillaWindowStartIso(now)));
   }
   const informe = await maybeSealInformeMonth({
     businessDate,
-    state: loaded.ok ? loaded.state : undefined,
+    state: stateBundle.ok ? stateBundle.state : undefined,
   }).catch((error: unknown): InformeSealResult => {
     const message = error instanceof Error ? error.message : "informe_month_failed";
     console.error("informe-month", error);
@@ -163,7 +176,7 @@ export async function runServerMorningCheck(now = new Date()): Promise<MorningCh
   }
   const monthly = await sendMonthlyReport({
     now,
-    state: loaded.ok ? loaded.state : undefined,
+    state: stateBundle.ok ? stateBundle.state : undefined,
   }).catch((error: unknown): MonthlyReportSendResult => {
     const message = error instanceof Error ? error.message : "monthly_report_failed";
     console.error("monthly-report", error);

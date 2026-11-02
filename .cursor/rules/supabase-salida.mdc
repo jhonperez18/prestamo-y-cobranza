@@ -16,10 +16,11 @@ Supabase sigue siendo la verdad de los datos. El VPS solo ejecuta la app.
 - Bajada del celular: completa al abrir y cada 60 min; entre medio solo cambios (`?since=`).
 - Cobrador no baja el historial entero: solo el día.
 
-## Ya hecho (libro + auditoría)
+## Ya hecho (libro + auditoría + crons)
 
 - `route-cash-book` calcula con RPC (`day_cash_figure` / `route_own_box`), **sin** `loadOperationalStateFromCloud()`.
 - `chain-audit` (verify:prod): solo collectors + CIE + RPC; **sin** bajar cobros/planilla/clientes.
+- Morning-check / day-rollover: **una** bajada completa por corrida; informe/semanal/mensual reutilizan ese estado.
 
 ## Medido (panel, 01/11/2026)
 
