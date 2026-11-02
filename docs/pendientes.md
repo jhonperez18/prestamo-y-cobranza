@@ -9,7 +9,8 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 | 2 | **Aparatos en build atrasado** (Carlos supervisor `794eb9b`; Edgar/dueño van tomando auto-update) | **EN CURSO** | Auto-update a 2 min. Monitor vivo 36 h; basura 7 d; Vercel bloqueado | Configuración → Aparatos |
 | 3 | **Fase 2 · Realtime** — adoptar planilla solo desde Realtime (remate) | **PENDIENTE** | Revisar / cerrar cuando el dueño pida rematar Fase 2; no vender “2 cerrada al 100 %” antes | `docs/fase-2-cobros.md`, `fases-dueno-dato.mdc` |
 | 4 | **Libro de caja (`route-cash-book`)** sin bajar toda la base | **HECHO 01/11** | RPC `day_cash_figure` (M) / `route_own_box` (A/N); sin `loadOperationalStateFromCloud()` | `supabase-salida.mdc`, `server-route-cash-book.ts` |
-| 5 | **Salida (egress) Supabase** | **MEDIDO 01/11** · 12,75 GB (Pro). Sync + ventana estado + monitor sin basura de aparatos. **Mirar panel 9/11** | Panel Usage · `supabase-salida.mdc` |
+| 5 | **Salida (egress) Supabase** | **MEDIDO 01/11** · 12,75 GB (Pro). Sync + ventana + monitor limpio. **Mirar panel 9/11** | Panel Usage · `supabase-salida.mdc` |
+| 15 | **chain-audit verde vacío** (domingo sin CIE calendario) | **HECHO 02/11** · `cf0c975` | Ancla al último CIE real; verify falla si no hay filas. Edgar 82k · Yesid 1.311.500 | `server-chain-audit.ts` |
 | 6 | **Limpieza candados Fase 2 / 3** (assert) | **PENDIENTE** | Cuando esa fase esté CERRADA en prod + pedido; lotes 2a–2b assert ya hechos; queda runtime / expects que aún dependen del aparato | `docs/inventario-candados.md` |
 | 7 | **Expect renglón GAS-** (Fase 1 leftover) | **PENDIENTE** | Hasta que la caja / renglón no dependa del aparato (escritura saldos); no borrar antes | `inventario-candados.md` §1b |
 | 8 | **Declarar Fase 4 “cerrada al 100 %”** | **PENDIENTE** | Después de #1 (candados float) y aparatos vivos en 4.x | `fases-dueno-dato.mdc` |
