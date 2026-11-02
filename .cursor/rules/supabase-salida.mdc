@@ -18,6 +18,7 @@ Supabase sigue siendo la verdad de los datos. El VPS solo ejecuta la app.
 - Cobrador no baja el historial entero: solo el día.
 - Bundle incremental: CIE solo cambios; hoja de hoy entera **solo si** hubo cambios de planilla.
 - `supervisor-today`: CIE solo ayer+hoy (no toda `day_closes`).
+- Monitor aparatos: solo reportes de 36 h; basura >7 d se borra; Vercel no escribe.
 
 ## Ya hecho (libro + auditoría + crons)
 

@@ -381,13 +381,18 @@ export function useOperationalDemoSync(
     const groups = new Set(pendingGroupsRef.current);
     pendingGroupsRef.current.clear();
     if (groups.size === 0) return;
-    // Cobrador: el timbre de SU cobro no puede bajar el día ni rehidratar. Eso tumba T.
-    if (isCollectorLiveDevice()) return;
+    // Cobrador: el eco de SU cobro (payments) no rehidrata — tumba T.
+    // Ops/catálogo sí: cierre o ficha remota sin esperar el poll de 5 min.
+    const collectorLive = isCollectorLiveDevice();
+    if (collectorLive) {
+      groups.delete("payments");
+      if (groups.size === 0) return;
+    }
     pullInFlightRef.current = true;
     let rehydrated = false;
     try {
       // El cobro del otro aparato no espera el flush de este (supervisor en vivo).
-      if (groups.has("payments")) {
+      if (!collectorLive && groups.has("payments")) {
         const today = businessTodayIso();
         await mergePaymentsWindowIntoDemo(today, today);
       }
@@ -395,7 +400,7 @@ export function useOperationalDemoSync(
         groups.has("catalog") ? pullRemoteCatalogIntoDemo() : null,
         groups.has("ops") ? pullRemoteOpsIntoDemo() : null,
       ]);
-      if (groups.has("payments") || catalog?.changed || ops?.changed) {
+      if ((!collectorLive && groups.has("payments")) || catalog?.changed || ops?.changed) {
         commitHydrate();
         rehydrated = true;
       }

@@ -6,6 +6,7 @@
  */
 import { createMirrorServerClient, createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { CATALOG_FILE_UPLOAD, downloadCatalogFile } from "@/lib/supabase/catalog-file";
+import { DEVICE_ALERT_WINDOW_MS } from "@/lib/device-storage-alerts";
 import { normalizeDeviceStatus, type DeviceStatus } from "@/lib/device-status";
 
 const STORAGE_BUCKET = "app-catalog";
@@ -17,6 +18,11 @@ function storageClient() {
 
 function isRetiredHost(host: string) {
   return /vercel\.app/i.test(host);
+}
+
+function isLiveReport(row: DeviceStatus, now = Date.now()) {
+  const at = Date.parse(row.reportedAt);
+  return Number.isFinite(at) && now - at <= DEVICE_ALERT_WINDOW_MS;
 }
 
 export async function writeDeviceStatus(raw: unknown) {
@@ -64,10 +70,16 @@ export async function listDeviceStatuses(): Promise<
       }
     }),
   );
+  const now = Date.now();
   const devices = rows
     .filter((row): row is DeviceStatus => Boolean(row))
-    // Fantasmas de Vercel / prueba: no pintar (aunque quede un archivo viejo).
-    .filter((row) => !isRetiredHost(row.host) && !/^cristian$/i.test(String(row.userName || "").trim()))
+    // Fantasmas: Vercel / prueba / sin reporte reciente (no bajar ni pintar basura).
+    .filter(
+      (row) =>
+        !isRetiredHost(row.host) &&
+        !/^cristian$/i.test(String(row.userName || "").trim()) &&
+        isLiveReport(row, now),
+    )
     .sort((a, b) => b.reportedAt.localeCompare(a.reportedAt));
   return { ok: true, devices };
 }

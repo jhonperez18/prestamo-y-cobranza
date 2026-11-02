@@ -6,10 +6,10 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 | # | Tema | Estado | Cuándo / condición | Dónde |
 | --- | --- | --- | --- | --- |
 | 1 | **Limpieza candados float (Fase 4)** — asserts / `keepSealedCashFloat` / `cloud_cie_*` | **PENDIENTE** · dejado así | Solo a pedido. Todos los aparatos vivos ≥ build `07b24f3` (ideal `4c5db46`); ~1 semana estable; noche; commit aparte | `docs/fase-4-cierres.md`, `docs/inventario-candados.md`, `fases-dueno-dato.mdc` |
-| 2 | **Aparatos en build atrasado** (Carlos / Edgar / Yesid) | **EN CURSO** | Abrir app → auto-update. Alarma build atrasado. Fantasmas Vercel + Cristian prueba **borrados 02/11**; Vercel ya no acepta reportes | Configuración → Aparatos · `device-storage-alerts.ts` |
+| 2 | **Aparatos en build atrasado** (Carlos supervisor `794eb9b`; Edgar casi al día) | **EN CURSO** | Abrir app → auto-update. Monitor: solo vivos 36 h; basura >7 d borrada; Vercel bloqueado | Configuración → Aparatos |
 | 3 | **Fase 2 · Realtime** — adoptar planilla solo desde Realtime (remate) | **PENDIENTE** | Revisar / cerrar cuando el dueño pida rematar Fase 2; no vender “2 cerrada al 100 %” antes | `docs/fase-2-cobros.md`, `fases-dueno-dato.mdc` |
 | 4 | **Libro de caja (`route-cash-book`)** sin bajar toda la base | **HECHO 01/11** | RPC `day_cash_figure` (M) / `route_own_box` (A/N); sin `loadOperationalStateFromCloud()` | `supabase-salida.mdc`, `server-route-cash-book.ts` |
-| 5 | **Salida (egress) Supabase** | **MEDIDO 01/11** · 12,75 GB (Pro). Sync liviano + `loadOperationalStateFromCloud` con ventana (no historial eterno). **Mirar panel 9/11** | Panel Usage · `supabase-salida.mdc` |
+| 5 | **Salida (egress) Supabase** | **MEDIDO 01/11** · 12,75 GB (Pro). Sync + ventana estado + monitor sin basura de aparatos. **Mirar panel 9/11** | Panel Usage · `supabase-salida.mdc` |
 | 6 | **Limpieza candados Fase 2 / 3** (assert) | **PENDIENTE** | Cuando esa fase esté CERRADA en prod + pedido; lotes 2a–2b assert ya hechos; queda runtime / expects que aún dependen del aparato | `docs/inventario-candados.md` |
 | 7 | **Expect renglón GAS-** (Fase 1 leftover) | **PENDIENTE** | Hasta que la caja / renglón no dependa del aparato (escritura saldos); no borrar antes | `inventario-candados.md` §1b |
 | 8 | **Declarar Fase 4 “cerrada al 100 %”** | **PENDIENTE** | Después de #1 (candados float) y aparatos vivos en 4.x | `fases-dueno-dato.mdc` |
