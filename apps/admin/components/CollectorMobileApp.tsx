@@ -987,6 +987,13 @@ export function CollectorMobileApp({
 
   /** Ruta de planilla seleccionada (null = una sola ruta / sin pines). */
   const activePlanillaRoute = shownPlanillaRoute;
+  /**
+   * Una sola ruta (Yesid → N): shownPlanillaRoute queda null a propósito (no hay pin
+   * que elegir), pero el cierre / Efectivo / Banco deben leer esa ruta igual.
+   * Misma cifra que el título «Ruta N» y que el supervisor.
+   */
+  const saldoRouteName =
+    activePlanillaRoute ?? (planillaRoutePins.length === 1 ? planillaRoutePins[0] : null);
   const activeCloseKey = `${activeDate}|${activePlanillaRoute ?? ""}`;
   // Cerrada M, la app pasa sola a T: el panel de M no puede quedar abierto apuntando a T
   // (caso 07/10: un segundo toque en «Confirmar» cerró T sin que nadie lo pidiera).
@@ -1190,7 +1197,7 @@ export function CollectorMobileApp({
   }, [dayPays, loans, routeClientRefs]);
   /** Recaudo de la planilla activa = misma fórmula que Total / COBROS del supervisor. */
   const planillaRecaudo = useMemo(() => {
-    if (!activePlanillaRoute) return recaudo;
+    if (!saldoRouteName) return recaudo;
     const breakdown = routeCobradoBreakdown(
       {
         collectorRef: collector.ref,
@@ -1206,7 +1213,7 @@ export function CollectorMobileApp({
         planillaCashCloses,
         monthCloses,
       },
-      activePlanillaRoute,
+      saldoRouteName,
     );
     return {
       efectivo: breakdown.efectivo,
@@ -1218,7 +1225,7 @@ export function CollectorMobileApp({
     };
   }, [
     activeDate,
-    activePlanillaRoute,
+    saldoRouteName,
     assignments,
     clients,
     collector,
@@ -1539,12 +1546,7 @@ export function CollectorMobileApp({
         ? dayLedger.m
         : null;
   const onSecondaryChainPlanilla = chainPlanillaDay != null && chainPlanillaDay === dayLedger.t;
-  /**
-   * A / N: caja propia de la planilla (misma cifra que el supervisor).
-   * N de Yesid arrastra el historial; el neto del CIE- no es el Inicial.
-   */
-  const saldoRouteName =
-    activePlanillaRoute ?? (planillaRoutePins.length === 1 ? planillaRoutePins[0] : null);
+  /** A / N: caja propia de la planilla (misma cifra que el supervisor). */
   const ownRouteDay = useMemo(() => {
     if (!saldoRouteName || !isIndependentSaldoRoute(saldoRouteName)) return null;
     return independentRouteDay(
@@ -1624,7 +1626,8 @@ export function CollectorMobileApp({
   const homeCierreRows = useMemo(() => {
     if (homeCierreKind === "np") return homeNpRows;
     if (homeCierreKind !== "efectivo" && homeCierreKind !== "digital") return null;
-    if (!activePlanillaRoute) return null;
+    // Yesid (1 ruta): saldoRouteName = N aunque activePlanillaRoute sea null.
+    if (!saldoRouteName) return null;
     const daySrc = {
       collectorRef: collector.ref,
       collectorName: collector.name,
@@ -1641,8 +1644,8 @@ export function CollectorMobileApp({
     };
     const pays =
       homeCierreKind === "digital"
-        ? routeDigitalPayments(daySrc, activePlanillaRoute)
-        : routeCashPayments(daySrc, activePlanillaRoute);
+        ? routeDigitalPayments(daySrc, saldoRouteName)
+        : routeCashPayments(daySrc, saldoRouteName);
     return buildCollectorHistoryPlanillaRows({
       dateIso: activeDate,
       dispatched: [],
@@ -1653,7 +1656,7 @@ export function CollectorMobileApp({
   }, [
     homeCierreKind,
     homeNpRows,
-    activePlanillaRoute,
+    saldoRouteName,
     activeDate,
     collector,
     livePayments,

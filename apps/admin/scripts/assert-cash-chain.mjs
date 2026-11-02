@@ -4323,6 +4323,13 @@ console.log("— Cupo del aparato —");
   const appSrc = readFileSync(new URL("../components/CollectorMobileApp.tsx", import.meta.url), "utf8");
   expect("App cobrador no baja la lista entera al abrir", appSrc.includes("loadLivePaymentRows"), false);
   expect("App cobrador pide el historial al tocarlo", appSrc.includes("pullCollectorHistoryDay"), true);
+  expect(
+    "Cobrador 1 ruta (Yesid·N): Efectivo/Banco del cierre leen saldoRouteName, no activePlanilla null",
+    /homeCierreRows[\s\S]*?routeDigitalPayments\(daySrc, saldoRouteName\)/.test(appSrc) &&
+      /homeCierreRows[\s\S]*?routeCashPayments\(daySrc, saldoRouteName\)/.test(appSrc) &&
+      /planillaRecaudo[\s\S]*?if \(!saldoRouteName\) return recaudo/.test(appSrc),
+    true,
+  );
 
   const { syncCollectorLiveLoan } = await import("@/lib/collector-live-window");
   const loan = {
