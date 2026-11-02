@@ -994,15 +994,14 @@ export function CollectorMobileApp({
   const isPrimaryPlanilla =
     !activePlanillaRoute || sameRoute(activePlanillaRoute, planillaRoutePins[0] || "");
   /** A cobra solo Efectivo y Nequi: lo que no es efectivo se muestra como Nequi. */
-  const planillaIsA = sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "A");
+  const planillaIsA = sameRoute(activePlanillaRoute ?? "", "A");
   /** N: cabecera Inicial · Recaudo · Total día · Caja; Banco en la fila de KPI. */
-  const planillaIsN = sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "N");
-  /** Ruta fija del «Nuevo cliente»: la planilla que está abierta. */
-  const newClientRoute = activePlanillaRoute ?? planillaRoutePins[0] ?? "";
+  const planillaIsN = sameRoute(activePlanillaRoute ?? "", "N");
+  /** Ruta fija del «Nuevo cliente»: la planilla activa (pin único o elegido). */
+  const newClientRoute = activePlanillaRoute ?? "";
   /** M / T: Cuadre sin Nequi (lo no efectivo es Banco) y Total = efectivo − préstamos − gastos. */
   const planillaIsChain =
-    sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "M") ||
-    sameRoute(activePlanillaRoute ?? planillaRoutePins[0] ?? "", "T");
+    sameRoute(activePlanillaRoute ?? "", "M") || sameRoute(activePlanillaRoute ?? "", "T");
 
   /** Caja M/T desde la base (Fase 3.2): Cierre e Historial leen la misma cifra. */
   const [dayCashFigureEpoch, setDayCashFigureEpoch] = useState(0);
@@ -2537,8 +2536,8 @@ export function CollectorMobileApp({
               Inicio
             </button>
             <div className="collector-mobile-home-cuadre-title-row">
-              {activePlanillaRoute ?? planillaRoutePins[0] ? (
-                <h2>Ruta {activePlanillaRoute ?? planillaRoutePins[0]}</h2>
+              {activePlanillaRoute ? (
+                <h2>Ruta {activePlanillaRoute}</h2>
               ) : null}
               {closedPlanilla.length > 0 ? (
                 <button

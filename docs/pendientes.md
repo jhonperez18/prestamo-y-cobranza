@@ -6,8 +6,9 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 | # | Tema | Estado | Cuándo / condición | Dónde |
 | --- | --- | --- | --- | --- |
 | 1 | **Limpieza candados float (Fase 4)** — asserts / `keepSealedCashFloat` / `cloud_cie_*` | **PENDIENTE** · dejado así | Solo a pedido. Todos los aparatos vivos ≥ build `07b24f3` (ideal `4c5db46`); ~1 semana estable; noche; commit aparte | `docs/fase-4-cierres.md`, `docs/inventario-candados.md`, `fases-dueno-dato.mdc` |
-| 2 | **Aparatos en build atrasado** | **Casi listo 02/11** | Dueño + Carlos supervisor ya en `1dafd66`. Queda **Edgar** abrir app una vez (hoy sin ruta). Yesid al abrir mañana | Configuración → Aparatos |
+| 2 | **Aparatos en build atrasado** | **Casi listo 02/11** | Prod `4d8439f`. Que abran/recarguen: Yesid, Edgar, Carlos supervisor. Hoy sin ruta | Configuración → Aparatos |
 | 3 | **Fase 2 · Realtime** — adoptar planilla solo desde Realtime (remate) | **HECHO 02/11** · `2fbb41a` · corte 2.4 | Cobro/anulación/panel/tardío ya no encolan planilla; otros por Realtime ops. N/P·Prestar·cierre siguen encolando | `docs/fase-2-cobros.md` |
+| 16 | **Cobrador 1 ruta (Yesid)** — Efectivo/Banco del cierre vacíos | **HECHO 02/11** · `4d8439f` **raíz** | Pin único = `activePlanillaRoute` (nunca null + fallback). Lista = `routeCash/DigitalPayments`. Cero parches | `CollectorMobileApp.tsx`, assert-cash-chain |
 | 4 | **Libro de caja (`route-cash-book`)** sin bajar toda la base | **HECHO 01/11** | RPC `day_cash_figure` (M) / `route_own_box` (A/N); sin `loadOperationalStateFromCloud()` | `supabase-salida.mdc`, `server-route-cash-book.ts` |
 | 5 | **Salida (egress) Supabase** | **MEDIDO 01/11** · 12,75 GB (Pro). Sync + ventana + monitor limpio. **Mirar panel 9/11** | Panel Usage · `supabase-salida.mdc` |
 | 15 | **chain-audit verde vacío** (domingo sin CIE calendario) | **HECHO 02/11** · `cf0c975` | Ancla al último CIE real; verify falla si no hay filas. Edgar 82k · Yesid 1.311.500 | `server-chain-audit.ts` |
@@ -36,3 +37,4 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 1. Antes de proponer trabajo nuevo → mirar esta tabla.
 2. Si el dueño dice “siga” sin tema → el siguiente **no bloqueado** y con sentido de negocio (hoy: no #1).
 3. Al terminar un ítem → **HECHO** + fecha + build; no dejar el renglón en el aire.
+4. **Cero parches (02/11):** si no es raíz → parar. No “mientras tanto”, no “para este celular”.

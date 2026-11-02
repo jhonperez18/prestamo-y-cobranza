@@ -26,11 +26,14 @@ Primero dice qué es lo mejor para el negocio, después hace lo que el dueño de
 | Raíz | El dato pasa a tener un solo dueño en la nube (función atómica, regla en la base, saldo calculado por la base) |
 | Parche / candado | Un `if`, un filtro, un assert o una regla que frena **un caso** con el aparato todavía como dueño |
 
-- **Antes de un parche, parar (dueño, 2026-10-24).** Decir que es **parche**, la causa y la otra forma (el dato en la base). No se programa ni se publica hasta que el dueño lo mire y elija. Ni por urgencia ni “para este celular”.
+- **JAMÁS parches (dueño, reforzado 02/11/2026).** Prohibido programar, publicar o “dejar mientras” un parche.
+  Ni por urgencia, ni “para este celular”, ni “mañana empieza la ruta”. Solo raíz o **parar**.
+- **Antes de tocar código:** si la solución es parche → **parar**, decirlo, y proponer la raíz (dato con un solo dueño / una sola puerta de lectura). No se escribe el atajo.
 - Prohibido presentar un candado como «arreglado de raíz».
 - Cada fase que pase un dato a la nube **quita** los candados de ese dato. Los candados bajan, no suben.
 - **Cero candados nuevos (dueño, 2026-10-09).** Una falla se arregla moviendo ese dato a la nube.
   Prohibido sumar secciones a `assert-cash-chain.mjs` o `if` de un caso.
+  Actualizar un expect que ya existía (misma regla) ≠ candado nuevo.
 
 ## Rumbo (modelo banco)
 
