@@ -106,7 +106,6 @@ import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
 import { getCloudChainMOpening } from "@/lib/cloud-chain-m-opening";
 import {
   useChainMOpening,
-  useDigitalPoolBalancesCloud,
   useRouteAAnchor,
   useRouteNAnchor,
   useSupervisorToday,
@@ -139,7 +138,6 @@ import {
   digitalPoolDayLedger,
   digitalPoolRegisterDays,
   poolVisibleSaldo,
-  bancoVisibleSaldoFromCards,
   type DigitalPool,
   type DigitalPoolGasto,
   type DigitalPoolRegisterLoan,
@@ -1686,7 +1684,6 @@ export function SupervisorMobileApp({
   const aAnchors = aOwnBox.anchors;
   const nAnchors = nOwnBox.anchors;
   const routeOwnBoxEpoch = aOwnBox.epoch + nOwnBox.epoch;
-  const digitalPoolEpoch = useDigitalPoolBalancesCloud(true);
   const chainCollectorRefs = useMemo(() => {
     const refs = new Set<string>();
     for (const route of assignedCoverage) {
@@ -2645,7 +2642,6 @@ export function SupervisorMobileApp({
       bankAccounts,
       today,
       bankMovements,
-      digitalPoolEpoch,
     ],
   );
 
@@ -2785,7 +2781,6 @@ export function SupervisorMobileApp({
       bankAccounts,
       today,
       bankMovements,
-      digitalPoolEpoch,
     ],
   );
   /**
@@ -3594,7 +3589,7 @@ export function SupervisorMobileApp({
     () => digitalPoolGastosTotal(bancoPoolHistGastos),
     [bancoPoolHistGastos],
   );
-  /** Saldo historial Banco = M + T + N − Gastos (lo de las tarjetas). Ese cierre arrastra al mes vivo. */
+  /** Saldo historial Banco = mismo dueño que el mes vivo (`poolVisibleSaldo`). */
   const bancoPoolHistSaldo = useMemo(() => {
     if (
       (bancoPoolHistNav !== "mes" && bancoPoolHistNav !== "ruta") ||
@@ -3602,12 +3597,29 @@ export function SupervisorMobileApp({
     ) {
       return 0;
     }
-    return bancoVisibleSaldoFromCards(bancoPoolHistRouteCards, bancoPoolHistGastado);
+    const { to } = periodHistWindow(bancoPoolHistPeriod);
+    return poolVisibleSaldo({
+      pool: "banco",
+      payments: paymentsWithEvidence,
+      loans,
+      clients,
+      dayCloses: dayClosesLive,
+      miscPayments,
+      accounts: bankAccounts,
+      fromIso: ROUTE_CASH_BOOK_FROM,
+      toIso: to,
+      movements: bankMovements,
+    });
   }, [
     bancoPoolHistNav,
     bancoPoolHistPeriod,
-    bancoPoolHistRouteCards,
-    bancoPoolHistGastado,
+    paymentsWithEvidence,
+    loans,
+    clients,
+    dayClosesLive,
+    miscPayments,
+    bankAccounts,
+    bankMovements,
   ]);
 
   /** Movimiento Nequi del mes abierto en historial (ruta A). */

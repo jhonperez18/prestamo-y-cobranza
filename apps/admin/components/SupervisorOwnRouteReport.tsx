@@ -4,7 +4,7 @@
  * Informe de una planilla con caja propia (A · Angélica), mismo formato que el general.
  * Cartera = saldo por cobrar de préstamos activos de clientes de la ruta.
  * Efectivo = caja propia del día (`independentRouteDay`, la misma cifra de su tarjeta).
- * Nequi = total acumulado NEQUI (`digitalPoolBalances`): A cobra por Nequi, no por Banco.
+ * Nequi = `poolVisibleSaldo` (ruta A − gastos). Misma cifra que el botón Nequi.
  */
 import { useMemo, useState } from "react";
 import { InformePrestamoLines } from "@/components/SupervisorMonthlyReport";

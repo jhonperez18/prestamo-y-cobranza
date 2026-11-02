@@ -18,9 +18,9 @@
  * (el efectivo no entra; un Nequi del cobrador de N no se inventa como ingreso).
  * No entra a la caja.
  *
- * Un solo libro: `digitalPoolBalances` = real del último ajuste + mismos cobros
- * − mismos capitales que el historial (`isPoolRegisterPayment` /
- * `collectPoolOutflowLoans`). Nunca una suma de cobradores y otra de la ruta.
+ * Libro de cuadre (AJUSTE@POOL): `digitalPoolBalances`. No pinta el Saldo del
+ * supervisor. Saldo de pantalla = `poolVisibleSaldo` (rutas − gastos, desde
+ * `ROUTE_CASH_BOOK_FROM`, sin cortar por ajuste).
  *
  * Día en curso: siempre hay renglón de hoy en esa ruta (aunque aún vaya en 0).
  * Un cobro del cobrador, un reporte o un préstamo Banco/Nequi del sistema o del
@@ -32,7 +32,6 @@ import type { MiscPayment } from "@/lib/misc-payments";
 import { sameRoute } from "@/lib/client-route-order";
 import { addCalendarDaysIso } from "@/lib/colombia-holidays";
 import { BUSINESS_TIME_ZONE, businessTodayIso } from "@/lib/business-timezone";
-import { getCloudDigitalPoolBalances } from "@/lib/cloud-digital-pool-balances";
 import { listOrphanDisbursementOutflows } from "@/lib/restore-loans-from-bank-disbursements";
 import { mergeRouteCashAdjustments } from "@/lib/cash-adjustment";
 import {
@@ -190,17 +189,8 @@ export function latestDigitalPoolAnchor(
  * siguientes. `before` = calcular sin los ajustes de ese día (saldo «calculado»).
  */
 export function digitalPoolBalances(src: DigitalPoolSources, before?: string): DigitalPoolTotals {
-  // Fase 3.3: saldo vivo (sin `before`) = RPC de la base si ya contestó.
-  if (!before) {
-    const cloud = getCloudDigitalPoolBalances();
-    if (
-      cloud &&
-      Number.isFinite(cloud.banco) &&
-      Number.isFinite(cloud.nequi)
-    ) {
-      return { banco: pesos(cloud.banco), nequi: pesos(cloud.nequi) };
-    }
-  }
+  // Saldo de pantalla = `poolVisibleSaldo` (rutas − gastos). Aquí solo el libro de
+  // AJUSTE@POOL (cuadre). Ya no se sustituye por la RPC nube (dos cifras = mentira).
   const anchors: Record<DigitalPool, PoolAnchor | null> = {
     banco: latestDigitalPoolAnchor(src.dayCloses, "banco", before),
     nequi: latestDigitalPoolAnchor(src.dayCloses, "nequi", before),
@@ -695,17 +685,17 @@ export function digitalPoolDayLedger(input: {
   );
 }
 
+/**
+ * Ventana del Saldo visible (ley 01/11): desde `fromIso`, sin cortar por AJUSTE@POOL.
+ * El Saldo = movimientos reales (cobros − capital − gastos). No se manipula con cuadre.
+ * `dayCloses` / `pool` quedan por firma estable de callers; no abren otro libro.
+ */
 function poolRouteWindowStart(
-  dayCloses: CollectorDayCloseRecord[],
-  pool: DigitalPool,
+  _dayCloses: CollectorDayCloseRecord[],
+  _pool: DigitalPool,
   fromIso: string,
 ) {
-  const from = isoOf(fromIso);
-  const anchor = latestDigitalPoolAnchor(dayCloses, pool);
-  if (!anchor) return from;
-  const next = addCalendarDaysIso(anchor.date, 1);
-  if (!from) return next;
-  return next > from ? next : from;
+  return isoOf(fromIso);
 }
 
 function bancoRouteWindowStart(dayCloses: CollectorDayCloseRecord[], fromIso: string) {
@@ -775,10 +765,11 @@ export function bancoAcumuladoRutas(cuadres: readonly BancoRouteCuadre[]): numbe
 }
 
 /**
- * Saldo visible del pool (dueño 01/11/2026) — una sola lógica siempre:
+ * Saldo visible del pool (dueño 01/11/2026) — UN solo dueño, sin manipular:
  * Banco = M + T + N − Gastos. Nequi = ruta A − Gastos.
- * Historial (cierre del mes) y mes vivo usan la misma fórmula; el cierre del mes
- * anterior es el Inicial del mes nuevo. No usa `digital_pool_balances` de la nube.
+ * Solo movimientos del sistema (cobros / capital / gastos de cuenta).
+ * No usa AJUSTE@POOL ni `digital_pool_balances` de la nube.
+ * Historial (cierre del mes) y mes vivo = la misma función.
  */
 export function poolVisibleSaldo(input: {
   pool: DigitalPool;
@@ -812,8 +803,8 @@ export type DigitalPoolGasto = {
 
 /**
  * Gastos pagados desde la cuenta del pool (pagos varios `PV-` con la cuenta de uso `banco`
- * o `nequi`), en la misma ventana que el historial de sus rutas: desde `fromIso` y después
- * del último cuadre de ese pool. Manda la cuenta, no la forma de pago. Más nuevo primero.
+ * o `nequi`), misma ventana que el Saldo: desde `fromIso` (sin cortar por AJUSTE@POOL).
+ * Manda la cuenta, no la forma de pago. Más nuevo primero.
  */
 export function digitalPoolGastos(input: {
   pool: DigitalPool;
@@ -845,7 +836,7 @@ export function digitalPoolGastosTotal(gastos: readonly DigitalPoolGasto[]): num
 
 /**
  * Saldo del pool al cierre de `toIso`: neto de sus rutas (Banco: M + T + N; Nequi: A) desde
- * `fromIso` y después del último cuadre, menos los gastos pagados desde su cuenta.
+ * `fromIso`, menos los gastos pagados desde su cuenta. Sin AJUSTE@POOL.
  * Misma cifra que el botón «Saldo» de Banco / Nequi del supervisor.
  */
 export function digitalPoolSaldo(input: {

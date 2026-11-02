@@ -2136,6 +2136,15 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       digitalPoolSrc.includes("preferPoolOutflowRow"),
     true,
   );
+  expect(
+    "Saldo Banco/Nequi: un dueño (poolVisibleSaldo); sin AJUSTE@POOL ni RPC nube",
+    digitalPoolSrc.includes("function poolRouteWindowStart") &&
+      digitalPoolSrc.includes("return isoOf(fromIso)") &&
+      digitalPoolSrc.includes("export function poolVisibleSaldo") &&
+      !digitalPoolSrc.includes("getCloudDigitalPoolBalances") &&
+      digitalPoolSrc.includes("Ya no se sustituye por la RPC nube"),
+    true,
+  );
   const bancoSrc = readFileSync(new URL("../components/SupervisorMobileApp.tsx", import.meta.url), "utf8");
   expect(
     "Registro Banco muestra el nombre de la ficha, no un apodo de otra ruta",
@@ -2248,7 +2257,9 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       bancoSrc.includes("poolVisibleSaldo") &&
       bancoSrc.includes("nequiPoolHistSaldo") &&
       bancoSrc.includes("bancoPoolHistSaldo") &&
-      bancoSrc.includes("bancoVisibleSaldoFromCards"),
+      !bancoSrc.includes("bancoVisibleSaldoFromCards") &&
+      !bancoSrc.includes("useDigitalPoolBalancesCloud") &&
+      !bancoSrc.includes("getCloudDigitalPoolBalances"),
     true,
   );
   expect(
@@ -2269,7 +2280,6 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       bancoSrc.includes("bancoRouteCuadre") &&
       bancoSrc.includes('pool: "banco"') &&
       bancoSrc.includes("poolVisibleSaldo") &&
-      bancoSrc.includes("bancoVisibleSaldoFromCards") &&
       bancoSrc.includes("ROUTE_CASH_BOOK_FROM") &&
       bancoSrc.includes("(routeN?.enCaja ?? 0) + bancoSaldo") &&
       bancoSrc.includes("Ruta M") &&
@@ -2278,7 +2288,9 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       informeSnapSrc.includes("poolVisibleSaldo") &&
       informeSnapSrc.includes("ROUTE_CASH_BOOK_FROM") &&
       !informeSnapSrc.includes("bancoAcumuladoRutas") &&
-      !bancoSrc.includes("getCloudDigitalPoolBalances"),
+      !bancoSrc.includes("getCloudDigitalPoolBalances") &&
+      !bancoSrc.includes("bancoVisibleSaldoFromCards") &&
+      !bancoSrc.includes("useDigitalPoolBalancesCloud"),
     true,
   );
   const wsSrc = readFileSync(new URL("../components/workspace/useWorkspace.ts", import.meta.url), "utf8");
@@ -2306,6 +2318,7 @@ const {
   bancoRouteCobradoHistoryDays,
   bancoRoutePrestadoHistoryDays,
   nequiRouteHistoryDays,
+  poolVisibleSaldo,
 } = await import("@/lib/digital-pools");
 const poolPay = (ref, loanRef, method, date) => ({
   ...bankPay(ref, loanRef, method),
@@ -2695,6 +2708,28 @@ if (poolAdj.ok) {
     "Pool: viaja a la nube",
     poolBack.routeCashAdjustments?.find((r) => r.route === "POOL-BANCO")?.real ?? null,
     500_000,
+  );
+  const visibleArgs = {
+    pool: "banco",
+    payments: poolSrc.payments,
+    loans: poolSrc.loans,
+    clients: poolSrc.clients,
+    miscPayments: [],
+    accounts: [],
+    fromIso: "2026-09-01",
+    toIso: D,
+  };
+  const visibleSinAjuste = poolVisibleSaldo({ ...visibleArgs, dayCloses: afterT.dayCloses });
+  const visibleConAjuste = poolVisibleSaldo({ ...visibleArgs, dayCloses: poolAdj.dayCloses });
+  expect(
+    "Saldo pantalla Banco = movimientos (AJUSTE@POOL no lo cambia)",
+    visibleConAjuste,
+    visibleSinAjuste,
+  );
+  expect(
+    "Saldo pantalla Banco ≠ real del cuadre (cuadre no pinta Saldo)",
+    visibleConAjuste === 500_000,
+    false,
   );
 }
 
