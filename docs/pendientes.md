@@ -6,7 +6,7 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 | # | Tema | Estado | Cuándo / condición | Dónde |
 | --- | --- | --- | --- | --- |
 | 1 | **Limpieza candados float (Fase 4)** — asserts / `keepSealedCashFloat` / `cloud_cie_*` | **PENDIENTE** · dejado así | Solo a pedido. Todos los aparatos vivos ≥ build `07b24f3` (ideal `4c5db46`); ~1 semana estable; noche; commit aparte | `docs/fase-4-cierres.md`, `docs/inventario-candados.md`, `fases-dueno-dato.mdc` |
-| 2 | **Aparatos en build atrasado** | **Casi listo 02/11** · prod `1aa6e5b`+ | Dueño al día. Falta abrir: **Yesid** · **Edgar** · **Carlos supervisor** (auto-update ≤2 min). Morning-check quita deviceId duplicado misma persona+host | Configuración → Aparatos |
+| 2 | **Aparatos en build atrasado** | **Casi listo 02/11** · prod `e314561` | **Yesid OK** `e314561`. Falta reporte fresco: **Edgar** · **Carlos supervisor** (abrir app / esperar ≤2 min auto-update) | Configuración → Aparatos |
 | 3 | **Fase 2 · Realtime** — adoptar planilla solo desde Realtime (remate) | **HECHO 02/11** · `2fbb41a` · corte 2.4 | Cobro/anulación/panel/tardío ya no encolan planilla; otros por Realtime ops. N/P·Prestar·cierre siguen encolando | `docs/fase-2-cobros.md` |
 | 16 | **Cobrador 1 ruta (Yesid)** — Efectivo/Banco del cierre vacíos | **HECHO 02/11** · `2f55c45` **raíz** | Pin único = `activePlanillaRoute`. Lista = `routeCash/DigitalPayments`. Sin fallback paralelo | `CollectorMobileApp.tsx`, assert-cash-chain |
 | 4 | **Libro de caja (`route-cash-book`)** sin bajar toda la base | **HECHO 01/11** | RPC `day_cash_figure` (M) / `route_own_box` (A/N); sin `loadOperationalStateFromCloud()` | `supabase-salida.mdc`, `server-route-cash-book.ts` |
