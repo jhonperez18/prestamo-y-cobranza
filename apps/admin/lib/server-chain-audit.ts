@@ -76,7 +76,10 @@ export async function runServerChainAudit(now = new Date()): Promise<ChainAuditR
     .filter((row): row is CollectorRow => Boolean(row));
   const dayCloses = (closesT.rows ?? [])
     .map(rowToDayClose)
-    .filter((row): row is NonNullable<typeof row> => Boolean(row) && !isPlanillaCashCloseRef(row.ref));
+    .filter((row): row is NonNullable<typeof row> => {
+      if (!row) return false;
+      return !isPlanillaCashCloseRef(row.ref);
+    });
 
   const rows: ChainAuditRow[] = [];
   for (const collector of collectors) {
