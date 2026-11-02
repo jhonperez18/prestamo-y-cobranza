@@ -1,7 +1,10 @@
 /**
  * Auditoría de la regla de inicio contra Supabase (lo que ve cualquier aparato).
  * Cadena M↔T: Inicial M de hoy = `cash_float` del CIE- de ayer.
- * N (Yesid): Inicial de hoy = caja del historial de ayer (no el neto del CIE-).
+ * N / A: Inicial de hoy = caja propia de ayer.
+ *
+ * Solo lee. No baja cobros / planilla / clientes / préstamos: usa CIE + RPC
+ * (`chain_m_opening` / `day_cash_figure` / `route_own_box`).
  */
 import { businessTodayIso } from "@/lib/business-timezone";
 import { normalizeHistoryDate } from "@/lib/collector-day-close";
@@ -11,9 +14,15 @@ import {
   independentRouteDay,
   independentRouteForCollectorDay,
 } from "@/lib/independent-route-cash";
-import { findFullDayCieClose } from "@/lib/planilla-cash-chain";
-import { loadOperationalStateFromCloud } from "@/lib/server-day-rollover";
+import {
+  findFullDayCieClose,
+  isPlanillaCashCloseRef,
+} from "@/lib/planilla-cash-chain";
 import type { CollectorRow } from "@/lib/mock-data";
+import { fetchOpsTable, rowToCollector, rowToDayClose } from "@/lib/supabase/ops-mirror";
+import { readChainMOpening } from "@/lib/server-chain-m-opening";
+import { readDayCashFigure } from "@/lib/server-day-cash-figure";
+import { readRouteOwnBox } from "@/lib/server-route-own-box";
 
 export type ChainAuditRow = {
   collectorRef: string;
@@ -35,11 +44,106 @@ export type ChainAuditResult = {
   error?: string;
 };
 
+const OWN_ROUTES = ["N", "A"] as const;
+
 export async function runServerChainAudit(now = new Date()): Promise<ChainAuditResult> {
   const businessDate = businessTodayIso(now);
-  const loaded = await loadOperationalStateFromCloud();
-  if (!loaded.ok) return { ok: false, businessDate, rows: [], error: loaded.error };
-  return auditChainFromState(loaded.state, businessDate);
+  const yesterday = previousCalendarIso(businessDate);
+
+  const [collectorsT, closesT] = await Promise.all([
+    fetchOpsTable("collectors"),
+    fetchOpsTable("day_closes"),
+  ]);
+  if (!collectorsT.ok) {
+    return {
+      ok: false,
+      businessDate,
+      rows: [],
+      error: "error" in collectorsT ? String(collectorsT.error) : "collectors_fetch_failed",
+    };
+  }
+  if (!closesT.ok) {
+    return {
+      ok: false,
+      businessDate,
+      rows: [],
+      error: "error" in closesT ? String(closesT.error) : "day_closes_fetch_failed",
+    };
+  }
+
+  const collectors = (collectorsT.rows ?? [])
+    .map(rowToCollector)
+    .filter((row): row is CollectorRow => Boolean(row));
+  const dayCloses = (closesT.rows ?? [])
+    .map(rowToDayClose)
+    .filter((row): row is NonNullable<typeof row> => Boolean(row) && !isPlanillaCashCloseRef(row.ref));
+
+  const rows: ChainAuditRow[] = [];
+  for (const collector of collectors) {
+    const cie = findFullDayCieClose(dayCloses, collector.ref, yesterday);
+    if (!cie) continue;
+    const yesterdayLabel = normalizeHistoryDate(cie.date) || cie.date;
+    const yesterdayCieFloat = Number(cie.cashFloat) || 0;
+
+    const fig = await readDayCashFigure(collector.ref, businessDate);
+    if (fig.ok && fig.ready && fig.chain) {
+      const open = await readChainMOpening(collector.ref, businessDate);
+      const todayOpening =
+        open.ok && open.ready ? open.opening : fig.opening;
+      rows.push({
+        collectorRef: collector.ref,
+        collectorName: collector.name,
+        yesterday: yesterdayLabel,
+        yesterdayCieFloat,
+        todayOpening,
+        todayMClosing: fig.mClosing,
+        todayFinal: fig.dayFinal,
+        ok: todayOpening === yesterdayCieFloat,
+        kind: "chain",
+      });
+      continue;
+    }
+
+    const own = await readIndependentPair(collector.ref, yesterday, businessDate);
+    if (!own) continue;
+    rows.push({
+      collectorRef: collector.ref,
+      collectorName: collector.name,
+      yesterday: yesterdayLabel,
+      yesterdayCieFloat: own.yesterdayClosing,
+      todayOpening: own.todayOpening,
+      todayMClosing: own.todayClosing,
+      todayFinal: own.todayClosing,
+      ok: own.todayOpening === own.yesterdayClosing,
+      kind: "independent",
+    });
+  }
+
+  return { ok: rows.every((row) => row.ok), businessDate, rows };
+}
+
+async function readIndependentPair(
+  collectorRef: string,
+  yesterday: string,
+  today: string,
+): Promise<{
+  yesterdayClosing: number;
+  todayOpening: number;
+  todayClosing: number;
+} | null> {
+  for (const route of OWN_ROUTES) {
+    const [yBox, tBox] = await Promise.all([
+      readRouteOwnBox(collectorRef, yesterday, route),
+      readRouteOwnBox(collectorRef, today, route),
+    ]);
+    if (!yBox.ok || !tBox.ok) continue;
+    return {
+      yesterdayClosing: yBox.saldo,
+      todayOpening: tBox.opening,
+      todayClosing: tBox.saldo,
+    };
+  }
+  return null;
 }
 
 /** Misma auditoría sobre un estado ya bajado de la nube (revisión de la mañana). */

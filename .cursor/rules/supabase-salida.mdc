@@ -16,14 +16,23 @@ Supabase sigue siendo la verdad de los datos. El VPS solo ejecuta la app.
 - Bajada del celular: completa al abrir y cada 60 min; entre medio solo cambios (`?since=`).
 - Cobrador no baja el historial entero: solo el día.
 
-## Ya hecho (libro)
+## Ya hecho (libro + auditoría)
 
 - `route-cash-book` calcula con RPC (`day_cash_figure` / `route_own_box`), **sin** `loadOperationalStateFromCloud()`.
+- `chain-audit` (verify:prod): solo collectors + CIE + RPC; **sin** bajar cobros/planilla/clientes.
+
+## Medido (panel, 01/11/2026)
+
+- Ciclo **9 oct – 9 nov 2026** · Plan **Pro**.
+- **Salida (egress): 12,75 GB.** Caché: 1,5 GB. Base: 0,086 GB.
+- Tope gratis = **5 GB**. Hoy ~2,5× arriba → **seguir en Pro**; no bajar de plan.
+- Meta: 1–2 ciclos seguidos bajo **3–4 GB**, ahí se decide volver a gratis.
 
 ## Pendiente (no inventar otra bajada completa)
 
-1. Medir la salida en el panel de Supabase. Si **1–2 meses** quedan bajo **3–4 GB**, ahí se decide volver a gratis si hoy se está pagando.
-2. No sumar lecturas nuevas de tablas enteras “por si acaso”.
+1. Seguir bajando egress (sync celular, crons que aún cargan estado completo).
+2. Volver a mirar el panel al cierre del ciclo (9 nov) y otra vez a fin de mes.
+3. No sumar lecturas nuevas de tablas enteras “por si acaso”.
 
 ## Prohibido
 
