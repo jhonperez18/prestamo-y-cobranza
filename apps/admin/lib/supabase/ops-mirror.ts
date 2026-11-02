@@ -2561,8 +2561,10 @@ async function pullOpsBundle(
         .map((row) => row.ref)
         .filter((ref): ref is string => Boolean(ref)),
     );
+    // Lista remota completa (sin `since`): el que ya no está en nube sale.
+    // Incremental: solo upsert; no podar (el paquete no trae todo el historial).
     const supervisorCloses =
-      isSupervisorLiveDevice() && closes.length > 0
+      isSupervisorLiveDevice() && closes.length > 0 && full
         ? clMerge.merged.filter((row) => {
             if (queuedCloseRefs.has(row.ref)) return true;
             if (String(row.ref).startsWith("PCE-")) return true;

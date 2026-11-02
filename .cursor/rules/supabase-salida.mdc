@@ -13,8 +13,10 @@ Supabase sigue siendo la verdad de los datos. El VPS solo ejecuta la app.
 
 ## Ya hecho
 
-- Bajada del celular: completa al abrir y cada 60 min; entre medio solo cambios (`?since=`).
+- Bajada del celular: con corte `?since=`; completa si vacío / reparar / **cada 60 min** de sesión.
+- Poll de respaldo **5 min** (antes 45 s). Realtime + foco siguen al instante.
 - Cobrador no baja el historial entero: solo el día.
+- Bundle incremental: CIE solo cambios (no toda `day_closes`); hoja de hoy sigue entera.
 
 ## Ya hecho (libro + auditoría + crons)
 
@@ -31,9 +33,8 @@ Supabase sigue siendo la verdad de los datos. El VPS solo ejecuta la app.
 
 ## Pendiente (no inventar otra bajada completa)
 
-1. Seguir bajando egress (sync celular, crons que aún cargan estado completo).
-2. Volver a mirar el panel al cierre del ciclo (9 nov) y otra vez a fin de mes.
-3. No sumar lecturas nuevas de tablas enteras “por si acaso”.
+1. Mirar el panel al cierre del ciclo (9 nov) y otra vez a fin de mes.
+2. No sumar lecturas nuevas de tablas enteras “por si acaso”.
 
 ## Prohibido
 

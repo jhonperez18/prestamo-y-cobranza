@@ -48,14 +48,14 @@ export async function GET(request: Request) {
     const parts: OpsTablePart[] = await Promise.all(
       since
         ? [
-            // Catálogo chico, igual que el CIE: la lista entera. Un cobrador borrado
-            // no viaja en `since` y el aparato lo seguiría mostrando.
+            // Catálogo chico: la lista entera. Un cobrador borrado no viaja en
+            // `since` y el aparato lo seguiría mostrando.
             fetchOpsTable("collectors"),
             changed("routes"),
-            // CIE completo, igual que el cobrador: pocos registros. Un corte ya
-            // pasado no vuelve a traer el cierre de hoy y el sistema principal
-            // se queda con la hoja abierta.
-            fetchOpsTable("day_closes"),
+            // CIE solo cambios: el sello nuevo lleva `updated_at` fresco.
+            // Completa cada hora (poll FULL) + hoja de hoy entera abajo cubren
+            // huecos; no reenviar toda la tabla en cada sync.
+            changed("day_closes"),
             changed("day_expenses", { column: "expense_date", since: expenseSince }),
             changed("misc_payments"),
             changed("daily_assignments", { column: "dispatch_date", since: assignSince }),

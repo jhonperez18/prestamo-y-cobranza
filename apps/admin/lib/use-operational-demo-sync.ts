@@ -66,8 +66,14 @@ type Options = {
   onMirrorPending?: (pending: MirrorPendingBreakdown) => void;
 };
 
-/** Realtime es la vía viva; el poll solo respalda si el canal se cae. */
-const CLOUD_POLL_MS = 45_000;
+/**
+ * Realtime es la vía viva; el poll solo respalda si el canal se cae.
+ * 5 min (antes 45 s): con `?since=` el poll seguía bajando CIE + hoja de hoy
+ * enteros → salida a ~GB/mes. Visibilidad / foco siguen bajando al volver.
+ */
+const CLOUD_POLL_MS = 5 * 60_000;
+/** Completa (sin `since`) cada hora: borra/tombstones que no viajan en el corte. */
+const FULL_PULL_MS = 60 * 60_000;
 /** Flush de colas independiente del pull (cobros/CIE no se quedan atrapados). */
 const MIRROR_FLUSH_MS = 8_000;
 /** Tope del backoff exponencial del flush cuando la nube no responde (8 s → 16 s → … → 5 min). */
@@ -112,7 +118,7 @@ export function useOperationalDemoSync(
   );
   useAppAutoUpdate(hydrated);
   const evidenceOnceRef = useRef(false);
-  /** Una mezcla del día por apertura. El poll de 45 s no vuelve a bajar el día. */
+  /** Una mezcla del día por apertura. El poll de respaldo no vuelve a bajar el día. */
   const todayPaymentsOnceRef = useRef(false);
   const applyRef = useRef(apply);
   applyRef.current = apply;
@@ -124,6 +130,8 @@ export function useOperationalDemoSync(
   const pullInFlightRef = useRef(false);
   const flushInFlightRef = useRef(false);
   const lastVisiblePullAtRef = useRef(0);
+  /** Reloj de la última bajada completa de esta sesión (0 = aún no hubo sync OK). */
+  const lastFullPullAtRef = useRef(0);
   /** Grupos avisados por Realtime que aún no bajaron (no se pierden si hay un pull en curso). */
   const pendingGroupsRef = useRef(new Set<PullGroup>());
   const drainTimerRef = useRef(0);
@@ -242,6 +250,11 @@ export function useOperationalDemoSync(
     let pullOk = false;
     let pullError = "";
     const tuneupDay = deviceTuneupDueDay();
+    // Completa cada hora de sesión viva. Aparato vacío / sin corte ya fuerza
+    // completa dentro de cada pull* (no hace falta otra al abrir).
+    const forceFull =
+      lastFullPullAtRef.current > 0 &&
+      Date.now() - lastFullPullAtRef.current >= FULL_PULL_MS;
     try {
       // Cobrador: subir la cola antes de bajar (un cobro sin señal no se pierde).
       // Supervisor: bajar cobros primero. El panel no espera la cola: pinta y sube atrás.
@@ -255,10 +268,11 @@ export function useOperationalDemoSync(
       // Primera sincronización del día: suelta copias -bak. No vuelve a bajar el archivo.
       if (tuneupDay) compactDeviceForDay();
 
-      const payments = await pullRemotePaymentsIntoDemo();
+      const fullOpt = forceFull ? { full: true as const } : {};
+      const payments = await pullRemotePaymentsIntoDemo(fullOpt);
       const [catalog, ops, users, banks, months] = await Promise.all([
-        pullRemoteCatalogIntoDemo(),
-        pullRemoteOpsIntoDemo(),
+        pullRemoteCatalogIntoDemo(fullOpt),
+        pullRemoteOpsIntoDemo(fullOpt),
         pullRemoteUsersIntoDemo(),
         pullRemoteBankAccountsIntoDemo(),
         pullRemoteMonthClosesIntoDemo(),
@@ -271,6 +285,11 @@ export function useOperationalDemoSync(
       ].filter((check) => !check.ok);
       pullOk = failed.length === 0;
       pullError = failed.map((check) => `${check.label}: ${check.reason || "falló"}`).join(" · ");
+      if (pullOk) {
+        if (forceFull || lastFullPullAtRef.current === 0) {
+          lastFullPullAtRef.current = Date.now();
+        }
+      }
       let changed = Boolean(
         payments.changed ||
           catalog.changed ||
@@ -381,7 +400,7 @@ export function useOperationalDemoSync(
         rehydrated = true;
       }
     } catch (error) {
-      // Sin reintento en bucle (sin red giraría cada 280 ms): lo recoge el poll de 45 s.
+      // Sin reintento en bucle (sin red giraría cada 280 ms): lo recoge el poll de respaldo.
       console.error("ops-sync-realtime", error);
     } finally {
       pullInFlightRef.current = false;
@@ -462,7 +481,7 @@ export function useOperationalDemoSync(
     function refreshFromCloud() {
       if (document.visibilityState !== "visible") return;
       const now = Date.now();
-      // El panel no rearma todo al volver a la ventana. El poll de 45 s y el timbre alcanzan.
+      // El panel no rearma todo al volver a la ventana. El poll y el timbre alcanzan.
       if (!isCollectorLiveDevice() && !isSupervisorLiveDevice()) {
         if (now - lastVisiblePullAtRef.current >= CLOUD_POLL_MS) {
           void runHydrateWithRemotePull();
