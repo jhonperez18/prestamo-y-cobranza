@@ -18,7 +18,7 @@ import { flushAllMirrorQueues } from "@/lib/supabase/mirror-queue";
  */
 const CHECK_MS = 60_000;
 const IDLE_MS = 120_000;
-const FORCE_AFTER_MS = 45_000;
+const FORCE_AFTER_MS = 2 * 60_000;
 const FLUSH_CAP_MS = 15_000;
 const BUILD_CHECK_TIMEOUT_MS = 10_000;
 const TARGET_KEY = "nexo-auto-update-target";
