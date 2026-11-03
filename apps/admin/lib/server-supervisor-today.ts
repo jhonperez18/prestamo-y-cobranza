@@ -24,47 +24,70 @@ export type SupervisorTodayPayload = {
   expenses: CollectorDayExpenseDraft[];
 };
 
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise.then((v) => v).catch(() => null),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function loadSupervisorToday(
   date = businessTodayIso(),
 ): Promise<{ ok: true; payload: SupervisorTodayPayload } | { ok: false; error: string }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: "bad_date" };
   // CIE: ayer + hoy (Inicial M = CIE ayer). No toda la tabla en cada apertura.
   const closesFrom = businessDaysAgoIso(1, new Date(`${date}T12:00:00-05:00`));
+  // Cada pieza con tope propio: una tabla lenta no deja al jefe sin gastos/préstamos.
   const [paymentsT, assignsT, closesT, expensesT] = await Promise.all([
-    fetchPaymentsFromSupabase({ fromDate: date, toDate: date }),
-    fetchOpsTableSince("daily_assignments", "dispatch_date", date, date),
-    fetchOpsTableSince("day_closes", "close_date", closesFrom, date),
-    fetchOpsTableSince("day_expenses", "expense_date", date, date),
+    withTimeout(fetchPaymentsFromSupabase({ fromDate: date, toDate: date }), 8_000),
+    withTimeout(fetchOpsTableSince("daily_assignments", "dispatch_date", date, date), 8_000),
+    withTimeout(fetchOpsTableSince("day_closes", "close_date", closesFrom, date), 8_000),
+    withTimeout(fetchOpsTableSince("day_expenses", "expense_date", date, date), 8_000),
   ]);
-  if (!paymentsT.ok || ("skipped" in paymentsT && paymentsT.skipped)) {
-    return { ok: false, error: ("error" in paymentsT && paymentsT.error) || "payments_failed" };
-  }
-  if (!assignsT.ok || ("skipped" in assignsT && assignsT.skipped)) {
-    return { ok: false, error: ("error" in assignsT && assignsT.error) || "assignments_failed" };
-  }
-  if (!closesT.ok || ("skipped" in closesT && closesT.skipped)) {
-    return { ok: false, error: ("error" in closesT && closesT.error) || "closes_failed" };
-  }
-  if (!expensesT.ok || ("skipped" in expensesT && expensesT.skipped)) {
-    return { ok: false, error: ("error" in expensesT && expensesT.error) || "expenses_failed" };
+
+  const paymentsOk = Boolean(paymentsT && paymentsT.ok && !("skipped" in paymentsT && paymentsT.skipped));
+  const assignsOk = Boolean(assignsT && assignsT.ok && !("skipped" in assignsT && assignsT.skipped));
+  const closesOk = Boolean(closesT && closesT.ok && !("skipped" in closesT && closesT.skipped));
+  const expensesOk = Boolean(
+    expensesT && expensesT.ok && !("skipped" in expensesT && expensesT.skipped),
+  );
+
+  // Al menos una pieza útil → OK (el celular mezcla con su copia). Todo falló → error.
+  if (!paymentsOk && !assignsOk && !closesOk && !expensesOk) {
+    return { ok: false, error: "supervisor_today_all_failed" };
   }
 
   return {
     ok: true,
     payload: {
       date,
-      payments: paymentsT.rows
-        .map(mirrorRowToPaymentRow)
-        .filter((row): row is PaymentRow => Boolean(row)),
-      assignments: assignsT.rows
-        .map(rowToAssignment)
-        .filter((row): row is DailyCollectionAssignment => Boolean(row)),
-      dayCloses: closesT.rows
-        .map(rowToDayClose)
-        .filter((row): row is CollectorDayCloseRecord => Boolean(row)),
-      expenses: expensesT.rows
-        .map(rowToDayExpense)
-        .filter((row): row is CollectorDayExpenseDraft => Boolean(row)),
+      payments: paymentsOk
+        ? paymentsT!.rows
+            .map(mirrorRowToPaymentRow)
+            .filter((row): row is PaymentRow => Boolean(row))
+        : [],
+      assignments: assignsOk
+        ? assignsT!.rows
+            .map(rowToAssignment)
+            .filter((row): row is DailyCollectionAssignment => Boolean(row))
+        : [],
+      dayCloses: closesOk
+        ? closesT!.rows
+            .map(rowToDayClose)
+            .filter((row): row is CollectorDayCloseRecord => Boolean(row))
+        : [],
+      expenses: expensesOk
+        ? expensesT!.rows
+            .map(rowToDayExpense)
+            .filter((row): row is CollectorDayExpenseDraft => Boolean(row))
+        : [],
     },
   };
 }
