@@ -1,6 +1,6 @@
 /**
  * Caja propia A/N leída en la base (Fase 3.3). Solo lee. No escribe CIE.
- * Caché corta + disco: si Supabase falla a ratos, no se pinta GASTO 0.
+ * Disco/memoria primero (el supervisor no puede esperar a Supabase).
  */
 import { promises as fs } from "fs";
 import path from "path";
@@ -27,6 +27,7 @@ const MEM_TTL_MS = 90_000;
 const FILE = path.join(process.cwd(), "data", "route-own-box-cache.json");
 let fileLoaded = false;
 const disk = new Map<string, OkBox & { date: string; collectorRef: string }>();
+const refreshing = new Set<string>();
 
 function cacheKey(collectorRef: string, date: string, route: string) {
   return `${collectorRef}|${date}|${route}`;
@@ -80,24 +81,23 @@ function remember(collectorRef: string, date: string, row: OkBox) {
   void persistDisk();
 }
 
-function fromCache(collectorRef: string, date: string, route: string): OkBox | null {
+function cachedRow(collectorRef: string, date: string, route: string): OkBox | null {
   const key = cacheKey(collectorRef, date, route);
   const hit = mem.get(key);
-  if (hit && Date.now() - hit.at < MEM_TTL_MS) return hit.row;
+  if (hit) return hit.row;
   const warm = disk.get(key);
-  return warm
-    ? {
-        ok: true,
-        route: warm.route,
-        saldo: warm.saldo,
-        opening: warm.opening,
-        efectivo: warm.efectivo,
-        prestamos: warm.prestamos,
-        gastos: warm.gastos,
-        anchor: warm.anchor,
-        anchorReal: warm.anchorReal,
-      }
-    : null;
+  if (!warm) return null;
+  return {
+    ok: true,
+    route: warm.route,
+    saldo: warm.saldo,
+    opening: warm.opening,
+    efectivo: warm.efectivo,
+    prestamos: warm.prestamos,
+    gastos: warm.gastos,
+    anchor: warm.anchor,
+    anchorReal: warm.anchorReal,
+  };
 }
 
 async function rpcOnce(
@@ -152,8 +152,20 @@ async function rpcOnce(
   };
 }
 
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function refreshInBackground(ref: string, date: string, pin: "A" | "N") {
+  const key = cacheKey(ref, date, pin);
+  if (refreshing.has(key)) return;
+  refreshing.add(key);
+  void (async () => {
+    try {
+      const result = await rpcOnce(ref, date, pin);
+      if (result.ok) remember(ref, date, result);
+    } catch (error) {
+      console.error("route-own-box-refresh", error);
+    } finally {
+      refreshing.delete(key);
+    }
+  })();
 }
 
 export async function readRouteOwnBox(
@@ -167,26 +179,33 @@ export async function readRouteOwnBox(
     return { ok: false, error: "dato_invalido" };
   }
   await ensureDisk();
-  const cached = fromCache(ref, date, pin);
-  // Memoria fresca: sirve al instante (no satura Supabase).
-  const memHit = mem.get(cacheKey(ref, date, pin));
-  if (memHit && Date.now() - memHit.at < MEM_TTL_MS) return memHit.row;
 
-  let lastError = "sin_caja";
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      const result = await rpcOnce(ref, date, pin);
-      if (result.ok) {
-        remember(ref, date, result);
-        return result;
-      }
-      lastError = result.error;
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : "rpc_failed";
-    }
-    if (attempt < 2) await sleep(400 * (attempt + 1));
+  const key = cacheKey(ref, date, pin);
+  const memHit = mem.get(key);
+  if (memHit && Date.now() - memHit.at < MEM_TTL_MS) {
+    refreshInBackground(ref, date, pin);
+    return memHit.row;
   }
 
-  if (cached) return cached;
-  return { ok: false, error: lastError };
+  const warm = cachedRow(ref, date, pin);
+  if (warm) {
+    // Respuesta al instante para el supervisor; la base actualiza atrás.
+    mem.set(key, { at: Date.now(), row: warm });
+    refreshInBackground(ref, date, pin);
+    return warm;
+  }
+
+  try {
+    const result = await rpcOnce(ref, date, pin);
+    if (result.ok) {
+      remember(ref, date, result);
+      return result;
+    }
+    return result;
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "rpc_failed",
+    };
+  }
 }

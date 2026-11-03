@@ -203,6 +203,26 @@ async function sealedPeriodPools(toIso: string): Promise<PoolVisibleSaldoResult 
   };
 }
 
+const refreshingLive = new Set<string>();
+
+function refreshLiveInBackground(toIso: string, key: string) {
+  if (refreshingLive.has(key)) return;
+  refreshingLive.add(key);
+  void (async () => {
+    try {
+      const live = await liveMonthFromSeal(toIso);
+      if (live?.ok) {
+        cache.set(key, { at: Date.now(), result: live });
+        await writeLivePoolSnap(toIso, live.banco, live.nequi);
+      }
+    } catch (error) {
+      console.error("pool-visible-refresh", error);
+    } finally {
+      refreshingLive.delete(key);
+    }
+  })();
+}
+
 export async function readPoolVisibleSaldo(options?: {
   toIso?: string;
   openIso?: string;
@@ -212,10 +232,12 @@ export async function readPoolVisibleSaldo(options?: {
   const openIso = options?.openIso ? isoDay(options.openIso, "") : "";
   const key = cacheKey(toIso, openIso);
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.result;
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
+    if (!openIso) refreshLiveInBackground(toIso, key);
+    return hit.result;
+  }
 
   if (openIso) {
-    // Semanal: sello + delta hasta open y hasta to (sin libro desde 01/10 entero).
     const liveTo = await liveMonthFromSeal(toIso);
     const liveOpen = await liveMonthFromSeal(openIso);
     if (liveTo?.ok && liveOpen?.ok) {
@@ -239,15 +261,11 @@ export async function readPoolVisibleSaldo(options?: {
     return sealed;
   }
 
-  const live = await liveMonthFromSeal(toIso);
-  if (live?.ok) {
-    cache.set(key, { at: Date.now(), result: live });
-    void writeLivePoolSnap(toIso, live.banco, live.nequi);
-    return live;
+  // Día vivo: disco/memoria primero. El supervisor no aguanta 26 s de Supabase.
+  if (hit && hit.result.toIso === toIso) {
+    refreshLiveInBackground(toIso, key);
+    return hit.result;
   }
-
-  // Frío de cobros: última cifra buena del mismo día (disco / memoria).
-  if (hit && hit.result.toIso === toIso) return hit.result;
   const diskLive = await readLivePoolSnap();
   if (diskLive && diskLive.toIso === toIso) {
     const fallback: Extract<PoolVisibleSaldoResult, { ok: true }> = {
@@ -258,9 +276,16 @@ export async function readPoolVisibleSaldo(options?: {
       toIso,
     };
     cache.set(key, { at: Date.now(), result: fallback });
+    refreshLiveInBackground(toIso, key);
     return fallback;
   }
 
+  const live = await liveMonthFromSeal(toIso);
+  if (live?.ok) {
+    cache.set(key, { at: Date.now(), result: live });
+    void writeLivePoolSnap(toIso, live.banco, live.nequi);
+    return live;
+  }
   if (live && !live.ok) return live;
   if (hit) return hit.result;
   return { ok: false, error: "pool_visible_unavailable" };
