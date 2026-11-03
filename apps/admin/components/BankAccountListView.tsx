@@ -46,9 +46,9 @@ export function BankAccountListView({
     listadoBalanceForAccount(account, movements, reconciliations, poolVisible),
   );
   const poolPending = balances.some((value) => value == null);
-  const totalBalance: number | null = poolPending
+  const totalBalance = poolPending
     ? null
-    : balances.reduce((sum, value) => sum + Number(value), 0);
+    : balances.reduce<number>((sum, value) => sum + (value ?? 0), 0);
   const showTotal = rows.length > 1;
   const colsBeforeBalance = ["ref", "name", "type", "bank", "number", "pending"].filter((id) =>
     isVisible(id),
