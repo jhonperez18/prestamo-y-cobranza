@@ -120,12 +120,12 @@ async function liveMonthFromSeal(toIso: string): Promise<PoolVisibleSaldoResult 
   if (period !== todayPeriod) return null;
 
   const prev = previousPeriod(period);
-  const sealed = await withTimeout(sealedMonthPools(prev), 6_000);
+  const sealed = await withTimeout(sealedMonthPools(prev), 4_000);
   if (!sealed) return null;
 
   const monthStart = `${period}-01`;
   const fromIso = monthStart >= ROUTE_CASH_BOOK_FROM ? monthStart : ROUTE_CASH_BOOK_FROM;
-  const loaded = await withTimeout(loadPoolShared(fromIso), 20_000);
+  const loaded = await withTimeout(loadPoolShared(fromIso), 12_000);
   if (!loaded?.ok) return loaded && !loaded.ok ? loaded : null;
 
   const deltaBanco = poolVisibleSaldo({
@@ -228,12 +228,7 @@ export async function readPoolVisibleSaldo(options?: {
   }
   if (live && !live.ok) return live;
 
-  // Último recurso: libro desde ROUTE_CASH_BOOK_FROM, con tope (no «…» eterno).
-  const full = await withTimeout(fullBookPools(toIso, ""), 25_000);
-  if (full?.ok) {
-    cache.set(key, { at: Date.now(), result: full });
-    return full;
-  }
+  // Sin sello / sin delta: NO bajar el libro entero (cuelga el worker). Caché o error corto.
   if (hit) return hit.result;
-  return { ok: false, error: full && !full.ok ? full.error : "pool_visible_timeout" };
+  return { ok: false, error: "pool_visible_unavailable" };
 }
