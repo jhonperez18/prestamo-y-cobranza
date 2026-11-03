@@ -34,6 +34,9 @@ Las cuentas (etiqueta, tipo, banco, número) son catálogo del padre: Guardar �
 1. Alta/edición de cuenta → `queueBankAccountMirror` + await flush (el aviso dice si llegó a la nube).
 2. Sync arranque: reconcile local→nube → pull (cola/escudo no rebobina).
 3. No declarar “actualizado” si localhost y Vercel muestran cuentas distintas.
+4. **Saldo en Banco → Listado:** cuentas con uso `banco` / `nequi` = `poolVisibleSaldo` del servidor
+   (misma cifra que supervisor / Informe). Efectivo = libro de movimientos de la ficha.
+   Prohibido pintar el ledger viejo de ANGE/TRUQUI como si fuera el Saldo operativo (caso 1.553 ≠ 4.208).
 
 ## Prohibido
 

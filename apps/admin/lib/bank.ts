@@ -776,9 +776,12 @@ export function filterBankHistory(
 }
 
 /**
- * Saldo vivo de la cuenta en el listado.
+ * Saldo vivo de la cuenta en el listado (libro de movimientos de la ficha).
  * Si el mes se abrió en cero (marca OPENING@), solo cuenta desde ese mes:
  * no arrastra el 9 ni un «Saldo inicial» viejo de la ficha.
+ *
+ * Cuentas con uso `banco` / `nequi`: no usar esto para pintar — ver
+ * `listadoBalanceForAccount` (misma cifra que supervisor / Informe).
  */
 export function liveBalanceForAccount(
   account: BankAccount,
@@ -796,6 +799,23 @@ export function liveBalanceForAccount(
     return start.balance + summarizeMovements(ledger).balance;
   }
   return account.openingBalance + summarizeMovements(mine).balance;
+}
+
+/**
+ * Saldo que pinta Banco → Listado.
+ * Uso banco / nequi = `poolVisibleSaldo` del servidor (operaciones diarias).
+ * Efectivo u otras = libro de movimientos de la ficha.
+ * `null` = aún no llegó el servidor (mostrar «…», no un saldo inventado).
+ */
+export function listadoBalanceForAccount(
+  account: BankAccount,
+  movements: BankMovement[],
+  reconciliations: readonly BankReconciliation[],
+  pool: { banco: number | null; nequi: number | null },
+): number | null {
+  if (account.role === "banco") return pool.banco;
+  if (account.role === "nequi") return pool.nequi;
+  return liveBalanceForAccount(account, movements, reconciliations);
 }
 
 /** Periodos con movimientos abiertos en una cuenta (más recientes primero). */
