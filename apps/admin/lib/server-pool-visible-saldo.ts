@@ -9,11 +9,21 @@ import { poolVisibleSaldo } from "@/lib/digital-pools";
 import type { InformeMonthSnapshot } from "@/lib/informe-month-snapshot";
 import type { MiscPayment } from "@/lib/misc-payments";
 import { businessTodayIso } from "@/lib/business-timezone";
+import type { CollectorDayCloseRecord } from "@/lib/collector-day-close";
 import { ROUTE_CASH_BOOK_FROM } from "@/lib/planilla-cash-chain";
-import { loadOperationalStateFromCloud } from "@/lib/server-day-rollover";
+import {
+  fetchClientsFromSupabase,
+  fetchLoansFromSupabase,
+  isClientDeletedStatus,
+  isLoanDeletedStatus,
+  mirrorToClientRow,
+  mirrorToLoanRow,
+} from "@/lib/supabase/catalog-mirror";
 import { fetchBankAccountsFromSupabase } from "@/lib/supabase/bank-accounts-mirror";
 import { readInformeSnapshot } from "@/lib/supabase/informe-snapshot-mirror";
 import { fetchOpsTable, rowToMisc } from "@/lib/supabase/ops-mirror";
+import { fetchPaymentsFromSupabase, mirrorRowToPaymentRow } from "@/lib/supabase/payment-mirror";
+import type { ClientRow, LoanRow, PaymentRow } from "@/lib/mock-data";
 
 function isoDay(raw: string | undefined, fallback: string): string {
   return raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : fallback;
@@ -33,10 +43,16 @@ export type PoolVisibleSaldoResult =
   | { ok: false; error: string };
 
 const CACHE_TTL_MS = 90_000;
+const SEAL_TTL_MS = 6 * 60 * 60_000;
 const cache = new Map<string, { at: number; result: Extract<PoolVisibleSaldoResult, { ok: true }> }>();
+const sealCache = new Map<string, { at: number; banco: number; nequi: number }>();
 
 function cacheKey(toIso: string, openIso: string) {
   return `${toIso}|${openIso}`;
+}
+
+function rememberSeal(period: string, banco: number, nequi: number) {
+  sealCache.set(period, { at: Date.now(), banco, nequi });
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
@@ -69,6 +85,10 @@ function poolLineFromSnapshot(
 async function sealedMonthPools(
   period: string,
 ): Promise<{ banco: number; nequi: number } | null> {
+  const warm = sealCache.get(period);
+  if (warm && Date.now() - warm.at < SEAL_TTL_MS) {
+    return { banco: warm.banco, nequi: warm.nequi };
+  }
   const [gen, ang] = await Promise.all([
     readInformeSnapshot("general", period),
     readInformeSnapshot("angelica", period),
@@ -77,17 +97,31 @@ async function sealedMonthPools(
   const banco = poolLineFromSnapshot(gen.snapshot, "Banco");
   const nequi = poolLineFromSnapshot(ang.snapshot, "Nequi");
   if (banco == null || nequi == null) return null;
+  rememberSeal(period, banco, nequi);
   return { banco, nequi };
 }
 
+/**
+ * Solo lo que suma `poolVisibleSaldo` (cobros desde `paymentsFromIso` + catálogo +
+ * misc/cuentas). Sin planilla/cierres/gastos de ruta: eso colgaba el Saldo vivo.
+ */
 async function loadPoolShared(paymentsFromIso: string) {
-  const loaded = await loadOperationalStateFromCloud({ paymentsFromIso });
-  if (!loaded.ok) return { ok: false as const, error: loaded.error };
-
-  const [miscT, accountsT] = await Promise.all([
+  const [paymentsT, clientsT, loansT, miscT, accountsT] = await Promise.all([
+    fetchPaymentsFromSupabase({ evidence: false, fromDate: paymentsFromIso }),
+    fetchClientsFromSupabase(),
+    fetchLoansFromSupabase(),
     fetchOpsTable("misc_payments"),
     fetchBankAccountsFromSupabase(),
   ]);
+  if (!paymentsT.ok) {
+    return { ok: false as const, error: paymentsT.error || "payments_fetch_failed" };
+  }
+  if (!clientsT.ok) {
+    return { ok: false as const, error: clientsT.error || "clients_fetch_failed" };
+  }
+  if (!loansT.ok) {
+    return { ok: false as const, error: loansT.error || "loans_fetch_failed" };
+  }
   if (!miscT.ok) {
     return {
       ok: false as const,
@@ -96,20 +130,23 @@ async function loadPoolShared(paymentsFromIso: string) {
   }
   if (!accountsT.ok) return { ok: false as const, error: accountsT.error };
 
+  const payments: PaymentRow[] = (paymentsT.rows ?? [])
+    .map(mirrorRowToPaymentRow)
+    .filter((row): row is PaymentRow => Boolean(row));
+  const clients: ClientRow[] = (clientsT.rows ?? [])
+    .map(mirrorToClientRow)
+    .filter((row): row is ClientRow => Boolean(row) && !isClientDeletedStatus(row));
+  const loans: LoanRow[] = (loansT.rows ?? [])
+    .map(mirrorToLoanRow)
+    .filter((row): row is LoanRow => Boolean(row) && !isLoanDeletedStatus(row));
   const miscPayments = (miscT.rows ?? [])
     .map(rowToMisc)
     .filter((row): row is MiscPayment => Boolean(row));
   const accounts = accountsT.accounts as BankAccount[];
+  const dayCloses: CollectorDayCloseRecord[] = [];
   return {
     ok: true as const,
-    shared: {
-      payments: loaded.state.payments,
-      loans: loaded.state.loans,
-      clients: loaded.state.clients,
-      dayCloses: loaded.state.dayCloses,
-      miscPayments,
-      accounts,
-    },
+    shared: { payments, loans, clients, dayCloses, miscPayments, accounts },
   };
 }
 
@@ -120,7 +157,7 @@ async function liveMonthFromSeal(toIso: string): Promise<PoolVisibleSaldoResult 
   if (period !== todayPeriod) return null;
 
   const prev = previousPeriod(period);
-  const sealed = await withTimeout(sealedMonthPools(prev), 4_000);
+  const sealed = await withTimeout(sealedMonthPools(prev), 5_000);
   if (!sealed) return null;
 
   const monthStart = `${period}-01`;
@@ -217,6 +254,7 @@ export async function readPoolVisibleSaldo(options?: {
 
   const sealed = await sealedPeriodPools(toIso);
   if (sealed?.ok) {
+    rememberSeal(toIso.slice(0, 7), sealed.banco, sealed.nequi);
     cache.set(key, { at: Date.now(), result: sealed });
     return sealed;
   }
