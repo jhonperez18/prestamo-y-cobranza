@@ -71,13 +71,20 @@ export type ServerDayRolloverResult = {
  * Estado operativo para cron / cierre de hoja.
  * No baja el historial eterno: planilla 45 d, gastos 90 d, cobros desde el libro (01/10).
  * CIE / catálogo sí enteros (chicos; Inicial M necesita CIE de ayer sin huecos).
+ * `paymentsFromIso`: acorta cobros (p. ej. sello del mes + delta del mes vivo).
  */
-export async function loadOperationalStateFromCloud(): Promise<
+export async function loadOperationalStateFromCloud(options?: {
+  paymentsFromIso?: string;
+}): Promise<
   | { ok: true; state: OperationalDayState }
   | { ok: false; error: string }
 > {
   const assignSince = planillaWindowStartIso();
   const expenseSince = businessDaysAgoIso(EXPENSES_LOOKBACK_DAYS);
+  const paymentsFrom =
+    options?.paymentsFromIso && /^\d{4}-\d{2}-\d{2}$/.test(options.paymentsFromIso)
+      ? options.paymentsFromIso
+      : ROUTE_CASH_BOOK_FROM;
   const [collectorsT, routesT, closesT, expensesT, assignsT, paymentsT, clientsT, loansT] =
     await Promise.all([
       fetchOpsTable("collectors"),
@@ -87,7 +94,7 @@ export async function loadOperationalStateFromCloud(): Promise<
       fetchOpsTableSince("daily_assignments", "dispatch_date", assignSince),
       fetchPaymentsFromSupabase({
         evidence: false,
-        fromDate: ROUTE_CASH_BOOK_FROM,
+        fromDate: paymentsFrom,
       }),
       fetchClientsFromSupabase(),
       fetchLoansFromSupabase(),

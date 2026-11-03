@@ -121,12 +121,19 @@ export function useChainMOpening(
       setSettled(true);
     }
     const load = async () => {
-      await Promise.all(
+      const work = Promise.all(
         refs.flatMap((ref) => [
           refreshCloudChainMOpening(ref, today),
           refreshCloudDayCashFigure(ref, today),
         ]),
       );
+      // Si la nube no contesta, la tabla de cobradores no puede quedar pegada en «…».
+      await Promise.race([
+        work,
+        new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 12_000);
+        }),
+      ]);
       if (!alive) return;
       setSettled(true);
       setEpoch((n) => n + 1);
@@ -195,7 +202,10 @@ export function usePoolVisibleSaldoCloud(enabled: boolean, toIso: string): PoolV
         void refreshCloudPoolVisibleSaldo(toIso).then((row) => {
           if (!alive) return;
           setSettled(true);
-          if (!row) return;
+          if (!row) {
+            // Fallo / tope: si había cifra del mismo corte, se queda; si no, «…».
+            return;
+          }
           setBanco(row.banco);
           setNequi(row.nequi);
           setEpoch((n) => n + 1);

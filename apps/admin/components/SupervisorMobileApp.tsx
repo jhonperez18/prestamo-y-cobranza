@@ -1395,6 +1395,18 @@ function routeOwnAnchorBook(date: string, saldo: number): RouteCashBook {
   ]);
 }
 
+/** Libro RPC + ancla de sesión: el RPC trae el 31; la ancla cubre hoy si aún no cerró. */
+function mergeRouteCashBooks(
+  ...books: Array<RouteCashBook | null | undefined>
+): RouteCashBook | undefined {
+  const out: RouteCashBook = new Map();
+  for (const book of books) {
+    if (!book) continue;
+    for (const [date, day] of book) out.set(date, day);
+  }
+  return out.size > 0 ? out : undefined;
+}
+
 /** App móvil del supervisor: caja + planilla + préstamos/renovaciones en vivo. */
 export function SupervisorMobileApp({
   supervisor,
@@ -1694,6 +1706,19 @@ export function SupervisorMobileApp({
   const aAnchors = aOwnBox.anchors;
   const nAnchors = nOwnBox.anchors;
   const routeOwnBoxEpoch = aOwnBox.epoch + nOwnBox.epoch;
+  /** Libro A/N en INICIO: arrastre del 31 (gastos) → Inicial de hoy. El historial ya lo tenía. */
+  const aHomeCollectorRef = aCollectorRefs[0] || "";
+  const nHomeCollectorRef = nCollectorRefs[0] || "";
+  const aHomeCashBook = useRouteCashBook(
+    aHomeCollectorRef,
+    aHomeCollectorRef ? "A" : null,
+    `${today}|home-a|${aOwnBox.epoch}`,
+  );
+  const nHomeCashBook = useRouteCashBook(
+    nHomeCollectorRef,
+    nHomeCollectorRef ? "N" : null,
+    `${today}|home-n|${nOwnBox.epoch}`,
+  );
   const chainCollectorRefs = useMemo(() => {
     const refs = new Set<string>();
     for (const route of assignedCoverage) {
@@ -1918,13 +1943,33 @@ export function SupervisorMobileApp({
         : sameRoute(route.routeName, "N")
           ? nAnchors[collectorRef]
           : undefined;
-      const ownBook =
+      const ownAnchorBook =
         ownAnchor &&
         (ownAnchor.date === previousCalendarIso(today) || ownAnchor.date === today)
           ? routeOwnAnchorBook(ownAnchor.date, ownAnchor.saldo)
           : undefined;
+      const homeCashBook = sameRoute(route.routeName, "A")
+        ? aHomeCashBook
+        : sameRoute(route.routeName, "N")
+          ? nHomeCashBook
+          : null;
+      // RPC del mes (31 con gastos) + ancla de ayer/hoy. Sin el RPC la Inicial N no arrastraba.
+      const ownBook = mergeRouteCashBooks(homeCashBook ?? undefined, ownAnchorBook);
+      const needsHomeBook =
+        sameRoute(route.routeName, "A")
+          ? Boolean(aHomeCollectorRef)
+          : sameRoute(route.routeName, "N")
+            ? Boolean(nHomeCollectorRef)
+            : false;
+      // null = RPC aún no llegó. Map vacío ya contó: no dejar «…» eterno.
+      const waitingOwnBook =
+        Boolean(collector) &&
+        isIndependentSaldoRoute(route.routeName) &&
+        !ownBook &&
+        needsHomeBook &&
+        homeCashBook === null;
       const independentDay =
-        collector && isIndependentSaldoRoute(route.routeName)
+        collector && isIndependentSaldoRoute(route.routeName) && !waitingOwnBook
           ? independentRouteDay(
               {
                 collectorRef: collector.ref,
@@ -2089,7 +2134,7 @@ export function SupervisorMobileApp({
         prestamosHoy,
         cashLoansToday,
         enCaja,
-        figuresPending: holdLocalCie,
+        figuresPending: holdLocalCie || waitingOwnBook,
         closed,
         newLoans,
         renewals,
@@ -2140,6 +2185,8 @@ export function SupervisorMobileApp({
     ledgerByCollector,
     aAnchors,
     nAnchors,
+    aHomeCashBook,
+    nHomeCashBook,
     routeOwnBoxEpoch,
     chainMOpeningEpoch,
     chainMOpeningSettled,
@@ -3092,11 +3139,13 @@ export function SupervisorMobileApp({
       : sameRoute(openRoute.routeName, "N")
         ? nAnchors[collector.ref]
         : undefined;
-    const histOwnBook =
+    const histOwnBook = mergeRouteCashBooks(
+      histCashBook,
       histAnchor &&
-      (histAnchor.date === previousCalendarIso(today) || histAnchor.date === today)
+        (histAnchor.date === previousCalendarIso(today) || histAnchor.date === today)
         ? routeOwnAnchorBook(histAnchor.date, histAnchor.saldo)
-        : undefined;
+        : undefined,
+    );
 
     // Solo A/N en DETALLADO (día 1): arrastre propio. M↔T no se toca.
     const independentCarry =
@@ -3795,15 +3844,13 @@ export function SupervisorMobileApp({
       : sameRoute(openRoute.routeName, "N")
         ? nAnchors[openRoute.collectorRef]
         : undefined;
-    const ownBook =
+    const ownBook = mergeRouteCashBooks(
+      histCashBook,
       cajaHistoryDayIso === today && anchor && anchor.date === previousCalendarIso(today)
         ? routeOwnAnchorBook(anchor.date, anchor.saldo)
-        : undefined;
-    const day = independentRouteDay(
-      src,
-      openRoute.routeName,
-      ownBook ?? histCashBook,
+        : undefined,
     );
+    const day = independentRouteDay(src, openRoute.routeName, ownBook);
     return {
       day,
       collected: independentRouteCollected(src, openRoute.routeName),

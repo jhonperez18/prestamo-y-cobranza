@@ -57,9 +57,17 @@ export function rememberCloudPoolVisibleSaldo(row: CloudPoolVisibleSaldo) {
 export async function refreshCloudPoolVisibleSaldo(
   toIso?: string,
 ): Promise<CloudPoolVisibleSaldo | null> {
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer =
+    ctrl && typeof window !== "undefined"
+      ? window.setTimeout(() => ctrl.abort(), 45_000)
+      : 0;
   try {
     const qs = toIso && /^\d{4}-\d{2}-\d{2}$/.test(toIso) ? `?to=${toIso}` : "";
-    const res = await fetch(`/api/ops/pool-visible-saldo${qs}`, { cache: "no-store" });
+    const res = await fetch(`/api/ops/pool-visible-saldo${qs}`, {
+      cache: "no-store",
+      signal: ctrl?.signal,
+    });
     const body = (await res.json()) as {
       ok?: boolean;
       banco?: number;
@@ -83,5 +91,7 @@ export async function refreshCloudPoolVisibleSaldo(
   } catch (error) {
     console.error("refreshCloudPoolVisibleSaldo", error);
     return null;
+  } finally {
+    if (timer) window.clearTimeout(timer);
   }
 }
