@@ -103,6 +103,7 @@ import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import { loadSupervisorHistoryPayments } from "@/lib/supervisor-book";
 import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
+import { useRouteCashBook } from "@/lib/use-route-cash-book";
 import { getCloudChainMOpening } from "@/lib/cloud-chain-m-opening";
 import {
   useChainMOpening,
@@ -2779,6 +2780,14 @@ export function SupervisorMobileApp({
   };
 
   const openRoute = liquidaciones.find((row) => row.routeRef === openRouteRef) ?? null;
+  /** Libro A/N del servidor (mismos montos que route_own_box). Historial no rearma con local. */
+  const histIndependentRoute =
+    openRoute && isIndependentSaldoRoute(openRoute.routeName) ? openRoute.routeName : null;
+  const histCashBook = useRouteCashBook(
+    openRoute?.collectorRef || "",
+    histIndependentRoute,
+    `${today}|${histOwnBoxEpoch}|${cajaHistoryPeriodPick || ""}`,
+  );
 
   // Historial A/N: baja route_own_box del mes visible (la base manda; sin esto todo sale en rojo).
   useEffect(() => {
@@ -3273,8 +3282,7 @@ export function SupervisorMobileApp({
 
     if (isIndependentSaldoRoute(openRoute.routeName)) {
       // A / N: caja propia. Día a día + mes a mes = mismo hilo; nunca M/T ni la otra.
-      // Historial: sin `histOwnBook` (ese stub pone movimiento 0 y escondía el préstamo del 31).
-      // Con histOwnBoxEpoch lee route_own_box (efectivo / préstamo / Saldo de la base).
+      // Libro RPC + caché route_own_box (independentRouteDay). Sin rearme local incompleto.
       let independentRows = alignIndependentHistoryDayToDay(
         withIndependentRouteHistory(
           rows.filter((row) => row.date <= historyTo),
@@ -3292,6 +3300,7 @@ export function SupervisorMobileApp({
             monthCloses,
           },
           openRoute.routeName,
+          histCashBook,
         ),
       );
       if (independentCarry != null) {
@@ -3393,6 +3402,7 @@ export function SupervisorMobileApp({
     nAnchors,
     routeOwnBoxEpoch,
     histOwnBoxEpoch,
+    histCashBook,
   ]);
 
   const openRouteCajaHistoryIsM = Boolean(
@@ -3789,7 +3799,11 @@ export function SupervisorMobileApp({
       cajaHistoryDayIso === today && anchor && anchor.date === previousCalendarIso(today)
         ? routeOwnAnchorBook(anchor.date, anchor.saldo)
         : undefined;
-    const day = independentRouteDay(src, openRoute.routeName, ownBook);
+    const day = independentRouteDay(
+      src,
+      openRoute.routeName,
+      ownBook ?? histCashBook,
+    );
     return {
       day,
       collected: independentRouteCollected(src, openRoute.routeName),
@@ -3810,6 +3824,8 @@ export function SupervisorMobileApp({
     aAnchors,
     nAnchors,
     routeOwnBoxEpoch,
+    histCashBook,
+    histOwnBoxEpoch,
     today,
   ]);
 
