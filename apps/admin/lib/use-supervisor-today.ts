@@ -215,14 +215,26 @@ export function usePoolVisibleSaldoCloud(enabled: boolean, toIso: string): PoolV
           setNequi(null);
           setSettled(false);
         }
-        void refreshCloudPoolVisibleSaldo(toIso).then((row) => {
+        const pull = async (tries = 0) => {
+          const row = await refreshCloudPoolVisibleSaldo(toIso);
           if (!alive) return;
+          if (row) {
+            setSettled(true);
+            setBanco(row.banco);
+            setNequi(row.nequi);
+            setEpoch((n) => n + 1);
+            return;
+          }
+          // Falló: reintenta (el servidor ya tiene cifra en disco; un abort no deja «Leyendo…»).
+          if (tries < 4) {
+            window.setTimeout(() => {
+              if (alive) void pull(tries + 1);
+            }, 2_000 * (tries + 1));
+            return;
+          }
           setSettled(true);
-          if (!row) return;
-          setBanco(row.banco);
-          setNequi(row.nequi);
-          setEpoch((n) => n + 1);
-        });
+        };
+        void pull();
       },
     );
     return () => {
