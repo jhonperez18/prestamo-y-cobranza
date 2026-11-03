@@ -1741,11 +1741,9 @@ export function SupervisorMobileApp({
     nequiPoolHistPeriod,
     today,
   ]);
-  // Saldo Banco/Nequi solo cuando se mira esa pantalla (o el pie de INICIO).
-  // Si corre siempre al abrir, satura el VPS y gastos/préstamos del día quedan a medias.
-  const poolVisibleEnabled =
-    view === "inicio" || view === "banco" || view === "nequi" || view === "informe";
-  const poolVisibleCloud = usePoolVisibleSaldoCloud(poolVisibleEnabled, poolVisibleToIso);
+  // Saldo Banco/Nequi: calienta al abrir el supervisor (disco en el servidor = instantáneo).
+  // Antes solo al entrar a la pestaña → el pie de INICIO se quedaba en «…».
+  const poolVisibleCloud = usePoolVisibleSaldoCloud(true, poolVisibleToIso);
 
   /** Libro de caja del día por cobrador: misma cifra que la app del cobrador, el cierre y el Historial. */
   const ledgerByCollector = useMemo(() => {
@@ -2576,41 +2574,45 @@ export function SupervisorMobileApp({
   useEffect(() => {
     if (view !== "informe") return;
     let cancelled = false;
-    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-    const timer =
-      ctrl && typeof window !== "undefined"
-        ? window.setTimeout(() => ctrl.abort(), 28_000)
-        : 0;
-    setInformeHistory(null);
-    setInformeAHistory(null);
-    setInformeReadError("");
+    let timer = 0;
     const from = bancoHistoryFrom;
     const to = today;
-    fetch(`/api/ops/supervisor-informe?from=${from}&to=${to}`, {
-      cache: "no-store",
-      signal: ctrl?.signal,
-    })
-      .then(async (res) => {
+    setInformeReadError("");
+    // No vaciar Cobrado/Préstamo/Gasto mientras llega: evita pantalla en blanco.
+    const pull = async (tries = 0) => {
+      const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      timer =
+        ctrl && typeof window !== "undefined"
+          ? window.setTimeout(() => ctrl.abort(), 14_000)
+          : 0;
+      try {
+        const res = await fetch(`/api/ops/supervisor-informe?from=${from}&to=${to}`, {
+          cache: "no-store",
+          signal: ctrl?.signal,
+        });
         const body: unknown = await res.json();
         const parsed = readSupervisorInformePayload(body);
         if (!res.ok || !parsed) throw new Error("informe_failed");
-        return parsed;
-      })
-      .then((parsed) => {
         if (cancelled) return;
         setInformeHistory(parsed.general);
         setInformeAHistory(parsed.angelica);
-      })
-      .catch(() => {
+        setInformeReadError("");
+      } catch {
         if (cancelled) return;
+        if (tries < 3) {
+          window.setTimeout(() => {
+            if (!cancelled) void pull(tries + 1);
+          }, 1_500 * (tries + 1));
+          return;
+        }
         setInformeReadError("No se pudo leer el informe.");
-      })
-      .finally(() => {
+      } finally {
         if (timer) window.clearTimeout(timer);
-      });
+      }
+    };
+    void pull();
     return () => {
       cancelled = true;
-      ctrl?.abort();
       if (timer) window.clearTimeout(timer);
     };
   }, [view, bancoHistoryFrom, today]);
@@ -2674,13 +2676,16 @@ export function SupervisorMobileApp({
     [liquidaciones],
   );
   const inicioTotalConT = useMemo(() => {
-    if (inicioTotalPending || bancoSaldo == null) return null;
+    // Banco ya llegó: pintar el pie. No esperar Inicial M (antes dejaba «…» 10–12 s).
+    if (bancoSaldo == null) return null;
     const routeT = liquidaciones.find((row) =>
       isPlanillaCashChainSecondary(row.routeName),
     );
     const routeN = liquidaciones.find((row) => sameRoute(row.routeName, "N"));
-    return (routeT?.enCaja ?? 0) + (routeN?.enCaja ?? 0) + bancoSaldo;
-  }, [liquidaciones, bancoSaldo, inicioTotalPending]);
+    const cajaT = routeT?.figuresPending ? 0 : (routeT?.enCaja ?? 0);
+    const cajaN = routeN?.figuresPending ? 0 : (routeN?.enCaja ?? 0);
+    return cajaT + cajaN + bancoSaldo;
+  }, [liquidaciones, bancoSaldo]);
   const bancoRutaHistoryDays = useMemo(
     () =>
       bancoRegistroRoute

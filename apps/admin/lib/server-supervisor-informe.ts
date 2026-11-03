@@ -25,6 +25,7 @@ import {
   rowToDayExpense,
 } from "@/lib/supabase/ops-mirror";
 import { fetchPaymentsFromSupabase, mirrorRowToPaymentRow } from "@/lib/supabase/payment-mirror";
+import { readInformeLive, writeInformeLive } from "@/lib/informe-live-store";
 
 const PAGE = 1000;
 const MAX_DAYS = 31;
@@ -64,14 +65,12 @@ const informeCache = new Map<
   string,
   { at: number; result: Extract<SupervisorInformeResult, { ok: true }> }
 >();
+const refreshing = new Set<string>();
 
-export async function loadSupervisorInforme(from: string, to: string): Promise<SupervisorInformeResult> {
-  const span = daySpan(from, to);
-  if (span == null || span > MAX_DAYS) return fail("bad_range");
-  const cacheKey = `${from}|${to}`;
-  const warm = informeCache.get(cacheKey);
-  if (warm && Date.now() - warm.at < INFORME_CACHE_TTL_MS) return warm.result;
-
+async function computeSupervisorInforme(
+  from: string,
+  to: string,
+): Promise<SupervisorInformeResult> {
   const db = createSupabaseAdminClient();
   if (!db) return fail("supabase_not_configured");
 
@@ -82,19 +81,15 @@ export async function loadSupervisorInforme(from: string, to: string): Promise<S
     fetchOpsTableSince("day_expenses", "expense_date", from, to),
   ]);
   if (!paymentsT.ok || ("skipped" in paymentsT && paymentsT.skipped)) {
-    if (warm) return warm.result;
     return fail("payments_failed");
   }
   if (!assignsT.ok || ("skipped" in assignsT && assignsT.skipped)) {
-    if (warm) return warm.result;
     return fail("assignments_failed");
   }
   if (!closesT.ok || ("skipped" in closesT && closesT.skipped)) {
-    if (warm) return warm.result;
     return fail("closes_failed");
   }
   if (!expensesT.ok || ("skipped" in expensesT && expensesT.skipped)) {
-    if (warm) return warm.result;
     return fail("expenses_failed");
   }
 
@@ -232,7 +227,6 @@ export async function loadSupervisorInforme(from: string, to: string): Promise<S
       .filter((row): row is CollectorRow => Boolean(row));
     routeRows = routes;
   } catch (error) {
-    if (warm) return warm.result;
     return fail(error instanceof Error ? error.message : "catalog_failed");
   }
 
@@ -279,13 +273,78 @@ export async function loadSupervisorInforme(from: string, to: string): Promise<S
   if (!prestamoListIsTheTotal(general.prestamo, INFORME_HISTORY_ROUTES)) return fail("prestamo_list_mismatch");
   if (!prestamoListIsTheTotal(angelica.prestamo, null)) return fail("prestamo_list_mismatch");
 
-  const result: Extract<SupervisorInformeResult, { ok: true }> = {
+  return {
     ok: true,
     from,
     to,
     general,
     angelica,
   };
+}
+
+function rememberInforme(
+  cacheKey: string,
+  result: Extract<SupervisorInformeResult, { ok: true }>,
+) {
   informeCache.set(cacheKey, { at: Date.now(), result });
-  return result;
+  void writeInformeLive({
+    from: result.from,
+    to: result.to,
+    general: result.general,
+    angelica: result.angelica,
+  });
+}
+
+function refreshInformeInBackground(from: string, to: string, cacheKey: string) {
+  if (refreshing.has(cacheKey)) return;
+  refreshing.add(cacheKey);
+  void (async () => {
+    try {
+      const fresh = await computeSupervisorInforme(from, to);
+      if (fresh.ok) rememberInforme(cacheKey, fresh);
+    } catch (error) {
+      console.error("informe-refresh", error);
+    } finally {
+      refreshing.delete(cacheKey);
+    }
+  })();
+}
+
+export async function loadSupervisorInforme(
+  from: string,
+  to: string,
+): Promise<SupervisorInformeResult> {
+  const span = daySpan(from, to);
+  if (span == null || span > MAX_DAYS) return fail("bad_range");
+  const cacheKey = `${from}|${to}`;
+
+  const warm = informeCache.get(cacheKey);
+  if (warm && Date.now() - warm.at < INFORME_CACHE_TTL_MS) {
+    refreshInformeInBackground(from, to, cacheKey);
+    return warm.result;
+  }
+
+  const disk = await readInformeLive(from, to);
+  if (disk) {
+    const result: Extract<SupervisorInformeResult, { ok: true }> = {
+      ok: true,
+      from: disk.from,
+      to: to,
+      general: disk.general,
+      angelica: disk.angelica,
+    };
+    // Sirve al instante; la base actualiza atrás.
+    informeCache.set(cacheKey, { at: Date.now(), result });
+    refreshInformeInBackground(from, to, cacheKey);
+    return result;
+  }
+
+  if (warm) {
+    refreshInformeInBackground(from, to, cacheKey);
+    return warm.result;
+  }
+
+  const fresh = await computeSupervisorInforme(from, to);
+  if (fresh.ok) rememberInforme(cacheKey, fresh);
+  return fresh;
 }

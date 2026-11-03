@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-const HARD_MS = 25_000;
+const HARD_MS = 12_000;
 
 /** Informe del mes, con cada préstamo (referencia, ruta, método, capital). Sin caché. No escribe. */
 export async function GET(request: Request) {
