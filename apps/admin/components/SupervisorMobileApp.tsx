@@ -106,6 +106,7 @@ import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
 import { getCloudChainMOpening } from "@/lib/cloud-chain-m-opening";
 import {
   useChainMOpening,
+  usePoolVisibleSaldoCloud,
   useRouteAAnchor,
   useRouteNAnchor,
   useSupervisorToday,
@@ -136,7 +137,6 @@ import {
   nequiRouteHistoryDays,
   digitalPoolDayLedger,
   digitalPoolRegisterDays,
-  poolVisibleSaldo,
   type DigitalPool,
   type DigitalPoolGasto,
   type DigitalPoolRegisterLoan,
@@ -1695,6 +1695,29 @@ export function SupervisorMobileApp({
   const chainMOpeningState = useChainMOpening(true, chainCollectorRefs, today);
   const chainMOpeningEpoch = chainMOpeningState.epoch;
   const chainMOpeningSettled = chainMOpeningState.settled;
+  /**
+   * Saldo Banco/Nequi: libro completo en el servidor (no la copia del aparato).
+   * Home → hoy. Historial de un mes → último día de ese mes (mismo dueño).
+   */
+  const poolVisibleToIso = useMemo(() => {
+    if (
+      (bancoPoolHistNav === "mes" || bancoPoolHistNav === "ruta") &&
+      bancoPoolHistPeriod
+    ) {
+      return lastCalendarDayOfPeriod(bancoPoolHistPeriod) || today;
+    }
+    if (nequiPoolHistNav === "mes" && nequiPoolHistPeriod) {
+      return lastCalendarDayOfPeriod(nequiPoolHistPeriod) || today;
+    }
+    return today;
+  }, [
+    bancoPoolHistNav,
+    bancoPoolHistPeriod,
+    nequiPoolHistNav,
+    nequiPoolHistPeriod,
+    today,
+  ]);
+  const poolVisibleCloud = usePoolVisibleSaldoCloud(true, poolVisibleToIso);
 
   /** Libro de caja del día por cobrador: misma cifra que la app del cobrador, el cierre y el Historial. */
   const ledgerByCollector = useMemo(() => {
@@ -2592,34 +2615,10 @@ export function SupervisorMobileApp({
   );
   const bancoGastado = useMemo(() => digitalPoolGastosTotal(bancoGastos), [bancoGastos]);
   /**
-   * Saldo Banco = M + T + N − Gastos (siempre).
-   * Mes nuevo: arrastra el cierre del mes anterior; cobrado/gastos del mes van en 0 hasta que haya movimiento.
+   * Saldo Banco = M + T + N − Gastos, calculado en el servidor con el libro completo.
+   * Prohibido sumar en el aparato (copia incompleta → 1.149 / 2.208 fantasma).
    */
-  const bancoSaldo = useMemo(
-    () =>
-      poolVisibleSaldo({
-        pool: "banco",
-        payments: paymentsWithEvidence,
-        loans,
-        clients,
-        dayCloses: dayClosesLive,
-        miscPayments,
-        accounts: bankAccounts,
-        fromIso: ROUTE_CASH_BOOK_FROM,
-        toIso: today,
-        movements: bankMovements,
-      }),
-    [
-      paymentsWithEvidence,
-      loans,
-      clients,
-      dayClosesLive,
-      miscPayments,
-      bankAccounts,
-      today,
-      bankMovements,
-    ],
-  );
+  const bancoSaldo = poolVisibleCloud.banco;
 
   /** INICIO pie: caja viva de T (ya trae M) + caja propia de N + Saldo de Banco. */
   const inicioTotalPending = useMemo(
@@ -2633,7 +2632,7 @@ export function SupervisorMobileApp({
     [liquidaciones],
   );
   const inicioTotalConT = useMemo(() => {
-    if (inicioTotalPending) return null;
+    if (inicioTotalPending || bancoSaldo == null) return null;
     const routeT = liquidaciones.find((row) =>
       isPlanillaCashChainSecondary(row.routeName),
     );
@@ -2733,32 +2732,8 @@ export function SupervisorMobileApp({
   const nequiCobradoShown = nequiMonthTotales.cobrado;
   const nequiPrestadoShown = nequiMonthTotales.prestado;
   const nequiGastosShown = nequiGastadoMes;
-  /** Saldo Nequi = ruta A − Gastos (siempre). Arrastra el cierre del mes anterior. */
-  const nequiSaldoShown = useMemo(
-    () =>
-      poolVisibleSaldo({
-        pool: "nequi",
-        payments: paymentsWithEvidence,
-        loans,
-        clients,
-        dayCloses: dayClosesLive,
-        miscPayments,
-        accounts: bankAccounts,
-        fromIso: ROUTE_CASH_BOOK_FROM,
-        toIso: today,
-        movements: bankMovements,
-      }),
-    [
-      paymentsWithEvidence,
-      loans,
-      clients,
-      dayClosesLive,
-      miscPayments,
-      bankAccounts,
-      today,
-      bankMovements,
-    ],
-  );
+  /** Saldo Nequi = ruta A − Gastos, mismo dueño servidor que Banco. */
+  const nequiSaldoShown = poolVisibleCloud.nequi;
   /**
    * Hoja Ruta: mismas visitas visibles que el cobrador (sin colapsar Fin+Prestar),
    * luego se desdoblan Renovado / P / combinado en varias líneas.
@@ -3565,7 +3540,7 @@ export function SupervisorMobileApp({
     () => digitalPoolGastosTotal(bancoPoolHistGastos),
     [bancoPoolHistGastos],
   );
-  /** Saldo historial Banco = mismo dueño que el mes vivo (`poolVisibleSaldo`). */
+  /** Saldo historial Banco = mismo dueño servidor que el mes vivo (no suma local). */
   const bancoPoolHistSaldo = useMemo(() => {
     if (
       (bancoPoolHistNav !== "mes" && bancoPoolHistNav !== "ruta") ||
@@ -3573,30 +3548,8 @@ export function SupervisorMobileApp({
     ) {
       return 0;
     }
-    const { to } = periodHistWindow(bancoPoolHistPeriod);
-    return poolVisibleSaldo({
-      pool: "banco",
-      payments: paymentsWithEvidence,
-      loans,
-      clients,
-      dayCloses: dayClosesLive,
-      miscPayments,
-      accounts: bankAccounts,
-      fromIso: ROUTE_CASH_BOOK_FROM,
-      toIso: to,
-      movements: bankMovements,
-    });
-  }, [
-    bancoPoolHistNav,
-    bancoPoolHistPeriod,
-    paymentsWithEvidence,
-    loans,
-    clients,
-    dayClosesLive,
-    miscPayments,
-    bankAccounts,
-    bankMovements,
-  ]);
+    return poolVisibleCloud.banco ?? 0;
+  }, [bancoPoolHistNav, bancoPoolHistPeriod, poolVisibleCloud.banco]);
 
   /** Movimiento Nequi del mes abierto en historial (ruta A). */
   const nequiPoolHistDays = useMemo(() => {
@@ -3665,33 +3618,11 @@ export function SupervisorMobileApp({
     () => digitalPoolGastosTotal(nequiPoolHistGastos),
     [nequiPoolHistGastos],
   );
-  /** Saldo historial Nequi = ruta A − Gastos al cierre del mes (arrastra al mes vivo). */
+  /** Saldo historial Nequi = mismo dueño servidor (ruta A − Gastos). */
   const nequiPoolHistSaldo = useMemo(() => {
     if (nequiPoolHistNav !== "mes" || !nequiPoolHistPeriod) return 0;
-    const { to } = periodHistWindow(nequiPoolHistPeriod);
-    return poolVisibleSaldo({
-      pool: "nequi",
-      payments: paymentsWithEvidence,
-      loans,
-      clients,
-      dayCloses: dayClosesLive,
-      miscPayments,
-      accounts: bankAccounts,
-      fromIso: ROUTE_CASH_BOOK_FROM,
-      toIso: to,
-      movements: bankMovements,
-    });
-  }, [
-    nequiPoolHistNav,
-    nequiPoolHistPeriod,
-    paymentsWithEvidence,
-    loans,
-    clients,
-    dayClosesLive,
-    miscPayments,
-    bankAccounts,
-    bankMovements,
-  ]);
+    return poolVisibleCloud.nequi ?? 0;
+  }, [nequiPoolHistNav, nequiPoolHistPeriod, poolVisibleCloud.nequi]);
   const routeCloseClockByDate = useMemo(() => {
     if (!openRoute?.collectorRef || !openRoute.routeName) return new Map<string, string>();
     return routeCloseClocks(
@@ -6139,7 +6070,7 @@ export function SupervisorMobileApp({
               clients={clients}
               payments={paymentsLive}
               efectivo={informeEfectivo}
-              banco={bancoSaldo}
+              banco={bancoSaldo ?? 0}
               history={informeHistory}
               historyNote={informeReadError}
               bancoGastos={bancoGastos}
@@ -6971,10 +6902,12 @@ export function SupervisorMobileApp({
                 type="button"
                 className="supervisor-banco-home-btn is-acumulado"
                 title="Saldo de Banco (M + T + N − Gastos)"
-                aria-label={`Saldo de Banco ${money(bancoSaldo, { symbol: false })}`}
+                aria-label={`Saldo de Banco ${bancoSaldo == null ? "cargando" : money(bancoSaldo, { symbol: false })}`}
               >
                 <span>Saldo</span>
-                <span className="is-amount">{money(bancoSaldo, { symbol: false })}</span>
+                <span className="is-amount">
+                  {bancoSaldo == null ? "…" : money(bancoSaldo, { symbol: false })}
+                </span>
               </button>
             </div>
           ) : bancoRutaCuadreHoy ? (

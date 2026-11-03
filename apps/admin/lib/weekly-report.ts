@@ -9,7 +9,8 @@
  *               (real del ajuste si hubo). Prohibido enviar el correo sin caja de la base.
  *   Cobros    = `routeCobradoAcrossCollectors` (efectivo de cada cobrador + Banco/Nequi de la ruta, una vez).
  *   Préstamos = renglones del libro (efectivo) + `dayDigitalLoanRows` (Banco / Nequi).
- *   Banco/Nequi = `digitalPoolSaldo` (rutas del mes − gastos de su cuenta), el Saldo del supervisor.
+ *   Banco/Nequi = `digitalPoolSaldo` / `poolVisibleSaldo` desde `ROUTE_CASH_BOOK_FROM`
+ *               (misma cifra que BANCO / INFORME; no recorta al mes de la semana).
  *   Movimiento por día = `informeRouteHistory` / `informeOwnRouteHistory` (Informe del supervisor).
  */
 import {
@@ -43,7 +44,7 @@ import { activeLoans, type ClientRow, type LoanRow, type PaymentRow, type RouteR
 import type { MiscPayment } from "@/lib/misc-payments";
 import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import { paymentRecaudoIso } from "@/lib/payment-detail";
-import { findFullDayCieClose } from "@/lib/planilla-cash-chain";
+import { findFullDayCieClose, ROUTE_CASH_BOOK_FROM } from "@/lib/planilla-cash-chain";
 import { isClientDeletedStatus } from "@/lib/supabase/catalog-mirror";
 
 export type WeeklyReportScope = "mtn" | "a";
@@ -383,8 +384,8 @@ function addMove(acc: Acc, route: string, move: RouteMove) {
   addCashLoans(acc, route, move.loanRows);
 }
 
-/** Saldo del pool al cierre de `date`, con la ventana del mes de `monthOf` (Banco / Nequi arrancan en 0 cada mes). */
-function poolAt(src: WeeklyReportSources, pool: DigitalPool, monthOf: string, date: string) {
+/** Saldo del pool al cierre de `date` — misma ventana que el Saldo del supervisor (`ROUTE_CASH_BOOK_FROM`). */
+function poolAt(src: WeeklyReportSources, pool: DigitalPool, _monthOf: string, date: string) {
   return digitalPoolSaldo({
     pool,
     payments: src.payments,
@@ -393,9 +394,54 @@ function poolAt(src: WeeklyReportSources, pool: DigitalPool, monthOf: string, da
     dayCloses: src.dayCloses.filter((row) => isoOf(row.date) <= date),
     miscPayments: src.miscPayments,
     accounts: src.bankAccounts,
-    fromIso: `${monthOf.slice(0, 7)}-01`,
+    fromIso: ROUTE_CASH_BOOK_FROM,
     toIso: date,
   });
+}
+
+/**
+ * Sustituye Inicio / Acumulado Banco|Nequi por cifras del servidor (libro completo).
+ * Entró / salió / gastos de la semana se conservan (movimiento del corte).
+ */
+export function withServerPoolBounds(
+  report: WeeklyReport,
+  opening: number,
+  closing: number,
+): WeeklyReport {
+  const open = pesos(opening);
+  const close = pesos(closing);
+  const pool: WeeklyPool = {
+    ...report.pool,
+    opening: open,
+    closing: close,
+    ajustes: pesos(close - (open + report.pool.entro - report.pool.salio - report.pool.gastos)),
+  };
+  const poolLabel = report.pool.label;
+  let efectivoTotal = 0;
+  for (const row of report.resumen) {
+    if (
+      row.kind === "line" &&
+      row.tone === "total" &&
+      (row.label === "Total efectivo (T + N)" || row.label === "Total efectivo")
+    ) {
+      efectivoTotal = row.value;
+      break;
+    }
+  }
+  const resumen = report.resumen.map((row) => {
+    if (row.kind !== "line") return row;
+    if (row.label === poolLabel && row.tone === "total") {
+      return { ...row, value: close };
+    }
+    if (row.tone === "grand") {
+      return {
+        ...row,
+        value: pesos(report.carteraTotal + efectivoTotal + close),
+      };
+    }
+    return row;
+  });
+  return { ...report, pool, resumen };
 }
 
 function movementOf(

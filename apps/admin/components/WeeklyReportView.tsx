@@ -9,12 +9,13 @@ import { businessTodayIso } from "@/lib/business-timezone";
 import { isoToDisplay } from "@/lib/loan-preview";
 import { money, type ClientRow, type LoanRow } from "@/lib/mock-data";
 import { fetchRouteSheet } from "@/lib/use-route-sheet";
-import { weekdayLabel } from "@/lib/colombia-holidays";
+import { addCalendarDaysIso, weekdayLabel } from "@/lib/colombia-holidays";
 import {
   buildWeeklyReport,
   recentWeeklyCortes,
   weeklyMiles,
   weeklyRangeForCutoff,
+  withServerPoolBounds,
   type WeeklyClientRow,
   type WeeklyReport,
   type WeeklyReportScope,
@@ -415,6 +416,13 @@ export function WeeklyReportView({
   const [scope, setScope] = useState<WeeklyReportScope>("mtn");
   const [ficha, setFicha] = useState<{ loans: LoanRow[]; clients: ClientRow[] } | null>(null);
   const [fichaState, setFichaState] = useState<"loading" | "ready" | "error">("loading");
+  /** Saldo Banco/Nequi del servidor (libro completo) — no la copia local incompleta. */
+  const [poolBounds, setPoolBounds] = useState<{
+    openBanco: number;
+    closeBanco: number;
+    openNequi: number;
+    closeNequi: number;
+  } | null>(null);
   const range = useMemo(() => weeklyRangeForCutoff(cutoff, today), [cutoff, today]);
 
   useEffect(() => {
@@ -435,50 +443,93 @@ export function WeeklyReportView({
     };
   }, []);
 
-  const report = useMemo(
-    () =>
-      ficha
-        ? buildWeeklyReport(
-            {
-              payments,
-              loans,
-              clients,
-              collectors,
-              routes,
-              assignments,
-              dayCloses,
-              dayExpenseDrafts,
-              planillaCashCloses,
-              monthCloses,
-              miscPayments,
-              bankAccounts,
-              carteraLoans: ficha.loans,
-              carteraClients: ficha.clients,
-            },
-            scope,
-            range,
-            today,
-          )
-        : null,
-    [
-      ficha,
-      payments,
-      loans,
-      clients,
-      collectors,
-      routes,
-      assignments,
-      dayCloses,
-      dayExpenseDrafts,
-      planillaCashCloses,
-      monthCloses,
-      miscPayments,
-      bankAccounts,
+  useEffect(() => {
+    let alive = true;
+    const before = addCalendarDaysIso(range.start, -1);
+    setPoolBounds(null);
+    void Promise.all([
+      fetch(`/api/ops/pool-visible-saldo?to=${encodeURIComponent(before)}`, {
+        cache: "no-store",
+      }).then((r) => r.json()),
+      fetch(`/api/ops/pool-visible-saldo?to=${encodeURIComponent(range.end)}`, {
+        cache: "no-store",
+      }).then((r) => r.json()),
+    ])
+      .then(([openBody, closeBody]) => {
+        if (!alive) return;
+        if (
+          !openBody ||
+          openBody.ok !== true ||
+          !closeBody ||
+          closeBody.ok !== true ||
+          !Number.isFinite(Number(openBody.banco)) ||
+          !Number.isFinite(Number(closeBody.banco))
+        ) {
+          return;
+        }
+        setPoolBounds({
+          openBanco: Math.trunc(Number(openBody.banco)),
+          closeBanco: Math.trunc(Number(closeBody.banco)),
+          openNequi: Math.trunc(Number(openBody.nequi)),
+          closeNequi: Math.trunc(Number(closeBody.nequi)),
+        });
+      })
+      .catch((error) => {
+        console.error("weekly-report pool-visible-saldo", error);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [range.start, range.end]);
+
+  const report = useMemo(() => {
+    if (!ficha) return null;
+    const built = buildWeeklyReport(
+      {
+        payments,
+        loans,
+        clients,
+        collectors,
+        routes,
+        assignments,
+        dayCloses,
+        dayExpenseDrafts,
+        planillaCashCloses,
+        monthCloses,
+        miscPayments,
+        bankAccounts,
+        carteraLoans: ficha.loans,
+        carteraClients: ficha.clients,
+      },
       scope,
       range,
       today,
-    ],
-  );
+    );
+    if (!poolBounds) return built;
+    return withServerPoolBounds(
+      built,
+      scope === "a" ? poolBounds.openNequi : poolBounds.openBanco,
+      scope === "a" ? poolBounds.closeNequi : poolBounds.closeBanco,
+    );
+  }, [
+    ficha,
+    payments,
+    loans,
+    clients,
+    collectors,
+    routes,
+    assignments,
+    dayCloses,
+    dayExpenseDrafts,
+    planillaCashCloses,
+    monthCloses,
+    miscPayments,
+    bankAccounts,
+    scope,
+    range,
+    today,
+    poolBounds,
+  ]);
 
   return (
     <section className="panel weekly-report">

@@ -2254,7 +2254,7 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       bancoSrc.includes('pool: "nequi"') &&
       bancoSrc.includes("nequiMonthTotales") &&
       bancoSrc.includes("nequiGastadoMes") &&
-      bancoSrc.includes("poolVisibleSaldo") &&
+      bancoSrc.includes("usePoolVisibleSaldoCloud") &&
       bancoSrc.includes("nequiPoolHistSaldo") &&
       bancoSrc.includes("bancoPoolHistSaldo") &&
       !bancoSrc.includes("bancoVisibleSaldoFromCards") &&
@@ -2282,17 +2282,30 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     new URL("../lib/server-seal-informe-month.ts", import.meta.url),
     "utf8",
   );
+  const poolVisibleApiSrc = readFileSync(
+    new URL("../app/api/ops/pool-visible-saldo/route.ts", import.meta.url),
+    "utf8",
+  );
+  const serverPoolVisibleSrc = readFileSync(
+    new URL("../lib/server-pool-visible-saldo.ts", import.meta.url),
+    "utf8",
+  );
   expect(
-    "Banco: saldo = M+T+N − Gastos siempre (historial y mes vivo; no nube)",
+    "Banco: saldo = servidor pool-visible-saldo (M+T+N−Gastos; no suma local)",
     bancoSrc.includes("BANCO_ROUTE_PINS") &&
       bancoSrc.includes("bancoRouteCuadre") &&
       bancoSrc.includes('pool: "banco"') &&
-      bancoSrc.includes("poolVisibleSaldo") &&
+      bancoSrc.includes("usePoolVisibleSaldoCloud") &&
+      bancoSrc.includes("poolVisibleCloud.banco") &&
+      bancoSrc.includes("poolVisibleCloud.nequi") &&
       bancoSrc.includes("ROUTE_CASH_BOOK_FROM") &&
       bancoSrc.includes("(routeN?.enCaja ?? 0) + bancoSaldo") &&
       bancoSrc.includes("Ruta M") &&
       bancoSrc.includes("openInformeSnapshotShown = openInformeSnapshot") &&
       !bancoSrc.includes("withInformePoolSaldo") &&
+      poolVisibleApiSrc.includes("readPoolVisibleSaldo") &&
+      serverPoolVisibleSrc.includes("poolVisibleSaldo") &&
+      serverPoolVisibleSrc.includes("ROUTE_CASH_BOOK_FROM") &&
       informeSnapSrc.includes("poolVisibleSaldo") &&
       informeSnapSrc.includes("ROUTE_CASH_BOOK_FROM") &&
       sealInformeSrc.includes("withInformePoolSaldo") &&
@@ -2301,6 +2314,28 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       !bancoSrc.includes("getCloudDigitalPoolBalances") &&
       !bancoSrc.includes("bancoVisibleSaldoFromCards") &&
       !bancoSrc.includes("useDigitalPoolBalancesCloud"),
+    true,
+  );
+  const weeklyReportSrc = readFileSync(
+    new URL("../lib/weekly-report.ts", import.meta.url),
+    "utf8",
+  );
+  const weeklyViewSrc = readFileSync(
+    new URL("../components/WeeklyReportView.tsx", import.meta.url),
+    "utf8",
+  );
+  const weeklyServerSrc = readFileSync(
+    new URL("../lib/server-weekly-report.ts", import.meta.url),
+    "utf8",
+  );
+  expect(
+    "Informe semanal: Banco/Nequi = libro completo (ROUTE_CASH_BOOK_FROM + servidor)",
+    weeklyReportSrc.includes("fromIso: ROUTE_CASH_BOOK_FROM") &&
+      weeklyReportSrc.includes("withServerPoolBounds") &&
+      weeklyViewSrc.includes("withServerPoolBounds") &&
+      weeklyViewSrc.includes("/api/ops/pool-visible-saldo") &&
+      weeklyServerSrc.includes("withServerPoolBounds") &&
+      weeklyServerSrc.includes("poolVisibleSaldo"),
     true,
   );
   const wsSrc = readFileSync(new URL("../components/workspace/useWorkspace.ts", import.meta.url), "utf8");

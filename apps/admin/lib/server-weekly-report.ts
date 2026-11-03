@@ -16,10 +16,14 @@ import { fetchBankAccountsFromSupabase } from "@/lib/supabase/bank-accounts-mirr
 import { CATALOG_FILE_UPLOAD, downloadCatalogFile } from "@/lib/supabase/catalog-file";
 import { fetchOpsTable, rowToMisc } from "@/lib/supabase/ops-mirror";
 import { fetchUsersFromSupabase } from "@/lib/supabase/user-mirror";
+import { addCalendarDaysIso } from "@/lib/colombia-holidays";
+import { poolVisibleSaldo } from "@/lib/digital-pools";
+import { ROUTE_CASH_BOOK_FROM } from "@/lib/planilla-cash-chain";
 import {
   buildWeeklyReport,
   weeklyCutoffClosedNear,
   weeklyRangeForCutoff,
+  withServerPoolBounds,
   type WeeklyReportScope,
   type WeeklyReportSources,
 } from "@/lib/weekly-report";
@@ -199,7 +203,29 @@ export async function sendWeeklyReport(options: WeeklyReportSendOptions = {}): P
     }
   }
 
-  const reports = SCOPES.map((scope) => buildWeeklyReport(sources, scope, range, today));
+  /** Banco/Nequi del correo = libro completo (misma cifra que BANCO / INFORME). */
+  const beforeIso = addCalendarDaysIso(range.start, -1);
+  const poolShared = {
+    payments: state.payments,
+    loans: state.loans,
+    clients: state.clients,
+    dayCloses: state.dayCloses,
+    miscPayments: sources.miscPayments,
+    accounts: sources.bankAccounts,
+    fromIso: ROUTE_CASH_BOOK_FROM,
+  };
+  const openBanco = poolVisibleSaldo({ ...poolShared, pool: "banco", toIso: beforeIso });
+  const closeBanco = poolVisibleSaldo({ ...poolShared, pool: "banco", toIso: range.end });
+  const openNequi = poolVisibleSaldo({ ...poolShared, pool: "nequi", toIso: beforeIso });
+  const closeNequi = poolVisibleSaldo({ ...poolShared, pool: "nequi", toIso: range.end });
+  const reports = SCOPES.map((scope) => {
+    const built = buildWeeklyReport(sources, scope, range, today);
+    return withServerPoolBounds(
+      built,
+      scope === "a" ? openNequi : openBanco,
+      scope === "a" ? closeNequi : closeBanco,
+    );
+  });
 
   const logoDataUrl = await loadLogo(options.logoUrl);
   const label = generatedLabel(now);
