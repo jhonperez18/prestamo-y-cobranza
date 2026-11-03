@@ -60,7 +60,7 @@ export async function refreshCloudPoolVisibleSaldo(
   const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
   const timer =
     ctrl && typeof window !== "undefined"
-      ? window.setTimeout(() => ctrl.abort(), 45_000)
+      ? window.setTimeout(() => ctrl.abort(), 18_000)
       : 0;
   try {
     const qs = toIso && /^\d{4}-\d{2}-\d{2}$/.test(toIso) ? `?to=${toIso}` : "";

@@ -2576,12 +2576,20 @@ export function SupervisorMobileApp({
   useEffect(() => {
     if (view !== "informe") return;
     let cancelled = false;
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer =
+      ctrl && typeof window !== "undefined"
+        ? window.setTimeout(() => ctrl.abort(), 28_000)
+        : 0;
     setInformeHistory(null);
     setInformeAHistory(null);
     setInformeReadError("");
     const from = bancoHistoryFrom;
     const to = today;
-    fetch(`/api/ops/supervisor-informe?from=${from}&to=${to}`, { cache: "no-store" })
+    fetch(`/api/ops/supervisor-informe?from=${from}&to=${to}`, {
+      cache: "no-store",
+      signal: ctrl?.signal,
+    })
       .then(async (res) => {
         const body: unknown = await res.json();
         const parsed = readSupervisorInformePayload(body);
@@ -2596,9 +2604,14 @@ export function SupervisorMobileApp({
       .catch(() => {
         if (cancelled) return;
         setInformeReadError("No se pudo leer el informe.");
+      })
+      .finally(() => {
+        if (timer) window.clearTimeout(timer);
       });
     return () => {
       cancelled = true;
+      ctrl?.abort();
+      if (timer) window.clearTimeout(timer);
     };
   }, [view, bancoHistoryFrom, today]);
 

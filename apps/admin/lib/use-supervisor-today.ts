@@ -205,8 +205,12 @@ export function usePoolVisibleSaldoCloud(enabled: boolean, toIso: string): PoolV
           setBanco(warm.banco);
           setNequi(warm.nequi);
           setSettled(true);
+        } else if (warm) {
+          // Mientras llega el corte pedido, no dejar «…»: muestra la última cifra buena.
+          setBanco(warm.banco);
+          setNequi(warm.nequi);
+          setSettled(false);
         } else {
-          // Corte distinto: no dejar cifra vieja ni 0 fantasma mientras llega el servidor.
           setBanco(null);
           setNequi(null);
           setSettled(false);
@@ -214,10 +218,7 @@ export function usePoolVisibleSaldoCloud(enabled: boolean, toIso: string): PoolV
         void refreshCloudPoolVisibleSaldo(toIso).then((row) => {
           if (!alive) return;
           setSettled(true);
-          if (!row) {
-            // Fallo / tope: si había cifra del mismo corte, se queda; si no, «…».
-            return;
-          }
+          if (!row) return;
           setBanco(row.banco);
           setNequi(row.nequi);
           setEpoch((n) => n + 1);

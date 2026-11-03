@@ -91,20 +91,20 @@ export function rememberCloudRouteOwnBox(row: CloudRouteOwnBox) {
   writePersisted(key, row);
 }
 
-export async function refreshCloudRouteOwnBox(
-  collectorRef: string,
+async function fetchRouteOwnBoxOnce(
+  ref: string,
   date: string,
-  route: string,
+  pin: "A" | "N",
 ): Promise<CloudRouteOwnBox | null> {
-  const ref = collectorRef.trim();
-  const pin = route.trim().toUpperCase();
-  if (!ref || !/^\d{4}-\d{2}-\d{2}$/.test(date) || (pin !== "A" && pin !== "N")) {
-    return null;
-  }
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer =
+    ctrl && typeof window !== "undefined"
+      ? window.setTimeout(() => ctrl.abort(), 12_000)
+      : 0;
   try {
     const res = await fetch(
       `/api/ops/route-own-box?collectorRef=${encodeURIComponent(ref)}&date=${encodeURIComponent(date)}&route=${encodeURIComponent(pin)}`,
-      { cache: "no-store" },
+      { cache: "no-store", signal: ctrl?.signal },
     );
     const body = (await res.json()) as {
       ok?: boolean;
@@ -135,9 +135,29 @@ export async function refreshCloudRouteOwnBox(
     };
     rememberCloudRouteOwnBox(row);
     return row;
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
+}
+
+export async function refreshCloudRouteOwnBox(
+  collectorRef: string,
+  date: string,
+  route: string,
+): Promise<CloudRouteOwnBox | null> {
+  const ref = collectorRef.trim();
+  const pin = route.trim().toUpperCase();
+  if (!ref || !/^\d{4}-\d{2}-\d{2}$/.test(date) || (pin !== "A" && pin !== "N")) {
+    return null;
+  }
+  try {
+    const first = await fetchRouteOwnBoxOnce(ref, date, pin);
+    if (first) return first;
+    // Un reintento: bajo carga el primer intento aborta y dejaba GASTO 0.
+    return await fetchRouteOwnBoxOnce(ref, date, pin);
   } catch (error) {
     console.error("refreshCloudRouteOwnBox", error);
-    return null;
+    return getCloudRouteOwnBox(ref, date, pin);
   }
 }
 
