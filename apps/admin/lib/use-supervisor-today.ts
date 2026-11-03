@@ -186,6 +186,11 @@ export function usePoolVisibleSaldoCloud(enabled: boolean, toIso: string): PoolV
           setBanco(warm.banco);
           setNequi(warm.nequi);
           setSettled(true);
+        } else {
+          // Corte distinto: no dejar cifra vieja ni 0 fantasma mientras llega el servidor.
+          setBanco(null);
+          setNequi(null);
+          setSettled(false);
         }
         void refreshCloudPoolVisibleSaldo(toIso).then((row) => {
           if (!alive) return;

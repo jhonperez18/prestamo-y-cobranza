@@ -537,7 +537,9 @@ export function WeeklyReportView({
       ? "No se pudo leer la cartera de la ficha."
       : !ficha
         ? "Leyendo la cartera de la ficha…"
-        : "Leyendo Saldo Banco del servidor…";
+        : scope === "a"
+          ? "Leyendo Saldo Nequi del servidor…"
+          : "Leyendo Saldo Banco del servidor…";
 
   return (
     <section className="panel weekly-report">

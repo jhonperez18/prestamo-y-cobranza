@@ -30,7 +30,7 @@ Misma puerta (botón «historial» → lista de meses), **contenido distinto** s
 6. Informe semanal / correo: la misma fórmula y la misma ventana (`ROUTE_CASH_BOOK_FROM`).
 7. **Prohibido** pintar un Saldo local y luego el del servidor (parpadeo 1.149 → 5.299). Hasta que llegue el servidor: «Leyendo…»; una sola cifra.
 
-Ejemplo real Octubre 2026 → Noviembre: M+T+N−Gastos = **5.299.000**. Home, Informe vivo y sello deben coincidir en esa cifra.
+Ejemplo real Octubre 2026 → Noviembre: Banco M+T+N−Gastos = **5.299.000**; Nequi A−Gastos = **4.208.000**. Home, Informe vivo y sello deben coincidir.
 
 ## Mes vivo (pantalla home Banco / Nequi)
 

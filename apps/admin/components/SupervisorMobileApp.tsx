@@ -3541,14 +3541,14 @@ export function SupervisorMobileApp({
     [bancoPoolHistGastos],
   );
   /** Saldo historial Banco = mismo dueño servidor que el mes vivo (no suma local). */
-  const bancoPoolHistSaldo = useMemo(() => {
+  const bancoPoolHistSaldo = useMemo((): number | null => {
     if (
       (bancoPoolHistNav !== "mes" && bancoPoolHistNav !== "ruta") ||
       !bancoPoolHistPeriod
     ) {
-      return 0;
+      return null;
     }
-    return poolVisibleCloud.banco ?? 0;
+    return poolVisibleCloud.banco;
   }, [bancoPoolHistNav, bancoPoolHistPeriod, poolVisibleCloud.banco]);
 
   /** Movimiento Nequi del mes abierto en historial (ruta A). */
@@ -3619,9 +3619,9 @@ export function SupervisorMobileApp({
     [nequiPoolHistGastos],
   );
   /** Saldo historial Nequi = mismo dueño servidor (ruta A − Gastos). */
-  const nequiPoolHistSaldo = useMemo(() => {
-    if (nequiPoolHistNav !== "mes" || !nequiPoolHistPeriod) return 0;
-    return poolVisibleCloud.nequi ?? 0;
+  const nequiPoolHistSaldo = useMemo((): number | null => {
+    if (nequiPoolHistNav !== "mes" || !nequiPoolHistPeriod) return null;
+    return poolVisibleCloud.nequi;
   }, [nequiPoolHistNav, nequiPoolHistPeriod, poolVisibleCloud.nequi]);
   const routeCloseClockByDate = useMemo(() => {
     if (!openRoute?.collectorRef || !openRoute.routeName) return new Map<string, string>();
@@ -6261,10 +6261,10 @@ export function SupervisorMobileApp({
                     type="button"
                     className="is-nequi-saldo"
                     title="Saldo final del mes (pasa como Inicial al mes siguiente)"
-                    aria-label={`Saldo final Nequi ${money(nequiPoolHistSaldo, { symbol: false })}`}
+                    aria-label={`Saldo final Nequi ${nequiPoolHistSaldo == null ? "cargando" : money(nequiPoolHistSaldo, { symbol: false })}`}
                   >
                     <span>Saldo</span>
-                    <b>{money(nequiPoolHistSaldo, { symbol: false })}</b>
+                    <b>{nequiPoolHistSaldo == null ? "…" : money(nequiPoolHistSaldo, { symbol: false })}</b>
                   </button>
                 </div>
               </section>
@@ -6721,10 +6721,12 @@ export function SupervisorMobileApp({
                   type="button"
                   className="supervisor-banco-home-btn is-acumulado"
                   title="Saldo final del mes (pasa como Inicial al mes siguiente)"
-                  aria-label={`Saldo final ${money(bancoPoolHistSaldo, { symbol: false })}`}
+                  aria-label={`Saldo final ${bancoPoolHistSaldo == null ? "cargando" : money(bancoPoolHistSaldo, { symbol: false })}`}
                 >
                   <span>Saldo</span>
-                  <span className="is-amount">{money(bancoPoolHistSaldo, { symbol: false })}</span>
+                  <span className="is-amount">
+                    {bancoPoolHistSaldo == null ? "…" : money(bancoPoolHistSaldo, { symbol: false })}
+                  </span>
                 </button>
               </div>
               {bancoPoolHistExpand === "gastos"
