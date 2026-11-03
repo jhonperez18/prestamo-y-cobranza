@@ -2391,7 +2391,9 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       bancoSrc.includes("poolVisibleCloud.banco") &&
       bancoSrc.includes("poolVisibleCloud.nequi") &&
       bancoSrc.includes("ROUTE_CASH_BOOK_FROM") &&
-      bancoSrc.includes("(routeN?.enCaja ?? 0) + bancoSaldo") &&
+      bancoSrc.includes("routeN?.enCaja") &&
+      bancoSrc.includes("+ bancoSaldo") &&
+      !bancoSrc.includes("inicioTotalPending || bancoSaldo == null") &&
       bancoSrc.includes("Ruta M") &&
       bancoSrc.includes("openInformeSnapshotShown = openInformeSnapshot") &&
       !bancoSrc.includes("withInformePoolSaldo") &&
