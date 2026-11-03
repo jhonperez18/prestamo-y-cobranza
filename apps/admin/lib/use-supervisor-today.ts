@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { CollectorDayCloseRecord, CollectorDayExpenseDraft } from "@/lib/collector-day-close";
 import { previousCalendarIso } from "@/lib/collector-day-auto-close";
+import { previousMonthLastDayIso } from "@/lib/month-route-carry";
 import {
   getCloudChainMOpening,
   refreshCloudChainMOpening,
@@ -11,6 +12,7 @@ import { refreshCloudDayCashFigure } from "@/lib/cloud-day-cash-figure";
 import { getCloudRouteOwnBox } from "@/lib/cloud-route-own-box";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { PaymentRow } from "@/lib/mock-data";
+import { periodFromDateIso } from "@/lib/collector-day-close";
 
 export type SupervisorTodayData = {
   date: string;
@@ -227,9 +229,9 @@ export type RouteOwnAnchorState = {
 };
 
 /**
- * Caja A/N: ancla de ayer + saldo de hoy en caché (route_own_box).
+ * Caja A/N: ancla de ayer + cierre del mes anterior + saldo de hoy (route_own_box).
+ * El cierre del mes anterior arrastra la Inicial (caso N 31/10 → 1.311.500).
  * Sin red, la pantalla sigue con su copia local (o la última de esta sesión).
- * El `epoch` manda: si solo llega el saldo de hoy, igual se re-pinta (A no puede quedar en 0).
  */
 export function useRouteOwnAnchor(
   enabled: boolean,
@@ -238,6 +240,9 @@ export function useRouteOwnAnchor(
   route: "A" | "N",
 ): RouteOwnAnchorState {
   const key = collectorRefs.filter(Boolean).slice().sort().join(",");
+  const monthEnd = /^\d{4}-\d{2}-\d{2}$/.test(today)
+    ? previousMonthLastDayIso(periodFromDateIso(today))
+    : "";
   const [anchors, setAnchors] = useState<Record<string, RouteOwnAnchor>>(() => {
     if (!enabled || !key || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return {};
     const yesterday = previousCalendarIso(today);
@@ -245,8 +250,14 @@ export function useRouteOwnAnchor(
     // Calentamiento síncrono (sessionStorage): el primer paint ya usa la cifra de la base.
     for (const collectorRef of key.split(",").filter(Boolean)) {
       const yesterdayRow = getCloudRouteOwnBox(collectorRef, yesterday, route);
+      const monthRow =
+        monthEnd && monthEnd !== yesterday
+          ? getCloudRouteOwnBox(collectorRef, monthEnd, route)
+          : null;
       if (yesterdayRow) {
         next[collectorRef] = { date: yesterday, saldo: yesterdayRow.saldo, route };
+      } else if (monthRow) {
+        next[collectorRef] = { date: monthEnd, saldo: monthRow.saldo, route };
       }
       void getCloudRouteOwnBox(collectorRef, today, route);
     }
@@ -264,18 +275,33 @@ export function useRouteOwnAnchor(
       const next: Record<string, RouteOwnAnchor> = {};
       await Promise.all(
         refs.map(async (collectorRef) => {
-          const [yesterdayRow, todayRow] = await Promise.all([
+          const jobs: Array<Promise<unknown>> = [
             refreshCloudRouteOwnBox(collectorRef, yesterday, route),
             refreshCloudRouteOwnBox(collectorRef, today, route),
-          ]);
+          ];
+          if (monthEnd && monthEnd !== yesterday && monthEnd !== today) {
+            jobs.push(refreshCloudRouteOwnBox(collectorRef, monthEnd, route));
+          }
+          const [yesterdayRow, todayRow, monthRow] = (await Promise.all(jobs)) as [
+            Awaited<ReturnType<typeof refreshCloudRouteOwnBox>>,
+            Awaited<ReturnType<typeof refreshCloudRouteOwnBox>>,
+            Awaited<ReturnType<typeof refreshCloudRouteOwnBox>> | undefined,
+          ];
+          // Más reciente antes de hoy gana (ayer > cierre de mes).
           if (yesterdayRow) {
             next[collectorRef] = {
               date: yesterday,
               saldo: yesterdayRow.saldo,
               route,
             };
+          } else if (monthRow) {
+            next[collectorRef] = {
+              date: monthEnd,
+              saldo: monthRow.saldo,
+              route,
+            };
           } else if (todayRow) {
-            // Día 1 / sin ancla de ayer en caché: el saldo de hoy de la base basta.
+            // Día 1 / sin ancla de ayer: el Inicial de hoy lo da la base.
             next[collectorRef] = {
               date: today,
               saldo: todayRow.opening,
@@ -292,7 +318,7 @@ export function useRouteOwnAnchor(
     return () => {
       alive = false;
     };
-  }, [enabled, key, today, route]);
+  }, [enabled, key, today, route, monthEnd]);
 
   return { anchors, epoch };
 }

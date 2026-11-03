@@ -5,6 +5,7 @@
  */
 import { businessTodayIso } from "@/lib/business-timezone";
 import { previousCalendarIso, type OperationalDayState } from "@/lib/collector-day-auto-close";
+import { previousPeriod } from "@/lib/collector-day-close";
 import {
   buildDayCashLedger,
   primaryClosingForDay,
@@ -40,7 +41,11 @@ export async function runRouteCashBook(
 
   const today = businessTodayIso(now);
   const last = previousCalendarIso(today);
-  const dates = datesInclusive(ROUTE_CASH_BOOK_FROM, last);
+  // Mes anterior + mes vivo. Desde el 01/10 entero → decenas de RPC y la app se pega.
+  const prevMonthStart = `${previousPeriod(today.slice(0, 7))}-01`;
+  const from =
+    prevMonthStart > ROUTE_CASH_BOOK_FROM ? prevMonthStart : ROUTE_CASH_BOOK_FROM;
+  const dates = datesInclusive(from, last);
   if (dates.length === 0) {
     return { ok: true, collectorRef: ref, route: routeKey, days: [] };
   }

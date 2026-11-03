@@ -1706,19 +1706,6 @@ export function SupervisorMobileApp({
   const aAnchors = aOwnBox.anchors;
   const nAnchors = nOwnBox.anchors;
   const routeOwnBoxEpoch = aOwnBox.epoch + nOwnBox.epoch;
-  /** Libro A/N en INICIO: arrastre del 31 (gastos) → Inicial de hoy. El historial ya lo tenía. */
-  const aHomeCollectorRef = aCollectorRefs[0] || "";
-  const nHomeCollectorRef = nCollectorRefs[0] || "";
-  const aHomeCashBook = useRouteCashBook(
-    aHomeCollectorRef,
-    aHomeCollectorRef ? "A" : null,
-    `${today}|home-a|${aOwnBox.epoch}`,
-  );
-  const nHomeCashBook = useRouteCashBook(
-    nHomeCollectorRef,
-    nHomeCollectorRef ? "N" : null,
-    `${today}|home-n|${nOwnBox.epoch}`,
-  );
   const chainCollectorRefs = useMemo(() => {
     const refs = new Set<string>();
     for (const route of assignedCoverage) {
@@ -1943,33 +1930,14 @@ export function SupervisorMobileApp({
         : sameRoute(route.routeName, "N")
           ? nAnchors[collectorRef]
           : undefined;
-      const ownAnchorBook =
-        ownAnchor &&
-        (ownAnchor.date === previousCalendarIso(today) || ownAnchor.date === today)
+      // Ancla de la base (ayer o cierre del mes anterior). Prohibido route-cash-book en INICIO
+      // (decenas de RPC → app pegada). El historial calienta el mes al abrirlo.
+      const ownBook =
+        ownAnchor && ownAnchor.date <= today
           ? routeOwnAnchorBook(ownAnchor.date, ownAnchor.saldo)
           : undefined;
-      const homeCashBook = sameRoute(route.routeName, "A")
-        ? aHomeCashBook
-        : sameRoute(route.routeName, "N")
-          ? nHomeCashBook
-          : null;
-      // RPC del mes (31 con gastos) + ancla de ayer/hoy. Sin el RPC la Inicial N no arrastraba.
-      const ownBook = mergeRouteCashBooks(homeCashBook ?? undefined, ownAnchorBook);
-      const needsHomeBook =
-        sameRoute(route.routeName, "A")
-          ? Boolean(aHomeCollectorRef)
-          : sameRoute(route.routeName, "N")
-            ? Boolean(nHomeCollectorRef)
-            : false;
-      // null = RPC aún no llegó. Map vacío ya contó: no dejar «…» eterno.
-      const waitingOwnBook =
-        Boolean(collector) &&
-        isIndependentSaldoRoute(route.routeName) &&
-        !ownBook &&
-        needsHomeBook &&
-        homeCashBook === null;
       const independentDay =
-        collector && isIndependentSaldoRoute(route.routeName) && !waitingOwnBook
+        collector && isIndependentSaldoRoute(route.routeName)
           ? independentRouteDay(
               {
                 collectorRef: collector.ref,
@@ -2134,7 +2102,7 @@ export function SupervisorMobileApp({
         prestamosHoy,
         cashLoansToday,
         enCaja,
-        figuresPending: holdLocalCie || waitingOwnBook,
+        figuresPending: holdLocalCie,
         closed,
         newLoans,
         renewals,
@@ -2185,8 +2153,6 @@ export function SupervisorMobileApp({
     ledgerByCollector,
     aAnchors,
     nAnchors,
-    aHomeCashBook,
-    nHomeCashBook,
     routeOwnBoxEpoch,
     chainMOpeningEpoch,
     chainMOpeningSettled,

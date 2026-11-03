@@ -1,7 +1,7 @@
 /**
  * Saldo visible Banco / Nequi (M+T+N−Gastos / A−Gastos) calculado en el servidor.
- * Mes sellado → lee el sello. Mes vivo → sello del mes anterior + delta del mes
- * (sin bajar cobros desde ROUTE_CASH_BOOK_FROM entero: eso colgaba el Saldo en «…»).
+ * Mes sellado → lee el sello (con tope). Mes vivo → sello del mes anterior + delta.
+ * Tope duro: nunca deja la petición colgada (el Saldo en «…» eterno).
  */
 import type { BankAccount } from "@/lib/bank";
 import { lastCalendarDayOfPeriod, previousPeriod } from "@/lib/collector-day-close";
@@ -26,7 +26,6 @@ export type PoolVisibleSaldoResult =
       nequi: number;
       fromIso: string;
       toIso: string;
-      /** Si pidieron `openIso`: saldo al cierre de ese día (Inicio de semana). */
       openIso?: string;
       openBanco?: number;
       openNequi?: number;
@@ -38,6 +37,20 @@ const cache = new Map<string, { at: number; result: Extract<PoolVisibleSaldoResu
 
 function cacheKey(toIso: string, openIso: string) {
   return `${toIso}|${openIso}`;
+}
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise.then((value) => value).catch(() => null),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function poolLineFromSnapshot(
@@ -100,23 +113,20 @@ async function loadPoolShared(paymentsFromIso: string) {
   };
 }
 
-/**
- * Mes vivo: Saldo = sello del mes anterior + neto del mes en curso.
- * Misma fórmula que el libro completo; sin re-bajar cobros de meses ya sellados.
- */
+/** Mes vivo: sello del mes anterior + neto del mes (cobros solo desde el 1). */
 async function liveMonthFromSeal(toIso: string): Promise<PoolVisibleSaldoResult | null> {
   const period = toIso.slice(0, 7);
   const todayPeriod = businessTodayIso().slice(0, 7);
   if (period !== todayPeriod) return null;
 
   const prev = previousPeriod(period);
-  const sealed = await sealedMonthPools(prev);
+  const sealed = await withTimeout(sealedMonthPools(prev), 6_000);
   if (!sealed) return null;
 
   const monthStart = `${period}-01`;
   const fromIso = monthStart >= ROUTE_CASH_BOOK_FROM ? monthStart : ROUTE_CASH_BOOK_FROM;
-  const loaded = await loadPoolShared(fromIso);
-  if (!loaded.ok) return { ok: false, error: loaded.error };
+  const loaded = await withTimeout(loadPoolShared(fromIso), 20_000);
+  if (!loaded?.ok) return loaded && !loaded.ok ? loaded : null;
 
   const deltaBanco = poolVisibleSaldo({
     ...loaded.shared,
@@ -140,7 +150,6 @@ async function liveMonthFromSeal(toIso: string): Promise<PoolVisibleSaldoResult 
   };
 }
 
-/** Mes ya cerrado: la cifra del sello (sin recalcular el libro). */
 async function sealedPeriodPools(toIso: string): Promise<PoolVisibleSaldoResult | null> {
   const period = toIso.slice(0, 7);
   const todayPeriod = businessTodayIso().slice(0, 7);
@@ -148,7 +157,7 @@ async function sealedPeriodPools(toIso: string): Promise<PoolVisibleSaldoResult 
   const last = lastCalendarDayOfPeriod(period);
   if (!last || toIso !== last) return null;
 
-  const sealed = await sealedMonthPools(period);
+  const sealed = await withTimeout(sealedMonthPools(period), 6_000);
   if (!sealed) return null;
   return {
     ok: true,
@@ -186,7 +195,6 @@ async function fullBookPools(
 
 export async function readPoolVisibleSaldo(options?: {
   toIso?: string;
-  /** Segundo corte en la misma bajada (p. ej. víspera del inicio de semana). */
   openIso?: string;
 }): Promise<PoolVisibleSaldoResult> {
   const today = businessTodayIso();
@@ -196,22 +204,36 @@ export async function readPoolVisibleSaldo(options?: {
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.result;
 
-  // Semanal pide openIso: una sola bajada completa cubre ambos cortes.
-  if (!openIso) {
-    const sealed = await sealedPeriodPools(toIso);
-    if (sealed?.ok) {
-      cache.set(key, { at: Date.now(), result: sealed });
-      return sealed;
+  // Semanal (openIso): una bajada; con tope para no colgar el worker.
+  if (openIso) {
+    const full = await withTimeout(fullBookPools(toIso, openIso), 45_000);
+    if (full?.ok) {
+      cache.set(key, { at: Date.now(), result: full });
+      return full;
     }
-    const live = await liveMonthFromSeal(toIso);
-    if (live?.ok) {
-      cache.set(key, { at: Date.now(), result: live });
-      return live;
-    }
-    if (live && !live.ok) return live;
+    if (hit) return hit.result;
+    return { ok: false, error: full && !full.ok ? full.error : "pool_visible_timeout" };
   }
 
-  const full = await fullBookPools(toIso, openIso);
-  if (full.ok) cache.set(key, { at: Date.now(), result: full });
-  return full;
+  const sealed = await sealedPeriodPools(toIso);
+  if (sealed?.ok) {
+    cache.set(key, { at: Date.now(), result: sealed });
+    return sealed;
+  }
+
+  const live = await liveMonthFromSeal(toIso);
+  if (live?.ok) {
+    cache.set(key, { at: Date.now(), result: live });
+    return live;
+  }
+  if (live && !live.ok) return live;
+
+  // Último recurso: libro desde ROUTE_CASH_BOOK_FROM, con tope (no «…» eterno).
+  const full = await withTimeout(fullBookPools(toIso, ""), 25_000);
+  if (full?.ok) {
+    cache.set(key, { at: Date.now(), result: full });
+    return full;
+  }
+  if (hit) return hit.result;
+  return { ok: false, error: full && !full.ok ? full.error : "pool_visible_timeout" };
 }
