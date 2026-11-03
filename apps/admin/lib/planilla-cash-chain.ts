@@ -877,6 +877,11 @@ export function annotateMHistoryExtractRows(input: {
   primaryClosingFor?: (dateIso: string) => number | null;
   /** Días pasados de M calculados por el servidor (celular del cobrador sin historia). */
   book?: RouteCashBook | null;
+  /**
+   * Supervisor: sin chain_m_opening aún, no pintar CIE local fantasma (5.428k).
+   * Misma puerta que INICIO.
+   */
+  holdLocalCieUntilCloud?: boolean;
 }): Array<{
   date: string;
   dateLabel: string;
@@ -891,20 +896,6 @@ export function annotateMHistoryExtractRows(input: {
   const dayCloses = input.dayCloses ?? [];
   const monthCloses = input.monthCloses ?? [];
 
-  const pastDates = ascending.map((row) => row.date).filter((d) => d < today);
-  const yesterdayIso = pastDates.length ? pastDates[pastDates.length - 1] : "";
-
-  /** Saldo final de ayer (CIE): único ancla para el Inicial de M hoy. No es el Saldo de M ayer. */
-  const yesterdayFinal =
-    yesterdayIso.length > 0
-      ? dayFinalClosingCash({
-          collectorRef: input.collectorRef,
-          date: yesterdayIso,
-          records: input.records,
-          dayCloses,
-        })
-      : null;
-
   const annotatedAscending: Array<{
     date: string;
     dateLabel: string;
@@ -917,8 +908,8 @@ export function annotateMHistoryExtractRows(input: {
 
   for (const row of ascending) {
     if (row.date < today) {
-      // Día cerrado: lee lo sellado, sin arrastre. Inicial = CIE de la víspera;
-      // Saldo = caja final de M (Inicial de T), nunca el CIE (saldo final tras T).
+      // Día cerrado: libro RPC manda (fijo). Sin libro no se rearma con copia local incompleta
+      // (eso “movía” el Saldo del 31 y el Inicial del mes nuevo).
       const booked = input.book?.get(row.date);
       if (booked) {
         annotatedAscending.push({
@@ -940,7 +931,8 @@ export function annotateMHistoryExtractRows(input: {
         monthCloses,
         dayCloses,
       });
-      const primaryClosing = input.primaryClosingFor?.(row.date) ?? null;
+      // Sin libro: Inicial sí puede salir del CIE; Saldo queda vacío hasta el RPC
+      // (mejor «…» que un Saldo que cambia al llegar más cobros al aparato).
       annotatedAscending.push({
         date: row.date,
         dateLabel: row.dateLabel,
@@ -948,28 +940,24 @@ export function annotateMHistoryExtractRows(input: {
         gasto: row.gasto,
         prestamo: row.prestamo,
         inicial: open.kind === "chain" && open.ready ? pesos(open.opening) : null,
-        saldoShown:
-          primaryClosing != null && Number.isFinite(primaryClosing) ? pesos(primaryClosing) : null,
+        saldoShown: null,
       });
       continue;
     }
 
-    // Hoy: Inicial = saldo final de ayer.
-    // Saldo = misma fórmula de caja (Inicial + efectivo − préstamo − gasto), no guión.
-    let inicial: number | null = null;
-    if (yesterdayFinal != null) {
-      inicial = pesos(yesterdayFinal);
-    } else {
-      const open = openingCashForChainedPlanilla({
-        collectorRef: input.collectorRef,
-        routeName: PLANILLA_CASH_CHAIN_PRIMARY,
-        date: row.date,
-        records: input.records,
-        monthCloses,
-        dayCloses,
-      });
-      if (open.kind === "chain" && open.ready) inicial = pesos(open.opening);
-    }
+    // Hoy: Inicial = misma puerta que INICIO (chain_m_opening / CIE de la víspera).
+    // Prohibido leer un CIE local de “la última fila del listado” (reintroducía 5.428k).
+    const open = openingCashForChainedPlanilla({
+      collectorRef: input.collectorRef,
+      routeName: PLANILLA_CASH_CHAIN_PRIMARY,
+      date: row.date,
+      records: input.records,
+      monthCloses,
+      dayCloses,
+      holdLocalCieUntilCloud: input.holdLocalCieUntilCloud,
+    });
+    const inicial =
+      open.kind === "chain" && open.ready ? pesos(open.opening) : null;
     const efectivo = pesos(Number(row.cobroEfectivo) || Number(row.cobro) || 0);
     const saldoHoy =
       inicial != null

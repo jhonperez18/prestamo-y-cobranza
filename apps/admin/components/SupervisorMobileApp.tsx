@@ -229,6 +229,7 @@ import {
 } from "@/lib/commit-cash-adjustment";
 import {
   attachRouteCashAdjustments,
+  hasRouteCashBook,
   independentRouteCollected,
   independentRouteDay,
   independentRouteDayLines,
@@ -2793,14 +2794,21 @@ export function SupervisorMobileApp({
   };
 
   const openRoute = liquidaciones.find((row) => row.routeRef === openRouteRef) ?? null;
-  /** Libro A/N del servidor (mismos montos que route_own_box). Historial no rearma con local. */
-  const histIndependentRoute =
-    openRoute && isIndependentSaldoRoute(openRoute.routeName) ? openRoute.routeName : null;
+  /** Libro M / A / N del servidor. Historial de días pasados = cifras fijas (no rearme local). */
+  const histBookRoute =
+    openRoute && hasRouteCashBook(openRoute.routeName)
+      ? openRoute.routeName.trim().toUpperCase()
+      : null;
   const histCashBook = useRouteCashBook(
     openRoute?.collectorRef || "",
-    histIndependentRoute,
-    `${today}|${histOwnBoxEpoch}|${cajaHistoryPeriodPick || ""}`,
+    histBookRoute,
+    `${today}|${histOwnBoxEpoch}|${cajaHistoryPeriodPick || ""}|${chainMOpeningEpoch}`,
   );
+  const histHoldLocalCie =
+    Boolean(openRoute?.collectorRef) &&
+    isPlanillaCashChainPrimary(openRoute?.routeName) &&
+    !getCloudChainMOpening(openRoute?.collectorRef || "", today) &&
+    !chainMOpeningSettled;
 
   // Historial A/N: baja route_own_box del mes visible (la base manda; sin esto todo sale en rojo).
   useEffect(() => {
@@ -3230,6 +3238,8 @@ export function SupervisorMobileApp({
         dayCloses,
         monthCloses,
         primaryClosingFor,
+        book: histCashBook,
+        holdLocalCieUntilCloud: histHoldLocalCie,
       });
       const mStamped = stampHistoryWithPlanillaCashChain({
         collectorRef: openRoute.collectorRef,
@@ -3378,6 +3388,8 @@ export function SupervisorMobileApp({
       dayCloses,
       monthCloses,
       primaryClosingFor,
+      book: histCashBook,
+      holdLocalCieUntilCloud: histHoldLocalCie,
     });
     return withRouteCobradoHistory(
       annotated,
@@ -3418,6 +3430,9 @@ export function SupervisorMobileApp({
     routeOwnBoxEpoch,
     histOwnBoxEpoch,
     histCashBook,
+    histHoldLocalCie,
+    chainMOpeningEpoch,
+    chainMOpeningSettled,
   ]);
 
   const openRouteCajaHistoryIsM = Boolean(
