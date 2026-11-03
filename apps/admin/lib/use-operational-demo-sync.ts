@@ -435,10 +435,10 @@ export function useOperationalDemoSync(
       }
       if (cancel) return;
       /**
-       * Sistema principal (taller/admin): no pintar la copia local vieja.
-       * Suelta -bak, baja la nube y pinta una sola vez — sin pantallazo de datos viejos
-       * ni filas fantasma «por debajo».
-       * Cobrador / supervisor: local primero (offline), nube atrás.
+       * Arranque liviano (todos los roles): pintar ya la copia del aparato.
+       * La nube va atrás con ?since= (completa solo vacío / reparar / cada hora).
+       * Antes el sistema principal esperaba el pull entero → minutos en blanco.
+       * Verdad operativa sigue en Supabase; el panel no bloquea el negocio al abrir.
        */
       const sistemaPrincipal =
         !isCollectorLiveDevice() && !isSupervisorLiveDevice();
@@ -448,14 +448,9 @@ export function useOperationalDemoSync(
         } catch (error) {
           console.error("compact-catalog-bak", error);
         }
-        await runHydrateWithRemotePull();
-        if (cancel) return;
-        commitHydrate();
-        return;
       }
-      // 1) Celular: pintar ya lo del aparato.
       commitHydrate();
-      // 2) Nube en segundo plano.
+      if (cancel) return;
       void runHydrateWithRemotePull();
     })();
     return () => {

@@ -19,9 +19,10 @@ El navegador suelta service worker y Cache Storage en cada arranque. Si había a
  abierto. La subida previa tiene tope (15 s): lo pendiente queda en la cola y lo sube la versión
  nueva. Prohibido esperar un flush sin tope antes de recargar (dejó a Yesid una semana en la vieja).
 3. **Sistema principal** al arrancar: suelta service worker + Cache Storage; suelta copias `-bak`
- (`compactCatalogBackupsOnBoot`); **espera el pull** y pinta una sola vez. Prohibido el
- pantallazo de datos viejos y las filas fantasma por `mergeFresherByRef` sobre el snapshot.
-4. Cobrador / supervisor: local primero (offline); la nube va atrás.
+ (`compactCatalogBackupsOnBoot`); **pinta ya** la copia del aparato; la nube va atrás con
+ `?since=` (completa solo vacío / reparar / cada hora). Prohibido bloquear minutos esperando
+ el archivo entero. Saldos A/N de días sellados: `route_own_box` (no recálculo local).
+4. Cobrador / supervisor: igual — local primero; la nube atrás.
 
 ## Prohibido
 
