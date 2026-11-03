@@ -1,0 +1,28 @@
+{
+  "COB-1|2026-11-03|N": {
+    "ok": true,
+    "route": "N",
+    "saldo": 2596500,
+    "opening": 1311500,
+    "efectivo": 1310000,
+    "prestamos": 0,
+    "gastos": 25000,
+    "anchor": "2026-10-31",
+    "anchorReal": 1311500,
+    "date": "2026-11-03",
+    "collectorRef": "COB-1"
+  },
+  "COB-1|2026-10-31|N": {
+    "ok": true,
+    "route": "N",
+    "saldo": 1311500,
+    "opening": 3279500,
+    "efectivo": 1606000,
+    "prestamos": 2000000,
+    "gastos": 1574000,
+    "anchor": "2026-10-30",
+    "anchorReal": 3279500,
+    "date": "2026-10-31",
+    "collectorRef": "COB-1"
+  }
+}

@@ -59,9 +59,19 @@ function fail(error: string): SupervisorInformeResult {
   return { ok: false, error };
 }
 
+const INFORME_CACHE_TTL_MS = 90_000;
+const informeCache = new Map<
+  string,
+  { at: number; result: Extract<SupervisorInformeResult, { ok: true }> }
+>();
+
 export async function loadSupervisorInforme(from: string, to: string): Promise<SupervisorInformeResult> {
   const span = daySpan(from, to);
   if (span == null || span > MAX_DAYS) return fail("bad_range");
+  const cacheKey = `${from}|${to}`;
+  const warm = informeCache.get(cacheKey);
+  if (warm && Date.now() - warm.at < INFORME_CACHE_TTL_MS) return warm.result;
+
   const db = createSupabaseAdminClient();
   if (!db) return fail("supabase_not_configured");
 
@@ -71,10 +81,22 @@ export async function loadSupervisorInforme(from: string, to: string): Promise<S
     fetchOpsTableSince("day_closes", "close_date", from, to),
     fetchOpsTableSince("day_expenses", "expense_date", from, to),
   ]);
-  if (!paymentsT.ok || ("skipped" in paymentsT && paymentsT.skipped)) return fail("payments_failed");
-  if (!assignsT.ok || ("skipped" in assignsT && assignsT.skipped)) return fail("assignments_failed");
-  if (!closesT.ok || ("skipped" in closesT && closesT.skipped)) return fail("closes_failed");
-  if (!expensesT.ok || ("skipped" in expensesT && expensesT.skipped)) return fail("expenses_failed");
+  if (!paymentsT.ok || ("skipped" in paymentsT && paymentsT.skipped)) {
+    if (warm) return warm.result;
+    return fail("payments_failed");
+  }
+  if (!assignsT.ok || ("skipped" in assignsT && assignsT.skipped)) {
+    if (warm) return warm.result;
+    return fail("assignments_failed");
+  }
+  if (!closesT.ok || ("skipped" in closesT && closesT.skipped)) {
+    if (warm) return warm.result;
+    return fail("closes_failed");
+  }
+  if (!expensesT.ok || ("skipped" in expensesT && expensesT.skipped)) {
+    if (warm) return warm.result;
+    return fail("expenses_failed");
+  }
 
   type SlimLoan = {
     ref: string;
@@ -210,6 +232,7 @@ export async function loadSupervisorInforme(from: string, to: string): Promise<S
       .filter((row): row is CollectorRow => Boolean(row));
     routeRows = routes;
   } catch (error) {
+    if (warm) return warm.result;
     return fail(error instanceof Error ? error.message : "catalog_failed");
   }
 
@@ -256,5 +279,13 @@ export async function loadSupervisorInforme(from: string, to: string): Promise<S
   if (!prestamoListIsTheTotal(general.prestamo, INFORME_HISTORY_ROUTES)) return fail("prestamo_list_mismatch");
   if (!prestamoListIsTheTotal(angelica.prestamo, null)) return fail("prestamo_list_mismatch");
 
-  return { ok: true, from, to, general, angelica };
+  const result: Extract<SupervisorInformeResult, { ok: true }> = {
+    ok: true,
+    from,
+    to,
+    general,
+    angelica,
+  };
+  informeCache.set(cacheKey, { at: Date.now(), result });
+  return result;
 }
