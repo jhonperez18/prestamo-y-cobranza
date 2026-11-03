@@ -205,8 +205,8 @@ export function normalizeInformeSnapshot(raw: unknown): InformeMonthSnapshot | n
 }
 
 /**
- * Saldo Banco / Nequi del informe = `poolVisibleSaldo` (cierre del mes = apertura del siguiente).
- * Corrige filas viejas selladas con otra fórmula; no toca cartera, efectivo ni historial del mes.
+ * Escribe Banco / Nequi en el sello del mes (`poolVisibleSaldo` en el servidor).
+ * Solo al sellar / alinear en servidor. El celular lee el sello; no vuelve a pintar.
  */
 export function withInformePoolSaldo(
   snapshot: InformeMonthSnapshot,

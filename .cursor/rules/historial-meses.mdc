@@ -25,9 +25,10 @@ Misma puerta (botón «historial» → lista de meses), **contenido distinto** s
 1. El **Saldo del historial** (cierre del mes) = el **Saldo del mes nuevo** al abrir (Inicial). Arrastra.
 2. En el mes vivo, cobrado / prestado / gastos del mes empiezan en **0**; el Saldo no se pone en 0.
 3. **Prohibido** usar `digital_pool_balances` (nube) o `AJUSTE@POOL` para esta cifra de Saldo.
-4. Dueño de código: **solo** `poolVisibleSaldo` (`lib/digital-pools.ts`). Misma función en home e historial.
+4. Dueño de código home / historial Banco-Nequi: **`poolVisibleSaldo`** (`lib/digital-pools.ts`).
+5. **Informe de un mes ya sellado:** manda el sello del servidor (misma fórmula al cerrar). El celular **no** lo recalcula.
 
-Ejemplo Octubre → Noviembre: si M+T+N−Gastos = 2.208.000 en historial, el home de noviembre abre con Saldo **2.208.000**.
+Ejemplo real Octubre 2026 → Noviembre: M+T+N−Gastos = **5.299.000** (sello + libro). Home de noviembre abre con Saldo **5.299.000**.
 
 ## Mes vivo (pantalla home Banco / Nequi)
 
@@ -73,6 +74,7 @@ home  →  historial  →  lista de meses  →  mes  →  Ruta M | Ruta T | Ruta
 - Hardcodear un mes.
 - Saldo tomado de la nube (`digital_pool_balances`) o cortado por `AJUSTE@POOL`.
 - Una fórmula de Saldo en historial y otra en el mes vivo.
+- Que el celular rehaga el Banco/Nequi de un Informe ya sellado.
 - Mostrar un Saldo “manual” distinto del libro de movimientos del sistema.
 - Tratar Nequi como si tuviera tres rutas.
 - Engordar botones o la fila del mes.

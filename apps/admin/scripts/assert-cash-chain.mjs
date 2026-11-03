@@ -2274,6 +2274,14 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     new URL("../lib/server-informe-month-snapshot.ts", import.meta.url),
     "utf8",
   );
+  const informeMonthSnapSrc = readFileSync(
+    new URL("../lib/informe-month-snapshot.ts", import.meta.url),
+    "utf8",
+  );
+  const sealInformeSrc = readFileSync(
+    new URL("../lib/server-seal-informe-month.ts", import.meta.url),
+    "utf8",
+  );
   expect(
     "Banco: saldo = M+T+N − Gastos siempre (historial y mes vivo; no nube)",
     bancoSrc.includes("BANCO_ROUTE_PINS") &&
@@ -2283,10 +2291,12 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       bancoSrc.includes("ROUTE_CASH_BOOK_FROM") &&
       bancoSrc.includes("(routeN?.enCaja ?? 0) + bancoSaldo") &&
       bancoSrc.includes("Ruta M") &&
-      bancoSrc.includes("withInformePoolSaldo") &&
-      bancoSrc.includes("openInformeSnapshotShown") &&
+      bancoSrc.includes("openInformeSnapshotShown = openInformeSnapshot") &&
+      !bancoSrc.includes("withInformePoolSaldo") &&
       informeSnapSrc.includes("poolVisibleSaldo") &&
       informeSnapSrc.includes("ROUTE_CASH_BOOK_FROM") &&
+      sealInformeSrc.includes("withInformePoolSaldo") &&
+      informeMonthSnapSrc.includes("El celular lee el sello") &&
       !informeSnapSrc.includes("bancoAcumuladoRutas") &&
       !bancoSrc.includes("getCloudDigitalPoolBalances") &&
       !bancoSrc.includes("bancoVisibleSaldoFromCards") &&

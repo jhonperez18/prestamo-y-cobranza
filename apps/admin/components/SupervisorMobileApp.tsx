@@ -114,7 +114,6 @@ import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import {
   informePeriodName,
   normalizeInformeSnapshot,
-  withInformePoolSaldo,
   type InformeMonthSnapshot,
 } from "@/lib/informe-month-snapshot";
 import { primaryLoanForClient } from "@/lib/route-sync";
@@ -2506,34 +2505,11 @@ export function SupervisorMobileApp({
   const openInformeSnapshot =
     informeMonths.find((row) => row.period === informePeriod) ?? null;
   /**
-   * Historial del mes: Banco/Nequi = `poolVisibleSaldo` al día del cierre
-   * (misma cifra que el mes vivo sin movimientos). Cartera/efectivo/cobrado quedan sellados.
+   * Informe · historial de un mes ya sellado: manda el sello del servidor
+   * (`poolVisibleSaldo` al cerrar el mes). El celular no lo recalcula — si lo
+   * rehace con copia incompleta, el Saldo “cambia” (caso 2.208 vs 5.299).
    */
-  const openInformeSnapshotShown = useMemo(() => {
-    if (!openInformeSnapshot) return null;
-    const pool = poolVisibleSaldo({
-      pool: openInformeSnapshot.scope === "general" ? "banco" : "nequi",
-      payments: paymentsWithEvidence,
-      loans,
-      clients,
-      dayCloses: dayClosesLive,
-      miscPayments,
-      accounts: bankAccounts,
-      fromIso: ROUTE_CASH_BOOK_FROM,
-      toIso: openInformeSnapshot.sealedOn,
-      movements: bankMovements,
-    });
-    return withInformePoolSaldo(openInformeSnapshot, pool);
-  }, [
-    openInformeSnapshot,
-    paymentsWithEvidence,
-    loans,
-    clients,
-    dayClosesLive,
-    miscPayments,
-    bankAccounts,
-    bankMovements,
-  ]);
+  const openInformeSnapshotShown = openInformeSnapshot;
   const informeSealDay = lastCollectionDayOfPeriod(today.slice(0, 7));
   const informeARows = useMemo(
     () => liquidaciones.filter((row) => sameRoute(row.routeName, INFORME_A_ROUTE)),
