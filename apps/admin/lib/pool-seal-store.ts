@@ -70,3 +70,66 @@ export async function writePoolSeal(
   });
   await persistAll();
 }
+
+/** Último Saldo vivo del día (respaldo si Supabase tarda). */
+export type LivePoolSnap = {
+  toIso: string;
+  banco: number;
+  nequi: number;
+  at: string;
+};
+
+const LIVE_FILE = path.join(process.cwd(), "data", "pool-live.json");
+let liveSnap: LivePoolSnap | null = null;
+let liveLoaded = false;
+
+async function ensureLiveLoaded() {
+  if (liveLoaded) return;
+  liveLoaded = true;
+  try {
+    const raw = await fs.readFile(LIVE_FILE, "utf8");
+    const row = JSON.parse(raw) as LivePoolSnap;
+    if (
+      row &&
+      /^\d{4}-\d{2}-\d{2}$/.test(String(row.toIso || "")) &&
+      Number.isFinite(Number(row.banco)) &&
+      Number.isFinite(Number(row.nequi))
+    ) {
+      liveSnap = {
+        toIso: String(row.toIso).slice(0, 10),
+        banco: Math.trunc(Number(row.banco)),
+        nequi: Math.trunc(Number(row.nequi)),
+        at: String(row.at || ""),
+      };
+    }
+  } catch {
+    /* sin archivo */
+  }
+}
+
+export async function readLivePoolSnap(): Promise<LivePoolSnap | null> {
+  await ensureLiveLoaded();
+  return liveSnap;
+}
+
+export async function writeLivePoolSnap(
+  toIso: string,
+  banco: number,
+  nequi: number,
+): Promise<void> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(toIso)) return;
+  if (!Number.isFinite(banco) || !Number.isFinite(nequi)) return;
+  liveSnap = {
+    toIso,
+    banco: Math.trunc(banco),
+    nequi: Math.trunc(nequi),
+    at: new Date().toISOString(),
+  };
+  liveLoaded = true;
+  try {
+    await fs.mkdir(path.dirname(LIVE_FILE), { recursive: true });
+    await fs.writeFile(LIVE_FILE, `${JSON.stringify(liveSnap, null, 2)}\n`, "utf8");
+  } catch (error) {
+    console.error("pool-live-write", error);
+  }
+}

@@ -10,7 +10,12 @@ import type { MiscPayment } from "@/lib/misc-payments";
 import { businessTodayIso } from "@/lib/business-timezone";
 import type { CollectorDayCloseRecord } from "@/lib/collector-day-close";
 import { ROUTE_CASH_BOOK_FROM } from "@/lib/planilla-cash-chain";
-import { readPoolSeal, writePoolSeal } from "@/lib/pool-seal-store";
+import {
+  readLivePoolSnap,
+  readPoolSeal,
+  writeLivePoolSnap,
+  writePoolSeal,
+} from "@/lib/pool-seal-store";
 import {
   fetchClientsFromSupabase,
   fetchLoansFromSupabase,
@@ -99,10 +104,23 @@ async function sealedMonthPools(
   return { banco, nequi };
 }
 
+async function fetchPaymentsResilient(paymentsFromIso: string) {
+  // Primero intento corto; si el frío de Supabase gana, un segundo con más aire.
+  const first = await withTimeout(
+    fetchPaymentsFromSupabase({ evidence: false, fromDate: paymentsFromIso }),
+    10_000,
+  );
+  if (first?.ok) return first;
+  return withTimeout(
+    fetchPaymentsFromSupabase({ evidence: false, fromDate: paymentsFromIso }),
+    16_000,
+  );
+}
+
 async function loadPoolShared(paymentsFromIso: string) {
-  const pieceMs = 9_000;
+  const pieceMs = 12_000;
   const [paymentsT, clientsT, loansT, miscT, accountsT] = await Promise.all([
-    withTimeout(fetchPaymentsFromSupabase({ evidence: false, fromDate: paymentsFromIso }), pieceMs),
+    fetchPaymentsResilient(paymentsFromIso),
     withTimeout(fetchClientsFromSupabase(), pieceMs),
     withTimeout(fetchLoansFromSupabase(), pieceMs),
     withTimeout(fetchOpsTable("misc_payments"), pieceMs),
@@ -224,10 +242,26 @@ export async function readPoolVisibleSaldo(options?: {
   const live = await liveMonthFromSeal(toIso);
   if (live?.ok) {
     cache.set(key, { at: Date.now(), result: live });
+    void writeLivePoolSnap(toIso, live.banco, live.nequi);
     return live;
   }
-  if (live && !live.ok) return live;
 
+  // Frío de cobros: última cifra buena del mismo día (disco / memoria).
+  if (hit && hit.result.toIso === toIso) return hit.result;
+  const diskLive = await readLivePoolSnap();
+  if (diskLive && diskLive.toIso === toIso) {
+    const fallback: Extract<PoolVisibleSaldoResult, { ok: true }> = {
+      ok: true,
+      banco: diskLive.banco,
+      nequi: diskLive.nequi,
+      fromIso: ROUTE_CASH_BOOK_FROM,
+      toIso,
+    };
+    cache.set(key, { at: Date.now(), result: fallback });
+    return fallback;
+  }
+
+  if (live && !live.ok) return live;
   if (hit) return hit.result;
   return { ok: false, error: "pool_visible_unavailable" };
 }
