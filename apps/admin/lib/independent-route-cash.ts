@@ -450,39 +450,10 @@ export function independentRouteDay(
 ): IndependentRouteDay {
   const date = isoOf(src.date);
   const today = routeMovement({ ...src, date }, route);
-  const booked = date < businessTodayIso() ? book?.get(date) : undefined;
-  if (booked) {
-    const prestamos = pesos(booked.prestamos);
-    return {
-      ...today,
-      efectivo: booked.efectivo,
-      gastos: booked.gastos,
-      prestamos,
-      // Digital siempre desde fichas del día: el libro solo sella la caja (efectivo).
-      prestamosRuta: pesos(prestamos + today.prestamosDigital),
-      route,
-      date,
-      anchored: true,
-      opening: booked.opening,
-      closing: booked.closing,
-      adjustment: findRouteCashAdjustment(src.dayCloses, src.collectorRef, date, route),
-    };
-  }
-  const anchor = openingAnchor(src, route, date, book);
-  let opening = pesos(src.fallbackOpening ?? 0);
-  if (anchor) {
-    opening = anchor.real;
-    for (let day = nextIsoDay(anchor.date); day < date; day = nextIsoDay(day)) {
-      const move = routeMovement({ ...src, date: day }, route);
-      opening = pesos(opening + move.efectivo - move.gastos - move.prestamos);
-    }
-  }
-  const todayIso = businessTodayIso();
-  const sealedClosing = date < todayIso ? sealedRouteClosing(src, route, date) : null;
-  // Fase 3.3: si hay route_own_box en caché, manda SIEMPRE (hoy y días pasados).
-  // Fallo que dañó N 31/10→03/11: con CIE local se saltaba la nube y se pintaba
-  // gasto/préstamo del aparato incompleto (GASTO 0 · Saldo 2.610.500) aunque la base
-  // tuviera gastos 1.574.000 · saldo 1.311.500. Ese Saldo falso viraba Inicial de hoy.
+  const adj = findRouteCashAdjustment(src.dayCloses, src.collectorRef, date, route);
+  // Fase 3.3: route_own_box PRIMERO (antes del libro stub / arrastre local).
+  // Si el libro o el roll Nov 1–2 (sin gastos) ganan, Inicial N sale 2.610.500
+  // aunque la base diga 1.311.500.
   const cloud = getCloudRouteOwnBox(src.collectorRef, date, route);
   if (cloud) {
     const cloudClosing = pesos(cloud.saldo);
@@ -500,10 +471,45 @@ export function independentRouteDay(
       anchored: true,
       opening: cloudOpening,
       closing: cloudClosing,
-      adjustment: findRouteCashAdjustment(src.dayCloses, src.collectorRef, date, route),
+      adjustment: adj,
     };
   }
-  // Sin nube aún: CIE sellado ancla el Saldo; el movimiento sigue del aparato (puede ir 0).
+  const booked = date < businessTodayIso() ? book?.get(date) : undefined;
+  if (booked) {
+    const prestamos = pesos(booked.prestamos);
+    return {
+      ...today,
+      efectivo: booked.efectivo,
+      gastos: booked.gastos,
+      prestamos,
+      // Digital siempre desde fichas del día: el libro solo sella la caja (efectivo).
+      prestamosRuta: pesos(prestamos + today.prestamosDigital),
+      route,
+      date,
+      anchored: true,
+      opening: booked.opening,
+      closing: booked.closing,
+      adjustment: adj,
+    };
+  }
+  const anchor = openingAnchor(src, route, date, book);
+  let opening = pesos(src.fallbackOpening ?? 0);
+  if (anchor) {
+    opening = anchor.real;
+    for (let day = nextIsoDay(anchor.date); day < date; day = nextIsoDay(day)) {
+      // Día intermedio: nube de ese día si ya está; no sumar planilla a medias.
+      const mid = getCloudRouteOwnBox(src.collectorRef, day, route);
+      if (mid) {
+        opening = pesos(mid.saldo);
+        continue;
+      }
+      const move = routeMovement({ ...src, date: day }, route);
+      opening = pesos(opening + move.efectivo - move.gastos - move.prestamos);
+    }
+  }
+  const todayIso = businessTodayIso();
+  const sealedClosing = date < todayIso ? sealedRouteClosing(src, route, date) : null;
+  // Sin nube de este día: CIE sellado ancla el Saldo; el movimiento sigue del aparato.
   const localClosing =
     sealedClosing ?? pesos(opening + today.efectivo - today.gastos - today.prestamos);
   return {
@@ -513,7 +519,7 @@ export function independentRouteDay(
     anchored: Boolean(anchor),
     opening,
     closing: localClosing,
-    adjustment: findRouteCashAdjustment(src.dayCloses, src.collectorRef, date, route),
+    adjustment: adj,
   };
 }
 
