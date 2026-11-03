@@ -9,12 +9,10 @@ import {
   countPendingForAccount,
   formatBankAmount,
   latestOpenPendingPeriod,
-  listadoBalanceForAccount,
+  liveBalanceForAccount,
   normalizeBankAccount,
 } from "@/lib/bank";
-import { businessTodayIso } from "@/lib/business-timezone";
 import { BANK_ACCOUNT_COLUMNS, BANK_ACCOUNT_DEFAULT_COLS } from "@/lib/table-columns";
-import { usePoolVisibleSaldoCloud } from "@/lib/use-supervisor-today";
 
 type Props = {
   accounts: BankAccount[];
@@ -38,17 +36,12 @@ export function BankAccountListView({
     BANK_ACCOUNT_DEFAULT_COLS,
     { storageKey: "nexo.banco.listado.columns" },
   );
-  const today = businessTodayIso();
-  const poolVisible = usePoolVisibleSaldoCloud(true, today);
 
   const rows = accounts.map(normalizeBankAccount);
-  const balances = rows.map((account) =>
-    listadoBalanceForAccount(account, movements, reconciliations, poolVisible),
+  const totalBalance = rows.reduce(
+    (sum, row) => sum + liveBalanceForAccount(row, movements, reconciliations),
+    0,
   );
-  const poolPending = balances.some((value) => value == null);
-  const totalBalance = poolPending
-    ? null
-    : balances.reduce<number>((sum, value) => sum + (value ?? 0), 0);
   const showTotal = rows.length > 1;
   const colsBeforeBalance = ["ref", "name", "type", "bank", "number", "pending"].filter((id) =>
     isVisible(id),
@@ -106,14 +99,14 @@ export function BankAccountListView({
                 </td>
               </tr>
             ) : (
-              rows.map((account, index) => {
+              rows.map((account) => {
                 const pending = countPendingForAccount(movements, reconciliations, account.ref);
                 const openPeriod = latestOpenPendingPeriod(
                   movements,
                   reconciliations,
                   account.ref,
                 );
-                const liveBalance = balances[index];
+                const liveBalance = liveBalanceForAccount(account, movements, reconciliations);
 
                 return (
                   <tr key={account.ref}>
@@ -152,9 +145,7 @@ export function BankAccountListView({
                       </td>
                     ) : null}
                     {isVisible("balance") ? (
-                      <td className="money right">
-                        {liveBalance == null ? "…" : formatBankAmount(liveBalance)}
-                      </td>
+                      <td className="money right">{formatBankAmount(liveBalance)}</td>
                     ) : null}
                     {isVisible("status") ? (
                       <td>
@@ -183,9 +174,7 @@ export function BankAccountListView({
             <tfoot>
               <tr className="bank-accounts-total-row">
                 <td colSpan={Math.max(colsBeforeBalance, 1)}>Total</td>
-                <td className="money right">
-                  {totalBalance == null ? "…" : formatBankAmount(totalBalance)}
-                </td>
+                <td className="money right">{formatBankAmount(totalBalance)}</td>
                 {colsAfterBalance > 0 ? <td colSpan={colsAfterBalance + 2} /> : (
                   <>
                     <td />

@@ -1621,37 +1621,16 @@ expect("Banco · M efectivo → principal", accountOf("PG-M3"), "EF");
   expect("Nube: el uso viaja en la firma de la cuenta", /row\.role \?\? ""/.test(bankMirrorSrc), true);
   const bankSrc = readFileSync(new URL("../lib/bank.ts", import.meta.url), "utf8");
   expect("Banco: nadie elige cuenta por «primera activa»", /\.find\(\(row\) => row\.active\)/.test(bankSrc), false);
-  const { listadoBalanceForAccount, liveBalanceForAccount } = await import("@/lib/bank");
-  const listadoPool = { banco: 5_299_000, nequi: 4_208_000 };
-  expect(
-    "Listado Banco: Nequi pinta poolVisible (no ledger 1.553)",
-    listadoBalanceForAccount(cloudOrder[0], [], [], listadoPool),
-    4_208_000,
-  );
-  expect(
-    "Listado Banco: cuenta Banco pinta poolVisible",
-    listadoBalanceForAccount(cloudOrder[2], [], [], listadoPool),
-    5_299_000,
-  );
-  expect(
-    "Listado Banco: efectivo sigue el libro de la ficha",
-    listadoBalanceForAccount(
-      cloudOrder[1],
-      [],
-      [],
-      listadoPool,
-    ),
-    liveBalanceForAccount(cloudOrder[1], [], []),
-  );
   const listadoViewSrc = readFileSync(
     new URL("../components/BankAccountListView.tsx", import.meta.url),
     "utf8",
   );
   expect(
-    "Listado Banco UI: Saldo banco/nequi del servidor",
-    listadoViewSrc.includes("listadoBalanceForAccount") &&
-      listadoViewSrc.includes("usePoolVisibleSaldoCloud") &&
-      bankSrc.includes("export function listadoBalanceForAccount"),
+    "Listado Banco = libro de Registros (no Saldo operativo acomodado)",
+    listadoViewSrc.includes("liveBalanceForAccount") &&
+      !listadoViewSrc.includes("usePoolVisibleSaldoCloud") &&
+      !listadoViewSrc.includes("listadoBalanceForAccount") &&
+      !bankSrc.includes("export function listadoBalanceForAccount"),
     true,
   );
   // Caché de Storage (09/10): leer la copia de hace una hora y reescribir pisaba el guardado anterior.
