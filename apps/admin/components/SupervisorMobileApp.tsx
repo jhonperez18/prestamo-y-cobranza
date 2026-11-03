@@ -583,7 +583,11 @@ function RouteBoardCard({
           <div
             className={`supervisor-caja-hero is-row${colorMode === "nequi" ? " is-nequi" : ""}${colorMode === "banco" ? " is-banco" : ""}`}
           >
-            <b>{money(heroAmount, { symbol: false })}</b>
+            <b>
+              {row.figuresPending && mode === "caja"
+                ? "…"
+                : money(heroAmount, { symbol: false })}
+            </b>
           </div>
         </div>
       ) : (
@@ -610,7 +614,9 @@ function RouteBoardCard({
               </strong>
             </div>
             <div className="supervisor-caja-hero is-row is-money-lg">
-              <b>{money(row.enCaja, { symbol: false })}</b>
+              <b>
+                {row.figuresPending ? "…" : money(row.enCaja, { symbol: false })}
+              </b>
             </div>
           </div>
 
@@ -634,7 +640,11 @@ function RouteBoardCard({
           >
             <div>
               <span>Inicial</span>
-              <b>{money(row.saldoInicial, { symbol: false })}</b>
+              <b>
+                {row.figuresPending
+                  ? "…"
+                  : money(row.saldoInicial, { symbol: false })}
+              </b>
             </div>
             <div>
               <span>Cobrado</span>
@@ -7893,10 +7903,6 @@ export function SupervisorMobileApp({
             />
           ) : liquidaciones.length === 0 ? (
             <p className="ficha-empty">No hay rutas con cobrador.</p>
-          ) : !chainMOpeningSettled && chainCollectorRefs.length > 0 ? (
-            <p className="ficha-empty" aria-live="polite">
-              Cargando saldos…
-            </p>
           ) : (
             <div className="supervisor-route-boards">
               {liquidaciones.map((row, index) => (
