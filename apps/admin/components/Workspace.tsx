@@ -378,7 +378,14 @@ export function Workspace(props: WorkspaceProps) {
   }
 
   if (!demoHydrated) {
-    return <div className="login-screen login-loading" aria-hidden />;
+    return (
+      <div className="workspace-boot-wait" role="status" aria-live="polite">
+        <p className="workspace-boot-wait-title">Bajando la nube…</p>
+        <p className="workspace-boot-wait-hint">
+          El sistema principal no pinta datos viejos. En unos segundos aparece el panel.
+        </p>
+      </div>
+    );
   }
 
   return (

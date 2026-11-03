@@ -479,14 +479,12 @@ export function independentRouteDay(
   }
   const todayIso = businessTodayIso();
   const sealedClosing = date < todayIso ? sealedRouteClosing(src, route, date) : null;
-  const localClosing =
-    sealedClosing ?? pesos(opening + today.efectivo - today.gastos - today.prestamos);
-  // Fase 3.3: la base manda (route_own_box) en vivo y en días pasados.
-  // Sin esto el historial A recalcula con un aparato incompleto → todo en rojo
-  // aunque la nube tenga el Saldo real (caso 01/11: Oct rojo + Nov día 1 en −170).
-  const cloud =
-    sealedClosing == null ? getCloudRouteOwnBox(src.collectorRef, date, route) : null;
-  if (cloud && sealedClosing == null) {
+  // Fase 3.3: si hay route_own_box en caché, manda SIEMPRE (hoy y días pasados).
+  // Fallo que dañó N 31/10→03/11: con CIE local se saltaba la nube y se pintaba
+  // gasto/préstamo del aparato incompleto (GASTO 0 · Saldo 2.610.500) aunque la base
+  // tuviera gastos 1.574.000 · saldo 1.311.500. Ese Saldo falso viraba Inicial de hoy.
+  const cloud = getCloudRouteOwnBox(src.collectorRef, date, route);
+  if (cloud) {
     const cloudClosing = pesos(cloud.saldo);
     const cloudOpening = Number.isFinite(cloud.opening)
       ? pesos(cloud.opening)
@@ -505,6 +503,9 @@ export function independentRouteDay(
       adjustment: findRouteCashAdjustment(src.dayCloses, src.collectorRef, date, route),
     };
   }
+  // Sin nube aún: CIE sellado ancla el Saldo; el movimiento sigue del aparato (puede ir 0).
+  const localClosing =
+    sealedClosing ?? pesos(opening + today.efectivo - today.gastos - today.prestamos);
   return {
     ...today,
     route,

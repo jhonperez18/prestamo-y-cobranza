@@ -10152,6 +10152,29 @@
       position: relative;
     }
 
+    /* Sistema principal: espera el pull. Antes era un div vacío (parecía caído). */
+    .workspace-boot-wait {
+      display: grid;
+      place-content: center;
+      gap: 8px;
+      min-height: min(52vh, 420px);
+      padding: 28px 20px;
+      text-align: center;
+      color: #1a2e28;
+    }
+    .workspace-boot-wait-title {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 700;
+    }
+    .workspace-boot-wait-hint {
+      margin: 0 auto;
+      max-width: 28rem;
+      font-size: 0.95rem;
+      line-height: 1.4;
+      opacity: 0.78;
+    }
+
     .crumb {
       display: flex; align-items: center; gap: 8px;
       color: #111; font-size: 16px; font-weight: 600;
