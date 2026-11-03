@@ -3240,6 +3240,7 @@ export function SupervisorMobileApp({
         primaryClosingFor,
         book: histCashBook,
         holdLocalCieUntilCloud: histHoldLocalCie,
+        sealPastFromBook: true,
       });
       const mStamped = stampHistoryWithPlanillaCashChain({
         collectorRef: openRoute.collectorRef,
@@ -3390,6 +3391,7 @@ export function SupervisorMobileApp({
       primaryClosingFor,
       book: histCashBook,
       holdLocalCieUntilCloud: histHoldLocalCie,
+      sealPastFromBook: true,
     });
     return withRouteCobradoHistory(
       annotated,

@@ -882,6 +882,11 @@ export function annotateMHistoryExtractRows(input: {
    * Misma puerta que INICIO.
    */
   holdLocalCieUntilCloud?: boolean;
+  /**
+   * Supervisor historial: días pasados solo del libro RPC. Sin fila en el libro → «—»
+   * (no recalcular con copia local incompleta: eso movía el Saldo del 31).
+   */
+  sealPastFromBook?: boolean;
 }): Array<{
   date: string;
   dateLabel: string;
@@ -931,8 +936,9 @@ export function annotateMHistoryExtractRows(input: {
         monthCloses,
         dayCloses,
       });
-      // Sin libro: Inicial sí puede salir del CIE; Saldo queda vacío hasta el RPC
-      // (mejor «…» que un Saldo que cambia al llegar más cobros al aparato).
+      const primaryClosing = input.sealPastFromBook
+        ? null
+        : input.primaryClosingFor?.(row.date) ?? null;
       annotatedAscending.push({
         date: row.date,
         dateLabel: row.dateLabel,
@@ -940,7 +946,10 @@ export function annotateMHistoryExtractRows(input: {
         gasto: row.gasto,
         prestamo: row.prestamo,
         inicial: open.kind === "chain" && open.ready ? pesos(open.opening) : null,
-        saldoShown: null,
+        saldoShown:
+          primaryClosing != null && Number.isFinite(primaryClosing)
+            ? pesos(primaryClosing)
+            : null,
       });
       continue;
     }
