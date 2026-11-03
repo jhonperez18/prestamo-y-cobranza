@@ -1741,7 +1741,11 @@ export function SupervisorMobileApp({
     nequiPoolHistPeriod,
     today,
   ]);
-  const poolVisibleCloud = usePoolVisibleSaldoCloud(true, poolVisibleToIso);
+  // Saldo Banco/Nequi solo cuando se mira esa pantalla (o el pie de INICIO).
+  // Si corre siempre al abrir, satura el VPS y gastos/préstamos del día quedan a medias.
+  const poolVisibleEnabled =
+    view === "inicio" || view === "banco" || view === "nequi" || view === "informe";
+  const poolVisibleCloud = usePoolVisibleSaldoCloud(poolVisibleEnabled, poolVisibleToIso);
 
   /** Libro de caja del día por cobrador: misma cifra que la app del cobrador, el cierre y el Historial. */
   const ledgerByCollector = useMemo(() => {
@@ -2794,15 +2798,39 @@ export function SupervisorMobileApp({
   };
 
   const openRoute = liquidaciones.find((row) => row.routeRef === openRouteRef) ?? null;
-  /** Libro M / A / N del servidor. Historial de días pasados = cifras fijas (no rearme local). */
+  /**
+   * Libro M / A / N solo al abrir Historial (no en INICIO / totales).
+   * Si corre al entrar a la ruta satura el VPS y el jefe ve gastos/préstamos a medias.
+   */
+  const histBookActive =
+    detailMode === "historial" || detailMode === "historial-dia";
   const histBookRoute =
-    openRoute && hasRouteCashBook(openRoute.routeName)
+    histBookActive && openRoute && hasRouteCashBook(openRoute.routeName)
       ? openRoute.routeName.trim().toUpperCase()
       : null;
+  const histBookRange = useMemo(() => {
+    if (!histBookRoute) return null;
+    const viewingPastMonth = cajaHistoryNav === "mes" && Boolean(cajaHistoryPeriodPick);
+    const period = viewingPastMonth
+      ? (cajaHistoryPeriodPick as string)
+      : periodFromDateIso(today);
+    const periodStart = `${period}-01`;
+    const from = periodStart >= ROUTE_CASH_BOOK_FROM ? periodStart : ROUTE_CASH_BOOK_FROM;
+    const to = viewingPastMonth
+      ? lastCalendarDayOfPeriod(period) || from
+      : previousCalendarIso(today);
+    return { fromIso: from, toIso: to };
+  }, [
+    histBookRoute,
+    cajaHistoryNav,
+    cajaHistoryPeriodPick,
+    today,
+  ]);
   const histCashBook = useRouteCashBook(
     openRoute?.collectorRef || "",
     histBookRoute,
     `${today}|${histOwnBoxEpoch}|${cajaHistoryPeriodPick || ""}|${chainMOpeningEpoch}`,
+    histBookRange,
   );
   const histHoldLocalCie =
     Boolean(openRoute?.collectorRef) &&

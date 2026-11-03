@@ -6,10 +6,22 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-/** Hoja, cobros y CIE del día. Sin caché. No escribe. */
+const HARD_MS = 12_000;
+
+/** Hoja, cobros y CIE del día. Sin caché. No escribe. Tope duro: el jefe no puede quedar a medias. */
 export async function GET() {
   try {
-    const result = await loadSupervisorToday(businessTodayIso());
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const result = await Promise.race([
+      loadSupervisorToday(businessTodayIso()),
+      new Promise<{ ok: false; error: string }>((resolve) => {
+        timer = setTimeout(
+          () => resolve({ ok: false, error: "supervisor_today_timeout" }),
+          HARD_MS,
+        );
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
     if (!result.ok) return jsonNoStore({ ok: false, error: result.error }, { status: 502 });
     return jsonNoStore({ ok: true, ...result.payload });
   } catch (error) {

@@ -5,13 +5,27 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-/** Libro de caja M / A / N por RPC (day_cash_figure / route_own_box). Solo montos; no escribe. */
+const HARD_MS = 18_000;
+
+/** Libro de caja M / A / N por RPC. Solo montos; no escribe. Tope duro anti-cuelgue. */
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const collectorRef = url.searchParams.get("collectorRef") || "";
   const route = url.searchParams.get("route") || "";
+  const fromIso = url.searchParams.get("from") || undefined;
+  const toIso = url.searchParams.get("to") || undefined;
   try {
-    const result = await runRouteCashBook(collectorRef, route);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const result = await Promise.race([
+      runRouteCashBook(collectorRef, route, { fromIso, toIso }),
+      new Promise<{ ok: false; error: string }>((resolve) => {
+        timer = setTimeout(
+          () => resolve({ ok: false, error: "route_cash_book_timeout" }),
+          HARD_MS,
+        );
+      }),
+    ]);
+    if (timer) clearTimeout(timer);
     return NextResponse.json(result, {
       status: result.ok ? 200 : 400,
       headers: { "Cache-Control": "no-store, max-age=0" },

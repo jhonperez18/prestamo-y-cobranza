@@ -27,25 +27,40 @@ function toBookDay(raw: unknown): RouteCashBookDay | null {
 }
 
 /**
- * Días pasados de una caja (M, A, N) vía RPC del servidor (sin bajar toda la base).
- * Sin señal o con error queda la última lectura buena (o `null`: el celular usa lo local).
+ * Días pasados de una caja (M, A, N) vía RPC del servidor.
+ * `fromIso`/`toIso` acotan la ventana (historial del mes). Sin eso, el servidor
+ * usa mes anterior + vivo. Abort a los 20 s: no deja el supervisor pegado.
  */
 export function useRouteCashBook(
   collectorRef: string,
   route: string | null,
   refreshKey: string,
+  range?: { fromIso?: string; toIso?: string } | null,
 ): RouteCashBook | null {
   const [book, setBook] = useState<{ key: string; days: RouteCashBook } | null>(null);
-  const key = route && hasRouteCashBook(route) ? `${collectorRef}|${route.trim().toUpperCase()}` : "";
+  const routeKey = route && hasRouteCashBook(route) ? route.trim().toUpperCase() : "";
+  const fromIso = range?.fromIso && /^\d{4}-\d{2}-\d{2}$/.test(range.fromIso) ? range.fromIso : "";
+  const toIso = range?.toIso && /^\d{4}-\d{2}-\d{2}$/.test(range.toIso) ? range.toIso : "";
+  const key = routeKey ? `${collectorRef}|${routeKey}|${fromIso}|${toIso}` : "";
 
   useEffect(() => {
     if (!key) return;
     let alive = true;
-    const [ref, routeKey] = key.split("|");
+    const [ref, pin] = key.split("|");
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer =
+      ctrl && typeof window !== "undefined"
+        ? window.setTimeout(() => ctrl.abort(), 20_000)
+        : 0;
     const load = async () => {
       try {
-        const params = new URLSearchParams({ collectorRef: ref, route: routeKey });
-        const res = await fetch(`/api/ops/route-cash-book?${params}`, { cache: "no-store" });
+        const params = new URLSearchParams({ collectorRef: ref, route: pin });
+        if (fromIso) params.set("from", fromIso);
+        if (toIso) params.set("to", toIso);
+        const res = await fetch(`/api/ops/route-cash-book?${params}`, {
+          cache: "no-store",
+          signal: ctrl?.signal,
+        });
         const body = (await res.json()) as { ok?: boolean; days?: unknown[]; error?: string };
         if (!res.ok || !body.ok) throw new Error(body.error || `HTTP ${res.status}`);
         const days: RouteCashBook = new Map();
@@ -56,13 +71,17 @@ export function useRouteCashBook(
         if (alive) setBook({ key, days });
       } catch (error) {
         console.error("route-cash-book-load", error);
+      } finally {
+        if (timer) window.clearTimeout(timer);
       }
     };
     void load();
     return () => {
       alive = false;
+      ctrl?.abort();
+      if (timer) window.clearTimeout(timer);
     };
-  }, [key, refreshKey]);
+  }, [key, refreshKey, fromIso, toIso]);
 
   return book && book.key === key ? book.days : null;
 }

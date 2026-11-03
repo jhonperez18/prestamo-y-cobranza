@@ -43,8 +43,16 @@ export function useSupervisorToday(enabled: boolean, refreshKey: string): Superv
     let lastOk = 0;
     const load = async (force: boolean) => {
       if (!force && Date.now() - lastOk < 60_000) return;
+      const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timer =
+        ctrl && typeof window !== "undefined"
+          ? window.setTimeout(() => ctrl.abort(), 14_000)
+          : 0;
       try {
-        const res = await fetch("/api/ops/supervisor-today", { cache: "no-store" });
+        const res = await fetch("/api/ops/supervisor-today", {
+          cache: "no-store",
+          signal: ctrl?.signal,
+        });
         const body = (await res.json()) as SupervisorTodayData & { ok?: boolean; error?: string };
         if (!res.ok || !body.ok || !body.date) throw new Error(body.error || `HTTP ${res.status}`);
         if (!alive) return;
@@ -63,6 +71,8 @@ export function useSupervisorToday(enabled: boolean, refreshKey: string): Superv
         console.error("supervisor-today", error);
         if (!alive) return;
         setState((prev) => (prev.data ? { status: "ready", data: prev.data } : { status: "error", data: null }));
+      } finally {
+        if (timer) window.clearTimeout(timer);
       }
     };
     void load(true);
