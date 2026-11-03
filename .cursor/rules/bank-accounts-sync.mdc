@@ -34,9 +34,10 @@ Las cuentas (etiqueta, tipo, banco, número) son catálogo del padre: Guardar �
 1. Alta/edición de cuenta → `queueBankAccountMirror` + await flush (el aviso dice si llegó a la nube).
 2. Sync arranque: reconcile local→nube → pull (cola/escudo no rebobina).
 3. No declarar “actualizado” si localhost y Vercel muestran cuentas distintas.
-4. **Saldo en Banco → Listado** = el mismo libro que **Banco → Registros** (`liveBalanceForAccount`).
-   Prohibido pintar encima el Saldo operativo de NEQUI/BANCO del supervisor (eso es otra pantalla:
-   `poolVisibleSaldo`). Listado y Registros no pueden discrepar.
+4. **Saldo en Banco → Listado** (uso `banco` / `nequi`) = Saldo operativo real
+   (`poolVisibleSaldo` del servidor = supervisor NEQUI/BANCO / Informe).
+   **Registros** es el ledger de la ficha: hoy puede discrepar; se alinea después.
+   Efectivo en Listado sigue el libro de la ficha.
 
 ## Prohibido
 
