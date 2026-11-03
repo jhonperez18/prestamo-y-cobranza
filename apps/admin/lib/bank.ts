@@ -736,6 +736,42 @@ export function bankOpenMovements(movements: BankMovement[]) {
 export type BankHistoryScope = "open" | "closed" | "all";
 export type BankHistoryKindFilter = "all" | "income" | "expense";
 
+/** Mes del movimiento = fecha valor (dueño del periodo), no un period desfasado. */
+export function movementCalendarPeriod(
+  row: Pick<BankMovement, "valueDate" | "opDate" | "period">,
+) {
+  return periodFromIso(row.valueDate || row.opDate) || normalizeBankPeriod(row.period);
+}
+
+/**
+ * Si el mes de la fecha valor ya está conciliado, el movimiento pertenece a ese mes:
+ * period = calendario y reconciled = true. Así no reaparece en Pendientes del mes 11.
+ */
+export function alignMovementsToClosedPeriods(
+  movements: BankMovement[],
+  reconciliations: readonly BankReconciliation[],
+): BankMovement[] {
+  if (!reconciliations.length || movements.length === 0) return movements;
+  let changed = false;
+  const next = movements.map((row) => {
+    const cal = movementCalendarPeriod(row);
+    if (!cal) return row;
+    const closed = isPeriodClosed(reconciliations, row.accountRef, cal);
+    const periodNorm = normalizeBankPeriod(cal);
+    const needPeriod = normalizeBankPeriod(row.period) !== periodNorm;
+    const needRec = closed && !row.reconciled;
+    if (!needPeriod && !needRec) return row;
+    changed = true;
+    return {
+      ...row,
+      period: periodNorm,
+      reconciled: closed ? true : row.reconciled,
+      inExtract: closed ? true : row.inExtract,
+    };
+  });
+  return changed ? next : movements;
+}
+
 export function filterBankHistory(
   movements: BankMovement[],
   opts: {
@@ -744,14 +780,30 @@ export function filterBankHistory(
     period?: string;
     kind?: BankHistoryKindFilter;
     query?: string;
+    /** Si viene: mes ya cerrado = conciliado (aunque la fila diga reconciled=false). */
+    reconciliations?: readonly BankReconciliation[];
   } = {},
 ) {
   const scope = opts.scope ?? "all";
   const kind = opts.kind ?? "all";
   const q = (opts.query ?? "").trim().toLowerCase();
+  const recs = opts.reconciliations;
+  const accountClosed = (row: BankMovement) => {
+    if (!recs || !opts.accountRef) return false;
+    const cal = movementCalendarPeriod(row);
+    return (
+      isPeriodClosed(recs, opts.accountRef, cal) ||
+      isPeriodClosed(recs, opts.accountRef, row.period)
+    );
+  };
   return movements.filter((row) => {
-    if (scope === "open" && row.reconciled) return false;
-    if (scope === "closed" && !row.reconciled) return false;
+    if (scope === "open") {
+      if (row.reconciled) return false;
+      if (accountClosed(row)) return false;
+    }
+    if (scope === "closed") {
+      if (!row.reconciled && !accountClosed(row)) return false;
+    }
     if (opts.accountRef && row.accountRef !== opts.accountRef) return false;
     if (opts.period && normalizeBankPeriod(row.period) !== normalizeBankPeriod(opts.period)) {
       return false;
@@ -1744,7 +1796,7 @@ export function movementsForAccountPeriod(
   return movements.filter((row) => row.accountRef === accountRef && row.period === period);
 }
 
-/** Movimientos pendientes de conciliar para una cuenta (periodo abierto). */
+/** Movimientos pendientes de conciliar para una cuenta (solo meses aún abiertos). */
 export function pendingMovementsForAccount(
   movements: BankMovement[],
   reconciliations: BankReconciliation[],
@@ -1754,8 +1806,16 @@ export function pendingMovementsForAccount(
   return movements
     .filter((row) => {
       if (row.accountRef !== accountRef) return false;
+      if (row.reconciled) return false;
+      const cal = movementCalendarPeriod(row);
+      if (isPeriodClosed(reconciliations, accountRef, cal)) return false;
       if (isPeriodClosed(reconciliations, accountRef, row.period)) return false;
-      if (period && row.period !== period) return false;
+      if (period) {
+        const want = normalizeBankPeriod(period);
+        if (normalizeBankPeriod(cal) !== want && normalizeBankPeriod(row.period) !== want) {
+          return false;
+        }
+      }
       return true;
     })
     .sort(compareBankMovementsChronological);

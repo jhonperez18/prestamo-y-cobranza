@@ -5,6 +5,7 @@
  */
 import {
   accountForRole,
+  alignMovementsToClosedPeriods,
   bankMovementsSignature,
   ensureBankAccounts,
   loanRouteIndex,
@@ -17,6 +18,7 @@ import {
   syncNequiLoanDisbursementsToMovements,
   type BankAccount,
   type BankMovement,
+  type BankReconciliation,
 } from "@/lib/bank";
 import {
   syncRouteExpensesToMovements,
@@ -37,6 +39,8 @@ export function syncBankLedger(input: {
   loans: LoanRow[];
   /** Ruta del cliente: decide la cuenta del cobro no efectivo (A → Nequi; M/T/N → Banco). */
   clients: ClientRow[];
+  /** Cierres de extracto: filas de meses ya conciliados no vuelven a Pendientes. */
+  reconciliations?: readonly BankReconciliation[];
 }): BankMovement[] {
   const accounts = ensureBankAccounts(input.accounts);
   const account = accountForRole(accounts, "efectivo") ?? null;
@@ -68,10 +72,11 @@ export function syncBankLedger(input: {
     withLoans,
     accounts,
   );
-  // Último paso: los cobros nunca se desalinean de Ingresos.
-  return normalizeBankMovements(
+  // Cobros = Ingresos; luego lo de meses ya cerrados vuelve a su conciliación.
+  const locked = normalizeBankMovements(
     lockPaymentCobrosAsIncome(withCashLoans, input.payments, routeByLoan),
   );
+  return alignMovementsToClosedPeriods(locked, input.reconciliations ?? []);
 }
 
 /** Aplica sync solo si el contenido cambió (corta bucles de setState). */

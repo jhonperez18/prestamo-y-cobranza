@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   BankAccount,
   BankHistoryKindFilter,
@@ -11,9 +11,11 @@ import type {
 import { ColumnPicker, ColumnPickerBodyCell, ColumnPickerHeadCell, useColumnVisibility } from "@/components/ColumnPicker";
 import { BankSortTh, useBankMovementSort } from "@/components/BankSortTh";
 import {
+  alignMovementsToClosedPeriods,
   applyOpenMonthAtZero,
   bankMovementDescriptionText,
   bankMovementPaymentMethodLabel,
+  bankMovementsSignature,
   expenseCategoryLabel,
   filterBankHistory,
   findOpenZeroTarget,
@@ -109,7 +111,16 @@ export function BankRecordsHistoryView({
     [accounts],
   );
 
-  const normalized = useMemo(() => normalizeBankMovements(movements), [movements]);
+  const normalized = useMemo(
+    () => alignMovementsToClosedPeriods(normalizeBankMovements(movements), reconciliations),
+    [movements, reconciliations],
+  );
+
+  /** Persiste: lo de meses ya cerrados queda conciliado en su mes (no en Pendientes 11). */
+  useEffect(() => {
+    if (bankMovementsSignature(normalized) === bankMovementsSignature(movements)) return;
+    onMovementsChange(normalized);
+  }, [normalized, movements, onMovementsChange]);
 
   const periods = useMemo(() => {
     const list = normalized
@@ -126,8 +137,9 @@ export function BankRecordsHistoryView({
         period: periodFilter || undefined,
         kind: kindFilter,
         query,
+        reconciliations,
       }),
-    [normalized, scope, accountFilter, periodFilter, kindFilter, query],
+    [normalized, scope, accountFilter, periodFilter, kindFilter, query, reconciliations],
   );
 
   const { sortKey, sortDir, toggleSort: toggleBankSort } = useBankMovementSort("valueDate");
@@ -185,13 +197,22 @@ export function BankRecordsHistoryView({
   }
 
   const openCount = useMemo(
-    () => filterBankHistory(normalized, { scope: "open", accountRef: accountFilter || undefined }).length,
-    [normalized, accountFilter],
+    () =>
+      filterBankHistory(normalized, {
+        scope: "open",
+        accountRef: accountFilter || undefined,
+        reconciliations,
+      }).length,
+    [normalized, accountFilter, reconciliations],
   );
   const closedCount = useMemo(
     () =>
-      filterBankHistory(normalized, { scope: "closed", accountRef: accountFilter || undefined }).length,
-    [normalized, accountFilter],
+      filterBankHistory(normalized, {
+        scope: "closed",
+        accountRef: accountFilter || undefined,
+        reconciliations,
+      }).length,
+    [normalized, accountFilter, reconciliations],
   );
 
   const reconcileTarget = useMemo(() => {
@@ -210,6 +231,7 @@ export function BankRecordsHistoryView({
       scope: "open",
       accountRef,
       period,
+      reconciliations,
     });
     if (pending.length === 0) return null;
     return { account, period, pendingCount: pending.length };

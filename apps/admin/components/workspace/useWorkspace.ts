@@ -683,9 +683,20 @@ export function useWorkspace({
         dayCloses,
         loans,
         clients,
+        reconciliations: bankReconciliations,
       }),
     );
-  }, [demoHydrated, payments, dayExpenseDrafts, dayCloses, bankAccounts, miscPayments, loans, clients]);
+  }, [
+    demoHydrated,
+    payments,
+    dayExpenseDrafts,
+    dayCloses,
+    bankAccounts,
+    miscPayments,
+    loans,
+    clients,
+    bankReconciliations,
+  ]);
 
   useEffect(() => {
     if (!demoHydrated || !persistArmedRef.current) return;

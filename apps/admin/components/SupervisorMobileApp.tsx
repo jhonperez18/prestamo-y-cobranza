@@ -3328,7 +3328,7 @@ export function SupervisorMobileApp({
     const cashByDate = new Map(cashHand.map((row) => [row.date, row.saldo]));
     const withCashHand = applyCollectorCashHandSaldos(rows, cashByDate);
 
-    // M: extracto con hoy incluido (Inicial lleno, Saldo — si aún no cerró).
+    // M: extracto con hoy incluido. Saldo de hoy = Inicial + ef. − préstamo − gasto.
     const visible = withCashHand.filter((row) => row.date <= historyTo);
     const annotated = annotateMHistoryExtractRows({
       rows: visible,

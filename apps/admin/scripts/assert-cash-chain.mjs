@@ -199,6 +199,12 @@ const hist = annotateMHistoryExtractRows({
 });
 expect("Historial M · 25 saldo (sin T ese día = CIE)", hist.find((r) => r.date === Y)?.saldoShown ?? null, 2_704_000);
 expect("Historial M · 26 Inicial", hist.find((r) => r.date === D)?.inicial ?? null, 2_704_000);
+// Hoy: Saldo = Inicial + ef − préstamo − gasto (no guión).
+expect(
+  "Historial M · hoy Saldo = fórmula caja",
+  hist.find((r) => r.date === D)?.saldoShown ?? null,
+  2_704_000 + 500_000 - 300_000 - 20_000,
+);
 
 // Historial T: la fila de hoy = saldo final del libro (caso real 3.612.000 errado); ayer no se toca.
 const histT = withLedgerTodaySaldo(
@@ -1647,6 +1653,64 @@ expect("Banco · M efectivo → principal", accountOf("PG-M3"), "EF");
     listadoViewSrc.includes("listadoBalanceForAccount") &&
       listadoViewSrc.includes("usePoolVisibleSaldoCloud") &&
       bankSrc.includes("export function listadoBalanceForAccount"),
+    true,
+  );
+  const {
+    alignMovementsToClosedPeriods,
+    filterBankHistory,
+    pendingMovementsForAccount,
+  } = await import("@/lib/bank");
+  const closedOct = [
+    {
+      accountRef: "TRUQUI",
+      period: "2026-10",
+      closedAt: "2026-10-31T23:00:00.000Z",
+      totalDebit: 0,
+      totalCredit: 0,
+      balance: 0,
+    },
+  ];
+  const orphanOctLoan = {
+    ref: "DSB-P-408",
+    accountRef: "TRUQUI",
+    period: "2026-11",
+    description: "Préstamo",
+    valueDate: "2026-10-03",
+    opDate: "2026-10-03",
+    thirdParty: "Carlos",
+    debit: 0,
+    credit: 500_000,
+    category: "prestamo_ruta",
+    reconciled: false,
+    inExtract: true,
+    manual: true,
+  };
+  const aligned = alignMovementsToClosedPeriods([orphanOctLoan], closedOct);
+  expect("Conciliación: fecha valor oct → period 2026-10", aligned[0]?.period, "2026-10");
+  expect("Conciliación: mes cerrado → reconciled", aligned[0]?.reconciled, true);
+  expect(
+    "Pendientes: no incluye mes ya conciliado",
+    pendingMovementsForAccount(aligned, closedOct, "TRUQUI").length,
+    0,
+  );
+  expect(
+    "Registros Pendientes: filtro sin filas de mes cerrado",
+    filterBankHistory(aligned, {
+      scope: "open",
+      accountRef: "TRUQUI",
+      reconciliations: closedOct,
+    }).length,
+    0,
+  );
+  const recordsViewSrc = readFileSync(
+    new URL("../components/BankRecordsHistoryView.tsx", import.meta.url),
+    "utf8",
+  );
+  expect(
+    "Registros: alinea a meses cerrados al abrir",
+    recordsViewSrc.includes("alignMovementsToClosedPeriods") &&
+      bankSrc.includes("export function alignMovementsToClosedPeriods") &&
+      bankSrc.includes("movementCalendarPeriod"),
     true,
   );
   // Caché de Storage (09/10): leer la copia de hace una hora y reescribir pisaba el guardado anterior.

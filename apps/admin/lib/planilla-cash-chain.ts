@@ -954,7 +954,8 @@ export function annotateMHistoryExtractRows(input: {
       continue;
     }
 
-    // Hoy: Inicial = saldo final de ayer. Saldo aún abierto (—).
+    // Hoy: Inicial = saldo final de ayer.
+    // Saldo = misma fórmula de caja (Inicial + efectivo − préstamo − gasto), no guión.
     let inicial: number | null = null;
     if (yesterdayFinal != null) {
       inicial = pesos(yesterdayFinal);
@@ -969,6 +970,11 @@ export function annotateMHistoryExtractRows(input: {
       });
       if (open.kind === "chain" && open.ready) inicial = pesos(open.opening);
     }
+    const efectivo = pesos(Number(row.cobroEfectivo) || Number(row.cobro) || 0);
+    const saldoHoy =
+      inicial != null
+        ? pesos(inicial + efectivo - (Number(row.prestamo) || 0) - (Number(row.gasto) || 0))
+        : null;
 
     annotatedAscending.push({
       date: row.date,
@@ -977,7 +983,7 @@ export function annotateMHistoryExtractRows(input: {
       gasto: row.gasto,
       prestamo: row.prestamo,
       inicial,
-      saldoShown: null,
+      saldoShown: saldoHoy,
     });
   }
 
