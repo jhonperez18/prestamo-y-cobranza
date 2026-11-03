@@ -45,11 +45,12 @@ export async function loadSupervisorToday(
   // CIE: ayer + hoy (Inicial M = CIE ayer). No toda la tabla en cada apertura.
   const closesFrom = businessDaysAgoIso(1, new Date(`${date}T12:00:00-05:00`));
   // Cada pieza con tope propio: una tabla lenta no deja al jefe sin gastos/préstamos.
+  const pieceMs = 10_000;
   const [paymentsT, assignsT, closesT, expensesT] = await Promise.all([
-    withTimeout(fetchPaymentsFromSupabase({ fromDate: date, toDate: date }), 8_000),
-    withTimeout(fetchOpsTableSince("daily_assignments", "dispatch_date", date, date), 8_000),
-    withTimeout(fetchOpsTableSince("day_closes", "close_date", closesFrom, date), 8_000),
-    withTimeout(fetchOpsTableSince("day_expenses", "expense_date", date, date), 8_000),
+    withTimeout(fetchPaymentsFromSupabase({ fromDate: date, toDate: date }), pieceMs),
+    withTimeout(fetchOpsTableSince("daily_assignments", "dispatch_date", date, date), pieceMs),
+    withTimeout(fetchOpsTableSince("day_closes", "close_date", closesFrom, date), pieceMs),
+    withTimeout(fetchOpsTableSince("day_expenses", "expense_date", date, date), pieceMs),
   ]);
 
   const paymentsOk = Boolean(paymentsT && paymentsT.ok && !("skipped" in paymentsT && paymentsT.skipped));

@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-const HARD_MS = 12_000;
+const HARD_MS = 18_000;
 
 /** Hoja, cobros y CIE del día. Sin caché. No escribe. Tope duro: el jefe no puede quedar a medias. */
 export async function GET() {
