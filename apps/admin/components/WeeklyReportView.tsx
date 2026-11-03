@@ -447,31 +447,29 @@ export function WeeklyReportView({
     let alive = true;
     const before = addCalendarDaysIso(range.start, -1);
     setPoolBounds(null);
-    void Promise.all([
-      fetch(`/api/ops/pool-visible-saldo?to=${encodeURIComponent(before)}`, {
-        cache: "no-store",
-      }).then((r) => r.json()),
-      fetch(`/api/ops/pool-visible-saldo?to=${encodeURIComponent(range.end)}`, {
-        cache: "no-store",
-      }).then((r) => r.json()),
-    ])
-      .then(([openBody, closeBody]) => {
+    const qs = new URLSearchParams({
+      to: range.end,
+      open: before,
+    });
+    void fetch(`/api/ops/pool-visible-saldo?${qs}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((body) => {
         if (!alive) return;
         if (
-          !openBody ||
-          openBody.ok !== true ||
-          !closeBody ||
-          closeBody.ok !== true ||
-          !Number.isFinite(Number(openBody.banco)) ||
-          !Number.isFinite(Number(closeBody.banco))
+          !body ||
+          body.ok !== true ||
+          !Number.isFinite(Number(body.banco)) ||
+          !Number.isFinite(Number(body.openBanco)) ||
+          !Number.isFinite(Number(body.nequi)) ||
+          !Number.isFinite(Number(body.openNequi))
         ) {
           return;
         }
         setPoolBounds({
-          openBanco: Math.trunc(Number(openBody.banco)),
-          closeBanco: Math.trunc(Number(closeBody.banco)),
-          openNequi: Math.trunc(Number(openBody.nequi)),
-          closeNequi: Math.trunc(Number(closeBody.nequi)),
+          openBanco: Math.trunc(Number(body.openBanco)),
+          closeBanco: Math.trunc(Number(body.banco)),
+          openNequi: Math.trunc(Number(body.openNequi)),
+          closeNequi: Math.trunc(Number(body.nequi)),
         });
       })
       .catch((error) => {
@@ -482,8 +480,12 @@ export function WeeklyReportView({
     };
   }, [range.start, range.end]);
 
+  /**
+   * Prohibido pintar Banco local y luego el del servidor (1.149 → 5.299).
+   * La hoja solo sale cuando ya está el Saldo del libro completo.
+   */
   const report = useMemo(() => {
-    if (!ficha) return null;
+    if (!ficha || !poolBounds) return null;
     const built = buildWeeklyReport(
       {
         payments,
@@ -505,7 +507,6 @@ export function WeeklyReportView({
       range,
       today,
     );
-    if (!poolBounds) return built;
     return withServerPoolBounds(
       built,
       scope === "a" ? poolBounds.openNequi : poolBounds.openBanco,
@@ -530,6 +531,13 @@ export function WeeklyReportView({
     today,
     poolBounds,
   ]);
+
+  const waitingHint =
+    fichaState === "error"
+      ? "No se pudo leer la cartera de la ficha."
+      : !ficha
+        ? "Leyendo la cartera de la ficha…"
+        : "Leyendo Saldo Banco del servidor…";
 
   return (
     <section className="panel weekly-report">
@@ -568,11 +576,7 @@ export function WeeklyReportView({
       {report ? (
         <ReportSheet report={report} />
       ) : (
-        <p className="weekly-report-hint">
-          {fichaState === "error"
-            ? "No se pudo leer la cartera de la ficha."
-            : "Leyendo la cartera de la ficha…"}
-        </p>
+        <p className="weekly-report-hint">{waitingHint}</p>
       )}
     </section>
   );

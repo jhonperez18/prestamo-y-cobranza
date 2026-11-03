@@ -10,7 +10,11 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
     const toIso = url.searchParams.get("to") || undefined;
-    const result = await readPoolVisibleSaldo({ toIso: toIso || undefined });
+    const openIso = url.searchParams.get("open") || undefined;
+    const result = await readPoolVisibleSaldo({
+      toIso: toIso || undefined,
+      openIso: openIso || undefined,
+    });
     return NextResponse.json(result, {
       status: result.ok ? 200 : 400,
       headers: { "Cache-Control": "no-store, max-age=0" },

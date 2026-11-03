@@ -6065,34 +6065,69 @@ export function SupervisorMobileApp({
           ) : null}
           {!historialOpen || openInformeSnapshotShown ? (
             informeTab === "general" ? (
-            <SupervisorMonthlyReport
-              loans={loans}
-              clients={clients}
-              payments={paymentsLive}
-              efectivo={informeEfectivo}
-              banco={bancoSaldo ?? 0}
-              history={informeHistory}
-              historyNote={informeReadError}
-              bancoGastos={bancoGastos}
-              bancoGastado={bancoGastado}
-              snapshot={historialOpen ? openInformeSnapshotShown : null}
-            />
-          ) : (
-            <SupervisorOwnRouteReport
-              route={INFORME_A_ROUTE}
-              loans={loans}
-              clients={clients}
-              payments={paymentsLive}
-              efectivo={informeAEfectivo}
-              nequi={nequiSaldoShown ?? 0}
-              corteLabel={todayDisplay}
-              history={informeAHistory}
-              historyNote={informeReadError}
-              nequiGastos={nequiGastos}
-              nequiGastado={nequiGastosShown ?? 0}
-              snapshot={historialOpen ? openInformeSnapshotShown : null}
-            />
-          )
+              /* Prohibido pintar Banco 0 / 1.149 y luego el real: esperar servidor o sello. */
+              historialOpen && openInformeSnapshotShown ? (
+                <SupervisorMonthlyReport
+                  loans={loans}
+                  clients={clients}
+                  payments={paymentsLive}
+                  efectivo={informeEfectivo}
+                  banco={0}
+                  history={informeHistory}
+                  historyNote={informeReadError}
+                  bancoGastos={bancoGastos}
+                  bancoGastado={bancoGastado}
+                  snapshot={openInformeSnapshotShown}
+                />
+              ) : bancoSaldo != null ? (
+                <SupervisorMonthlyReport
+                  loans={loans}
+                  clients={clients}
+                  payments={paymentsLive}
+                  efectivo={informeEfectivo}
+                  banco={bancoSaldo}
+                  history={informeHistory}
+                  historyNote={informeReadError}
+                  bancoGastos={bancoGastos}
+                  bancoGastado={bancoGastado}
+                  snapshot={null}
+                />
+              ) : (
+                <p className="ficha-empty">Leyendo Saldo Banco…</p>
+              )
+            ) : historialOpen && openInformeSnapshotShown ? (
+              <SupervisorOwnRouteReport
+                route={INFORME_A_ROUTE}
+                loans={loans}
+                clients={clients}
+                payments={paymentsLive}
+                efectivo={informeAEfectivo}
+                nequi={0}
+                corteLabel={todayDisplay}
+                history={informeAHistory}
+                historyNote={informeReadError}
+                nequiGastos={nequiGastos}
+                nequiGastado={nequiGastosShown ?? 0}
+                snapshot={openInformeSnapshotShown}
+              />
+            ) : nequiSaldoShown != null ? (
+              <SupervisorOwnRouteReport
+                route={INFORME_A_ROUTE}
+                loans={loans}
+                clients={clients}
+                payments={paymentsLive}
+                efectivo={informeAEfectivo}
+                nequi={nequiSaldoShown}
+                corteLabel={todayDisplay}
+                history={informeAHistory}
+                historyNote={informeReadError}
+                nequiGastos={nequiGastos}
+                nequiGastado={nequiGastosShown ?? 0}
+                snapshot={null}
+              />
+            ) : (
+              <p className="ficha-empty">Leyendo Saldo Nequi…</p>
+            )
           ) : null}
         </section>
       ) : view === "nequi" ? (

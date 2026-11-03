@@ -2334,8 +2334,20 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       weeklyReportSrc.includes("withServerPoolBounds") &&
       weeklyViewSrc.includes("withServerPoolBounds") &&
       weeklyViewSrc.includes("/api/ops/pool-visible-saldo") &&
+      weeklyViewSrc.includes("if (!ficha || !poolBounds) return null") &&
+      weeklyViewSrc.includes("open:") &&
       weeklyServerSrc.includes("withServerPoolBounds") &&
-      weeklyServerSrc.includes("poolVisibleSaldo"),
+      weeklyServerSrc.includes("poolVisibleSaldo") &&
+      serverPoolVisibleSrc.includes("openIso") &&
+      poolVisibleApiSrc.includes("openIso"),
+    true,
+  );
+  expect(
+    "Informe vivo: no pinta Banco/Nequi hasta el Saldo del servidor",
+    bancoSrc.includes("Leyendo Saldo Banco") &&
+      bancoSrc.includes("Leyendo Saldo Nequi") &&
+      bancoSrc.includes("bancoSaldo != null") &&
+      bancoSrc.includes("nequiSaldoShown != null"),
     true,
   );
   const wsSrc = readFileSync(new URL("../components/workspace/useWorkspace.ts", import.meta.url), "utf8");

@@ -11,6 +11,10 @@ import { loadOperationalStateFromCloud } from "@/lib/server-day-rollover";
 import { fetchBankAccountsFromSupabase } from "@/lib/supabase/bank-accounts-mirror";
 import { fetchOpsTable, rowToMisc } from "@/lib/supabase/ops-mirror";
 
+function isoDay(raw: string | undefined, fallback: string): string {
+  return raw && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : fallback;
+}
+
 export type PoolVisibleSaldoResult =
   | {
       ok: true;
@@ -18,15 +22,21 @@ export type PoolVisibleSaldoResult =
       nequi: number;
       fromIso: string;
       toIso: string;
+      /** Si pidieron `openIso`: saldo al cierre de ese día (Inicio de semana). */
+      openIso?: string;
+      openBanco?: number;
+      openNequi?: number;
     }
   | { ok: false; error: string };
 
 export async function readPoolVisibleSaldo(options?: {
   toIso?: string;
+  /** Segundo corte en la misma bajada (p. ej. víspera del inicio de semana). */
+  openIso?: string;
 }): Promise<PoolVisibleSaldoResult> {
-  const toIso = options?.toIso && /^\d{4}-\d{2}-\d{2}$/.test(options.toIso)
-    ? options.toIso
-    : businessTodayIso();
+  const today = businessTodayIso();
+  const toIso = isoDay(options?.toIso, today);
+  const openIso = options?.openIso ? isoDay(options.openIso, "") : "";
   const fromIso = ROUTE_CASH_BOOK_FROM;
 
   const loaded = await loadOperationalStateFromCloud();
@@ -56,14 +66,21 @@ export async function readPoolVisibleSaldo(options?: {
     miscPayments,
     accounts,
     fromIso,
-    toIso,
   };
 
-  return {
+  const result: Extract<PoolVisibleSaldoResult, { ok: true }> = {
     ok: true,
-    banco: poolVisibleSaldo({ ...shared, pool: "banco" }),
-    nequi: poolVisibleSaldo({ ...shared, pool: "nequi" }),
+    banco: poolVisibleSaldo({ ...shared, pool: "banco", toIso }),
+    nequi: poolVisibleSaldo({ ...shared, pool: "nequi", toIso }),
     fromIso,
     toIso,
   };
+
+  if (openIso) {
+    result.openIso = openIso;
+    result.openBanco = poolVisibleSaldo({ ...shared, pool: "banco", toIso: openIso });
+    result.openNequi = poolVisibleSaldo({ ...shared, pool: "nequi", toIso: openIso });
+  }
+
+  return result;
 }
