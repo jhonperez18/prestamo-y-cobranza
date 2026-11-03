@@ -2364,6 +2364,28 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       weeklyViewSrc.includes("Leyendo Saldo Nequi del servidor"),
     true,
   );
+  expect(
+    "Supervisor: Saldo en pantalla solo del servidor (cero poolVisibleSaldo local)",
+    !bancoSrc.includes("poolVisibleSaldo(") &&
+      bancoSrc.includes("usePoolVisibleSaldoCloud") &&
+      bancoSrc.includes("poolVisibleCloud.banco") &&
+      bancoSrc.includes("poolVisibleCloud.nequi"),
+    true,
+  );
+  const nequiSaldoServerSrc = readFileSync(
+    new URL("../lib/server-nequi-saldo.ts", import.meta.url),
+    "utf8",
+  );
+  const releaseSrc = readFileSync(new URL("./release.mjs", import.meta.url), "utf8");
+  expect(
+    "Landmines cerrados: nequi-saldo = digitalPoolSaldo; release exige libro = sello",
+    nequiSaldoServerSrc.includes("digitalPoolSaldo") &&
+      nequiSaldoServerSrc.includes("ROUTE_CASH_BOOK_FROM") &&
+      !nequiSaldoServerSrc.includes("client.rpc(") &&
+      releaseSrc.includes("assertPoolVisibleMatchesSeal") &&
+      releaseSrc.includes("pool-visible-saldo"),
+    true,
+  );
   const wsSrc = readFileSync(new URL("../components/workspace/useWorkspace.ts", import.meta.url), "utf8");
   const applyPortfolio = wsSrc.slice(wsSrc.indexOf("async function applyPortfolioCommit"));
   expect(

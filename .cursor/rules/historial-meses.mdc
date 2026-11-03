@@ -17,10 +17,10 @@ Misma puerta (botón «historial» → lista de meses), **contenido distinto** s
 
 ## Saldo Banco / Nequi — una sola lógica (sagrada)
 
-| Pool | Fórmula | Dónde |
+| Pool | Fórmula (operaciones diarias) | Dónde |
 | --- | --- | --- |
-| **Banco** | **M + T + N − Gastos** | Historial (cierre del mes) y mes vivo (home) |
-| **Nequi** | **Ruta A − Gastos** | Historial y mes vivo |
+| **Banco** | **M + T + N − Gastos** (cobros Banco − capital Banco − gastos cuenta Banco) | Historial, home, Informe, semanal, correo |
+| **Nequi** | **Ruta A − Gastos** (cobros Nequi − capital Nequi − gastos cuenta Nequi) | Igual |
 
 1. El **Saldo del historial** (cierre del mes) = el **Saldo del mes nuevo** al abrir (Inicial). Arrastra.
 2. En el mes vivo, cobrado / prestado / gastos del mes empiezan en **0**; el Saldo no se pone en 0.
@@ -28,9 +28,10 @@ Misma puerta (botón «historial» → lista de meses), **contenido distinto** s
 4. Dueño de la **cifra** en pantalla: el **servidor** (`/api/ops/pool-visible-saldo` → `poolVisibleSaldo` con libro completo). El aparato **no** suma cobros locales.
 5. **Informe de un mes ya sellado:** manda el sello del servidor. El celular **no** lo recalcula.
 6. Informe semanal / correo: la misma fórmula y la misma ventana (`ROUTE_CASH_BOOK_FROM`).
-7. **Prohibido** pintar un Saldo local y luego el del servidor (parpadeo 1.149 → 5.299). Hasta que llegue el servidor: «Leyendo…»; una sola cifra.
+7. **Cero datos dobles:** nunca pintar un Saldo local y luego el del servidor. Hasta que llegue: «…» / «Leyendo…»; **una sola cifra**.
+8. **Candado de release:** libro al día del sello = Banco/Nequi del Informe sellado. Si no cuadra, no se declara listo.
 
-Ejemplo real Octubre 2026 → Noviembre: Banco M+T+N−Gastos = **5.299.000**; Nequi A−Gastos = **4.208.000**. Home, Informe vivo y sello deben coincidir.
+Ejemplo real Octubre 2026 → Noviembre: Banco = **5.299.000**; Nequi = **4.208.000**. Home, Informe vivo, semanal y sello = la misma.
 
 ## Mes vivo (pantalla home Banco / Nequi)
 

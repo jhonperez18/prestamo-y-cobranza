@@ -6437,10 +6437,10 @@ export function SupervisorMobileApp({
                 type="button"
                 className="is-nequi-saldo"
                 title="Saldo Nequi ruta A (cobrado − prestado − gastos)"
-                aria-label={`Saldo Nequi ruta A ${nequiSaldoShown == null ? "sin conexión" : money(nequiSaldoShown, { symbol: false })}`}
+                aria-label={`Saldo Nequi ruta A ${nequiSaldoShown == null ? "cargando" : money(nequiSaldoShown, { symbol: false })}`}
               >
                 <span>Saldo</span>
-                <b>{nequiSaldoShown == null ? "—" : money(nequiSaldoShown, { symbol: false })}</b>
+                <b>{nequiSaldoShown == null ? "…" : money(nequiSaldoShown, { symbol: false })}</b>
               </button>
             </div>
           </section>

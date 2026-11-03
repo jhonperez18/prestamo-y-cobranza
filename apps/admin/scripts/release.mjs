@@ -149,6 +149,55 @@ async function assertCashChain() {
   console.log("Regla de inicio OK");
 }
 
+/**
+ * Saldo Banco/Nequi = libro completo al día del sello = Informe sellado.
+ * Si el aparato o una fórmula paralela inventa otra cifra, release falla.
+ */
+async function assertPoolVisibleMatchesSeal() {
+  console.log("Comprobando Saldo Banco/Nequi (libro = sello del Informe)…");
+  let snaps;
+  let pool;
+  try {
+    snaps = await fetchJson(`${DOMAIN}/api/ops/informe-snapshots`);
+  } catch (err) {
+    fail(`informe-snapshots → ${err?.message || err}`);
+  }
+  const list = Array.isArray(snaps?.snapshots) ? snaps.snapshots : [];
+  const general = list.find((row) => row && row.scope === "general");
+  const angelica = list.find((row) => row && row.scope === "angelica");
+  if (!general?.sealedOn || !angelica?.sealedOn) {
+    console.log("  Sin sello de mes aún — Saldo omitido.");
+    return;
+  }
+  const to = String(general.sealedOn).slice(0, 10);
+  try {
+    pool = await fetchJson(`${DOMAIN}/api/ops/pool-visible-saldo?to=${encodeURIComponent(to)}`);
+  } catch (err) {
+    fail(`pool-visible-saldo → ${err?.message || err}`);
+  }
+  if (!pool?.ok) {
+    fail(`pool-visible-saldo no OK.${pool?.error ? ` ${pool.error}` : ""}`);
+  }
+  const bancoSeal = (general.rows || []).find(
+    (row) => row && row.kind === "line" && row.label === "Banco",
+  )?.value;
+  const nequiSeal = (angelica.rows || []).find(
+    (row) => row && row.kind === "line" && row.label === "Nequi",
+  )?.value;
+  const banco = Math.trunc(Number(pool.banco));
+  const nequi = Math.trunc(Number(pool.nequi));
+  if (!Number.isFinite(banco) || !Number.isFinite(nequi)) {
+    fail(`pool-visible-saldo sin cifras (banco=${pool.banco} nequi=${pool.nequi})`);
+  }
+  if (Math.trunc(Number(bancoSeal)) !== banco) {
+    fail(`Banco libro ${banco} ≠ sello Informe ${bancoSeal} (corte ${to})`);
+  }
+  if (Math.trunc(Number(nequiSeal)) !== nequi) {
+    fail(`Nequi libro ${nequi} ≠ sello Informe ${nequiSeal} (corte ${to})`);
+  }
+  console.log(`Saldo OK → Banco ${banco} · Nequi ${nequi} (= sello ${to})`);
+}
+
 /** Aviso (no frena: puede ser justo la versión que lo arregla). */
 async function reportDeviceStorage() {
   console.log("Comprobando aparatos (¿guardan lo que bajan?)…");
@@ -171,8 +220,9 @@ async function verify(expectedSha) {
   await assertServiceRole();
   await assertCatalogHealth();
   await assertCashChain();
+  await assertPoolVisibleMatchesSeal();
   await reportDeviceStorage();
-  console.log(`\nListo de verdad. ${DOMAIN} → build ${expectedSha}. Catálogo + service role + regla de inicio verificados.`);
+  console.log(`\nListo de verdad. ${DOMAIN} → build ${expectedSha}. Catálogo + service role + regla de inicio + Saldo Banco/Nequi verificados.`);
 }
 
 const mode = process.argv[2] || "verify";
