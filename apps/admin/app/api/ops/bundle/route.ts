@@ -116,12 +116,13 @@ export async function GET(request: Request) {
       dayCloseRows = [...byRef.values()];
     }
     const day_closes = { ...dayClosesPart, rows: dayCloseRows };
-    // Hoja de hoy entera solo si hubo cambios de planilla (o bajada completa).
-    // Sin cambios: el sello llega en `changed` (updated_at) o en la completa horaria.
-    // Evita reenviar toda la ruta en cada poll quieto.
+    // Hoja de hoy entera en cada bajada parcial.
+    // Antes: solo si `changed` traía filas. Si el sello de M quedó atrás del
+    // cursor `since` (celular sin timbre / poll quieto), M seguía abierta en
+    // el aparato aunque la nube ya la tenía sellada (caso Edgar 03/11).
     let assignmentRows = assignmentsPart.rows;
     let assignmentsTodayComplete = false;
-    if (since && assignmentsPart.rows.length > 0) {
+    if (since) {
       const todaySheet = await fetchOpsTableSince(
         "daily_assignments",
         "dispatch_date",

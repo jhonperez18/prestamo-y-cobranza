@@ -2703,15 +2703,18 @@ async function pullOpsBundle(
       sentAssignmentSig.set(key, assignmentMirrorSig(row));
       assignChanged = true;
     }
-    // Segunda pasada: N/P y cobros de la nube siempre ganan sobre pendiente local
-    // (aunque la primera pasada haya salido por cola u otra guarda).
+    // Segunda pasada: N/P, cobros y sello de jornada (dayClosedAt) de la nube
+    // siempre ganan sobre pendiente local (aunque la primera pasada haya salido
+    // por cola u otra guarda). Sin dayClosedAt aquí, M sellada en nube seguía
+    // abierta en el celular si la visita seguía en «pendiente».
     for (const row of remoteAssign) {
       const key = `${row.dispatchDate}::${row.itemId}`;
       const prev = assignMap.get(key);
       const remoteSealed =
         row.visitStatus === "omitido" ||
         row.visitStatus === "cobrado" ||
-        Boolean(String(row.paymentRef || "").trim());
+        Boolean(String(row.paymentRef || "").trim()) ||
+        Boolean(row.dayClosedAt);
       if (!remoteSealed) continue;
       if (prev?.dayClosedAt && !row.dayClosedAt) continue;
       const localOpen =
