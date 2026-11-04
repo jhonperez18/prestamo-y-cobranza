@@ -3,6 +3,10 @@
 import { useEffect } from "react";
 import { APP_BUILD } from "@/lib/app-build";
 import { bustClientCaches } from "@/lib/bust-client-cache";
+import {
+  applyServerCleanEpochIfNeeded,
+  cleanDevicePath,
+} from "@/lib/client-path-clean";
 import { flushAllMirrorQueues } from "@/lib/supabase/mirror-queue";
 
 /**
@@ -11,14 +15,15 @@ import { flushAllMirrorQueues } from "@/lib/supabase/mirror-queue";
  * código viejo (sin los arreglos del taller y con colas que el servidor nuevo rechaza).
  *
  * Nunca interrumpe un cobro: no recarga con panel / diálogo / campo abierto.
- * Obligatoria: recarga al volver a la app, con 2 min sin tocar, o a los 2 min de
- * publicada en el primer momento libre (antes 5: dejaba celulares atrasados horas).
+ * Obligatoria: recarga al volver a la app, con 45 s sin tocar, o a los 45 s de
+ * publicada en el primer momento libre (pantallas viejas del supervisor no se quedan).
+ * También aplica cleanEpoch del servidor (SW / caché / -bak; sin tocar plata).
  * La subida previa tiene tope: lo que no subió sigue en la cola del aparato y lo
  * sube la versión nueva.
  */
-const CHECK_MS = 60_000;
-const IDLE_MS = 120_000;
-const FORCE_AFTER_MS = 2 * 60_000;
+const CHECK_MS = 30_000;
+const IDLE_MS = 45_000;
+const FORCE_AFTER_MS = 45_000;
 const FLUSH_CAP_MS = 15_000;
 const BUILD_CHECK_TIMEOUT_MS = 10_000;
 const TARGET_KEY = "nexo-auto-update-target";
@@ -31,18 +36,21 @@ function screenBusy() {
   return Boolean(document.querySelector('.is-open, [role="dialog"], [aria-modal="true"]'));
 }
 
-async function servedBuild(): Promise<string> {
+async function servedHealth(): Promise<{ build: string; cleanEpoch: string }> {
   try {
     const res = await fetch("/api/ops/build-health", {
       cache: "no-store",
       signal: AbortSignal.timeout(BUILD_CHECK_TIMEOUT_MS),
     });
-    if (!res.ok) return "";
-    const data = (await res.json()) as { build?: string };
-    return String(data.build || "").trim();
+    if (!res.ok) return { build: "", cleanEpoch: "" };
+    const data = (await res.json()) as { build?: string; cleanEpoch?: string };
+    return {
+      build: String(data.build || "").trim(),
+      cleanEpoch: String(data.cleanEpoch || "").trim(),
+    };
   } catch (error) {
     console.error("auto-update-check", error);
-    return "";
+    return { build: "", cleanEpoch: "" };
   }
 }
 
@@ -79,8 +87,20 @@ export function useAppAutoUpdate(enabled: boolean) {
 
     async function tick(resumed = false) {
       if (applying) return;
+      const health = await servedHealth();
+      if (health.cleanEpoch) {
+        applying = true;
+        try {
+          const reloading = await applyServerCleanEpochIfNeeded(health.cleanEpoch);
+          if (reloading) return;
+        } catch (error) {
+          console.error("auto-update-clean", error);
+        } finally {
+          applying = false;
+        }
+      }
       if (!target) {
-        const build = await servedBuild();
+        const build = health.build;
         if (!build) return;
         if (!running) {
           running = build;
@@ -105,6 +125,7 @@ export function useAppAutoUpdate(enabled: boolean) {
       await flushWithCap();
       try {
         window.sessionStorage.setItem(TARGET_KEY, target);
+        await cleanDevicePath();
         await bustClientCaches();
       } catch (error) {
         console.error("auto-update-apply", error);

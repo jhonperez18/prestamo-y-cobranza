@@ -70,8 +70,8 @@ fi
 `);
 }
 
-async function fetchJson(url) {
-  const res = await fetch(url, { cache: "no-store" });
+async function fetchJson(url, init) {
+  const res = await fetch(url, { cache: "no-store", ...(init || {}) });
   if (!res.ok) throw new Error(`HTTP ${res.status} ${url}`);
   return res.json();
 }
@@ -222,12 +222,47 @@ async function reportDeviceStorage() {
   console.log(alerts.length ? `Aparatos con alarma: ${alerts.length} (recargar con este build)` : "Aparatos OK");
 }
 
-async function verify(expectedSha) {
+async function bumpClientCleanEpoch() {
+  console.log("Marcando limpieza de camino en aparatos (SW/caché/-bak; sin tocar plata)…");
+  try {
+    const data = await fetchJson(`${DOMAIN}/api/ops/client-clean`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    if (!data.ok || !data.cleanEpoch) {
+      console.error("AVISO: no se pudo marcar cleanEpoch");
+      return;
+    }
+    console.log(`Camino limpio marcado → ${data.cleanEpoch}`);
+  } catch (err) {
+    console.error(`AVISO: client-clean → ${err?.message || err}`);
+  }
+}
+
+async function warmChainOpenings() {
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
+  for (const ref of ["COB-0", "COB-1"]) {
+    try {
+      await fetchJson(
+        `${DOMAIN}/api/ops/chain-m-opening?collectorRef=${encodeURIComponent(ref)}&date=${encodeURIComponent(today)}`,
+      );
+    } catch {
+      /* el aparato reintenta */
+    }
+  }
+}
+
+async function verify(expectedSha, { markClean = false } = {}) {
   await assertServedBuild(expectedSha);
   await assertServiceRole();
   await assertCatalogHealth();
   await assertCashChain();
   await assertPoolVisibleMatchesSeal();
+  if (markClean) {
+    await bumpClientCleanEpoch();
+    await warmChainOpenings();
+  }
   await reportDeviceStorage();
   console.log(`\nListo de verdad. ${DOMAIN} → build ${expectedSha}. Catálogo + service role + regla de inicio + Saldo Banco/Nequi verificados.`);
 }
@@ -245,7 +280,7 @@ void (async () => {
     console.log(`── Publicar ${sha} → ${DOMAIN} ──`);
     run("git push origin main");
     deployVps(sha);
-    await verify(sha);
+    await verify(sha, { markClean: true });
     process.exit(0);
   }
 

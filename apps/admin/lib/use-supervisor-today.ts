@@ -161,9 +161,10 @@ export function useChainMOpening(
       }
       setSettled(false);
       setEpoch((n) => n + 1);
+      // Reintento corto: el servidor ya cachea en disco; 8 s dejaba INICIO en «…».
       retryTimer = window.setTimeout(() => {
         if (alive) void load();
-      }, 8_000);
+      }, 2_000);
     };
     void load();
     return () => {

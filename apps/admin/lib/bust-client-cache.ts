@@ -47,9 +47,16 @@ export async function refreshServedBuildOrReload(): Promise<string | null> {
   try {
     const res = await fetch("/api/ops/build-health", { cache: "no-store" });
     if (!res.ok) return null;
-    const data = (await res.json()) as { build?: string };
+    const data = (await res.json()) as { build?: string; cleanEpoch?: string };
     const build = String(data.build || "").trim();
     if (!build) return null;
+
+    const cleanEpoch = String(data.cleanEpoch || "").trim();
+    if (cleanEpoch) {
+      const { applyServerCleanEpochIfNeeded } = await import("@/lib/client-path-clean");
+      const reloading = await applyServerCleanEpochIfNeeded(cleanEpoch);
+      if (reloading) return null;
+    }
 
     const prev = window.sessionStorage.getItem(LAST_BUILD_KEY);
     if (prev === build) return build;

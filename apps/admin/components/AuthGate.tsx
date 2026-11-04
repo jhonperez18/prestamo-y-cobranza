@@ -89,9 +89,8 @@ export function AuthGate({ channel = "sistema" }: Props) {
   const [session, setSession] = useState<AppSession | null>(null);
   const [ready, setReady] = useState(false);
   const [isPhone, setIsPhone] = useState(false);
-  // También en la pantalla de login: si el celular está en build viejo, no puede
-  // esperar a “entrar” para tomar la versión que arregla el acceso.
-  useAppAutoUpdate(ready);
+  // También en login: build viejo / cleanEpoch no pueden esperar a “entrar”.
+  useAppAutoUpdate(true);
   useEffect(() => {
     let cancelled = false;
     let mq: MediaQueryList | null = null;

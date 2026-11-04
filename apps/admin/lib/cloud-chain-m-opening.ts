@@ -88,7 +88,7 @@ export async function refreshCloudChainMOpening(
   try {
     const res = await fetch(
       `/api/ops/chain-m-opening?collectorRef=${encodeURIComponent(ref)}&date=${encodeURIComponent(date)}`,
-      { cache: "no-store" },
+      { cache: "no-store", signal: AbortSignal.timeout(12_000) },
     );
     const body = (await res.json()) as {
       ok?: boolean;
