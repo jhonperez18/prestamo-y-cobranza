@@ -84,7 +84,37 @@ export async function GET(request: Request) {
         );
       }
     }
-    const [collectors, routes, day_closes, day_expenses, misc_payments, assignmentsPart] = parts;
+    const [collectors, routes, dayClosesPart, day_expenses, misc_payments, assignmentsPart] = parts;
+    // Inicial M = CIE de ayer: con `since` los cambios no rellenan un CIE que el
+    // aparato nunca tuvo. Siempre anexar ayer+hoy (tabla chica).
+    let dayCloseRows = dayClosesPart.rows;
+    if (since) {
+      const closesFrom = businessDaysAgoIso(1);
+      const closesTo = businessTodayIso();
+      const closesWindow = await fetchOpsTableSince(
+        "day_closes",
+        "close_date",
+        closesFrom,
+        closesTo,
+      );
+      if (!closesWindow.ok) {
+        return jsonNoStore(
+          { ok: false, error: "error" in closesWindow ? closesWindow.error : "fetch_failed" },
+          { status: 502 },
+        );
+      }
+      const byRef = new Map<string, Record<string, unknown>>();
+      for (const row of dayCloseRows) {
+        const ref = String(row.ref || "");
+        byRef.set(ref || `chg-${byRef.size}`, row);
+      }
+      for (const row of closesWindow.rows) {
+        const ref = String(row.ref || "");
+        byRef.set(ref || `win-${byRef.size}`, row);
+      }
+      dayCloseRows = [...byRef.values()];
+    }
+    const day_closes = { ...dayClosesPart, rows: dayCloseRows };
     // Hoja de hoy entera solo si hubo cambios de planilla (o bajada completa).
     // Sin cambios: el sello llega en `changed` (updated_at) o en la completa horaria.
     // Evita reenviar toda la ruta en cada poll quieto.

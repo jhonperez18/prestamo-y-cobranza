@@ -79,14 +79,21 @@ export function useSupervisorToday(enabled: boolean, refreshKey: string): Superv
     // Cada 45 s: los cobros del celular entran al supervisor sin esperar cambio de pestaña.
     const poll = window.setInterval(() => void load(false), 45_000);
     const onVisible = () => {
-      // Sin force: si ya bajó hace <45 s, no vuelve a pedir el día (rutas lentas).
+      // Al volver: pide el día (tope 45 s). Disco en servidor evita “cerrado” con hoja vieja.
       if (document.visibilityState === "visible") void load(false);
     };
+    // Tras un pull ops visible, forzar una lectura fresca del día (CIE ayer+hoy).
+    const onOpsPull = () => {
+      lastOk = 0;
+      void load(true);
+    };
+    window.addEventListener("nexo-ops-visible-pull", onOpsPull);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive = false;
       window.clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("nexo-ops-visible-pull", onOpsPull);
     };
   }, [enabled, refreshKey]);
 

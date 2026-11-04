@@ -26,6 +26,7 @@ import {
 } from "@/lib/supabase/payment-mirror";
 import { flushCatalogMirrorQueues, pullRemoteCatalogIntoDemo } from "@/lib/supabase/catalog-mirror";
 import { pullRemoteOpsIntoDemo, reconcileLocalOpsToRemote } from "@/lib/supabase/ops-mirror";
+import { previousCalendarIso } from "@/lib/collector-day-auto-close";
 import { pullRemoteUsersIntoDemo } from "@/lib/supabase/user-mirror";
 import {
   pullRemoteBankAccountsIntoDemo,
@@ -377,8 +378,8 @@ export function useOperationalDemoSync(
   }, [commitHydrate, healthCycleThenReport, runMirrorFlush]);
 
   /**
-   * Al volver a la app (cobrador / supervisor): solo planilla + cobros de hoy.
-   * No rebaja clientes / préstamos / usuarios / banco ni el libro del mes.
+   * Al volver a la app (cobrador / supervisor): planilla + cobros de hoy + CIE ayer/hoy.
+   * Sin CIE de ayer el Inicial M cae a PCE local (PC ≠ celular). No rebaja el libro entero.
    * Completa horaria, poll 10 min, repair y arranque siguen en runHydrateWithRemotePull.
    */
   const runVisibleLivePull = useCallback(async () => {
@@ -398,6 +399,8 @@ export function useOperationalDemoSync(
       // Cola atrás: no bloquear el pintado de rutas por un flush largo.
       void runMirrorFlush();
       const today = businessTodayIso();
+      const yesterday = previousCalendarIso(today);
+      // Ops incremental ya anexa CIE ayer+hoy en el servidor (Inicial M).
       const [payments, ops] = await Promise.all([
         fillTodayPaymentsIntoDemo(today),
         pullRemoteOpsIntoDemo(),
@@ -412,6 +415,34 @@ export function useOperationalDemoSync(
           .join(" · ");
       }
       if (payments.changed || ops.changed) commitHydrate();
+      // Inicial M / caja del día desde la base (no sessionStorage vieja).
+      try {
+        const [{ refreshCloudChainMOpening }, { refreshCloudDayCashFigure }, { loadDemoDayCloses }] =
+          await Promise.all([
+            import("@/lib/cloud-chain-m-opening"),
+            import("@/lib/cloud-day-cash-figure"),
+            import("@/lib/demo-persist"),
+          ]);
+        const closes = loadDemoDayCloses() as Array<{ date?: string; collectorRef?: string }>;
+        const refs = [
+          ...new Set(
+            closes
+              .filter((row) => row.date === yesterday || row.date === today)
+              .map((row) => String(row.collectorRef || "").trim())
+              .filter(Boolean),
+          ),
+        ];
+        await Promise.all(
+          refs.flatMap((ref) => [
+            refreshCloudChainMOpening(ref, today),
+            refreshCloudDayCashFigure(ref, today),
+          ]),
+        );
+        if (refs.length > 0) commitHydrate();
+        window.dispatchEvent(new Event("nexo-ops-visible-pull"));
+      } catch (error) {
+        console.error("ops-sync-visible-opening", error);
+      }
     } catch (error) {
       console.error("ops-sync-visible", error);
       pullOk = false;
