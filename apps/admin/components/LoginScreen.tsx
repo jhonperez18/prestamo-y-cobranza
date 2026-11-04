@@ -140,10 +140,12 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
       }
 
       // 2) Si no está en local, trae nube (otro PC/celular) y reintenta.
+      let catalogUnreachable = false;
       try {
-        await pullRemoteUsersIntoDemo();
+        const pulled = await pullRemoteUsersIntoDemo();
+        if (!pulled.ok) catalogUnreachable = true;
       } catch {
-        /* offline */
+        catalogUnreachable = true;
       }
       catalogSession = validateLogin(username, password, readUsersCatalog());
       if (catalogSession) {
@@ -154,8 +156,14 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
       // 3) Este navegador puede tener otra clave vieja. Si la nube coincide, esa entra.
       try {
         const res = await fetch("/api/users", { cache: "no-store" });
-        const body = (await res.json()) as { ok?: boolean; users?: UserMirrorRow[] };
-        if (res.ok && body.ok) {
+        const body = (await res.json()) as {
+          ok?: boolean;
+          users?: UserMirrorRow[];
+          error?: string;
+        };
+        if (!res.ok || !body.ok) {
+          catalogUnreachable = true;
+        } else {
           const remote = (body.users ?? [])
             .map(mirrorToUserRow)
             .filter((row): row is UserRow => Boolean(row));
@@ -172,7 +180,7 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
           }
         }
       } catch {
-        /* offline */
+        catalogUnreachable = true;
       }
 
       // 4) Respaldo Auth (email SSO).
@@ -189,6 +197,12 @@ export function LoginScreen({ onSuccess, channel = "sistema" }: Props) {
         }
       }
 
+      if (catalogUnreachable && readUsersCatalog().length === 0) {
+        setError(
+          "El servidor no pudo cargar el listado de acceso. Espera un momento e intenta de nuevo.",
+        );
+        return;
+      }
       setError("Usuario o contraseña incorrectos.");
     } catch (error) {
       console.error("login", error);

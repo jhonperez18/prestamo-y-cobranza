@@ -34,6 +34,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# Cachés de servidor en el VPS (login, saldos, informe). Nunca en git.
+/data/*.json
+
 # vercel
 .vercel
 
