@@ -1,5 +1,14 @@
 import { NextResponse } from "next/server";
-import { fetchLoanByRefFromSupabase, fetchLoansFromSupabase } from "@/lib/supabase/catalog-mirror";
+import {
+  readLoansDiskCache,
+  withHardTimeout,
+  writeLoansDiskCache,
+} from "@/lib/server-catalog-disk-cache";
+import {
+  fetchLoanByRefFromSupabase,
+  fetchLoansFromSupabase,
+  type LoanMirrorRow,
+} from "@/lib/supabase/catalog-mirror";
 import { changedSinceCursor, readChangedSince } from "@/lib/supabase/changed-since";
 import { isVirginWriteLocked, virginWriteLockPayload } from "@/lib/virgin-lock";
 import { processCollectorPayApi } from "@/lib/supabase/process-collector-pay-api";
@@ -14,6 +23,8 @@ import { paymentComboGroupId } from "@/lib/payment-combo";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
+
+const HARD_MS = 12_000;
 
 /** `?since=` → solo lo que cambió o se creó desde ese corte (`incremental: true`). */
 export async function GET(request: Request) {
@@ -34,16 +45,78 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: true, incremental: false, cursor, loans: one.rows });
     }
     const since = readChangedSince(request);
-    const result = await fetchLoansFromSupabase(since);
+    if (since) {
+      const result = await withHardTimeout(
+        fetchLoansFromSupabase(since),
+        HARD_MS,
+        { ok: false as const, error: "loans_timeout", rows: [] as LoanMirrorRow[] },
+      );
+      if ("skipped" in result && result.skipped) {
+        return NextResponse.json({ ok: true, skipped: true, reason: result.reason, loans: [] });
+      }
+      if (!result.ok) {
+        return NextResponse.json({ ok: false, error: result.error, loans: [] }, { status: 502 });
+      }
+      return NextResponse.json({ ok: true, incremental: true, cursor, loans: result.rows });
+    }
+
+    const cached = await readLoansDiskCache<LoanMirrorRow>();
+    const result = await withHardTimeout(
+      fetchLoansFromSupabase(null),
+      HARD_MS,
+      { ok: false as const, error: "loans_timeout", rows: [] as LoanMirrorRow[] },
+    );
+    if (result.ok && !("skipped" in result && result.skipped) && result.rows.length > 0) {
+      void writeLoansDiskCache(result.rows);
+      return NextResponse.json({
+        ok: true,
+        incremental: false,
+        cursor,
+        loans: result.rows,
+        fromCache: false,
+      });
+    }
     if ("skipped" in result && result.skipped) {
+      if (cached?.length) {
+        return NextResponse.json({
+          ok: true,
+          incremental: false,
+          cursor,
+          loans: cached,
+          fromCache: true,
+        });
+      }
       return NextResponse.json({ ok: true, skipped: true, reason: result.reason, loans: [] });
     }
-    if (!result.ok) {
-      return NextResponse.json({ ok: false, error: result.error, loans: [] }, { status: 502 });
+    if (cached?.length) {
+      return NextResponse.json({
+        ok: true,
+        incremental: false,
+        cursor,
+        loans: cached,
+        fromCache: true,
+        cacheNote: "ok" in result && !result.ok ? result.error : "loans_timeout",
+      });
     }
-    return NextResponse.json({ ok: true, incremental: Boolean(since), cursor, loans: result.rows });
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "ok" in result && !result.ok ? result.error : "loans_unavailable",
+        loans: [],
+      },
+      { status: 502 },
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";
+    const cached = await readLoansDiskCache<LoanMirrorRow>();
+    if (cached?.length) {
+      return NextResponse.json({
+        ok: true,
+        loans: cached,
+        fromCache: true,
+        cacheNote: message,
+      });
+    }
     return NextResponse.json({ ok: false, error: message, loans: [] }, { status: 500 });
   }
 }

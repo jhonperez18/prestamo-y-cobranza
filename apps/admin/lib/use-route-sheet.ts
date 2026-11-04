@@ -24,12 +24,19 @@ type RouteSheetState = {
 let cached: RouteSheet | null = null;
 let pending: Promise<RouteSheet | null> | null = null;
 
+const FETCH_MS = 12_000;
+
 /** Lectura de la ficha en la nube. Cada llamada trae el saldo actual. */
 export async function fetchRouteSheet(): Promise<RouteSheet | null> {
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer =
+    ctrl && typeof window !== "undefined"
+      ? window.setTimeout(() => ctrl.abort(), FETCH_MS)
+      : 0;
   try {
     const [clientsRes, loansRes] = await Promise.all([
-      fetch("/api/clients", { cache: "no-store" }),
-      fetch("/api/loans", { cache: "no-store" }),
+      fetch("/api/clients", { cache: "no-store", signal: ctrl?.signal }),
+      fetch("/api/loans", { cache: "no-store", signal: ctrl?.signal }),
     ]);
     const clientsBody = (await clientsRes.json()) as { ok?: boolean; clients?: ClientMirrorRow[] };
     const loansBody = (await loansRes.json()) as { ok?: boolean; loans?: LoanMirrorRow[] };
@@ -47,6 +54,8 @@ export async function fetchRouteSheet(): Promise<RouteSheet | null> {
   } catch (error) {
     console.error("route-sheet", error);
     return null;
+  } finally {
+    if (timer) window.clearTimeout(timer);
   }
 }
 
@@ -69,6 +78,8 @@ function loadRouteSheetOnce(): Promise<RouteSheet | null> {
  * Clientes y préstamos de CLIENTES, PRÉSTAMOS y de la cartera del informe.
  * Una sola lectura de la ficha por apertura. No se guarda en el aparato:
  * la copia local no puede pintar otra hoja ni otra cartera.
+ *
+ * La planilla del cobrador NO espera esto: pinta con la copia local.
  */
 export function useRouteSheet(active: boolean): RouteSheetState {
   const [state, setState] = useState<RouteSheetState>(() =>

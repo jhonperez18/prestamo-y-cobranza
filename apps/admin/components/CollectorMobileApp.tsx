@@ -2991,11 +2991,11 @@ export function CollectorMobileApp({
 
           {listFilter !== "done" ? (
           <ul className="collector-mobile-list compact">
-            {fichaSheet.status === "loading" && !fichaSheet.sheet ? (
-              <li className="collector-mobile-empty-inline">Cargando la hoja del sistema…</li>
-            ) : visibleItems.length === 0 ? (
+            {visibleItems.length === 0 ? (
               <li className="collector-mobile-empty-inline">
-                {dayLocked
+                {fichaSheet.status === "loading"
+                  ? "Cargando la hoja del sistema…"
+                  : dayLocked
                     ? "Jornada cerrada. Elige otra fecha en Historial si tienes más."
                     : queue.allDone
                       ? "Listo: ya no hay pendientes. Cierra el día en el menú para archivar la jornada."
