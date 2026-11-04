@@ -628,6 +628,7 @@ export function rowToDayClose(r: Record<string, unknown>): CollectorDayCloseReco
     cashDeclared: r.cash_declared == null ? undefined : Number(r.cash_declared) || 0,
     cashVariance: r.cash_variance == null ? undefined : Number(r.cash_variance) || 0,
     closedAt: String(r.closed_at || new Date().toISOString()),
+    ...(r.updated_at ? { updatedAt: String(r.updated_at) } : {}),
     ...(cashAdjustment
       ? {
           cashExpected: cashAdjustment.calculated,

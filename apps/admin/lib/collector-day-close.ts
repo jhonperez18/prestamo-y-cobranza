@@ -94,6 +94,8 @@ export type CollectorDayCloseRecord = CollectorDayCloseDraft & {
    */
   routeCashAdjustments?: RouteCashAdjustment[];
   movementRefs: string[];
+  /** Marca de la fila en nube (`updated_at`). Sirve al pull para soltar AJUSTE local viejo. */
+  updatedAt?: string;
 };
 
 export type CashAdjustment = {
