@@ -714,6 +714,26 @@ export function CollectorMobileApp({
     };
   }, [collector.ref, cashBookRoute, activeDate]);
 
+  /** Caja M/T + Inicial desde la base: no pintar CIE local fantasma (5.428k). */
+  const [dayCashFigureEpoch, setDayCashFigureEpoch] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    void Promise.all([
+      import("@/lib/cloud-day-cash-figure"),
+      import("@/lib/cloud-chain-m-opening"),
+    ]).then(([{ refreshCloudDayCashFigure }, { refreshCloudChainMOpening }]) => {
+      void Promise.all([
+        refreshCloudDayCashFigure(collector.ref, activeDate),
+        refreshCloudChainMOpening(collector.ref, activeDate),
+      ]).then((rows) => {
+        if (alive && rows.some(Boolean)) setDayCashFigureEpoch((n) => n + 1);
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [collector.ref, activeDate]);
+
   const dayHistory = useMemo(() => {
     if (!historyOnScreen) return [];
     const extraDates = [
@@ -1034,26 +1054,6 @@ export function CollectorMobileApp({
   /** M / T: Cuadre sin Nequi (lo no efectivo es Banco) y Total = efectivo − préstamos − gastos. */
   const planillaIsChain =
     sameRoute(activePlanillaRoute ?? "", "M") || sameRoute(activePlanillaRoute ?? "", "T");
-
-  /** Caja M/T + Inicial desde la base: no pintar CIE local fantasma (5.428k). */
-  const [dayCashFigureEpoch, setDayCashFigureEpoch] = useState(0);
-  useEffect(() => {
-    let alive = true;
-    void Promise.all([
-      import("@/lib/cloud-day-cash-figure"),
-      import("@/lib/cloud-chain-m-opening"),
-    ]).then(([{ refreshCloudDayCashFigure }, { refreshCloudChainMOpening }]) => {
-      void Promise.all([
-        refreshCloudDayCashFigure(collector.ref, activeDate),
-        refreshCloudChainMOpening(collector.ref, activeDate),
-      ]).then((rows) => {
-        if (alive && rows.some(Boolean)) setDayCashFigureEpoch((n) => n + 1);
-      });
-    });
-    return () => {
-      alive = false;
-    };
-  }, [collector.ref, activeDate]);
 
   const holdLocalCieUntilCloud = useMemo(() => {
     // Mientras la base no conteste, no usar CIE local (caso 5.428k).
