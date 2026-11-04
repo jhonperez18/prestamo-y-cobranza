@@ -36,8 +36,9 @@ export async function GET() {
         { status: 502, headers: { "Cache-Control": "no-store" } },
       );
     }
+    const fromCache = "fromCache" in result ? Boolean(result.fromCache) : false;
     return NextResponse.json(
-      { ok: true, users: result.users, fromCache: Boolean(result.fromCache) },
+      { ok: true, users: result.users, fromCache },
       { headers: { "Cache-Control": "no-store, max-age=0" } },
     );
   } catch (err) {
