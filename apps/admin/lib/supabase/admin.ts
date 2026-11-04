@@ -4,13 +4,16 @@ import { getSupabaseServiceEnv } from "@/lib/supabase/service-env";
 /**
  * Node < 22 + supabase-js ≥ 2.55: createClient revienta sin transport WebSocket.
  * El servidor no usa Realtime; igual hay que pasar `ws` o no hay clientes, cobros ni planilla.
+ *
+ * `eval("require")` evita que Turbopack/Webpack metan `ws` en el bundle del browser
+ * (AuthGate → user-mirror → este archivo).
  */
 function nodeRealtimeTransport(): { transport?: unknown } {
   if (typeof window !== "undefined") return {};
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const ws = require("ws") as unknown;
-    return { transport: ws };
+    // eslint-disable-next-line no-eval, @typescript-eslint/no-unsafe-call
+    const nodeRequire = eval("require") as (id: string) => unknown;
+    return { transport: nodeRequire("ws") };
   } catch (error) {
     console.error("supabase-admin-ws-missing", error);
     return {};

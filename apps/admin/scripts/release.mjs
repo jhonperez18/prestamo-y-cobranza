@@ -52,6 +52,12 @@ git pull -q --ff-only
 HEAD=$(git rev-parse --short HEAD)
 if [ "$HEAD" != "${expectedSha}" ]; then echo "FALLO: el VPS quedó en $HEAD, se esperaba ${expectedSha}"; exit 1; fi
 cd apps/admin
+# Dependencias nuevas (ej. ws para Node 20 + supabase-js) antes del build.
+npm install --omit=dev --no-audit --no-fund > /tmp/npm-install.log 2>&1 || {
+  echo "FALLO: npm install en el VPS. Últimas líneas:"
+  tail -n 30 /tmp/npm-install.log
+  exit 1
+}
 if npm run build > /tmp/build.log 2>&1; then
   pm2 restart autoprestamos > /dev/null
   echo "VPS: build OK y app reiniciada"
