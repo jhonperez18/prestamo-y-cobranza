@@ -138,32 +138,37 @@ export function useChainMOpening(
   useEffect(() => {
     if (!enabled || !key || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return;
     let alive = true;
+    let retryTimer = 0;
     const refs = key.split(",").filter(Boolean);
     // Caché de sesión con Inicial listo → primer paint ya es el real (sin «…»).
     if (warmReady(refs)) {
       setSettled(true);
     }
     const load = async () => {
-      const work = Promise.all(
+      await Promise.all(
         refs.flatMap((ref) => [
           refreshCloudChainMOpening(ref, today),
           refreshCloudDayCashFigure(ref, today),
         ]),
       );
-      // Si la nube no contesta, la tabla de cobradores no puede quedar pegada en «…».
-      await Promise.race([
-        work,
-        new Promise<void>((resolve) => {
-          window.setTimeout(resolve, 12_000);
-        }),
-      ]);
       if (!alive) return;
-      setSettled(true);
+      // Solo «settled» con Inicial de la base. Timeout sin ready dejaba pintar
+      // CIE local fantasma (5.428k). Historia 31/10 = estática vía chain_m_opening.
+      if (warmReady(refs)) {
+        setSettled(true);
+        setEpoch((n) => n + 1);
+        return;
+      }
+      setSettled(false);
       setEpoch((n) => n + 1);
+      retryTimer = window.setTimeout(() => {
+        if (alive) void load();
+      }, 8_000);
     };
     void load();
     return () => {
       alive = false;
+      window.clearTimeout(retryTimer);
     };
   }, [enabled, key, today]);
   return { epoch, settled };
@@ -212,15 +217,11 @@ export function usePoolVisibleSaldoCloud(enabled: boolean, toIso: string): PoolV
     void import("@/lib/cloud-pool-visible-saldo").then(
       ({ getCloudPoolVisibleSaldo, refreshCloudPoolVisibleSaldo }) => {
         const warm = getCloudPoolVisibleSaldo();
+        // Solo la cifra del corte pedido. Otra fecha = contaminar mes sellado / vivo.
         if (warm && warm.toIso === toIso) {
           setBanco(warm.banco);
           setNequi(warm.nequi);
           setSettled(true);
-        } else if (warm) {
-          // Mientras llega el corte pedido, no dejar «…»: muestra la última cifra buena.
-          setBanco(warm.banco);
-          setNequi(warm.nequi);
-          setSettled(false);
         } else {
           setBanco(null);
           setNequi(null);

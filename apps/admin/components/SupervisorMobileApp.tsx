@@ -105,6 +105,7 @@ import { loadSupervisorHistoryPayments } from "@/lib/supervisor-book";
 import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
 import { useRouteCashBook } from "@/lib/use-route-cash-book";
 import { getCloudChainMOpening } from "@/lib/cloud-chain-m-opening";
+import { getCloudDayCashFigure } from "@/lib/cloud-day-cash-figure";
 import {
   useChainMOpening,
   usePoolVisibleSaldoCloud,
@@ -112,6 +113,15 @@ import {
   useRouteNAnchor,
   useSupervisorToday,
 } from "@/lib/use-supervisor-today";
+
+/** Inicial M solo de la base. Sin ready → no CIE local (31/10 historia / 5.428k). */
+function holdChainCieUntilCloud(collectorRef: string, date: string) {
+  const opening = getCloudChainMOpening(collectorRef, date);
+  if (opening?.ready && opening.opening != null) return false;
+  const figure = getCloudDayCashFigure(collectorRef, date);
+  if (figure?.ready && figure.opening != null) return false;
+  return true;
+}
 import { isoToDisplay, displayToIso, syncLoan } from "@/lib/loan-preview";
 import {
   informePeriodName,
@@ -1756,9 +1766,8 @@ export function SupervisorMobileApp({
     for (const collectorRef of collectorRefsForLive) {
       const collector = collectors.find((row) => row.ref === collectorRef);
       if (!collector) continue;
-      // Sin chain_m_opening aún: no armar el libro con CIE local fantasma.
-      const holdLocalCie =
-        !getCloudChainMOpening(collectorRef, today) && !chainMOpeningSettled;
+      // Sin Inicial de la base: no armar el libro con CIE local fantasma.
+      const holdLocalCie = holdChainCieUntilCloud(collectorRef, today);
       const openingKnown = openingCashForChainedPlanilla({
         collectorRef,
         routeName: PLANILLA_CASH_CHAIN_PRIMARY,
@@ -1862,8 +1871,7 @@ export function SupervisorMobileApp({
       const holdLocalCie =
         Boolean(collectorRef) &&
         isPlanillaCashChainRoute(route.routeName) &&
-        !getCloudChainMOpening(collectorRef, today) &&
-        !chainMOpeningSettled;
+        holdChainCieUntilCloud(collectorRef, today);
       const openingKnown = collectorRef
         ? openingCashForChainedPlanilla({
             collectorRef,
@@ -2857,8 +2865,7 @@ export function SupervisorMobileApp({
   const histHoldLocalCie =
     Boolean(openRoute?.collectorRef) &&
     isPlanillaCashChainPrimary(openRoute?.routeName) &&
-    !getCloudChainMOpening(openRoute?.collectorRef || "", today) &&
-    !chainMOpeningSettled;
+    holdChainCieUntilCloud(openRoute?.collectorRef || "", today);
 
   // Historial A/N: baja route_own_box del mes visible (la base manda; sin esto todo sale en rojo).
   useEffect(() => {

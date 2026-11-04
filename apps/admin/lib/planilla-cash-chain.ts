@@ -938,6 +938,19 @@ export function annotateMHistoryExtractRows(input: {
         });
         continue;
       }
+      // Día pasado sin libro: historia = estática. No CIE/PCE local (31/10 fantasma).
+      if (input.sealPastFromBook) {
+        annotatedAscending.push({
+          date: row.date,
+          dateLabel: row.dateLabel,
+          cobro: row.cobro,
+          gasto: row.gasto,
+          prestamo: row.prestamo,
+          inicial: null,
+          saldoShown: null,
+        });
+        continue;
+      }
       const open = openingCashForChainedPlanilla({
         collectorRef: input.collectorRef,
         routeName: PLANILLA_CASH_CHAIN_PRIMARY,
@@ -946,9 +959,7 @@ export function annotateMHistoryExtractRows(input: {
         monthCloses,
         dayCloses,
       });
-      const primaryClosing = input.sealPastFromBook
-        ? null
-        : input.primaryClosingFor?.(row.date) ?? null;
+      const primaryClosing = input.primaryClosingFor?.(row.date) ?? null;
       annotatedAscending.push({
         date: row.date,
         dateLabel: row.dateLabel,
