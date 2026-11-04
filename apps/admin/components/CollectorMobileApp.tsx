@@ -48,6 +48,7 @@ import {
   splitDayExpenses,
 } from "@/lib/collector-history-planilla";
 import { isSecondaryOperativeLine } from "@/lib/expense-lines";
+import { previousCalendarIso } from "@/lib/collector-day-auto-close";
 import { todayIso } from "@/lib/daily-dispatch";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
@@ -684,6 +685,29 @@ export function CollectorMobileApp({
       route && cashBookRoute && sameRoute(route, cashBookRoute) ? cashBook : null,
     [cashBook, cashBookRoute],
   );
+  /**
+   * A/N: bajar route_own_box (hoy + ancla). Sin esto la vista previa / celular
+   * restaba un hueco fantasma en Caja (caso Yesid 03/11: 2.566.500 vs 2.596.500).
+   */
+  const [ownBoxEpoch, setOwnBoxEpoch] = useState(0);
+  useEffect(() => {
+    const pin = (cashBookRoute || "").trim().toUpperCase();
+    if (pin !== "A" && pin !== "N") return;
+    let alive = true;
+    void (async () => {
+      const { refreshCloudRouteOwnBox } = await import("@/lib/cloud-route-own-box");
+      const today = todayIso();
+      const y = previousCalendarIso(today);
+      await Promise.all([
+        refreshCloudRouteOwnBox(collector.ref, today, pin),
+        refreshCloudRouteOwnBox(collector.ref, y, pin),
+      ]);
+      if (alive) setOwnBoxEpoch((n) => n + 1);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [collector.ref, cashBookRoute, activeDate]);
 
   const dayHistory = useMemo(() => {
     if (!historyOnScreen) return [];
@@ -1482,7 +1506,7 @@ export function CollectorMobileApp({
       } finally {
         closingDayRef.current = false;
       }
-      setListFilter("pending");
+    setListFilter("pending");
       setPreferCobroPlanilla(false);
       setSelectedDate(null);
     })();
@@ -1570,6 +1594,7 @@ export function CollectorMobileApp({
     dayExpenseDrafts,
     planillaCashCloses,
     monthCloses,
+    ownBoxEpoch,
   ]);
   /** M o T de la cadena, o la planilla principal fuera de ella: ahí se anotan préstamos y gastos. */
   const planillaOwnsMovements = isPrimaryPlanilla || onSecondaryChainPlanilla;
@@ -2592,24 +2617,24 @@ export function CollectorMobileApp({
               <span>{headerInicialProvisional ? "Lo que inició (momentáneo)" : "Lo que inició"}</span>
               <b>{headerInicialReady ? money(headerInicial) : "—"}</b>
             </div>
-            <button
-              type="button"
+              <button
+                type="button"
               className={`is-prestamos is-tap${homeCierreKind === "prestamos" ? " on" : ""}`}
               aria-expanded={homeCierreKind === "prestamos"}
               onClick={() => toggleHomeCierreList("prestamos")}
-            >
+              >
               <span>Lo que prestó</span>
               <b>{money(loQuePresto)}</b>
-            </button>
-            <button
-              type="button"
+              </button>
+              <button
+                type="button"
               className={`is-gastos is-tap${homeCierreKind === "gastos" ? " on" : ""}`}
               aria-expanded={homeCierreKind === "gastos"}
               onClick={() => toggleHomeCierreList("gastos")}
-            >
-              <span>Lo que gastó</span>
+              >
+                <span>Lo que gastó</span>
               <b>{money(topGastos)}</b>
-            </button>
+              </button>
 
             <div className="is-cobrado">
               <div className="is-cobrado-head">
@@ -2644,13 +2669,13 @@ export function CollectorMobileApp({
                   <span>N/P</span>
                   <b>{homeNpRows.length}</b>
                 </button>
-              </div>
-            </div>
+                </div>
+                </div>
 
             <div className="is-saldo">
               <span>Caja (efectivo − gastos − préstamos)</span>
               <b>{money(cajaShown)}</b>
-            </div>
+          </div>
           </div>
           {homeCierreKind === "prestamos" ? (
             dayExpenseSplit.prestamos.length > 0 ? (
@@ -3218,7 +3243,7 @@ export function CollectorMobileApp({
                                     stroke="#15803d"
                                     strokeWidth="1"
                                   />
-                                  <circle cx="8" cy="6" r="2.2" fill="none" stroke="#15803d" strokeWidth="1" />
+                              <circle cx="8" cy="6" r="2.2" fill="none" stroke="#15803d" strokeWidth="1" />
                                   <path
                                     d="M3 3.2h1.2M3 8.8h1.2M11.8 3.2H13M11.8 8.8H13"
                                     stroke="#15803d"
