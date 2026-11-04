@@ -8112,28 +8112,30 @@ export function SupervisorMobileApp({
           ) : liquidaciones.length === 0 ? (
             <p className="ficha-empty">No hay rutas con cobrador.</p>
           ) : (
-            {connBanner && Date.now() < connBanner.until ? (
-              <p className="conn-just-banner" role="status" aria-live="polite">
-                {connBanner.text}
-              </p>
-            ) : null}
-            <div className="supervisor-route-boards">
-              {liquidaciones.map((row, index) => (
-                <RouteBoardCard
-                  key={row.routeRef}
-                  row={row}
-                  accent={index}
-                  unreadCount={unreadByRoute[row.routeRef] || 0}
-                  onOpen={openRouteSummary}
-                  connectionLevel={connectionByRoute[row.routeRef]?.level ?? "none"}
-                  justConnected={(justConnectedUntil[row.routeRef] ?? 0) > Date.now()}
-                  onConnection={() => {
-                    suppressGhostClick(420);
-                    setConnectionRouteRef(row.routeRef);
-                  }}
-                />
-              ))}
-            </div>
+            <Fragment>
+              {connBanner && Date.now() < connBanner.until ? (
+                <p className="conn-just-banner" role="status" aria-live="polite">
+                  {connBanner.text}
+                </p>
+              ) : null}
+              <div className="supervisor-route-boards">
+                {liquidaciones.map((row, index) => (
+                  <RouteBoardCard
+                    key={row.routeRef}
+                    row={row}
+                    accent={index}
+                    unreadCount={unreadByRoute[row.routeRef] || 0}
+                    onOpen={openRouteSummary}
+                    connectionLevel={connectionByRoute[row.routeRef]?.level ?? "none"}
+                    justConnected={(justConnectedUntil[row.routeRef] ?? 0) > Date.now()}
+                    onConnection={() => {
+                      suppressGhostClick(420);
+                      setConnectionRouteRef(row.routeRef);
+                    }}
+                  />
+                ))}
+              </div>
+            </Fragment>
           )}
           {connectionRow && connectionByRoute[connectionRow.routeRef] ? null : (
           <footer className="supervisor-mobile-salir-foot">
