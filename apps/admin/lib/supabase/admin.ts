@@ -30,7 +30,8 @@ export function createSupabaseAdminClient(): SupabaseClient | null {
   return createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
     // supabase tipa transport como WebSocket nativo; en Node 20 pasamos `ws`.
-    realtime: nodeRealtimeTransport() as { transport?: new (...args: never[]) => unknown },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    realtime: nodeRealtimeTransport() as any,
   });
 }
 
