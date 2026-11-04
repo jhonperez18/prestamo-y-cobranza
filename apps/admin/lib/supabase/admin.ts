@@ -2,6 +2,22 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseServiceEnv } from "@/lib/supabase/service-env";
 
 /**
+ * Node < 22 + supabase-js ≥ 2.55: createClient revienta sin transport WebSocket.
+ * El servidor no usa Realtime; igual hay que pasar `ws` o no hay clientes, cobros ni planilla.
+ */
+function nodeRealtimeTransport(): { transport?: unknown } {
+  if (typeof window !== "undefined") return {};
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const ws = require("ws") as unknown;
+    return { transport: ws };
+  } catch (error) {
+    console.error("supabase-admin-ws-missing", error);
+    return {};
+  }
+}
+
+/**
  * Cliente admin (service role). Solo server / route handlers.
  * C6.1: escribe/lee sin RLS; el browser nunca usa esta key.
  */
@@ -10,6 +26,7 @@ export function createSupabaseAdminClient(): SupabaseClient | null {
   if (!configured) return null;
   return createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    realtime: nodeRealtimeTransport(),
   });
 }
 

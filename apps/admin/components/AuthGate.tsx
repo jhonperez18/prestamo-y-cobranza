@@ -33,6 +33,7 @@ import {
 } from "@/lib/pwa-channels";
 import { canAccessAdminPanel } from "@/lib/session-access";
 import { signOutSupabaseAuth } from "@/lib/supabase/auth-login";
+import { useAppAutoUpdate } from "@/lib/app-auto-update";
 import {
   flushUserMirrorQueues,
   pullRemoteUsersIntoDemo,
@@ -88,6 +89,9 @@ export function AuthGate({ channel = "sistema" }: Props) {
   const [session, setSession] = useState<AppSession | null>(null);
   const [ready, setReady] = useState(false);
   const [isPhone, setIsPhone] = useState(false);
+  // También en la pantalla de login: si el celular está en build viejo, no puede
+  // esperar a “entrar” para tomar la versión que arregla el acceso.
+  useAppAutoUpdate(ready);
   useEffect(() => {
     let cancelled = false;
     let mq: MediaQueryList | null = null;
