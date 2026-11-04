@@ -1,14 +1,40 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { Agent, fetch as undiciFetch } from "undici";
 import { getSupabaseServiceEnv } from "@/lib/supabase/service-env";
 
 /**
  * El servidor no usa Realtime (solo REST/RPC).
- * Node < 22 + supabase-js ≥ 2.55: createClient exige transport WebSocket.
- * Node ≥ 22 trae WebSocket nativo: no inyectar `ws` (dejaba el fetch HTTP
- * en `TypeError: fetch failed` tras unos minutos en el VPS → Inicial 5.428k).
  *
- * No importar `ws` estático: Turbopack lo metería en el browser (AuthGate → user-mirror).
+ * Causa raíz (VPS): el `fetch` parcheado de Next termina en
+ * `TypeError: fetch failed` hacia Supabase, mientras el `fetch` de Node
+ * en el mismo host responde 200. Por eso el Inicial caía a CIE local
+ * fantasma (5.428k) y chain-audit / payments fallaban.
+ *
+ * Solución: cliente admin con `undici.fetch` + Agent IPv4 (no el fetch de Next).
+ * Node < 22 sin WebSocket nativo: solo entonces se pasa `ws` a Realtime.
  */
+
+let undiciAgent: Agent | null = null;
+
+function getUndiciAgent(): Agent {
+  if (!undiciAgent) {
+    undiciAgent = new Agent({
+      connect: { family: 4, timeout: 20_000 },
+      keepAliveTimeout: 10_000,
+      keepAliveMaxTimeout: 30_000,
+      connections: 32,
+    });
+  }
+  return undiciAgent;
+}
+
+function adminFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return undiciFetch(input as Parameters<typeof undiciFetch>[0], {
+    ...(init as object),
+    dispatcher: getUndiciAgent(),
+  } as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>;
+}
+
 function nodeRealtimeTransport(): { transport?: unknown } {
   if (typeof window !== "undefined") return {};
   if (typeof WebSocket !== "undefined") return {};
@@ -22,12 +48,19 @@ function nodeRealtimeTransport(): { transport?: unknown } {
   }
 }
 
-/** Un solo cliente por proceso: evita cientos de sockets colgados bajo carga. */
+/** Un solo cliente por proceso. */
 let cachedAdmin: SupabaseClient | null | undefined;
 
-/** Suelta el cliente envenenado (fetch failed) para el próximo request. */
+/** Suelta cliente + agent si el socket quedó envenenado. */
 export function resetSupabaseAdminClient() {
   cachedAdmin = undefined;
+  const prev = undiciAgent;
+  undiciAgent = null;
+  if (prev) {
+    void prev.close().catch(() => {
+      /* ignore */
+    });
+  }
 }
 
 function isFetchFailed(error: unknown) {
@@ -56,6 +89,7 @@ export function createSupabaseAdminClient(): SupabaseClient | null {
   const realtime = nodeRealtimeTransport();
   cachedAdmin = createClient(url, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: adminFetch },
     ...(realtime.transport
       ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
         { realtime: realtime as any }
