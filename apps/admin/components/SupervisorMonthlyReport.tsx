@@ -40,6 +40,12 @@ type Props = {
   snapshot?: InformeMonthSnapshot | null;
 };
 
+/** Solo el día del mes (3, 4, 5…) — renglón más delgado en el desplegable. */
+function informeDayNumber(iso: string): string {
+  const day = Number(String(iso || "").slice(8, 10));
+  return Number.isFinite(day) && day > 0 ? String(day) : "—";
+}
+
 export function InformePrestamoLines({ lines }: { lines: readonly InformePrestamoLine[] }) {
   if (!lines.length) return null;
   return (
@@ -52,7 +58,7 @@ export function InformePrestamoLines({ lines }: { lines: readonly InformePrestam
       <ul className="supervisor-prestamo-lines-list" aria-label="Préstamos del mes">
         {lines.map((row, index) => (
           <li key={`${row.date}|${row.route}|${row.ref}|${row.source}|${row.anexo ? "anexo" : "capital"}|${index}`}>
-            <span className="is-date">{isoToDisplay(row.date)}</span>
+            <span className="is-date">{informeDayNumber(row.date)}</span>
             <span className="is-label">
               {row.anexo ? `Anexo · ${row.ref}` : row.ref}
               {row.name ? ` · ${row.name}` : ""}

@@ -6276,12 +6276,12 @@
     .supervisor-prestamo-lines-head,
     .supervisor-prestamo-lines-list li {
       display: grid;
-      grid-template-columns: 4.6rem minmax(0, 1fr) 5.6rem;
+      grid-template-columns: 1.6rem minmax(0, 1fr) 5.6rem;
       column-gap: 8px;
       align-items: center;
     }
     .supervisor-prestamo-lines-head {
-      padding: 8px 12px;
+      padding: 6px 10px;
       border-radius: 8px;
       border: 1px solid #9dbfe8;
       background: #e3eefb;
@@ -6294,13 +6294,13 @@
     }
     .supervisor-prestamo-lines-list {
       display: grid;
-      gap: 6px;
+      gap: 4px;
       margin: 0;
       padding: 0;
       list-style: none;
     }
     .supervisor-prestamo-lines-list li {
-      padding: 10px 12px;
+      padding: 6px 10px;
       border: 1px solid #d5e4f7;
       border-radius: 8px;
       background: #fff;
