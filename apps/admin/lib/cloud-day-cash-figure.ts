@@ -31,32 +31,59 @@ function keyOf(collectorRef: string, date: string) {
   return `${collectorRef.trim()}|${date}`;
 }
 
+/**
+ * Cadena lista para pintar T: mClosing (= Inicial T) obligatorio.
+ * Caché vieja con solo `opening` (Inicial M) no sirve: pintaba 82k en T.
+ */
+export function isCompleteChainDayCashFigure(
+  row: CloudDayCashFigure | null | undefined,
+): row is CloudDayCashFigure & { ready: true; mClosing: number } {
+  return Boolean(
+    row &&
+      row.ready &&
+      row.chain &&
+      row.mClosing != null &&
+      Number.isFinite(row.mClosing),
+  );
+}
+
+function normalizeFigure(row: CloudDayCashFigure): CloudDayCashFigure | null {
+  if (!row || row.collectorRef == null || row.date == null) return null;
+  const next: CloudDayCashFigure = {
+    ...row,
+    collectorRef: String(row.collectorRef),
+    date: String(row.date).slice(0, 10),
+    ready: Boolean(row.ready),
+    chain: Boolean(row.chain),
+    opening: row.opening == null ? null : Math.trunc(Number(row.opening)),
+    mClosing: row.mClosing == null ? null : Math.trunc(Number(row.mClosing)),
+    dayFinal: row.dayFinal == null ? null : Math.trunc(Number(row.dayFinal)),
+    cie: row.cie == null ? null : Math.trunc(Number(row.cie)),
+    saldo: row.saldo == null ? null : Math.trunc(Number(row.saldo)),
+    mEfectivo: row.mEfectivo == null ? null : Math.trunc(Number(row.mEfectivo)),
+    mPrestamos: row.mPrestamos == null ? null : Math.trunc(Number(row.mPrestamos)),
+    mGastos: row.mGastos == null ? null : Math.trunc(Number(row.mGastos)),
+    tEfectivo: row.tEfectivo == null ? null : Math.trunc(Number(row.tEfectivo)),
+    tPrestamos: row.tPrestamos == null ? null : Math.trunc(Number(row.tPrestamos)),
+    tGastos: row.tGastos == null ? null : Math.trunc(Number(row.tGastos)),
+    fetchedAt: String(row.fetchedAt || ""),
+  };
+  // Cadena «ready» sin mClosing = basura (Inicial T salía 82k = opening de M).
+  if (next.ready && next.chain && next.mClosing == null) return null;
+  return next;
+}
+
 function readPersisted(key: string): CloudDayCashFigure | null {
   if (typeof sessionStorage === "undefined") return null;
   try {
     const raw = sessionStorage.getItem(STORAGE_PREFIX + key);
     if (!raw) return null;
-    const row = JSON.parse(raw) as CloudDayCashFigure;
-    if (!row || row.collectorRef == null || row.date == null) return null;
-    return {
-      ...row,
-      collectorRef: String(row.collectorRef),
-      date: String(row.date).slice(0, 10),
-      ready: Boolean(row.ready),
-      chain: Boolean(row.chain),
-      opening: row.opening == null ? null : Math.trunc(Number(row.opening)),
-      mClosing: row.mClosing == null ? null : Math.trunc(Number(row.mClosing)),
-      dayFinal: row.dayFinal == null ? null : Math.trunc(Number(row.dayFinal)),
-      cie: row.cie == null ? null : Math.trunc(Number(row.cie)),
-      saldo: row.saldo == null ? null : Math.trunc(Number(row.saldo)),
-      mEfectivo: row.mEfectivo == null ? null : Math.trunc(Number(row.mEfectivo)),
-      mPrestamos: row.mPrestamos == null ? null : Math.trunc(Number(row.mPrestamos)),
-      mGastos: row.mGastos == null ? null : Math.trunc(Number(row.mGastos)),
-      tEfectivo: row.tEfectivo == null ? null : Math.trunc(Number(row.tEfectivo)),
-      tPrestamos: row.tPrestamos == null ? null : Math.trunc(Number(row.tPrestamos)),
-      tGastos: row.tGastos == null ? null : Math.trunc(Number(row.tGastos)),
-      fetchedAt: String(row.fetchedAt || ""),
-    };
+    const normalized = normalizeFigure(JSON.parse(raw) as CloudDayCashFigure);
+    if (!normalized) {
+      sessionStorage.removeItem(STORAGE_PREFIX + key);
+      return null;
+    }
+    return normalized;
   } catch {
     return null;
   }
@@ -77,7 +104,17 @@ export function getCloudDayCashFigure(
 ): CloudDayCashFigure | null {
   const key = keyOf(collectorRef, date);
   const hit = byKey.get(key);
-  if (hit) return hit;
+  if (hit) {
+    const ok = normalizeFigure(hit);
+    if (!ok) {
+      byKey.delete(key);
+    } else if (ok !== hit) {
+      byKey.set(key, ok);
+      return ok;
+    } else {
+      return hit;
+    }
+  }
   const warm = readPersisted(key);
   if (warm) {
     byKey.set(key, warm);
@@ -87,9 +124,11 @@ export function getCloudDayCashFigure(
 }
 
 export function rememberCloudDayCashFigure(row: CloudDayCashFigure) {
-  const key = keyOf(row.collectorRef, row.date);
-  byKey.set(key, row);
-  writePersisted(key, row);
+  const normalized = normalizeFigure(row);
+  if (!normalized) return;
+  const key = keyOf(normalized.collectorRef, normalized.date);
+  byKey.set(key, normalized);
+  writePersisted(key, normalized);
 }
 
 async function fetchDayCashFigureOnce(

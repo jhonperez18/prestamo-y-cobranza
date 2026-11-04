@@ -13,7 +13,7 @@ type Props = {
   /** Sin valor: la planilla no cobra en Banco (ruta A) y el recuadro no se muestra. */
   banco?: number;
   expenses: RouteExpenseLine[];
-  /** Cadena M↔T: Inicial de la planilla y su caja según el libro del día. */
+  /** Inicial de la planilla (cadena M/T o caja propia A/N) y su Caja del libro. */
   opening?: number;
   cashFloat?: number;
   pendingCount: number;
@@ -91,7 +91,7 @@ export function CollectorCloseDayConfirm({
         <div className="is-float">
           <em>
             {withOpening
-              ? "Caja (inicial + efectivo − préstamos − gastos)"
+              ? "Caja (inicial + efectivo − gastos − préstamos)"
               : "Caja (efectivo − gastos − préstamos)"}
           </em>
           <b>{money(cashFloat)}</b>

@@ -193,8 +193,15 @@ export async function readDayCashFigure(
     /* N: route_own_box */
   }
 
-  const mClosing = pesos(opening + mEfectivo - mGastos - mPrestamos);
-  const dayFinal = pesos(mClosing + tEfectivo - tGastos - tPrestamos);
+  // Preferir m_closing de la RPC (fuente de Inicial T). Recalcular solo si falta.
+  const mClosing =
+    body.m_closing != null && Number.isFinite(Number(body.m_closing))
+      ? pesos(body.m_closing)
+      : pesos(opening + mEfectivo - mGastos - mPrestamos);
+  const dayFinal =
+    body.day_final != null && Number.isFinite(Number(body.day_final))
+      ? pesos(body.day_final)
+      : pesos(mClosing + tEfectivo - tGastos - tPrestamos);
   const cie = body.cie == null ? null : pesos(body.cie);
 
   return {

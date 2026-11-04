@@ -11,6 +11,7 @@ import {
 } from "@/lib/nequi-pool";
 import { loanRenewedInto } from "@/lib/loan-renewal-marks";
 import { isLoanTopUpLine, isPrestamoRutaExpense } from "@/lib/expense-lines";
+import { isPendingLoanRef } from "@/lib/loan-command";
 import { isAssignmentAwaitingLoan, planillaLiveCuota } from "@/lib/planilla-display";
 import { withPaymentEvidence } from "@/lib/payment-evidence-store";
 import { paymentTimeLabel } from "@/lib/payment-detail";
@@ -19,6 +20,93 @@ import { isLoanVoided, type ClientRow, type LoanRow, type PaymentRow } from "@/l
 import { businessClockParts } from "@/lib/business-timezone";
 
 export { isPrestamoRutaExpense, operativeExpenseLines } from "@/lib/expense-lines";
+
+/** «Préstamo · P-… · Nombre» o «Préstamo · P-pend-… · P-pend-… · Nombre». */
+function clientNameFromPrestamoLabel(label: string): string {
+  let text = String(label || "")
+    .replace(/^Préstamo\s*·\s*/i, "")
+    .trim();
+  // Quita P-pend- / P-N repetidos (a veces van dos veces o unidos con guión).
+  for (let i = 0; i < 4; i += 1) {
+    const next = text
+      .replace(/P-pend-[a-z0-9]+/gi, " ")
+      .replace(/P-\d+/gi, " ")
+      .replace(/[·\-_|]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (next === text) break;
+    text = next;
+  }
+  return text;
+}
+
+function clientDisplayName(client: ClientRow): string {
+  return `${client.name} ${client.lastName}`.replace(/\s+/g, " ").trim();
+}
+
+/** Ficha del día por capital + nombre (ignora P-pend- si ya hay P- real). */
+function matchLoanByCapitalName(
+  dateIso: string,
+  capital: number,
+  hintRaw: string,
+  loans: LoanRow[],
+  clients: ClientRow[],
+): LoanRow | undefined {
+  const hint = hintRaw.toLowerCase().trim();
+  if (!hint || capital <= 0) return undefined;
+  const matches = loans.filter((loan) => {
+    if (loanDisbursementIsoDate(loan) !== dateIso) return false;
+    if (Math.trunc(Number(loan.capital) || 0) !== capital) return false;
+    if (!loanLeftCollectorCash(loan)) return false;
+    const client = clients.find((row) => row.ref === loan.clientRef);
+    const name = (client ? clientDisplayName(client) : String(loan.client || ""))
+      .toLowerCase()
+      .trim();
+    if (!name) return false;
+    return name === hint || name.includes(hint) || hint.includes(name);
+  });
+  if (!matches.length) return undefined;
+  // P- definitivo gana sobre P-pend- (mismo cliente / capital / día).
+  const ranked = matches.slice().sort((a, b) => {
+    const aPend = isPendingLoanRef(a.ref) ? 1 : 0;
+    const bPend = isPendingLoanRef(b.ref) ? 1 : 0;
+    if (aPend !== bPend) return aPend - bPend;
+    return loanCodeNumber(a.ref) - loanCodeNumber(b.ref);
+  });
+  return ranked[0];
+}
+
+/**
+ * GAS- con P-pend- ya renumerado en la ficha: recupera el P- real por día + capital + nombre.
+ * Sin eso el renglón queda sin clientRef y loanClientOnSide lo tiraba a M.
+ */
+function resolveLoanForPrestamoLine(
+  line: Pick<RouteExpenseLine, "loanRef" | "label" | "amount">,
+  dateIso: string,
+  loans: LoanRow[],
+  clients: ClientRow[],
+): LoanRow | undefined {
+  const loanRef = String(line.loanRef || "").trim();
+  const capital = Math.trunc(Number(line.amount) || 0);
+  const hint = clientNameFromPrestamoLabel(line.label);
+  if (loanRef) {
+    const direct = loans.find((row) => row.ref === loanRef);
+    // P-pend- local no gana: si ya existe el P- de la nube, usar ese.
+    if (direct && !isPendingLoanRef(direct.ref)) return direct;
+    if (direct && isPendingLoanRef(direct.ref)) {
+      const cap = capital || Math.trunc(Number(direct.capital) || 0);
+      const client = clients.find((row) => row.ref === direct.clientRef);
+      const fromClient = client ? clientDisplayName(client) : String(direct.client || "");
+      const real =
+        matchLoanByCapitalName(dateIso, cap, hint, loans, clients) ||
+        matchLoanByCapitalName(dateIso, cap, fromClient, loans, clients);
+      if (real && !isPendingLoanRef(real.ref)) return real;
+      return direct;
+    }
+    if (!isPendingLoanRef(loanRef)) return undefined;
+  }
+  return matchLoanByCapitalName(dateIso, capital, hint, loans, clients);
+}
 
 export type HistoryPayMethod =
   | "efectivo"
@@ -208,31 +296,41 @@ export function dayLoanDisbursementRows(
   // 1) Gastos del cobrador (ya vienen de su CIE / borrador) — fuente primaria.
   for (const line of expenses) {
     if (!isPrestamoRutaExpense(line)) continue;
-    const loanRef = String(line.loanRef || "").trim();
-    if (!loanRef || byLoan.has(loanRef)) continue;
-    const loan = loans.find((row) => row.ref === loanRef);
+    const rawRef = String(line.loanRef || "").trim();
+    if (!rawRef) continue;
+    const loan = resolveLoanForPrestamoLine(line, dateIso, loans, clients);
+    const loanRef = loan?.ref || rawRef;
+    if (byLoan.has(loanRef) || (loan && byLoan.has(loan.ref))) continue;
     if (isCashlessRenewal(loan)) continue;
     if (scope.liveDay && !isLoanTopUpLine(line)) {
       // Sin ficha viva (dada de baja) no salió plata de la caja.
       if (!loan || !loanLeftCollectorCash(loan)) continue;
-      byLoan.set(loanRef, disbursementRowFromLoan(loan, clients));
+      byLoan.set(loan.ref, disbursementRowFromLoan(loan, clients));
       dayClientRefs.add(loan.clientRef);
       continue;
     }
-    const clientRef = loan?.clientRef || "";
-    const client = clients.find((row) => row.ref === clientRef);
-    const clientName = client
-      ? `${client.name} ${client.lastName}`.trim()
-      : (loan?.client || "").trim() || line.label.replace(/^Préstamo\s*·\s*/i, "");
-    byLoan.set(loanRef, {
-      loanRef,
-      clientRef,
+    if (loan) {
+      byLoan.set(loan.ref, {
+        ...disbursementRowFromLoan(loan, clients),
+        capital: Number(line.amount) || Math.trunc(Number(loan.capital) || 0),
+        ...(isLoanTopUpLine(line) ? { topUp: true } : {}),
+      });
+      dayClientRefs.add(loan.clientRef);
+      continue;
+    }
+    // Sin ficha ni nombre resoluble: no inventar fila (evitar P-pend- fantasma en M).
+    if (isPendingLoanRef(rawRef)) continue;
+    const clientName =
+      clientNameFromPrestamoLabel(line.label) ||
+      line.label.replace(/^Préstamo\s*·\s*/i, "").trim();
+    byLoan.set(rawRef, {
+      loanRef: rawRef,
+      clientRef: "",
       clientName,
-      capital: Number(line.amount) || Math.trunc(Number(loan?.capital) || 0),
-      installment: Math.trunc(Number(loan?.installment) || 0),
+      capital: Number(line.amount) || 0,
+      installment: 0,
       ...(isLoanTopUpLine(line) ? { topUp: true } : {}),
     });
-    if (clientRef) dayClientRefs.add(clientRef);
   }
 
   // Rutas que este cobrador tocó hoy (planilla) — por si faltó GAS- en el pull.
@@ -256,6 +354,31 @@ export function dayLoanDisbursementRows(
     if (started !== dateIso || byLoan.has(loan.ref)) continue;
     // Nequi/banco del sistema ≠ caja del cobrador; cartera existente no sale de ningún lado.
     if (!loanLeftCollectorCash(loan)) continue;
+    // P-pend- fantasma: si ya está el P- real del mismo cliente/capital, no sumar otra vez.
+    if (isPendingLoanRef(loan.ref)) {
+      const capital = Math.trunc(Number(loan.capital) || 0);
+      const hasReal = loans.some(
+        (row) =>
+          !isPendingLoanRef(row.ref) &&
+          loanDisbursementIsoDate(row) === dateIso &&
+          row.clientRef === loan.clientRef &&
+          Math.trunc(Number(row.capital) || 0) === capital &&
+          loanLeftCollectorCash(row),
+      );
+      if (hasReal) continue;
+      const client = clients.find((c) => c.ref === loan.clientRef);
+      const pendName = (client ? clientDisplayName(client) : String(loan.client || ""))
+        .toLowerCase()
+        .trim();
+      const already = [...byLoan.values()].some((row) => {
+        if (isPendingLoanRef(row.loanRef)) return false;
+        if (Math.trunc(Number(row.capital) || 0) !== capital) return false;
+        if (row.clientRef && row.clientRef === loan.clientRef) return true;
+        const other = row.clientName.toLowerCase().trim();
+        return Boolean(pendName && other && (pendName === other || pendName.includes(other) || other.includes(pendName)));
+      });
+      if (already) continue;
+    }
     const client = clients.find((row) => row.ref === loan.clientRef);
     const onSheet = dayClientRefs.has(loan.clientRef);
     const onRoute =
@@ -275,19 +398,43 @@ function loanCodeNumber(ref: string): number {
   return matched ? Number(matched[1]) : Number.POSITIVE_INFINITY;
 }
 
-/** Un cliente + un capital ese día = un renglón. El original es el P- más viejo. */
+function loanRowPreferred(next: DayLoanDisbursementRow, current: DayLoanDisbursementRow): boolean {
+  const nextPend = isPendingLoanRef(next.loanRef);
+  const curPend = isPendingLoanRef(current.loanRef);
+  if (nextPend !== curPend) return !nextPend;
+  return loanCodeNumber(next.loanRef) < loanCodeNumber(current.loanRef);
+}
+
+/** Un cliente + un capital ese día = un renglón. El P- real gana al P-pend-. */
 function uniqueDayLoanDisbursementRows(rows: DayLoanDisbursementRow[]): DayLoanDisbursementRow[] {
   const keep = new Map<string, DayLoanDisbursementRow>();
+  const put = (key: string, row: DayLoanDisbursementRow) => {
+    const current = keep.get(key);
+    if (!current || loanRowPreferred(row, current)) keep.set(key, row);
+  };
   for (const row of rows) {
     const clientRef = (row.clientRef || "").trim();
     const capital = Math.trunc(Number(row.capital) || 0);
-    const key = clientRef && capital > 0 ? `${clientRef}|${capital}` : `ref:${row.loanRef}`;
-    const current = keep.get(key);
-    if (!current || loanCodeNumber(row.loanRef) < loanCodeNumber(current.loanRef)) {
-      keep.set(key, row);
-    }
+    const name = row.clientName.toLowerCase().replace(/\s+/g, " ").trim();
+    if (clientRef && capital > 0) put(`c:${clientRef}|${capital}`, row);
+    else if (name && capital > 0) put(`n:${name}|${capital}`, row);
+    else put(`ref:${row.loanRef}`, row);
   }
-  return [...keep.values()];
+  // Segunda pasada: P-pend- / sin clientRef que choquen por nombre con un P- real.
+  const list = [...keep.values()];
+  return list.filter((row) => {
+    if (!isPendingLoanRef(row.loanRef) && (row.clientRef || "").trim()) return true;
+    const capital = Math.trunc(Number(row.capital) || 0);
+    const name = row.clientName.toLowerCase().replace(/\s+/g, " ").trim();
+    const clientRef = (row.clientRef || "").trim();
+    return !list.some((other) => {
+      if (other === row || isPendingLoanRef(other.loanRef)) return false;
+      if (Math.trunc(Number(other.capital) || 0) !== capital) return false;
+      if (clientRef && other.clientRef === clientRef) return true;
+      const otherName = other.clientName.toLowerCase().replace(/\s+/g, " ").trim();
+      return Boolean(name && otherName && (name === otherName || name.includes(otherName) || otherName.includes(name)));
+    });
+  });
 }
 
 export function dayLoanDisbursementTotal(rows: DayLoanDisbursementRow[]) {

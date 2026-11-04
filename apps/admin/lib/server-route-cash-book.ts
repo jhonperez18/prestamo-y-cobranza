@@ -129,14 +129,12 @@ async function bookChainPrimary(
   await mapInBatches(dates, RPC_BATCH, async (date) => {
     const fig = await withTimeout(readDayCashFigure(collectorRef, date), RPC_DAY_MS);
     if (!fig || !fig.ok || !fig.ready || !fig.chain) return;
-    const closing =
-      fig.cie != null
-        ? pesos(fig.cie - (fig.dayFinal - fig.mClosing))
-        : fig.mClosing;
+    // Caja final M = mClosing del libro (= Inicial de T). Nunca derivar desde un CIE
+    // descuadrado: cie − (dayFinal − mClosing) inventó 417k el 03/11 con CIE 527k.
     rows.push({
       date,
       opening: fig.opening,
-      closing,
+      closing: fig.mClosing,
       efectivo: fig.mEfectivo,
       gastos: fig.mGastos,
       prestamos: fig.mPrestamos,

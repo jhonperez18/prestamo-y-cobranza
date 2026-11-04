@@ -66,14 +66,16 @@ export function loanClientOnSide(
   split: ChainRouteSplit,
   dateIso: string,
 ) {
+  const ref = String(clientRef || "").trim();
+  // Sin cliente no cae en M «por defecto» (caso P-pend- huérfano → 700k en M el 03/11).
+  if (!ref) return false;
   if (
-    clientRef &&
     split.ownCashFrom &&
     dateIso >= split.ownCashFrom &&
-    split.ownCashClientRefs?.has(clientRef)
+    split.ownCashClientRefs?.has(ref)
   ) {
     return false;
   }
-  const onSecondary = Boolean(clientRef) && split.secondaryClientRefs.has(clientRef as string);
+  const onSecondary = split.secondaryClientRefs.has(ref);
   return onSecondary === (split.side === "secondary");
 }

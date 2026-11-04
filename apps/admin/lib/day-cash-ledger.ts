@@ -135,6 +135,39 @@ function dayExpenseLines(src: DayCashSources): RouteExpenseLine[] {
   return expensesForCollectorDay(src.collectorRef, src.date, src.dayCloses, src.dayExpenseDrafts);
 }
 
+/**
+ * Préstamos de una sola ruta. Si el total local no cuadra con la nube (P-pend- sin
+ * cliente metidos en M), deja solo clientes de esa ruta; si aún sobra, los que suman el total.
+ */
+function alignSideLoanRows(
+  rows: DayLoanDisbursementRow[],
+  clients: ClientRow[],
+  routeName: string,
+  cloudPrestamos: number | null | undefined,
+): DayLoanDisbursementRow[] {
+  const onRoute = rows.filter((row) => {
+    const ref = String(row.clientRef || "").trim();
+    if (!ref) return false;
+    const client = clients.find((c) => c.ref === ref);
+    return Boolean(client && sameRoute(client.route, routeName));
+  });
+  if (cloudPrestamos == null || !Number.isFinite(Number(cloudPrestamos))) return onRoute;
+  const target = pesos(cloudPrestamos);
+  if (pesos(dayLoanDisbursementTotal(onRoute)) === target) return onRoute;
+  const exact = onRoute.filter((row) => pesos(row.capital) === target);
+  if (exact.length === 1) return exact;
+  let acc = 0;
+  const keep: DayLoanDisbursementRow[] = [];
+  for (const row of onRoute) {
+    const cap = pesos(row.capital);
+    if (acc + cap > target) continue;
+    keep.push(row);
+    acc += cap;
+    if (acc === target) break;
+  }
+  return acc === target ? keep : onRoute;
+}
+
 /** Clientes de la ruta: catálogo + visitas del cobrador ese día en esa ruta. */
 export function routeClientRefsForDay(src: DayCashSources, routeName: string): Set<string> {
   const date = dateIsoOf(src.date);
@@ -519,19 +552,33 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
     Number.isFinite(cloud.mClosing) &&
     Number.isFinite(cloud.dayFinal)
   ) {
+    // Lista de préstamos = solo clientes de esa ruta. Si el total local no cuadra con la
+    // nube (P-pend- huérfanos en M), se recorta a la ruta; nunca se mezclan M y T.
+    const mLoanRows = alignSideLoanRows(
+      local.m.loanRows,
+      src.clients,
+      PLANILLA_CASH_CHAIN_PRIMARY,
+      cloud.mPrestamos,
+    );
+    const tLoanRows = alignSideLoanRows(
+      local.t.loanRows,
+      src.clients,
+      PLANILLA_CASH_CHAIN_SECONDARY,
+      cloud.tPrestamos,
+    );
     const mCloud: RouteCashDay = {
       efectivo: cloud.mEfectivo != null ? pesos(cloud.mEfectivo) : local.m.efectivo,
       prestamos: cloud.mPrestamos != null ? pesos(cloud.mPrestamos) : local.m.prestamos,
       gastos: cloud.mGastos != null ? pesos(cloud.mGastos) : local.m.gastos,
       gastoLines: local.m.gastoLines,
-      loanRows: local.m.loanRows,
+      loanRows: mLoanRows,
     };
     const tCloud: RouteCashDay = {
       efectivo: cloud.tEfectivo != null ? pesos(cloud.tEfectivo) : local.t.efectivo,
       prestamos: cloud.tPrestamos != null ? pesos(cloud.tPrestamos) : local.t.prestamos,
       gastos: cloud.tGastos != null ? pesos(cloud.tGastos) : local.t.gastos,
       gastoLines: local.t.gastoLines,
-      loanRows: local.t.loanRows,
+      loanRows: tLoanRows,
     };
     return {
       ...local,
@@ -555,12 +602,29 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
 }
 
 /**
- * Caja final de M (= Inicial de T). Día con CIE-: saldo sellado (antes de un ajuste) menos el
- * movimiento propio de T, así Inicial T + movimiento T = CIE. Sin CIE: caja viva de M del libro.
+ * Caja final de M (= Inicial de T). Regla de inicio: T arranca con el final de M.
+ * La base (`day_cash_figure.m_closing`) manda; con CIE local: CIE − movimiento T;
+ * si no, caja viva de M del libro. Nunca el Inicial de M (CIE de ayer).
  */
 function primaryClosingOf(ledger: DayCashLedger, dayCloses: CollectorDayCloseRecord[]): number {
+  const cloud = getCloudDayCashFigure(ledger.collectorRef, ledger.date);
+  // Completa = trae mClosing. Caché a medias (solo opening) no cuenta.
+  if (cloud?.ready && cloud.chain && cloud.mClosing != null && Number.isFinite(cloud.mClosing)) {
+    return pesos(cloud.mClosing);
+  }
   const sealed = sealedDaySaldo(dayCloses, ledger.collectorRef, ledger.date);
-  if (sealed != null) return pesos(sealed - (ledger.dayFinal - ledger.mClosing));
+  if (sealed != null) {
+    if (
+      cloud?.ready &&
+      cloud.tEfectivo != null &&
+      cloud.tGastos != null &&
+      cloud.tPrestamos != null
+    ) {
+      const tNet = pesos(cloud.tEfectivo) - pesos(cloud.tGastos) - pesos(cloud.tPrestamos);
+      return pesos(sealed - tNet);
+    }
+    return pesos(sealed - (ledger.dayFinal - ledger.mClosing));
+  }
   return ledger.mClosing;
 }
 
@@ -651,6 +715,7 @@ export function chainDayCuadre(
   const digital = chainDigitalCollected(src, routes);
   const primaryClosing = primaryClosingOf(ledger, src.dayCloses);
   return {
+    // T: Inicial = final de M (mClosing). M: Inicial = CIE de ayer.
     opening:
       side === "secondary"
         ? primaryClosing

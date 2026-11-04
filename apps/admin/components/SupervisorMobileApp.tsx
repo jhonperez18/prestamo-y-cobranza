@@ -108,7 +108,10 @@ import {
 import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
 import { useRouteCashBook } from "@/lib/use-route-cash-book";
 import { getCloudChainMOpening } from "@/lib/cloud-chain-m-opening";
-import { getCloudDayCashFigure } from "@/lib/cloud-day-cash-figure";
+import {
+  getCloudDayCashFigure,
+  isCompleteChainDayCashFigure,
+} from "@/lib/cloud-day-cash-figure";
 import {
   useChainMOpening,
   usePoolVisibleSaldoCloud,
@@ -1371,8 +1374,10 @@ function cajaDelDia(
   const cobradoNequi = todayRow?.cobroNequi ?? breakdown.nequi;
   const cobradoBanco = breakdown.banco;
   const gastosHoy = todayRow?.gasto ?? 0;
-  // En caja = arrastre + solo efectivo − gastos (Nequi/Banco no entran a mano del cobrador).
-  const enCaja = todayRow?.saldo ?? saldoInicial + cobradoEfectivo - gastosHoy;
+  const prestamosHoy = todayRow?.prestamo ?? 0;
+  // Misma fórmula fija: Inicial + efectivo − préstamos − gastos (Nequi/Banco fuera de caja).
+  const enCaja =
+    todayRow?.saldo ?? saldoInicial + cobradoEfectivo - gastosHoy - prestamosHoy;
   return {
     saldoInicial,
     cobradoHoy,
@@ -1380,6 +1385,7 @@ function cajaDelDia(
     cobradoNequi,
     cobradoBanco,
     gastosHoy,
+    prestamosHoy,
     enCaja,
   };
 }
@@ -1588,6 +1594,8 @@ export function SupervisorMobileApp({
   ]);
   /** Cajas A/N del mes bajadas para el historial (route_own_box). */
   const [histOwnBoxEpoch, setHistOwnBoxEpoch] = useState(0);
+  /** Caja M/T del día (day_cash_figure): Inicial T = m_closing. */
+  const [histDayCashEpoch, setHistDayCashEpoch] = useState(0);
   /** Historial · T: formulario de ajuste de saldo real abierto (cobrador del CIE-). */
   const [cashAdjustCollectorRef, setCashAdjustCollectorRef] = useState<string | null>(null);
   /** BANCO / NEQUI: cuadre del total acumulado abierto. */
@@ -2933,6 +2941,27 @@ export function SupervisorMobileApp({
   };
 
   const openRoute = liquidaciones.find((row) => row.routeRef === openRouteRef) ?? null;
+  /** Cierre M/T: baja day_cash_figure del día (Inicial T = m_closing, no el Inicial de M). */
+  useEffect(() => {
+    if (detailMode !== "historial-dia" || !openRoute || !cajaHistoryDayIso) return;
+    if (
+      !isPlanillaCashChainPrimary(openRoute.routeName) &&
+      !isPlanillaCashChainSecondary(openRoute.routeName)
+    ) {
+      return;
+    }
+    const collectorRef = openRoute.collectorRef;
+    const date = cajaHistoryDayIso;
+    let alive = true;
+    void import("@/lib/cloud-day-cash-figure").then(({ refreshCloudDayCashFigure }) => {
+      void refreshCloudDayCashFigure(collectorRef, date).then((row) => {
+        if (alive && row) setHistDayCashEpoch((n) => n + 1);
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [detailMode, openRoute?.collectorRef, openRoute?.routeName, cajaHistoryDayIso]);
   /**
    * Libro M / A / N solo al abrir Historial (no en INICIO / totales).
    * Si corre al entrar a la ruta satura el VPS y el jefe ve gastos/préstamos a medias.
@@ -4061,6 +4090,36 @@ export function SupervisorMobileApp({
       },
       isT ? "secondary" : "primary",
     );
+    // Día cerrado M/T: la base manda. T.inicial = m_closing (final M), Caja = CIE.
+    // Sin esto el historial pintaba 82k / 567k con copia local a medias.
+    const cloud = getCloudDayCashFigure(collector.ref, cajaHistoryDayIso);
+    if (isCompleteChainDayCashFigure(cloud)) {
+      if (isT) {
+        const adjust = openRouteAdjustHistory?.find(
+          (entry) => entry.row.date === cajaHistoryDayIso,
+        )?.adjustment;
+        const closing =
+          adjust?.real != null && Number.isFinite(adjust.real)
+            ? Number(adjust.real)
+            : (cloud.cie ?? cloud.dayFinal ?? cuadre.closing);
+        return {
+          ...cuadre,
+          opening: cloud.mClosing,
+          ownEfectivo: cloud.tEfectivo ?? cuadre.ownEfectivo,
+          ownPrestamos: cloud.tPrestamos ?? cuadre.ownPrestamos,
+          ownGastos: cloud.tGastos ?? cuadre.ownGastos,
+          closing,
+        };
+      }
+      return {
+        ...cuadre,
+        opening: cloud.opening ?? cuadre.opening,
+        ownEfectivo: cloud.mEfectivo ?? cuadre.ownEfectivo,
+        ownPrestamos: cloud.mPrestamos ?? cuadre.ownPrestamos,
+        ownGastos: cloud.mGastos ?? cuadre.ownGastos,
+        closing: cloud.mClosing,
+      };
+    }
     const listed = isT
       ? openRouteAdjustHistory?.find((entry) => entry.row.date === cajaHistoryDayIso)?.row.saldo
       : (openRouteCajaHistory as Array<{ date: string; saldoShown?: number | null }>).find(
@@ -4081,6 +4140,7 @@ export function SupervisorMobileApp({
     historyExpenses,
     planillaCashCloses,
     monthCloses,
+    histDayCashEpoch,
   ]);
 
   const openRouteHistoryDayCuadre = useMemo(() => {
@@ -5710,7 +5770,7 @@ export function SupervisorMobileApp({
                     <em className="collector-cierre-np-count">{cierreNpRows.length}</em>
                   </button>
                   <div className="is-saldo">
-                    <span>Caja (efectivo − gastos − préstamos)</span>
+                    <span>Caja (inicial + efectivo − gastos − préstamos)</span>
                     <b>{money(openRouteHistoryDayCuadre.enCaja)}</b>
                   </div>
                 </div>
