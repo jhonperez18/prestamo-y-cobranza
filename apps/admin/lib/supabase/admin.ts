@@ -1,5 +1,4 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { Agent, fetch as undiciFetch } from "undici";
 import { getSupabaseServiceEnv } from "@/lib/supabase/service-env";
 
 /**
@@ -11,17 +10,56 @@ import { getSupabaseServiceEnv } from "@/lib/supabase/service-env";
  * fantasma (5.428k) y chain-audit / payments fallaban.
  *
  * Solución: cliente admin con `undici.fetch` + Agent IPv4 (no el fetch de Next).
+ * `undici` se carga con require en runtime (como `ws`): un `import` estático
+ * metía `node:net` en el bundle del navegador y tumba Chrome
+ * («Cannot find module node:net» → This page couldn't load).
  * Node < 22 sin WebSocket nativo: solo entonces se pasa `ws` a Realtime.
  */
+
+type UndiciAgent = {
+  close: () => Promise<void>;
+};
+
+type UndiciModule = {
+  Agent: new (opts: {
+    connect?: { family?: number; timeout?: number };
+    keepAliveTimeout?: number;
+    keepAliveMaxTimeout?: number;
+    connections?: number;
+    pipelining?: number;
+  }) => UndiciAgent;
+  fetch: (
+    input: RequestInfo | URL,
+    init?: RequestInit & { dispatcher?: UndiciAgent },
+  ) => Promise<Response>;
+};
 
 /**
  * Un Agent por proceso, IPv4 forzado. keepAlive corto: un pool “muerto”
  * no debe dejar el Next sin respuesta (caso VPS tras minutos).
  */
-let undiciAgent: Agent | null = null;
+let undiciAgent: UndiciAgent | null = null;
+let undiciMod: UndiciModule | null = null;
 
-function getUndiciAgent(): Agent {
+function loadUndici(): UndiciModule {
+  if (undiciMod) return undiciMod;
+  if (typeof window !== "undefined") {
+    throw new Error("supabase_admin_undici_browser");
+  }
+  try {
+    // eslint-disable-next-line no-eval, @typescript-eslint/no-unsafe-call
+    const nodeRequire = eval("require") as NodeRequire;
+    undiciMod = nodeRequire("undici") as UndiciModule;
+    return undiciMod;
+  } catch (error) {
+    console.error("supabase-admin-undici-missing", error);
+    throw error;
+  }
+}
+
+function getUndiciAgent(): UndiciAgent {
   if (!undiciAgent) {
+    const { Agent } = loadUndici();
     undiciAgent = new Agent({
       connect: { family: 4, timeout: 15_000 },
       keepAliveTimeout: 1_000,
@@ -34,10 +72,11 @@ function getUndiciAgent(): Agent {
 }
 
 function adminFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  return undiciFetch(input as Parameters<typeof undiciFetch>[0], {
+  const { fetch: undiciFetch } = loadUndici();
+  return undiciFetch(input, {
     ...(init as object),
     dispatcher: getUndiciAgent(),
-  } as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>;
+  }) as unknown as Promise<Response>;
 }
 
 function nodeRealtimeTransport(): { transport?: unknown } {
