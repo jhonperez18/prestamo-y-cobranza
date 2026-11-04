@@ -29,16 +29,24 @@ export async function GET() {
     if (timer) clearTimeout(timer);
 
     if (result.ok) {
+      // Si la nube trae planilla/cobros pero 0 CIE (timeout parcial), no pisar
+      // cierres buenos del disco: Inicial M vive ahí.
+      const prev = await readSupervisorTodayCache(today);
+      const dayCloses =
+        result.payload.dayCloses.length > 0
+          ? result.payload.dayCloses
+          : prev?.dayCloses ?? [];
+      const payload = { ...result.payload, dayCloses };
       const useful =
-        result.payload.assignments.length > 0 ||
-        result.payload.payments.length > 0 ||
-        result.payload.dayCloses.length > 0;
-      if (useful) void writeSupervisorTodayCache(result.payload);
-      return jsonNoStore({ ok: true, ...result.payload, fromCache: false });
+        payload.assignments.length > 0 ||
+        payload.payments.length > 0 ||
+        payload.dayCloses.length > 0;
+      if (useful) void writeSupervisorTodayCache(payload);
+      return jsonNoStore({ ok: true, ...payload, fromCache: false });
     }
 
     const cached = await readSupervisorTodayCache(today);
-    if (cached) {
+    if (cached && (cached.dayCloses.length > 0 || cached.assignments.length > 0)) {
       return jsonNoStore({
         ok: true,
         ...cached,
