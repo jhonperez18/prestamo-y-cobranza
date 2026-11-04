@@ -169,13 +169,13 @@ export async function readDayCashFigure(
     };
   }
 
-  const opening = pesos(body.opening);
-  let mPrestamos = pesos(body.m_prestamos);
-  let tPrestamos = pesos(body.t_prestamos);
-  const mEfectivo = pesos(body.m_efectivo);
-  const mGastos = pesos(body.m_gastos);
-  const tEfectivo = pesos(body.t_efectivo);
-  const tGastos = pesos(body.t_gastos);
+  const opening = pesos(body.opening ?? 0);
+  let mPrestamos = pesos(body.m_prestamos ?? 0);
+  let tPrestamos = pesos(body.t_prestamos ?? 0);
+  const mEfectivo = pesos(body.m_efectivo ?? 0);
+  const mGastos = pesos(body.m_gastos ?? 0);
+  const tEfectivo = pesos(body.t_efectivo ?? 0);
+  const tGastos = pesos(body.t_gastos ?? 0);
   const chain = Boolean(body.chain);
   const ownRoute = String(body.own_route || "")
     .trim()
