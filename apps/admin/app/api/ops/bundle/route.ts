@@ -85,11 +85,12 @@ export async function GET(request: Request) {
       }
     }
     const [collectors, routes, dayClosesPart, day_expenses, misc_payments, assignmentsPart] = parts;
-    // Inicial M = CIE de ayer: con `since` los cambios no rellenan un CIE que el
-    // aparato nunca tuvo. Siempre anexar ayer+hoy (tabla chica).
+    // Inicial M = último CIE sellado (puede no ser “ayer” si hubo días sin cierre).
+    // Con `since` los cambios no rellenan un CIE viejo que el aparato no tiene.
+    // 14 días: tabla chica; cubre huecos de nov (CIE solo hasta 31/10).
     let dayCloseRows = dayClosesPart.rows;
     if (since) {
-      const closesFrom = businessDaysAgoIso(1);
+      const closesFrom = businessDaysAgoIso(14);
       const closesTo = businessTodayIso();
       const closesWindow = await fetchOpsTableSince(
         "day_closes",

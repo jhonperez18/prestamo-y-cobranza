@@ -42,8 +42,9 @@ export async function loadSupervisorToday(
   date = businessTodayIso(),
 ): Promise<{ ok: true; payload: SupervisorTodayPayload } | { ok: false; error: string }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: "bad_date" };
-  // CIE: ayer + hoy (Inicial M = CIE ayer). No toda la tabla en cada apertura.
-  const closesFrom = businessDaysAgoIso(1, new Date(`${date}T12:00:00-05:00`));
+  // CIE: últimos 14 días. Inicial M puede anclarse a un CIE anterior a “ayer”
+  // si hubo días sin sellar (caso nov-2026: último CIE 31/10).
+  const closesFrom = businessDaysAgoIso(14, new Date(`${date}T12:00:00-05:00`));
   // Cada pieza con tope propio: una tabla lenta no deja al jefe sin gastos/préstamos.
   const pieceMs = 10_000;
   const [paymentsT, assignsT, closesT, expensesT] = await Promise.all([
