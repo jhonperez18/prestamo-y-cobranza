@@ -79,7 +79,8 @@ export function useSupervisorToday(enabled: boolean, refreshKey: string): Superv
     // Cada 45 s: los cobros del celular entran al supervisor sin esperar cambio de pestaña.
     const poll = window.setInterval(() => void load(false), 45_000);
     const onVisible = () => {
-      if (document.visibilityState === "visible") void load(true);
+      // Sin force: si ya bajó hace <45 s, no vuelve a pedir el día (rutas lentas).
+      if (document.visibilityState === "visible") void load(false);
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {

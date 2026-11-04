@@ -269,8 +269,9 @@ export function useOperationalDemoSync(
       if (tuneupDay) compactDeviceForDay();
 
       const fullOpt = forceFull ? { full: true as const } : {};
-      const payments = await pullRemotePaymentsIntoDemo(fullOpt);
-      const [catalog, ops, users, banks, months] = await Promise.all([
+      // En paralelo: un cobro no debe frenar la planilla (rutas lentas al recargar).
+      const [payments, catalog, ops, users, banks, months] = await Promise.all([
+        pullRemotePaymentsIntoDemo(fullOpt),
         pullRemoteCatalogIntoDemo(fullOpt),
         pullRemoteOpsIntoDemo(fullOpt),
         pullRemoteUsersIntoDemo(),
@@ -374,6 +375,53 @@ export function useOperationalDemoSync(
       if (pendingGroupsRef.current.size > 0) scheduleDrainRef.current();
     }
   }, [commitHydrate, healthCycleThenReport, runMirrorFlush]);
+
+  /**
+   * Al volver a la app (cobrador / supervisor): solo planilla + cobros de hoy.
+   * No rebaja clientes / préstamos / usuarios / banco ni el libro del mes.
+   * Completa horaria, poll 10 min, repair y arranque siguen en runHydrateWithRemotePull.
+   */
+  const runVisibleLivePull = useCallback(async () => {
+    if (pullInFlightRef.current) return;
+    const dueFull =
+      lastFullPullAtRef.current > 0 &&
+      Date.now() - lastFullPullAtRef.current >= FULL_PULL_MS;
+    if (dueFull) {
+      await runHydrateWithRemotePull();
+      return;
+    }
+    pullInFlightRef.current = true;
+    lastVisiblePullAtRef.current = Date.now();
+    let pullOk = false;
+    let pullError = "";
+    try {
+      // Cola atrás: no bloquear el pintado de rutas por un flush largo.
+      void runMirrorFlush();
+      const today = businessTodayIso();
+      const [payments, ops] = await Promise.all([
+        fillTodayPaymentsIntoDemo(today),
+        pullRemoteOpsIntoDemo(),
+      ]);
+      pullOk = payments.ok && ops.ok;
+      if (!pullOk) {
+        pullError = [
+          !payments.ok ? "cobros" : "",
+          !ops.ok ? "planilla" : "",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+      }
+      if (payments.changed || ops.changed) commitHydrate();
+    } catch (error) {
+      console.error("ops-sync-visible", error);
+      pullOk = false;
+      pullError = error instanceof Error ? error.message : "sync_failed";
+    } finally {
+      pullInFlightRef.current = false;
+      void healthCycleThenReport(pullOk, pullError);
+      if (pendingGroupsRef.current.size > 0) scheduleDrainRef.current();
+    }
+  }, [commitHydrate, healthCycleThenReport, runHydrateWithRemotePull, runMirrorFlush]);
 
   /** Eco Realtime: baja solo los grupos que cambiaron (un cobro no rebaja clientes ni usuarios). */
   const runTargetedPull = useCallback(async () => {
@@ -490,12 +538,12 @@ export function useOperationalDemoSync(
         void runMirrorFlush();
         return;
       }
-      // Cobrador ↔ supervisor: al volver a la app, bajar planilla/cierre sin esperar el poll.
+      // Cobrador ↔ supervisor: al volver, solo planilla + cobros de hoy (rápido).
       if (now - lastVisiblePullAtRef.current < VISIBLE_PULL_MIN_MS) {
         void runMirrorFlush();
         return;
       }
-      void runHydrateWithRemotePull();
+      void runVisibleLivePull();
     }
     function onOnline() {
       // Volvió la red: se acaba el backoff, sube ya y baja lo que pasó mientras tanto.
@@ -539,7 +587,7 @@ export function useOperationalDemoSync(
       window.removeEventListener("online", onOnline);
       window.removeEventListener(MIRROR_QUEUE_CHANGED_EVENT, onQueueEvent);
     };
-  }, [commitHydrate, refreshPending, runHydrateWithRemotePull, runMirrorFlush]);
+  }, [commitHydrate, refreshPending, runHydrateWithRemotePull, runMirrorFlush, runVisibleLivePull]);
 
   useEffect(() => {
     if (!hydrated || !getSupabasePublicEnv().configured) return;
