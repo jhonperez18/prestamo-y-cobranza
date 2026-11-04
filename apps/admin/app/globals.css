@@ -8879,6 +8879,47 @@
     .conn-dot.is-alert {
       background: #dc2626;
     }
+    .conn-dot.is-just {
+      background: #16a34a;
+      box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(22, 163, 74, 0.45);
+      animation: conn-just-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes conn-just-pulse {
+      0%,
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+      50% {
+        transform: scale(1.25);
+        opacity: 0.85;
+      }
+    }
+    .conn-just-chip {
+      position: absolute;
+      right: 30px;
+      bottom: 6px;
+      margin: 0;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #dcfce7;
+      color: #166534;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      line-height: 1.4;
+      pointer-events: none;
+    }
+    .conn-just-banner {
+      margin: 0 0 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      background: #dcfce7;
+      color: #14532d;
+      font-size: 13px;
+      font-weight: 700;
+      text-align: center;
+    }
     .conn-detail {
       display: flex;
       flex-direction: column;

@@ -107,6 +107,16 @@ export function connectionAgoLabel(iso: string, now: number) {
   return `hace ${Math.round(h / 24)} d`;
 }
 
+/** Cuánto tiempo se muestra el aviso «acaba de conectar» en INICIO. */
+export const JUST_CONNECTED_MS = 3 * 60 * 1000;
+
+/** Texto corto del aviso (INICIO). */
+export function justConnectedBanner(routeName: string, collectorName: string) {
+  const route = String(routeName || "").trim() || "?";
+  const name = String(collectorName || "").trim() || "Cobrador";
+  return `${name} · Ruta ${route} · en línea`;
+}
+
 export function deviceKindLabel(userAgent: string) {
   const kind = /android/i.test(userAgent)
     ? "Celular Android"

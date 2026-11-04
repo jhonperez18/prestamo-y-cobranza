@@ -266,6 +266,8 @@ import { CollectorConnectionSheet } from "@/components/CollectorConnectionSheet"
 import {
   collectorConnection,
   devicesForCollector,
+  JUST_CONNECTED_MS,
+  justConnectedBanner,
   type CollectorConnection,
   type ConnectionLevel,
 } from "@/lib/collector-connection";
@@ -545,6 +547,7 @@ function RouteBoardCard({
   unreadCount = 0,
   connectionLevel,
   onConnection,
+  justConnected = false,
 }: {
   row: RouteLiquidacion;
   accent: number;
@@ -552,6 +555,8 @@ function RouteBoardCard({
   /** Punto de conexión del cobrador (solo INICIO). */
   connectionLevel?: ConnectionLevel;
   onConnection?: () => void;
+  /** Acaba de pasar de «Sin datos» → conectado (aviso verde unos minutos). */
+  justConnected?: boolean;
   /** En vista caja siempre destaca el dinero en mano. */
   mode?: "ruta" | "caja" | "nequi" | "banco";
   /** Color del panel (Nequi / Banco). Sin tono = el del `mode`. */
@@ -680,16 +685,28 @@ function RouteBoardCard({
   );
   if (!connectionLevel || !onConnection) return card;
   return (
-    <div className="supervisor-route-board-wrap">
+    <div className={`supervisor-route-board-wrap${justConnected ? " is-just-connected" : ""}`}>
       {card}
+      {justConnected ? (
+        <p className="conn-just-chip" aria-live="polite">
+          en línea
+        </p>
+      ) : null}
       <button
         type="button"
         className="conn-dot-btn"
         onClick={onConnection}
-        aria-label={`Conexión de ${row.collectorName}`}
-        title="Conexión del cobrador"
+        aria-label={
+          justConnected
+            ? `${row.collectorName} acaba de conectarse`
+            : `Conexión de ${row.collectorName}`
+        }
+        title={justConnected ? "Acaba de conectarse" : "Conexión del cobrador"}
       >
-        <span className={`conn-dot is-${connectionLevel}`} aria-hidden />
+        <span
+          className={`conn-dot is-${connectionLevel}${justConnected ? " is-just" : ""}`}
+          aria-hidden
+        />
       </button>
     </div>
   );
@@ -2214,6 +2231,69 @@ export function SupervisorMobileApp({
     }
     return out;
   }, [liquidaciones, collectors, deviceStatuses]);
+  /** Nivel visto en el poll anterior: solo avisa al pasar de «Sin datos» → conectado. */
+  const prevConnLevelRef = useRef<Record<string, ConnectionLevel>>({});
+  const [justConnectedUntil, setJustConnectedUntil] = useState<Record<string, number>>({});
+  const [connBanner, setConnBanner] = useState<{
+    routeRef: string;
+    text: string;
+    until: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!deviceStatuses.loadedAt) return;
+    const prev = prevConnLevelRef.current;
+    const now = Date.now();
+    const flashes: Array<{ routeRef: string; text: string; until: number }> = [];
+    for (const row of liquidaciones) {
+      const level = connectionByRoute[row.routeRef]?.level ?? "none";
+      const before = prev[row.routeRef];
+      if (before === undefined) {
+        // Primera lectura: memoriza. Si ya estaba conectado, no avisa (abrió tarde).
+        prev[row.routeRef] = level;
+        continue;
+      }
+      if (before === "none" && level !== "none") {
+        flashes.push({
+          routeRef: row.routeRef,
+          text: justConnectedBanner(row.routeName, row.collectorName),
+          until: now + JUST_CONNECTED_MS,
+        });
+      }
+      prev[row.routeRef] = level;
+    }
+    if (flashes.length === 0) return;
+    setJustConnectedUntil((cur) => {
+      const next = { ...cur };
+      for (const flash of flashes) next[flash.routeRef] = flash.until;
+      return next;
+    });
+    // El más reciente del lote (varios cobradores a la vez).
+    const last = flashes[flashes.length - 1];
+    setConnBanner(last);
+  }, [connectionByRoute, deviceStatuses.loadedAt, liquidaciones]);
+  useEffect(() => {
+    if (!connBanner) return;
+    const msLeft = Math.max(0, connBanner.until - Date.now());
+    const timer = window.setTimeout(() => setConnBanner(null), msLeft || 0);
+    return () => window.clearTimeout(timer);
+  }, [connBanner]);
+  useEffect(() => {
+    const entries = Object.entries(justConnectedUntil);
+    if (entries.length === 0) return;
+    const nextExpiry = Math.min(...entries.map(([, until]) => until));
+    const msLeft = Math.max(0, nextExpiry - Date.now());
+    const timer = window.setTimeout(() => {
+      const now = Date.now();
+      setJustConnectedUntil((cur) => {
+        const next: Record<string, number> = {};
+        for (const [ref, until] of Object.entries(cur)) {
+          if (until > now) next[ref] = until;
+        }
+        return next;
+      });
+    }, msLeft || 0);
+    return () => window.clearTimeout(timer);
+  }, [justConnectedUntil]);
   const connectionRow = connectionRouteRef
     ? (liquidaciones.find((row) => row.routeRef === connectionRouteRef) ?? null)
     : null;
@@ -8032,6 +8112,11 @@ export function SupervisorMobileApp({
           ) : liquidaciones.length === 0 ? (
             <p className="ficha-empty">No hay rutas con cobrador.</p>
           ) : (
+            {connBanner && Date.now() < connBanner.until ? (
+              <p className="conn-just-banner" role="status" aria-live="polite">
+                {connBanner.text}
+              </p>
+            ) : null}
             <div className="supervisor-route-boards">
               {liquidaciones.map((row, index) => (
                 <RouteBoardCard
@@ -8041,6 +8126,7 @@ export function SupervisorMobileApp({
                   unreadCount={unreadByRoute[row.routeRef] || 0}
                   onOpen={openRouteSummary}
                   connectionLevel={connectionByRoute[row.routeRef]?.level ?? "none"}
+                  justConnected={(justConnectedUntil[row.routeRef] ?? 0) > Date.now()}
                   onConnection={() => {
                     suppressGhostClick(420);
                     setConnectionRouteRef(row.routeRef);
