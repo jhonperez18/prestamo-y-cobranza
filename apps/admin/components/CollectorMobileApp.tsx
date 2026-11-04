@@ -16,7 +16,7 @@ import {
   withIndependentRouteHistory,
 } from "@/lib/independent-route-cash";
 import { useRouteCashBook } from "@/lib/use-route-cash-book";
-import { useRouteSheet } from "@/lib/use-route-sheet";
+import { clearRouteSheetCache, useRouteSheet } from "@/lib/use-route-sheet";
 import { getCloudChainMOpening } from "@/lib/cloud-chain-m-opening";
 import { syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
@@ -1219,9 +1219,46 @@ export function CollectorMobileApp({
 
   const routeRef = queue.routeRef ?? dispatchRouteRef(collector.ref, activeDate);
   const visibleItems = listFilter === "done" ? queue.done : routePending;
-  /** La ficha de cada fila no cambia al abrir/cerrar un panel: solo cuando cambian los datos. */
-  const fichaSheet = useRouteSheet(true);
-  const saldoLoans = fichaSheet.sheet?.loans ?? loans;
+  /**
+   * Ficha de la base para saldos. Si la planilla ya tiene un P- que la caché no trae
+   * (caso Alexandra P-673 montado hoy), se fuerza otra bajada y se completa con lo local.
+   */
+  const [fichaRefreshKey, setFichaRefreshKey] = useState("");
+  const fichaTriedMissingRef = useRef("");
+  const fichaSheet = useRouteSheet(true, fichaRefreshKey);
+  const saldoLoans = useMemo(() => {
+    const sheet = fichaSheet.sheet?.loans;
+    if (!sheet?.length) return loans;
+    const byRef = new Map(sheet.map((row) => [row.ref, row]));
+    for (const row of loans) {
+      if (!byRef.has(row.ref)) byRef.set(row.ref, row);
+    }
+    return [...byRef.values()];
+  }, [fichaSheet.sheet, loans]);
+  useEffect(() => {
+    const known = new Set(saldoLoans.map((row) => row.ref));
+    const missingRefs = [
+      ...new Set(
+        routePending
+          .filter(
+            (row) =>
+              Boolean(row.loanRef) &&
+              !isAssignmentAwaitingLoan(row) &&
+              !known.has(String(row.loanRef)),
+          )
+          .map((row) => String(row.loanRef)),
+      ),
+    ].sort();
+    if (!missingRefs.length) {
+      fichaTriedMissingRef.current = "";
+      return;
+    }
+    const sig = missingRefs.join("|");
+    if (fichaTriedMissingRef.current === sig) return;
+    fichaTriedMissingRef.current = sig;
+    clearRouteSheetCache();
+    setFichaRefreshKey(sig);
+  }, [routePending, saldoLoans]);
   const visibleIdentities = useMemo(
     () => visibleItems.map((item) => visitIdentity(item, clients, saldoLoans, livePayments, activeDate)),
     [visibleItems, clients, saldoLoans, livePayments, activeDate],

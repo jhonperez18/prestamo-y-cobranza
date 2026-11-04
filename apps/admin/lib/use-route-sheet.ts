@@ -26,6 +26,12 @@ let pending: Promise<RouteSheet | null> | null = null;
 
 const FETCH_MS = 12_000;
 
+/** Suelta la ficha en memoria (préstamo nuevo / pull) para volver a leer la base. */
+export function clearRouteSheetCache() {
+  cached = null;
+  pending = null;
+}
+
 /** Lectura de la ficha en la nube. Cada llamada trae el saldo actual. */
 export async function fetchRouteSheet(): Promise<RouteSheet | null> {
   const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
@@ -76,12 +82,12 @@ function loadRouteSheetOnce(): Promise<RouteSheet | null> {
 
 /**
  * Clientes y préstamos de CLIENTES, PRÉSTAMOS y de la cartera del informe.
- * Una sola lectura de la ficha por apertura. No se guarda en el aparato:
- * la copia local no puede pintar otra hoja ni otra cartera.
+ * Lee la ficha en la nube. `refreshKey` fuerza otra bajada (préstamo nuevo en planilla).
+ * No se guarda en el aparato: la copia local no puede pintar otra hoja ni otra cartera.
  *
- * La planilla del cobrador NO espera esto: pinta con la copia local.
+ * La planilla del cobrador NO espera esto: pinta con la copia local y completa huecos.
  */
-export function useRouteSheet(active: boolean): RouteSheetState {
+export function useRouteSheet(active: boolean, refreshKey = ""): RouteSheetState {
   const [state, setState] = useState<RouteSheetState>(() =>
     cached ? { status: "ready", sheet: cached } : { status: active ? "loading" : "idle", sheet: null },
   );
@@ -89,19 +95,25 @@ export function useRouteSheet(active: boolean): RouteSheetState {
   useEffect(() => {
     if (!active) return;
     let alive = true;
-    if (cached) {
+    if (refreshKey) {
+      clearRouteSheetCache();
+    } else if (cached) {
       setState({ status: "ready", sheet: cached });
       return;
     }
-    setState({ status: "loading", sheet: null });
+    setState((prev) => ({ status: "loading", sheet: prev.sheet }));
     void loadRouteSheetOnce().then((sheet) => {
       if (!alive) return;
-      setState(sheet ? { status: "ready", sheet } : { status: "error", sheet: null });
+      if (sheet) {
+        setState({ status: "ready", sheet });
+        return;
+      }
+      setState((prev) => ({ status: "error", sheet: prev.sheet }));
     });
     return () => {
       alive = false;
     };
-  }, [active]);
+  }, [active, refreshKey]);
 
   return state;
 }
