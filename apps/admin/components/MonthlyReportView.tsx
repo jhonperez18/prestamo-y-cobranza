@@ -31,6 +31,7 @@ import {
 } from "@/lib/monthly-route-sheet";
 import { money, type ClientRow, type LoanRow, type PaymentRow } from "@/lib/mock-data";
 import { isClientDeletedStatus, isLoanDeletedStatus } from "@/lib/supabase/catalog-mirror";
+import { normalizePaymentMethod } from "@/lib/payment-method";
 import type { PaymentMirrorRow } from "@/lib/supabase/payment-mirror";
 import styles from "./MonthlyReportView.module.css";
 
@@ -52,6 +53,7 @@ function paymentFromMirror(row: PaymentMirrorRow): PaymentRow | null {
     loanRef,
     paidDate,
     amount,
+    method: normalizePaymentMethod(row.method),
     type: voided ? "Anulado" : type,
     when: paidDate,
     client: "",
@@ -100,7 +102,9 @@ function cellTitle(cell: MonthSheetCell) {
     return "Renovación: total del préstamo nuevo. De aquí se resta lo que pague después.";
   }
   if (cell.kind === "loan") return "Préstamo nuevo. De aquí se resta lo que pague después.";
-  return "Pago del día";
+  if (cell.kind === "pay" && cell.channel === "banco") return "Pago del día · Banco";
+  if (cell.kind === "pay" && cell.channel === "nequi") return "Pago del día · Nequi";
+  return "Pago del día · Efectivo";
 }
 
 export function MonthlyReportView() {
@@ -305,12 +309,30 @@ export function MonthlyReportView() {
                               sheet.days[index] === today ? styles.today : "",
                               cell?.kind === "renewal" ? styles.renewal : "",
                               cell?.kind === "loan" ? styles.loan : "",
+                              cell?.kind === "pay" && cell.channel === "banco"
+                                ? styles.payBanco
+                                : "",
+                              cell?.kind === "pay" && cell.channel === "nequi"
+                                ? styles.payNequi
+                                : "",
                             ]
                               .filter(Boolean)
                               .join(" ")}
                             title={cell ? cellTitle(cell) : "No pagó"}
                           >
-                            {cell ? miles(cell.amount) : "-"}
+                            {cell ? (
+                              <span
+                                className={
+                                  cell.kind === "pay" && cell.channel
+                                    ? styles.payAmt
+                                    : undefined
+                                }
+                              >
+                                {miles(cell.amount)}
+                              </span>
+                            ) : (
+                              "-"
+                            )}
                           </td>
                         ))}
                         <td className={styles.sum}>{pesos(row.saldo)}</td>

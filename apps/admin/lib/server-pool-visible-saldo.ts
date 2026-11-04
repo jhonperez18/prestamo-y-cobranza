@@ -162,27 +162,68 @@ async function loadPoolShared(paymentsFromIso: string) {
   };
 }
 
-async function liveMonthFromSeal(toIso: string): Promise<PoolVisibleSaldoResult | null> {
+/**
+ * Saldo Banco/Nequi al cierre de `toIso`.
+ * Mes sellado (último día) → sello. Cualquier día → sello del mes anterior + movimiento
+ * desde el 1 (o desde ROUTE_CASH_BOOK_FROM). Así el Semanal puede pedir `open=` de
+ * un día del mes pasado sin quedarse en «Leyendo…».
+ */
+async function poolBalanceAt(toIso: string): Promise<PoolVisibleSaldoResult | null> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(toIso) || toIso < ROUTE_CASH_BOOK_FROM) {
+    return {
+      ok: true,
+      banco: 0,
+      nequi: 0,
+      fromIso: ROUTE_CASH_BOOK_FROM,
+      toIso,
+    };
+  }
+
+  const sealedEnd = await sealedPeriodPools(toIso);
+  if (sealedEnd?.ok) return sealedEnd;
+
   const period = toIso.slice(0, 7);
-  const todayPeriod = businessTodayIso().slice(0, 7);
-  if (period !== todayPeriod) return null;
-
-  const prev = previousPeriod(period);
-  const sealed = await sealedMonthPools(prev);
-  if (!sealed) return null;
-
   const monthStart = `${period}-01`;
   const fromIso = monthStart >= ROUTE_CASH_BOOK_FROM ? monthStart : ROUTE_CASH_BOOK_FROM;
+  const prev = previousPeriod(period);
+  const sealed = await sealedMonthPools(prev);
+  // Primer mes del libro sin sello previo: arranca en 0 + movimiento.
+  if (!sealed && monthStart > ROUTE_CASH_BOOK_FROM) return null;
+
+  const baseBanco = sealed?.banco ?? 0;
+  const baseNequi = sealed?.nequi ?? 0;
+  if (toIso < fromIso) {
+    return {
+      ok: true,
+      banco: Math.trunc(baseBanco),
+      nequi: Math.trunc(baseNequi),
+      fromIso: ROUTE_CASH_BOOK_FROM,
+      toIso,
+    };
+  }
+
   const loaded = await loadPoolShared(fromIso);
   if (!loaded.ok) return { ok: false, error: loaded.error };
 
   return {
     ok: true,
-    banco: Math.trunc(sealed.banco + poolVisibleSaldo({ ...loaded.shared, pool: "banco", fromIso, toIso })),
-    nequi: Math.trunc(sealed.nequi + poolVisibleSaldo({ ...loaded.shared, pool: "nequi", fromIso, toIso })),
+    banco: Math.trunc(
+      baseBanco + poolVisibleSaldo({ ...loaded.shared, pool: "banco", fromIso, toIso }),
+    ),
+    nequi: Math.trunc(
+      baseNequi + poolVisibleSaldo({ ...loaded.shared, pool: "nequi", fromIso, toIso }),
+    ),
     fromIso: ROUTE_CASH_BOOK_FROM,
     toIso,
   };
+}
+
+/** Mes vivo (hoy): mismo cálculo; se mantiene el nombre que usa el refresco en fondo. */
+async function liveMonthFromSeal(toIso: string): Promise<PoolVisibleSaldoResult | null> {
+  const period = toIso.slice(0, 7);
+  const todayPeriod = businessTodayIso().slice(0, 7);
+  if (period !== todayPeriod) return null;
+  return poolBalanceAt(toIso);
 }
 
 async function sealedPeriodPools(toIso: string): Promise<PoolVisibleSaldoResult | null> {
@@ -238,8 +279,12 @@ export async function readPoolVisibleSaldo(options?: {
   }
 
   if (openIso) {
-    const liveTo = await liveMonthFromSeal(toIso);
-    const liveOpen = await liveMonthFromSeal(openIso);
+    // Semanal pide cierre de semana (`to`) + saldo del día previo (`open`),
+    // que a menudo cae en el mes anterior: no limitar a liveMonthFromSeal.
+    const [liveTo, liveOpen] = await Promise.all([
+      poolBalanceAt(toIso),
+      poolBalanceAt(openIso),
+    ]);
     if (liveTo?.ok && liveOpen?.ok) {
       const result: Extract<PoolVisibleSaldoResult, { ok: true }> = {
         ...liveTo,
@@ -251,7 +296,11 @@ export async function readPoolVisibleSaldo(options?: {
       return result;
     }
     if (hit) return hit.result;
-    return { ok: false, error: "pool_visible_open_unavailable" };
+    const err =
+      (liveTo && !liveTo.ok && liveTo.error) ||
+      (liveOpen && !liveOpen.ok && liveOpen.error) ||
+      "pool_visible_open_unavailable";
+    return { ok: false, error: err };
   }
 
   const sealed = await sealedPeriodPools(toIso);

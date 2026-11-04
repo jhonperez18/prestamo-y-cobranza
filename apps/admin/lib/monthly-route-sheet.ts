@@ -12,6 +12,12 @@ import { pesos } from "@/lib/finance";
 import { isPaymentLive } from "@/lib/live-payments";
 import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import { loanRenewalOf, loanRenewedInto } from "@/lib/loan-renewal-marks";
+import {
+  normalizePaymentMethod,
+  paymentMethodForRoute,
+  paymentMethodIsCash,
+  type PaymentMethod,
+} from "@/lib/payment-method";
 import { isLoanDeletedStatus } from "@/lib/supabase/catalog-mirror";
 import type { ClientRow, LoanRow, PaymentRow } from "@/lib/mock-data";
 
@@ -24,8 +30,11 @@ export function isMonthlyRouteName(value: string): value is MonthlyRouteName {
   return (ROUTES as readonly string[]).includes(value);
 }
 
+/** Canal digital del cobro del día (subrayado en la hoja). Efectivo = null. */
+export type MonthSheetPayChannel = "banco" | "nequi";
+
 export type MonthSheetCell =
-  | { kind: "pay"; amount: number }
+  | { kind: "pay"; amount: number; channel?: MonthSheetPayChannel | null }
   | { kind: "renewal"; amount: number }
   | { kind: "loan"; amount: number };
 
@@ -125,7 +134,19 @@ export function buildMonthlyRouteSheet(input: {
   const rows: MonthSheetRow[] = [];
   for (const client of clientsOnRouteSorted(input.clients, input.route)) {
     const loans = loansByClient.get(client.ref) ?? [];
-    rows.push(sheetRow(client, loans, paysByLoan, days, monthStart, monthEnd, cut, realToday));
+    rows.push(
+      sheetRow(
+        client,
+        loans,
+        paysByLoan,
+        days,
+        monthStart,
+        monthEnd,
+        cut,
+        realToday,
+        input.route,
+      ),
+    );
   }
 
   return {
@@ -146,6 +167,7 @@ function sheetRow(
   monthEnd: string,
   cut: string,
   realToday: string,
+  route: MonthlyRouteName,
 ): MonthSheetRow {
   const cells: Array<MonthSheetCell | null> = days.map(() => null);
   const active = loanActiveAtStart(loans, monthStart);
@@ -169,19 +191,19 @@ function sheetRow(
     const born = bornToday.find((loan) => loanRenewalOf(loan)) ?? bornToday[0];
     if (born && loanDisbursementIsoDate(born) > (current ? loanDisbursementIsoDate(current) : "")) {
       const total = loanTotal(born);
-      const sameDay = paySum(paysByLoan.get(born.ref), day, days, cut);
+      const sameDay = payDayTotal(paysByLoan.get(born.ref), day, days, cut, route);
       cells[index] = loanRenewalOf(born)
         ? { kind: "renewal", amount: total }
         : { kind: "loan", amount: total };
-      running = Math.max(0, total - sameDay);
+      running = Math.max(0, total - sameDay.amount);
       current = born;
       continue;
     }
     if (!current) continue;
-    const paid = paySum(paysByLoan.get(current.ref), day, days, cut);
-    if (paid > 0) {
-      cells[index] = { kind: "pay", amount: paid };
-      running = Math.max(0, running - paid);
+    const paid = payDayTotal(paysByLoan.get(current.ref), day, days, cut, route);
+    if (paid.amount > 0) {
+      cells[index] = { kind: "pay", amount: paid.amount, channel: paid.channel };
+      running = Math.max(0, running - paid.amount);
     }
   }
 
@@ -229,14 +251,26 @@ function openingBalance(
   return Math.max(0, total - (paid - settledSeen));
 }
 
-function paySum(pays: PaymentRow[] | undefined, day: string, days: string[], cut: string) {
+function payDayTotal(
+  pays: PaymentRow[] | undefined,
+  day: string,
+  days: string[],
+  cut: string,
+  route: MonthlyRouteName,
+): { amount: number; channel: MonthSheetPayChannel | null } {
   let sum = 0;
+  let digital: PaymentMethod | null = null;
   for (const pay of pays ?? []) {
     const paid = (pay.paidDate || "").slice(0, 10);
     if (!paid || paid > cut) continue;
-    if (placeOnSheet(paid, days) === day) sum += pesos(pay.amount);
+    if (placeOnSheet(paid, days) !== day) continue;
+    sum += pesos(pay.amount);
+    const method = paymentMethodForRoute(normalizePaymentMethod(pay.method), route);
+    if (!paymentMethodIsCash(method)) digital = method;
   }
-  return sum;
+  const channel: MonthSheetPayChannel | null =
+    digital === "nequi" || digital === "banco" ? digital : null;
+  return { amount: sum, channel };
 }
 
 function loanTotal(loan: LoanRow) {

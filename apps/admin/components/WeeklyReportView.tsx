@@ -423,6 +423,8 @@ export function WeeklyReportView({
     openNequi: number;
     closeNequi: number;
   } | null>(null);
+  const [poolError, setPoolError] = useState("");
+  const [poolRetry, setPoolRetry] = useState(0);
   const range = useMemo(() => weeklyRangeForCutoff(cutoff, today), [cutoff, today]);
 
   useEffect(() => {
@@ -447,13 +449,21 @@ export function WeeklyReportView({
     let alive = true;
     const before = addCalendarDaysIso(range.start, -1);
     setPoolBounds(null);
+    setPoolError("");
     const qs = new URLSearchParams({
       to: range.end,
       open: before,
     });
     void fetch(`/api/ops/pool-visible-saldo?${qs}`, { cache: "no-store" })
-      .then((r) => r.json())
-      .then((body) => {
+      .then(async (r) => {
+        const body = (await r.json()) as {
+          ok?: boolean;
+          banco?: number;
+          nequi?: number;
+          openBanco?: number;
+          openNequi?: number;
+          error?: string;
+        };
         if (!alive) return;
         if (
           !body ||
@@ -463,6 +473,7 @@ export function WeeklyReportView({
           !Number.isFinite(Number(body.nequi)) ||
           !Number.isFinite(Number(body.openNequi))
         ) {
+          setPoolError(body?.error || `HTTP ${r.status}`);
           return;
         }
         setPoolBounds({
@@ -474,11 +485,12 @@ export function WeeklyReportView({
       })
       .catch((error) => {
         console.error("weekly-report pool-visible-saldo", error);
+        if (alive) setPoolError(error instanceof Error ? error.message : "red");
       });
     return () => {
       alive = false;
     };
-  }, [range.start, range.end]);
+  }, [range.start, range.end, poolRetry]);
 
   /**
    * Prohibido pintar Banco local y luego el del servidor (1.149 → 5.299).
@@ -537,9 +549,11 @@ export function WeeklyReportView({
       ? "No se pudo leer la cartera de la ficha."
       : !ficha
         ? "Leyendo la cartera de la ficha…"
-        : scope === "a"
-          ? "Leyendo Saldo Nequi del servidor…"
-          : "Leyendo Saldo Banco del servidor…";
+        : poolError
+          ? `No se pudo leer el Saldo del servidor (${poolError}).`
+          : scope === "a"
+            ? "Leyendo Saldo Nequi del servidor…"
+            : "Leyendo Saldo Banco del servidor…";
 
   return (
     <section className="panel weekly-report">
@@ -578,7 +592,32 @@ export function WeeklyReportView({
       {report ? (
         <ReportSheet report={report} />
       ) : (
-        <p className="weekly-report-hint">{waitingHint}</p>
+        <div className="weekly-report-hint">
+          <p>{waitingHint}</p>
+          {poolError || fichaState === "error" ? (
+            <button
+              type="button"
+              className="on"
+              onClick={() => {
+                if (fichaState === "error") {
+                  setFichaState("loading");
+                  void fetchRouteSheet().then((sheet) => {
+                    if (!sheet) {
+                      setFicha(null);
+                      setFichaState("error");
+                      return;
+                    }
+                    setFicha({ loans: sheet.loans, clients: sheet.clients });
+                    setFichaState("ready");
+                  });
+                }
+                setPoolRetry((n) => n + 1);
+              }}
+            >
+              Reintentar
+            </button>
+          ) : null}
+        </div>
       )}
     </section>
   );
