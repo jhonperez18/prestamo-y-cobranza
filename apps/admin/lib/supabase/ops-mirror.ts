@@ -115,6 +115,7 @@ function mergeByRefRemote<T extends { ref: string }>(
 /**
  * CIE-: la nube manda, salvo un ajuste de saldo local más nuevo que el de nube
  * (aún en cola de flush). Así el pull no rebobina el ajuste del supervisor.
+ * Si la nube quitó el AJUSTE (taller) y su CIE es más fresco → gana la nube.
  * Ajustes de A/N: unión por ruta (gana el más reciente), ninguno se pierde.
  */
 function mergeDayClosesRemote(
@@ -126,7 +127,23 @@ function mergeDayClosesRemote(
     dayCloseFreshnessMs(undefined, row?.cashAdjustment) || 0;
   const chosenRemote = remote.map((row) => {
     const prev = localByRef.get(row.ref);
-    const chosen = prev && adjustmentMs(prev) > adjustmentMs(row) ? prev : row;
+    let chosen = row;
+    if (prev) {
+      const localAdjMs = adjustmentMs(prev);
+      const remoteAdjMs = adjustmentMs(row);
+      if (localAdjMs > remoteAdjMs) {
+        const remoteUpdated =
+          Date.parse(String(row.updatedAt || "")) ||
+          Date.parse(String(row.closedAt || "")) ||
+          0;
+        // Nube sin AJUSTE y más fresca que el ajuste local → el taller lo quitó.
+        if (remoteAdjMs === 0 && remoteUpdated > localAdjMs) {
+          chosen = row;
+        } else {
+          chosen = prev;
+        }
+      }
+    }
     const routeCashAdjustments = mergeRouteCashAdjustments(
       prev?.routeCashAdjustments,
       row.routeCashAdjustments,

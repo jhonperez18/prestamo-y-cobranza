@@ -5,6 +5,7 @@ import {
   attachCashAdjustments,
   cashAdjustmentDelta,
   cashAdjustmentNote,
+  isStaleLocalCashAdjustment,
 } from "@/lib/cash-adjustment";
 import { CollectorPayForm } from "@/components/CollectorPayForm";
 import {
@@ -126,6 +127,7 @@ import {
   annotateMHistoryExtractRows,
   applyCollectorCashHandSaldos,
   assertCanCloseChainedPlanilla,
+  findFullDayCieClose,
   isPlanillaCashChainPrimary,
   isPlanillaCashChainRoute,
   isPlanillaCashChainSecondary,
@@ -1815,11 +1817,23 @@ export function CollectorMobileApp({
       const tInicial = cloudOk
         ? cloudFig.mClosing
         : (primaryClosingForDay(ledgerSrc, activeDate) ?? dayLedger.mClosing);
-      const tCaja =
-        (cloudOk && cloudFig.cie != null ? cloudFig.cie : null) ??
-        (cloudOk && cloudFig.dayFinal != null ? cloudFig.dayFinal : null) ??
-        sealedDaySaldo(dayCloses, collector.ref, activeDate) ??
-        dayLedger.dayFinal;
+      // Caja = day_final (misma cuenta que botones / supervisor). CIE solo si no hay day_final.
+      // Ajuste local obsoleto (527→827 con nube en 859): no leer sealedDaySaldo del aparato.
+      const localAdj = findFullDayCieClose(dayCloses, collector.ref, activeDate)?.cashAdjustment;
+      const staleAdj =
+        Boolean(localAdj) &&
+        cloudOk &&
+        isStaleLocalCashAdjustment(localAdj!, {
+          cie: cloudFig.cie,
+          dayFinal: cloudFig.dayFinal,
+        });
+      const tCaja = staleAdj
+        ? (cloudFig.dayFinal as number)
+        : (cloudOk && cloudFig.dayFinal != null ? cloudFig.dayFinal : null) ??
+          (cloudOk && cloudFig.cie != null ? cloudFig.cie : null) ??
+          (localAdj ? localAdj.real : null) ??
+          sealedDaySaldo(dayCloses, collector.ref, activeDate) ??
+          dayLedger.dayFinal;
       return planillaHeaderCash({
         inicial: tInicial,
         efectivo: cloudOk && cloudFig.tEfectivo != null ? cloudFig.tEfectivo : (chainPlanillaDay?.efectivo ?? 0),
@@ -1893,7 +1907,13 @@ export function CollectorMobileApp({
    * Botón «Lo que prestó» / KPI: en A·N = efectivo + Nequi/Banco (`prestamosRuta`).
    * En M·T el botón sigue siendo caja; Banco va aparte.
    */
-  const loQuePresto = ownRouteDay ? ownRouteDay.prestamosRuta : topPrestamos;
+  /**
+   * Cuadre junto a Caja: solo efectivo (lo que resta). Nequi/Banco en sublínea.
+   * El KPI superior sigue pudiendo mostrar efectivo+digital vía viewPrestamos.
+   */
+  const loQuePresto = ownRouteDay ? ownRouteDay.prestamos : topPrestamos;
+  const loQuePrestoDigital = ownRouteDay ? ownRouteDay.prestamosDigital : 0;
+  const cajaFormulaLabel = "Caja (inicial + efectivo − gastos − préstamos)";
   /**
    * Préstamos de la planilla: A / N = caja + digital de la ruta; otra planilla fuera de la
    * cadena = solo lectura de los préstamos a clientes de esa ruta.
@@ -1931,10 +1951,11 @@ export function CollectorMobileApp({
   const digitalPrestamos = dayLoanDisbursementTotal(digitalLoanRows);
   /**
    * KPI Préstamos = lo de ESTA planilla. Cadena M/T: caja de la ruta (headerCash) + digital
-   * de la ruta. Nunca sumar loanRows crudos (ahí se colaban P-pend- de la otra hoja).
+   * de la ruta. A/N: efectivo + Nequi/Banco (`prestamosRuta`). El cuadre «Lo que prestó»
+   * junto a Caja muestra solo efectivo (para que la fórmula cuadre).
    */
   const prestamosKpi = ownRouteDay
-    ? loQuePresto
+    ? ownRouteDay.prestamosRuta
     : chainPlanillaDay
       ? topPrestamos + digitalPrestamos
       : viewPrestamos + digitalPrestamos;
@@ -1990,6 +2011,52 @@ export function CollectorMobileApp({
     );
   }, [activeDate, closedHistoryDates, dayHistory, openPlanillaDates]);
 
+  /**
+   * Historial · T: saldos de la base por día (day_cash_figure).
+   * Sin esto el aparato pinta AJUSTE local viejo (03/11: 527→827 con nube en 859).
+   */
+  const [tHistCloudByDate, setTHistCloudByDate] = useState<
+    Record<string, { cie: number | null; dayFinal: number | null }>
+  >({});
+  useEffect(() => {
+    if (!historyOnScreen || !isPlanillaCashChainSecondary(historyRoute ?? undefined)) return;
+    let alive = true;
+    const today = date ?? todayIso();
+    const dates = [
+      ...new Set(
+        historyVisibleRows
+          .map((row) => normalizeHistoryDate(row.date) || row.date)
+          .filter((day) => day && day < today),
+      ),
+    ].slice(0, 40);
+    if (!dates.length) return;
+    void import("@/lib/cloud-day-cash-figure").then(({ refreshCloudDayCashFigure }) => {
+      void Promise.all(
+        dates.map(async (day) => {
+          const fig = await refreshCloudDayCashFigure(collector.ref, day);
+          if (!fig?.ready) return null;
+          return [
+            day,
+            { cie: fig.cie, dayFinal: fig.dayFinal },
+          ] as const;
+        }),
+      ).then((entries) => {
+        if (!alive) return;
+        const next: Record<string, { cie: number | null; dayFinal: number | null }> = {};
+        for (const entry of entries) {
+          if (entry) next[entry[0]] = entry[1];
+        }
+        if (Object.keys(next).length) {
+          setTHistCloudByDate((prev) => ({ ...prev, ...next }));
+          setDayCashFigureEpoch((n) => n + 1);
+        }
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [collector.ref, date, historyOnScreen, historyRoute, historyVisibleRows]);
+
   /** Historial · T: renglón del cierre + ajuste de saldo del supervisor (solo lectura). */
   const historyRowsWithAdjustment = useMemo(() => {
     const route = historyRoute;
@@ -2016,8 +2083,25 @@ export function CollectorMobileApp({
     if (!isPlanillaCashChainSecondary(route ?? undefined)) {
       return rows.map((row) => ({ row, adjustment: null }));
     }
-    return attachCashAdjustments(rows, collector.ref, dayCloses);
-  }, [cashBookFor, collector.ref, date, dayCloses, historyRoute, historyVisibleRows, viewPeriod]);
+    return attachCashAdjustments(rows, collector.ref, dayCloses, (day) => {
+      const key = normalizeHistoryDate(day) || day;
+      const fromHist = tHistCloudByDate[key];
+      if (fromHist) return fromHist;
+      const cloud = getCloudDayCashFigure(collector.ref, key);
+      if (!cloud?.ready) return null;
+      return { cie: cloud.cie, dayFinal: cloud.dayFinal };
+    });
+  }, [
+    cashBookFor,
+    collector.ref,
+    date,
+    dayCashFigureEpoch,
+    dayCloses,
+    historyRoute,
+    historyVisibleRows,
+    tHistCloudByDate,
+    viewPeriod,
+  ]);
 
   /** Historial · M: extracto (Inicial → Saldo). Días previos intactos. */
   const showMInicialColumn = isPlanillaCashChainPrimary(activePlanillaRoute ?? undefined);
@@ -2729,6 +2813,12 @@ export function CollectorMobileApp({
               >
               <span>Lo que prestó</span>
               <b>{money(loQuePresto)}</b>
+              {ownRouteDay && loQuePrestoDigital > 0 ? (
+                <em className="is-loan-split">
+                  + {planillaIsA ? "Nequi" : "Banco"}{" "}
+                  {money(loQuePrestoDigital, { symbol: false })} · no sale de caja
+                </em>
+              ) : null}
               </button>
               <button
                 type="button"
@@ -2777,16 +2867,23 @@ export function CollectorMobileApp({
                 </div>
 
             <div className="is-saldo">
-              <span>Caja (inicial + efectivo − gastos − préstamos)</span>
+              <span>{cajaFormulaLabel}</span>
               <b>{money(cajaShown)}</b>
           </div>
           </div>
           {homeCierreKind === "prestamos" ? (
-            dayExpenseSplit.prestamos.length > 0 ? (
+            (ownRouteDay
+              ? loanRowsToExpenseLines(ownRouteDay.loanRows)
+              : dayExpenseSplit.prestamos
+            ).length > 0 || loQuePrestoDigital > 0 ? (
               <CollectorDayCloseExtras
                 dateLabel={queue.dateLabel}
                 planillaRows={[]}
-                prestamos={dayExpenseSplit.prestamos}
+                prestamos={
+                  ownRouteDay
+                    ? loanRowsToExpenseLines(ownRouteDay.loanRows)
+                    : dayExpenseSplit.prestamos
+                }
                 prestamosTotal={loQuePresto}
               />
             ) : (

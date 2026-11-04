@@ -352,11 +352,9 @@ type HistoryRowLike = {
 /**
  * Historial de caja A / N: las columnas cuadran con el Saldo.
  *   Saldo = Inicial + COBROS − PRÉSTAMO − GASTO
- * COBROS aquí = efectivo de la caja (`day.efectivo`). Nequi/Banco no entran al Saldo
- * (van al historial Nequi/Banco). Si se pintara el cobrado total, 747 + 1.900 − 0
- * no daría 827 (caso 31/10 A: efectivo 580 · préstamo 500 → 827).
- * PRÉSTAMO = efectivo + digital de la ruta (el digital no resta de la caja; el de
- * efectivo sí — lo ya aplica `independentRouteDay` / `route_own_box`).
+ * COBROS = efectivo de la caja (`day.efectivo`). Nequi cobrado no entra (historial Nequi).
+ * PRÉSTAMO = solo efectivo (`day.prestamos`). Nequi/Banco prestado no resta de caja
+ * (se informa aparte en el Cierre: «+ Nequi · no sale de caja»).
  */
 export function withIndependentRouteHistory<Row extends HistoryRowLike>(
   rows: Row[],

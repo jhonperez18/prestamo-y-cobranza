@@ -165,19 +165,52 @@ function isoDayLabel(iso: string) {
 export type HistoryRowWithAdjustment<T> = { row: T; adjustment: CashAdjustment | null };
 
 /**
+ * Ajuste local obsoleto: el CIE de la base ya no es el «real» del aparato.
+ * Caso T 03/11: local 527→827 y la nube selló 859 sin AJUSTE.
+ * Ajuste vigente: cash_float de la base = real → no es obsoleto.
+ */
+export function isStaleLocalCashAdjustment(
+  adjustment: CashAdjustment,
+  cloud: { cie: number | null; dayFinal: number | null } | null | undefined,
+): boolean {
+  if (!cloud || cloud.cie == null) return false;
+  return Math.round(adjustment.real) !== Math.round(cloud.cie);
+}
+
+/**
  * Historial · T: el renglón del día muestra el saldo que selló el cierre y, si hubo
  * ajuste, va seguido de su renglón (saldo real = Inicial M del día siguiente).
+ * `cloudSaldoFor` (day_cash_figure) gana sobre un AJUSTE local ya quitado en la nube.
  */
 export function attachCashAdjustments<T extends { date: string; saldo: number }>(
   rows: T[],
   collectorRef: string,
   dayCloses: CollectorDayCloseRecord[],
+  cloudSaldoFor?: (
+    date: string,
+  ) => { cie: number | null; dayFinal: number | null } | null | undefined,
 ): HistoryRowWithAdjustment<T>[] {
   return rows.map((row) => {
-    const adjustment = findFullDayCieClose(dayCloses, collectorRef, row.date)?.cashAdjustment ?? null;
-    return adjustment
-      ? { row: { ...row, saldo: adjustment.calculated }, adjustment }
-      : { row, adjustment: null };
+    const adjustment =
+      findFullDayCieClose(dayCloses, collectorRef, row.date)?.cashAdjustment ?? null;
+    const cloud = cloudSaldoFor?.(row.date);
+    if (adjustment && isStaleLocalCashAdjustment(adjustment, cloud)) {
+      const sealed = cloud?.dayFinal ?? cloud?.cie;
+      return sealed != null
+        ? { row: { ...row, saldo: Math.round(sealed) }, adjustment: null }
+        : { row, adjustment: null };
+    }
+    // Día con CIE de nube y sin AJUSTE vigente: saldo = day_final (no el calculated local).
+    if (!adjustment && cloud) {
+      const sealed = cloud.dayFinal ?? cloud.cie;
+      if (sealed != null) {
+        return { row: { ...row, saldo: Math.round(sealed) }, adjustment: null };
+      }
+    }
+    if (adjustment) {
+      return { row: { ...row, saldo: adjustment.calculated }, adjustment };
+    }
+    return { row, adjustment: null };
   });
 }
 

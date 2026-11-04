@@ -2699,46 +2699,71 @@ export function SupervisorMobileApp({
   useEffect(() => {
     if (view !== "informe") return;
     let cancelled = false;
-    let timer = 0;
+    let abortTimer = 0;
+    let pollTimer = 0;
     const from = bancoHistoryFrom;
     const to = today;
     setInformeReadError("");
-    // No vaciar Cobrado/Préstamo/Gasto mientras llega: evita pantalla en blanco.
-    const pull = async (tries = 0) => {
+    /**
+     * Cobrado / Préstamo / Gasto: solo el servidor (Supabase). El celular no rearma.
+     * 1) pintada rápida  2) `fresh=1` alinea ayer+hoy  3) cada 45 s mientras el Informe esté abierto.
+     */
+    const pull = async (opts?: { fresh?: boolean; tries?: number }) => {
+      const fresh = Boolean(opts?.fresh);
+      const tries = opts?.tries ?? 0;
       const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-      timer =
+      abortTimer =
         ctrl && typeof window !== "undefined"
-          ? window.setTimeout(() => ctrl.abort(), 14_000)
+          ? window.setTimeout(() => ctrl.abort(), fresh ? 48_000 : 14_000)
           : 0;
       try {
-        const res = await fetch(`/api/ops/supervisor-informe?from=${from}&to=${to}`, {
+        const qs = new URLSearchParams({ from, to });
+        if (fresh) qs.set("fresh", "1");
+        const res = await fetch(`/api/ops/supervisor-informe?${qs}`, {
           cache: "no-store",
           signal: ctrl?.signal,
         });
         const body: unknown = await res.json();
         const parsed = readSupervisorInformePayload(body);
         if (!res.ok || !parsed) throw new Error("informe_failed");
-        if (cancelled) return;
+        if (cancelled) return false;
         setInformeHistory(parsed.general);
         setInformeAHistory(parsed.angelica);
         setInformeReadError("");
+        return true;
       } catch {
-        if (cancelled) return;
+        if (cancelled) return false;
         if (tries < 3) {
           window.setTimeout(() => {
-            if (!cancelled) void pull(tries + 1);
+            if (!cancelled) void pull({ fresh, tries: tries + 1 });
           }, 1_500 * (tries + 1));
-          return;
+          return false;
         }
-        setInformeReadError("No se pudo leer el informe.");
+        if (!fresh) setInformeReadError("No se pudo leer el informe.");
+        return false;
       } finally {
-        if (timer) window.clearTimeout(timer);
+        if (abortTimer) window.clearTimeout(abortTimer);
       }
     };
-    void pull();
+    void (async () => {
+      await pull();
+      if (cancelled) return;
+      await pull({ fresh: true });
+      if (cancelled) return;
+      const tick = () => {
+        pollTimer = window.setTimeout(() => {
+          if (cancelled) return;
+          void pull().finally(() => {
+            if (!cancelled) tick();
+          });
+        }, 45_000);
+      };
+      tick();
+    })();
     return () => {
       cancelled = true;
-      if (timer) window.clearTimeout(timer);
+      if (abortTimer) window.clearTimeout(abortTimer);
+      if (pollTimer) window.clearTimeout(pollTimer);
     };
   }, [view, bancoHistoryFrom, today]);
 
@@ -3889,7 +3914,11 @@ export function SupervisorMobileApp({
       saldo: number;
     }>;
     if (openRouteCajaHistoryIsT) {
-      return attachCashAdjustments(rows, openRoute.collectorRef, dayCloses);
+      return attachCashAdjustments(rows, openRoute.collectorRef, dayCloses, (day) => {
+        const cloud = getCloudDayCashFigure(openRoute.collectorRef, day);
+        if (!cloud?.ready) return null;
+        return { cie: cloud.cie, dayFinal: cloud.dayFinal };
+      });
     }
     if (!openRouteCajaHistoryIsIndependent) return null;
     return attachRouteCashAdjustments(rows, openRoute.collectorRef, openRoute.routeName, dayCloses);
@@ -4098,10 +4127,12 @@ export function SupervisorMobileApp({
         const adjust = openRouteAdjustHistory?.find(
           (entry) => entry.row.date === cajaHistoryDayIso,
         )?.adjustment;
+        // Caja del cierre = misma cuenta de los botones (day_final).
+        // Ajuste contado gana. CIE viejo no puede dejar 827 con movimiento ya en 859.
         const closing =
           adjust?.real != null && Number.isFinite(adjust.real)
             ? Number(adjust.real)
-            : (cloud.cie ?? cloud.dayFinal ?? cuadre.closing);
+            : (cloud.dayFinal ?? cloud.cie ?? cuadre.closing);
         return {
           ...cuadre,
           opening: cloud.mClosing,
@@ -4241,16 +4272,30 @@ export function SupervisorMobileApp({
     () => splitDayExpenses(openRouteHistoryDayExpenses),
     [openRouteHistoryDayExpenses],
   );
-  /** Cierre del día: T lista solo lo suyo; M / A / N lo de su planilla. */
+  /** Cierre del día: T lista solo lo suyo; A/N solo efectivo (lo que resta Caja). */
   const cierrePrestamos = historyDayChainT
     ? historyDayChainT.ownLoanLines
-    : openRouteHistoryDayExpenseSplit.prestamos;
-  /** A/N: misma cifra que Historial (`prestamosRuta`); M/T: solo caja del lado. */
+    : openRouteHistoryIndependentDay
+      ? openRouteHistoryDayExpenseSplit.prestamos.filter((line) =>
+          openRouteHistoryIndependentDay.day.loanRows.some(
+            (row) => row.loanRef === String(line.loanRef || ""),
+          ),
+        )
+      : openRouteHistoryDayExpenseSplit.prestamos;
+  /**
+   * A/N: mismo número que resta la Caja y la columna PRÉSTAMO del Historial
+   * (`day.prestamos` = solo efectivo). Nequi/Banco van en la sublínea (no salen de caja).
+   * M/T: solo caja del lado.
+   */
   const cierrePrestamosTotal = historyDayChainT
     ? historyDayChainT.ownPrestamos
     : openRouteHistoryIndependentDay
-      ? openRouteHistoryIndependentDay.day.prestamosRuta
+      ? openRouteHistoryIndependentDay.day.prestamos
       : openRouteHistoryDayExpenseSplit.prestamosTotal;
+  const cierrePrestamosDigital = openRouteHistoryIndependentDay
+    ? openRouteHistoryIndependentDay.day.prestamosDigital
+    : 0;
+  const cierreCajaLabel = "Caja (inicial + efectivo − gastos − préstamos)";
   const cierreGastos = historyDayChainT
     ? historyDayChainT.ownGastoLines
     : openRouteHistoryDayExpenseSplit.otros;
@@ -5611,6 +5656,12 @@ export function SupervisorMobileApp({
                 >
                   <span>Lo que prestó</span>
                   <b>{money(cierrePrestamosTotal)}</b>
+                  {cierrePrestamosDigital > 0 ? (
+                    <em className="is-loan-split">
+                      + {openRouteIsA ? "Nequi" : "Banco"}{" "}
+                      {money(cierrePrestamosDigital, { symbol: false })} · no sale de caja
+                    </em>
+                  ) : null}
                 </button>
                 <button
                   type="button"
@@ -5770,7 +5821,7 @@ export function SupervisorMobileApp({
                     <em className="collector-cierre-np-count">{cierreNpRows.length}</em>
                   </button>
                   <div className="is-saldo">
-                    <span>Caja (inicial + efectivo − gastos − préstamos)</span>
+                    <span>{cierreCajaLabel}</span>
                     <b>{money(openRouteHistoryDayCuadre.enCaja)}</b>
                   </div>
                 </div>

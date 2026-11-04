@@ -2049,6 +2049,17 @@
     .collector-mobile-home-cuadre-grid.is-inicio-triple .is-gastos b {
       font-size: 13px;
     }
+    /* A/N: Prestó (caja) + Nequi/Banco que no sale de caja. */
+    .collector-mobile-home-cuadre-grid .is-prestamos em.is-loan-split {
+      display: block;
+      margin-top: 3px;
+      font-style: normal;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.25;
+      color: #1e4f72;
+      white-space: normal;
+    }
     .collector-mobile-home-cuadre-grid.is-inicio-triple .is-cobrado,
     .collector-mobile-home-cuadre-grid.is-inicio-triple .is-saldo {
       grid-column: 1 / -1;

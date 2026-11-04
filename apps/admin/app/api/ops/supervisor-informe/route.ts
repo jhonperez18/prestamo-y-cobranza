@@ -6,18 +6,27 @@ export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
 const HARD_MS = 12_000;
+const FRESH_MS = 45_000;
 
-/** Informe del mes, con cada préstamo (referencia, ruta, método, capital). Sin caché. No escribe. */
+/**
+ * Informe del mes (Cobrado / Préstamo / Gasto) leído en el servidor desde Supabase.
+ * `?fresh=1` fuerza recálculo (préstamos de ayer, cobros y gastos al día).
+ * No escribe en el celular: solo responde JSON al supervisor / panel.
+ */
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const from = url.searchParams.get("from") || "";
     const to = url.searchParams.get("to") || "";
+    const fresh =
+      url.searchParams.get("fresh") === "1" ||
+      url.searchParams.get("fresh") === "true";
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const hardMs = fresh ? FRESH_MS : HARD_MS;
     const result = await Promise.race([
-      loadSupervisorInforme(from, to),
+      loadSupervisorInforme(from, to, { fresh }),
       new Promise<{ ok: false; error: string }>((resolve) => {
-        timer = setTimeout(() => resolve({ ok: false, error: "informe_timeout" }), HARD_MS);
+        timer = setTimeout(() => resolve({ ok: false, error: "informe_timeout" }), hardMs);
       }),
     ]);
     if (timer) clearTimeout(timer);

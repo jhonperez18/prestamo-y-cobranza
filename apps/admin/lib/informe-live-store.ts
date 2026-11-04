@@ -51,11 +51,19 @@ export async function readInformeLive(
   await ensureLoaded();
   if (!memory) return null;
   if (memory.from === from && memory.to === to) return memory;
-  // Mismo mes: sirve aunque el "to" del sello sea un día anterior (hoy recién empieza).
+  // Mismo mes y rango cubierto: sirve de puente mientras la base refresca.
+  // Si el sello termina antes de `to` (falta hoy), igual se puede pintar — el
+  // loader marca stale y recalcula; no inventar días que el sello no trae.
   if (memory.from === from && memory.to <= to && memory.to.slice(0, 7) === to.slice(0, 7)) {
     return memory;
   }
   return null;
+}
+
+/** Invalida el sello en memoria (p. ej. tras un fresh forzado). */
+export function clearInformeLiveMemory() {
+  memory = null;
+  loaded = true;
 }
 
 export async function writeInformeLive(snap: Omit<InformeLiveSnap, "at">): Promise<void> {

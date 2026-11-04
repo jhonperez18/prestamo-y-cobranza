@@ -60,14 +60,16 @@ function fail(error: string): SupervisorInformeResult {
   return { ok: false, error };
 }
 
-const INFORME_CACHE_TTL_MS = 90_000;
+const INFORME_CACHE_TTL_MS = 45_000;
+/** Disco / memoria solo aceleran la 1.ª pintura; no pueden congelar el mes vivo. */
+const INFORME_DISK_MAX_AGE_MS = 120_000;
 const informeCache = new Map<
   string,
   { at: number; result: Extract<SupervisorInformeResult, { ok: true }> }
 >();
 const refreshing = new Set<string>();
 
-async function computeSupervisorInforme(
+export async function computeSupervisorInforme(
   from: string,
   to: string,
 ): Promise<SupervisorInformeResult> {
@@ -313,10 +315,18 @@ function refreshInformeInBackground(from: string, to: string, cacheKey: string) 
 export async function loadSupervisorInforme(
   from: string,
   to: string,
+  opts?: { fresh?: boolean },
 ): Promise<SupervisorInformeResult> {
   const span = daySpan(from, to);
   if (span == null || span > MAX_DAYS) return fail("bad_range");
   const cacheKey = `${from}|${to}`;
+  const forceFresh = Boolean(opts?.fresh);
+
+  if (forceFresh) {
+    const fresh = await computeSupervisorInforme(from, to);
+    if (fresh.ok) rememberInforme(cacheKey, fresh);
+    return fresh;
+  }
 
   const warm = informeCache.get(cacheKey);
   if (warm && Date.now() - warm.at < INFORME_CACHE_TTL_MS) {
@@ -326,6 +336,11 @@ export async function loadSupervisorInforme(
 
   const disk = await readInformeLive(from, to);
   if (disk) {
+    const diskAt = Date.parse(String(disk.at || "")) || 0;
+    const diskStale =
+      !Number.isFinite(diskAt) ||
+      Date.now() - diskAt > INFORME_DISK_MAX_AGE_MS ||
+      disk.to < to;
     const result: Extract<SupervisorInformeResult, { ok: true }> = {
       ok: true,
       from: disk.from,
@@ -333,8 +348,10 @@ export async function loadSupervisorInforme(
       general: disk.general,
       angelica: disk.angelica,
     };
-    // Sirve al instante; la base actualiza atrás.
-    informeCache.set(cacheKey, { at: Date.now(), result });
+    // Puente rápido. Si el sello está viejo no lo metemos en memoria caliente.
+    if (!diskStale) {
+      informeCache.set(cacheKey, { at: Date.now(), result });
+    }
     refreshInformeInBackground(from, to, cacheKey);
     return result;
   }
