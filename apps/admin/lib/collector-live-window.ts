@@ -1,10 +1,12 @@
 /**
  * App del cobrador: solo mueve el día (planilla + cobros de hoy).
+ * App del supervisor: ciclo vivo = hoy + ayer; historial a demanda (sin libro en disco).
  * El historial se lee a demanda; no se sube ni se baja en el ciclo vivo.
  */
 import { readSession } from "@/lib/auth";
 import { BIG_DEMO_STORE_CHANGED_EVENT } from "@/lib/big-demo-store";
 import { businessTodayIso } from "@/lib/business-timezone";
+import { previousCalendarIso } from "@/lib/collector-day-auto-close";
 import { syncAllLoans, syncLoan } from "@/lib/loan-preview";
 import { finalizeSupersededLoans } from "@/lib/route-sync";
 import {
@@ -19,7 +21,7 @@ export function isCollectorLiveDevice(): boolean {
   return readSession()?.roleRef === COLLECTOR_ROLE_REF;
 }
 
-/** App supervisor: tiene que bajar el sistema entero; no reenviar la planilla. */
+/** App supervisor: visor vivo (hoy+ayer); no reenviar la planilla ni guardar historia. */
 export function isSupervisorLiveDevice(): boolean {
   if (typeof window === "undefined") return false;
   return readSession()?.roleRef === SUPERVISOR_ROLE_REF;
@@ -27,6 +29,11 @@ export function isSupervisorLiveDevice(): boolean {
 
 export function collectorLiveDayIso(now = new Date()): string {
   return businessTodayIso(now);
+}
+
+/** Inicio de la ventana viva del supervisor (ayer Bogotá). */
+export function supervisorLiveFromIso(now = new Date()): string {
+  return previousCalendarIso(businessTodayIso(now));
 }
 
 export function readIsoDateParam(request: Request, name: string): string | null {

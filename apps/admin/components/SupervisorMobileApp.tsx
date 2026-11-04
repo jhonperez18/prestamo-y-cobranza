@@ -101,7 +101,10 @@ import { canRenewLoan } from "@/lib/loan-renew";
 import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
-import { loadSupervisorHistoryPayments } from "@/lib/supervisor-book";
+import {
+  clearSupervisorHistoryPaymentsCache,
+  loadSupervisorHistoryPayments,
+} from "@/lib/supervisor-book";
 import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
 import { useRouteCashBook } from "@/lib/use-route-cash-book";
 import { getCloudChainMOpening } from "@/lib/cloud-chain-m-opening";
@@ -1518,17 +1521,6 @@ export function SupervisorMobileApp({
   const [routeReturnView, setRouteReturnView] = useState<SupervisorView>("inicio");
   const [detailMode, setDetailMode] = useState<RouteDetailMode>("totales");
   const [historyBookPayments, setHistoryBookPayments] = useState<PaymentRow[] | null>(null);
-  useEffect(() => {
-    if (!supervisorDirect) return;
-    if (detailMode !== "historial" && detailMode !== "historial-dia") return;
-    let cancel = false;
-    void loadSupervisorHistoryPayments().then((rows) => {
-      if (!cancel && rows && rows.length > 0) setHistoryBookPayments(rows);
-    });
-    return () => {
-      cancel = true;
-    };
-  }, [supervisorDirect, detailMode]);
   const [cobrosMethodFilter, setCobrosMethodFilter] = useState<PaymentMethod | null>(null);
   /** Día ISO seleccionado en historial Nequi de una ruta. */
   const [nequiDayIso, setNequiDayIso] = useState<string | null>(null);
@@ -1544,6 +1536,39 @@ export function SupervisorMobileApp({
   const [cajaHistoryNav, setCajaHistoryNav] = useState<"detallado" | "meses" | "mes">("detallado");
   /** Período `YYYY-MM` abierto dentro de historial (ej. 2026-10). */
   const [cajaHistoryPeriodPick, setCajaHistoryPeriodPick] = useState<string | null>(null);
+  useEffect(() => {
+    if (!supervisorDirect) return;
+    if (detailMode !== "historial" && detailMode !== "historial-dia") {
+      setHistoryBookPayments(null);
+      clearSupervisorHistoryPaymentsCache();
+      return;
+    }
+    // Solo el período abierto (mes vivo o mes del historial). No el libro 01/10→hoy.
+    const viewingPastMonth = cajaHistoryNav === "mes" && Boolean(cajaHistoryPeriodPick);
+    const period = viewingPastMonth
+      ? (cajaHistoryPeriodPick as string)
+      : periodFromDateIso(today);
+    const periodStart = `${period}-01`;
+    const from =
+      periodStart >= ROUTE_CASH_BOOK_FROM ? periodStart : ROUTE_CASH_BOOK_FROM;
+    const to = viewingPastMonth
+      ? lastCalendarDayOfPeriod(period) || from
+      : today;
+    let cancel = false;
+    void loadSupervisorHistoryPayments(from, to).then((rows) => {
+      if (cancel) return;
+      setHistoryBookPayments(rows && rows.length > 0 ? rows : []);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [
+    supervisorDirect,
+    detailMode,
+    cajaHistoryNav,
+    cajaHistoryPeriodPick,
+    today,
+  ]);
   /** Cajas A/N del mes bajadas para el historial (route_own_box). */
   const [histOwnBoxEpoch, setHistOwnBoxEpoch] = useState(0);
   /** Historial · T: formulario de ajuste de saldo real abierto (cobrador del CIE-). */

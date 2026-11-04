@@ -10,6 +10,7 @@ import {
   collectorLiveDayIso,
   isCollectorLiveDevice,
   isSupervisorLiveDevice,
+  supervisorLiveFromIso,
   withDateWindowParam,
 } from "@/lib/collector-live-window";
 import { createIncrementalPull, resumeSinceIso, withSinceParam } from "@/lib/incremental-pull";
@@ -919,10 +920,12 @@ export async function pullRemoteEvidenceIntoIdb(): Promise<{
 }> {
   if (typeof window === "undefined") return { parked: 0, failed: false };
   try {
-    const evidenceUrl = withDateWindowParam(
-      "/api/payments?evidence=1",
-      isCollectorLiveDevice() ? collectorLiveDayIso() : null,
-    );
+    const evidenceFrom = isCollectorLiveDevice()
+      ? collectorLiveDayIso()
+      : isSupervisorLiveDevice()
+        ? supervisorLiveFromIso()
+        : null;
+    const evidenceUrl = withDateWindowParam("/api/payments?evidence=1", evidenceFrom);
     const res = await fetch(evidenceUrl, { method: "GET", cache: "no-store" });
     const body = (await res.json()) as {
       ok?: boolean;
@@ -960,19 +963,24 @@ export async function reconcilePaymentEvidenceToRemote(): Promise<{
     return { pushed: 0, failed: 0, pending: 0, errors: [] };
   }
 
-  const liveDay = isCollectorLiveDevice() ? collectorLiveDayIso() : null;
+  const liveFrom = isCollectorLiveDevice()
+    ? collectorLiveDayIso()
+    : isSupervisorLiveDevice()
+      ? supervisorLiveFromIso()
+      : null;
   const local = readDemoJson<PaymentRow[]>(DEMO_PAYMENTS_KEY, [])
     .filter((row) => row?.ref)
-    .filter((row) => !liveDay || row.paidDate === liveDay)
+    .filter((row) => {
+      if (!liveFrom) return true;
+      const day = normalizeHistoryDate(row.paidDate || "") || String(row.paidDate || "").slice(0, 10);
+      return day >= liveFrom;
+    })
     .map(withPaymentEvidence)
     .filter((row) => evidenceHasPreview(row.evidence));
   if (!local.length) return { pushed: 0, failed: 0, pending: 0, errors: [] };
 
   try {
-    const evidenceUrl = withDateWindowParam(
-      "/api/payments?evidence=1",
-      isCollectorLiveDevice() ? collectorLiveDayIso() : null,
-    );
+    const evidenceUrl = withDateWindowParam("/api/payments?evidence=1", liveFrom);
     const res = await fetch(evidenceUrl, { method: "GET", cache: "no-store" });
     const body = (await res.json()) as {
       ok?: boolean;
@@ -1193,8 +1201,17 @@ export async function pullRemotePaymentsIntoDemo(
   const force =
     Boolean(opts.full) || (!paymentsPull.hasCursor() && localPayments.length === 0);
   const since = paymentsPull.sinceFor(force) ?? (force ? null : resumeSinceIso());
-  const fromDate = !since && isCollectorLiveDevice() ? collectorLiveDayIso() : null;
-  const result = await mergeRemotePayments(since, fromDate);
+  // Cobrador = solo hoy. Supervisor = hoy+ayer (historia a demanda, sin libro en disco).
+  const fromDate = !since
+    ? isCollectorLiveDevice()
+      ? collectorLiveDayIso()
+      : isSupervisorLiveDevice()
+        ? supervisorLiveFromIso()
+        : null
+    : null;
+  const toDate =
+    !since && isSupervisorLiveDevice() ? collectorLiveDayIso() : null;
+  const result = await mergeRemotePayments(since, fromDate, toDate);
   paymentsPull.settle(
     { ok: result.ok && !result.skipped, full: Boolean(result.full), cursor: result.cursor },
     startedAt,
@@ -1237,11 +1254,27 @@ async function mergeRemotePayments(
     }
     const mergedPayments = mergePaymentsByRef(local, remote, readMirrorQueue());
     let { merged, added, changed } = mergedPayments;
-    // Libro entero: el cobro que la base no tiene y este celular no está subiendo no se sigue viendo.
+    // Libro entero (legado): el cobro que la base no tiene y este celular no está subiendo no se sigue viendo.
     if (body.full && !fromDate && isSupervisorLiveDevice() && remote.length > 0) {
       const remoteRefs = new Set(remote.map((row) => row.ref));
       const queued = new Set(readMirrorQueue().map((row) => row.ref));
       const kept = merged.filter((row) => remoteRefs.has(row.ref) || queued.has(row.ref));
+      if (kept.length !== merged.length) {
+        merged = kept;
+        changed = true;
+      }
+    }
+    // Ventana viva del supervisor (hoy+ayer): suelta historia del disco; la cola se conserva.
+    if (fromDate && isSupervisorLiveDevice()) {
+      const queued = new Set(readMirrorQueue().map((row) => row.ref));
+      const kept = merged.filter((row) => {
+        if (!row.ref) return false;
+        if (queued.has(row.ref)) return true;
+        const day = normalizeHistoryDate(row.paidDate || "") || String(row.paidDate || "").slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return true;
+        if (toDate) return day >= fromDate && day <= toDate;
+        return day >= fromDate;
+      });
       if (kept.length !== merged.length) {
         merged = kept;
         changed = true;

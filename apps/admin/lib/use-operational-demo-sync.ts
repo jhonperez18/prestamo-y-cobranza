@@ -15,7 +15,10 @@ import { bindMoneyRealtime, type RealtimeMoneyTable } from "@/lib/realtime-money
 import { businessTodayIso } from "@/lib/business-timezone";
 import { isCollectorLiveDevice, isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import { releaseClosedDaysOnDevice } from "@/lib/collector-device-release";
-import { loadSupervisorBookFromCloud } from "@/lib/supervisor-book";
+import {
+  loadSupervisorBookFromCloud,
+  trimSupervisorLiveLocalCache,
+} from "@/lib/supervisor-book";
 import {
   fillTodayPaymentsIntoDemo,
   mergePaymentsWindowIntoDemo,
@@ -364,8 +367,10 @@ export function useOperationalDemoSync(
     } finally {
       if (isSupervisorLiveDevice()) {
         try {
+          // Primero suelta historia gorda del disco (hoy+ayer); después PV- livianos.
+          const trimmed = trimSupervisorLiveLocalCache();
           const book = await loadSupervisorBookFromCloud();
-          if (book) commitHydrate();
+          if (trimmed || book) commitHydrate();
         } catch (error) {
           console.error("supervisor-book", error);
         }

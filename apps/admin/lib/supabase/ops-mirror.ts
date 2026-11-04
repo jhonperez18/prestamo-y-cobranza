@@ -34,6 +34,7 @@ import {
   collectorLiveDayIso,
   isCollectorLiveDevice,
   isSupervisorLiveDevice,
+  supervisorLiveFromIso,
   withDateWindowParam,
 } from "@/lib/collector-live-window";
 import { createIncrementalPull, resumeSinceIso, withSinceParam } from "@/lib/incremental-pull";
@@ -2444,8 +2445,17 @@ export async function pullRemoteOpsIntoDemo(
   const force = Boolean(opts.full) || localEmpty;
   const since = opsPull.sinceFor(force) ?? (force ? null : resumeSinceIso());
   const startedAt = Date.now();
-  const fromDate = !since && isCollectorLiveDevice() ? collectorLiveDayIso() : null;
-  const result = await pullOpsBundle(since, fromDate);
+  // Cobrador = solo hoy. Supervisor = hoy+ayer (planilla/gastos); CIE sigue completo.
+  const fromDate = !since
+    ? isCollectorLiveDevice()
+      ? collectorLiveDayIso()
+      : isSupervisorLiveDevice()
+        ? supervisorLiveFromIso()
+        : null
+    : null;
+  const toDate =
+    !since && isSupervisorLiveDevice() ? collectorLiveDayIso() : null;
+  const result = await pullOpsBundle(since, fromDate, toDate);
   opsPull.settle(
     {
       ok: result.ok && result.reason !== "skipped",
@@ -2597,8 +2607,29 @@ async function pullOpsBundle(
       readDemoJson<CollectorDayExpenseDraft[]>(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []),
       expenses,
     );
-    if (eMerge.changed) {
-      persist(DEMO_COLLECTOR_DAY_EXPENSES_KEY, eMerge.merged);
+    let expenseMerged = eMerge.merged;
+    let expenseChanged = eMerge.changed;
+    // Supervisor ventana viva: suelta gastos viejos del disco (cola se conserva).
+    if (fromDate && isSupervisorLiveDevice()) {
+      const queuedExpense = new Set(
+        readDemoJson<{ ref?: string }[]>(Q_EXPENSES, [])
+          .map((row) => row.ref)
+          .filter((ref): ref is string => Boolean(ref)),
+      );
+      const trimmed = expenseMerged.filter((row) => {
+        if (queuedExpense.has(row.ref)) return true;
+        const day = normalizeHistoryDate(row.date) || row.date;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return true;
+        if (toDate) return day >= fromDate && day <= toDate;
+        return day >= fromDate;
+      });
+      if (trimmed.length !== expenseMerged.length) {
+        expenseMerged = trimmed;
+        expenseChanged = true;
+      }
+    }
+    if (expenseChanged) {
+      persist(DEMO_COLLECTOR_DAY_EXPENSES_KEY, expenseMerged);
       changed = true;
     }
 
@@ -2816,9 +2847,19 @@ async function pullOpsBundle(
       );
     }
     // Si el CIE- ya llegó y la planilla local sigue abierta (cola / flush a medias), sellar.
-    const healed = assignmentsInPlanillaWindow(
-      applyDayCloseRecordsToAssignments(stamped, clMerge.merged),
-    );
+    const sealedAssign = applyDayCloseRecordsToAssignments(stamped, clMerge.merged);
+    // Supervisor hoy+ayer: suelta planilla vieja. Cobrador / panel: ventana 45 d.
+    const healed =
+      fromDate && isSupervisorLiveDevice()
+        ? sealedAssign.filter((row) => {
+            const key = `${row.dispatchDate}::${row.itemId}`;
+            if (pendingAssign.has(key)) return true;
+            const day = normalizeHistoryDate(row.dispatchDate) || row.dispatchDate;
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return true;
+            if (toDate) return day >= fromDate && day <= toDate;
+            return day >= fromDate;
+          })
+        : assignmentsInPlanillaWindow(sealedAssign);
     for (const row of healed) {
       if (!row.dayClosedAt) continue;
       const key = `${row.dispatchDate}::${row.itemId}`;
