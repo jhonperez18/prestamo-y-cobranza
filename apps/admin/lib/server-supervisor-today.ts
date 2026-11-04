@@ -46,7 +46,8 @@ export async function loadSupervisorToday(
   // si hubo días sin sellar (caso nov-2026: último CIE 31/10).
   const closesFrom = businessDaysAgoIso(14, new Date(`${date}T12:00:00-05:00`));
   // Cada pieza con tope propio: una tabla lenta no deja al jefe sin gastos/préstamos.
-  const pieceMs = 10_000;
+  // 18 s: con red a Supabase fría, 10 s dejaba supervisor_today_all_failed en falso.
+  const pieceMs = 18_000;
   const [paymentsT, assignsT, closesT, expensesT] = await Promise.all([
     withTimeout(fetchPaymentsFromSupabase({ fromDate: date, toDate: date }), pieceMs),
     withTimeout(fetchOpsTableSince("daily_assignments", "dispatch_date", date, date), pieceMs),

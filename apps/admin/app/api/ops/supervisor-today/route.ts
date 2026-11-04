@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-const HARD_MS = 14_000;
+const HARD_MS = 22_000;
 
 /** Hoja, cobros y CIE del día. Disco primero si la nube se cuelga. No escribe en ops. */
 export async function GET() {
