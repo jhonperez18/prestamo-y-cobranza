@@ -16,6 +16,8 @@ import {
 } from "@/lib/independent-route-cash";
 import { useRouteCashBook } from "@/lib/use-route-cash-book";
 import { useRouteSheet } from "@/lib/use-route-sheet";
+import { getCloudChainMOpening } from "@/lib/cloud-chain-m-opening";
+import { getCloudDayCashFigure } from "@/lib/cloud-day-cash-figure";
 import { syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import type { QuickLoanDraft } from "@/lib/street-client-loan";
@@ -843,11 +845,6 @@ export function CollectorMobileApp({
         cashBookFor(routeForHistory),
       );
     }
-    if (!isPlanillaCashChainSecondary(routeForHistory ?? undefined)) {
-      return routeForHistory
-        ? withRouteCobradoHistory(stamped, cobradoSrc, routeForHistory)
-        : stamped;
-    }
     const todayDate = date ?? todayIso();
     const todayLedger = buildDayCashLedger({
       collectorRef: collector.ref,
@@ -864,10 +861,16 @@ export function CollectorMobileApp({
       monthCloses,
       fallbackOpening:
         todayDate === PLANILLA_CASH_CHAIN_HISTORY_EPOCH ? mCarriedFallbackOpening : undefined,
+      holdLocalCieUntilCloud:
+        !getCloudChainMOpening(collector.ref, todayDate)?.ready &&
+        !getCloudDayCashFigure(collector.ref, todayDate)?.ready,
     });
+    // M y T: días sellados leen CIE; hoy lee el libro (Inicial = nube, no 5.428k).
     const withSaldo = withLedgerTodaySaldo(
       withSealedDaySaldos(stamped, collector.ref, dayCloses, todayDate),
-      todayLedger,
+      isPlanillaCashChainPrimary(routeForHistory ?? undefined)
+        ? { ...todayLedger, dayFinal: todayLedger.mClosing }
+        : todayLedger,
     );
     return routeForHistory
       ? withRouteCobradoHistory(withSaldo, cobradoSrc, routeForHistory)
@@ -893,6 +896,8 @@ export function CollectorMobileApp({
     primaryClosingFor,
     routeOptions,
     viewPeriod,
+    dayCashFigureEpoch,
+    cloudCashEpoch,
   ]);
 
   const closedHistoryDates = useMemo(() => {
@@ -1030,19 +1035,34 @@ export function CollectorMobileApp({
   const planillaIsChain =
     sameRoute(activePlanillaRoute ?? "", "M") || sameRoute(activePlanillaRoute ?? "", "T");
 
-  /** Caja M/T desde la base (Fase 3.2): Cierre e Historial leen la misma cifra. */
+  /** Caja M/T + Inicial desde la base: no pintar CIE local fantasma (5.428k). */
   const [dayCashFigureEpoch, setDayCashFigureEpoch] = useState(0);
   useEffect(() => {
     let alive = true;
-    void import("@/lib/cloud-day-cash-figure").then(({ refreshCloudDayCashFigure }) => {
-      void refreshCloudDayCashFigure(collector.ref, activeDate).then((row) => {
-        if (alive && row) setDayCashFigureEpoch((n) => n + 1);
+    void Promise.all([
+      import("@/lib/cloud-day-cash-figure"),
+      import("@/lib/cloud-chain-m-opening"),
+    ]).then(([{ refreshCloudDayCashFigure }, { refreshCloudChainMOpening }]) => {
+      void Promise.all([
+        refreshCloudDayCashFigure(collector.ref, activeDate),
+        refreshCloudChainMOpening(collector.ref, activeDate),
+      ]).then((rows) => {
+        if (alive && rows.some(Boolean)) setDayCashFigureEpoch((n) => n + 1);
       });
     });
     return () => {
       alive = false;
     };
   }, [collector.ref, activeDate]);
+
+  const holdLocalCieUntilCloud = useMemo(() => {
+    // Mientras la base no conteste, no usar CIE local (caso 5.428k).
+    const opening = getCloudChainMOpening(collector.ref, activeDate);
+    const figure = getCloudDayCashFigure(collector.ref, activeDate);
+    if (opening?.ready && opening.opening != null) return false;
+    if (figure?.ready && figure.opening != null) return false;
+    return true;
+  }, [collector.ref, activeDate, dayCashFigureEpoch, cloudCashEpoch]);
 
   /**
    * Libro de caja del día (único dueño del saldo): Inicial M = CIE de ayer;
@@ -1067,6 +1087,7 @@ export function CollectorMobileApp({
           activeDate === PLANILLA_CASH_CHAIN_HISTORY_EPOCH
             ? mCarriedFallbackOpening
             : undefined,
+        holdLocalCieUntilCloud,
       }),
     [
       activeDate,
@@ -1082,6 +1103,7 @@ export function CollectorMobileApp({
       planillaCashCloses,
       dayCashFigureEpoch,
       cloudCashEpoch,
+      holdLocalCieUntilCloud,
     ],
   );
   const primaryLiveClosing = dayLedger.mClosing;
@@ -1102,6 +1124,7 @@ export function CollectorMobileApp({
           activeDate === PLANILLA_CASH_CHAIN_HISTORY_EPOCH
             ? mCarriedFallbackOpening
             : undefined,
+        holdLocalCieUntilCloud,
       }),
     [
       activeDate,
@@ -1113,6 +1136,8 @@ export function CollectorMobileApp({
       planillaCashCloses,
       primaryLiveClosing,
       cloudCashEpoch,
+      dayCashFigureEpoch,
+      holdLocalCieUntilCloud,
     ],
   );
   const chainCloseGuard = useMemo(
@@ -1847,26 +1872,33 @@ export function CollectorMobileApp({
         ? dayLedger.dayFinal
         : dayLedger.mClosing
       : null;
-  /** Inicial: cadena M/T si aplica; A / N = caja propia; resto sin cruzar. */
+  /** Inicial: libro (nube) manda; si no, cadena; A/N = caja propia. */
   const headerInicial =
-    chainOpening.kind === "chain"
-      ? chainOpening.opening
-      : ownRouteDay
-        ? ownRouteDay.opening
-        : isPrimaryPlanilla
-          ? dayCuadre.saldoInicial
-          : 0;
-  const headerInicialReady = chainOpening.kind !== "chain" || chainOpening.ready;
+    dayLedger.mOpening.kind === "chain" && dayLedger.mOpening.ready
+      ? dayLedger.mOpening.opening
+      : chainOpening.kind === "chain"
+        ? chainOpening.opening
+        : ownRouteDay
+          ? ownRouteDay.opening
+          : isPrimaryPlanilla
+            ? dayCuadre.saldoInicial
+            : 0;
+  const headerInicialReady =
+    (dayLedger.mOpening.kind === "chain" && dayLedger.mOpening.ready) ||
+    chainOpening.kind !== "chain" ||
+    chainOpening.ready;
   const headerInicialProvisional =
-    chainOpening.kind === "chain" && Boolean(chainOpening.provisional);
+    !(dayLedger.mOpening.kind === "chain" && dayLedger.mOpening.ready) &&
+    chainOpening.kind === "chain" &&
+    Boolean(chainOpening.provisional);
   const headerInicialTitle =
-    chainOpening.kind === "chain"
-      ? chainOpening.ready
+    !headerInicialReady
+      ? "Cargando Inicial de la base…"
+      : chainOpening.kind === "chain"
         ? headerInicialProvisional
           ? `Momentáneo · se fija al cerrar ${PLANILLA_CASH_CHAIN_PRIMARY}`
-          : "Saldo inicial fijo"
-        : chainOpening.blockReason
-      : undefined;
+          : "Saldo inicial fijo (= CIE de ayer)"
+        : undefined;
   /** Caja de la planilla (la que pasa como Inicial al otro día): una sola cifra para cuadre y cabecera. */
   const cajaShown =
     planillaCaja != null
@@ -1975,8 +2007,27 @@ export function CollectorMobileApp({
       monthCloses,
       primaryClosingFor: closingFor,
       book: mCashBook,
+      holdLocalCieUntilCloud,
+      sealPastFromBook: true,
     });
-    return historyRowsFromBook(annotated, mCashBook, today, viewPeriod, (day, label) => ({
+    // Hoy: si la base ya dio mClosing, esa es la Caja de M (no 5.428k + movimiento local).
+    const cloudToday = getCloudDayCashFigure(collector.ref, today);
+    const patched =
+      cloudToday?.ready && cloudToday.opening != null && cloudToday.mClosing != null
+        ? annotated.map((row) =>
+            row.date === today
+              ? {
+                  ...row,
+                  inicial: cloudToday.opening,
+                  saldoShown: cloudToday.mClosing,
+                  gasto: cloudToday.mGastos ?? row.gasto,
+                  prestamo: cloudToday.mPrestamos ?? row.prestamo,
+                  cobro: cloudToday.mEfectivo ?? row.cobro,
+                }
+              : row,
+          )
+        : annotated;
+    return historyRowsFromBook(patched, mCashBook, today, viewPeriod, (day, label) => ({
       date: day.date,
       dateLabel: label,
       cobro: day.cobrado ?? day.efectivo,
@@ -1997,6 +2048,9 @@ export function CollectorMobileApp({
     primaryClosingFor,
     showMInicialColumn,
     viewPeriod,
+    holdLocalCieUntilCloud,
+    dayCashFigureEpoch,
+    cloudCashEpoch,
   ]);
 
   return (

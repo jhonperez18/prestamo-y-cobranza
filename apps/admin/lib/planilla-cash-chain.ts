@@ -25,6 +25,7 @@ import {
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
 import { getCloudChainMOpening } from "@/lib/cloud-chain-m-opening";
+import { getCloudDayCashFigure } from "@/lib/cloud-day-cash-figure";
 import { sameRoute } from "@/lib/client-route-order";
 import { pesos } from "@/lib/finance";
 
@@ -450,7 +451,7 @@ export function openingCashForChainedPlanilla(input: {
   // ─── INVARIANTE SAGRADA (regla de inicio) ─────────────────────────
   // Si existe CIE- del día anterior, ESE cash_float es el Inicial de M.
   // Un PCE local jamás lo pisa. Fallo que ya dañó: taller 2.704k vs Vercel 2.090k.
-  // Fase 3.1: si la base ya contestó chain_m_opening, esa cifra manda.
+  // Fase 3.1 / 3.2: chain_m_opening o day_cash_figure de la base mandan.
   // Si aún no hay respuesta en caché y el caller pidió no usar CIE local
   // (`holdLocalCieUntilCloud`), no pintar un Inicial fantasma (5.428k → 82k).
   const cloudOpening = getCloudChainMOpening(input.collectorRef, date);
@@ -472,6 +473,15 @@ export function openingCashForChainedPlanilla(input: {
         blockReason: missingCieMessage(cloudOpening.missingDay),
       };
     }
+  }
+  const cloudFigure = getCloudDayCashFigure(input.collectorRef, date);
+  if (cloudFigure?.ready && cloudFigure.opening != null) {
+    return {
+      kind: "chain",
+      opening: pesos(cloudFigure.opening),
+      ready: true,
+      provisional: false,
+    };
   }
   if (input.holdLocalCieUntilCloud) {
     return {
