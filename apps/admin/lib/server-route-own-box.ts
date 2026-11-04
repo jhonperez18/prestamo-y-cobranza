@@ -100,6 +100,30 @@ function cachedRow(collectorRef: string, date: string, route: string): OkBox | n
   };
 }
 
+/**
+ * N ya sellada: el CIE es la caja (Yesid no hace M/T).
+ * Una sola fila day_closes — sin bajar planilla. A espera la migración SQL
+ * (su CIE puede ser cadena M/T el mismo día).
+ */
+async function sealedNCieFloat(
+  collectorRef: string,
+  date: string,
+): Promise<number | null> {
+  const client = createSupabaseAdminClient();
+  if (!client) return null;
+  const { data: cie, error } = await client
+    .from("day_closes")
+    .select("cash_float")
+    .eq("collector_ref", collectorRef)
+    .eq("close_date", date)
+    .like("ref", "CIE-%")
+    .limit(1)
+    .maybeSingle();
+  if (error || !cie || cie.cash_float == null) return null;
+  const float = Math.trunc(Number(cie.cash_float));
+  return Number.isFinite(float) ? float : null;
+}
+
 async function rpcOnce(
   collectorRef: string,
   date: string,
@@ -107,13 +131,17 @@ async function rpcOnce(
 ): Promise<RouteOwnBoxResult> {
   const client = createSupabaseAdminClient();
   if (!client) return { ok: false, error: "sin_servicio" };
-  const { data, error } = await client.rpc("route_own_box", {
-    p_collector_ref: collectorRef,
-    p_date: date,
-    p_route: pin,
-  });
-  if (error) return { ok: false, error: error.message };
-  const body = data as {
+  const sealedPromise = pin === "N" ? sealedNCieFloat(collectorRef, date) : Promise.resolve(null);
+  const [rpc, sealed] = await Promise.all([
+    client.rpc("route_own_box", {
+      p_collector_ref: collectorRef,
+      p_date: date,
+      p_route: pin,
+    }),
+    sealedPromise,
+  ]);
+  if (rpc.error) return { ok: false, error: rpc.error.message };
+  const body = rpc.data as {
     ok?: boolean;
     route?: string;
     saldo?: number;
@@ -125,10 +153,12 @@ async function rpcOnce(
     anchor_real?: number;
     error?: string;
   } | null;
-  const saldo = Number(body?.saldo);
+  let saldo = Number(body?.saldo);
   if (!body || body.ok !== true || !Number.isFinite(saldo)) {
     return { ok: false, error: body?.error || "sin_caja" };
   }
+  // N sellada: CIE manda (estático). Sin CIE → fórmula viva de la RPC.
+  if (sealed != null) saldo = sealed;
   const efectivo = Math.trunc(Number(body.efectivo) || 0);
   const prestamos = Math.trunc(Number(body.prestamos) || 0);
   const gastos = Math.trunc(Number(body.gastos) || 0);
@@ -181,6 +211,30 @@ export async function readRouteOwnBox(
   await ensureDisk();
 
   const key = cacheKey(ref, date, pin);
+
+  // N sellada: si la caché no coincide con el CIE, no pintar saldo fantasma.
+  if (pin === "N") {
+    try {
+      const sealed = await sealedNCieFloat(ref, date);
+      if (sealed != null) {
+        const warm = cachedRow(ref, date, pin);
+        if (warm && warm.saldo === sealed) {
+          mem.set(key, { at: Date.now(), row: warm });
+          refreshInBackground(ref, date, pin);
+          return warm;
+        }
+        const result = await rpcOnce(ref, date, pin);
+        if (result.ok) {
+          remember(ref, date, result);
+          return result;
+        }
+        return result;
+      }
+    } catch (error) {
+      console.error("route-own-box-sealed-n", error);
+    }
+  }
+
   const memHit = mem.get(key);
   if (memHit && Date.now() - memHit.at < MEM_TTL_MS) {
     refreshInBackground(ref, date, pin);
