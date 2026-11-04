@@ -2,15 +2,18 @@
  * Guarda el informe del mes cuando la última ruta del último día de cobro ya cerró.
  * Corre en el sellado de las 23:35 y, si esa noche no quedó, en la revisión de la mañana.
  * No toca la caja ni el Inicial.
- * Mes ya sellado = historia estática (no se reescribe Banco/Nequi).
+ * Mes ya sellado = historia estática (no se reescribe Banco/Nequi ni cartera).
  */
 import { buildInformeMonthSnapshots } from "@/lib/server-informe-month-snapshot";
 import {
   informeMonthReady,
   informePeriodName,
   informeSnapshotDay,
+  withInformePoolSaldo,
 } from "@/lib/informe-month-snapshot";
 import type { OperationalDayState } from "@/lib/collector-day-auto-close";
+import { poolVisibleSaldo } from "@/lib/digital-pools";
+import { ROUTE_CASH_BOOK_FROM } from "@/lib/planilla-cash-chain";
 import { fetchBankAccountsFromSupabase } from "@/lib/supabase/bank-accounts-mirror";
 import { fetchOpsTable, rowToMisc } from "@/lib/supabase/ops-mirror";
 import {
@@ -18,6 +21,7 @@ import {
   writeInformeSnapshotOnce,
 } from "@/lib/supabase/informe-snapshot-mirror";
 import type { MiscPayment } from "@/lib/misc-payments";
+import type { BankAccount } from "@/lib/bank";
 import { loadOperationalStateFromCloud } from "@/lib/server-day-rollover";
 
 export type InformeSealResult = {
@@ -44,7 +48,7 @@ export async function maybeSealInformeMonth(input: {
   if (!general.ok) return { attempted: true, ok: false, day, error: general.error };
   if (!angelica.ok) return { attempted: true, ok: false, day, error: angelica.error };
 
-  /** Mes ya sellado = historia. No bajar libro ni realinear. */
+  /** Mes ya sellado = historia. No bajar libro ni realinear (contaminaba saldos vivos). */
   if (general.snapshot && angelica.snapshot) {
     return {
       attempted: true,
@@ -75,7 +79,7 @@ export async function maybeSealInformeMonth(input: {
   const miscPayments = (miscT.rows ?? [])
     .map(rowToMisc)
     .filter((row): row is MiscPayment => Boolean(row));
-  const accounts = accountsT.accounts;
+  const accounts = accountsT.accounts as BankAccount[];
 
   if (!informeMonthReady(loaded.state.assignments, loaded.state.clients, day)) {
     return { attempted: true, ok: true, day, skipped: "not_ready" };
@@ -119,11 +123,28 @@ export async function maybeSealInformeMonth(input: {
     miscPayments,
     accounts,
   });
+  /** Primer sello: Banco/Nequi = poolVisibleSaldo (misma cifra que home / mes vivo). */
+  const shared = {
+    payments: loaded.state.payments,
+    loans: loaded.state.loans,
+    clients: loaded.state.clients,
+    dayCloses: loaded.state.dayCloses,
+    miscPayments,
+    accounts,
+    fromIso: ROUTE_CASH_BOOK_FROM,
+    toIso: day,
+  };
+  const banco = poolVisibleSaldo({ ...shared, pool: "banco" });
+  const nequi = poolVisibleSaldo({ ...shared, pool: "nequi" });
+  const generalSnap = withInformePoolSaldo(built.general, banco);
+  const angelicaSnap = withInformePoolSaldo(built.angelica, nequi);
   const writes = await Promise.all([
-    general.snapshot ? Promise.resolve({ ok: true as const, kept: true as const }) : writeInformeSnapshotOnce(built.general),
+    general.snapshot
+      ? Promise.resolve({ ok: true as const, kept: true as const })
+      : writeInformeSnapshotOnce(generalSnap),
     angelica.snapshot
       ? Promise.resolve({ ok: true as const, kept: true as const })
-      : writeInformeSnapshotOnce(built.angelica),
+      : writeInformeSnapshotOnce(angelicaSnap),
   ]);
   const failed = writes.find((row) => !row.ok);
   if (failed && !failed.ok) {

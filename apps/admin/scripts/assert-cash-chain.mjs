@@ -2403,6 +2403,9 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       informeSnapSrc.includes("poolVisibleSaldo") &&
       informeSnapSrc.includes("ROUTE_CASH_BOOK_FROM") &&
       sealInformeSrc.includes("withInformePoolSaldo") &&
+      sealInformeSrc.includes('skipped: "already"') &&
+      !sealInformeSrc.includes("alignSealedInformePoolSaldos") &&
+      !sealInformeSrc.includes("writeInformeSnapshotUpsert") &&
       informeMonthSnapSrc.includes("El celular lee el sello") &&
       !informeSnapSrc.includes("bancoAcumuladoRutas") &&
       !bancoSrc.includes("getCloudDigitalPoolBalances") &&
