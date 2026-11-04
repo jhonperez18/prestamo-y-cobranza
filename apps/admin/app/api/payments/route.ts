@@ -2,10 +2,14 @@ import { fetchPaymentsFromSupabase } from "@/lib/supabase/payment-mirror";
 import { changedSinceCursor, readChangedSince } from "@/lib/supabase/changed-since";
 import { readIsoDateParam } from "@/lib/collector-live-window";
 import { jsonNoStore } from "@/lib/api-no-store";
+import { withHardTimeout } from "@/lib/server-catalog-disk-cache";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
+
+/** Tope: sin esto un GET de cobros colgaba el Next del VPS (Mensual / sync). */
+const HARD_MS = 15_000;
 
 /**
  * C3: lista cobros en public.payments para fusionar en el demo local.
@@ -25,13 +29,17 @@ export async function GET(request: Request) {
     const since = evidence || loanRef ? null : readChangedSince(request);
     const fromDate = since ? null : readIsoDateParam(request, "fromDate");
     const toDate = since ? null : readIsoDateParam(request, "toDate");
-    const result = await fetchPaymentsFromSupabase({
-      evidence,
-      since,
-      fromDate,
-      toDate,
-      loanRef: loanRef || null,
-    });
+    const result = await withHardTimeout(
+      fetchPaymentsFromSupabase({
+        evidence,
+        since,
+        fromDate,
+        toDate,
+        loanRef: loanRef || null,
+      }),
+      HARD_MS,
+      { ok: false as const, error: "payments_timeout", rows: [] },
+    );
     if ("skipped" in result && result.skipped) {
       return jsonNoStore({
         ok: true,
@@ -43,7 +51,7 @@ export async function GET(request: Request) {
     if (!result.ok) {
       return jsonNoStore(
         { ok: false, error: result.error, payments: [] },
-        { status: 502 },
+        { status: result.error === "payments_timeout" ? 504 : 502 },
       );
     }
     return jsonNoStore({ ok: true, incremental: Boolean(since), cursor, payments: result.rows });

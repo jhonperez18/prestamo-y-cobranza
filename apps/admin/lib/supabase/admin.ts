@@ -14,15 +14,20 @@ import { getSupabaseServiceEnv } from "@/lib/supabase/service-env";
  * Node < 22 sin WebSocket nativo: solo entonces se pasa `ws` a Realtime.
  */
 
+/**
+ * Un Agent por proceso, IPv4 forzado. keepAlive corto: un pool “muerto”
+ * no debe dejar el Next sin respuesta (caso VPS tras minutos).
+ */
 let undiciAgent: Agent | null = null;
 
 function getUndiciAgent(): Agent {
   if (!undiciAgent) {
     undiciAgent = new Agent({
-      connect: { family: 4, timeout: 20_000 },
-      keepAliveTimeout: 10_000,
-      keepAliveMaxTimeout: 30_000,
-      connections: 32,
+      connect: { family: 4, timeout: 15_000 },
+      keepAliveTimeout: 1_000,
+      keepAliveMaxTimeout: 5_000,
+      connections: 8,
+      pipelining: 1,
     });
   }
   return undiciAgent;
