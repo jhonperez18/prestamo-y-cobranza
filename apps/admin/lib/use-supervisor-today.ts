@@ -42,7 +42,7 @@ export function useSupervisorToday(enabled: boolean, refreshKey: string): Superv
     let alive = true;
     let lastOk = 0;
     const load = async (force: boolean) => {
-      if (!force && Date.now() - lastOk < 60_000) return;
+      if (!force && Date.now() - lastOk < 45_000) return;
       const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
       const timer =
         ctrl && typeof window !== "undefined"
@@ -76,12 +76,15 @@ export function useSupervisorToday(enabled: boolean, refreshKey: string): Superv
       }
     };
     void load(true);
+    // Cada 45 s: los cobros del celular entran al supervisor sin esperar cambio de pestaña.
+    const poll = window.setInterval(() => void load(false), 45_000);
     const onVisible = () => {
-      if (document.visibilityState === "visible") void load(false);
+      if (document.visibilityState === "visible") void load(true);
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       alive = false;
+      window.clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [enabled, refreshKey]);

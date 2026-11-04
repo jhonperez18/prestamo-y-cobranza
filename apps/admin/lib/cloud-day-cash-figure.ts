@@ -92,16 +92,19 @@ export function rememberCloudDayCashFigure(row: CloudDayCashFigure) {
   writePersisted(key, row);
 }
 
-export async function refreshCloudDayCashFigure(
-  collectorRef: string,
+async function fetchDayCashFigureOnce(
+  ref: string,
   date: string,
 ): Promise<CloudDayCashFigure | null> {
-  const ref = collectorRef.trim();
-  if (!ref || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer =
+    ctrl && typeof window !== "undefined"
+      ? window.setTimeout(() => ctrl.abort(), 12_000)
+      : 0;
   try {
     const res = await fetch(
       `/api/ops/day-cash-figure?collectorRef=${encodeURIComponent(ref)}&date=${encodeURIComponent(date)}`,
-      { cache: "no-store" },
+      { cache: "no-store", signal: ctrl?.signal },
     );
     const body = (await res.json()) as {
       ok?: boolean;
@@ -144,8 +147,23 @@ export async function refreshCloudDayCashFigure(
     };
     rememberCloudDayCashFigure(row);
     return row;
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
+}
+
+export async function refreshCloudDayCashFigure(
+  collectorRef: string,
+  date: string,
+): Promise<CloudDayCashFigure | null> {
+  const ref = collectorRef.trim();
+  if (!ref || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  try {
+    const first = await fetchDayCashFigureOnce(ref, date);
+    if (first) return first;
+    return await fetchDayCashFigureOnce(ref, date);
   } catch (error) {
     console.error("refreshCloudDayCashFigure", error);
-    return null;
+    return getCloudDayCashFigure(ref, date);
   }
 }

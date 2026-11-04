@@ -1907,10 +1907,6 @@ export function SupervisorMobileApp({
       const cobrado = dayCashSrc
         ? routeCobradoBreakdown(dayCashSrc, route.routeName)
         : { efectivo: 0, nequi: 0, banco: 0, digital: 0, total: 0, payments: [] };
-      const cobradoEfectivo = cobrado.efectivo;
-      const cobradoNequi = cobrado.nequi;
-      const cobradoBanco = cobrado.banco;
-      const cobradoHoy = cobrado.total;
 
       const rawExpenses = expensesForCollectorDay(
         collectorRef,
@@ -1918,7 +1914,7 @@ export function SupervisorMobileApp({
         dayClosesLive,
         expensesLive,
       );
-      // Cadena M↔T: cada planilla con sus propios préstamos y gastos (libro del día).
+      // Cadena M↔T: libro del día (day_cash_figure). Gana sobre la copia local a medias.
       const routeLedger = collectorRef ? ledgerByCollector.get(collectorRef) : undefined;
       const chainDay = !routeLedger?.chain
         ? null
@@ -1927,6 +1923,12 @@ export function SupervisorMobileApp({
           : isPlanillaCashChainPrimary(route.routeName)
             ? routeLedger.m
             : null;
+      // Efectivo M/T = lo que cobró el cobrador en la base (caso Enrique 30k).
+      // Banco/Nequi siguen del breakdown (la RPC no los parte por medio).
+      const cobradoEfectivo = chainDay != null ? chainDay.efectivo : cobrado.efectivo;
+      const cobradoNequi = cobrado.nequi;
+      const cobradoBanco = cobrado.banco;
+      const cobradoHoy = cobradoEfectivo + cobradoNequi + cobradoBanco;
       // A / N: caja propia (Inicial = saldo real del último ajuste + arrastre).
       const ownAnchor = sameRoute(route.routeName, "A")
         ? aAnchors[collectorRef]
@@ -2002,10 +2004,12 @@ export function SupervisorMobileApp({
                 ...digitalToday,
               ]
             : digitalToday;
-      // A / N: prestamosRuta. M / T / resto: suma de la lista (efectivo + digital).
+      // A / N: prestamosRuta. M / T: capital de la base + Banco/Nequi de la ruta.
       const prestamosHoy = independentDay
         ? independentDay.prestamosRuta
-        : dayLoanDisbursementTotal(cashLoansToday);
+        : chainDay != null
+          ? chainDay.prestamos + dayLoanDisbursementTotal(digitalToday)
+          : dayLoanDisbursementTotal(cashLoansToday);
 
       const closeRecord = dayClosesLive.find(
         (row) => row.collectorRef === collectorRef && row.date === today,
