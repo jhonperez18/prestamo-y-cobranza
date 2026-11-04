@@ -1,7 +1,10 @@
 /**
  * Caja del día leída en la base (Fase 3.2). Solo lee. No escribe CIE.
  */
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import {
+  createSupabaseAdminClient,
+  resetSupabaseAdminClient,
+} from "@/lib/supabase/admin";
 
 export type DayCashFigureResult =
   | {
@@ -30,6 +33,25 @@ export type DayCashFigureResult =
     }
   | { ok: false; error: string };
 
+function isTransientFetchError(message: string) {
+  return /fetch failed|ECONNRESET|ETIMEDOUT|UND_ERR_|network/i.test(message);
+}
+
+async function rpcDayCashFigure(ref: string, date: string) {
+  const client = createSupabaseAdminClient();
+  if (!client) return { data: null, errorMessage: "sin_servicio" as string | null };
+  try {
+    const { data, error } = await client.rpc("day_cash_figure", {
+      p_collector_ref: ref,
+      p_date: date,
+    });
+    return { data, errorMessage: error?.message ?? null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "day_cash_figure_failed";
+    return { data: null, errorMessage: message };
+  }
+}
+
 export async function readDayCashFigure(
   collectorRef: string,
   date: string,
@@ -38,14 +60,14 @@ export async function readDayCashFigure(
   if (!ref || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return { ok: false, error: "dato_invalido" };
   }
-  const client = createSupabaseAdminClient();
-  if (!client) return { ok: false, error: "sin_servicio" };
 
-  const { data, error } = await client.rpc("day_cash_figure", {
-    p_collector_ref: ref,
-    p_date: date,
-  });
-  if (error) return { ok: false, error: error.message };
+  let { data, errorMessage } = await rpcDayCashFigure(ref, date);
+  if (errorMessage && isTransientFetchError(errorMessage)) {
+    console.error("day-cash-figure-fetch-failed-retry", errorMessage);
+    resetSupabaseAdminClient();
+    ({ data, errorMessage } = await rpcDayCashFigure(ref, date));
+  }
+  if (errorMessage) return { ok: false, error: errorMessage };
 
   const body = data as {
     ok?: boolean;

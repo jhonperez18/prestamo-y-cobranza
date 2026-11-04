@@ -221,6 +221,8 @@ type Props = {
   monthCloses?: CollectorMonthCloseRecord[];
   /** Cierres de saldo M↔T (solo cadena; A no entra). */
   planillaCashCloses?: PlanillaCashCloseRecord[];
+  /** Sube cuando llega Inicial/caja de la base → recalcula sin CIE local fantasma. */
+  cloudCashEpoch?: number;
   date?: string;
   preview?: boolean;
   canRegister?: boolean;
@@ -407,6 +409,7 @@ export function CollectorMobileApp({
   dayExpenseDrafts = [],
   monthCloses = [],
   planillaCashCloses = [],
+  cloudCashEpoch = 0,
   date,
   preview = false,
   canRegister = true,
@@ -1078,6 +1081,7 @@ export function CollectorMobileApp({
       monthCloses,
       planillaCashCloses,
       dayCashFigureEpoch,
+      cloudCashEpoch,
     ],
   );
   const primaryLiveClosing = dayLedger.mClosing;
@@ -1108,6 +1112,7 @@ export function CollectorMobileApp({
       monthCloses,
       planillaCashCloses,
       primaryLiveClosing,
+      cloudCashEpoch,
     ],
   );
   const chainCloseGuard = useMemo(

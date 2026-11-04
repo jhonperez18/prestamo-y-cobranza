@@ -332,7 +332,6 @@ export function CollectorShell({ session, onLogout }: Props) {
       alive = false;
     };
   }, [hydrated, session.collectorRef, dayCloses.length]);
-  void chainMOpeningEpoch;
 
   useEffect(() => {
     if (!hydrated) return;
@@ -988,6 +987,7 @@ export function CollectorShell({ session, onLogout }: Props) {
         dayExpenseDrafts={dayExpenseDrafts}
         monthCloses={monthCloses}
         planillaCashCloses={planillaCashCloses}
+        cloudCashEpoch={chainMOpeningEpoch}
         canRegister={hasPermission(session, "cobros.registrar")}
         onRegisterPayment={
           hasPermission(session, "cobros.registrar") ? registerCollectorPayment : undefined
