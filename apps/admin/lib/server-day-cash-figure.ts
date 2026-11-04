@@ -1,5 +1,7 @@
 /**
  * Caja del día leída en la base (Fase 3.2). Solo lee. No escribe CIE.
+ * Si el CIE/GAS no trae renglones «Préstamo», completa con fichas en efectivo
+ * del día (start_date + ruta). Caso 03/11: P-664 Nelson Jefe 300.000 en M.
  */
 import {
   createSupabaseAdminClient,
@@ -37,6 +39,10 @@ function isTransientFetchError(message: string) {
   return /fetch failed|ECONNRESET|ETIMEDOUT|UND_ERR_|network/i.test(message);
 }
 
+function pesos(n: number) {
+  return Math.trunc(Number(n) || 0);
+}
+
 async function rpcDayCashFigure(ref: string, date: string) {
   const client = createSupabaseAdminClient();
   if (!client) return { data: null, errorMessage: "sin_servicio" as string | null };
@@ -49,6 +55,65 @@ async function rpcDayCashFigure(ref: string, date: string) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "day_cash_figure_failed";
     return { data: null, errorMessage: message };
+  }
+}
+
+/** Capital en efectivo del día por ruta (ficha), sin nequi/banco/cartera. */
+async function cashLoanTotalsByRoute(date: string): Promise<{
+  m: number;
+  t: number;
+  a: number;
+  n: number;
+}> {
+  const empty = { m: 0, t: 0, a: 0, n: 0 };
+  const client = createSupabaseAdminClient();
+  if (!client) return empty;
+  try {
+    const { data: loans, error } = await client
+      .from("loans")
+      .select("ref,client_ref,capital,status,notes,deleted_at")
+      .eq("start_date", date)
+      .limit(500);
+    if (error || !loans?.length) return empty;
+    const live = loans.filter((row) => {
+      if (row.deleted_at) return false;
+      const status = String(row.status || "")
+        .trim()
+        .toLowerCase();
+      if (status === "eliminado" || status === "cancelado") return false;
+      const notes = String(row.notes || "");
+      if (notes.includes("[[fb:nequi]]") || notes.includes("[[fb:banco]]") || notes.includes("[[fb:cartera]]")) {
+        return false;
+      }
+      return pesos(row.capital) > 0;
+    });
+    if (!live.length) return empty;
+    const refs = [...new Set(live.map((row) => String(row.client_ref || "").trim()).filter(Boolean))];
+    const { data: clients } = await client
+      .from("clients")
+      .select("ref,route")
+      .in("ref", refs.length ? refs : ["__none__"]);
+    const routeBy = new Map(
+      (clients || []).map((row) => [
+        String((row as { ref?: string }).ref || ""),
+        String((row as { route?: string }).route || "")
+          .trim()
+          .toUpperCase(),
+      ]),
+    );
+    const out = { ...empty };
+    for (const loan of live) {
+      const pin = routeBy.get(String(loan.client_ref || "").trim()) || "";
+      const capital = pesos(loan.capital);
+      if (pin === "M") out.m += capital;
+      else if (pin === "T") out.t += capital;
+      else if (pin === "A") out.a += capital;
+      else if (pin === "N") out.n += capital;
+    }
+    return out;
+  } catch (error) {
+    console.error("day-cash-figure-loan-totals", error);
+    return empty;
   }
 }
 
@@ -73,6 +138,7 @@ export async function readDayCashFigure(
     ok?: boolean;
     ready?: boolean;
     chain?: boolean;
+    own_route?: string | null;
     opening?: number;
     m_closing?: number;
     day_final?: number;
@@ -84,6 +150,7 @@ export async function readDayCashFigure(
     t_efectivo?: number;
     t_prestamos?: number;
     t_gastos?: number;
+    own_prestamos?: number;
     error?: string;
     missing_day?: string;
     prior_cie_ref?: string;
@@ -102,21 +169,49 @@ export async function readDayCashFigure(
     };
   }
 
+  const opening = pesos(body.opening);
+  let mPrestamos = pesos(body.m_prestamos);
+  let tPrestamos = pesos(body.t_prestamos);
+  const mEfectivo = pesos(body.m_efectivo);
+  const mGastos = pesos(body.m_gastos);
+  const tEfectivo = pesos(body.t_efectivo);
+  const tGastos = pesos(body.t_gastos);
+  const chain = Boolean(body.chain);
+  const ownRoute = String(body.own_route || "")
+    .trim()
+    .toUpperCase();
+
+  // Completa préstamos si la RPC vieja / CIE sin GAS dejó 0 con fichas en efectivo.
+  const loanTotals = await cashLoanTotalsByRoute(date);
+  if (chain) {
+    if (loanTotals.m > mPrestamos) mPrestamos = loanTotals.m;
+    if (loanTotals.t > tPrestamos) tPrestamos = loanTotals.t;
+  } else if (ownRoute === "A" && loanTotals.a > mPrestamos) {
+    // own_prestamos vive en campos m_* cuando no es cadena en lecturas viejas;
+    // bookIndependent usa route_own_box. Aquí solo cadena importa al historial M/T.
+  } else if (ownRoute === "N" && loanTotals.n > mPrestamos) {
+    /* N: route_own_box */
+  }
+
+  const mClosing = pesos(opening + mEfectivo - mGastos - mPrestamos);
+  const dayFinal = pesos(mClosing + tEfectivo - tGastos - tPrestamos);
+  const cie = body.cie == null ? null : pesos(body.cie);
+
   return {
     ok: true,
     ready: true,
-    chain: Boolean(body.chain),
-    opening: Math.trunc(Number(body.opening) || 0),
-    mClosing: Math.trunc(Number(body.m_closing) || 0),
-    dayFinal: Math.trunc(Number(body.day_final) || 0),
-    cie: body.cie == null ? null : Math.trunc(Number(body.cie)),
-    saldo: Math.trunc(Number(body.saldo) || 0),
-    mEfectivo: Math.trunc(Number(body.m_efectivo) || 0),
-    mPrestamos: Math.trunc(Number(body.m_prestamos) || 0),
-    mGastos: Math.trunc(Number(body.m_gastos) || 0),
-    tEfectivo: Math.trunc(Number(body.t_efectivo) || 0),
-    tPrestamos: Math.trunc(Number(body.t_prestamos) || 0),
-    tGastos: Math.trunc(Number(body.t_gastos) || 0),
+    chain,
+    opening,
+    mClosing,
+    dayFinal,
+    cie,
+    saldo: cie != null ? cie : dayFinal,
+    mEfectivo,
+    mPrestamos,
+    mGastos,
+    tEfectivo,
+    tPrestamos,
+    tGastos,
     priorCieRef: body.prior_cie_ref,
     priorCieDate: body.prior_cie_date,
   };
