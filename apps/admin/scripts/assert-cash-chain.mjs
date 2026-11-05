@@ -2453,11 +2453,25 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     new URL("../lib/use-supervisor-today.ts", import.meta.url),
     "utf8",
   );
+  const poolCloudSrc = readFileSync(
+    new URL("../lib/cloud-pool-visible-saldo.ts", import.meta.url),
+    "utf8",
+  );
+  const poolServerSrc = readFileSync(
+    new URL("../lib/server-pool-visible-saldo.ts", import.meta.url),
+    "utf8",
+  );
   expect(
     "Nequi/Banco: sin cifra vieja ni 0 al cambiar de corte (espera servidor)",
     poolHookSrc.includes("setBanco(null)") &&
       poolHookSrc.includes("setNequi(null)") &&
-      poolHookSrc.includes("warm.toIso === toIso") &&
+      poolHookSrc.includes("clearCloudPoolVisibleSaldo") &&
+      !poolHookSrc.includes("warm.toIso === toIso") &&
+      poolCloudSrc.includes("clearCloudPoolVisibleSaldo") &&
+      !poolCloudSrc.includes("sessionStorage.setItem") &&
+      poolServerSrc.includes("clearLivePoolSnap") &&
+      !poolServerSrc.includes("refreshLiveInBackground") &&
+      !poolServerSrc.includes("readLivePoolSnap") &&
       bancoSrc.includes('nequiPoolHistSaldo == null ? "…"') &&
       bancoSrc.includes('bancoPoolHistSaldo == null ? "…"') &&
       weeklyViewSrc.includes("Leyendo Saldo Nequi del servidor"),
