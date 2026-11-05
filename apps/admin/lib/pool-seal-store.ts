@@ -133,3 +133,14 @@ export async function writeLivePoolSnap(
     console.error("pool-live-write", error);
   }
 }
+
+/** Suelta el snap vivo: no puede quedar una cifra vieja como respuesta. */
+export async function clearLivePoolSnap(): Promise<void> {
+  liveSnap = null;
+  liveLoaded = true;
+  try {
+    await fs.unlink(LIVE_FILE);
+  } catch {
+    /* no había archivo */
+  }
+}

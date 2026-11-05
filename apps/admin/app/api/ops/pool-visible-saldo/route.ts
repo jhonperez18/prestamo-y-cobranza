@@ -5,7 +5,8 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-const HARD_MS = 12_000;
+/** Libro fresco (sin snap viejo): da aire a Supabase; mejor «…» que otra cifra. */
+const HARD_MS = 28_000;
 
 /** Saldo Banco/Nequi = rutas − gastos. Tope duro: no deja «…» eterno en el celular. */
 export async function GET(req: Request) {

@@ -204,7 +204,7 @@ export type PoolVisibleSaldoCloudState = {
 
 /**
  * Saldo Banco/Nequi (rutas − gastos) desde el servidor con libro completo.
- * No usa la copia local del aparato (esa es la que saltaba 5.299 ↔ 1.149 ↔ 2.208).
+ * Hasta que conteste: «…». Cero pintar sesión/snap viejo (caso 6.766 vs 7.013).
  */
 export function usePoolVisibleSaldoCloud(enabled: boolean, toIso: string): PoolVisibleSaldoCloudState {
   const [epoch, setEpoch] = useState(0);
@@ -215,30 +215,22 @@ export function usePoolVisibleSaldoCloud(enabled: boolean, toIso: string): PoolV
   useEffect(() => {
     if (!enabled || !/^\d{4}-\d{2}-\d{2}$/.test(toIso)) return;
     let alive = true;
+    setBanco(null);
+    setNequi(null);
+    setSettled(false);
     void import("@/lib/cloud-pool-visible-saldo").then(
-      ({ getCloudPoolVisibleSaldo, refreshCloudPoolVisibleSaldo }) => {
-        const warm = getCloudPoolVisibleSaldo();
-        // Solo la cifra del corte pedido. Otra fecha = contaminar mes sellado / vivo.
-        if (warm && warm.toIso === toIso) {
-          setBanco(warm.banco);
-          setNequi(warm.nequi);
-          setSettled(true);
-        } else {
-          setBanco(null);
-          setNequi(null);
-          setSettled(false);
-        }
+      ({ clearCloudPoolVisibleSaldo, refreshCloudPoolVisibleSaldo }) => {
+        clearCloudPoolVisibleSaldo();
         const pull = async (tries = 0) => {
           const row = await refreshCloudPoolVisibleSaldo(toIso);
           if (!alive) return;
-          if (row) {
+          if (row && row.toIso === toIso) {
             setSettled(true);
             setBanco(row.banco);
             setNequi(row.nequi);
             setEpoch((n) => n + 1);
             return;
           }
-          // Falló: reintenta (el servidor ya tiene cifra en disco; un abort no deja «Leyendo…»).
           if (tries < 4) {
             window.setTimeout(() => {
               if (alive) void pull(tries + 1);

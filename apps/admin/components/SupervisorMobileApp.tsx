@@ -1559,39 +1559,6 @@ export function SupervisorMobileApp({
   const [cajaHistoryNav, setCajaHistoryNav] = useState<"detallado" | "meses" | "mes">("detallado");
   /** Período `YYYY-MM` abierto dentro de historial (ej. 2026-10). */
   const [cajaHistoryPeriodPick, setCajaHistoryPeriodPick] = useState<string | null>(null);
-  useEffect(() => {
-    if (!supervisorDirect) return;
-    if (detailMode !== "historial" && detailMode !== "historial-dia") {
-      setHistoryBookPayments(null);
-      clearSupervisorHistoryPaymentsCache();
-      return;
-    }
-    // Solo el período abierto (mes vivo o mes del historial). No el libro 01/10→hoy.
-    const viewingPastMonth = cajaHistoryNav === "mes" && Boolean(cajaHistoryPeriodPick);
-    const period = viewingPastMonth
-      ? (cajaHistoryPeriodPick as string)
-      : periodFromDateIso(today);
-    const periodStart = `${period}-01`;
-    const from =
-      periodStart >= ROUTE_CASH_BOOK_FROM ? periodStart : ROUTE_CASH_BOOK_FROM;
-    const to = viewingPastMonth
-      ? lastCalendarDayOfPeriod(period) || from
-      : today;
-    let cancel = false;
-    void loadSupervisorHistoryPayments(from, to).then((rows) => {
-      if (cancel) return;
-      setHistoryBookPayments(rows && rows.length > 0 ? rows : []);
-    });
-    return () => {
-      cancel = true;
-    };
-  }, [
-    supervisorDirect,
-    detailMode,
-    cajaHistoryNav,
-    cajaHistoryPeriodPick,
-    today,
-  ]);
   /** Cajas A/N del mes bajadas para el historial (route_own_box). */
   const [histOwnBoxEpoch, setHistOwnBoxEpoch] = useState(0);
   /** Caja M/T del día (day_cash_figure): Inicial T = m_closing. */
@@ -1636,6 +1603,72 @@ export function SupervisorMobileApp({
     "cobrado" | "prestado" | "gastos" | null
   >(null);
   const [nequiPoolHistDay, setNequiPoolHistDay] = useState<string | null>(null);
+  /**
+   * Cobros del período en RAM (Historial caja · BANCO · NEQUI).
+   * El celular solo guarda hoy+ayer; sin esta bajada falta el renglón de ayer en Cobrado.
+   */
+  useEffect(() => {
+    if (!supervisorDirect) return;
+    const cajaHist =
+      detailMode === "historial" || detailMode === "historial-dia";
+    const bancoHistPast =
+      view === "banco" &&
+      (bancoPoolHistNav === "mes" || bancoPoolHistNav === "ruta") &&
+      Boolean(bancoPoolHistPeriod);
+    const nequiHistPast =
+      view === "nequi" &&
+      nequiPoolHistNav === "mes" &&
+      Boolean(nequiPoolHistPeriod);
+    const poolMesVivo =
+      (view === "banco" && !bancoHistPast) || (view === "nequi" && !nequiHistPast);
+    if (!cajaHist && !bancoHistPast && !nequiHistPast && !poolMesVivo) {
+      setHistoryBookPayments(null);
+      clearSupervisorHistoryPaymentsCache();
+      return;
+    }
+    let period: string;
+    let viewingPastMonth = false;
+    if (bancoHistPast && bancoPoolHistPeriod) {
+      period = bancoPoolHistPeriod;
+      viewingPastMonth = true;
+    } else if (nequiHistPast && nequiPoolHistPeriod) {
+      period = nequiPoolHistPeriod;
+      viewingPastMonth = true;
+    } else if (cajaHist) {
+      viewingPastMonth = cajaHistoryNav === "mes" && Boolean(cajaHistoryPeriodPick);
+      period = viewingPastMonth
+        ? (cajaHistoryPeriodPick as string)
+        : periodFromDateIso(today);
+    } else {
+      period = periodFromDateIso(today);
+    }
+    const periodStart = `${period}-01`;
+    const from =
+      periodStart >= ROUTE_CASH_BOOK_FROM ? periodStart : ROUTE_CASH_BOOK_FROM;
+    const to = viewingPastMonth
+      ? lastCalendarDayOfPeriod(period) || from
+      : today;
+    let cancel = false;
+    clearSupervisorHistoryPaymentsCache();
+    void loadSupervisorHistoryPayments(from, to).then((rows) => {
+      if (cancel) return;
+      setHistoryBookPayments(rows && rows.length > 0 ? rows : []);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [
+    supervisorDirect,
+    view,
+    detailMode,
+    cajaHistoryNav,
+    cajaHistoryPeriodPick,
+    bancoPoolHistNav,
+    bancoPoolHistPeriod,
+    nequiPoolHistNav,
+    nequiPoolHistPeriod,
+    today,
+  ]);
   const [nuevoMode, setNuevoMode] = useState<NuevoMode>("menu");
   const [nuevoRouteRef, setNuevoRouteRef] = useState<string | null>(null);
   const [gastoLabel, setGastoLabel] = useState("Gasto");
@@ -1722,6 +1755,40 @@ export function SupervisorMobileApp({
     indexPaymentEvidenceFromPayments(paymentsLive);
     return paymentsLive.map(withPaymentEvidence);
   }, [paymentsLive]);
+
+  /**
+   * Libro del período (RAM) + cobros vivos. BANCO / NEQUI / Historial leen esto:
+   * en el celular no alcanza la copia local (solo hoy+ayer).
+   */
+  const historyPayments = useMemo(() => {
+    if (!historyBookPayments) return paymentsLive;
+    const seen = new Set<string>();
+    const merged: PaymentRow[] = [];
+    for (const row of [...paymentsLive, ...historyBookPayments]) {
+      if (!row.ref || seen.has(row.ref)) continue;
+      seen.add(row.ref);
+      merged.push(row);
+    }
+    return merged;
+  }, [historyBookPayments, paymentsLive]);
+
+  const poolBookPayments = useMemo(() => {
+    // Supervisor en BANCO/NEQUI: no pintar con copia incompleta antes de que llegue el mes.
+    if (
+      supervisorDirect &&
+      historyBookPayments === null &&
+      (view === "banco" || view === "nequi")
+    ) {
+      return null;
+    }
+    indexPaymentEvidenceFromPayments(historyPayments);
+    return historyPayments.map(withPaymentEvidence);
+  }, [
+    supervisorDirect,
+    historyBookPayments,
+    view,
+    historyPayments,
+  ]);
 
   const todayAssignments = useMemo(
     () =>
@@ -2773,19 +2840,21 @@ export function SupervisorMobileApp({
    */
   const bancoRouteCuadres = useMemo(
     () =>
-      BANCO_ROUTE_PINS.map((pin) =>
-        bancoRouteCuadre({
-          payments: paymentsWithEvidence,
-          loans,
-          clients,
-          dayCloses: dayClosesLive,
-          dateIso: today,
-          routeName: pin,
-          fromIso: bancoHistoryFrom,
-          movements: bankMovements,
-        }),
-      ),
-    [paymentsWithEvidence, loans, clients, dayClosesLive, today, bancoHistoryFrom, bankMovements],
+      poolBookPayments
+        ? BANCO_ROUTE_PINS.map((pin) =>
+            bancoRouteCuadre({
+              payments: poolBookPayments,
+              loans,
+              clients,
+              dayCloses: dayClosesLive,
+              dateIso: today,
+              routeName: pin,
+              fromIso: bancoHistoryFrom,
+              movements: bankMovements,
+            }),
+          )
+        : [],
+    [poolBookPayments, loans, clients, dayClosesLive, today, bancoHistoryFrom, bankMovements],
   );
   const bancoRutaCuadreHoy = useMemo(
     () =>
@@ -2838,9 +2907,9 @@ export function SupervisorMobileApp({
   }, [liquidaciones, bancoSaldo]);
   const bancoRutaHistoryDays = useMemo(
     () =>
-      bancoRegistroRoute
+      bancoRegistroRoute && poolBookPayments
         ? bancoRouteHistoryDays({
-            payments: paymentsWithEvidence,
+            payments: poolBookPayments,
             loans,
             clients,
             dayCloses: dayClosesLive,
@@ -2851,7 +2920,7 @@ export function SupervisorMobileApp({
           })
         : [],
     [
-      paymentsWithEvidence,
+      poolBookPayments,
       loans,
       clients,
       dayClosesLive,
@@ -2875,9 +2944,9 @@ export function SupervisorMobileApp({
   );
   const nequiRutaHistoryDays = useMemo(
     () =>
-      view === "nequi"
+      view === "nequi" && poolBookPayments
         ? nequiRouteHistoryDays({
-            payments: paymentsWithEvidence,
+            payments: poolBookPayments,
             loans,
             clients,
             dayCloses: dayClosesLive,
@@ -2888,7 +2957,7 @@ export function SupervisorMobileApp({
         : [],
     [
       view,
-      paymentsWithEvidence,
+      poolBookPayments,
       loans,
       clients,
       dayClosesLive,
@@ -3278,17 +3347,6 @@ export function SupervisorMobileApp({
     monthCloses,
   ]);
 
-  const historyPayments = useMemo(() => {
-    if (!historyBookPayments) return paymentsLive;
-    const seen = new Set<string>();
-    const merged: PaymentRow[] = [];
-    for (const row of [...paymentsLive, ...historyBookPayments]) {
-      if (!row.ref || seen.has(row.ref)) continue;
-      seen.add(row.ref);
-      merged.push(row);
-    }
-    return merged;
-  }, [historyBookPayments, paymentsLive]);
   const historyCloses = dayClosesLive;
   const historyExpenses = expensesLive;
   const historyAssignments = assignmentsLive;
@@ -3706,14 +3764,15 @@ export function SupervisorMobileApp({
   const bancoPoolHistRouteCards = useMemo(() => {
     if (
       (bancoPoolHistNav !== "mes" && bancoPoolHistNav !== "ruta") ||
-      !bancoPoolHistPeriod
+      !bancoPoolHistPeriod ||
+      !poolBookPayments
     ) {
       return [];
     }
     const { to } = periodHistWindow(bancoPoolHistPeriod);
     return BANCO_ROUTE_PINS.map((pin) =>
       bancoRouteCuadre({
-        payments: paymentsWithEvidence,
+        payments: poolBookPayments,
         loans,
         clients,
         dayCloses: dayClosesLive,
@@ -3726,7 +3785,7 @@ export function SupervisorMobileApp({
   }, [
     bancoPoolHistNav,
     bancoPoolHistPeriod,
-    paymentsWithEvidence,
+    poolBookPayments,
     loans,
     clients,
     dayClosesLive,
@@ -3734,12 +3793,17 @@ export function SupervisorMobileApp({
   ]);
   /** Movimiento Banco de UNA ruta en el mes (arrastre desde el libro; no mezcla M/T/N). */
   const bancoPoolHistDays = useMemo(() => {
-    if (bancoPoolHistNav !== "ruta" || !bancoPoolHistPeriod || !bancoPoolHistRoute) {
+    if (
+      bancoPoolHistNav !== "ruta" ||
+      !bancoPoolHistPeriod ||
+      !bancoPoolHistRoute ||
+      !poolBookPayments
+    ) {
       return [];
     }
     const { to } = periodHistWindow(bancoPoolHistPeriod);
     return bancoRouteHistoryDays({
-      payments: paymentsWithEvidence,
+      payments: poolBookPayments,
       loans,
       clients,
       dayCloses: dayClosesLive,
@@ -3752,7 +3816,7 @@ export function SupervisorMobileApp({
     bancoPoolHistNav,
     bancoPoolHistPeriod,
     bancoPoolHistRoute,
-    paymentsWithEvidence,
+    poolBookPayments,
     loans,
     clients,
     dayClosesLive,
@@ -3821,10 +3885,12 @@ export function SupervisorMobileApp({
 
   /** Movimiento Nequi del mes abierto en historial (ruta A). */
   const nequiPoolHistDays = useMemo(() => {
-    if (nequiPoolHistNav !== "mes" || !nequiPoolHistPeriod) return [];
+    if (nequiPoolHistNav !== "mes" || !nequiPoolHistPeriod || !poolBookPayments) {
+      return [];
+    }
     const { to } = periodHistWindow(nequiPoolHistPeriod);
     return nequiRouteHistoryDays({
-      payments: paymentsWithEvidence,
+      payments: poolBookPayments,
       loans,
       clients,
       dayCloses: dayClosesLive,
@@ -3835,7 +3901,7 @@ export function SupervisorMobileApp({
   }, [
     nequiPoolHistNav,
     nequiPoolHistPeriod,
-    paymentsWithEvidence,
+    poolBookPayments,
     loans,
     clients,
     dayClosesLive,
@@ -6733,7 +6799,13 @@ export function SupervisorMobileApp({
                 }}
               >
                 <span>Cobrado</span>
-                <b>{nequiCobradoShown == null ? "—" : money(nequiCobradoShown, { symbol: false })}</b>
+                <b>
+                  {poolBookPayments == null
+                    ? "…"
+                    : nequiCobradoShown == null
+                      ? "—"
+                      : money(nequiCobradoShown, { symbol: false })}
+                </b>
               </button>
               <button
                 type="button"
@@ -6746,7 +6818,13 @@ export function SupervisorMobileApp({
                 }}
               >
                 <span>Prestado</span>
-                <b>{nequiPrestadoShown == null ? "—" : money(nequiPrestadoShown, { symbol: false })}</b>
+                <b>
+                  {poolBookPayments == null
+                    ? "…"
+                    : nequiPrestadoShown == null
+                      ? "—"
+                      : money(nequiPrestadoShown, { symbol: false })}
+                </b>
               </button>
               <button
                 type="button"
@@ -6774,7 +6852,9 @@ export function SupervisorMobileApp({
             </div>
           </section>
           {nequiRutaExpand === "cobrado" ? (
-            nequiCobradoDays.length > 0 ? (
+            poolBookPayments == null ? (
+              <p className="ficha-empty">Leyendo cobros Nequi…</p>
+            ) : nequiCobradoDays.length > 0 ? (
               <div className="supervisor-banco-hist">
                 <div className="supervisor-banco-hist-head" aria-hidden>
                   <span>Fecha</span>
@@ -6831,7 +6911,9 @@ export function SupervisorMobileApp({
             )
           ) : null}
           {nequiRutaExpand === "prestado" ? (
-            nequiPrestadoDays.length > 0 ? (
+            poolBookPayments == null ? (
+              <p className="ficha-empty">Leyendo préstamos Nequi…</p>
+            ) : nequiPrestadoDays.length > 0 ? (
               <div className="supervisor-banco-hist">
                 <div className="supervisor-banco-hist-head" aria-hidden>
                   <span>Fecha</span>
@@ -7294,7 +7376,11 @@ export function SupervisorMobileApp({
                     }}
                   >
                     <span>Cobrado</span>
-                    <b>{money(bancoRutaTotales.cobrado, { symbol: false })}</b>
+                    <b>
+                      {poolBookPayments == null
+                        ? "…"
+                        : money(bancoRutaTotales.cobrado, { symbol: false })}
+                    </b>
                   </button>
                   <button
                     type="button"
@@ -7307,12 +7393,18 @@ export function SupervisorMobileApp({
                     }}
                   >
                     <span>Prestado</span>
-                    <b>{money(bancoRutaTotales.prestado, { symbol: false })}</b>
+                    <b>
+                      {poolBookPayments == null
+                        ? "…"
+                        : money(bancoRutaTotales.prestado, { symbol: false })}
+                    </b>
                   </button>
                 </div>
               </section>
               {bancoRutaExpand === "cobrado" ? (
-                bancoCobradoDays.length > 0 ? (
+                poolBookPayments == null ? (
+                  <p className="ficha-empty">Leyendo cobros Banco…</p>
+                ) : bancoCobradoDays.length > 0 ? (
                   <div className="supervisor-banco-hist">
                     <div className="supervisor-banco-hist-head" aria-hidden>
                       <span>Fecha</span>
@@ -7371,7 +7463,9 @@ export function SupervisorMobileApp({
                 )
               ) : null}
               {bancoRutaExpand === "prestado" ? (
-                bancoPrestadoDays.length > 0 ? (
+                poolBookPayments == null ? (
+                  <p className="ficha-empty">Leyendo préstamos Banco…</p>
+                ) : bancoPrestadoDays.length > 0 ? (
                   <div className="supervisor-banco-hist">
                     <div className="supervisor-banco-hist-head" aria-hidden>
                       <span>Fecha</span>

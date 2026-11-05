@@ -1,6 +1,7 @@
 /**
- * Caché de sesión: Saldo Banco/Nequi del servidor (rutas − gastos).
- * Gana sobre cualquier suma local incompleta del aparato.
+ * Saldo Banco/Nequi del servidor (rutas − gastos).
+ * Sin pintar cifra de sesión: cada lectura pide la nube; hasta que llegue → «…».
+ * Prohibido sessionStorage / copia local que deje 6.766 en un aparato y 7.013 en otro.
  */
 export type CloudPoolVisibleSaldo = {
   banco: number;
@@ -10,48 +11,25 @@ export type CloudPoolVisibleSaldo = {
   fetchedAt: string;
 };
 
-const SESSION_KEY = "nexo-cloud-pool-visible-saldo";
-
+/** Solo RAM de esta pestaña, tras un fetch OK. No se guarda en disco. */
 let cached: CloudPoolVisibleSaldo | null = null;
 
-function readSession(): CloudPoolVisibleSaldo | null {
-  if (typeof sessionStorage === "undefined") return null;
-  try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const row = JSON.parse(raw) as CloudPoolVisibleSaldo;
-    if (
-      !row ||
-      !Number.isFinite(row.banco) ||
-      !Number.isFinite(row.nequi) ||
-      !row.toIso
-    ) {
-      return null;
-    }
-    return row;
-  } catch {
-    return null;
-  }
+export function getCloudPoolVisibleSaldo(): CloudPoolVisibleSaldo | null {
+  return cached;
 }
 
-function writeSession(row: CloudPoolVisibleSaldo) {
+export function clearCloudPoolVisibleSaldo(): void {
+  cached = null;
   if (typeof sessionStorage === "undefined") return;
   try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(row));
-  } catch (error) {
-    console.error("cloud-pool-visible-saldo-session", error);
+    sessionStorage.removeItem("nexo-cloud-pool-visible-saldo");
+  } catch {
+    /* cupo / privado */
   }
-}
-
-export function getCloudPoolVisibleSaldo(): CloudPoolVisibleSaldo | null {
-  if (cached) return cached;
-  cached = readSession();
-  return cached;
 }
 
 export function rememberCloudPoolVisibleSaldo(row: CloudPoolVisibleSaldo) {
   cached = row;
-  writeSession(row);
 }
 
 export async function refreshCloudPoolVisibleSaldo(
@@ -60,9 +38,11 @@ export async function refreshCloudPoolVisibleSaldo(
   const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
   const timer =
     ctrl && typeof window !== "undefined"
-      ? window.setTimeout(() => ctrl.abort(), 14_000)
+      ? window.setTimeout(() => ctrl.abort(), 30_000)
       : 0;
   try {
+    // Cada apertura pide de nuevo; no reusar cifra vieja de otra pestaña/sesión.
+    clearCloudPoolVisibleSaldo();
     const qs = toIso && /^\d{4}-\d{2}-\d{2}$/.test(toIso) ? `?to=${toIso}` : "";
     const res = await fetch(`/api/ops/pool-visible-saldo${qs}`, {
       cache: "no-store",

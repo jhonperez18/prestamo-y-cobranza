@@ -11,9 +11,8 @@ import { businessTodayIso } from "@/lib/business-timezone";
 import type { CollectorDayCloseRecord } from "@/lib/collector-day-close";
 import { ROUTE_CASH_BOOK_FROM } from "@/lib/planilla-cash-chain";
 import {
-  readLivePoolSnap,
+  clearLivePoolSnap,
   readPoolSeal,
-  writeLivePoolSnap,
   writePoolSeal,
 } from "@/lib/pool-seal-store";
 import {
@@ -47,7 +46,8 @@ export type PoolVisibleSaldoResult =
     }
   | { ok: false; error: string };
 
-const CACHE_TTL_MS = 90_000;
+/** Solo mes sellado (cifra fija). Día vivo: cero TTL — siempre libro fresco. */
+const SEALED_CACHE_TTL_MS = 120_000;
 const cache = new Map<string, { at: number; result: Extract<PoolVisibleSaldoResult, { ok: true }> }>();
 
 function cacheKey(toIso: string, openIso: string) {
@@ -244,26 +244,6 @@ async function sealedPeriodPools(toIso: string): Promise<PoolVisibleSaldoResult 
   };
 }
 
-const refreshingLive = new Set<string>();
-
-function refreshLiveInBackground(toIso: string, key: string) {
-  if (refreshingLive.has(key)) return;
-  refreshingLive.add(key);
-  void (async () => {
-    try {
-      const live = await liveMonthFromSeal(toIso);
-      if (live?.ok) {
-        cache.set(key, { at: Date.now(), result: live });
-        await writeLivePoolSnap(toIso, live.banco, live.nequi);
-      }
-    } catch (error) {
-      console.error("pool-visible-refresh", error);
-    } finally {
-      refreshingLive.delete(key);
-    }
-  })();
-}
-
 export async function readPoolVisibleSaldo(options?: {
   toIso?: string;
   openIso?: string;
@@ -273,10 +253,6 @@ export async function readPoolVisibleSaldo(options?: {
   const openIso = options?.openIso ? isoDay(options.openIso, "") : "";
   const key = cacheKey(toIso, openIso);
   const hit = cache.get(key);
-  if (hit && Date.now() - hit.at < CACHE_TTL_MS) {
-    if (!openIso) refreshLiveInBackground(toIso, key);
-    return hit.result;
-  }
 
   if (openIso) {
     // Semanal pide cierre de semana (`to`) + saldo del día previo (`open`),
@@ -292,10 +268,8 @@ export async function readPoolVisibleSaldo(options?: {
         openBanco: liveOpen.banco,
         openNequi: liveOpen.nequi,
       };
-      cache.set(key, { at: Date.now(), result });
       return result;
     }
-    if (hit) return hit.result;
     const err =
       (liveTo && !liveTo.ok && liveTo.error) ||
       (liveOpen && !liveOpen.ok && liveOpen.error) ||
@@ -310,32 +284,22 @@ export async function readPoolVisibleSaldo(options?: {
     return sealed;
   }
 
-  // Día vivo: disco/memoria primero. El supervisor no aguanta 26 s de Supabase.
-  if (hit && hit.result.toIso === toIso) {
-    refreshLiveInBackground(toIso, key);
+  // Mes sellado en caché corta (cifra fija del sello). Día vivo no entra aquí.
+  if (
+    hit &&
+    Date.now() - hit.at < SEALED_CACHE_TTL_MS &&
+    hit.result.toIso === toIso &&
+    toIso.slice(0, 7) < today.slice(0, 7)
+  ) {
     return hit.result;
   }
-  const diskLive = await readLivePoolSnap();
-  if (diskLive && diskLive.toIso === toIso) {
-    const fallback: Extract<PoolVisibleSaldoResult, { ok: true }> = {
-      ok: true,
-      banco: diskLive.banco,
-      nequi: diskLive.nequi,
-      fromIso: ROUTE_CASH_BOOK_FROM,
-      toIso,
-    };
-    cache.set(key, { at: Date.now(), result: fallback });
-    refreshLiveInBackground(toIso, key);
-    return fallback;
-  }
 
+  // Día vivo: siempre libro fresco. Prohibido devolver pool-live.json /
+  // memoria vieja mientras “refresca atrás” (caso 6.766 vs 7.013).
+  void clearLivePoolSnap();
+  cache.delete(key);
   const live = await liveMonthFromSeal(toIso);
-  if (live?.ok) {
-    cache.set(key, { at: Date.now(), result: live });
-    void writeLivePoolSnap(toIso, live.banco, live.nequi);
-    return live;
-  }
+  if (live?.ok) return live;
   if (live && !live.ok) return live;
-  if (hit) return hit.result;
   return { ok: false, error: "pool_visible_unavailable" };
 }
