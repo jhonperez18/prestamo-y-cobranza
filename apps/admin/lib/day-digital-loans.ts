@@ -38,8 +38,9 @@ export type DayPlanillaLoan = {
 };
 
 /**
- * Préstamos de ese día (cualquier origen) a clientes de la planilla `route` que no
- * pagaron ese día: así quedan en la lista de recaudo / historial aunque no haya PG-.
+ * Préstamos en efectivo de ese día a clientes de la planilla `route` que no
+ * pagaron ese día. Banco / Nequi no entran aquí: viven en BANCO / NEQUI; el
+ * cobrador solo los ve como cuota cuando toque cobrar.
  */
 export function dayPlanillaLoansWithoutPayment(
   dateIso: string,
@@ -56,6 +57,8 @@ export function dayPlanillaLoansWithoutPayment(
     if (isLoanVoided(loan) || (loanIsExistingPortfolio(loan) && !renewal)) continue;
     if (loanDisbursementIsoDate(loan) !== dateIso) continue;
     if (!loan.clientRef) continue;
+    // Banco / Nequi: no es préstamo de la ruta del cobrador (solo cobran después).
+    if (!renewal && (loanFundedByBanco(loan) || loanFundedByNequi(loan))) continue;
     // Renovado se queda en recaudo aunque ya cobren la cuota nueva (cobro ≠ renovación).
     // Préstamo con plata: si ya hay PG- del cliente hoy, el renglón va bajo ese cobro.
     if (!renewal && paidClientRefs.has(loan.clientRef)) continue;

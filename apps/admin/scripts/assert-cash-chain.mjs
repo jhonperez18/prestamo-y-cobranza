@@ -3929,11 +3929,12 @@ console.log("— Anexo de préstamo (día del desembolso cerrado) —");
   expect("Anexo: préstamo de un día abierto sigue igual (sin anexo)", sameDay.topUp, 0);
 }
 
-// 20. Botón Préstamos del cobrador: Efectivo (caja) + Banco / Nequi del supervisor (reporte).
-//     Banco / Nequi se listan por planilla del cliente y nunca entran a la caja.
-console.log("— Préstamos Banco / Nequi en la planilla del cobrador —");
+// 20. Préstamos Banco / Nequi: viven en BANCO / NEQUI. La ruta del cobrador solo
+//     lista efectivo. El cliente queda cargado para cobrar la cuota (otro día).
+console.log("— Préstamos Banco / Nequi (bolsillo; no en ruta del cobrador) —");
 {
-  const { dayDigitalLoanRows, digitalLoanPoolForRoute } = await import("@/lib/day-digital-loans");
+  const { dayDigitalLoanRows, digitalLoanPoolForRoute, dayPlanillaLoansWithoutPayment } =
+    await import("@/lib/day-digital-loans");
   const dl = (ref, clientRef, fundedBy, extra = {}) => ({
     ref,
     clientRef,
@@ -3953,14 +3954,17 @@ console.log("— Préstamos Banco / Nequi en la planilla del cobrador —");
     dl("P-OT", "CLI-T1", "banco", { date: "25/09/2026" }),
   ];
   const tRows = dayDigitalLoanRows(D, "T", dLoans, clients);
-  expect("Préstamos T · Banco: solo el del día, vivo, por banco", tRows.map((r) => r.loanRef).join(","), "P-BT");
-  expect("Préstamos M · Banco: no ve los de clientes de T", dayDigitalLoanRows(D, "M", dLoans, clients).length, 0);
-  expect("Préstamos A · Nequi: lista el de su cliente", dayDigitalLoanRows(D, "A", dLoans, clients).map((r) => r.loanRef).join(","), "P-NA");
-  const { dayPlanillaLoansWithoutPayment } = await import("@/lib/day-digital-loans");
+  expect("BANCO · T Prestado: solo el del día, vivo, por banco", tRows.map((r) => r.loanRef).join(","), "P-BT");
+  expect("BANCO · M: no ve los de clientes de T", dayDigitalLoanRows(D, "M", dLoans, clients).length, 0);
+  expect("NEQUI · A: lista el de su cliente", dayDigitalLoanRows(D, "A", dLoans, clients).map((r) => r.loanRef).join(","), "P-NA");
   const unpaidT = dayPlanillaLoansWithoutPayment(D, "T", dLoans, clients, new Set());
-  expect("Recaudo T: préstamos del día sin pago (banco y efectivo)", unpaidT.map((r) => r.loan.ref).sort().join(","), "P-BT,P-ET");
   expect(
-    "Recaudo T: si el cliente pagó hoy, el préstamo va en su renglón (no se duplica)",
+    "Ruta cobrador: préstamos del día sin pago = solo efectivo (Banco no)",
+    unpaidT.map((r) => r.loan.ref).sort().join(","),
+    "P-ET",
+  );
+  expect(
+    "Ruta cobrador: si el cliente pagó hoy, el préstamo efectivo no se duplica",
     dayPlanillaLoansWithoutPayment(D, "T", dLoans, clients, new Set(["CLI-T1"])).length,
     0,
   );
@@ -3970,18 +3974,18 @@ console.log("— Préstamos Banco / Nequi en la planilla del cobrador —");
     dateIso: D,
     dispatched: [prestarVisit],
     payments: [],
-    loans: [...loans, dLoans.find((r) => r.ref === "P-BT")],
+    loans: [...loans, dLoans.find((r) => r.ref === "P-ET")],
     clients,
   }).filter((r) => r.clientRef === "CLI-T1");
-  expect("Historial: Prestar + préstamo hoy = un solo renglón «Prestado»", soloPrestamo.map((r) => r.method).join(","), "prestamo");
+  expect("Historial: Prestar + préstamo efectivo hoy = un solo renglón «Prestado»", soloPrestamo.map((r) => r.method).join(","), "prestamo");
   const pagoYPrestamo = histRows({
     dateIso: D,
     dispatched: [visit("V-T1", "CLI-T1", "T", D, { loanRef: "P-T1" })],
     payments: payments.map((p) => ({ ...p, when: `${p.paidDate} · 10:00` })),
-    loans: [...loans, dLoans.find((r) => r.ref === "P-BT")],
+    loans: [...loans, dLoans.find((r) => r.ref === "P-ET")],
     clients,
   }).filter((r) => r.clientRef === "CLI-T1");
-  expect("Historial: pagó y le prestaron = cuota + préstamo", pagoYPrestamo.map((r) => r.method).sort().join(","), "efectivo,prestamo");
+  expect("Historial: pagó y le prestaron efectivo = cuota + préstamo", pagoYPrestamo.map((r) => r.method).sort().join(","), "efectivo,prestamo");
   expect("Planilla A → bolsillo Nequi", digitalLoanPoolForRoute("A"), "nequi");
   expect("Planilla T → bolsillo Banco", digitalLoanPoolForRoute("T"), "banco");
   expect(

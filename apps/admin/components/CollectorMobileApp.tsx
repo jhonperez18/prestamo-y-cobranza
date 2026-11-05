@@ -160,12 +160,7 @@ import {
 } from "@/lib/cloud-day-cash-figure";
 import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
 import { CollectorDayLoansPanel } from "@/components/CollectorDayLoansPanel";
-import {
-  dayDigitalLoanRows,
-  dayPlanillaLoansWithoutPayment,
-  digitalLoanPoolForRoute,
-  digitalLoanPoolLabel,
-} from "@/lib/day-digital-loans";
+import { dayPlanillaLoansWithoutPayment } from "@/lib/day-digital-loans";
 import {
   isCashlessRenewal,
   loanDisbursementIsoDate,
@@ -1948,15 +1943,14 @@ export function CollectorMobileApp({
    * Cuadre junto a Caja: solo efectivo (lo que resta). Nequi/Banco en sublínea.
    * El KPI superior sigue pudiendo mostrar efectivo+digital vía viewPrestamos.
    */
+  /** Solo efectivo de la ruta. Banco / Nequi viven en BANCO / NEQUI; el cobrador cobra después. */
   const loQuePresto = ownRouteDay ? ownRouteDay.prestamos : topPrestamos;
-  const loQuePrestoDigital = ownRouteDay ? ownRouteDay.prestamosDigital : 0;
   const cajaFormulaLabel = "Caja (inicial + efectivo − gastos − préstamos)";
   /**
-   * Préstamos de la planilla: A / N = caja + digital de la ruta; otra planilla fuera de la
-   * cadena = solo lectura de los préstamos a clientes de esa ruta.
+   * Préstamos de la planilla = solo efectivo (lo que salió de la caja de la ruta).
    */
   const viewLoanRows = useMemo(() => {
-    if (ownRouteDay) return [...ownRouteDay.loanRows, ...ownRouteDay.digitalLoanRows];
+    if (ownRouteDay) return ownRouteDay.loanRows;
     if (planillaOwnsMovements || !activePlanillaRoute) return dayLoanRows;
     const routeClients = new Set(
       clients.filter((row) => sameRoute(row.route, activePlanillaRoute)).map((row) => row.ref),
@@ -1976,26 +1970,12 @@ export function CollectorMobileApp({
     loanScope,
   ]);
   const viewPrestamos = dayLoanDisbursementTotal(viewLoanRows);
-  /** Banco / Nequi del supervisor a clientes de esta planilla: solo reporte, la caja no los resta. */
-  const digitalPool = digitalLoanPoolForRoute(newClientRoute);
-  const digitalLoanRows = useMemo(
-    () =>
-      ownRouteDay
-        ? ownRouteDay.digitalLoanRows
-        : dayDigitalLoanRows(activeDate, newClientRoute, loans, clients),
-    [ownRouteDay, activeDate, newClientRoute, loans, clients],
-  );
-  const digitalPrestamos = dayLoanDisbursementTotal(digitalLoanRows);
-  /**
-   * KPI Préstamos = lo de ESTA planilla. Cadena M/T: caja de la ruta (headerCash) + digital
-   * de la ruta. A/N: efectivo + Nequi/Banco (`prestamosRuta`). El cuadre «Lo que prestó»
-   * junto a Caja muestra solo efectivo (para que la fórmula cuadre).
-   */
+  /** KPI Préstamos de la ruta = solo efectivo. */
   const prestamosKpi = ownRouteDay
-    ? ownRouteDay.prestamosRuta
+    ? ownRouteDay.prestamos
     : chainPlanillaDay
-      ? topPrestamos + digitalPrestamos
-      : viewPrestamos + digitalPrestamos;
+      ? topPrestamos
+      : viewPrestamos;
   const headerInicial = headerCash.inicial;
   const headerInicialReady =
     Boolean(ownRouteDay) ||
@@ -2850,12 +2830,6 @@ export function CollectorMobileApp({
               >
               <span>Lo que prestó</span>
               <b>{money(loQuePresto)}</b>
-              {ownRouteDay && loQuePrestoDigital > 0 ? (
-                <em className="is-loan-split">
-                  + {planillaIsA ? "Nequi" : "Banco"}{" "}
-                  {money(loQuePrestoDigital, { symbol: false })} · no sale de caja
-                </em>
-              ) : null}
               </button>
               <button
                 type="button"
@@ -2912,7 +2886,7 @@ export function CollectorMobileApp({
             (ownRouteDay
               ? loanRowsToExpenseLines(ownRouteDay.loanRows)
               : dayExpenseSplit.prestamos
-            ).length > 0 || loQuePrestoDigital > 0 ? (
+            ).length > 0 ? (
               <CollectorDayCloseExtras
                 dateLabel={queue.dateLabel}
                 planillaRows={[]}
@@ -3003,9 +2977,6 @@ export function CollectorMobileApp({
           dateLabel={queue.dateLabel}
           rows={viewLoanRows}
           total={viewPrestamos}
-          digitalRows={digitalLoanRows}
-          digitalTotal={digitalPrestamos}
-          digitalLabel={digitalLoanPoolLabel(digitalPool)}
         />
       ) : confirmingClose && onCloseDay ? (
         <CollectorCloseDayConfirm

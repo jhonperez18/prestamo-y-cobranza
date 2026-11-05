@@ -470,13 +470,13 @@ type RouteLiquidacion = {
   /** Gastos operativos (sin préstamos de ruta). */
   gastosHoy: number;
   /**
-   * KPI Préstamo: efectivo + Banco/Nequi de la ruta.
-   * El Cuadre de caja usa `prestamosCajaHoy` (solo efectivo).
+   * Préstamos de la ruta (solo efectivo de caja).
+   * Banco / Nequi a clientes de la ruta viven en BANCO / NEQUI, no aquí.
    */
   prestamosHoy: number;
-  /** Capital en efectivo que sale de la caja (Cuadre · Final). */
+  /** Misma cifra que `prestamosHoy` (Cuadre · Final). */
   prestamosCajaHoy: number;
-  /** Filas de desembolso (efectivo + digital) para el detalle Préstamos. */
+  /** Filas de desembolso en efectivo de la ruta. */
   cashLoansToday: DayLoanDisbursementRow[];
   enCaja: number;
   /**
@@ -2118,24 +2118,8 @@ export function SupervisorMobileApp({
           gastosHoy += amount;
         }
       }
-      // Lista = efectivo + Banco/Nequi. Caja / Cuadre solo resta efectivo.
-      const digitalToday = dayDigitalLoanRows(today, route.routeName, loans, clients);
-      const digitalTotal = dayLoanDisbursementTotal(digitalToday);
+      // Ruta del cobrador / supervisor: solo efectivo. Banco / Nequi → pantalla BANCO / NEQUI.
       const cashLoansToday = independentDay
-        ? [...independentDay.loanRows, ...independentDay.digitalLoanRows]
-        : chainDay
-          ? [...chainDay.loanRows, ...digitalToday]
-          : isPrimary
-            ? [
-                ...dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
-                  collectorRef,
-                  assignments: todayAssignments,
-                  liveDay: isLiveCashDay(collectorRef, today, dayClosesLive, businessTodayIso()),
-                }),
-                ...digitalToday,
-              ]
-            : digitalToday;
-      const cashOnlyRows = independentDay
         ? independentDay.loanRows
         : chainDay
           ? chainDay.loanRows
@@ -2150,11 +2134,8 @@ export function SupervisorMobileApp({
         ? independentDay.prestamos
         : chainDay != null
           ? chainDay.prestamos
-          : dayLoanDisbursementTotal(cashOnlyRows);
-      // KPI Préstamo = efectivo + Banco/Nequi (A/N: prestamosRuta).
-      const prestamosHoy = independentDay
-        ? independentDay.prestamosRuta
-        : prestamosCajaHoy + digitalTotal;
+          : dayLoanDisbursementTotal(cashLoansToday);
+      const prestamosHoy = prestamosCajaHoy;
 
       const closeRecord = dayClosesLive.find(
         (row) => row.collectorRef === collectorRef && row.date === today,
