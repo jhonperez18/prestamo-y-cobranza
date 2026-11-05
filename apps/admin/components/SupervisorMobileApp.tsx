@@ -469,9 +469,14 @@ type RouteLiquidacion = {
   cobradoBanco: number;
   /** Gastos operativos (sin préstamos de ruta). */
   gastosHoy: number;
-  /** Capital prestado hoy en esta ruta (efectivo / caja). */
+  /**
+   * KPI Préstamo: efectivo + Banco/Nequi de la ruta.
+   * El Cuadre de caja usa `prestamosCajaHoy` (solo efectivo).
+   */
   prestamosHoy: number;
-  /** Filas de desembolso en caja (misma fuente que prestamosHoy). */
+  /** Capital en efectivo que sale de la caja (Cuadre · Final). */
+  prestamosCajaHoy: number;
+  /** Filas de desembolso (efectivo + digital) para el detalle Préstamos. */
   cashLoansToday: DayLoanDisbursementRow[];
   enCaja: number;
   /**
@@ -2113,8 +2118,9 @@ export function SupervisorMobileApp({
           gastosHoy += amount;
         }
       }
-      // Lista = efectivo + Banco/Nequi de la ruta. Misma suma que el total. Caja solo resta efectivo.
+      // Lista = efectivo + Banco/Nequi. Caja / Cuadre solo resta efectivo.
       const digitalToday = dayDigitalLoanRows(today, route.routeName, loans, clients);
+      const digitalTotal = dayLoanDisbursementTotal(digitalToday);
       const cashLoansToday = independentDay
         ? [...independentDay.loanRows, ...independentDay.digitalLoanRows]
         : chainDay
@@ -2129,12 +2135,26 @@ export function SupervisorMobileApp({
                 ...digitalToday,
               ]
             : digitalToday;
-      // A / N: prestamosRuta. M / T: capital de la base + Banco/Nequi de la ruta.
+      const cashOnlyRows = independentDay
+        ? independentDay.loanRows
+        : chainDay
+          ? chainDay.loanRows
+          : isPrimary
+            ? dayLoanDisbursementRows(today, rawExpenses, loans, clients, {
+                collectorRef,
+                assignments: todayAssignments,
+                liveDay: isLiveCashDay(collectorRef, today, dayClosesLive, businessTodayIso()),
+              })
+            : [];
+      const prestamosCajaHoy = independentDay
+        ? independentDay.prestamos
+        : chainDay != null
+          ? chainDay.prestamos
+          : dayLoanDisbursementTotal(cashOnlyRows);
+      // KPI Préstamo = efectivo + Banco/Nequi (A/N: prestamosRuta).
       const prestamosHoy = independentDay
         ? independentDay.prestamosRuta
-        : chainDay != null
-          ? chainDay.prestamos + dayLoanDisbursementTotal(digitalToday)
-          : dayLoanDisbursementTotal(cashLoansToday);
+        : prestamosCajaHoy + digitalTotal;
 
       const closeRecord = dayClosesLive.find(
         (row) => row.collectorRef === collectorRef && row.date === today,
@@ -2178,9 +2198,9 @@ export function SupervisorMobileApp({
         ? chainDay === chainLedger.t
           ? chainLedger.dayFinal
           : chainLedger.mClosing
-        : independentDay
-          ? independentDay.closing
-          : saldoInicial + cobradoEfectivo - gastosHoy - prestamosHoy;
+          : independentDay
+            ? independentDay.closing
+            : saldoInicial + cobradoEfectivo - gastosHoy - prestamosCajaHoy;
 
       let statusLabel = "Sin planilla";
       let statusKind: StatusKind = "draft";
@@ -2232,6 +2252,7 @@ export function SupervisorMobileApp({
         cobradoBanco,
         gastosHoy,
         prestamosHoy,
+        prestamosCajaHoy,
         cashLoansToday,
         enCaja,
         figuresPending: holdLocalCie,
@@ -2266,7 +2287,7 @@ export function SupervisorMobileApp({
       const enCaja =
         ledger?.chain && ledger.mClosing === mFinal
           ? ledger.dayFinal
-          : saldoInicial + row.cobradoEfectivo - row.gastosHoy - row.prestamosHoy;
+          : saldoInicial + row.cobradoEfectivo - row.gastosHoy - row.prestamosCajaHoy;
       return { ...row, saldoInicial, enCaja };
     });
   }, [
@@ -6123,7 +6144,7 @@ export function SupervisorMobileApp({
                   </div>
                   <div className="is-cuadre-prestamo">
                     <span>Préstamo</span>
-                    <b>{money(openRoute.prestamosHoy, { symbol: false })}</b>
+                    <b>{money(openRoute.prestamosCajaHoy, { symbol: false })}</b>
                   </div>
                   <div className="is-final">
                     <span>Final</span>
