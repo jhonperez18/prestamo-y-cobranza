@@ -1609,6 +1609,10 @@ export function SupervisorMobileApp({
     "cobrado" | "prestado" | "gastos" | null
   >(null);
   const [bancoPoolHistDay, setBancoPoolHistDay] = useState<string | null>(null);
+  /** Prestado del mes en la vista nueva (desde 2026-11). Octubre no la usa. */
+  const [bancoHistPeopleOpen, setBancoHistPeopleOpen] = useState(false);
+  const [bancoHistInicial, setBancoHistInicial] = useState<number | null>(null);
+  const [bancoHistInicialFor, setBancoHistInicialFor] = useState("");
   /** NEQUI: home → historial (meses) → mes (movimiento). */
   const [nequiPoolHistNav, setNequiPoolHistNav] = useState<"home" | "meses" | "mes">("home");
   const [nequiPoolHistPeriod, setNequiPoolHistPeriod] = useState<string | null>(null);
@@ -3982,6 +3986,84 @@ export function SupervisorMobileApp({
     () => digitalPoolGastosTotal(bancoPoolHistGastos),
     [bancoPoolHistGastos],
   );
+  /**
+   * Noviembre 2026 en adelante, al cerrar, el historial usa la vista viva.
+   * Los meses anteriores (octubre) conservan la vista que ya quedó.
+   */
+  const bancoHistVistaNueva = Boolean(
+    bancoPoolHistPeriod && bancoPoolHistPeriod >= "2026-11",
+  );
+  const bancoHistNuevaHome = useMemo(() => {
+    if (!bancoHistVistaNueva || !bancoPoolHistPeriod || !poolBookPayments) return null;
+    const { from, to } = periodHistWindow(bancoPoolHistPeriod);
+    const cobrado = new Map<string, number>();
+    const people = BANCO_ROUTE_PINS.flatMap((pin) => {
+      const history = bancoRouteHistoryDays({
+        payments: poolBookPayments,
+        loans,
+        clients,
+        dayCloses: dayClosesLive,
+        fromIso: from,
+        toIso: to,
+        routeName: pin,
+        movements: bankMovements,
+      });
+      const inMonth = (date: string) => date >= from && date <= to;
+      const cobradoDays = bancoRouteCobradoHistoryDays(history, "").filter((day) =>
+        inMonth(day.date),
+      );
+      cobrado.set(pin, cobradoDays[0]?.final ?? 0);
+      const prestadoDays = bancoRoutePrestadoHistoryDays(history, "").filter((day) =>
+        inMonth(day.date),
+      );
+      return bancoPrestadoPersonLines(prestadoDays);
+    });
+    const routeRank = (route: string) =>
+      route === "M" ? 0 : route === "T" ? 1 : route === "N" ? 2 : 9;
+    people.sort((a, b) => {
+      const byDate = b.date.localeCompare(a.date);
+      if (byDate !== 0) return byDate;
+      const byRoute = routeRank(a.route) - routeRank(b.route);
+      if (byRoute !== 0) return byRoute;
+      return a.inicio - b.inicio;
+    });
+    const finalByRoute = new Map<string, number>();
+    for (const row of people) {
+      const current = finalByRoute.get(row.route) ?? 0;
+      if (row.final > current) finalByRoute.set(row.route, row.final);
+    }
+    let prestado = 0;
+    for (const value of finalByRoute.values()) prestado += value;
+    return { cobrado, people, prestado };
+  }, [
+    bancoHistVistaNueva,
+    bancoPoolHistPeriod,
+    poolBookPayments,
+    loans,
+    clients,
+    dayClosesLive,
+    bankMovements,
+  ]);
+  const bancoHistInicialTo =
+    bancoHistVistaNueva && bancoPoolHistPeriod
+      ? previousMonthLastDayIso(bancoPoolHistPeriod)
+      : "";
+  const bancoHistInicialShown =
+    bancoHistInicialFor === bancoHistInicialTo ? bancoHistInicial : null;
+  useEffect(() => {
+    if (!bancoHistInicialTo || bancoHistInicialFor === bancoHistInicialTo) return;
+    let alive = true;
+    void import("@/lib/cloud-pool-visible-saldo").then(({ readPoolVisibleSaldoAt }) => {
+      void readPoolVisibleSaldoAt(bancoHistInicialTo).then((row) => {
+        if (!alive || !row || row.toIso !== bancoHistInicialTo) return;
+        setBancoHistInicial(row.banco);
+        setBancoHistInicialFor(bancoHistInicialTo);
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [bancoHistInicialTo, bancoHistInicialFor]);
   /** Saldo historial Banco = mismo dueño servidor que el mes vivo (no suma local). */
   const bancoPoolHistSaldo = useMemo((): number | null => {
     if (
@@ -7093,8 +7175,10 @@ export function SupervisorMobileApp({
                 ? "Historial · Banco"
                 : bancoPoolHistNav === "ruta" && bancoPoolHistRoute
                   ? `Banco · ${bancoPoolHistMonthTitle} · ${bancoPoolHistRoute}`
-                  : bancoPoolHistNav === "mes"
-                    ? `Banco · ${bancoPoolHistMonthTitle}`
+                  : bancoHistPeopleOpen
+                    ? `Banco · ${bancoPoolHistMonthTitle} · Prestado`
+                    : bancoPoolHistNav === "mes"
+                      ? `Banco · ${bancoPoolHistMonthTitle}`
                     : bancoPrestadoOpen
                       ? "Banco · Prestado"
                       : bancoRegistroRoute
@@ -7109,6 +7193,10 @@ export function SupervisorMobileApp({
                   type="button"
                   className="collector-mobile-pay-link is-back is-compact"
                   onClick={() => {
+                    if (bancoHistPeopleOpen) {
+                      setBancoHistPeopleOpen(false);
+                      return;
+                    }
                     if (bancoPoolHistNav === "ruta") {
                       setBancoPoolHistRoute(null);
                       setBancoPoolHistExpand(null);
@@ -7121,6 +7209,7 @@ export function SupervisorMobileApp({
                       setBancoPoolHistRoute(null);
                       setBancoPoolHistExpand(null);
                       setBancoPoolHistDay(null);
+                      setBancoHistPeopleOpen(false);
                       setBancoPoolHistNav("meses");
                       return;
                     }
@@ -7184,6 +7273,7 @@ export function SupervisorMobileApp({
                         setBancoPoolHistRoute(null);
                         setBancoPoolHistExpand(null);
                         setBancoPoolHistDay(null);
+                        setBancoHistPeopleOpen(false);
                         setBancoPoolHistNav("mes");
                       }}
                     >
@@ -7196,7 +7286,9 @@ export function SupervisorMobileApp({
                 ))}
               </ul>
             )
-          ) : bancoPoolHistNav === "mes" ? (
+          ) : bancoPoolHistNav === "mes" &&
+            bancoPoolHistPeriod != null &&
+            bancoPoolHistPeriod < "2026-11" ? (
             <>
               <div className="supervisor-caja-mes-banner" aria-label={bancoPoolHistMonthTitle}>
                 <b>{bancoPoolHistMonthTitle}</b>
@@ -7256,7 +7348,9 @@ export function SupervisorMobileApp({
                 ? renderPoolGastos("banco", bancoPoolHistGastos, bancoPoolHistGastado)
                 : null}
             </>
-          ) : bancoPoolHistNav === "ruta" ? (
+          ) : bancoPoolHistNav === "ruta" &&
+            bancoPoolHistPeriod != null &&
+            bancoPoolHistPeriod < "2026-11" ? (
             <>
               <div
                 className="supervisor-caja-mes-banner"
@@ -7417,6 +7511,185 @@ export function SupervisorMobileApp({
                 )
               ) : null}
             </>
+          ) : bancoHistPeopleOpen && bancoHistVistaNueva ? (
+            !bancoHistNuevaHome ? (
+              <p className="ficha-empty">Leyendo préstamos Banco…</p>
+            ) : bancoHistNuevaHome.people.length > 0 ? (
+              <div className="supervisor-banco-people">
+                <div className="supervisor-banco-people-head" aria-hidden>
+                  <span>Fecha</span>
+                  <span>Nombre</span>
+                  <span>Ruta</span>
+                  <span>Inicial</span>
+                  <span>Prestado</span>
+                  <span>Final</span>
+                </div>
+                <ul className="supervisor-banco-people-list" aria-label="Prestado del mes">
+                  {bancoHistNuevaHome.people.map((row) => (
+                    <li key={row.key}>
+                      <span className="is-day">{row.day}</span>
+                      <span className="is-name">{row.name}</span>
+                      <span className="is-route">{row.route}</span>
+                      <span className="is-ini">{money(row.inicio, { symbol: false })}</span>
+                      <span className="is-pre">{money(row.prestado, { symbol: false })}</span>
+                      <span className="is-fin">{money(row.final, { symbol: false })}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="ficha-empty">Sin préstamos Banco en este mes.</p>
+            )
+          ) : bancoPoolHistNav === "mes" && bancoHistVistaNueva ? (
+            <>
+              <div className="supervisor-caja-mes-banner" aria-label={bancoPoolHistMonthTitle}>
+                <b>{bancoPoolHistMonthTitle}</b>
+                <span>Inicial + cobrado − gastos − prestado</span>
+              </div>
+              <div
+                className="supervisor-banco-home-grid"
+                role="group"
+                aria-label={`Banco ${bancoPoolHistMonthTitle}`}
+              >
+                <button
+                  type="button"
+                  className="supervisor-banco-home-btn is-inicial"
+                  title="Saldo final del mes anterior. No se mueve."
+                  aria-label={`Inicial ${bancoHistInicialShown == null ? "cargando" : money(bancoHistInicialShown, { symbol: false })}`}
+                >
+                  <span>Inicial</span>
+                  <span className="is-amount">
+                    {bancoHistInicialShown == null
+                      ? "…"
+                      : money(bancoHistInicialShown, { symbol: false })}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="supervisor-banco-home-btn is-prestado"
+                  title="Capital prestado en el mes"
+                  aria-label={`Prestado ${money(bancoHistNuevaHome?.prestado ?? 0, { symbol: false })}`}
+                  onClick={() => {
+                    suppressGhostClick();
+                    setBancoPoolHistExpand(null);
+                    setBancoHistPeopleOpen(true);
+                  }}
+                >
+                  <span>Prestado</span>
+                  <span className="is-amount">
+                    {poolBookPayments == null
+                      ? "…"
+                      : money(bancoHistNuevaHome?.prestado ?? 0, { symbol: false })}
+                  </span>
+                </button>
+                {BANCO_ROUTE_PINS.map((pin, index) => (
+                  <button
+                    key={pin}
+                    type="button"
+                    className={`supervisor-banco-home-btn is-route-${pin} accent-${index % 2}`}
+                    title={`Ruta ${pin}: solo cobrado`}
+                    aria-label={`Ruta ${pin} cobrado ${money(bancoHistNuevaHome?.cobrado.get(pin) ?? 0, { symbol: false })}`}
+                    onClick={() => {
+                      suppressGhostClick();
+                      setBancoHistPeopleOpen(false);
+                      setBancoPoolHistRoute(pin);
+                      setBancoPoolHistExpand(null);
+                      setBancoPoolHistDay(null);
+                      setBancoPoolHistNav("ruta");
+                    }}
+                  >
+                    <span>Ruta {pin}</span>
+                    <span className="is-amount">
+                      {poolBookPayments == null
+                        ? "…"
+                        : money(bancoHistNuevaHome?.cobrado.get(pin) ?? 0, { symbol: false })}
+                    </span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={`supervisor-banco-home-btn is-gastos${bancoPoolHistExpand === "gastos" ? " on" : ""}`}
+                  title="Gastos pagados desde Banco en el mes"
+                  aria-label={`Gastos ${money(bancoPoolHistGastado, { symbol: false })}`}
+                  onClick={() => {
+                    suppressGhostClick();
+                    setBancoHistPeopleOpen(false);
+                    setBancoPoolHistDay(null);
+                    setBancoPoolHistExpand((prev) => (prev === "gastos" ? null : "gastos"));
+                  }}
+                >
+                  <span>Gastos</span>
+                  <span className="is-amount">{money(bancoPoolHistGastado, { symbol: false })}</span>
+                </button>
+                <button
+                  type="button"
+                  className="supervisor-banco-home-btn is-acumulado"
+                  title="Saldo = Inicial + M + T + N − Gastos − Prestado"
+                  aria-label={`Saldo ${bancoPoolHistSaldo == null ? "cargando" : money(bancoPoolHistSaldo, { symbol: false })}`}
+                >
+                  <span>Saldo</span>
+                  <span className="is-amount">
+                    {bancoPoolHistSaldo == null ? "…" : money(bancoPoolHistSaldo, { symbol: false })}
+                  </span>
+                </button>
+              </div>
+              {bancoPoolHistExpand === "gastos"
+                ? renderPoolGastos("banco", bancoPoolHistGastos, bancoPoolHistGastado)
+                : null}
+            </>
+          ) : bancoPoolHistNav === "ruta" && bancoHistVistaNueva ? (
+            poolBookPayments == null ? (
+              <p className="ficha-empty">Leyendo cobros Banco…</p>
+            ) : bancoPoolHistCobradoDays.length > 0 ? (
+              <div className="supervisor-banco-hist">
+                <div className="supervisor-banco-hist-head" aria-hidden>
+                  <span>Fecha</span>
+                  <span>Inicial</span>
+                  <span>Cobrado</span>
+                  <span>Final</span>
+                </div>
+                <ul
+                  className="supervisor-nequi-day-list is-banco is-cobrado-hist"
+                  aria-label={`Cobrado ruta ${bancoPoolHistRoute || ""} del mes`}
+                >
+                  {bancoPoolHistCobradoDays.map((day) => {
+                    const open = bancoPoolHistDay === day.date;
+                    return (
+                      <li key={day.date}>
+                        <button
+                          type="button"
+                          className={
+                            open ? "supervisor-nequi-day-row on" : "supervisor-nequi-day-row"
+                          }
+                          aria-expanded={open}
+                          onClick={() => {
+                            suppressGhostClick();
+                            setBancoPoolHistDay((prev) =>
+                              prev === day.date ? null : day.date,
+                            );
+                          }}
+                        >
+                          <span className="is-date">{isoToDisplay(day.date)}</span>
+                          <span className="is-ini">{money(day.inicio, { symbol: false })}</span>
+                          <span className="is-cob">{money(day.cobrado, { symbol: false })}</span>
+                          <span className="is-fin">{money(day.final, { symbol: false })}</span>
+                        </button>
+                        {open ? (
+                          <div className="supervisor-banco-day-drop">
+                            {renderNequiDayList(day.items, [], undefined)}
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : (
+              <p className="ficha-empty">
+                Sin cobros Banco en ruta {bancoPoolHistRoute} ·{" "}
+                {informePeriodName(bancoPoolHistPeriod || "")}.
+              </p>
+            )
           ) : bancoGastosOpen ? (
             renderPoolGastos("banco", bancoGastos, bancoGastado)
           ) : !bancoRegistroRoute && !bancoPrestadoOpen ? (

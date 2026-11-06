@@ -7543,24 +7543,16 @@
       color: #b91c1c;
     }
     .supervisor-banco-home-btn.is-inicial {
-      grid-column: 1 / -1;
-      min-height: 72px;
       background: #f4f7f6;
       border-color: #9bb5ab;
       cursor: default;
     }
     .supervisor-banco-home-btn.is-prestado {
-      grid-column: 1 / -1;
-      min-height: 52px;
       background: linear-gradient(180deg, #eff6ff 0%, #fff 55%);
       border-color: #bfdbfe;
     }
-    .supervisor-banco-home-btn.is-prestado span {
-      font-size: 14px;
-      color: #1d4ed8;
-    }
+    .supervisor-banco-home-btn.is-prestado span,
     .supervisor-banco-home-btn.is-prestado .is-amount {
-      font-size: 22px;
       color: #1d4ed8;
     }
     .supervisor-banco-people {
