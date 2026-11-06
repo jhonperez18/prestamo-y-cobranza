@@ -7564,12 +7564,12 @@
     .supervisor-banco-people-head,
     .supervisor-banco-people-list li {
       display: grid;
-      grid-template-columns: 2.8rem minmax(4.6rem, 1.2fr) 1.8rem minmax(3.6rem, 1fr) minmax(4.2rem, 1fr) minmax(3.6rem, 1fr);
-      column-gap: 6px;
+      grid-template-columns: 2.15rem minmax(0, 1fr) 1.15rem 3.7rem 4.15rem 4.55rem;
+      column-gap: 3px;
       align-items: center;
     }
     .supervisor-banco-people-head {
-      padding: 8px 8px;
+      padding: 8px 4px;
       border-radius: 8px;
       border: 1px solid #bfdbfe;
       background: #eff6ff;
@@ -7591,7 +7591,7 @@
       list-style: none;
     }
     .supervisor-banco-people-list li {
-      padding: 8px;
+      padding: 8px 4px;
       border: 1px solid #dbeafe;
       border-radius: 8px;
       background: #fff;
@@ -7602,9 +7602,12 @@
       font-variant-numeric: tabular-nums;
       text-align: left;
     }
+    .supervisor-banco-people-list .is-route,
+    .supervisor-banco-people-head span:nth-child(3) {
+      text-align: left;
+    }
     .supervisor-banco-people-list .is-route {
       font-variant-numeric: tabular-nums;
-      text-align: center;
     }
     .supervisor-banco-people-list .is-name {
       overflow-wrap: anywhere;
