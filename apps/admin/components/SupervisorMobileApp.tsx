@@ -152,7 +152,7 @@ import {
   NEQUI_ROUTE_PIN,
   digitalPoolGastos,
   digitalPoolGastosTotal,
-  bancoPrestadoPersonLines,
+  bancoAllRoutesPrestadoHistoryDays,
   bancoRouteCuadre,
   bancoRouteCobradoHistoryDays,
   bancoRouteHistoryDays,
@@ -2712,8 +2712,15 @@ export function SupervisorMobileApp({
         <li key={row.loanRef} className="is-outflow">
           <strong className="is-name">{row.clientName}</strong>
           <span className="is-when">{row.time || "—"}</span>
-          <em className="is-method is-pay-prestamo" title="Sale del Banco · solo capital">
-            −
+          <em
+            className="is-method is-pay-prestamo"
+            title={
+              row.route
+                ? `Ruta ${row.route} · sale del Banco · solo capital`
+                : "Sale del Banco · solo capital"
+            }
+          >
+            {row.route || "−"}
           </em>
           <span className="is-evidence" aria-hidden />
           <b className="is-out">{money(-row.capital, { symbol: false })}</b>
@@ -2980,41 +2987,30 @@ export function SupervisorMobileApp({
     () => bancoRoutePrestadoHistoryDays(bancoRutaHistoryDays, today),
     [bancoRutaHistoryDays, today],
   );
-  /** Prestado de las tres rutas: misma cadena por ruta, un renglón por persona. */
-  const bancoPrestadoPeople = useMemo(() => {
+  /**
+   * Prestado Banco vivo: un renglón por día con M + T + N.
+   * Final del día = Inicial del siguiente. Al abrir el día salen todos los préstamos.
+   */
+  const bancoPrestadoAllDays = useMemo(() => {
     if (!poolBookPayments) return [];
-    const lines = BANCO_ROUTE_PINS.flatMap((pin) => {
-      const days =
-        bancoRegistroRoute && sameRoute(pin, bancoRegistroRoute)
-          ? bancoPrestadoDays
-          : bancoRoutePrestadoHistoryDays(
-              bancoRouteHistoryDays({
-                payments: poolBookPayments,
-                loans,
-                clients,
-                dayCloses: dayClosesLive,
-                fromIso: bancoHistoryFrom,
-                toIso: today,
-                routeName: pin,
-                movements: bankMovements,
-              }),
-              today,
-            );
-      return bancoPrestadoPersonLines(days);
-    });
-    const routeRank = (route: string) =>
-      route === "M" ? 0 : route === "T" ? 1 : route === "N" ? 2 : 9;
-    return lines.sort((a, b) => {
-      const byDate = b.date.localeCompare(a.date);
-      if (byDate !== 0) return byDate;
-      const byRoute = routeRank(a.route) - routeRank(b.route);
-      if (byRoute !== 0) return byRoute;
-      return a.inicio - b.inicio;
-    });
+    const source = BANCO_ROUTE_PINS.flatMap((pin) =>
+      bancoRoutePrestadoHistoryDays(
+        bancoRouteHistoryDays({
+          payments: poolBookPayments,
+          loans,
+          clients,
+          dayCloses: dayClosesLive,
+          fromIso: bancoHistoryFrom,
+          toIso: today,
+          routeName: pin,
+          movements: bankMovements,
+        }),
+        today,
+      ),
+    );
+    return bancoAllRoutesPrestadoHistoryDays(source, today);
   }, [
     poolBookPayments,
-    bancoRegistroRoute,
-    bancoPrestadoDays,
     loans,
     clients,
     dayClosesLive,
@@ -3044,17 +3040,8 @@ export function SupervisorMobileApp({
     }
     return shown;
   }, [poolBookPayments, loans, clients, dayClosesLive, bancoHistoryFrom, today, bankMovements]);
-  /** Botón Prestado = final de la cadena de cada ruta (M, T y N por separado, luego se suman). */
-  const bancoPrestadoSaldo = useMemo(() => {
-    const finalByRoute = new Map<string, number>();
-    for (const row of bancoPrestadoPeople) {
-      const current = finalByRoute.get(row.route) ?? 0;
-      if (row.final > current) finalByRoute.set(row.route, row.final);
-    }
-    let total = 0;
-    for (const value of finalByRoute.values()) total += value;
-    return total;
-  }, [bancoPrestadoPeople]);
+  /** Botón Prestado = final del último día de la cadena M+T+N. */
+  const bancoPrestadoSaldo = bancoPrestadoAllDays[0]?.final ?? 0;
   const nequiRutaHistoryDays = useMemo(
     () =>
       view === "nequi" && poolBookPayments
@@ -4051,7 +4038,7 @@ export function SupervisorMobileApp({
     if (!bancoHistVistaNueva || !bancoPoolHistPeriod || !poolBookPayments) return null;
     const { from, to } = periodHistWindow(bancoPoolHistPeriod);
     const cobrado = new Map<string, number>();
-    const people = BANCO_ROUTE_PINS.flatMap((pin) => {
+    const prestadoSource = BANCO_ROUTE_PINS.flatMap((pin) => {
       const history = bancoRouteHistoryDays({
         payments: poolBookPayments,
         loans,
@@ -4067,28 +4054,10 @@ export function SupervisorMobileApp({
         inMonth(day.date),
       );
       cobrado.set(pin, cobradoDays[0]?.final ?? 0);
-      const prestadoDays = bancoRoutePrestadoHistoryDays(history, "").filter((day) =>
-        inMonth(day.date),
-      );
-      return bancoPrestadoPersonLines(prestadoDays);
+      return bancoRoutePrestadoHistoryDays(history, "").filter((day) => inMonth(day.date));
     });
-    const routeRank = (route: string) =>
-      route === "M" ? 0 : route === "T" ? 1 : route === "N" ? 2 : 9;
-    people.sort((a, b) => {
-      const byDate = b.date.localeCompare(a.date);
-      if (byDate !== 0) return byDate;
-      const byRoute = routeRank(a.route) - routeRank(b.route);
-      if (byRoute !== 0) return byRoute;
-      return a.inicio - b.inicio;
-    });
-    const finalByRoute = new Map<string, number>();
-    for (const row of people) {
-      const current = finalByRoute.get(row.route) ?? 0;
-      if (row.final > current) finalByRoute.set(row.route, row.final);
-    }
-    let prestado = 0;
-    for (const value of finalByRoute.values()) prestado += value;
-    return { cobrado, people, prestado };
+    const days = bancoAllRoutesPrestadoHistoryDays(prestadoSource, "");
+    return { cobrado, days, prestado: days[0]?.final ?? 0 };
   }, [
     bancoHistVistaNueva,
     bancoPoolHistPeriod,
@@ -7641,27 +7610,54 @@ export function SupervisorMobileApp({
           ) : bancoHistPeopleOpen && bancoHistVistaNueva ? (
             !bancoHistNuevaHome ? (
               <p className="ficha-empty">Leyendo préstamos Banco…</p>
-            ) : bancoHistNuevaHome.people.length > 0 ? (
-              <div className="supervisor-banco-people">
-                <div className="supervisor-banco-people-head" aria-hidden>
+            ) : bancoHistNuevaHome.days.length > 0 ? (
+              <div className="supervisor-banco-hist">
+                <div className="supervisor-banco-hist-head" aria-hidden>
                   <span>Fecha</span>
-                  <span>Nombre</span>
-                  <span>Ruta</span>
                   <span>Inicial</span>
                   <span>Prestado</span>
                   <span>Final</span>
                 </div>
-                <ul className="supervisor-banco-people-list" aria-label="Prestado del mes">
-                  {bancoHistNuevaHome.people.map((row) => (
-                    <li key={row.key}>
-                      <span className="is-day">{row.day}</span>
-                      <span className="is-name">{row.name}</span>
-                      <span className="is-route">{row.route}</span>
-                      <span className="is-ini">{money(row.inicio, { symbol: false })}</span>
-                      <span className="is-pre">{money(row.prestado, { symbol: false })}</span>
-                      <span className="is-fin">{money(row.final, { symbol: false })}</span>
-                    </li>
-                  ))}
+                <ul
+                  className="supervisor-nequi-day-list is-banco is-prestado-hist"
+                  aria-label="Prestado del mes · M T N"
+                >
+                  {bancoHistNuevaHome.days.map((day) => {
+                    const open = bancoPoolHistDay === day.date;
+                    return (
+                      <li key={day.date}>
+                        <button
+                          type="button"
+                          className={
+                            open ? "supervisor-nequi-day-row on" : "supervisor-nequi-day-row"
+                          }
+                          aria-expanded={open}
+                          onClick={() => {
+                            suppressGhostClick();
+                            setBancoPoolHistDay((prev) =>
+                              prev === day.date ? null : day.date,
+                            );
+                          }}
+                        >
+                          <span className="is-date">{isoToDisplay(day.date)}</span>
+                          <span className="is-ini">
+                            {money(day.inicio, { symbol: false })}
+                          </span>
+                          <span className="is-pre">
+                            {money(day.prestado, { symbol: false })}
+                          </span>
+                          <span className="is-fin">
+                            {money(day.final, { symbol: false })}
+                          </span>
+                        </button>
+                        {open ? (
+                          <div className="supervisor-banco-day-drop">
+                            {renderNequiDayList([], day.loans, undefined)}
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ) : (
@@ -7699,6 +7695,7 @@ export function SupervisorMobileApp({
                   onClick={() => {
                     suppressGhostClick();
                     setBancoPoolHistExpand(null);
+                    setBancoPoolHistDay(null);
                     setBancoHistPeopleOpen(true);
                   }}
                 >
@@ -7908,30 +7905,54 @@ export function SupervisorMobileApp({
           ) : bancoPrestadoOpen ? (
             poolBookPayments == null ? (
               <p className="ficha-empty">Leyendo préstamos Banco…</p>
-            ) : bancoPrestadoPeople.length > 0 ? (
-              <div className="supervisor-banco-people">
-                <div className="supervisor-banco-people-head" aria-hidden>
+            ) : bancoPrestadoAllDays.length > 0 ? (
+              <div className="supervisor-banco-hist">
+                <div className="supervisor-banco-hist-head" aria-hidden>
                   <span>Fecha</span>
-                  <span>Nombre</span>
-                  <span>Ruta</span>
                   <span>Inicial</span>
                   <span>Prestado</span>
                   <span>Final</span>
                 </div>
                 <ul
-                  className="supervisor-banco-people-list"
-                  aria-label="Fecha, nombre, ruta, inicial, prestado y final"
+                  className="supervisor-nequi-day-list is-banco is-prestado-hist"
+                  aria-label="Prestado Banco · M T N por día"
                 >
-                  {bancoPrestadoPeople.map((row) => (
-                    <li key={row.key}>
-                      <span className="is-day">{row.day}</span>
-                      <span className="is-name">{row.name}</span>
-                      <span className="is-route">{row.route}</span>
-                      <span className="is-ini">{money(row.inicio, { symbol: false })}</span>
-                      <span className="is-pre">{money(row.prestado, { symbol: false })}</span>
-                      <span className="is-fin">{money(row.final, { symbol: false })}</span>
-                    </li>
-                  ))}
+                  {bancoPrestadoAllDays.map((day) => {
+                    const open = bancoRegistroDay === day.date;
+                    return (
+                      <li key={day.date}>
+                        <button
+                          type="button"
+                          className={
+                            open ? "supervisor-nequi-day-row on" : "supervisor-nequi-day-row"
+                          }
+                          aria-expanded={open}
+                          onClick={() => {
+                            suppressGhostClick();
+                            setBancoRegistroDay((prev) =>
+                              prev === day.date ? null : day.date,
+                            );
+                          }}
+                        >
+                          <span className="is-date">{isoToDisplay(day.date)}</span>
+                          <span className="is-ini">
+                            {money(day.inicio, { symbol: false })}
+                          </span>
+                          <span className="is-pre">
+                            {money(day.prestado, { symbol: false })}
+                          </span>
+                          <span className="is-fin">
+                            {money(day.final, { symbol: false })}
+                          </span>
+                        </button>
+                        {open ? (
+                          <div className="supervisor-banco-day-drop">
+                            {renderNequiDayList([], day.loans, undefined)}
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ) : (

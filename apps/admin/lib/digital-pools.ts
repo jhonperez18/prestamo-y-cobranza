@@ -330,6 +330,8 @@ export type DigitalPoolRegisterLoan = {
   capital: number;
   time: string;
   dateIso: string;
+  /** Ruta del cliente (M / T / N / A). En Prestado Banco distingue el renglón. */
+  route?: string;
 };
 
 export type DigitalPoolRegisterDay = {
@@ -405,6 +407,7 @@ function loanRegisterTime(loan: LoanRow): string {
 }
 
 function toRegisterLoan(loan: LoanRow, client: ClientRow): DigitalPoolRegisterLoan {
+  const route = String(client.route || "").trim().toUpperCase();
   return {
     loanRef: loan.ref,
     clientRef: client.ref,
@@ -412,6 +415,7 @@ function toRegisterLoan(loan: LoanRow, client: ClientRow): DigitalPoolRegisterLo
     capital: loanBankOutflowCapital(loan),
     time: loanRegisterTime(loan),
     dateIso: loanDisbursementIsoDate(loan),
+    route: route || undefined,
   };
 }
 
@@ -545,6 +549,7 @@ function collectPoolOutflowLoans(input: {
         capital: pesos(orphan.capital),
         time: orphan.time,
         dateIso: orphan.dateIso,
+        route: String(client.route || "").trim().toUpperCase() || undefined,
       });
     }
   }
@@ -1160,4 +1165,34 @@ export function bancoPrestadoPersonLines(
     });
   }
   return lines;
+}
+
+/**
+ * Prestado Banco: un solo renglón por día con M + T + N juntos.
+ * Final del día = Inicial del día siguiente. Al abrir el día salen todos los préstamos
+ * (se distinguen por la letra de la ruta).
+ */
+export function bancoAllRoutesPrestadoHistoryDays(
+  days: readonly BancoRoutePrestadoDay[],
+  liveDate = "",
+): BancoRoutePrestadoDay[] {
+  const byDate = new Map<string, { prestado: number; loans: DigitalPoolRegisterLoan[] }>();
+  for (const day of days) {
+    const date = isoOf(day.date);
+    if (!date) continue;
+    const bucket = byDate.get(date) ?? { prestado: 0, loans: [] };
+    bucket.prestado = pesos(bucket.prestado + (Number(day.prestado) || 0));
+    for (const loan of day.loans) {
+      const route = String(loan.route || day.route || "").trim().toUpperCase();
+      bucket.loans.push(route && !loan.route ? { ...loan, route } : loan);
+    }
+    byDate.set(date, bucket);
+  }
+  const merged = [...byDate.entries()].map(([date, row]) => ({
+    route: "",
+    date,
+    prestado: row.prestado,
+    loans: sortPoolRegisterLoans(row.loans),
+  }));
+  return bancoRoutePrestadoHistoryDays(merged, liveDate);
 }
