@@ -108,6 +108,7 @@ import type {
 import {
   COLLECTOR_HISTORY_KEEP_DAYS,
   buildCollectorDayHistory,
+  dayNumberFromIso,
   expensesForCollectorDay,
   findMonthClose,
   historyDayLabel,
@@ -2490,7 +2491,7 @@ export function CollectorMobileApp({
                         setHistoryOpen(false);
                       }}
                     >
-                      <span className="is-date">{row.dateLabel}</span>
+                      <span className="is-date">{dayNumberFromIso(row.date)}</span>
                       <span className="is-money is-inicial-col">
                         {row.inicial == null ? "—" : money(row.inicial, { symbol: false })}
                       </span>
@@ -2532,7 +2533,7 @@ export function CollectorMobileApp({
                           setHistoryOpen(false);
                         }}
                       >
-                        <span className="is-date">{row.dateLabel}</span>
+                        <span className="is-date">{dayNumberFromIso(row.date)}</span>
                         {showTInicialColumn || showOwnInicialColumn ? (
                           <span className="is-money is-inicial-col">
                             {(showTInicialColumn
@@ -2566,7 +2567,7 @@ export function CollectorMobileApp({
                           className="collector-mobile-day-history-row is-adjustment"
                           title={cashAdjustmentNote(adjustment)}
                         >
-                          <span className="is-date">{row.dateLabel}</span>
+                          <span className="is-date">{dayNumberFromIso(row.date)}</span>
                           {showTInicialColumn || showOwnInicialColumn ? <span className="is-money" /> : null}
                           <span className="is-money">Ajuste</span>
                           <span className="is-money" />
