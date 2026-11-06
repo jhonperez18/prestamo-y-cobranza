@@ -7547,9 +7547,16 @@
       border-color: #9bb5ab;
       cursor: default;
     }
+    .supervisor-banco-home-btn.is-cobrado {
+      background: linear-gradient(180deg, #f0fdfa 0%, #fff 42%);
+      border-color: #9bb5ab;
+    }
     .supervisor-banco-home-btn.is-prestado {
       background: linear-gradient(180deg, #eff6ff 0%, #fff 55%);
       border-color: #bfdbfe;
+    }
+    .supervisor-banco-home-grid.is-nequi-home .supervisor-banco-home-btn.on {
+      box-shadow: 0 0 0 2px #0f766e;
     }
     .supervisor-banco-home-btn.is-prestado span,
     .supervisor-banco-home-btn.is-prestado .is-amount {

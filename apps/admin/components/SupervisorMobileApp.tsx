@@ -1586,6 +1586,9 @@ export function SupervisorMobileApp({
    */
   const [bancoInicial, setBancoInicial] = useState<number | null>(null);
   const [bancoInicialFor, setBancoInicialFor] = useState("");
+  /** Inicial Nequi = cierre del mes anterior. Misma lectura que Banco, no se recalcula. */
+  const [nequiInicial, setNequiInicial] = useState<number | null>(null);
+  const [nequiInicialFor, setNequiInicialFor] = useState("");
   /** Un solo día abierto en el historial (acordeón). */
   const [bancoRegistroDay, setBancoRegistroDay] = useState<string | null>(null);
   /** Historial Nequi (ruta A): cobrado o prestado. */
@@ -1914,6 +1917,31 @@ export function SupervisorMobileApp({
       alive = false;
     };
   }, [view, bancoInicialTo, bancoInicialFor]);
+  useEffect(() => {
+    if (view !== "nequi" || !bancoInicialTo || nequiInicialFor === bancoInicialTo) return;
+    let alive = true;
+    void import("@/lib/cloud-pool-visible-saldo").then(({ readPoolVisibleSaldoAt }) => {
+      const pull = (tries: number) => {
+        void readPoolVisibleSaldoAt(bancoInicialTo).then((row) => {
+          if (!alive) return;
+          if (row && row.toIso === bancoInicialTo) {
+            setNequiInicial(row.nequi);
+            setNequiInicialFor(bancoInicialTo);
+            return;
+          }
+          if (tries < 2) {
+            window.setTimeout(() => {
+              if (alive) pull(tries + 1);
+            }, 2_000);
+          }
+        });
+      };
+      pull(0);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [view, bancoInicialTo, nequiInicialFor]);
 
   /** Libro de caja del día por cobrador: misma cifra que la app del cobrador, el cierre y el Historial. */
   const ledgerByCollector = useMemo(() => {
@@ -7012,10 +7040,25 @@ export function SupervisorMobileApp({
             className="collector-mobile-home-cuadre is-supervisor-caja-day is-banco-ruta"
             aria-label={`Nequi ruta ${NEQUI_ROUTE_PIN}`}
           >
-            <div className="collector-mobile-home-cuadre-grid is-banco-dos is-nequi-tres">
+            <div
+              className="supervisor-banco-home-grid is-nequi-home"
+              role="group"
+              aria-label="Inicial, Cobrado, Prestado, Gastos y Saldo de Nequi"
+            >
               <button
                 type="button"
-                className={`is-banco-cobrado is-tap${nequiRutaExpand === "cobrado" ? " on" : ""}`}
+                className="supervisor-banco-home-btn is-inicial"
+                title="Saldo final del mes anterior. No se mueve en el mes."
+                aria-label={`Inicial ${nequiInicial == null ? "cargando" : money(nequiInicial, { symbol: false })}`}
+              >
+                <span>Inicial</span>
+                <span className="is-amount">
+                  {nequiInicial == null ? "…" : money(nequiInicial, { symbol: false })}
+                </span>
+              </button>
+              <button
+                type="button"
+                className={`supervisor-banco-home-btn is-cobrado${nequiRutaExpand === "cobrado" ? " on" : ""}`}
                 aria-expanded={nequiRutaExpand === "cobrado"}
                 onClick={() => {
                   suppressGhostClick();
@@ -7024,17 +7067,17 @@ export function SupervisorMobileApp({
                 }}
               >
                 <span>Cobrado</span>
-                <b>
+                <span className="is-amount">
                   {poolBookPayments == null
                     ? "…"
                     : nequiCobradoShown == null
                       ? "—"
                       : money(nequiCobradoShown, { symbol: false })}
-                </b>
+                </span>
               </button>
               <button
                 type="button"
-                className={`is-prestamos is-tap${nequiRutaExpand === "prestado" ? " on" : ""}`}
+                className={`supervisor-banco-home-btn is-prestado${nequiRutaExpand === "prestado" ? " on" : ""}`}
                 aria-expanded={nequiRutaExpand === "prestado"}
                 onClick={() => {
                   suppressGhostClick();
@@ -7043,17 +7086,17 @@ export function SupervisorMobileApp({
                 }}
               >
                 <span>Prestado</span>
-                <b>
+                <span className="is-amount">
                   {poolBookPayments == null
                     ? "…"
                     : nequiPrestadoShown == null
                       ? "—"
                       : money(nequiPrestadoShown, { symbol: false })}
-                </b>
+                </span>
               </button>
               <button
                 type="button"
-                className={`is-nequi-gastos is-tap${nequiRutaExpand === "gastos" ? " on" : ""}`}
+                className={`supervisor-banco-home-btn is-gastos${nequiRutaExpand === "gastos" ? " on" : ""}`}
                 aria-expanded={nequiRutaExpand === "gastos"}
                 title="Gastos pagados desde Nequi"
                 onClick={() => {
@@ -7063,16 +7106,20 @@ export function SupervisorMobileApp({
                 }}
               >
                 <span>Gastos</span>
-                <b>{nequiGastosShown == null ? "—" : money(nequiGastosShown, { symbol: false })}</b>
+                <span className="is-amount">
+                  {nequiGastosShown == null ? "—" : money(nequiGastosShown, { symbol: false })}
+                </span>
               </button>
               <button
                 type="button"
-                className="is-nequi-saldo"
-                title="Saldo Nequi ruta A (cobrado − prestado − gastos)"
-                aria-label={`Saldo Nequi ruta A ${nequiSaldoShown == null ? "cargando" : money(nequiSaldoShown, { symbol: false })}`}
+                className="supervisor-banco-home-btn is-acumulado"
+                title="Saldo = Inicial + Cobrado − Prestado − Gastos"
+                aria-label={`Saldo Nequi ${nequiSaldoShown == null ? "cargando" : money(nequiSaldoShown, { symbol: false })}`}
               >
                 <span>Saldo</span>
-                <b>{nequiSaldoShown == null ? "…" : money(nequiSaldoShown, { symbol: false })}</b>
+                <span className="is-amount">
+                  {nequiSaldoShown == null ? "…" : money(nequiSaldoShown, { symbol: false })}
+                </span>
               </button>
             </div>
           </section>
