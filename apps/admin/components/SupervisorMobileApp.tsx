@@ -87,6 +87,7 @@ import {
   alignIndependentDay1ToCarry,
   alignIndependentHistoryDayToDay,
   monthCarrySrcFrom,
+  previousMonthLastDayIso,
   routeMonthCarryOpening,
 } from "@/lib/month-route-carry";
 import { businessTodayIso } from "@/lib/business-timezone";
@@ -1584,6 +1585,12 @@ export function SupervisorMobileApp({
   const [bancoGastosOpen, setBancoGastosOpen] = useState(false);
   /** Prestado de M + T + N, un renglón por persona. */
   const [bancoPrestadoOpen, setBancoPrestadoOpen] = useState(false);
+  /**
+   * Inicial Banco = saldo final del mes anterior (servidor, al último día de cobro).
+   * Llega una vez y no se vuelve a pedir: el cierre ya pasó.
+   */
+  const [bancoInicial, setBancoInicial] = useState<number | null>(null);
+  const [bancoInicialFor, setBancoInicialFor] = useState("");
   /** Un solo día abierto en el historial (acordeón). */
   const [bancoRegistroDay, setBancoRegistroDay] = useState<string | null>(null);
   /** Historial Nequi (ruta A): cobrado o prestado. */
@@ -1877,6 +1884,35 @@ export function SupervisorMobileApp({
   // Saldo Banco/Nequi: calienta al abrir el supervisor (disco en el servidor = instantáneo).
   // Antes solo al entrar a la pestaña → el pie de INICIO se quedaba en «…».
   const poolVisibleCloud = usePoolVisibleSaldoCloud(true, poolVisibleToIso);
+  const bancoInicialTo = useMemo(
+    () => (/^\d{4}-\d{2}-\d{2}$/.test(today) ? previousMonthLastDayIso(today.slice(0, 7)) : ""),
+    [today],
+  );
+  useEffect(() => {
+    if (view !== "banco" || !bancoInicialTo || bancoInicialFor === bancoInicialTo) return;
+    let alive = true;
+    void import("@/lib/cloud-pool-visible-saldo").then(({ readPoolVisibleSaldoAt }) => {
+      const pull = (tries: number) => {
+        void readPoolVisibleSaldoAt(bancoInicialTo).then((row) => {
+          if (!alive) return;
+          if (row && row.toIso === bancoInicialTo) {
+            setBancoInicial(row.banco);
+            setBancoInicialFor(bancoInicialTo);
+            return;
+          }
+          if (tries < 2) {
+            window.setTimeout(() => {
+              if (alive) pull(tries + 1);
+            }, 2_000);
+          }
+        });
+      };
+      pull(0);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [view, bancoInicialTo, bancoInicialFor]);
 
   /** Libro de caja del día por cobrador: misma cifra que la app del cobrador, el cierre y el Historial. */
   const ledgerByCollector = useMemo(() => {
@@ -7389,6 +7425,35 @@ export function SupervisorMobileApp({
               role="group"
               aria-label="Ruta M, Ruta T, Ruta N, Gastos, Prestado y Saldo de Banco"
             >
+              <button
+                type="button"
+                className="supervisor-banco-home-btn is-inicial"
+                title="Saldo final del mes anterior. No se mueve en el mes."
+                aria-label={`Inicial ${bancoInicial == null ? "cargando" : money(bancoInicial, { symbol: false })}`}
+              >
+                <span>Inicial</span>
+                <span className="is-amount">
+                  {bancoInicial == null ? "…" : money(bancoInicial, { symbol: false })}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="supervisor-banco-home-btn is-prestado"
+                title="Capital prestado desde Banco"
+                aria-label={`Prestado ${poolBookPayments == null ? "cargando" : money(bancoPrestadoSaldo, { symbol: false })}`}
+                onClick={() => {
+                  suppressGhostClick();
+                  setBancoRegistroRoute(null);
+                  setBancoGastosOpen(false);
+                  setBancoRegistroDay(null);
+                  setBancoPrestadoOpen(true);
+                }}
+              >
+                <span>Prestado</span>
+                <span className="is-amount">
+                  {poolBookPayments == null ? "…" : money(bancoPrestadoSaldo, { symbol: false })}
+                </span>
+              </button>
               {bancoRouteCuadres.map((row, index) => (
                 <button
                   key={row.route}
@@ -7430,26 +7495,8 @@ export function SupervisorMobileApp({
               </button>
               <button
                 type="button"
-                className="supervisor-banco-home-btn is-prestado"
-                title="Capital prestado desde Banco"
-                aria-label={`Prestado ${poolBookPayments == null ? "cargando" : money(bancoPrestadoSaldo, { symbol: false })}`}
-                onClick={() => {
-                  suppressGhostClick();
-                  setBancoRegistroRoute(null);
-                  setBancoGastosOpen(false);
-                  setBancoRegistroDay(null);
-                  setBancoPrestadoOpen(true);
-                }}
-              >
-                <span>Prestado</span>
-                <span className="is-amount">
-                  {poolBookPayments == null ? "…" : money(bancoPrestadoSaldo, { symbol: false })}
-                </span>
-              </button>
-              <button
-                type="button"
                 className="supervisor-banco-home-btn is-acumulado"
-                title="Saldo de Banco (M + T + N − Gastos)"
+                title="Saldo = Inicial + M + T + N − Gastos − Prestado"
                 aria-label={`Saldo de Banco ${bancoSaldo == null ? "cargando" : money(bancoSaldo, { symbol: false })}`}
               >
                 <span>Saldo</span>

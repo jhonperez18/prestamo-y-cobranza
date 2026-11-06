@@ -7542,6 +7542,13 @@
     .supervisor-banco-home-btn.is-gastos .is-amount {
       color: #b91c1c;
     }
+    .supervisor-banco-home-btn.is-inicial {
+      grid-column: 1 / -1;
+      min-height: 72px;
+      background: #f4f7f6;
+      border-color: #9bb5ab;
+      cursor: default;
+    }
     .supervisor-banco-home-btn.is-prestado {
       grid-column: 1 / -1;
       min-height: 52px;

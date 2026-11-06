@@ -32,6 +32,43 @@ export function rememberCloudPoolVisibleSaldo(row: CloudPoolVisibleSaldo) {
   cached = row;
 }
 
+/**
+ * Cierre de un día ya pasado (Inicial del mes). No toca la cifra viva del Saldo.
+ * Una lectura; quien llama la guarda y no la vuelve a pedir.
+ */
+export async function readPoolVisibleSaldoAt(
+  toIso: string,
+): Promise<{ banco: number; nequi: number; toIso: string } | null> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(toIso)) return null;
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer =
+    ctrl && typeof window !== "undefined"
+      ? window.setTimeout(() => ctrl.abort(), 30_000)
+      : 0;
+  try {
+    const res = await fetch(`/api/ops/pool-visible-saldo?to=${toIso}`, {
+      cache: "no-store",
+      signal: ctrl?.signal,
+    });
+    const body = (await res.json()) as {
+      ok?: boolean;
+      banco?: number;
+      nequi?: number;
+      toIso?: string;
+    };
+    if (!body || body.ok !== true) return null;
+    const banco = Math.trunc(Number(body.banco));
+    const nequi = Math.trunc(Number(body.nequi));
+    if (!Number.isFinite(banco) || !Number.isFinite(nequi)) return null;
+    return { banco, nequi, toIso: String(body.toIso || toIso) };
+  } catch (error) {
+    console.error("readPoolVisibleSaldoAt", error);
+    return null;
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
+}
+
 export async function refreshCloudPoolVisibleSaldo(
   toIso?: string,
 ): Promise<CloudPoolVisibleSaldo | null> {
