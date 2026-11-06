@@ -7560,7 +7560,7 @@
     }
     .supervisor-banco-home-btn.is-prestado span,
     .supervisor-banco-home-btn.is-prestado .is-amount {
-      color: #1d4ed8;
+      color: #111;
     }
     .supervisor-banco-people {
       display: grid;
@@ -7625,7 +7625,7 @@
       text-align: right;
       white-space: nowrap;
       font-variant-numeric: tabular-nums;
-      color: #1d4ed8;
+      color: #111;
     }
     .supervisor-banco-gastos-head,
     .supervisor-banco-gastos-list li {
@@ -7697,7 +7697,7 @@
       padding: 8px 12px;
       border-radius: 10px;
       background: #eff6ff;
-      color: #1e3a8a;
+      color: #111;
       font-size: 12px;
       font-weight: 700;
       font-variant-numeric: tabular-nums;
@@ -7752,7 +7752,7 @@
     .supervisor-nequi-day-list.is-banco.is-cobrado-hist .supervisor-nequi-day-row .is-fin {
       font-size: 12px;
       font-weight: 400;
-      color: #1d4ed8;
+      color: #111;
       font-variant-numeric: tabular-nums;
       text-align: right;
       white-space: nowrap;
@@ -7893,15 +7893,15 @@
     .supervisor-nequi-day-head strong {
       font-size: 12px;
       font-weight: 800;
-      color: #5b3d8a;
+      color: #111;
     }
     .supervisor-nequi-day-head b {
       font-size: 13px;
       font-weight: 400;
-      color: #5b3d8a;
+      color: #111;
       font-variant-numeric: tabular-nums;
     }
-    /* Panel del botón BANCO: todo azul. Panel del botón NEQUI: todo morado. */
+    /* Panel del botón BANCO y NEQUI: cifras en negro. */
     .supervisor-nequi-register.is-tone-banco .supervisor-nequi-day {
       border-color: #c7ddf8;
     }
@@ -7912,7 +7912,7 @@
     .supervisor-mobile .supervisor-nequi-register.is-tone-banco .supervisor-nequi-day-head b,
     .supervisor-mobile-app .supervisor-nequi-register.is-tone-banco .supervisor-nequi-day-head strong,
     .supervisor-mobile-app .supervisor-nequi-register.is-tone-banco .supervisor-nequi-day-head b {
-      color: #1d4ed8;
+      color: #111;
     }
     .supervisor-nequi-register.is-tone-banco .collector-closed-review-list.is-cobros-cols .is-method.is-pay-nequi {
       color: #1d4ed8;
@@ -7978,7 +7978,7 @@
       border-right-color: #bfdbfe;
     }
     .supervisor-nequi-day-list.is-banco .supervisor-nequi-day-row .is-amount {
-      color: #1d4ed8;
+      color: #111;
     }
     .supervisor-nequi-day-row .is-date {
       font-size: 13px;
@@ -7997,14 +7997,14 @@
     .supervisor-nequi-day-row .is-amount {
       font-size: 14px;
       font-weight: 400;
-      color: #5b3d8a;
+      color: #111;
       font-variant-numeric: tabular-nums;
       text-align: right;
       white-space: nowrap;
       min-width: 4.5rem;
     }
     .supervisor-nequi-day-list.is-banco .supervisor-nequi-day-row .is-amount.is-negative {
-      color: #1d4ed8;
+      color: #111;
     }
     .supervisor-day-board-wide {
       grid-column: 1 / -1;
