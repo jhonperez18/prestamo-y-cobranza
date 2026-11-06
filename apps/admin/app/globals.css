@@ -8798,13 +8798,23 @@
       transition: transform 0.16s ease, filter 0.16s ease;
     }
     .supervisor-route-board:active,
-    .supervisor-banco-home-btn:active,
+    .supervisor-banco-home-btn:not(.is-inicial):not(.is-acumulado):active,
     .supervisor-nuevo-menu-btn:not(:disabled):active {
       transform: scale(0.974);
       filter: brightness(0.95);
     }
+    .supervisor-banco-home-btn.is-inicial,
+    .supervisor-banco-home-btn.is-inicial:hover,
+    .supervisor-banco-home-btn.is-inicial:active,
+    .supervisor-banco-home-btn.is-acumulado,
+    .supervisor-banco-home-btn.is-acumulado:hover,
+    .supervisor-banco-home-btn.is-acumulado:active {
+      cursor: default;
+      transform: none;
+      filter: none;
+    }
     .supervisor-route-board:active::after,
-    .supervisor-banco-home-btn:active::after,
+    .supervisor-banco-home-btn:not(.is-inicial):not(.is-acumulado):active::after,
     .supervisor-nuevo-menu-btn:not(:disabled):active::after {
       content: "";
       position: absolute;
