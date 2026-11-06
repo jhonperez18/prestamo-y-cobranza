@@ -2795,8 +2795,9 @@ async function pullOpsBundle(
       const today = businessTodayIso();
       const remoteToday = remoteAssign.filter((row) => row.dispatchDate === today);
       const remoteKeys = new Set(remoteToday.map((row) => `${row.dispatchDate}::${row.itemId}`));
-      // Supervisor: la hoja de hoy es la que entró. Una copia local (sellada o abierta) que la base no tiene no se sigue viendo.
-      if (isSupervisorLiveDevice()) {
+      // Cobrador y supervisor: la hoja de hoy es la que entró. Una copia local
+      // que la base no tiene no se sigue viendo. Lo que está en la cola se queda.
+      if (isCollectorLiveDevice() || isSupervisorLiveDevice()) {
         for (const [key, row] of [...assignMap.entries()]) {
           if (row.dispatchDate !== today) continue;
           if (remoteKeys.has(key) || pendingAssign.has(key)) continue;

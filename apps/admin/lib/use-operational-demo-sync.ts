@@ -420,6 +420,7 @@ export function useOperationalDemoSync(
           .join(" · ");
       }
       if (payments.changed || ops.changed) commitHydrate();
+      if (isSupervisorLiveDevice() && trimSupervisorLiveLocalCache()) commitHydrate();
       // Inicial M / caja del día desde la base (no sessionStorage vieja).
       try {
         const [{ refreshCloudChainMOpening }, { refreshCloudDayCashFigure }, { loadDemoDayCloses }] =

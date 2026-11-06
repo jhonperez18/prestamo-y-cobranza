@@ -107,6 +107,8 @@ import {
   clearSupervisorHistoryPaymentsCache,
   loadSupervisorHistoryPayments,
   supervisorPeriodBook,
+  supervisorTodayExpenses,
+  supervisorTodayPayments,
   supervisorTodaySheet,
 } from "@/lib/supervisor-book";
 import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
@@ -1496,19 +1498,7 @@ export function SupervisorMobileApp({
   // La lista vieja no borra un cobro nuevo, ni el celular esconde uno que ya está en la base.
   const paymentsLive = useMemo(() => {
     if (!serverDay) return payments;
-    const older = payments.filter(
-      (row) => (normalizeHistoryDate(row.paidDate || "") || "") !== today,
-    );
-    const byRef = new Map<string, (typeof payments)[number]>();
-    for (const row of payments) {
-      if (!row.ref || (normalizeHistoryDate(row.paidDate || "") || "") !== today) continue;
-      byRef.set(row.ref, row);
-    }
-    for (const row of serverDay.payments) {
-      if (!row.ref) continue;
-      byRef.set(row.ref, row);
-    }
-    return [...older, ...byRef.values()];
+    return supervisorTodayPayments(payments, serverDay.payments, today);
   }, [serverDay, payments, today]);
   const dayClosesLive = useMemo(() => {
     if (!serverDay) return dayCloses;
@@ -1523,17 +1513,7 @@ export function SupervisorMobileApp({
   }, [serverDay, dayCloses]);
   const expensesLive = useMemo(() => {
     if (!serverDay) return dayExpenseDrafts;
-    const older = dayExpenseDrafts.filter((row) => row.date !== today);
-    const byRef = new Map<string, (typeof dayExpenseDrafts)[number]>();
-    for (const row of dayExpenseDrafts) {
-      if (!row.ref || row.date !== today) continue;
-      byRef.set(row.ref, row);
-    }
-    for (const row of serverDay.expenses) {
-      if (!row.ref) continue;
-      byRef.set(row.ref, row);
-    }
-    return [...older, ...byRef.values()];
+    return supervisorTodayExpenses(dayExpenseDrafts, serverDay.expenses, today);
   }, [serverDay, dayExpenseDrafts, today]);
   const assignmentsLive = useMemo(() => {
     if (!serverDay) return assignments;

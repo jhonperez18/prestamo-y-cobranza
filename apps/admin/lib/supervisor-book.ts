@@ -163,6 +163,58 @@ export function supervisorPeriodBook(
 }
 
 /**
+ * Cobros que pinta el supervisor. La bajada de hoy es la lista.
+ * Un cobro solo local entra si sigue en la cola. Lo de días anteriores se queda
+ * en la ventana viva (ayer); no se rellena hoy con una copia que la base no tiene.
+ */
+export function supervisorTodayPayments(
+  local: readonly PaymentRow[],
+  official: readonly PaymentRow[] | null,
+  today: string,
+): PaymentRow[] {
+  if (!official) return [...local];
+  const older = local.filter((row) => {
+    const day = normalizeHistoryDate(row.paidDate || "") || String(row.paidDate || "").slice(0, 10);
+    return day !== today;
+  });
+  const seen = new Set(older.map((row) => row.ref).filter(Boolean));
+  const byRef = new Map<string, PaymentRow>();
+  for (const row of official) {
+    if (!row.ref || seen.has(row.ref)) continue;
+    byRef.set(row.ref, row);
+  }
+  for (const row of readDemoJson<PaymentRow[]>(PAY_QUEUE_KEY, [])) {
+    if (!row?.ref || byRef.has(row.ref) || seen.has(row.ref)) continue;
+    byRef.set(row.ref, row);
+  }
+  return [...older, ...byRef.values()];
+}
+
+/**
+ * Gastos de hoy del supervisor. La bajada es la lista.
+ * Uno solo local entra si sigue en la cola. Los días anteriores de la ventana se quedan.
+ */
+export function supervisorTodayExpenses(
+  local: readonly CollectorDayExpenseDraft[],
+  official: readonly CollectorDayExpenseDraft[] | null,
+  today: string,
+): CollectorDayExpenseDraft[] {
+  if (!official) return [...local];
+  const older = local.filter((row) => row.date !== today);
+  const seen = new Set(older.map((row) => row.ref).filter(Boolean));
+  const byRef = new Map<string, CollectorDayExpenseDraft>();
+  for (const row of official) {
+    if (!row.ref || seen.has(row.ref)) continue;
+    byRef.set(row.ref, row);
+  }
+  for (const row of readDemoJson<CollectorDayExpenseDraft[]>(EXPENSE_QUEUE_KEY, [])) {
+    if (!row?.ref || byRef.has(row.ref) || seen.has(row.ref)) continue;
+    byRef.set(row.ref, row);
+  }
+  return [...older, ...byRef.values()];
+}
+
+/**
  * Hoja de hoy del supervisor. Si la base ya mandó visitas, esas son la hoja.
  * Una visita solo local entra si sigue en la cola. El resto (Prestar fantasma,
  * fila vieja) no se pinta. Sin bajada, se deja la copia: la red pudo fallar.

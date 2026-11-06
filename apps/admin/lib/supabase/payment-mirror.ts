@@ -1254,6 +1254,27 @@ async function mergeRemotePayments(
     }
     const mergedPayments = mergePaymentsByRef(local, remote, readMirrorQueue());
     let { merged, added, changed } = mergedPayments;
+    // La ventana acaba de bajar entera (no es un since). Un cobro de esos días que
+    // la base no tiene y este celular no está subiendo no se sigue viendo.
+    // Lo anterior a la ventana se queda: es el historial del cobrador y el CIE.
+    if (fromDate && (isCollectorLiveDevice() || isSupervisorLiveDevice())) {
+      const remoteRefs = new Set(remote.map((row) => row.ref));
+      const queued = new Set(readMirrorQueue().map((row) => row.ref));
+      const kept = merged.filter((row) => {
+        if (!row.ref) return false;
+        if (queued.has(row.ref)) return true;
+        const day =
+          normalizeHistoryDate(row.paidDate || "") || String(row.paidDate || "").slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return true;
+        if (day < fromDate) return true;
+        if (toDate && day > toDate) return true;
+        return remoteRefs.has(row.ref);
+      });
+      if (kept.length !== merged.length) {
+        merged = kept;
+        changed = true;
+      }
+    }
     // Libro entero (legado): el cobro que la base no tiene y este celular no está subiendo no se sigue viendo.
     if (body.full && !fromDate && isSupervisorLiveDevice() && remote.length > 0) {
       const remoteRefs = new Set(remote.map((row) => row.ref));
