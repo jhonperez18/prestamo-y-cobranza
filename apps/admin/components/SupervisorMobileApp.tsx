@@ -2943,7 +2943,7 @@ export function SupervisorMobileApp({
   );
   /** Prestado de las tres rutas: misma cadena por ruta, un renglón por persona. */
   const bancoPrestadoPeople = useMemo(() => {
-    if (!poolBookPayments || !bancoPrestadoOpen) return [];
+    if (!poolBookPayments) return [];
     const lines = BANCO_ROUTE_PINS.flatMap((pin) => {
       const days =
         bancoRegistroRoute && sameRoute(pin, bancoRegistroRoute)
@@ -2974,7 +2974,6 @@ export function SupervisorMobileApp({
     });
   }, [
     poolBookPayments,
-    bancoPrestadoOpen,
     bancoRegistroRoute,
     bancoPrestadoDays,
     loans,
@@ -2984,6 +2983,39 @@ export function SupervisorMobileApp({
     today,
     bankMovements,
   ]);
+  /** Recuadro de la ruta = solo el cobrado (el final de su lista). Sin restar préstamos. */
+  const bancoHomeCobrado = useMemo(() => {
+    const shown = new Map<string, number>();
+    if (!poolBookPayments) return shown;
+    for (const pin of BANCO_ROUTE_PINS) {
+      const days = bancoRouteCobradoHistoryDays(
+        bancoRouteHistoryDays({
+          payments: poolBookPayments,
+          loans,
+          clients,
+          dayCloses: dayClosesLive,
+          fromIso: bancoHistoryFrom,
+          toIso: today,
+          routeName: pin,
+          movements: bankMovements,
+        }),
+        today,
+      );
+      shown.set(pin, days[0]?.final ?? 0);
+    }
+    return shown;
+  }, [poolBookPayments, loans, clients, dayClosesLive, bancoHistoryFrom, today, bankMovements]);
+  /** Botón Prestado = final de la cadena de cada ruta (M, T y N por separado, luego se suman). */
+  const bancoPrestadoSaldo = useMemo(() => {
+    const finalByRoute = new Map<string, number>();
+    for (const row of bancoPrestadoPeople) {
+      const current = finalByRoute.get(row.route) ?? 0;
+      if (row.final > current) finalByRoute.set(row.route, row.final);
+    }
+    let total = 0;
+    for (const value of finalByRoute.values()) total += value;
+    return total;
+  }, [bancoPrestadoPeople]);
   const nequiRutaHistoryDays = useMemo(
     () =>
       view === "nequi" && poolBookPayments
@@ -7362,8 +7394,8 @@ export function SupervisorMobileApp({
                   key={row.route}
                   type="button"
                   className={`supervisor-banco-home-btn is-route-${row.route} accent-${index % 2}`}
-                  title={`Ruta ${row.route}`}
-                  aria-label={`Ruta ${row.route} saldo ${money(row.saldo, { symbol: false })}`}
+                  title={`Ruta ${row.route}: solo cobrado`}
+                  aria-label={`Ruta ${row.route} cobrado ${money(bancoHomeCobrado.get(row.route) ?? 0, { symbol: false })}`}
                   onClick={() => {
                     suppressGhostClick();
                     setBancoPrestadoOpen(false);
@@ -7373,7 +7405,11 @@ export function SupervisorMobileApp({
                   }}
                 >
                   <span>Ruta {row.route}</span>
-                  <span className="is-amount">{money(row.saldo, { symbol: false })}</span>
+                  <span className="is-amount">
+                    {poolBookPayments == null
+                      ? "…"
+                      : money(bancoHomeCobrado.get(row.route) ?? 0, { symbol: false })}
+                  </span>
                 </button>
               ))}
               <button
@@ -7396,7 +7432,7 @@ export function SupervisorMobileApp({
                 type="button"
                 className="supervisor-banco-home-btn is-prestado"
                 title="Capital prestado desde Banco"
-                aria-label="Prestado"
+                aria-label={`Prestado ${poolBookPayments == null ? "cargando" : money(bancoPrestadoSaldo, { symbol: false })}`}
                 onClick={() => {
                   suppressGhostClick();
                   setBancoRegistroRoute(null);
@@ -7406,6 +7442,9 @@ export function SupervisorMobileApp({
                 }}
               >
                 <span>Prestado</span>
+                <span className="is-amount">
+                  {poolBookPayments == null ? "…" : money(bancoPrestadoSaldo, { symbol: false })}
+                </span>
               </button>
               <button
                 type="button"
