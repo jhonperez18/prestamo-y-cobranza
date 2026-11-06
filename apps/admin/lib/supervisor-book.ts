@@ -131,6 +131,74 @@ export function clearSupervisorHistoryPaymentsCache(): void {
 }
 
 /**
+ * Libro que pinta BANCO / NEQUI / historial.
+ * Dueño: la bajada del período. El día oficial pisa lo de hoy.
+ * La copia del disco no entra. Solo se suma un cobro que aún está en la cola.
+ */
+export function supervisorPeriodBook(
+  history: readonly PaymentRow[] | null,
+  today: string,
+  todayOfficial: readonly PaymentRow[],
+): PaymentRow[] | null {
+  if (history == null) return null;
+  const byRef = new Map<string, PaymentRow>();
+  for (const row of history) {
+    if (row.ref) byRef.set(row.ref, row);
+  }
+  if (todayOfficial.length > 0) {
+    for (const [ref, row] of byRef) {
+      const day =
+        normalizeHistoryDate(row.paidDate || "") || String(row.paidDate || "").slice(0, 10);
+      if (day === today) byRef.delete(ref);
+    }
+    for (const row of todayOfficial) {
+      if (row.ref) byRef.set(row.ref, row);
+    }
+  }
+  for (const row of readDemoJson<PaymentRow[]>(PAY_QUEUE_KEY, [])) {
+    if (!row?.ref || byRef.has(row.ref)) continue;
+    byRef.set(row.ref, row);
+  }
+  return [...byRef.values()];
+}
+
+/**
+ * Hoja de hoy del supervisor. Si la base ya mandó visitas, esas son la hoja.
+ * Una visita solo local entra si sigue en la cola. El resto (Prestar fantasma,
+ * fila vieja) no se pinta. Sin bajada, se deja la copia: la red pudo fallar.
+ */
+export function supervisorTodaySheet(
+  local: readonly DailyCollectionAssignment[],
+  official: readonly DailyCollectionAssignment[] | null,
+  today: string,
+): DailyCollectionAssignment[] {
+  if (!official || official.length === 0) return [...local];
+  const queued = new Set<string>();
+  for (const row of readDemoJson<{ ref?: string; itemId?: string; dispatchDate?: string }[]>(
+    ASSIGN_QUEUE_KEY,
+    [],
+  )) {
+    if (row.ref) queued.add(row.ref);
+    if (row.itemId) queued.add(row.itemId);
+    if (row.dispatchDate && row.itemId) queued.add(`${row.dispatchDate}::${row.itemId}`);
+  }
+  const older = local.filter((row) => row.dispatchDate !== today);
+  const byKey = new Map<string, DailyCollectionAssignment>();
+  for (const row of official) {
+    if (!row.itemId) continue;
+    const date = row.dispatchDate || today;
+    byKey.set(`${date}::${row.itemId}`, row);
+  }
+  for (const row of local) {
+    if (row.dispatchDate !== today || !row.itemId) continue;
+    const key = `${today}::${row.itemId}`;
+    if (byKey.has(key)) continue;
+    if (queued.has(key) || queued.has(row.itemId)) byKey.set(key, row);
+  }
+  return [...older, ...byKey.values()];
+}
+
+/**
  * Poda inmediata del disco del supervisor a hoy+ayer.
  * No toca colas. No pide red. Así un celular gordo adelgaza en la 1.ª sync
  * sin esperar la completa horaria.

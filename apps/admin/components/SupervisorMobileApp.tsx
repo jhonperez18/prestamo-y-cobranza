@@ -105,6 +105,8 @@ import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
 import {
   clearSupervisorHistoryPaymentsCache,
   loadSupervisorHistoryPayments,
+  supervisorPeriodBook,
+  supervisorTodaySheet,
 } from "@/lib/supervisor-book";
 import { useLoanFichaBook } from "@/lib/use-loan-ficha-book";
 import { useRouteCashBook } from "@/lib/use-route-cash-book";
@@ -1531,18 +1533,7 @@ export function SupervisorMobileApp({
   }, [serverDay, dayExpenseDrafts, today]);
   const assignmentsLive = useMemo(() => {
     if (!serverDay) return assignments;
-    const older = assignments.filter((row) => row.dispatchDate !== today);
-    const byKey = new Map<string, (typeof assignments)[number]>();
-    for (const row of assignments) {
-      if (row.dispatchDate !== today || !row.itemId) continue;
-      byKey.set(`${row.dispatchDate}::${row.itemId}`, row);
-    }
-    for (const row of serverDay.assignments) {
-      if (!row.itemId) continue;
-      const date = row.dispatchDate || today;
-      byKey.set(`${date}::${row.itemId}`, row);
-    }
-    return [...older, ...byKey.values()];
+    return supervisorTodaySheet(assignments, serverDay.assignments, today);
   }, [serverDay, assignments, today]);
   const [openRouteRef, setOpenRouteRef] = useState<string | null>(null);
   /** Cliente que terminó hoy con el formulario «Préstamo» abierto (hoja Ruta). */
@@ -1624,6 +1615,7 @@ export function SupervisorMobileApp({
    * Cobros del período en RAM (Historial caja · BANCO · NEQUI).
    * El celular solo guarda hoy+ayer; sin esta bajada falta el renglón de ayer en Cobrado.
    */
+  const historyWindowRef = useRef("");
   useEffect(() => {
     if (!supervisorDirect) return;
     const cajaHist =
@@ -1639,6 +1631,7 @@ export function SupervisorMobileApp({
     const poolMesVivo =
       (view === "banco" && !bancoHistPast) || (view === "nequi" && !nequiHistPast);
     if (!cajaHist && !bancoHistPast && !nequiHistPast && !poolMesVivo) {
+      historyWindowRef.current = "";
       setHistoryBookPayments(null);
       clearSupervisorHistoryPaymentsCache();
       return;
@@ -1665,11 +1658,16 @@ export function SupervisorMobileApp({
     const to = viewingPastMonth
       ? lastCalendarDayOfPeriod(period) || from
       : today;
+    const windowKey = `${from}|${to}`;
+    if (historyWindowRef.current !== windowKey) {
+      historyWindowRef.current = windowKey;
+      setHistoryBookPayments(null);
+    }
     let cancel = false;
     clearSupervisorHistoryPaymentsCache();
     void loadSupervisorHistoryPayments(from, to).then((rows) => {
-      if (cancel) return;
-      setHistoryBookPayments(rows && rows.length > 0 ? rows : []);
+      if (cancel || rows == null) return;
+      setHistoryBookPayments(rows);
     });
     return () => {
       cancel = true;
@@ -1774,20 +1772,15 @@ export function SupervisorMobileApp({
   }, [paymentsLive]);
 
   /**
-   * Libro del período (RAM) + cobros vivos. BANCO / NEQUI / Historial leen esto:
-   * en el celular no alcanza la copia local (solo hoy+ayer).
+   * Libro del período: la bajada manda. La copia del disco no pisa un cobro
+   * ni revive uno que la base ya no tiene. Mientras llega, Banco muestra «…».
    */
   const historyPayments = useMemo(() => {
     if (!historyBookPayments) return paymentsLive;
-    const seen = new Set<string>();
-    const merged: PaymentRow[] = [];
-    for (const row of [...paymentsLive, ...historyBookPayments]) {
-      if (!row.ref || seen.has(row.ref)) continue;
-      seen.add(row.ref);
-      merged.push(row);
-    }
-    return merged;
-  }, [historyBookPayments, paymentsLive]);
+    return (
+      supervisorPeriodBook(historyBookPayments, today, serverDay?.payments ?? []) ?? paymentsLive
+    );
+  }, [historyBookPayments, paymentsLive, today, serverDay]);
 
   const poolBookPayments = useMemo(() => {
     // Supervisor en BANCO/NEQUI: no pintar con copia incompleta antes de que llegue el mes.
