@@ -8789,6 +8789,36 @@
       border-color: #0f766e;
       outline: none;
     }
+    .supervisor-route-board,
+    .supervisor-banco-home-btn,
+    .supervisor-nuevo-menu-btn {
+      position: relative;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.16s ease, filter 0.16s ease;
+    }
+    .supervisor-route-board:active,
+    .supervisor-banco-home-btn:active,
+    .supervisor-nuevo-menu-btn:not(:disabled):active {
+      transform: scale(0.974);
+      filter: brightness(0.95);
+    }
+    .supervisor-route-board:active::after,
+    .supervisor-banco-home-btn:active::after,
+    .supervisor-nuevo-menu-btn:not(:disabled):active::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background: rgba(15, 118, 110, 0.16);
+      pointer-events: none;
+      animation: supervisor-cube-flash 0.32s ease-out;
+    }
+    @keyframes supervisor-cube-flash {
+      0% { opacity: 0; }
+      28% { opacity: 1; }
+      100% { opacity: 0; }
+    }
     .supervisor-route-board.accent-0 {
       background: linear-gradient(180deg, #f0fdfa 0%, #fff 42%);
     }
