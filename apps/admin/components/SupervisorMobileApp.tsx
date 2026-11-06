@@ -3175,6 +3175,22 @@ export function SupervisorMobileApp({
       alive = false;
     };
   }, [detailMode, openRoute?.collectorRef, openRoute?.routeName, cajaHistoryDayIso]);
+  /** Detallado de T: Inicial de hoy = mClosing de la base (la misma cifra del cobrador). */
+  useEffect(() => {
+    if (!openRoute || !isPlanillaCashChainSecondary(openRoute.routeName)) return;
+    if (detailMode !== "historial" && detailMode !== "historial-dia") return;
+    if (cajaHistoryNav === "meses") return;
+    const collectorRef = openRoute.collectorRef;
+    let alive = true;
+    void import("@/lib/cloud-day-cash-figure").then(({ refreshCloudDayCashFigure }) => {
+      void refreshCloudDayCashFigure(collectorRef, today).then((row) => {
+        if (alive && row) setHistDayCashEpoch((n) => n + 1);
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [detailMode, cajaHistoryNav, openRoute?.collectorRef, openRoute?.routeName, today]);
   /**
    * Libro M / A / N solo al abrir Historial (no en INICIO / totales).
    * Si corre al entrar a la ruta satura el VPS y el jefe ve gastos/préstamos a medias.
@@ -3208,6 +3224,31 @@ export function SupervisorMobileApp({
     histBookRoute,
     `${today}|${histOwnBoxEpoch}|${cajaHistoryPeriodPick || ""}|${chainMOpeningEpoch}`,
     histBookRange,
+  );
+  /**
+   * Inicial de T = caja final de M (mismo libro que el Historial · M y que el
+   * cobrador lee en `mClosing`). No entra al sello del saldo de T.
+   */
+  const tInicialBookRoute =
+    histBookActive && openRoute && isPlanillaCashChainSecondary(openRoute.routeName)
+      ? PLANILLA_CASH_CHAIN_PRIMARY
+      : null;
+  const tInicialBookRange = useMemo(() => {
+    if (!tInicialBookRoute) return null;
+    const viewingPastMonth = cajaHistoryNav === "mes" && Boolean(cajaHistoryPeriodPick);
+    const period = viewingPastMonth ? (cajaHistoryPeriodPick as string) : periodFromDateIso(today);
+    const start = `${period}-01`;
+    const fromIso = start >= ROUTE_CASH_BOOK_FROM ? start : ROUTE_CASH_BOOK_FROM;
+    const toIso = viewingPastMonth
+      ? lastCalendarDayOfPeriod(period) || fromIso
+      : previousCalendarIso(today);
+    return { fromIso, toIso };
+  }, [tInicialBookRoute, cajaHistoryNav, cajaHistoryPeriodPick, today]);
+  const tInicialBook = useRouteCashBook(
+    openRoute?.collectorRef || "",
+    tInicialBookRoute,
+    `${today}|${cajaHistoryPeriodPick || ""}|${chainMOpeningEpoch}`,
+    tInicialBookRange,
   );
   const histHoldLocalCie =
     Boolean(openRoute?.collectorRef) &&
@@ -3680,7 +3721,7 @@ export function SupervisorMobileApp({
         !viewingPastMonth && ledger
           ? withLedgerTodaySaldo(sealed, ledger)
           : sealed;
-      return withRouteCobradoHistory(
+      const listed = withRouteCobradoHistory(
         withToday,
         {
           collectorRef: collector.ref,
@@ -3697,6 +3738,18 @@ export function SupervisorMobileApp({
         },
         openRoute.routeName,
       );
+      // Inicial = caja final de M. El saldo de T ya quedó sellado arriba.
+      return listed.map((row) => {
+        const cloud = getCloudDayCashFigure(openRoute.collectorRef, row.date);
+        const fromCloud =
+          cloud?.ready && cloud.mClosing != null && Number.isFinite(cloud.mClosing)
+            ? cloud.mClosing
+            : null;
+        const booked = tInicialBook?.get(row.date)?.closing;
+        const inicial =
+          fromCloud != null ? fromCloud : booked != null && Number.isFinite(booked) ? booked : null;
+        return { ...row, inicial };
+      });
     }
 
     if (isIndependentSaldoRoute(openRoute.routeName)) {
@@ -3825,6 +3878,8 @@ export function SupervisorMobileApp({
     routeOwnBoxEpoch,
     histOwnBoxEpoch,
     histCashBook,
+    tInicialBook,
+    histDayCashEpoch,
     histHoldLocalCie,
     chainMOpeningEpoch,
     chainMOpeningSettled,
@@ -4175,6 +4230,7 @@ export function SupervisorMobileApp({
       gasto: number;
       prestamo: number;
       saldo: number;
+      inicial?: number | null;
     }>;
     if (openRouteCajaHistoryIsT) {
       return attachCashAdjustments(rows, openRoute.collectorRef, dayCloses, (day) => {
@@ -5696,14 +5752,14 @@ export function SupervisorMobileApp({
               ) : null}
               <div
                 className={
-                  openRouteCajaHistoryIsM
+                  openRouteCajaHistoryIsM || openRouteCajaHistoryIsT
                     ? "collector-mobile-day-history is-supervisor-caja is-chain-m"
                     : "collector-mobile-day-history is-supervisor-caja"
                 }
               >
                 <div className="collector-mobile-day-history-head">
                   <span>Día</span>
-                  {openRouteCajaHistoryIsM ? <span>Inicial</span> : null}
+                  {openRouteCajaHistoryIsM || openRouteCajaHistoryIsT ? <span>Inicial</span> : null}
                   <span>Cobros</span>
                   <span>Préstamo</span>
                   <span>Gasto</span>
@@ -5778,6 +5834,7 @@ export function SupervisorMobileApp({
                           gasto: number;
                           prestamo: number;
                           saldo: number;
+                          inicial?: number | null;
                         },
                         adjustment: null,
                       }))
@@ -5798,6 +5855,13 @@ export function SupervisorMobileApp({
                               onClick={() => openCajaHistorialDay(plain.date)}
                             >
                               <span className="is-date">{plain.dateLabel}</span>
+                              {openRouteCajaHistoryIsT ? (
+                                <span className="is-money is-inicial-col">
+                                  {plain.inicial == null
+                                    ? "—"
+                                    : money(plain.inicial, { symbol: false })}
+                                </span>
+                              ) : null}
                               <span className="is-money">
                                 {money(plain.cobro, { symbol: false })}
                               </span>
@@ -5852,6 +5916,7 @@ export function SupervisorMobileApp({
                                 title={cashAdjustmentNote(adjustment)}
                               >
                                 <span className="is-date">{plain.dateLabel}</span>
+                                {openRouteCajaHistoryIsT ? <span className="is-money" /> : null}
                                 <span className="is-money">Ajuste</span>
                                 <span className="is-money" />
                                 <span className="is-money">
