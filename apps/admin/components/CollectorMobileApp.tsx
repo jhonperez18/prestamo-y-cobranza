@@ -2120,8 +2120,27 @@ export function CollectorMobileApp({
     viewPeriod,
   ]);
 
+  /**
+   * Historial · T: misma grilla que M. Inicial = caja final de M de ese día
+   * (`mClosing` de la base, la misma cifra del Saldo de Historial · M).
+   * Cobros, préstamo, gasto y saldo de T no se recalculan.
+   */
+  const showTInicialColumn = isPlanillaCashChainSecondary(activePlanillaRoute ?? undefined);
+  const tInicialByDate = useMemo(() => {
+    if (!showTInicialColumn) return null;
+    const map = new Map<string, number | null>();
+    for (const { row } of historyRowsWithAdjustment) {
+      const key = normalizeHistoryDate(row.date) || row.date;
+      const cloud = getCloudDayCashFigure(collector.ref, key);
+      const closing = cloud?.ready ? cloud.mClosing : null;
+      map.set(row.date, closing != null && Number.isFinite(closing) ? closing : null);
+    }
+    return map;
+  }, [collector.ref, dayCashFigureEpoch, historyRowsWithAdjustment, showTInicialColumn]);
+
   /** Historial · M: extracto (Inicial → Saldo). Días previos intactos. */
   const showMInicialColumn = isPlanillaCashChainPrimary(activePlanillaRoute ?? undefined);
+  const showExtractColumns = showMInicialColumn || showTInicialColumn;
   const mCashBook = useRouteCashBook(
     collector.ref,
     showMInicialColumn ? PLANILLA_CASH_CHAIN_PRIMARY : null,
@@ -2417,21 +2436,21 @@ export function CollectorMobileApp({
 
           <div
             className={
-              showMInicialColumn
+              showExtractColumns
                 ? "collector-mobile-day-history is-panel is-chain-m"
                 : "collector-mobile-day-history is-panel"
             }
           >
             <div className="collector-mobile-day-history-head">
               <span>Día</span>
-              {showMInicialColumn ? <span>Inicial</span> : null}
+              {showExtractColumns ? <span>Inicial</span> : null}
               <span>Cobros</span>
               <span>Préstamo</span>
               <span>Gasto</span>
               <span>Saldo</span>
             </div>
             <ul className="collector-mobile-day-history-list">
-              {!showMInicialColumn &&
+              {!showExtractColumns &&
               carriedOpening > 0 &&
               dayHistory.every((row) => periodFromDateIso(row.date) === viewPeriod) ? (
                 <li>
@@ -2512,6 +2531,13 @@ export function CollectorMobileApp({
                         }}
                       >
                         <span className="is-date">{row.dateLabel}</span>
+                        {showTInicialColumn ? (
+                          <span className="is-money is-inicial-col">
+                            {tInicialByDate?.get(row.date) == null
+                              ? "—"
+                              : money(tInicialByDate.get(row.date) ?? 0, { symbol: false })}
+                          </span>
+                        ) : null}
                         <span className="is-money">{money(row.cobro, { symbol: false })}</span>
                         <span className="is-money">{money(row.prestamo, { symbol: false })}</span>
                         <span className="is-money">{money(row.gasto, { symbol: false })}</span>
@@ -2532,6 +2558,7 @@ export function CollectorMobileApp({
                           title={cashAdjustmentNote(adjustment)}
                         >
                           <span className="is-date">{row.dateLabel}</span>
+                          {showTInicialColumn ? <span className="is-money" /> : null}
                           <span className="is-money">Ajuste</span>
                           <span className="is-money" />
                           <span className="is-money">
