@@ -5752,14 +5752,20 @@ export function SupervisorMobileApp({
               ) : null}
               <div
                 className={
-                  openRouteCajaHistoryIsM || openRouteCajaHistoryIsT
+                  openRouteCajaHistoryIsM ||
+                  openRouteCajaHistoryIsT ||
+                  openRouteCajaHistoryIsIndependent
                     ? "collector-mobile-day-history is-supervisor-caja is-chain-m"
                     : "collector-mobile-day-history is-supervisor-caja"
                 }
               >
                 <div className="collector-mobile-day-history-head">
                   <span>Día</span>
-                  {openRouteCajaHistoryIsM || openRouteCajaHistoryIsT ? <span>Inicial</span> : null}
+                  {openRouteCajaHistoryIsM ||
+                  openRouteCajaHistoryIsT ||
+                  openRouteCajaHistoryIsIndependent ? (
+                    <span>Inicial</span>
+                  ) : null}
                   <span>Cobros</span>
                   <span>Préstamo</span>
                   <span>Gasto</span>
@@ -5855,7 +5861,7 @@ export function SupervisorMobileApp({
                               onClick={() => openCajaHistorialDay(plain.date)}
                             >
                               <span className="is-date">{plain.dateLabel}</span>
-                              {openRouteCajaHistoryIsT ? (
+                              {openRouteCajaHistoryIsT || openRouteCajaHistoryIsIndependent ? (
                                 <span className="is-money is-inicial-col">
                                   {plain.inicial == null
                                     ? "—"
@@ -5916,7 +5922,9 @@ export function SupervisorMobileApp({
                                 title={cashAdjustmentNote(adjustment)}
                               >
                                 <span className="is-date">{plain.dateLabel}</span>
-                                {openRouteCajaHistoryIsT ? <span className="is-money" /> : null}
+                                {openRouteCajaHistoryIsT || openRouteCajaHistoryIsIndependent ? (
+                                  <span className="is-money" />
+                                ) : null}
                                 <span className="is-money">Ajuste</span>
                                 <span className="is-money" />
                                 <span className="is-money">

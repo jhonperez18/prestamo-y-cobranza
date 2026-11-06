@@ -138,6 +138,11 @@ export type CollectorDayHistoryRow = {
   prestamo: number;
   /** Saldo en mano al cierre del día (arrastre: inicial + efectivo − gasto − préstamo). */
   saldo: number;
+  /**
+   * A / N: saldo final del día anterior (apertura de `route_own_box`).
+   * Vacío hasta que la base conteste.
+   */
+  inicial?: number | null;
 };
 
 /** Cierre de mes: revisión de caja y arrastre de saldo al mes siguiente. */

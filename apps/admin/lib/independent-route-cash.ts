@@ -361,7 +361,7 @@ export function withIndependentRouteHistory<Row extends HistoryRowLike>(
   src: Omit<DayCashSources, "date">,
   route: string,
   book?: RouteCashBook | null,
-): Row[] {
+): Array<Row & { inicial: number | null }> {
   return rows.map((row) => {
     const daySrc = { ...src, date: row.date };
     const day = independentRouteDay(daySrc, route, book);
@@ -374,6 +374,8 @@ export function withIndependentRouteHistory<Row extends HistoryRowLike>(
       // Solo capital en efectivo resta del Saldo; el renglón muestra lo prestado en la ruta.
       prestamo: day.prestamos,
       saldo: day.closing,
+      // Inicial = cierre del día anterior (apertura de la caja). Sin ancla, no se inventa.
+      inicial: day.anchored ? day.opening : null,
       ...(row.cobro != null ? { cobro: cobrosCaja } : {}),
       ...(row.cobroEfectivo != null ? { cobroEfectivo: cobrado.efectivo } : {}),
     };

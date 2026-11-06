@@ -2092,6 +2092,7 @@ export function CollectorMobileApp({
         gasto: day.gastos,
         prestamo: day.prestamos,
         saldo: day.closing,
+        inicial: day.opening,
       }),
     );
     if (route && isIndependentSaldoRoute(route)) {
@@ -2140,7 +2141,8 @@ export function CollectorMobileApp({
 
   /** Historial · M: extracto (Inicial → Saldo). Días previos intactos. */
   const showMInicialColumn = isPlanillaCashChainPrimary(activePlanillaRoute ?? undefined);
-  const showExtractColumns = showMInicialColumn || showTInicialColumn;
+  const showOwnInicialColumn = isIndependentSaldoRoute(activePlanillaRoute ?? undefined);
+  const showExtractColumns = showMInicialColumn || showTInicialColumn || showOwnInicialColumn;
   const mCashBook = useRouteCashBook(
     collector.ref,
     showMInicialColumn ? PLANILLA_CASH_CHAIN_PRIMARY : null,
@@ -2531,11 +2533,18 @@ export function CollectorMobileApp({
                         }}
                       >
                         <span className="is-date">{row.dateLabel}</span>
-                        {showTInicialColumn ? (
+                        {showTInicialColumn || showOwnInicialColumn ? (
                           <span className="is-money is-inicial-col">
-                            {tInicialByDate?.get(row.date) == null
+                            {(showTInicialColumn
+                              ? tInicialByDate?.get(row.date)
+                              : row.inicial) == null
                               ? "—"
-                              : money(tInicialByDate.get(row.date) ?? 0, { symbol: false })}
+                              : money(
+                                  (showTInicialColumn
+                                    ? tInicialByDate?.get(row.date)
+                                    : row.inicial) ?? 0,
+                                  { symbol: false },
+                                )}
                           </span>
                         ) : null}
                         <span className="is-money">{money(row.cobro, { symbol: false })}</span>
@@ -2558,7 +2567,7 @@ export function CollectorMobileApp({
                           title={cashAdjustmentNote(adjustment)}
                         >
                           <span className="is-date">{row.dateLabel}</span>
-                          {showTInicialColumn ? <span className="is-money" /> : null}
+                          {showTInicialColumn || showOwnInicialColumn ? <span className="is-money" /> : null}
                           <span className="is-money">Ajuste</span>
                           <span className="is-money" />
                           <span className="is-money">
