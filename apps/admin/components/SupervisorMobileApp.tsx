@@ -233,8 +233,10 @@ import {
   buildDayCashLedger,
   chainDayCuadre,
   primaryClosingForDay,
+  routeCashPayments,
   routeCobradoBreakdown,
   routeCobradoDayPayments,
+  routeDigitalPayments,
   withRouteCobradoHistory,
   withSealedDaySaldos,
   chainHistorySplit,
@@ -496,6 +498,8 @@ type RouteLiquidacion = {
   closed: boolean;
   newLoans: LoanRow[];
   renewals: LoanRow[];
+  /** Marcas del día en la tarjeta: renovó, banco, efectivo, prestó. */
+  dayMarks: { r: number; b: number; f: number; p: number };
   statusLabel: string;
   statusKind: StatusKind;
   /** Hora del sello de esta ruta, «21:01». Vacío si la hoja no cerró. */
@@ -633,7 +637,8 @@ function RouteBoardCard({
             <div className="supervisor-route-board-id">
               <div className="supervisor-route-board-ruta-row">
                 <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
-                {row.statusLabel ? (
+                <RouteDayMarks marks={row.dayMarks} />
+                {row.statusLabel === "Cerrado" ? (
                   <Pill label={row.statusLabel} kind={row.statusKind} />
                 ) : null}
                 {row.statusLabel === "Cerrado" ? <CloseClock clock={row.closeClock} /> : null}
@@ -1352,6 +1357,31 @@ function SupervisorClientFicha({
 
 function isRenewalLoan(loan: LoanRow) {
   return Boolean(loanRenewalOf(loan));
+}
+
+const ROUTE_DAY_MARKS = [
+  { key: "r", letter: "R", title: "Renovó", className: "is-r" },
+  { key: "b", letter: "B", title: "Banco", className: "is-b" },
+  { key: "f", letter: "F", title: "Efectivo", className: "is-f" },
+  { key: "p", letter: "P", title: "Prestó", className: "is-p" },
+] as const;
+
+function RouteDayMarks({
+  marks,
+}: {
+  marks: { r: number; b: number; f: number; p: number };
+}) {
+  return (
+    <>
+      {ROUTE_DAY_MARKS.map((mark) =>
+        marks[mark.key] > 0 ? (
+          <span key={mark.key} className={`route-day-mark ${mark.className}`} title={mark.title}>
+            {marks[mark.key]} {mark.letter}
+          </span>
+        ) : null,
+      )}
+    </>
+  );
 }
 
 function cajaDelDia(
@@ -2083,6 +2113,13 @@ export function SupervisorMobileApp({
       const cobrado = dayCashSrc
         ? routeCobradoBreakdown(dayCashSrc, route.routeName)
         : { efectivo: 0, nequi: 0, banco: 0, digital: 0, total: 0, payments: [] };
+      const efectivoCount = dayCashSrc
+        ? routeCashPayments(dayCashSrc, route.routeName).length
+        : 0;
+      const bancoCount =
+        dayCashSrc && digitalLoanPoolForRoute(route.routeName) === "banco"
+          ? routeDigitalPayments(dayCashSrc, route.routeName).length
+          : 0;
 
       const rawExpenses = expensesForCollectorDay(
         collectorRef,
@@ -2229,39 +2266,8 @@ export function SupervisorMobileApp({
             ? independentDay.closing
             : saldoInicial + cobradoEfectivo - gastosHoy - prestamosCajaHoy;
 
-      let statusLabel = "Sin planilla";
-      let statusKind: StatusKind = "draft";
-      if (closed) {
-        statusLabel = "Cerrado";
-        statusKind = "closed";
-      } else if (mine.length && pending > 0) {
-        if (done > 0 || cobradoHoy > 0) {
-          statusLabel = "En ruta";
-          statusKind = "pending";
-        } else {
-          statusLabel = "";
-          statusKind = "draft";
-        }
-      } else if (mine.length) {
-        statusLabel = "";
-        statusKind = "draft";
-      } else if (isPrimary) {
-        const lastClose = dayClosesLive
-          .filter((row) => row.collectorRef === collectorRef)
-          .slice()
-          .sort((a, b) => b.date.localeCompare(a.date))[0];
-        if (lastClose) {
-          statusLabel = "Último cierre";
-          statusKind = "closed";
-        }
-      }
-      if (!closed && loansToday.length > 0) {
-        statusLabel =
-          loansToday.length === 1
-            ? "1 préstamo hoy"
-            : `${loansToday.length} préstamos hoy`;
-        statusKind = "partial";
-      }
+      const statusLabel = closed ? "Cerrado" : "";
+      const statusKind: StatusKind = closed ? "closed" : "draft";
 
       return {
         routeRef: route.routeRef,
@@ -2286,6 +2292,12 @@ export function SupervisorMobileApp({
         closed,
         newLoans,
         renewals,
+        dayMarks: {
+          r: renewals.length,
+          b: bancoCount,
+          f: efectivoCount,
+          p: newLoans.length,
+        },
         statusLabel,
         statusKind,
         closeClock,

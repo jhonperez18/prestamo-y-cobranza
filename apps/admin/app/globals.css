@@ -8827,6 +8827,24 @@
       transform: scale(0.92);
       transform-origin: left center;
     }
+    .route-day-mark {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.7rem;
+      height: 1.15rem;
+      padding: 0 5px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      line-height: 1;
+    }
+    .route-day-mark.is-r { background: #ddd6fe; color: #5b21b6; }
+    .route-day-mark.is-b { background: #bfdbfe; color: #1e3a8a; }
+    .route-day-mark.is-f { background: #bbf7d0; color: #14532d; }
+    .route-day-mark.is-p { background: #fed7aa; color: #9a3412; }
     .route-close-clock {
       font-size: 10px;
       font-weight: 500;
