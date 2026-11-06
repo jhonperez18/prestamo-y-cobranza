@@ -7542,6 +7542,72 @@
     .supervisor-banco-home-btn.is-gastos .is-amount {
       color: #b91c1c;
     }
+    .supervisor-banco-home-btn.is-prestado {
+      grid-column: 1 / -1;
+      min-height: 52px;
+      background: linear-gradient(180deg, #eff6ff 0%, #fff 55%);
+      border-color: #bfdbfe;
+    }
+    .supervisor-banco-home-btn.is-prestado span {
+      font-size: 14px;
+      color: #1d4ed8;
+    }
+    .supervisor-banco-people {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .supervisor-banco-people-head,
+    .supervisor-banco-people-list li {
+      display: grid;
+      grid-template-columns: 1.35rem minmax(0, 1.35fr) 1.05rem repeat(3, minmax(0, 1fr));
+      column-gap: 4px;
+      align-items: center;
+    }
+    .supervisor-banco-people-head {
+      padding: 8px 8px;
+      border-radius: 8px;
+      border: 1px solid #bfdbfe;
+      background: #eff6ff;
+      font-size: 10px;
+      font-weight: 500;
+      color: #000;
+    }
+    .supervisor-banco-people-head span:nth-child(n + 4) {
+      text-align: right;
+    }
+    .supervisor-banco-people-list {
+      display: grid;
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .supervisor-banco-people-list li {
+      padding: 8px;
+      border: 1px solid #dbeafe;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 11px;
+      color: #111;
+    }
+    .supervisor-banco-people-list .is-day,
+    .supervisor-banco-people-list .is-route {
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+    }
+    .supervisor-banco-people-list .is-name {
+      overflow-wrap: anywhere;
+      line-height: 1.2;
+    }
+    .supervisor-banco-people-list .is-ini,
+    .supervisor-banco-people-list .is-pre,
+    .supervisor-banco-people-list .is-fin {
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      color: #1d4ed8;
+    }
     .supervisor-banco-gastos-head,
     .supervisor-banco-gastos-list li {
       display: grid;

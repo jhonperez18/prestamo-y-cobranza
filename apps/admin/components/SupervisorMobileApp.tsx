@@ -146,6 +146,7 @@ import {
   NEQUI_ROUTE_PIN,
   digitalPoolGastos,
   digitalPoolGastosTotal,
+  bancoPrestadoPersonLines,
   bancoRouteCuadre,
   bancoRouteCobradoHistoryDays,
   bancoRouteHistoryDays,
@@ -1581,8 +1582,8 @@ export function SupervisorMobileApp({
   const [bancoRegistroRoute, setBancoRegistroRoute] = useState<string | null>(null);
   /** Listado de gastos pagados desde la cuenta Banco. */
   const [bancoGastosOpen, setBancoGastosOpen] = useState(false);
-  /** Historial desplegado: solo cobrado o solo prestado. */
-  const [bancoRutaExpand, setBancoRutaExpand] = useState<"cobrado" | "prestado" | null>(null);
+  /** Prestado de M + T + N, un renglón por persona. */
+  const [bancoPrestadoOpen, setBancoPrestadoOpen] = useState(false);
   /** Un solo día abierto en el historial (acordeón). */
   const [bancoRegistroDay, setBancoRegistroDay] = useState<string | null>(null);
   /** Historial Nequi (ruta A): cobrado o prestado. */
@@ -1730,7 +1731,7 @@ export function SupervisorMobileApp({
     setNequiRegistroRoute(null);
     setBancoRegistroRoute(null);
     setBancoGastosOpen(false);
-    setBancoRutaExpand(null);
+    setBancoPrestadoOpen(false);
     setBancoRegistroDay(null);
     setNuevoMode("menu");
     setNuevoRouteRef(null);
@@ -2940,10 +2941,49 @@ export function SupervisorMobileApp({
     () => bancoRoutePrestadoHistoryDays(bancoRutaHistoryDays, today),
     [bancoRutaHistoryDays, today],
   );
-  const bancoRutaTotales = useMemo(
-    () => bancoRouteHistoryTotals(bancoRutaHistoryDays),
-    [bancoRutaHistoryDays],
-  );
+  /** Prestado de las tres rutas: misma cadena por ruta, un renglón por persona. */
+  const bancoPrestadoPeople = useMemo(() => {
+    if (!poolBookPayments || !bancoPrestadoOpen) return [];
+    const lines = BANCO_ROUTE_PINS.flatMap((pin) => {
+      const days =
+        bancoRegistroRoute && sameRoute(pin, bancoRegistroRoute)
+          ? bancoPrestadoDays
+          : bancoRoutePrestadoHistoryDays(
+              bancoRouteHistoryDays({
+                payments: poolBookPayments,
+                loans,
+                clients,
+                dayCloses: dayClosesLive,
+                fromIso: bancoHistoryFrom,
+                toIso: today,
+                routeName: pin,
+                movements: bankMovements,
+              }),
+              today,
+            );
+      return bancoPrestadoPersonLines(days);
+    });
+    const routeRank = (route: string) =>
+      route === "M" ? 0 : route === "T" ? 1 : route === "N" ? 2 : 9;
+    return lines.sort((a, b) => {
+      const byDate = b.date.localeCompare(a.date);
+      if (byDate !== 0) return byDate;
+      const byRoute = routeRank(a.route) - routeRank(b.route);
+      if (byRoute !== 0) return byRoute;
+      return a.inicio - b.inicio;
+    });
+  }, [
+    poolBookPayments,
+    bancoPrestadoOpen,
+    bancoRegistroRoute,
+    bancoPrestadoDays,
+    loans,
+    clients,
+    dayClosesLive,
+    bancoHistoryFrom,
+    today,
+    bankMovements,
+  ]);
   const nequiRutaHistoryDays = useMemo(
     () =>
       view === "nequi" && poolBookPayments
@@ -4655,7 +4695,7 @@ export function SupervisorMobileApp({
     if (next === "banco") {
       setBancoRegistroRoute(null);
       setBancoGastosOpen(false);
-      setBancoRutaExpand(null);
+      setBancoPrestadoOpen(false);
       setBancoRegistroDay(null);
     }
     if (next === "prestamos") {
@@ -4694,7 +4734,7 @@ export function SupervisorMobileApp({
     setNequiRegistroRoute(null);
     setBancoRegistroRoute(null);
     setBancoGastosOpen(false);
-    setBancoRutaExpand(null);
+    setBancoPrestadoOpen(false);
     setBancoRegistroDay(null);
     resetClientesModify();
     setClientesSearchOpen(false);
@@ -6987,11 +7027,13 @@ export function SupervisorMobileApp({
                   ? `Banco · ${bancoPoolHistMonthTitle} · ${bancoPoolHistRoute}`
                   : bancoPoolHistNav === "mes"
                     ? `Banco · ${bancoPoolHistMonthTitle}`
-                    : bancoRegistroRoute
-                      ? `Banco · Ruta ${bancoRegistroRoute}`
-                      : bancoGastosOpen
-                        ? "Banco · Gastos"
-                        : "Banco"}
+                    : bancoPrestadoOpen
+                      ? "Banco · Prestado"
+                      : bancoRegistroRoute
+                        ? `Banco · Ruta ${bancoRegistroRoute}`
+                        : bancoGastosOpen
+                          ? "Banco · Gastos"
+                          : "Banco"}
             </h3>
             <div className="supervisor-mobile-detail-actions">
               {bancoPoolHistNav !== "home" ? (
@@ -7023,14 +7065,14 @@ export function SupervisorMobileApp({
                 >
                   volver
                 </button>
-              ) : bancoRegistroRoute || bancoGastosOpen ? (
+              ) : bancoRegistroRoute || bancoGastosOpen || bancoPrestadoOpen ? (
                 <button
                   type="button"
                   className="collector-mobile-pay-link is-back is-compact"
                   onClick={() => {
                     setBancoRegistroRoute(null);
                     setBancoGastosOpen(false);
-                    setBancoRutaExpand(null);
+                    setBancoPrestadoOpen(false);
                     setBancoRegistroDay(null);
                   }}
                 >
@@ -7044,7 +7086,7 @@ export function SupervisorMobileApp({
                     suppressGhostClick();
                     setBancoRegistroRoute(null);
                     setBancoGastosOpen(false);
-                    setBancoRutaExpand(null);
+                    setBancoPrestadoOpen(false);
                     setBancoRegistroDay(null);
                     setBancoPoolHistExpand(null);
                     setBancoPoolHistDay(null);
@@ -7309,11 +7351,11 @@ export function SupervisorMobileApp({
             </>
           ) : bancoGastosOpen ? (
             renderPoolGastos("banco", bancoGastos, bancoGastado)
-          ) : !bancoRegistroRoute ? (
+          ) : !bancoRegistroRoute && !bancoPrestadoOpen ? (
             <div
               className="supervisor-banco-home-grid"
               role="group"
-              aria-label="Ruta M, Ruta T, Ruta N, Gastos y Saldo de Banco"
+              aria-label="Ruta M, Ruta T, Ruta N, Gastos, Prestado y Saldo de Banco"
             >
               {bancoRouteCuadres.map((row, index) => (
                 <button
@@ -7324,8 +7366,9 @@ export function SupervisorMobileApp({
                   aria-label={`Ruta ${row.route} saldo ${money(row.saldo, { symbol: false })}`}
                   onClick={() => {
                     suppressGhostClick();
+                    setBancoPrestadoOpen(false);
+                    setBancoGastosOpen(false);
                     setBancoRegistroRoute(row.route);
-                    setBancoRutaExpand(null);
                     setBancoRegistroDay(null);
                   }}
                 >
@@ -7340,13 +7383,29 @@ export function SupervisorMobileApp({
                 aria-label={`Gastos ${money(bancoGastado, { symbol: false })}`}
                 onClick={() => {
                   suppressGhostClick();
+                  setBancoPrestadoOpen(false);
+                  setBancoRegistroRoute(null);
                   setBancoGastosOpen(true);
-                  setBancoRutaExpand(null);
                   setBancoRegistroDay(null);
                 }}
               >
                 <span>Gastos</span>
                 <span className="is-amount">{money(bancoGastado, { symbol: false })}</span>
+              </button>
+              <button
+                type="button"
+                className="supervisor-banco-home-btn is-prestado"
+                title="Capital prestado desde Banco"
+                aria-label="Prestado"
+                onClick={() => {
+                  suppressGhostClick();
+                  setBancoRegistroRoute(null);
+                  setBancoGastosOpen(false);
+                  setBancoRegistroDay(null);
+                  setBancoPrestadoOpen(true);
+                }}
+              >
+                <span>Prestado</span>
               </button>
               <button
                 type="button"
@@ -7360,172 +7419,96 @@ export function SupervisorMobileApp({
                 </span>
               </button>
             </div>
-          ) : bancoRutaCuadreHoy ? (
-            <>
-              <section
-                className="collector-mobile-home-cuadre is-supervisor-caja-day is-banco-ruta"
-                aria-label={`Banco ruta ${bancoRutaCuadreHoy.route}`}
-              >
-                <div className="collector-mobile-home-cuadre-grid is-banco-dos">
-                  <button
-                    type="button"
-                    className={`is-banco-cobrado is-tap${bancoRutaExpand === "cobrado" ? " on" : ""}`}
-                    aria-expanded={bancoRutaExpand === "cobrado"}
-                    onClick={() => {
-                      suppressGhostClick();
-                      setBancoRegistroDay(null);
-                      setBancoRutaExpand((prev) => (prev === "cobrado" ? null : "cobrado"));
-                    }}
-                  >
-                    <span>Cobrado</span>
-                    <b>
-                      {poolBookPayments == null
-                        ? "…"
-                        : money(bancoRutaTotales.cobrado, { symbol: false })}
-                    </b>
-                  </button>
-                  <button
-                    type="button"
-                    className={`is-prestamos is-tap${bancoRutaExpand === "prestado" ? " on" : ""}`}
-                    aria-expanded={bancoRutaExpand === "prestado"}
-                    onClick={() => {
-                      suppressGhostClick();
-                      setBancoRegistroDay(null);
-                      setBancoRutaExpand((prev) => (prev === "prestado" ? null : "prestado"));
-                    }}
-                  >
-                    <span>Prestado</span>
-                    <b>
-                      {poolBookPayments == null
-                        ? "…"
-                        : money(bancoRutaTotales.prestado, { symbol: false })}
-                    </b>
-                  </button>
+          ) : bancoPrestadoOpen ? (
+            poolBookPayments == null ? (
+              <p className="ficha-empty">Leyendo préstamos Banco…</p>
+            ) : bancoPrestadoPeople.length > 0 ? (
+              <div className="supervisor-banco-people">
+                <div className="supervisor-banco-people-head" aria-hidden>
+                  <span>Fecha</span>
+                  <span>Nombre</span>
+                  <span>Ruta</span>
+                  <span>Inicial</span>
+                  <span>Prestado</span>
+                  <span>Final</span>
                 </div>
-              </section>
-              {bancoRutaExpand === "cobrado" ? (
-                poolBookPayments == null ? (
-                  <p className="ficha-empty">Leyendo cobros Banco…</p>
-                ) : bancoCobradoDays.length > 0 ? (
-                  <div className="supervisor-banco-hist">
-                    <div className="supervisor-banco-hist-head" aria-hidden>
-                      <span>Fecha</span>
-                      <span>Inicial</span>
-                      <span>Cobrado</span>
-                      <span>Final</span>
-                    </div>
-                    <ul
-                      className="supervisor-nequi-day-list is-banco is-cobrado-hist"
-                      aria-label="Fecha inicial cobrado final"
-                    >
-                    {bancoCobradoDays.map((day) => {
-                      const open = bancoRegistroDay === day.date;
-                      return (
-                        <li key={day.date} data-pool-day={day.date}>
-                          <button
-                            type="button"
-                            className={
-                              open
-                                ? "supervisor-nequi-day-row on"
-                                : "supervisor-nequi-day-row"
-                            }
-                            aria-expanded={open}
-                            onClick={() => {
-                              suppressGhostClick();
-                              setBancoRegistroDay((prev) =>
-                                prev === day.date ? null : day.date,
-                              );
-                            }}
-                          >
-                            <span className="is-date">{isoToDisplay(day.date)}</span>
-                            <span className="is-ini">
-                              {money(day.inicio, { symbol: false })}
-                            </span>
-                            <span className="is-cob">
-                              {money(day.cobrado, { symbol: false })}
-                            </span>
-                            <span className="is-fin">
-                              {money(day.final, { symbol: false })}
-                            </span>
-                          </button>
-                          {open ? (
-                            <div className="supervisor-banco-day-drop">
-                              {renderNequiDayList(day.items, [], undefined)}
-                            </div>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                    </ul>
-                  </div>
-                ) : (
-                  <p className="ficha-empty">
-                    Sin cobros Banco en ruta {bancoRutaCuadreHoy.route}.
-                  </p>
-                )
-              ) : null}
-              {bancoRutaExpand === "prestado" ? (
-                poolBookPayments == null ? (
-                  <p className="ficha-empty">Leyendo préstamos Banco…</p>
-                ) : bancoPrestadoDays.length > 0 ? (
-                  <div className="supervisor-banco-hist">
-                    <div className="supervisor-banco-hist-head" aria-hidden>
-                      <span>Fecha</span>
-                      <span>Inicial</span>
-                      <span>Prestado</span>
-                      <span>Final</span>
-                    </div>
-                    <ul
-                      className="supervisor-nequi-day-list is-banco is-prestado-hist"
-                      aria-label="Fecha inicial prestado final"
-                    >
-                    {bancoPrestadoDays.map((day) => {
-                      const open = bancoRegistroDay === day.date;
-                      return (
-                        <li key={day.date} data-pool-day={day.date}>
-                          <button
-                            type="button"
-                            className={
-                              open
-                                ? "supervisor-nequi-day-row on"
-                                : "supervisor-nequi-day-row"
-                            }
-                            aria-expanded={open}
-                            onClick={() => {
-                              suppressGhostClick();
-                              setBancoRegistroDay((prev) =>
-                                prev === day.date ? null : day.date,
-                              );
-                            }}
-                          >
-                            <span className="is-date">{isoToDisplay(day.date)}</span>
-                            <span className="is-ini">
-                              {money(day.inicio, { symbol: false })}
-                            </span>
-                            <span className="is-pre">
-                              {money(day.prestado, { symbol: false })}
-                            </span>
-                            <span className="is-fin">
-                              {money(day.final, { symbol: false })}
-                            </span>
-                          </button>
-                          {open ? (
-                            <div className="supervisor-banco-day-drop">
-                              {renderNequiDayList([], day.loans, undefined)}
-                            </div>
-                          ) : null}
-                        </li>
-                      );
-                    })}
-                    </ul>
-                  </div>
-                ) : (
-                  <p className="ficha-empty">
-                    Sin préstamos Banco en ruta {bancoRutaCuadreHoy.route}.
-                  </p>
-                )
-              ) : null}
-            </>
+                <ul
+                  className="supervisor-banco-people-list"
+                  aria-label="Fecha, nombre, ruta, inicial, prestado y final"
+                >
+                  {bancoPrestadoPeople.map((row) => (
+                    <li key={row.key}>
+                      <span className="is-day">{row.day}</span>
+                      <span className="is-name">{row.name}</span>
+                      <span className="is-route">{row.route}</span>
+                      <span className="is-ini">{money(row.inicio, { symbol: false })}</span>
+                      <span className="is-pre">{money(row.prestado, { symbol: false })}</span>
+                      <span className="is-fin">{money(row.final, { symbol: false })}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="ficha-empty">Sin préstamos Banco.</p>
+            )
+          ) : bancoRutaCuadreHoy ? (
+            poolBookPayments == null ? (
+              <p className="ficha-empty">Leyendo cobros Banco…</p>
+            ) : bancoCobradoDays.length > 0 ? (
+              <div className="supervisor-banco-hist">
+                <div className="supervisor-banco-hist-head" aria-hidden>
+                  <span>Fecha</span>
+                  <span>Inicial</span>
+                  <span>Cobrado</span>
+                  <span>Final</span>
+                </div>
+                <ul
+                  className="supervisor-nequi-day-list is-banco is-cobrado-hist"
+                  aria-label="Fecha inicial cobrado final"
+                >
+                  {bancoCobradoDays.map((day) => {
+                    const open = bancoRegistroDay === day.date;
+                    return (
+                      <li key={day.date} data-pool-day={day.date}>
+                        <button
+                          type="button"
+                          className={
+                            open ? "supervisor-nequi-day-row on" : "supervisor-nequi-day-row"
+                          }
+                          aria-expanded={open}
+                          onClick={() => {
+                            suppressGhostClick();
+                            setBancoRegistroDay((prev) =>
+                              prev === day.date ? null : day.date,
+                            );
+                          }}
+                        >
+                          <span className="is-date">{isoToDisplay(day.date)}</span>
+                          <span className="is-ini">
+                            {money(day.inicio, { symbol: false })}
+                          </span>
+                          <span className="is-cob">
+                            {money(day.cobrado, { symbol: false })}
+                          </span>
+                          <span className="is-fin">
+                            {money(day.final, { symbol: false })}
+                          </span>
+                        </button>
+                        {open ? (
+                          <div className="supervisor-banco-day-drop">
+                            {renderNequiDayList(day.items, [], undefined)}
+                          </div>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : (
+              <p className="ficha-empty">
+                Sin cobros Banco en ruta {bancoRutaCuadreHoy.route}.
+              </p>
+            )
           ) : (
             <p className="ficha-empty">No hay rutas Banco (M, T, N).</p>
           )}

@@ -1106,3 +1106,58 @@ export function bancoRoutePrestadoHistoryDays(
   }
   return rows.sort((a, b) => b.date.localeCompare(a.date));
 }
+
+/**
+ * Misma cadena Prestado (inicial 0, final = inicial + capital, por ruta),
+ * un renglón por persona. El final del último préstamo del día = el final del día.
+ */
+export type BancoPrestadoPersonLine = {
+  key: string;
+  route: string;
+  date: string;
+  /** Día del mes (`05`), sin mes ni año. */
+  day: string;
+  name: string;
+  inicio: number;
+  prestado: number;
+  final: number;
+};
+
+export function bancoPrestadoPersonLines(
+  days: readonly BancoRoutePrestadoDay[],
+): BancoPrestadoPersonLine[] {
+  const chrono = [...days].sort((a, b) => a.date.localeCompare(b.date));
+  const lines: BancoPrestadoPersonLine[] = [];
+  let running = 0;
+  for (const day of chrono) {
+    const loans = [...day.loans].sort((a, b) => {
+      const byTime = (a.time || "").localeCompare(b.time || "");
+      if (byTime !== 0) return byTime;
+      return a.clientName.localeCompare(b.clientName, "es");
+    });
+    if (loans.length === 0) {
+      running = pesos(day.final);
+      continue;
+    }
+    loans.forEach((loan, index) => {
+      const inicio = pesos(running);
+      const prestado = pesos(loan.capital);
+      const isLast = index === loans.length - 1;
+      const stepped = pesos(inicio + prestado);
+      const final = isLast ? pesos(day.final) : stepped;
+      running = final;
+      const dayNum = day.date.length >= 10 ? day.date.slice(8, 10) : day.date;
+      lines.push({
+        key: `${day.route}|${day.date}|${loan.loanRef}|${index}`,
+        route: day.route,
+        date: day.date,
+        day: dayNum,
+        name: loan.clientName.trim() || "—",
+        inicio,
+        prestado,
+        final,
+      });
+    });
+  }
+  return lines;
+}
