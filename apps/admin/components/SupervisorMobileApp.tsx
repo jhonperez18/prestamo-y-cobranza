@@ -98,7 +98,8 @@ import {
 } from "@/lib/planilla-display";
 import { reloanStateForVisit, type ReloanState } from "@/lib/loan-reloan";
 import { loanIsClosedHistory, loanRenewalOf } from "@/lib/loan-renewal-marks";
-import { canRenewLoan } from "@/lib/loan-renew";
+import { canRenewLoan, type RenewalTerms } from "@/lib/loan-renew";
+import { LoanRenewForm } from "@/components/LoanRenewForm";
 import { computeLoanCuotasProgress } from "@/lib/loan-cuotas-progress";
 import { CuotasProgressCell } from "@/components/CuotasProgressCell";
 import { isSupervisorLiveDevice } from "@/lib/collector-live-window";
@@ -313,6 +314,8 @@ type Props = {
   /** Nuevo cliente: mismo alta del cobrador (ruta + posición), local + cola + nube. */
   onCreateRouteClient?: (draft: RouteClientDraft) => Promise<boolean | string> | boolean | string;
   onCreateQuickLoan?: (draft: QuickLoanDraft) => void;
+  /** Renovar: el mismo camino del panel. Sin plata. La planilla sigue el primer cobro. */
+  onRenewLoan?: (loanRef: string, terms: RenewalTerms) => void | Promise<void | boolean>;
   /** Editar ficha de cliente desde CLIENTES (raíz + cola nube). */
   onUpdateClient?: (draft: {
     ref: string;
@@ -347,7 +350,7 @@ type SupervisorView =
   | "nuevo"
   | "clientes"
   | "prestamos";
-type NuevoMode = "menu" | "cliente" | "prestamo" | "gasto";
+type NuevoMode = "menu" | "cliente" | "prestamo" | "renovar" | "gasto";
 type CierreListKind =
   | "prestamos"
   | "gastos"
@@ -1471,6 +1474,7 @@ export function SupervisorMobileApp({
   miscPayments = NO_ROWS,
   onCreateRouteClient,
   onCreateQuickLoan,
+  onRenewLoan,
   onUpdateClient,
   onAttachPaymentEvidence,
   onSaveMiscPayment,
@@ -5211,6 +5215,42 @@ export function SupervisorMobileApp({
     clients.find((row) => row.ref === nuevoLoanClientRef) ??
     null;
 
+  /** Solo quien ya venció y sigue debiendo. Misma posición de la ruta. */
+  const renewableClients = useMemo(() => {
+    if (nuevoMode !== "renovar" || !nuevoRoute) return [];
+    const q = nuevoClientSearch.trim().toLowerCase();
+    return clientsOnRouteSorted(clients, nuevoRoute.routeName).filter((row) => {
+      const loan = currentActiveLoan(row.ref, loans, paymentsLive);
+      if (!canRenewLoan(loan, today)) return false;
+      if (!q) return true;
+      const hay = `${row.name} ${row.lastName} ${row.document} ${row.phone} ${row.ref}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [nuevoMode, nuevoRoute, nuevoClientSearch, clients, loans, paymentsLive, today]);
+  const renewableClientRows = useMemo(
+    () =>
+      renewableClients.map((row) => {
+        const loan = currentActiveLoan(row.ref, loans, paymentsLive);
+        const cuotas = computeLoanCuotasProgress(loan, paymentsLive, today);
+        return {
+          ref: row.ref,
+          route: String(row.route || "").trim(),
+          routeOrder: row.routeOrder || 0,
+          name: `${row.name} ${row.lastName}`.trim(),
+          phone: row.phone?.trim() || "—",
+          cuotas,
+          saldo: loan ? loan.balance : null,
+          hasLoan: Boolean(loan),
+          renewAlert: true,
+        };
+      }),
+    [renewableClients, loans, paymentsLive, today],
+  );
+  const renewSourceLoan =
+    nuevoMode === "renovar" && nuevoLoanClient
+      ? currentActiveLoan(nuevoLoanClient.ref, loans, paymentsLive)
+      : null;
+
   async function saveNuevoRouteClient(draft: RouteClientDraft) {
     if (!onCreateRouteClient) return false;
     const ok = await onCreateRouteClient(draft);
@@ -7905,6 +7945,17 @@ export function SupervisorMobileApp({
                 </button>
                 <button
                   type="button"
+                  className="supervisor-nuevo-menu-btn is-renovar"
+                  disabled={!onRenewLoan}
+                  onClick={() => {
+                    resetNuevoFlow();
+                    setNuevoMode("renovar");
+                  }}
+                >
+                  <b>Renovar</b>
+                </button>
+                <button
+                  type="button"
                   className="supervisor-nuevo-menu-btn is-gasto"
                   disabled={!onSaveMiscPayment || activeBankAccounts.length === 0}
                   onClick={() => {
@@ -8033,6 +8084,125 @@ export function SupervisorMobileApp({
                 onSave={saveNuevoRouteClient}
               />
             )
+          ) : nuevoMode === "renovar" ? (
+            <>
+              <div className="supervisor-mobile-detail-head">
+                <h3>Renovar</h3>
+                <button
+                  type="button"
+                  className="collector-mobile-pay-link is-back"
+                  onClick={() => {
+                    if (nuevoLoanClientRef) {
+                      setNuevoLoanClientRef(null);
+                      return;
+                    }
+                    if (nuevoRouteRef) {
+                      setNuevoRouteRef(null);
+                      setNuevoClientSearch("");
+                      return;
+                    }
+                    resetNuevoFlow();
+                    setNuevoMode("menu");
+                  }}
+                >
+                  atrás
+                </button>
+              </div>
+              {!onRenewLoan ? (
+                <p className="ficha-empty">No hay permiso para renovar desde esta vista.</p>
+              ) : !nuevoRouteRef ? (
+                <>
+                  <p className="supervisor-mobile-subhead">
+                    Elija la ruta. Solo salen los clientes que ya pueden renovar.
+                  </p>
+                  {liquidaciones.length === 0 ? (
+                    <p className="ficha-empty">No hay rutas con cobrador.</p>
+                  ) : (
+                    <div className="supervisor-route-boards">
+                      {liquidaciones.map((row, index) => (
+                        <button
+                          key={row.routeRef}
+                          type="button"
+                          className={`supervisor-route-board accent-${index % 2}${row.closed ? " is-closed" : ""}`}
+                          onClick={() => {
+                            setNuevoRouteRef(row.routeRef);
+                            setNuevoLoanClientRef(null);
+                            setNuevoClientSearch("");
+                          }}
+                        >
+                          <div className="supervisor-caja-row">
+                            <div className="supervisor-route-board-id">
+                              <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
+                              <strong>{row.collectorName}</strong>
+                            </div>
+                            <span className="supervisor-nuevo-go">Elegir</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : renewSourceLoan && nuevoLoanClient && nuevoRoute ? (
+                <>
+                  <p className="supervisor-mobile-subhead">
+                    Ruta {nuevoRoute.routeName} · {nuevoRoute.collectorName}
+                  </p>
+                  <LoanRenewForm
+                    loan={renewSourceLoan}
+                    today={today}
+                    onCancel={() => setNuevoLoanClientRef(null)}
+                    onConfirm={async (terms) => {
+                      const ok = await onRenewLoan(renewSourceLoan.ref, terms);
+                      if (ok === false) return;
+                      resetNuevoFlow();
+                      setNuevoMode("menu");
+                      setNuevoMsg("Renovado. La planilla toma la fecha del primer cobro.");
+                    }}
+                  />
+                </>
+              ) : (
+                <>
+                  <div className="supervisor-mobile-detail-head">
+                    <h3>
+                      Ruta {nuevoRoute?.routeName} · {nuevoRoute?.collectorName}
+                    </h3>
+                    <button
+                      type="button"
+                      className="collector-mobile-pay-link"
+                      onClick={() => {
+                        setNuevoRouteRef(null);
+                        setNuevoClientSearch("");
+                      }}
+                    >
+                      cambiar
+                    </button>
+                  </div>
+                  <label className="quick-loan-field supervisor-nuevo-search">
+                    <span className="sr-only">Buscar</span>
+                    <input
+                      value={nuevoClientSearch}
+                      onChange={(event) => setNuevoClientSearch(event.target.value)}
+                      placeholder="Nombre, cédula o celular"
+                      autoFocus
+                    />
+                  </label>
+                  {renewableClientRows.length === 0 ? (
+                    <p className="ficha-empty">
+                      No hay clientes para renovar en esta ruta
+                      {nuevoClientSearch.trim() ? " con ese filtro" : ""}.
+                    </p>
+                  ) : (
+                    <ClientesTable
+                      rows={renewableClientRows}
+                      onOpen={(ref) => {
+                        suppressGhostClick();
+                        setNuevoLoanClientRef(ref);
+                      }}
+                    />
+                  )}
+                </>
+              )}
+            </>
           ) : (
             <>
               <div className="supervisor-mobile-detail-head">

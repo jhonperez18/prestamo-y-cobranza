@@ -78,12 +78,15 @@ import {
   type RouteClientDraft,
 } from "@/lib/commit-portfolio-catalog";
 import {
+  assignmentsChangedFrom,
   flushOpsMirrorQueues,
   queueAssignmentsMirror,
   queueDayExpenseMirror,
   queueMiscPaymentMirror,
   queueRoutesMirror,
 } from "@/lib/supabase/ops-mirror";
+import { commitLoanRenewal } from "@/lib/commit-loan-renewal";
+import { renewalSummary, type RenewalTerms } from "@/lib/loan-renew";
 import { commitRouteCashLoan, supervisorLoanOrigin } from "@/lib/commit-route-cash-loan";
 import { mirrorAutoDayCloseToCloud } from "@/lib/mirror-auto-day-close";
 import type { MiscPayment } from "@/lib/misc-payments";
@@ -376,6 +379,48 @@ export function SupervisorShell({ session, onLogout }: Props) {
       .catch(() => showToast(`${result.message} (sin nube; en este aparato ya está).`));
   }
 
+  async function renewLoanFromMobile(loanRef: string, terms: RenewalTerms) {
+    const renewal = commitLoanRenewal(
+      { loans, clients, routes, collectors, assignments: dailyAssignments, payments },
+      loanRef,
+      todayIso(),
+      terms,
+    );
+    if (!renewal.ok) {
+      showToast(renewal.error);
+      return false;
+    }
+    setLoans(renewal.loans);
+    setClients(renewal.clients);
+    writeDemoJson(DEMO_LOANS_KEY, renewal.loans);
+    writeDemoJson(DEMO_CLIENTS_KEY, renewal.clients);
+    setDailyAssignments(renewal.assignments);
+    setRoutes(renewal.routes);
+    writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, renewal.assignments);
+    writeDemoJson(DEMO_ROUTES_KEY, renewal.routes);
+    const sent = queueLoanCommand(renewal.created, renewal.command);
+    if (renewal.client) queueClientMirror(renewal.client);
+    queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, renewal.assignments));
+    queueRoutesMirror(renewal.routes);
+    const summary = renewalSummary(renewal.created, terms);
+    showToast(`${summary} · subiendo…`);
+    try {
+      const cloud = await sent;
+      if (cloud.ok && cloud.rejected) {
+        showToast(cloud.message);
+        return false;
+      }
+      await flushCatalogMirrorQueues();
+      await flushOpsMirrorQueues();
+      showToast(cloud.ok ? `${summary} · ${cloud.ref}` : "Renovado en este aparato; se sube solo a la nube.");
+      return true;
+    } catch (error) {
+      console.error("supervisor-renew-mirror", error);
+      showToast("Renovado en este aparato; se sube solo a la nube.");
+      return true;
+    }
+  }
+
   async function createQuickLoanFromMobile(draft: QuickLoanDraft) {
     const client = clients.find((row) => row.ref === draft.clientRef);
     if (!client) {
@@ -638,6 +683,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
         miscPayments={miscPayments}
         onCreateRouteClient={createRouteClientFromMobile}
         onCreateQuickLoan={createQuickLoanFromMobile}
+        onRenewLoan={renewLoanFromMobile}
         onUpdateClient={updateClientFromMobile}
         onAttachPaymentEvidence={attachPaymentEvidence}
         onSaveMiscPayment={saveMiscPaymentFromMobile}

@@ -2127,7 +2127,7 @@ export function useWorkspace({
     );
     if (!renewal.ok) {
       onToast(renewal.error);
-      return;
+      return false;
     }
     setLoans(renewal.loans);
     setClients(renewal.clients);
@@ -2143,14 +2143,16 @@ export function useWorkspace({
       const cloud = await sent;
       if (cloud.ok && cloud.rejected) {
         onToast(cloud.message);
-        return;
+        return false;
       }
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
       onToast(cloud.ok ? `${summary} · ${cloud.ref}` : "Renovado en este aparato; se sube solo a la nube.");
+      return true;
     } catch (error) {
       console.error("workspace-renew-mirror", error);
       onToast("Renovado en este aparato; se sube solo a la nube.");
+      return true;
     }
   }
 

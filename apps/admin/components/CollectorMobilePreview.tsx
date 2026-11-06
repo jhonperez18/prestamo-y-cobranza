@@ -304,6 +304,7 @@ export function CollectorMobilePreview({
                       : undefined
                   }
                   onCreateQuickLoan={onCreateQuickLoan}
+                  onRenewLoan={onRenewLoan}
                   onUpdateClient={onUpdateClient}
                   onAttachPaymentEvidence={onAttachPaymentEvidence}
                   onSaveMiscPayment={onSaveMiscPayment}
