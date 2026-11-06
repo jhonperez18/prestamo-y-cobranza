@@ -498,8 +498,8 @@ type RouteLiquidacion = {
   closed: boolean;
   newLoans: LoanRow[];
   renewals: LoanRow[];
-  /** Marcas del día en la tarjeta: renovó, banco, efectivo, prestó. */
-  dayMarks: { r: number; b: number; f: number; p: number };
+  /** Marcas del día en la tarjeta: renovó, banco, efectivo, nequi, prestó. */
+  dayMarks: { r: number; b: number; e: number; n: number; p: number };
   statusLabel: string;
   statusKind: StatusKind;
   /** Hora del sello de esta ruta, «21:01». Vacío si la hoja no cerró. */
@@ -565,7 +565,6 @@ function RouteBoardCard({
   onOpen,
   mode = "ruta",
   tone,
-  unreadCount = 0,
   connectionLevel,
   onConnection,
   justConnected = false,
@@ -582,14 +581,11 @@ function RouteBoardCard({
   mode?: "ruta" | "caja" | "nequi" | "banco";
   /** Color del panel (Nequi / Banco). Sin tono = el del `mode`. */
   tone?: "nequi" | "banco";
-  /** Cobros nuevos del día aún no revisados por el supervisor. */
-  unreadCount?: number;
 }) {
   const colorMode = tone ?? mode;
   const total = row.planilla || 0;
   const pct = total > 0 ? Math.round((row.done / total) * 100) : 0;
   const showRouteShell = mode === "ruta";
-  const unreadLabel = unreadCount > 99 ? "99+" : String(unreadCount);
   const moneyMode = mode === "caja" || mode === "nequi" || mode === "banco";
   const heroAmount =
     mode === "nequi"
@@ -602,24 +598,14 @@ function RouteBoardCard({
   const card = (
     <button
       type="button"
-      className={`supervisor-route-board accent-${accent % 2}${row.closed || row.statusKind === "closed" ? " is-closed" : ""}${mode === "caja" ? " is-caja-mode" : ""}${colorMode === "nequi" ? " is-nequi-mode" : ""}${colorMode === "banco" ? " is-banco-mode" : ""}${unreadCount > 0 ? " has-unread" : ""}`}
+      className={`supervisor-route-board accent-${accent % 2}${row.closed || row.statusKind === "closed" ? " is-closed" : ""}${mode === "caja" ? " is-caja-mode" : ""}${colorMode === "nequi" ? " is-nequi-mode" : ""}${colorMode === "banco" ? " is-banco-mode" : ""}`}
       onClick={() => onOpen(row.routeRef)}
     >
       {moneyMode ? (
         <div className="supervisor-caja-row">
           <div className="supervisor-route-board-id">
             <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
-            <strong className="supervisor-route-board-name">
-              {row.collectorName}
-              {unreadCount > 0 ? (
-                <span
-                  className="supervisor-route-unread is-pulse"
-                  title={`${unreadCount} cobro${unreadCount === 1 ? "" : "s"} nuevo${unreadCount === 1 ? "" : "s"}`}
-                >
-                  {unreadLabel}
-                </span>
-              ) : null}
-            </strong>
+            <strong className="supervisor-route-board-name">{row.collectorName}</strong>
           </div>
           <div
             className={`supervisor-caja-hero is-row${colorMode === "nequi" ? " is-nequi" : ""}${colorMode === "banco" ? " is-banco" : ""}`}
@@ -643,17 +629,7 @@ function RouteBoardCard({
                 ) : null}
                 {row.statusLabel === "Cerrado" ? <CloseClock clock={row.closeClock} /> : null}
               </div>
-              <strong className="supervisor-route-board-name">
-                {row.collectorName}
-                {unreadCount > 0 ? (
-                  <span
-                    className="supervisor-route-unread is-pulse"
-                    title={`${unreadCount} cobro${unreadCount === 1 ? "" : "s"} nuevo${unreadCount === 1 ? "" : "s"}`}
-                  >
-                    {unreadLabel}
-                  </span>
-                ) : null}
-              </strong>
+              <strong className="supervisor-route-board-name">{row.collectorName}</strong>
             </div>
             <div className="supervisor-caja-hero is-row is-money-lg">
               <b>
@@ -1362,14 +1338,15 @@ function isRenewalLoan(loan: LoanRow) {
 const ROUTE_DAY_MARKS = [
   { key: "r", letter: "R", title: "Renovó", className: "is-r" },
   { key: "b", letter: "B", title: "Banco", className: "is-b" },
-  { key: "f", letter: "F", title: "Efectivo", className: "is-f" },
+  { key: "e", letter: "E", title: "Efectivo", className: "is-e" },
+  { key: "n", letter: "N", title: "Nequi", className: "is-n" },
   { key: "p", letter: "P", title: "Prestó", className: "is-p" },
 ] as const;
 
 function RouteDayMarks({
   marks,
 }: {
-  marks: { r: number; b: number; f: number; p: number };
+  marks: { r: number; b: number; e: number; n: number; p: number };
 }) {
   return (
     <>
@@ -2120,6 +2097,10 @@ export function SupervisorMobileApp({
         dayCashSrc && digitalLoanPoolForRoute(route.routeName) === "banco"
           ? routeDigitalPayments(dayCashSrc, route.routeName).length
           : 0;
+      const nequiCount =
+        dayCashSrc && digitalLoanPoolForRoute(route.routeName) === "nequi"
+          ? routeDigitalPayments(dayCashSrc, route.routeName).length
+          : 0;
 
       const rawExpenses = expensesForCollectorDay(
         collectorRef,
@@ -2295,7 +2276,8 @@ export function SupervisorMobileApp({
         dayMarks: {
           r: renewals.length,
           b: bancoCount,
-          f: efectivoCount,
+          e: efectivoCount,
+          n: nequiCount,
           p: newLoans.length,
         },
         statusLabel,
@@ -8948,7 +8930,6 @@ export function SupervisorMobileApp({
                     key={row.routeRef}
                     row={row}
                     accent={index}
-                    unreadCount={unreadByRoute[row.routeRef] || 0}
                     onOpen={openRouteSummary}
                     connectionLevel={connectionByRoute[row.routeRef]?.level ?? "none"}
                     justConnected={(justConnectedUntil[row.routeRef] ?? 0) > Date.now()}

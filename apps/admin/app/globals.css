@@ -8841,9 +8841,10 @@
       letter-spacing: 0.02em;
       line-height: 1;
     }
-    .route-day-mark.is-r { background: #ddd6fe; color: #5b21b6; }
+    .route-day-mark.is-r { background: #fef3c7; color: #92400e; }
     .route-day-mark.is-b { background: #bfdbfe; color: #1e3a8a; }
-    .route-day-mark.is-f { background: #bbf7d0; color: #14532d; }
+    .route-day-mark.is-e { background: #bbf7d0; color: #14532d; }
+    .route-day-mark.is-n { background: #ddd6fe; color: #5b21b6; }
     .route-day-mark.is-p { background: #fed7aa; color: #9a3412; }
     .route-close-clock {
       font-size: 10px;
@@ -8889,37 +8890,6 @@
     }
     .supervisor-route-board-name {
       overflow: hidden;
-    }
-    .supervisor-route-unread {
-      flex-shrink: 0;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 22px;
-      height: 22px;
-      padding: 0 6px;
-      border-radius: 7px;
-      background: #fef3c7;
-      border: 1px solid #f59e0b;
-      color: #92400e;
-      font-size: 11px;
-      font-weight: 800;
-      line-height: 1;
-      letter-spacing: 0.02em;
-    }
-    .supervisor-route-unread.is-pulse {
-      animation: supervisor-unread-pulse 1.25s ease-in-out infinite;
-    }
-    @keyframes supervisor-unread-pulse {
-      0%,
-      100% {
-        transform: scale(1);
-        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45);
-      }
-      50% {
-        transform: scale(1.08);
-        box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
-      }
     }
     .supervisor-route-board-progress {
       display: grid;
