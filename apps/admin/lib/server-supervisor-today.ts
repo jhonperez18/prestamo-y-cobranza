@@ -22,6 +22,8 @@ export type SupervisorTodayPayload = {
   assignments: DailyCollectionAssignment[];
   dayCloses: CollectorDayCloseRecord[];
   expenses: CollectorDayExpenseDraft[];
+  /** false = la pieza de gastos falló; el celular no debe borrar su copia de hoy. */
+  expensesReady: boolean;
 };
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
@@ -91,6 +93,7 @@ export async function loadSupervisorToday(
             .map(rowToDayExpense)
             .filter((row): row is CollectorDayExpenseDraft => Boolean(row))
         : [],
+      expensesReady: expensesOk,
     },
   };
 }

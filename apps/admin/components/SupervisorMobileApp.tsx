@@ -1520,6 +1520,8 @@ export function SupervisorMobileApp({
   }, [serverDay, dayCloses]);
   const expensesLive = useMemo(() => {
     if (!serverDay) return dayExpenseDrafts;
+    // Sin pieza de gastos: no pisar la copia (dejaba Préstamos del día en 0).
+    if (serverDay.expensesReady === false) return dayExpenseDrafts;
     return supervisorTodayExpenses(dayExpenseDrafts, serverDay.expenses, today);
   }, [serverDay, dayExpenseDrafts, today]);
   const assignmentsLive = useMemo(() => {

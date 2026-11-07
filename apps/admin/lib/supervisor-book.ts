@@ -190,9 +190,35 @@ export function supervisorTodayPayments(
   return [...older, ...byRef.values()];
 }
 
+function expenseDraftRichness(row: CollectorDayExpenseDraft) {
+  const total = Number(row.expensesTotal) || 0;
+  const lines = Array.isArray(row.expenses) ? row.expenses.length : 0;
+  const prestamos = Array.isArray(row.expenses)
+    ? row.expenses.filter(
+        (line) => line.category === "prestamo_ruta" || line.id === "prestamo",
+      ).length
+    : 0;
+  const at = Date.parse(String(row.updatedAt || "")) || 0;
+  return { total, lines, prestamos, at };
+}
+
+/** Gana el que trae más desembolsos / total (un pull viejo no borra Préstamos). */
+function preferRicherExpenseDraft(
+  prev: CollectorDayExpenseDraft,
+  next: CollectorDayExpenseDraft,
+): boolean {
+  const a = expenseDraftRichness(prev);
+  const b = expenseDraftRichness(next);
+  if (b.prestamos !== a.prestamos) return b.prestamos > a.prestamos;
+  if (b.total !== a.total) return b.total > a.total;
+  if (b.lines !== a.lines) return b.lines > a.lines;
+  return b.at >= a.at;
+}
+
 /**
  * Gastos de hoy del supervisor. La bajada es la lista.
  * Uno solo local entra si sigue en la cola. Los días anteriores de la ventana se quedan.
+ * Un official vacío o más pobre no borra desembolsos locales (lista Préstamos en 0).
  */
 export function supervisorTodayExpenses(
   local: readonly CollectorDayExpenseDraft[],
@@ -203,13 +229,19 @@ export function supervisorTodayExpenses(
   const older = local.filter((row) => row.date !== today);
   const seen = new Set(older.map((row) => row.ref).filter(Boolean));
   const byRef = new Map<string, CollectorDayExpenseDraft>();
-  for (const row of official) {
-    if (!row.ref || seen.has(row.ref)) continue;
+  for (const row of local) {
+    if (!row?.ref || row.date !== today || seen.has(row.ref)) continue;
     byRef.set(row.ref, row);
   }
+  for (const row of official) {
+    if (!row.ref || seen.has(row.ref)) continue;
+    const prev = byRef.get(row.ref);
+    if (!prev || preferRicherExpenseDraft(prev, row)) byRef.set(row.ref, row);
+  }
   for (const row of readDemoJson<CollectorDayExpenseDraft[]>(EXPENSE_QUEUE_KEY, [])) {
-    if (!row?.ref || byRef.has(row.ref) || seen.has(row.ref)) continue;
-    byRef.set(row.ref, row);
+    if (!row?.ref || seen.has(row.ref)) continue;
+    const prev = byRef.get(row.ref);
+    if (!prev || preferRicherExpenseDraft(prev, row)) byRef.set(row.ref, row);
   }
   return [...older, ...byRef.values()];
 }

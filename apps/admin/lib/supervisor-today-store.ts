@@ -26,6 +26,8 @@ async function ensureLoaded() {
         assignments: Array.isArray(row.assignments) ? row.assignments : [],
         dayCloses: Array.isArray(row.dayCloses) ? row.dayCloses : [],
         expenses: Array.isArray(row.expenses) ? row.expenses : [],
+        // Caché vieja sin bandera: si trajo gastos, se consideran listos.
+        expensesReady: row.expensesReady !== false,
         at: String(row.at || ""),
       };
     }

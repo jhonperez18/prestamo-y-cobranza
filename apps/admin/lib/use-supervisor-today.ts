@@ -20,6 +20,7 @@ export type SupervisorTodayData = {
   assignments: DailyCollectionAssignment[];
   dayCloses: CollectorDayCloseRecord[];
   expenses: CollectorDayExpenseDraft[];
+  expensesReady: boolean;
 };
 
 type SupervisorTodayState = {
@@ -65,6 +66,7 @@ export function useSupervisorToday(enabled: boolean, refreshKey: string): Superv
             assignments: Array.isArray(body.assignments) ? body.assignments : [],
             dayCloses: Array.isArray(body.dayCloses) ? body.dayCloses : [],
             expenses: Array.isArray(body.expenses) ? body.expenses : [],
+            expensesReady: body.expensesReady !== false,
           },
         });
       } catch (error) {

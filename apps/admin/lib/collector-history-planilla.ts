@@ -80,6 +80,17 @@ function matchLoanByCapitalName(
  * GAS- con P-pend- ya renumerado en la ficha: recupera el P- real por día + capital + nombre.
  * Sin eso el renglón queda sin clientRef y loanClientOnSide lo tiraba a M.
  */
+function clientRefFromPrestamoHint(hintRaw: string, clients: ClientRow[]): string {
+  const hint = hintRaw.toLowerCase().trim();
+  if (!hint) return "";
+  const matches = clients.filter((client) => {
+    const name = clientDisplayName(client).toLowerCase().trim();
+    if (!name) return false;
+    return name === hint || name.includes(hint) || hint.includes(name);
+  });
+  return matches.length === 1 ? matches[0].ref : "";
+}
+
 function resolveLoanForPrestamoLine(
   line: Pick<RouteExpenseLine, "loanRef" | "label" | "amount">,
   dateIso: string,
@@ -103,6 +114,9 @@ function resolveLoanForPrestamoLine(
       if (real && !isPendingLoanRef(real.ref)) return real;
       return direct;
     }
+    // P- real aún no está en el aparato: capital + nombre del renglón GAS-.
+    const byHint = matchLoanByCapitalName(dateIso, capital, hint, loans, clients);
+    if (byHint) return byHint;
     if (!isPendingLoanRef(loanRef)) return undefined;
   }
   return matchLoanByCapitalName(dateIso, capital, hint, loans, clients);
@@ -303,10 +317,27 @@ export function dayLoanDisbursementRows(
     if (byLoan.has(loanRef) || (loan && byLoan.has(loan.ref))) continue;
     if (isCashlessRenewal(loan)) continue;
     if (scope.liveDay && !isLoanTopUpLine(line)) {
-      // Sin ficha viva (dada de baja) no salió plata de la caja.
-      if (!loan || !loanLeftCollectorCash(loan)) continue;
-      byLoan.set(loan.ref, disbursementRowFromLoan(loan, clients));
-      dayClientRefs.add(loan.clientRef);
+      // Nequi / Banco / cartera no salen de la caja.
+      if (loan && !loanLeftCollectorCash(loan)) continue;
+      if (loan) {
+        byLoan.set(loan.ref, disbursementRowFromLoan(loan, clients));
+        dayClientRefs.add(loan.clientRef);
+        continue;
+      }
+      // Ficha aún no llegó: el renglón GAS- ya salió de caja — mostrar la lista.
+      if (isPendingLoanRef(rawRef)) continue;
+      const clientName =
+        clientNameFromPrestamoLabel(line.label) ||
+        line.label.replace(/^Préstamo\s*·\s*/i, "").trim();
+      const clientRef = clientRefFromPrestamoHint(clientName, clients);
+      byLoan.set(rawRef, {
+        loanRef: rawRef,
+        clientRef,
+        clientName: clientName || rawRef,
+        capital: Number(line.amount) || 0,
+        installment: 0,
+      });
+      if (clientRef) dayClientRefs.add(clientRef);
       continue;
     }
     if (loan) {
@@ -318,19 +349,21 @@ export function dayLoanDisbursementRows(
       dayClientRefs.add(loan.clientRef);
       continue;
     }
-    // Sin ficha ni nombre resoluble: no inventar fila (evitar P-pend- fantasma en M).
+    // Sin ficha: armar desde el GAS- con cliente del nombre (para M/T).
     if (isPendingLoanRef(rawRef)) continue;
     const clientName =
       clientNameFromPrestamoLabel(line.label) ||
       line.label.replace(/^Préstamo\s*·\s*/i, "").trim();
+    const clientRef = clientRefFromPrestamoHint(clientName, clients);
     byLoan.set(rawRef, {
       loanRef: rawRef,
-      clientRef: "",
-      clientName,
+      clientRef,
+      clientName: clientName || rawRef,
       capital: Number(line.amount) || 0,
       installment: 0,
       ...(isLoanTopUpLine(line) ? { topUp: true } : {}),
     });
+    if (clientRef) dayClientRefs.add(clientRef);
   }
 
   // Rutas que este cobrador tocó hoy (planilla) — por si faltó GAS- en el pull.
