@@ -1,7 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { LOAN_TERM_OPTIONS, isoToDisplay, type LoanTermMonths } from "@/lib/loan-preview";
+import { useEffect, useMemo, useState } from "react";
+import {
+  installmentCountForTerm,
+  isoToDisplay,
+  LOAN_TERM_OPTIONS,
+  type LoanTermMonths,
+  type PayFrequency,
+} from "@/lib/loan-preview";
 import {
   defaultRenewalTerms,
   renewalPreview,
@@ -24,17 +30,34 @@ function parsePercent(raw: string): number {
   return Number.isFinite(value) ? value : Number.NaN;
 }
 
+function parseMoney(raw: string): number {
+  const value = Number(String(raw).replace(/[^\d]/g, "").trim());
+  return Number.isFinite(value) ? value : Number.NaN;
+}
+
+const TERM_OTRO = "otro";
+
 /**
  * Renovar: lo que debe (fijo) + el porcentaje que se elija, con plazo y primer cobro.
  * Propone 20 % a 1 mes. No mueve plata: la deuda pasa al préstamo de continuación.
+ * Solo organiza la ficha; al confirmar sigue el mismo `RenewalTerms`.
  */
 export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConfirm }: Props) {
   const inline = variant === "inline";
   const proposal = useMemo(() => renewalPreview(loan, today, defaultRenewalTerms()), [loan, today]);
   const [rawPercent, setRawPercent] = useState(String(defaultRenewalTerms().ratePercent));
-  const [termMonths, setTermMonths] = useState<LoanTermMonths>(defaultRenewalTerms().termMonths);
+  const [termChoice, setTermChoice] = useState<string>(String(defaultRenewalTerms().termMonths));
+  const [rawOtherMonths, setRawOtherMonths] = useState("4");
   const [firstIso, setFirstIso] = useState(proposal?.preview.dates[0] ?? today);
+  const [rawCuota, setRawCuota] = useState("");
+  const [cuotaDirty, setCuotaDirty] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const frequency = (loan.frequency ?? "diario") as PayFrequency;
+  const termMonths: LoanTermMonths =
+    termChoice === TERM_OTRO
+      ? Math.max(1, Math.trunc(Number(rawOtherMonths) || 0))
+      : Math.max(1, Math.trunc(Number(termChoice) || 1));
 
   const terms: RenewalTerms = {
     ratePercent: parsePercent(rawPercent),
@@ -44,6 +67,26 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
   const termsError = renewalTermsError(terms, today);
   const built = termsError ? null : renewalPreview(loan, today, terms);
   const blockReason = termsError ?? (built ? null : "No se pudo armar el préstamo nuevo.");
+
+  const suggestedCuota = built?.preview.installment ?? 0;
+
+  useEffect(() => {
+    if (cuotaDirty) return;
+    if (suggestedCuota > 0) setRawCuota(String(suggestedCuota));
+  }, [suggestedCuota, cuotaDirty]);
+
+  function applyCuotaEdit(raw: string) {
+    const cleaned = raw.replace(/[^\d]/g, "");
+    setCuotaDirty(true);
+    setRawCuota(cleaned);
+    const cuota = parseMoney(cleaned);
+    const capital = Math.trunc(loan.balance);
+    const count = installmentCountForTerm(frequency, termMonths);
+    if (!(cuota > 0) || !(capital > 0) || !(count > 0)) return;
+    const interest = Math.max(0, cuota * count - capital);
+    const rate = Math.round((interest / capital) * 10000) / 100;
+    setRawPercent(String(rate));
+  }
 
   async function confirm() {
     if (isSubmitting || blockReason) return;
@@ -60,7 +103,11 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
 
   return (
     <form
-      className={inline ? "collector-pay-form collector-pay-inline loan-renew-form" : "collector-pay-form loan-renew-form"}
+      className={
+        inline
+          ? "collector-pay-form collector-pay-inline loan-renew-form"
+          : "collector-pay-form loan-renew-form"
+      }
       onSubmit={(event) => {
         event.preventDefault();
         void confirm();
@@ -72,71 +119,114 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
         <p>{loan.client}</p>
       </header>
 
-      <div className="collector-pay-facts">
-        <div>
+      <div className="loan-renew-grid" role="group" aria-label="Condiciones de renovación">
+        <label className="loan-renew-cell">
           <span>Debe</span>
-          <b>{money(Math.trunc(loan.balance))}</b>
-        </div>
+          <b className="loan-renew-read">{money(Math.trunc(loan.balance))}</b>
+        </label>
+        <label className="loan-renew-cell">
+          <span>Porcentaje</span>
+          <input
+            value={rawPercent}
+            onChange={(event) => {
+              setCuotaDirty(false);
+              setRawPercent(event.target.value);
+            }}
+            inputMode="decimal"
+            disabled={isSubmitting}
+            aria-label="Porcentaje de la renovación"
+          />
+        </label>
+
+        <label className="loan-renew-cell">
+          <span>Plazo</span>
+          <div className="loan-renew-plazo">
+            <select
+              value={termChoice}
+              onChange={(event) => {
+                setCuotaDirty(false);
+                setTermChoice(event.target.value);
+              }}
+              disabled={isSubmitting}
+              aria-label="Plazo de la renovación"
+            >
+              {LOAN_TERM_OPTIONS.map((option) => (
+                <option key={option.id} value={String(option.id)}>
+                  {option.label}
+                </option>
+              ))}
+              <option value={TERM_OTRO}>Otro</option>
+            </select>
+            {termChoice === TERM_OTRO ? (
+              <input
+                value={rawOtherMonths}
+                onChange={(event) => {
+                  setCuotaDirty(false);
+                  setRawOtherMonths(event.target.value.replace(/[^\d]/g, ""));
+                }}
+                inputMode="numeric"
+                disabled={isSubmitting}
+                aria-label="Meses personalizados"
+                placeholder="Meses"
+              />
+            ) : null}
+          </div>
+        </label>
+        <label className="loan-renew-cell">
+          <span>Cuota</span>
+          <input
+            value={rawCuota}
+            onChange={(event) => applyCuotaEdit(event.target.value)}
+            inputMode="numeric"
+            disabled={isSubmitting}
+            aria-label="Cuota de la renovación"
+          />
+        </label>
+
+        <label className="loan-renew-cell">
+          <span>Primer cobro</span>
+          <input
+            type="date"
+            value={firstIso}
+            min={today}
+            onChange={(event) => {
+              setCuotaDirty(false);
+              setFirstIso(event.target.value);
+            }}
+            disabled={isSubmitting}
+            aria-label="Fecha del primer cobro"
+          />
+        </label>
+        <label className="loan-renew-cell">
+          <span>Fecha final</span>
+          <b className="loan-renew-read">{dueIso ? isoToDisplay(dueIso) : "—"}</b>
+        </label>
       </div>
 
-      <label className="collector-pay-field">
-        <span>Porcentaje (%)</span>
-        <input
-          value={rawPercent}
-          onChange={(event) => setRawPercent(event.target.value)}
-          inputMode="decimal"
-          disabled={isSubmitting}
-          aria-label="Porcentaje de la renovación"
-        />
-      </label>
-
-      <label className="collector-pay-field">
-        <span>Plazo</span>
-        <select
-          value={termMonths}
-          onChange={(event) => setTermMonths(Number(event.target.value))}
-          disabled={isSubmitting}
-          aria-label="Plazo de la renovación"
-        >
-          {LOAN_TERM_OPTIONS.map((option) => (
-            <option key={option.id} value={option.id}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="collector-pay-field">
-        <span>Primer cobro</span>
-        <input
-          type="date"
-          value={firstIso}
-          min={today}
-          onChange={(event) => setFirstIso(event.target.value)}
-          disabled={isSubmitting}
-          aria-label="Fecha del primer cobro"
-        />
-      </label>
-
       {built ? (
-        <div className="collector-pay-facts">
+        <div className="loan-renew-summary" aria-label="Cómo queda">
+          <div>
+            <span>Inicio</span>
+            <b>{isoToDisplay(today)}</b>
+          </div>
+          <div>
+            <span>Vence</span>
+            <b>{dueIso ? isoToDisplay(dueIso) : "—"}</b>
+          </div>
           <div>
             <span>Interés</span>
             <b>{money(built.interest)}</b>
           </div>
           <div>
-            <span>Total</span>
-            <b>{money(built.preview.total)}</b>
-          </div>
-          <div>
             <span>Cuota</span>
             <b>
-              {money(built.preview.installment)} × {built.preview.count}
+              {money(built.preview.installment)}
+              {built.preview.count > 1 ? ` × ${built.preview.count}` : ""}
             </b>
           </div>
-          <div>
-            <span>Vence</span>
-            <b>{dueIso ? isoToDisplay(dueIso) : "—"}</b>
+          <div className="loan-renew-summary-total">
+            <span>Total</span>
+            <b>{money(built.preview.total)}</b>
           </div>
         </div>
       ) : null}
