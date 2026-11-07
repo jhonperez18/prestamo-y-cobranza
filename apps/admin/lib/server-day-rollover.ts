@@ -28,6 +28,7 @@ import {
 } from "@/lib/supabase/catalog-mirror";
 import { fetchPaymentsFromSupabase, mirrorRowToPaymentRow } from "@/lib/supabase/payment-mirror";
 import { callSealDayClose } from "@/lib/server-seal-day-close";
+import { sealOrphanDayCloses } from "@/lib/server-seal-orphan-cie";
 import {
   assignmentToRow,
   dayCloseToRow,
@@ -234,6 +235,25 @@ export async function runServerDayRollover(
     } else {
       sealedAssignments += 1;
     }
+  }
+
+  // Hueco Edgar 06/11: hoja ya cerrada → autoClosed vacío → sin CIE hasta la
+  // revisión 6:05. A las 23:35 también se sellan CIE huérfanos (planilla cerrada
+  // o día pasado sin CIE), para que el Inicial de mañana no quede en «…».
+  {
+    const orphanState: OperationalDayState = {
+      ...loaded.state,
+      assignments: result.assignments,
+      dayCloses: result.dayCloses,
+      dayExpenseDrafts: result.dayExpenseDrafts ?? loaded.state.dayExpenseDrafts,
+      planillaCashCloses: result.planillaCashCloses ?? loaded.state.planillaCashCloses ?? [],
+      loans: result.loans,
+    };
+    const orphans = await sealOrphanDayCloses(orphanState, now);
+    const okOrphans = orphans.sealed.filter((row) => !row.error);
+    if (okOrphans.length) upsertedCloses += okOrphans.length;
+    if (orphans.errors.length) errors.push(...orphans.errors.map((msg) => `CIE huérfano ${msg}`));
+    result.dayCloses = orphanState.dayCloses;
   }
 
   // 23:35: la lista de mañana, completa, desde la ficha. A las 00:00 ya está.
