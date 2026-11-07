@@ -15021,12 +15021,14 @@
       margin: 0;
       min-width: 0;
     }
-    .loan-renew-form .loan-renew-cell > span {
-      color: #000;
+    .loan-renew-form .loan-renew-label {
+      color: #000000 !important;
+      -webkit-text-fill-color: #000000;
       font-size: 15px;
       font-weight: 400;
       letter-spacing: 0.01em;
       line-height: 1.2;
+      opacity: 1;
     }
     .loan-renew-form .loan-renew-cell input,
     .loan-renew-form .loan-renew-cell select,
@@ -15041,7 +15043,8 @@
       font-size: 13px;
       font-weight: 400;
       font-variant-numeric: tabular-nums;
-      color: #3d3d3d;
+      color: #5c5c5c;
+      -webkit-text-fill-color: #5c5c5c;
       background: #fff;
       line-height: 1.2;
     }
@@ -15050,6 +15053,8 @@
       align-items: center;
       background: #f3f8f5;
       border-style: dashed;
+      color: #5c5c5c;
+      -webkit-text-fill-color: #5c5c5c;
     }
     .loan-renew-form .loan-renew-plazo {
       display: grid;
@@ -15078,17 +15083,20 @@
       gap: 3px;
       min-width: 0;
     }
-    .loan-renew-form .loan-renew-summary span {
-      color: #000;
+    .loan-renew-form .loan-renew-summary .loan-renew-label {
+      color: #000000 !important;
+      -webkit-text-fill-color: #000000;
       font-size: 15px;
       font-weight: 400;
       line-height: 1.25;
+      opacity: 1;
     }
     .loan-renew-form .loan-renew-summary b {
       font-size: 14px;
       font-weight: 400;
       font-variant-numeric: tabular-nums;
-      color: #3d3d3d;
+      color: #5c5c5c;
+      -webkit-text-fill-color: #5c5c5c;
       line-height: 1.25;
     }
     .loan-renew-form .loan-renew-summary-total {
@@ -15100,14 +15108,16 @@
       text-align: center;
       gap: 4px;
     }
-    .loan-renew-form .loan-renew-summary-total span {
+    .loan-renew-form .loan-renew-summary-total .loan-renew-label {
       font-size: 16px;
-      color: #000;
+      color: #000000 !important;
+      -webkit-text-fill-color: #000000;
     }
     .loan-renew-form .loan-renew-summary-total b {
       font-size: 22px;
       font-weight: 400;
-      color: #000;
+      color: #000000;
+      -webkit-text-fill-color: #000000;
       letter-spacing: 0.01em;
     }
     .collector-pay-head h2 { margin: 0; font-size: 20px; color: #111; }

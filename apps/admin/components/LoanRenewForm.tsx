@@ -33,6 +33,15 @@ function parseMoney(raw: string): number {
   return Number.isFinite(value) ? value : Number.NaN;
 }
 
+/** Miles con punto (10.000), sin símbolo. */
+function formatMiles(raw: string | number): string {
+  if (raw === "" || raw === null || raw === undefined) return "";
+  const n = typeof raw === "number" ? raw : parseMoney(String(raw));
+  if (!Number.isFinite(n)) return "";
+  if (n <= 0) return "0";
+  return String(Math.trunc(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
 /** Plazo en meses; acepta medio mes (0,5) y otros decimales. */
 function parseTermMonths(raw: string): number {
   const value = Number(String(raw).replace(",", ".").trim());
@@ -184,11 +193,11 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
 
       <div className="loan-renew-grid" role="group" aria-label="Condiciones de renovación">
         <label className="loan-renew-cell">
-          <span>Debe</span>
+          <span className="loan-renew-label">Debe</span>
           <span className="loan-renew-read">{money(capital)}</span>
         </label>
         <label className="loan-renew-cell">
-          <span>Porcentaje</span>
+          <span className="loan-renew-label">Porcentaje</span>
           <input
             value={rawPercent}
             onChange={(event) => {
@@ -202,7 +211,7 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
         </label>
 
         <label className="loan-renew-cell">
-          <span>Plazo</span>
+          <span className="loan-renew-label">Plazo</span>
           <div className="loan-renew-plazo">
             <select
               value={termChoice}
@@ -234,9 +243,9 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
           </div>
         </label>
         <label className="loan-renew-cell">
-          <span>Cuota</span>
+          <span className="loan-renew-label">Cuota</span>
           <input
-            value={rawCuota}
+            value={rawCuota ? formatMiles(rawCuota) : ""}
             onChange={(event) => applyCuotaEdit(event.target.value)}
             inputMode="numeric"
             disabled={isSubmitting}
@@ -245,7 +254,7 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
         </label>
 
         <label className="loan-renew-cell">
-          <span>Primer cobro</span>
+          <span className="loan-renew-label">Primer cobro</span>
           <input
             type="date"
             value={firstIso}
@@ -260,7 +269,7 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
           />
         </label>
         <label className="loan-renew-cell">
-          <span>Fecha final</span>
+          <span className="loan-renew-label">Fecha final</span>
           <input
             type="date"
             value={shownDue}
@@ -275,26 +284,26 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
       {built || (capital > 0 && Number.isFinite(rate)) ? (
         <div className="loan-renew-summary" aria-label="Cómo queda">
           <div>
-            <span>Inicio</span>
+            <span className="loan-renew-label">Inicio</span>
             <b>{isoToDisplay(today)}</b>
           </div>
           <div>
-            <span>Vence</span>
+            <span className="loan-renew-label">Vence</span>
             <b>{builtDue ? isoToDisplay(builtDue) : shownDue ? isoToDisplay(shownDue) : "—"}</b>
           </div>
           <div>
-            <span>Interés</span>
+            <span className="loan-renew-label">Interés</span>
             <b>{money(interest)}</b>
           </div>
           <div>
-            <span>Cuota</span>
+            <span className="loan-renew-label">Cuota</span>
             <b>
               {shownCuota > 0 ? money(shownCuota) : "—"}
               {shownCount > 1 ? ` × ${shownCount}` : ""}
             </b>
           </div>
           <div className="loan-renew-summary-total">
-            <span>Total</span>
+            <span className="loan-renew-label">Total</span>
             <b>{money(total)}</b>
           </div>
         </div>
