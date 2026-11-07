@@ -5,7 +5,6 @@ import {
   isoToDisplay,
   LOAN_TERM_OPTIONS,
   type LoanTermMonths,
-  type PayFrequency,
 } from "@/lib/loan-preview";
 import {
   defaultRenewalTerms,
@@ -59,15 +58,6 @@ function monthsFromDue(today: string, dueIso: string): number {
   return Math.max(0.5, Math.round((days / 30) * 2) / 2);
 }
 
-/** Plazo que produce esa cantidad de cuotas (sin forzar ×30). */
-function termMonthsFromCount(frequency: PayFrequency, count: number): number {
-  const n = Math.max(1, Math.trunc(count));
-  if (frequency === "diario") return Math.max(0.5, Math.round((n / 30) * 2) / 2);
-  if (frequency === "semanal") return Math.max(0.5, Math.round((n / 4) * 2) / 2);
-  if (frequency === "quincenal") return Math.max(0.5, Math.round((n / 2) * 2) / 2);
-  return Math.max(0.5, n);
-}
-
 function applyTermMonthsChoice(
   months: number,
   setTermChoice: (value: string) => void,
@@ -101,7 +91,6 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
   const [cuotaDirty, setCuotaDirty] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const frequency = (loan.frequency ?? "diario") as PayFrequency;
   const termMonths: LoanTermMonths =
     termChoice === TERM_OTRO
       ? parseTermMonths(rawOtherMonths)
@@ -128,8 +117,11 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
   const editedCuota = parseMoney(rawCuota);
   const shownCuota =
     cuotaDirty && editedCuota > 0 ? editedCuota : suggestedCuota > 0 ? suggestedCuota : editedCuota;
+  /** Cuota redondeada a mano: solo recalcula el ×N (total÷cuota). No mueve plazo ni %. */
   const shownCount =
-    shownCuota > 0 && total > 0 ? Math.max(1, Math.round(total / shownCuota)) : built?.preview.count ?? 0;
+    cuotaDirty && shownCuota > 0 && total > 0
+      ? Math.max(1, Math.round(total / shownCuota))
+      : built?.preview.count ?? 0;
 
   useEffect(() => {
     if (cuotaDirty) return;
@@ -142,16 +134,8 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
   }, [builtDue, dueDirty]);
 
   function applyCuotaEdit(raw: string) {
-    const cleaned = raw.replace(/[^\d]/g, "");
     setCuotaDirty(true);
-    setRawCuota(cleaned);
-    const cuota = parseMoney(cleaned);
-    if (!(cuota > 0) || !(capital > 0) || !Number.isFinite(rate) || rate < 0) return;
-    const nextTotal = capital + Math.trunc((capital * rate) / 100);
-    if (!(nextTotal > 0)) return;
-    const count = Math.max(1, Math.round(nextTotal / cuota));
-    setDueDirty(false);
-    applyTermMonthsChoice(termMonthsFromCount(frequency, count), setTermChoice, setRawOtherMonths);
+    setRawCuota(raw.replace(/[^\d]/g, ""));
   }
 
   function applyDueEdit(nextDue: string) {

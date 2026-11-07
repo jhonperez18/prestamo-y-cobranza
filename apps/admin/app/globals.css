@@ -15022,7 +15022,7 @@
       min-width: 0;
     }
     .loan-renew-form .loan-renew-cell > span {
-      color: #111;
+      color: #000;
       font-size: 15px;
       font-weight: 400;
       letter-spacing: 0.01em;
@@ -15041,7 +15041,7 @@
       font-size: 13px;
       font-weight: 400;
       font-variant-numeric: tabular-nums;
-      color: #111;
+      color: #3d3d3d;
       background: #fff;
       line-height: 1.2;
     }
@@ -15079,7 +15079,7 @@
       min-width: 0;
     }
     .loan-renew-form .loan-renew-summary span {
-      color: #0a0a0a;
+      color: #000;
       font-size: 15px;
       font-weight: 400;
       line-height: 1.25;
@@ -15088,7 +15088,7 @@
       font-size: 14px;
       font-weight: 400;
       font-variant-numeric: tabular-nums;
-      color: #1a1a1a;
+      color: #3d3d3d;
       line-height: 1.25;
     }
     .loan-renew-form .loan-renew-summary-total {
@@ -15102,11 +15102,12 @@
     }
     .loan-renew-form .loan-renew-summary-total span {
       font-size: 16px;
-      color: #0a0a0a;
+      color: #000;
     }
     .loan-renew-form .loan-renew-summary-total b {
       font-size: 22px;
-      color: #0a0a0a;
+      font-weight: 400;
+      color: #000;
       letter-spacing: 0.01em;
     }
     .collector-pay-head h2 { margin: 0; font-size: 20px; color: #111; }
