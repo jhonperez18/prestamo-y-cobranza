@@ -37,6 +37,30 @@ function parseMoney(raw: string): number {
 
 const TERM_OTRO = "otro";
 
+/** Meses de plazo a partir de hoy → fecha final (misma regla de 30 días/mes del preview). */
+function monthsFromDue(today: string, dueIso: string): number {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(today) || !/^\d{4}-\d{2}-\d{2}$/.test(dueIso)) return 1;
+  const start = Date.parse(`${today}T12:00:00Z`);
+  const end = Date.parse(`${dueIso}T12:00:00Z`);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 1;
+  const days = Math.max(1, Math.round((end - start) / 86_400_000));
+  return Math.max(1, Math.round(days / 30));
+}
+
+function applyTermMonthsChoice(
+  months: number,
+  setTermChoice: (value: string) => void,
+  setRawOtherMonths: (value: string) => void,
+) {
+  const clean = Math.max(1, Math.trunc(months));
+  if (LOAN_TERM_OPTIONS.some((option) => option.id === clean)) {
+    setTermChoice(String(clean));
+    return;
+  }
+  setTermChoice(TERM_OTRO);
+  setRawOtherMonths(String(clean));
+}
+
 /**
  * Renovar: lo que debe (fijo) + el porcentaje que se elija, con plazo y primer cobro.
  * Propone 20 % a 1 mes. No mueve plata: la deuda pasa al préstamo de continuación.
@@ -45,10 +69,13 @@ const TERM_OTRO = "otro";
 export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConfirm }: Props) {
   const inline = variant === "inline";
   const proposal = useMemo(() => renewalPreview(loan, today, defaultRenewalTerms()), [loan, today]);
+  const proposalDue = proposal?.preview.dates[proposal.preview.dates.length - 1] ?? today;
   const [rawPercent, setRawPercent] = useState(String(defaultRenewalTerms().ratePercent));
   const [termChoice, setTermChoice] = useState<string>(String(defaultRenewalTerms().termMonths));
   const [rawOtherMonths, setRawOtherMonths] = useState("4");
   const [firstIso, setFirstIso] = useState(proposal?.preview.dates[0] ?? today);
+  const [dueIso, setDueIso] = useState(proposalDue);
+  const [dueDirty, setDueDirty] = useState(false);
   const [rawCuota, setRawCuota] = useState("");
   const [cuotaDirty, setCuotaDirty] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -69,11 +96,18 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
   const blockReason = termsError ?? (built ? null : "No se pudo armar el préstamo nuevo.");
 
   const suggestedCuota = built?.preview.installment ?? 0;
+  const builtDates = built?.preview.dates ?? [];
+  const builtDue = builtDates[builtDates.length - 1] ?? "";
 
   useEffect(() => {
     if (cuotaDirty) return;
     if (suggestedCuota > 0) setRawCuota(String(suggestedCuota));
   }, [suggestedCuota, cuotaDirty]);
+
+  useEffect(() => {
+    if (dueDirty) return;
+    if (builtDue) setDueIso(builtDue);
+  }, [builtDue, dueDirty]);
 
   function applyCuotaEdit(raw: string) {
     const cleaned = raw.replace(/[^\d]/g, "");
@@ -88,6 +122,20 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
     setRawPercent(String(rate));
   }
 
+  function applyDueEdit(nextDue: string) {
+    setDueDirty(true);
+    setDueIso(nextDue);
+    setCuotaDirty(false);
+    if (!nextDue) return;
+    applyTermMonthsChoice(monthsFromDue(today, nextDue), setTermChoice, setRawOtherMonths);
+  }
+
+  function touchPlazo(nextChoice: string) {
+    setDueDirty(false);
+    setCuotaDirty(false);
+    setTermChoice(nextChoice);
+  }
+
   async function confirm() {
     if (isSubmitting || blockReason) return;
     setIsSubmitting(true);
@@ -98,8 +146,7 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
     }
   }
 
-  const dates = built?.preview.dates ?? [];
-  const dueIso = dates[dates.length - 1];
+  const shownDue = dueDirty ? dueIso : builtDue || dueIso;
 
   return (
     <form
@@ -143,10 +190,7 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
           <div className="loan-renew-plazo">
             <select
               value={termChoice}
-              onChange={(event) => {
-                setCuotaDirty(false);
-                setTermChoice(event.target.value);
-              }}
+              onChange={(event) => touchPlazo(event.target.value)}
               disabled={isSubmitting}
               aria-label="Plazo de la renovación"
             >
@@ -161,6 +205,7 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
               <input
                 value={rawOtherMonths}
                 onChange={(event) => {
+                  setDueDirty(false);
                   setCuotaDirty(false);
                   setRawOtherMonths(event.target.value.replace(/[^\d]/g, ""));
                 }}
@@ -190,6 +235,7 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
             value={firstIso}
             min={today}
             onChange={(event) => {
+              setDueDirty(false);
               setCuotaDirty(false);
               setFirstIso(event.target.value);
             }}
@@ -199,7 +245,14 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
         </label>
         <label className="loan-renew-cell">
           <span>Fecha final</span>
-          <b className="loan-renew-read">{dueIso ? isoToDisplay(dueIso) : "—"}</b>
+          <input
+            type="date"
+            value={shownDue}
+            min={firstIso || today}
+            onChange={(event) => applyDueEdit(event.target.value)}
+            disabled={isSubmitting}
+            aria-label="Fecha final de la renovación"
+          />
         </label>
       </div>
 
@@ -211,7 +264,7 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
           </div>
           <div>
             <span>Vence</span>
-            <b>{dueIso ? isoToDisplay(dueIso) : "—"}</b>
+            <b>{builtDue ? isoToDisplay(builtDue) : "—"}</b>
           </div>
           <div>
             <span>Interés</span>
