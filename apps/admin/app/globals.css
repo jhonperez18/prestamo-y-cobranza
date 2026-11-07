@@ -15025,7 +15025,7 @@
       color: #000000 !important;
       -webkit-text-fill-color: #000000;
       font-size: 15px;
-      font-weight: 400;
+      font-weight: 700;
       letter-spacing: 0.01em;
       line-height: 1.2;
       opacity: 1;
@@ -15087,7 +15087,7 @@
       color: #000000 !important;
       -webkit-text-fill-color: #000000;
       font-size: 15px;
-      font-weight: 400;
+      font-weight: 700;
       line-height: 1.25;
       opacity: 1;
     }
@@ -15110,6 +15110,7 @@
     }
     .loan-renew-form .loan-renew-summary-total .loan-renew-label {
       font-size: 16px;
+      font-weight: 700;
       color: #000000 !important;
       -webkit-text-fill-color: #000000;
     }
