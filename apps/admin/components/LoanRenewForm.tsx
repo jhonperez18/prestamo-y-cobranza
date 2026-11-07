@@ -5,6 +5,7 @@ import {
   isoToDisplay,
   LOAN_TERM_OPTIONS,
   type LoanTermMonths,
+  type PayFrequency,
 } from "@/lib/loan-preview";
 import {
   defaultRenewalTerms,
@@ -25,6 +26,11 @@ type Props = {
 
 function parsePercent(raw: string): number {
   const value = Number(String(raw).replace(",", ".").trim());
+  return Number.isFinite(value) ? value : Number.NaN;
+}
+
+function parseMoney(raw: string): number {
+  const value = Number(String(raw).replace(/[^\d]/g, "").trim());
   return Number.isFinite(value) ? value : Number.NaN;
 }
 
@@ -51,6 +57,15 @@ function monthsFromDue(today: string, dueIso: string): number {
   if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return 1;
   const days = Math.max(1, Math.round((end - start) / 86_400_000));
   return Math.max(0.5, Math.round((days / 30) * 2) / 2);
+}
+
+/** Plazo que produce esa cantidad de cuotas (sin forzar ×30). */
+function termMonthsFromCount(frequency: PayFrequency, count: number): number {
+  const n = Math.max(1, Math.trunc(count));
+  if (frequency === "diario") return Math.max(0.5, Math.round((n / 30) * 2) / 2);
+  if (frequency === "semanal") return Math.max(0.5, Math.round((n / 4) * 2) / 2);
+  if (frequency === "quincenal") return Math.max(0.5, Math.round((n / 2) * 2) / 2);
+  return Math.max(0.5, n);
 }
 
 function applyTermMonthsChoice(
@@ -86,6 +101,7 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
   const [cuotaDirty, setCuotaDirty] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const frequency = (loan.frequency ?? "diario") as PayFrequency;
   const termMonths: LoanTermMonths =
     termChoice === TERM_OTRO
       ? parseTermMonths(rawOtherMonths)
@@ -103,6 +119,17 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
   const suggestedCuota = built?.preview.installment ?? 0;
   const builtDates = built?.preview.dates ?? [];
   const builtDue = builtDates[builtDates.length - 1] ?? "";
+  const capital = Math.trunc(loan.balance);
+  const rate = parsePercent(rawPercent);
+  const interest =
+    built?.interest ??
+    (Number.isFinite(rate) && capital > 0 ? Math.trunc((capital * rate) / 100) : 0);
+  const total = built?.preview.total ?? capital + interest;
+  const editedCuota = parseMoney(rawCuota);
+  const shownCuota =
+    cuotaDirty && editedCuota > 0 ? editedCuota : suggestedCuota > 0 ? suggestedCuota : editedCuota;
+  const shownCount =
+    shownCuota > 0 && total > 0 ? Math.max(1, Math.round(total / shownCuota)) : built?.preview.count ?? 0;
 
   useEffect(() => {
     if (cuotaDirty) return;
@@ -113,6 +140,19 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
     if (dueDirty) return;
     if (builtDue) setDueIso(builtDue);
   }, [builtDue, dueDirty]);
+
+  function applyCuotaEdit(raw: string) {
+    const cleaned = raw.replace(/[^\d]/g, "");
+    setCuotaDirty(true);
+    setRawCuota(cleaned);
+    const cuota = parseMoney(cleaned);
+    if (!(cuota > 0) || !(capital > 0) || !Number.isFinite(rate) || rate < 0) return;
+    const nextTotal = capital + Math.trunc((capital * rate) / 100);
+    if (!(nextTotal > 0)) return;
+    const count = Math.max(1, Math.round(nextTotal / cuota));
+    setDueDirty(false);
+    applyTermMonthsChoice(termMonthsFromCount(frequency, count), setTermChoice, setRawOtherMonths);
+  }
 
   function applyDueEdit(nextDue: string) {
     setDueDirty(true);
@@ -161,7 +201,7 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
       <div className="loan-renew-grid" role="group" aria-label="Condiciones de renovación">
         <label className="loan-renew-cell">
           <span>Debe</span>
-          <span className="loan-renew-read">{money(Math.trunc(loan.balance))}</span>
+          <span className="loan-renew-read">{money(capital)}</span>
         </label>
         <label className="loan-renew-cell">
           <span>Porcentaje</span>
@@ -213,10 +253,7 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
           <span>Cuota</span>
           <input
             value={rawCuota}
-            onChange={(event) => {
-              setCuotaDirty(true);
-              setRawCuota(event.target.value.replace(/[^\d]/g, ""));
-            }}
+            onChange={(event) => applyCuotaEdit(event.target.value)}
             inputMode="numeric"
             disabled={isSubmitting}
             aria-label="Cuota de la renovación"
@@ -251,7 +288,7 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
         </label>
       </div>
 
-      {built ? (
+      {built || (capital > 0 && Number.isFinite(rate)) ? (
         <div className="loan-renew-summary" aria-label="Cómo queda">
           <div>
             <span>Inicio</span>
@@ -259,22 +296,22 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
           </div>
           <div>
             <span>Vence</span>
-            <b>{builtDue ? isoToDisplay(builtDue) : "—"}</b>
+            <b>{builtDue ? isoToDisplay(builtDue) : shownDue ? isoToDisplay(shownDue) : "—"}</b>
           </div>
           <div>
             <span>Interés</span>
-            <b>{money(built.interest)}</b>
+            <b>{money(interest)}</b>
           </div>
           <div>
             <span>Cuota</span>
             <b>
-              {money(built.preview.installment)}
-              {built.preview.count > 1 ? ` × ${built.preview.count}` : ""}
+              {shownCuota > 0 ? money(shownCuota) : "—"}
+              {shownCount > 1 ? ` × ${shownCount}` : ""}
             </b>
           </div>
           <div className="loan-renew-summary-total">
             <span>Total</span>
-            <b>{money(built.preview.total)}</b>
+            <b>{money(total)}</b>
           </div>
         </div>
       ) : null}
