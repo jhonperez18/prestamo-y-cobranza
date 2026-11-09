@@ -42,6 +42,7 @@ import { isDeletedRef } from "@/lib/deleted-ids";
 import {
   emitMirrorQueueChanged,
   PAYMENT_REJECTED_BALANCE,
+  queueWithoutSent,
   shouldDropFromMirrorQueue,
   type MirrorApiJson,
 } from "@/lib/supabase/mirror-queue";
@@ -831,21 +832,25 @@ export async function persistPaymentToSupabase(
   }
 }
 
-/** C4: intenta subir la cola offline (no tumba la UX). Reintentable. */
+/**
+ * C4: intenta subir la cola offline (no tumba la UX). Reintentable.
+ * Solo suelta lo confirmado; un cobro encolado (o editado) durante el flush
+ * se queda para el próximo envío — misma regla que ops/gastos (`queueWithoutSent`).
+ */
 export async function flushPaymentMirrorQueue(): Promise<{
   flushed: number;
   left: number;
   balances: { loanRef: string; balance: number; paid?: number }[];
 }> {
   if (typeof window === "undefined") return { flushed: 0, left: 0, balances: [] };
-  const queue = readMirrorQueue();
-  if (!queue.length) return { flushed: 0, left: 0, balances: [] };
+  const snapshot = readMirrorQueue();
+  if (!snapshot.length) return { flushed: 0, left: 0, balances: [] };
 
   let flushed = 0;
-  const left: PaymentRow[] = [];
+  const sentOk: PaymentRow[] = [];
   const balances: { loanRef: string; balance: number; paid?: number }[] = [];
   const rejected: { payment: PaymentRow; balance?: number }[] = [];
-  for (const payment of queue) {
+  for (const payment of snapshot) {
     const payload = withPaymentEvidence(payment);
     try {
       const res = await fetch("/api/payments/mirror", {
@@ -858,9 +863,11 @@ export async function flushPaymentMirrorQueue(): Promise<{
       // Solo sacar de cola si realmente escribió en Postgres (o skip irrecuperable).
       if (res.ok && isPaymentRejection(body)) {
         flushed += 1;
+        sentOk.push(payload);
         rejected.push({ payment: payload, balance: body.balance });
       } else if (res.ok && shouldDropFromMirrorQueue(body) && !body.skipped) {
         flushed += 1;
+        sentOk.push(payload);
         adoptCloudPaymentRefs([payload], [body.payment]);
         if (typeof body.balance === "number" && payload.loanRef) {
           balances.push({
@@ -872,16 +879,17 @@ export async function flushPaymentMirrorQueue(): Promise<{
       } else if (res.ok && shouldDropFromMirrorQueue(body) && body.skipped) {
         // invalid_payment u otro drop intencional
         flushed += 1;
-      } else {
-        left.push(payload);
+        sentOk.push(payload);
       }
+      // Fallo de red / nube: no entra a sentOk → sigue en la cola viva.
     } catch {
-      left.push(payload);
+      /* reintento en el próximo flush */
     }
   }
-  writeMirrorQueue(left);
+  // Cola actual − solo lo confirmado (firma igual). Lo nuevo durante el envío vive.
+  writeMirrorQueue(queueWithoutSent(readMirrorQueue(), sentOk));
   for (const row of rejected) dropRejectedPayments([row.payment], row.balance);
-  return { flushed, left: left.length, balances };
+  return { flushed, left: readMirrorQueue().length, balances };
 }
 
 /**

@@ -4702,6 +4702,11 @@ console.log("— Cupo del aparato —");
     paySrc.includes("flushPaymentMirrorQueue") && !paySrc.includes("for (const payment of missing)"),
     true,
   );
+  expect(
+    "Flush cobros: cola viva (queueWithoutSent; no pisa cobro nuevo)",
+    paySrc.includes("queueWithoutSent(readMirrorQueue(), sentOk)"),
+    true,
+  );
   const appSrc = readFileSync(new URL("../components/CollectorMobileApp.tsx", import.meta.url), "utf8");
   expect("App cobrador no baja la lista entera al abrir", appSrc.includes("loadLivePaymentRows"), false);
   expect("App cobrador pide el historial al tocarlo", appSrc.includes("pullCollectorHistoryDay"), true);
