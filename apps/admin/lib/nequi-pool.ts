@@ -100,11 +100,32 @@ export function loanIsCombinadoFunded(
 
 function stripSplitMarkers(notes: string | undefined): string {
   return (notes || "")
+    .replace(/\[\[split:(?:efectivo|banco|nequi):\d+\]\]/gi, " ")
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line && !/^\[\[split:(efectivo|banco|nequi):\d+\]\]$/i.test(line))
+    .filter(Boolean)
     .join("\n")
     .trim();
+}
+
+/**
+ * Texto de Observaciones para pantalla / formulario.
+ * Sin marcadores internos [[fb:…]] / [[split:…]] ni el relleno automático
+ * «Préstamo rápido · …» (la casilla va vacía por defecto).
+ */
+export function loanNotesForDisplay(notes: string | undefined): string {
+  const cleaned = stripSplitMarkers(stripFundedMarkers(notes));
+  return cleaned
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !/^pr[eé]stamo\s+r[aá]pido\b/i.test(line))
+    .join("\n")
+    .trim();
+}
+
+/** Exportado para guardar sin reinyectar marcadores del cajón. */
+export function stripLoanInternalNotes(notes: string | undefined): string {
+  return stripSplitMarkers(stripFundedMarkers(notes));
 }
 
 function parseSplitMarker(

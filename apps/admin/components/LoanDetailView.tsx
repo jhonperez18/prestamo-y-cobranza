@@ -7,7 +7,7 @@ import {
   interestChargeCount,
   syncLoan,
 } from "@/lib/loan-preview";
-import { loanOriginDisplayLabel, stripFundedMarkers } from "@/lib/nequi-pool";
+import { loanNotesForDisplay, loanOriginDisplayLabel } from "@/lib/nequi-pool";
 import { QuadDetailTable } from "@/components/QuadDetailTable";
 
 type Props = {
@@ -33,7 +33,7 @@ export function LoanDetailView({ loan }: Props) {
     total: synced.total,
     days: synced.days,
     interestCount,
-    notes: stripFundedMarkers(synced.notes),
+    notes: loanNotesForDisplay(synced.notes),
     originLabel: loanOriginDisplayLabel(synced),
     formatMoney: money,
   });

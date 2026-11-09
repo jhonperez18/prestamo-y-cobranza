@@ -20,9 +20,10 @@ import {
 import { todayIso } from "@/lib/daily-dispatch";
 import {
   loanDisbursementSource,
+  loanNotesForDisplay,
   loanSplitAmounts,
   loanSplitIsValid,
-  stripFundedMarkers,
+  stripLoanInternalNotes,
   type LoanDisbursementSource,
 } from "@/lib/nequi-pool";
 
@@ -244,7 +245,7 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
   const [totalManualRaw, setTotalManualRaw] = useState<string | null>(null);
   const [startIso, setStartIso] = useState(seedStartIso);
   const [notes, setNotes] = useState(() =>
-    stripFundedMarkers(syncedLoan?.notes ?? loan?.notes ?? ""),
+    loanNotesForDisplay(syncedLoan?.notes ?? loan?.notes ?? ""),
   );
   // Alta: sin origen hasta que el usuario lo elija (evita guardar Nequi por descuido).
   const [fundedBy, setFundedBy] = useState<LoanDisbursementSource | "">(() => {
@@ -400,7 +401,7 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
       capital,
       date: isoToDisplay(startIso),
       due: dueLabel === "—" ? isoToDisplay(preview.dates[preview.dates.length - 1] || "") : dueLabel,
-      notes: stripFundedMarkers(notes),
+      notes: stripLoanInternalNotes(notes),
       rate: interestMode === "amount" ? 0 : pctApplied,
       frequency,
       mode: "cuota_fija",

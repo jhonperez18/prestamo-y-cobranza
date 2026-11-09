@@ -5,8 +5,6 @@ import { todayIso } from "@/lib/daily-dispatch";
 import { deletedClientRefRows } from "@/lib/deleted-ids";
 import { pendingLoanRef } from "@/lib/loan-command";
 import {
-  LOAN_TERM_OPTIONS,
-  PAY_FREQUENCIES,
   isoToDisplay,
   previewLoanFlat,
   syncLoan,
@@ -126,11 +124,6 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
 
   const dueIso = preview.dates[preview.dates.length - 1] ?? startIso;
   const ref = pendingLoanRef();
-  const freqLabel =
-    PAY_FREQUENCIES.find((item) => item.id === draft.frequency)?.label ?? draft.frequency;
-  const termLabel =
-    LOAN_TERM_OPTIONS.find((item) => item.id === draft.termMonths)?.label ??
-    (draft.termMonths === 1 ? "1 mes" : `${draft.termMonths} meses`);
 
   const loan = syncLoan(
     {
@@ -144,7 +137,7 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
       balance: preview.total,
       status: "Activo",
       kind: "ok",
-      notes: `Préstamo rápido · ${freqLabel} · ${termLabel}`,
+      notes: "",
       rate: draft.rate ?? (draft.capital > 0 ? (draft.interest / draft.capital) * 100 : 0),
       frequency: draft.frequency,
       mode: "cuota_fija",
