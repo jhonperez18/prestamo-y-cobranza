@@ -668,8 +668,8 @@ type RouteExpenseSource = {
 
 /**
  * Sube gastos de ruta (borradores + cierres) a Banco → Registros / Gastos.
- * Incluye préstamos en efectivo (azul) y gastos operativos (rojo).
- * Idempotente: actualiza o crea por dayExpenseLineRef.
+ * Solo gastos operativos (almuerzo, gasolina…). Los préstamos en efectivo van por
+ * `syncCashLoanDisbursementsToMovements` (CSH-): una sola salida, sin doble con GASL-.
  */
 export function syncRouteExpensesToMovements(
   drafts: CollectorDayExpenseDraft[],
@@ -701,6 +701,8 @@ export function syncRouteExpensesToMovements(
   for (const source of sources) {
     for (const line of source.expenses) {
       if (line.amount <= 0) continue;
+      // Préstamo / Anexo: no aquí. Dueño = CSH- (evita doble Haber en CAJA).
+      if (isPrestamoRutaExpense(line)) continue;
       const key = dayExpenseLineMovementRef(
         source.collectorRef,
         source.date,
@@ -719,14 +721,8 @@ export function syncRouteExpensesToMovements(
       .map((row) => [row.dayExpenseLineRef as string, row]),
   );
 
-  // No borrar gastos de ruta huérfanos si se perdieron cierres/borradores en storage.
-  // Sí soltar GASL-…-P-pend-… cuando ya existe el P- real del mismo cobrador+día.
+  // No borrar gastos operativos huérfanos si se perdieron cierres/borradores en storage.
   let next = [...movements];
-  const realPrestamoPrefixes = new Set<string>();
-  for (const key of wanted.keys()) {
-    const matched = /^(GASL-[^-]+-\d{4}-\d{2}-\d{2})-prestamo-P-\d+/i.exec(key);
-    if (matched?.[1]) realPrestamoPrefixes.add(matched[1].toLowerCase());
-  }
 
   for (const [lineRef, { source, line }] of wanted) {
     const period = periodFromIso(source.date);
@@ -763,11 +759,16 @@ export function syncRouteExpensesToMovements(
     }
   }
 
+  // Suelta todo Haber prestamo_ruta que no sea CSH- / DSB-: el dueño es
+  // syncCashLoanDisbursements (caja) o syncNequiLoanDisbursements (banco/nequi).
+  // Así un combinado nunca deja GASL-pend- + CSH-P- (doble en Registros).
   return next.filter((row) => {
-    const line = String(row.dayExpenseLineRef || row.ref || "");
-    const pend = /^(GASL-[^-]+-\d{4}-\d{2}-\d{2})-prestamo-(P-pend-[A-Za-z0-9-]+)/i.exec(line);
-    if (!pend?.[1]) return true;
-    return !realPrestamoPrefixes.has(pend[1].toLowerCase());
+    if (row.category !== "prestamo_ruta") return true;
+    const ref = String(row.ref || "");
+    const link = String(row.loanDisbursementRef || "");
+    if (/^DSB-/i.test(ref) || /^DSB-/i.test(link)) return true;
+    if (/^CSH-/i.test(ref) || /^CSH-/i.test(link)) return true;
+    return false;
   });
 }
 

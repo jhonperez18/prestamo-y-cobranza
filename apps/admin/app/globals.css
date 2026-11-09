@@ -1340,8 +1340,8 @@
     .collector-day-loans-head,
     .collector-day-loans-list li {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 5.6rem 4.6rem;
-      gap: 10px;
+      grid-template-columns: minmax(0, 1fr) 1.35rem 5.6rem 4.6rem;
+      gap: 8px;
       align-items: baseline;
       font-size: 12px;
     }
@@ -1351,7 +1351,7 @@
       padding: 0 8px 6px;
       border-bottom: 1px solid #d1d5db;
     }
-    .collector-day-loans-head span:not(:first-child) {
+    .collector-day-loans-head span:nth-child(n + 3) {
       text-align: right;
     }
     .collector-day-loans-list {
@@ -1372,6 +1372,36 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+    .collector-day-loans-list .is-fund {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.15rem;
+      height: 1.15rem;
+      padding: 0 3px;
+      border-radius: 3px;
+      font-style: normal;
+      font-size: 10px;
+      font-weight: 750;
+      line-height: 1;
+      justify-self: center;
+    }
+    .collector-day-loans-list .is-fund.is-fund-E {
+      color: #1f6b45;
+      background: #e7f6ee;
+    }
+    .collector-day-loans-list .is-fund.is-fund-C {
+      color: #a16207;
+      background: #fef3c7;
+    }
+    .collector-day-loans-list .is-fund.is-fund-B {
+      color: #1d4ed8;
+      background: #dbeafe;
+    }
+    .collector-day-loans-list .is-fund.is-fund-N {
+      color: #5b3d8a;
+      background: #f1e9fb;
     }
     .collector-day-loans-list .is-capital,
     .collector-day-loans-list .is-cuota {

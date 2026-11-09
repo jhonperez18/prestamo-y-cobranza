@@ -2,6 +2,7 @@
 
 import { money } from "@/lib/mock-data";
 import type { DayLoanDisbursementRow } from "@/lib/collector-history-planilla";
+import { loanFundLetterTitle, loanListFundLetter } from "@/lib/nequi-pool";
 
 type Props = {
   dateLabel: string;
@@ -17,7 +18,7 @@ type Props = {
   digitalLabel?: string;
 };
 
-/** Detalle del KPI Préstamos de la ruta: solo efectivo (caja). */
+/** Detalle del KPI Préstamos de la ruta: solo efectivo (caja). Letra E / C. */
 export function CollectorDayLoansPanel({ dateLabel, rows, total }: Props) {
   return (
     <section className="collector-day-loans-panel" aria-label={`Préstamos ${dateLabel}`}>
@@ -29,26 +30,39 @@ export function CollectorDayLoansPanel({ dateLabel, rows, total }: Props) {
         <>
           <div className="collector-day-loans-head">
             <span>Cliente</span>
+            <span className="is-fund-col" aria-hidden>
+              {" "}
+            </span>
             <span>Capital</span>
             <span>Cuota</span>
           </div>
           <ul className="collector-day-loans-list">
-            {rows.map((row) => (
-              <li key={row.loanRef}>
-                <span
-                  className="is-name"
-                  title={
-                    row.topUp ? `Anexo ${row.loanRef}: entregar hoy al cliente` : row.clientName
-                  }
-                >
-                  {row.topUp ? `${row.clientName} · Anexo` : row.clientName}
-                </span>
-                <b className="is-capital">{money(row.capital, { symbol: false })}</b>
-                <span className="is-cuota">{money(row.installment, { symbol: false })}</span>
-              </li>
-            ))}
+            {rows.map((row) => {
+              const letter = loanListFundLetter({ fundLetter: row.fundLetter });
+              return (
+                <li key={row.loanRef}>
+                  <span
+                    className="is-name"
+                    title={
+                      row.topUp ? `Anexo ${row.loanRef}: entregar hoy al cliente` : row.clientName
+                    }
+                  >
+                    {row.topUp ? `${row.clientName} · Anexo` : row.clientName}
+                  </span>
+                  <em
+                    className={`is-fund is-fund-${letter}`}
+                    title={loanFundLetterTitle(letter)}
+                  >
+                    {letter}
+                  </em>
+                  <b className="is-capital">{money(row.capital, { symbol: false })}</b>
+                  <span className="is-cuota">{money(row.installment, { symbol: false })}</span>
+                </li>
+              );
+            })}
             <li className="is-total">
               <span>Total prestado</span>
+              <span aria-hidden />
               <b>{money(total, { symbol: false })}</b>
               <span aria-hidden />
             </li>

@@ -2210,6 +2210,101 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
   expect("Combinado: caja solo 4M", loanCashOutflowCapital(combinado), 4_000_000);
   expect("Combinado: banco solo 1M", loanBankOutflowCapital(combinado), 1_000_000);
   expect("Combinado: letra C", loanFundLetter(combinado), "C");
+  {
+    const { syncBankLedger: syncLedgerComb } = await import("@/lib/bank-ledger-sync");
+    const combLoan = {
+      ...combinado,
+      ref: "P-717",
+      clientRef: "COD-210",
+      client: "Jhon Rey",
+      date: "09/11/2026",
+      status: "Activo",
+    };
+    const ghostGasl = {
+      ref: "GASL-COB-0-2026-11-09-prestamo-P-pend-6bfe76b46",
+      accountRef: "BCA-1",
+      period: "11/26",
+      description: "Gasto ruta · Préstamo · Edgar · 2026-11-09",
+      valueDate: "2026-11-09",
+      opDate: "2026-11-09",
+      thirdParty: "Edgar",
+      debit: 0,
+      credit: 4_000_000,
+      category: "prestamo_ruta",
+      dayExpenseLineRef: "GASL-COB-0-2026-11-09-prestamo-P-pend-6bfe76b46",
+      inExtract: true,
+      reconciled: false,
+      manual: true,
+    };
+    const combLedger = syncLedgerComb({
+      payments: [],
+      movements: [ghostGasl],
+      accounts: bankAccounts,
+      miscPayments: [],
+      dayExpenseDrafts: [
+        {
+          ref: "GAS-COB-0-2026-11-09",
+          collectorRef: "COB-0",
+          collectorName: "Edgar",
+          date: "2026-11-09",
+          expenses: [
+            {
+              id: "prestamo",
+              label: "Préstamo · P-717 · Jhon Rey",
+              amount: 4_000_000,
+              category: "prestamo_ruta",
+              loanRef: "P-717",
+            },
+            { id: "gasolina", label: "Gasolina", amount: 10_000, category: "gasolina" },
+          ],
+        },
+      ],
+      dayCloses: [],
+      loans: [combLoan],
+      clients: [{ ref: "COD-210", name: "Jhon", lastName: "Rey", route: "N", status: "Activo" }],
+    });
+    const cashHabers = combLedger.filter(
+      (row) =>
+        row.category === "prestamo_ruta" &&
+        (Number(row.credit) || 0) === 4_000_000 &&
+        !/^DSB-/i.test(String(row.ref || "")),
+    );
+    expect("Combinado: un solo Haber de caja 4M (sin GASL+CSH)", cashHabers.length, 1);
+    expect(
+      "Combinado: el Haber vivo es CSH (no GASL-pend)",
+      /^CSH-/i.test(String(cashHabers[0]?.ref || "")) ||
+        /^CSH-/i.test(String(cashHabers[0]?.loanDisbursementRef || "")),
+      true,
+    );
+    expect(
+      "Combinado: el borrador GASL-prestamo no vuelve a crear Haber",
+      combLedger.some((row) => /^GASL-/i.test(String(row.ref || "")) && row.category === "prestamo_ruta"),
+      false,
+    );
+    expect(
+      "Combinado: gasolina operativa sigue en Registros",
+      combLedger.some((row) => row.category === "gasolina" && (Number(row.credit) || 0) === 10_000),
+      true,
+    );
+  }
+  const loansPanelSrc = readFileSync(
+    new URL("../components/CollectorDayLoansPanel.tsx", import.meta.url),
+    "utf8",
+  );
+  expect(
+    "Cobrador Préstamos: muestra letra C/E (loanListFundLetter)",
+    loansPanelSrc.includes("loanListFundLetter") && loansPanelSrc.includes("is-fund-"),
+    true,
+  );
+  const routeExpSrc = readFileSync(
+    new URL("../lib/collector-day-close.ts", import.meta.url),
+    "utf8",
+  );
+  expect(
+    "Gastos ruta: prestamo_ruta no arma GASL (dueño = CSH)",
+    routeExpSrc.includes("if (isPrestamoRutaExpense(line)) continue"),
+    true,
+  );
   const cashLoanSyncSrc = readFileSync(new URL("../lib/bank.ts", import.meta.url), "utf8");
   expect(
     "Caja del combinado: sync usa loanCashOutflowCapital",

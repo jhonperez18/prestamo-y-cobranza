@@ -1492,6 +1492,9 @@ export function syncCashLoanDisbursementsToMovements(
 
   return next.filter((row) => {
     if (!isCashLoanHaber(row)) return true;
+    // GASL-…-prestamo ya no es dueño: solo queda CSH- (o DSB- digital).
+    const line = String(row.dayExpenseLineRef || row.ref || "");
+    if (/^GASL-/i.test(line) && /prestamo-/i.test(line)) return false;
     if (kept.has(row.ref)) return true;
     const loanRef = cashHaberLoanRef(row);
     if (loanRef && cashRefs.has(loanRef)) return false;
@@ -1499,9 +1502,17 @@ export function syncCashLoanDisbursementsToMovements(
       Math.trunc(Number(row.credit) || 0) === loanCashOutflowCapital(loan) &&
       loanDisbursementIsoDate({ date: row.valueDate || row.opDate || "" }) ===
         loanDisbursementIsoDate(loan) &&
-      disbursementBelongsToLoan(row.thirdParty, loan.client);
+      (disbursementBelongsToLoan(row.thirdParty, loan.client) ||
+        // GASL viejo ponía al cobrador como tercero; igual se suelta si hay CSH del P-.
+        /^P-pend-/i.test(loanRef));
     // P-pend ya reemplazado por P- real: soltar el Haber viejo.
-    if (/^P-pend-/i.test(loanRef) && wanted.some(sameCashLoan)) return false;
+    if (/^P-pend-/i.test(loanRef) && wanted.some((loan) =>
+      loanDisbursementIsoDate(loan) ===
+        loanDisbursementIsoDate({ date: row.valueDate || row.opDate || "" }) &&
+      Math.trunc(Number(row.credit) || 0) === loanCashOutflowCapital(loan)
+    )) {
+      return false;
+    }
     return !wanted.some(sameCashLoan);
   });
 }
