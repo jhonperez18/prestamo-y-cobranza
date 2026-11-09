@@ -134,19 +134,17 @@ begin
     where l.ref = coalesce(v_line->>'loanRef', '')
     limit 1;
 
-    -- P-pend- u otro ref sin ficha: no empujar a M; el complemento de loans lo cuenta.
-    if v_route is null or btrim(v_route) = '' then
-      continue;
-    end if;
-
-    if v_chain and v_route not in ('A', 'N') then
+    -- El renglón vive en el GAS de ESTE cobrador: la plata ya salió de su caja.
+    -- Cliente en A/N (o sin ruta) no puede desaparecer el Haber (caso P-717 Jhon Rey
+    -- en N con GAS de Edgar → m_prestamos 0 y botones vacíos con cobradores en ruta).
+    if v_chain then
       if v_route = 'T' then
         v_t_pre := v_t_pre + v_amount;
       else
+        -- M, A, N, vacía, u otra → caja M (misma regla que gasto sin marca de ruta).
         v_m_pre := v_m_pre + v_amount;
       end if;
-    end if;
-    if v_own is not null and v_route = v_own then
+    elsif v_own is not null then
       v_own_pre := v_own_pre + v_amount;
     end if;
   end loop;
