@@ -23,6 +23,7 @@ import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { displayToIso } from "@/lib/loan-preview";
 import { hydrateLoanFundedBy, loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import {
+  DEMO_BANK_MOVEMENTS_KEY,
   DEMO_CLIENTS_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
   DEMO_DAILY_ASSIGNMENTS_KEY,
@@ -31,6 +32,7 @@ import {
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
+import type { BankMovement } from "@/lib/bank";
 import {
   buildDayExpenseDraft,
   cashLineIsLoanOf,
@@ -581,8 +583,23 @@ export function renameLoanRefInState(
   };
 }
 
+/** Escudo: el P- nuevo no se suelta en una bajada completa que aún traía el P-pend. */
+const loanRefRenameShield = new Map<string, string>();
+
+function rememberLoanRefRenameShield(from: string, to: string) {
+  if (!from || !to || from === to) return;
+  loanRefRenameShield.set(from, to);
+  forgetDeletedId(to);
+}
+
+function loanRefRenameShieldTargets(): string[] {
+  return [...loanRefRenameShield.values()];
+}
+
 function applyLoanRefRename(loan: Pick<LoanRow, "ref" | "clientRef" | "client">, to: string) {
   if (!loan.ref || !to || loan.ref === to) return;
+  const from = loan.ref;
+  rememberLoanRefRenameShield(from, to);
   const state: LoanRefRenameState = {
     loans: readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []),
     loanQueue: readDemoJson<LoanRow[]>(DEMO_LOAN_MIRROR_QUEUE_KEY, []),
@@ -592,12 +609,12 @@ function applyLoanRefRename(loan: Pick<LoanRow, "ref" | "clientRef" | "client">,
   const renamed = renameLoanRefInState(state, loan, to, businessTodayIso());
   const next = {
     ...renamed,
-    loans: renamed.loans.map((row) => withRenewalPointer(row, loan.ref, to)),
+    loans: renamed.loans.map((row) => withRenewalPointer(row, from, to)),
     // Lo que se encoló mientras subía el alta ya tiene P- de la nube: es una modificación.
     loanQueue: renamed.loanQueue.map((row) =>
       row.ref === to && (row.loanCommand?.op === "create" || row.loanCommand?.op === "renew")
         ? { ...row, loanCommand: { op: "update" as const, termsVersion: 0 } }
-        : withRenewalPointer(row, loan.ref, to),
+        : withRenewalPointer(row, from, to),
     ),
   };
   if (next.loans.some((row, i) => row !== state.loans[i]) || next.loans.length !== state.loans.length) {
@@ -610,6 +627,28 @@ function applyLoanRefRename(loan: Pick<LoanRow, "ref" | "clientRef" | "client">,
     writeDemoJson(DEMO_DAILY_ASSIGNMENTS_KEY, next.assignments);
   }
   if (next.changedDrafts.length) writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, next.drafts);
+  // Caja / Banco: el Haber del P-pend debe seguir al P- real (si no, queda doble).
+  void import("@/lib/bank").then(({ renameBankMovementsLoanRef }) => {
+    const movements = readDemoJson<BankMovement[]>(DEMO_BANK_MOVEMENTS_KEY, []);
+    const rewritten = renameBankMovementsLoanRef(movements, from, to);
+    if (rewritten !== movements && rewritten.length !== movements.length) {
+      writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, rewritten);
+      return;
+    }
+    const changed = rewritten.some((row, index) => {
+      const prev = movements[index];
+      return (
+        !prev ||
+        prev.ref !== row.ref ||
+        prev.loanDisbursementRef !== row.loanDisbursementRef ||
+        prev.dayExpenseLineRef !== row.dayExpenseLineRef ||
+        prev.description !== row.description
+      );
+    });
+    if (changed || rewritten.length !== movements.length) {
+      writeDemoJson(DEMO_BANK_MOVEMENTS_KEY, rewritten);
+    }
+  });
   if (next.changedAssignments.length || next.changedDrafts.length || next.staleAssignmentKeys.length) {
     void import("@/lib/supabase/ops-mirror").then(({ dropQueuedAssignments, queueAssignmentsMirror, queueDayExpenseMirror }) => {
       dropQueuedAssignments(next.staleAssignmentKeys);
@@ -620,7 +659,7 @@ function applyLoanRefRename(loan: Pick<LoanRow, "ref" | "clientRef" | "client">,
   renamePaymentsLoanRef(loan, to);
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(BIG_DEMO_STORE_CHANGED_EVENT));
-    window.dispatchEvent(new CustomEvent(LOAN_REF_RENAMED_EVENT, { detail: { from: loan.ref, to } }));
+    window.dispatchEvent(new CustomEvent(LOAN_REF_RENAMED_EVENT, { detail: { from, to } }));
   }
 }
 
@@ -1235,9 +1274,15 @@ function dropLoansMissingFromCloud(
   remoteRefs: ReadonlySet<string>,
   pendingRefs: ReadonlySet<string>,
 ): { loans: LoanRow[]; dropped: string[] } {
+  const renameTargets = new Set(loanRefRenameShieldTargets());
+  for (const [from, to] of loanRefRenameShield) {
+    if (pendingRefs.has(from)) renameTargets.add(to);
+  }
   const dropped: string[] = [];
   const loans = merged.filter((row) => {
-    if (remoteRefs.has(row.ref) || pendingRefs.has(row.ref)) return true;
+    if (remoteRefs.has(row.ref) || pendingRefs.has(row.ref) || renameTargets.has(row.ref)) {
+      return true;
+    }
     dropped.push(row.ref);
     return false;
   });

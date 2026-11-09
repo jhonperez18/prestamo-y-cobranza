@@ -144,9 +144,11 @@ function findClientByThirdParty(clients: ClientRow[], thirdParty: string) {
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-/** DSB-P-425 → P-425 (también DSB-P-425-keep si otro cliente heredó el código). */
+/** DSB-P-425 → P-425 (también DSB-P-425-keep / P-pend-…). */
 export function loanRefFromDisbursementMovement(row: BankMovement): string {
   const raw = String(row.loanDisbursementRef || row.ref || "").trim();
+  const pending = /(?:^DSB-)?(P-pend-[A-Za-z0-9-]+)(?:-keep)?$/i.exec(raw);
+  if (pending?.[1]) return pending[1];
   const matched = /(?:^DSB-)?(P-\d+)(?:-keep)?$/i.exec(raw);
   return matched?.[1] ? `P-${matched[1].replace(/^P-/i, "")}` : "";
 }

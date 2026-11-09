@@ -2181,7 +2181,12 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
   expect("Historial Banco: neto del día = cobros − capital", bancoDayWithLoan.total, -702_000);
   expect("Historial Banco: un solo renglón de préstamo", bancoDayWithLoan.loans.length, 1);
   expect("Historial Banco: el renglón lleva el capital, no el total", bancoDayWithLoan.loans[0]?.capital ?? 0, 1_000_000);
-  const { loanBankOutflowCapital } = await import("@/lib/nequi-pool");
+  const {
+    loanBankOutflowCapital,
+    loanCashOutflowCapital,
+    loanFundLetter,
+    markLoanFundedByCombinado,
+  } = await import("@/lib/nequi-pool");
   expect(
     "Banco: capital 1M + interés 300k = sale 1M",
     loanBankOutflowCapital({ capital: 1_000_000, interest: 300_000, total: 1_300_000 }),
@@ -2196,6 +2201,21 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     "Banco: Alcira y Juan 2 se quedan con su capital (no se recortan)",
     loanBankOutflowCapital({ capital: 600_000, interest: 120_000, total: 720_000 }),
     600_000,
+  );
+  const combinado = markLoanFundedByCombinado(
+    { capital: 5_000_000, interest: 0, total: 5_000_000, notes: "" },
+    4_000_000,
+    1_000_000,
+  );
+  expect("Combinado: caja solo 4M", loanCashOutflowCapital(combinado), 4_000_000);
+  expect("Combinado: banco solo 1M", loanBankOutflowCapital(combinado), 1_000_000);
+  expect("Combinado: letra C", loanFundLetter(combinado), "C");
+  const cashLoanSyncSrc = readFileSync(new URL("../lib/bank.ts", import.meta.url), "utf8");
+  expect(
+    "Caja del combinado: sync usa loanCashOutflowCapital",
+    cashLoanSyncSrc.includes("const capital = loanCashOutflowCapital(loan)") &&
+      cashLoanSyncSrc.includes("export function renameBankMovementsLoanRef"),
+    true,
   );
   const nequiPoolSrc = readFileSync(new URL("../lib/nequi-pool.ts", import.meta.url), "utf8");
   expect(

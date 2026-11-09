@@ -547,6 +547,8 @@ function collectPoolOutflowLoans(input: {
         continue;
       }
       seenRefs.add(orphan.movementRef);
+      const orphanMove = input.movements?.find((row) => row.ref === orphan.movementRef);
+      const combinadoHint = /combinado/i.test(String(orphanMove?.description || ""));
       rows.push({
         loanRef: orphan.movementRef,
         clientRef: orphan.clientRef,
@@ -555,6 +557,7 @@ function collectPoolOutflowLoans(input: {
         time: orphan.time,
         dateIso: orphan.dateIso,
         route: String(client.route || "").trim().toUpperCase() || undefined,
+        fundLetter: combinadoHint ? "C" : undefined,
       });
     }
   }

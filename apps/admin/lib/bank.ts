@@ -5,6 +5,7 @@ import type { MiscPayment } from "@/lib/misc-payments";
 import { findMiscPaymentForMovement } from "@/lib/misc-payments";
 import {
   loanBankOutflowCapital,
+  loanCashOutflowCapital,
   loanDisbursementIsoDate,
   loanDisbursementMovementRef,
   loanDisbursementSource,
@@ -1370,23 +1371,67 @@ function isCashLoanHaber(row: BankMovement) {
   return true;
 }
 
+/** P-123 o P-pend-… en ref / enlaces de movimiento de caja. */
 function cashHaberLoanRef(row: BankMovement): string {
   const hay = `${row.ref} ${row.dayExpenseLineRef || ""} ${row.loanDisbursementRef || ""}`;
+  const pending = /(?:^|-)(P-pend-[A-Za-z0-9-]+)/i.exec(hay);
+  if (pending?.[1]) return pending[1];
   const matched = /(?:^|-)(P-\d+)/i.exec(hay);
   return matched?.[1] ? `P-${matched[1].replace(/^P-/i, "")}` : "";
 }
 
 function loanLeavesCashBox(loan: LoanRow): boolean {
   if (isLoanVoided(loan) || !isLoanActive(loan) || !loan.ref) return false;
-  const source = loanDisbursementSource(loan);
-  if (source === "banco" || source === "nequi" || source === "cartera") return false;
-  return loanBankOutflowCapital(loan) > 0;
+  return loanCashOutflowCapital(loan) > 0;
+}
+
+/**
+ * Reescribe CSH- / DSB- / GASL-…-prestamo- al P- real y suelta el duplicado pendiente.
+ * Sin esto el renombre deja Haber doble en caja (pend- + P-).
+ */
+export function renameBankMovementsLoanRef(
+  movements: BankMovement[],
+  from: string,
+  to: string,
+): BankMovement[] {
+  const prev = String(from || "").trim();
+  const nextRef = String(to || "").trim();
+  if (!prev || !nextRef || prev === nextRef) return movements;
+  const escaped = prev.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(escaped, "g");
+  const rewritten = movements.map((row) => {
+    const hay = `${row.ref}|${row.loanDisbursementRef || ""}|${row.dayExpenseLineRef || ""}|${row.description || ""}`;
+    if (!hay.includes(prev)) return row;
+    return {
+      ...row,
+      ref: String(row.ref || "").replace(re, nextRef),
+      loanDisbursementRef: row.loanDisbursementRef
+        ? String(row.loanDisbursementRef).replace(re, nextRef)
+        : row.loanDisbursementRef,
+      dayExpenseLineRef: row.dayExpenseLineRef
+        ? String(row.dayExpenseLineRef).replace(re, nextRef)
+        : row.dayExpenseLineRef,
+      description: row.description ? String(row.description).replace(re, nextRef) : row.description,
+    };
+  });
+  const byRef = new Map<string, BankMovement>();
+  for (const row of rewritten) {
+    const key = String(row.ref || "").trim();
+    if (!key) continue;
+    const existing = byRef.get(key);
+    if (!existing) {
+      byRef.set(key, row);
+      continue;
+    }
+    byRef.set(key, existing.reconciled ? existing : row.reconciled ? row : existing);
+  }
+  return [...byRef.values()];
 }
 
 /**
  * Préstamo en efectivo del cobrador → Haber en la cuenta de efectivo (`role`),
  * igual que gasolina: el registro del sistema lo lista, azul (`prestamo_ruta`).
- * No es DSB-; no resta Banco/Nequi de la ruta ni el Inicial de caja.
+ * Combinado: solo el tramo de caja (`loanCashOutflowCapital`). No es DSB-.
  */
 export function syncCashLoanDisbursementsToMovements(
   loans: LoanRow[],
@@ -1405,7 +1450,8 @@ export function syncCashLoanDisbursementsToMovements(
     const lineRef = cashLoanMovementRef(loan.ref);
     const valueDate = loanDisbursementIsoDate(loan);
     if (!valueDate) continue;
-    const capital = loanBankOutflowCapital(loan);
+    const capital = loanCashOutflowCapital(loan);
+    if (!(capital > 0)) continue;
     const existing =
       next.find(
         (row) =>
@@ -1413,11 +1459,12 @@ export function syncCashLoanDisbursementsToMovements(
           (row.ref === lineRef || row.loanDisbursementRef === lineRef),
       ) ??
       next.find((row) => isCashLoanHaber(row) && cashHaberLoanRef(row) === loan.ref);
+    const originLabel = loanIsCombinadoFunded(loan) ? "Combinado" : "Préstamo";
     const patch: BankMovement = {
       ref: existing?.ref || lineRef,
       accountRef: existing?.reconciled && existing.accountRef ? existing.accountRef : primary.ref,
       period: existing?.reconciled ? existing.period : periodFromIso(valueDate),
-      description: `Gasto ruta · Préstamo · ${loan.ref} · ${loan.client}`,
+      description: `Gasto ruta · ${originLabel} · ${loan.ref} · ${loan.client}`,
       valueDate,
       opDate: valueDate,
       thirdParty: loan.client,
@@ -1448,13 +1495,14 @@ export function syncCashLoanDisbursementsToMovements(
     if (kept.has(row.ref)) return true;
     const loanRef = cashHaberLoanRef(row);
     if (loanRef && cashRefs.has(loanRef)) return false;
-    return !wanted.some(
-      (loan) =>
-        Math.trunc(Number(row.credit) || 0) === loanBankOutflowCapital(loan) &&
-        loanDisbursementIsoDate({ date: row.valueDate || row.opDate || "" }) ===
-          loanDisbursementIsoDate(loan) &&
-        disbursementBelongsToLoan(row.thirdParty, loan.client),
-    );
+    const sameCashLoan = (loan: LoanRow) =>
+      Math.trunc(Number(row.credit) || 0) === loanCashOutflowCapital(loan) &&
+      loanDisbursementIsoDate({ date: row.valueDate || row.opDate || "" }) ===
+        loanDisbursementIsoDate(loan) &&
+      disbursementBelongsToLoan(row.thirdParty, loan.client);
+    // P-pend ya reemplazado por P- real: soltar el Haber viejo.
+    if (/^P-pend-/i.test(loanRef) && wanted.some(sameCashLoan)) return false;
+    return !wanted.some(sameCashLoan);
   });
 }
 
