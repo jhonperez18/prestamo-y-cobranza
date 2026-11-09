@@ -58,6 +58,93 @@ async function rpcDayCashFigure(ref: string, date: string) {
   }
 }
 
+type PrestamoSides = { m: number; t: number };
+
+/**
+ * Préstamos del GAS de este cobrador. La plata salió de SU caja.
+ * Cliente en T → T; M / A / N / vacío → M (no puede quedar en 0: caso P-717 N).
+ */
+async function gasPrestamoTotals(
+  collectorRef: string,
+  date: string,
+): Promise<PrestamoSides> {
+  const empty = { m: 0, t: 0 };
+  const client = createSupabaseAdminClient();
+  if (!client) return empty;
+  try {
+    const { data: rows, error } = await client
+      .from("day_expenses")
+      .select("expenses")
+      .eq("collector_ref", collectorRef)
+      .eq("expense_date", date)
+      .limit(5);
+    if (error || !rows?.length) return empty;
+    const lines: Array<{ amount?: number; category?: string; id?: string; loanRef?: string; route?: string }> =
+      [];
+    for (const row of rows) {
+      const exp = (row as { expenses?: unknown }).expenses;
+      if (!Array.isArray(exp)) continue;
+      for (const line of exp) {
+        if (line && typeof line === "object") {
+          lines.push(line as (typeof lines)[number]);
+        }
+      }
+    }
+    const prestamoLines = lines.filter(
+      (line) =>
+        String(line.category || "") === "prestamo_ruta" || String(line.id || "") === "prestamo",
+    );
+    if (!prestamoLines.length) return empty;
+    const loanRefs = [
+      ...new Set(prestamoLines.map((line) => String(line.loanRef || "").trim()).filter(Boolean)),
+    ];
+    const routeByLoan = new Map<string, string>();
+    if (loanRefs.length) {
+      const { data: loans } = await client
+        .from("loans")
+        .select("ref,client_ref")
+        .in("ref", loanRefs);
+      const clientRefs = [
+        ...new Set(
+          (loans || []).map((row) => String((row as { client_ref?: string }).client_ref || "").trim()),
+        ),
+      ].filter(Boolean);
+      const { data: clients } = clientRefs.length
+        ? await client.from("clients").select("ref,route").in("ref", clientRefs)
+        : { data: [] as Array<{ ref?: string; route?: string }> };
+      const routeByClient = new Map(
+        (clients || []).map((row) => [
+          String(row.ref || ""),
+          String(row.route || "")
+            .trim()
+            .toUpperCase(),
+        ]),
+      );
+      for (const loan of loans || []) {
+        const ref = String((loan as { ref?: string }).ref || "");
+        const cRef = String((loan as { client_ref?: string }).client_ref || "");
+        routeByLoan.set(ref, routeByClient.get(cRef) || "");
+      }
+    }
+    const out = { m: 0, t: 0 };
+    for (const line of prestamoLines) {
+      const amount = pesos(line.amount);
+      if (!(amount > 0)) continue;
+      const marked = String(line.route || "")
+        .trim()
+        .toUpperCase();
+      const fromLoan = routeByLoan.get(String(line.loanRef || "").trim()) || "";
+      const pin = marked || fromLoan;
+      if (pin === "T") out.t += amount;
+      else out.m += amount;
+    }
+    return out;
+  } catch (error) {
+    console.error("day-cash-figure-gas-prestamos", error);
+    return empty;
+  }
+}
+
 /** Capital en efectivo del día por ruta (ficha), sin nequi/banco/cartera. */
 async function cashLoanTotalsByRoute(date: string): Promise<{
   m: number;
@@ -180,8 +267,10 @@ export async function readDayCashFigure(
   }
 
   const opening = pesos(body.opening ?? 0);
-  let mPrestamos = pesos(body.m_prestamos ?? 0);
-  let tPrestamos = pesos(body.t_prestamos ?? 0);
+  const rpcMPrestamos = pesos(body.m_prestamos ?? 0);
+  const rpcTPrestamos = pesos(body.t_prestamos ?? 0);
+  let mPrestamos = rpcMPrestamos;
+  let tPrestamos = rpcTPrestamos;
   const mEfectivo = pesos(body.m_efectivo ?? 0);
   const mGastos = pesos(body.m_gastos ?? 0);
   const tEfectivo = pesos(body.t_efectivo ?? 0);
@@ -191,7 +280,12 @@ export async function readDayCashFigure(
     .trim()
     .toUpperCase();
 
-  // Completa préstamos si la RPC vieja / CIE sin GAS dejó 0 con fichas en efectivo.
+  // 1) GAS de este cobrador: manda (cliente A/N no puede dejar m_prestamos en 0).
+  const gasTotals = await gasPrestamoTotals(ref, date);
+  if (gasTotals.m > mPrestamos) mPrestamos = gasTotals.m;
+  if (gasTotals.t > tPrestamos) tPrestamos = gasTotals.t;
+
+  // 2) Completa con fichas en efectivo del día (RPC vieja / CIE sin GAS).
   const loanTotals = await cashLoanTotalsByRoute(date);
   if (chain) {
     if (loanTotals.m > mPrestamos) mPrestamos = loanTotals.m;
@@ -203,13 +297,16 @@ export async function readDayCashFigure(
     /* N: route_own_box */
   }
 
-  // Preferir m_closing de la RPC (fuente de Inicial T). Recalcular solo si falta.
-  const mClosing =
-    body.m_closing != null && Number.isFinite(Number(body.m_closing))
+  const prestamosBumped = mPrestamos > rpcMPrestamos || tPrestamos > rpcTPrestamos;
+  // Si completamos préstamos, hay que rehacer caja (la RPC dejó m_closing sin ese Haber).
+  const mClosing = prestamosBumped
+    ? pesos(opening + mEfectivo - mGastos - mPrestamos)
+    : body.m_closing != null && Number.isFinite(Number(body.m_closing))
       ? pesos(body.m_closing)
       : pesos(opening + mEfectivo - mGastos - mPrestamos);
-  const dayFinal =
-    body.day_final != null && Number.isFinite(Number(body.day_final))
+  const dayFinal = prestamosBumped
+    ? pesos(mClosing + tEfectivo - tGastos - tPrestamos)
+    : body.day_final != null && Number.isFinite(Number(body.day_final))
       ? pesos(body.day_final)
       : pesos(mClosing + tEfectivo - tGastos - tPrestamos);
   const cie = body.cie == null ? null : pesos(body.cie);
