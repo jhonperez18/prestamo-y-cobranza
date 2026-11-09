@@ -355,7 +355,8 @@ export function loanDisbursementMovementRef(loanRef: string) {
 /**
  * Plata que sale de Banco / Nequi.
  * Combinado → solo bankOut. Banco/Nequi enteros → capital.
- * El interés nunca sale de la cuenta.
+ * El interés es lo que el cliente debe de más; no sale de la cuenta.
+ * Nunca `total` ni `capital + interés`.
  */
 export function loanBankOutflowCapital(
   loan: Pick<LoanRow, "capital" | "interest" | "total" | "fundedBy" | "notes" | "cashOut" | "bankOut">,
