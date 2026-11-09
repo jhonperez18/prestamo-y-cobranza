@@ -432,13 +432,14 @@ export function SupervisorShell({ session, onLogout }: Props) {
       showToast(blocked);
       return;
     }
-    const loan = buildQuickLoan(
-      { ...draft, fundedBy: supervisorLoanOrigin(draft.fundedBy) },
-      client,
-      loans,
-    );
+    const origin = supervisorLoanOrigin(draft.fundedBy);
+    const loan = buildQuickLoan({ ...draft, fundedBy: origin }, client, loans);
     if (!loan) {
-      showToast("Revise capital, interés, tiempo y frecuencia.");
+      showToast(
+        origin === "combinado"
+          ? "Combinado: efectivo + banco deben sumar el capital."
+          : "Revise capital, interés, tiempo y frecuencia.",
+      );
       return;
     }
     if (loan.fundedBy !== "cartera") {
@@ -463,7 +464,7 @@ export function SupervisorShell({ session, onLogout }: Props) {
       pending: client.pending + (loan.total ?? 0),
     });
     const routeCash =
-      loan.fundedBy === "efectivo"
+      loan.fundedBy === "efectivo" || loan.fundedBy === "combinado"
         ? commitRouteCashLoan(loan, dayExpenseDrafts, {
             clients: nextClients,
             routes,
@@ -533,9 +534,11 @@ export function SupervisorShell({ session, onLogout }: Props) {
     );
     const pendingLabel = loanRefLabel(loan.ref);
     showToast(
-      routeCash?.ok
-        ? `Préstamo ${pendingLabel} · ${money(loan.capital)} a cargo de la caja de ${routeCash.collector.name} · subiendo…`
-        : `Préstamo ${pendingLabel} · origen ${loan.fundedBy === "banco" ? "Banco" : "Nequi"} · subiendo…`,
+      loan.fundedBy === "combinado" && routeCash?.ok
+        ? `Préstamo ${pendingLabel} · Combinado: caja ${money(loan.cashOut ?? 0)} (${routeCash.collector.name}) + banco ${money(loan.bankOut ?? 0)} · subiendo…`
+        : routeCash?.ok
+          ? `Préstamo ${pendingLabel} · ${money(loan.capital)} a cargo de la caja de ${routeCash.collector.name} · subiendo…`
+          : `Préstamo ${pendingLabel} · origen ${loan.fundedBy === "banco" ? "Banco" : "Nequi"} · subiendo…`,
     );
     try {
       const cloud = await sentLoan;

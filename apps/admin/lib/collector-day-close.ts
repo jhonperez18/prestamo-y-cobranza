@@ -13,7 +13,7 @@ import { isDailyCollectionDay } from "@/lib/colombia-holidays";
 import { money, type ClientRow, type CollectorRow, type LoanRow, type PaymentRow, paymentsForCollector } from "@/lib/mock-data";
 import { normalizePaymentMethod } from "@/lib/payment-method";
 import { isLoanTopUpLine, isPrestamoRutaExpense, LOAN_TOP_UP_LINE_KEY } from "@/lib/expense-lines";
-import { loanDisbursementSource } from "@/lib/nequi-pool";
+import { loanCashOutflowCapital, loanDisbursementSource, loanIsCombinadoFunded } from "@/lib/nequi-pool";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { CollectorDailyLogRow } from "@/lib/collector-daily-log";
 import {
@@ -50,6 +50,8 @@ export type RouteExpenseLine = {
   route?: string;
   /** Gasto repetido del mismo tipo el mismo día (2.º almuerzo…): separa su movimiento de banco. */
   lineKey?: string;
+  /** Letra de origen en lista de préstamos (E / B / C / N). Solo UI. */
+  fundLetter?: "E" | "B" | "C" | "N";
 };
 
 export type CollectorDayCloseDraft = {
@@ -492,12 +494,18 @@ export function appendCashDisbursementExpense(
     collectorName: string;
     date: string;
     routeRef: string;
-    loan: Pick<LoanRow, "ref" | "client" | "capital">;
+    loan: Pick<LoanRow, "ref" | "client" | "capital" | "fundedBy" | "notes" | "cashOut" | "bankOut">;
     topUp?: number;
   },
 ): CollectorDayExpenseDraft[] {
   const isTopUp = input.topUp !== undefined;
-  const capital = Math.trunc(Number(isTopUp ? input.topUp : input.loan.capital) || 0);
+  const capital = Math.trunc(
+    Number(
+      isTopUp
+        ? input.topUp
+        : loanCashOutflowCapital(input.loan) || input.loan.capital,
+    ) || 0,
+  );
   if (capital <= 0 || !input.collectorRef || !input.date) return drafts;
   const existing = findDayExpenseDraft(drafts, input.collectorRef, input.date);
   const line: RouteExpenseLine = {
@@ -544,10 +552,12 @@ export type CashDisbursementSyncResult = {
 export function syncCashDisbursementExpense(
   drafts: CollectorDayExpenseDraft[],
   closes: CollectorDayCloseRecord[],
-  loan: Pick<LoanRow, "ref" | "client" | "capital" | "fundedBy" | "notes">,
+  loan: Pick<LoanRow, "ref" | "client" | "capital" | "fundedBy" | "notes" | "cashOut" | "bankOut">,
 ): CashDisbursementSyncResult {
-  const capital = Math.trunc(Number(loan.capital) || 0);
-  const keepCash = loanDisbursementSource(loan) === "efectivo" && capital > 0;
+  const cashTarget = loanCashOutflowCapital(loan);
+  const keepCash =
+    (loanDisbursementSource(loan) === "efectivo" || loanIsCombinadoFunded(loan)) &&
+    cashTarget > 0;
   const isLoanLine = (row: RouteExpenseLine) => row.loanRef === loan.ref && isPrestamoRutaExpense(row);
   const sealedDay = (draft: CollectorDayExpenseDraft) =>
     closes.some((row) => row.ref === dayCloseRef(draft.collectorRef, draft.date) && !row.provisional);
@@ -562,7 +572,7 @@ export function syncCashDisbursementExpense(
       sum + draft.expenses.filter(isLoanLine).reduce((acc, row) => acc + (Number(row.amount) || 0), 0),
     0,
   );
-  const owed = keepCash ? capital - sealedTotal : 0;
+  const owed = keepCash ? cashTarget - sealedTotal : 0;
   const lockedDates = owed !== 0 || !keepCash ? sealed.map((draft) => draft.date) : [];
 
   const changed: CollectorDayExpenseDraft[] = [];

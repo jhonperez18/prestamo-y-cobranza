@@ -11,6 +11,7 @@ import {
   loanBankOutflowCapital,
   loanDisbursementIsoDate,
   loanDisbursementSource,
+  loanFundLetter,
   loanFundedByBanco,
   loanFundedByNequi,
   loanIsExistingPortfolio,
@@ -99,6 +100,7 @@ export function dayDigitalLoanRows(
       clientName: `${client.name} ${client.lastName}`.trim() || (loan.client || "").trim() || loan.ref,
       capital,
       installment: Math.trunc(Number(loan.installment) || 0),
+      fundLetter: loanFundLetter(loan),
     });
   }
   const keep = new Map<string, (typeof rows)[number]>();

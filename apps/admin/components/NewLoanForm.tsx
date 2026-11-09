@@ -20,6 +20,8 @@ import {
 import { todayIso } from "@/lib/daily-dispatch";
 import {
   loanDisbursementSource,
+  loanSplitAmounts,
+  loanSplitIsValid,
   stripFundedMarkers,
   type LoanDisbursementSource,
 } from "@/lib/nequi-pool";
@@ -39,8 +41,10 @@ export type LoanDraft = {
   total: number;
   installment: number;
   schedule: ScheduleLine[];
-  /** Origen del desembolso: Nequi/Banco (dueño) o Efectivo (caja del cobrador de la ruta). */
+  /** Origen del desembolso: Nequi/Banco (dueño), Efectivo, Combinado o Cartera. */
   fundedBy?: LoanDisbursementSource;
+  cashOut?: number;
+  bankOut?: number;
 };
 
 type Props = {
@@ -92,6 +96,12 @@ function sortClientsLikeListado(a: ClientRow, b: ClientRow) {
 function parseMoney(raw: string) {
   const digits = raw.replace(/[^\d]/g, "");
   return digits ? Number(digits) : 0;
+}
+
+function formatMiles(raw: string) {
+  const digits = String(raw).replace(/[^\d]/g, "");
+  if (!digits) return "";
+  return Number(digits).toLocaleString("es-CO");
 }
 
 function parsePositiveInt(raw: string) {
@@ -241,6 +251,13 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
     if (loan) return loanDisbursementSource(loan) ?? "nequi";
     return "";
   });
+  const seedSplit = loan ? loanSplitAmounts(loan) : null;
+  const [cashOutRaw, setCashOutRaw] = useState(() =>
+    seedSplit ? seedSplit.cashOut.toLocaleString("es-CO") : "",
+  );
+  const [bankOutRaw, setBankOutRaw] = useState(() =>
+    seedSplit ? seedSplit.bankOut.toLocaleString("es-CO") : "",
+  );
   const [askingDelete, setAskingDelete] = useState(false);
 
   const suggestions = useMemo(
@@ -375,6 +392,9 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!client || !preview || !fundedBy) return;
+    const cashOut = parseMoney(cashOutRaw);
+    const bankOut = parseMoney(bankOutRaw);
+    if (fundedBy === "combinado" && !loanSplitIsValid(capital, cashOut, bankOut)) return;
     onSave({
       clientRef: client.ref,
       capital,
@@ -392,6 +412,7 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
       installment: preview.installment,
       schedule: preview.schedule,
       fundedBy,
+      ...(fundedBy === "combinado" ? { cashOut, bankOut } : {}),
     });
   }
 
@@ -722,13 +743,20 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                     <select
                       id="loan-funded-by"
                       value={fundedBy}
-                      onChange={(event) =>
-                        setFundedBy(event.target.value as LoanDisbursementSource | "")
-                      }
+                      onChange={(event) => {
+                        const next = event.target.value as LoanDisbursementSource | "";
+                        setFundedBy(next);
+                        if (next !== "combinado") {
+                          setCashOutRaw("");
+                          setBankOutRaw("");
+                        }
+                      }}
                       required
                       title={
                         fundedBy === "efectivo"
                           ? "Se descuenta del efectivo / En caja del cobrador de la ruta"
+                          : fundedBy === "combinado"
+                            ? "Un P-: parte caja + parte banco"
                           : fundedBy === "cartera"
                             ? "Préstamo que ya estaba en la calle: no descuenta caja, banco ni Nequi"
                             : "Origen del desembolso"
@@ -740,9 +768,40 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                       <option value="nequi">Nequi</option>
                       <option value="banco">Banco</option>
                       <option value="efectivo">Efectivo (caja cobrador)</option>
+                      <option value="combinado">Combinado (caja + banco)</option>
                       <option value="cartera">Cartera existente (ya estaba en la calle)</option>
                     </select>
                   </div>
+                  {fundedBy === "combinado" ? (
+                    <>
+                      <div className="loan-meta-field">
+                        <label className="sheet-label" htmlFor="loan-cash-out">
+                          1.° Efectivo
+                        </label>
+                        <input
+                          id="loan-cash-out"
+                          inputMode="numeric"
+                          value={cashOutRaw}
+                          onChange={(event) => setCashOutRaw(formatMiles(event.target.value))}
+                          placeholder="0"
+                          required
+                        />
+                      </div>
+                      <div className="loan-meta-field">
+                        <label className="sheet-label" htmlFor="loan-bank-out">
+                          2.° Banco
+                        </label>
+                        <input
+                          id="loan-bank-out"
+                          inputMode="numeric"
+                          value={bankOutRaw}
+                          onChange={(event) => setBankOutRaw(formatMiles(event.target.value))}
+                          placeholder="0"
+                          required
+                        />
+                      </div>
+                    </>
+                  ) : null}
                   <div className="loan-meta-field">
                     <label className="sheet-label" htmlFor="loan-notes">
                       Observaciones
@@ -807,8 +866,24 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                   <button
                     type="submit"
                     className="btn primary"
-                    disabled={!preview || !fundedBy}
-                    title={!fundedBy ? "Elija el origen del préstamo" : undefined}
+                    disabled={
+                      !preview ||
+                      !fundedBy ||
+                      (fundedBy === "combinado" &&
+                        !loanSplitIsValid(capital, parseMoney(cashOutRaw), parseMoney(bankOutRaw)))
+                    }
+                    title={
+                      !fundedBy
+                        ? "Elija el origen del préstamo"
+                        : fundedBy === "combinado" &&
+                            !loanSplitIsValid(
+                              capital,
+                              parseMoney(cashOutRaw),
+                              parseMoney(bankOutRaw),
+                            )
+                          ? "Efectivo + banco deben sumar el capital"
+                          : undefined
+                    }
                   >
                     Guardar
                   </button>

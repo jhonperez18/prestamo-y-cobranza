@@ -2710,24 +2710,29 @@ export function SupervisorMobileApp({
         </li>
         );
       })}
-      {loansOut.map((row) => (
+      {loansOut.map((row) => {
+        const routeLetter = (row.route || "−").trim() || "−";
+        const isCombinado = row.fundLetter === "C";
+        const title = isCombinado
+          ? row.route
+            ? `Ruta ${row.route} · Combinado · solo capital`
+            : "Combinado · solo capital"
+          : row.route
+            ? `Ruta ${row.route} · sale del Banco · solo capital`
+            : "Sale del Banco · solo capital";
+        return (
         <li key={row.loanRef} className="is-outflow">
           <strong className="is-name">{row.clientName}</strong>
           <span className="is-when">{row.time || "—"}</span>
-          <em
-            className="is-method is-pay-prestamo"
-            title={
-              row.route
-                ? `Ruta ${row.route} · sale del Banco · solo capital`
-                : "Sale del Banco · solo capital"
-            }
-          >
-            {row.route || "−"}
-          </em>
+          <span className="is-method is-fund-pair" title={title}>
+            <em className="is-pay-prestamo">{routeLetter}</em>
+            {isCombinado ? <em className="is-fund-C">C</em> : null}
+          </span>
           <span className="is-evidence" aria-hidden />
           <b className="is-out">{money(-row.capital, { symbol: false })}</b>
         </li>
-      ))}
+        );
+      })}
       {net != null ? (
         <li className={net < 0 ? "is-total is-net-negative" : "is-total"}>
           <span>Saldo del día</span>
@@ -6628,7 +6633,7 @@ export function SupervisorMobileApp({
                 key={reloanClient.ref}
                 clientName={`${reloanClient.name} ${reloanClient.lastName}`.trim()}
                 clientRef={reloanClient.ref}
-                fundedByOptions={["nequi", "banco", "efectivo"]}
+                fundedByOptions={["nequi", "banco", "efectivo", "combinado"]}
                 defaultFundedBy="nequi"
                 onCancel={() => setReloanClientRef(null)}
                 onSave={(draft) => {
@@ -8407,7 +8412,7 @@ export function SupervisorMobileApp({
                   <QuickLoanForm
                     clientName={`${nuevoLoanClient.name} ${nuevoLoanClient.lastName}`.trim()}
                     clientRef={nuevoLoanClient.ref}
-                    fundedByOptions={["nequi", "banco", "efectivo"]}
+                    fundedByOptions={["nequi", "banco", "efectivo", "combinado"]}
                     defaultFundedBy="nequi"
                     onCancel={() => setNuevoLoanClientRef(null)}
                     onSave={(draft) => {

@@ -3509,7 +3509,7 @@ export function CollectorMobileApp({
                         <QuickLoanForm
                           clientName={identity.fullName}
                           clientRef={item.clientRef}
-                          fundedByOptions={["efectivo"]}
+                          fundedByOptions={["efectivo", "combinado"]}
                           defaultFundedBy="efectivo"
                           onCancel={closeCard}
                           onSave={(draft) => {

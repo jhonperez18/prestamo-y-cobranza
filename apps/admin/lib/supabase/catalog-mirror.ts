@@ -21,7 +21,7 @@ import { reportLoanRejection } from "@/lib/loan-rejections";
 import { BIG_DEMO_STORE_CHANGED_EVENT } from "@/lib/big-demo-store";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { displayToIso } from "@/lib/loan-preview";
-import { loanDisbursementIsoDate } from "@/lib/nequi-pool";
+import { hydrateLoanFundedBy, loanDisbursementIsoDate } from "@/lib/nequi-pool";
 import {
   DEMO_CLIENTS_KEY,
   DEMO_COLLECTOR_DAY_EXPENSES_KEY,
@@ -236,7 +236,7 @@ export function mirrorToLoanRow(row: LoanMirrorRow): LoanRow | null {
   const ref = (row.ref || "").trim();
   const clientRef = (row.client_ref || "").trim();
   if (!ref || !clientRef) return null;
-  return {
+  return hydrateLoanFundedBy({
     ref,
     clientRef,
     client: row.client_name || "",
@@ -261,16 +261,18 @@ export function mirrorToLoanRow(row: LoanMirrorRow): LoanRow | null {
     updatedAt: row.updated_at || undefined,
     createdAt: row.created_at || undefined,
     termsVersion: Number(row.terms_version) || 0,
-    fundedBy: row.notes?.includes("[[fb:nequi]]")
-      ? "nequi"
-      : row.notes?.includes("[[fb:efectivo]]")
-        ? "efectivo"
-        : row.notes?.includes("[[fb:banco]]")
-          ? "banco"
-          : row.notes?.includes("[[fb:cartera]]")
-            ? "cartera"
-            : undefined,
-  };
+    fundedBy: row.notes?.includes("[[fb:combinado]]")
+      ? "combinado"
+      : row.notes?.includes("[[fb:nequi]]")
+        ? "nequi"
+        : row.notes?.includes("[[fb:efectivo]]")
+          ? "efectivo"
+          : row.notes?.includes("[[fb:banco]]")
+            ? "banco"
+            : row.notes?.includes("[[fb:cartera]]")
+              ? "cartera"
+              : undefined,
+  });
 }
 
 function rowUpdatedAtMs(row: { updatedAt?: string }) {

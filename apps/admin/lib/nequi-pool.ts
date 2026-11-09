@@ -24,19 +24,38 @@ export const NEQUI_FUNDED_MARKER = "[[fb:nequi]]";
 export const EFECTIVO_FUNDED_MARKER = "[[fb:efectivo]]";
 export const BANCO_FUNDED_MARKER = "[[fb:banco]]";
 export const CARTERA_FUNDED_MARKER = "[[fb:cartera]]";
+/** Préstamo combinado: un P-, dos salidas (caja + banco). */
+export const COMBINADO_FUNDED_MARKER = "[[fb:combinado]]";
+/** Montos del split: `[[split:efectivo:300000]]` / `[[split:banco:500000]]`. */
+export const SPLIT_MARKER_RE = /\[\[split:(efectivo|banco|nequi):(\d+)\]\]/gi;
 
 const FUNDED_MARKERS = [
   NEQUI_FUNDED_MARKER,
   EFECTIVO_FUNDED_MARKER,
   BANCO_FUNDED_MARKER,
   CARTERA_FUNDED_MARKER,
+  COMBINADO_FUNDED_MARKER,
 ] as const;
 
-export type LoanDisbursementSource = "nequi" | "efectivo" | "banco" | "cartera";
+/** Letra en listas de préstamos (caja / banco). C = combinado. */
+export type LoanFundLetter = "E" | "B" | "C" | "N";
+
+export type LoanDisbursementSource =
+  | "nequi"
+  | "efectivo"
+  | "banco"
+  | "cartera"
+  | "combinado";
+
+export type LoanSplitAmounts = {
+  cashOut: number;
+  bankOut: number;
+};
 
 export function loanDisbursementSource(
   loan: Pick<LoanRow, "fundedBy" | "notes">,
 ): LoanDisbursementSource | null {
+  if (loanIsCombinadoFunded(loan)) return "combinado";
   if (loan.fundedBy === "nequi" || loan.notes?.includes(NEQUI_FUNDED_MARKER)) return "nequi";
   if (loan.fundedBy === "efectivo" || loan.notes?.includes(EFECTIVO_FUNDED_MARKER)) {
     return "efectivo";
@@ -61,15 +80,140 @@ export function loanFundedByNequi(loan: Pick<LoanRow, "fundedBy" | "notes">): bo
 }
 
 export function loanFundedByEfectivo(loan: Pick<LoanRow, "fundedBy" | "notes">): boolean {
-  return loanDisbursementSource(loan) === "efectivo";
+  const source = loanDisbursementSource(loan);
+  return source === "efectivo" || source === "combinado";
 }
 
 export function loanFundedByBanco(loan: Pick<LoanRow, "fundedBy" | "notes">): boolean {
-  return loanDisbursementSource(loan) === "banco";
+  const source = loanDisbursementSource(loan);
+  return source === "banco" || source === "combinado";
+}
+
+/** Combinado: una ficha, sale de caja y de banco. La letra en listas es C. */
+export function loanIsCombinadoFunded(
+  loan: Pick<LoanRow, "fundedBy" | "notes"> | undefined | null,
+): boolean {
+  if (!loan) return false;
+  if (String(loan.fundedBy || "").trim().toLowerCase() === "combinado") return true;
+  return Boolean(loan.notes?.includes(COMBINADO_FUNDED_MARKER));
+}
+
+function stripSplitMarkers(notes: string | undefined): string {
+  return (notes || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !/^\[\[split:(efectivo|banco|nequi):\d+\]\]$/i.test(line))
+    .join("\n")
+    .trim();
+}
+
+function parseSplitMarker(
+  notes: string | undefined,
+  kind: "efectivo" | "banco" | "nequi",
+): number {
+  if (!notes) return 0;
+  const re = new RegExp(`\\[\\[split:${kind}:(\\d+)\\]\\]`, "i");
+  const match = notes.match(re);
+  return match ? pesos(Number(match[1]) || 0) : 0;
+}
+
+/** Lee el split del combinado (notes o campos de ficha). */
+export function loanSplitAmounts(
+  loan: Pick<LoanRow, "capital" | "fundedBy" | "notes" | "cashOut" | "bankOut">,
+): LoanSplitAmounts | null {
+  if (!loanIsCombinadoFunded(loan)) return null;
+  const capital = pesos(Number(loan.capital) || 0);
+  let cashOut = pesos(Number(loan.cashOut) || 0);
+  let bankOut = pesos(Number(loan.bankOut) || 0);
+  if (cashOut <= 0) cashOut = parseSplitMarker(loan.notes, "efectivo");
+  if (bankOut <= 0) {
+    bankOut = parseSplitMarker(loan.notes, "banco") || parseSplitMarker(loan.notes, "nequi");
+  }
+  if (cashOut > 0 && bankOut > 0) return { cashOut, bankOut };
+  if (cashOut > 0 && cashOut < capital) return { cashOut, bankOut: capital - cashOut };
+  if (bankOut > 0 && bankOut < capital) return { cashOut: capital - bankOut, bankOut };
+  return null;
+}
+
+/** Candado: ambos > 0 y suman el capital. */
+export function loanSplitIsValid(capital: number, cashOut: number, bankOut: number): boolean {
+  const cap = pesos(capital);
+  const cash = pesos(cashOut);
+  const bank = pesos(bankOut);
+  return cap > 0 && cash > 0 && bank > 0 && cash + bank === cap;
+}
+
+/**
+ * Lo que sale de caja del cobrador.
+ * Combinado → solo cashOut. Efectivo → capital. Banco/Nequi/cartera → 0.
+ */
+export function loanCashOutflowCapital(
+  loan: Pick<LoanRow, "capital" | "fundedBy" | "notes" | "cashOut" | "bankOut">,
+): number {
+  if (loanIsCombinadoFunded(loan)) {
+    const split = loanSplitAmounts(loan);
+    return split ? split.cashOut : 0;
+  }
+  if (loanDisbursementSource(loan) === "efectivo") {
+    return pesos(Number(loan.capital) || 0);
+  }
+  return 0;
+}
+
+/**
+ * Letra de origen en listas de préstamos.
+ * Cobrador (caja): E o C. Banco: B o C. Nequi: N o C.
+ */
+export function loanFundLetter(
+  loan: Pick<LoanRow, "fundedBy" | "notes"> | undefined | null,
+): LoanFundLetter {
+  if (loanIsCombinadoFunded(loan)) return "C";
+  const source = loan ? loanDisbursementSource(loan) : null;
+  if (source === "banco") return "B";
+  if (source === "nequi") return "N";
+  return "E";
+}
+
+export function loanFundLetterTitle(letter: LoanFundLetter): string {
+  if (letter === "E") return "Efectivo";
+  if (letter === "B") return "Banco";
+  if (letter === "N") return "Nequi";
+  return "Combinado";
+}
+
+/**
+ * Texto de lista sin la palabra «Préstamo» / «Anexo»: `P-705 · Nombre`.
+ * El renglón GAS- sigue guardando «Préstamo · …»; aquí solo se pinta.
+ */
+export function loanListDisplayText(
+  line: Pick<{ loanRef?: string; label: string }, "loanRef" | "label">,
+): string {
+  const ref = String(line.loanRef || "").trim();
+  let rest = String(line.label || "")
+    .replace(/^(Préstamo|Anexo)\s*·\s*/i, "")
+    .trim();
+  if (ref) {
+    const escaped = ref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    rest = rest.replace(new RegExp(`^${escaped}\\s*·\\s*`, "i"), "").trim();
+    return rest ? `${ref} · ${rest}` : ref;
+  }
+  return rest || String(line.label || "").trim();
+}
+
+export function loanListFundLetter(
+  line: Pick<{ fundLetter?: LoanFundLetter; category?: string }, "fundLetter" | "category">,
+): LoanFundLetter {
+  const marked = String(line.fundLetter || "")
+    .trim()
+    .toUpperCase();
+  if (marked === "E" || marked === "B" || marked === "C" || marked === "N") {
+    return marked;
+  }
+  return "E";
 }
 
 function withFundedMarker(notes: string | undefined, marker: string) {
-  const cleaned = stripFundedMarkers(notes);
+  const cleaned = stripSplitMarkers(stripFundedMarkers(notes));
   if (cleaned.includes(marker)) return cleaned;
   return [cleaned, marker].filter(Boolean).join("\n");
 }
@@ -86,8 +230,9 @@ export function stripFundedMarkers(notes: string | undefined): string {
 
 /** Marca desembolso financiado con Nequi (alta o renovación desde supervisor/admin). */
 export function markLoanFundedByNequi(loan: LoanRow): LoanRow {
+  const { cashOut: _c, bankOut: _b, ...rest } = loan;
   return {
-    ...loan,
+    ...rest,
     fundedBy: "nequi",
     notes: withFundedMarker(loan.notes, NEQUI_FUNDED_MARKER),
   };
@@ -95,8 +240,9 @@ export function markLoanFundedByNequi(loan: LoanRow): LoanRow {
 
 /** Marca desembolso en efectivo desde caja del cobrador. */
 export function markLoanFundedByEfectivo(loan: LoanRow): LoanRow {
+  const { cashOut: _c, bankOut: _b, ...rest } = loan;
   return {
-    ...loan,
+    ...rest,
     fundedBy: "efectivo",
     notes: withFundedMarker(loan.notes, EFECTIVO_FUNDED_MARKER),
   };
@@ -104,8 +250,9 @@ export function markLoanFundedByEfectivo(loan: LoanRow): LoanRow {
 
 /** Marca desembolso financiado desde cuenta bancaria del dueño. */
 export function markLoanFundedByBanco(loan: LoanRow): LoanRow {
+  const { cashOut: _c, bankOut: _b, ...rest } = loan;
   return {
-    ...loan,
+    ...rest,
     fundedBy: "banco",
     notes: withFundedMarker(loan.notes, BANCO_FUNDED_MARKER),
   };
@@ -113,24 +260,90 @@ export function markLoanFundedByBanco(loan: LoanRow): LoanRow {
 
 /** Marca préstamo de cartera existente (carga inicial desde planilla manual). */
 export function markLoanExistingPortfolio(loan: LoanRow): LoanRow {
+  const { cashOut: _c, bankOut: _b, ...rest } = loan;
   return {
-    ...loan,
+    ...rest,
     fundedBy: "cartera",
     notes: withFundedMarker(loan.notes, CARTERA_FUNDED_MARKER),
+  };
+}
+
+/**
+ * Un P- combinado: capital = cashOut + bankOut.
+ * Caja resta cashOut; Banco resta bankOut. Ambos > 0.
+ */
+export function markLoanFundedByCombinado(
+  loan: LoanRow,
+  cashOut: number,
+  bankOut: number,
+): LoanRow {
+  const cash = pesos(cashOut);
+  const bank = pesos(bankOut);
+  const capital = pesos(Number(loan.capital) || 0);
+  if (!loanSplitIsValid(capital, cash, bank)) {
+    throw new Error("Combinado inválido: efectivo + banco deben sumar el capital.");
+  }
+  const base = stripSplitMarkers(stripFundedMarkers(loan.notes));
+  const notes = [base, COMBINADO_FUNDED_MARKER, `[[split:efectivo:${cash}]]`, `[[split:banco:${bank}]]`]
+    .filter(Boolean)
+    .join("\n");
+  return {
+    ...loan,
+    fundedBy: "combinado",
+    cashOut: cash,
+    bankOut: bank,
+    notes,
   };
 }
 
 export function hydrateLoanFundedBy(loan: LoanRow): LoanRow {
   const source = loanDisbursementSource(loan);
   if (!source) return loan;
-  if (loan.fundedBy === source) return loan;
-  return { ...loan, fundedBy: source };
+  if (source === "combinado") {
+    const split = loanSplitAmounts({ ...loan, fundedBy: "combinado" });
+    const next: LoanRow = {
+      ...loan,
+      fundedBy: "combinado",
+      ...(split ? { cashOut: split.cashOut, bankOut: split.bankOut } : {}),
+    };
+    if (
+      next.fundedBy === loan.fundedBy &&
+      next.cashOut === loan.cashOut &&
+      next.bankOut === loan.bankOut
+    ) {
+      return loan;
+    }
+    return next;
+  }
+  if (loan.fundedBy === source && loan.cashOut == null && loan.bankOut == null) return loan;
+  const { cashOut: _c, bankOut: _b, ...rest } = loan;
+  return { ...rest, fundedBy: source };
 }
 
 export function loanDisbursementSourceLabel(source: LoanDisbursementSource | null) {
   if (source === "nequi") return "Nequi";
   if (source === "efectivo") return "Efectivo";
   if (source === "banco") return "Banco";
+  if (source === "cartera") return "Cartera";
+  if (source === "combinado") return "Combinado";
+  return "—";
+}
+
+/** Texto de Modalidad / origen en la ficha. */
+export function loanOriginDisplayLabel(
+  loan: Pick<LoanRow, "fundedBy" | "notes" | "capital" | "cashOut" | "bankOut">,
+): string {
+  const source = loanDisbursementSource(loan);
+  if (source === "combinado") {
+    const split = loanSplitAmounts(loan);
+    if (split) {
+      return `Combinado (caja ${split.cashOut.toLocaleString("es-CO")} / banco ${split.bankOut.toLocaleString("es-CO")})`;
+    }
+    return "Combinado (caja / banco)";
+  }
+  if (source === "efectivo") return "Caja";
+  if (source === "banco") return "Banco";
+  if (source === "nequi") return "Nequi";
   if (source === "cartera") return "Cartera";
   return "—";
 }
@@ -140,13 +353,17 @@ export function loanDisbursementMovementRef(loanRef: string) {
 }
 
 /**
- * Plata que sale de Banco / Nequi: solo el capital.
- * El interés es lo que el cliente debe de más; no sale de la cuenta.
- * Nunca `total` ni `capital + interés`.
+ * Plata que sale de Banco / Nequi.
+ * Combinado → solo bankOut. Banco/Nequi enteros → capital.
+ * El interés nunca sale de la cuenta.
  */
 export function loanBankOutflowCapital(
-  loan: Pick<LoanRow, "capital" | "interest" | "total">,
+  loan: Pick<LoanRow, "capital" | "interest" | "total" | "fundedBy" | "notes" | "cashOut" | "bankOut">,
 ): number {
+  if (loanIsCombinadoFunded(loan)) {
+    const split = loanSplitAmounts(loan);
+    return split ? split.bankOut : 0;
+  }
   return pesos(Number(loan.capital) || 0);
 }
 

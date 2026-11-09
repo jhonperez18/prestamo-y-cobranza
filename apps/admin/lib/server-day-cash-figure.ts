@@ -85,6 +85,10 @@ async function cashLoanTotalsByRoute(date: string): Promise<{
       if (notes.includes("[[fb:nequi]]") || notes.includes("[[fb:banco]]") || notes.includes("[[fb:cartera]]")) {
         return false;
       }
+      // Combinado: solo el tramo de caja cuenta aquí (banco va al pool).
+      if (notes.includes("[[fb:combinado]]")) {
+        return /\[\[split:efectivo:(\d+)\]\]/i.test(notes);
+      }
       return pesos(row.capital) > 0;
     });
     if (!live.length) return empty;
@@ -104,7 +108,13 @@ async function cashLoanTotalsByRoute(date: string): Promise<{
     const out = { ...empty };
     for (const loan of live) {
       const pin = routeBy.get(String(loan.client_ref || "").trim()) || "";
-      const capital = pesos(loan.capital);
+      const notes = String(loan.notes || "");
+      let capital = pesos(loan.capital);
+      if (notes.includes("[[fb:combinado]]")) {
+        const match = notes.match(/\[\[split:efectivo:(\d+)\]\]/i);
+        capital = match ? pesos(Number(match[1]) || 0) : 0;
+      }
+      if (capital <= 0) continue;
       if (pin === "M") out.m += capital;
       else if (pin === "T") out.t += capital;
       else if (pin === "A") out.a += capital;

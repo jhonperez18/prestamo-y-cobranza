@@ -24,11 +24,12 @@ import {
 } from "@/lib/mock-data";
 import { routeCollectorCashTarget } from "@/lib/route-collector-cash";
 
-export type SupervisorLoanOrigin = "nequi" | "banco" | "efectivo";
+export type SupervisorLoanOrigin = "nequi" | "banco" | "efectivo" | "combinado";
 
-/** Supervisor / admin: Nequi, Banco o Caja de la ruta (efectivo). Sin origen → Nequi. */
+/** Supervisor / admin: Nequi, Banco, Caja de la ruta o Combinado. Sin origen → Nequi. */
 export function supervisorLoanOrigin(origin: string | undefined): SupervisorLoanOrigin {
-  return origin === "banco" || origin === "efectivo" ? origin : "nequi";
+  if (origin === "banco" || origin === "efectivo" || origin === "combinado") return origin;
+  return "nequi";
 }
 
 export type RouteCashLoanSources = {
@@ -73,10 +74,11 @@ export type RouteCashLoanCommit =
  * renglón en ningún GAS-: hay que cargarlo a la caja de la ruta. Días pasados no se tocan.
  */
 export function routeCashLoanLineMissing(
-  loan: Pick<LoanRow, "ref" | "date" | "fundedBy" | "notes">,
+  loan: Pick<LoanRow, "ref" | "date" | "fundedBy" | "notes" | "capital" | "cashOut" | "bankOut">,
   drafts: CollectorDayExpenseDraft[],
   date: string,
 ): boolean {
+  // Efectivo puro o tramo de caja del combinado.
   if (!loanFundedByEfectivo(loan) || displayToIso(loan.date) !== date) return false;
   return !drafts.some((draft) =>
     draft.expenses.some((line) => line.loanRef === loan.ref && isPrestamoRutaExpense(line)),
@@ -88,7 +90,10 @@ export function routeCashLoanLineMissing(
  * de la caja de la ruta del cliente, como si el cobrador hiciera el préstamo hoy.
  */
 export function commitRouteCashLoan(
-  loan: Pick<LoanRow, "ref" | "client" | "capital" | "clientRef">,
+  loan: Pick<
+    LoanRow,
+    "ref" | "client" | "capital" | "clientRef" | "fundedBy" | "notes" | "cashOut" | "bankOut"
+  >,
   drafts: CollectorDayExpenseDraft[],
   src: RouteCashLoanSources,
   topUp?: number,

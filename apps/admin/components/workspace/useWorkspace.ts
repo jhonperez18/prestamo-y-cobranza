@@ -1252,9 +1252,10 @@ export function useWorkspace({
 
   function saveNewLoan(draft: LoanDraft) {
     void (async () => {
-      const cash = draft.fundedBy === "efectivo";
+      const needsCash =
+        draft.fundedBy === "efectivo" || draft.fundedBy === "combinado";
       const result = commitCreateLoan(draft, portfolioState());
-      const ok = await applyPortfolioCommit(result, { deferToast: cash });
+      const ok = await applyPortfolioCommit(result, { deferToast: needsCash });
       if (!ok || !result.ok) return;
 
       const loan = result.focusLoanRef
@@ -1277,7 +1278,7 @@ export function useWorkspace({
         );
       };
 
-      if (!cash) {
+      if (!needsCash) {
         projectBank();
         const origin =
           draft.fundedBy === "banco" ? "Banco" : draft.fundedBy === "nequi" ? "Nequi" : "";
@@ -1321,7 +1322,9 @@ export function useWorkspace({
       if (expenseDraft) queueDayExpenseMirror(expenseDraft);
       projectBank(nextDrafts);
       onToast(
-        `Préstamo ${loan.ref}: capital ${money(loan.capital)} descontado del efectivo de ${collector.name}.`,
+        draft.fundedBy === "combinado"
+          ? `Préstamo ${loan.ref}: Combinado · caja ${money(loan.cashOut ?? 0)} (${collector.name}) + banco ${money(loan.bankOut ?? 0)}.`
+          : `Préstamo ${loan.ref}: capital ${money(loan.capital)} descontado del efectivo de ${collector.name}.`,
       );
     })();
   }
@@ -2219,13 +2222,14 @@ export function useWorkspace({
       onToast(blocked);
       return;
     }
-    const loan = buildQuickLoan(
-      { ...draft, fundedBy: supervisorLoanOrigin(draft.fundedBy) },
-      client,
-      loans,
-    );
+    const origin = supervisorLoanOrigin(draft.fundedBy);
+    const loan = buildQuickLoan({ ...draft, fundedBy: origin }, client, loans);
     if (!loan) {
-      onToast("Revise capital, interés, tiempo y frecuencia.");
+      onToast(
+        origin === "combinado"
+          ? "Combinado: efectivo + banco deben sumar el capital."
+          : "Revise capital, interés, tiempo y frecuencia.",
+      );
       return;
     }
     if (loan.fundedBy !== "cartera") {
@@ -2250,7 +2254,7 @@ export function useWorkspace({
       pending: client.pending + (loan.total ?? 0),
     });
     const routeCash =
-      loan.fundedBy === "efectivo"
+      loan.fundedBy === "efectivo" || loan.fundedBy === "combinado"
         ? commitRouteCashLoan(loan, dayExpenseDrafts, {
             clients: nextClients,
             routes,

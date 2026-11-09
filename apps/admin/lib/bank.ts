@@ -10,6 +10,7 @@ import {
   loanDisbursementSource,
   loanFundedByBanco,
   loanFundedByNequi,
+  loanIsCombinadoFunded,
 } from "@/lib/nequi-pool";
 import {
   disbursementBelongsToLoan,
@@ -1260,7 +1261,11 @@ export function syncNequiLoanDisbursementsToMovements(
     if (!valueDate) continue;
     const capital = loanBankOutflowCapital(loan);
     const isRenewal = /renovaci[oó]n/i.test(loan.notes || "");
-    const originLabel = loanFundedByBanco(loan) ? "Banco" : "Nequi";
+    const originLabel = loanIsCombinadoFunded(loan)
+      ? "Combinado"
+      : loanFundedByBanco(loan)
+        ? "Banco"
+        : "Nequi";
     const route = loan.clientRef ? routeByClient.get(loan.clientRef) : undefined;
     const projectedAccountRef = digitalAccountRefForRoute(ensured, route) ?? primary.ref;
     const existing =

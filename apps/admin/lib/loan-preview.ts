@@ -189,6 +189,8 @@ export function buildLoanDetailFields(input: {
   days?: number;
   interestCount: number;
   notes?: string;
+  /** Origen del desembolso (Modalidad en ficha). Si falta, cae al modo de cobro. */
+  originLabel?: string;
   formatMoney: (value: number) => string;
 }): LoanDetailField[] {
   const standardized = standardizeLoanTerms({
@@ -203,10 +205,11 @@ export function buildLoanDetailFields(input: {
   const plazo = previewPlazoLabel(input.days ?? 0, input.interestCount);
   const frequencyLabel =
     PAY_FREQUENCIES.find((item) => item.id === input.frequency)?.label ?? "Diario";
+  const modalidad = (input.originLabel || "").trim() || modeLabel(mode);
 
   const fields: LoanDetailField[] = [
     { label: "Capital", value: input.formatMoney(input.capital), money: true },
-    { label: "Modalidad", value: modeLabel(mode) },
+    { label: "Modalidad", value: modalidad },
     { label: "Desembolso", value: input.date },
     { label: "Vencimiento", value: input.due },
     { label: "Frecuencia", value: frequencyLabel },

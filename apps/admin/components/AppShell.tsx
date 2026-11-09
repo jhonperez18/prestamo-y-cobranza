@@ -18,6 +18,16 @@ import {
 import { ThemeApplier } from "@/components/ThemeApplier";
 import { readAdminProfile } from "@/lib/admin-profile";
 import { useActionToast } from "@/hooks/useActionToast";
+import {
+  armPhoneShellHistory,
+  isPhoneShellHistoryState,
+  phoneShellHistoryKey,
+  pushPhoneShellHistory,
+  readPhoneShellHistoryState,
+  replacePhoneShellHistory,
+  trapPhoneShellHistory,
+  type PhoneShellNavEntry,
+} from "@/lib/phone-shell-history";
 
 function groupKey(moduleId: ModuleId, title: string) {
   return `${moduleId}:${title}`;
@@ -51,10 +61,29 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
   const [navBadges, setNavBadges] = useState<Record<string, string | undefined>>({});
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  /** Evita re-encolar history al aplicar un popstate. */
+  const applyingHistoryRef = useRef(false);
+  /** El usuario confirmó salir: el próximo back no se re-atrapa. */
+  const leavingAppRef = useRef(false);
+  const phoneNavRef = useRef({
+    moduleId: landing.moduleId,
+    viewId: landing.viewId,
+    asideOpen: false,
+  });
+  /** Pila propia de vistas (el Atrás del celular la recorre). */
+  const phoneStackRef = useRef<PhoneShellNavEntry[]>([
+    { moduleId: landing.moduleId, viewId: landing.viewId, drawer: false },
+  ]);
 
   const current = filteredModules.find((entry) => entry.id === moduleId) ?? filteredModules[0];
   const viewLabel = getViewLabel(moduleId, viewId);
   const phonePreview = phoneLayout && viewId === "vista-movil";
+  /** Historial Atrás: celular layout o PWA instalada. */
+  const phoneHistoryOn =
+    phoneLayout ||
+    (typeof window !== "undefined" &&
+      window.matchMedia("(display-mode: standalone)").matches);
+  phoneNavRef.current = { moduleId, viewId, asideOpen };
   const sidebarView =
     (moduleId === "clientes" && (viewId === "ficha" || viewId === "editar")) ||
     (moduleId === "prestamos" && (viewId === "cuenta" || viewId === "editar")) ||
@@ -79,21 +108,94 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
     return DEFAULT_VIEW[nextModule] ?? mod.groups[0]?.items[0]?.id ?? landing.viewId;
   }
 
+  function applyPhoneNav(entry: PhoneShellNavEntry) {
+    applyingHistoryRef.current = true;
+    setModuleId(entry.moduleId);
+    setViewId(entry.viewId);
+    setAsideOpen(entry.drawer);
+    setUserMenuOpen(false);
+    applyingHistoryRef.current = false;
+  }
+
+  function recordPhoneHistory(entry: PhoneShellNavEntry, mode: "push" | "replace" = "push") {
+    if (!phoneHistoryOn || applyingHistoryRef.current) return;
+    const stack = phoneStackRef.current;
+    const top = stack[stack.length - 1];
+    if (top && phoneShellHistoryKey(top) === phoneShellHistoryKey(entry)) {
+      if (mode === "replace") {
+        replacePhoneShellHistory(entry, Math.max(0, stack.length - 1));
+      }
+      return;
+    }
+    if (mode === "replace") {
+      phoneStackRef.current = [...stack.slice(0, -1), entry];
+      replacePhoneShellHistory(entry, Math.max(0, phoneStackRef.current.length - 1));
+      return;
+    }
+    phoneStackRef.current = [...stack, entry];
+    pushPhoneShellHistory(entry, phoneStackRef.current.length - 1);
+  }
+
   function go(nextModule: ModuleId, nextView?: string) {
     const mod = filteredModules.find((entry) => entry.id === nextModule);
     if (!mod) return;
-    setModuleId(nextModule);
-    setViewId(resolveView(nextModule, nextView));
+    const resolved = resolveView(nextModule, nextView);
     // En celular: solo cerrar el cajón al elegir una vista concreta (no al cambiar de módulo).
+    const nextDrawer = phoneHistoryOn && nextView ? false : asideOpen;
+    setModuleId(nextModule);
+    setViewId(resolved);
     if (phoneLayout && nextView) setAsideOpen(false);
+    setUserMenuOpen(false);
+    recordPhoneHistory(
+      { moduleId: nextModule, viewId: resolved, drawer: nextDrawer },
+      "push",
+    );
   }
 
   function selectPhoneModule(nextModule: ModuleId) {
     const mod = filteredModules.find((entry) => entry.id === nextModule);
     if (!mod) return;
+    const resolved = resolveView(nextModule);
     setModuleId(nextModule);
-    setViewId(resolveView(nextModule));
+    setViewId(resolved);
     setAsideOpen(true);
+    setUserMenuOpen(false);
+    recordPhoneHistory(
+      { moduleId: nextModule, viewId: resolved, drawer: true },
+      "push",
+    );
+  }
+
+  /** Abrir/cerrar cajón en celular sincronizado con el historial (botón Atrás). */
+  function togglePhoneDrawer() {
+    if (!phoneHistoryOn) {
+      setAsideOpen((open) => !open);
+      return;
+    }
+    if (asideOpen) {
+      const currentState = readPhoneShellHistoryState();
+      if (currentState?.drawer) {
+        window.history.back();
+        return;
+      }
+      setAsideOpen(false);
+      recordPhoneHistory({ moduleId, viewId, drawer: false }, "replace");
+      return;
+    }
+    setAsideOpen(true);
+    setUserMenuOpen(false);
+    recordPhoneHistory({ moduleId, viewId, drawer: true }, "push");
+  }
+
+  function closePhoneDrawer() {
+    if (!phoneHistoryOn || !asideOpen) return;
+    const currentState = readPhoneShellHistoryState();
+    if (currentState?.drawer) {
+      window.history.back();
+      return;
+    }
+    setAsideOpen(false);
+    recordPhoneHistory({ moduleId, viewId, drawer: false }, "replace");
   }
 
   function exclusiveGroupState(title: string | null) {
@@ -166,14 +268,80 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
     setAsideOpen(!phoneLayout);
   }, [phoneLayout]);
 
+  /**
+   * Celular / PWA: Atrás del aparato = vista anterior o cerrar cajón.
+   * Se arman 2 entradas al inicio para que el primer Atrás no salga del sitio.
+   */
+  useEffect(() => {
+    if (!phoneHistoryOn || typeof window === "undefined") return;
+
+    const seed: PhoneShellNavEntry = {
+      moduleId: phoneNavRef.current.moduleId,
+      viewId: phoneNavRef.current.viewId,
+      drawer: false,
+    };
+    phoneStackRef.current = [seed];
+    armPhoneShellHistory(seed);
+    leavingAppRef.current = false;
+
+    function onPopState(event: PopStateEvent) {
+      if (leavingAppRef.current) return;
+
+      setUserMenuOpen(false);
+
+      if (isPhoneShellHistoryState(event.state)) {
+        const idx = Math.max(0, event.state.idx);
+        const entry: PhoneShellNavEntry = {
+          moduleId: event.state.moduleId,
+          viewId: event.state.viewId,
+          drawer: event.state.drawer,
+        };
+        phoneStackRef.current = [...phoneStackRef.current.slice(0, idx), entry];
+        applyPhoneNav(entry);
+        return;
+      }
+
+      // Cayó fuera de nuestra pila: atrapar y retroceder una vista interna.
+      const stack = phoneStackRef.current;
+      if (stack.length > 1) {
+        phoneStackRef.current = stack.slice(0, -1);
+        const prev = phoneStackRef.current[phoneStackRef.current.length - 1];
+        if (prev) {
+          applyPhoneNav(prev);
+          trapPhoneShellHistory(prev, phoneStackRef.current.length - 1);
+        }
+        return;
+      }
+
+      const root = stack[0] ?? {
+        moduleId: phoneNavRef.current.moduleId,
+        viewId: phoneNavRef.current.viewId,
+        drawer: false,
+      };
+      applyPhoneNav({ ...root, drawer: false });
+      trapPhoneShellHistory({ ...root, drawer: false }, 0);
+
+      const stay = !window.confirm("¿Salir del sistema?");
+      if (stay) return;
+      leavingAppRef.current = true;
+      window.history.back();
+    }
+
+    window.addEventListener("popstate", onPopState);
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      leavingAppRef.current = false;
+    };
+  }, [phoneHistoryOn]);
+
   useEffect(() => {
     if (!phoneLayout || !asideOpen) return;
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setAsideOpen(false);
+      if (event.key === "Escape") closePhoneDrawer();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [phoneLayout, asideOpen]);
+  }, [phoneLayout, asideOpen, moduleId, viewId]);
 
   /** Un toque suave fuera del cajón lo cierra (capture: no hay que "golpear"). */
   useEffect(() => {
@@ -183,11 +351,11 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
       if (!(target instanceof Element)) return;
       if (target.closest(".aside")) return;
       if (target.closest(".phone-menu-btn")) return;
-      setAsideOpen(false);
+      closePhoneDrawer();
     }
     document.addEventListener("pointerdown", onPointerDown, true);
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [phoneLayout, asideOpen]);
+  }, [phoneLayout, asideOpen, moduleId, viewId]);
 
   useEffect(() => {
     if (!phoneLayout) {
@@ -286,7 +454,7 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
                 title="Menú"
                 aria-label={asideOpen ? "Cerrar menú" : "Abrir menú"}
                 aria-expanded={asideOpen}
-                onClick={() => setAsideOpen((open) => !open)}
+                onClick={() => togglePhoneDrawer()}
               >
                 <MenuIcon />
               </button>
@@ -487,7 +655,7 @@ export function AppShell({ session, onLogout, onSessionChange, phoneLayout = fal
             aria-label="Cerrar menú"
             onPointerDown={(event) => {
               event.preventDefault();
-              setAsideOpen(false);
+              closePhoneDrawer();
             }}
           />
         ) : null}

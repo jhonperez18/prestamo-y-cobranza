@@ -572,9 +572,15 @@ export function CollectorShell({ session, onLogout }: Props) {
       showToast(blocked);
       return;
     }
-    const loan = buildQuickLoan({ ...draft, fundedBy: "efectivo" }, client, loans);
+    const origin =
+      draft.fundedBy === "combinado" ? "combinado" : "efectivo";
+    const loan = buildQuickLoan({ ...draft, fundedBy: origin }, client, loans);
     if (!loan) {
-      showToast("Revise capital, interés, tiempo y frecuencia.");
+      showToast(
+        origin === "combinado"
+          ? "Combinado: efectivo + banco deben sumar el capital."
+          : "Revise capital, interés, tiempo y frecuencia.",
+      );
       return;
     }
     const twin = existingDigitalDisbursementTwin(
@@ -638,7 +644,9 @@ export function CollectorShell({ session, onLogout }: Props) {
     );
     if (expenseDraft) queueDayExpenseMirror(expenseDraft);
     showToast(
-      `Préstamo ${loanRefLabel(loan.ref)} · capital ${money(loan.capital)} descontado de caja · subiendo…`,
+      origin === "combinado"
+        ? `Préstamo ${loanRefLabel(loan.ref)} · Combinado: caja ${money(loan.cashOut ?? 0)} + banco ${money(loan.bankOut ?? 0)} · subiendo…`
+        : `Préstamo ${loanRefLabel(loan.ref)} · capital ${money(loan.capital)} descontado de caja · subiendo…`,
     );
     try {
       const cloud = await sentLoan;

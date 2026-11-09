@@ -84,8 +84,14 @@ export type LoanRow = {
    * Origen del desembolso (≠ método de cobro):
    * - nequi / banco = cuenta del dueño
    * - efectivo = caja del cobrador
+   * - combinado = caja + banco (cashOut + bankOut = capital)
+   * - cartera = ya estaba en la calle
    */
-  fundedBy?: "nequi" | "efectivo" | "banco" | "cartera";
+  fundedBy?: "nequi" | "efectivo" | "banco" | "cartera" | "combinado";
+  /** Tramo de caja de un combinado (también en notes `[[split:efectivo:N]]`). */
+  cashOut?: number;
+  /** Tramo de banco de un combinado (también en notes `[[split:banco:N]]`). */
+  bankOut?: number;
   /** ISO — evita que un pull obsoleto rebobine un edit fresco del padre. */
   updatedAt?: string;
   /** ISO — momento en que se registró el préstamo (columna Hora del Cierre). */

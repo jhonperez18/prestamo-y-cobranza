@@ -20,7 +20,13 @@ import {
   type ClientRow,
   type LoanRow,
 } from "@/lib/mock-data";
-import { markLoanFundedByBanco, markLoanFundedByEfectivo, markLoanFundedByNequi } from "@/lib/nequi-pool";
+import {
+  loanSplitIsValid,
+  markLoanFundedByBanco,
+  markLoanFundedByCombinado,
+  markLoanFundedByEfectivo,
+  markLoanFundedByNequi,
+} from "@/lib/nequi-pool";
 
 /**
  * Alta de cliente (calle / supervisor).
@@ -49,7 +55,11 @@ export type QuickLoanDraft = {
   /** Al prestar: el cliente queda en esta ruta (planilla). */
   routeName?: string;
   /** Origen del desembolso. Por defecto Nequi (supervisor/admin). */
-  fundedBy?: "nequi" | "efectivo" | "banco";
+  fundedBy?: "nequi" | "efectivo" | "banco" | "combinado";
+  /** Tramo de caja (solo combinado). */
+  cashOut?: number;
+  /** Tramo de banco (solo combinado). */
+  bankOut?: number;
 };
 
 export const QUICK_INTEREST_PCT = [5, 10, 15, 20] as const;
@@ -149,6 +159,12 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
   ) as LoanRow;
   loan.createdAt = new Date().toISOString();
 
+  if (draft.fundedBy === "combinado") {
+    const cashOut = Math.trunc(Number(draft.cashOut) || 0);
+    const bankOut = Math.trunc(Number(draft.bankOut) || 0);
+    if (!loanSplitIsValid(draft.capital, cashOut, bankOut)) return null;
+    return markLoanFundedByCombinado(loan, cashOut, bankOut);
+  }
   if (draft.fundedBy === "efectivo") return markLoanFundedByEfectivo(loan);
   if (draft.fundedBy === "banco") return markLoanFundedByBanco(loan);
   return markLoanFundedByNequi(loan);

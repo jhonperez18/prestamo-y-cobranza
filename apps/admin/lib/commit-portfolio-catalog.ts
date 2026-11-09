@@ -44,8 +44,10 @@ import {
 } from "@/lib/mock-data";
 import {
   loanBankOutflowCapital,
+  loanSplitIsValid,
   markLoanExistingPortfolio,
   markLoanFundedByBanco,
+  markLoanFundedByCombinado,
   markLoanFundedByEfectivo,
   markLoanFundedByNequi,
 } from "@/lib/nequi-pool";
@@ -137,7 +139,9 @@ export type PortfolioLoanDraft = {
   total: number;
   installment: number;
   schedule: LoanRow["schedule"];
-  fundedBy?: "nequi" | "banco" | "efectivo" | "cartera";
+  fundedBy?: "nequi" | "banco" | "efectivo" | "cartera" | "combinado";
+  cashOut?: number;
+  bankOut?: number;
 };
 
 export type PortfolioCatalogState = {
@@ -636,12 +640,23 @@ export function commitCreateLoan(
   }
   const blocked = newLoanBlockReason(client.ref, state.loans);
   if (blocked) return { ok: false, error: blocked };
+  if (draft.fundedBy === "combinado") {
+    const cashOut = Math.trunc(Number(draft.cashOut) || 0);
+    const bankOut = Math.trunc(Number(draft.bankOut) || 0);
+    if (!loanSplitIsValid(draft.capital, cashOut, bankOut)) {
+      return { ok: false, error: "Combinado: efectivo + banco deben sumar el capital." };
+    }
+  }
   if (draft.fundedBy !== "cartera") {
+    const twinCapital =
+      draft.fundedBy === "combinado"
+        ? Math.trunc(Number(draft.bankOut) || 0)
+        : loanBankOutflowCapital({ capital: draft.capital });
     const twin = existingDigitalDisbursementTwin(
       state.loans,
       client.ref,
       displayToIso(draft.date) || String(draft.date || "").trim(),
-      loanBankOutflowCapital({ capital: draft.capital }),
+      twinCapital,
     );
     if (twin) {
       return {
@@ -689,15 +704,23 @@ export function commitCreateLoan(
     installment: installment > 0 ? installment : pinned.installment,
     balance: Math.max(0, Number(pinned.total) || Number(draft.total) || Number(draft.capital) || 0),
   });
-  const row = stampCatalogRow(
-    draft.fundedBy === "banco"
-      ? markLoanFundedByBanco(loanReady)
-      : draft.fundedBy === "efectivo"
-        ? markLoanFundedByEfectivo(loanReady)
-        : draft.fundedBy === "cartera"
-          ? markLoanExistingPortfolio(loanReady)
-          : markLoanFundedByNequi(loanReady),
-  );
+  let fundedRow: LoanRow;
+  if (draft.fundedBy === "combinado") {
+    fundedRow = markLoanFundedByCombinado(
+      loanReady,
+      Math.trunc(Number(draft.cashOut) || 0),
+      Math.trunc(Number(draft.bankOut) || 0),
+    );
+  } else if (draft.fundedBy === "banco") {
+    fundedRow = markLoanFundedByBanco(loanReady);
+  } else if (draft.fundedBy === "efectivo") {
+    fundedRow = markLoanFundedByEfectivo(loanReady);
+  } else if (draft.fundedBy === "cartera") {
+    fundedRow = markLoanExistingPortfolio(loanReady);
+  } else {
+    fundedRow = markLoanFundedByNequi(loanReady);
+  }
+  const row = stampCatalogRow(fundedRow);
 
   // Asegura al cliente en su ruta (misma que el cobrador de esa ruta).
   const routeName =
@@ -805,8 +828,21 @@ export function commitUpdateLoan(
     ...pinned,
     installment: installment > 0 ? installment : pinned.installment,
   });
+  if (draft.fundedBy === "combinado") {
+    const cashOut = Math.trunc(Number(draft.cashOut) || 0);
+    const bankOut = Math.trunc(Number(draft.bankOut) || 0);
+    if (!loanSplitIsValid(draft.capital, cashOut, bankOut)) {
+      return { ok: false, error: "Combinado: efectivo + banco deben sumar el capital." };
+    }
+  }
   const funded =
-    draft.fundedBy === "banco"
+    draft.fundedBy === "combinado"
+      ? markLoanFundedByCombinado(
+          fundedBase,
+          Math.trunc(Number(draft.cashOut) || 0),
+          Math.trunc(Number(draft.bankOut) || 0),
+        )
+      : draft.fundedBy === "banco"
       ? markLoanFundedByBanco(fundedBase)
       : draft.fundedBy === "efectivo"
         ? markLoanFundedByEfectivo(fundedBase)

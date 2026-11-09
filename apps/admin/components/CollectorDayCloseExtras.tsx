@@ -9,6 +9,11 @@ import {
 } from "@/lib/collector-history-planilla";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
 import { money } from "@/lib/mock-data";
+import {
+  loanFundLetterTitle,
+  loanListDisplayText,
+  loanListFundLetter,
+} from "@/lib/nequi-pool";
 
 type Props = {
   dateLabel: string;
@@ -64,12 +69,21 @@ export function CollectorDayCloseExtras({
       {prestamos.length > 0 ? (
         <div className="collector-history-loans" aria-label={`Préstamos ${dateLabel}`}>
           <ul>
-            {prestamos.map((line) => (
-              <li key={`${line.id}:${line.loanRef || line.label}`}>
-                <span className="is-name">{line.label}</span>
-                <b className="is-amount">{money(line.amount, { symbol: false })}</b>
-              </li>
-            ))}
+            {prestamos.map((line) => {
+              const letter = loanListFundLetter(line);
+              return (
+                <li key={`${line.id}:${line.loanRef || line.label}`}>
+                  <span className="is-name">{loanListDisplayText(line)}</span>
+                  <em
+                    className={`is-fund is-fund-${letter}`}
+                    title={loanFundLetterTitle(letter)}
+                  >
+                    {letter}
+                  </em>
+                  <b className="is-amount">{money(line.amount, { symbol: false })}</b>
+                </li>
+              );
+            })}
             <li className="is-total">
               <span>Saldo del día</span>
               <b>{money(prestamosTotal, { symbol: false })}</b>

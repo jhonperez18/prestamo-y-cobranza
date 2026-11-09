@@ -5,8 +5,10 @@ import { compareRoutePosition, sameRoute } from "@/lib/client-route-order";
 import { syncLoan, displayToIso } from "@/lib/loan-preview";
 import {
   isCashlessRenewal,
+  loanCashOutflowCapital,
   loanDisbursementIsoDate,
   loanDisbursementSource,
+  loanFundLetter,
   loanIsExistingPortfolio,
 } from "@/lib/nequi-pool";
 import { loanRenewedInto } from "@/lib/loan-renewal-marks";
@@ -250,6 +252,8 @@ export type DayLoanDisbursementRow = {
   installment: number;
   /** Anexo: capital sumado hoy a un préstamo de un día ya cerrado. */
   topUp?: boolean;
+  /** Letra de origen en lista (E caja · B banco · C combinado · N nequi). */
+  fundLetter?: "E" | "B" | "C" | "N";
 };
 
 export type DayLoanDisbursementScope = {
@@ -264,8 +268,7 @@ export type DayLoanDisbursementScope = {
 };
 
 function loanLeftCollectorCash(loan: LoanRow): boolean {
-  const source = loanDisbursementSource(loan);
-  return source !== "nequi" && source !== "banco" && source !== "cartera";
+  return loanCashOutflowCapital(loan) > 0;
 }
 
 function disbursementRowFromLoan(loan: LoanRow, clients: ClientRow[]): DayLoanDisbursementRow {
@@ -276,8 +279,9 @@ function disbursementRowFromLoan(loan: LoanRow, clients: ClientRow[]): DayLoanDi
     clientName: client
       ? `${client.name} ${client.lastName}`.trim()
       : (loan.client || "").trim() || loan.ref,
-    capital: Math.trunc(Number(loan.capital) || 0),
+    capital: loanCashOutflowCapital(loan),
     installment: Math.trunc(Number(loan.installment) || 0),
+    fundLetter: loanFundLetter(loan),
   };
 }
 
@@ -336,6 +340,7 @@ export function dayLoanDisbursementRows(
         clientName: clientName || rawRef,
         capital: Number(line.amount) || 0,
         installment: 0,
+        fundLetter: line.fundLetter ?? "E",
       });
       if (clientRef) dayClientRefs.add(clientRef);
       continue;
@@ -361,6 +366,7 @@ export function dayLoanDisbursementRows(
       clientName: clientName || rawRef,
       capital: Number(line.amount) || 0,
       installment: 0,
+      fundLetter: line.fundLetter ?? "E",
       ...(isLoanTopUpLine(line) ? { topUp: true } : {}),
     });
     if (clientRef) dayClientRefs.add(clientRef);
@@ -489,7 +495,7 @@ export function expensesWithDayLoans(
   ];
 }
 
-/** Desembolsos → líneas «Préstamo · P-… · cliente» (UI / cierre). */
+/** Desembolsos → líneas «Préstamo · P-… · cliente» (dato); la UI pinta sin la palabra Préstamo. */
 export function loanRowsToExpenseLines(rows: DayLoanDisbursementRow[]): RouteExpenseLine[] {
   return rows.map(
     (row) =>
@@ -499,6 +505,7 @@ export function loanRowsToExpenseLines(rows: DayLoanDisbursementRow[]): RouteExp
         amount: row.capital,
         category: "prestamo_ruta",
         loanRef: row.loanRef,
+        fundLetter: row.fundLetter ?? "E",
       }) as RouteExpenseLine,
   );
 }

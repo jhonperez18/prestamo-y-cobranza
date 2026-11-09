@@ -51,8 +51,10 @@ import {
   isOfficePayment,
   loanBankOutflowCapital,
   loanDisbursementIsoDate,
+  loanFundLetter,
   loanFundedByBanco,
   loanFundedByNequi,
+  type LoanFundLetter,
 } from "@/lib/nequi-pool";
 import { paymentRecaudoIso } from "@/lib/payment-detail";
 import {
@@ -332,6 +334,8 @@ export type DigitalPoolRegisterLoan = {
   dateIso: string;
   /** Ruta del cliente (M / T / N / A). En Prestado Banco distingue el renglón. */
   route?: string;
+  /** Letra de origen: B / N / C (combinado). */
+  fundLetter?: LoanFundLetter;
 };
 
 export type DigitalPoolRegisterDay = {
@@ -416,6 +420,7 @@ function toRegisterLoan(loan: LoanRow, client: ClientRow): DigitalPoolRegisterLo
     time: loanRegisterTime(loan),
     dateIso: loanDisbursementIsoDate(loan),
     route: route || undefined,
+    fundLetter: loanFundLetter(loan),
   };
 }
 

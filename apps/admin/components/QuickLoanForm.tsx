@@ -6,6 +6,7 @@ import {
   type QuickLoanDraft,
 } from "@/lib/street-client-loan";
 import type { LoanDisbursementSource as AnyDisbursementSource } from "@/lib/nequi-pool";
+import { loanSplitIsValid } from "@/lib/nequi-pool";
 import {
   firstCollectionIso,
   PAY_FREQUENCIES,
@@ -20,7 +21,7 @@ type Props = {
   clientRef: string;
   /**
    * Orígenes permitidos del desembolso.
-   * Cobrador: solo efectivo. Supervisor/admin: nequi | banco.
+   * Cobrador: efectivo + combinado. Supervisor/admin: nequi | banco | efectivo | combinado.
    */
   fundedByOptions?: LoanDisbursementSource[];
   defaultFundedBy?: LoanDisbursementSource;
@@ -52,6 +53,7 @@ const ORIGIN_LABEL: Record<LoanDisbursementSource, string> = {
   nequi: "Nequi",
   banco: "Banco",
   efectivo: "Efectivo",
+  combinado: "Combinado",
 };
 
 export function QuickLoanForm({
@@ -71,6 +73,8 @@ export function QuickLoanForm({
   const [termRaw, setTermRaw] = useState("1");
   const [frequency, setFrequency] = useState<PayFrequency>("diario");
   const [fundedBy, setFundedBy] = useState<LoanDisbursementSource>(initial);
+  const [cashOutRaw, setCashOutRaw] = useState("");
+  const [bankOutRaw, setBankOutRaw] = useState("");
   const [cuotaRaw, setCuotaRaw] = useState("");
   const cuotaTouchedRef = useRef(false);
   const startIso = todayIso();
@@ -78,11 +82,15 @@ export function QuickLoanForm({
   const firstTouchedRef = useRef(false);
 
   const capital = parseMoney(capitalRaw);
+  const cashOut = parseMoney(cashOutRaw);
+  const bankOut = parseMoney(bankOutRaw);
   const ratePct = parseDecimal(rateRaw);
   const termMonths = parseDecimal(termRaw);
   const interest =
     Number.isFinite(ratePct) && ratePct >= 0 ? interestFromPct(capital, ratePct) : 0;
   const cuotaManual = parseMoney(cuotaRaw);
+  const isCombinado = fundedBy === "combinado";
+  const splitOk = !isCombinado || loanSplitIsValid(capital, cashOut, bankOut);
 
   const autoPreview = useMemo(
     () =>
@@ -140,7 +148,8 @@ export function QuickLoanForm({
       ratePct >= 0 &&
       Number.isFinite(termMonths) &&
       termMonths > 0 &&
-      firstOk,
+      firstOk &&
+      splitOk,
   );
   const showOriginPicker = options.length > 1;
 
@@ -160,11 +169,21 @@ export function QuickLoanForm({
           termMonths,
           firstCollectionIso: firstCobro,
           fundedBy,
+          ...(isCombinado ? { cashOut, bankOut } : {}),
           installmentAmount:
             cuotaManual > 0 ? cuotaManual : preview.installment > 0 ? preview.installment : undefined,
         });
       }}
     >
+      <div className="quick-loan-head-row">
+        <p className="quick-loan-client-name">{clientName}</p>
+        {isCombinado ? (
+          <span className="quick-loan-combo-pill" title="Efectivo + Banco">
+            Combinado
+          </span>
+        ) : null}
+      </div>
+
       <div className="quick-loan-row is-capital-terms">
         <label className="quick-loan-field">
           <span>Capital</span>
@@ -278,12 +297,23 @@ export function QuickLoanForm({
           <span>Origen del desembolso</span>
           <select
             value={fundedBy}
-            onChange={(event) => setFundedBy(event.target.value as LoanDisbursementSource)}
+            onChange={(event) => {
+              const next = event.target.value as LoanDisbursementSource;
+              setFundedBy(next);
+              if (next !== "combinado") {
+                setCashOutRaw("");
+                setBankOutRaw("");
+              }
+            }}
             aria-label="Origen del desembolso"
           >
             {options.map((opt) => (
               <option key={opt} value={opt}>
-                {opt === "efectivo" ? "Caja de la ruta" : ORIGIN_LABEL[opt]}
+                {opt === "efectivo"
+                  ? "Caja de la ruta"
+                  : opt === "combinado"
+                    ? "Combinado (caja + banco)"
+                    : ORIGIN_LABEL[opt]}
               </option>
             ))}
           </select>
@@ -292,8 +322,43 @@ export function QuickLoanForm({
         <p className="quick-loan-summary is-muted">
           Origen: {ORIGIN_LABEL[fundedBy]}
           {fundedBy === "efectivo" ? " · se descuenta de la caja" : ""}
+          {fundedBy === "combinado" ? " · caja + banco" : ""}
         </p>
       )}
+
+      {isCombinado ? (
+        <div className="quick-loan-row is-combo-split" role="group" aria-label="Reparto combinado">
+          <label className="quick-loan-field">
+            <span>1.° Efectivo</span>
+            <input
+              inputMode="numeric"
+              value={cashOutRaw}
+              onChange={(event) => setCashOutRaw(formatMiles(event.target.value))}
+              placeholder="0"
+              aria-label="Monto en efectivo"
+            />
+          </label>
+          <label className="quick-loan-field">
+            <span>2.° Banco</span>
+            <input
+              inputMode="numeric"
+              value={bankOutRaw}
+              onChange={(event) => setBankOutRaw(formatMiles(event.target.value))}
+              placeholder="0"
+              aria-label="Monto en banco"
+            />
+          </label>
+        </div>
+      ) : null}
+
+      {isCombinado && capital > 0 && !splitOk ? (
+        <p className="quick-loan-summary is-warn">
+          Efectivo + Banco deben sumar {money(capital, { symbol: false })}.
+          {cashOut + bankOut > 0
+            ? ` Ahora: ${money(cashOut + bankOut, { symbol: false })}.`
+            : ""}
+        </p>
+      ) : null}
 
       {preview ? (
         <p className="quick-loan-summary">
