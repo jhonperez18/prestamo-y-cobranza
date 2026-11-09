@@ -1513,6 +1513,8 @@ export function SupervisorMobileApp({
   // La lista vieja no borra un cobro nuevo, ni el celular esconde uno que ya está en la base.
   const paymentsLive = useMemo(() => {
     if (!serverDay) return payments;
+    // Sin pieza de cobros: no pisar con [] (timeout parcial → botones en 0).
+    if (serverDay.paymentsReady === false) return payments;
     return supervisorTodayPayments(payments, serverDay.payments, today);
   }, [serverDay, payments, today]);
   const dayClosesLive = useMemo(() => {
@@ -1562,6 +1564,16 @@ export function SupervisorMobileApp({
   const [histOwnBoxEpoch, setHistOwnBoxEpoch] = useState(0);
   /** Caja M/T del día (day_cash_figure): Inicial T = m_closing. */
   const [histDayCashEpoch, setHistDayCashEpoch] = useState(0);
+  /**
+   * Misma puerta que el cobrador: al llegar day_cash_figure de la base,
+   * INICIO / ruta repintan Caja · Efectivo · Préstamo · Gasto.
+   */
+  const [dayCashFigureEpoch, setDayCashFigureEpoch] = useState(0);
+  useEffect(() => {
+    const onFigure = () => setDayCashFigureEpoch((n) => n + 1);
+    window.addEventListener("nexo-day-cash-figure", onFigure);
+    return () => window.removeEventListener("nexo-day-cash-figure", onFigure);
+  }, []);
   /** Historial · T: formulario de ajuste de saldo real abierto (cobrador del CIE-). */
   const [cashAdjustCollectorRef, setCashAdjustCollectorRef] = useState<string | null>(null);
   /** BANCO / NEQUI: cuadre del total acumulado abierto. */
@@ -2006,6 +2018,7 @@ export function SupervisorMobileApp({
     chainMOpeningEpoch,
     chainMOpeningSettled,
     routeOwnBoxEpoch,
+    dayCashFigureEpoch,
   ]);
 
   const liquidaciones = useMemo((): RouteLiquidacion[] => {
@@ -2339,6 +2352,7 @@ export function SupervisorMobileApp({
     nAnchors,
     routeOwnBoxEpoch,
     chainMOpeningEpoch,
+    dayCashFigureEpoch,
     chainMOpeningSettled,
   ]);
 

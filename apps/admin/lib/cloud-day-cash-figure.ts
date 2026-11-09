@@ -129,6 +129,10 @@ export function rememberCloudDayCashFigure(row: CloudDayCashFigure) {
   const key = keyOf(normalized.collectorRef, normalized.date);
   byKey.set(key, normalized);
   writePersisted(key, normalized);
+  // Cobrador y supervisor escuchan y repintan la misma cifra de la base.
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("nexo-day-cash-figure"));
+  }
 }
 
 async function fetchDayCashFigureOnce(

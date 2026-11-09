@@ -166,13 +166,14 @@ export function supervisorPeriodBook(
  * Cobros que pinta el supervisor. La bajada de hoy es la lista.
  * Un cobro solo local entra si sigue en la cola. Lo de días anteriores se queda
  * en la ventana viva (ayer); no se rellena hoy con una copia que la base no tiene.
+ * Sin bajada lista (`official === null`): no pisar la copia (timeout parcial → []).
  */
 export function supervisorTodayPayments(
   local: readonly PaymentRow[],
   official: readonly PaymentRow[] | null,
   today: string,
 ): PaymentRow[] {
-  if (!official) return [...local];
+  if (official == null) return [...local];
   const older = local.filter((row) => {
     const day = normalizeHistoryDate(row.paidDate || "") || String(row.paidDate || "").slice(0, 10);
     return day !== today;

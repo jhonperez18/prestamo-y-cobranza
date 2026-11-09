@@ -31,16 +31,33 @@ export async function GET() {
     if (result.ok) {
       // Si la nube trae planilla/cobros pero 0 CIE (timeout parcial), no pisar
       // cierres buenos del disco: Inicial M vive ahí.
+      // Cobros/gastos: si la pieza falló, conservar la última lista buena (no []).
       const prev = await readSupervisorTodayCache(today);
       const dayCloses =
         result.payload.dayCloses.length > 0
           ? result.payload.dayCloses
           : prev?.dayCloses ?? [];
-      const payload = { ...result.payload, dayCloses };
+      const payments =
+        result.payload.paymentsReady !== false
+          ? result.payload.payments
+          : prev?.payments ?? result.payload.payments;
+      const expenses =
+        result.payload.expensesReady !== false
+          ? result.payload.expenses
+          : prev?.expenses ?? result.payload.expenses;
+      const payload = {
+        ...result.payload,
+        dayCloses,
+        payments,
+        expenses,
+        paymentsReady: result.payload.paymentsReady !== false,
+        expensesReady: result.payload.expensesReady !== false,
+      };
       const useful =
         payload.assignments.length > 0 ||
         payload.payments.length > 0 ||
-        payload.dayCloses.length > 0;
+        payload.dayCloses.length > 0 ||
+        payload.expenses.length > 0;
       if (useful) void writeSupervisorTodayCache(payload);
       return jsonNoStore({ ok: true, ...payload, fromCache: false });
     }

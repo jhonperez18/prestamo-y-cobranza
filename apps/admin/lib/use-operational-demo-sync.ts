@@ -489,6 +489,32 @@ export function useOperationalDemoSync(
         commitHydrate();
         rehydrated = true;
       }
+      // Tras eco de cobros/ops: misma cifra de caja en todos los aparatos (day_cash_figure).
+      if (rehydrated || (!collectorLive && groups.has("payments")) || groups.has("ops")) {
+        try {
+          const [{ refreshCloudDayCashFigure }, { loadDemoDayCloses }, { businessTodayIso }] =
+            await Promise.all([
+              import("@/lib/cloud-day-cash-figure"),
+              import("@/lib/demo-persist"),
+              import("@/lib/business-timezone"),
+            ]);
+          const today = businessTodayIso();
+          const closes = loadDemoDayCloses() as Array<{ date?: string; collectorRef?: string }>;
+          const refs = [
+            ...new Set(
+              closes
+                .filter((row) => row.date === today)
+                .map((row) => String(row.collectorRef || "").trim())
+                .filter(Boolean),
+            ),
+          ];
+          if (refs.length > 0) {
+            await Promise.all(refs.map((ref) => refreshCloudDayCashFigure(ref, today)));
+          }
+        } catch (error) {
+          console.error("ops-sync-realtime-day-cash", error);
+        }
+      }
     } catch (error) {
       // Sin reintento en bucle (sin red giraría cada 280 ms): lo recoge el poll de respaldo.
       console.error("ops-sync-realtime", error);

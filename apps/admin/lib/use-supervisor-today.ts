@@ -20,6 +20,7 @@ export type SupervisorTodayData = {
   assignments: DailyCollectionAssignment[];
   dayCloses: CollectorDayCloseRecord[];
   expenses: CollectorDayExpenseDraft[];
+  paymentsReady: boolean;
   expensesReady: boolean;
 };
 
@@ -58,6 +59,8 @@ export function useSupervisorToday(enabled: boolean, refreshKey: string): Superv
         if (!res.ok || !body.ok || !body.date) throw new Error(body.error || `HTTP ${res.status}`);
         if (!alive) return;
         lastOk = Date.now();
+        const paymentsReady = body.paymentsReady !== false;
+        const expensesReady = body.expensesReady !== false;
         setState({
           status: "ready",
           data: {
@@ -66,9 +69,21 @@ export function useSupervisorToday(enabled: boolean, refreshKey: string): Superv
             assignments: Array.isArray(body.assignments) ? body.assignments : [],
             dayCloses: Array.isArray(body.dayCloses) ? body.dayCloses : [],
             expenses: Array.isArray(body.expenses) ? body.expenses : [],
-            expensesReady: body.expensesReady !== false,
+            paymentsReady,
+            expensesReady,
           },
         });
+        // Misma puerta que el cobrador: day_cash_figure de la base, no cifra local vieja.
+        const refs = [
+          ...new Set(
+            (Array.isArray(body.dayCloses) ? body.dayCloses : [])
+              .map((row) => String(row.collectorRef || "").trim())
+              .filter(Boolean),
+          ),
+        ];
+        if (refs.length > 0) {
+          void Promise.all(refs.map((ref) => refreshCloudDayCashFigure(ref, body.date)));
+        }
       } catch (error) {
         console.error("supervisor-today", error);
         if (!alive) return;

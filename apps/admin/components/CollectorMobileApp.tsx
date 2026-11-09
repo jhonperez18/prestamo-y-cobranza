@@ -720,6 +720,11 @@ export function CollectorMobileApp({
   /** Caja M/T + Inicial desde la base: no pintar CIE local fantasma (5.428k). */
   const [dayCashFigureEpoch, setDayCashFigureEpoch] = useState(0);
   useEffect(() => {
+    const onFigure = () => setDayCashFigureEpoch((n) => n + 1);
+    window.addEventListener("nexo-day-cash-figure", onFigure);
+    return () => window.removeEventListener("nexo-day-cash-figure", onFigure);
+  }, []);
+  useEffect(() => {
     let alive = true;
     void Promise.all([
       import("@/lib/cloud-day-cash-figure"),
