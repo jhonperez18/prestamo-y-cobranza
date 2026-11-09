@@ -28,6 +28,8 @@ type Props = {
   dateLabel: string;
   visits: DailyCollectionAssignment[];
   expenses: RouteExpenseLine[];
+  /** Si hay total en pantalla pero aún no llegan los renglones GAS- a este aparato. */
+  expensesHintTotal?: number;
   payments: PaymentRow[];
   cobradoCount: number;
   visitTotal: number;
@@ -87,6 +89,7 @@ export function CollectorClosedDayReview({
   dateLabel,
   visits,
   expenses,
+  expensesHintTotal = 0,
   payments,
   cobradoCount,
   visitTotal,
@@ -163,7 +166,11 @@ export function CollectorClosedDayReview({
 
       {detail === "gastos" ? (
         gastoLines.length === 0 ? (
-          <p className="collector-closed-review-empty">Sin gastos registrados.</p>
+          <p className="collector-closed-review-empty">
+            {expensesHintTotal > 0
+              ? `Total ${money(expensesHintTotal)} · el detalle de gastos no está en este aparato.`
+              : "Sin gastos registrados."}
+          </p>
         ) : (
           <ul className="collector-closed-review-list">
             {gastoLines.map((line, index) => (

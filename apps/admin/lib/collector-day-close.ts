@@ -434,9 +434,15 @@ export function expensesForCollectorDay(
 ): RouteExpenseLine[] {
   const closeRef = dayCloseRef(collectorRef, date);
   const closed = closes.find((row) => row.ref === closeRef);
-  if (closed) return closed.expenses.filter((row) => row.amount > 0);
   const draft = findDayExpenseDraft(drafts, collectorRef, date);
-  return draft?.expenses.filter((row) => row.amount > 0) ?? [];
+  const draftLines = (draft?.expenses ?? []).filter((row) => (Number(row.amount) || 0) > 0);
+  const closeLines = (closed?.expenses ?? []).filter((row) => (Number(row.amount) || 0) > 0);
+  // CIE sellado = historia: manda su lista.
+  if (closed && !closed.provisional) return closeLines;
+  // Día abierto / CIE provisional (síntesis con expenses: []): viven los GAS- del draft.
+  // Si el provisional ganaba, el supervisor veía total (nube) y lista vacía.
+  if (draftLines.length > 0) return draftLines;
+  return closeLines;
 }
 
 /** Hoy y sin CIE- sellado del cobrador: lo prestado se lee de la ficha (`liveDay`). */

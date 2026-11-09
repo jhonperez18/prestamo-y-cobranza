@@ -1118,12 +1118,16 @@ function SupervisorClientFicha({
   onBack,
   showingPrevious = false,
   onTogglePrevious,
+  loading = false,
+  loadFailed = false,
 }: {
   report: ReturnType<typeof buildLoanReport> | null;
   clientName?: string;
   onBack: () => void;
   showingPrevious?: boolean;
   onTogglePrevious?: () => void;
+  loading?: boolean;
+  loadFailed?: boolean;
 }) {
   const shareRootRef = useRef<HTMLDivElement>(null);
   const [sharing, setSharing] = useState(false);
@@ -1181,9 +1185,13 @@ function SupervisorClientFicha({
     }
   }
 
-  const emptyHint = showingPrevious
-    ? "Sin préstamo anterior."
-    : "Sin préstamo activo actual.";
+  const emptyHint = loadFailed
+    ? "No se pudo cargar la ficha. Los cobros siguen en la base; vuelve a abrir."
+    : loading
+      ? "Cargando ficha…"
+      : showingPrevious
+        ? "Sin préstamo anterior."
+        : "Sin préstamo activo actual.";
 
   return (
     <div
@@ -3390,6 +3398,27 @@ export function SupervisorMobileApp({
     if (ledger?.chain && isPlanillaCashChainPrimary(openRoute.routeName)) {
       return ledger.m.gastoLines;
     }
+    // A / N (caja propia): mismos renglones que independentRouteDay, no el gate «solo primaria».
+    if (isIndependentSaldoRoute(openRoute.routeName)) {
+      const day = independentRouteDay(
+        {
+          collectorRef: openRoute.collectorRef,
+          collectorName: openRoute.collectorName,
+          date: today,
+          payments,
+          loans,
+          clients,
+          collectors,
+          assignments: todayAssignments,
+          dayCloses: dayClosesLive,
+          dayExpenseDrafts: expensesLive,
+          planillaCashCloses: [],
+          monthCloses: [],
+        },
+        openRoute.routeName,
+      );
+      return day.gastoLines;
+    }
     if (!openRouteScope.isPrimary) return [];
     const raw = expensesForCollectorDay(
       openRoute.collectorRef,
@@ -3405,6 +3434,11 @@ export function SupervisorMobileApp({
     today,
     dayClosesLive,
     expensesLive,
+    payments,
+    loans,
+    clients,
+    collectors,
+    todayAssignments,
   ]);
   const openRouteNequiDays = useMemo(() => {
     if (!openRoute) return [];
@@ -5114,12 +5148,20 @@ export function SupervisorMobileApp({
   const clientesLoanSynced = clientesLoanClient
     ? currentActiveLoan(clientesLoanClient.ref, loans, paymentsLive)
     : null;
-  const openSheetLoanRef =
-    view === "prestamos" ? prestamoFichaRef || "" : clientesLoanSynced?.ref || "";
-  const openSheetFicha = useLoanFichaBook(openSheetLoanRef);
   const clientesPreviousLoan = clientesLoanClient
     ? previousLoanForClient(clientesLoanClient.ref, loans, paymentsLive)
     : null;
+  /**
+   * Ficha = lectura de la base (`useLoanFichaBook`).
+   * P.A también: el aparato suele no traer cobros viejos y dejaba un solo movimiento.
+   */
+  const openSheetLoanRef =
+    view === "prestamos"
+      ? prestamoFichaRef || ""
+      : clientesFichaShowPrevious
+        ? clientesPreviousLoan?.ref || ""
+        : clientesLoanSynced?.ref || "";
+  const openSheetFicha = useLoanFichaBook(openSheetLoanRef);
   const clientesCurrentPdfReport = useMemo(() => {
     if (!clientesLoanSynced || !clientesLoanClient) return null;
     const fromBase = openSheetFicha.book?.loan.ref === clientesLoanSynced.ref ? openSheetFicha.book : null;
@@ -5132,16 +5174,27 @@ export function SupervisorMobileApp({
   }, [assignmentsLive, clientesLoanClient, clientesLoanSynced, openSheetFicha.book, paymentsWithEvidence]);
   const clientesPreviousPdfReport = useMemo(() => {
     if (!clientesPreviousLoan || !clientesLoanClient) return null;
+    const fromBase =
+      openSheetFicha.book?.loan.ref === clientesPreviousLoan.ref ? openSheetFicha.book : null;
+    // Sin libro de la base no pintamos la copia local a medias (caso P.A = un solo cobro).
+    if (!fromBase) return null;
     return buildLoanReport(
-      clientesPreviousLoan,
+      fromBase.loan,
       clientesLoanClient,
-      livePayments(paymentsWithEvidence),
+      fromBase.payments,
       assignmentsLive,
     );
-  }, [assignmentsLive, clientesLoanClient, clientesPreviousLoan, paymentsWithEvidence]);
+  }, [assignmentsLive, clientesLoanClient, clientesPreviousLoan, openSheetFicha.book]);
   const clientesPdfReport = clientesFichaShowPrevious
     ? clientesPreviousPdfReport
     : clientesCurrentPdfReport;
+  const clientesFichaLoading =
+    clientesFichaShowPrevious &&
+    Boolean(clientesPreviousLoan) &&
+    !openSheetFicha.failed &&
+    openSheetFicha.book?.loan.ref !== clientesPreviousLoan?.ref;
+  const clientesFichaLoadFailed =
+    clientesFichaShowPrevious && Boolean(clientesPreviousLoan) && openSheetFicha.failed;
   const clientesDetailOpen = Boolean(clientesLoanClientRef);
   const clientesFichaClientName = clientesLoanClient
     ? `${clientesLoanClient.name} ${clientesLoanClient.lastName}`.trim()
@@ -6175,7 +6228,11 @@ export function SupervisorMobileApp({
                   >
                     <p className="collector-cierre-drop-title">{CIERRE_LIST_TITLE[cierreListKind]}</p>
                     {cierreListLines.length === 0 ? (
-                      <p className="collector-cierre-drop-empty">{CIERRE_LIST_EMPTY[cierreListKind]}</p>
+                      <p className="collector-cierre-drop-empty">
+                        {cierreListKind === "gastos" && cierreGastosTotal > 0
+                          ? `Total ${money(cierreGastosTotal)} · el detalle de gastos no está en este aparato.`
+                          : CIERRE_LIST_EMPTY[cierreListKind]}
+                      </p>
                     ) : (
                       <ul>
                         {cierreListLines.map((line) => (
@@ -6263,6 +6320,7 @@ export function SupervisorMobileApp({
               dateLabel={todayDisplay}
               visits={openAssignments}
               expenses={openRouteExpenses}
+              expensesHintTotal={openRoute.gastosHoy}
               payments={paymentsWithEvidence}
               cobradoCount={openRoute.done}
               visitTotal={openRoute.planilla}
@@ -8799,6 +8857,8 @@ export function SupervisorMobileApp({
               report={clientesPdfReport}
               clientName={clientesFichaClientName}
               showingPrevious={clientesFichaShowPrevious}
+              loading={clientesFichaLoading}
+              loadFailed={clientesFichaLoadFailed}
               onTogglePrevious={() => {
                 setClientesFichaShowPrevious((prev) => !prev);
               }}

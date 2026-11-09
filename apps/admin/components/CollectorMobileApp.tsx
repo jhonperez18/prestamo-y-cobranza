@@ -1646,6 +1646,17 @@ export function CollectorMobileApp({
     () => splitDayExpenses(planillaExpenses),
     [planillaExpenses],
   );
+  /**
+   * Misma fuente para botón «Lo que gastó» y la lista al tocarlo.
+   * A/N: renglones de ownRouteDay (antes el gate planillaOwnsMovements tapaba A).
+   * M/T: gastoLines del libro de esa planilla.
+   */
+  const homeGastoLines = useMemo(() => {
+    if (ownRouteDay) return ownRouteDay.gastoLines;
+    if (chainPlanillaDay) return chainPlanillaDay.gastoLines;
+    if (planillaOwnsMovements) return dayExpenseSplit.otros;
+    return [];
+  }, [ownRouteDay, chainPlanillaDay, planillaOwnsMovements, dayExpenseSplit.otros]);
 
   const closedPlanilla = useMemo(
     () =>
@@ -2938,15 +2949,19 @@ export function CollectorMobileApp({
               <p className="collector-cierre-drop-empty">Sin préstamos ese día.</p>
             )
           ) : homeCierreKind === "gastos" ? (
-            planillaOwnsMovements && dayExpenseSplit.otros.length > 0 ? (
+            homeGastoLines.length > 0 ? (
               <CollectorDayCloseExtras
                 dateLabel={queue.dateLabel}
                 planillaRows={[]}
                 prestamos={[]}
                 prestamosTotal={0}
-                otrosGastos={dayExpenseSplit.otros}
+                otrosGastos={homeGastoLines}
                 otrosTotal={topGastos}
               />
+            ) : topGastos > 0 ? (
+              <p className="collector-cierre-drop-empty">
+                Total {money(topGastos)} · el detalle de gastos no está en este aparato.
+              </p>
             ) : (
               <p className="collector-cierre-drop-empty">Sin gastos ese día.</p>
             )

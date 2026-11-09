@@ -512,9 +512,13 @@ export function independentRouteDay(
       };
     }
   }
-  // Hoy: nube si ya llegó; si no, libro local vivo.
+  // Hoy abierto: el aparato mueve el desglose (gastos / préstamos / efectivo).
+  // La nube no rebobina esos renglones (caso: botón «Lo que gastó» en 0 y lista con filas,
+  // o al revés: total de route_own_box sin GAS- en el celular).
+  // Día sellado / pasado: manda route_own_box (arriba).
+  const sealedToday = sealedRouteClosing(src, route, date);
   const cloudLive = getCloudRouteOwnBox(src.collectorRef, date, route);
-  if (cloudLive) {
+  if (cloudLive && sealedToday != null) {
     const cloudClosing = pesos(cloudLive.saldo);
     const cloudOpening = Number.isFinite(cloudLive.opening)
       ? pesos(cloudLive.opening)
@@ -530,6 +534,26 @@ export function independentRouteDay(
       anchored: true,
       opening: cloudOpening,
       closing: cloudClosing,
+      adjustment,
+    };
+  }
+  if (cloudLive && date === todayIso) {
+    // Día vivo: Inicial/Saldo pueden anclarse en la nube; el movimiento lo llevan los renglones.
+    const cloudOpening = Number.isFinite(cloudLive.opening)
+      ? pesos(cloudLive.opening)
+      : pesos(
+          pesos(cloudLive.saldo) -
+            cloudLive.efectivo +
+            cloudLive.prestamos +
+            cloudLive.gastos,
+        );
+    return {
+      ...today,
+      route,
+      date,
+      anchored: true,
+      opening: cloudOpening,
+      closing: pesos(cloudOpening + today.efectivo - today.gastos - today.prestamos),
       adjustment,
     };
   }

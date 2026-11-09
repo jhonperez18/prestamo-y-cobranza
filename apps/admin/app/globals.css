@@ -11119,6 +11119,23 @@
     .bank-records-table th:not(.col-picker-cell) {
       text-align: center !important;
     }
+    /* Ficha préstamo (quad): Concepto/Detalle siempre a la izquierda — gana al centrado global. */
+    table.data.loan-spec-table th,
+    table.data.loan-spec-table td,
+    table.data.loan-spec-table .col-titles th,
+    table.data.loan-spec-table .loan-label-col,
+    table.data.loan-spec-table .loan-val-col,
+    table.data.loan-spec-table td.money,
+    table.data.loan-spec-table .loan-val-col.money,
+    table.mini-grid.loan-spec-table th,
+    table.mini-grid.loan-spec-table td,
+    table.mini-grid.loan-spec-table .col-titles th,
+    table.mini-grid.loan-spec-table .loan-label-col,
+    table.mini-grid.loan-spec-table .loan-val-col,
+    table.mini-grid.loan-spec-table td.money,
+    table.mini-grid.loan-spec-table .loan-val-col.money {
+      text-align: left !important;
+    }
     /* Excepciones de alineación: nombre izquierda; montos derecha (no fechas). */
     table.data th.is-nombre,
     table.data td.is-nombre,
@@ -14271,22 +14288,26 @@
     .loan-spec-table .loan-label-col {
       color: #3d5349;
       font-weight: 600;
-      text-align: left;
+      text-align: left !important;
       white-space: normal;
       padding-right: 6px;
     }
-    .loan-spec-table .loan-val-col {
+    .loan-spec-table .loan-val-col,
+    .loan-spec-table .loan-val-col.money,
+    .loan-spec-table td.money {
       color: #14201b;
       font-weight: 600;
-      text-align: left;
+      text-align: left !important;
       font-variant-numeric: tabular-nums;
       padding-left: 0;
       padding-right: 14px;
     }
+    table.data.loan-spec-table .col-titles th,
+    table.data.loan-spec-table thead .loan-val-col,
+    table.data.loan-spec-table thead .loan-label-col,
     .loan-spec-table.quad .col-titles th:nth-child(2),
-    .loan-spec-table.quad .col-titles th:nth-child(4),
-    .loan-spec-table thead .loan-val-col {
-      text-align: left;
+    .loan-spec-table.quad .col-titles th:nth-child(4) {
+      text-align: left !important;
     }
     .loan-spec-table.quad tbody td:nth-child(2) {
       border-right: 1px solid #dce8e2;
@@ -14300,12 +14321,13 @@
     .loan-spec-table.quad .col-titles th:nth-child(3) {
       padding-left: 12px;
     }
+    /* Solo filas de subtotal bajo subhead (formulario), no la ficha de lectura. */
     .loan-spec-table.quad .loan-spec-subhead th:nth-child(4) {
-      text-align: right;
+      text-align: right !important;
     }
     .loan-spec-table.quad tbody tr.loan-spec-subhead ~ tr td:nth-child(4),
     .loan-spec-table.quad tbody tr.loan-spec-subhead ~ tr td.loan-val-col:last-child {
-      text-align: right;
+      text-align: right !important;
     }
     .loan-spec-table.compact td,
     .loan-spec-table.compact th {
