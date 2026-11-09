@@ -128,7 +128,7 @@ async function gasPrestamoTotals(
     }
     const out = { m: 0, t: 0 };
     for (const line of prestamoLines) {
-      const amount = pesos(line.amount);
+      const amount = pesos(Number(line.amount) || 0);
       if (!(amount > 0)) continue;
       const marked = String(line.route || "")
         .trim()
