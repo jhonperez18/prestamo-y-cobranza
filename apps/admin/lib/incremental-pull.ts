@@ -82,3 +82,26 @@ export function withSinceParam(path: string, since: string | null): string {
   if (!since) return path;
   return `${path}${path.includes("?") ? "&" : "?"}since=${encodeURIComponent(since)}`;
 }
+
+/**
+ * Suelta todos los cortes `nexo-pull-cursor:*`.
+ * La próxima sync parte limpia (anteayer / completa si vacío), sin arrastrar un since viejo.
+ */
+export function clearAllPullCursors(): number {
+  if (typeof window === "undefined") return 0;
+  let dropped = 0;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i) || "";
+      if (key.startsWith(CURSOR_PREFIX)) keys.push(key);
+    }
+    for (const key of keys) {
+      window.localStorage.removeItem(key);
+      dropped += 1;
+    }
+  } catch (error) {
+    console.error("clear-pull-cursors", error);
+  }
+  return dropped;
+}

@@ -23,6 +23,12 @@ El navegador suelta service worker y Cache Storage en cada arranque. Si había a
  `?since=` (completa solo vacío / reparar / cada hora). Prohibido bloquear minutos esperando
  el archivo entero. Saldos A/N de días sellados: `route_own_box` (no recálculo local).
 4. Cobrador / supervisor: igual — local primero; la nube atrás.
+5. **Al día, sin arrastre:**
+   - `cleanDevicePath` (cleanEpoch en release): warms de sesión, cortes
+     `nexo-pull-cursor:*`, detalle ruta+día, `-bak`, SW/Cache Storage +
+     cobrador `releaseClosedDaysOnDevice` / supervisor `trimSupervisorLiveLocalCache`.
+   - Tuneup diario: warms + detalle + soltar días fuera de ventana viva + `-bak`.
+     **No** borra cortes de pull (egress). Colas y CIE no se tocan.
 
 ## Prohibido
 
@@ -31,3 +37,4 @@ El navegador suelta service worker y Cache Storage en cada arranque. Si había a
   Las copias `-bak` sí se sueltan: la nube las rehace.
 - Un reload en bucle: una recarga por sesión alcanza.
 - Mergear el snapshot de storage encima del estado React dejando filas que ya no están en storage.
+- Dejar cortes de pull o fotos de sesión viejas pintando cifras de otro día.

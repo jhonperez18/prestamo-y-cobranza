@@ -1493,6 +1493,26 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
       updateSrc.includes("cleanDevicePath"),
     true,
   );
+  const pathCleanSrc = readFileSync(new URL("../lib/client-path-clean.ts", import.meta.url), "utf8");
+  const tuneupSrc = readFileSync(new URL("../lib/device-daily-tuneup.ts", import.meta.url), "utf8");
+  expect(
+    "Camino limpio (cleanEpoch): suelta warms, cortes de pull y días fuera de ventana viva",
+    pathCleanSrc.includes("clearAllPullCursors") &&
+      pathCleanSrc.includes("clearSessionMoneyWarms") &&
+      pathCleanSrc.includes("releaseStaleLiveDeviceRows") &&
+      pathCleanSrc.includes("clearCloudRouteDayDetail") &&
+      pathCleanSrc.includes("releaseClosedDaysOnDevice") &&
+      pathCleanSrc.includes("trimSupervisorLiveLocalCache"),
+    true,
+  );
+  expect(
+    "Tuneup diario: al día sin re-bajar (no borra cortes de pull)",
+    tuneupSrc.includes("clearSessionMoneyWarms") &&
+      tuneupSrc.includes("releaseStaleLiveDeviceRows") &&
+      tuneupSrc.includes("clearCloudRouteDayDetail") &&
+      !tuneupSrc.includes("clearAllPullCursors"),
+    true,
+  );
   const mobileSrc = readFileSync(new URL("../components/CollectorMobileApp.tsx", import.meta.url), "utf8");
   expect(
     "Cobrador: «Crear préstamo» cierra el formulario antes de registrar",

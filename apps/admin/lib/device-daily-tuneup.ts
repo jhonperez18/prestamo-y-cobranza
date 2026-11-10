@@ -1,9 +1,15 @@
 /**
  * Puesta a punto del aparato en su primera sincronización del día (Bogotá):
- * subir lo pendiente → soltar copias que la nube rehace.
- * No vuelve a bajar el archivo: la copia ya está en el aparato.
- * Nunca borra cobros, clientes, préstamos, cierres ni colas de subida.
+ * subir lo pendiente → soltar copias que la nube rehace → soltar fotos de sesión
+ * → cobrador/supervisor sueltan días fuera de la ventana viva.
+ * Los cortes `nexo-pull-cursor:*` se quedan (egress): solo los suelta cleanEpoch.
+ * No vuelve a bajar el archivo entero. Nunca borra colas ni CIE.
  */
+import {
+  clearSessionMoneyWarms,
+  releaseStaleLiveDeviceRows,
+} from "@/lib/client-path-clean";
+import { clearCloudRouteDayDetail } from "@/lib/cloud-route-day-detail";
 import { businessTodayIso } from "@/lib/business-timezone";
 import { compactRebuildableStorage } from "@/lib/demo-persist";
 
@@ -24,12 +30,27 @@ export function deviceTuneupDueDay(now = new Date()): string {
   return readTuneupDay() === today ? "" : today;
 }
 
-/** Libera el cupo antes de la bajada completa del día. */
+/** Libera el cupo y deja el aparato al día antes de la bajada. */
 export function compactDeviceForDay() {
   try {
     compactRebuildableStorage();
   } catch (error) {
-    console.error("device-tuneup", error);
+    console.error("device-tuneup-rebuildable", error);
+  }
+  try {
+    clearSessionMoneyWarms();
+  } catch (error) {
+    console.error("device-tuneup-session", error);
+  }
+  try {
+    clearCloudRouteDayDetail();
+  } catch (error) {
+    console.error("device-tuneup-route-day", error);
+  }
+  try {
+    releaseStaleLiveDeviceRows();
+  } catch (error) {
+    console.error("device-tuneup-live-rows", error);
   }
 }
 
