@@ -1654,7 +1654,7 @@ export function CollectorMobileApp({
     () => splitDayExpenses(planillaExpenses),
     [planillaExpenses],
   );
-  /** Local primero; si el total de nube no trae renglones, useDayExpenseDetail baja Supabase. */
+  /** Local si suma el total de pantalla; si no cuadra, useDayExpenseDetail baja Supabase. */
   const localHomeGastoLines = useMemo(() => {
     const own = ownRouteDay?.gastoLines ?? [];
     if (own.length) return own;
@@ -2984,6 +2984,8 @@ export function CollectorMobileApp({
                 prestamos={homePrestamoLines}
                 prestamosTotal={loQuePresto}
               />
+            ) : dayExpenseDetail.loading ? (
+              <p className="collector-cierre-drop-empty">Leyendo préstamos…</p>
             ) : loQuePresto > 0 ? (
               <p className="collector-cierre-drop-empty">
                 Total {money(loQuePresto)} · el detalle de préstamos no está en este aparato.
@@ -3001,6 +3003,8 @@ export function CollectorMobileApp({
                 otrosGastos={homeGastoLines}
                 otrosTotal={topGastos}
               />
+            ) : dayExpenseDetail.loading ? (
+              <p className="collector-cierre-drop-empty">Leyendo gastos…</p>
             ) : topGastos > 0 ? (
               <p className="collector-cierre-drop-empty">
                 Total {money(topGastos)} · el detalle de gastos no está en este aparato.

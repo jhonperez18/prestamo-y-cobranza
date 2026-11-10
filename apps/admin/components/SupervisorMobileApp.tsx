@@ -6284,9 +6284,11 @@ export function SupervisorMobileApp({
                     <p className="collector-cierre-drop-title">{CIERRE_LIST_TITLE.gastos}</p>
                     {cierreListLines.length === 0 ? (
                       <p className="collector-cierre-drop-empty">
-                        {cierreGastosTotal > 0
-                          ? `Total ${money(cierreGastosTotal)} · el detalle de gastos no está en este aparato.`
-                          : CIERRE_LIST_EMPTY.gastos}
+                        {cierreExpenseDetail.loading
+                          ? "Leyendo gastos…"
+                          : cierreGastosTotal > 0
+                            ? `Total ${money(cierreGastosTotal)} · el detalle de gastos no está en este aparato.`
+                            : CIERRE_LIST_EMPTY.gastos}
                       </p>
                     ) : (
                       <ul>

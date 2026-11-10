@@ -2,8 +2,10 @@
 
 /**
  * Detalle de los botones «Lo que gastó» / «Lo que prestó».
- * Local si ya está completo; si no, una sola bajada a Supabase (GAS-/CIE).
  * Misma puerta en cobrador, supervisor y vista PC.
+ *
+ * Total de pantalla (nube / libro) manda. Si la lista local está vacía o su suma
+ * no cuadra con ese total, se baja GAS- de Supabase una vez y se pinta ese detalle.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
@@ -28,7 +30,7 @@ export type DayExpenseDetailInput = {
   localPrestamos: RouteExpenseLine[];
   /** Cuadre / historial a la vista: hay que completar detalle si falta. */
   enabled: boolean;
-  /** Total en pantalla: si > 0 y lista vacía, obligar bajada. */
+  /** Total en pantalla: si no cuadra con la lista local, obligar bajada. */
   gastosTotal: number;
   prestamosTotal: number;
 };
@@ -39,14 +41,29 @@ export type DayExpenseDetail = {
   loading: boolean;
 };
 
+function linesSum(lines: RouteExpenseLine[]): number {
+  let total = 0;
+  for (const line of lines) total += Math.trunc(Number(line.amount) || 0);
+  return total;
+}
+
+/** Lista local sirve solo si suma exactamente el total de pantalla. */
+function localMatchesTotal(lines: RouteExpenseLine[], total: number): boolean {
+  const want = Math.trunc(Number(total) || 0);
+  if (want <= 0) return lines.length === 0;
+  return lines.length > 0 && linesSum(lines) === want;
+}
+
 export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDetail {
   const [remoteGastos, setRemoteGastos] = useState<RouteExpenseLine[]>([]);
   const [remotePrestamos, setRemotePrestamos] = useState<RouteExpenseLine[]>([]);
   const [loading, setLoading] = useState(false);
   const reqRef = useRef(0);
 
-  const needGastos = input.gastosTotal > 0 && input.localGastos.length === 0;
-  const needPrestamos = input.prestamosTotal > 0 && input.localPrestamos.length === 0;
+  const gastosOk = localMatchesTotal(input.localGastos, input.gastosTotal);
+  const prestamosOk = localMatchesTotal(input.localPrestamos, input.prestamosTotal);
+  const needGastos = input.gastosTotal > 0 && !gastosOk;
+  const needPrestamos = input.prestamosTotal > 0 && !prestamosOk;
   const needFetch = input.enabled && (needGastos || needPrestamos);
 
   useEffect(() => {
@@ -101,12 +118,43 @@ export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDet
     needPrestamos,
   ]);
 
-  return useMemo(
-    () => ({
-      gastoLines: input.localGastos.length ? input.localGastos : remoteGastos,
-      prestamoLines: input.localPrestamos.length ? input.localPrestamos : remotePrestamos,
+  return useMemo(() => {
+    const pick = (
+      ok: boolean,
+      local: RouteExpenseLine[],
+      remote: RouteExpenseLine[],
+      total: number,
+      wantRemote: boolean,
+    ): RouteExpenseLine[] => {
+      if (Math.trunc(Number(total) || 0) <= 0) return [];
+      if (ok) return local;
+      if (remote.length) return remote;
+      // Mientras baja o si la nube no trajo renglones: no pintar lista incompleta.
+      if (wantRemote && (loading || remote.length === 0)) return [];
+      return local;
+    };
+    return {
+      gastoLines: pick(gastosOk, input.localGastos, remoteGastos, input.gastosTotal, needGastos),
+      prestamoLines: pick(
+        prestamosOk,
+        input.localPrestamos,
+        remotePrestamos,
+        input.prestamosTotal,
+        needPrestamos,
+      ),
       loading,
-    }),
-    [input.localGastos, input.localPrestamos, remoteGastos, remotePrestamos, loading],
-  );
+    };
+  }, [
+    gastosOk,
+    prestamosOk,
+    needGastos,
+    needPrestamos,
+    input.localGastos,
+    input.localPrestamos,
+    input.gastosTotal,
+    input.prestamosTotal,
+    remoteGastos,
+    remotePrestamos,
+    loading,
+  ]);
 }
