@@ -31,13 +31,23 @@ export type ChainAuditRow = {
   collectorRef: string;
   collectorName: string;
   yesterday: string;
+  /**
+   * Cadena: CIE `cash_float`. Independiente: caja propia del día ancla
+   * (la cifra que arrastra el Inicial).
+   */
   yesterdayCieFloat: number;
-  /** Fórmula del día ancla (Caja). Debe = CIE / caja sellada. */
+  /** CIE `cash_float` de la nube (siempre). En cadena = yesterdayCieFloat. */
+  cloudCieFloat: number;
+  /** Fórmula del día ancla (Caja). Debe = CIE / caja sellada (salvo AJUSTE). */
   yesterdayFormula: number | null;
   todayOpening: number | null;
   /** Informativo: caja viva de M (= Inicial T) y saldo final si se cerrara ahora. */
   todayMClosing: number;
   todayFinal: number;
+  /** CIE/caja sellada cuadra (fórmula o AJUSTE autorizado). */
+  sealOk: boolean;
+  /** Inicial de hoy = cierre del día ancla. */
+  openingOk: boolean;
   ok: boolean;
   kind: "chain" | "independent";
 };
@@ -110,16 +120,20 @@ export async function runServerChainAudit(now = new Date()): Promise<ChainAuditR
         adjReal != null && Number.isFinite(adjReal) ? Number(adjReal) : yesterdayFormula;
       const sealOk =
         expectedSeal == null || expectedSeal === yesterdayCieFloat;
+      const openingOk = todayOpening === yesterdayCieFloat;
       rows.push({
         collectorRef: collector.ref,
         collectorName: collector.name,
         yesterday: priorDate,
         yesterdayCieFloat,
+        cloudCieFloat: yesterdayCieFloat,
         yesterdayFormula,
         todayOpening,
         todayMClosing: fig.mClosing,
         todayFinal: fig.dayFinal,
-        ok: todayOpening === yesterdayCieFloat && sealOk,
+        sealOk,
+        openingOk,
+        ok: openingOk && sealOk,
         kind: "chain",
       });
       continue;
@@ -130,16 +144,21 @@ export async function runServerChainAudit(now = new Date()): Promise<ChainAuditR
     // Caja del día = fórmula. CIE debe guardar esa misma Caja (prod).
     const formulaOk = own.yesterdayFormula === own.yesterdayClosing;
     const cieOk = yesterdayCieFloat === own.yesterdayClosing;
+    const sealOk = formulaOk && cieOk;
+    const openingOk = own.todayOpening === own.yesterdayClosing;
     rows.push({
       collectorRef: collector.ref,
       collectorName: collector.name,
       yesterday: priorDate,
       yesterdayCieFloat: own.yesterdayClosing,
+      cloudCieFloat: yesterdayCieFloat,
       yesterdayFormula: own.yesterdayFormula,
       todayOpening: own.todayOpening,
       todayMClosing: own.todayClosing,
       todayFinal: own.todayClosing,
-      ok: own.todayOpening === own.yesterdayClosing && formulaOk && cieOk,
+      sealOk,
+      openingOk,
+      ok: openingOk && sealOk,
       kind: "independent",
     });
   }
@@ -204,16 +223,21 @@ export function auditChainFromState(
       const adjReal = cie.cashAdjustment?.real;
       const expectedSeal =
         adjReal != null && Number.isFinite(adjReal) ? Number(adjReal) : yesterdayFormula;
+      const sealOk = expectedSeal === yesterdayCieFloat;
+      const openingOk = todayOpening === yesterdayCieFloat;
       rows.push({
         collectorRef: collector.ref,
         collectorName: collector.name,
         yesterday: priorDate,
         yesterdayCieFloat,
+        cloudCieFloat: yesterdayCieFloat,
         yesterdayFormula,
         todayOpening,
         todayMClosing: ledger.mClosing,
         todayFinal: ledger.dayFinal,
-        ok: todayOpening === yesterdayCieFloat && expectedSeal === yesterdayCieFloat,
+        sealOk,
+        openingOk,
+        ok: openingOk && sealOk,
         kind: "chain",
       });
       continue;
@@ -226,21 +250,28 @@ export function auditChainFromState(
     const tDay = independentRouteDay(todaySrc, route);
     const formulaSum =
       yDay.opening + yDay.efectivo - yDay.prestamos - yDay.gastos;
+    const cloudCieFloat = Number(cie.cashFloat) || 0;
     // Con AJUSTE autorizado, closing = real; si no, closing = fórmula.
     const formulaOk =
       yDay.adjustment?.real != null
         ? Number(yDay.adjustment.real) === yDay.closing
         : formulaSum === yDay.closing;
+    const cieOk = cloudCieFloat === yDay.closing;
+    const sealOk = formulaOk && cieOk;
+    const openingOk = tDay.opening === yDay.closing;
     rows.push({
       collectorRef: collector.ref,
       collectorName: collector.name,
       yesterday: priorDate,
       yesterdayCieFloat: yDay.closing,
+      cloudCieFloat,
       yesterdayFormula: formulaSum,
       todayOpening: tDay.opening,
       todayMClosing: tDay.closing,
       todayFinal: tDay.closing,
-      ok: tDay.opening === yDay.closing && formulaOk,
+      sealOk,
+      openingOk,
+      ok: openingOk && sealOk,
       kind: "independent",
     });
   }

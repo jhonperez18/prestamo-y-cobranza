@@ -1161,7 +1161,10 @@ const nAudit = auditChainFromState(
 const nAuditRow = nAudit.rows.find((row) => row.collectorRef === YES.ref);
 expect("N: auditoría no usa el CIE neto como Inicial", nAuditRow?.yesterdayCieFloat ?? null, 1_000_000);
 expect("N: Inicial de hoy = caja de ayer (historial)", nAuditRow?.todayOpening ?? null, 1_000_000);
-expect("N: arrastre del historial OK", nAuditRow?.ok ?? null, true);
+expect("N: arrastre del Inicial OK", nAuditRow?.openingOk ?? null, true);
+expect("N: CIE neto ≠ Caja = alarma (Salvavidas)", nAuditRow?.sealOk ?? null, false);
+expect("N: CIE nube quedó en el neto", nAuditRow?.cloudCieFloat ?? null, 50_000);
+expect("N: auditoría falla si CIE ≠ Caja", nAuditRow?.ok ?? null, false);
 expect("N: no entra a la regla M↔T", nAuditRow?.kind ?? null, "independent");
 const { defaultMobileRouteDate, defaultOpenPlanillaRoute, collectorHasOpenRouteSheet, keepOpenPlanillaRoute } = await import("@/lib/collector-mobile");
 const dayOpt = (date, closed, total) => ({
@@ -1530,7 +1533,38 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
     "Candado prod: CIE del ancla = fórmula Caja (verify falla si no)",
     chainAuditSrc.includes("yesterdayFormula") &&
       chainAuditSrc.includes("expectedSeal") &&
-      chainAuditSrc.includes("sealOk"),
+      chainAuditSrc.includes("sealOk") &&
+      chainAuditSrc.includes("cloudCieFloat") &&
+      chainAuditSrc.includes("openingOk"),
+    true,
+  );
+  const lifelineSrc = readFileSync(
+    new URL("../lib/server-business-lifeline.ts", import.meta.url),
+    "utf8",
+  );
+  const lifelineRouteSrc = readFileSync(
+    new URL("../app/api/ops/business-lifeline/route.ts", import.meta.url),
+    "utf8",
+  );
+  const lifelineSheetSrc = readFileSync(
+    new URL("../components/SupervisorBusinessLifelineSheet.tsx", import.meta.url),
+    "utf8",
+  );
+  const supervisorMobileSrc = readFileSync(
+    new URL("../components/SupervisorMobileApp.tsx", import.meta.url),
+    "utf8",
+  );
+  expect(
+    "Salvavidas: módulo + API + hoja dedicada (fuera de Caja/Banco/Nequi)",
+    lifelineSrc.includes("runBusinessLifeline") &&
+      lifelineSrc.includes("fromChainRow") &&
+      lifelineSrc.includes("liveDayAlarms") &&
+      lifelineSrc.includes("cajaFormulaSaldo") &&
+      lifelineRouteSrc.includes("runBusinessLifeline") &&
+      lifelineSheetSrc.includes("SupervisorBusinessLifelineSheet") &&
+      supervisorMobileSrc.includes('"salvavidas"') &&
+      supervisorMobileSrc.includes("SupervisorBusinessLifelineSheet") &&
+      supervisorMobileSrc.includes("supervisor-lifeline-entry"),
     true,
   );
   expect(

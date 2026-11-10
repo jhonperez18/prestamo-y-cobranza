@@ -1,0 +1,38 @@
+# Salvavidas del negocio — hoja de alarmas de Caja
+
+## Ley
+
+Hoja **aparte** en el supervisor (`Salvavidas`). No es Caja, Banco ni Nequi.
+Detecta descuadres con la **misma puerta** que `verify:prod` / `chain-audit`.
+
+Fórmula sagrada: `Caja = Inicial + efectivo − préstamos − gastos` (Banco no entra).
+CIE / Saldo sellado = Inicial del día siguiente.
+
+## Piezas
+
+| Pieza | Dónde |
+| --- | --- |
+| Detector | `lib/server-business-lifeline.ts` |
+| API | `GET /api/ops/business-lifeline` |
+| Tipos | `lib/business-lifeline-types.ts` |
+| Hoja | `SupervisorBusinessLifelineSheet` · vista `salvavidas` |
+| Entrada | INICIO → botón Salvavidas |
+
+## Qué detecta
+
+1. CIE ≠ fórmula del día ancla (respeta AJUSTE autorizado de T).
+2. CIE ≠ Caja propia (A/N).
+3. Inicial de hoy ≠ cierre sellado de ayer.
+4. Día vivo M/T/A/N: Caja ≠ fórmula (`day_cash_figure` / `route_own_box`).
+
+## Obligatorio
+
+1. Solo **lectura**. No escribe CIE, planilla ni saldos.
+2. Veredicto del **servidor**. El celular no inventa alarmas locales.
+3. Release falla si `chain-audit` o el salvavidas reportan descuadre.
+
+## Prohibido
+
+- Meter alarmas dentro de Caja / Banco / Nequi.
+- Pintar un descuadre “a ojo” sin pasar por la API.
+- Parchear la UI para esconder una alerta.

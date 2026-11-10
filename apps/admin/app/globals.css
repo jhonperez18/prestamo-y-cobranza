@@ -7422,6 +7422,188 @@
       flex-direction: column;
       gap: 12px;
     }
+    /* Salvavidas del negocio — hoja aparte (solo alarmas de Caja). */
+    .supervisor-lifeline-entry {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      margin: 0;
+      padding: 10px 12px;
+      border: 1px solid #c5d4cc;
+      border-radius: 10px;
+      background: #f4f8f6;
+      color: #14201b;
+      text-align: left;
+      cursor: pointer;
+    }
+    .supervisor-lifeline-entry.is-alarm {
+      border-color: #f59e0b;
+      background: #fff7ed;
+    }
+    .supervisor-lifeline-entry-title {
+      font-size: 14px;
+      font-weight: 750;
+      letter-spacing: 0.02em;
+    }
+    .supervisor-lifeline-entry-meta {
+      font-size: 12px;
+      font-weight: 650;
+      color: #3f5a4d;
+    }
+    .supervisor-lifeline-entry.is-alarm .supervisor-lifeline-entry-meta {
+      color: #9a3412;
+    }
+    .supervisor-lifeline {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 0 0 24px;
+      min-height: 0;
+    }
+    .supervisor-lifeline-head {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+    .supervisor-lifeline-back,
+    .supervisor-lifeline-refresh {
+      margin: 0;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid #c5d4cc;
+      background: #fff;
+      color: #14201b;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .supervisor-lifeline-refresh:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .supervisor-lifeline-titles {
+      min-width: 0;
+      text-align: center;
+    }
+    .supervisor-lifeline-titles h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 800;
+      color: #14201b;
+    }
+    .supervisor-lifeline-titles p {
+      margin: 2px 0 0;
+      font-size: 11px;
+      color: #3f5a4d;
+    }
+    .supervisor-lifeline-empty,
+    .supervisor-lifeline-error,
+    .supervisor-lifeline-foot {
+      margin: 0;
+      font-size: 13px;
+      color: #3f5a4d;
+    }
+    .supervisor-lifeline-error {
+      color: #9a3412;
+      font-weight: 650;
+    }
+    .supervisor-lifeline-ok,
+    .supervisor-lifeline-summary {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid #a7f3d0;
+      background: #ecfdf5;
+    }
+    .supervisor-lifeline-ok b,
+    .supervisor-lifeline-summary b {
+      font-size: 15px;
+      color: #14532d;
+    }
+    .supervisor-lifeline-ok span,
+    .supervisor-lifeline-summary span {
+      font-size: 12px;
+      color: #166534;
+    }
+    .supervisor-lifeline-summary {
+      border-color: #fdba74;
+      background: #fff7ed;
+    }
+    .supervisor-lifeline-summary b {
+      color: #9a3412;
+    }
+    .supervisor-lifeline-summary span {
+      color: #9a3412;
+    }
+    .supervisor-lifeline-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .supervisor-lifeline-card {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid #fdba74;
+      background: #fffbeb;
+    }
+    .supervisor-lifeline-card.is-critical {
+      border-color: #f87171;
+      background: #fef2f2;
+    }
+    .supervisor-lifeline-card-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+    }
+    .supervisor-lifeline-badge {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: #9a3412;
+    }
+    .supervisor-lifeline-card.is-critical .supervisor-lifeline-badge {
+      color: #991b1b;
+    }
+    .supervisor-lifeline-date {
+      font-size: 11px;
+      font-weight: 650;
+      color: #57534e;
+    }
+    .supervisor-lifeline-card h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 750;
+      color: #14201b;
+    }
+    .supervisor-lifeline-money {
+      margin: 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: #1c1917;
+    }
+    .supervisor-lifeline-diff {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 700;
+      color: #9a3412;
+    }
+    .supervisor-lifeline-detail {
+      margin: 0;
+      font-size: 12px;
+      color: #57534e;
+    }
     .supervisor-day-boards {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));

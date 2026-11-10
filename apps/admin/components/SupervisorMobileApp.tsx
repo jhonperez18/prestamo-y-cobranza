@@ -13,6 +13,8 @@ import { CloseClock, Pill } from "@/components/ui";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import { CollectorClosedDayReview } from "@/components/CollectorClosedDayReview";
 import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
+import { SupervisorBusinessLifelineSheet } from "@/components/SupervisorBusinessLifelineSheet";
+import type { BusinessLifelineReport } from "@/lib/business-lifeline-types";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { buildLoanReport } from "@/lib/loan-report";
 import { shareLoanFichaCapture } from "@/lib/loan-ficha-share";
@@ -356,7 +358,8 @@ type SupervisorView =
   | "banco"
   | "nuevo"
   | "clientes"
-  | "prestamos";
+  | "prestamos"
+  | "salvavidas";
 type NuevoMode = "menu" | "cliente" | "prestamo" | "renovar" | "gasto";
 type CierreListKind =
   | "prestamos"
@@ -421,6 +424,7 @@ const SUPERVISOR_VIEWS: SupervisorView[] = [
   "clientes",
   "informe",
   "prestamos",
+  "salvavidas",
 ];
 
 function readSupervisorNav(): { view: SupervisorView; openRouteRef: string | null } {
@@ -1507,6 +1511,8 @@ export function SupervisorMobileApp({
   const navIntent = useMemo(() => createNavIntent(), []);
   /** Regla: al ingresar siempre INICIO (no restaurar otra pestaña). */
   const [view, setView] = useState<SupervisorView>("inicio");
+  /** Contador del Salvavidas (solo lectura del servidor). */
+  const [lifelineAlarmCount, setLifelineAlarmCount] = useState(0);
   const supervisorDirect = isSupervisorLiveDevice();
   // Siempre bajar el día (también en preview del panel). Sin eso, el 01/11
   // pintaba CIE viejos / A en 0 mientras la base ya tenía el cierre de ayer.
@@ -1778,6 +1784,28 @@ export function SupervisorMobileApp({
     setPrestamosSearch("");
     setPrestamosRouteFilter(null);
     writeSupervisorNav("inicio", null);
+  }, [supervisor.ref]);
+
+  /** Salvavidas: cuenta de alarmas en INICIO (misma puerta que verify). */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+    const pull = async () => {
+      try {
+        const res = await fetch("/api/ops/business-lifeline", { cache: "no-store" });
+        const body = (await res.json()) as BusinessLifelineReport;
+        if (cancelled || !body || !Array.isArray(body.alarms)) return;
+        setLifelineAlarmCount(body.alarms.length);
+      } catch (error) {
+        console.error("supervisor-lifeline-badge", error);
+      }
+    };
+    void pull();
+    const timer = window.setInterval(() => void pull(), 5 * 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [supervisor.ref]);
 
   const coverage = useMemo(
@@ -5059,7 +5087,12 @@ export function SupervisorMobileApp({
 
   /** INICIO solo por gesto intencional: cierra todo y queda en home. */
   function goHome() {
-    if (view === "inicio" && !openRouteRef && !prestamoFichaRef && !clientesLoanClientRef) {
+    if (
+      view === "inicio" &&
+      !openRouteRef &&
+      !prestamoFichaRef &&
+      !clientesLoanClientRef
+    ) {
       return;
     }
     suppressGhostClick(420);
@@ -9144,6 +9177,26 @@ export function SupervisorMobileApp({
             </>
           )}
         </section>
+      ) : view === "salvavidas" ? (
+        <SupervisorBusinessLifelineSheet
+          onClose={() => {
+            suppressGhostClick(420);
+            setView("inicio");
+            void (async () => {
+              try {
+                const res = await fetch("/api/ops/business-lifeline", {
+                  cache: "no-store",
+                });
+                const body = (await res.json()) as BusinessLifelineReport;
+                if (body && Array.isArray(body.alarms)) {
+                  setLifelineAlarmCount(body.alarms.length);
+                }
+              } catch (error) {
+                console.error("supervisor-lifeline-badge", error);
+              }
+            })();
+          }}
+        />
       ) : (
         <section className="supervisor-mobile-section supervisor-mobile-home">
           {connectionRow && connectionByRoute[connectionRow.routeRef] ? (
@@ -9168,6 +9221,26 @@ export function SupervisorMobileApp({
                   {connBanner.text}
                 </p>
               ) : null}
+              <button
+                type="button"
+                className={
+                  lifelineAlarmCount > 0
+                    ? "supervisor-lifeline-entry is-alarm"
+                    : "supervisor-lifeline-entry"
+                }
+                onClick={() => {
+                  suppressGhostClick(420);
+                  goToView("salvavidas");
+                }}
+                title="Salvavidas del negocio · descuadres de Caja"
+              >
+                <span className="supervisor-lifeline-entry-title">Salvavidas</span>
+                <span className="supervisor-lifeline-entry-meta">
+                  {lifelineAlarmCount > 0
+                    ? `${lifelineAlarmCount} alerta${lifelineAlarmCount === 1 ? "" : "s"}`
+                    : "Caja en orden"}
+                </span>
+              </button>
               <div className="supervisor-route-boards">
                 {liquidaciones.map((row, index) => (
                   <RouteBoardCard

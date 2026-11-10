@@ -158,6 +158,29 @@ async function assertCashChain() {
   console.log("Regla de inicio OK (CIE = fórmula = Inicial hoy)");
 }
 
+/** Salvavidas: misma verdad + día vivo (M/T/A/N ≠ fórmula). */
+async function assertBusinessLifeline() {
+  console.log("Comprobando Salvavidas del negocio…");
+  let data;
+  try {
+    data = await fetchJson(`${DOMAIN}/api/ops/business-lifeline`);
+  } catch (err) {
+    fail(`business-lifeline → ${err?.message || err}`);
+  }
+  const alarms = Array.isArray(data.alarms) ? data.alarms : [];
+  for (const row of alarms) {
+    console.error(
+      `  ALARMA ${row.severity || "?"} ${row.collectorName || row.collectorRef || "—"} · ${row.date || "—"} · ${row.title || row.code}`,
+    );
+  }
+  if (!data.ok || alarms.length) {
+    fail(
+      `Salvavidas: ${alarms.length} descuadre${alarms.length === 1 ? "" : "s"} en ${data.businessDate ?? "hoy"}.${data.error ? ` ${data.error}` : ""}`,
+    );
+  }
+  console.log(`Salvavidas OK → 0 alarmas (${data.businessDate ?? "hoy"})`);
+}
+
 /**
  * Saldo Banco/Nequi = libro completo al día del sello = Informe sellado.
  * Si el aparato o una fórmula paralela inventa otra cifra, release falla.
@@ -260,6 +283,7 @@ async function verify(expectedSha, { markClean = false } = {}) {
   await assertServiceRole();
   await assertCatalogHealth();
   await assertCashChain();
+  await assertBusinessLifeline();
   await assertPoolVisibleMatchesSeal();
   if (markClean) {
     await bumpClientCleanEpoch();
