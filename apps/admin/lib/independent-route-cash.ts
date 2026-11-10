@@ -27,7 +27,7 @@
  * No toca la cadena: ni `cashFloat` de M↔T, ni `cashAdjustment` de T, ni PCE-.
  */
 import { businessTodayIso } from "@/lib/business-timezone";
-import { mergeRouteCashAdjustments } from "@/lib/cash-adjustment";
+import { isOwnBoxSealFootprint, mergeRouteCashAdjustments } from "@/lib/cash-adjustment";
 import { sameRoute } from "@/lib/client-route-order";
 import { getCloudRouteOwnBox } from "@/lib/cloud-route-own-box";
 import { assignmentRouteName } from "@/lib/collector-dispatch-sync";
@@ -391,9 +391,11 @@ export function attachRouteCashAdjustments<Row extends HistoryRowLike>(
 ): Array<{ row: Row; adjustment: RouteCashAdjustment | null }> {
   return rows.map((row) => {
     const adjustment = findRouteCashAdjustment(dayCloses, collectorRef, row.date, route);
-    return adjustment
-      ? { row: { ...row, saldo: adjustment.calculated }, adjustment }
-      : { row, adjustment: null };
+    // Huella del sello A/N («cierre propio…»): no es ajuste autorizado → no se pinta.
+    if (!adjustment || isOwnBoxSealFootprint(adjustment)) {
+      return { row, adjustment: null };
+    }
+    return { row: { ...row, saldo: adjustment.calculated }, adjustment };
   });
 }
 
@@ -451,12 +453,15 @@ export function independentRouteDay(
   const date = isoOf(src.date);
   const today = routeMovement({ ...src, date }, route);
   const todayIso = businessTodayIso();
-  const adjustment = findRouteCashAdjustment(
+  const rawAdjustment = findRouteCashAdjustment(
     src.dayCloses,
     src.collectorRef,
     date,
     route,
   );
+  // Huella del sello A/N ≠ ajuste autorizado: no se expone como «ajuste» en pantalla.
+  const adjustment =
+    rawAdjustment && !isOwnBoxSealFootprint(rawAdjustment) ? rawAdjustment : null;
   // Día pasado: primero route_own_box (caché), luego libro RPC. Nunca recálculo local
   // incompleto (caso N 31/10: GASTO 0 · Saldo 2.610.500 con gastos reales 1.574.000).
   if (date < todayIso) {
@@ -645,7 +650,9 @@ export function commitRouteCashAdjustment(
   if (!by) return { ok: false, error: "Falta quién hace el ajuste." };
 
   const cie = adjustWindow.cie;
-  const prev = cie.routeCashAdjustments?.find((adj) => sameRoute(adj.route, input.route));
+  const prevRaw = cie.routeCashAdjustments?.find((adj) => sameRoute(adj.route, input.route));
+  const prev =
+    prevRaw && !isOwnBoxSealFootprint(prevRaw) ? prevRaw : undefined;
   const calculated = pesos(prev?.calculated ?? input.calculated);
   if (!prev && pesos(real) === calculated) {
     return { ok: false, error: "El saldo real es igual al calculado: no hay nada que ajustar." };
@@ -659,6 +666,7 @@ export function commitRouteCashAdjustment(
     at: now.toISOString(),
     reason,
   };
+  // Fuera la huella del sello y cualquier ajuste viejo de esa ruta: manda el autorizado.
   const others = (cie.routeCashAdjustments ?? []).filter(
     (adj) => !sameRoute(adj.route, input.route),
   );

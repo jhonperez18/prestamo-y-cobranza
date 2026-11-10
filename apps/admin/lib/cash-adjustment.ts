@@ -214,6 +214,24 @@ export function attachCashAdjustments<T extends { date: string; saldo: number }>
   });
 }
 
+/**
+ * Marca automática del sello A/N en día de cadena (`cierre propio … no pisa CIE`).
+ * No es ajuste autorizado del supervisor: no se pinta en historial ni bloquea nada.
+ */
+export function isOwnBoxSealFootprint(
+  adj: Pick<CashAdjustment, "reason" | "calculated" | "real"> | null | undefined,
+): boolean {
+  if (!adj) return false;
+  const reason = String(adj.reason || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "");
+  if (reason.includes("cierre propio") && reason.includes("no pisa cie")) return true;
+  if (/cierre propio\s+[an]\b/.test(reason)) return true;
+  return false;
+}
+
 /** Nota visible del renglón de ajuste. */
 export function cashAdjustmentNote(adj: CashAdjustment): string {
   const at = adj.at ? ` el ${isoDayLabel(adj.at)}` : "";
