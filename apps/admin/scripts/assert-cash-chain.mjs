@@ -5323,8 +5323,16 @@ console.log("— Cupo del aparato —");
   );
   const bogota = (hhmm) => new Date(`2026-10-07T${hhmm}:00-05:00`);
   const cie = { ref: "CIE-COB-0-2026-10-07", collectorRef: "COB-0", date: "2026-10-07", closedAt, cashFloat: 7_104_000 };
+  const cieCompact = {
+    ref: "CIE-COB-1-20261109",
+    collectorRef: "COB-1",
+    date: "2026-11-09",
+    closedAt: "2026-11-09T23:35:00.000Z",
+    cashFloat: 378_500,
+  };
+  const bogotaN = (hhmm) => new Date(`2026-11-09T${hhmm}:00-05:00`);
   expect(
-    "Ventana: T/A/M sí (hoy, antes de 23:30, con CIE-); 23:30 no; sin CIE- no; con ajuste no",
+    "Ventana: T/A/M sí (hoy, antes de 23:30, con CIE-); 23:30 no; sin CIE- no; con ajuste no; N con CIE compacto sí",
     [
       sheetReopenWindow("COB-0", "T", [cie], [], bogota("19:45")).open,
       sheetReopenWindow("COB-0", "A", [cie], [], bogota("19:45")).open,
@@ -5338,8 +5346,9 @@ console.log("— Cupo del aparato —");
         [],
         bogota("19:45"),
       ).open,
+      sheetReopenWindow("COB-1", "N", [cieCompact], [], bogotaN("19:45")).open,
     ].join(","),
-    "true,true,true,false,false,false",
+    "true,true,true,false,false,false,true",
   );
   const liveT = dayCloseReopensFromRow(reopened);
   expect(

@@ -13,7 +13,7 @@
 import { businessClockParts } from "@/lib/business-timezone";
 import { sameRoute } from "@/lib/client-route-order";
 import {
-  dayCloseRef,
+  findCollectorDayClose,
   normalizeHistoryDate,
   type CollectorDayCloseRecord,
 } from "@/lib/collector-day-close";
@@ -151,10 +151,8 @@ export function secondarySheetClosedToday(
 ): boolean {
   if (!collectorRef) return false;
   const date = businessClockParts(now).dateIso;
-  const cie = dayCloses.find(
-    (row) => row.ref === dayCloseRef(collectorRef, date) && !row.provisional,
-  );
-  if (!cie) return false;
+  const cie = findCollectorDayClose([...dayCloses], collectorRef, date);
+  if (!cie || cie.provisional) return false;
   return !liveReopensFor(collectorRef, date, reopens, dayCloses).some((reopen) =>
     sameRoute(reopen.route, PLANILLA_CASH_CHAIN_SECONDARY),
   );
@@ -249,8 +247,8 @@ export function liveReopensFor(
   reopens: readonly DayCloseReopen[],
   dayCloses: readonly CollectorDayCloseRecord[],
 ): DayCloseReopen[] {
-  const cie = dayCloses.find((row) => row.ref === dayCloseRef(collectorRef, date) && !row.provisional);
-  const closedMs = ms(cie?.closedAt);
+  const cie = findCollectorDayClose([...dayCloses], collectorRef, date);
+  const closedMs = cie && !cie.provisional ? ms(cie.closedAt) : NaN;
   return reopens.filter(
     (reopen) =>
       reopen.collectorRef === collectorRef &&
@@ -280,16 +278,17 @@ export function sheetReopenWindow(
   if (clock.minutesSinceMidnight >= REOPEN_CUTOFF_MINUTES) {
     return { open: false, reason: "Después de las 23:30 la jornada la sella el corte automático." };
   }
-  const ref = dayCloseRef(collectorRef, clock.dateIso);
-  const cie = dayCloses.find((row) => row.ref === ref && !row.provisional);
-  if (cie?.cashAdjustment) {
+  // CIE en nube puede ser `CIE-…-20261109` o `CIE-…-2026-11-09`: misma puerta que el libro.
+  const cie = findCollectorDayClose([...dayCloses], collectorRef, clock.dateIso);
+  const cieLive = cie && !cie.provisional ? cie : null;
+  if (cieLive?.cashAdjustment) {
     return { open: false, reason: "El saldo de hoy ya se ajustó a la caja contada: no se reabre." };
   }
   const live = liveReopensFor(collectorRef, clock.dateIso, reopens, dayCloses);
   if (live.some((reopen) => sameRoute(reopen.route, route))) {
     return { open: false, reason: `La hoja ${routeKey(route)} ya está reabierta.` };
   }
-  if (cie || live.length) {
+  if (cieLive || live.length) {
     return { open: true, date: clock.dateIso };
   }
   // Sin CIE-: solo M puede reabrirse (cerró y T aún no).
