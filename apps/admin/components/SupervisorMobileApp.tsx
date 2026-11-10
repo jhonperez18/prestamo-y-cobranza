@@ -3457,6 +3457,29 @@ export function SupervisorMobileApp({
     collectors,
     todayAssignments,
   ]);
+  /** Hoy: si el total de Gastos no cuadra con la copia local, baja la puerta ruta+día. */
+  const openRouteExpenseDetail = useDayExpenseDetail({
+    collectorRef: openRoute?.collectorRef || "",
+    collectorName: openRoute?.collectorName,
+    date: today,
+    route: openRoute?.routeName,
+    chainCollector: Boolean(
+      openRoute &&
+        (isPlanillaCashChainPrimary(openRoute.routeName) ||
+          isPlanillaCashChainSecondary(openRoute.routeName)),
+    ),
+    clients,
+    loans,
+    localGastos: openRouteExpenses,
+    localPrestamos: [],
+    enabled: Boolean(openRoute && detailMode === "gastos"),
+    gastosTotal: openRoute?.gastosHoy ?? 0,
+    prestamosTotal: 0,
+  });
+  const openRouteGastosLines =
+    openRouteExpenseDetail.gastoLines.length > 0
+      ? openRouteExpenseDetail.gastoLines
+      : openRouteExpenses;
   const openRouteNequiDays = useMemo(() => {
     if (!openRoute) return [];
     return digitalPoolRegisterDays({
@@ -6287,7 +6310,7 @@ export function SupervisorMobileApp({
                         {cierreExpenseDetail.loading
                           ? "Leyendo gastos…"
                           : cierreGastosTotal > 0
-                            ? `Total ${money(cierreGastosTotal)} · el detalle de gastos no está en este aparato.`
+                            ? `Total ${money(cierreGastosTotal)} · sin renglones en la nube para esta ruta.`
                             : CIERRE_LIST_EMPTY.gastos}
                       </p>
                     ) : (
@@ -6316,7 +6339,7 @@ export function SupervisorMobileApp({
                     <p className="collector-cierre-drop-empty">
                       {cierreExpenseDetail.loading
                         ? "Leyendo préstamos…"
-                        : `Total ${money(cierrePrestamosListTotal)} · el detalle de préstamos no está en este aparato.`}
+                        : `Total ${money(cierrePrestamosListTotal)} · sin renglones en la nube para esta ruta.`}
                     </p>
                   ) : (
                     <p className="collector-cierre-drop-empty">
@@ -6395,8 +6418,9 @@ export function SupervisorMobileApp({
               detail="gastos"
               dateLabel={todayDisplay}
               visits={openAssignments}
-              expenses={openRouteExpenses}
+              expenses={openRouteGastosLines}
               expensesHintTotal={openRoute.gastosHoy}
+              expensesLoading={openRouteExpenseDetail.loading}
               payments={paymentsWithEvidence}
               cobradoCount={openRoute.done}
               visitTotal={openRoute.planilla}
@@ -6407,7 +6431,7 @@ export function SupervisorMobileApp({
               detail="cobros"
               dateLabel={todayDisplay}
               visits={openAssignments}
-              expenses={openRouteExpenses}
+              expenses={openRouteGastosLines}
               payments={paymentsWithEvidence}
               cobroPayments={openRouteCobroPayments}
               loans={loans}

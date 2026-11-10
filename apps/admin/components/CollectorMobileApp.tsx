@@ -2993,7 +2993,7 @@ export function CollectorMobileApp({
               <p className="collector-cierre-drop-empty">Leyendo préstamos…</p>
             ) : loQuePresto > 0 ? (
               <p className="collector-cierre-drop-empty">
-                Total {money(loQuePresto)} · el detalle de préstamos no está en este aparato.
+                Total {money(loQuePresto)} · sin renglones en la nube para esta ruta.
               </p>
             ) : (
               <p className="collector-cierre-drop-empty">Sin préstamos ese día.</p>
@@ -3012,7 +3012,7 @@ export function CollectorMobileApp({
               <p className="collector-cierre-drop-empty">Leyendo gastos…</p>
             ) : topGastos > 0 ? (
               <p className="collector-cierre-drop-empty">
-                Total {money(topGastos)} · el detalle de gastos no está en este aparato.
+                Total {money(topGastos)} · sin renglones en la nube para esta ruta.
               </p>
             ) : (
               <p className="collector-cierre-drop-empty">Sin gastos ese día.</p>

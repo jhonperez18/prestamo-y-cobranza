@@ -30,6 +30,8 @@ type Props = {
   expenses: RouteExpenseLine[];
   /** Si hay total en pantalla pero aún no llegan los renglones GAS- a este aparato. */
   expensesHintTotal?: number;
+  /** Bajando la puerta ruta+día. */
+  expensesLoading?: boolean;
   payments: PaymentRow[];
   cobradoCount: number;
   visitTotal: number;
@@ -90,6 +92,7 @@ export function CollectorClosedDayReview({
   visits,
   expenses,
   expensesHintTotal = 0,
+  expensesLoading = false,
   payments,
   cobradoCount,
   visitTotal,
@@ -167,9 +170,11 @@ export function CollectorClosedDayReview({
       {detail === "gastos" ? (
         gastoLines.length === 0 ? (
           <p className="collector-closed-review-empty">
-            {expensesHintTotal > 0
-              ? `Total ${money(expensesHintTotal)} · el detalle de gastos no está en este aparato.`
-              : "Sin gastos registrados."}
+            {expensesLoading
+              ? "Leyendo gastos…"
+              : expensesHintTotal > 0
+                ? `Total ${money(expensesHintTotal)} · sin renglones en la nube para esta ruta.`
+                : "Sin gastos registrados."}
           </p>
         ) : (
           <ul className="collector-closed-review-list">

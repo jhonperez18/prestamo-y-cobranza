@@ -36,6 +36,14 @@ export function commitDayExpenseDraft(
   const draft = buildDayExpenseDraft(input);
   const next = upsertDayExpenseDraft(drafts, draft);
   const savedLocal = writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, next);
+  // Detalle ruta+día: soltar foto vieja para que el botón vuelva a leer la nube.
+  void import("@/lib/cloud-route-day-detail")
+    .then((mod) => {
+      mod.clearCloudRouteDayDetail(draft.collectorRef, draft.date);
+    })
+    .catch((error) => {
+      console.error("clear-route-day-detail", error);
+    });
   return { draft, drafts: next, savedLocal, inCloud: mirrorDayExpenseNow(draft) };
 }
 
