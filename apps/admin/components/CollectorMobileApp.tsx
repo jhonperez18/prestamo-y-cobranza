@@ -2384,7 +2384,12 @@ export function CollectorMobileApp({
           ) : null}
         </div>
         </div>
-        {!chromeLocked || (planillaRoutePins.length > 1 && todayHasOpenSheet) ? (
+        {/*
+          Pines M/T/A siempre visibles si hay varias rutas: jornada cerrada no debe
+          dejar solo M (cuadre e historial de T/A inaccesibles).
+          KPIs de cabecera solo con hoja abierta.
+        */}
+        {!chromeLocked || planillaRoutePins.length > 1 ? (
           <div className="collector-mobile-header-bar">
             {!chromeLocked ? (
               <div
@@ -2431,7 +2436,7 @@ export function CollectorMobileApp({
                 </div>
               </>
             ) : null}
-            {planillaRoutePins.length > 1 && (!showHomeCuadre || todayHasOpenSheet) ? (
+            {planillaRoutePins.length > 1 ? (
               <div
                 className="collector-mobile-route-pins"
                 role="group"
