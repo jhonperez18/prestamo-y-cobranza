@@ -348,6 +348,11 @@ type Props = {
   /** Reabrir la hoja de hoy de un cobrador (cerró por error). M solo, o M+T si T ya cerró. */
   onReopenSheet?: (input: SheetReopenRequest) => Promise<boolean>;
   onLogout?: () => void;
+  /**
+   * Salvavidas: ensayo solo en vista móvil del panel (preview).
+   * La app real del supervisor (Carlos) no lo muestra.
+   */
+  showLifeline?: boolean;
 };
 
 type SupervisorView =
@@ -1505,6 +1510,7 @@ export function SupervisorMobileApp({
   onAdjustTCash,
   onReopenSheet,
   onLogout,
+  showLifeline = false,
 }: Props) {
   const today = todayIso();
   const todayDisplay = isoToDisplay(today);
@@ -1786,9 +1792,12 @@ export function SupervisorMobileApp({
     writeSupervisorNav("inicio", null);
   }, [supervisor.ref]);
 
-  /** Salvavidas: cuenta de alarmas en INICIO (misma puerta que verify). */
+  /** Salvavidas: solo si el ensayo lo activa (vista móvil del panel). */
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!showLifeline || typeof window === "undefined") {
+      setLifelineAlarmCount(0);
+      return;
+    }
     let cancelled = false;
     const pull = async () => {
       try {
@@ -1806,7 +1815,12 @@ export function SupervisorMobileApp({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [supervisor.ref]);
+  }, [supervisor.ref, showLifeline]);
+
+  /** Sin ensayo: no quedar atrapado en la hoja Salvavidas. */
+  useEffect(() => {
+    if (!showLifeline && view === "salvavidas") setView("inicio");
+  }, [showLifeline, view]);
 
   const coverage = useMemo(
     () => routeCoverageSummaries(collectors, routes, paymentsLive, clients, assignmentsLive, today),
@@ -9177,7 +9191,7 @@ export function SupervisorMobileApp({
             </>
           )}
         </section>
-      ) : view === "salvavidas" ? (
+      ) : view === "salvavidas" && showLifeline ? (
         <SupervisorBusinessLifelineSheet
           onClose={() => {
             suppressGhostClick(420);
@@ -9240,7 +9254,13 @@ export function SupervisorMobileApp({
             </Fragment>
           )}
           {connectionRow && connectionByRoute[connectionRow.routeRef] ? null : (
-          <footer className="supervisor-mobile-salir-foot is-with-lifeline">
+          <footer
+            className={
+              showLifeline
+                ? "supervisor-mobile-salir-foot is-with-lifeline"
+                : "supervisor-mobile-salir-foot"
+            }
+          >
             <div className="supervisor-mobile-salir-row">
               {onLogout ? (
                 <button
@@ -9270,26 +9290,28 @@ export function SupervisorMobileApp({
                 </b>
               </div>
             </div>
-            <button
-              type="button"
-              className={
-                lifelineAlarmCount > 0
-                  ? "supervisor-lifeline-entry is-under-total is-alarm"
-                  : "supervisor-lifeline-entry is-under-total"
-              }
-              onClick={() => {
-                suppressGhostClick(420);
-                goToView("salvavidas");
-              }}
-              title="Salvavidas del negocio · descuadres de Caja"
-            >
-              <span className="supervisor-lifeline-entry-title">Salvavidas</span>
-              <span className="supervisor-lifeline-entry-meta">
-                {lifelineAlarmCount > 0
-                  ? `${lifelineAlarmCount} alerta${lifelineAlarmCount === 1 ? "" : "s"}`
-                  : "Caja en orden"}
-              </span>
-            </button>
+            {showLifeline ? (
+              <button
+                type="button"
+                className={
+                  lifelineAlarmCount > 0
+                    ? "supervisor-lifeline-entry is-under-total is-alarm"
+                    : "supervisor-lifeline-entry is-under-total"
+                }
+                onClick={() => {
+                  suppressGhostClick(420);
+                  goToView("salvavidas");
+                }}
+                title="Salvavidas del negocio · descuadres de Caja"
+              >
+                <span className="supervisor-lifeline-entry-title">Salvavidas</span>
+                <span className="supervisor-lifeline-entry-meta">
+                  {lifelineAlarmCount > 0
+                    ? `${lifelineAlarmCount} alerta${lifelineAlarmCount === 1 ? "" : "s"}`
+                    : "Caja en orden"}
+                </span>
+              </button>
+            ) : null}
           </footer>
           )}
         </section>

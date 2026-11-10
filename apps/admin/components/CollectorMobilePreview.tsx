@@ -298,6 +298,7 @@ export function CollectorMobilePreview({
                   bankAccounts={bankAccounts}
                   bankMovements={bankMovements}
                   miscPayments={miscPayments}
+                  showLifeline
                   onCreateRouteClient={
                     onCreateRouteClient
                       ? (draft) => onCreateRouteClient(draft, supervisor.name)

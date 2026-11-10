@@ -16,7 +16,8 @@ CIE / Saldo sellado = Inicial del día siguiente.
 | API | `GET /api/ops/business-lifeline` |
 | Tipos | `lib/business-lifeline-types.ts` |
 | Hoja | `SupervisorBusinessLifelineSheet` · vista `salvavidas` |
-| Entrada | INICIO → botón Salvavidas |
+| Entrada | Vista móvil del panel (preview supervisor) · `showLifeline` |
+| Ensayo | **No** en la app real del supervisor (Carlos). Solo preview del sistema. |
 
 ## Qué detecta
 

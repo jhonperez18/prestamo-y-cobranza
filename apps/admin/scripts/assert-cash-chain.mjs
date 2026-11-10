@@ -1565,7 +1565,12 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
       supervisorMobileSrc.includes('"salvavidas"') &&
       supervisorMobileSrc.includes("SupervisorBusinessLifelineSheet") &&
       supervisorMobileSrc.includes("supervisor-lifeline-entry") &&
-      supervisorMobileSrc.includes("supervisor-lifeline-entry is-under-total"),
+      supervisorMobileSrc.includes("supervisor-lifeline-entry is-under-total") &&
+      supervisorMobileSrc.includes("showLifeline") &&
+      !readFileSync(
+        new URL("../components/SupervisorShell.tsx", import.meta.url),
+        "utf8",
+      ).includes("showLifeline"),
     true,
   );
   expect(
