@@ -208,7 +208,8 @@ function latestAnchorBefore(
   }
   for (const day of [...days].sort().reverse()) {
     const adj = findRouteCashAdjustment(dayCloses, collectorRef, day, route);
-    if (adj) return { date: day, real: pesos(adj.real) };
+    // Huella «cierre propio» ≠ ancla: Inicial = Saldo del día anterior de verdad.
+    if (adj && !isOwnBoxSealFootprint(adj)) return { date: day, real: pesos(adj.real) };
   }
   return null;
 }
