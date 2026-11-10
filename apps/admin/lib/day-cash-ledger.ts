@@ -365,7 +365,10 @@ type CobradoHistoryRow = {
 };
 
 /**
- * Historial de ruta: columna Cobros = `routeCobradoDayTotal` (misma cifra que Total / COBROS).
+ * Historial de caja (supervisor + cobrador): columna Cobros = solo efectivo.
+ * Banco / Nequi no entran: viven en su historial. Así la fila lee
+ *   Saldo = Inicial + Cobros − Préstamo − Gasto
+ * sin cifra paralela. El botón Total / COBROS (efectivo+digital) es otra puerta.
  * No recalcula saldo ni gasto ni préstamo.
  */
 export function withRouteCobradoHistory<Row extends CobradoHistoryRow>(
@@ -378,8 +381,8 @@ export function withRouteCobradoHistory<Row extends CobradoHistoryRow>(
     const breakdown = routeCobradoBreakdown(day, routeName);
     return {
       ...row,
-      cobro: breakdown.total,
-      ...(row.cobroEfectivo != null ? { cobroEfectivo: breakdown.efectivo } : {}),
+      cobro: breakdown.efectivo,
+      cobroEfectivo: breakdown.efectivo,
     };
   });
 }

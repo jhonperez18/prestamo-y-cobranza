@@ -2572,6 +2572,14 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     true,
   );
   expect(
+    "Historial caja: columna Cobros = solo efectivo (Banco no entra)",
+    ledgerSrc.includes("withRouteCobradoHistory") &&
+      /cobro:\s*breakdown\.efectivo/.test(ledgerSrc) &&
+      !/cobro:\s*breakdown\.total/.test(ledgerSrc) &&
+      indepSrc.includes("cobrosCaja = pesos(day.efectivo)"),
+    true,
+  );
+  expect(
     "Registro Banco lista historial cobrado y prestado por día",
     bancoSrc.includes("is-cobrado-hist") &&
       bancoSrc.includes("is-prestado-hist") &&
@@ -4587,8 +4595,26 @@ console.log("— Bajada liviana —");
 console.log("— Informe: historial por ruta —");
 {
   const { informeRouteHistory } = await import("@/lib/informe-route-days");
-  const { routeCobradoDayTotal } = await import("@/lib/day-cash-ledger");
+  const { routeCobradoDayTotal, routeCobradoBreakdown, withRouteCobradoHistory } = await import(
+    "@/lib/day-cash-ledger",
+  );
   const hist = informeRouteHistory(baseT, [COB.ref], D, D);
+  const mBreak = routeCobradoBreakdown(baseT, "M");
+  const histCobros = withRouteCobradoHistory(
+    [{ date: D, cobro: 9_999_999, cobroEfectivo: 9_999_999 }],
+    baseT,
+    "M",
+  )[0];
+  expect(
+    "Historial caja · Cobros M = solo efectivo (no Total con Banco)",
+    histCobros.cobro,
+    mBreak.efectivo,
+  );
+  expect(
+    "Historial caja · Cobros M ≠ Total Cobrado (si hay digital)",
+    mBreak.total === mBreak.efectivo || histCobros.cobro !== mBreak.total,
+    true,
+  );
   const dayOf = (kind) => hist[kind].days.find((row) => row.date === D);
   expect("Informe · Préstamo M = libro M", dayOf("prestamo")?.M ?? null, ledgerT.m.prestamos);
   expect("Informe · Préstamo T = libro T", dayOf("prestamo")?.T ?? null, ledgerT.t.prestamos);

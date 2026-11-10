@@ -5,7 +5,7 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 
 | # | Tema | Estado | Cuándo / condición | Dónde |
 | --- | --- | --- | --- | --- |
-| 17 | **Puerta ruta+día** (apps cobrador/supervisor) | **HECHO 10/11** · raíz | Gastos·préstamos·efectivo·banco/nequi·N/P vía `/api/ops/route-day-detail`. Inicial/CIE intactos. Pendiente menor: columnas historial T listado + gastos Banco informe | `route-day-detail.mdc` |
+| 17 | **Puerta ruta+día** (apps cobrador/supervisor) | **HECHO 10/11** · raíz | Gastos·préstamos·efectivo·banco/nequi·N/P vía `/api/ops/route-day-detail`. Inicial/CIE intactos. Historial caja · Cobros = solo efectivo (Banco fuera). Pendiente menor: gastos Banco informe | `route-day-detail.mdc`, `day-cash-ledger.ts` |
 | 1 | **Limpieza candados float (Fase 4)** — asserts / `keepSealedCashFloat` / `cloud_cie_*` | **PENDIENTE** · dejado así | Solo a pedido. Todos los aparatos vivos ≥ build `07b24f3` (ideal `4c5db46`); ~1 semana estable; noche; commit aparte | `docs/fase-4-cierres.md`, `docs/inventario-candados.md`, `fases-dueno-dato.mdc` |
 | 2 | **Aparatos en build atrasado** | **Casi listo 02/11** · prod `e314561` | **Yesid OK** `e314561`. Falta reporte fresco: **Edgar** · **Carlos supervisor** (abrir app / esperar ≤2 min auto-update) | Configuración → Aparatos |
 | 3 | **Fase 2 · Realtime** — adoptar planilla solo desde Realtime (remate) | **HECHO 02/11** · `2fbb41a` · corte 2.4 | Cobro/anulación/panel/tardío ya no encolan planilla; otros por Realtime ops. N/P·Prestar·cierre siguen encolando | `docs/fase-2-cobros.md` |
