@@ -9240,25 +9240,42 @@ export function SupervisorMobileApp({
             </Fragment>
           )}
           {connectionRow && connectionByRoute[connectionRow.routeRef] ? null : (
-          <footer className="supervisor-mobile-salir-foot">
-            {onLogout ? (
-              <button
-                type="button"
-                className="supervisor-mobile-kpi is-salir on"
-                onClick={onLogout}
-                title="Salir del sistema"
+          <footer className="supervisor-mobile-salir-foot is-with-lifeline">
+            <div className="supervisor-mobile-salir-row">
+              {onLogout ? (
+                <button
+                  type="button"
+                  className="supervisor-mobile-kpi is-salir on"
+                  onClick={onLogout}
+                  title="Salir del sistema"
+                >
+                  <b>SALIR</b>
+                </button>
+              ) : (
+                <span className="supervisor-mobile-salir-spacer" aria-hidden />
+              )}
+              <div
+                className="supervisor-caja-hero is-row is-money-lg supervisor-inicio-total"
+                title="Saldo ruta T + ruta N + Banco"
+                aria-label={
+                  !chainMOpeningSettled || inicioTotalConT == null
+                    ? "Cargando total de cajas"
+                    : `Total ruta T más ruta N más Banco: ${money(inicioTotalConT, { symbol: false })}`
+                }
               >
-                <b>SALIR</b>
-              </button>
-            ) : (
-              <span className="supervisor-mobile-salir-spacer" aria-hidden />
-            )}
+                <b>
+                  {!chainMOpeningSettled || inicioTotalConT == null
+                    ? "…"
+                    : money(inicioTotalConT, { symbol: false })}
+                </b>
+              </div>
+            </div>
             <button
               type="button"
               className={
                 lifelineAlarmCount > 0
-                  ? "supervisor-lifeline-entry is-foot is-alarm"
-                  : "supervisor-lifeline-entry is-foot"
+                  ? "supervisor-lifeline-entry is-under-total is-alarm"
+                  : "supervisor-lifeline-entry is-under-total"
               }
               onClick={() => {
                 suppressGhostClick(420);
@@ -9267,27 +9284,12 @@ export function SupervisorMobileApp({
               title="Salvavidas del negocio · descuadres de Caja"
             >
               <span className="supervisor-lifeline-entry-title">Salvavidas</span>
-              {lifelineAlarmCount > 0 ? (
-                <span className="supervisor-lifeline-entry-meta">
-                  {lifelineAlarmCount}
-                </span>
-              ) : null}
+              <span className="supervisor-lifeline-entry-meta">
+                {lifelineAlarmCount > 0
+                  ? `${lifelineAlarmCount} alerta${lifelineAlarmCount === 1 ? "" : "s"}`
+                  : "Caja en orden"}
+              </span>
             </button>
-            <div
-              className="supervisor-caja-hero is-row is-money-lg supervisor-inicio-total"
-              title="Saldo ruta T + ruta N + Banco"
-              aria-label={
-                !chainMOpeningSettled || inicioTotalConT == null
-                  ? "Cargando total de cajas"
-                  : `Total ruta T más ruta N más Banco: ${money(inicioTotalConT, { symbol: false })}`
-              }
-            >
-              <b>
-                {!chainMOpeningSettled || inicioTotalConT == null
-                  ? "…"
-                  : money(inicioTotalConT, { symbol: false })}
-              </b>
-            </div>
           </footer>
           )}
         </section>

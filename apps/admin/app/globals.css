@@ -5099,6 +5099,18 @@
       gap: 10px;
       padding: 14px 16px 18px;
     }
+    .supervisor-mobile-salir-foot.is-with-lifeline {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+    }
+    .supervisor-mobile-salir-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+    }
     .supervisor-mobile-salir-spacer {
       flex: 0 0 auto;
       min-width: 0;
@@ -7438,16 +7450,13 @@
       text-align: left;
       cursor: pointer;
     }
-    /* Pie de INICIO: entre SALIR y el total. */
-    .supervisor-lifeline-entry.is-foot {
-      width: auto;
-      flex: 1 1 auto;
-      min-width: 0;
-      max-width: 42%;
-      justify-content: center;
-      gap: 6px;
-      padding: 8px 10px;
-      min-height: 40px;
+    /* Pie de INICIO: debajo del total. */
+    .supervisor-lifeline-entry.is-under-total {
+      width: 100%;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      min-height: 44px;
     }
     .supervisor-lifeline-entry.is-alarm {
       border-color: #f59e0b;
@@ -7458,24 +7467,10 @@
       font-weight: 750;
       letter-spacing: 0.02em;
     }
-    .supervisor-lifeline-entry.is-foot .supervisor-lifeline-entry-title {
-      font-size: 12px;
-      letter-spacing: 0.04em;
-    }
     .supervisor-lifeline-entry-meta {
       font-size: 12px;
       font-weight: 650;
       color: #3f5a4d;
-    }
-    .supervisor-lifeline-entry.is-foot .supervisor-lifeline-entry-meta {
-      min-width: 1.25rem;
-      padding: 1px 6px;
-      border-radius: 999px;
-      background: #fdba74;
-      color: #9a3412;
-      font-size: 11px;
-      font-weight: 800;
-      text-align: center;
     }
     .supervisor-lifeline-entry.is-alarm .supervisor-lifeline-entry-meta {
       color: #9a3412;
