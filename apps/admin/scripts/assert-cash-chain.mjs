@@ -1505,6 +1505,14 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
       pathCleanSrc.includes("trimSupervisorLiveLocalCache"),
     true,
   );
+  const ownBoxSrc = readFileSync(new URL("../lib/server-route-own-box.ts", import.meta.url), "utf8");
+  expect(
+    "Caja A/N: Saldo = fórmula; CIE no pisa",
+    ownBoxSrc.includes("routeOwnBoxSaldoFromParts") &&
+      !ownBoxSrc.includes("if (sealed != null) saldo = sealed") &&
+      !ownBoxSrc.includes("N sellada: CIE manda"),
+    true,
+  );
   expect(
     "Tuneup diario: al día sin re-bajar (no borra cortes de pull)",
     tuneupSrc.includes("clearSessionMoneyWarms") &&

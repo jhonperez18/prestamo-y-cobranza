@@ -1,12 +1,13 @@
 /**
  * Cabecera de planilla (Inicial · Recaudo · Total día · Caja · Gastos · Préstamos).
  *
- * Fórmula fija — una sola, sin atajos:
+ * Fórmula fija — una sola, sin atajos (dueño 10/11):
  *   Caja     = Inicial + efectivo − préstamos − gastos
  *   Total día = Caja − Inicial  (= efectivo − préstamos − gastos)
  *
  * Banco / Nequi no entran a la Caja (van al KPI digital aparte).
- * Día sellado: si hay `cajaSellada` (CIE / libro), esa cifra manda; Total día = Caja − Inicial.
+ * `cajaSellada` = mismo Saldo de la fórmula (o AJUSTE@ autorizado).
+ * Prohibido pasar un CIE distinto a la operación del día.
  */
 import { pesos } from "@/lib/finance";
 

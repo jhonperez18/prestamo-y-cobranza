@@ -37,22 +37,22 @@ function readPersisted(key: string): CloudRouteOwnBox | null {
     ) {
       return null;
     }
-    const saldo = Math.trunc(Number(row.saldo));
     const efectivo = Math.trunc(Number(row.efectivo) || 0);
     const prestamos = Math.trunc(Number(row.prestamos) || 0);
     const gastos = Math.trunc(Number(row.gastos) || 0);
     const openingRaw = Number(row.opening);
+    const opening = Number.isFinite(openingRaw)
+      ? Math.trunc(openingRaw)
+      : Math.trunc(Number(row.saldo) || 0) - efectivo + prestamos + gastos;
     return {
       collectorRef: String(row.collectorRef),
       date: String(row.date).slice(0, 10),
       route: row.route,
-      saldo,
-      opening: Number.isFinite(openingRaw)
-        ? Math.trunc(openingRaw)
-        : saldo - efectivo + prestamos + gastos,
+      opening,
       efectivo,
       prestamos,
       gastos,
+      saldo: opening + efectivo - prestamos - gastos,
       fetchedAt: String(row.fetchedAt || ""),
     };
   } catch {
@@ -114,20 +114,23 @@ async function fetchRouteOwnBoxOnce(
       prestamos?: number;
       gastos?: number;
     };
-    if (!body || body.ok !== true || !Number.isFinite(Number(body.saldo))) return null;
-    const saldo = Math.trunc(Number(body.saldo));
+    if (!body || body.ok !== true) return null;
     const efectivo = Math.trunc(Number(body.efectivo) || 0);
     const prestamos = Math.trunc(Number(body.prestamos) || 0);
     const gastos = Math.trunc(Number(body.gastos) || 0);
     const openingRaw = Number(body.opening);
+    const opening = Number.isFinite(openingRaw)
+      ? Math.trunc(openingRaw)
+      : Math.trunc(Number(body.saldo) || 0) - efectivo + prestamos + gastos;
+    // Ley: Saldo = fórmula. El saldo RPC/CIE no pisa.
+    const saldo = opening + efectivo - prestamos - gastos;
+    if (!Number.isFinite(saldo)) return null;
     const row: CloudRouteOwnBox = {
       collectorRef: ref,
       date,
       route: pin,
       saldo,
-      opening: Number.isFinite(openingRaw)
-        ? Math.trunc(openingRaw)
-        : saldo - efectivo + prestamos + gastos,
+      opening,
       efectivo,
       prestamos,
       gastos,

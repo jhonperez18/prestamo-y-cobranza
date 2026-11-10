@@ -468,16 +468,23 @@ export function independentRouteDay(
   if (date < todayIso) {
     const cloud = getCloudRouteOwnBox(src.collectorRef, date, route);
     if (cloud) {
-      const cloudClosing = pesos(cloud.saldo);
       const cloudOpening = Number.isFinite(cloud.opening)
         ? pesos(cloud.opening)
-        : pesos(cloudClosing - cloud.efectivo + cloud.prestamos + cloud.gastos);
+        : pesos(pesos(cloud.saldo) - cloud.efectivo + cloud.prestamos + cloud.gastos);
+      const efectivo = pesos(cloud.efectivo);
+      const gastos = pesos(cloud.gastos);
+      const prestamos = pesos(cloud.prestamos);
+      // Ley: Saldo = Inicial + efectivo − préstamos − gastos. CIE no pisa.
+      const formulaClosing = pesos(cloudOpening + efectivo - prestamos - gastos);
+      const adjReal = adjustment?.real;
+      const cloudClosing =
+        adjReal != null && Number.isFinite(adjReal) ? pesos(adjReal) : formulaClosing;
       return {
         ...today,
-        efectivo: pesos(cloud.efectivo),
-        gastos: pesos(cloud.gastos),
-        prestamos: pesos(cloud.prestamos),
-        prestamosRuta: pesos(cloud.prestamos + today.prestamosDigital),
+        efectivo,
+        gastos,
+        prestamos,
+        prestamosRuta: pesos(prestamos + today.prestamosDigital),
         route,
         date,
         anchored: true,
@@ -525,16 +532,27 @@ export function independentRouteDay(
   const sealedToday = sealedRouteClosing(src, route, date);
   const cloudLive = getCloudRouteOwnBox(src.collectorRef, date, route);
   if (cloudLive && sealedToday != null) {
-    const cloudClosing = pesos(cloudLive.saldo);
     const cloudOpening = Number.isFinite(cloudLive.opening)
       ? pesos(cloudLive.opening)
-      : pesos(cloudClosing - cloudLive.efectivo + cloudLive.prestamos + cloudLive.gastos);
+      : pesos(
+          pesos(cloudLive.saldo) -
+            cloudLive.efectivo +
+            cloudLive.prestamos +
+            cloudLive.gastos,
+        );
+    const efectivo = pesos(cloudLive.efectivo);
+    const gastos = pesos(cloudLive.gastos);
+    const prestamos = pesos(cloudLive.prestamos);
+    const formulaClosing = pesos(cloudOpening + efectivo - prestamos - gastos);
+    const adjReal = adjustment?.real;
+    const cloudClosing =
+      adjReal != null && Number.isFinite(adjReal) ? pesos(adjReal) : formulaClosing;
     return {
       ...today,
-      efectivo: pesos(cloudLive.efectivo),
-      gastos: pesos(cloudLive.gastos),
-      prestamos: pesos(cloudLive.prestamos),
-      prestamosRuta: pesos(cloudLive.prestamos + today.prestamosDigital),
+      efectivo,
+      gastos,
+      prestamos,
+      prestamosRuta: pesos(prestamos + today.prestamosDigital),
       route,
       date,
       anchored: true,

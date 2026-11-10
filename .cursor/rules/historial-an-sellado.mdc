@@ -9,14 +9,19 @@ alwaysApply: true
 
 Día **pasado** de planilla **A** o **N**: prohibido recalcular gasto / préstamo / cobro / saldo con copia local, planilla del aparato o datos a medias.
 
-Fuente oficial: RPC **`route_own_box`** (no es tabla). Misma cifra que CIE de ese cobrador cuando sella esa planilla.
+Fuente oficial: RPC **`route_own_box`** (no es tabla).
+
+**Saldo único (dueño 10/11):**  
+`Saldo = Inicial + efectivo − préstamos − gastos`  
+Una sola fórmula. **Nadie la pisa** (ni el CIE). El CIE al cerrar **guarda** ese Saldo; no inventa otro. Ese Saldo es el **Inicial intocable** del día siguiente.
 
 ## Obligatorio
 
-1. Si hay `route_own_box` en caché → pintar **efectivo, gastos, préstamos, opening, saldo** de ahí, inalterados.
-2. Saldo de cierre sellado = **Inicial del día siguiente** (y “último Saldo del mes” = Inicial día 1 del mes nuevo). **Nada** puede cambiar esa regla (dueño 09/11).
+1. Si hay `route_own_box` en caché → pintar **efectivo, gastos, préstamos, opening** de ahí; **Saldo = la fórmula** de esos cuatro.
+2. Saldo de cierre = **Inicial del día siguiente** (y “último Saldo del mes” = Inicial día 1 del mes nuevo). **Nada** puede cambiar esa regla (dueño 09/11 · 10/11).
 3. Dueño de lectura: `independentRouteDay` / `withIndependentRouteHistory`. No armar un segundo camino en la UI.
 4. Ancla de `route_own_box` / `latestAnchorBefore`: solo ajuste **autorizado** o CIE propio. Huella «cierre propio» / `CIERRE_PROPIO@` **no** ancla.
+5. Prohibido que la lectura reemplace el Saldo de la fórmula por `cash_float` del CIE.
 
 ## Excepción (única)
 

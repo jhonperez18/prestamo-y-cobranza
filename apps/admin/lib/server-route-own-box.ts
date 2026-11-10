@@ -1,6 +1,9 @@
 /**
  * Caja propia A/N leída en la base (Fase 3.3). Solo lee. No escribe CIE.
  * Disco/memoria primero (el supervisor no puede esperar a Supabase).
+ *
+ * Ley (dueño 10/11): Saldo = Inicial + efectivo − préstamos − gastos.
+ * Una sola fórmula. El CIE no la pisa. CIE al sellar = ese Saldo.
  */
 import { promises as fs } from "fs";
 import path from "path";
@@ -33,6 +36,21 @@ function cacheKey(collectorRef: string, date: string, route: string) {
   return `${collectorRef}|${date}|${route}`;
 }
 
+/** Única cuenta del Saldo. Nadie la sustituye por otro número. */
+export function routeOwnBoxSaldoFromParts(input: {
+  opening: number;
+  efectivo: number;
+  prestamos: number;
+  gastos: number;
+}): number {
+  return (
+    Math.trunc(Number(input.opening) || 0) +
+    Math.trunc(Number(input.efectivo) || 0) -
+    Math.trunc(Number(input.prestamos) || 0) -
+    Math.trunc(Number(input.gastos) || 0)
+  );
+}
+
 async function ensureDisk() {
   if (fileLoaded) return;
   fileLoaded = true;
@@ -40,15 +58,19 @@ async function ensureDisk() {
     const raw = await fs.readFile(FILE, "utf8");
     const parsed = JSON.parse(raw) as Record<string, OkBox & { date?: string; collectorRef?: string }>;
     for (const [key, row] of Object.entries(parsed || {})) {
-      if (!row || row.ok !== true || !Number.isFinite(Number(row.saldo))) continue;
+      if (!row || row.ok !== true) continue;
+      const opening = Math.trunc(Number(row.opening) || 0);
+      const efectivo = Math.trunc(Number(row.efectivo) || 0);
+      const prestamos = Math.trunc(Number(row.prestamos) || 0);
+      const gastos = Math.trunc(Number(row.gastos) || 0);
       disk.set(key, {
         ok: true,
         route: row.route === "A" ? "A" : "N",
-        saldo: Math.trunc(Number(row.saldo)),
-        opening: Math.trunc(Number(row.opening) || 0),
-        efectivo: Math.trunc(Number(row.efectivo) || 0),
-        prestamos: Math.trunc(Number(row.prestamos) || 0),
-        gastos: Math.trunc(Number(row.gastos) || 0),
+        opening,
+        efectivo,
+        prestamos,
+        gastos,
+        saldo: routeOwnBoxSaldoFromParts({ opening, efectivo, prestamos, gastos }),
         anchor: row.anchor ? String(row.anchor).slice(0, 10) : null,
         anchorReal:
           row.anchorReal == null || !Number.isFinite(Number(row.anchorReal))
@@ -87,41 +109,21 @@ function cachedRow(collectorRef: string, date: string, route: string): OkBox | n
   if (hit) return hit.row;
   const warm = disk.get(key);
   if (!warm) return null;
+  const opening = Math.trunc(Number(warm.opening) || 0);
+  const efectivo = Math.trunc(Number(warm.efectivo) || 0);
+  const prestamos = Math.trunc(Number(warm.prestamos) || 0);
+  const gastos = Math.trunc(Number(warm.gastos) || 0);
   return {
     ok: true,
     route: warm.route,
-    saldo: warm.saldo,
-    opening: warm.opening,
-    efectivo: warm.efectivo,
-    prestamos: warm.prestamos,
-    gastos: warm.gastos,
+    opening,
+    efectivo,
+    prestamos,
+    gastos,
+    saldo: routeOwnBoxSaldoFromParts({ opening, efectivo, prestamos, gastos }),
     anchor: warm.anchor,
     anchorReal: warm.anchorReal,
   };
-}
-
-/**
- * N ya sellada: el CIE es la caja (Yesid no hace M/T).
- * Una sola fila day_closes — sin bajar planilla. A espera la migración SQL
- * (su CIE puede ser cadena M/T el mismo día).
- */
-async function sealedNCieFloat(
-  collectorRef: string,
-  date: string,
-): Promise<number | null> {
-  const client = createSupabaseAdminClient();
-  if (!client) return null;
-  const { data: cie, error } = await client
-    .from("day_closes")
-    .select("cash_float")
-    .eq("collector_ref", collectorRef)
-    .eq("close_date", date)
-    .like("ref", "CIE-%")
-    .limit(1)
-    .maybeSingle();
-  if (error || !cie || cie.cash_float == null) return null;
-  const float = Math.trunc(Number(cie.cash_float));
-  return Number.isFinite(float) ? float : null;
 }
 
 async function rpcOnce(
@@ -131,15 +133,11 @@ async function rpcOnce(
 ): Promise<RouteOwnBoxResult> {
   const client = createSupabaseAdminClient();
   if (!client) return { ok: false, error: "sin_servicio" };
-  const sealedPromise = pin === "N" ? sealedNCieFloat(collectorRef, date) : Promise.resolve(null);
-  const [rpc, sealed] = await Promise.all([
-    client.rpc("route_own_box", {
-      p_collector_ref: collectorRef,
-      p_date: date,
-      p_route: pin,
-    }),
-    sealedPromise,
-  ]);
+  const rpc = await client.rpc("route_own_box", {
+    p_collector_ref: collectorRef,
+    p_date: date,
+    p_route: pin,
+  });
   if (rpc.error) return { ok: false, error: rpc.error.message };
   const body = rpc.data as {
     ok?: boolean;
@@ -153,23 +151,22 @@ async function rpcOnce(
     anchor_real?: number;
     error?: string;
   } | null;
-  let saldo = Number(body?.saldo);
-  if (!body || body.ok !== true || !Number.isFinite(saldo)) {
+  if (!body || body.ok !== true) {
     return { ok: false, error: body?.error || "sin_caja" };
   }
-  // N sellada: CIE manda (estático). Sin CIE → fórmula viva de la RPC.
-  if (sealed != null) saldo = sealed;
   const efectivo = Math.trunc(Number(body.efectivo) || 0);
   const prestamos = Math.trunc(Number(body.prestamos) || 0);
   const gastos = Math.trunc(Number(body.gastos) || 0);
   const openingRaw = Number(body.opening);
   const opening = Number.isFinite(openingRaw)
     ? Math.trunc(openingRaw)
-    : Math.trunc(saldo) - efectivo + prestamos + gastos;
+    : Math.trunc(Number(body.saldo) || 0) - efectivo + prestamos + gastos;
+  // Ley: Saldo = fórmula de los 4. CIE / saldo RPC viejo no pisan.
+  const saldo = routeOwnBoxSaldoFromParts({ opening, efectivo, prestamos, gastos });
   return {
     ok: true,
     route: pin,
-    saldo: Math.trunc(saldo),
+    saldo,
     opening,
     efectivo,
     prestamos,
@@ -212,38 +209,17 @@ export async function readRouteOwnBox(
 
   const key = cacheKey(ref, date, pin);
 
-  // N sellada: si la caché no coincide con el CIE, no pintar saldo fantasma.
-  if (pin === "N") {
-    try {
-      const sealed = await sealedNCieFloat(ref, date);
-      if (sealed != null) {
-        const warm = cachedRow(ref, date, pin);
-        if (warm && warm.saldo === sealed) {
-          mem.set(key, { at: Date.now(), row: warm });
-          refreshInBackground(ref, date, pin);
-          return warm;
-        }
-        const result = await rpcOnce(ref, date, pin);
-        if (result.ok) {
-          remember(ref, date, result);
-          return result;
-        }
-        return result;
-      }
-    } catch (error) {
-      console.error("route-own-box-sealed-n", error);
-    }
-  }
-
   const memHit = mem.get(key);
   if (memHit && Date.now() - memHit.at < MEM_TTL_MS) {
     refreshInBackground(ref, date, pin);
-    return memHit.row;
+    return {
+      ...memHit.row,
+      saldo: routeOwnBoxSaldoFromParts(memHit.row),
+    };
   }
 
   const warm = cachedRow(ref, date, pin);
   if (warm) {
-    // Respuesta al instante para el supervisor; la base actualiza atrás.
     mem.set(key, { at: Date.now(), row: warm });
     refreshInBackground(ref, date, pin);
     return warm;
