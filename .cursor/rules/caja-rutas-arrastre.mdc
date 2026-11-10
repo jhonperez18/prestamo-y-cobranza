@@ -1,6 +1,16 @@
+---
+description: Inicial = Saldo del día anterior — sagrado en M/T/A/N; nada lo puede romper.
+alwaysApply: true
+---
+
 # Cajas por ruta — día a día y mes a mes
 
-## Ley
+## Ley (dueño 09/11 — intocable)
+
+**Inicial de hoy = Saldo del último día con caja de esa misma ruta.**  
+Domingo / festivo / día en 0: el Saldo se arrastra igual. La secuencia **nunca** se rompe.
+
+Misma regla en **M, T, A y N**. Un solo eslabón malo = imposible.
 
 Tres cajas distintas. **Sin cruces.**
 
@@ -32,9 +42,12 @@ A y N **no** se mezclan entre sí ni con M/T.
 
 ## Prohibido
 
+- Que el Inicial de un día **no** sea el Saldo del cierre anterior de esa ruta (caso A 07→09: Saldo 2.247.000 y Inicial 1.747.000 — **nunca otra vez**).
+- Anclar A/N con huella de sello (`AJUSTE@` «cierre propio…» / `CIERRE_PROPIO@`): **no** es ajuste de saldo; no mueve el Inicial.
 - Usar el MES- / CIE de la cadena como Inicial de A o de N.
 - Mezclar Saldo de A con N (o al revés).
 - Recalcular o pisar Inicial M / T con lógica de A/N.
 - Inventar un segundo arrastre paralelo en la UI.
 - Arrastrar el `closing` calculado de un día con ajuste ignorando el `real`.
 - Dejar el historial A/N solo con el libro local cuando la base ya tiene la caja.
+- “Mejorar”, redondear o “cuadrar” un Inicial distinto al Saldo previo.

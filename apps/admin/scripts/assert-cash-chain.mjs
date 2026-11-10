@@ -37,6 +37,7 @@ const { sealCollectorDay } = await import("@/lib/collector-day-close-seal");
 const {
   alignDayClosesCollectedToPayments,
   buildCollectorDayHistory,
+  expensesForCollectorDay,
   keepSealedCashFloat,
   synthesizeDayClosesFromAssignments,
 } = await import("@/lib/collector-day-close");
@@ -831,6 +832,44 @@ expect("A 26: caja = efectivo de A (préstamos/gastos van a M)", aDay26.closing,
 const aCollected26 = independentRouteCollected({ ...base, dayCloses: afterT.dayCloses }, "A");
 expect("A aislada: efectivo del día = solo clientes de A", aCollected26.efectivo, 50_000);
 expect("A aislada: día sin gastos ni préstamos de M/T", independentRouteDayLines(aDay26).length, 0);
+// CIE huérfano con expenses=[] no puede tapar el GAS- (botones A/N · Lo que prestó).
+{
+  const emptyCie = {
+    ref: `CIE-${COB.ref}-${D}`,
+    collectorRef: COB.ref,
+    collectorName: COB.name,
+    date: D,
+    routeRef: "RUT-A",
+    collected: 0,
+    expenses: [],
+    expensesTotal: 0,
+    cashFloat: 2_000_000,
+    closedAt: `${D}T23:30:00.000-05:00`,
+    movementRefs: ["SEAL_BY:orphan-cie"],
+  };
+  const gasOrphan = {
+    ref: `GAS-${COB.ref}-${D}`,
+    collectorRef: COB.ref,
+    collectorName: COB.name,
+    date: D,
+    expenses: [
+      {
+        id: "prestamo",
+        category: "prestamo_ruta",
+        label: "Préstamo · P-A1 · Dani A",
+        amount: 200_000,
+        loanRef: "P-A1",
+      },
+    ],
+    expensesTotal: 200_000,
+  };
+  const orphanLines = expensesForCollectorDay(COB.ref, D, [emptyCie], [gasOrphan]);
+  expect(
+    "CIE huérfano vacío: el GAS- sigue en el detalle (préstamo A)",
+    orphanLines.some((row) => row.loanRef === "P-A1" && row.amount === 200_000),
+    true,
+  );
+}
 const [aHist26] = withIndependentRouteHistory(
   [{ date: D, cobro: 50_000, gasto: 999_999, prestamo: 999_999, saldo: 3_084_000 }],
   { ...base, dayCloses: afterT.dayCloses },

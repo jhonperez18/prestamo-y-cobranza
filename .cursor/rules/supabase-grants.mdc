@@ -1,0 +1,32 @@
+---
+description: Desde el 30/10/2026, tabla nueva en public exige GRANT explícito a service_role
+alwaysApply: true
+---
+
+# Supabase — GRANT en tabla nueva (aviso 20/10/2026, vigente 30/10/2026)
+
+## Ley
+
+Las tablas que **ya existen** no cambian. Siguen con sus permisos.
+
+A partir del **30 de octubre de 2026**, toda tabla **nueva** en el esquema `public` necesita un `GRANT` en la **misma migración** que la crea. Sin eso, la API (`service_role`, PostgREST, supabase-js) responde permiso denegado.
+
+Esto también aplica si una migración **recrea** el esquema (proyecto nuevo, preview de rama, `supabase db reset`).
+
+## Obligatorio al crear `public.nombre_tabla`
+
+Este producto entra a la base por el servidor con `service_role`. En la misma migración:
+
+```sql
+grant select, insert, update, delete
+  on public.nombre_tabla
+  to service_role;
+```
+
+Si la tabla usa una secuencia propia (`serial` / `identity`), conceder también `usage, select` de esa secuencia a `service_role`.
+
+## Prohibido
+
+- Crear la tabla y “dar el GRANT después”.
+- Conceder `anon` o `authenticated` “por si acaso”. El celular y el panel no hablan directo con las tablas; solo si el dueño pide acceso directo del navegador.
+- Reescribir grants de tablas viejas sin pedido: no hace falta.

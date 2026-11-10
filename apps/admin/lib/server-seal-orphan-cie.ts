@@ -3,10 +3,21 @@
  * Tras Fase 4.2 el celular ya no sube cash_float; si el cierre no pasó por
  * seal_day_close, el día queda sin CIE → al día siguiente Inicial M = 0
  * (cie_faltante). La revisión 6:00 debe sellar esos huecos, no solo reportarlos.
+ *
+ * Raíz (09/11): el sello NO puede nacer con expenses=[]. Sin renglones, A/N
+ * (route_own_box) y el detalle de botones pierden préstamos/gastos del GAS-
+ * (caso A 07/11: Yira P-716 · 500.000 → «Sin préstamos»). Misma ley que el
+ * cierre normal / day-rollover: copiar el GAS- al sellar.
  */
 import { businessTodayIso } from "@/lib/business-timezone";
-import { normalizeHistoryDate, type CollectorDayCloseRecord } from "@/lib/collector-day-close";
+import {
+  expensesForCollectorDay,
+  normalizeHistoryDate,
+  sumExpenseLines,
+  type CollectorDayCloseRecord,
+} from "@/lib/collector-day-close";
 import type { OperationalDayState } from "@/lib/collector-day-auto-close";
+import { collectorRecaudoBreakdown } from "@/lib/collector-mobile";
 import { independentRouteForCollectorDay } from "@/lib/independent-route-cash";
 import { findFullDayCieClose } from "@/lib/planilla-cash-chain";
 import { planillaWindowStartIso } from "@/lib/planilla-window";
@@ -110,6 +121,22 @@ export async function sealOrphanDayCloses(
   const errors: string[] = [];
 
   for (const orphan of orphans) {
+    // Mismos renglones que el cierre normal: GAS- (o CIE con detalle).
+    // Prohibido sellar con expenses=[] si el GAS- ya tiene préstamos/gastos.
+    const expenseLines = expensesForCollectorDay(
+      orphan.collectorRef,
+      orphan.date,
+      state.dayCloses,
+      state.dayExpenseDrafts,
+    ).filter((row) => (Number(row.amount) || 0) > 0);
+    const expensesTotal = sumExpenseLines(expenseLines);
+    const collected = collectorRecaudoBreakdown(
+      orphan.collectorRef,
+      orphan.date,
+      state.payments,
+      state.collectors,
+    ).total;
+
     const result = await callSealDayClose({
       collectorRef: orphan.collectorRef,
       date: orphan.date,
@@ -118,6 +145,9 @@ export async function sealOrphanDayCloses(
       by: "orphan-cie",
       writeCie: true,
       collectorName: orphan.collectorName,
+      collected,
+      expenses: expenseLines,
+      expensesTotal,
     });
     if (!result.ok) {
       const msg = `${orphan.collectorName} ${orphan.date}: ${result.error}`;
@@ -137,9 +167,9 @@ export async function sealOrphanDayCloses(
         collectorName: orphan.collectorName,
         date: orphan.date,
         routeRef: `RUT-D-${orphan.collectorRef}-${orphan.date}`,
-        collected: 0,
-        expenses: [],
-        expensesTotal: 0,
+        collected,
+        expenses: expenseLines,
+        expensesTotal,
         cashFloat: result.cashFloat,
         closedAt: result.closedAt || new Date().toISOString(),
         movementRefs: [],

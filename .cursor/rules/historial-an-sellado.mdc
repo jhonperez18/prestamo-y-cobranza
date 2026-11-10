@@ -1,0 +1,33 @@
+---
+description: Historial caja A/N — día sellado solo desde route_own_box (RPC); no recalcular local.
+alwaysApply: true
+---
+
+# Historial A/N sellado — solo nube
+
+## Ley
+
+Día **pasado** de planilla **A** o **N**: prohibido recalcular gasto / préstamo / cobro / saldo con copia local, planilla del aparato o datos a medias.
+
+Fuente oficial: RPC **`route_own_box`** (no es tabla). Misma cifra que CIE de ese cobrador cuando sella esa planilla.
+
+## Obligatorio
+
+1. Si hay `route_own_box` en caché → pintar **efectivo, gastos, préstamos, opening, saldo** de ahí, inalterados.
+2. Saldo de cierre sellado = **Inicial del día siguiente** (y “último Saldo del mes” = Inicial día 1 del mes nuevo). **Nada** puede cambiar esa regla (dueño 09/11).
+3. Dueño de lectura: `independentRouteDay` / `withIndependentRouteHistory`. No armar un segundo camino en la UI.
+4. Ancla de `route_own_box` / `latestAnchorBefore`: solo ajuste **autorizado** o CIE propio. Huella «cierre propio» / `CIERRE_PROPIO@` **no** ancla.
+
+## Excepción (única)
+
+Ajuste de caja contado ese día (`AJUSTE@A` / `AJUSTE@N` autorizado por supervisor): el **real** puede ser el Inicial de mañana. No pisar el ajuste con el calculado. La huella de sello **no** es esta excepción.
+
+## Fuera de alcance
+
+- Cadena **M / T** → libro `day_cash_figure` / CIE de cadena; **no** `route_own_box`.
+- No inventar tabla `route_own_box` ni SQL de historial paralelo.
+
+## Prohibido
+
+- Con CIE local, saltar la nube y rellenar gasto/préstamo del aparato (caso N 31/10: GASTO 0 · Saldo falso → Inicial de hoy mal).
+- “Arreglar” el Saldo a mano en un día cerrado.
