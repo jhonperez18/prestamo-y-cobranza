@@ -333,6 +333,20 @@ function methodForRoutePin(
   return routePin === "A" ? "nequi" : "banco";
 }
 
+async function clientRefByLoan(loanRefs: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const client = createSupabaseAdminClient();
+  const unique = [...new Set(loanRefs.filter(Boolean))];
+  if (!client || !unique.length) return out;
+  const { data } = await client.from("loans").select("ref,client_ref").in("ref", unique);
+  for (const row of data || []) {
+    const ref = String((row as { ref?: string }).ref || "").trim();
+    const cRef = String((row as { client_ref?: string }).client_ref || "").trim();
+    if (ref && cRef) out.set(ref, cRef);
+  }
+  return out;
+}
+
 async function loadRoutePayments(
   date: string,
   route: string,
@@ -347,12 +361,27 @@ async function loadRoutePayments(
     .eq("paid_date", date)
     .limit(3000);
   if (error || !pays?.length) return empty;
-  const refs = [
+  const loanRefs = [
     ...new Set(
-      pays.map((row) => String((row as { client_ref?: string }).client_ref || "").trim()).filter(Boolean),
+      pays
+        .map((row) => String((row as { loan_ref?: string }).loan_ref || "").trim())
+        .filter(Boolean),
     ),
   ];
-  const onRoute = await clientNamesOnRoute(refs, pin);
+  const byLoan = await clientRefByLoan(loanRefs);
+  const clientRefs = [
+    ...new Set(
+      pays
+        .map((row) => {
+          const direct = String((row as { client_ref?: string }).client_ref || "").trim();
+          if (direct) return direct;
+          const loanRef = String((row as { loan_ref?: string }).loan_ref || "").trim();
+          return byLoan.get(loanRef) || "";
+        })
+        .filter(Boolean),
+    ),
+  ];
+  const onRoute = await clientNamesOnRoute(clientRefs, pin);
   if (!onRoute.size) return empty;
   const cash: RouteDayPayLine[] = [];
   const digital: RouteDayPayLine[] = [];
@@ -360,8 +389,12 @@ async function loadRoutePayments(
     if (String((row as { voided_at?: string | null }).voided_at || "").trim()) continue;
     const type = String((row as { type?: string }).type || "").trim().toLowerCase();
     if (type === "anulado") continue;
-    const cRef = String((row as { client_ref?: string }).client_ref || "").trim();
-    if (!onRoute.has(cRef)) continue;
+    const loanRef = String((row as { loan_ref?: string }).loan_ref || "").trim();
+    const cRef =
+      String((row as { client_ref?: string }).client_ref || "").trim() ||
+      byLoan.get(loanRef) ||
+      "";
+    if (!cRef || !onRoute.has(cRef)) continue;
     const amount = pesos((row as { amount?: number }).amount);
     if (amount <= 0) continue;
     const method = methodForRoutePin(String((row as { method?: string }).method || ""), pin);
@@ -373,7 +406,7 @@ async function loadRoutePayments(
         cRef,
       amount,
       method,
-      loanRef: String((row as { loan_ref?: string }).loan_ref || "").trim() || undefined,
+      loanRef: loanRef || undefined,
     };
     if (!line.ref) continue;
     if (method === "efectivo") cash.push(line);
