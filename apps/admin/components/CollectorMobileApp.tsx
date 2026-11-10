@@ -1696,8 +1696,8 @@ export function CollectorMobileApp({
     () => closedPlanilla.filter((row) => row.method === "np"),
     [closedPlanilla],
   );
-  /** Efectivo / Banco (Nequi en A) / N/P: mismas listas que el libro de la ruta. */
-  const homeCierreRows = useMemo(() => {
+  /** Efectivo / Banco (Nequi en A) / N/P: primero local; la puerta completa abajo. */
+  const homeCierreRowsLocal = useMemo(() => {
     if (homeCierreKind === "np") return homeNpRows;
     if (homeCierreKind !== "efectivo" && homeCierreKind !== "digital") return null;
     if (!activePlanillaRoute) return null;
@@ -1987,12 +1987,82 @@ export function CollectorMobileApp({
     localGastos: localHomeGastoLines,
     localPrestamos: localHomePrestamoLines,
     enabled:
-      showHomeCuadre || homeCierreKind === "gastos" || homeCierreKind === "prestamos",
+      showHomeCuadre ||
+      homeCierreKind === "gastos" ||
+      homeCierreKind === "prestamos" ||
+      homeCierreKind === "efectivo" ||
+      homeCierreKind === "digital" ||
+      homeCierreKind === "np",
     gastosTotal: topGastos,
     prestamosTotal: topPrestamos,
+    needCollections:
+      homeCierreKind === "efectivo" ||
+      homeCierreKind === "digital" ||
+      homeCierreKind === "np",
   });
   const homeGastoLines = dayExpenseDetail.gastoLines;
   const homePrestamoLines = dayExpenseDetail.prestamoLines;
+  /**
+   * Misma ley: si la copia local está vacía y la puerta ya contestó, pintar cobros / N/P
+   * de la nube. Sin inventar ceros mientras carga.
+   */
+  const homeCierreRows = useMemo(() => {
+    const local = homeCierreRowsLocal;
+    if (!activePlanillaRoute) return local;
+    if (homeCierreKind === "np") {
+      if (local && local.length > 0) return local;
+      if (dayExpenseDetail.loading || !dayExpenseDetail.cloudReady) return local ?? [];
+      return dayExpenseDetail.npRows.map((row, index) => ({
+        key: `np-${row.clientRef}-${row.loanRef || index}`,
+        clientRef: row.clientRef,
+        route: activePlanillaRoute,
+        order: null as number | null,
+        name: row.clientName,
+        amount: null as number | null,
+        time: "—",
+        evidence: [] as NonNullable<import("@/lib/mock-data").PaymentRow["evidence"]>,
+        method: "np" as const,
+        lentToday: false,
+      }));
+    }
+    if (homeCierreKind !== "efectivo" && homeCierreKind !== "digital") return local;
+    if (local && local.length > 0) return local;
+    if (dayExpenseDetail.loading || !dayExpenseDetail.cloudReady) return local ?? [];
+    const cloudPays =
+      homeCierreKind === "digital" ? dayExpenseDetail.digitalPays : dayExpenseDetail.cashPays;
+    const asPayments = cloudPays.map((row) => ({
+      ref: row.ref,
+      client: row.client,
+      amount: row.amount,
+      method: row.method,
+      loanRef: row.loanRef,
+      paidDate: activeDate,
+      type: "Cuota",
+      kind: "ok" as const,
+      when: activeDate,
+      collector: collector.name,
+    }));
+    return buildCollectorHistoryPlanillaRows({
+      dateIso: activeDate,
+      dispatched: [],
+      payments: asPayments,
+      loans,
+      clients,
+    });
+  }, [
+    homeCierreRowsLocal,
+    homeCierreKind,
+    activePlanillaRoute,
+    activeDate,
+    collector.name,
+    loans,
+    clients,
+    dayExpenseDetail.loading,
+    dayExpenseDetail.cloudReady,
+    dayExpenseDetail.npRows,
+    dayExpenseDetail.cashPays,
+    dayExpenseDetail.digitalPays,
+  ]);
   /**
    * Botón «Lo que prestó» / KPI: en A·N = efectivo + Nequi/Banco (`prestamosRuta`).
    * En M·T el botón sigue siendo caja; Banco va aparte.
@@ -3029,6 +3099,8 @@ export function CollectorMobileApp({
                 searchOpen={planillaSearchOpen}
                 searchQuery={planillaQuery}
               />
+            ) : dayExpenseDetail.loading ? (
+              <p className="collector-cierre-drop-empty">Leyendo…</p>
             ) : (
               <p className="collector-cierre-drop-empty">
                 {HOME_CIERRE_LIST_EMPTY[homeCierreKind ?? "np"](planillaIsA)}

@@ -3457,7 +3457,7 @@ export function SupervisorMobileApp({
     collectors,
     todayAssignments,
   ]);
-  /** Hoy: si el total de Gastos no cuadra con la copia local, baja la puerta ruta+día. */
+  /** Hoy: puerta ruta+día. Sin caída a lista local incompleta. */
   const openRouteExpenseDetail = useDayExpenseDetail({
     collectorRef: openRoute?.collectorRef || "",
     collectorName: openRoute?.collectorName,
@@ -3472,14 +3472,22 @@ export function SupervisorMobileApp({
     loans,
     localGastos: openRouteExpenses,
     localPrestamos: [],
-    enabled: Boolean(openRoute && detailMode === "gastos"),
+    enabled: Boolean(
+      openRoute &&
+        (detailMode === "gastos" ||
+          detailMode === "cobros" ||
+          detailMode === "np" ||
+          detailMode === "np-dia"),
+    ),
     gastosTotal: openRoute?.gastosHoy ?? 0,
     prestamosTotal: 0,
+    needCollections: Boolean(
+      openRoute &&
+        (detailMode === "cobros" || detailMode === "np" || detailMode === "np-dia"),
+    ),
   });
-  const openRouteGastosLines =
-    openRouteExpenseDetail.gastoLines.length > 0
-      ? openRouteExpenseDetail.gastoLines
-      : openRouteExpenses;
+  /** Solo la puerta o la lista local si YA cuadra (el hook la devolvió). Nunca inventar. */
+  const openRouteGastosLines = openRouteExpenseDetail.gastoLines;
   const openRouteNequiDays = useMemo(() => {
     if (!openRoute) return [];
     return digitalPoolRegisterDays({
@@ -3510,10 +3518,12 @@ export function SupervisorMobileApp({
   ]);
   /** Banco / Nequi: historial desde el día 1 del mes en curso (lo anterior no se lista). */
   const openRouteDigitalDays = openRouteNequiDays;
+  /** Día Nequi/Banco: cobros del período (history), no solo la ventana viva de hoy. */
   const openRouteDigitalDayLedger = useMemo(() => {
     if (!openRoute || !nequiDayIso) return null;
+    const periodPays = poolBookPayments ?? paymentsWithEvidence;
     return digitalPoolDayLedger({
-      payments: paymentsWithEvidence,
+      payments: periodPays,
       loans,
       clients,
       pool: openRouteDigitalPool,
@@ -3525,6 +3535,7 @@ export function SupervisorMobileApp({
     openRoute,
     openRouteDigitalPool,
     nequiDayIso,
+    poolBookPayments,
     paymentsWithEvidence,
     loans,
     clients,
@@ -4720,30 +4731,73 @@ export function SupervisorMobileApp({
     enabled: Boolean(openRoute && cajaHistoryDayIso),
     gastosTotal: cierreGastosTotal,
     prestamosTotal: cierrePrestamosTotal,
+    // Cierre del día: siempre trae cobros/N/P de la misma puerta (listas firmes).
+    needCollections: Boolean(openRoute && cajaHistoryDayIso),
   });
   const cierreGastos = cierreExpenseDetail.gastoLines;
   const cierrePrestamos = cierreExpenseDetail.prestamoLines;
+  /** Cobros de la puerta cuando la copia local del período está vacía. */
+  const cierreCloudPaysAsPayments = useMemo(() => {
+    if (!cierreExpenseDetail.cloudReady || !cajaHistoryDayIso) return null;
+    const toPay = (rows: typeof cierreExpenseDetail.cashPays) =>
+      rows.map((row) => ({
+        ref: row.ref,
+        client: row.client,
+        amount: row.amount,
+        method: row.method,
+        loanRef: row.loanRef,
+        paidDate: cajaHistoryDayIso,
+        type: "Cuota",
+        kind: "ok" as const,
+        when: cajaHistoryDayIso,
+        collector: openRoute?.collectorName || "",
+      }));
+    return {
+      cash: toPay(cierreExpenseDetail.cashPays),
+      digital: toPay(cierreExpenseDetail.digitalPays),
+    };
+  }, [
+    cierreExpenseDetail.cloudReady,
+    cierreExpenseDetail.cashPays,
+    cierreExpenseDetail.digitalPays,
+    cajaHistoryDayIso,
+    openRoute?.collectorName,
+  ]);
 
   /** Banco de M / N: los mismos cobros que suma el botón (historial Banco de esa ruta). */
-  const cierreBancoRutaPayments = historyDayChainT
+  const cierreBancoRutaPaymentsLocal = historyDayChainT
     ? null
     : openRouteHistoryChainDay
       ? openRouteHistoryChainDay.ownDigitalPayments
       : openRouteHistoryIndependentDay && !openRouteIsA
         ? openRouteHistoryIndependentDay.collected.digitalPayments
         : null;
+  const cierreBancoRutaPayments =
+    cierreBancoRutaPaymentsLocal && cierreBancoRutaPaymentsLocal.length > 0
+      ? cierreBancoRutaPaymentsLocal
+      : cierreCloudPaysAsPayments?.digital ?? cierreBancoRutaPaymentsLocal;
   /** Nequi de A: los mismos cobros que suma el botón (historial Nequi de A). */
-  const cierreNequiRutaPayments =
+  const cierreNequiRutaPaymentsLocal =
     openRouteIsA && openRouteHistoryIndependentDay
       ? openRouteHistoryIndependentDay.collected.digitalPayments
       : null;
+  const cierreNequiRutaPayments =
+    cierreNequiRutaPaymentsLocal && cierreNequiRutaPaymentsLocal.length > 0
+      ? cierreNequiRutaPaymentsLocal
+      : openRouteIsA
+        ? cierreCloudPaysAsPayments?.digital ?? cierreNequiRutaPaymentsLocal
+        : null;
 
   /** Efectivo de la planilla abierta (T: solo T) y, en T, el de M+T: los cobros que suma cada botón. */
-  const cierreEfectivoPayments = openRouteHistoryChainDay
+  const cierreEfectivoPaymentsLocal = openRouteHistoryChainDay
     ? openRouteHistoryChainDay.ownCashPayments
     : openRouteHistoryIndependentDay
       ? openRouteHistoryIndependentDay.collected.cashPayments
       : null;
+  const cierreEfectivoPayments =
+    cierreEfectivoPaymentsLocal && cierreEfectivoPaymentsLocal.length > 0
+      ? cierreEfectivoPaymentsLocal
+      : cierreCloudPaysAsPayments?.cash ?? cierreEfectivoPaymentsLocal;
   const cierreEfectivoCadenaPayments = historyDayChainT ? historyDayChainT.cashPayments : null;
 
   /** Solo vista: préstamos del día que salieron del Banco a clientes de M y T (no tocan la caja). */

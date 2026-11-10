@@ -10,6 +10,22 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { rowToDayClose, rowToDayExpense } from "@/lib/supabase/ops-mirror";
 import type { CollectorDayExpenseDraft } from "@/lib/collector-day-close";
 
+/** Cobro liviano para lista de botones (efectivo / banco / nequi). */
+export type RouteDayPayLine = {
+  ref: string;
+  client: string;
+  amount: number;
+  method: "efectivo" | "banco" | "nequi";
+  loanRef?: string;
+};
+
+/** N/P liviano de la planilla sellada. */
+export type RouteDayNpLine = {
+  clientRef: string;
+  clientName: string;
+  loanRef?: string;
+};
+
 export type RouteDayDetailOk = {
   ok: true;
   ready: true;
@@ -22,6 +38,16 @@ export type RouteDayDetailOk = {
   prestamosTotal: number;
   gastoLines: RouteExpenseLine[];
   prestamoLines: RouteExpenseLine[];
+  /** Cobros efectivo de la ruta (incluye Caja/oficina). */
+  efectivoTotal: number;
+  cashPays: RouteDayPayLine[];
+  /** Cobros digitales: A→Nequi; M/T/N→Banco. */
+  digitalTotal: number;
+  digitalPays: RouteDayPayLine[];
+  digitalPool: "banco" | "nequi";
+  /** N/P de la hoja (omitido real, no cierre ni renovado). */
+  npCount: number;
+  npRows: RouteDayNpLine[];
 };
 
 export type RouteDayDetailResult =
@@ -265,9 +291,146 @@ function prestamoBelongsToRoute(
   return owner === pin;
 }
 
+const DAY_CLOSE_SKIP = "Cierre de jornada";
+const LOAN_RENEWED = "Renovado hoy";
+
+/** Solo los clientes pedidos (liviano: no baja el catálogo entero). */
+async function clientNamesOnRoute(
+  clientRefs: string[],
+  route: string,
+): Promise<Map<string, string>> {
+  const pin = pinOf(route);
+  const out = new Map<string, string>();
+  const client = createSupabaseAdminClient();
+  if (!client || !pin || !clientRefs.length) return out;
+  const unique = [...new Set(clientRefs.filter(Boolean))];
+  const { data } = await client
+    .from("clients")
+    .select("ref,name,last_name,route")
+    .in("ref", unique);
+  for (const row of data || []) {
+    if (pinOf((row as { route?: string }).route) !== pin) continue;
+    const ref = String((row as { ref?: string }).ref || "").trim();
+    if (!ref) continue;
+    const name = `${String((row as { name?: string }).name || "")} ${String(
+      (row as { last_name?: string }).last_name || "",
+    )}`
+      .replace(/\s+/g, " ")
+      .trim();
+    out.set(ref, name || ref);
+  }
+  return out;
+}
+
+function methodForRoutePin(
+  rawMethod: string,
+  routePin: string,
+): "efectivo" | "banco" | "nequi" {
+  const m = String(rawMethod || "")
+    .trim()
+    .toLowerCase();
+  if (m === "efectivo" || m === "cash" || m === "") return "efectivo";
+  return routePin === "A" ? "nequi" : "banco";
+}
+
+async function loadRoutePayments(
+  date: string,
+  route: string,
+): Promise<{ cash: RouteDayPayLine[]; digital: RouteDayPayLine[] }> {
+  const pin = pinOf(route);
+  const empty = { cash: [] as RouteDayPayLine[], digital: [] as RouteDayPayLine[] };
+  const client = createSupabaseAdminClient();
+  if (!client || !pin) return empty;
+  const { data: pays, error } = await client
+    .from("payments")
+    .select("ref,client_ref,client_name,amount,method,loan_ref,voided_at,type")
+    .eq("paid_date", date)
+    .limit(3000);
+  if (error || !pays?.length) return empty;
+  const refs = [
+    ...new Set(
+      pays.map((row) => String((row as { client_ref?: string }).client_ref || "").trim()).filter(Boolean),
+    ),
+  ];
+  const onRoute = await clientNamesOnRoute(refs, pin);
+  if (!onRoute.size) return empty;
+  const cash: RouteDayPayLine[] = [];
+  const digital: RouteDayPayLine[] = [];
+  for (const row of pays) {
+    if (String((row as { voided_at?: string | null }).voided_at || "").trim()) continue;
+    const type = String((row as { type?: string }).type || "").trim().toLowerCase();
+    if (type === "anulado") continue;
+    const cRef = String((row as { client_ref?: string }).client_ref || "").trim();
+    if (!onRoute.has(cRef)) continue;
+    const amount = pesos((row as { amount?: number }).amount);
+    if (amount <= 0) continue;
+    const method = methodForRoutePin(String((row as { method?: string }).method || ""), pin);
+    const line: RouteDayPayLine = {
+      ref: String((row as { ref?: string }).ref || ""),
+      client:
+        onRoute.get(cRef) ||
+        String((row as { client_name?: string }).client_name || "").trim() ||
+        cRef,
+      amount,
+      method,
+      loanRef: String((row as { loan_ref?: string }).loan_ref || "").trim() || undefined,
+    };
+    if (!line.ref) continue;
+    if (method === "efectivo") cash.push(line);
+    else digital.push(line);
+  }
+  return { cash, digital };
+}
+
+async function loadRouteNp(
+  collectorRef: string,
+  date: string,
+  route: string,
+): Promise<RouteDayNpLine[]> {
+  const pin = pinOf(route);
+  const client = createSupabaseAdminClient();
+  if (!client || !pin) return [];
+  const { data: rows, error } = await client
+    .from("daily_assignments")
+    .select("client_ref,client_name,loan_ref,visit_status,skip_reason,collector_ref")
+    .eq("dispatch_date", date)
+    .eq("collector_ref", collectorRef)
+    .eq("visit_status", "omitido")
+    .limit(3000);
+  if (error || !rows?.length) return [];
+  const refs = [
+    ...new Set(
+      rows.map((row) => String((row as { client_ref?: string }).client_ref || "").trim()).filter(Boolean),
+    ),
+  ];
+  const onRoute = await clientNamesOnRoute(refs, pin);
+  if (!onRoute.size) return [];
+  const out: RouteDayNpLine[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const reason = String((row as { skip_reason?: string }).skip_reason || "").trim();
+    if (reason === DAY_CLOSE_SKIP || reason === LOAN_RENEWED) continue;
+    const cRef = String((row as { client_ref?: string }).client_ref || "").trim();
+    if (!onRoute.has(cRef)) continue;
+    const loanRef = String((row as { loan_ref?: string }).loan_ref || "").trim();
+    const key = `${cRef}|${loanRef}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      clientRef: cRef,
+      clientName:
+        onRoute.get(cRef) ||
+        String((row as { client_name?: string }).client_name || "").trim() ||
+        cRef,
+      loanRef: loanRef || undefined,
+    });
+  }
+  return out;
+}
+
 /**
  * Detalle vivo de una planilla en un día: renglones + totales que suman esos renglones.
- * No toca CIE / Inicial / cash_float.
+ * Incluye efectivo / banco|nequi / N/P. No toca CIE / Inicial / cash_float.
  */
 export async function readRouteDayDetail(
   collectorRef: string,
@@ -315,6 +478,12 @@ export async function readRouteDayDetail(
       seenLoan.add(loan.ref);
     }
 
+    const [pays, npRows] = await Promise.all([
+      loadRoutePayments(date, pin),
+      loadRouteNp(ref, date, pin),
+    ]);
+    const digitalPool = pin === "A" ? ("nequi" as const) : ("banco" as const);
+
     return {
       ok: true,
       ready: true,
@@ -325,6 +494,13 @@ export async function readRouteDayDetail(
       prestamoLines,
       gastosTotal: sumLines(gastoLines),
       prestamosTotal: sumLines(prestamoLines),
+      cashPays: pays.cash,
+      efectivoTotal: pays.cash.reduce((sum, row) => sum + pesos(row.amount), 0),
+      digitalPays: pays.digital,
+      digitalTotal: pays.digital.reduce((sum, row) => sum + pesos(row.amount), 0),
+      digitalPool,
+      npRows,
+      npCount: npRows.length,
     };
   } catch (error) {
     console.error("route-day-detail", error);

@@ -1,8 +1,12 @@
 /**
- * Cliente de la puerta ruta+día (gastos / préstamos).
+ * Cliente de la puerta ruta+día (gastos / préstamos / efectivo / banco|nequi / N/P).
  * Solo pide al abrir el detalle; no baja el libro entero.
  */
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
+import type {
+  RouteDayNpLine,
+  RouteDayPayLine,
+} from "@/lib/server-route-day-detail";
 
 export type CloudRouteDayDetail = {
   collectorRef: string;
@@ -12,6 +16,13 @@ export type CloudRouteDayDetail = {
   prestamosTotal: number;
   gastoLines: RouteExpenseLine[];
   prestamoLines: RouteExpenseLine[];
+  efectivoTotal: number;
+  cashPays: RouteDayPayLine[];
+  digitalTotal: number;
+  digitalPays: RouteDayPayLine[];
+  digitalPool: "banco" | "nequi";
+  npCount: number;
+  npRows: RouteDayNpLine[];
   fetchedAt: number;
 };
 
@@ -85,13 +96,9 @@ export async function refreshCloudRouteDayDetail(
       `/api/ops/route-day-detail?collectorRef=${encodeURIComponent(ref)}&date=${encodeURIComponent(date)}&route=${encodeURIComponent(pin)}`,
       { cache: "no-store" },
     );
-    const body = (await res.json()) as {
+    const body = (await res.json()) as Partial<CloudRouteDayDetail> & {
       ok?: boolean;
       ready?: boolean;
-      gastosTotal?: number;
-      prestamosTotal?: number;
-      gastoLines?: RouteExpenseLine[];
-      prestamoLines?: RouteExpenseLine[];
       error?: string;
     };
     if (!res.ok || !body.ok || body.ready !== true) {
@@ -105,6 +112,13 @@ export async function refreshCloudRouteDayDetail(
       prestamosTotal: Math.trunc(Number(body.prestamosTotal) || 0),
       gastoLines: Array.isArray(body.gastoLines) ? body.gastoLines : [],
       prestamoLines: Array.isArray(body.prestamoLines) ? body.prestamoLines : [],
+      efectivoTotal: Math.trunc(Number(body.efectivoTotal) || 0),
+      cashPays: Array.isArray(body.cashPays) ? body.cashPays : [],
+      digitalTotal: Math.trunc(Number(body.digitalTotal) || 0),
+      digitalPays: Array.isArray(body.digitalPays) ? body.digitalPays : [],
+      digitalPool: body.digitalPool === "nequi" ? "nequi" : "banco",
+      npCount: Math.trunc(Number(body.npCount) || 0),
+      npRows: Array.isArray(body.npRows) ? body.npRows : [],
       fetchedAt: Date.now(),
     };
     byKey.set(keyOf(ref, date, pin), row);

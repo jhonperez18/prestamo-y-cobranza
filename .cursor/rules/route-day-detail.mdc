@@ -2,24 +2,26 @@
 
 ## Ley
 
-**Un hecho de detalle (gastos / préstamos de una ruta en un día) = una lectura del servidor.**
+**Un hecho de detalle de una ruta en un día = una lectura del servidor.**
 
 | Pieza | Dueño |
 | --- | --- |
 | Caja / Inicial / CIE / saldo final | `day_cash_figure` (M/T) · `route_own_box` (A/N) — **regla de inicio intacta** |
-| Lista «Lo que gastó» / «Lo que prestó» | **`/api/ops/route-day-detail`** (`readRouteDayDetail`) |
-| Totales de esos botones (cuando el aparato no tiene renglones) | Suma de los renglones de esa misma puerta |
+| «Lo que gastó» / «Lo que prestó» | **`/api/ops/route-day-detail`** |
+| Efectivo · Banco/Nequi · N/P (listas del cierre/historial) | **La misma puerta** |
+| Totales de esos botones (si el aparato no tiene renglones) | Suma de los renglones de esa misma puerta |
 
 El celular **no** arma el detalle de un día soltado con copia local incompleta.
-Mientras baja: **«Leyendo…»**. Nunca ceros inventados ni “no está en este aparato” si aún no preguntó a la nube.
+Mientras baja: **«Leyendo…»**. Nunca ceros inventados ni lista local a medias.
 
 ## Obligatorio
 
 1. Pedir la puerta **solo al abrir** el detalle (un día · una ruta). No en el listado de meses.
 2. Servidor filtra por ruta (M / T / A / N) con clientes y fichas de la base.
-3. Si el GAS- no trae el renglón de préstamo en efectivo, completar con la ficha del día (misma regla que el day-cash-figure).
-4. Tras guardar un gasto: soltar la foto de detalle de ese cobrador+día (`clearCloudRouteDayDetail`).
+3. Si el GAS- no trae el renglón de préstamo en efectivo, completar con la ficha del día.
+4. Tras guardar un gasto: soltar la foto (`clearCloudRouteDayDetail`).
 5. Cobrador y supervisor usan el mismo hook (`useDayExpenseDetail`).
+6. **Prohibido** caer a lista local incompleta cuando el hook ya dijo que no cuadra.
 
 ## Prohibido
 
@@ -27,7 +29,8 @@ Mientras baja: **«Leyendo…»**. Nunca ceros inventados ni “no está en este
 - Una cifra de total de una puerta y una lista de otra.
 - Parches UI «muéstralo igual» sin pasar por `route-day-detail`.
 - Bajar el libro entero “por si el detalle falta” (egress).
+- Tocar `cash_float` / Inicial / CIE desde esta puerta.
 
-## Alcance siguiente (misma ley)
+## Saldo Banco / Nequi (home)
 
-Efectivo · Banco/Nequi · N/P del historial: misma puerta o extensión de la misma, no un segundo camino paralelo.
+Sigue `pool-visible-saldo` (historial-meses). No mezclar con esta puerta de día.

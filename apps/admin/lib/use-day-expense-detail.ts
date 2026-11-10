@@ -1,16 +1,19 @@
 "use client";
 
 /**
- * Detalle «Lo que gastó» / «Lo que prestó».
+ * Detalle ruta+día (gastos / préstamos / efectivo / banco|nequi / N/P).
  *
- * Ley: si la lista local no cuadra con el total de pantalla, manda la puerta
- * `/api/ops/route-day-detail` (renglones ya filtrados por ruta en el servidor).
- * Mientras baja → loading; no se pinta lista incompleta como si fuera la verdad.
+ * Ley: si la lista local no cuadra con el total de pantalla, manda
+ * `/api/ops/route-day-detail`. Mientras baja → loading; no lista incompleta.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
-import { refreshCloudRouteDayDetail } from "@/lib/cloud-route-day-detail";
+import {
+  refreshCloudRouteDayDetail,
+  type CloudRouteDayDetail,
+} from "@/lib/cloud-route-day-detail";
 import type { ClientRow, LoanRow } from "@/lib/mock-data";
+import type { RouteDayNpLine, RouteDayPayLine } from "@/lib/server-route-day-detail";
 
 export type DayExpenseDetailInput = {
   collectorRef: string;
@@ -25,15 +28,24 @@ export type DayExpenseDetailInput = {
   enabled: boolean;
   gastosTotal: number;
   prestamosTotal: number;
+  /** También pedir cobros / N/P (misma puerta). */
+  needCollections?: boolean;
 };
 
 export type DayExpenseDetail = {
   gastoLines: RouteExpenseLine[];
   prestamoLines: RouteExpenseLine[];
   loading: boolean;
-  /** Totales de la puerta (si ya contestó). Sirven cuando el aparato no tiene renglones. */
   cloudGastosTotal: number | null;
   cloudPrestamosTotal: number | null;
+  cloudReady: boolean;
+  efectivoTotal: number | null;
+  cashPays: RouteDayPayLine[];
+  digitalTotal: number | null;
+  digitalPays: RouteDayPayLine[];
+  digitalPool: "banco" | "nequi" | null;
+  npCount: number | null;
+  npRows: RouteDayNpLine[];
 };
 
 function linesSum(lines: RouteExpenseLine[]): number {
@@ -48,11 +60,22 @@ function localMatchesTotal(lines: RouteExpenseLine[], total: number): boolean {
   return lines.length > 0 && linesSum(lines) === want;
 }
 
+const emptyCloud = {
+  gastoLines: [] as RouteExpenseLine[],
+  prestamoLines: [] as RouteExpenseLine[],
+  cashPays: [] as RouteDayPayLine[],
+  digitalPays: [] as RouteDayPayLine[],
+  npRows: [] as RouteDayNpLine[],
+  gastosTotal: null as number | null,
+  prestamosTotal: null as number | null,
+  efectivoTotal: null as number | null,
+  digitalTotal: null as number | null,
+  digitalPool: null as "banco" | "nequi" | null,
+  npCount: null as number | null,
+};
+
 export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDetail {
-  const [remoteGastos, setRemoteGastos] = useState<RouteExpenseLine[]>([]);
-  const [remotePrestamos, setRemotePrestamos] = useState<RouteExpenseLine[]>([]);
-  const [cloudGastosTotal, setCloudGastosTotal] = useState<number | null>(null);
-  const [cloudPrestamosTotal, setCloudPrestamosTotal] = useState<number | null>(null);
+  const [cloud, setCloud] = useState<CloudRouteDayDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetched, setFetched] = useState(false);
   const reqRef = useRef(0);
@@ -61,14 +84,14 @@ export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDet
   const prestamosOk = localMatchesTotal(input.localPrestamos, input.prestamosTotal);
   const needGastos = input.gastosTotal > 0 && !gastosOk;
   const needPrestamos = input.prestamosTotal > 0 && !prestamosOk;
-  const needFetch = input.enabled && Boolean(input.route) && (needGastos || needPrestamos);
+  const needFetch =
+    input.enabled &&
+    Boolean(input.route) &&
+    (needGastos || needPrestamos || Boolean(input.needCollections));
 
   useEffect(() => {
     if (!needFetch) {
-      setRemoteGastos([]);
-      setRemotePrestamos([]);
-      setCloudGastosTotal(null);
-      setCloudPrestamosTotal(null);
+      setCloud(null);
       setLoading(false);
       setFetched(false);
       return;
@@ -84,28 +107,26 @@ export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDet
     let cancelled = false;
     void refreshCloudRouteDayDetail(collectorRef, date, route, { force: true }).then((row) => {
       if (cancelled || req !== reqRef.current) return;
-      if (!row) {
-        setRemoteGastos([]);
-        setRemotePrestamos([]);
-        setCloudGastosTotal(null);
-        setCloudPrestamosTotal(null);
-        setLoading(false);
-        setFetched(true);
-        return;
-      }
-      setRemoteGastos(row.gastoLines);
-      setRemotePrestamos(row.prestamoLines);
-      setCloudGastosTotal(row.gastosTotal);
-      setCloudPrestamosTotal(row.prestamosTotal);
+      setCloud(row);
       setLoading(false);
       setFetched(true);
     });
     return () => {
       cancelled = true;
     };
-  }, [needFetch, input.collectorRef, input.date, input.route, needGastos, needPrestamos]);
+  }, [
+    needFetch,
+    input.collectorRef,
+    input.date,
+    input.route,
+    needGastos,
+    needPrestamos,
+    input.needCollections,
+  ]);
 
   return useMemo(() => {
+    const remoteGastos = cloud?.gastoLines ?? emptyCloud.gastoLines;
+    const remotePrestamos = cloud?.prestamoLines ?? emptyCloud.prestamoLines;
     const pick = (
       ok: boolean,
       local: RouteExpenseLine[],
@@ -116,9 +137,7 @@ export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDet
       if (Math.trunc(Number(total) || 0) <= 0) return [];
       if (ok) return local;
       if (remote.length) return remote;
-      // Bajó y la nube no tiene renglones: lista vacía (total puede ser de otra puerta).
       if (wantRemote && fetched && !loading) return [];
-      // Mientras baja: no pintar local incompleto.
       if (wantRemote) return [];
       return local;
     };
@@ -132,8 +151,16 @@ export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDet
         needPrestamos,
       ),
       loading,
-      cloudGastosTotal: fetched ? cloudGastosTotal : null,
-      cloudPrestamosTotal: fetched ? cloudPrestamosTotal : null,
+      cloudGastosTotal: fetched && cloud ? cloud.gastosTotal : null,
+      cloudPrestamosTotal: fetched && cloud ? cloud.prestamosTotal : null,
+      cloudReady: fetched && Boolean(cloud),
+      efectivoTotal: fetched && cloud ? cloud.efectivoTotal : null,
+      cashPays: cloud?.cashPays ?? [],
+      digitalTotal: fetched && cloud ? cloud.digitalTotal : null,
+      digitalPays: cloud?.digitalPays ?? [],
+      digitalPool: fetched && cloud ? cloud.digitalPool : null,
+      npCount: fetched && cloud ? cloud.npCount : null,
+      npRows: cloud?.npRows ?? [],
     };
   }, [
     gastosOk,
@@ -144,10 +171,7 @@ export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDet
     input.localPrestamos,
     input.gastosTotal,
     input.prestamosTotal,
-    remoteGastos,
-    remotePrestamos,
-    cloudGastosTotal,
-    cloudPrestamosTotal,
+    cloud,
     loading,
     fetched,
   ]);
