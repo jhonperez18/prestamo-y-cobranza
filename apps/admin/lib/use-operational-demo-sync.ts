@@ -21,7 +21,6 @@ import {
 } from "@/lib/supervisor-book";
 import {
   fillTodayPaymentsIntoDemo,
-  mergePaymentsWindowIntoDemo,
   pullRemotePaymentsIntoDemo,
   pullRemoteEvidenceIntoIdb,
   reconcileLocalPaymentsToRemote,
@@ -57,6 +56,7 @@ import {
   type SelfHealer,
   type SelfHealState,
 } from "@/lib/system-self-heal";
+import { isNavQuiet } from "@/lib/suppress-ghost-click";
 
 type Options = {
   /**
@@ -383,7 +383,8 @@ export function useOperationalDemoSync(
   }, [commitHydrate, healthCycleThenReport, runMirrorFlush]);
 
   /**
-   * Al volver a la app (cobrador / supervisor): planilla + cobros de hoy + CIE ayer/hoy.
+   * Al volver a la app (cobrador / supervisor): planilla + cobros de hoy +
+   * catálogo vivo (clientes/préstamos) + CIE ayer/hoy.
    * Sin CIE de ayer el Inicial M cae a PCE local (PC ≠ celular). No rebaja el libro entero.
    * Completa horaria, poll 10 min, repair y arranque siguen en runHydrateWithRemotePull.
    */
@@ -406,20 +407,23 @@ export function useOperationalDemoSync(
       const today = businessTodayIso();
       const yesterday = previousCalendarIso(today);
       // Ops incremental ya anexa CIE ayer+hoy en el servidor (Inicial M).
-      const [payments, ops] = await Promise.all([
+      // Catálogo vivo: ficha / Prestar / combinado del otro aparato sin esperar la completa.
+      const [payments, ops, catalog] = await Promise.all([
         fillTodayPaymentsIntoDemo(today),
         pullRemoteOpsIntoDemo(),
+        pullRemoteCatalogIntoDemo(),
       ]);
-      pullOk = payments.ok && ops.ok;
+      pullOk = payments.ok && ops.ok && catalog.ok;
       if (!pullOk) {
         pullError = [
           !payments.ok ? "cobros" : "",
           !ops.ok ? "planilla" : "",
+          !catalog.ok ? "catálogo" : "",
         ]
           .filter(Boolean)
           .join(" · ");
       }
-      if (payments.changed || ops.changed) commitHydrate();
+      if (payments.changed || ops.changed || catalog.changed) commitHydrate();
       if (isSupervisorLiveDevice() && trimSupervisorLiveLocalCache()) commitHydrate();
       // Inicial M / caja del día desde la base (no sessionStorage vieja).
       try {
@@ -460,45 +464,51 @@ export function useOperationalDemoSync(
     }
   }, [commitHydrate, healthCycleThenReport, runHydrateWithRemotePull, runMirrorFlush]);
 
-  /** Eco Realtime: baja solo los grupos que cambiaron (un cobro no rebaja clientes ni usuarios). */
+  /**
+   * Eco Realtime: baja solo los grupos que cambiaron (un cobro no rebaja usuarios/banco).
+   * Cobrador también baja cobros de hoy (antes se omitían → desfase hasta foco / 10 min).
+   * Si el panel de cobro está quieto, escribe storage sin commitHydrate — no tumba T / hoja.
+   */
   const runTargetedPull = useCallback(async () => {
     if (pullInFlightRef.current) return;
     const groups = new Set(pendingGroupsRef.current);
     pendingGroupsRef.current.clear();
     if (groups.size === 0) return;
-    // Cobrador: el eco de SU cobro (payments) no rehidrata — tumba T.
-    // Ops/catálogo sí: cierre o ficha remota sin esperar el poll de 5 min.
     const collectorLive = isCollectorLiveDevice();
-    if (collectorLive) {
-      groups.delete("payments");
-      if (groups.size === 0) return;
-    }
+    /** Eco del billete: no rehidratar React; la copia ya queda en storage. */
+    const deferHydrate = collectorLive && isNavQuiet();
     pullInFlightRef.current = true;
     let rehydrated = false;
+    let paymentsChanged = false;
     try {
-      // El cobro del otro aparato no espera el flush de este (supervisor en vivo).
-      if (!collectorLive && groups.has("payments")) {
+      // Cobros de hoy (cobrador y supervisor). No espera el flush de este aparato.
+      if (groups.has("payments")) {
         const today = businessTodayIso();
-        await mergePaymentsWindowIntoDemo(today, today);
+        const pay = await fillTodayPaymentsIntoDemo(today);
+        paymentsChanged = Boolean(pay.changed);
       }
       const [catalog, ops] = await Promise.all([
         groups.has("catalog") ? pullRemoteCatalogIntoDemo() : null,
         groups.has("ops") ? pullRemoteOpsIntoDemo() : null,
       ]);
-      if ((!collectorLive && groups.has("payments")) || catalog?.changed || ops?.changed) {
+      const wantHydrate =
+        (paymentsChanged && !deferHydrate) ||
+        Boolean(catalog?.changed) ||
+        Boolean(ops?.changed);
+      if (wantHydrate) {
         commitHydrate();
         rehydrated = true;
       }
       // Tras eco de cobros/ops: misma cifra de caja en todos los aparatos (day_cash_figure).
-      if (rehydrated || (!collectorLive && groups.has("payments")) || groups.has("ops")) {
+      if (rehydrated || (groups.has("payments") && !deferHydrate) || groups.has("ops")) {
         try {
-          const [{ refreshCloudDayCashFigure }, { loadDemoDayCloses }, { businessTodayIso }] =
+          const [{ refreshCloudDayCashFigure }, { loadDemoDayCloses }, { businessTodayIso: todayIso }] =
             await Promise.all([
               import("@/lib/cloud-day-cash-figure"),
               import("@/lib/demo-persist"),
               import("@/lib/business-timezone"),
             ]);
-          const today = businessTodayIso();
+          const today = todayIso();
           const closes = loadDemoDayCloses() as Array<{ date?: string; collectorRef?: string }>;
           const refs = [
             ...new Set(

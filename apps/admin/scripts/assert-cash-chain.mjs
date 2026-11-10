@@ -4807,7 +4807,7 @@ console.log("— Cupo del aparato —");
   const targeted = syncSrc.slice(syncSrc.indexOf("const runTargetedPull"));
   expect(
     "Supervisor: el timbre baja los cobros de hoy (no el archivo ni el flush)",
-    targeted.includes("mergePaymentsWindowIntoDemo") &&
+    targeted.includes("fillTodayPaymentsIntoDemo") &&
       !targeted.includes("pullRemotePaymentsIntoDemo"),
     true,
   );
@@ -4817,8 +4817,22 @@ console.log("— Cupo del aparato —");
     false,
   );
   expect(
-    "Cobrador: el timbre de su cobro no rehace T",
-    targeted.includes("isCollectorLiveDevice()") && targeted.includes("return"),
+    "Cobrador: el timbre baja cobros de hoy; quieto no rehace T",
+    targeted.includes("isCollectorLiveDevice()") &&
+      targeted.includes("isNavQuiet") &&
+      targeted.includes("fillTodayPaymentsIntoDemo") &&
+      !targeted.includes('groups.delete("payments")'),
+    true,
+  );
+  const visible = syncSrc.slice(
+    syncSrc.indexOf("const runVisibleLivePull"),
+    syncSrc.indexOf("const runTargetedPull"),
+  );
+  expect(
+    "Pull vivo: cobros + planilla + catálogo (ficha/Prestar al instante)",
+    visible.includes("fillTodayPaymentsIntoDemo") &&
+      visible.includes("pullRemoteOpsIntoDemo") &&
+      visible.includes("pullRemoteCatalogIntoDemo"),
     true,
   );
 }
