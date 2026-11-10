@@ -3578,7 +3578,6 @@ export function CollectorMobileApp({
                           onCancel={closeCard}
                           onSave={(draft) => {
                             closeCard(true);
-                            // Planilla abierta manda: en A el combinado sale de Nequi, no de Banco.
                             onCreateQuickLoan({
                               ...draft,
                               routeName:

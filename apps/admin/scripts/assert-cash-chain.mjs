@@ -1457,7 +1457,7 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
   const mobileSrc = readFileSync(new URL("../components/CollectorMobileApp.tsx", import.meta.url), "utf8");
   expect(
     "Cobrador: «Crear préstamo» cierra el formulario antes de registrar",
-    /closeCard\(true\);\s*onCreateQuickLoan\(draft\)/.test(mobileSrc),
+    /closeCard\(true\);\s*onCreateQuickLoan\(\{\s*\.\.\.draft/.test(mobileSrc),
     true,
   );
   const opsSyncSrc = readFileSync(new URL("../lib/operational-sync.ts", import.meta.url), "utf8");

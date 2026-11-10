@@ -47,10 +47,13 @@ export function supervisorLoanOrigin(
   ) {
     return origin;
   }
+  const pin = String(route || "").trim();
+  // Sin ruta aún: legado supervisor = Nequi. Con ruta: digital de esa planilla.
+  if (!pin) return "nequi";
   const fallback = defaultFundedByForRoute(route, "supervisor");
   return fallback === "banco" || fallback === "nequi" || fallback === "efectivo" || fallback === "combinado"
     ? fallback
-    : "efectivo";
+    : "nequi";
 }
 
 export type RouteCashLoanSources = {
