@@ -31,15 +31,21 @@ type Props = {
   /**
    * Orígenes permitidos del desembolso.
    * Cobrador: efectivo + combinado. Supervisor: según ruta (A sin Banco; M/T/N sin Nequi).
+   * Cartera no aplica en préstamo rápido (solo panel).
    */
-  fundedByOptions?: LoanDisbursementSource[];
-  defaultFundedBy?: LoanDisbursementSource;
+  fundedByOptions?: AnyDisbursementSource[];
+  defaultFundedBy?: AnyDisbursementSource;
   onCancel: () => void;
   onSave: (draft: QuickLoanDraft) => void;
 };
 
 /** Préstamo rápido = plata que sale hoy; la cartera existente solo se carga desde el panel. */
 type LoanDisbursementSource = Exclude<AnyDisbursementSource, "cartera">;
+
+function asQuickOrigin(value: AnyDisbursementSource | undefined): LoanDisbursementSource | undefined {
+  if (!value || value === "cartera") return undefined;
+  return value;
+}
 
 function parseMoney(raw: string) {
   const n = Number(String(raw).replace(/[^\d]/g, ""));
@@ -74,10 +80,15 @@ export function QuickLoanForm({
   onCancel,
   onSave,
 }: Props) {
-  const options =
-    fundedByOptions.length > 0 ? fundedByOptions : (["nequi"] as LoanDisbursementSource[]);
+  const options: LoanDisbursementSource[] = (
+    fundedByOptions.length > 0 ? fundedByOptions : (["nequi"] as AnyDisbursementSource[])
+  ).flatMap((opt) => {
+    const quick = asQuickOrigin(opt);
+    return quick ? [quick] : [];
+  });
+  const preferred = asQuickOrigin(defaultFundedBy);
   const initial =
-    defaultFundedBy && options.includes(defaultFundedBy) ? defaultFundedBy : options[0];
+    preferred && options.includes(preferred) ? preferred : options[0] ?? "efectivo";
   const comboDigital = combinadoDigitalKindForRoute(clientRoute);
   const comboDigitalName = combinadoDigitalLabel(comboDigital);
   const [capitalRaw, setCapitalRaw] = useState("");
