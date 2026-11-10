@@ -16,7 +16,11 @@ import { sameRoute } from "@/lib/client-route-order";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { isPrestamoRutaExpense } from "@/lib/expense-lines";
 import { displayToIso } from "@/lib/loan-preview";
-import { loanFundedByEfectivo } from "@/lib/nequi-pool";
+import {
+  defaultFundedByForRoute,
+  disbursementAllowedOnRoute,
+  loanFundedByEfectivo,
+} from "@/lib/nequi-pool";
 import {
   catalogRoutes,
   type ClientRow,
@@ -28,10 +32,25 @@ import { routeCollectorCashTarget } from "@/lib/route-collector-cash";
 
 export type SupervisorLoanOrigin = "nequi" | "banco" | "efectivo" | "combinado";
 
-/** Supervisor / admin: Nequi, Banco, Caja de la ruta o Combinado. Sin origen → Nequi. */
-export function supervisorLoanOrigin(origin: string | undefined): SupervisorLoanOrigin {
-  if (origin === "banco" || origin === "efectivo" || origin === "combinado") return origin;
-  return "nequi";
+/**
+ * Supervisor / admin: Nequi (solo A), Banco (M/T/N), Caja o Combinado.
+ * Sin origen → digital de la ruta (A→Nequi; resto→Banco).
+ */
+export function supervisorLoanOrigin(
+  origin: string | undefined,
+  route?: string | null,
+): SupervisorLoanOrigin {
+  if (origin === "efectivo" || origin === "combinado") return origin;
+  if (
+    (origin === "banco" || origin === "nequi") &&
+    disbursementAllowedOnRoute(origin, route)
+  ) {
+    return origin;
+  }
+  const fallback = defaultFundedByForRoute(route, "supervisor");
+  return fallback === "banco" || fallback === "nequi" || fallback === "efectivo" || fallback === "combinado"
+    ? fallback
+    : "efectivo";
 }
 
 export type RouteCashLoanSources = {

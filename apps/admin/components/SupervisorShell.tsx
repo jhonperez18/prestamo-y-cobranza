@@ -432,13 +432,14 @@ export function SupervisorShell({ session, onLogout }: Props) {
       showToast(blocked);
       return;
     }
-    const origin = supervisorLoanOrigin(draft.fundedBy);
-    const loan = buildQuickLoan({ ...draft, fundedBy: origin }, client, loans);
+    const routePin = (draft.routeName ?? client.route).trim();
+    const origin = supervisorLoanOrigin(draft.fundedBy, routePin);
+    const loan = buildQuickLoan({ ...draft, fundedBy: origin, routeName: routePin }, client, loans);
     if (!loan) {
       showToast(
         origin === "combinado"
-          ? "Combinado: efectivo + banco deben sumar el capital."
-          : "Revise capital, interés, tiempo y frecuencia.",
+          ? "Combinado: efectivo + digital deben sumar el capital."
+          : "Revise capital, interés, tiempo, frecuencia y origen (Nequi solo en A; Banco en M/T/N).",
       );
       return;
     }

@@ -371,6 +371,7 @@ function visitIdentity(
     "Cliente sin nombre";
   return {
     order: client?.routeOrder && client.routeOrder > 0 ? client.routeOrder : null,
+    route: client?.route || item.clientRoute || "",
     fullName,
     nickname: client?.nickname?.trim() || "",
     balance,
@@ -3566,12 +3567,26 @@ export function CollectorMobileApp({
                         <QuickLoanForm
                           clientName={identity.fullName}
                           clientRef={item.clientRef}
+                          clientRoute={
+                            activePlanillaRoute ||
+                            identity.route ||
+                            assignmentRouteName(item, clients) ||
+                            undefined
+                          }
                           fundedByOptions={["efectivo", "combinado"]}
                           defaultFundedBy="efectivo"
                           onCancel={closeCard}
                           onSave={(draft) => {
                             closeCard(true);
-                            onCreateQuickLoan(draft);
+                            // Planilla abierta manda: en A el combinado sale de Nequi, no de Banco.
+                            onCreateQuickLoan({
+                              ...draft,
+                              routeName:
+                                activePlanillaRoute ||
+                                identity.route ||
+                                assignmentRouteName(item, clients) ||
+                                draft.routeName,
+                            });
                           }}
                         />
                       </div>

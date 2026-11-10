@@ -141,8 +141,10 @@ import {
 } from "@/lib/informe-month-snapshot";
 import { primaryLoanForClient } from "@/lib/route-sync";
 import {
+  defaultFundedByForRoute,
   loanDisbursementIsoDate,
   loanDisbursementSource,
+  loanFundedByOptionsForRoute,
 } from "@/lib/nequi-pool";
 import { dayDigitalLoanRows, digitalLoanPoolForRoute } from "@/lib/day-digital-loans";
 import {
@@ -6763,8 +6765,9 @@ export function SupervisorMobileApp({
                 key={reloanClient.ref}
                 clientName={`${reloanClient.name} ${reloanClient.lastName}`.trim()}
                 clientRef={reloanClient.ref}
-                fundedByOptions={["nequi", "banco", "efectivo", "combinado"]}
-                defaultFundedBy="nequi"
+                clientRoute={reloanClient.route}
+                fundedByOptions={loanFundedByOptionsForRoute(reloanClient.route, "supervisor")}
+                defaultFundedBy={defaultFundedByForRoute(reloanClient.route, "supervisor")}
                 onCancel={() => setReloanClientRef(null)}
                 onSave={(draft) => {
                   onCreateQuickLoan({ ...draft, routeName: reloanClient.route });
@@ -8542,8 +8545,9 @@ export function SupervisorMobileApp({
                   <QuickLoanForm
                     clientName={`${nuevoLoanClient.name} ${nuevoLoanClient.lastName}`.trim()}
                     clientRef={nuevoLoanClient.ref}
-                    fundedByOptions={["nequi", "banco", "efectivo", "combinado"]}
-                    defaultFundedBy="nequi"
+                    clientRoute={nuevoRoute.routeName}
+                    fundedByOptions={loanFundedByOptionsForRoute(nuevoRoute.routeName, "supervisor")}
+                    defaultFundedBy={defaultFundedByForRoute(nuevoRoute.routeName, "supervisor")}
                     onCancel={() => setNuevoLoanClientRef(null)}
                     onSave={(draft) => {
                       onCreateQuickLoan({

@@ -43,6 +43,8 @@ import {
   type RouteRow,
 } from "@/lib/mock-data";
 import {
+  combinadoDigitalKindForRoute,
+  disbursementRouteBlockReason,
   loanBankOutflowCapital,
   loanSplitIsValid,
   markLoanExistingPortfolio,
@@ -644,7 +646,7 @@ export function commitCreateLoan(
     const cashOut = Math.trunc(Number(draft.cashOut) || 0);
     const bankOut = Math.trunc(Number(draft.bankOut) || 0);
     if (!loanSplitIsValid(draft.capital, cashOut, bankOut)) {
-      return { ok: false, error: "Combinado: efectivo + banco deben sumar el capital." };
+      return { ok: false, error: "Combinado: efectivo + digital deben sumar el capital." };
     }
   }
   if (draft.fundedBy !== "cartera") {
@@ -704,12 +706,19 @@ export function commitCreateLoan(
     installment: installment > 0 ? installment : pinned.installment,
     balance: Math.max(0, Number(pinned.total) || Number(draft.total) || Number(draft.capital) || 0),
   });
+  const routeName =
+    normalizeRouteNumber(client.route) || String(client.route || "").trim();
+  const originBlock = disbursementRouteBlockReason(draft.fundedBy, routeName);
+  if (originBlock) {
+    return { ok: false, error: originBlock };
+  }
   let fundedRow: LoanRow;
   if (draft.fundedBy === "combinado") {
     fundedRow = markLoanFundedByCombinado(
       loanReady,
       Math.trunc(Number(draft.cashOut) || 0),
       Math.trunc(Number(draft.bankOut) || 0),
+      combinadoDigitalKindForRoute(routeName),
     );
   } else if (draft.fundedBy === "banco") {
     fundedRow = markLoanFundedByBanco(loanReady);
@@ -717,14 +726,16 @@ export function commitCreateLoan(
     fundedRow = markLoanFundedByEfectivo(loanReady);
   } else if (draft.fundedBy === "cartera") {
     fundedRow = markLoanExistingPortfolio(loanReady);
-  } else {
+  } else if (draft.fundedBy === "nequi") {
     fundedRow = markLoanFundedByNequi(loanReady);
+  } else {
+    fundedRow = sameRoute(routeName, "A")
+      ? markLoanFundedByNequi(loanReady)
+      : markLoanFundedByBanco(loanReady);
   }
   const row = stampCatalogRow(fundedRow);
 
   // Asegura al cliente en su ruta (misma que el cobrador de esa ruta).
-  const routeName =
-    normalizeRouteNumber(client.route) || String(client.route || "").trim();
   const catalogRoute = catalogRoutes(state.routes).find(
     (entry) =>
       routeIsActive(entry) &&
@@ -828,11 +839,17 @@ export function commitUpdateLoan(
     ...pinned,
     installment: installment > 0 ? installment : pinned.installment,
   });
+  const routeName =
+    normalizeRouteNumber(client.route) || String(client.route || "").trim();
+  const originBlock = disbursementRouteBlockReason(draft.fundedBy, routeName);
+  if (originBlock) {
+    return { ok: false, error: originBlock };
+  }
   if (draft.fundedBy === "combinado") {
     const cashOut = Math.trunc(Number(draft.cashOut) || 0);
     const bankOut = Math.trunc(Number(draft.bankOut) || 0);
     if (!loanSplitIsValid(draft.capital, cashOut, bankOut)) {
-      return { ok: false, error: "Combinado: efectivo + banco deben sumar el capital." };
+      return { ok: false, error: "Combinado: efectivo + digital deben sumar el capital." };
     }
   }
   const funded =
@@ -841,6 +858,7 @@ export function commitUpdateLoan(
           fundedBase,
           Math.trunc(Number(draft.cashOut) || 0),
           Math.trunc(Number(draft.bankOut) || 0),
+          combinadoDigitalKindForRoute(routeName),
         )
       : draft.fundedBy === "banco"
       ? markLoanFundedByBanco(fundedBase)
@@ -858,8 +876,6 @@ export function commitUpdateLoan(
     pending: Math.max(0, client.pending - oldTotal + draft.total),
     awaitingLoan: false,
   });
-  const routeName =
-    normalizeRouteNumber(client.route) || String(client.route || "").trim();
   const catalogRoute = catalogRoutes(state.routes).find(
     (entry) =>
       routeIsActive(entry) &&

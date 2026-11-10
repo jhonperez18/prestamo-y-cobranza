@@ -19,7 +19,10 @@ import {
 } from "@/lib/loan-preview";
 import { todayIso } from "@/lib/daily-dispatch";
 import {
+  combinadoDigitalKindForRoute,
+  combinadoDigitalLabel,
   loanDisbursementSource,
+  loanFundedByOptionsForRoute,
   loanNotesForDisplay,
   loanSplitAmounts,
   loanSplitIsValid,
@@ -249,7 +252,7 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
   );
   // Alta: sin origen hasta que el usuario lo elija (evita guardar Nequi por descuido).
   const [fundedBy, setFundedBy] = useState<LoanDisbursementSource | "">(() => {
-    if (loan) return loanDisbursementSource(loan) ?? "nequi";
+    if (loan) return loanDisbursementSource(loan) ?? "";
     return "";
   });
   const seedSplit = loan ? loanSplitAmounts(loan) : null;
@@ -260,6 +263,9 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
     seedSplit ? seedSplit.bankOut.toLocaleString("es-CO") : "",
   );
   const [askingDelete, setAskingDelete] = useState(false);
+  const originOptions = loanFundedByOptionsForRoute(client?.route, "panel");
+  const comboDigital = combinadoDigitalKindForRoute(client?.route);
+  const comboDigitalName = combinadoDigitalLabel(comboDigital);
 
   const suggestions = useMemo(
     () =>
@@ -383,11 +389,14 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
   function pick(row: ClientRow) {
     setClient(row);
     setQuery("");
+    const allowed = loanFundedByOptionsForRoute(row.route, "panel");
+    setFundedBy((prev) => (prev && allowed.includes(prev) ? prev : ""));
   }
 
   function clearClient() {
     setClient(null);
     setQuery("");
+    setFundedBy("");
   }
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -757,7 +766,7 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                         fundedBy === "efectivo"
                           ? "Se descuenta del efectivo / En caja del cobrador de la ruta"
                           : fundedBy === "combinado"
-                            ? "Un P-: parte caja + parte banco"
+                            ? `Un P-: parte caja + parte ${comboDigitalName.toLowerCase()}`
                           : fundedBy === "cartera"
                             ? "Préstamo que ya estaba en la calle: no descuenta caja, banco ni Nequi"
                             : "Origen del desembolso"
@@ -766,11 +775,19 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                       <option value="" disabled>
                         Elegir origen…
                       </option>
-                      <option value="nequi">Nequi</option>
-                      <option value="banco">Banco</option>
-                      <option value="efectivo">Efectivo (caja cobrador)</option>
-                      <option value="combinado">Combinado (caja + banco)</option>
-                      <option value="cartera">Cartera existente (ya estaba en la calle)</option>
+                      {originOptions.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt === "nequi"
+                            ? "Nequi"
+                            : opt === "banco"
+                              ? "Banco"
+                              : opt === "efectivo"
+                                ? "Efectivo (caja cobrador)"
+                                : opt === "combinado"
+                                  ? `Combinado (caja + ${comboDigitalName.toLowerCase()})`
+                                  : "Cartera existente (ya estaba en la calle)"}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   {fundedBy === "combinado" ? (
@@ -790,7 +807,7 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                       </div>
                       <div className="loan-meta-field">
                         <label className="sheet-label" htmlFor="loan-bank-out">
-                          2.° Banco
+                          2.° {comboDigitalName}
                         </label>
                         <input
                           id="loan-bank-out"
@@ -882,7 +899,7 @@ export function NewLoanForm({ clients, loan, onCancel, onSave, onDelete }: Props
                               parseMoney(cashOutRaw),
                               parseMoney(bankOutRaw),
                             )
-                          ? "Efectivo + banco deben sumar el capital"
+                          ? `Efectivo + ${comboDigitalName.toLowerCase()} deben sumar el capital`
                           : undefined
                     }
                   >

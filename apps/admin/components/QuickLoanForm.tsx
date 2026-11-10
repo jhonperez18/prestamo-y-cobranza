@@ -6,7 +6,11 @@ import {
   type QuickLoanDraft,
 } from "@/lib/street-client-loan";
 import type { LoanDisbursementSource as AnyDisbursementSource } from "@/lib/nequi-pool";
-import { loanSplitIsValid } from "@/lib/nequi-pool";
+import {
+  combinadoDigitalKindForRoute,
+  combinadoDigitalLabel,
+  loanSplitIsValid,
+} from "@/lib/nequi-pool";
 import {
   firstCollectionIso,
   PAY_FREQUENCIES,
@@ -20,8 +24,13 @@ type Props = {
   clientName: string;
   clientRef: string;
   /**
+   * Ruta del cliente: fija el 2.° tramo del combinado (A→Nequi; M/T/N→Banco)
+   * y las etiquetas del formulario.
+   */
+  clientRoute?: string;
+  /**
    * Orígenes permitidos del desembolso.
-   * Cobrador: efectivo + combinado. Supervisor/admin: nequi | banco | efectivo | combinado.
+   * Cobrador: efectivo + combinado. Supervisor: según ruta (A sin Banco; M/T/N sin Nequi).
    */
   fundedByOptions?: LoanDisbursementSource[];
   defaultFundedBy?: LoanDisbursementSource;
@@ -59,6 +68,7 @@ const ORIGIN_LABEL: Record<LoanDisbursementSource, string> = {
 export function QuickLoanForm({
   clientName,
   clientRef,
+  clientRoute,
   fundedByOptions = ["nequi", "banco"],
   defaultFundedBy,
   onCancel,
@@ -68,6 +78,8 @@ export function QuickLoanForm({
     fundedByOptions.length > 0 ? fundedByOptions : (["nequi"] as LoanDisbursementSource[]);
   const initial =
     defaultFundedBy && options.includes(defaultFundedBy) ? defaultFundedBy : options[0];
+  const comboDigital = combinadoDigitalKindForRoute(clientRoute);
+  const comboDigitalName = combinadoDigitalLabel(comboDigital);
   const [capitalRaw, setCapitalRaw] = useState("");
   const [rateRaw, setRateRaw] = useState("20");
   const [termRaw, setTermRaw] = useState("1");
@@ -312,7 +324,7 @@ export function QuickLoanForm({
                 {opt === "efectivo"
                   ? "Caja de la ruta"
                   : opt === "combinado"
-                    ? "Combinado (caja + banco)"
+                    ? `Combinado (caja + ${comboDigitalName.toLowerCase()})`
                     : ORIGIN_LABEL[opt]}
               </option>
             ))}
@@ -322,7 +334,9 @@ export function QuickLoanForm({
         <p className="quick-loan-summary is-muted">
           Origen: {ORIGIN_LABEL[fundedBy]}
           {fundedBy === "efectivo" ? " · se descuenta de la caja" : ""}
-          {fundedBy === "combinado" ? " · caja + banco" : ""}
+          {fundedBy === "combinado"
+            ? ` · caja + ${comboDigitalName.toLowerCase()}`
+            : ""}
         </p>
       )}
 
@@ -339,13 +353,13 @@ export function QuickLoanForm({
             />
           </label>
           <label className="quick-loan-field">
-            <span>2.° Banco</span>
+            <span>2.° {comboDigitalName}</span>
             <input
               inputMode="numeric"
               value={bankOutRaw}
               onChange={(event) => setBankOutRaw(formatMiles(event.target.value))}
               placeholder="0"
-              aria-label="Monto en banco"
+              aria-label={`Monto en ${comboDigitalName.toLowerCase()}`}
             />
           </label>
         </div>
@@ -353,7 +367,7 @@ export function QuickLoanForm({
 
       {isCombinado && capital > 0 && !splitOk ? (
         <p className="quick-loan-summary is-warn">
-          Efectivo + Banco deben sumar {money(capital, { symbol: false })}.
+          Efectivo + {comboDigitalName} deben sumar {money(capital, { symbol: false })}.
           {cashOut + bankOut > 0
             ? ` Ahora: ${money(cashOut + bankOut, { symbol: false })}.`
             : ""}

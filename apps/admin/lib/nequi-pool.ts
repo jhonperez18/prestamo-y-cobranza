@@ -5,6 +5,7 @@
  * - cartera = préstamo que ya estaba en la calle (carga inicial): no sale plata de ningún lado
  */
 import { businessTodayIso } from "@/lib/business-timezone";
+import { sameRoute } from "@/lib/client-route-order";
 import { pesos } from "@/lib/finance";
 import { displayToIso } from "@/lib/loan-preview";
 import { loanRenewalOf } from "@/lib/loan-renewal-marks";
@@ -24,10 +25,13 @@ export const NEQUI_FUNDED_MARKER = "[[fb:nequi]]";
 export const EFECTIVO_FUNDED_MARKER = "[[fb:efectivo]]";
 export const BANCO_FUNDED_MARKER = "[[fb:banco]]";
 export const CARTERA_FUNDED_MARKER = "[[fb:cartera]]";
-/** Préstamo combinado: un P-, dos salidas (caja + banco). */
+/** Préstamo combinado: un P-, dos salidas (caja + digital). */
 export const COMBINADO_FUNDED_MARKER = "[[fb:combinado]]";
-/** Montos del split: `[[split:efectivo:300000]]` / `[[split:banco:500000]]`. */
+/** Montos del split: `[[split:efectivo:300000]]` / `[[split:banco:500000]]` / `[[split:nequi:…]]`. */
 export const SPLIT_MARKER_RE = /\[\[split:(efectivo|banco|nequi):(\d+)\]\]/gi;
+
+/** 2.° tramo del combinado: A → Nequi; M / T / N → Banco. */
+export type CombinadoDigitalKind = "banco" | "nequi";
 
 const FUNDED_MARKERS = [
   NEQUI_FUNDED_MARKER,
@@ -75,8 +79,89 @@ export function isCashlessRenewal(loan: Pick<LoanRow, "fundedBy" | "notes"> | un
   return Boolean(loan && loanRenewalOf(loan) && loanIsExistingPortfolio(loan));
 }
 
+/** Qué bolsillo digital lleva un combinado (marcador `[[split:nequi:]]` o `[[split:banco:]]`). */
+export function loanCombinadoDigitalKind(
+  loan: Pick<LoanRow, "fundedBy" | "notes">,
+): CombinadoDigitalKind | null {
+  if (!loanIsCombinadoFunded(loan)) return null;
+  if (parseSplitMarker(loan.notes, "nequi") > 0) return "nequi";
+  if (parseSplitMarker(loan.notes, "banco") > 0) return "banco";
+  // Combinados viejos sin kind en notes: eran caja + banco (M / T / N).
+  return "banco";
+}
+
+export function combinadoDigitalKindForRoute(
+  route: string | null | undefined,
+): CombinadoDigitalKind {
+  return sameRoute(route || "", "A") ? "nequi" : "banco";
+}
+
+export function combinadoDigitalLabel(kind: CombinadoDigitalKind): string {
+  return kind === "nequi" ? "Nequi" : "Banco";
+}
+
+/**
+ * Orígenes del desplegable según ruta.
+ * A: Nequi (nunca Banco). M / T / N: Banco (nunca Nequi).
+ * Cobrador: solo efectivo + combinado (el 2.° tramo lo fija la ruta).
+ */
+export function loanFundedByOptionsForRoute(
+  route: string | null | undefined,
+  mode: "supervisor" | "collector" | "panel",
+): LoanDisbursementSource[] {
+  if (mode === "collector") return ["efectivo", "combinado"];
+  const pin = String(route || "").trim();
+  const isA = sameRoute(pin, "A");
+  if (mode === "supervisor") {
+    if (!pin) return ["efectivo", "combinado"];
+    return isA ? ["nequi", "efectivo", "combinado"] : ["banco", "efectivo", "combinado"];
+  }
+  if (!pin) return ["efectivo", "combinado", "cartera"];
+  return isA
+    ? ["nequi", "efectivo", "combinado", "cartera"]
+    : ["banco", "efectivo", "combinado", "cartera"];
+}
+
+export function defaultFundedByForRoute(
+  route: string | null | undefined,
+  mode: "supervisor" | "collector" | "panel" = "supervisor",
+): LoanDisbursementSource {
+  const options = loanFundedByOptionsForRoute(route, mode);
+  const preferred = sameRoute(route || "", "A") ? "nequi" : "banco";
+  if (options.includes(preferred)) return preferred;
+  if (options.includes("efectivo")) return "efectivo";
+  return options[0] ?? "efectivo";
+}
+
+/** Nequi solo en A; Banco nunca en A. Efectivo / combinado / cartera: cualquier ruta. */
+export function disbursementAllowedOnRoute(
+  fundedBy: LoanDisbursementSource | null | undefined,
+  route: string | null | undefined,
+): boolean {
+  if (!fundedBy || fundedBy === "efectivo" || fundedBy === "combinado" || fundedBy === "cartera") {
+    return true;
+  }
+  const isA = sameRoute(route || "", "A");
+  if (fundedBy === "nequi") return isA;
+  if (fundedBy === "banco") return !isA;
+  return true;
+}
+
+export function disbursementRouteBlockReason(
+  fundedBy: LoanDisbursementSource | null | undefined,
+  route: string | null | undefined,
+): string | null {
+  if (disbursementAllowedOnRoute(fundedBy, route)) return null;
+  if (fundedBy === "nequi") return "Nequi solo en ruta A.";
+  if (fundedBy === "banco") return "En ruta A el digital es Nequi, no Banco.";
+  return "Origen no permitido en esta ruta.";
+}
+
 export function loanFundedByNequi(loan: Pick<LoanRow, "fundedBy" | "notes">): boolean {
-  return loanDisbursementSource(loan) === "nequi";
+  const source = loanDisbursementSource(loan);
+  if (source === "nequi") return true;
+  if (source === "combinado") return loanCombinadoDigitalKind(loan) === "nequi";
+  return false;
 }
 
 export function loanFundedByEfectivo(loan: Pick<LoanRow, "fundedBy" | "notes">): boolean {
@@ -86,7 +171,9 @@ export function loanFundedByEfectivo(loan: Pick<LoanRow, "fundedBy" | "notes">):
 
 export function loanFundedByBanco(loan: Pick<LoanRow, "fundedBy" | "notes">): boolean {
   const source = loanDisbursementSource(loan);
-  return source === "banco" || source === "combinado";
+  if (source === "banco") return true;
+  if (source === "combinado") return loanCombinadoDigitalKind(loan) === "banco";
+  return false;
 }
 
 /** Combinado: una ficha, sale de caja y de banco. La letra en listas es C. */
@@ -301,22 +388,32 @@ export function markLoanExistingPortfolio(loan: LoanRow): LoanRow {
 }
 
 /**
- * Un P- combinado: capital = cashOut + bankOut.
- * Caja resta cashOut; Banco resta bankOut. Ambos > 0.
+ * Un P- combinado: capital = cashOut + digitalOut.
+ * Caja resta cashOut; Banco o Nequi (según ruta) resta digitalOut. Ambos > 0.
+ * A → `[[split:nequi:]]`. M / T / N → `[[split:banco:]]`.
  */
 export function markLoanFundedByCombinado(
   loan: LoanRow,
   cashOut: number,
   bankOut: number,
+  digitalKind: CombinadoDigitalKind = "banco",
 ): LoanRow {
   const cash = pesos(cashOut);
   const bank = pesos(bankOut);
   const capital = pesos(Number(loan.capital) || 0);
+  const kind: CombinadoDigitalKind = digitalKind === "nequi" ? "nequi" : "banco";
   if (!loanSplitIsValid(capital, cash, bank)) {
-    throw new Error("Combinado inválido: efectivo + banco deben sumar el capital.");
+    throw new Error(
+      `Combinado inválido: efectivo + ${combinadoDigitalLabel(kind).toLowerCase()} deben sumar el capital.`,
+    );
   }
   const base = stripSplitMarkers(stripFundedMarkers(loan.notes));
-  const notes = [base, COMBINADO_FUNDED_MARKER, `[[split:efectivo:${cash}]]`, `[[split:banco:${bank}]]`]
+  const notes = [
+    base,
+    COMBINADO_FUNDED_MARKER,
+    `[[split:efectivo:${cash}]]`,
+    `[[split:${kind}:${bank}]]`,
+  ]
     .filter(Boolean)
     .join("\n");
   return {
@@ -367,11 +464,12 @@ export function loanOriginDisplayLabel(
 ): string {
   const source = loanDisbursementSource(loan);
   if (source === "combinado") {
+    const digital = combinadoDigitalLabel(loanCombinadoDigitalKind(loan) ?? "banco");
     const split = loanSplitAmounts(loan);
     if (split) {
-      return `Combinado (caja ${split.cashOut.toLocaleString("es-CO")} / banco ${split.bankOut.toLocaleString("es-CO")})`;
+      return `Combinado (caja ${split.cashOut.toLocaleString("es-CO")} / ${digital.toLowerCase()} ${split.bankOut.toLocaleString("es-CO")})`;
     }
-    return "Combinado (caja / banco)";
+    return `Combinado (caja / ${digital.toLowerCase()})`;
   }
   if (source === "efectivo") return "Caja";
   if (source === "banco") return "Banco";

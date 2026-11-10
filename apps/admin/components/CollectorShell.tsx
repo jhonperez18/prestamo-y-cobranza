@@ -574,11 +574,17 @@ export function CollectorShell({ session, onLogout }: Props) {
     }
     const origin =
       draft.fundedBy === "combinado" ? "combinado" : "efectivo";
-    const loan = buildQuickLoan({ ...draft, fundedBy: origin }, client, loans);
+    // Ruta de la planilla abierta (A → combinado = Nequi). No inventar Banco en A.
+    const routePin = String(draft.routeName || client.route || "").trim();
+    const loan = buildQuickLoan(
+      { ...draft, fundedBy: origin, routeName: routePin },
+      client,
+      loans,
+    );
     if (!loan) {
       showToast(
         origin === "combinado"
-          ? "Combinado: efectivo + banco deben sumar el capital."
+          ? "Combinado: efectivo + digital deben sumar el capital."
           : "Revise capital, interés, tiempo y frecuencia.",
       );
       return;

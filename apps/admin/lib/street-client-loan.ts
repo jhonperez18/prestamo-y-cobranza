@@ -1,5 +1,5 @@
 import { CLIENT_STATUS_ACTIVE, clientStatusKind } from "@/lib/client-review";
-import { placeClientOnRoute, nextRouteOrder } from "@/lib/client-route-order";
+import { placeClientOnRoute, nextRouteOrder, sameRoute } from "@/lib/client-route-order";
 import { toClientNameTitleCase } from "@/lib/client-name-case";
 import { todayIso } from "@/lib/daily-dispatch";
 import { deletedClientRefRows } from "@/lib/deleted-ids";
@@ -19,6 +19,8 @@ import {
   type LoanRow,
 } from "@/lib/mock-data";
 import {
+  combinadoDigitalKindForRoute,
+  disbursementAllowedOnRoute,
   loanSplitIsValid,
   markLoanFundedByBanco,
   markLoanFundedByCombinado,
@@ -152,15 +154,30 @@ export function buildQuickLoan(draft: QuickLoanDraft, client: ClientRow, loans: 
   ) as LoanRow;
   loan.createdAt = new Date().toISOString();
 
+  const routePin = String(draft.routeName || client.route || "").trim();
   if (draft.fundedBy === "combinado") {
     const cashOut = Math.trunc(Number(draft.cashOut) || 0);
     const bankOut = Math.trunc(Number(draft.bankOut) || 0);
     if (!loanSplitIsValid(draft.capital, cashOut, bankOut)) return null;
-    return markLoanFundedByCombinado(loan, cashOut, bankOut);
+    return markLoanFundedByCombinado(
+      loan,
+      cashOut,
+      bankOut,
+      combinadoDigitalKindForRoute(routePin),
+    );
   }
   if (draft.fundedBy === "efectivo") return markLoanFundedByEfectivo(loan);
-  if (draft.fundedBy === "banco") return markLoanFundedByBanco(loan);
-  return markLoanFundedByNequi(loan);
+  if (draft.fundedBy === "banco") {
+    if (!disbursementAllowedOnRoute("banco", routePin)) return null;
+    return markLoanFundedByBanco(loan);
+  }
+  if (draft.fundedBy === "nequi") {
+    if (!disbursementAllowedOnRoute("nequi", routePin)) return null;
+    return markLoanFundedByNequi(loan);
+  }
+  // Sin origen explícito: digital de la ruta (A→Nequi; resto→Banco).
+  if (sameRoute(routePin, "A")) return markLoanFundedByNequi(loan);
+  return markLoanFundedByBanco(loan);
 }
 
 export { interestFromPct } from "@/lib/finance";
