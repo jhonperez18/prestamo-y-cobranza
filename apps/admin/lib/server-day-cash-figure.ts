@@ -321,7 +321,8 @@ export async function readDayCashFigure(
     mClosing,
     dayFinal,
     cie,
-    saldo: cie != null ? cie : dayFinal,
+    // Ley: Saldo de Caja = fórmula (dayFinal). CIE no pisa. Banco no entra.
+    saldo: dayFinal,
     mEfectivo,
     mPrestamos,
     mGastos,

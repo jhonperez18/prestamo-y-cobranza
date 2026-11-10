@@ -1513,6 +1513,18 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
       !ownBoxSrc.includes("N sellada: CIE manda"),
     true,
   );
+  const dayFigSrc = readFileSync(new URL("../lib/server-day-cash-figure.ts", import.meta.url), "utf8");
+  const headerCashSrc = readFileSync(new URL("../lib/planilla-header-cash.ts", import.meta.url), "utf8");
+  const ledgerSrcFig = readFileSync(new URL("../lib/day-cash-ledger.ts", import.meta.url), "utf8");
+  expect(
+    "Caja M/T: Saldo = dayFinal (fórmula); CIE no pisa",
+    dayFigSrc.includes("saldo: dayFinal") &&
+      !dayFigSrc.includes("saldo: cie != null ? cie : dayFinal") &&
+      headerCashSrc.includes("cajaFormulaSaldo") &&
+      headerCashSrc.includes("ajusteContado") &&
+      !ledgerSrcFig.includes("cloud.cie != null ? cloud.cie : cloud.dayFinal"),
+    true,
+  );
   expect(
     "Tuneup diario: al día sin re-bajar (no borra cortes de pull)",
     tuneupSrc.includes("clearSessionMoneyWarms") &&

@@ -59,7 +59,13 @@ function normalizeFigure(row: CloudDayCashFigure): CloudDayCashFigure | null {
     mClosing: row.mClosing == null ? null : Math.trunc(Number(row.mClosing)),
     dayFinal: row.dayFinal == null ? null : Math.trunc(Number(row.dayFinal)),
     cie: row.cie == null ? null : Math.trunc(Number(row.cie)),
-    saldo: row.saldo == null ? null : Math.trunc(Number(row.saldo)),
+    // Ley: saldo de Caja = dayFinal (fórmula). CIE no pisa en caché.
+    saldo:
+      row.dayFinal == null
+        ? row.saldo == null
+          ? null
+          : Math.trunc(Number(row.saldo))
+        : Math.trunc(Number(row.dayFinal)),
     mEfectivo: row.mEfectivo == null ? null : Math.trunc(Number(row.mEfectivo)),
     mPrestamos: row.mPrestamos == null ? null : Math.trunc(Number(row.mPrestamos)),
     mGastos: row.mGastos == null ? null : Math.trunc(Number(row.mGastos)),
@@ -177,7 +183,7 @@ async function fetchDayCashFigureOnce(
       mClosing: body.ready ? Math.trunc(Number(body.mClosing) || 0) : null,
       dayFinal: body.ready ? Math.trunc(Number(body.dayFinal) || 0) : null,
       cie: body.cie == null ? null : Math.trunc(Number(body.cie)),
-      saldo: body.ready ? Math.trunc(Number(body.saldo) || 0) : null,
+      saldo: body.ready ? Math.trunc(Number(body.dayFinal) || 0) : null,
       mEfectivo: body.mEfectivo == null ? null : Math.trunc(Number(body.mEfectivo)),
       mPrestamos: body.mPrestamos == null ? null : Math.trunc(Number(body.mPrestamos)),
       mGastos: body.mGastos == null ? null : Math.trunc(Number(body.mGastos)),

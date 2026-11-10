@@ -595,7 +595,13 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
             }
           : local.mOpening,
       mClosing: pesos(cloud.mClosing),
-      dayFinal: pesos(cloud.cie != null ? cloud.cie : cloud.dayFinal),
+      // Ley: Saldo de Caja = dayFinal (fórmula). CIE distinto no pisa.
+      // AJUSTE autorizado (contado) sí puede fijar el Saldo.
+      dayFinal: pesos(
+        local.cashAdjustment?.real != null && Number.isFinite(local.cashAdjustment.real)
+          ? local.cashAdjustment.real
+          : cloud.dayFinal,
+      ),
     };
   }
   return local;

@@ -151,7 +151,6 @@ import {
   routeCashPayments,
   routeCobradoBreakdown,
   routeDigitalPayments,
-  sealedDaySaldo,
   withLedgerTodaySaldo,
   withRouteCobradoHistory,
   withSealedDaySaldos,
@@ -1842,12 +1841,14 @@ export function CollectorMobileApp({
    */
   const headerCash = useMemo(() => {
     if (ownRouteDay) {
+      const adjReal = ownRouteDay.adjustment?.real;
       return planillaHeaderCash({
         inicial: ownRouteDay.opening,
         efectivo: ownRouteDay.efectivo,
         gastos: ownRouteDay.gastos,
         prestamos: ownRouteDay.prestamos,
-        cajaSellada: ownRouteDay.closing,
+        ajusteContado:
+          adjReal != null && Number.isFinite(adjReal) ? adjReal : null,
       });
     }
     const cloudFig = getCloudDayCashFigure(collector.ref, activeDate);
@@ -1876,8 +1877,8 @@ export function CollectorMobileApp({
       const tInicial = cloudOk
         ? cloudFig.mClosing
         : (primaryClosingForDay(ledgerSrc, activeDate) ?? dayLedger.mClosing);
-      // Caja = day_final (misma cuenta que botones / supervisor). CIE solo si no hay day_final.
-      // Ajuste local obsoleto (527→827 con nube en 859): no leer sealedDaySaldo del aparato.
+      // Caja T = fórmula (Inicial T + efectivo − gastos − préstamos). CIE no pisa.
+      // Banco no entra. Única excepción: AJUSTE contado autorizado.
       const localAdj = findFullDayCieClose(dayCloses, collector.ref, activeDate)?.cashAdjustment;
       const staleAdj =
         Boolean(localAdj) &&
@@ -1886,20 +1887,13 @@ export function CollectorMobileApp({
           cie: cloudFig.cie,
           dayFinal: cloudFig.dayFinal,
         });
-      const tCaja = staleAdj
-        ? (cloudFig.dayFinal as number)
-        : (cloudOk && cloudFig.dayFinal != null ? cloudFig.dayFinal : null) ??
-          (cloudOk && cloudFig.cie != null ? cloudFig.cie : null) ??
-          (localAdj ? localAdj.real : null) ??
-          sealedDaySaldo(dayCloses, collector.ref, activeDate) ??
-          dayLedger.dayFinal;
       return planillaHeaderCash({
         inicial: tInicial,
         efectivo: cloudOk && cloudFig.tEfectivo != null ? cloudFig.tEfectivo : (chainPlanillaDay?.efectivo ?? 0),
         gastos: cloudOk && cloudFig.tGastos != null ? cloudFig.tGastos : (chainPlanillaDay?.gastos ?? 0),
         prestamos:
           cloudOk && cloudFig.tPrestamos != null ? cloudFig.tPrestamos : (chainPlanillaDay?.prestamos ?? 0),
-        cajaSellada: tCaja,
+        ajusteContado: !staleAdj && localAdj?.real != null ? localAdj.real : null,
       });
     }
     if (viewingChainM && (dayLedger.chain || cloudFig?.ready)) {
@@ -1911,10 +1905,6 @@ export function CollectorMobileApp({
             : chainOpening.kind === "chain"
               ? chainOpening.opening
               : 0;
-      const mCaja =
-        cloudFig?.ready && cloudFig.mClosing != null
-          ? cloudFig.mClosing
-          : dayLedger.mClosing;
       return planillaHeaderCash({
         inicial: mOpen,
         efectivo:
@@ -1929,7 +1919,6 @@ export function CollectorMobileApp({
           cloudFig?.ready && cloudFig.mPrestamos != null
             ? cloudFig.mPrestamos
             : (chainPlanillaDay?.prestamos ?? 0),
-        cajaSellada: mCaja,
       });
     }
     // Sin libro de cadena ni caja A/N: no inventar saldo.

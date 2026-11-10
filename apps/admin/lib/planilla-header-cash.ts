@@ -1,26 +1,25 @@
 /**
- * Cabecera de planilla (Inicial · Recaudo · Total día · Caja · Gastos · Préstamos).
+ * Cabecera de planilla — Saldo de Caja (dueño 10/11).
  *
- * Fórmula fija — una sola, sin atajos (dueño 10/11):
- *   Caja     = Inicial + efectivo − préstamos − gastos
- *   Total día = Caja − Inicial  (= efectivo − préstamos − gastos)
+ * Ley estricta (una sola, sin copias):
+ *   Caja = Inicial + efectivo − préstamos − gastos
  *
- * Banco / Nequi no entran a la Caja (van al KPI digital aparte).
- * `cajaSellada` = mismo Saldo de la fórmula (o AJUSTE@ autorizado).
- * Prohibido pasar un CIE distinto a la operación del día.
+ * - Solo efectivo de caja. Banco / Nequi no entran (van a BANCO / NEQUI).
+ * - Nadie pisa el resultado (ni CIE distinto). El CIE al sellar = esta Caja.
+ * - Única excepción: `ajusteContado` (AJUSTE autorizado / caja contada).
  */
 import { pesos } from "@/lib/finance";
 
 export type PlanillaHeaderCash = {
   inicial: number;
-  /** Cobros en efectivo de la planilla (botón Recaudo en N; parte del Recaudo en M/T/A). */
+  /** Cobros en efectivo de la planilla. */
   efectivo: number;
   gastos: number;
   /** Solo desembolsos en efectivo: restan de la Caja. */
   prestamos: number;
   /** Movimiento del día en caja (= efectivo − préstamos − gastos). */
   totalDia: number;
-  /** Saldo en mano: pasa como Inicial al otro día. */
+  /** Saldo en mano: pasa como Inicial al eslabón siguiente. */
   caja: number;
 };
 
@@ -30,24 +29,36 @@ export type PlanillaHeaderCashInput = {
   gastos: number;
   prestamos: number;
   /**
-   * CIE / libro ya sellado. Si viene, manda sobre la suma viva
-   * (Historia sagrada: día cerrado no se rehace).
+   * @deprecated No pisa la fórmula. Se ignora si discrepa.
+   * Usar `ajusteContado` solo para AJUSTE autorizado.
    */
   cajaSellada?: number | null;
+  /** Única excepción: caja contada (AJUSTE T / A / N autorizado). */
+  ajusteContado?: number | null;
 };
 
-/** Única cuenta de la cabecera. Prohibido inventar otra en la UI. */
+/** Única cuenta de Caja. Prohibido inventar otra en la UI. */
+export function cajaFormulaSaldo(
+  inicial: number,
+  efectivo: number,
+  prestamos: number,
+  gastos: number,
+): number {
+  return pesos(pesos(inicial) + pesos(efectivo) - pesos(prestamos) - pesos(gastos));
+}
+
+/** Única cuenta de la cabecera. */
 export function planillaHeaderCash(input: PlanillaHeaderCashInput): PlanillaHeaderCash {
   const inicial = pesos(input.inicial);
   const efectivo = pesos(input.efectivo);
   const gastos = pesos(input.gastos);
   const prestamos = pesos(input.prestamos);
-  const viva = pesos(inicial + efectivo - prestamos - gastos);
-  const sellada =
-    input.cajaSellada == null || !Number.isFinite(Number(input.cajaSellada))
+  const viva = cajaFormulaSaldo(inicial, efectivo, prestamos, gastos);
+  const ajuste =
+    input.ajusteContado == null || !Number.isFinite(Number(input.ajusteContado))
       ? null
-      : pesos(Number(input.cajaSellada));
-  const caja = sellada ?? viva;
+      : pesos(Number(input.ajusteContado));
+  const caja = ajuste ?? viva;
   return {
     inicial,
     efectivo,

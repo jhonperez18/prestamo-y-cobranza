@@ -1,0 +1,234 @@
+-- Dueño 10/11: Saldo de Caja = fórmula del día. CIE no pisa. Banco/Nequi no entran.
+-- Base: combinado solo tramo efectivo (split).
+
+create or replace function public.day_cash_figure(p_collector_ref text, p_date date)
+returns jsonb
+language plpgsql
+stable
+as $function$
+declare
+  v_chain boolean;
+  v_own text;
+  v_opening numeric(14, 2);
+  v_cie numeric(14, 2);
+  v_expenses jsonb := '[]'::jsonb;
+  v_line jsonb;
+  v_amount numeric(14, 2);
+  v_route text;
+  v_prestamo boolean;
+  v_m_ef numeric(14, 2) := 0;
+  v_t_ef numeric(14, 2) := 0;
+  v_own_ef numeric(14, 2) := 0;
+  v_m_gas numeric(14, 2) := 0;
+  v_t_gas numeric(14, 2) := 0;
+  v_own_gas numeric(14, 2) := 0;
+  v_m_pre numeric(14, 2) := 0;
+  v_t_pre numeric(14, 2) := 0;
+  v_own_pre numeric(14, 2) := 0;
+  v_loan_m numeric(14, 2) := 0;
+  v_loan_t numeric(14, 2) := 0;
+  v_loan_own numeric(14, 2) := 0;
+  v_m_close numeric(14, 2);
+  v_final numeric(14, 2);
+  v_calculado numeric(14, 2);
+  v_open jsonb;
+begin
+  if p_collector_ref is null or btrim(p_collector_ref) = '' or p_date is null then
+    return jsonb_build_object('ok', false, 'ready', false, 'error', 'dato_invalido');
+  end if;
+
+  v_open := public.chain_m_opening(p_collector_ref, p_date);
+  if coalesce((v_open->>'ok')::boolean, false) is not true then
+    return jsonb_build_object(
+      'ok', false,
+      'ready', false,
+      'error', coalesce(v_open->>'error', 'sin_inicial')
+    );
+  end if;
+  if coalesce((v_open->>'ready')::boolean, false) is not true then
+    return jsonb_build_object(
+      'ok', true,
+      'ready', false,
+      'error', coalesce(v_open->>'error', 'no_listo'),
+      'missing_day', v_open->>'missing_day',
+      'prior_cie_ref', v_open->>'prior_cie_ref',
+      'prior_cie_date', v_open->>'prior_cie_date'
+    );
+  end if;
+  v_opening := trunc(coalesce((v_open->>'opening')::numeric, 0));
+
+  select exists (
+    select 1
+    from public.routes r
+    where r.collector_ref = p_collector_ref
+      and upper(btrim(r.name)) in ('M', 'T')
+  )
+  into v_chain;
+
+  select upper(btrim(r.name))
+    into v_own
+  from public.routes r
+  where r.collector_ref = p_collector_ref
+    and upper(btrim(r.name)) in ('A', 'N')
+  limit 1;
+
+  select d.cash_float, d.expenses
+    into v_cie, v_expenses
+  from public.day_closes d
+  where d.collector_ref = p_collector_ref
+    and d.close_date = p_date
+    and d.ref ~ '^CIE-'
+  limit 1;
+
+  -- [] vacío también tapa el GAS- (caso Edgar 03/11).
+  if v_expenses is null or jsonb_typeof(v_expenses) <> 'array' or jsonb_array_length(v_expenses) = 0 then
+    select e.expenses
+      into v_expenses
+    from public.day_expenses e
+    where e.collector_ref = p_collector_ref
+      and e.expense_date = p_date
+    limit 1;
+  end if;
+  v_expenses := coalesce(v_expenses, '[]'::jsonb);
+
+  select
+    coalesce(sum(trunc(p.amount)) filter (where upper(btrim(c.route)) = 'M'), 0),
+    coalesce(sum(trunc(p.amount)) filter (where upper(btrim(c.route)) = 'T'), 0),
+    coalesce(sum(trunc(p.amount)) filter (where v_own is not null and upper(btrim(c.route)) = v_own), 0)
+    into v_m_ef, v_t_ef, v_own_ef
+  from public.payments p
+  join public.loans l on l.ref = p.loan_ref
+  join public.clients c on c.ref = l.client_ref
+  where p.collector_ref = p_collector_ref
+    and p.paid_date = p_date
+    and coalesce(p.payment_type, '') <> 'Anulado'
+    and lower(btrim(coalesce(p.method, ''))) not in ('nequi', 'banco');
+
+  for v_line in
+    select value from jsonb_array_elements(v_expenses)
+  loop
+    v_amount := trunc(coalesce((v_line->>'amount')::numeric, 0));
+    if v_amount <= 0 then
+      continue;
+    end if;
+    v_prestamo := coalesce(v_line->>'category', '') = 'prestamo_ruta'
+      or coalesce(v_line->>'id', '') = 'prestamo';
+    if not v_prestamo then
+      v_route := upper(btrim(coalesce(v_line->>'route', '')));
+      if v_route = 'T' then
+        v_t_gas := v_t_gas + v_amount;
+      else
+        v_m_gas := v_m_gas + v_amount;
+      end if;
+      if not v_chain then
+        v_own_gas := v_own_gas + v_amount;
+      end if;
+      continue;
+    end if;
+
+    v_route := null;
+    select upper(btrim(c.route))
+      into v_route
+    from public.loans l
+    join public.clients c on c.ref = l.client_ref
+    where l.ref = coalesce(v_line->>'loanRef', '')
+    limit 1;
+
+    -- El renglón vive en el GAS de ESTE cobrador: la plata ya salió de su caja.
+    -- Cliente en A/N (o sin ruta) no puede desaparecer el Haber (caso P-717 Jhon Rey
+    -- en N con GAS de Edgar → m_prestamos 0 y botones vacíos con cobradores en ruta).
+    if v_chain then
+      if v_route = 'T' then
+        v_t_pre := v_t_pre + v_amount;
+      else
+        -- M, A, N, vacía, u otra → caja M (misma regla que gasto sin marca de ruta).
+        v_m_pre := v_m_pre + v_amount;
+      end if;
+    elsif v_own is not null then
+      v_own_pre := v_own_pre + v_amount;
+    end if;
+  end loop;
+
+  select
+    coalesce(sum(cash.v_cash) filter (where upper(btrim(c.route)) = 'M'), 0),
+    coalesce(sum(cash.v_cash) filter (where upper(btrim(c.route)) = 'T'), 0),
+    coalesce(sum(cash.v_cash) filter (where v_own is not null and upper(btrim(c.route)) = v_own), 0)
+    into v_loan_m, v_loan_t, v_loan_own
+  from public.loans l
+  join public.clients c on c.ref = l.client_ref
+  cross join lateral (
+    select
+      case
+        when coalesce(l.notes, '') like '%[[fb:combinado]]%' then
+          coalesce(
+            nullif(
+              (regexp_match(coalesce(l.notes, ''), '\[\[split:efectivo:([0-9]+)\]\]'))[1],
+              ''
+            )::numeric,
+            0
+          )
+        else trunc(l.capital)
+      end as v_cash
+  ) cash
+  where l.start_date = p_date
+    and l.deleted_at is null
+    and lower(btrim(coalesce(l.status, ''))) not in ('eliminado', 'cancelado')
+    and coalesce(l.notes, '') not like '%[[fb:nequi]]%'
+    and coalesce(l.notes, '') not like '%[[fb:banco]]%'
+    and coalesce(l.notes, '') not like '%[[fb:cartera]]%'
+    and not exists (
+      select 1
+      from jsonb_array_elements(v_expenses) as exp
+      where coalesce(exp.value->>'loanRef', '') = l.ref
+        and (
+          coalesce(exp.value->>'category', '') = 'prestamo_ruta'
+          or coalesce(exp.value->>'id', '') = 'prestamo'
+        )
+    );
+
+  if v_loan_m > v_m_pre then v_m_pre := v_loan_m; end if;
+  if v_loan_t > v_t_pre then v_t_pre := v_loan_t; end if;
+  if v_loan_own > v_own_pre then v_own_pre := v_loan_own; end if;
+
+  v_m_close := v_opening + v_m_ef - v_m_gas - v_m_pre;
+  v_final := v_m_close + v_t_ef - v_t_gas - v_t_pre;
+  if v_chain then
+    v_calculado := v_final;
+  else
+    v_calculado := v_opening + v_own_ef - v_own_gas - v_own_pre;
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'ready', true,
+    'chain', v_chain,
+    'own_route', v_own,
+    'opening', v_opening,
+    'prior_cie_ref', v_open->>'prior_cie_ref',
+    'prior_cie_date', v_open->>'prior_cie_date',
+    'm_efectivo', v_m_ef,
+    'm_gastos', v_m_gas,
+    'm_prestamos', v_m_pre,
+    'm_closing', v_m_close,
+    't_efectivo', v_t_ef,
+    't_gastos', v_t_gas,
+    't_prestamos', v_t_pre,
+    'day_final', v_final,
+    'own_efectivo', v_own_ef,
+    'own_gastos', v_own_gas,
+    'own_prestamos', v_own_pre,
+    'calculado', v_calculado,
+    'cie', v_cie,
+    'saldo', v_calculado
+  );
+end;
+$function$;
+
+comment on function public.day_cash_figure(text, date) is
+  'Caja del día: Saldo = fórmula. CIE no pisa. Combinado = solo tramo efectivo.';
+
+revoke all on function public.day_cash_figure(text, date)
+  from public, anon, authenticated;
+grant execute on function public.day_cash_figure(text, date) to service_role;
+
+notify pgrst, 'reload schema';

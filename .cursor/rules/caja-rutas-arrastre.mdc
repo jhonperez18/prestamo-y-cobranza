@@ -10,6 +10,18 @@ alwaysApply: true
 **Inicial de hoy = Saldo del último día con caja de esa misma ruta.**  
 Domingo / festivo / día en 0: el Saldo se arrastra igual. La secuencia **nunca** se rompe.
 
+### Saldo de Caja — fórmula única (dueño 10/11)
+
+```text
+Caja = Inicial + efectivo − préstamos − gastos
+```
+
+- Solo **efectivo de caja**. Banco / Nequi **no** entran (ni cobro ni préstamo).
+- Una sola operación. **Nadie la pisa** (ni un CIE distinto).
+- El CIE al cerrar **guarda** ese Saldo; la lectura no lo sustituye por otro número.
+- Ese Saldo = Inicial del eslabón siguiente (T←M del mismo día; M mañana←T ayer).
+- Única excepción: AJUSTE contado autorizado.
+
 Misma regla en **M, T, A y N**. Un solo eslabón malo = imposible.
 
 Tres cajas distintas. **Sin cruces.**
