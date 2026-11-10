@@ -1525,6 +1525,14 @@ expect("T no cierra si M sigue abierta (única unión entre rutas)", nCloseGuard
       !ledgerSrcFig.includes("cloud.cie != null ? cloud.cie : cloud.dayFinal"),
     true,
   );
+  const chainAuditSrc = readFileSync(new URL("../lib/server-chain-audit.ts", import.meta.url), "utf8");
+  expect(
+    "Candado prod: CIE del ancla = fórmula Caja (verify falla si no)",
+    chainAuditSrc.includes("yesterdayFormula") &&
+      chainAuditSrc.includes("expectedSeal") &&
+      chainAuditSrc.includes("sealOk"),
+    true,
+  );
   expect(
     "Tuneup diario: al día sin re-bajar (no borra cortes de pull)",
     tuneupSrc.includes("clearSessionMoneyWarms") &&
@@ -4408,8 +4416,9 @@ console.log("— Revisión de la mañana y puesta a punto —");
   const M1 = "2026-10-01";
   const M2 = "2026-10-02";
   const M3 = "2026-10-03";
+  // CIE = fórmula del día (sin movimiento = arrastra el Saldo anterior). No inventar otro float.
   const cieM1 = { ...cie25, ref: `CIE-COB-0-${M1}`, date: M1, cashFloat: 1_000_000 };
-  const cieM2 = { ...cie25, ref: `CIE-COB-0-${M2}`, date: M2, cashFloat: 1_200_000 };
+  const cieM2 = { ...cie25, ref: `CIE-COB-0-${M2}`, date: M2, cashFloat: 1_000_000 };
   const closedVisit = (id, date) => visit(id, "CLI-M1", "M", date, { dayClosedAt: `${date}T23:30:00.000-05:00` });
   const morningState = (over) => ({
     assignments: [closedVisit("V-1", M1), closedVisit("V-2", M2)],

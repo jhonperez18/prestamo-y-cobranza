@@ -130,7 +130,7 @@ async function assertCatalogHealth() {
 }
 
 async function assertCashChain() {
-  console.log("Comprobando regla de inicio en la nube (Inicial M hoy = CIE ayer)…");
+  console.log("Comprobando regla de inicio (CIE = fórmula Caja = Inicial hoy)…");
   let data;
   try {
     data = await fetchJson(`${DOMAIN}/api/ops/chain-audit`);
@@ -146,14 +146,16 @@ async function assertCashChain() {
   for (const row of rows) {
     const tag = row.kind === "independent" ? "Caja" : "CIE";
     const tLabel = row.kind === "independent" ? "Caja hoy" : "Inicial T";
+    const formula =
+      row.yesterdayFormula == null ? "—" : String(row.yesterdayFormula);
     console.log(
-      `  ${row.ok ? "OK   " : "FALLA"} ${row.collectorName || row.collectorRef}: ${tag} ${row.yesterday} = ${row.yesterdayCieFloat} · Inicial hoy = ${row.todayOpening ?? "—"} · ${tLabel} = ${row.todayMClosing ?? "—"} · saldo final = ${row.todayFinal ?? "—"}`,
+      `  ${row.ok ? "OK   " : "FALLA"} ${row.collectorName || row.collectorRef}: ${tag} ${row.yesterday} = ${row.yesterdayCieFloat} · fórmula = ${formula} · Inicial hoy = ${row.todayOpening ?? "—"} · ${tLabel} = ${row.todayMClosing ?? "—"} · saldo final = ${row.todayFinal ?? "—"}`,
     );
   }
   if (!data.ok) {
-    fail(`regla de inicio rota en ${data.businessDate ?? "hoy"}.${data.error ? ` ${data.error}` : ""}`);
+    fail(`regla de inicio / fórmula Caja rota en ${data.businessDate ?? "hoy"}.${data.error ? ` ${data.error}` : ""}`);
   }
-  console.log("Regla de inicio OK");
+  console.log("Regla de inicio OK (CIE = fórmula = Inicial hoy)");
 }
 
 /**

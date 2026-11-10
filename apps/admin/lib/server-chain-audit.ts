@@ -3,6 +3,9 @@
  * Cadena M↔T: Inicial M de hoy = `cash_float` del CIE- de ayer.
  * N / A: Inicial de hoy = caja propia de ayer.
  *
+ * Candado sagrado (dueño 10/11): CIE / caja del día ancla = fórmula de ese día.
+ *   Caja = Inicial + efectivo − préstamos − gastos (Banco no entra).
+ *
  * Solo lee. No baja cobros / planilla / clientes / préstamos: usa CIE + RPC
  * (`chain_m_opening` / `day_cash_figure` / `route_own_box`).
  */
@@ -29,6 +32,8 @@ export type ChainAuditRow = {
   collectorName: string;
   yesterday: string;
   yesterdayCieFloat: number;
+  /** Fórmula del día ancla (Caja). Debe = CIE / caja sellada. */
+  yesterdayFormula: number | null;
   todayOpening: number | null;
   /** Informativo: caja viva de M (= Inicial T) y saldo final si se cerrara ahora. */
   todayMClosing: number;
@@ -94,15 +99,27 @@ export async function runServerChainAudit(now = new Date()): Promise<ChainAuditR
       const open = await readChainMOpening(collector.ref, businessDate);
       const todayOpening =
         open.ok && open.ready ? open.opening : fig.opening;
+      const priorFig = await readDayCashFigure(collector.ref, priorDate);
+      const yesterdayFormula =
+        priorFig.ok && priorFig.ready && priorFig.dayFinal != null
+          ? priorFig.dayFinal
+          : null;
+      // CIE debe = fórmula; si hubo AJUSTE T autorizado, CIE = real contado.
+      const adjReal = cie.cashAdjustment?.real;
+      const expectedSeal =
+        adjReal != null && Number.isFinite(adjReal) ? Number(adjReal) : yesterdayFormula;
+      const sealOk =
+        expectedSeal == null || expectedSeal === yesterdayCieFloat;
       rows.push({
         collectorRef: collector.ref,
         collectorName: collector.name,
         yesterday: priorDate,
         yesterdayCieFloat,
+        yesterdayFormula,
         todayOpening,
         todayMClosing: fig.mClosing,
         todayFinal: fig.dayFinal,
-        ok: todayOpening === yesterdayCieFloat,
+        ok: todayOpening === yesterdayCieFloat && sealOk,
         kind: "chain",
       });
       continue;
@@ -110,15 +127,19 @@ export async function runServerChainAudit(now = new Date()): Promise<ChainAuditR
 
     const own = await readIndependentPair(collector.ref, priorDate, businessDate);
     if (!own) continue;
+    // Caja del día = fórmula. CIE debe guardar esa misma Caja (prod).
+    const formulaOk = own.yesterdayFormula === own.yesterdayClosing;
+    const cieOk = yesterdayCieFloat === own.yesterdayClosing;
     rows.push({
       collectorRef: collector.ref,
       collectorName: collector.name,
       yesterday: priorDate,
       yesterdayCieFloat: own.yesterdayClosing,
+      yesterdayFormula: own.yesterdayFormula,
       todayOpening: own.todayOpening,
       todayMClosing: own.todayClosing,
       todayFinal: own.todayClosing,
-      ok: own.todayOpening === own.yesterdayClosing,
+      ok: own.todayOpening === own.yesterdayClosing && formulaOk && cieOk,
       kind: "independent",
     });
   }
@@ -140,6 +161,7 @@ async function readIndependentPair(
   today: string,
 ): Promise<{
   yesterdayClosing: number;
+  yesterdayFormula: number;
   todayOpening: number;
   todayClosing: number;
 } | null> {
@@ -149,8 +171,11 @@ async function readIndependentPair(
       readRouteOwnBox(collectorRef, today, route),
     ]);
     if (!yBox.ok || !tBox.ok) continue;
+    const yesterdayFormula =
+      yBox.opening + yBox.efectivo - yBox.prestamos - yBox.gastos;
     return {
       yesterdayClosing: yBox.saldo,
+      yesterdayFormula,
       todayOpening: tBox.opening,
       todayClosing: tBox.saldo,
     };
@@ -174,15 +199,21 @@ export function auditChainFromState(
       const ledger = buildDayCashLedger(todaySrc);
       const todayOpening = ledger.mOpening.kind === "chain" ? ledger.mOpening.opening : null;
       const yesterdayCieFloat = Number(cie.cashFloat) || 0;
+      const priorLedger = buildDayCashLedger(priorSrc);
+      const yesterdayFormula = priorLedger.dayFinal;
+      const adjReal = cie.cashAdjustment?.real;
+      const expectedSeal =
+        adjReal != null && Number.isFinite(adjReal) ? Number(adjReal) : yesterdayFormula;
       rows.push({
         collectorRef: collector.ref,
         collectorName: collector.name,
         yesterday: priorDate,
         yesterdayCieFloat,
+        yesterdayFormula,
         todayOpening,
         todayMClosing: ledger.mClosing,
         todayFinal: ledger.dayFinal,
-        ok: todayOpening === yesterdayCieFloat,
+        ok: todayOpening === yesterdayCieFloat && expectedSeal === yesterdayCieFloat,
         kind: "chain",
       });
       continue;
@@ -193,15 +224,23 @@ export function auditChainFromState(
     if (!route) continue;
     const yDay = independentRouteDay(priorSrc, route);
     const tDay = independentRouteDay(todaySrc, route);
+    const formulaSum =
+      yDay.opening + yDay.efectivo - yDay.prestamos - yDay.gastos;
+    // Con AJUSTE autorizado, closing = real; si no, closing = fórmula.
+    const formulaOk =
+      yDay.adjustment?.real != null
+        ? Number(yDay.adjustment.real) === yDay.closing
+        : formulaSum === yDay.closing;
     rows.push({
       collectorRef: collector.ref,
       collectorName: collector.name,
       yesterday: priorDate,
       yesterdayCieFloat: yDay.closing,
+      yesterdayFormula: formulaSum,
       todayOpening: tDay.opening,
       todayMClosing: tDay.closing,
       todayFinal: tDay.closing,
-      ok: tDay.opening === yDay.closing,
+      ok: tDay.opening === yDay.closing && formulaOk,
       kind: "independent",
     });
   }

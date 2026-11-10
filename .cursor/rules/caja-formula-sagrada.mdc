@@ -1,0 +1,38 @@
+---
+description: Saldo de Caja — fórmula sagrada intocable (dueño 10/11/2026).
+alwaysApply: true
+---
+
+# Caja — fórmula sagrada (intocable)
+
+## Ley del dueño
+
+Estos datos son la **vida del negocio**. No son manuales. El sistema debe ser **100 % seguro**.
+
+```text
+Caja = Inicial + efectivo − préstamos − gastos
+```
+
+- **Una** fórmula. **Una** lógica. **Un** Saldo.
+- Solo **efectivo de caja**. Banco / Nequi **jamás** entran (cobro ni préstamo).
+- **Nadie** pisa el resultado: ni CIE distinto, ni caché, ni recálculo paralelo, ni “ajuste” fantasma.
+- El CIE al cerrar **guarda** ese Saldo. La lectura **no** lo sustituye por otro número.
+- Ese Saldo = Inicial del eslabón siguiente (T ← M mismo día; M mañana ← T ayer; A/N ← A/N).
+
+## Única excepción
+
+AJUSTE contado **autorizado** por supervisor (`AJUSTE:` / `AJUSTE@A` / `AJUSTE@N`).  
+Huella de sello / «cierre propio» **no** es excepción.
+
+## Prohibido (romper = daño al negocio)
+
+- `saldo = cie` cuando `cie ≠ fórmula`.
+- Pintar Caja con un número que no salga de los 4 de la fórmula.
+- Mezclar Banco/Nequi en Caja.
+- Dos dueños del mismo Saldo (aparato vs nube, CIE vs dayFinal, etc.).
+- “Arreglar” a mano en pantalla sin corregir el sello.
+
+## Candado
+
+`verify:prod` / `chain-audit`: CIE (o caja) del día ancla **=** fórmula de ese día **=** Inicial de hoy.  
+Si no cuadra → **no** declarar listo.
