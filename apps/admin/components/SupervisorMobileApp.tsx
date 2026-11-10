@@ -9221,26 +9221,6 @@ export function SupervisorMobileApp({
                   {connBanner.text}
                 </p>
               ) : null}
-              <button
-                type="button"
-                className={
-                  lifelineAlarmCount > 0
-                    ? "supervisor-lifeline-entry is-alarm"
-                    : "supervisor-lifeline-entry"
-                }
-                onClick={() => {
-                  suppressGhostClick(420);
-                  goToView("salvavidas");
-                }}
-                title="Salvavidas del negocio · descuadres de Caja"
-              >
-                <span className="supervisor-lifeline-entry-title">Salvavidas</span>
-                <span className="supervisor-lifeline-entry-meta">
-                  {lifelineAlarmCount > 0
-                    ? `${lifelineAlarmCount} alerta${lifelineAlarmCount === 1 ? "" : "s"}`
-                    : "Caja en orden"}
-                </span>
-              </button>
               <div className="supervisor-route-boards">
                 {liquidaciones.map((row, index) => (
                   <RouteBoardCard
@@ -9269,10 +9249,30 @@ export function SupervisorMobileApp({
                 title="Salir del sistema"
               >
                 <b>SALIR</b>
-          </button>
+              </button>
             ) : (
               <span className="supervisor-mobile-salir-spacer" aria-hidden />
             )}
+            <button
+              type="button"
+              className={
+                lifelineAlarmCount > 0
+                  ? "supervisor-lifeline-entry is-foot is-alarm"
+                  : "supervisor-lifeline-entry is-foot"
+              }
+              onClick={() => {
+                suppressGhostClick(420);
+                goToView("salvavidas");
+              }}
+              title="Salvavidas del negocio · descuadres de Caja"
+            >
+              <span className="supervisor-lifeline-entry-title">Salvavidas</span>
+              {lifelineAlarmCount > 0 ? (
+                <span className="supervisor-lifeline-entry-meta">
+                  {lifelineAlarmCount}
+                </span>
+              ) : null}
+            </button>
             <div
               className="supervisor-caja-hero is-row is-money-lg supervisor-inicio-total"
               title="Saldo ruta T + ruta N + Banco"
@@ -9288,7 +9288,7 @@ export function SupervisorMobileApp({
                   : money(inicioTotalConT, { symbol: false })}
               </b>
             </div>
-        </footer>
+          </footer>
           )}
         </section>
       )}
