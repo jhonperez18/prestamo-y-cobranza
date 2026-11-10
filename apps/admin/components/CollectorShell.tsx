@@ -60,13 +60,13 @@ import {
 } from "@/lib/collector-dispatch-sync";
 import {
   applyDayCloseRecordsToAssignments,
-  appendCashDisbursementExpense,
   buildMonthCloseRecord,
   upsertAndTrimCollectorDayClose,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
 } from "@/lib/collector-day-close";
+import { commitRouteCashLoan } from "@/lib/commit-route-cash-loan";
 import { sealCollectorDay } from "@/lib/collector-day-close-seal";
 import { planillaCashCloseAsDayClose } from "@/lib/planilla-cash-chain";
 import { releaseClosedDaysOnDevice } from "@/lib/collector-device-release";
@@ -593,7 +593,6 @@ export function CollectorShell({ session, onLogout }: Props) {
       showToast(`Este préstamo ya está registrado (${twin.ref}). No se duplica.`);
       return;
     }
-    const nextLoans = [loan, ...loans];
     const nextClients = clients.map((entry) =>
       entry.ref === client.ref
         ? {
@@ -604,6 +603,25 @@ export function CollectorShell({ session, onLogout }: Props) {
           }
         : entry,
     );
+    // Caja = cobrador de la RUTA del cliente (nunca el logueado «porque sí»).
+    // Caso P-717: renglón en Edgar + Yesid = doble; la ruta N solo carga a Yesid.
+    const routeCash = commitRouteCashLoan(loan, dayExpenseDrafts, {
+      clients: nextClients,
+      routes,
+      collectors,
+      assignments: dailyAssignments,
+      dayCloses,
+      date: todayIso(),
+      now: new Date(),
+    });
+    if (!routeCash.ok) {
+      showToast(`Préstamo no creado: ${routeCash.error}`);
+      return;
+    }
+    const nextLoans = [loan, ...loans];
+    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, routeCash.drafts);
+    setDayExpenseDrafts(routeCash.drafts);
+    queueDayExpenseMirror(routeCash.draft);
     setLoans(nextLoans);
     setClients(nextClients);
     writeDemoJson(DEMO_LOANS_KEY, nextLoans);
@@ -626,27 +644,10 @@ export function CollectorShell({ session, onLogout }: Props) {
     if (mirroredClient) queueClientMirror(mirroredClient);
     queueAssignmentsMirror(assignmentsChangedFrom(dailyAssignments, planilla.assignments));
     queueRoutesMirror(planilla.routes);
-    const routeRef =
-      myRoutes.find((row) => row.name === client.route)?.ref ||
-      myRoutes[0]?.ref ||
-      "";
-    const nextDrafts = appendCashDisbursementExpense(dayExpenseDrafts, {
-      collectorRef: collector.ref,
-      collectorName: collector.name,
-      date: todayIso(),
-      routeRef,
-      loan,
-    });
-    writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
-    setDayExpenseDrafts(nextDrafts);
-    const expenseDraft = nextDrafts.find(
-      (row) => row.ref === `GAS-${collector.ref}-${todayIso()}`,
-    );
-    if (expenseDraft) queueDayExpenseMirror(expenseDraft);
     showToast(
       origin === "combinado"
-        ? `Préstamo ${loanRefLabel(loan.ref)} · Combinado: caja ${money(loan.cashOut ?? 0)} + banco ${money(loan.bankOut ?? 0)} · subiendo…`
-        : `Préstamo ${loanRefLabel(loan.ref)} · capital ${money(loan.capital)} descontado de caja · subiendo…`,
+        ? `Préstamo ${loanRefLabel(loan.ref)} · Combinado: caja ${money(loan.cashOut ?? 0)} (${routeCash.collector.name}) + banco ${money(loan.bankOut ?? 0)} · subiendo…`
+        : `Préstamo ${loanRefLabel(loan.ref)} · capital ${money(loan.capital)} de caja ${routeCash.collector.name} · subiendo…`,
     );
     try {
       const cloud = await sentLoan;

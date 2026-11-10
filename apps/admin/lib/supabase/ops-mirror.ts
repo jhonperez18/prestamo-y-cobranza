@@ -81,10 +81,13 @@ import {
   readDemoJson,
   writeDemoJson,
 } from "@/lib/demo-persist";
+import { scrubForeignPrestamoExpenses } from "@/lib/commit-route-cash-loan";
 
 function createMirrorClient() {
   return createMirrorServerClient();
 }
+
+type MirrorDb = NonNullable<ReturnType<typeof createMirrorClient>>;
 
 function unsavedReason(keys: string[]) {
   return `sin espacio en el aparato: ${keys.map((key) => key.replace(/^nexo-demo-/, "")).join(", ")}`;
@@ -125,6 +128,8 @@ function mergeDayClosesRemote(
   const localByRef = new Map(local.filter((row) => row?.ref).map((row) => [row.ref, row]));
   const adjustmentMs = (row: CollectorDayCloseRecord | undefined) =>
     dayCloseFreshnessMs(undefined, row?.cashAdjustment) || 0;
+  const expenseLines = (row: CollectorDayCloseRecord | undefined) =>
+    Array.isArray(row?.expenses) ? row!.expenses.length : 0;
   const chosenRemote = remote.map((row) => {
     const prev = localByRef.get(row.ref);
     let chosen = row;
@@ -141,6 +146,15 @@ function mergeDayClosesRemote(
           chosen = row;
         } else {
           chosen = prev;
+          // Conserva el ajuste local, pero no un CIE sin detalle de gastos/préstamos
+          // si la nube sí trae el listado (botón «Lo que gastó» vacío).
+          if (expenseLines(row) > expenseLines(prev)) {
+            chosen = {
+              ...prev,
+              expenses: row.expenses,
+              expensesTotal: row.expensesTotal,
+            };
+          }
         }
       }
     }
@@ -157,7 +171,7 @@ function mergeDayClosesRemote(
     local,
     chosenRemote,
     (r) =>
-      `${r.ref}|${r.collected}|${r.cashFloat}|${r.closedAt}|${r.cashAdjustment?.at ?? ""}|${routeCashAdjustmentsSig(r.routeCashAdjustments)}`,
+      `${r.ref}|${r.collected}|${r.cashFloat}|${r.closedAt}|${r.cashAdjustment?.at ?? ""}|${expenseLines(r)}|${routeCashAdjustmentsSig(r.routeCashAdjustments)}`,
   );
 }
 
@@ -169,9 +183,19 @@ function mergeDayExpensesPreferRicher(
   local: CollectorDayExpenseDraft[],
   remote: CollectorDayExpenseDraft[],
 ): { merged: CollectorDayExpenseDraft[]; changed: boolean } {
+  const clients = readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []);
+  const loans = readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []);
+  const routes = readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, []);
+  const scrub = (row: CollectorDayExpenseDraft) =>
+    scrubForeignPrestamoExpenses(row, clients, loans, routes);
   const map = new Map<string, CollectorDayExpenseDraft>();
-  for (const row of local) if (row?.ref) map.set(row.ref, row);
   let changed = false;
+  for (const row of local) {
+    if (!row?.ref) continue;
+    const clean = scrub(row);
+    if (clean !== row) changed = true;
+    map.set(row.ref, clean);
+  }
   const richness = (row: CollectorDayExpenseDraft) => {
     const total = Number(row.expensesTotal) || 0;
     const lines = Array.isArray(row.expenses) ? row.expenses.length : 0;
@@ -193,20 +217,21 @@ function mergeDayExpensesPreferRicher(
   };
   for (const row of remote) {
     if (!row?.ref) continue;
+    const next = scrub(row);
     const prev = map.get(row.ref);
     if (!prev) {
-      map.set(row.ref, row);
+      map.set(row.ref, next);
       changed = true;
       continue;
     }
-    if (!preferRemote(prev, row)) continue;
+    if (!preferRemote(prev, next)) continue;
     if (
       `${prev.ref}|${prev.expensesTotal}|${prev.updatedAt}` !==
-      `${row.ref}|${row.expensesTotal}|${row.updatedAt}`
+      `${next.ref}|${next.expensesTotal}|${next.updatedAt}`
     ) {
       changed = true;
     }
-    map.set(row.ref, row);
+    map.set(row.ref, next);
   }
   return { merged: [...map.values()], changed };
 }
@@ -642,17 +667,27 @@ export function rowToDayClose(r: Record<string, unknown>): CollectorDayCloseReco
   };
 }
 
+function scrubDayExpenseDraftForMirror(d: CollectorDayExpenseDraft): CollectorDayExpenseDraft {
+  return scrubForeignPrestamoExpenses(
+    d,
+    readDemoJson<ClientRow[]>(DEMO_CLIENTS_KEY, []),
+    readDemoJson<LoanRow[]>(DEMO_LOANS_KEY, []),
+    readDemoJson<RouteRow[]>(DEMO_ROUTES_KEY, []),
+  );
+}
+
 export function dayExpenseToRow(d: CollectorDayExpenseDraft) {
-  const expenseDate = normalizeHistoryDate(d.date) || d.date;
+  const clean = scrubDayExpenseDraftForMirror(d);
+  const expenseDate = normalizeHistoryDate(clean.date) || clean.date;
   return {
-    ref: d.ref,
-    collector_ref: d.collectorRef,
-    collector_name: d.collectorName || "",
+    ref: clean.ref,
+    collector_ref: clean.collectorRef,
+    collector_name: clean.collectorName || "",
     expense_date: expenseDate,
-    route_ref: d.routeRef || "",
-    expenses: d.expenses ?? [],
-    expenses_total: Number(d.expensesTotal) || 0,
-    updated_at: d.updatedAt || new Date().toISOString(),
+    route_ref: clean.routeRef || "",
+    expenses: clean.expenses ?? [],
+    expenses_total: Number(clean.expensesTotal) || 0,
+    updated_at: clean.updatedAt || new Date().toISOString(),
   };
 }
 
@@ -783,17 +818,93 @@ export async function auditDayCloseInCloud(row: CollectorDayCloseRecord) {
   return { ok: false as const, error: msg };
 }
 
+/** Nube: suelta Haber de préstamo cuyo cliente no es de este cobrador (anti-doble P-717). */
+async function scrubForeignPrestamoExpensesInRow(
+  client: MirrorDb,
+  row: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const collectorRef = String(row.collector_ref || "").trim();
+  const expenses = Array.isArray(row.expenses) ? row.expenses : [];
+  if (!collectorRef || !expenses.length) return row;
+  const loanRefs = [
+    ...new Set(
+      expenses
+        .filter(
+          (line) =>
+            line &&
+            typeof line === "object" &&
+            (String((line as { category?: string }).category || "") === "prestamo_ruta" ||
+              String((line as { id?: string }).id || "") === "prestamo"),
+        )
+        .map((line) => String((line as { loanRef?: string }).loanRef || "").trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (!loanRefs.length) return row;
+  const { data: loans } = await client.from("loans").select("ref,client_ref").in("ref", loanRefs);
+  const clientRefs = [
+    ...new Set(
+      (loans || []).map((loan) => String((loan as { client_ref?: string }).client_ref || "").trim()).filter(Boolean),
+    ),
+  ];
+  const { data: clients } = clientRefs.length
+    ? await client.from("clients").select("ref,route").in("ref", clientRefs)
+    : { data: [] as Array<{ ref?: string; route?: string }> };
+  const { data: routes } = await client.from("routes").select("name,collector_ref");
+  const routeByClient = new Map(
+    (clients || []).map((c) => [
+      String(c.ref || ""),
+      String(c.route || "")
+        .trim()
+        .toUpperCase(),
+    ]),
+  );
+  const collectorByRoute = new Map(
+    (routes || []).map((r) => [
+      String(r.name || "")
+        .trim()
+        .toUpperCase(),
+      String(r.collector_ref || "").trim(),
+    ]),
+  );
+  const ownerByLoan = new Map<string, string>();
+  for (const loan of loans || []) {
+    const ref = String((loan as { ref?: string }).ref || "");
+    const cRef = String((loan as { client_ref?: string }).client_ref || "");
+    const pin = routeByClient.get(cRef) || "";
+    ownerByLoan.set(ref, collectorByRoute.get(pin) || "");
+  }
+  const next = expenses.filter((line) => {
+    if (!line || typeof line !== "object") return true;
+    const cat = String((line as { category?: string }).category || "");
+    const id = String((line as { id?: string }).id || "");
+    if (cat !== "prestamo_ruta" && id !== "prestamo") return true;
+    const loanRef = String((line as { loanRef?: string }).loanRef || "").trim();
+    if (!loanRef) return true;
+    const owner = ownerByLoan.get(loanRef) || "";
+    if (!owner) return true;
+    return owner === collectorRef;
+  });
+  if (next.length === expenses.length) return row;
+  const total = next.reduce(
+    (sum, line) => sum + (Number((line as { amount?: number }).amount) || 0),
+    0,
+  );
+  return { ...row, expenses: next, expenses_total: total };
+}
+
 export async function upsertDayExpenseIdempotent(row: Record<string, unknown>) {
   const client = createMirrorClient();
   if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  const clean = await scrubForeignPrestamoExpensesInRow(client, row);
   const { data, error } = await client.rpc("register_day_expense", {
-    p_ref: row.ref,
-    p_collector_ref: row.collector_ref,
-    p_collector_name: row.collector_name,
-    p_expense_date: row.expense_date,
-    p_route_ref: row.route_ref,
-    p_expenses: row.expenses,
-    p_expenses_total: row.expenses_total,
+    p_ref: clean.ref,
+    p_collector_ref: clean.collector_ref,
+    p_collector_name: clean.collector_name,
+    p_expense_date: clean.expense_date,
+    p_route_ref: clean.route_ref,
+    p_expenses: clean.expenses,
+    p_expenses_total: clean.expenses_total,
   });
   if (!error) {
     const body = data as { ok?: boolean; error?: string } | null;
@@ -810,10 +921,8 @@ export async function upsertDayExpenseIdempotent(row: Record<string, unknown>) {
   if (!/register_day_expense|schema cache|PGRST202|Could not find the function/i.test(msg)) {
     return { ok: false as const, error: msg };
   }
-  return upsertOpsRow("day_expenses", row, "ref");
+  return upsertOpsRow("day_expenses", clean, "ref");
 }
-
-type MirrorDb = NonNullable<ReturnType<typeof createMirrorClient>>;
 
 function loanStartedOnIso(
   loan: { start_date?: string | null },

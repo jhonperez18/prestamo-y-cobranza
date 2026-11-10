@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { routeBlockStarts } from "@/lib/client-route-order";
 import {
@@ -11,8 +12,8 @@ import type { RouteExpenseLine } from "@/lib/collector-day-close";
 import { money } from "@/lib/mock-data";
 import {
   loanFundLetterTitle,
-  loanListDisplayText,
   loanListFundLetter,
+  loanListParts,
 } from "@/lib/nequi-pool";
 
 type Props = {
@@ -33,6 +34,16 @@ type Props = {
   searchQuery?: string;
   onToggleSearch?: () => void;
   onSearchChange?: (value: string) => void;
+};
+
+/** Fila «Lo que prestó»: P- · nombre · letra · valor (4 columnas fijas). */
+const PRESTAMO_ROW_STYLE: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "3.75rem minmax(0, 1fr) 1.4rem 5.75rem",
+  columnGap: 8,
+  alignItems: "center",
+  fontSize: 12,
+  color: "#111",
 };
 
 /**
@@ -67,13 +78,22 @@ export function CollectorDayCloseExtras({
   return (
     <>
       {prestamos.length > 0 ? (
-        <div className="collector-history-loans" aria-label={`Préstamos ${dateLabel}`}>
+        <div
+          className="collector-history-loans is-prestamos-grid"
+          aria-label={`Préstamos ${dateLabel}`}
+        >
           <ul>
             {prestamos.map((line) => {
               const letter = loanListFundLetter(line);
+              const parts = loanListParts(line);
               return (
-                <li key={`${line.id}:${line.loanRef || line.label}`}>
-                  <span className="is-name">{loanListDisplayText(line)}</span>
+                <li
+                  key={`${line.id}:${line.loanRef || line.label}`}
+                  className="is-prestamo-row"
+                  style={PRESTAMO_ROW_STYLE}
+                >
+                  <span className="is-loan-ref">{parts.loanRef || "—"}</span>
+                  <span className="is-name">{parts.name || "—"}</span>
                   <em
                     className={`is-fund is-fund-${letter}`}
                     title={loanFundLetterTitle(letter)}
@@ -84,9 +104,11 @@ export function CollectorDayCloseExtras({
                 </li>
               );
             })}
-            <li className="is-total">
-              <span>Saldo del día</span>
-              <b>{money(prestamosTotal, { symbol: false })}</b>
+            <li className="is-total is-prestamo-row" style={PRESTAMO_ROW_STYLE}>
+              <span className="is-loan-ref" aria-hidden />
+              <span className="is-name">Saldo del día</span>
+              <span className="is-fund-slot" aria-hidden />
+              <b className="is-amount">{money(prestamosTotal, { symbol: false })}</b>
             </li>
           </ul>
         </div>
@@ -180,14 +202,16 @@ export function CollectorDayCloseExtras({
               visibleRows.map((row, index) => (
                 <li
                   key={row.key}
-                    className={[
+                  className={
+                    [
                       row.method === "vacio" ? "is-vacio" : "",
                       row.method === "prestamo" ? "is-lent" : "",
                       row.method === "renovado" ? "is-renewed" : "",
                       routeStarts[index] ? "is-route-start" : "",
                     ]
                       .filter(Boolean)
-                      .join(" ") || undefined}
+                      .join(" ") || undefined
+                  }
                 >
                   <span className="is-ord">{row.order ?? "—"}</span>
                   <span className="is-name">{row.name}</span>

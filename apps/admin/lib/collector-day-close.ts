@@ -421,26 +421,72 @@ export function findDayExpenseDraft(
   collectorRef: string,
   date: string,
 ) {
-  const ref = dayExpenseDraftRef(collectorRef, date);
-  return drafts.find((row) => row.ref === ref) ?? null;
+  const day = normalizeHistoryDate(date) || date;
+  const ref = dayExpenseDraftRef(collectorRef, day);
+  return (
+    drafts.find((row) => row.ref === ref) ??
+    drafts.find(
+      (row) =>
+        row.collectorRef === collectorRef &&
+        (normalizeHistoryDate(row.date) || row.date) === day,
+    ) ??
+    null
+  );
+}
+
+/** CIE del cobrador ese día: el ref puede ser `…-2026-11-07` o `…-20261107`. */
+export function findCollectorDayClose(
+  closes: CollectorDayCloseRecord[],
+  collectorRef: string,
+  date: string,
+): CollectorDayCloseRecord | undefined {
+  const day = normalizeHistoryDate(date) || date;
+  const closeRef = dayCloseRef(collectorRef, day);
+  const compactRef = `CIE-${collectorRef}-${day.replace(/-/g, "")}`;
+  return (
+    closes.find((row) => row.ref === closeRef) ??
+    closes.find((row) => row.ref === compactRef) ??
+    closes.find(
+      (row) =>
+        row.collectorRef === collectorRef &&
+        (normalizeHistoryDate(row.date) || row.date) === day &&
+        !String(row.ref || "").startsWith("PCE-"),
+    )
+  );
 }
 
 /** Gastos del día: cierre definitivo si existe; si no, borrador guardado. */
+function operativeExpenseCount(lines: RouteExpenseLine[]): number {
+  return lines.filter(
+    (row) => (Number(row.amount) || 0) > 0 && !isPrestamoRutaExpense(row),
+  ).length;
+}
+
 export function expensesForCollectorDay(
   collectorRef: string,
   date: string,
   closes: CollectorDayCloseRecord[],
   drafts: CollectorDayExpenseDraft[],
 ): RouteExpenseLine[] {
-  const closeRef = dayCloseRef(collectorRef, date);
-  const closed = closes.find((row) => row.ref === closeRef);
+  const closed = findCollectorDayClose(closes, collectorRef, date);
   const draft = findDayExpenseDraft(drafts, collectorRef, date);
   const draftLines = (draft?.expenses ?? []).filter((row) => (Number(row.amount) || 0) > 0);
   const closeLines = (closed?.expenses ?? []).filter((row) => (Number(row.amount) || 0) > 0);
-  // CIE sellado = historia: manda su lista.
-  if (closed && !closed.provisional) return closeLines;
+  // CIE sellado = historia si trae detalle. Si nació sin gastos operativos (o vacío)
+  // y el GAS- sí los tiene, el detalle del botón «Lo que gastó» vive en el GAS-.
+  // Sin esto: total de la nube + lista «no está en este aparato», mientras los
+  // préstamos sí se veían (se reconstruyen de las fichas).
+  if (closed && !closed.provisional) {
+    if (closeLines.length > 0) {
+      if (operativeExpenseCount(closeLines) > 0 || operativeExpenseCount(draftLines) === 0) {
+        return closeLines;
+      }
+      return draftLines;
+    }
+    if (draftLines.length > 0) return draftLines;
+    return closeLines;
+  }
   // Día abierto / CIE provisional (síntesis con expenses: []): viven los GAS- del draft.
-  // Si el provisional ganaba, el supervisor veía total (nube) y lista vacía.
   if (draftLines.length > 0) return draftLines;
   return closeLines;
 }
@@ -454,8 +500,8 @@ export function isLiveCashDay(
 ): boolean {
   const day = normalizeHistoryDate(date) || date;
   if (!collectorRef || day !== todayIso) return false;
-  const closeRef = dayCloseRef(collectorRef, day);
-  return !closes.some((row) => row.ref === closeRef && !row.provisional);
+  const closed = findCollectorDayClose(closes, collectorRef, day);
+  return !(closed && !closed.provisional);
 }
 
 export function upsertDayExpenseDraft(
@@ -565,8 +611,10 @@ export function syncCashDisbursementExpense(
     (loanDisbursementSource(loan) === "efectivo" || loanIsCombinadoFunded(loan)) &&
     cashTarget > 0;
   const isLoanLine = (row: RouteExpenseLine) => row.loanRef === loan.ref && isPrestamoRutaExpense(row);
-  const sealedDay = (draft: CollectorDayExpenseDraft) =>
-    closes.some((row) => row.ref === dayCloseRef(draft.collectorRef, draft.date) && !row.provisional);
+  const sealedDay = (draft: CollectorDayExpenseDraft) => {
+    const closed = findCollectorDayClose(closes, draft.collectorRef, draft.date);
+    return Boolean(closed && !closed.provisional);
+  };
 
   const withLine = drafts.filter((draft) => draft.expenses.some(isLoanLine));
   const sealed = withLine.filter(sealedDay);

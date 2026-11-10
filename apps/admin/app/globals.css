@@ -3105,16 +3105,34 @@
       gap: 4px;
     }
     .collector-history-loans li {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: 8px;
+      display: grid;
+      column-gap: 8px;
+      align-items: center;
       font-size: 12px;
+      color: #111;
+    }
+    /* P-… | nombre | letra | valor — 4 columnas (también style inline en el JSX). */
+    .collector-history-loans.is-prestamos-grid li.is-prestamo-row,
+    .collector-history-loans li.is-prestamo-row {
+      display: grid !important;
+      grid-template-columns: 3.75rem minmax(0, 1fr) 1.4rem 5.75rem !important;
+      column-gap: 8px !important;
+      align-items: center;
+    }
+    .collector-history-loans.is-otros li {
+      grid-template-columns: minmax(0, 1fr) 5.75rem;
+    }
+    .collector-history-loans .is-loan-ref {
+      min-width: 0;
+      font-variant-numeric: tabular-nums;
+      font-weight: 650;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
       color: #111;
     }
     .collector-history-loans .is-name {
       min-width: 0;
-      flex: 1 1 auto;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -3123,21 +3141,26 @@
     .collector-history-loans.is-otros .is-name {
       color: inherit;
     }
-    /* Letra de origen del préstamo: E verde · C amarilla · B azul. La fila sigue azul. */
-    .collector-history-loans .is-fund {
-      flex: 0 0 auto;
+    /* Letra de origen: columna propia (E / C / B / N), separada del monto. */
+    .collector-history-loans .is-fund,
+    .collector-history-loans .is-fund-slot {
+      justify-self: center;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 1.15rem;
-      height: 1.15rem;
-      padding: 0 3px;
+      width: 1.35rem;
+      min-width: 1.35rem;
+      height: 1.2rem;
+      padding: 0;
       border-radius: 3px;
       font-style: normal;
       font-size: 10px;
       font-weight: 750;
       line-height: 1;
       letter-spacing: 0;
+    }
+    .collector-history-loans .is-fund-slot {
+      visibility: hidden;
     }
     .collector-history-loans .is-fund.is-fund-E {
       color: #1f6b45;
@@ -3156,9 +3179,12 @@
       background: #f1e9fb;
     }
     .collector-history-loans .is-amount {
-      flex: 0 0 auto;
+      justify-self: end;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
       font-weight: 700;
       color: #111;
+      white-space: nowrap;
     }
     .collector-history-loans.is-otros .is-amount {
       color: inherit;
@@ -3176,6 +3202,11 @@
       font-weight: 400;
       font-variant-numeric: tabular-nums;
       line-height: 1.2;
+    }
+    .collector-history-loans li.is-total .is-amount,
+    .collector-history-loans li.is-total > b {
+      justify-self: end;
+      text-align: right;
     }
     .collector-history-loans-note {
       margin: 8px 0 0;

@@ -61,8 +61,9 @@ async function rpcDayCashFigure(ref: string, date: string) {
 type PrestamoSides = { m: number; t: number };
 
 /**
- * Préstamos del GAS de este cobrador. La plata salió de SU caja.
- * Cliente en T → T; M / A / N / vacío → M (no puede quedar en 0: caso P-717 N).
+ * Préstamos del GAS que entran a la cadena M↔T.
+ * Solo cliente/marca M → M; T → T. A y N tienen caja propia: no se meten aquí
+ * (P-717 Jhon Rey es de N — sumarlo a M lo montaba doble).
  */
 async function gasPrestamoTotals(
   collectorRef: string,
@@ -136,7 +137,8 @@ async function gasPrestamoTotals(
       const fromLoan = routeByLoan.get(String(line.loanRef || "").trim()) || "";
       const pin = marked || fromLoan;
       if (pin === "T") out.t += amount;
-      else out.m += amount;
+      else if (pin === "M") out.m += amount;
+      // A / N / vacío: no tocan la cadena (caja propia o sin dueño de ruta).
     }
     return out;
   } catch (error) {

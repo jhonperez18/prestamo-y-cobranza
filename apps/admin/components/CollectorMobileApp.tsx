@@ -10,11 +10,13 @@ import {
 import { CollectorPayForm } from "@/components/CollectorPayForm";
 import {
   attachRouteCashAdjustments,
+  collectorGastosGoToChain,
   independentRouteDay,
   independentRouteDayLines,
   isIndependentSaldoRoute,
   withIndependentRouteHistory,
 } from "@/lib/independent-route-cash";
+import { useDayExpenseDetail } from "@/lib/use-day-expense-detail";
 import { useRouteCashBook } from "@/lib/use-route-cash-book";
 import { clearRouteSheetCache, useRouteSheet } from "@/lib/use-route-sheet";
 import { getCloudChainMOpening } from "@/lib/cloud-chain-m-opening";
@@ -1651,17 +1653,23 @@ export function CollectorMobileApp({
     () => splitDayExpenses(planillaExpenses),
     [planillaExpenses],
   );
-  /**
-   * Misma fuente para botón «Lo que gastó» y la lista al tocarlo.
-   * A/N: renglones de ownRouteDay (antes el gate planillaOwnsMovements tapaba A).
-   * M/T: gastoLines del libro de esa planilla.
-   */
-  const homeGastoLines = useMemo(() => {
-    if (ownRouteDay) return ownRouteDay.gastoLines;
-    if (chainPlanillaDay) return chainPlanillaDay.gastoLines;
-    if (planillaOwnsMovements) return dayExpenseSplit.otros;
+  /** Local primero; si el total de nube no trae renglones, useDayExpenseDetail baja Supabase. */
+  const localHomeGastoLines = useMemo(() => {
+    const own = ownRouteDay?.gastoLines ?? [];
+    if (own.length) return own;
+    const chain = chainPlanillaDay?.gastoLines ?? [];
+    if (chain.length) return chain;
+    if (planillaOwnsMovements && dayExpenseSplit.otros.length) return dayExpenseSplit.otros;
     return [];
   }, [ownRouteDay, chainPlanillaDay, planillaOwnsMovements, dayExpenseSplit.otros]);
+  const localHomePrestamoLines = useMemo(() => {
+    const own = ownRouteDay ? loanRowsToExpenseLines(ownRouteDay.loanRows) : [];
+    if (own.length) return own;
+    const chain = chainPlanillaDay ? loanRowsToExpenseLines(chainPlanillaDay.loanRows) : [];
+    if (chain.length) return chain;
+    if (planillaOwnsMovements && dayExpenseSplit.prestamos.length) return dayExpenseSplit.prestamos;
+    return [];
+  }, [ownRouteDay, chainPlanillaDay, planillaOwnsMovements, dayExpenseSplit.prestamos]);
 
   const closedPlanilla = useMemo(
     () =>
@@ -1678,10 +1686,11 @@ export function CollectorMobileApp({
   const homeCierreKey = `${activeDate}|${activePlanillaRoute ?? ""}`;
   const homeCierreKind =
     homeCierreList && homeCierreList.key === homeCierreKey ? homeCierreList.kind : null;
-  const toggleHomeCierreList = (kind: HomeCierreListKind) =>
+  const toggleHomeCierreList = (kind: HomeCierreListKind) => {
     setHomeCierreList((prev) =>
       prev?.key === homeCierreKey && prev.kind === kind ? null : { key: homeCierreKey, kind },
     );
+  };
   const homeNpRows = useMemo(
     () => closedPlanilla.filter((row) => row.method === "np"),
     [closedPlanilla],
@@ -1952,6 +1961,37 @@ export function CollectorMobileApp({
   const topGastos = headerCash.gastos;
   /** Solo efectivo: resta de la caja. */
   const topPrestamos = headerCash.prestamos;
+  const chainCollectorForExpenses = collectorGastosGoToChain({
+    collectorRef: collector.ref,
+    collectorName: collector.name,
+    date: activeDate,
+    payments: livePayments,
+    loans,
+    clients,
+    collectors: [collector],
+    assignments,
+    dayCloses,
+    dayExpenseDrafts,
+    planillaCashCloses,
+    monthCloses,
+  });
+  const dayExpenseDetail = useDayExpenseDetail({
+    collectorRef: collector.ref,
+    collectorName: collector.name,
+    date: activeDate,
+    route: activePlanillaRoute,
+    chainCollector: chainCollectorForExpenses,
+    clients,
+    loans,
+    localGastos: localHomeGastoLines,
+    localPrestamos: localHomePrestamoLines,
+    enabled:
+      showHomeCuadre || homeCierreKind === "gastos" || homeCierreKind === "prestamos",
+    gastosTotal: topGastos,
+    prestamosTotal: topPrestamos,
+  });
+  const homeGastoLines = dayExpenseDetail.gastoLines;
+  const homePrestamoLines = dayExpenseDetail.prestamoLines;
   /**
    * Botón «Lo que prestó» / KPI: en A·N = efectivo + Nequi/Banco (`prestamosRuta`).
    * En M·T el botón sigue siendo caja; Banco va aparte.
@@ -2936,20 +2976,17 @@ export function CollectorMobileApp({
           </div>
           </div>
           {homeCierreKind === "prestamos" ? (
-            (ownRouteDay
-              ? loanRowsToExpenseLines(ownRouteDay.loanRows)
-              : dayExpenseSplit.prestamos
-            ).length > 0 ? (
+            homePrestamoLines.length > 0 ? (
               <CollectorDayCloseExtras
                 dateLabel={queue.dateLabel}
                 planillaRows={[]}
-                prestamos={
-                  ownRouteDay
-                    ? loanRowsToExpenseLines(ownRouteDay.loanRows)
-                    : dayExpenseSplit.prestamos
-                }
+                prestamos={homePrestamoLines}
                 prestamosTotal={loQuePresto}
               />
+            ) : loQuePresto > 0 ? (
+              <p className="collector-cierre-drop-empty">
+                Total {money(loQuePresto)} · el detalle de préstamos no está en este aparato.
+              </p>
             ) : (
               <p className="collector-cierre-drop-empty">Sin préstamos ese día.</p>
             )

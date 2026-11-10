@@ -6,9 +6,11 @@
  */
 import {
   appendCashDisbursementExpense,
+  buildDayExpenseDraft,
   dayExpenseDraftRef,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
+  type RouteExpenseLine,
 } from "@/lib/collector-day-close";
 import { sameRoute } from "@/lib/client-route-order";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
@@ -58,6 +60,54 @@ export function routeCashLoanTarget(
     ? catalogRoutes(src.routes).find((row) => sameRoute(row.name, client.route))?.ref || ""
     : "";
   return { ok: true, collector: target.collector, routeRef };
+}
+
+/**
+ * Candado: un renglón «Préstamo · P-…» solo vive en el GAS del cobrador de la ruta del cliente.
+ * Si el cliente es de N, no puede quedar en el GAS de Edgar (caso P-717 doble).
+ * Sin ficha/ruta conocida no se toca (no inventar bajas).
+ */
+export function prestamoLineBelongsToCollector(
+  line: Pick<RouteExpenseLine, "category" | "id" | "loanRef">,
+  collectorRef: string,
+  clients: ClientRow[],
+  loans: LoanRow[],
+  routes: RouteRow[],
+): boolean {
+  if (!isPrestamoRutaExpense(line)) return true;
+  const loanRef = String(line.loanRef || "").trim();
+  if (!loanRef) return true;
+  const loan = loans.find((row) => row.ref === loanRef);
+  const clientRef = String(loan?.clientRef || "").trim();
+  if (!clientRef) return true;
+  const client = clients.find((row) => row.ref === clientRef);
+  const routeName = String(client?.route || "").trim();
+  if (!routeName) return true;
+  const owner = String(
+    catalogRoutes(routes).find((row) => sameRoute(row.name, routeName))?.collectorRef || "",
+  ).trim();
+  if (!owner) return true;
+  return owner === String(collectorRef || "").trim();
+}
+
+/** Suelta del GAS los Haber de préstamo que no son de la ruta de ese cobrador. */
+export function scrubForeignPrestamoExpenses(
+  draft: CollectorDayExpenseDraft,
+  clients: ClientRow[],
+  loans: LoanRow[],
+  routes: RouteRow[],
+): CollectorDayExpenseDraft {
+  const expenses = (draft.expenses || []).filter((line) =>
+    prestamoLineBelongsToCollector(line, draft.collectorRef, clients, loans, routes),
+  );
+  if (expenses.length === (draft.expenses || []).length) return draft;
+  return buildDayExpenseDraft({
+    collectorRef: draft.collectorRef,
+    collectorName: draft.collectorName,
+    date: draft.date,
+    routeRef: draft.routeRef,
+    expenses,
+  });
 }
 
 export type RouteCashLoanCommit =

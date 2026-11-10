@@ -206,9 +206,10 @@ export function loanFundLetterTitle(letter: LoanFundLetter): string {
  * Texto de lista sin la palabra «Préstamo» / «Anexo»: `P-705 · Nombre`.
  * El renglón GAS- sigue guardando «Préstamo · …»; aquí solo se pinta.
  */
-export function loanListDisplayText(
+/** P-… y nombre por separado (lista «Lo que prestó»: 4 columnas). */
+export function loanListParts(
   line: Pick<{ loanRef?: string; label: string }, "loanRef" | "label">,
-): string {
+): { loanRef: string; name: string } {
   const ref = String(line.loanRef || "").trim();
   let rest = String(line.label || "")
     .replace(/^(Préstamo|Anexo)\s*·\s*/i, "")
@@ -216,9 +217,19 @@ export function loanListDisplayText(
   if (ref) {
     const escaped = ref.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     rest = rest.replace(new RegExp(`^${escaped}\\s*·\\s*`, "i"), "").trim();
-    return rest ? `${ref} · ${rest}` : ref;
+    return { loanRef: ref, name: rest };
   }
-  return rest || String(line.label || "").trim();
+  const m = /^(P-\d+|P-pend-[a-z0-9]+)\s*·\s*(.*)$/i.exec(rest);
+  if (m) return { loanRef: m[1], name: (m[2] || "").trim() };
+  return { loanRef: "", name: rest || String(line.label || "").trim() };
+}
+
+export function loanListDisplayText(
+  line: Pick<{ loanRef?: string; label: string }, "loanRef" | "label">,
+): string {
+  const { loanRef, name } = loanListParts(line);
+  if (loanRef && name) return `${loanRef} · ${name}`;
+  return loanRef || name;
 }
 
 export function loanListFundLetter(
