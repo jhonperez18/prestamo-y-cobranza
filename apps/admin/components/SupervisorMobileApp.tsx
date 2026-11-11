@@ -507,6 +507,8 @@ type RouteLiquidacion = {
    * La tarjeta muestra «…» en Inicial / caja.
    */
   figuresPending?: boolean;
+  /** A/N vivo sin route_own_box: cifra local + badge offline. */
+  cashUnsynced?: boolean;
   closed: boolean;
   newLoans: LoanRow[];
   renewals: LoanRow[];
@@ -647,6 +649,11 @@ function RouteBoardCard({
               <b>
                 {row.figuresPending ? "…" : money(row.enCaja, { symbol: false })}
               </b>
+              {row.cashUnsynced && !row.figuresPending ? (
+                <em className="supervisor-caja-unsynced" title="Sin route_own_box · ancla local">
+                  offline
+                </em>
+              ) : null}
             </div>
           </div>
 
@@ -2338,6 +2345,7 @@ export function SupervisorMobileApp({
         cashLoansToday,
         enCaja,
         figuresPending: holdLocalCie,
+        cashUnsynced: Boolean(independentDay?.unsynced),
         closed,
         newLoans,
         renewals,

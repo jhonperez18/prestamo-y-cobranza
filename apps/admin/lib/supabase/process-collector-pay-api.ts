@@ -39,7 +39,7 @@ export type CollectorPayApiFailure = {
 
 export type CollectorPayApiResult =
   | { status: 200; body: CollectorPayApiSuccess }
-  | { status: 400 | 409 | 500 | 502; body: CollectorPayApiFailure };
+  | { status: 400 | 409 | 500 | 502 | 503; body: CollectorPayApiFailure };
 
 function newServerPaymentRef(suffix = ""): string {
   const rand =
@@ -58,34 +58,35 @@ function paymentTypeFromPay(kind: PayKind): string {
   return kind === "abono" ? "Abono" : "Cuota";
 }
 
-/** Busca un cobro vivo por idempotency_key en Postgres. */
+/** Busca un cobro vivo por idempotency_key en Postgres. Error de red/base → throw (no fingir “no existe”). */
 export async function findPaymentByIdempotencyKey(
   idempotencyKey: string,
 ): Promise<PaymentRow | null> {
   const key = idempotencyKey.trim();
   if (!key) return null;
   const client = createMirrorServerClient();
-  if (!client) return null;
-  try {
-    const { data, error } = await client
-      .from("payments")
-      .select(
-        "id,ref,loan_ref,client_ref,collector_ref,collector_name,amount,paid_date,paid_time,due_date,charge_label,method,source,payment_type,payment_kind,route_ref,idempotency_key,updated_at",
-      )
-      .eq("idempotency_key", key)
-      .limit(1)
-      .maybeSingle();
-    if (error || !data) return null;
-    const row = data as PaymentMirrorRow & { idempotency_key?: string | null };
-    const mapped = mirrorRowToPaymentRow(row);
-    if (!mapped) return null;
-    return {
-      ...mapped,
-      idempotencyKey: row.idempotency_key?.trim() || key,
-    };
-  } catch {
-    return null;
+  if (!client) {
+    throw new Error("supabase_not_configured");
   }
+  const { data, error } = await client
+    .from("payments")
+    .select(
+      "id,ref,loan_ref,client_ref,collector_ref,collector_name,amount,paid_date,paid_time,due_date,charge_label,method,source,payment_type,payment_kind,route_ref,idempotency_key,updated_at",
+    )
+    .eq("idempotency_key", key)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    throw new Error(error.message || "payments_lookup_failed");
+  }
+  if (!data) return null;
+  const row = data as PaymentMirrorRow & { idempotency_key?: string | null };
+  const mapped = mirrorRowToPaymentRow(row);
+  if (!mapped) return null;
+  return {
+    ...mapped,
+    idempotencyKey: row.idempotency_key?.trim() || key,
+  };
 }
 
 function buildPaymentRowFromSubmit(
@@ -172,6 +173,21 @@ function mapRegisterResult(result: RegisterLoanPaymentResult): CollectorPayApiRe
  * Reintento con la misma idempotencyKey → 200 duplicated sin nueva fila.
  */
 export async function processCollectorPayApi(
+  body: CollectorPayApiBody,
+): Promise<CollectorPayApiResult> {
+  try {
+    return await processCollectorPayApiInner(body);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "collector_pay_failed";
+    const status =
+      message === "supabase_not_configured" || /timeout|fetch|network/i.test(message)
+        ? 503
+        : 500;
+    return { status, body: { ok: false, error: message } };
+  }
+}
+
+async function processCollectorPayApiInner(
   body: CollectorPayApiBody,
 ): Promise<CollectorPayApiResult> {
   const loanRef = (body.loanRef || "").trim();

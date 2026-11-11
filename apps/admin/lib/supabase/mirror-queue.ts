@@ -2,6 +2,7 @@
  * Estado y contrato de colas mirror (local → API → Supabase service role).
  * Un `ok: true, skipped: true` NO es escritura: la fila debe quedarse en cola
  * salvo motivos irrecuperables o "la nube ya ganó a propósito".
+ * `supabase_not_configured` / timeout / 5xx van como `ok: false` → Outbox retiene.
  *
  * Claves duplicadas como literales a propósito: evita ciclos con payment/ops-mirror.
  */

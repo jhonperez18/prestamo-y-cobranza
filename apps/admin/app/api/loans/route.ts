@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import {
-  readLoansDiskCache,
   withHardTimeout,
   writeLoansDiskCache,
 } from "@/lib/server-catalog-disk-cache";
@@ -60,7 +59,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: true, incremental: true, cursor, loans: result.rows });
     }
 
-    const cached = await readLoansDiskCache<LoanMirrorRow>();
+    // Caché disco solo se actualiza tras lectura real. Nunca se sirve como lista completa
+    // (incremental:false): el cliente podaría préstamos locales / cola de calle.
     const result = await withHardTimeout(
       fetchLoansFromSupabase(null),
       HARD_MS,
@@ -77,26 +77,10 @@ export async function GET(request: Request) {
       });
     }
     if ("skipped" in result && result.skipped) {
-      if (cached?.length) {
-        return NextResponse.json({
-          ok: true,
-          incremental: false,
-          cursor,
-          loans: cached,
-          fromCache: true,
-        });
-      }
-      return NextResponse.json({ ok: true, skipped: true, reason: result.reason, loans: [] });
-    }
-    if (cached?.length) {
-      return NextResponse.json({
-        ok: true,
-        incremental: false,
-        cursor,
-        loans: cached,
-        fromCache: true,
-        cacheNote: "ok" in result && !result.ok ? result.error : "loans_timeout",
-      });
+      return NextResponse.json(
+        { ok: false, error: result.reason || "loans_unavailable", loans: [] },
+        { status: 503 },
+      );
     }
     return NextResponse.json(
       {
@@ -104,20 +88,11 @@ export async function GET(request: Request) {
         error: "ok" in result && !result.ok ? result.error : "loans_unavailable",
         loans: [],
       },
-      { status: 502 },
+      { status: 503 },
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "unknown_error";
-    const cached = await readLoansDiskCache<LoanMirrorRow>();
-    if (cached?.length) {
-      return NextResponse.json({
-        ok: true,
-        loans: cached,
-        fromCache: true,
-        cacheNote: message,
-      });
-    }
-    return NextResponse.json({ ok: false, error: message, loans: [] }, { status: 500 });
+    return NextResponse.json({ ok: false, error: message, loans: [] }, { status: 503 });
   }
 }
 

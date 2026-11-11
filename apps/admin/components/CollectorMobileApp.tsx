@@ -2545,9 +2545,13 @@ export function CollectorMobileApp({
                 </div>
                 <div
                   className="collector-mobile-header-inicial is-caja"
-                  title="Inicial + efectivo − préstamos − gastos · pasa como Inicial al otro día"
+                  title={
+                    ownRouteDay?.unsynced
+                      ? "Sin sincronizar · ancla local + pendientes (no es Saldo oficial de la base)"
+                      : "Inicial + efectivo − préstamos − gastos · pasa como Inicial al otro día"
+                  }
                 >
-                  <span>Caja</span>
+                  <span>{ownRouteDay?.unsynced ? "Caja · offline" : "Caja"}</span>
                   <b>{headerInicialReady ? money(cajaShown) : "—"}</b>
                 </div>
               </>
@@ -3093,7 +3097,11 @@ export function CollectorMobileApp({
                 </div>
 
             <div className="is-saldo">
-              <span>{cajaFormulaLabel}</span>
+              <span>
+                {ownRouteDay?.unsynced
+                  ? "Caja sin sincronizar (offline)"
+                  : cajaFormulaLabel}
+              </span>
               <b>{money(cajaShown)}</b>
           </div>
           </div>

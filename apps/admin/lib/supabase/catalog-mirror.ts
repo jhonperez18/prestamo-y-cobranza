@@ -1224,6 +1224,8 @@ type CatalogListBody<Key extends "clients" | "loans", Row> = {
   skipped?: boolean;
   error?: string;
   incremental?: boolean;
+  /** true = respuesta de disco/servidor sin sello completo de Supabase. Nunca podar. */
+  fromCache?: boolean;
   cursor?: string;
 } & { [K in Key]?: Row[] };
 
@@ -1268,6 +1270,8 @@ export async function pullRemoteCatalogIntoDemo(
  * Lista completa de la nube: un préstamo que la nube no tiene y que este aparato no está
  * subiendo no existe (P-426 / P-433 de Albornoz armaban alertas). Queda como baja local;
  * si la nube lo tiene vivo después, `forgetRemoteLoanRevivals` lo devuelve.
+ *
+ * Nunca borra refs en cola de salida (Outbox) ni renombres pendientes.
  */
 function dropLoansMissingFromCloud(
   merged: LoanRow[],
@@ -1311,7 +1315,17 @@ async function mergeRemoteCatalog(
       return { ok: false, changed: false, reason: clientsBody.error || "clients_pull_failed" };
     }
 
-    const full = !clientsBody.incremental && !loansBody.incremental;
+    // fromCache / respuesta incompleta: nunca tratar como lista canónica para podar.
+    const loansIntegrityOk =
+      loansRes.ok &&
+      Boolean(loansBody.ok) &&
+      !loansBody.skipped &&
+      !loansBody.fromCache;
+    const full =
+      !clientsBody.incremental &&
+      !loansBody.incremental &&
+      loansIntegrityOk &&
+      !clientsBody.fromCache;
     let changed = false;
     let loansOk = true;
     let loansReason: string | undefined;
@@ -1378,13 +1392,15 @@ async function mergeRemoteCatalog(
       const merge = mergeByRefPreferPendingLocal(local, remote, pendingByRef, loanSignature, {
         cloudOwns: true,
       });
-      const settled = loansBody.incremental
-        ? { loans: merge.merged, dropped: [] as string[] }
-        : dropLoansMissingFromCloud(
-            merge.merged,
-            new Set(remoteAll.map((row) => row.ref)),
-            new Set([...pendingByRef.keys(), ...loansQueuedAtStart]),
-          );
+      // Poda solo con lista completa real de Supabase (no ?since=, no fromCache, no 503).
+      const settled =
+        loansBody.incremental || !loansIntegrityOk || !full
+          ? { loans: merge.merged, dropped: [] as string[] }
+          : dropLoansMissingFromCloud(
+              merge.merged,
+              new Set(remoteAll.map((row) => row.ref)),
+              new Set([...pendingByRef.keys(), ...loansQueuedAtStart]),
+            );
       if (merge.changed || learnedDeletes || settled.dropped.length) {
         if (!writeDemoJson(DEMO_LOANS_KEY, settled.loans)) unsaved.push("préstamos");
         changed = true;

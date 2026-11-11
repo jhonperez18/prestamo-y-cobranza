@@ -379,7 +379,7 @@ function mirrorRowIsVoided(row: Pick<PaymentMirrorRow, "payment_type" | "charge_
  */
 async function voidPaymentInSupabase(row: PaymentMirrorRow): Promise<MirrorPaymentResult> {
   const client = createMirrorClient();
-  if (!client) return { ok: true, skipped: true, reason: "supabase_not_configured" };
+  if (!client) return { ok: false, error: "supabase_not_configured" };
   const ref = row.ref?.trim() || "";
   const loanRef = row.loan_ref?.trim() || "";
   if (!ref || !loanRef) return { ok: true, skipped: true, reason: "invalid_payment" };
@@ -454,19 +454,19 @@ export async function mirrorPaymentToSupabase(
     return { ok: true, skipped: true, reason: PAYMENT_REJECTED_BALANCE, balance: registered.balance };
   }
 
-  // Sin service role / sin Supabase: no tumbar el cobro local.
+  // Sin service role / sin Supabase: error real → Outbox retiene el cobro (no “synced”).
   if (
     registered.error === "service_role_missing" ||
     registered.error === "supabase_not_configured"
   ) {
-    return { ok: true, skipped: true, reason: registered.error };
+    return { ok: false, error: registered.error };
   }
 
   // Solo sin la RPC (migración vieja): el upsert por ref pisaría otro cobro con el mismo PG-.
   if (registered.error === "register_collection_missing") {
     const client = createMirrorClient();
     if (!client) {
-      return { ok: true, skipped: true, reason: "supabase_not_configured" };
+      return { ok: false, error: "supabase_not_configured" };
     }
 
     const { error } = await client.from("payments").upsert(row, { onConflict: "ref" });
@@ -527,7 +527,7 @@ export async function mirrorCombinedPaymentsToSupabase(
     combined.error === "service_role_missing" ||
     combined.error === "supabase_not_configured"
   ) {
-    return { ok: true, skipped: true, reason: combined.error };
+    return { ok: false, error: combined.error };
   }
 
   // Migración aún no aplicada: no dejar un solo tramo en la nube.
@@ -538,7 +538,7 @@ export async function mirrorCombinedPaymentsToSupabase(
         first.error === "service_role_missing" ||
         first.error === "supabase_not_configured"
       ) {
-        return { ok: true, skipped: true, reason: first.error };
+        return { ok: false, error: first.error };
       }
       return { ok: false, error: first.error };
     }
@@ -817,7 +817,7 @@ export async function persistPaymentToSupabase(
     } else if (isPaymentRejection(result)) {
       dropRejectedPayments([payload], result.balance);
     } else if (!shouldDropFromMirrorQueue(result)) {
-      // skipped sin escritura real (p. ej. service_role_missing): queda pendiente.
+      // skipped sin escritura real / irrecuperable no listado: queda pendiente.
       enqueueMirrorPayment(payload);
     } else {
       dequeueMirrorPayment(payload.ref);
@@ -1262,10 +1262,14 @@ async function mergeRemotePayments(
     }
     const mergedPayments = mergePaymentsByRef(local, remote, readMirrorQueue());
     let { merged, added, changed } = mergedPayments;
-    // La ventana acaba de bajar entera (no es un since). Un cobro de esos días que
-    // la base no tiene y este celular no está subiendo no se sigue viendo.
-    // Lo anterior a la ventana se queda: es el historial del cobrador y el CIE.
-    if (fromDate && (isCollectorLiveDevice() || isSupervisorLiveDevice())) {
+    // Poda destructiva solo con sello completo del servidor (body.full).
+    // Pull parcial / lista fallida → conservar local + Outbox intactos.
+    // Cola pendiente (pending sync) nunca se borra.
+    if (
+      body.full &&
+      fromDate &&
+      (isCollectorLiveDevice() || isSupervisorLiveDevice())
+    ) {
       const remoteRefs = new Set(remote.map((row) => row.ref));
       const queued = new Set(readMirrorQueue().map((row) => row.ref));
       const kept = merged.filter((row) => {

@@ -4853,6 +4853,16 @@
      * Supervisor móvil: montos/saldos/precios sin negrilla (conserva color).
      * Títulos KPI (INICIO/RUTA/…) y th de tablas: sí negrilla.
      */
+    .supervisor-mobile .supervisor-caja-unsynced,
+    .supervisor-mobile-app .supervisor-caja-unsynced {
+      display: block;
+      font-size: 0.65rem;
+      font-style: normal;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      opacity: 0.72;
+      text-transform: lowercase;
+    }
     .supervisor-mobile .supervisor-caja-hero b,
     .supervisor-mobile-app .supervisor-caja-hero b,
     .supervisor-mobile .supervisor-day-board.is-total-row b,

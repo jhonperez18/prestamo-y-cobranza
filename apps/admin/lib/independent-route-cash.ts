@@ -414,6 +414,11 @@ export type IndependentRouteDay = RouteMovement & {
    * `independentRouteFinalSaldo` — no usar solo `closing` si hay ajuste.
    */
   adjustment: RouteCashAdjustment | null;
+  /**
+   * true = no hay `route_own_box` / libro nube para este día vivo.
+   * La cifra es ancla + pendientes locales (offline). No es Saldo oficial de la base.
+   */
+  unsynced?: boolean;
 };
 
 function latestBookBefore(
@@ -606,6 +611,9 @@ export function independentRouteDay(
       opening = pesos(opening + move.efectivo - move.gastos - move.prestamos);
     }
   }
+  // Día vivo sin route_own_box: ancla + pendientes locales, marcado unsynced.
+  // No se vende como Saldo oficial de la base (cobrador N / A / supervisor / PC).
+  const liveUnsynced = date === todayIso && !cloudLive;
   return {
     ...today,
     route,
@@ -614,6 +622,7 @@ export function independentRouteDay(
     opening,
     closing: pesos(opening + today.efectivo - today.gastos - today.prestamos),
     adjustment,
+    unsynced: liveUnsynced || undefined,
   };
 }
 

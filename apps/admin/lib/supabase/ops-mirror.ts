@@ -895,7 +895,7 @@ async function scrubForeignPrestamoExpensesInRow(
 
 export async function upsertDayExpenseIdempotent(row: Record<string, unknown>) {
   const client = createMirrorClient();
-  if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  if (!client) return { ok: false as const, error: "supabase_not_configured" };
   const clean = await scrubForeignPrestamoExpensesInRow(client, row);
   const { data, error } = await client.rpc("register_day_expense", {
     p_ref: clean.ref,
@@ -1400,7 +1400,7 @@ async function rejectOpenVisitOnClosedSheet(client: MirrorDb, row: Record<string
 
 export async function upsertAssignmentRow(row: Record<string, unknown>) {
   const client = createMirrorClient();
-  if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  if (!client) return { ok: false as const, error: "supabase_not_configured" };
   const closedSheet = await rejectOpenVisitOnClosedSheet(client, row);
   if (closedSheet) return closedSheet;
   // La visita sin cobro existe solo si su préstamo existe en la nube. P- que la nube no
@@ -1599,7 +1599,7 @@ export async function upsertOpsRow(
   onConflict: string,
 ) {
   const client = createMirrorClient();
-  if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  if (!client) return { ok: false as const, error: "supabase_not_configured" };
   const { error } = await client.from(table).upsert(row, { onConflict });
   if (error) return { ok: false as const, error: error.message };
   return { ok: true as const };
@@ -1696,7 +1696,7 @@ export async function sealRouteSheetInCloud(row: {
   closedAt?: string;
 }) {
   const client = createMirrorClient();
-  if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  if (!client) return { ok: false as const, error: "supabase_not_configured" };
   const collectorRef = String(row.collectorRef || "").trim();
   const date = normalizeHistoryDate(String(row.date || "")) || String(row.date || "").trim();
   const route = String(row.route || "").trim();
@@ -1739,7 +1739,7 @@ export async function upsertDayCloseIdempotent(
   options?: { force?: boolean },
 ) {
   const client = createMirrorClient();
-  if (!client) return { ok: true as const, skipped: true as const, reason: "supabase_not_configured" };
+  if (!client) return { ok: false as const, error: "supabase_not_configured" };
 
   const ref = String(row.ref || "");
   const force = Boolean(options?.force);

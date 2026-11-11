@@ -3,8 +3,9 @@
 /**
  * Detalle ruta+día (gastos / préstamos / efectivo / banco|nequi / N/P).
  *
- * Ley: si la lista local no cuadra con el total de pantalla, manda
- * `/api/ops/route-day-detail`. Mientras baja → loading; no lista incompleta.
+ * Ley: con pantalla habilitada y ruta, siempre consulta
+ * `/api/ops/route-day-detail` (también si el total local es 0).
+ * La nube manda la lista; lo local solo si aún no hay respuesta o cuadra.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
@@ -82,12 +83,8 @@ export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDet
 
   const gastosOk = localMatchesTotal(input.localGastos, input.gastosTotal);
   const prestamosOk = localMatchesTotal(input.localPrestamos, input.prestamosTotal);
-  const needGastos = input.gastosTotal > 0 && !gastosOk;
-  const needPrestamos = input.prestamosTotal > 0 && !prestamosOk;
-  const needFetch =
-    input.enabled &&
-    Boolean(input.route) &&
-    (needGastos || needPrestamos || Boolean(input.needCollections));
+  // Raíz: total local 0 no bloquea la lectura. Cobrador / supervisor / PC pedirán la nube.
+  const needFetch = input.enabled && Boolean(input.route);
 
   useEffect(() => {
     if (!needFetch) {
@@ -114,15 +111,7 @@ export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDet
     return () => {
       cancelled = true;
     };
-  }, [
-    needFetch,
-    input.collectorRef,
-    input.date,
-    input.route,
-    needGastos,
-    needPrestamos,
-    input.needCollections,
-  ]);
+  }, [needFetch, input.collectorRef, input.date, input.route, input.needCollections]);
 
   return useMemo(() => {
     const remoteGastos = cloud?.gastoLines ?? emptyCloud.gastoLines;
@@ -131,25 +120,18 @@ export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDet
       ok: boolean,
       local: RouteExpenseLine[],
       remote: RouteExpenseLine[],
-      total: number,
-      wantRemote: boolean,
     ): RouteExpenseLine[] => {
-      if (Math.trunc(Number(total) || 0) <= 0) return [];
+      // Nube con filas: manda (también si el total local era 0).
+      if (fetched && remote.length > 0) return remote;
       if (ok) return local;
-      if (remote.length) return remote;
-      if (wantRemote && fetched && !loading) return [];
-      if (wantRemote) return [];
+      // Nube contestó vacía: lista vacía real.
+      if (fetched && !loading) return remote;
+      // Cargando o sin respuesta: conserva local (cola / offline).
       return local;
     };
     return {
-      gastoLines: pick(gastosOk, input.localGastos, remoteGastos, input.gastosTotal, needGastos),
-      prestamoLines: pick(
-        prestamosOk,
-        input.localPrestamos,
-        remotePrestamos,
-        input.prestamosTotal,
-        needPrestamos,
-      ),
+      gastoLines: pick(gastosOk, input.localGastos, remoteGastos),
+      prestamoLines: pick(prestamosOk, input.localPrestamos, remotePrestamos),
       loading,
       cloudGastosTotal: fetched && cloud ? cloud.gastosTotal : null,
       cloudPrestamosTotal: fetched && cloud ? cloud.prestamosTotal : null,
@@ -165,12 +147,8 @@ export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDet
   }, [
     gastosOk,
     prestamosOk,
-    needGastos,
-    needPrestamos,
     input.localGastos,
     input.localPrestamos,
-    input.gastosTotal,
-    input.prestamosTotal,
     cloud,
     loading,
     fetched,
