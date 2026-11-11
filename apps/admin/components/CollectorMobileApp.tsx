@@ -2397,6 +2397,7 @@ export function CollectorMobileApp({
 
   return (
     <div className={`collector-mobile-app${preview ? " is-preview" : ""}`}>
+      <div className="collector-mobile-chrome">
       {preview ? (
         <div className="collector-mobile-preview-banner">
           Vista previa · lo mismo que verá en el celular
@@ -2609,7 +2610,9 @@ export function CollectorMobileApp({
           </div>
         ) : null}
       </header>
+      </div>
 
+      <div className="collector-mobile-sheet">
       {historyOpen ? (
         <div
           className="collector-mobile-history-panel"
@@ -3862,6 +3865,7 @@ export function CollectorMobileApp({
       ) : null}
         </>
       )}
+      </div>
 
     </div>
   );
