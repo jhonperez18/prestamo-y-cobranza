@@ -169,10 +169,12 @@ export function useOperationalDemoSync(
     if (flushInFlightRef.current) return;
     flushInFlightRef.current = true;
     let left = 0;
+    let flushThrew = false;
     try {
       left = (await flushAllMirrorQueues({ attempts: 3 })).left;
     } catch (error) {
       console.error("mirror-flush", error);
+      flushThrew = true;
       left = countPendingMirrorQueues().total;
     } finally {
       flushInFlightRef.current = false;
@@ -187,6 +189,17 @@ export function useOperationalDemoSync(
       } else {
         flushFailuresRef.current = 0;
         nextFlushAtRef.current = 0;
+      }
+      // Enlace: flush vacío = servidor alcanzó; throw = no hubo enlace útil.
+      // Cola con restos sin throw = subiendo (no marcar sin_enlace).
+      if (flushThrew) {
+        void import("@/lib/enlace-oficina").then(({ reportEnlaceReach }) => {
+          reportEnlaceReach(false);
+        });
+      } else if (left === 0) {
+        void import("@/lib/enlace-oficina").then(({ reportEnlaceReach }) => {
+          reportEnlaceReach(true);
+        });
       }
       refreshPending();
     }
@@ -234,6 +247,9 @@ export function useOperationalDemoSync(
   /** Auto-evaluar (y reparar) tras cada sync; después reportar al monitor de aparatos. */
   const healthCycleThenReport = useCallback(
     async (pullOk: boolean, pullError: string) => {
+      // Enlace-oficina: el pull es prueba real de que la puerta (servidor) contestó.
+      const { reportEnlaceReach } = await import("@/lib/enlace-oficina");
+      reportEnlaceReach(pullOk);
       await healerRef.current?.runHealthCycle();
       const pending = refreshPending();
       void reportDeviceStatus({

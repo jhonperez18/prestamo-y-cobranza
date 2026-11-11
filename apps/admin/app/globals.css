@@ -572,14 +572,57 @@
       font-weight: 600;
       text-align: center;
     }
-    .collector-mobile-sync-banner {
+    .collector-mobile-sync-banner,
+    .collector-mobile-enlace-banner {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
       padding: 7px 12px;
-      background: #f0f4f2;
       border-bottom: 1px solid #dbe5df;
-      color: #3d5349;
       font-size: 11px;
       font-weight: 600;
       text-align: center;
+      letter-spacing: 0.01em;
+    }
+    .collector-mobile-sync-banner {
+      background: #f0f4f2;
+      color: #3d5349;
+    }
+    .collector-mobile-enlace-banner.is-ok {
+      background: #e8f3ec;
+      border-bottom-color: #c5dccb;
+      color: #1f5c38;
+    }
+    .collector-mobile-enlace-banner.is-subiendo {
+      background: #f7f0e0;
+      border-bottom-color: #e2d2a8;
+      color: #6a4e12;
+    }
+    .collector-mobile-enlace-banner.is-sin_enlace {
+      background: #f8e8e6;
+      border-bottom-color: #e3b8b2;
+      color: #7a2e28;
+    }
+    .collector-mobile-enlace-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+      background: currentColor;
+      opacity: 0.9;
+    }
+    .collector-mobile-enlace-banner.is-subiendo .collector-mobile-enlace-dot {
+      animation: collector-enlace-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes collector-enlace-pulse {
+      0%,
+      100% {
+        opacity: 0.35;
+      }
+      50% {
+        opacity: 1;
+      }
     }
     .collector-mobile-header {
       display: flex;

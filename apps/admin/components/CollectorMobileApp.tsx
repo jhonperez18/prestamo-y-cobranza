@@ -17,6 +17,7 @@ import {
   withIndependentRouteHistory,
 } from "@/lib/independent-route-cash";
 import { useDayExpenseDetail } from "@/lib/use-day-expense-detail";
+import { useEnlaceOficina } from "@/lib/enlace-oficina";
 import { useRouteCashBook } from "@/lib/use-route-cash-book";
 import { clearRouteSheetCache, useRouteSheet } from "@/lib/use-route-sheet";
 import { getCloudChainMOpening } from "@/lib/cloud-chain-m-opening";
@@ -2392,6 +2393,8 @@ export function CollectorMobileApp({
     cloudCashEpoch,
   ]);
 
+  const enlaceOficina = useEnlaceOficina();
+
   return (
     <div className={`collector-mobile-app${preview ? " is-preview" : ""}`}>
       {preview ? (
@@ -2399,8 +2402,20 @@ export function CollectorMobileApp({
           Vista previa · lo mismo que verá en el celular
         </div>
       ) : (
-        <div className="collector-mobile-sync-banner">
-          Cobros se envían a oficina · Sin contacto con otros cobradores
+        <div
+          className={`collector-mobile-enlace-banner is-${enlaceOficina.estado}`}
+          role="status"
+          aria-live="polite"
+          title={
+            enlaceOficina.estado === "sin_enlace"
+              ? "No hay enlace con la oficina · puede seguir cobrando; se sube solo"
+              : enlaceOficina.estado === "subiendo"
+                ? "Enlace activo · subiendo cambios pendientes"
+                : "Enlace con la oficina al día"
+          }
+        >
+          <span className="collector-mobile-enlace-dot" aria-hidden />
+          <span>{enlaceOficina.label}</span>
         </div>
       )}
 
