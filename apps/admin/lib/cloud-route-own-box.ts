@@ -89,6 +89,34 @@ export function rememberCloudRouteOwnBox(row: CloudRouteOwnBox) {
   const key = keyOf(row.collectorRef, row.date, row.route);
   byKey.set(key, row);
   writePersisted(key, row);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("nexo-route-own-box"));
+  }
+}
+
+/** Suelta la foto A/N de ese cobrador+día (tras prestar / gasto). */
+export function forgetCloudRouteOwnBox(
+  collectorRef: string,
+  date: string,
+  route: string,
+) {
+  const ref = collectorRef.trim();
+  const pin = route.trim().toUpperCase();
+  if (!ref || !/^\d{4}-\d{2}-\d{2}$/.test(date) || (pin !== "A" && pin !== "N")) {
+    return;
+  }
+  const key = keyOf(ref, date, pin);
+  byKey.delete(key);
+  if (typeof sessionStorage !== "undefined") {
+    try {
+      sessionStorage.removeItem(STORAGE_PREFIX + key);
+    } catch {
+      /* cupo */
+    }
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("nexo-route-own-box"));
+  }
 }
 
 async function fetchRouteOwnBoxOnce(

@@ -562,7 +562,10 @@ export function independentRouteDay(
     };
   }
   if (cloudLive && date === todayIso) {
-    // Día vivo: Inicial/Saldo pueden anclarse en la nube; el movimiento lo llevan los renglones.
+    // Día vivo A/N: misma ley que M/T.
+    // Inicial de la nube. Movimiento = max(local, nube): el aparato no tapa
+    // préstamos/gastos ya en GAS-/route_own_box (caso Yesid 11/11: 5 · 1.600.000
+    // en supervisor y 0 en cobrador / Caja sin restar).
     const cloudOpening = Number.isFinite(cloudLive.opening)
       ? pesos(cloudLive.opening)
       : pesos(
@@ -571,13 +574,26 @@ export function independentRouteDay(
             cloudLive.prestamos +
             cloudLive.gastos,
         );
+    const pickMove = (cloudVal: number, localVal: number) => {
+      const cloud = pesos(cloudVal);
+      const local = pesos(localVal);
+      if (local > cloud) return local;
+      return cloud;
+    };
+    const efectivo = pickMove(cloudLive.efectivo, today.efectivo);
+    const gastos = pickMove(cloudLive.gastos, today.gastos);
+    const prestamos = pickMove(cloudLive.prestamos, today.prestamos);
     return {
       ...today,
+      efectivo,
+      gastos,
+      prestamos,
+      prestamosRuta: pesos(prestamos + today.prestamosDigital),
       route,
       date,
       anchored: true,
       opening: cloudOpening,
-      closing: pesos(cloudOpening + today.efectivo - today.gastos - today.prestamos),
+      closing: pesos(cloudOpening + efectivo - gastos - prestamos),
       adjustment,
     };
   }

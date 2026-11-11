@@ -633,13 +633,14 @@ export function CollectorShell({ session, onLogout }: Props) {
     writeDemoJson(DEMO_LOANS_KEY, nextLoans);
     writeDemoJson(DEMO_CLIENTS_KEY, nextClients);
     const loanDay = todayIso();
-    // Caja/Préstamos en pantalla: suelta foto vieja de day_cash_figure ya (T pintaba 0).
+    // Caja/Préstamos en pantalla: suelta foto vieja (T pintaba 0; N/A tapaba route_own_box).
     void import("@/lib/cloud-day-cash-figure").then(({ forgetCloudDayCashFigure }) => {
       forgetCloudDayCashFigure(routeCash.collector.ref, loanDay);
     });
     void import("@/lib/cloud-route-day-detail").then((mod) => {
       mod.clearCloudRouteDayDetail(routeCash.collector.ref, loanDay);
     });
+    const ownPin = String(routePin || "").trim().toUpperCase();
     const planilla = syncPermanentRoutePlanilla(
       loanDay,
       routes,
@@ -676,6 +677,13 @@ export function CollectorShell({ session, onLogout }: Props) {
         "@/lib/cloud-day-cash-figure"
       );
       await resyncCloudDayCashFigureAfterCashMove(routeCash.collector.ref, loanDay);
+      if (ownPin === "A" || ownPin === "N") {
+        const { forgetCloudRouteOwnBox, refreshCloudRouteOwnBox } = await import(
+          "@/lib/cloud-route-own-box"
+        );
+        forgetCloudRouteOwnBox(routeCash.collector.ref, loanDay, ownPin);
+        await refreshCloudRouteOwnBox(routeCash.collector.ref, loanDay, ownPin);
+      }
       showToast(
         cloud.ok
           ? `Préstamo ${cloud.ref} listo · cuota ${money(loan.installment ?? 0)}.`

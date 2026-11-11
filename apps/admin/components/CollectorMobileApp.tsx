@@ -701,6 +701,11 @@ export function CollectorMobileApp({
    */
   const [ownBoxEpoch, setOwnBoxEpoch] = useState(0);
   useEffect(() => {
+    const onOwnBox = () => setOwnBoxEpoch((n) => n + 1);
+    window.addEventListener("nexo-route-own-box", onOwnBox);
+    return () => window.removeEventListener("nexo-route-own-box", onOwnBox);
+  }, []);
+  useEffect(() => {
     const pin = (cashBookRoute || "").trim().toUpperCase();
     if (pin !== "A" && pin !== "N") return;
     let alive = true;
@@ -1424,6 +1429,31 @@ export function CollectorMobileApp({
     setConfirmingClose(false);
     setEditingExpenses(false);
     setReviewingLoans(true);
+    // Forzar foto ruta+día / caja A·N: el KPI no puede quedarse en 0 si la nube ya prestó.
+    const pin = (cashBookRoute || activePlanillaRoute || "").trim().toUpperCase();
+    void (async () => {
+      try {
+        if (pin === "A" || pin === "N") {
+          const { forgetCloudRouteOwnBox, refreshCloudRouteOwnBox } = await import(
+            "@/lib/cloud-route-own-box"
+          );
+          forgetCloudRouteOwnBox(collector.ref, activeDate, pin);
+          await refreshCloudRouteOwnBox(collector.ref, activeDate, pin);
+          setOwnBoxEpoch((n) => n + 1);
+        }
+        const { clearCloudRouteDayDetail, refreshCloudRouteDayDetail } = await import(
+          "@/lib/cloud-route-day-detail"
+        );
+        if (activePlanillaRoute) {
+          clearCloudRouteDayDetail(collector.ref, activeDate, activePlanillaRoute);
+          await refreshCloudRouteDayDetail(collector.ref, activeDate, activePlanillaRoute, {
+            force: true,
+          });
+        }
+      } catch (error) {
+        console.error("open-loans-detail-cloud", error);
+      }
+    })();
   }
 
   function openRecaudoDetail(onlyBanco = false) {
@@ -1986,6 +2016,7 @@ export function CollectorMobileApp({
     localPrestamos: localHomePrestamoLines,
     enabled:
       showHomeCuadre ||
+      reviewingLoans ||
       homeCierreKind === "gastos" ||
       homeCierreKind === "prestamos" ||
       homeCierreKind === "efectivo" ||
@@ -2076,7 +2107,20 @@ export function CollectorMobileApp({
    * Préstamos de la planilla = solo efectivo (lo que salió de la caja de la ruta).
    */
   const viewLoanRows = useMemo(() => {
-    if (ownRouteDay) return ownRouteDay.loanRows;
+    if (ownRouteDay) {
+      if (ownRouteDay.loanRows.length > 0) return ownRouteDay.loanRows;
+      // Totales de route_own_box sin renglones locales: lista desde la puerta.
+      if (homePrestamoLines.length > 0) {
+        return dayLoanDisbursementRows(
+          activeDate,
+          homePrestamoLines,
+          loans,
+          clients,
+          loanScope,
+        );
+      }
+      return ownRouteDay.loanRows;
+    }
     if (planillaOwnsMovements || !activePlanillaRoute) return dayLoanRows;
     const routeClients = new Set(
       clients.filter((row) => sameRoute(row.route, activePlanillaRoute)).map((row) => row.ref),
@@ -2086,6 +2130,7 @@ export function CollectorMobileApp({
     );
   }, [
     ownRouteDay,
+    homePrestamoLines,
     planillaOwnsMovements,
     activePlanillaRoute,
     dayLoanRows,
@@ -2095,7 +2140,10 @@ export function CollectorMobileApp({
     loans,
     loanScope,
   ]);
-  const viewPrestamos = dayLoanDisbursementTotal(viewLoanRows);
+  const viewPrestamos = Math.max(
+    dayLoanDisbursementTotal(viewLoanRows),
+    ownRouteDay ? ownRouteDay.prestamos : 0,
+  );
   /** KPI Préstamos de la ruta = solo efectivo. */
   const prestamosKpi = ownRouteDay
     ? ownRouteDay.prestamos

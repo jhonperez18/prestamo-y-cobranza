@@ -1321,6 +1321,19 @@ export function useWorkspace({
       );
       if (expenseDraft) queueDayExpenseMirror(expenseDraft);
       projectBank(nextDrafts);
+      // Misma cifra en cobrador / supervisor / Caja: soltar foto A·N y detalle ruta+día.
+      const routePin = String(client?.route || "").trim().toUpperCase();
+      if (routePin === "A" || routePin === "N") {
+        void import("@/lib/cloud-route-own-box").then(
+          ({ forgetCloudRouteOwnBox, refreshCloudRouteOwnBox }) => {
+            forgetCloudRouteOwnBox(collector.ref, date, routePin);
+            void refreshCloudRouteOwnBox(collector.ref, date, routePin);
+          },
+        );
+      }
+      void import("@/lib/cloud-route-day-detail").then(({ clearCloudRouteDayDetail }) => {
+        clearCloudRouteDayDetail(collector.ref, date);
+      });
       onToast(
         draft.fundedBy === "combinado"
           ? `Préstamo ${loan.ref}: Combinado · caja ${money(loan.cashOut ?? 0)} (${collector.name}) + banco ${money(loan.bankOut ?? 0)}.`
