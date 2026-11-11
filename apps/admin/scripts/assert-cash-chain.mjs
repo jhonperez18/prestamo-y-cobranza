@@ -4094,6 +4094,27 @@ console.log("— Préstamo del supervisor a cargo de la ruta —");
     dayCloses: [cie25, { ...cie25, ref: `CIE-COB-0-${D}`, date: D }],
   });
   expect("Caja de la ruta: caja ya cerrada → no entra", sealed.ok, false);
+  // M ya selló sus Prestar (loanRef ""): un préstamo nuevo en T no las toma como «caja cerrada».
+  const mSealedPrestar = {
+    ...assignments[0],
+    itemId: `${D}:CLI-M-prestar`,
+    clientRef: "CLI-M-prestar",
+    clientRoute: "M",
+    loanRef: "",
+    dayClosedAt: `${D}T16:51:00.000Z`,
+    visitStatus: "omitido",
+    awaitingLoan: true,
+  };
+  const afterM = commitRouteCashLoan(supLoan, drafts, {
+    ...src,
+    dayCloses: [cie25],
+    assignments: [...assignments, mSealedPrestar],
+  });
+  expect(
+    "Caja de la ruta: M cerrada, T abierta → sí presta",
+    afterM.ok ? afterM.collector.ref : afterM.error,
+    COB.ref,
+  );
   expect("Modificar a caja de la ruta: falta renglón", routeCashLoanLineMissing(supLoan, drafts, D), true);
   expect(
     "Modificar a caja de la ruta: con renglón no se duplica",

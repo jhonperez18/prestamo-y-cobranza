@@ -21,8 +21,17 @@ import {
 
 type LoanRef = Pick<LoanRow, "ref" | "clientRef">;
 
+/**
+ * Visita de este préstamo / cliente.
+ * Prohibido `"" === ""` en loanRef: al cerrar M las Prestar selladas quedan sin P-
+ * y un alta nueva en T (routeCashLoanTarget pasa ref vacío) las tomaba como «caja cerrada».
+ */
 function assignmentTouchesLoan(row: DailyCollectionAssignment, loan: LoanRef) {
-  return row.loanRef === loan.ref || (Boolean(loan.clientRef) && row.clientRef === loan.clientRef);
+  const wanted = String(loan.ref || "").trim();
+  const rowLoan = String(row.loanRef || "").trim();
+  if (wanted && rowLoan && rowLoan === wanted) return true;
+  const clientRef = String(loan.clientRef || "").trim();
+  return Boolean(clientRef) && String(row.clientRef || "").trim() === clientRef;
 }
 
 /** Cobrador de la visita en la planilla de ese día (si existe). */

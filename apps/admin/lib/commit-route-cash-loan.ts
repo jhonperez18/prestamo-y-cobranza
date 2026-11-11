@@ -74,8 +74,12 @@ export type RouteCashLoanTarget =
 export function routeCashLoanTarget(
   clientRef: string,
   src: RouteCashLoanSources,
+  loanRef = "",
 ): RouteCashLoanTarget {
-  const target = routeCollectorCashTarget({ ...src, loan: { ref: "", clientRef } });
+  const target = routeCollectorCashTarget({
+    ...src,
+    loan: { ref: String(loanRef || "").trim(), clientRef },
+  });
   if (!target.ok) return { ok: false, error: target.error };
   const client = src.clients.find((row) => row.ref === clientRef);
   const routeRef = client?.route
@@ -170,7 +174,7 @@ export function commitRouteCashLoan(
   src: RouteCashLoanSources,
   topUp?: number,
 ): RouteCashLoanCommit {
-  const target = routeCashLoanTarget(loan.clientRef, src);
+  const target = routeCashLoanTarget(loan.clientRef, src, loan.ref);
   if (!target.ok) return target;
   const next = appendCashDisbursementExpense(drafts, {
     collectorRef: target.collector.ref,
