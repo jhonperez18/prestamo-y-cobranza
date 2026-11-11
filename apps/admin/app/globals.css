@@ -969,7 +969,7 @@
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 4px;
-      padding: 4px 10px 6px;
+      padding: 6px 10px 8px;
       background: #fff;
       border-bottom: 1px solid #dbe5df;
       width: 100%;
@@ -1005,19 +1005,26 @@
     }
     .collector-mobile-stat {
       text-align: center;
-      padding: 2px 2px;
+      /* Alto táctil firme a todo el renglón (no achicar al fijar cabecera). */
+      padding: 7px 4px;
       border-radius: 6px;
       background: #f8fbf9;
       border: 1px solid #e2ece7;
       cursor: pointer;
       color: #111;
       font: inherit;
-      min-height: 0;
-      line-height: 1.05;
+      min-height: 40px;
+      line-height: 1.15;
       min-width: 0;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
     }
     .collector-mobile-stats.has-inicial .collector-mobile-stat {
-      padding: 2px 1px;
+      padding: 6px 2px;
+      min-height: 38px;
     }
     .collector-mobile-stats.has-inicial .collector-mobile-stat span {
       font-size: 9px;
