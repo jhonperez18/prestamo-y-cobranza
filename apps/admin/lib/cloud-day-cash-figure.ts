@@ -141,6 +141,28 @@ export function rememberCloudDayCashFigure(row: CloudDayCashFigure) {
   }
 }
 
+/**
+ * Suelta la foto de caja de ese cobrador+día.
+ * Tras un préstamo/gasto local, la caché vieja no puede seguir pintando Préstamos/Caja
+ * (caso Edgar T: P-726 en GAS y day_cash_figure, pantalla seguía en 0).
+ */
+export function forgetCloudDayCashFigure(collectorRef: string, date: string) {
+  const ref = collectorRef.trim();
+  if (!ref || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+  const key = keyOf(ref, date);
+  byKey.delete(key);
+  if (typeof sessionStorage !== "undefined") {
+    try {
+      sessionStorage.removeItem(STORAGE_PREFIX + key);
+    } catch {
+      /* cupo */
+    }
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("nexo-day-cash-figure"));
+  }
+}
+
 async function fetchDayCashFigureOnce(
   ref: string,
   date: string,
@@ -215,4 +237,38 @@ export async function refreshCloudDayCashFigure(
     console.error("refreshCloudDayCashFigure", error);
     return getCloudDayCashFigure(ref, date);
   }
+}
+
+/**
+ * Movimiento de caja en este aparato: suelta la foto vieja (pinta el libro local)
+ * y vuelve a leer day_cash_figure de la base.
+ */
+export async function resyncCloudDayCashFigureAfterCashMove(
+  collectorRef: string,
+  date: string,
+): Promise<CloudDayCashFigure | null> {
+  forgetCloudDayCashFigure(collectorRef, date);
+  return refreshCloudDayCashFigure(collectorRef, date);
+}
+
+/** Cobradores con caja viva hoy (CIE o GAS): hay que refrescar aunque aún no haya CIE. */
+export function collectorRefsWithLiveCashDay(
+  date: string,
+  dayCloses: Array<{ date?: string; collectorRef?: string }>,
+  dayExpenses: Array<{ date?: string; collectorRef?: string }> = [],
+): string[] {
+  const day = String(date || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return [];
+  const refs = new Set<string>();
+  for (const row of dayCloses) {
+    if (String(row.date || "").slice(0, 10) !== day) continue;
+    const ref = String(row.collectorRef || "").trim();
+    if (ref) refs.add(ref);
+  }
+  for (const row of dayExpenses) {
+    if (String(row.date || "").slice(0, 10) !== day) continue;
+    const ref = String(row.collectorRef || "").trim();
+    if (ref) refs.add(ref);
+  }
+  return [...refs];
 }

@@ -481,17 +481,21 @@ export function SupervisorShell({ session, onLogout }: Props) {
       return;
     }
     const nextDrafts = routeCash?.ok ? routeCash.drafts : dayExpenseDrafts;
+    const loanDay = todayIso();
     if (routeCash?.ok) {
       writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, nextDrafts);
       setDayExpenseDrafts(nextDrafts);
       queueDayExpenseMirror(routeCash.draft);
+      void import("@/lib/cloud-day-cash-figure").then(({ forgetCloudDayCashFigure }) => {
+        forgetCloudDayCashFigure(routeCash.collector.ref, loanDay);
+      });
     }
     setLoans(nextLoans);
     setClients(nextClients);
     writeDemoJson(DEMO_LOANS_KEY, nextLoans);
     writeDemoJson(DEMO_CLIENTS_KEY, nextClients);
     const planilla = syncPermanentRoutePlanilla(
-      todayIso(),
+      loanDay,
       routes,
       nextClients,
       nextLoans,
@@ -506,7 +510,6 @@ export function SupervisorShell({ session, onLogout }: Props) {
     const sentLoan = queueLoanCommand(loan, { op: "create", key: loanCommandKey() });
     const mirroredClient = nextClients.find((entry) => entry.ref === client.ref);
     if (mirroredClient) queueClientMirror(mirroredClient);
-    const loanDay = todayIso();
     queueAssignmentsMirror(
       planilla.assignments.filter(
         (row) => row.clientRef === client.ref && row.dispatchDate === loanDay,
@@ -550,6 +553,12 @@ export function SupervisorShell({ session, onLogout }: Props) {
       await flushCatalogMirrorQueues();
       await flushOpsMirrorQueues();
       await flushOpsMirrorQueues();
+      if (routeCash?.ok) {
+        const { resyncCloudDayCashFigureAfterCashMove } = await import(
+          "@/lib/cloud-day-cash-figure"
+        );
+        await resyncCloudDayCashFigureAfterCashMove(routeCash.collector.ref, loanDay);
+      }
       showToast(
         cloud.ok
           ? `Préstamo ${cloud.ref} listo · cuota ${money(loan.installment ?? 0)}.`

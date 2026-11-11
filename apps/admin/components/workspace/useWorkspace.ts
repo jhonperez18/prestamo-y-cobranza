@@ -2270,15 +2270,24 @@ export function useWorkspace({
       onToast(`Préstamo no creado: ${routeCash.error}`);
       return;
     }
+    const loanDay = todayIso();
     if (routeCash?.ok) {
       writeDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, routeCash.drafts);
       setDayExpenseDrafts(routeCash.drafts);
       queueDayExpenseMirror(routeCash.draft);
+      void import("@/lib/cloud-day-cash-figure").then(
+        ({ forgetCloudDayCashFigure, resyncCloudDayCashFigureAfterCashMove }) => {
+          forgetCloudDayCashFigure(routeCash.collector.ref, loanDay);
+          void flushOpsMirrorQueues()
+            .then(() => resyncCloudDayCashFigureAfterCashMove(routeCash.collector.ref, loanDay))
+            .catch((error) => console.error("workspace-quick-loan-cash-figure", error));
+        },
+      );
     }
     setLoans(nextLoans);
     setClients(nextClients);
     const planilla = syncPermanentRoutePlanilla(
-      todayIso(),
+      loanDay,
       routes,
       nextClients,
       nextLoans,

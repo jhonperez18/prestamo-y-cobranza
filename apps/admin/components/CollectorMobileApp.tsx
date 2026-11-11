@@ -1887,12 +1887,22 @@ export function CollectorMobileApp({
           cie: cloudFig.cie,
           dayFinal: cloudFig.dayFinal,
         });
+      const localEfectivo = chainPlanillaDay?.efectivo ?? 0;
+      const localGastos = chainPlanillaDay?.gastos ?? 0;
+      const localPrestamos = chainPlanillaDay?.prestamos ?? 0;
+      // Día vivo (sin CIE): un préstamo/gasto recién anotado en este aparato no puede
+      // quedar tapado por una foto day_cash_figure anterior (caso P-726 · T).
+      const liveOpenDay = !cloudFig?.cie;
+      const pickMove = (cloudVal: number | null | undefined, localVal: number) => {
+        if (!cloudOk || cloudVal == null) return localVal;
+        if (liveOpenDay && localVal > cloudVal) return localVal;
+        return cloudVal;
+      };
       return planillaHeaderCash({
         inicial: tInicial,
-        efectivo: cloudOk && cloudFig.tEfectivo != null ? cloudFig.tEfectivo : (chainPlanillaDay?.efectivo ?? 0),
-        gastos: cloudOk && cloudFig.tGastos != null ? cloudFig.tGastos : (chainPlanillaDay?.gastos ?? 0),
-        prestamos:
-          cloudOk && cloudFig.tPrestamos != null ? cloudFig.tPrestamos : (chainPlanillaDay?.prestamos ?? 0),
+        efectivo: pickMove(cloudFig?.tEfectivo, localEfectivo),
+        gastos: pickMove(cloudFig?.tGastos, localGastos),
+        prestamos: pickMove(cloudFig?.tPrestamos, localPrestamos),
         ajusteContado: !staleAdj && localAdj?.real != null ? localAdj.real : null,
       });
     }
@@ -1905,20 +1915,20 @@ export function CollectorMobileApp({
             : chainOpening.kind === "chain"
               ? chainOpening.opening
               : 0;
+      const localEfectivo = chainPlanillaDay?.efectivo ?? 0;
+      const localGastos = chainPlanillaDay?.gastos ?? 0;
+      const localPrestamos = chainPlanillaDay?.prestamos ?? 0;
+      const liveOpenDay = !cloudFig?.cie;
+      const pickMove = (cloudVal: number | null | undefined, localVal: number) => {
+        if (!cloudFig?.ready || cloudVal == null) return localVal;
+        if (liveOpenDay && localVal > cloudVal) return localVal;
+        return cloudVal;
+      };
       return planillaHeaderCash({
         inicial: mOpen,
-        efectivo:
-          cloudFig?.ready && cloudFig.mEfectivo != null
-            ? cloudFig.mEfectivo
-            : (chainPlanillaDay?.efectivo ?? 0),
-        gastos:
-          cloudFig?.ready && cloudFig.mGastos != null
-            ? cloudFig.mGastos
-            : (chainPlanillaDay?.gastos ?? 0),
-        prestamos:
-          cloudFig?.ready && cloudFig.mPrestamos != null
-            ? cloudFig.mPrestamos
-            : (chainPlanillaDay?.prestamos ?? 0),
+        efectivo: pickMove(cloudFig?.mEfectivo, localEfectivo),
+        gastos: pickMove(cloudFig?.mGastos, localGastos),
+        prestamos: pickMove(cloudFig?.mPrestamos, localPrestamos),
       });
     }
     // Sin libro de cadena ni caja A/N: no inventar saldo.

@@ -500,24 +500,25 @@ export function useOperationalDemoSync(
         rehydrated = true;
       }
       // Tras eco de cobros/ops: misma cifra de caja en todos los aparatos (day_cash_figure).
+      // Incluye GAS del día aunque aún no haya CIE (si no, un préstamo en T no repinta).
       if (rehydrated || (groups.has("payments") && !deferHydrate) || groups.has("ops")) {
         try {
-          const [{ refreshCloudDayCashFigure }, { loadDemoDayCloses }, { businessTodayIso: todayIso }] =
-            await Promise.all([
-              import("@/lib/cloud-day-cash-figure"),
-              import("@/lib/demo-persist"),
-              import("@/lib/business-timezone"),
-            ]);
+          const [
+            { refreshCloudDayCashFigure, collectorRefsWithLiveCashDay },
+            { loadDemoDayCloses, DEMO_COLLECTOR_DAY_EXPENSES_KEY, readDemoJson },
+            { businessTodayIso: todayIso },
+          ] = await Promise.all([
+            import("@/lib/cloud-day-cash-figure"),
+            import("@/lib/demo-persist"),
+            import("@/lib/business-timezone"),
+          ]);
           const today = todayIso();
           const closes = loadDemoDayCloses() as Array<{ date?: string; collectorRef?: string }>;
-          const refs = [
-            ...new Set(
-              closes
-                .filter((row) => row.date === today)
-                .map((row) => String(row.collectorRef || "").trim())
-                .filter(Boolean),
-            ),
-          ];
+          const expenses = readDemoJson(DEMO_COLLECTOR_DAY_EXPENSES_KEY, []) as Array<{
+            date?: string;
+            collectorRef?: string;
+          }>;
+          const refs = collectorRefsWithLiveCashDay(today, closes, expenses);
           if (refs.length > 0) {
             await Promise.all(refs.map((ref) => refreshCloudDayCashFigure(ref, today)));
           }

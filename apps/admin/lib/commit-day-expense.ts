@@ -44,7 +44,28 @@ export function commitDayExpenseDraft(
     .catch((error) => {
       console.error("clear-route-day-detail", error);
     });
-  return { draft, drafts: next, savedLocal, inCloud: mirrorDayExpenseNow(draft) };
+  // Caja M/T: suelta foto day_cash_figure; al confirmar GAS- en nube, vuelve a leer.
+  void import("@/lib/cloud-day-cash-figure")
+    .then(({ forgetCloudDayCashFigure }) => {
+      forgetCloudDayCashFigure(draft.collectorRef, draft.date);
+    })
+    .catch((error) => {
+      console.error("forget-day-cash-after-expense", error);
+    });
+  const inCloud = mirrorDayExpenseNow(draft).then(async (ok) => {
+    if (ok) {
+      try {
+        const { resyncCloudDayCashFigureAfterCashMove } = await import(
+          "@/lib/cloud-day-cash-figure"
+        );
+        await resyncCloudDayCashFigureAfterCashMove(draft.collectorRef, draft.date);
+      } catch (error) {
+        console.error("resync-day-cash-after-expense", error);
+      }
+    }
+    return ok;
+  });
+  return { draft, drafts: next, savedLocal, inCloud };
 }
 
 /** Aviso honesto: dice si el gasto ya está en la nube o solo en este aparato. */
