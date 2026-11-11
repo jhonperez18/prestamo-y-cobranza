@@ -1516,12 +1516,11 @@ export function CollectorMobileApp({
     const cashOut = topGastos + topPrestamos;
     // Misma Caja que la pantalla: Inicial + efectivo − préstamos − gastos.
     const openingForClose = headerInicial;
-    // N/A: gastos y préstamos en efectivo de esa planilla. T: no reenviar lo de M.
+    // CIE del cobrador es uno por día: siempre el GAS- completo (M+T).
+    // Antes T mandaba [] y el sello perdía Lavada/Ahorro de T (60k el 09/11).
     const expensesForClose = ownRouteDay
       ? [...ownRouteDay.gastoLines, ...loanRowsToExpenseLines(ownRouteDay.loanRows)]
-      : isPrimaryPlanilla
-        ? savedExpenses
-        : [];
+      : savedExpenses;
     const payload: CollectorCloseDayPayload = {
       date: activeDate,
       routeRef,
