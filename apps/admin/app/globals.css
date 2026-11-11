@@ -517,14 +517,16 @@
       background: #f3f6f4;
       box-shadow: 0 1px 0 rgba(16, 36, 28, 0.06);
     }
-    .collector-mobile-sheet {
+    /* Solo la lista/hoja hace scroll. Nombre distinto a .collector-mobile-sheet
+     * (esa clase vieja centra/achica paneles de cobro). */
+    .collector-mobile-hoja {
       flex: 1 1 auto;
       min-height: 0;
+      width: 100%;
       overflow-x: hidden;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
-      scrollbar-gutter: stable;
     }
     /*
      * Valores / saldos / precios: SIN negrilla (conserva color).
@@ -970,6 +972,8 @@
       padding: 4px 10px 6px;
       background: #fff;
       border-bottom: 1px solid #dbe5df;
+      width: 100%;
+      box-sizing: border-box;
       /* KPIs clavados bajo la cabecera mientras la hoja baja. */
       position: sticky;
       top: 0;

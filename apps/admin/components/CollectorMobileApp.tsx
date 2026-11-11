@@ -2612,7 +2612,7 @@ export function CollectorMobileApp({
       </header>
       </div>
 
-      <div className="collector-mobile-sheet">
+      <div className="collector-mobile-hoja">
       {historyOpen ? (
         <div
           className="collector-mobile-history-panel"
