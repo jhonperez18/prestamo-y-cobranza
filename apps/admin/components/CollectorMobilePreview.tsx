@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   CollectorMobileApp,
   type CollectorCloseDayPayload,
@@ -113,13 +113,13 @@ export function CollectorMobilePreview({
   onReopenSheet,
   onPreviewKindChange,
 }: Props) {
+  /** En celular admin: una sola vista. En PC: las 3 a la vez. */
   const [kind, setKind] = useState<PreviewKind>("collector");
-  /** El supervisor se arma la primera vez que se elige y se queda. Volver a él no lo reconstruye. */
-  const [supervisorMounted, setSupervisorMounted] = useState(false);
+  const [supervisorRef, setSupervisorRef] = useState("");
+
   useEffect(() => {
     onPreviewKindChange?.(kind);
   }, [kind, onPreviewKindChange]);
-  const [supervisorRef, setSupervisorRef] = useState("");
 
   const mobileCollectors = useMemo(
     () => collectors.filter((row) => row.mobileAccess && row.active),
@@ -162,10 +162,10 @@ export function CollectorMobilePreview({
   }, [kind, collector, selectedRef, onSelect]);
 
   useEffect(() => {
-    if (kind === "supervisor" && supervisor && supervisor.ref !== supervisorRef) {
+    if (supervisor && supervisor.ref !== supervisorRef) {
       setSupervisorRef(supervisor.ref);
     }
-  }, [kind, supervisor, supervisorRef]);
+  }, [supervisor, supervisorRef]);
 
   function pickCollector(ref: string) {
     setKind("collector");
@@ -174,23 +174,126 @@ export function CollectorMobilePreview({
 
   function pickSupervisor(ref: string) {
     setSupervisorRef(ref);
-    setSupervisorMounted(true);
     setKind("supervisor");
   }
 
-  const phoneTitle =
-    kind === "supervisor"
-      ? `${supervisor?.name ?? "Supervisor"} · app`
-      : `${collector?.name ?? "Cobrador"} · app`;
+  function renderCollectorPhone(row: CollectorRow) {
+    return (
+      <MobilePreviewFrame key={`frame-cob-${row.ref}`} title={`${row.name} · cobrador`}>
+        <CollectorMobileApp
+          key={`cob-${row.ref}`}
+          collector={row}
+          assignments={assignments}
+          routes={routes}
+          loans={loans}
+          clients={clients}
+          payments={payments}
+          dayCloses={dayCloses}
+          dayExpenseDrafts={dayExpenseDrafts}
+          monthCloses={monthCloses}
+          planillaCashCloses={planillaCashCloses}
+          preview
+          canRegister
+          onRegisterPayment={onRegisterPayment}
+          onSkipVisit={onSkipVisit}
+          onRenewLoan={onRenewLoan}
+          onCreateQuickLoan={onCreateQuickLoan}
+          onCreateClient={
+            onCreateRouteClient ? (draft) => onCreateRouteClient(draft, row.name) : undefined
+          }
+          onSaveExpenses={onSaveExpenses}
+          onCloseDay={onCloseDay}
+          onCloseMonth={onCloseMonth}
+        />
+      </MobilePreviewFrame>
+    );
+  }
 
-  // La clave es solo la persona. Cambiar cobrador no rearma al supervisor, ni al revés.
-  // Sin epoch de sync: eso cerraba el panel Pagar al refrescar datos.
-  const collectorPanelKey = `cob-${collector?.ref ?? "x"}`;
-  const supervisorPanelKey = `sup-${supervisor?.ref ?? "x"}`;
+  function renderSupervisorPhone(row: UserRow) {
+    return (
+      <MobilePreviewFrame key={`frame-sup-${row.ref}`} title={`${row.name} · supervisor`}>
+        <SupervisorMobileApp
+          key={`sup-${row.ref}`}
+          supervisor={row}
+          collectors={collectors}
+          routes={routes}
+          clients={clients}
+          loans={loans}
+          payments={payments}
+          assignments={assignments}
+          dayExpenseDrafts={dayExpenseDrafts}
+          dayCloses={dayCloses}
+          monthCloses={monthCloses}
+          planillaCashCloses={planillaCashCloses}
+          bankAccounts={bankAccounts}
+          bankMovements={bankMovements}
+          miscPayments={miscPayments}
+          showLifeline
+          onCreateRouteClient={
+            onCreateRouteClient
+              ? (draft) => onCreateRouteClient(draft, row.name)
+              : undefined
+          }
+          onCreateQuickLoan={onCreateQuickLoan}
+          onRenewLoan={onRenewLoan}
+          onUpdateClient={onUpdateClient}
+          onAttachPaymentEvidence={onAttachPaymentEvidence}
+          onSaveMiscPayment={onSaveMiscPayment}
+          onAdjustTCash={onAdjustTCash}
+          onReopenSheet={onReopenSheet}
+        />
+      </MobilePreviewFrame>
+    );
+  }
 
   return (
     <section className="panel collector-mobile-preview-panel is-compact">
-      <div className="mobile-preview-layout">
+      {/* —— PC: Yesid + Edgar + Supervisor a la vez —— */}
+      <div className="mobile-preview-triple-pc" aria-label="Vistas móviles en PC">
+        <p className="mobile-preview-triple-pc-note">
+          PC · tres vistas a la vez (cobradores + supervisor). En el celular real cada uno ve la
+          suya.
+        </p>
+        {mobileCollectors.length === 0 && !supervisor ? (
+          <p className="ficha-empty">Crea cobradores con acceso móvil y un supervisor.</p>
+        ) : (
+          <div
+            className="mobile-preview-triple-pc-grid"
+            style={
+              {
+                ["--preview-cols" as string]: String(
+                  Math.max(1, mobileCollectors.length + (supervisor ? 1 : 0)),
+                ),
+              } as CSSProperties
+            }
+          >
+            {mobileCollectors.map((row) => (
+              <div key={row.ref} className="mobile-preview-triple-pc-cell">
+                <div className="mobile-preview-triple-pc-label">
+                  <strong>{row.name}</strong>
+                  <span>Cobrador</span>
+                  {closedByCollector.get(row.ref) ? (
+                    <em className="mobile-preview-closed-tag">Cerrado</em>
+                  ) : null}
+                </div>
+                {renderCollectorPhone(row)}
+              </div>
+            ))}
+            {supervisor ? (
+              <div key={supervisor.ref} className="mobile-preview-triple-pc-cell">
+                <div className="mobile-preview-triple-pc-label">
+                  <strong>{supervisor.name}</strong>
+                  <span>Supervisor</span>
+                </div>
+                {renderSupervisorPhone(supervisor)}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      {/* —— Celular admin: una sola vista (switcher) —— */}
+      <div className="mobile-preview-layout is-phone-single">
         <div className="mobile-preview-phone-switcher" aria-label="Cambiar persona">
           <div className="mobile-preview-phone-switcher-row">
             <span className="mobile-preview-phone-switcher-label">Cobradores</span>
@@ -274,79 +377,17 @@ export function CollectorMobilePreview({
         </aside>
 
         <div className="mobile-preview-stage">
-          {kind === "collector" && !collector ? (
-            <p className="ficha-empty">Crea un usuario cobrador con acceso móvil.</p>
-          ) : kind === "supervisor" && !supervisor ? (
-            <p className="ficha-empty">Crea un usuario con rol Supervisor para previsualizar.</p>
-          ) : (
-            <MobilePreviewFrame title={phoneTitle}>
-              {supervisorMounted && supervisor ? (
-                <div hidden={kind !== "supervisor"}>
-                <SupervisorMobileApp
-                  key={supervisorPanelKey}
-                  supervisor={supervisor}
-                  collectors={collectors}
-                  routes={routes}
-                  clients={clients}
-                  loans={loans}
-                  payments={payments}
-                  assignments={assignments}
-                  dayExpenseDrafts={dayExpenseDrafts}
-                  dayCloses={dayCloses}
-                  monthCloses={monthCloses}
-                  planillaCashCloses={planillaCashCloses}
-                  bankAccounts={bankAccounts}
-                  bankMovements={bankMovements}
-                  miscPayments={miscPayments}
-                  showLifeline
-                  onCreateRouteClient={
-                    onCreateRouteClient
-                      ? (draft) => onCreateRouteClient(draft, supervisor.name)
-                      : undefined
-                  }
-                  onCreateQuickLoan={onCreateQuickLoan}
-                  onRenewLoan={onRenewLoan}
-                  onUpdateClient={onUpdateClient}
-                  onAttachPaymentEvidence={onAttachPaymentEvidence}
-                  onSaveMiscPayment={onSaveMiscPayment}
-                  onAdjustTCash={onAdjustTCash}
-                  onReopenSheet={onReopenSheet}
-                />
-                </div>
-              ) : null}
-              {collector ? (
-                <div hidden={kind !== "collector"}>
-                <CollectorMobileApp
-                  key={collectorPanelKey}
-                  collector={collector}
-                  assignments={assignments}
-                  routes={routes}
-                  loans={loans}
-                  clients={clients}
-                  payments={payments}
-                  dayCloses={dayCloses}
-                  dayExpenseDrafts={dayExpenseDrafts}
-                  monthCloses={monthCloses}
-                  planillaCashCloses={planillaCashCloses}
-                  preview
-                  canRegister
-                  onRegisterPayment={onRegisterPayment}
-                  onSkipVisit={onSkipVisit}
-                  onRenewLoan={onRenewLoan}
-                  onCreateQuickLoan={onCreateQuickLoan}
-                  onCreateClient={
-                    onCreateRouteClient
-                      ? (draft) => onCreateRouteClient(draft, collector.name)
-                      : undefined
-                  }
-                  onSaveExpenses={onSaveExpenses}
-                  onCloseDay={onCloseDay}
-                  onCloseMonth={onCloseMonth}
-                />
-                </div>
-              ) : null}
-            </MobilePreviewFrame>
-          )}
+          {kind === "collector" && collector
+            ? renderCollectorPhone(collector)
+            : kind === "supervisor" && supervisor
+              ? renderSupervisorPhone(supervisor)
+              : (
+                <p className="ficha-empty">
+                  {kind === "supervisor"
+                    ? "Crea un usuario con rol Supervisor para previsualizar."
+                    : "Crea un usuario cobrador con acceso móvil."}
+                </p>
+              )}
         </div>
 
         <aside className="mobile-preview-rail">
