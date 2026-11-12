@@ -8,6 +8,10 @@
  *
  * El renglón del cliente en los registros del día se pinta azul cuando ya se
  * le desembolsó el crédito nuevo.
+ *
+ * Fin (dueño): el cobro que liquidó ese crédito sigue con etiqueta Fin aunque
+ * debajo haya Prestado. Cobrador y supervisor leen la misma bandera
+ * `finishedToday`.
  */
 import { isCollectorLiveDevice, syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import { syncLoan } from "@/lib/loan-preview";
@@ -74,6 +78,11 @@ export function loanRenewedOnDate(clientRef: string, loans: LoanRow[], date: str
 }
 
 export type ReloanState = {
+  /**
+   * Este crédito liquidó hoy → etiqueta Fin (cobrador Recaudo y supervisor Ruta).
+   * Sigue en true aunque ya haya Prestado debajo.
+   */
+  finishedToday: boolean;
   /** Terminó hoy y no tiene otro crédito abierto: se le puede prestar ya. */
   canReloan: boolean;
   /** Crédito nuevo entregado hoy (si ya se le prestó). */
@@ -81,6 +90,10 @@ export type ReloanState = {
   /** Renovado hoy: lo que debía + 20 % (no es préstamo nuevo). */
   renewed: LoanRow | null;
 };
+
+function emptyReloan(): ReloanState {
+  return { finishedToday: false, canReloan: false, granted: null, renewed: null };
+}
 
 /** Estado del renglón de un cliente en los registros del día. */
 export function reloanStateForVisit(input: {
@@ -91,16 +104,33 @@ export function reloanStateForVisit(input: {
   date: string;
 }): ReloanState {
   const { clientRef, loanRef, loans, payments, date } = input;
-  if (!clientRef) return { canReloan: false, granted: null, renewed: null };
+  if (!clientRef) return emptyReloan();
+  const loan = loanRef ? loans.find((row) => row.ref === loanRef) ?? null : null;
   const granted = loanGrantedOnDate(clientRef, loans, payments, date);
-  if (granted) return { canReloan: false, granted, renewed: null };
+  const settled =
+    Boolean(loan) &&
+    (!granted || granted.ref !== loan!.ref) &&
+    loanSettledOnDate(loan, payments, date);
+  const finishedToday = settled;
+
+  if (granted) {
+    return { finishedToday, canReloan: false, granted, renewed: null };
+  }
   const renewed = loanRenewedOnDate(clientRef, loans, date);
   // «Renovado» es el renglón del vencido; la cuota del renovado es un cobro normal.
-  if (renewed && renewed.ref !== loanRef) return { canReloan: false, granted: null, renewed };
-  if (renewed) return { canReloan: false, granted: null, renewed: null };
-  const loan = loanRef ? loans.find((row) => row.ref === loanRef) ?? null : null;
-  if (!loanSettledOnDate(loan, payments, date)) return { canReloan: false, granted: null, renewed: null };
+  if (renewed && renewed.ref !== loanRef) {
+    return { finishedToday: false, canReloan: false, granted: null, renewed };
+  }
+  if (renewed) {
+    return { finishedToday: false, canReloan: false, granted: null, renewed: null };
+  }
+  if (!settled) return emptyReloan();
   // El crédito que terminó hoy puede seguir «Activo» hasta proyectar el estado: no cuenta.
   const others = loans.filter((row) => row.ref !== loan?.ref);
-  return { canReloan: canClientTakeNewLoan(clientRef, others), granted: null, renewed: null };
+  return {
+    finishedToday: true,
+    canReloan: canClientTakeNewLoan(clientRef, others),
+    granted: null,
+    renewed: null,
+  };
 }

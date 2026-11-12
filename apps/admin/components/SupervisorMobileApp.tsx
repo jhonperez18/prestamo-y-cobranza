@@ -818,7 +818,7 @@ function PlanillaTable({
               row.visitStatus !== "omitido" &&
               row.visitStatus !== "cobrado";
             const showFin =
-              Boolean(row.reloan.canReloan) &&
+              Boolean(row.reloan.finishedToday) &&
               !openPrestar &&
               !grantedHere &&
               !(row.reloan.renewed || row.methodToneClass === "is-pay-renovado");

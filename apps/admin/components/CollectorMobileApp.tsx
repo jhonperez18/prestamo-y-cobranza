@@ -3325,8 +3325,8 @@ export function CollectorMobileApp({
               });
               const isReloanAnchor =
                 !pay.loanRef || reloanAnchorByLoan.get(pay.loanRef) === pay.ref;
-              // Recaudo informa Fin; prestar solo en la hoja de ruta (chulitos).
-              const showFin = isReloanAnchor && reloan.canReloan;
+              // Recaudo informa Fin aunque ya haya Prestado debajo (misma regla que supervisor).
+              const showFin = isReloanAnchor && reloan.finishedToday;
               // Solo renovación hecha HOY (misma regla que el supervisor). Renovaciones
               // viejas con cobro de cuota no pintan otra vez «Renovado».
               const renewedToday =

@@ -68,7 +68,7 @@ function stripGranted(reloan: ReloanState): ReloanState {
 
 /**
  * Cobro que liquidó el crédito hoy → Fin (antes del 0), aunque debajo haya Prestado.
- * El P azul vive en su propia línea; aquí no se arrastra `granted`.
+ * Misma bandera `finishedToday` que el Recaudo del cobrador. El P azul va aparte.
  */
 function reloanForPayLine(
   row: SupervisorRutaSheetRow,
@@ -85,7 +85,8 @@ function reloanForPayLine(
     (!granted || loan!.ref !== granted.ref) &&
     loanSettledOnDate(loan, payments, date);
   return {
-    canReloan: settledOld || row.reloan.canReloan,
+    finishedToday: settledOld || row.reloan.finishedToday,
+    canReloan: settledOld && !granted ? true : row.reloan.canReloan && !granted,
     granted: null,
     renewed: null,
   };
@@ -111,7 +112,7 @@ function renovadoLine(
     paidAmount: 0,
     paidParts: [],
     loanRef: renewalLoan.ref,
-    reloan: { canReloan: false, granted: null, renewed: renewalLoan },
+    reloan: { finishedToday: false, canReloan: false, granted: null, renewed: renewalLoan },
     renewAlert: false,
   };
 }
@@ -136,7 +137,7 @@ function prestadoLine(
     paidAmount: 0,
     paidParts: [],
     loanRef: granted.ref,
-    reloan: { canReloan: false, granted, renewed: null },
+    reloan: { finishedToday: false, canReloan: false, granted, renewed: null },
     renewAlert: false,
   };
 }
@@ -264,7 +265,12 @@ function payPartLine(
     methodTitle: `${paymentMethodLabel(part.method)} · ${part.amount}`,
     reloan: keepFin
       ? stripRenewed(row.reloan)
-      : { canReloan: false, granted: row.reloan.granted, renewed: null },
+      : {
+          finishedToday: false,
+          canReloan: false,
+          granted: row.reloan.granted,
+          renewed: null,
+        },
   };
 }
 
@@ -284,7 +290,7 @@ function rutaLineRank(row: SupervisorRutaSheetRow): number {
   if (row.methodLabel === "P" || row.methodToneClass === "is-pay-prestamo") return 3;
   if (row.reloan.granted && row.paidAmount <= 0) return 3;
   // Fin (liquidó) va antes del Prestado, con el 0 del crédito cerrado.
-  if (row.reloan.canReloan) return 1;
+  if (row.reloan.finishedToday) return 1;
   if (row.paidAmount > 0) return 2;
   return 4;
 }
