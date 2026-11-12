@@ -597,7 +597,7 @@ function RouteBoardCard({
   connectionLevel,
   onConnection,
   justConnected = false,
-  /** Ensayo de diseño (solo el 1.º bloque INICIO hasta copiar a los demás). */
+  /** Diseño INICIO unificado (mismo recuadro para todas las rutas). */
   layoutV2 = false,
 }: {
   row: RouteLiquidacion;
@@ -9327,7 +9327,7 @@ export function SupervisorMobileApp({
                     key={row.routeRef}
                     row={row}
                     accent={index}
-                    layoutV2={index === 0}
+                    layoutV2
                     onOpen={openRouteSummary}
                     connectionLevel={connectionByRoute[row.routeRef]?.level ?? "none"}
                     justConnected={(justConnectedUntil[row.routeRef] ?? 0) > Date.now()}

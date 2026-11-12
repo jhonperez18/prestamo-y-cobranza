@@ -9574,8 +9574,8 @@
       position: relative;
     }
     /*
-     * Ensayo 1.er bloque INICIO — tamaño FIJO del recuadro.
-     * No cambiar padding / gap / min-height sin pedido explícito.
+     * INICIO — tamaño FIJO del recuadro (todas las rutas).
+     * Solo diseño: no tocar datos. No cambiar padding / gap / alto sin pedido.
      */
     .supervisor-route-board.is-layout-v2 {
       box-sizing: border-box;
