@@ -6861,6 +6861,8 @@
     .supervisor-mobile .supervisor-planilla-table .is-estado,
     .supervisor-mobile-app .supervisor-planilla-table .is-estado {
       width: 24%;
+      text-align: right !important;
+      overflow: hidden !important;
     }
     .supervisor-mobile .supervisor-planilla-table td.is-ruta,
     .supervisor-mobile-app .supervisor-planilla-table td.is-ruta {
@@ -7407,11 +7409,11 @@
     }
     .supervisor-planilla-table .is-estado {
       width: 22%;
-      text-align: center;
+      text-align: right;
       white-space: nowrap;
-      overflow: visible;
-      padding-right: 4px;
-      padding-left: 4px;
+      overflow: hidden;
+      padding-right: 6px;
+      padding-left: 2px;
     }
     .supervisor-planilla-table .is-estado .pill {
       transform: none;
@@ -18342,6 +18344,17 @@
       font-weight: 700;
       color: #1e40af;
       white-space: nowrap;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      vertical-align: middle;
+    }
+    .supervisor-planilla-table td.is-estado .supervisor-prestar-tag,
+    .supervisor-planilla-table td.is-estado .supervisor-reloan-btn,
+    .supervisor-planilla-table td.is-estado .supervisor-prestar-tag.is-btn {
+      max-width: 100%;
+      box-sizing: border-box;
+      vertical-align: middle;
     }
     .supervisor-liq-table tbody tr.is-renewed > td {
       background: #fef3c7;
