@@ -6805,7 +6805,7 @@
       text-overflow: clip !important;
     }
     .supervisor-planilla-table .is-metodo {
-      width: 15%;
+      width: 16%;
       text-align: center;
       white-space: nowrap;
       padding-left: 2px;
@@ -6825,7 +6825,13 @@
     .supervisor-planilla-table tbody td.is-num {
       font-weight: 400;
     }
-    /* Planilla móvil: columnas repartidas (# Nombre Saldo Método Mora Estado). */
+    /*
+     * Ruta móvil (pedido dueño):
+     * # izquierda · valores a la izquierda
+     * Nombre pegado a #
+     * Estado derecha · valores a la derecha (Prestado / Prestar / S/C)
+     * Hueco Nombre↔Estado = Saldo · Método · Mora a tercios iguales
+     */
     .supervisor-mobile .supervisor-planilla-table,
     .supervisor-mobile-app .supervisor-planilla-table {
       table-layout: fixed;
@@ -6834,92 +6840,101 @@
     .supervisor-mobile .supervisor-planilla-table th,
     .supervisor-mobile-app .supervisor-planilla-table th {
       font-size: 9px !important;
-      letter-spacing: 0.01em;
-      padding-left: 2px !important;
-      padding-right: 2px !important;
+      letter-spacing: 0 !important;
+      padding-left: 3px !important;
+      padding-right: 3px !important;
     }
     .supervisor-mobile .supervisor-planilla-table td,
     .supervisor-mobile-app .supervisor-planilla-table td {
       font-size: 10px !important;
-      padding-left: 2px !important;
-      padding-right: 2px !important;
+      padding-left: 3px !important;
+      padding-right: 3px !important;
     }
-    /* # · Nombre · Saldo: fijos (no tocar). Solo se organiza Método / Mora / Estado. */
     .supervisor-mobile .supervisor-planilla-table .is-ruta,
     .supervisor-mobile-app .supervisor-planilla-table .is-ruta {
-      width: 1.45rem;
-      min-width: 1.45rem;
-      max-width: 1.65rem;
+      width: 1.35rem;
+      min-width: 1.35rem;
+      max-width: 1.55rem;
+      padding-left: 4px !important;
+      padding-right: 0 !important;
+      text-align: left !important;
+    }
+    .supervisor-mobile .supervisor-planilla-table th.is-ruta,
+    .supervisor-mobile-app .supervisor-planilla-table th.is-ruta,
+    .supervisor-mobile .supervisor-planilla-table td.is-ruta,
+    .supervisor-mobile-app .supervisor-planilla-table td.is-ruta {
+      text-align: left !important;
+      font-size: 10px !important;
+      font-weight: 700;
+      overflow: visible !important;
+      text-overflow: clip !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-nombre,
     .supervisor-mobile-app .supervisor-planilla-table .is-nombre {
-      width: 22%;
-    }
-    .supervisor-mobile .supervisor-planilla-table .is-num,
-    .supervisor-mobile-app .supervisor-planilla-table .is-num {
-      width: 12%;
-      padding-right: 2px !important;
-    }
-    /* Método completo entre Saldo y Mora. */
-    .supervisor-mobile .supervisor-planilla-table .is-metodo,
-    .supervisor-mobile-app .supervisor-planilla-table .is-metodo {
-      width: 14%;
-      min-width: 3.5rem;
+      width: 24%;
       padding-left: 2px !important;
-      padding-right: 2px !important;
-      overflow: visible !important;
-      text-overflow: clip !important;
-      white-space: nowrap !important;
-      text-align: center !important;
+      text-align: left !important;
     }
-    .supervisor-mobile .supervisor-planilla-table th.is-metodo,
-    .supervisor-mobile-app .supervisor-planilla-table th.is-metodo {
-      padding-left: 2px !important;
-      padding-right: 2px !important;
-      text-align: center !important;
-      overflow: visible !important;
-      letter-spacing: 0 !important;
+    .supervisor-mobile .supervisor-planilla-table td.is-nombre,
+    .supervisor-mobile-app .supervisor-planilla-table td.is-nombre {
+      font-size: 10px !important;
+      text-align: left !important;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    /* Mora angosta (datos cortos). */
-    .supervisor-mobile .supervisor-planilla-table .is-cuotas,
-    .supervisor-mobile-app .supervisor-planilla-table .is-cuotas {
-      width: 11%;
-      min-width: 2.4rem;
-      padding-left: 2px !important;
-      padding-right: 2px !important;
-      overflow: hidden !important;
-      text-align: center !important;
-    }
-    .supervisor-mobile .supervisor-planilla-table th.is-cuotas,
-    .supervisor-mobile-app .supervisor-planilla-table th.is-cuotas {
-      padding-left: 2px !important;
-      padding-right: 2px !important;
-      text-align: center !important;
-      overflow: hidden !important;
-      letter-spacing: 0 !important;
-    }
+    /* Estado fijo a la derecha. */
     .supervisor-mobile .supervisor-planilla-table th.is-estado,
     .supervisor-mobile-app .supervisor-planilla-table th.is-estado {
       width: 18%;
       min-width: 4.2rem;
-      text-align: center !important;
-      padding-left: 2px !important;
-      padding-right: 2px !important;
+      text-align: right !important;
+      padding-right: 6px !important;
     }
     .supervisor-mobile .supervisor-planilla-table td.is-estado,
     .supervisor-mobile-app .supervisor-planilla-table td.is-estado {
       width: 18%;
       min-width: 4.2rem;
-      text-align: center !important;
+      text-align: right !important;
       overflow: hidden !important;
-      padding-left: 2px !important;
-      padding-right: 2px !important;
+      padding-right: 6px !important;
     }
-    /* V + S/C / Prestado en la misma celda Estado. */
+    /* Hueco central a tercios: Saldo · Método · Mora. */
+    .supervisor-mobile .supervisor-planilla-table .is-num,
+    .supervisor-mobile-app .supervisor-planilla-table .is-num,
+    .supervisor-mobile .supervisor-planilla-table .is-metodo,
+    .supervisor-mobile-app .supervisor-planilla-table .is-metodo,
+    .supervisor-mobile .supervisor-planilla-table .is-cuotas,
+    .supervisor-mobile-app .supervisor-planilla-table .is-cuotas {
+      width: 17% !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      padding-left: 4px !important;
+      padding-right: 4px !important;
+      overflow: hidden !important;
+      white-space: nowrap !important;
+      text-overflow: clip !important;
+      text-align: center !important;
+    }
+    .supervisor-mobile .supervisor-planilla-table th.is-num,
+    .supervisor-mobile-app .supervisor-planilla-table th.is-num,
+    .supervisor-mobile .supervisor-planilla-table th.is-metodo,
+    .supervisor-mobile-app .supervisor-planilla-table th.is-metodo,
+    .supervisor-mobile .supervisor-planilla-table th.is-cuotas,
+    .supervisor-mobile-app .supervisor-planilla-table th.is-cuotas {
+      text-align: center !important;
+      letter-spacing: 0 !important;
+    }
+    .supervisor-mobile .supervisor-planilla-table td.is-num,
+    .supervisor-mobile-app .supervisor-planilla-table td.is-num {
+      font-size: 10px !important;
+      font-weight: 400;
+      text-align: center !important;
+    }
+    /* V + S/C / Prestado en la misma celda Estado (derecha). */
     .supervisor-planilla-table .supervisor-estado-cell {
       display: inline-flex;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-end;
       gap: 2px;
       max-width: 100%;
       min-width: 0;
@@ -6933,30 +6948,6 @@
     .supervisor-planilla-table .supervisor-estado-cell .supervisor-renew-alert-bill svg {
       width: 14px;
       height: 11px;
-    }
-    .supervisor-mobile .supervisor-planilla-table td.is-ruta,
-    .supervisor-mobile-app .supervisor-planilla-table td.is-ruta {
-      font-size: 10px !important;
-      font-weight: 700;
-      text-align: center !important;
-      overflow: visible !important;
-      text-overflow: clip !important;
-    }
-    .supervisor-mobile .supervisor-planilla-table td.is-nombre,
-    .supervisor-mobile-app .supervisor-planilla-table td.is-nombre {
-      font-size: 10px !important;
-      text-align: left !important;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .supervisor-mobile .supervisor-planilla-table td.is-num,
-    .supervisor-mobile-app .supervisor-planilla-table td.is-num {
-      font-size: 10px !important;
-      font-weight: 400;
-      text-align: right !important;
-      overflow: visible !important;
-      text-overflow: clip !important;
-      white-space: nowrap !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-estado .pill,
     .supervisor-mobile-app .supervisor-planilla-table .is-estado .pill {
@@ -7463,10 +7454,10 @@
       text-align: right;
     }
     .supervisor-planilla-table .is-cuotas {
-      width: 9%;
+      width: 16%;
       text-align: center;
-      padding-left: 1px;
-      padding-right: 1px;
+      padding-left: 4px;
+      padding-right: 4px;
       white-space: nowrap;
       overflow: hidden;
     }
@@ -7480,21 +7471,21 @@
       text-align: center;
     }
     .supervisor-planilla-table th.is-estado {
-      width: 14%;
-      min-width: 3.8rem;
-      text-align: center;
+      width: 18%;
+      min-width: 4.2rem;
+      text-align: right;
       white-space: nowrap;
       overflow: hidden;
-      padding-right: 2px;
+      padding-right: 6px;
       padding-left: 2px;
     }
     .supervisor-planilla-table td.is-estado {
-      width: 14%;
-      min-width: 3.8rem;
-      text-align: center;
+      width: 18%;
+      min-width: 4.2rem;
+      text-align: right;
       white-space: nowrap;
       overflow: hidden;
-      padding-right: 2px;
+      padding-right: 6px;
       padding-left: 2px;
     }
     .supervisor-planilla-table .is-estado .pill {
@@ -18436,7 +18427,7 @@
       vertical-align: middle;
       max-width: 100%;
     }
-    /* Prestado / Prestar / pe / montos: centrados en Estado, sin salirse. */
+    /* Prestado / Prestar / pe / montos: a la derecha en Estado, sin salirse. */
     .supervisor-planilla-table td.is-estado .supervisor-reloan-tag,
     .supervisor-planilla-table td.is-estado .supervisor-prestar-tag,
     .supervisor-planilla-table td.is-estado .supervisor-reloan-btn,
@@ -18447,7 +18438,8 @@
       align-items: center;
       justify-content: center;
       vertical-align: middle;
-      margin: 0 auto;
+      margin-left: auto;
+      margin-right: 0;
       max-width: 100%;
       overflow: hidden;
       text-overflow: ellipsis;
