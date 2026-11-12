@@ -9573,7 +9573,19 @@
     .supervisor-route-board-wrap {
       position: relative;
     }
-    /* Ensayo 1.er bloque INICIO: Ruta + nombre seguidos · métricas · barra · hora encima del punto. */
+    /*
+     * Ensayo 1.er bloque INICIO — tamaño FIJO del recuadro.
+     * No cambiar padding / gap / min-height sin pedido explícito.
+     */
+    .supervisor-route-board.is-layout-v2 {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 152px;
+      height: 152px;
+      padding: 8px 10px 8px;
+      gap: 5px;
+      overflow: hidden;
+    }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-id {
       flex-direction: row;
       align-items: center;
@@ -9585,15 +9597,19 @@
       align-items: center;
       gap: 0;
     }
-    /* Notificaciones (B/E/P…) en una sola línea, debajo de Ruta+nombre. */
+    /* Notificaciones (B/E/P…) en una sola línea, debajo de Ruta+nombre. Alto fijo. */
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-marks-line {
       display: flex;
       flex-wrap: nowrap;
       align-items: center;
       gap: 6px;
+      height: 1.15rem;
       min-height: 1.15rem;
+      max-height: 1.15rem;
       overflow-x: auto;
+      overflow-y: hidden;
       scrollbar-width: none;
+      flex-shrink: 0;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-marks-line::-webkit-scrollbar {
       display: none;
@@ -9627,26 +9643,38 @@
       text-transform: none;
       letter-spacing: 0;
     }
-    /* Cerrado: debajo del saldo, derecha, letra chica (no engorda el botón). */
+    /* Saldo + hueco fijo de Cerrado (misma altura abierto o cerrado). */
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-saldo-col {
       display: flex;
       flex-direction: column;
       align-items: flex-end;
       gap: 2px;
       flex-shrink: 0;
+      min-height: 50px;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-saldo-col .supervisor-caja-hero.is-money-lg {
       padding: 6px 10px;
       min-width: 7.25rem;
+      max-height: 34px;
+      box-sizing: border-box;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-saldo-col .supervisor-caja-hero.is-money-lg b {
       font-size: 20px;
+      line-height: 1.1;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-closed-under {
       display: inline-flex;
       justify-content: flex-end;
+      align-items: center;
       width: 100%;
+      height: 14px;
+      min-height: 14px;
       line-height: 1;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-closed-slot {
+      display: inline-block;
+      height: 14px;
+      width: 1px;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-closed-under .pill {
       transform: none;
@@ -9661,15 +9689,21 @@
       border-radius: 3px;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-progress {
-      margin-top: 2px;
+      margin-top: 0;
       padding-right: 34px;
+      height: 18px;
       min-height: 18px;
+      max-height: 18px;
+      flex-shrink: 0;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics.is-four {
       width: 100%;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 0;
       padding-right: 0;
+      flex: 1 1 auto;
+      min-height: 32px;
+      align-content: center;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics.is-four.has-conn-dot {
       padding-right: 0;

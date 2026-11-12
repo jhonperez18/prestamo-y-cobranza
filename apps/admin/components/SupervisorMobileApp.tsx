@@ -697,18 +697,22 @@ function RouteBoardCard({
                   </em>
                 ) : null}
               </div>
-              {row.statusLabel === "Cerrado" ? (
-                <span className="supervisor-route-board-closed-under">
+              <span className="supervisor-route-board-closed-under">
+                {row.statusLabel === "Cerrado" ? (
                   <Pill label={row.statusLabel} kind={row.statusKind} />
-                </span>
-              ) : null}
+                ) : (
+                  <span className="supervisor-route-board-closed-slot" aria-hidden>
+                    {"\u00a0"}
+                  </span>
+                )}
+              </span>
             </div>
           </div>
-          {row.dayMarks.r + row.dayMarks.b + row.dayMarks.e + row.dayMarks.n + row.dayMarks.p > 0 ? (
-            <div className="supervisor-route-board-marks-line">
-              <RouteDayMarks marks={row.dayMarks} />
-            </div>
-          ) : null}
+          <div className="supervisor-route-board-marks-line" aria-hidden={
+            row.dayMarks.r + row.dayMarks.b + row.dayMarks.e + row.dayMarks.n + row.dayMarks.p <= 0
+          }>
+            <RouteDayMarks marks={row.dayMarks} />
+          </div>
           {metricsBlock}
           {progressBlock}
         </>
