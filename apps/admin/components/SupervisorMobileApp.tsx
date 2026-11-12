@@ -611,19 +611,33 @@ function RouteBoardCard({
         ? row.cobradoBanco
         : row.enCaja;
   const withConnection = Boolean(connectionLevel && onConnection);
+  const progressLabel =
+    total > 0
+      ? `${row.done}/${total} · ${pct}%`
+      : row.closed
+        ? "Cerrado"
+        : "Sin planilla";
   const progressBlock =
     showRouteShell ? (
-      <div className="supervisor-route-board-progress" aria-hidden>
+      <div
+        className={`supervisor-route-board-progress${layoutV2 ? " is-foot-line" : ""}`}
+        aria-hidden={!layoutV2}
+      >
         <div className="supervisor-route-board-bar">
           <span style={{ width: `${total > 0 ? pct : 0}%` }} />
         </div>
-        <em>
-          {total > 0
-            ? `${row.done}/${total} · ${pct}%`
-            : row.closed
-              ? "Cerrado"
-              : "Sin planilla"}
-        </em>
+        <em>{progressLabel}</em>
+        {layoutV2 ? (
+          <span className="supervisor-route-board-closed-inline">
+            {row.statusLabel === "Cerrado" ? (
+              <Pill label={row.statusLabel} kind={row.statusKind} />
+            ) : (
+              <span className="supervisor-route-board-closed-slot" aria-hidden>
+                {"\u00a0"}
+              </span>
+            )}
+          </span>
+        ) : null}
       </div>
     ) : null;
   const metricsBlock = (
@@ -697,15 +711,6 @@ function RouteBoardCard({
                   </em>
                 ) : null}
               </div>
-              <span className="supervisor-route-board-closed-under">
-                {row.statusLabel === "Cerrado" ? (
-                  <Pill label={row.statusLabel} kind={row.statusKind} />
-                ) : (
-                  <span className="supervisor-route-board-closed-slot" aria-hidden>
-                    {"\u00a0"}
-                  </span>
-                )}
-              </span>
             </div>
           </div>
           <div className="supervisor-route-board-marks-line" aria-hidden={
