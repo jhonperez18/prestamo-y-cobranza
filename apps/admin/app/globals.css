@@ -6808,7 +6808,7 @@
       width: 16%;
       text-align: center;
       white-space: nowrap;
-      padding-left: 12px;
+      padding-left: 16px;
       padding-right: 6px;
       overflow: hidden;
     }
@@ -6862,21 +6862,21 @@
     .supervisor-mobile .supervisor-planilla-table .is-num,
     .supervisor-mobile-app .supervisor-planilla-table .is-num {
       width: 12%;
-      padding-right: 4px !important;
+      padding-right: 2px !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-metodo,
     .supervisor-mobile-app .supervisor-planilla-table .is-metodo {
       width: 16%;
       min-width: 3.4rem;
-      padding-left: 8px !important;
-      padding-right: 4px !important;
+      padding-left: 16px !important;
+      padding-right: 6px !important;
       overflow: hidden !important;
       text-align: center !important;
     }
     .supervisor-mobile .supervisor-planilla-table th.is-metodo,
     .supervisor-mobile-app .supervisor-planilla-table th.is-metodo {
-      padding-left: 8px !important;
-      padding-right: 4px !important;
+      padding-left: 16px !important;
+      padding-right: 6px !important;
       text-align: center !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-cuotas,
