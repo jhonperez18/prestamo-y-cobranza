@@ -1,8 +1,8 @@
 /**
  * Hoja Ruta del supervisor — solo vista.
- * Misma lógica visual que el cobrador: Renovado (R), P azul, cobro combinado,
- * Fin + Prestar. Renovado aparece aunque aún no haya cobro del crédito nuevo
- * (caso Caña: cobrador muestra R; supervisor no puede dejarlo en S/C).
+ * Misma lógica visual que el cobrador: Renovado (R), Prestado con letra E/B/N,
+ * cobro combinado, Fin + Prestar. Renovado aparece aunque aún no haya cobro del
+ * crédito nuevo (caso Caña: cobrador muestra R; supervisor no puede dejarlo en S/C).
  */
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { CuotasProgress } from "@/lib/loan-cuotas-progress";
@@ -14,10 +14,22 @@ import {
 } from "@/lib/loan-reloan";
 import type { LoanRow, PaymentMethod, PaymentRow } from "@/lib/mock-data";
 import {
+  loanDisbursementSource,
+  loanFundLetter,
+  loanFundLetterTitle,
+} from "@/lib/nequi-pool";
+import {
   paymentMethodInitial,
   paymentMethodLabel,
   paymentMethodToneClass,
 } from "@/lib/payment-method";
+
+function prestadoFundMethod(loan: LoanRow): PaymentMethod {
+  const source = loanDisbursementSource(loan);
+  if (source === "nequi") return "nequi";
+  if (source === "banco") return "banco";
+  return "efectivo";
+}
 
 type VisitStatus = NonNullable<DailyCollectionAssignment["visitStatus"]>;
 
@@ -122,15 +134,17 @@ function prestadoLine(
   granted: LoanRow,
   date: string,
 ): SupervisorRutaSheetRow {
+  const method = prestadoFundMethod(granted);
+  const letter = loanFundLetter(granted);
   return {
     ...row,
     key: `prestamo|${row.clientRef}|${granted.ref}|${date}`,
     saldo: Math.trunc(Number(granted.balance) || Number(granted.capital) || 0),
     cuota: 0,
-    method: null,
-    methodLabel: "P",
-    methodToneClass: "is-pay-prestamo",
-    methodTitle: "Préstamo nuevo",
+    method,
+    methodLabel: letter,
+    methodToneClass: paymentMethodToneClass(method),
+    methodTitle: `Préstamo nuevo · ${loanFundLetterTitle(letter)}`,
     cuotas: emptyCuotas(),
     visitStatus: "omitido",
     awaitingLoan: false,
@@ -144,7 +158,7 @@ function prestadoLine(
 
 /**
  * Parte / completa las líneas que el cobrador muestra por separado.
- * Renovado y Prestado (P) salen aunque no haya cobro todavía ese día.
+ * Renovado y Prestado (letra E/B/N) salen aunque no haya cobro todavía ese día.
  */
 export function expandSupervisorRutaSheetRows(
   rows: SupervisorRutaSheetRow[],
@@ -274,7 +288,7 @@ function payPartLine(
   };
 }
 
-/** Orden dentro del mismo cliente: Renovado → cobro/Fin → P → cuota → Prestar. */
+/** Orden dentro del mismo cliente: Renovado → cobro/Fin → Prestado → cuota → Prestar. */
 export function compareRutaSheetRows(a: SupervisorRutaSheetRow, b: SupervisorRutaSheetRow): number {
   const route = a.route.localeCompare(b.route, "es");
   if (route) return route;
@@ -287,8 +301,9 @@ function rutaLineRank(row: SupervisorRutaSheetRow): number {
   if (row.reloan.renewed && row.paidAmount <= 0) return 0;
   if (row.methodLabel === "R" || row.methodToneClass === "is-pay-renovado") return 0;
   if (row.awaitingLoan) return 5;
-  if (row.methodLabel === "P" || row.methodToneClass === "is-pay-prestamo") return 3;
+  // Prestado: letra E/B/N (ya no P); el estado a la derecha dice «Prestado».
   if (row.reloan.granted && row.paidAmount <= 0) return 3;
+  if (row.key.startsWith("prestamo|")) return 3;
   // Fin (liquidó) va antes del Prestado, con el 0 del crédito cerrado.
   if (row.reloan.finishedToday) return 1;
   if (row.paidAmount > 0) return 2;

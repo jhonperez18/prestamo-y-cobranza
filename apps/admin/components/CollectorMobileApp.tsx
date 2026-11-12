@@ -68,7 +68,7 @@ import {
 } from "@/lib/mock-data";
 import type { CollectorPaymentRegisterInput } from "@/lib/route-sync";
 import { canRenewLoan, type RenewalTerms } from "@/lib/loan-renew";
-import { reloanStateForVisit } from "@/lib/loan-reloan";
+import { loanGrantedOnDate, reloanStateForVisit } from "@/lib/loan-reloan";
 import {
   isCollectorLiveDevice,
   pullCollectorHistoryDay,
@@ -163,7 +163,10 @@ import {
 } from "@/lib/cloud-day-cash-figure";
 import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
 import { CollectorDayLoansPanel } from "@/components/CollectorDayLoansPanel";
-import { dayPlanillaLoansWithoutPayment } from "@/lib/day-digital-loans";
+import {
+  dayDigitalPlanillaLoans,
+  dayPlanillaLoansWithoutPayment,
+} from "@/lib/day-digital-loans";
 import {
   isCashlessRenewal,
   loanDisbursementIsoDate,
@@ -1826,13 +1829,6 @@ export function CollectorMobileApp({
     }
     return refs;
   }, [recaudoRows]);
-  const trailingDayLoans = useMemo(
-    () =>
-      unpaidDayLoans.filter(
-        (row) => !row.renewal || !paidLoanRefsToday.has(row.loan.ref),
-      ),
-    [unpaidDayLoans, paidLoanRefsToday],
-  );
   /** Último cobro del día por crédito: debajo va la fila del préstamo nuevo (cobro ≠ préstamo). */
   const lastPayRefByLoan = useMemo(() => {
     const last = new Map<string, string>();
@@ -1841,6 +1837,36 @@ export function CollectorMobileApp({
     }
     return last;
   }, [recaudoRows]);
+  /**
+   * Prestado Banco/Nequi del día (solo informativo en Recaudo).
+   * Si ya va pegado a un Fin, no se duplica.
+   */
+  const digitalDayLoans = useMemo(() => {
+    if (recaudoOnlyBanco || !newClientRoute) return [];
+    return dayDigitalPlanillaLoans(activeDate, newClientRoute, loans, clients);
+  }, [recaudoOnlyBanco, newClientRoute, activeDate, loans, clients]);
+  const grantedAttachedRefs = useMemo(() => {
+    const refs = new Set<string>();
+    for (const pay of recaudoRows) {
+      if (lastPayRefByLoan.get(pay.loanRef ?? "") !== pay.ref) continue;
+      const clientRef = loans.find((row) => row.ref === pay.loanRef)?.clientRef ?? "";
+      if (!clientRef) continue;
+      const granted = loanGrantedOnDate(clientRef, loans, livePayments, activeDate);
+      if (granted) refs.add(granted.ref);
+    }
+    return refs;
+  }, [recaudoRows, lastPayRefByLoan, loans, livePayments, activeDate]);
+  const trailingDayLoans = useMemo(() => {
+    const cashOrRenewal = unpaidDayLoans.filter(
+      (row) => !row.renewal || !paidLoanRefsToday.has(row.loan.ref),
+    );
+    const digitalOnly = digitalDayLoans.filter(
+      (row) => !grantedAttachedRefs.has(row.loan.ref),
+    );
+    return [...cashOrRenewal, ...digitalOnly].sort((a, b) =>
+      a.clientName.localeCompare(b.clientName, "es"),
+    );
+  }, [unpaidDayLoans, paidLoanRefsToday, digitalDayLoans, grantedAttachedRefs]);
   /** Primer cobro del día por crédito renovado: encima va «Renovado». */
   const firstPayRefByLoan = useMemo(() => {
     const first = new Map<string, string>();
@@ -3307,7 +3333,7 @@ export function CollectorMobileApp({
 
       {listFilter === "done" ? (
         <ul className="collector-mobile-list compact is-recaudo-sheet" aria-label="Quienes pagaron">
-          {recaudoRows.length === 0 && unpaidDayLoans.length === 0 ? (
+          {recaudoRows.length === 0 && unpaidDayLoans.length === 0 && digitalDayLoans.length === 0 ? (
             <li className="collector-mobile-empty-inline">
               {recaudoOnlyBanco ? "Aún no hay cobros en Banco hoy." : "Aún no hay cobros del día."}
             </li>

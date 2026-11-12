@@ -859,10 +859,12 @@ function PlanillaTable({
                   )}
                 </td>
                 <td className="is-metodo">
-                  {(grantedHere && row.paidAmount <= 0) ||
-                  row.methodToneClass === "is-pay-prestamo" ? (
-                    <em className="supervisor-planilla-method is-pay-prestamo" title="Préstamo nuevo">
-                      P
+                  {grantedHere && row.paidAmount <= 0 ? (
+                    <em
+                      className={`supervisor-planilla-method ${row.methodToneClass || paymentMethodToneClass(row.method)}`}
+                      title={row.methodTitle || "Préstamo nuevo"}
+                    >
+                      {row.methodLabel || "E"}
                     </em>
                   ) : row.reloan.renewed || row.methodToneClass === "is-pay-renovado" ? (
                     <em className="supervisor-planilla-method is-pay-renovado" title="Renovado: sin plata">
@@ -870,6 +872,13 @@ function PlanillaTable({
                     </em>
                   ) : methodLabel &&
                   (row.visitStatus === "cobrado" || row.visitStatus === "parcial") ? (
+                    <em
+                      className={`supervisor-planilla-method ${methodTone}`}
+                      title={methodTitle}
+                    >
+                      {methodLabel}
+                    </em>
+                  ) : row.key.startsWith("prestamo|") && methodLabel ? (
                     <em
                       className={`supervisor-planilla-method ${methodTone}`}
                       title={methodTitle}
@@ -918,7 +927,7 @@ function PlanillaTable({
                         Prestar
                       </span>
                     )
-                  ) : grantedHere || row.methodToneClass === "is-pay-prestamo" ? (
+                  ) : grantedHere || row.key.startsWith("prestamo|") ? (
                     <span
                       className="supervisor-reloan-tag"
                       title={

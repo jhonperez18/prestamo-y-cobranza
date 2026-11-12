@@ -40,8 +40,8 @@ export type DayPlanillaLoan = {
 
 /**
  * Préstamos en efectivo de ese día a clientes de la planilla `route` que no
- * pagaron ese día. Banco / Nequi no entran aquí: viven en BANCO / NEQUI; el
- * cobrador solo los ve como cuota cuando toque cobrar.
+ * pagaron ese día. Banco / Nequi van aparte (`dayDigitalPlanillaLoans`) solo
+ * informativos en Recaudo; no restan de caja.
  */
 export function dayPlanillaLoansWithoutPayment(
   dateIso: string,
@@ -71,6 +71,39 @@ export function dayPlanillaLoansWithoutPayment(
       clientName: `${client.name} ${client.lastName}`.trim() || (loan.client || "").trim() || loan.ref,
       source: loanDisbursementSource(loan),
       renewal,
+    });
+  }
+  return rows.sort((a, b) => a.clientName.localeCompare(b.clientName, "es"));
+}
+
+/**
+ * Préstamos Banco / Nequi del día en formato Recaudo (solo informativo).
+ * Misma fila «Prestado» + letra B/N; no restan de caja.
+ */
+export function dayDigitalPlanillaLoans(
+  dateIso: string,
+  route: string,
+  loans: LoanRow[],
+  clients: ClientRow[],
+): DayPlanillaLoan[] {
+  if (!route.trim()) return [];
+  const clientByRef = new Map(clients.map((row) => [row.ref, row]));
+  const rows: DayPlanillaLoan[] = [];
+  for (const loan of loans) {
+    if (!loanFundedByBanco(loan) && !loanFundedByNequi(loan)) continue;
+    if (isLoanVoided(loan) || isCashlessRenewal(loan)) continue;
+    if (loanDisbursementIsoDate(loan) !== dateIso) continue;
+    if (!loan.clientRef) continue;
+    const capital = Number(loan.capital) || 0;
+    if (!(capital > 0)) continue;
+    const client = clientByRef.get(loan.clientRef);
+    if (!client || !sameRoute(client.route, route)) continue;
+    rows.push({
+      loan,
+      clientName:
+        `${client.name} ${client.lastName}`.trim() || (loan.client || "").trim() || loan.ref,
+      source: loanDisbursementSource(loan),
+      renewal: false,
     });
   }
   return rows.sort((a, b) => a.clientName.localeCompare(b.clientName, "es"));
