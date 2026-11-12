@@ -6844,26 +6844,36 @@
     }
     .supervisor-mobile .supervisor-planilla-table .is-nombre,
     .supervisor-mobile-app .supervisor-planilla-table .is-nombre {
-      width: 26%;
+      width: 24%;
     }
-    /* Saldo · Método · Mora repartidos; Mora más a la derecha (había hueco). */
+    /* Saldo · Método · Mora: Método más a la derecha; Mora usa el hueco antes de Estado. */
     .supervisor-mobile .supervisor-planilla-table .is-num,
     .supervisor-mobile-app .supervisor-planilla-table .is-num {
-      width: 16%;
+      width: 14%;
     }
     .supervisor-mobile .supervisor-planilla-table .is-metodo,
     .supervisor-mobile-app .supervisor-planilla-table .is-metodo {
-      width: 15%;
-      padding-left: 4px !important;
-      padding-right: 4px !important;
+      width: 18%;
+      padding-left: 10px !important;
+      padding-right: 6px !important;
       overflow: hidden !important;
+    }
+    .supervisor-mobile .supervisor-planilla-table th.is-metodo,
+    .supervisor-mobile-app .supervisor-planilla-table th.is-metodo {
+      padding-left: 10px !important;
+      padding-right: 6px !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-cuotas,
     .supervisor-mobile-app .supervisor-planilla-table .is-cuotas {
-      width: 16%;
-      padding-left: 10px !important;
-      padding-right: 4px !important;
+      width: 18%;
+      padding-left: 14px !important;
+      padding-right: 6px !important;
       overflow: hidden !important;
+    }
+    .supervisor-mobile .supervisor-planilla-table th.is-cuotas,
+    .supervisor-mobile-app .supervisor-planilla-table th.is-cuotas {
+      padding-left: 14px !important;
+      padding-right: 6px !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-renew,
     .supervisor-mobile-app .supervisor-planilla-table .is-renew {
@@ -6872,7 +6882,7 @@
     }
     .supervisor-mobile .supervisor-planilla-table .is-estado,
     .supervisor-mobile-app .supervisor-planilla-table .is-estado {
-      width: 20%;
+      width: 16%;
       text-align: right !important;
       overflow: hidden !important;
     }

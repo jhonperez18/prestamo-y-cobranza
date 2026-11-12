@@ -852,7 +852,6 @@ function PlanillaTable({
                       title="Terminó su crédito · prestar en la fila Prestar"
                     >
                       <span className="supervisor-termino-tag">Fin</span>
-                      <b>{money(row.saldo, { symbol: false })}</b>
                     </span>
                   ) : (
                     money(row.saldo, { symbol: false })
