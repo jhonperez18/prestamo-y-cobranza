@@ -9632,7 +9632,7 @@
       display: grid;
       grid-template-columns: auto 1fr;
       align-items: baseline;
-      column-gap: 1.1rem;
+      column-gap: 0.75rem;
       width: 100%;
       min-width: 0;
       white-space: nowrap;
@@ -9656,9 +9656,12 @@
       color: #14201b;
       text-transform: none;
       letter-spacing: 0;
-      text-align: center;
-      justify-self: center;
-      width: 100%;
+      /* Un poco más a la derecha (~bajo BANCO en la nav). */
+      text-align: left;
+      justify-self: start;
+      width: auto;
+      margin-left: 18%;
+      padding-left: 0.35rem;
     }
     /* Saldo solo (Cerrado va en la línea de la barra, antes del punto rojo). */
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-saldo-col {
