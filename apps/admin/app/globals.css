@@ -6808,7 +6808,7 @@
       width: 16%;
       text-align: center;
       white-space: nowrap;
-      padding-left: 4px;
+      padding-left: 12px;
       padding-right: 6px;
       overflow: hidden;
     }
@@ -6854,35 +6854,36 @@
     .supervisor-mobile-app .supervisor-planilla-table .is-nombre {
       width: 22%;
     }
-    /* Método completo; Mora más a la derecha (no pisa el título MÉTODO). */
+    /* Método (E) y Mora más a la derecha: aire tras Saldo, repartidos hacia Estado. */
     .supervisor-mobile .supervisor-planilla-table .is-num,
     .supervisor-mobile-app .supervisor-planilla-table .is-num {
-      width: 13%;
+      width: 12%;
+      padding-right: 2px !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-metodo,
     .supervisor-mobile-app .supervisor-planilla-table .is-metodo {
-      width: 16%;
-      min-width: 3.2rem;
-      padding-left: 4px !important;
-      padding-right: 8px !important;
+      width: 15%;
+      min-width: 3rem;
+      padding-left: 14px !important;
+      padding-right: 6px !important;
       overflow: hidden !important;
     }
     .supervisor-mobile .supervisor-planilla-table th.is-metodo,
     .supervisor-mobile-app .supervisor-planilla-table th.is-metodo {
-      padding-left: 4px !important;
-      padding-right: 8px !important;
+      padding-left: 14px !important;
+      padding-right: 6px !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-cuotas,
     .supervisor-mobile-app .supervisor-planilla-table .is-cuotas {
-      width: 15%;
-      padding-left: 18px !important;
-      padding-right: 4px !important;
+      width: 16%;
+      padding-left: 20px !important;
+      padding-right: 8px !important;
       overflow: hidden !important;
     }
     .supervisor-mobile .supervisor-planilla-table th.is-cuotas,
     .supervisor-mobile-app .supervisor-planilla-table th.is-cuotas {
-      padding-left: 18px !important;
-      padding-right: 4px !important;
+      padding-left: 20px !important;
+      padding-right: 8px !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-renew,
     .supervisor-mobile-app .supervisor-planilla-table .is-renew {
@@ -7429,8 +7430,8 @@
     .supervisor-planilla-table .is-cuotas {
       width: 16%;
       text-align: center;
-      padding-left: 16px;
-      padding-right: 4px;
+      padding-left: 22px;
+      padding-right: 6px;
       white-space: nowrap;
       overflow: hidden;
     }
