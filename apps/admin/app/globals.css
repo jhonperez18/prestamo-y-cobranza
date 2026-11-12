@@ -4987,7 +4987,8 @@
     .supervisor-mobile {
       display: flex;
       flex-direction: column;
-      background: #f3f6f4;
+      /* Fondo suave (ref teal #7ba8ab aclarado) para que los recuadros blancos destaquen. */
+      background: #d5e8e8;
       color: #122018;
       min-width: 0;
       overflow-x: hidden;
