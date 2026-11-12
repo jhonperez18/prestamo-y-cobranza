@@ -1,10 +1,13 @@
 /**
  * Hoja Ruta del supervisor — solo vista.
  * Misma lógica visual que el cobrador: Renovado (R), Prestado con letra E/B/N,
- * cobro combinado, Fin + Prestar. Renovado aparece aunque aún no haya cobro del
- * crédito nuevo (caso Caña: cobrador muestra R; supervisor no puede dejarlo en S/C).
+ * cobro combinado, Fin + Prestar. Tras Prestado no se pinta el Prestar omitido
+ * (S/C). Cuota del P- nuevo solo si la 1.ª cuota es hoy.
  */
-import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
+import {
+  loanIsCollectibleOn,
+  type DailyCollectionAssignment,
+} from "@/lib/daily-collection-plan";
 import type { CuotasProgress } from "@/lib/loan-cuotas-progress";
 import {
   loanGrantedOnDate,
@@ -190,10 +193,23 @@ export function expandSupervisorRutaSheetRows(
     }
 
     const granted = loanGrantedOnDate(row.clientRef, loans, payments, date);
-    // P azul una vez por cliente (préstamo con plata hoy), como «Prestado» del cobrador.
+    // Prestado (letra E/B/N) una vez por cliente, como el Recaudo del cobrador.
     if (granted && !prestadoDone.has(row.clientRef)) {
       prestadoDone.add(row.clientRef);
       out.push(prestadoLine(row, granted, date));
+    }
+
+    /**
+     * Ya hubo Prestado hoy:
+     * - Prestar omitido (S/C) sobra: engaña («no pagó»).
+     * - Cuota del P- nuevo si la 1.ª NO es hoy: también sobra.
+     * - Si la 1.ª cuota ES hoy: la visita de cobro sí entra.
+     */
+    if (granted && row.paidAmount <= 0) {
+      if (row.awaitingLoan) continue;
+      if (row.loanRef === granted.ref && !loanIsCollectibleOn(granted, date)) {
+        continue;
+      }
     }
 
     const renewed = row.reloan.renewed;
