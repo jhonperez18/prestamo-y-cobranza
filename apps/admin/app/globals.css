@@ -9749,6 +9749,10 @@
       width: 100%;
       text-align: center;
     }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics span {
+      font-weight: 700;
+      color: #111;
+    }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics b {
       font-weight: 400;
       color: #0a0f0d;
