@@ -9742,26 +9742,37 @@
       color: #4b5563;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics.is-four {
+      display: flex;
       width: 100%;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      justify-content: space-between;
+      align-items: flex-start;
       gap: 0;
       padding-right: 0;
       flex: 1 1 auto;
       min-height: 32px;
-      align-content: center;
+      grid-template-columns: none;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics.is-four.has-conn-dot {
       padding-right: 0;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics > div {
+      flex: 0 1 auto;
       align-items: center;
       text-align: center;
       min-width: 0;
     }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics > div:first-child {
+      align-items: flex-start;
+      text-align: left;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics > div:last-child {
+      align-items: flex-end;
+      text-align: right;
+    }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics span,
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics b {
-      width: 100%;
-      text-align: center;
+      width: auto;
+      text-align: inherit;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics span {
       font-weight: 700;
