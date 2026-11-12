@@ -9665,8 +9665,24 @@
       padding-right: 34px;
       min-height: 18px;
     }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics.is-four {
+      width: 100%;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0;
+      padding-right: 0;
+    }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics.is-four.has-conn-dot {
       padding-right: 0;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics > div {
+      align-items: center;
+      text-align: center;
+      min-width: 0;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics span,
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics b {
+      width: 100%;
+      text-align: center;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics b {
       font-weight: 400;
