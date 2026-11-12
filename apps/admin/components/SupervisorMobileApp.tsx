@@ -649,12 +649,10 @@ function RouteBoardCard({
         <em>{progressLabel}</em>
         {layoutV2 ? (
           <span className="supervisor-route-board-closed-inline">
-            {row.statusLabel === "Cerrado" ? (
-              <Pill label={row.statusLabel} kind={row.statusKind} />
+            {row.statusLabel === "Cerrado" || row.closed ? (
+              <span className="supervisor-route-board-state-tag is-closed">Cerrado</span>
             ) : (
-              <span className="supervisor-route-board-closed-slot" aria-hidden>
-                {"\u00a0"}
-              </span>
+              <span className="supervisor-route-board-state-tag is-open">En ruta</span>
             )}
           </span>
         ) : null}
