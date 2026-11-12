@@ -9607,6 +9607,38 @@
       text-transform: none;
       letter-spacing: 0;
     }
+    /* Cerrado: debajo del saldo, derecha, letra chica (no engorda el botón). */
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-saldo-col {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-saldo-col .supervisor-caja-hero.is-money-lg {
+      padding: 6px 10px;
+      min-width: 7.25rem;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-saldo-col .supervisor-caja-hero.is-money-lg b {
+      font-size: 20px;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-closed-under {
+      display: inline-flex;
+      justify-content: flex-end;
+      width: 100%;
+      line-height: 1;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-closed-under .pill {
+      transform: none;
+      height: 12px;
+      min-height: 12px;
+      line-height: 12px;
+      padding: 0 5px;
+      font-size: 8px !important;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+      border-radius: 3px;
+    }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-progress {
       margin-top: 2px;
       padding-right: 34px;

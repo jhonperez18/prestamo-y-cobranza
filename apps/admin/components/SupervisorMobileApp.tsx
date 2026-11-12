@@ -685,19 +685,23 @@ function RouteBoardCard({
                   <strong className="supervisor-route-board-name">{row.collectorName}</strong>
                 </span>
                 <RouteDayMarks marks={row.dayMarks} />
-                {row.statusLabel === "Cerrado" ? (
-                  <Pill label={row.statusLabel} kind={row.statusKind} />
-                ) : null}
               </div>
             </div>
-            <div className="supervisor-caja-hero is-row is-money-lg">
-              <b>
-                {row.figuresPending ? "…" : money(row.enCaja, { symbol: false })}
-              </b>
-              {row.cashUnsynced && !row.figuresPending ? (
-                <em className="supervisor-caja-unsynced" title="Sin route_own_box · ancla local">
-                  offline
-                </em>
+            <div className="supervisor-route-board-saldo-col">
+              <div className="supervisor-caja-hero is-row is-money-lg">
+                <b>
+                  {row.figuresPending ? "…" : money(row.enCaja, { symbol: false })}
+                </b>
+                {row.cashUnsynced && !row.figuresPending ? (
+                  <em className="supervisor-caja-unsynced" title="Sin route_own_box · ancla local">
+                    offline
+                  </em>
+                ) : null}
+              </div>
+              {row.statusLabel === "Cerrado" ? (
+                <span className="supervisor-route-board-closed-under">
+                  <Pill label={row.statusLabel} kind={row.statusKind} />
+                </span>
               ) : null}
             </div>
           </div>
