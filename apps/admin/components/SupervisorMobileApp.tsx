@@ -582,6 +582,8 @@ function RouteBoardCard({
   connectionLevel,
   onConnection,
   justConnected = false,
+  /** Ensayo de diseño (solo el 1.º bloque INICIO hasta copiar a los demás). */
+  layoutV2 = false,
 }: {
   row: RouteLiquidacion;
   accent: number;
@@ -595,6 +597,7 @@ function RouteBoardCard({
   mode?: "ruta" | "caja" | "nequi" | "banco";
   /** Color del panel (Nequi / Banco). Sin tono = el del `mode`. */
   tone?: "nequi" | "banco";
+  layoutV2?: boolean;
 }) {
   const colorMode = tone ?? mode;
   const total = row.planilla || 0;
@@ -608,11 +611,52 @@ function RouteBoardCard({
         ? row.cobradoBanco
         : row.enCaja;
   const withConnection = Boolean(connectionLevel && onConnection);
+  const progressBlock =
+    showRouteShell ? (
+      <div className="supervisor-route-board-progress" aria-hidden>
+        <div className="supervisor-route-board-bar">
+          <span style={{ width: `${total > 0 ? pct : 0}%` }} />
+        </div>
+        <em>
+          {total > 0
+            ? `${row.done}/${total} · ${pct}%`
+            : row.closed
+              ? "Cerrado"
+              : "Sin planilla"}
+        </em>
+      </div>
+    ) : null;
+  const metricsBlock = (
+    <div
+      className={`supervisor-route-board-metrics is-four${withConnection ? " has-conn-dot" : ""}`}
+    >
+      <div>
+        <span>Inicial</span>
+        <b>
+          {row.figuresPending
+            ? "…"
+            : money(row.saldoInicial, { symbol: false })}
+        </b>
+      </div>
+      <div>
+        <span>Cobrado</span>
+        <b>{money(row.cobradoHoy, { symbol: false })}</b>
+      </div>
+      <div className="is-metric-prestamo">
+        <span>Préstamo</span>
+        <b>{money(row.prestamosHoy, { symbol: false })}</b>
+      </div>
+      <div>
+        <span>Gasto</span>
+        <b>{money(row.gastosHoy, { symbol: false })}</b>
+      </div>
+    </div>
+  );
 
   const card = (
     <button
       type="button"
-      className={`supervisor-route-board accent-${accent % 2}${row.closed || row.statusKind === "closed" ? " is-closed" : ""}${mode === "caja" ? " is-caja-mode" : ""}${colorMode === "nequi" ? " is-nequi-mode" : ""}${colorMode === "banco" ? " is-banco-mode" : ""}`}
+      className={`supervisor-route-board accent-${accent % 2}${row.closed || row.statusKind === "closed" ? " is-closed" : ""}${mode === "caja" ? " is-caja-mode" : ""}${colorMode === "nequi" ? " is-nequi-mode" : ""}${colorMode === "banco" ? " is-banco-mode" : ""}${layoutV2 ? " is-layout-v2" : ""}`}
       onClick={() => onOpen(row.routeRef)}
     >
       {moneyMode ? (
@@ -631,6 +675,33 @@ function RouteBoardCard({
             </b>
           </div>
         </div>
+      ) : layoutV2 ? (
+        <>
+          <div className="supervisor-caja-row">
+            <div className="supervisor-route-board-id">
+              <div className="supervisor-route-board-ruta-row">
+                <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
+                <strong className="supervisor-route-board-name">{row.collectorName}</strong>
+                <RouteDayMarks marks={row.dayMarks} />
+                {row.statusLabel === "Cerrado" ? (
+                  <Pill label={row.statusLabel} kind={row.statusKind} />
+                ) : null}
+              </div>
+            </div>
+            <div className="supervisor-caja-hero is-row is-money-lg">
+              <b>
+                {row.figuresPending ? "…" : money(row.enCaja, { symbol: false })}
+              </b>
+              {row.cashUnsynced && !row.figuresPending ? (
+                <em className="supervisor-caja-unsynced" title="Sin route_own_box · ancla local">
+                  offline
+                </em>
+              ) : null}
+            </div>
+          </div>
+          {metricsBlock}
+          {progressBlock}
+        </>
       ) : (
         <>
           <div className="supervisor-caja-row">
@@ -657,57 +728,27 @@ function RouteBoardCard({
             </div>
           </div>
 
-          {showRouteShell ? (
-            <div className="supervisor-route-board-progress" aria-hidden>
-              <div className="supervisor-route-board-bar">
-                <span style={{ width: `${total > 0 ? pct : 0}%` }} />
-              </div>
-              <em>
-                {total > 0
-                  ? `${row.done}/${total} · ${pct}%`
-                  : row.closed
-                    ? "Cerrado"
-                    : "Sin planilla"}
-              </em>
-            </div>
-          ) : null}
-
-          <div
-            className={`supervisor-route-board-metrics is-four${withConnection ? " has-conn-dot" : ""}`}
-          >
-            <div>
-              <span>Inicial</span>
-              <b>
-                {row.figuresPending
-                  ? "…"
-                  : money(row.saldoInicial, { symbol: false })}
-              </b>
-            </div>
-            <div>
-              <span>Cobrado</span>
-              <b>{money(row.cobradoHoy, { symbol: false })}</b>
-            </div>
-            <div className="is-metric-prestamo">
-              <span>Préstamo</span>
-              <b>{money(row.prestamosHoy, { symbol: false })}</b>
-            </div>
-            <div>
-              <span>Gasto</span>
-              <b>{money(row.gastosHoy, { symbol: false })}</b>
-            </div>
-          </div>
+          {progressBlock}
+          {metricsBlock}
         </>
       )}
     </button>
   );
   if (!connectionLevel || !onConnection) return card;
   return (
-    <div className={`supervisor-route-board-wrap${justConnected ? " is-just-connected" : ""}`}>
+    <div
+      className={`supervisor-route-board-wrap${justConnected ? " is-just-connected" : ""}${layoutV2 ? " is-layout-v2" : ""}`}
+    >
       {card}
       {justConnected ? (
         <p className="conn-just-chip" aria-live="polite">
           en línea
         </p>
+      ) : null}
+      {layoutV2 && row.statusLabel === "Cerrado" ? (
+        <span className="route-close-over-conn">
+          <CloseClock clock={row.closeClock} />
+        </span>
       ) : null}
       <button
         type="button"
@@ -9251,6 +9292,7 @@ export function SupervisorMobileApp({
                     key={row.routeRef}
                     row={row}
                     accent={index}
+                    layoutV2={index === 0}
                     onOpen={openRouteSummary}
                     connectionLevel={connectionByRoute[row.routeRef]?.level ?? "none"}
                     justConnected={(justConnectedUntil[row.routeRef] ?? 0) > Date.now()}

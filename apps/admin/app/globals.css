@@ -9573,6 +9573,49 @@
     .supervisor-route-board-wrap {
       position: relative;
     }
+    /* Ensayo 1.er bloque INICIO: Ruta+nombre · métricas · barra · hora encima del punto. */
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-id {
+      flex-direction: row;
+      align-items: center;
+      gap: 0;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-ruta-row {
+      flex-wrap: nowrap;
+      gap: 6px;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-name {
+      font-size: 14px;
+      font-weight: 750;
+      line-height: 1.1;
+      max-width: 7.5rem;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-progress {
+      margin-top: 2px;
+      padding-right: 34px;
+      min-height: 18px;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics.is-four.has-conn-dot {
+      padding-right: 0;
+    }
+    .supervisor-route-board-wrap.is-layout-v2 .route-close-over-conn {
+      position: absolute;
+      right: 2px;
+      bottom: 26px;
+      z-index: 2;
+      display: flex;
+      justify-content: center;
+      width: 28px;
+      pointer-events: none;
+    }
+    .supervisor-route-board-wrap.is-layout-v2 .route-close-over-conn .route-close-clock {
+      font-size: 9px;
+      color: #3d4a44;
+      white-space: nowrap;
+    }
+    .supervisor-route-board-wrap.is-layout-v2 .conn-dot-btn {
+      bottom: 2px;
+      right: 2px;
+    }
     .conn-dot-btn {
       position: absolute;
       right: 2px;
