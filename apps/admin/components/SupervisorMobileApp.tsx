@@ -680,8 +680,10 @@ function RouteBoardCard({
           <div className="supervisor-caja-row">
             <div className="supervisor-route-board-id">
               <div className="supervisor-route-board-ruta-row">
-                <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
-                <strong className="supervisor-route-board-name">{row.collectorName}</strong>
+                <span className="supervisor-route-board-title-pair" title={`${row.routeName} · ${row.collectorName}`}>
+                  <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
+                  <strong className="supervisor-route-board-name">{row.collectorName}</strong>
+                </span>
                 <RouteDayMarks marks={row.dayMarks} />
                 {row.statusLabel === "Cerrado" ? (
                   <Pill label={row.statusLabel} kind={row.statusKind} />

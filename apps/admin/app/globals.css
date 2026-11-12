@@ -9573,21 +9573,39 @@
     .supervisor-route-board-wrap {
       position: relative;
     }
-    /* Ensayo 1.er bloque INICIO: Ruta+nombre · métricas · barra · hora encima del punto. */
+    /* Ensayo 1.er bloque INICIO: Ruta + nombre seguidos · métricas · barra · hora encima del punto. */
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-id {
       flex-direction: row;
       align-items: center;
       gap: 0;
+      min-width: 0;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-ruta-row {
-      flex-wrap: nowrap;
-      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 8px;
     }
-    .supervisor-route-board.is-layout-v2 .supervisor-route-board-name {
-      font-size: 14px;
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-title-pair {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 8px;
+      flex: 0 0 auto;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-title-pair .supervisor-route-board-ruta {
+      flex: 0 0 auto;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-title-pair .supervisor-route-board-name {
+      display: inline;
+      font-size: 15px;
       font-weight: 750;
-      line-height: 1.1;
-      max-width: 7.5rem;
+      line-height: 1.15;
+      max-width: none;
+      overflow: visible;
+      color: #14201b;
+      text-transform: none;
+      letter-spacing: 0;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-progress {
       margin-top: 2px;
