@@ -9648,6 +9648,14 @@
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics.is-four.has-conn-dot {
       padding-right: 0;
     }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics b {
+      font-weight: 400;
+      color: #0a0f0d;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics .is-metric-prestamo b {
+      font-weight: 400;
+      color: #0a0f0d;
+    }
     .supervisor-route-board-wrap.is-layout-v2 .route-close-over-conn {
       position: absolute;
       right: 2px;
