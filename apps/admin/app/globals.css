@@ -6855,8 +6855,9 @@
       width: 22%;
     }
     /*
-     * Distribución fija: Método con ancho para «Método» entero;
-     * Mora alineada a la derecha (junto a Estado), no al centro.
+     * Causa del hueco: Estado ancho + título a la derecha.
+     * Mora toma ese hueco; título Estado a la izquierda (junto a Mora).
+     * Celdas Estado (Prestado/pe) siguen a la derecha.
      */
     .supervisor-mobile .supervisor-planilla-table .is-num,
     .supervisor-mobile-app .supervisor-planilla-table .is-num {
@@ -6865,42 +6866,53 @@
     }
     .supervisor-mobile .supervisor-planilla-table .is-metodo,
     .supervisor-mobile-app .supervisor-planilla-table .is-metodo {
-      width: 18%;
-      min-width: 3.6rem;
-      padding-left: 10px !important;
+      width: 16%;
+      min-width: 3.4rem;
+      padding-left: 8px !important;
       padding-right: 4px !important;
       overflow: hidden !important;
       text-align: center !important;
     }
     .supervisor-mobile .supervisor-planilla-table th.is-metodo,
     .supervisor-mobile-app .supervisor-planilla-table th.is-metodo {
-      padding-left: 10px !important;
+      padding-left: 8px !important;
       padding-right: 4px !important;
       text-align: center !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-cuotas,
     .supervisor-mobile-app .supervisor-planilla-table .is-cuotas {
-      width: 16%;
-      padding-left: 6px !important;
-      padding-right: 10px !important;
+      width: 24%;
+      padding-left: 8px !important;
+      padding-right: 6px !important;
       overflow: hidden !important;
       text-align: right !important;
     }
     .supervisor-mobile .supervisor-planilla-table th.is-cuotas,
     .supervisor-mobile-app .supervisor-planilla-table th.is-cuotas {
-      padding-left: 6px !important;
-      padding-right: 10px !important;
+      padding-left: 8px !important;
+      padding-right: 6px !important;
       text-align: right !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-renew,
     .supervisor-mobile-app .supervisor-planilla-table .is-renew {
-      padding-left: 2px !important;
-      padding-right: 2px !important;
+      width: 1.15rem !important;
+      min-width: 1.15rem !important;
+      max-width: 1.25rem !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
     }
-    .supervisor-mobile .supervisor-planilla-table .is-estado,
-    .supervisor-mobile-app .supervisor-planilla-table .is-estado {
-      width: 20%;
-      min-width: 4.2rem;
+    .supervisor-mobile .supervisor-planilla-table th.is-estado,
+    .supervisor-mobile-app .supervisor-planilla-table th.is-estado {
+      width: 14%;
+      min-width: 3.8rem;
+      text-align: left !important;
+      padding-left: 4px !important;
+      padding-right: 6px !important;
+    }
+    .supervisor-mobile .supervisor-planilla-table td.is-estado,
+    .supervisor-mobile-app .supervisor-planilla-table td.is-estado {
+      width: 14%;
+      min-width: 3.8rem;
       text-align: right !important;
       overflow: visible !important;
       padding-left: 2px !important;
@@ -7435,10 +7447,10 @@
       text-align: right;
     }
     .supervisor-planilla-table .is-cuotas {
-      width: 16%;
+      width: 22%;
       text-align: right;
       padding-left: 8px;
-      padding-right: 10px;
+      padding-right: 8px;
       white-space: nowrap;
       overflow: hidden;
     }
@@ -7451,14 +7463,23 @@
       vertical-align: middle;
       text-align: right;
     }
-    .supervisor-planilla-table .is-estado {
-      width: 24%;
-      min-width: 4.6rem;
+    .supervisor-planilla-table th.is-estado {
+      width: 14%;
+      min-width: 3.8rem;
+      text-align: left;
+      white-space: nowrap;
+      overflow: visible;
+      padding-right: 6px;
+      padding-left: 4px;
+    }
+    .supervisor-planilla-table td.is-estado {
+      width: 14%;
+      min-width: 3.8rem;
       text-align: right;
       white-space: nowrap;
       overflow: visible;
       padding-right: 8px;
-      padding-left: 4px;
+      padding-left: 2px;
     }
     .supervisor-planilla-table .is-estado .pill {
       transform: none;
