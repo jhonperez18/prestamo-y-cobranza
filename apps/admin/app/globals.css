@@ -9629,26 +9629,36 @@
       gap: 6px;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-title-pair {
-      display: inline-flex;
+      display: grid;
+      grid-template-columns: auto 1fr;
       align-items: baseline;
-      gap: 8px;
-      flex: 0 0 auto;
+      column-gap: 1.1rem;
+      width: 100%;
+      min-width: 0;
       white-space: nowrap;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-id {
+      flex: 1 1 auto;
       min-width: 0;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-title-pair .supervisor-route-board-ruta {
       flex: 0 0 auto;
+      justify-self: start;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-title-pair .supervisor-route-board-name {
-      display: inline;
+      display: block;
       font-size: 15px;
       font-weight: 750;
       line-height: 1.15;
       max-width: none;
-      overflow: visible;
+      overflow: hidden;
+      text-overflow: ellipsis;
       color: #14201b;
       text-transform: none;
       letter-spacing: 0;
+      text-align: center;
+      justify-self: center;
+      width: 100%;
     }
     /* Saldo solo (Cerrado va en la línea de la barra, antes del punto rojo). */
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-saldo-col {
