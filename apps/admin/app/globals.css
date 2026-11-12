@@ -6805,17 +6805,17 @@
       text-overflow: clip !important;
     }
     .supervisor-planilla-table .is-metodo {
-      width: 16%;
+      width: 12%;
       text-align: center;
       white-space: nowrap;
-      padding-left: 16px;
-      padding-right: 6px;
-      overflow: hidden;
+      padding-left: 8px;
+      padding-right: 4px;
+      overflow: visible;
     }
     .supervisor-planilla-table th.is-metodo,
     .supervisor-planilla-table th.is-cuotas,
     .supervisor-planilla-table th.is-num {
-      overflow: hidden;
+      overflow: visible;
       text-overflow: clip;
       letter-spacing: 0;
     }
@@ -6852,7 +6852,7 @@
     }
     .supervisor-mobile .supervisor-planilla-table .is-nombre,
     .supervisor-mobile-app .supervisor-planilla-table .is-nombre {
-      width: 22%;
+      width: 26%;
     }
     /*
      * Causa del hueco: Estado ancho + título a la derecha.
@@ -6861,49 +6861,55 @@
      */
     .supervisor-mobile .supervisor-planilla-table .is-num,
     .supervisor-mobile-app .supervisor-planilla-table .is-num {
-      width: 12%;
-      padding-right: 2px !important;
+      width: 14%;
+      padding-right: 4px !important;
     }
+    /* Mét + E/B/N: sin overflow que recorte; aire tras Saldo. */
     .supervisor-mobile .supervisor-planilla-table .is-metodo,
     .supervisor-mobile-app .supervisor-planilla-table .is-metodo {
-      width: 16%;
-      min-width: 3.4rem;
-      padding-left: 16px !important;
-      padding-right: 6px !important;
-      overflow: hidden !important;
+      width: 12%;
+      min-width: 2.4rem;
+      padding-left: 10px !important;
+      padding-right: 4px !important;
+      overflow: visible !important;
       text-align: center !important;
     }
     .supervisor-mobile .supervisor-planilla-table th.is-metodo,
     .supervisor-mobile-app .supervisor-planilla-table th.is-metodo {
-      padding-left: 16px !important;
-      padding-right: 6px !important;
+      padding-left: 10px !important;
+      padding-right: 4px !important;
       text-align: center !important;
+      overflow: visible !important;
     }
+    /* Mora angosta (6/12 cabe); a la derecha junto a Estado. */
     .supervisor-mobile .supervisor-planilla-table .is-cuotas,
     .supervisor-mobile-app .supervisor-planilla-table .is-cuotas {
-      width: 21%;
-      padding-left: 8px !important;
+      width: 12%;
+      min-width: 2.6rem;
+      padding-left: 4px !important;
       padding-right: 6px !important;
-      overflow: hidden !important;
+      overflow: visible !important;
       text-align: right !important;
     }
     .supervisor-mobile .supervisor-planilla-table th.is-cuotas,
     .supervisor-mobile-app .supervisor-planilla-table th.is-cuotas {
-      padding-left: 8px !important;
+      padding-left: 4px !important;
       padding-right: 6px !important;
       text-align: right !important;
+      overflow: visible !important;
     }
+    /* Columna V: no coma espacio entre Mora y Estado. */
     .supervisor-mobile .supervisor-planilla-table .is-renew,
     .supervisor-mobile-app .supervisor-planilla-table .is-renew {
-      width: 1.15rem !important;
-      min-width: 1.15rem !important;
-      max-width: 1.25rem !important;
+      width: 0.9rem !important;
+      min-width: 0.9rem !important;
+      max-width: 1rem !important;
       padding-left: 0 !important;
       padding-right: 0 !important;
     }
     .supervisor-mobile .supervisor-planilla-table th.is-estado,
     .supervisor-mobile-app .supervisor-planilla-table th.is-estado {
-      width: 17%;
+      width: 18%;
       min-width: 4.4rem;
       text-align: left !important;
       padding-left: 4px !important;
@@ -6911,7 +6917,7 @@
     }
     .supervisor-mobile .supervisor-planilla-table td.is-estado,
     .supervisor-mobile-app .supervisor-planilla-table td.is-estado {
-      width: 17%;
+      width: 18%;
       min-width: 4.4rem;
       text-align: right !important;
       overflow: hidden !important;
@@ -7447,12 +7453,12 @@
       text-align: right;
     }
     .supervisor-planilla-table .is-cuotas {
-      width: 22%;
+      width: 12%;
       text-align: right;
-      padding-left: 8px;
-      padding-right: 8px;
+      padding-left: 4px;
+      padding-right: 6px;
       white-space: nowrap;
-      overflow: hidden;
+      overflow: visible;
     }
     .supervisor-planilla-table th.is-cuotas {
       font-size: 9px;
