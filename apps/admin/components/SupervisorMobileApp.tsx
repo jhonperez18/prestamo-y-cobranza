@@ -766,11 +766,6 @@ function PlanillaTable({
             <th className="is-num">Saldo</th>
             <th className="is-metodo">Método</th>
             <th className="is-cuotas">Mora</th>
-            {showRenewColumn ? (
-              <th className="is-renew" aria-label="Vencido">
-                {" "}
-              </th>
-            ) : null}
             <th className="is-estado">Estado</th>
           </tr>
         </thead>
@@ -903,83 +898,83 @@ function PlanillaTable({
                     <CuotasProgressCell progress={cuotas} />
                   )}
                 </td>
-                {showRenewColumn ? (
-                  <td className="is-renew">
-                    {row.renewAlert && !openPrestar ? <RenewAlertBill /> : null}
-                  </td>
-                ) : null}
                 <td className="is-estado">
-                  {openPrestar ? (
-                    onReloan ? (
-                      <button
-                        type="button"
-                        className={reloanOpen ? "supervisor-reloan-btn on" : "supervisor-prestar-tag is-btn"}
-                        title="Sin préstamo · listo para prestar"
-                        aria-expanded={reloanOpen}
-                        onClick={() => onReloan(row.clientRef)}
-                      >
-                        Prestar
-                      </button>
-                    ) : (
-                      <span className="supervisor-prestar-tag" title="Sin préstamo · listo para prestar · usar hoja Ruta">
-                        Prestar
-                      </span>
-                    )
-                  ) : grantedHere || row.key.startsWith("prestamo|") ? (
-                    <span
-                      className="supervisor-reloan-tag"
-                      title={
-                        grantedHere
-                          ? `Préstamo ${grantedHere.ref} · capital ${money(grantedHere.capital)}`
-                          : "Préstamo nuevo"
-                      }
-                    >
-                      Prestado
-                    </span>
-                  ) : row.reloan.renewed || row.methodToneClass === "is-pay-renovado" ? (
-                    <span
-                      className="supervisor-reloan-tag is-renewal"
-                      title={
-                        row.reloan.renewed
-                          ? `Renovado ${row.reloan.renewed.ref} · debía ${money(row.reloan.renewed.capital)} + 20 % · sin plata`
-                          : "Renovado: sin plata"
-                      }
-                    >
-                      Renovado
-                    </span>
-                  ) : (
-                    <span
-                      style={
-                        row.paidParts.length >= 2 ? { display: "inline-flex", gap: 2 } : undefined
-                      }
-                      title={
-                        row.paidAmount > 0
-                          ? `${visitStatusLabel(row.visitStatus)} · ${money(row.paidAmount)}`
-                          : visitStatusLabel(row.visitStatus)
-                      }
-                    >
-                      {row.paidParts.length >= 2 ? (
-                        row.paidParts.map((part, partIndex) => (
-                          <em
-                            key={`${part.method}-${partIndex}`}
-                            className={`supervisor-planilla-method ${paymentMethodToneClass(part.method)}`}
-                            title={`${paymentMethodLabel(part.method)} · ${money(part.amount)}`}
-                          >
-                            {paidThousandsLabel(part.amount)}
-                          </em>
-                        ))
+                  <span className="supervisor-estado-cell">
+                    {showRenewColumn && row.renewAlert && !openPrestar ? (
+                      <RenewAlertBill />
+                    ) : null}
+                    {openPrestar ? (
+                      onReloan ? (
+                        <button
+                          type="button"
+                          className={reloanOpen ? "supervisor-reloan-btn on" : "supervisor-prestar-tag is-btn"}
+                          title="Sin préstamo · listo para prestar"
+                          aria-expanded={reloanOpen}
+                          onClick={() => onReloan(row.clientRef)}
+                        >
+                          Prestar
+                        </button>
                       ) : (
-                        <Pill
-                          label={
-                            row.paidAmount > 0
-                              ? paidThousandsLabel(row.paidAmount)
-                              : visitStatusLabelShort(row.visitStatus)
-                          }
-                          kind={visitStatusKind(row.visitStatus)}
-                        />
-                      )}
-                    </span>
-                  )}
+                        <span className="supervisor-prestar-tag" title="Sin préstamo · listo para prestar · usar hoja Ruta">
+                          Prestar
+                        </span>
+                      )
+                    ) : grantedHere || row.key.startsWith("prestamo|") ? (
+                      <span
+                        className="supervisor-reloan-tag"
+                        title={
+                          grantedHere
+                            ? `Préstamo ${grantedHere.ref} · capital ${money(grantedHere.capital)}`
+                            : "Préstamo nuevo"
+                        }
+                      >
+                        Prestado
+                      </span>
+                    ) : row.reloan.renewed || row.methodToneClass === "is-pay-renovado" ? (
+                      <span
+                        className="supervisor-reloan-tag is-renewal"
+                        title={
+                          row.reloan.renewed
+                            ? `Renovado ${row.reloan.renewed.ref} · debía ${money(row.reloan.renewed.capital)} + 20 % · sin plata`
+                            : "Renovado: sin plata"
+                        }
+                      >
+                        Renovado
+                      </span>
+                    ) : (
+                      <span
+                        style={
+                          row.paidParts.length >= 2 ? { display: "inline-flex", gap: 2 } : undefined
+                        }
+                        title={
+                          row.paidAmount > 0
+                            ? `${visitStatusLabel(row.visitStatus)} · ${money(row.paidAmount)}`
+                            : visitStatusLabel(row.visitStatus)
+                        }
+                      >
+                        {row.paidParts.length >= 2 ? (
+                          row.paidParts.map((part, partIndex) => (
+                            <em
+                              key={`${part.method}-${partIndex}`}
+                              className={`supervisor-planilla-method ${paymentMethodToneClass(part.method)}`}
+                              title={`${paymentMethodLabel(part.method)} · ${money(part.amount)}`}
+                            >
+                              {paidThousandsLabel(part.amount)}
+                            </em>
+                          ))
+                        ) : (
+                          <Pill
+                            label={
+                              row.paidAmount > 0
+                                ? paidThousandsLabel(row.paidAmount)
+                                : visitStatusLabelShort(row.visitStatus)
+                            }
+                            kind={visitStatusKind(row.visitStatus)}
+                          />
+                        )}
+                      </span>
+                    )}
+                  </span>
                 </td>
               </tr>
             );

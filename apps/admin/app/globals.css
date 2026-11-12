@@ -6900,31 +6900,41 @@
       overflow: hidden !important;
       letter-spacing: 0 !important;
     }
-    /* Columna V: mínima entre Mora y Estado. */
-    .supervisor-mobile .supervisor-planilla-table .is-renew,
-    .supervisor-mobile-app .supervisor-planilla-table .is-renew {
-      width: 0.75rem !important;
-      min-width: 0.75rem !important;
-      max-width: 0.85rem !important;
-      padding-left: 0 !important;
-      padding-right: 0 !important;
-    }
     .supervisor-mobile .supervisor-planilla-table th.is-estado,
     .supervisor-mobile-app .supervisor-planilla-table th.is-estado {
-      width: 17%;
-      min-width: 3.8rem;
+      width: 19%;
+      min-width: 4.2rem;
       text-align: center !important;
       padding-left: 2px !important;
       padding-right: 2px !important;
     }
     .supervisor-mobile .supervisor-planilla-table td.is-estado,
     .supervisor-mobile-app .supervisor-planilla-table td.is-estado {
-      width: 17%;
-      min-width: 3.8rem;
+      width: 19%;
+      min-width: 4.2rem;
       text-align: center !important;
       overflow: hidden !important;
       padding-left: 2px !important;
       padding-right: 2px !important;
+    }
+    /* V + S/C / Prestado en la misma celda Estado. */
+    .supervisor-planilla-table .supervisor-estado-cell {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      max-width: 100%;
+      min-width: 0;
+      vertical-align: middle;
+    }
+    .supervisor-planilla-table .supervisor-estado-cell .supervisor-renew-alert-bill {
+      flex: 0 0 auto;
+      width: 14px;
+      height: 11px;
+    }
+    .supervisor-planilla-table .supervisor-estado-cell .supervisor-renew-alert-bill svg {
+      width: 14px;
+      height: 11px;
     }
     .supervisor-mobile .supervisor-planilla-table td.is-ruta,
     .supervisor-mobile-app .supervisor-planilla-table td.is-ruta {
