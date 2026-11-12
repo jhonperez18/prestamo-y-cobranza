@@ -764,7 +764,7 @@ function PlanillaTable({
             <th className="is-ruta">#</th>
             <th className="is-nombre">Nombre</th>
             <th className="is-num">Saldo</th>
-            <th className="is-metodo">Mét</th>
+            <th className="is-metodo">Método</th>
             <th className="is-cuotas">Mora</th>
             {showRenewColumn ? (
               <th className="is-renew" aria-label="Vencido">
