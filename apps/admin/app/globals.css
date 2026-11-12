@@ -9597,7 +9597,14 @@
       align-items: center;
       gap: 0;
     }
-    /* Notificaciones (B/E/P…) en una sola línea, debajo de Ruta+nombre. Alto fijo. */
+    /* Métricas justo bajo el saldo; alertas encima de la barra. */
+    .supervisor-route-board.is-layout-v2 .supervisor-caja-row {
+      margin-bottom: 0;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-metrics.is-four {
+      margin-top: 0;
+    }
+    /* Notificaciones (B/E/P…) encima de la barra. Alto fijo. */
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-marks-line {
       display: flex;
       flex-wrap: nowrap;

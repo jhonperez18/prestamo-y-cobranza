@@ -733,12 +733,12 @@ function RouteBoardCard({
               </div>
             </div>
           </div>
+          {metricsBlock}
           <div className="supervisor-route-board-marks-line" aria-hidden={
             row.dayMarks.r + row.dayMarks.b + row.dayMarks.e + row.dayMarks.n + row.dayMarks.p <= 0
           }>
             <RouteDayMarks marks={row.dayMarks} />
           </div>
-          {metricsBlock}
           {progressBlock}
         </>
       ) : (
