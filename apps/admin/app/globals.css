@@ -9630,13 +9630,14 @@
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-closed-under .pill {
       transform: none;
-      height: 12px;
-      min-height: 12px;
-      line-height: 12px;
-      padding: 0 5px;
-      font-size: 8px !important;
-      font-weight: 650;
+      height: 14px;
+      min-height: 14px;
+      line-height: 14px;
+      padding: 0 6px;
+      font-size: 10px !important;
+      font-weight: 600;
       letter-spacing: 0.02em;
+      text-transform: uppercase;
       border-radius: 3px;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-progress {
