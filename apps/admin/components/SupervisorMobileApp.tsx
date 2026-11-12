@@ -650,7 +650,10 @@ function RouteBoardCard({
         {layoutV2 ? (
           <span className="supervisor-route-board-closed-inline">
             {row.statusLabel === "Cerrado" || row.closed ? (
-              <span className="supervisor-route-board-state-tag is-closed">Cerrado</span>
+              <>
+                <CloseClock clock={row.closeClock} />
+                <span className="supervisor-route-board-state-tag is-closed">Cerrado</span>
+              </>
             ) : (
               <span className="supervisor-route-board-state-tag is-open">En ruta</span>
             )}
@@ -781,11 +784,6 @@ function RouteBoardCard({
         <p className="conn-just-chip" aria-live="polite">
           en línea
         </p>
-      ) : null}
-      {layoutV2 && row.statusLabel === "Cerrado" ? (
-        <span className="route-close-over-conn">
-          <CloseClock clock={row.closeClock} />
-        </span>
       ) : null}
       <button
         type="button"
