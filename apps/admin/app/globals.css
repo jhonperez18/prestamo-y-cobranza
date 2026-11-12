@@ -6913,18 +6913,18 @@
     .supervisor-mobile-app .supervisor-planilla-table th.is-estado {
       width: 17%;
       min-width: 3.8rem;
-      text-align: left !important;
+      text-align: center !important;
       padding-left: 2px !important;
-      padding-right: 6px !important;
+      padding-right: 2px !important;
     }
     .supervisor-mobile .supervisor-planilla-table td.is-estado,
     .supervisor-mobile-app .supervisor-planilla-table td.is-estado {
       width: 17%;
       min-width: 3.8rem;
-      text-align: right !important;
+      text-align: center !important;
       overflow: hidden !important;
       padding-left: 2px !important;
-      padding-right: 6px !important;
+      padding-right: 2px !important;
     }
     .supervisor-mobile .supervisor-planilla-table td.is-ruta,
     .supervisor-mobile-app .supervisor-planilla-table td.is-ruta {
@@ -7474,19 +7474,19 @@
     .supervisor-planilla-table th.is-estado {
       width: 14%;
       min-width: 3.8rem;
-      text-align: left;
+      text-align: center;
       white-space: nowrap;
-      overflow: visible;
-      padding-right: 6px;
-      padding-left: 4px;
+      overflow: hidden;
+      padding-right: 2px;
+      padding-left: 2px;
     }
     .supervisor-planilla-table td.is-estado {
       width: 14%;
       min-width: 3.8rem;
-      text-align: right;
+      text-align: center;
       white-space: nowrap;
-      overflow: visible;
-      padding-right: 8px;
+      overflow: hidden;
+      padding-right: 2px;
       padding-left: 2px;
     }
     .supervisor-planilla-table .is-estado .pill {
@@ -18428,16 +18428,35 @@
       vertical-align: middle;
       max-width: 100%;
     }
-    /* Prestado / Prestar / pe / montos: misma línea derecha en Estado. */
+    /* Prestado / Prestar / pe / montos: centrados en Estado, sin salirse. */
     .supervisor-planilla-table td.is-estado .supervisor-reloan-tag,
     .supervisor-planilla-table td.is-estado .supervisor-prestar-tag,
     .supervisor-planilla-table td.is-estado .supervisor-reloan-btn,
     .supervisor-planilla-table td.is-estado .supervisor-prestar-tag.is-btn,
     .supervisor-planilla-table td.is-estado .pill {
       box-sizing: border-box;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       vertical-align: middle;
-      margin-left: auto;
-      margin-right: 0;
+      margin: 0 auto;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .supervisor-mobile .supervisor-planilla-table td.is-estado .supervisor-reloan-tag,
+    .supervisor-mobile-app .supervisor-planilla-table td.is-estado .supervisor-reloan-tag,
+    .supervisor-mobile .supervisor-planilla-table td.is-estado .supervisor-prestar-tag,
+    .supervisor-mobile-app .supervisor-planilla-table td.is-estado .supervisor-prestar-tag,
+    .supervisor-mobile .supervisor-planilla-table td.is-estado .supervisor-reloan-btn,
+    .supervisor-mobile-app .supervisor-planilla-table td.is-estado .supervisor-reloan-btn,
+    .supervisor-mobile .supervisor-planilla-table td.is-estado .supervisor-prestar-tag.is-btn,
+    .supervisor-mobile-app .supervisor-planilla-table td.is-estado .supervisor-prestar-tag.is-btn {
+      height: 14px;
+      padding: 0 4px;
+      font-size: 8.5px !important;
+      line-height: 14px;
     }
     .supervisor-liq-table tbody tr.is-renewed > td {
       background: #fef3c7;
