@@ -201,7 +201,7 @@ export function expandSupervisorRutaSheetRows(
 
     /**
      * Ya hubo Prestado hoy:
-     * - Prestar omitido (S/C) sobra: engaña («no pagó»).
+     * - Fila Prestar (pendiente u omitida) sobra: el estado ya es Prestado.
      * - Cuota del P- nuevo si la 1.ª NO es hoy: también sobra.
      * - Si la 1.ª cuota ES hoy: la visita de cobro sí entra.
      */

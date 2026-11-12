@@ -810,12 +810,11 @@ function PlanillaTable({
               grantedLoan && !collectingGranted && (row.loanRef === grantedLoan.ref || row.paidAmount <= 0)
                 ? grantedLoan
                 : null;
-            // Oferta Prestar solo si sigue abierta. «Préstamo hecho hoy» deja
-            // awaitingLoan=true en la fila, pero ya no es oferta (cobrador la saca).
+            // Sin préstamo = Prestar (chulo rojo o cierre no lo pasan a S/C).
+            // S/C es solo «tiene cuota y no pagó». Solo sale de Prestar al Prestado.
             const openPrestar =
               Boolean(row.awaitingLoan) &&
               !grantedLoan &&
-              row.visitStatus !== "omitido" &&
               row.visitStatus !== "cobrado";
             const showFin =
               Boolean(row.reloan.finishedToday) &&
