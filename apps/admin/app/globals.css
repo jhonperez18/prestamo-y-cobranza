@@ -9581,9 +9581,29 @@
       min-width: 0;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-ruta-row {
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       align-items: center;
-      gap: 6px 8px;
+      gap: 0;
+    }
+    /* Notificaciones (B/E/P…) en una sola línea, debajo de Ruta+nombre. */
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-marks-line {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 6px;
+      min-height: 1.15rem;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-marks-line::-webkit-scrollbar {
+      display: none;
+    }
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-marks-line .route-day-marks,
+    .supervisor-route-board.is-layout-v2 .supervisor-route-board-marks-line > * {
+      display: inline-flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 6px;
     }
     .supervisor-route-board.is-layout-v2 .supervisor-route-board-title-pair {
       display: inline-flex;

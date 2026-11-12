@@ -684,7 +684,6 @@ function RouteBoardCard({
                   <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
                   <strong className="supervisor-route-board-name">{row.collectorName}</strong>
                 </span>
-                <RouteDayMarks marks={row.dayMarks} />
               </div>
             </div>
             <div className="supervisor-route-board-saldo-col">
@@ -705,6 +704,11 @@ function RouteBoardCard({
               ) : null}
             </div>
           </div>
+          {row.dayMarks.r + row.dayMarks.b + row.dayMarks.e + row.dayMarks.n + row.dayMarks.p > 0 ? (
+            <div className="supervisor-route-board-marks-line">
+              <RouteDayMarks marks={row.dayMarks} />
+            </div>
+          ) : null}
           {metricsBlock}
           {progressBlock}
         </>
