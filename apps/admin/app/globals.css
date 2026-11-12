@@ -6854,49 +6854,56 @@
     .supervisor-mobile-app .supervisor-planilla-table .is-nombre {
       width: 22%;
     }
-    /* Método (E) y Mora más a la derecha: aire tras Saldo, repartidos hacia Estado. */
+    /*
+     * Distribución fija: Método con ancho para «Método» entero;
+     * Mora alineada a la derecha (junto a Estado), no al centro.
+     */
     .supervisor-mobile .supervisor-planilla-table .is-num,
     .supervisor-mobile-app .supervisor-planilla-table .is-num {
       width: 12%;
-      padding-right: 2px !important;
+      padding-right: 4px !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-metodo,
     .supervisor-mobile-app .supervisor-planilla-table .is-metodo {
-      width: 15%;
-      min-width: 3rem;
-      padding-left: 14px !important;
-      padding-right: 6px !important;
+      width: 18%;
+      min-width: 3.6rem;
+      padding-left: 10px !important;
+      padding-right: 4px !important;
       overflow: hidden !important;
+      text-align: center !important;
     }
     .supervisor-mobile .supervisor-planilla-table th.is-metodo,
     .supervisor-mobile-app .supervisor-planilla-table th.is-metodo {
-      padding-left: 14px !important;
-      padding-right: 6px !important;
+      padding-left: 10px !important;
+      padding-right: 4px !important;
+      text-align: center !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-cuotas,
     .supervisor-mobile-app .supervisor-planilla-table .is-cuotas {
       width: 16%;
-      padding-left: 20px !important;
-      padding-right: 8px !important;
+      padding-left: 6px !important;
+      padding-right: 10px !important;
       overflow: hidden !important;
+      text-align: right !important;
     }
     .supervisor-mobile .supervisor-planilla-table th.is-cuotas,
     .supervisor-mobile-app .supervisor-planilla-table th.is-cuotas {
-      padding-left: 20px !important;
-      padding-right: 8px !important;
+      padding-left: 6px !important;
+      padding-right: 10px !important;
+      text-align: right !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-renew,
     .supervisor-mobile-app .supervisor-planilla-table .is-renew {
-      padding-left: 4px !important;
+      padding-left: 2px !important;
       padding-right: 2px !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-estado,
     .supervisor-mobile-app .supervisor-planilla-table .is-estado {
-      width: 22%;
-      min-width: 4.4rem;
+      width: 20%;
+      min-width: 4.2rem;
       text-align: right !important;
       overflow: visible !important;
-      padding-left: 4px !important;
+      padding-left: 2px !important;
       padding-right: 8px !important;
     }
     .supervisor-mobile .supervisor-planilla-table td.is-ruta,
@@ -7429,19 +7436,20 @@
     }
     .supervisor-planilla-table .is-cuotas {
       width: 16%;
-      text-align: center;
-      padding-left: 22px;
-      padding-right: 6px;
+      text-align: right;
+      padding-left: 8px;
+      padding-right: 10px;
       white-space: nowrap;
       overflow: hidden;
     }
     .supervisor-planilla-table th.is-cuotas {
       font-size: 9px;
       letter-spacing: 0;
+      text-align: right;
     }
     .supervisor-planilla-table td.is-cuotas {
       vertical-align: middle;
-      text-align: center;
+      text-align: right;
     }
     .supervisor-planilla-table .is-estado {
       width: 24%;
