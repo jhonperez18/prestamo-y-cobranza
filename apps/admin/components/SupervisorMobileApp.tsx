@@ -573,6 +573,21 @@ function LiquidacionTable({
   );
 }
 
+/** Color de la barra: 0–25 rojo · 25–50 amarillo→naranja · 50–100 → verde. */
+function routeProgressBarColor(pct: number): string {
+  const p = Math.max(0, Math.min(100, pct));
+  const mix = (a: number, b: number, t: number) => Math.round(a + (b - a) * t);
+  const hex = (from: [number, number, number], to: [number, number, number], t: number) => {
+    const r = mix(from[0], to[0], t);
+    const g = mix(from[1], to[1], t);
+    const b = mix(from[2], to[2], t);
+    return `rgb(${r},${g},${b})`;
+  };
+  if (p <= 25) return "#dc2626";
+  if (p <= 50) return hex([250, 204, 21], [249, 115, 22], (p - 25) / 25);
+  return hex([249, 115, 22], [15, 118, 110], (p - 50) / 50);
+}
+
 function RouteBoardCard({
   row,
   accent,
@@ -624,7 +639,12 @@ function RouteBoardCard({
         aria-hidden={!layoutV2}
       >
         <div className="supervisor-route-board-bar">
-          <span style={{ width: `${total > 0 ? pct : 0}%` }} />
+          <span
+            style={{
+              width: `${total > 0 ? pct : 0}%`,
+              background: routeProgressBarColor(pct),
+            }}
+          />
         </div>
         <em>{progressLabel}</em>
         {layoutV2 ? (
