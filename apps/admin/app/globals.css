@@ -6846,34 +6846,34 @@
     .supervisor-mobile-app .supervisor-planilla-table .is-nombre {
       width: 24%;
     }
-    /* Saldo · Método · Mora: Método más a la derecha; Mora usa el hueco antes de Estado. */
+    /* Hueco de Método/Mora → Estado: Prestado/Prestar caben enteros, alineados a la derecha. */
     .supervisor-mobile .supervisor-planilla-table .is-num,
     .supervisor-mobile-app .supervisor-planilla-table .is-num {
       width: 14%;
     }
     .supervisor-mobile .supervisor-planilla-table .is-metodo,
     .supervisor-mobile-app .supervisor-planilla-table .is-metodo {
-      width: 18%;
-      padding-left: 10px !important;
-      padding-right: 6px !important;
+      width: 13%;
+      padding-left: 6px !important;
+      padding-right: 4px !important;
       overflow: hidden !important;
     }
     .supervisor-mobile .supervisor-planilla-table th.is-metodo,
     .supervisor-mobile-app .supervisor-planilla-table th.is-metodo {
-      padding-left: 10px !important;
-      padding-right: 6px !important;
+      padding-left: 6px !important;
+      padding-right: 4px !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-cuotas,
     .supervisor-mobile-app .supervisor-planilla-table .is-cuotas {
-      width: 18%;
-      padding-left: 14px !important;
-      padding-right: 6px !important;
+      width: 14%;
+      padding-left: 8px !important;
+      padding-right: 4px !important;
       overflow: hidden !important;
     }
     .supervisor-mobile .supervisor-planilla-table th.is-cuotas,
     .supervisor-mobile-app .supervisor-planilla-table th.is-cuotas {
-      padding-left: 14px !important;
-      padding-right: 6px !important;
+      padding-left: 8px !important;
+      padding-right: 4px !important;
     }
     .supervisor-mobile .supervisor-planilla-table .is-renew,
     .supervisor-mobile-app .supervisor-planilla-table .is-renew {
@@ -6882,9 +6882,12 @@
     }
     .supervisor-mobile .supervisor-planilla-table .is-estado,
     .supervisor-mobile-app .supervisor-planilla-table .is-estado {
-      width: 16%;
+      width: 24%;
+      min-width: 4.6rem;
       text-align: right !important;
-      overflow: hidden !important;
+      overflow: visible !important;
+      padding-left: 4px !important;
+      padding-right: 8px !important;
     }
     .supervisor-mobile .supervisor-planilla-table td.is-ruta,
     .supervisor-mobile-app .supervisor-planilla-table td.is-ruta {
@@ -7431,12 +7434,13 @@
       text-align: center;
     }
     .supervisor-planilla-table .is-estado {
-      width: 20%;
+      width: 24%;
+      min-width: 4.6rem;
       text-align: right;
       white-space: nowrap;
-      overflow: hidden;
-      padding-right: 6px;
-      padding-left: 2px;
+      overflow: visible;
+      padding-right: 8px;
+      padding-left: 4px;
     }
     .supervisor-planilla-table .is-estado .pill {
       transform: none;
@@ -18367,17 +18371,14 @@
       font-weight: 700;
       color: #1e40af;
       white-space: nowrap;
-      max-width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
       vertical-align: middle;
     }
     .supervisor-planilla-table td.is-estado .supervisor-prestar-tag,
     .supervisor-planilla-table td.is-estado .supervisor-reloan-btn,
     .supervisor-planilla-table td.is-estado .supervisor-prestar-tag.is-btn {
-      max-width: 100%;
       box-sizing: border-box;
       vertical-align: middle;
+      flex-shrink: 0;
     }
     .supervisor-liq-table tbody tr.is-renewed > td {
       background: #fef3c7;
