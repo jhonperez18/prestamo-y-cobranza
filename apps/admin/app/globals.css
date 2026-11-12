@@ -485,17 +485,16 @@
       max-height: 100dvh;
       max-width: 480px;
       margin: 0 auto;
-      background: #f3f6f4;
+      /* Teal suave a pantalla completa (cobrador y supervisor). */
+      background: #d5e8e8;
       overflow-x: hidden;
       /* La hoja del cobrador hace el scroll; la cabecera queda fija. */
       overflow-y: hidden;
       overscroll-behavior: contain;
     }
-    /* Supervisor: mismo teal suave a pantalla completa (no se corta abajo). */
     .collector-shell-mobile:has(.supervisor-mobile) {
       display: flex;
       flex-direction: column;
-      background: #d5e8e8;
     }
     .collector-shell-mobile .toast {
       left: 50%;
@@ -509,7 +508,7 @@
       height: 100%;
       display: flex;
       flex-direction: column;
-      background: #f3f6f4;
+      background: #d5e8e8;
       color: #122018;
       min-width: 0;
       max-width: 100%;
@@ -520,7 +519,7 @@
     .collector-mobile-chrome {
       flex: 0 0 auto;
       z-index: 40;
-      background: #f3f6f4;
+      background: #d5e8e8;
       box-shadow: 0 1px 0 rgba(16, 36, 28, 0.06);
     }
     /* Solo la lista/hoja hace scroll. Nombre distinto a .collector-mobile-sheet
@@ -1840,7 +1839,7 @@
       z-index: 20;
       display: flex;
       flex-direction: column;
-      background: #f3f6f4;
+      background: #d5e8e8;
       min-height: 100%;
     }
     .collector-mobile-history-panel-head {
@@ -4964,7 +4963,7 @@
     .mobile-preview-screen {
       border-radius: 22px;
       overflow: hidden;
-      background: #f3f6f4;
+      background: #d5e8e8;
       /* Mismo tamaño fijo para cobrador y supervisor */
       height: min(70vh, 720px);
       min-height: min(70vh, 720px);
