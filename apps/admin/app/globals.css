@@ -4972,6 +4972,7 @@
       box-sizing: border-box;
       overflow-x: hidden;
       overflow-y: auto;
+      scrollbar-gutter: stable;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
     }
@@ -4990,6 +4991,7 @@
       color: #122018;
       min-width: 0;
       overflow-x: hidden;
+      scrollbar-gutter: stable;
       padding-bottom: max(28px, env(safe-area-inset-bottom, 0px));
     }
     /*
@@ -5194,6 +5196,7 @@
     }
     .supervisor-mobile-kpis.has-banco .supervisor-mobile-kpi.on {
       outline: none;
+      border-width: 1px;
     }
     .supervisor-mobile-kpi {
       box-sizing: border-box;
@@ -5354,8 +5357,8 @@
       filter: none;
     }
     /*
-     * Activo: suave y profesional — tono un poco más lleno,
-     * borde del color, y rayita inferior discreta.
+     * Activo: mismo tamaño que inactivo (borde 1px fijo).
+     * Solo se atenúa el resto y se subraya el seleccionado.
      */
     .supervisor-mobile-kpi.on {
       outline: none;
@@ -5364,7 +5367,7 @@
       opacity: 1;
       filter: none;
       box-shadow: none;
-      border-width: 1.5px;
+      border-width: 1px;
       z-index: 1;
     }
     .supervisor-mobile-kpi.on::after {
@@ -5376,7 +5379,7 @@
       height: 2px;
       border-radius: 2px;
       background: currentColor;
-      opacity: 0.45;
+      opacity: 0.55;
       pointer-events: none;
     }
     .supervisor-mobile-kpi.is-inicio.on {
@@ -5415,7 +5418,7 @@
       color: #14201b;
     }
     .supervisor-mobile-kpi.on b {
-      font-weight: 800;
+      font-weight: 750;
     }
     .supervisor-mobile-kpi b {
       display: block;
@@ -5425,8 +5428,13 @@
       letter-spacing: 0.03em;
       color: inherit;
       overflow: hidden;
-      text-overflow: ellipsis;
+      text-overflow: clip;
       white-space: nowrap;
+    }
+    /* CLIENTES: que no se corte a CLIENT… (misma caja fija que el resto). */
+    .supervisor-mobile-kpis.has-banco .supervisor-mobile-kpi.is-clientes b {
+      font-size: 8.5px;
+      letter-spacing: -0.02em;
     }
     .supervisor-mobile-kpi span {
       display: block;
