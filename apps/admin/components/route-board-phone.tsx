@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PlusIcon, SearchIcon } from "@/components/icons";
 import { sameRoute } from "@/lib/client-route-order";
 
 /** Misma regla que AuthGate / AppShell: ≤900px = layout celular. */
@@ -29,6 +30,73 @@ export function useRouteBoardPin(routeNames: string[]) {
     }
   }, [routeNames, active]);
   return [active, setActive] as const;
+}
+
+/**
+ * Celular: una línea = título + total + (+) + lupa.
+ * La caja de buscar solo aparece al tocar la lupa.
+ */
+export function RouteBoardPhoneHead({
+  title,
+  count,
+  query,
+  onQueryChange,
+  onCreate,
+  searchLabel = "Buscar",
+}: {
+  title: string;
+  count: number;
+  query: string;
+  onQueryChange: (value: string) => void;
+  onCreate?: () => void;
+  searchLabel?: string;
+}) {
+  const [searchOpen, setSearchOpen] = useState(() => query.trim().length > 0);
+
+  useEffect(() => {
+    if (query.trim()) setSearchOpen(true);
+  }, [query]);
+
+  return (
+    <div className="head is-client-board is-phone-board-head">
+      <div className="client-board-title">
+        <h1>{title}</h1>
+        <span className="count">{count}</span>
+      </div>
+      <div className="client-board-actions">
+        {onCreate ? (
+          <button type="button" className="plus" title="Crear" onClick={onCreate}>
+            <PlusIcon />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          className={searchOpen ? "client-board-search-toggle on" : "client-board-search-toggle"}
+          title="Buscar"
+          aria-label="Buscar"
+          aria-expanded={searchOpen}
+          onClick={() => {
+            setSearchOpen((open) => {
+              if (open) onQueryChange("");
+              return !open;
+            });
+          }}
+        >
+          <SearchIcon size={18} />
+        </button>
+      </div>
+      {searchOpen ? (
+        <input
+          className="client-board-search is-open"
+          value={query}
+          placeholder={searchLabel}
+          aria-label={searchLabel}
+          autoFocus
+          onChange={(event) => onQueryChange(event.target.value)}
+        />
+      ) : null}
+    </div>
+  );
 }
 
 export function RouteBoardPins({

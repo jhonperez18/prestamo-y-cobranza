@@ -24,6 +24,7 @@ import {
   sameRoute,
 } from "@/lib/client-route-order";
 import {
+  RouteBoardPhoneHead,
   RouteBoardPins,
   usePhoneLayout,
   useRouteBoardPin,
@@ -339,67 +340,79 @@ export function ClientList({
   }
 
   const board = routeNames.length > 0;
+  const phoneBoard = board && isPhone;
 
   return (
-    <section className="panel">
-      <div className={board ? "head is-client-board" : "head"}>
-        {board ? (
-          <div className="client-board-title">
-            <h1>{title}</h1>
-            <span className="count">{count}</span>
-          </div>
-        ) : (
-          <>
-            <h1>{title}</h1>
-            <span className="count">{count}</span>
-          </>
-        )}
-        {isRevision && selected.length > 0 ? (
-          <div className="client-review-actions">
-            <button
-              type="button"
-              className="btn ghost compact"
-              disabled={selected.length !== 1}
-              onClick={openSelectedForApproval}
-            >
-              Completar ficha
-            </button>
-            {canApprove ? (
-              <>
-                <button type="button" className="btn primary compact" onClick={approveSelected}>
-                  Aprobar
-                </button>
-                <button type="button" className="btn ghost compact" onClick={rejectSelected}>
-                  Rechazar
-                </button>
-              </>
-            ) : null}
-          </div>
-        ) : null}
-        {board ? (
-          <input
-            className="client-board-search"
-            value={boardQuery}
-            placeholder="Buscar"
-            aria-label="Buscar en las cuatro rutas"
-            onChange={(event) => setBoardQuery(event.target.value)}
-          />
-        ) : (
-          <>
-            <div className="grow" />
-            <label className="page-size">
-              Ver{" "}
-              <select defaultValue="25">
-                <option>25</option>
-                <option>50</option>
-              </select>
-            </label>
-          </>
-        )}
-        <button className="plus" title="Crear" onClick={onCreate}>
-          <PlusIcon />
-        </button>
-      </div>
+    <section className={phoneBoard ? "panel is-phone-route-panel" : "panel"}>
+      {phoneBoard ? (
+        <RouteBoardPhoneHead
+          title={title}
+          count={count}
+          query={boardQuery}
+          onQueryChange={setBoardQuery}
+          onCreate={onCreate}
+          searchLabel="Buscar cliente"
+        />
+      ) : (
+        <div className={board ? "head is-client-board" : "head"}>
+          {board ? (
+            <div className="client-board-title">
+              <h1>{title}</h1>
+              <span className="count">{count}</span>
+            </div>
+          ) : (
+            <>
+              <h1>{title}</h1>
+              <span className="count">{count}</span>
+            </>
+          )}
+          {isRevision && selected.length > 0 ? (
+            <div className="client-review-actions">
+              <button
+                type="button"
+                className="btn ghost compact"
+                disabled={selected.length !== 1}
+                onClick={openSelectedForApproval}
+              >
+                Completar ficha
+              </button>
+              {canApprove ? (
+                <>
+                  <button type="button" className="btn primary compact" onClick={approveSelected}>
+                    Aprobar
+                  </button>
+                  <button type="button" className="btn ghost compact" onClick={rejectSelected}>
+                    Rechazar
+                  </button>
+                </>
+              ) : null}
+            </div>
+          ) : null}
+          {board ? (
+            <input
+              className="client-board-search"
+              value={boardQuery}
+              placeholder="Buscar"
+              aria-label="Buscar en las cuatro rutas"
+              onChange={(event) => setBoardQuery(event.target.value)}
+            />
+          ) : (
+            <>
+              <div className="grow" />
+              <label className="page-size">
+                Ver{" "}
+                <select defaultValue="25">
+                  <option>25</option>
+                  <option>50</option>
+                </select>
+              </label>
+            </>
+          )}
+          <button className="plus" title="Crear" onClick={onCreate}>
+            <PlusIcon />
+          </button>
+        </div>
+      )}
 
       {routeNames.length > 0 ? (
         <>

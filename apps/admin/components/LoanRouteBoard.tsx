@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { PlusIcon } from "@/components/icons";
 import { clientsOnRouteSorted, compareRouteNames, sameRoute } from "@/lib/client-route-order";
 import {
+  RouteBoardPhoneHead,
   RouteBoardPins,
   usePhoneLayout,
   useRouteBoardPin,
@@ -134,25 +135,42 @@ export function LoanRouteBoard({
 
   if (showWithoutLoan) {
     return (
-      <section className="panel loan-route-board is-sin-prestamo">
-        <div className="head is-client-board">
-          <div className="client-board-title">
-            <h1>{title}</h1>
-            <span className="count">{freeTotal}</span>
-          </div>
-          <input
-            className="client-board-search"
-            value={freeQuery}
-            placeholder="Buscar"
-            aria-label="Buscar sin préstamos"
-            onChange={(event) => setFreeQuery(event.target.value)}
+      <section
+        className={
+          isPhone
+            ? "panel loan-route-board is-sin-prestamo is-phone-route-panel"
+            : "panel loan-route-board is-sin-prestamo"
+        }
+      >
+        {isPhone ? (
+          <RouteBoardPhoneHead
+            title={title}
+            count={freeTotal}
+            query={freeQuery}
+            onQueryChange={setFreeQuery}
+            onCreate={onCreate}
+            searchLabel="Buscar sin préstamo"
           />
-          {onCreate ? (
-            <button className="plus" title="Crear" onClick={onCreate}>
-              <PlusIcon />
-            </button>
-          ) : null}
-        </div>
+        ) : (
+          <div className="head is-client-board">
+            <div className="client-board-title">
+              <h1>{title}</h1>
+              <span className="count">{freeTotal}</span>
+            </div>
+            <input
+              className="client-board-search"
+              value={freeQuery}
+              placeholder="Buscar"
+              aria-label="Buscar sin préstamos"
+              onChange={(event) => setFreeQuery(event.target.value)}
+            />
+            {onCreate ? (
+              <button className="plus" title="Crear" onClick={onCreate}>
+                <PlusIcon />
+              </button>
+            ) : null}
+          </div>
+        )}
         {isPhone ? (
           <RouteBoardPins
             routes={freeRouteNames}
@@ -215,25 +233,38 @@ export function LoanRouteBoard({
   }
 
   return (
-    <section className="panel loan-route-board">
-      <div className="head is-client-board">
-        <div className="client-board-title">
-          <h1>{title}</h1>
-          <span className="count">{current.length}</span>
-        </div>
-        <input
-          className="client-board-search"
-          value={query}
-          placeholder="Buscar"
-          aria-label="Buscar en las cuatro rutas"
-          onChange={(event) => setQuery(event.target.value)}
+    <section
+      className={isPhone ? "panel loan-route-board is-phone-route-panel" : "panel loan-route-board"}
+    >
+      {isPhone ? (
+        <RouteBoardPhoneHead
+          title={title}
+          count={current.length}
+          query={query}
+          onQueryChange={setQuery}
+          onCreate={onCreate}
+          searchLabel="Buscar préstamo"
         />
-        {onCreate ? (
-          <button className="plus" title="Crear" onClick={onCreate}>
-            <PlusIcon />
-          </button>
-        ) : null}
-      </div>
+      ) : (
+        <div className="head is-client-board">
+          <div className="client-board-title">
+            <h1>{title}</h1>
+            <span className="count">{current.length}</span>
+          </div>
+          <input
+            className="client-board-search"
+            value={query}
+            placeholder="Buscar"
+            aria-label="Buscar en las cuatro rutas"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          {onCreate ? (
+            <button className="plus" title="Crear" onClick={onCreate}>
+              <PlusIcon />
+            </button>
+          ) : null}
+        </div>
+      )}
       {isPhone ? (
         <RouteBoardPins
           routes={boardRouteNames}
