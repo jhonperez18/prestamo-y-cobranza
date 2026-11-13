@@ -6,7 +6,7 @@ import { previousCalendarIso } from "@/lib/collector-day-auto-close";
 import { previousMonthLastDayIso } from "@/lib/month-route-carry";
 import {
   getCloudChainMOpening,
-  refreshCloudChainMOpening,
+  refreshCloudChainMOpenings,
 } from "@/lib/cloud-chain-m-opening";
 import { refreshCloudDayCashFigure } from "@/lib/cloud-day-cash-figure";
 import { getCloudRouteOwnBox } from "@/lib/cloud-route-own-box";
@@ -163,8 +163,8 @@ export function useChainMOpening(
       setSettled(true);
     }
     const load = async () => {
-      // Primero solo Inicial M (chain_m_opening). day_cash_figure no debe frenar el paint.
-      await Promise.all(refs.map((ref) => refreshCloudChainMOpening(ref, today)));
+      // Un viaje: Inicial M de todos. day_cash_figure no frena el paint.
+      await refreshCloudChainMOpenings(refs, today);
       if (!alive) return;
       if (warmReady(refs)) {
         setSettled(true);

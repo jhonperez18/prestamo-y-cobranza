@@ -78,18 +78,63 @@ export function rememberCloudChainMOpening(row: CloudChainMOpening) {
   writePersisted(key, row);
 }
 
+function rememberFromBody(
+  ref: string,
+  date: string,
+  body: {
+    ready?: boolean;
+    opening?: number | null;
+    error?: string;
+    missingDay?: string;
+    priorCieRef?: string;
+    priorCieDate?: string;
+  },
+): CloudChainMOpening {
+  const row: CloudChainMOpening = {
+    collectorRef: ref,
+    date,
+    ready: Boolean(body.ready),
+    opening: body.ready && body.opening != null ? Math.trunc(Number(body.opening)) : null,
+    error: body.error,
+    missingDay: body.missingDay,
+    priorCieRef: body.priorCieRef,
+    priorCieDate: body.priorCieDate,
+    fetchedAt: new Date().toISOString(),
+  };
+  rememberCloudChainMOpening(row);
+  return row;
+}
+
 /** Baja el Inicial M de la base y lo guarda para la planilla + primer paint. */
 export async function refreshCloudChainMOpening(
   collectorRef: string,
   date: string,
 ): Promise<CloudChainMOpening | null> {
-  const ref = collectorRef.trim();
-  if (!ref || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const rows = await refreshCloudChainMOpenings([collectorRef], date);
+  return rows[0] ?? null;
+}
+
+/**
+ * Un solo viaje: Inicial M de varios cobradores (INICIO M/T).
+ * Disco del servidor primero; no inventa cifra.
+ */
+export async function refreshCloudChainMOpenings(
+  collectorRefs: readonly string[],
+  date: string,
+): Promise<CloudChainMOpening[]> {
+  const refs = [
+    ...new Set(collectorRefs.map((ref) => ref.trim()).filter(Boolean)),
+  ];
+  if (refs.length === 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
   try {
-    const res = await fetch(
-      `/api/ops/chain-m-opening?collectorRef=${encodeURIComponent(ref)}&date=${encodeURIComponent(date)}`,
-      { cache: "no-store", signal: AbortSignal.timeout(8_000) },
-    );
+    const qs =
+      refs.length === 1
+        ? `collectorRef=${encodeURIComponent(refs[0])}&date=${encodeURIComponent(date)}`
+        : `collectorRefs=${encodeURIComponent(refs.join(","))}&date=${encodeURIComponent(date)}`;
+    const res = await fetch(`/api/ops/chain-m-opening?${qs}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(8_000),
+    });
     const body = (await res.json()) as {
       ok?: boolean;
       ready?: boolean;
@@ -98,23 +143,32 @@ export async function refreshCloudChainMOpening(
       missingDay?: string;
       priorCieRef?: string;
       priorCieDate?: string;
+      rows?: Array<{
+        collectorRef?: string;
+        ok?: boolean;
+        ready?: boolean;
+        opening?: number | null;
+        error?: string;
+        missingDay?: string;
+        priorCieRef?: string;
+        priorCieDate?: string;
+      }>;
     };
-    if (!body || body.ok !== true) return null;
-    const row: CloudChainMOpening = {
-      collectorRef: ref,
-      date,
-      ready: Boolean(body.ready),
-      opening: body.ready && body.opening != null ? Math.trunc(Number(body.opening)) : null,
-      error: body.error,
-      missingDay: body.missingDay,
-      priorCieRef: body.priorCieRef,
-      priorCieDate: body.priorCieDate,
-      fetchedAt: new Date().toISOString(),
-    };
-    rememberCloudChainMOpening(row);
-    return row;
+    if (!body || body.ok !== true) return [];
+
+    if (refs.length === 1) {
+      return [rememberFromBody(refs[0], date, body)];
+    }
+
+    const out: CloudChainMOpening[] = [];
+    for (const piece of body.rows || []) {
+      const ref = String(piece.collectorRef || "").trim();
+      if (!ref || piece.ok !== true) continue;
+      out.push(rememberFromBody(ref, date, piece));
+    }
+    return out;
   } catch (error) {
-    console.error("refreshCloudChainMOpening", error);
-    return null;
+    console.error("refreshCloudChainMOpenings", error);
+    return [];
   }
 }

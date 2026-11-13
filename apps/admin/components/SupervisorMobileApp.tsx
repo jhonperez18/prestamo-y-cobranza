@@ -503,10 +503,15 @@ type RouteLiquidacion = {
   cashLoansToday: DayLoanDisbursementRow[];
   enCaja: number;
   /**
-   * Inicial M/T aún no llegó de la base: no pintar CIE local fantasma.
-   * La tarjeta muestra «…» en Inicial / caja.
+   * Inicial / Caja aún no llegaron de la base: «…» (no CIE local fantasma).
+   * Cobrado / Préstamo / Gasto del día no dependen de esto en M/T.
    */
   figuresPending?: boolean;
+  /**
+   * A/N sin route_own_box: Cobrado / Préstamo / Gasto también en «…»
+   * (vienen de la misma caja de la nube).
+   */
+  metricsPending?: boolean;
   /** A/N vivo sin route_own_box: cifra local + badge offline. */
   cashUnsynced?: boolean;
   closed: boolean;
@@ -675,15 +680,15 @@ function RouteBoardCard({
       </div>
       <div>
         <span>Cobrado</span>
-        <b>{row.figuresPending ? "…" : money(row.cobradoHoy, { symbol: false })}</b>
+        <b>{row.metricsPending ? "…" : money(row.cobradoHoy, { symbol: false })}</b>
       </div>
       <div className="is-metric-prestamo">
         <span>Préstamo</span>
-        <b>{row.figuresPending ? "…" : money(row.prestamosHoy, { symbol: false })}</b>
+        <b>{row.metricsPending ? "…" : money(row.prestamosHoy, { symbol: false })}</b>
       </div>
       <div>
         <span>Gasto</span>
-        <b>{row.figuresPending ? "…" : money(row.gastosHoy, { symbol: false })}</b>
+        <b>{row.metricsPending ? "…" : money(row.gastosHoy, { symbol: false })}</b>
       </div>
     </div>
   );
@@ -2425,11 +2430,16 @@ export function SupervisorMobileApp({
         cashLoansToday,
         enCaja,
         // A/N: no pintar caja local antes del primer route_own_box (parpadeo offline → nube).
+        // M/T: solo Inicial/Caja esperan chain_m_opening; el movimiento del día ya está.
         figuresPending:
           holdLocalCie ||
           (Boolean(independentDay?.unsynced) &&
             ((sameRoute(route.routeName, "A") && !aOwnBoxSettled) ||
               (sameRoute(route.routeName, "N") && !nOwnBoxSettled))),
+        metricsPending:
+          Boolean(independentDay?.unsynced) &&
+          ((sameRoute(route.routeName, "A") && !aOwnBoxSettled) ||
+            (sameRoute(route.routeName, "N") && !nOwnBoxSettled)),
         cashUnsynced: Boolean(independentDay?.unsynced),
         closed,
         newLoans,
@@ -2460,7 +2470,12 @@ export function SupervisorMobileApp({
           r.collectorRef === row.collectorRef && isPlanillaCashChainPrimary(r.routeName),
       );
       if (mRow?.figuresPending) {
-        return { ...row, figuresPending: true, saldoInicial: 0, enCaja: 0 };
+        return {
+          ...row,
+          figuresPending: true,
+          saldoInicial: 0,
+          enCaja: 0,
+        };
       }
       const mFinal = mFinalByCollector.get(row.collectorRef);
       if (mFinal == null || !Number.isFinite(mFinal)) return row;
