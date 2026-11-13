@@ -1,8 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { PlusIcon } from "@/components/icons";
 import { clientsOnRouteSorted, compareRouteNames, sameRoute } from "@/lib/client-route-order";
+import {
+  RouteBoardPins,
+  usePhoneLayout,
+  useRouteBoardPin,
+} from "@/components/route-board-phone";
 import { loanIsClosedHistory, loanRenewalOf } from "@/lib/loan-renewal-marks";
 import { isLoanActive, money, type ClientRow, type LoanRow } from "@/lib/mock-data";
 
@@ -88,24 +93,44 @@ export function LoanRouteBoard({
 }) {
   const [query, setQuery] = useState("");
   const [freeQuery, setFreeQuery] = useState("");
+  const isPhone = usePhoneLayout();
   const q = query.trim().toLowerCase();
   const freeQ = freeQuery.trim().toLowerCase();
-  const current = vigenteLoans(loans);
-  const withLoan = new Set(current.map((loan) => loan.clientRef.trim()).filter(Boolean));
-  const freeRoutes = [...new Set(routeNames.map((name) => name.trim()).filter(Boolean))]
-    .sort(compareRouteNames)
-    .map((name) => ({
-      name,
-      rows: clientsOnRouteSorted(clients, name).filter((client) => !withLoan.has(client.ref)),
-    }));
+  const current = useMemo(() => vigenteLoans(loans), [loans]);
+  const freeRoutes = useMemo(() => {
+    const withLoan = new Set(current.map((loan) => loan.clientRef.trim()).filter(Boolean));
+    return [...new Set(routeNames.map((name) => name.trim()).filter(Boolean))]
+      .sort(compareRouteNames)
+      .map((name) => ({
+        name,
+        rows: clientsOnRouteSorted(clients, name).filter((client) => !withLoan.has(client.ref)),
+      }));
+  }, [routeNames, clients, current]);
   const freeTotal = freeRoutes.reduce((sum, route) => sum + route.rows.length, 0);
-  const names = [...new Set([...routeNames, ...current.map((loan) => routeOf(loan, clients))])]
-    .map((name) => name.trim())
-    .filter(Boolean)
-    .sort(compareRouteNames);
+  const freeRouteNames = useMemo(() => freeRoutes.map((route) => route.name), [freeRoutes]);
+  const [freePin, setFreePin] = useRouteBoardPin(freeRouteNames);
+  const visibleFreeRoutes =
+    isPhone && freePin
+      ? freeRoutes.filter((route) => sameRoute(route.name, freePin))
+      : freeRoutes;
+  const boardRouteNames = useMemo(() => {
+    const names = [...new Set([...routeNames, ...current.map((loan) => routeOf(loan, clients))])]
+      .map((name) => name.trim())
+      .filter(Boolean)
+      .sort(compareRouteNames);
+    const hasLoose = current.some(
+      (loan) => !names.some((name) => sameRoute(routeOf(loan, clients), name)),
+    );
+    return [...names, ...(hasLoose ? ["Sin ruta"] : [])];
+  }, [routeNames, current, clients]);
   const loose = current.filter(
-    (loan) => !names.some((name) => sameRoute(routeOf(loan, clients), name)),
+    (loan) => !boardRouteNames.some((name) => name !== "Sin ruta" && sameRoute(routeOf(loan, clients), name)),
   );
+  const [loanPin, setLoanPin] = useRouteBoardPin(boardRouteNames);
+  const visibleBoardRoutes =
+    isPhone && loanPin
+      ? boardRouteNames.filter((name) => sameRoute(name, loanPin))
+      : boardRouteNames;
 
   if (showWithoutLoan) {
     return (
@@ -128,8 +153,16 @@ export function LoanRouteBoard({
             </button>
           ) : null}
         </div>
+        {isPhone ? (
+          <RouteBoardPins
+            routes={freeRouteNames}
+            active={freePin}
+            onPick={setFreePin}
+            countOf={(name) => freeRoutes.find((route) => sameRoute(route.name, name))?.rows.length ?? 0}
+          />
+        ) : null}
         <div className="client-route-board">
-          {freeRoutes.map((route) => {
+          {visibleFreeRoutes.map((route) => {
             const list = freeQ
               ? route.rows.filter((client) => {
                   const hay = `${client.name} ${client.lastName} ${client.document ?? ""}`.toLowerCase();
@@ -139,7 +172,7 @@ export function LoanRouteBoard({
             return (
               <section key={route.name} className="client-route-col">
                 <div className="client-route-col-head">
-                  <span className="client-route-tab">
+                  <span className={isPhone ? "client-route-tab on" : "client-route-tab"}>
                     Ruta {route.name} <strong>{route.rows.length}</strong>
                   </span>
                 </div>
@@ -201,8 +234,19 @@ export function LoanRouteBoard({
           </button>
         ) : null}
       </div>
+      {isPhone ? (
+        <RouteBoardPins
+          routes={boardRouteNames}
+          active={loanPin}
+          onPick={setLoanPin}
+          countOf={(name) => {
+            if (name === "Sin ruta") return loose.length;
+            return current.filter((loan) => sameRoute(routeOf(loan, clients), name)).length;
+          }}
+        />
+      ) : null}
       <div className="client-route-board">
-        {[...names, ...(loose.length ? ["Sin ruta"] : [])].map((name) => {
+        {visibleBoardRoutes.map((name) => {
           const onRoute =
             name === "Sin ruta"
               ? loose
@@ -221,7 +265,7 @@ export function LoanRouteBoard({
           return (
             <section key={name} className="client-route-col">
               <div className="client-route-col-head">
-                <span className="client-route-tab">
+                <span className={isPhone ? "client-route-tab on" : "client-route-tab"}>
                   {name === "Sin ruta" ? "Sin ruta" : `Ruta ${name}`} <strong>{onRoute.length}</strong>
                 </span>
                 <strong className="loan-route-sheet-total">{money(saldoTotal)}</strong>

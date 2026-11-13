@@ -11501,12 +11501,28 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .client-route-pins {
+      display: none;
+    }
+    .shell.is-phone-layout .client-route-pins {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 0 8px 10px;
+      align-items: center;
+    }
+    .shell.is-phone-layout .client-route-pins .client-route-tab {
+      cursor: pointer;
+      border: 1px solid #c5d4cc;
+      background: #fff;
+    }
     .shell.is-phone-layout .client-route-board {
       grid-template-columns: 1fr;
       margin-right: 0;
     }
+    /* Una ruta a la vez: lista completa, sin cajón de 70vh a medias. */
     .shell.is-phone-layout .client-route-col {
-      max-height: 70vh;
+      max-height: none;
     }
     .shell.is-phone-layout .head.is-client-board {
       grid-template-columns: 1fr auto;
