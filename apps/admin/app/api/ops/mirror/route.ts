@@ -27,6 +27,11 @@ import { isPlanillaCashCloseRef } from "@/lib/planilla-cash-chain";
 import { callSealDayClose } from "@/lib/server-seal-day-close";
 import { isVirginWriteLocked, virginWriteLockPayload } from "@/lib/virgin-lock";
 import { jsonNoStore } from "@/lib/api-no-store";
+import {
+  catalogOriginBlockedPayload,
+  catalogWriteGateFromRequest,
+  isCatalogOpsMirrorKind,
+} from "@/lib/catalog-write-guard";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -167,15 +172,38 @@ async function safeMirrorItem(item: MirrorItem): Promise<ItemOutcome> {
 
 export async function POST(request: Request) {
   try {
+    const catalogGate = catalogWriteGateFromRequest(request);
     const body = (await request.json()) as Body;
+
+    const guardCatalog = (item: MirrorItem): ItemOutcome | null => {
+      if (!isCatalogOpsMirrorKind(item.kind)) return null;
+      if (catalogGate.ok) return null;
+      return {
+        status: 403,
+        json: catalogOriginBlockedPayload(catalogGate),
+      };
+    };
+
     if (body.kind === "batch") {
       const items = Array.isArray(body.items) ? body.items : [];
       if (!items.length || items.length > OPS_MIRROR_BATCH_MAX) {
         return jsonNoStore({ ok: false, error: "bad_batch_size" }, { status: 400 });
       }
       const results: Record<string, unknown>[] = [];
-      for (const item of items) results.push((await safeMirrorItem(item)).json);
+      for (const item of items) {
+        const blocked = guardCatalog(item);
+        if (blocked) {
+          results.push(blocked.json);
+          continue;
+        }
+        results.push((await safeMirrorItem(item)).json);
+      }
       return jsonNoStore({ ok: true, results });
+    }
+
+    const blocked = guardCatalog(body);
+    if (blocked) {
+      return jsonNoStore(blocked.json, { status: blocked.status });
     }
     const outcome = await mirrorItem(body);
     return jsonNoStore(outcome.json, { status: outcome.status });

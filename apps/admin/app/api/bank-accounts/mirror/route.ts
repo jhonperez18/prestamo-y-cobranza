@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import { mirrorBankAccountToSupabase } from "@/lib/supabase/bank-accounts-mirror";
 import type { BankAccount } from "@/lib/bank";
+import {
+  catalogOriginBlockedPayload,
+  catalogWriteGateFromRequest,
+} from "@/lib/catalog-write-guard";
 
 export async function POST(request: Request) {
   try {
+    const catalogGate = catalogWriteGateFromRequest(request);
+    if (!catalogGate.ok) {
+      return NextResponse.json(catalogOriginBlockedPayload(catalogGate), { status: 403 });
+    }
+
     const body = (await request.json()) as { account?: BankAccount };
     if (!body?.account?.ref) {
       return NextResponse.json({ ok: false, error: "missing_account" }, { status: 400 });

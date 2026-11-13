@@ -10,6 +10,10 @@ import {
   seedUsersCatalogCache,
 } from "@/lib/server-users-catalog";
 import type { UserRow } from "@/lib/mock-data";
+import {
+  catalogOriginBlockedPayload,
+  catalogWriteGateFromRequest,
+} from "@/lib/catalog-write-guard";
 
 async function refreshLoginCache(touched?: UserRow | null) {
   try {
@@ -39,7 +43,13 @@ async function refreshLoginCache(touched?: UserRow | null) {
 
 export async function POST(request: Request) {
   // Catálogo de personas: NUNCA bloquear por candado virgen de plata.
+  // Sí bloquear orígenes ajenos (anti-cruce 3010 / otra nube con claves equivocadas).
   try {
+    const catalogGate = catalogWriteGateFromRequest(request);
+    if (!catalogGate.ok) {
+      return NextResponse.json(catalogOriginBlockedPayload(catalogGate), { status: 403 });
+    }
+
     const body = (await request.json()) as {
       kind?: "upsert" | "delete";
       user?: UserRow;
