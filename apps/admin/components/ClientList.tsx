@@ -424,7 +424,7 @@ export function ClientList({
               countOf={(name) => routeCounts.get(name) ?? 0}
             />
           ) : null}
-          <div className="client-route-board">
+          <div className={isPhone ? "client-route-board is-phone-single" : "client-route-board"}>
             {visibleRouteNames.map((name) => {
               const list = rowsOfRoute(name);
               return (

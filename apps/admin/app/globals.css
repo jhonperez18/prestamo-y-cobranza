@@ -11505,13 +11505,108 @@
       display: none;
     }
     /*
-     * Celular · tablero por ruta:
-     * - pines M T A N a ancho completo (siempre visibles)
-     * - hoja a altura natural (scroll de página, no cajón a medias)
-     * - overflow-y visible: el .table-wrap phone genérico usa hidden y cortaba la lista
+     * Celular · una sola hoja a ANCHO COMPLETO.
+     * Clase .is-phone-single la pone React (no depende solo de .shell.is-phone-layout):
+     * si la grilla PC de 4 cols queda activa con 1 hija, la hoja sale a 1/4–1/2.
      */
+    .client-route-board.is-phone-single {
+      display: block !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      box-sizing: border-box !important;
+      grid-template-columns: none !important;
+    }
+    .client-route-board.is-phone-single > .client-route-col {
+      display: flex !important;
+      flex-direction: column !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      height: auto !important;
+      max-height: none !important;
+      min-height: calc(100dvh - 160px);
+      margin: 0 !important;
+      border: 0 !important;
+      border-top: 1px solid #d7e4dc !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      overflow: visible !important;
+      box-sizing: border-box !important;
+      background: #fff;
+    }
+    .client-route-board.is-phone-single .client-route-col-top,
+    .client-route-board.is-phone-single .client-route-col-head {
+      display: none !important;
+    }
+    .client-route-board.is-phone-single .table-wrap {
+      display: block !important;
+      flex: none !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      max-height: none !important;
+      margin: 0 !important;
+      overflow-x: hidden !important;
+      overflow-y: visible !important;
+      border-radius: 0 !important;
+      box-sizing: border-box !important;
+    }
+    .client-route-board.is-phone-single table.list-grid {
+      width: 100% !important;
+      min-width: 100% !important;
+      max-width: 100% !important;
+      table-layout: fixed !important;
+      box-sizing: border-box !important;
+    }
+    .client-route-board.is-phone-single table.list-grid th,
+    .client-route-board.is-phone-single table.list-grid td {
+      box-sizing: border-box !important;
+    }
+    .panel.is-phone-route-panel .client-route-pins {
+      display: grid !important;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      width: 100% !important;
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+      padding: 4px 12px 10px;
+      margin: 0;
+    }
+    .panel.is-phone-route-panel .client-route-pins.is-pins-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .panel.is-phone-route-panel .client-route-pins.is-pins-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .panel.is-phone-route-panel .client-route-pins.is-pins-1 {
+      grid-template-columns: 1fr;
+    }
+    .panel.is-phone-route-panel .client-route-pins.is-pins-5 {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+    .panel.is-phone-route-panel {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+      box-sizing: border-box !important;
+      overflow-x: hidden !important;
+    }
+    /* Rompe el padding 10px del workspace: hoja de borde a borde. */
+    .shell.is-phone-layout .panel.is-phone-route-panel {
+      width: calc(100% + 20px) !important;
+      max-width: none !important;
+      margin-left: -10px !important;
+      margin-right: -10px !important;
+      border-radius: 0 !important;
+    }
     /* Encabezado celular: título + total | (+) + lupa — buscar solo al abrir. */
-    .shell.is-phone-layout .head.is-phone-board-head {
+    .shell.is-phone-layout .head.is-phone-board-head,
+    .panel.is-phone-route-panel .head.is-phone-board-head {
       display: grid !important;
       grid-template-columns: minmax(0, 1fr) auto !important;
       align-items: center;
@@ -11521,7 +11616,8 @@
       padding: 10px 12px 8px !important;
       margin: 0;
     }
-    .shell.is-phone-layout .head.is-phone-board-head .client-board-title {
+    .shell.is-phone-layout .head.is-phone-board-head .client-board-title,
+    .panel.is-phone-route-panel .head.is-phone-board-head .client-board-title {
       display: flex;
       align-items: center;
       gap: 8px;
@@ -11529,23 +11625,27 @@
       justify-self: start;
       padding: 0;
     }
-    .shell.is-phone-layout .head.is-phone-board-head .client-board-title h1 {
+    .shell.is-phone-layout .head.is-phone-board-head .client-board-title h1,
+    .panel.is-phone-route-panel .head.is-phone-board-head .client-board-title h1 {
       margin: 0;
       font-size: 20px !important;
       line-height: 1.15;
       white-space: nowrap;
     }
-    .shell.is-phone-layout .head.is-phone-board-head .count {
+    .shell.is-phone-layout .head.is-phone-board-head .count,
+    .panel.is-phone-route-panel .head.is-phone-board-head .count {
       flex: 0 0 auto;
       font-size: 14px;
     }
-    .shell.is-phone-layout .client-board-actions {
+    .shell.is-phone-layout .client-board-actions,
+    .panel.is-phone-route-panel .client-board-actions {
       display: inline-flex;
       align-items: center;
       gap: 8px;
       justify-self: end;
     }
-    .shell.is-phone-layout .client-board-search-toggle {
+    .shell.is-phone-layout .client-board-search-toggle,
+    .panel.is-phone-route-panel .client-board-search-toggle {
       width: 38px;
       height: 38px;
       border-radius: 4px;
@@ -11557,18 +11657,37 @@
       padding: 0;
       flex: 0 0 auto;
     }
-    .shell.is-phone-layout .client-board-search-toggle.on {
+    .shell.is-phone-layout .client-board-search-toggle.on,
+    .panel.is-phone-route-panel .client-board-search-toggle.on {
       background: #0f766e;
       border-color: #0f766e;
       color: #fff;
     }
-    .shell.is-phone-layout .head.is-phone-board-head .client-board-search.is-open {
+    .shell.is-phone-layout .head.is-phone-board-head .client-board-search.is-open,
+    .panel.is-phone-route-panel .head.is-phone-board-head .client-board-search.is-open {
       grid-column: 1 / -1;
       width: 100%;
       max-width: 100%;
       height: 38px;
       box-sizing: border-box;
       justify-self: stretch;
+    }
+    .panel.is-phone-route-panel .client-route-pins .client-route-tab {
+      cursor: pointer;
+      width: 100%;
+      min-width: 0;
+      justify-content: center;
+      box-sizing: border-box;
+      padding: 8px 4px;
+      border-radius: 10px;
+      border: 1px solid #c5d4cc;
+      background: #fff;
+      font-size: 15px !important;
+    }
+    .panel.is-phone-route-panel .client-route-pins .client-route-tab.on {
+      background: #0f766e;
+      border-color: #0f766e;
+      color: #fff;
     }
     .shell.is-phone-layout .panel.is-phone-route-panel {
       display: flex;

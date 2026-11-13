@@ -179,7 +179,7 @@ export function LoanRouteBoard({
             countOf={(name) => freeRoutes.find((route) => sameRoute(route.name, name))?.rows.length ?? 0}
           />
         ) : null}
-        <div className="client-route-board">
+        <div className={isPhone ? "client-route-board is-phone-single" : "client-route-board"}>
           {visibleFreeRoutes.map((route) => {
             const list = freeQ
               ? route.rows.filter((client) => {
@@ -276,7 +276,7 @@ export function LoanRouteBoard({
           }}
         />
       ) : null}
-      <div className="client-route-board">
+      <div className={isPhone ? "client-route-board is-phone-single" : "client-route-board"}>
         {visibleBoardRoutes.map((name) => {
           const onRoute =
             name === "Sin ruta"
