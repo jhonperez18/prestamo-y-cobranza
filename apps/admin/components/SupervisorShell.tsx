@@ -171,6 +171,21 @@ export function SupervisorShell({ session, onLogout }: Props) {
     },
   });
 
+  // Prefetch Inicial M (cadena) al hidratar: INICIO no espera el primer paint del panel.
+  useEffect(() => {
+    if (!hydrated || collectors.length === 0) return;
+    let alive = true;
+    const day = todayIso();
+    const refs = collectors.map((row) => row.ref).filter(Boolean);
+    void import("@/lib/cloud-chain-m-opening").then(({ refreshCloudChainMOpening }) => {
+      if (!alive) return;
+      void Promise.all(refs.map((ref) => refreshCloudChainMOpening(ref, day)));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [hydrated, collectors]);
+
   const applyPlanillaSync = useCallback(
     (next: {
       assignments: typeof dailyAssignments;

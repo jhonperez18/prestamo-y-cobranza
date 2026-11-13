@@ -156,32 +156,33 @@ export function useChainMOpening(
     if (!enabled || !key || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return;
     let alive = true;
     let retryTimer = 0;
+    let retries = 0;
     const refs = key.split(",").filter(Boolean);
     // Caché de sesión con Inicial listo → primer paint ya es el real (sin «…»).
     if (warmReady(refs)) {
       setSettled(true);
     }
     const load = async () => {
-      await Promise.all(
-        refs.flatMap((ref) => [
-          refreshCloudChainMOpening(ref, today),
-          refreshCloudDayCashFigure(ref, today),
-        ]),
-      );
+      // Primero solo Inicial M (chain_m_opening). day_cash_figure no debe frenar el paint.
+      await Promise.all(refs.map((ref) => refreshCloudChainMOpening(ref, today)));
       if (!alive) return;
-      // Solo «settled» con Inicial de la base. Timeout sin ready dejaba pintar
-      // CIE local fantasma (5.428k). Historia 31/10 = estática vía chain_m_opening.
       if (warmReady(refs)) {
         setSettled(true);
         setEpoch((n) => n + 1);
+        // Libro del día en segundo plano (no bloquea «…» → cifra).
+        void Promise.all(refs.map((ref) => refreshCloudDayCashFigure(ref, today))).then(() => {
+          if (alive) setEpoch((n) => n + 1);
+        });
         return;
       }
       setSettled(false);
       setEpoch((n) => n + 1);
-      // Reintento corto: el servidor ya cachea en disco; 8 s dejaba INICIO en «…».
+      if (retries >= 4) return;
+      retries += 1;
+      // Reintento corto: el servidor ya cachea en disco.
       retryTimer = window.setTimeout(() => {
         if (alive) void load();
-      }, 2_000);
+      }, 600);
     };
     void load();
     return () => {
