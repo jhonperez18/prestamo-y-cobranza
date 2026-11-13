@@ -675,15 +675,15 @@ function RouteBoardCard({
       </div>
       <div>
         <span>Cobrado</span>
-        <b>{money(row.cobradoHoy, { symbol: false })}</b>
+        <b>{row.figuresPending ? "…" : money(row.cobradoHoy, { symbol: false })}</b>
       </div>
       <div className="is-metric-prestamo">
         <span>Préstamo</span>
-        <b>{money(row.prestamosHoy, { symbol: false })}</b>
+        <b>{row.figuresPending ? "…" : money(row.prestamosHoy, { symbol: false })}</b>
       </div>
       <div>
         <span>Gasto</span>
-        <b>{money(row.gastosHoy, { symbol: false })}</b>
+        <b>{row.figuresPending ? "…" : money(row.gastosHoy, { symbol: false })}</b>
       </div>
     </div>
   );
@@ -1989,6 +1989,8 @@ export function SupervisorMobileApp({
   const nOwnBox = useRouteNAnchor(true, nCollectorRefs, today);
   const aAnchors = aOwnBox.anchors;
   const nAnchors = nOwnBox.anchors;
+  const aOwnBoxSettled = aOwnBox.settled;
+  const nOwnBoxSettled = nOwnBox.settled;
   const routeOwnBoxEpoch = aOwnBox.epoch + nOwnBox.epoch;
   const chainCollectorRefs = useMemo(() => {
     const refs = new Set<string>();
@@ -2422,7 +2424,12 @@ export function SupervisorMobileApp({
         prestamosCajaHoy,
         cashLoansToday,
         enCaja,
-        figuresPending: holdLocalCie,
+        // A/N: no pintar caja local antes del primer route_own_box (parpadeo offline → nube).
+        figuresPending:
+          holdLocalCie ||
+          (Boolean(independentDay?.unsynced) &&
+            ((sameRoute(route.routeName, "A") && !aOwnBoxSettled) ||
+              (sameRoute(route.routeName, "N") && !nOwnBoxSettled))),
         cashUnsynced: Boolean(independentDay?.unsynced),
         closed,
         newLoans,
@@ -2481,6 +2488,8 @@ export function SupervisorMobileApp({
     ledgerByCollector,
     aAnchors,
     nAnchors,
+    aOwnBoxSettled,
+    nOwnBoxSettled,
     routeOwnBoxEpoch,
     chainMOpeningEpoch,
     dayCashFigureEpoch,
@@ -3093,27 +3102,24 @@ export function SupervisorMobileApp({
   const bancoSaldo = poolVisibleCloud.banco;
 
   /** INICIO pie: caja viva de T (ya trae M) + caja propia de N + Saldo de Banco. */
-  const inicioTotalPending = useMemo(
-    () =>
-      liquidaciones.some(
-        (row) =>
-          row.figuresPending &&
-          (isPlanillaCashChainPrimary(row.routeName) ||
-            isPlanillaCashChainSecondary(row.routeName)),
-      ),
-    [liquidaciones],
-  );
+  const inicioTotalPending = useMemo(() => {
+    if (bancoSaldo == null || !chainMOpeningSettled) return true;
+    return liquidaciones.some(
+      (row) =>
+        row.figuresPending &&
+        (isPlanillaCashChainSecondary(row.routeName) || sameRoute(row.routeName, "N")),
+    );
+  }, [liquidaciones, bancoSaldo, chainMOpeningSettled]);
   const inicioTotalConT = useMemo(() => {
-    // Banco ya llegó: pintar el pie. No esperar Inicial M (antes dejaba «…» 10–12 s).
+    // Una sola pintura: no sumar cajas en 0 mientras falte Inicial/caja de la base.
+    if (inicioTotalPending) return null;
     if (bancoSaldo == null) return null;
     const routeT = liquidaciones.find((row) =>
       isPlanillaCashChainSecondary(row.routeName),
     );
     const routeN = liquidaciones.find((row) => sameRoute(row.routeName, "N"));
-    const cajaT = routeT?.figuresPending ? 0 : (routeT?.enCaja ?? 0);
-    const cajaN = routeN?.figuresPending ? 0 : (routeN?.enCaja ?? 0);
-    return cajaT + cajaN + bancoSaldo;
-  }, [liquidaciones, bancoSaldo]);
+    return (routeT?.enCaja ?? 0) + (routeN?.enCaja ?? 0) + bancoSaldo;
+  }, [liquidaciones, bancoSaldo, inicioTotalPending]);
   const bancoRutaHistoryDays = useMemo(
     () =>
       bancoRegistroRoute && poolBookPayments
@@ -9365,13 +9371,13 @@ export function SupervisorMobileApp({
                 className="supervisor-caja-hero is-row is-money-lg supervisor-inicio-total"
                 title="Saldo ruta T + ruta N + Banco"
                 aria-label={
-                  !chainMOpeningSettled || inicioTotalConT == null
-                    ? "Cargando total de cajas"
+                  inicioTotalPending || inicioTotalConT == null
+                    ? "Cargando saldos"
                     : `Total ruta T más ruta N más Banco: ${money(inicioTotalConT, { symbol: false })}`
                 }
               >
                 <b>
-                  {!chainMOpeningSettled || inicioTotalConT == null
+                  {inicioTotalPending || inicioTotalConT == null
                     ? "…"
                     : money(inicioTotalConT, { symbol: false })}
                 </b>

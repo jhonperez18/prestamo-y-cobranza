@@ -271,6 +271,11 @@ export type RouteOwnAnchorState = {
   anchors: Record<string, RouteOwnAnchor>;
   /** Sube cuando llegó route_own_box (ayer o hoy) → re-pintar INICIO. */
   epoch: number;
+  /**
+   * true tras el primer intento de bajada (ok o vacío).
+   * Mientras sea false, INICIO no pinta caja A/N local (evita parpadeo offline → nube).
+   */
+  settled: boolean;
 };
 
 /**
@@ -309,6 +314,19 @@ export function useRouteOwnAnchor(
     return next;
   });
   const [epoch, setEpoch] = useState(0);
+  const [settled, setSettled] = useState(() => {
+    if (!enabled || !key || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return false;
+    const yesterday = previousCalendarIso(today);
+    const refs = key.split(",").filter(Boolean);
+    if (!refs.length) return true;
+    // Warm de hoy o ancla previa → primer paint ya puede ser firme.
+    return refs.every((collectorRef) => {
+      if (getCloudRouteOwnBox(collectorRef, today, route)) return true;
+      if (getCloudRouteOwnBox(collectorRef, yesterday, route)) return true;
+      if (monthEnd && getCloudRouteOwnBox(collectorRef, monthEnd, route)) return true;
+      return false;
+    });
+  });
 
   useEffect(() => {
     if (!enabled || !key || !/^\d{4}-\d{2}-\d{2}$/.test(today)) return;
@@ -357,6 +375,7 @@ export function useRouteOwnAnchor(
       );
       if (!alive) return;
       setAnchors(next);
+      setSettled(true);
       setEpoch((n) => n + 1);
     };
     void load();
@@ -365,7 +384,7 @@ export function useRouteOwnAnchor(
     };
   }, [enabled, key, today, route, monthEnd]);
 
-  return { anchors, epoch };
+  return { anchors, epoch, settled };
 }
 
 /** Compat: ancla de A (ayer). */
