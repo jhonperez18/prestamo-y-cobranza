@@ -10836,6 +10836,68 @@
       right: auto !important;
       box-shadow: none !important;
     }
+    /*
+     * DESPUÉS del max-content genérico (debe ganar el cascada):
+     * Clientes 2 cols (# · Nombre) y Préstamos 4 cols = 100 % ancho.
+     */
+    .shell.is-phone-layout .phone-route-sheet,
+    .panel.is-phone-route-panel .phone-route-sheet {
+      display: block !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      box-sizing: border-box !important;
+      overflow: hidden !important;
+      background: #fff;
+    }
+    .shell.is-phone-layout .phone-route-sheet > table.list-grid.phone-route-table,
+    .panel.is-phone-route-panel .phone-route-sheet > table.list-grid.phone-route-table {
+      width: 100% !important;
+      min-width: 100% !important;
+      max-width: 100% !important;
+      table-layout: fixed !important;
+    }
+    .shell.is-phone-layout .phone-route-sheet > table.list-grid.phone-route-table th,
+    .shell.is-phone-layout .phone-route-sheet > table.list-grid.phone-route-table td,
+    .panel.is-phone-route-panel .phone-route-sheet > table.list-grid.phone-route-table th,
+    .panel.is-phone-route-panel .phone-route-sheet > table.list-grid.phone-route-table td {
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+    }
+    .shell.is-phone-layout .phone-route-sheet > table.list-grid.phone-route-table th:first-child,
+    .shell.is-phone-layout .phone-route-sheet > table.list-grid.phone-route-table td:first-child,
+    .panel.is-phone-route-panel .phone-route-sheet > table.list-grid.phone-route-table th:first-child,
+    .panel.is-phone-route-panel .phone-route-sheet > table.list-grid.phone-route-table td:first-child {
+      width: 12% !important;
+      min-width: 44px !important;
+      max-width: 56px !important;
+      text-align: center !important;
+    }
+    .shell.is-phone-layout .phone-route-sheet > table.list-grid.phone-route-table th.is-nombre,
+    .shell.is-phone-layout .phone-route-sheet > table.list-grid.phone-route-table td.is-nombre,
+    .panel.is-phone-route-panel .phone-route-sheet > table.list-grid.phone-route-table th.is-nombre,
+    .panel.is-phone-route-panel .phone-route-sheet > table.list-grid.phone-route-table td.is-nombre {
+      width: auto !important;
+      min-width: 0 !important;
+      text-align: left !important;
+    }
+    .shell.is-phone-layout .loan-route-board .phone-route-sheet > table.list-grid.phone-route-table th:nth-child(3),
+    .shell.is-phone-layout .loan-route-board .phone-route-sheet > table.list-grid.phone-route-table td:nth-child(3),
+    .shell.is-phone-layout .loan-route-board .phone-route-sheet > table.list-grid.phone-route-table th:nth-child(4),
+    .shell.is-phone-layout .loan-route-board .phone-route-sheet > table.list-grid.phone-route-table td:nth-child(4),
+    .panel.is-phone-route-panel.loan-route-board .phone-route-sheet > table.list-grid.phone-route-table th:nth-child(3),
+    .panel.is-phone-route-panel.loan-route-board .phone-route-sheet > table.list-grid.phone-route-table td:nth-child(3),
+    .panel.is-phone-route-panel.loan-route-board .phone-route-sheet > table.list-grid.phone-route-table th:nth-child(4),
+    .panel.is-phone-route-panel.loan-route-board .phone-route-sheet > table.list-grid.phone-route-table td:nth-child(4) {
+      width: 22% !important;
+      min-width: 0 !important;
+      max-width: 28% !important;
+      text-align: right !important;
+    }
     .shell.is-phone-layout table.data th.col-picker-cell,
     .shell.is-phone-layout table.data td.col-picker-cell,
     .shell.is-phone-layout table.list-grid th.col-picker-cell,
