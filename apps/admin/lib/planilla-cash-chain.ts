@@ -69,6 +69,16 @@ export type RouteCashBookDay = {
   prestamos: number;
   /** Cobros de la ruta (efectivo + banco o Nequi). Si falta, el efectivo alcanza. */
   cobrado?: number;
+  /**
+   * Cadena M: mismos campos del RPC `day_cash_figure` (Historial T sin N viajes).
+   * `closing` sigue siendo mClosing (= Inicial T).
+   */
+  dayFinal?: number;
+  cie?: number | null;
+  mClosing?: number;
+  tEfectivo?: number;
+  tPrestamos?: number;
+  tGastos?: number;
 };
 export type RouteCashBook = Map<string, RouteCashBookDay>;
 

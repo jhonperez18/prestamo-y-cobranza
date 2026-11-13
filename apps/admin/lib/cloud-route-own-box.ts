@@ -85,10 +85,20 @@ export function getCloudRouteOwnBox(
   return null;
 }
 
-export function rememberCloudRouteOwnBox(row: CloudRouteOwnBox) {
+export function rememberCloudRouteOwnBox(
+  row: CloudRouteOwnBox,
+  opts?: { silent?: boolean },
+) {
   const key = keyOf(row.collectorRef, row.date, row.route);
   byKey.set(key, row);
   writePersisted(key, row);
+  if (!opts?.silent && typeof window !== "undefined") {
+    window.dispatchEvent(new Event("nexo-route-own-box"));
+  }
+}
+
+/** Un solo timbre tras sembrar un mes (route-cash-book). */
+export function notifyCloudRouteOwnBox() {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("nexo-route-own-box"));
   }

@@ -691,9 +691,23 @@ export function CollectorMobileApp({
   /** Historial = misma hoja activa (Yesid N = N; varias = pin elegido). */
   const historyRoute = shownPlanillaRoute;
 
-  /** Caja propia A / N del cobrador: los días pasados los da el servidor (el celular solo guarda hoy). */
+  /** Caja propia A / N: libro del mes solo al abrir Historial (no en home). */
   const cashBookRoute = planillaRoutePins.find((pin) => isIndependentSaldoRoute(pin)) ?? null;
-  const cashBook = useRouteCashBook(collector.ref, cashBookRoute, `${todayIso()}|${activeDate}`);
+  const cashBookRange = useMemo(() => {
+    if (!historyOnScreen || !cashBookRoute) return null;
+    const period = viewPeriod;
+    const start = `${period}-01`;
+    const fromIso = start >= ROUTE_CASH_BOOK_FROM ? start : ROUTE_CASH_BOOK_FROM;
+    const yesterday = previousCalendarIso(todayIso());
+    const toIso = yesterday < fromIso ? fromIso : yesterday;
+    return { fromIso, toIso };
+  }, [cashBookRoute, historyOnScreen, viewPeriod]);
+  const cashBook = useRouteCashBook(
+    collector.ref,
+    historyOnScreen ? cashBookRoute : null,
+    `${todayIso()}|${activeDate}|hist`,
+    cashBookRange,
+  );
   const cashBookFor = useCallback(
     (route: string | null | undefined) =>
       route && cashBookRoute && sameRoute(route, cashBookRoute) ? cashBook : null,
@@ -2230,51 +2244,9 @@ export function CollectorMobileApp({
   }, [activeDate, closedHistoryDates, dayHistory, openPlanillaDates]);
 
   /**
-   * Historial · T: saldos de la base por día (day_cash_figure).
-   * Sin esto el aparato pinta AJUSTE local viejo (03/11: 527→827 con nube en 859).
+   * Historial · T: saldos de la base vía el mismo libro M (`route-cash-book`
+   * → rememberCloudDayCashFigure). Prohibido N fetches day_cash_figure.
    */
-  const [tHistCloudByDate, setTHistCloudByDate] = useState<
-    Record<string, { cie: number | null; dayFinal: number | null }>
-  >({});
-  useEffect(() => {
-    if (!historyOnScreen || !isPlanillaCashChainSecondary(historyRoute ?? undefined)) return;
-    let alive = true;
-    const today = date ?? todayIso();
-    const dates = [
-      ...new Set(
-        historyVisibleRows
-          .map((row) => normalizeHistoryDate(row.date) || row.date)
-          .filter((day) => day && day < today),
-      ),
-    ].slice(0, 40);
-    if (!dates.length) return;
-    void import("@/lib/cloud-day-cash-figure").then(({ refreshCloudDayCashFigure }) => {
-      void Promise.all(
-        dates.map(async (day) => {
-          const fig = await refreshCloudDayCashFigure(collector.ref, day);
-          if (!fig?.ready) return null;
-          return [
-            day,
-            { cie: fig.cie, dayFinal: fig.dayFinal },
-          ] as const;
-        }),
-      ).then((entries) => {
-        if (!alive) return;
-        const next: Record<string, { cie: number | null; dayFinal: number | null }> = {};
-        for (const entry of entries) {
-          if (entry) next[entry[0]] = entry[1];
-        }
-        if (Object.keys(next).length) {
-          setTHistCloudByDate((prev) => ({ ...prev, ...next }));
-          setDayCashFigureEpoch((n) => n + 1);
-        }
-      });
-    });
-    return () => {
-      alive = false;
-    };
-  }, [collector.ref, date, historyOnScreen, historyRoute, historyVisibleRows]);
-
   /** Historial · T: renglón del cierre + ajuste de saldo del supervisor (solo lectura). */
   const historyRowsWithAdjustment = useMemo(() => {
     const route = historyRoute;
@@ -2304,8 +2276,6 @@ export function CollectorMobileApp({
     }
     return attachCashAdjustments(rows, collector.ref, dayCloses, (day) => {
       const key = normalizeHistoryDate(day) || day;
-      const fromHist = tHistCloudByDate[key];
-      if (fromHist) return fromHist;
       const cloud = getCloudDayCashFigure(collector.ref, key);
       if (!cloud?.ready) return null;
       return { cie: cloud.cie, dayFinal: cloud.dayFinal };
@@ -2318,7 +2288,6 @@ export function CollectorMobileApp({
     dayCloses,
     historyRoute,
     historyVisibleRows,
-    tHistCloudByDate,
     viewPeriod,
   ]);
 
@@ -2344,10 +2313,25 @@ export function CollectorMobileApp({
   const showMInicialColumn = isPlanillaCashChainPrimary(activePlanillaRoute ?? undefined);
   const showOwnInicialColumn = isIndependentSaldoRoute(activePlanillaRoute ?? undefined);
   const showExtractColumns = showMInicialColumn || showTInicialColumn || showOwnInicialColumn;
+  /** Libro M también para Historial T (Inicial T = mClosing; Saldo T = dayFinal). */
+  const mCashBookRoute =
+    historyOnScreen && (showMInicialColumn || showTInicialColumn)
+      ? PLANILLA_CASH_CHAIN_PRIMARY
+      : null;
+  const mCashBookRange = useMemo(() => {
+    if (!mCashBookRoute) return null;
+    const period = viewPeriod;
+    const start = `${period}-01`;
+    const fromIso = start >= ROUTE_CASH_BOOK_FROM ? start : ROUTE_CASH_BOOK_FROM;
+    const yesterday = previousCalendarIso(todayIso());
+    const toIso = yesterday < fromIso ? fromIso : yesterday;
+    return { fromIso, toIso };
+  }, [mCashBookRoute, viewPeriod]);
   const mCashBook = useRouteCashBook(
     collector.ref,
-    showMInicialColumn ? PLANILLA_CASH_CHAIN_PRIMARY : null,
-    `${todayIso()}|${activeDate}`,
+    mCashBookRoute,
+    `${todayIso()}|${activeDate}|m-hist`,
+    mCashBookRange,
   );
   const historyRowsWithInicial = useMemo(() => {
     if (!showMInicialColumn) return null;

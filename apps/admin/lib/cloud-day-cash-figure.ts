@@ -129,13 +129,23 @@ export function getCloudDayCashFigure(
   return null;
 }
 
-export function rememberCloudDayCashFigure(row: CloudDayCashFigure) {
+export function rememberCloudDayCashFigure(
+  row: CloudDayCashFigure,
+  opts?: { silent?: boolean },
+) {
   const normalized = normalizeFigure(row);
   if (!normalized) return;
   const key = keyOf(normalized.collectorRef, normalized.date);
   byKey.set(key, normalized);
   writePersisted(key, normalized);
   // Cobrador y supervisor escuchan y repintan la misma cifra de la base.
+  if (!opts?.silent && typeof window !== "undefined") {
+    window.dispatchEvent(new Event("nexo-day-cash-figure"));
+  }
+}
+
+/** Un solo timbre tras sembrar un mes (route-cash-book). */
+export function notifyCloudDayCashFigure() {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event("nexo-day-cash-figure"));
   }

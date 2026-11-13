@@ -28,7 +28,8 @@ export type RouteCashBookResult =
   | { ok: true; collectorRef: string; route: string; days: RouteCashBookDay[] }
   | { ok: false; error: string };
 
-const RPC_BATCH = 4;
+/** Olas en paralelo: un mes ≈ 4 olas (antes 8). Sin saturar Supabase. */
+const RPC_BATCH = 8;
 const RPC_DAY_MS = 3_500;
 /** Tope duro: un mes calendario (~31) basta para historial; más = app del jefe pegada. */
 const MAX_DAYS = 35;
@@ -139,6 +140,12 @@ async function bookChainPrimary(
       gastos: fig.mGastos,
       prestamos: fig.mPrestamos,
       cobrado: fig.mEfectivo,
+      dayFinal: fig.dayFinal,
+      cie: fig.cie,
+      mClosing: fig.mClosing,
+      tEfectivo: fig.tEfectivo,
+      tPrestamos: fig.tPrestamos,
+      tGastos: fig.tGastos,
     });
   });
   return rows.sort((a, b) => a.date.localeCompare(b.date));

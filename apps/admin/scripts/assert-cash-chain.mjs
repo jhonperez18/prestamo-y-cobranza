@@ -2719,6 +2719,35 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       bancoSrc.includes("poolVisibleCloud.nequi"),
     true,
   );
+  const histSuperSrc = readFileSync(
+    new URL("../components/SupervisorMobileApp.tsx", import.meta.url),
+    "utf8",
+  );
+  const histCollSrc = readFileSync(
+    new URL("../components/CollectorMobileApp.tsx", import.meta.url),
+    "utf8",
+  );
+  const histBookHookSrc = readFileSync(
+    new URL("../lib/use-route-cash-book.ts", import.meta.url),
+    "utf8",
+  );
+  const histBookServerSrc = readFileSync(
+    new URL("../lib/server-route-cash-book.ts", import.meta.url),
+    "utf8",
+  );
+  expect(
+    "Historial: un libro del mes (sin range A/N duplicado ni N×day_cash_figure en T)",
+    !histSuperSrc.includes("refreshCloudRouteOwnBoxRange") &&
+      histBookHookSrc.includes("seedCachesFromBook") &&
+      histBookHookSrc.includes("rememberCloudDayCashFigure") &&
+      histBookHookSrc.includes("rememberCloudRouteOwnBox") &&
+      histBookServerSrc.includes("dayFinal: fig.dayFinal") &&
+      histBookServerSrc.includes("RPC_BATCH = 8") &&
+      !histCollSrc.includes("dates.map(async (day) =>") &&
+      histCollSrc.includes("mCashBookRoute") &&
+      histCollSrc.includes("historyOnScreen ? cashBookRoute : null"),
+    true,
+  );
   const nequiSaldoServerSrc = readFileSync(
     new URL("../lib/server-nequi-saldo.ts", import.meta.url),
     "utf8",

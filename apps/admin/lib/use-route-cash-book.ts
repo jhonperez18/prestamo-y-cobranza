@@ -2,6 +2,14 @@
 
 import { useEffect, useState } from "react";
 import {
+  notifyCloudDayCashFigure,
+  rememberCloudDayCashFigure,
+} from "@/lib/cloud-day-cash-figure";
+import {
+  notifyCloudRouteOwnBox,
+  rememberCloudRouteOwnBox,
+} from "@/lib/cloud-route-own-box";
+import {
   hasRouteCashBook,
   type RouteCashBook,
   type RouteCashBookDay,
@@ -15,6 +23,18 @@ function toBookDay(raw: unknown): RouteCashBookDay | null {
   if (!date || nums.some((n) => !Number.isFinite(n))) return null;
   const [opening, closing, efectivo, gastos, prestamos] = nums;
   const cobrado = Number(row.cobrado);
+  const dayFinal = Number(row.dayFinal);
+  const cieRaw = row.cie;
+  const cie =
+    cieRaw == null || cieRaw === ""
+      ? null
+      : Number.isFinite(Number(cieRaw))
+        ? Math.trunc(Number(cieRaw))
+        : null;
+  const mClosing = Number(row.mClosing);
+  const tEfectivo = Number(row.tEfectivo);
+  const tPrestamos = Number(row.tPrestamos);
+  const tGastos = Number(row.tGastos);
   return {
     date,
     opening,
@@ -23,7 +43,71 @@ function toBookDay(raw: unknown): RouteCashBookDay | null {
     gastos,
     prestamos,
     ...(Number.isFinite(cobrado) ? { cobrado } : {}),
+    ...(Number.isFinite(dayFinal) ? { dayFinal: Math.trunc(dayFinal) } : {}),
+    ...(cieRaw !== undefined ? { cie } : {}),
+    ...(Number.isFinite(mClosing) ? { mClosing: Math.trunc(mClosing) } : {}),
+    ...(Number.isFinite(tEfectivo) ? { tEfectivo: Math.trunc(tEfectivo) } : {}),
+    ...(Number.isFinite(tPrestamos) ? { tPrestamos: Math.trunc(tPrestamos) } : {}),
+    ...(Number.isFinite(tGastos) ? { tGastos: Math.trunc(tGastos) } : {}),
   };
+}
+
+/** Un libro = una bajada: también calienta cachés que leen Historial M/T/A/N. */
+function seedCachesFromBook(
+  collectorRef: string,
+  route: string,
+  days: RouteCashBook,
+) {
+  const pin = route.trim().toUpperCase();
+  const fetchedAt = new Date().toISOString();
+  let seededChain = 0;
+  let seededOwn = 0;
+  for (const day of days.values()) {
+    if (pin === "M" && day.mClosing != null && Number.isFinite(day.mClosing)) {
+      rememberCloudDayCashFigure(
+        {
+          collectorRef,
+          date: day.date,
+          ready: true,
+          chain: true,
+          opening: day.opening,
+          mClosing: day.mClosing,
+          dayFinal: day.dayFinal ?? null,
+          cie: day.cie ?? null,
+          saldo: day.dayFinal ?? day.mClosing,
+          mEfectivo: day.efectivo,
+          mPrestamos: day.prestamos,
+          mGastos: day.gastos,
+          tEfectivo: day.tEfectivo ?? null,
+          tPrestamos: day.tPrestamos ?? null,
+          tGastos: day.tGastos ?? null,
+          fetchedAt,
+        },
+        { silent: true },
+      );
+      seededChain += 1;
+      continue;
+    }
+    if (pin === "A" || pin === "N") {
+      rememberCloudRouteOwnBox(
+        {
+          collectorRef,
+          date: day.date,
+          route: pin,
+          opening: day.opening,
+          efectivo: day.efectivo,
+          prestamos: day.prestamos,
+          gastos: day.gastos,
+          saldo: day.closing,
+          fetchedAt,
+        },
+        { silent: true },
+      );
+      seededOwn += 1;
+    }
+  }
+  if (seededChain > 0) notifyCloudDayCashFigure();
+  if (seededOwn > 0) notifyCloudRouteOwnBox();
 }
 
 /**
@@ -68,7 +152,9 @@ export function useRouteCashBook(
           const day = toBookDay(raw);
           if (day) days.set(day.date, day);
         }
-        if (alive) setBook({ key, days });
+        if (!alive) return;
+        seedCachesFromBook(ref, pin, days);
+        setBook({ key, days });
       } catch (error) {
         console.error("route-cash-book-load", error);
       } finally {

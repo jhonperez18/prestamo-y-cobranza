@@ -1665,7 +1665,7 @@ export function SupervisorMobileApp({
   const [cajaHistoryNav, setCajaHistoryNav] = useState<"detallado" | "meses" | "mes">("detallado");
   /** Período `YYYY-MM` abierto dentro de historial (ej. 2026-10). */
   const [cajaHistoryPeriodPick, setCajaHistoryPeriodPick] = useState<string | null>(null);
-  /** Cajas A/N del mes bajadas para el historial (route_own_box). */
+  /** Cajas A/N del mes (route_own_box vía route-cash-book). */
   const [histOwnBoxEpoch, setHistOwnBoxEpoch] = useState(0);
   /** Caja M/T del día (day_cash_figure): Inicial T = m_closing. */
   const [histDayCashEpoch, setHistDayCashEpoch] = useState(0);
@@ -1676,8 +1676,13 @@ export function SupervisorMobileApp({
   const [dayCashFigureEpoch, setDayCashFigureEpoch] = useState(0);
   useEffect(() => {
     const onFigure = () => setDayCashFigureEpoch((n) => n + 1);
+    const onOwnBox = () => setHistOwnBoxEpoch((n) => n + 1);
     window.addEventListener("nexo-day-cash-figure", onFigure);
-    return () => window.removeEventListener("nexo-day-cash-figure", onFigure);
+    window.addEventListener("nexo-route-own-box", onOwnBox);
+    return () => {
+      window.removeEventListener("nexo-day-cash-figure", onFigure);
+      window.removeEventListener("nexo-route-own-box", onOwnBox);
+    };
   }, []);
   /** Historial · T: formulario de ajuste de saldo real abierto (cobrador del CIE-). */
   const [cashAdjustCollectorRef, setCashAdjustCollectorRef] = useState<string | null>(null);
@@ -1780,12 +1785,13 @@ export function SupervisorMobileApp({
       ? lastCalendarDayOfPeriod(period) || from
       : today;
     const windowKey = `${from}|${to}`;
+    let cancel = false;
+    // Solo limpia al cambiar de mes/ventana. Reabrir el mismo historial reusa RAM.
     if (historyWindowRef.current !== windowKey) {
       historyWindowRef.current = windowKey;
       setHistoryBookPayments(null);
+      clearSupervisorHistoryPaymentsCache();
     }
-    let cancel = false;
-    clearSupervisorHistoryPaymentsCache();
     void loadSupervisorHistoryPayments(from, to).then((rows) => {
       if (cancel || rows == null) return;
       setHistoryBookPayments(rows);
@@ -3384,7 +3390,7 @@ export function SupervisorMobileApp({
   const histCashBook = useRouteCashBook(
     openRoute?.collectorRef || "",
     histBookRoute,
-    `${today}|${histOwnBoxEpoch}|${cajaHistoryPeriodPick || ""}|${chainMOpeningEpoch}`,
+    `${today}|${cajaHistoryPeriodPick || ""}|${chainMOpeningEpoch}`,
     histBookRange,
   );
   /**
@@ -3417,45 +3423,8 @@ export function SupervisorMobileApp({
     isPlanillaCashChainPrimary(openRoute?.routeName) &&
     holdChainCieUntilCloud(openRoute?.collectorRef || "", today);
 
-  // Historial A/N: baja route_own_box del mes visible (la base manda; sin esto todo sale en rojo).
-  useEffect(() => {
-    if (!openRoute || !isIndependentSaldoRoute(openRoute.routeName)) return;
-    if (detailMode !== "historial" && detailMode !== "historial-dia") return;
-    if (cajaHistoryNav === "meses") return;
-    const pin = openRoute.routeName.trim().toUpperCase();
-    if (pin !== "A" && pin !== "N") return;
-    const viewingPastMonth = cajaHistoryNav === "mes" && Boolean(cajaHistoryPeriodPick);
-    const period = viewingPastMonth
-      ? (cajaHistoryPeriodPick as string)
-      : periodFromDateIso(today);
-    const periodStart = `${period}-01`;
-    const from =
-      periodStart >= ROUTE_CASH_BOOK_FROM ? periodStart : ROUTE_CASH_BOOK_FROM;
-    const to = viewingPastMonth
-      ? lastCalendarDayOfPeriod(period) || from
-      : today;
-    let alive = true;
-    void (async () => {
-      const { refreshCloudRouteOwnBoxRange } = await import("@/lib/cloud-route-own-box");
-      const hit = await refreshCloudRouteOwnBoxRange(
-        openRoute.collectorRef,
-        pin,
-        from,
-        to,
-      );
-      if (!alive) return;
-      if (hit > 0) setHistOwnBoxEpoch((n) => n + 1);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [
-    openRoute,
-    detailMode,
-    cajaHistoryNav,
-    cajaHistoryPeriodPick,
-    today,
-  ]);
+  // Historial A/N: el libro `route-cash-book` ya trae route_own_box del mes
+  // (useRouteCashBook → rememberCloudRouteOwnBox). Prohibido un segundo range HTTP.
 
   /** A muestra solo Nequi. M, T y N muestran solo Banco. El otro no se suma. */
   const openRouteIsA = openRoute ? sameRoute(openRoute.routeName, "A") : false;
