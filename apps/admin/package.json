@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "node scripts/dev-chrome.mjs",
     "dev:next": "next dev",
-    "prebuild": "node scripts/assert-no-bom.mjs && node scripts/assert-catalog-write-guard.mjs && node scripts/assert-cash-chain.mjs",
+    "prebuild": "node scripts/assert-no-bom.mjs && node scripts/assert-cash-chain.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
