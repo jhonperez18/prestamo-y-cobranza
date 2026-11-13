@@ -42,22 +42,29 @@ export function RouteBoardPins({
   onPick: (name: string) => void;
   countOf?: (name: string) => number;
 }) {
-  if (routes.length <= 1) return null;
+  if (!routes.length) return null;
+  const pinCount = Math.min(Math.max(routes.length, 1), 5);
   return (
-    <div className="client-route-pins" role="tablist" aria-label="Elegir ruta">
+    <div
+      className={`client-route-pins is-pins-${pinCount}`}
+      role="tablist"
+      aria-label="Elegir ruta"
+    >
       {routes.map((name) => {
         const on = sameRoute(active, name);
         const count = countOf?.(name);
+        const label = name === "Sin ruta" ? "—" : name;
         return (
           <button
             key={name}
             type="button"
             role="tab"
             aria-selected={on}
+            title={name === "Sin ruta" ? "Sin ruta" : `Ruta ${name}`}
             className={on ? "client-route-tab on" : "client-route-tab"}
             onClick={() => onPick(name)}
           >
-            {name}
+            {label}
             {typeof count === "number" ? (
               <span className="client-route-tab-count">{count}</span>
             ) : null}

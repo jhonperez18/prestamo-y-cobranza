@@ -11504,30 +11504,109 @@
     .client-route-pins {
       display: none;
     }
+    /*
+     * Celular · tablero por ruta:
+     * - pines M T A N a ancho completo (siempre visibles)
+     * - hoja a altura natural (scroll de página, no cajón a medias)
+     * - overflow-y visible: el .table-wrap phone genérico usa hidden y cortaba la lista
+     */
     .shell.is-phone-layout .client-route-pins {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      padding: 0 8px 10px;
-      align-items: center;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      padding: 0 10px 12px;
+      margin: 0;
+    }
+    .shell.is-phone-layout .client-route-pins.is-pins-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    .shell.is-phone-layout .client-route-pins.is-pins-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .shell.is-phone-layout .client-route-pins.is-pins-1 {
+      grid-template-columns: 1fr;
+    }
+    .shell.is-phone-layout .client-route-pins.is-pins-5 {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
     }
     .shell.is-phone-layout .client-route-pins .client-route-tab {
       cursor: pointer;
+      width: 100%;
+      min-width: 0;
+      justify-content: center;
+      box-sizing: border-box;
+      padding: 8px 4px;
+      border-radius: 10px;
       border: 1px solid #c5d4cc;
       background: #fff;
+      font-size: 15px !important;
+    }
+    .shell.is-phone-layout .client-route-pins .client-route-tab.on {
+      background: #0f766e;
+      border-color: #0f766e;
+      color: #fff;
     }
     .shell.is-phone-layout .client-route-board {
       grid-template-columns: 1fr;
-      margin-right: 0;
+      gap: 0;
+      margin: 0;
+      width: 100%;
+      max-width: 100%;
+      box-sizing: border-box;
+      padding: 0 10px 16px;
     }
-    /* Una ruta a la vez: lista completa, sin cajón de 70vh a medias. */
     .shell.is-phone-layout .client-route-col {
-      max-height: none;
+      height: auto !important;
+      max-height: none !important;
+      min-height: 0;
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow: visible !important;
+      border: 1px solid #d7e4dc;
+      border-radius: 12px;
+      box-shadow: 0 1px 2px rgba(20, 32, 27, 0.04);
+    }
+    .shell.is-phone-layout .client-route-col-top,
+    .shell.is-phone-layout .loan-route-board .client-route-col-head {
+      display: none;
+    }
+    .shell.is-phone-layout .client-route-col .table-wrap,
+    .shell.is-phone-layout .client-route-board .table-wrap,
+    .shell.is-phone-layout .loan-route-board .table-wrap {
+      flex: none !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      max-height: none !important;
+      overflow-x: auto !important;
+      overflow-y: visible !important;
+      border-radius: 0 0 12px 12px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .shell.is-phone-layout .client-route-col table.list-grid {
+      width: 100% !important;
+      min-width: 100%;
+    }
+    .shell.is-phone-layout .client-route-col table.list-grid th,
+    .shell.is-phone-layout .client-route-col table.list-grid td {
+      padding-top: 10px !important;
+      padding-bottom: 10px !important;
+    }
+    .shell.is-phone-layout .panel:has(> .client-route-board),
+    .shell.is-phone-layout .panel.loan-route-board {
+      width: 100%;
+      max-width: 100%;
+      padding-left: 0;
+      padding-right: 0;
     }
     .shell.is-phone-layout .head.is-client-board {
       grid-template-columns: 1fr auto;
-      padding-left: 8px;
-      padding-right: 8px;
+      padding-left: 10px;
+      padding-right: 10px;
+      width: 100%;
+      box-sizing: border-box;
     }
     .shell.is-phone-layout .client-board-title {
       justify-self: start;
@@ -11540,6 +11619,9 @@
     .shell.is-phone-layout .client-board-search {
       grid-column: 1 / -1;
       width: 100%;
+      max-width: 100%;
+      height: 36px;
+      box-sizing: border-box;
     }
     .client-route-tab {
       display: inline-flex;
