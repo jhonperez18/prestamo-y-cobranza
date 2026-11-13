@@ -10898,6 +10898,34 @@
       max-width: 28% !important;
       text-align: right !important;
     }
+    /* Anulaciones celular: todas las filas visibles; scroll horizontal si hace falta. */
+    .shell.is-phone-layout .anulaciones-panel .anulaciones-sheet,
+    .panel.anulaciones-panel.is-phone-route-panel .anulaciones-sheet {
+      overflow-x: auto !important;
+      overflow-y: visible !important;
+      max-height: none !important;
+      -webkit-overflow-scrolling: touch;
+    }
+    .shell.is-phone-layout .anulaciones-panel .anulaciones-sheet > table.list-grid.phone-route-table,
+    .panel.anulaciones-panel.is-phone-route-panel .anulaciones-sheet > table.list-grid.phone-route-table {
+      width: 100% !important;
+      min-width: 720px !important;
+      max-width: none !important;
+      table-layout: auto !important;
+    }
+    .shell.is-phone-layout .anulaciones-panel .anulaciones-sheet > table.list-grid.phone-route-table th,
+    .shell.is-phone-layout .anulaciones-panel .anulaciones-sheet > table.list-grid.phone-route-table td,
+    .panel.anulaciones-panel.is-phone-route-panel .anulaciones-sheet > table.list-grid.phone-route-table th,
+    .panel.anulaciones-panel.is-phone-route-panel .anulaciones-sheet > table.list-grid.phone-route-table td {
+      min-width: max-content !important;
+      max-width: none !important;
+      width: auto !important;
+      white-space: nowrap !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+      padding-top: 10px !important;
+      padding-bottom: 10px !important;
+    }
     .shell.is-phone-layout table.data th.col-picker-cell,
     .shell.is-phone-layout table.data td.col-picker-cell,
     .shell.is-phone-layout table.list-grid th.col-picker-cell,
