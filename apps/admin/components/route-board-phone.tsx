@@ -45,7 +45,7 @@ export function RouteBoardPhoneHead({
   searchLabel = "Buscar",
 }: {
   title: string;
-  count: number;
+  count: number | string;
   query: string;
   onQueryChange: (value: string) => void;
   onCreate?: () => void;
