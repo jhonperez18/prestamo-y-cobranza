@@ -417,26 +417,18 @@ export function ClientList({
       {routeNames.length > 0 ? (
         <>
           {isPhone ? (
-            <RouteBoardPins
-              routes={routeNames}
-              active={phoneRoute}
-              onPick={setPhoneRoute}
-              countOf={(name) => routeCounts.get(name) ?? 0}
-            />
-          ) : null}
-          <div className={isPhone ? "client-route-board is-phone-single" : "client-route-board"}>
-            {visibleRouteNames.map((name) => {
-              const list = rowsOfRoute(name);
-              return (
-                <section key={name} className="client-route-col" aria-label={`Ruta ${name}`}>
-                  <div className="client-route-col-top">
-                    <div className={isPhone ? "client-route-tab on" : "client-route-tab"}>
-                      Ruta {name}
-                      <span className="client-route-tab-count">{routeCounts.get(name) ?? 0}</span>
-                    </div>
-                  </div>
-                  <div className="table-wrap">
-                    <table className="data list-grid">
+            <>
+              <RouteBoardPins
+                routes={routeNames}
+                active={phoneRoute}
+                onPick={setPhoneRoute}
+                countOf={(name) => routeCounts.get(name) ?? 0}
+              />
+              {(() => {
+                const phoneList = rowsOfRoute(phoneRoute || routeNames[0] || "");
+                return (
+                  <div className="phone-route-sheet" aria-label={`Ruta ${phoneRoute || ""}`}>
+                    <table className="data list-grid phone-route-table">
                       <thead>
                         <tr className="col-titles">
                           <th>#</th>
@@ -444,12 +436,12 @@ export function ClientList({
                         </tr>
                       </thead>
                       <tbody>
-                        {list.length === 0 ? (
+                        {phoneList.length === 0 ? (
                           <tr className="empty-row">
                             <td colSpan={2}>Sin clientes</td>
                           </tr>
                         ) : (
-                          list.map((row) => (
+                          phoneList.map((row) => (
                             <tr key={row.ref} className="clickable" onClick={() => onOpen(row.ref)}>
                               <td>{row.routeOrder || "—"}</td>
                               <td className="is-nombre" title={clientListDisplayName(row)}>
@@ -461,10 +453,52 @@ export function ClientList({
                       </tbody>
                     </table>
                   </div>
-                </section>
-              );
-            })}
-          </div>
+                );
+              })()}
+            </>
+          ) : (
+            <div className="client-route-board">
+              {routeNames.map((name) => {
+                const list = rowsOfRoute(name);
+                return (
+                  <section key={name} className="client-route-col" aria-label={`Ruta ${name}`}>
+                    <div className="client-route-col-top">
+                      <div className="client-route-tab">
+                        Ruta {name}
+                        <span className="client-route-tab-count">{routeCounts.get(name) ?? 0}</span>
+                      </div>
+                    </div>
+                    <div className="table-wrap">
+                      <table className="data list-grid">
+                        <thead>
+                          <tr className="col-titles">
+                            <th>#</th>
+                            <th className="is-nombre">Nombre</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {list.length === 0 ? (
+                            <tr className="empty-row">
+                              <td colSpan={2}>Sin clientes</td>
+                            </tr>
+                          ) : (
+                            list.map((row) => (
+                              <tr key={row.ref} className="clickable" onClick={() => onOpen(row.ref)}>
+                                <td>{row.routeOrder || "—"}</td>
+                                <td className="is-nombre" title={clientListDisplayName(row)}>
+                                  {clientListDisplayName(row)}
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          )}
         </>
       ) : (
       <div className="table-wrap">

@@ -172,30 +172,29 @@ export function LoanRouteBoard({
           </div>
         )}
         {isPhone ? (
-          <RouteBoardPins
-            routes={freeRouteNames}
-            active={freePin}
-            onPick={setFreePin}
-            countOf={(name) => freeRoutes.find((route) => sameRoute(route.name, name))?.rows.length ?? 0}
-          />
-        ) : null}
-        <div className={isPhone ? "client-route-board is-phone-single" : "client-route-board"}>
-          {visibleFreeRoutes.map((route) => {
-            const list = freeQ
-              ? route.rows.filter((client) => {
-                  const hay = `${client.name} ${client.lastName} ${client.document ?? ""}`.toLowerCase();
-                  return hay.includes(freeQ);
-                })
-              : route.rows;
-            return (
-              <section key={route.name} className="client-route-col">
-                <div className="client-route-col-head">
-                  <span className={isPhone ? "client-route-tab on" : "client-route-tab"}>
-                    Ruta {route.name} <strong>{route.rows.length}</strong>
-                  </span>
-                </div>
-                <div className="table-wrap">
-                  <table className="data list-grid">
+          <>
+            <RouteBoardPins
+              routes={freeRouteNames}
+              active={freePin}
+              onPick={setFreePin}
+              countOf={(name) => freeRoutes.find((route) => sameRoute(route.name, name))?.rows.length ?? 0}
+            />
+            {(() => {
+              const route =
+                visibleFreeRoutes[0] ??
+                freeRoutes.find((row) => sameRoute(row.name, freePin)) ??
+                freeRoutes[0];
+              const list = !route
+                ? []
+                : freeQ
+                  ? route.rows.filter((client) => {
+                      const hay = `${client.name} ${client.lastName} ${client.document ?? ""}`.toLowerCase();
+                      return hay.includes(freeQ);
+                    })
+                  : route.rows;
+              return (
+                <div className="phone-route-sheet" aria-label={route ? `Ruta ${route.name}` : "Sin ruta"}>
+                  <table className="data list-grid phone-route-table">
                     <thead>
                       <tr>
                         <th>#</th>
@@ -224,10 +223,60 @@ export function LoanRouteBoard({
                     </tbody>
                   </table>
                 </div>
-              </section>
-            );
-          })}
-        </div>
+              );
+            })()}
+          </>
+        ) : (
+          <div className="client-route-board">
+            {freeRoutes.map((route) => {
+              const list = freeQ
+                ? route.rows.filter((client) => {
+                    const hay = `${client.name} ${client.lastName} ${client.document ?? ""}`.toLowerCase();
+                    return hay.includes(freeQ);
+                  })
+                : route.rows;
+              return (
+                <section key={route.name} className="client-route-col">
+                  <div className="client-route-col-head">
+                    <span className="client-route-tab">
+                      Ruta {route.name} <strong>{route.rows.length}</strong>
+                    </span>
+                  </div>
+                  <div className="table-wrap">
+                    <table className="data list-grid">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th className="is-nombre">Nombre</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {list.length ? (
+                          list.map((client) => (
+                            <tr
+                              key={client.ref}
+                              className={onOpenClient ? "clickable" : undefined}
+                              onClick={() => onOpenClient?.(client.ref)}
+                            >
+                              <td className="ref">{client.routeOrder}</td>
+                              <td className="is-nombre">{`${client.name} ${client.lastName}`.trim()}</td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={2} className="is-nombre">
+                              Todos con préstamo
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        )}
       </section>
     );
   }
@@ -266,43 +315,32 @@ export function LoanRouteBoard({
         </div>
       )}
       {isPhone ? (
-        <RouteBoardPins
-          routes={boardRouteNames}
-          active={loanPin}
-          onPick={setLoanPin}
-          countOf={(name) => {
-            if (name === "Sin ruta") return loose.length;
-            return current.filter((loan) => sameRoute(routeOf(loan, clients), name)).length;
-          }}
-        />
-      ) : null}
-      <div className={isPhone ? "client-route-board is-phone-single" : "client-route-board"}>
-        {visibleBoardRoutes.map((name) => {
-          const onRoute =
-            name === "Sin ruta"
-              ? loose
-              : current.filter((loan) => sameRoute(routeOf(loan, clients), name));
-          const list = (q ? onRoute.filter((loan) => matchesQuery(loan, clients, q)) : onRoute)
-            .slice()
-            .sort(
-              (a, b) =>
-                positionOf(a, clients) - positionOf(b, clients) ||
-                a.ref.localeCompare(b.ref, "es", { numeric: true }),
-            );
-          const saldoTotal = onRoute.reduce(
-            (sum, loan) => sum + (Number(loan.balance) || 0),
-            0,
-          );
-          return (
-            <section key={name} className="client-route-col">
-              <div className="client-route-col-head">
-                <span className={isPhone ? "client-route-tab on" : "client-route-tab"}>
-                  {name === "Sin ruta" ? "Sin ruta" : `Ruta ${name}`} <strong>{onRoute.length}</strong>
-                </span>
-                <strong className="loan-route-sheet-total">{money(saldoTotal)}</strong>
-              </div>
-              <div className="table-wrap">
-                <table className="data list-grid">
+        <>
+          <RouteBoardPins
+            routes={boardRouteNames}
+            active={loanPin}
+            onPick={setLoanPin}
+            countOf={(name) => {
+              if (name === "Sin ruta") return loose.length;
+              return current.filter((loan) => sameRoute(routeOf(loan, clients), name)).length;
+            }}
+          />
+          {(() => {
+            const name = visibleBoardRoutes[0] || loanPin || boardRouteNames[0] || "";
+            const onRoute =
+              name === "Sin ruta"
+                ? loose
+                : current.filter((loan) => sameRoute(routeOf(loan, clients), name));
+            const list = (q ? onRoute.filter((loan) => matchesQuery(loan, clients, q)) : onRoute)
+              .slice()
+              .sort(
+                (a, b) =>
+                  positionOf(a, clients) - positionOf(b, clients) ||
+                  a.ref.localeCompare(b.ref, "es", { numeric: true }),
+              );
+            return (
+              <div className="phone-route-sheet" aria-label={name === "Sin ruta" ? "Sin ruta" : `Ruta ${name}`}>
+                <table className="data list-grid phone-route-table">
                   <thead>
                     <tr>
                       <th>Ref</th>
@@ -337,10 +375,76 @@ export function LoanRouteBoard({
                   </tbody>
                 </table>
               </div>
-            </section>
-          );
-        })}
-      </div>
+            );
+          })()}
+        </>
+      ) : (
+        <div className="client-route-board">
+          {boardRouteNames.map((name) => {
+            const onRoute =
+              name === "Sin ruta"
+                ? loose
+                : current.filter((loan) => sameRoute(routeOf(loan, clients), name));
+            const list = (q ? onRoute.filter((loan) => matchesQuery(loan, clients, q)) : onRoute)
+              .slice()
+              .sort(
+                (a, b) =>
+                  positionOf(a, clients) - positionOf(b, clients) ||
+                  a.ref.localeCompare(b.ref, "es", { numeric: true }),
+              );
+            const saldoTotal = onRoute.reduce(
+              (sum, loan) => sum + (Number(loan.balance) || 0),
+              0,
+            );
+            return (
+              <section key={name} className="client-route-col">
+                <div className="client-route-col-head">
+                  <span className="client-route-tab">
+                    {name === "Sin ruta" ? "Sin ruta" : `Ruta ${name}`} <strong>{onRoute.length}</strong>
+                  </span>
+                  <strong className="loan-route-sheet-total">{money(saldoTotal)}</strong>
+                </div>
+                <div className="table-wrap">
+                  <table className="data list-grid">
+                    <thead>
+                      <tr>
+                        <th>Ref</th>
+                        <th className="is-nombre">Nombre</th>
+                        <th className="right">Presto</th>
+                        <th className="right">Saldo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.length ? (
+                        list.map((row) => (
+                          <tr key={row.ref} className="clickable" onClick={() => onOpen(row.ref)}>
+                            <td className="ref">{row.ref}</td>
+                            <td className="is-nombre">{row.client}</td>
+                            <td className="money">{money(Number(row.capital) || 0)}</td>
+                            <td className="money">
+                              {finishedWithoutBalance(row) ? (
+                                <span className="loan-board-fin">fin</span>
+                              ) : (
+                                money(Number(row.balance) || 0)
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={4} className="is-nombre">
+                            Sin préstamos
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
