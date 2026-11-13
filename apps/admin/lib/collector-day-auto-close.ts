@@ -13,7 +13,6 @@ import {
   dayExpenseLineMovementRef,
   finalizeCollectorDayClose,
   findDayExpenseDraft,
-  keepSealedCashFloat,
   normalizeHistoryDate,
   openingSaldoForPeriod,
   periodFromDateIso,
@@ -308,10 +307,10 @@ export function runOperationalDayCycle(
   );
   assignments = applyDayCloseRecordsToAssignments(assignments, dayCloses);
 
-  dayCloses = keepSealedCashFloat(
+  dayCloses = alignDayClosesCollectedToPayments(
     dayCloses,
-    alignDayClosesCollectedToPayments(dayCloses, state.payments, state.collectors),
-    "alignDayClosesCollectedToPayments",
+    state.payments,
+    state.collectors,
   );
 
   return {

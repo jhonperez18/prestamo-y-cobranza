@@ -19,7 +19,7 @@ Cifras por clase: **aproximadas** (las secciones grandes mezclan temas; se cont�
 | --- | --- | --- | --- | --- | --- |
 | 1 | 169-174 | 3 | Inicial M = CIE de ayer | Regla | Prueba de la base (Saldos) |
 | 3 | 175-217 | 6 | Inicial T = caja viva de M; Historial | Regla | Prueba de la base (Saldos) |
-| 2 | 218-245 | 4 | Proyecciones no tocan el saldo sellado (`keepSealedCashFloat`, provisional) | Candado | 4 Cierres |
+| 2 | ~218 | 1 | Alinear pagos conserva CIE (`align` no toca `cashFloat`) | Regla | Se queda (prueba de la base) |
 | 4a | 246-270 | 6 | Cerrar M y luego T | Regla | Prueba de la base (Cierres) |
 | 4b | 271-300 | 3 | Auto-cierre 23:30 del aparato | Candado | 4 Cierres |
 | 5 | 301-455 | 46 | Cada planilla con lo suyo (préstamo/gasto de T sale de T) | Regla | Prueba de la base (Saldos) |
@@ -59,11 +59,10 @@ Cifras por clase: **aproximadas** (las secciones grandes mezclan temas; se cont�
 | 3 Saldos | ~80 | 10, 11 (N / PCE-T), 12 (DSB), 13, 22, 27 |
 | 4 Cierres | ~40 | 2, 4b, 7 (nube), 11 (ajustes nube), 15, 23, 29 |
 
-## Limpieza Fase 4 (float) — **PENDIENTE** (dueño 30/10/2026: dejar así por ahora)
+## Limpieza Fase 4 (float) — **PARCIAL** (12/11)
 
-Cortes 4.1–4.4 ya en prod. **No borrar** aún asserts / frenos de float
-(`keepSealedCashFloat`, `cloud_cie_past_day_sealed`, `cloud_cie_keeps_cash_float`, etc.).
-Solo cuando el dueño lo pida y todos los aparatos vivos estén ≥ 4.2 (~1 semana estable).
+- **HECHO:** runtime `keepSealedCashFloat` + expect «Candado revierte saldo pisado».
+- **SE QUEDA:** `cloud_cie_*` en servidor (defensa 4.2) y asserts §4b / §7 nube / §15 / §23 / §29 hasta pedido.
 Ver `docs/fase-4-cierres.md` § Pendiente.
 
 ## Reglas de trabajo

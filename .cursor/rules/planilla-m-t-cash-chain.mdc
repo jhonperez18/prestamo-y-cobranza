@@ -132,7 +132,7 @@ día cerrado posterior (CIE provisional o PCE-) sin su CIE- sellado, el de antes
 ### Ninguna proyección escribe `cash_float`
 
 - `alignDayClosesCollectedToPayments` solo toca `collected` / `expensesTotal`.
-- `keepSealedCashFloat` revierte cualquier proyección que cambie un CIE- sellado.
+- Servidor: `cloud_cie_*` no deja que un aparato reescriba el `cash_float` sellado.
 - `synthesizeDayClosesFromAssignments` crea CIE `provisional`: no sube, no ancla Inicial.
 - `finalizeCollectorDayClose` NO calcula saldo: recibe `sealed` del libro.
 

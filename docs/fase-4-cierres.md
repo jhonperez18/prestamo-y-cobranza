@@ -56,6 +56,6 @@ Necesario tras 4.2: el mirror ya no puede cambiar `cash_float`; el ajuste de T d
 
 Lista completa: **`docs/pendientes.md`** (ítems #1, #2, #8).
 
-- **Limpieza de candados viejos de float** (`keepSealedCashFloat`, `cloud_cie_*`, asserts §2 / 4b / 7 / …): **PENDIENTE**. No tocar hasta que el dueño lo pida.
-- Condición: todos los aparatos **vivos** (últimas 36 h en autoprestamos.org) en build ≥ `07b24f3` (4.2) y, ideal, ≥ `4c5db46` (4.4); luego ~1 semana estable; noche; commit aparte.
-- Revisión 30/10: Edgar / Yesid / admin en `4c5db46`; supervisor Carlos aún en `4c71d21` (solo 4.1) → **no limpia**.
+- **Limpieza float · primer corte (12/11):** `keepSealedCashFloat` y expect «Candado revierte…» **HECHO**.
+- **Queda:** `cloud_cie_*` (servidor 4.2, no borrar) y asserts §4b / §7 nube / §15 / §23 / §29 — solo a pedido, commit aparte.
+- **#8** (Fase 4 al 100 %): solo después de decidir si se limpia el resto.

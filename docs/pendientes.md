@@ -6,7 +6,7 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 | # | Tema | Estado | Cuándo / condición | Dónde |
 | --- | --- | --- | --- | --- |
 | 17 | **Puerta ruta+día** (apps cobrador/supervisor) | **HECHO 10/11** · raíz | Gastos·préstamos·efectivo·banco/nequi·N/P vía `/api/ops/route-day-detail`. Inicial/CIE intactos. Historial caja · Cobros = solo efectivo (Banco fuera). Pendiente menor: gastos Banco informe | `route-day-detail.mdc`, `day-cash-ledger.ts` |
-| 1 | **Limpieza candados float (Fase 4)** — asserts / `keepSealedCashFloat` / `cloud_cie_*` | **MAPA LISTO 12/11** · ejecutar sin riesgo | **No borrar aún.** Esperar Edgar+Yesid+supervisor en build ≥ `fa62f9d` (ideal al volver 17/11). Luego noche, commit aparte solo #1. Ver mapa abajo | `docs/fase-4-cierres.md`, `docs/inventario-candados.md` |
+| 1 | **Limpieza candados float (Fase 4)** — `keepSealedCashFloat` / asserts §2 | **PARCIAL 12/11** · runtime muerto quitado | HECHO: `keepSealedCashFloat` + expect «Candado revierte…». **Queda:** `cloud_cie_*` (defensa servidor 4.2, no borrar) y asserts §4b/7/15/23/29 solo a pedido | `docs/fase-4-cierres.md`, `docs/inventario-candados.md` |
 | 2 | **Aparatos en build atrasado** | **VIVO 12/11** · prod `fa62f9d` | Admin OK. Falta: **Edgar** `0a46ee2`, **Yesid** `d9f7992`, **supervisor** `4f3aba3`. Condición del #1 | Configuración → Aparatos |
 | 3 | **Fase 2 · Realtime** — adoptar planilla solo desde Realtime (remate) | **HECHO 02/11** · `2fbb41a` · corte 2.4 | Cobro/anulación/panel/tardío ya no encolan planilla; otros por Realtime ops. N/P·Prestar·cierre siguen encolando | `docs/fase-2-cobros.md` |
 | 16 | **Cobrador 1 ruta (Yesid)** — Efectivo/Banco del cierre vacíos | **HECHO 02/11** · `2f55c45` **raíz** | Pin único = `activePlanillaRoute`. Lista = `routeCash/DigitalPayments`. Sin fallback paralelo | `CollectorMobileApp.tsx`, assert-cash-chain |
@@ -33,17 +33,14 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 | Fase 4 cortes 4.1–4.4 (sellar / mirror / ajuste / reabrir) | **En prod** |
 | Limpieza assert Fase 1 (1a–1c) y assert Fase 2 (2a–2b) | **CERRADA** 19/10 |
 
-## Mapa #1 — limpieza float (12/11, sin ejecutar)
+## Mapa #1 — limpieza float (12/11)
 
-**Gatillo seguro:** aparatos vivos (36 h) en `autoprestamos.org` con build ≥ `fa62f9d` (Edgar, Yesid, supervisor, admin). Luego noche · commit aparte · reversible.
-
-| Pieza | Dónde | Acción al ejecutar |
-| --- | --- | --- |
-| Runtime `keepSealedCashFloat` | `collector-day-close.ts`, usos en `operational-sync.ts`, `collector-day-auto-close.ts` | Quitar freno local que ya no debe pelear al CIE de la base |
-| Mirror `cloud_cie_past_day_sealed` / `cloud_cie_keeps_cash_float` / `cloud_cie_keeps_cash_adjustment` | `ops-mirror.ts`, lista en `mirror-queue.ts` | Alinear con 4.2: el aparato no escribe float; no reintentar basura |
-| Assert §2 (proyecciones / `keepSealedCashFloat`) | `assert-cash-chain.mjs` ~218-245 | Quitar expects de **candado**; no tocar reglas de Inicial/CIE |
-| Assert §4b (auto-cierre aparato) | ~271-300 | Revisar: si el dueño ya es cron/`seal_day_close`, quitar candado de aparato |
-| Assert §7 parte nube · §15 · §23 candado · §29 marca | inventario Fase 4 | Solo lo marcado **Candado** en inventario; **Regla** se queda |
+| Pieza | Estado |
+| --- | --- |
+| Runtime `keepSealedCashFloat` | **HECHO 12/11** — borrado; `align` solo toca `collected` / `expensesTotal` |
+| Assert §2 expect «Candado revierte saldo pisado» | **HECHO 12/11** — quitado; queda «Alinear pagos conserva CIE-25» (regla) |
+| Mirror `cloud_cie_*` | **SE QUEDA** — defensa servidor 4.2 (no es candado muerto del aparato) |
+| Assert §4b / §7 nube / §15 / §23 / §29 | **Pendiente** — solo a pedido, commit aparte |
 
 **Fuera de este commit:** #6, #7, cobros, planilla, UI, egress.
 
@@ -53,4 +50,4 @@ Fuente única para no olvidar. Al cerrar un ítem: marcar **HECHO** aquí y en e
 2. Si el dueño dice “siga” sin tema → el siguiente **no bloqueado** y con sentido de negocio.
 3. Al terminar un ítem → **HECHO** + fecha + build; no dejar el renglón en el aire.
 4. **Cero parches (02/11):** si no es raíz → parar. No “mientras tanto”, no “para este celular”.
-5. **#1:** no ejecutar hasta aparatos al día; el 17/11 es la ventana natural.
+5. **#1:** primer corte HECHO 12/11 (`keepSealedCashFloat`). `cloud_cie_*` y asserts §4b+ no se tocan sin pedido.

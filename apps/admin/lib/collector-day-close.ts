@@ -849,49 +849,6 @@ export function finalizeCollectorDayClose(input: {
   };
 }
 
-/**
- * Candado de proyecciones: ninguna proyección (alinear pagos, hidratar, sintetizar)
- * puede cambiar el saldo de un CIE- ya sellado. Si lo intenta, se conserva el sellado
- * y queda el aviso con el nombre de la proyección culpable.
- */
-export function keepSealedCashFloat(
-  before: CollectorDayCloseRecord[],
-  after: CollectorDayCloseRecord[],
-  projection: string,
-): CollectorDayCloseRecord[] {
-  const sealed = new Map<string, CollectorDayCloseRecord>();
-  for (const row of before) {
-    if (!row.provisional && String(row.ref || "").startsWith("CIE-")) sealed.set(row.ref, row);
-  }
-  if (!sealed.size) return after;
-  let changed = false;
-  const next = after.map((row) => {
-    const prev = sealed.get(row.ref);
-    if (!prev) return row;
-    const same =
-      pesos(row.cashFloat) === pesos(prev.cashFloat) &&
-      pesos(row.openingCash ?? 0) === pesos(prev.openingCash ?? 0) &&
-      pesos(row.cashExpected ?? 0) === pesos(prev.cashExpected ?? 0) &&
-      Boolean(row.provisional) === false;
-    if (same) return row;
-    changed = true;
-    console.error(
-      `[saldo-sellado] ${projection} intentó cambiar ${row.ref}: ${prev.cashFloat} → ${row.cashFloat}. Se conserva el sellado.`,
-    );
-    return {
-      ...row,
-      provisional: undefined,
-      cashFloat: prev.cashFloat,
-      openingCash: prev.openingCash,
-      cashExpected: prev.cashExpected,
-      cashDeclared: prev.cashDeclared,
-      cashVariance: prev.cashVariance,
-      cashAdjustment: prev.cashAdjustment,
-    };
-  });
-  return changed ? next : after;
-}
-
 /** Historial visible/guardado del cobrador: siempre los últimos 30 días. */
 export const COLLECTOR_HISTORY_KEEP_DAYS = 30;
 

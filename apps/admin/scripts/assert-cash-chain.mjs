@@ -38,7 +38,6 @@ const {
   alignDayClosesCollectedToPayments,
   buildCollectorDayHistory,
   expensesForCollectorDay,
-  keepSealedCashFloat,
   synthesizeDayClosesFromAssignments,
 } = await import("@/lib/collector-day-close");
 const {
@@ -222,16 +221,9 @@ expect("Historial T · 25 intacto", histT.find((r) => r.date === Y)?.saldo ?? nu
 const projected = projectPceTFromDayCloses(base.planillaCashCloses, base.dayCloses);
 expect("PCE-T 25 alineado al CIE", projected.find((r) => r.ref === stalePceT25.ref)?.closingCash ?? null, 2_704_000);
 
-// 2. Proyecciones no tocan el saldo sellado.
-const aligned = keepSealedCashFloat(
-  base.dayCloses,
-  alignDayClosesCollectedToPayments(base.dayCloses, payments, [COB]),
-  "alignDayClosesCollectedToPayments",
-);
+// 2. Alinear pagos no toca el saldo sellado (solo collected / expensesTotal).
+const aligned = alignDayClosesCollectedToPayments(base.dayCloses, payments, [COB]);
 expect("Alinear pagos conserva CIE-25", aligned[0].cashFloat, 2_704_000);
-const tampered = [{ ...cie25, cashFloat: 2_090_000 }];
-const guarded = keepSealedCashFloat([cie25], tampered, "prueba");
-expect("Candado revierte saldo pisado", guarded[0].cashFloat, 2_704_000);
 
 const synthesized = synthesizeDayClosesFromAssignments(
   [visit("V-X", "CLI-M1", "M", "2026-09-24", { dayClosedAt: "2026-09-24T23:30:00.000Z" })],
@@ -546,11 +538,7 @@ if (late.ok) {
     assignments: late.assignments,
   });
   expect("Pago tardío: caja M de hoy sube el monto", ledgerAfter.mClosing - ledgerBefore.mClosing, 20_000);
-  const alignedLate = keepSealedCashFloat(
-    [cie25],
-    alignDayClosesCollectedToPayments([cie25], late.payments, [COB]),
-    "pago-tardio",
-  );
+  const alignedLate = alignDayClosesCollectedToPayments([cie25], late.payments, [COB]);
   expect("Pago tardío: CIE-25 recaudo intacto", alignedLate[0].collected, 2_090_000);
   expect("Pago tardío: CIE-25 saldo intacto", alignedLate[0].cashFloat, 2_704_000);
 
@@ -635,12 +623,8 @@ if (adj.ok) {
   expect("Ajuste: re-editar conserva saldo del cierre", again.ok ? again.record.cashAdjustment?.calculated ?? null : null, 3_084_000);
   expect("Ajuste: re-editar nuevo real", again.ok ? again.record.cashFloat : null, 2_900_000);
 
-  const guardedAdj = keepSealedCashFloat(
-    adj.dayCloses,
-    alignDayClosesCollectedToPayments(adj.dayCloses, payments, [COB]),
-    "ajuste",
-  );
-  expect("Ajuste: proyecciones conservan el real", guardedAdj.find((r) => r.ref === cieRef26)?.cashFloat ?? null, 2_934_000);
+  const alignedAdj = alignDayClosesCollectedToPayments(adj.dayCloses, payments, [COB]);
+  expect("Ajuste: proyecciones conservan el real", alignedAdj.find((r) => r.ref === cieRef26)?.cashFloat ?? null, 2_934_000);
 
   const adjCycle = runOperationalDayCycle(
     {
