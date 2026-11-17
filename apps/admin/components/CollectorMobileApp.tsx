@@ -2058,6 +2058,8 @@ export function CollectorMobileApp({
     enabled:
       showHomeCuadre ||
       reviewingLoans ||
+      topPrestamos > 0 ||
+      topGastos > 0 ||
       homeCierreKind === "gastos" ||
       homeCierreKind === "prestamos" ||
       homeCierreKind === "efectivo" ||
@@ -2145,30 +2147,51 @@ export function CollectorMobileApp({
   const loQuePresto = ownRouteDay ? ownRouteDay.prestamos : topPrestamos;
   const cajaFormulaLabel = "Caja (inicial + efectivo − gastos − préstamos)";
   /**
-   * Préstamos de la planilla = solo efectivo (lo que salió de la caja de la ruta).
+   * Préstamos de la planilla = solo efectivo.
+   * Ley única M/T/A/N: la lista debe explicar el número del botón.
+   * Si el total (caja/nube) no cuadra con renglones locales → puerta route-day-detail.
    */
   const viewLoanRows = useMemo(() => {
-    if (ownRouteDay) {
-      if (ownRouteDay.loanRows.length > 0) return ownRouteDay.loanRows;
-      // Totales de route_own_box sin renglones locales: lista desde la puerta.
-      if (homePrestamoLines.length > 0) {
-        return dayLoanDisbursementRows(
-          activeDate,
-          homePrestamoLines,
-          loans,
-          clients,
-          loanScope,
-        );
+    const fromDoor = () =>
+      homePrestamoLines.length > 0
+        ? dayLoanDisbursementRows(
+            activeDate,
+            homePrestamoLines,
+            loans,
+            clients,
+            loanScope,
+          )
+        : [];
+    const localRows = (() => {
+      if (ownRouteDay) {
+        if (ownRouteDay.loanRows.length > 0) return ownRouteDay.loanRows;
+        return [] as typeof dayLoanRows;
       }
-      return ownRouteDay.loanRows;
-    }
-    if (planillaOwnsMovements || !activePlanillaRoute) return dayLoanRows;
-    const routeClients = new Set(
-      clients.filter((row) => sameRoute(row.route, activePlanillaRoute)).map((row) => row.ref),
+      if (planillaOwnsMovements || !activePlanillaRoute) return dayLoanRows;
+      const routeClients = new Set(
+        clients.filter((row) => sameRoute(row.route, activePlanillaRoute)).map((row) => row.ref),
+      );
+      return dayLoanDisbursementRows(
+        activeDate,
+        savedExpensesRaw,
+        loans,
+        clients,
+        loanScope,
+      ).filter((row) => routeClients.has(row.clientRef));
+    })();
+    const want = Math.trunc(
+      ownRouteDay
+        ? ownRouteDay.prestamos
+        : chainPlanillaDay
+          ? topPrestamos
+          : dayLoanDisbursementTotal(localRows),
     );
-    return dayLoanDisbursementRows(activeDate, savedExpensesRaw, loans, clients, loanScope).filter((row) =>
-      routeClients.has(row.clientRef),
-    );
+    const localTotal = dayLoanDisbursementTotal(localRows);
+    if (want <= 0) return localRows;
+    if (localRows.length > 0 && localTotal === want) return localRows;
+    const doorRows = fromDoor();
+    if (doorRows.length > 0) return doorRows;
+    return localRows;
   }, [
     ownRouteDay,
     homePrestamoLines,
@@ -2180,12 +2203,15 @@ export function CollectorMobileApp({
     savedExpensesRaw,
     loans,
     loanScope,
+    chainPlanillaDay,
+    topPrestamos,
   ]);
   const viewPrestamos = Math.max(
     dayLoanDisbursementTotal(viewLoanRows),
     ownRouteDay ? ownRouteDay.prestamos : 0,
+    chainPlanillaDay ? topPrestamos : 0,
   );
-  /** KPI Préstamos de la ruta = solo efectivo. */
+  /** KPI Préstamos de la ruta = solo efectivo (misma cifra que la lista). */
   const prestamosKpi = ownRouteDay
     ? ownRouteDay.prestamos
     : chainPlanillaDay
@@ -3234,7 +3260,8 @@ export function CollectorMobileApp({
         <CollectorDayLoansPanel
           dateLabel={queue.dateLabel}
           rows={viewLoanRows}
-          total={viewPrestamos}
+          total={prestamosKpi}
+          loading={dayExpenseDetail.loading && viewLoanRows.length === 0 && prestamosKpi > 0}
         />
       ) : confirmingClose && onCloseDay ? (
         <CollectorCloseDayConfirm

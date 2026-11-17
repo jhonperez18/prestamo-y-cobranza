@@ -8,11 +8,16 @@
 | --- | --- |
 | Caja / Inicial / CIE / saldo final | `day_cash_figure` (M/T) · `route_own_box` (A/N) — **regla de inicio intacta** |
 | «Lo que gastó» / «Lo que prestó» | **`/api/ops/route-day-detail`** |
+| Botón **Préstamos** cobrador / supervisor (lista) | **La misma puerta** — M · T · A · N iguales |
 | Efectivo · Banco/Nequi · N/P (listas del cierre/historial) | **La misma puerta** |
 | Totales de esos botones (si el aparato no tiene renglones) | Suma de los renglones de esa misma puerta |
 
 El celular **no** arma el detalle de un día soltado con copia local incompleta.
 Mientras baja: **«Leyendo…»**. Nunca ceros inventados ni lista local a medias.
+
+**Ley del número:** el total del botón y la lista al abrirlo son **el mismo hecho**.  
+Si el total de caja/nube no cuadra con renglones locales → lista = `route-day-detail`.  
+Prohibido: cifra 100.000 y «sin préstamos» / lista vacía.
 
 ## Obligatorio
 
@@ -22,11 +27,13 @@ Mientras baja: **«Leyendo…»**. Nunca ceros inventados ni lista local a media
 4. Tras guardar un gasto: soltar la foto (`clearCloudRouteDayDetail`).
 5. Cobrador y supervisor usan el mismo hook (`useDayExpenseDetail`).
 6. **Prohibido** caer a lista local incompleta cuando el hook ya dijo que no cuadra.
+7. M/T **igual** que A/N en el botón Préstamos: mismo plan B de lista. No solo N.
 
 ## Prohibido
 
 - Recalcular renglones de un día cerrado solo con IndexedDB/localStorage.
 - Una cifra de total de una puerta y una lista de otra.
+- Arreglar solo N/A y dejar M/T con lista local.
 - Parches UI «muéstralo igual» sin pasar por `route-day-detail`.
 - Bajar el libro entero “por si el detalle falta” (egress).
 - Tocar `cash_float` / Inicial / CIE desde esta puerta.

@@ -2748,6 +2748,23 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       histCollSrc.includes("historyOnScreen ? cashBookRoute : null"),
     true,
   );
+  const dayLoansPanelSrc = readFileSync(
+    new URL("../components/CollectorDayLoansPanel.tsx", import.meta.url),
+    "utf8",
+  );
+  expect(
+    "Botón Préstamos M/T/A/N: lista explica el número (misma puerta route-day-detail)",
+    histCollSrc.includes("Si el total (caja/nube) no cuadra con renglones locales") &&
+      histCollSrc.includes("fromDoor") &&
+      histCollSrc.includes("homePrestamoLines") &&
+      histCollSrc.includes("total={prestamosKpi}") &&
+      histSuperSrc.includes("openRoutePrestamoRows") &&
+      histSuperSrc.includes('detailMode === "prestamos"') &&
+      histSuperSrc.includes("prestamosTotal: openRoute?.prestamosHoy") &&
+      dayLoansPanelSrc.includes("Leyendo préstamos") &&
+      dayLoansPanelSrc.includes("sin renglones en la nube"),
+    true,
+  );
   const nequiSaldoServerSrc = readFileSync(
     new URL("../lib/server-nequi-saldo.ts", import.meta.url),
     "utf8",

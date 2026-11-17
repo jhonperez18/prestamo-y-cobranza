@@ -9,6 +9,8 @@ type Props = {
   /** Préstamos en efectivo: salen de la caja del cobrador / de la ruta. */
   rows: DayLoanDisbursementRow[];
   total: number;
+  /** Total del botón > 0 y lista aún bajando de la puerta. */
+  loading?: boolean;
   /**
    * Reservado (compat). Banco / Nequi ya no se listan aquí: viven en BANCO / NEQUI.
    * El cobrador solo ve la cuota cuando toque cobrar.
@@ -19,12 +21,16 @@ type Props = {
 };
 
 /** Detalle del KPI Préstamos de la ruta: solo efectivo (caja). Letra E / C. */
-export function CollectorDayLoansPanel({ dateLabel, rows, total }: Props) {
+export function CollectorDayLoansPanel({ dateLabel, rows, total, loading }: Props) {
   return (
     <section className="collector-day-loans-panel" aria-label={`Préstamos ${dateLabel}`}>
       {rows.length === 0 ? (
         <p className="collector-day-loans-empty">
-          Aún no hay préstamos en efectivo en esta ruta hoy.
+          {loading
+            ? "Leyendo préstamos…"
+            : total > 0
+              ? `Total ${money(total, { symbol: false })} · sin renglones en la nube para esta ruta.`
+              : "Aún no hay préstamos en efectivo en esta ruta hoy."}
         </p>
       ) : (
         <>

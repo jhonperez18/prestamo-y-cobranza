@@ -3575,7 +3575,12 @@ export function SupervisorMobileApp({
     collectors,
     todayAssignments,
   ]);
-  /** Hoy: puerta ruta+día. Sin caída a lista local incompleta. */
+  /** Local de préstamos del día (si cuadra con el total; si no, manda la puerta). */
+  const openRouteLocalPrestamoLines = useMemo(
+    () => (openRoute ? loanRowsToExpenseLines(openRoute.cashLoansToday) : []),
+    [openRoute],
+  );
+  /** Hoy: puerta ruta+día. Sin caída a lista local incompleta. M/T/A/N igual. */
   const openRouteExpenseDetail = useDayExpenseDetail({
     collectorRef: openRoute?.collectorRef || "",
     collectorName: openRoute?.collectorName,
@@ -3589,16 +3594,18 @@ export function SupervisorMobileApp({
     clients,
     loans,
     localGastos: openRouteExpenses,
-    localPrestamos: [],
+    localPrestamos: openRouteLocalPrestamoLines,
     enabled: Boolean(
       openRoute &&
         (detailMode === "gastos" ||
+          detailMode === "prestamos" ||
           detailMode === "cobros" ||
           detailMode === "np" ||
-          detailMode === "np-dia"),
+          detailMode === "np-dia" ||
+          (openRoute.prestamosHoy ?? 0) > 0),
     ),
     gastosTotal: openRoute?.gastosHoy ?? 0,
-    prestamosTotal: 0,
+    prestamosTotal: openRoute?.prestamosHoy ?? 0,
     needCollections: Boolean(
       openRoute &&
         (detailMode === "cobros" || detailMode === "np" || detailMode === "np-dia"),
@@ -3606,6 +3613,32 @@ export function SupervisorMobileApp({
   });
   /** Solo la puerta o la lista local si YA cuadra (el hook la devolvió). Nunca inventar. */
   const openRouteGastosLines = openRouteExpenseDetail.gastoLines;
+  /** Lista del botón Préstamo = misma cifra que prestamosHoy (M/T/A/N). */
+  const openRoutePrestamoRows = useMemo(() => {
+    if (!openRoute) return [];
+    const lines = openRouteExpenseDetail.prestamoLines;
+    if (lines.length > 0) {
+      return dayLoanDisbursementRows(today, lines, loans, clients, {
+        collectorRef: openRoute.collectorRef,
+        assignments: todayAssignments,
+        liveDay: isLiveCashDay(
+          openRoute.collectorRef,
+          today,
+          dayClosesLive,
+          businessTodayIso(),
+        ),
+      });
+    }
+    return openRoute.cashLoansToday;
+  }, [
+    openRoute,
+    openRouteExpenseDetail.prestamoLines,
+    today,
+    loans,
+    clients,
+    todayAssignments,
+    dayClosesLive,
+  ]);
   const openRouteNequiDays = useMemo(() => {
     if (!openRoute) return [];
     return digitalPoolRegisterDays({
@@ -6886,16 +6919,22 @@ export function SupervisorMobileApp({
           ) : (
             <>
               <p className="supervisor-mobile-detail-meta">
-                Préstamos del día · {openRoute.cashLoansToday.length}
-                {openRoute.cashLoansToday.length > 0
+                Préstamos del día · {openRoutePrestamoRows.length}
+                {openRoute.prestamosHoy > 0
                   ? ` · ${money(openRoute.prestamosHoy, { symbol: false })}`
                   : ""}
               </p>
-              {openRoute.cashLoansToday.length === 0 ? (
-                <p className="ficha-empty">Sin préstamos hoy en esta ruta.</p>
+              {openRoutePrestamoRows.length === 0 ? (
+                <p className="ficha-empty">
+                  {openRouteExpenseDetail.loading && openRoute.prestamosHoy > 0
+                    ? "Leyendo préstamos…"
+                    : openRoute.prestamosHoy > 0
+                      ? `Total ${money(openRoute.prestamosHoy, { symbol: false })} · sin renglones en la nube para esta ruta.`
+                      : "Sin préstamos hoy en esta ruta."}
+                </p>
               ) : (
                 <ul className="supervisor-mobile-list is-loans-today">
-                  {openRoute.cashLoansToday.map((loan, index) => (
+                  {openRoutePrestamoRows.map((loan, index) => (
                     <li key={loan.loanRef}>
                       <strong className="is-name">{loan.clientName}</strong>
                       <b className="is-amount">
