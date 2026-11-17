@@ -291,8 +291,12 @@ function prestamoBelongsToRoute(
   return owner === pin;
 }
 
+/** Misma ley que `isNoPayListRow` (PC / supervisor). */
+const NO_PAY_TODAY = "Hoy no tiene plata";
 const DAY_CLOSE_SKIP = "Cierre de jornada";
 const LOAN_RENEWED = "Renovado hoy";
+const LOAN_GIVEN = "Préstamo hecho hoy";
+const DECLINED_PRESTAR = "Hoy no quiere préstamo";
 
 /** Solo los clientes pedidos (liviano: no baja el catálogo entero). */
 async function clientNamesOnRoute(
@@ -320,6 +324,46 @@ async function clientNamesOnRoute(
     out.set(ref, name || ref);
   }
   return out;
+}
+
+/** Nombres sin filtrar por ruta actual (historial: manda `client_route` de la visita). */
+async function clientNamesByRef(clientRefs: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const client = createSupabaseAdminClient();
+  if (!client || !clientRefs.length) return out;
+  const unique = [...new Set(clientRefs.filter(Boolean))];
+  const { data } = await client
+    .from("clients")
+    .select("ref,name,last_name")
+    .in("ref", unique);
+  for (const row of data || []) {
+    const ref = String((row as { ref?: string }).ref || "").trim();
+    if (!ref) continue;
+    const name = `${String((row as { name?: string }).name || "")} ${String(
+      (row as { last_name?: string }).last_name || "",
+    )}`
+      .replace(/\s+/g, " ")
+      .trim();
+    out.set(ref, name || ref);
+  }
+  return out;
+}
+
+function assignmentIsNoPay(row: {
+  visit_status?: string;
+  skip_reason?: string;
+  day_closed_at?: string | null;
+  loan_ref?: string;
+  awaiting_loan?: boolean;
+}): boolean {
+  if (String(row.visit_status || "") !== "omitido") return false;
+  const reason = String(row.skip_reason || "").trim();
+  if (reason === DECLINED_PRESTAR || reason === LOAN_RENEWED || reason === LOAN_GIVEN) {
+    return false;
+  }
+  if (row.awaiting_loan || !String(row.loan_ref || "").trim()) return false;
+  if (reason === NO_PAY_TODAY) return true;
+  return Boolean(row.day_closed_at) && (reason === DAY_CLOSE_SKIP || !reason);
 }
 
 function methodForRoutePin(
@@ -416,6 +460,10 @@ async function loadRoutePayments(
   return { cash, digital };
 }
 
+/**
+ * N/P de la hoja = misma cuenta que el PC (`isNoPayListRow`).
+ * Ruta = `client_route` de la visita ese día (no la ruta actual del catálogo).
+ */
 async function loadRouteNp(
   collectorRef: string,
   date: string,
@@ -426,26 +474,38 @@ async function loadRouteNp(
   if (!client || !pin) return [];
   const { data: rows, error } = await client
     .from("daily_assignments")
-    .select("client_ref,client_name,loan_ref,visit_status,skip_reason,collector_ref")
+    .select(
+      "client_ref,client_name,client_route,loan_ref,visit_status,skip_reason,day_closed_at,awaiting_loan,collector_ref",
+    )
     .eq("dispatch_date", date)
     .eq("collector_ref", collectorRef)
     .eq("visit_status", "omitido")
-    .limit(3000);
-  if (error || !rows?.length) return [];
+    .limit(5000);
+  if (error) {
+    console.error("route-day-detail-np", error.message);
+    return [];
+  }
+  if (!rows?.length) return [];
+
+  const onPin = rows.filter((row) => {
+    const visitRoute = pinOf(String((row as { client_route?: string }).client_route || ""));
+    return visitRoute === pin && assignmentIsNoPay(row as Parameters<typeof assignmentIsNoPay>[0]);
+  });
+  if (!onPin.length) return [];
+
   const refs = [
     ...new Set(
-      rows.map((row) => String((row as { client_ref?: string }).client_ref || "").trim()).filter(Boolean),
+      onPin
+        .map((row) => String((row as { client_ref?: string }).client_ref || "").trim())
+        .filter(Boolean),
     ),
   ];
-  const onRoute = await clientNamesOnRoute(refs, pin);
-  if (!onRoute.size) return [];
+  const names = await clientNamesByRef(refs);
   const out: RouteDayNpLine[] = [];
   const seen = new Set<string>();
-  for (const row of rows) {
-    const reason = String((row as { skip_reason?: string }).skip_reason || "").trim();
-    if (reason === DAY_CLOSE_SKIP || reason === LOAN_RENEWED) continue;
+  for (const row of onPin) {
     const cRef = String((row as { client_ref?: string }).client_ref || "").trim();
-    if (!onRoute.has(cRef)) continue;
+    if (!cRef) continue;
     const loanRef = String((row as { loan_ref?: string }).loan_ref || "").trim();
     const key = `${cRef}|${loanRef}`;
     if (seen.has(key)) continue;
@@ -453,7 +513,7 @@ async function loadRouteNp(
     out.push({
       clientRef: cRef,
       clientName:
-        onRoute.get(cRef) ||
+        names.get(cRef) ||
         String((row as { client_name?: string }).client_name || "").trim() ||
         cRef,
       loanRef: loanRef || undefined,

@@ -2780,6 +2780,20 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       histSuperSrc.includes("Leyendo N/P"),
     true,
   );
+  const routeDayDetailSrc = readFileSync(
+    new URL("../lib/server-route-day-detail.ts", import.meta.url),
+    "utf8",
+  );
+  expect(
+    "N/P puerta = misma ley que PC (Cierre de jornada cuenta; ruta = client_route del día)",
+    routeDayDetailSrc.includes("function assignmentIsNoPay") &&
+      routeDayDetailSrc.includes('reason === NO_PAY_TODAY') &&
+      routeDayDetailSrc.includes("reason === DAY_CLOSE_SKIP || !reason") &&
+      routeDayDetailSrc.includes("client_route") &&
+      routeDayDetailSrc.includes("clientNamesByRef") &&
+      !routeDayDetailSrc.includes("if (reason === DAY_CLOSE_SKIP || reason === LOAN_RENEWED) continue"),
+    true,
+  );
   const nequiSaldoServerSrc = readFileSync(
     new URL("../lib/server-nequi-saldo.ts", import.meta.url),
     "utf8",
