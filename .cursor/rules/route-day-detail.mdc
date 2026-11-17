@@ -9,6 +9,7 @@
 | Caja / Inicial / CIE / saldo final | `day_cash_figure` (M/T) · `route_own_box` (A/N) — **regla de inicio intacta** |
 | «Lo que gastó» / «Lo que prestó» | **`/api/ops/route-day-detail`** |
 | Botón **Préstamos** cobrador / supervisor (lista) | **La misma puerta** — M · T · A · N iguales |
+| Botón **Gastos** cobrador (sheet) | **La misma estructura** — renglones de ESTA ruta; sin mezclar M/T/A/N |
 | Efectivo · Banco/Nequi · N/P (listas del cierre/historial) | **La misma puerta** |
 | Totales de esos botones (si el aparato no tiene renglones) | Suma de los renglones de esa misma puerta |
 

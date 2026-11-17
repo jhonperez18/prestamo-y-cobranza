@@ -125,6 +125,7 @@ import {
   periodFromDateIso,
   periodHadCollectorActivity,
   previousPeriod,
+  sumExpenseLines,
   type CollectorDayHistoryRow,
 } from "@/lib/collector-day-close";
 import {
@@ -1432,12 +1433,38 @@ export function CollectorMobileApp({
     if (isNavQuiet()) return;
     // Jornada cerrada: solo lectura, sin acceso a listas ni edición.
     if (dayLocked) return;
-    if (!planillaOwnsMovements && !planillaIsA) return;
+    // M/T · A · N: cada una con su planilla; no mezclar rutas.
+    if (!planillaOwnsMovements && !planillaIsA && !ownRouteDay) return;
     if (!onSaveExpenses) return;
     setExpandedKey(null);
     setConfirmingClose(false);
     setReviewingLoans(false);
     setEditingExpenses(true);
+    // Misma estructura que Préstamos: foto ruta+día de ESTA ruta.
+    const pin = (activePlanillaRoute || "").trim().toUpperCase();
+    void (async () => {
+      try {
+        if (pin === "A" || pin === "N") {
+          const { forgetCloudRouteOwnBox, refreshCloudRouteOwnBox } = await import(
+            "@/lib/cloud-route-own-box"
+          );
+          forgetCloudRouteOwnBox(collector.ref, activeDate, pin);
+          await refreshCloudRouteOwnBox(collector.ref, activeDate, pin);
+          setOwnBoxEpoch((n) => n + 1);
+        }
+        const { clearCloudRouteDayDetail, refreshCloudRouteDayDetail } = await import(
+          "@/lib/cloud-route-day-detail"
+        );
+        if (activePlanillaRoute) {
+          clearCloudRouteDayDetail(collector.ref, activeDate, activePlanillaRoute);
+          await refreshCloudRouteDayDetail(collector.ref, activeDate, activePlanillaRoute, {
+            force: true,
+          });
+        }
+      } catch (error) {
+        console.error("open-expenses-detail-cloud", error);
+      }
+    })();
   }
 
   function openLoansDetail() {
@@ -2074,6 +2101,19 @@ export function CollectorMobileApp({
   });
   const homeGastoLines = dayExpenseDetail.gastoLines;
   const homePrestamoLines = dayExpenseDetail.prestamoLines;
+  /**
+   * Sheet Gastos M/T/A/N: misma estructura que Préstamos.
+   * El total del botón debe verse en renglones; si lo local no cuadra → puerta de ESTA ruta.
+   */
+  const sheetGastoLines = useMemo(() => {
+    const local = dayExpenseSplit.otros;
+    const want = Math.trunc(topGastos);
+    const localTotal = sumExpenseLines(local);
+    if (want <= 0) return local;
+    if (local.length > 0 && localTotal === want) return local;
+    if (homeGastoLines.length > 0) return homeGastoLines;
+    return local;
+  }, [dayExpenseSplit.otros, topGastos, homeGastoLines]);
   /**
    * Misma ley: si la copia local está vacía y la puerta ya contestó, pintar cobros / N/P
    * de la nube. Sin inventar ceros mientras carga.
@@ -3243,7 +3283,7 @@ export function CollectorMobileApp({
         />
       ) : editingExpenses && onSaveExpenses ? (
         <CollectorCloseDaySheet
-          key={`${collector.ref}-${activeDate}-${activePlanillaRoute ?? ""}-${dayExpenseSplit.otros
+          key={`${collector.ref}-${activeDate}-${activePlanillaRoute ?? ""}-${sheetGastoLines
             .map((r) => `${r.id}:${r.amount}`)
             .join("|")}`}
           draft={{
@@ -3252,7 +3292,7 @@ export function CollectorMobileApp({
             date: activeDate,
             routeRef,
             collected: recaudo.total,
-            expenses: dayExpenseSplit.otros,
+            expenses: sheetGastoLines,
           }}
           onSave={saveExpenses}
         />

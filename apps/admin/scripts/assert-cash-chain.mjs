@@ -2765,6 +2765,14 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       dayLoansPanelSrc.includes("sin renglones en la nube"),
     true,
   );
+  expect(
+    "Botón Gastos M/T/A/N: misma estructura (sheet explica el total; sin mezclar rutas)",
+    histCollSrc.includes("sheetGastoLines") &&
+      histCollSrc.includes("Misma estructura que Préstamos") &&
+      histCollSrc.includes("open-expenses-detail-cloud") &&
+      histCollSrc.includes("expenses: sheetGastoLines"),
+    true,
+  );
   const nequiSaldoServerSrc = readFileSync(
     new URL("../lib/server-nequi-saldo.ts", import.meta.url),
     "utf8",
