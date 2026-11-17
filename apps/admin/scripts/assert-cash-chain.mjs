@@ -2696,13 +2696,16 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     "utf8",
   );
   expect(
-    "Nequi/Banco: sin cifra vieja ni 0 al cambiar de corte (espera servidor)",
-    poolHookSrc.includes("setBanco(null)") &&
+    "Nequi/Banco: pinta última cifra del servidor del mismo toIso; soft-refresh (cero fórmula local)",
+    poolHookSrc.includes("getCloudPoolVisibleSaldo") &&
+      poolHookSrc.includes("warm.toIso === toIso") &&
+      poolHookSrc.includes("setBanco(null)") &&
       poolHookSrc.includes("setNequi(null)") &&
-      poolHookSrc.includes("clearCloudPoolVisibleSaldo") &&
-      !poolHookSrc.includes("warm.toIso === toIso") &&
-      poolCloudSrc.includes("clearCloudPoolVisibleSaldo") &&
-      !poolCloudSrc.includes("sessionStorage.setItem") &&
+      !poolHookSrc.includes("clearCloudPoolVisibleSaldo") &&
+      poolCloudSrc.includes("sessionStorage.setItem") &&
+      poolCloudSrc.includes("LIVE_TTL_MS") &&
+      poolCloudSrc.includes("getCloudPoolVisibleSaldo(toIso") &&
+      poolServerSrc.includes("LIVE_CACHE_TTL_MS") &&
       poolServerSrc.includes("clearLivePoolSnap") &&
       !poolServerSrc.includes("refreshLiveInBackground") &&
       !poolServerSrc.includes("readLivePoolSnap") &&

@@ -46,8 +46,9 @@ export type PoolVisibleSaldoResult =
     }
   | { ok: false; error: string };
 
-/** Solo mes sellado (cifra fija). Día vivo: cero TTL — siempre libro fresco. */
+/** Mes sellado (cifra fija). Día vivo: TTL corto en RAM del VPS (remount INICIO). */
 const SEALED_CACHE_TTL_MS = 120_000;
+const LIVE_CACHE_TTL_MS = 45_000;
 const cache = new Map<string, { at: number; result: Extract<PoolVisibleSaldoResult, { ok: true }> }>();
 
 function cacheKey(toIso: string, openIso: string) {
@@ -284,7 +285,7 @@ export async function readPoolVisibleSaldo(options?: {
     return sealed;
   }
 
-  // Mes sellado en caché corta (cifra fija del sello). Día vivo no entra aquí.
+  // Mes sellado: caché corta (cifra fija del sello).
   if (
     hit &&
     Date.now() - hit.at < SEALED_CACHE_TTL_MS &&
@@ -294,12 +295,22 @@ export async function readPoolVisibleSaldo(options?: {
     return hit.result;
   }
 
-  // Día vivo: siempre libro fresco. Prohibido devolver pool-live.json /
-  // memoria vieja mientras “refresca atrás” (caso 6.766 vs 7.013).
+  // Día vivo: RAM del proceso ≤ 45 s (INICIO remount). No pool-live.json.
+  if (
+    hit &&
+    Date.now() - hit.at < LIVE_CACHE_TTL_MS &&
+    hit.result.toIso === toIso &&
+    toIso.slice(0, 7) === today.slice(0, 7)
+  ) {
+    return hit.result;
+  }
+
   void clearLivePoolSnap();
-  cache.delete(key);
   const live = await liveMonthFromSeal(toIso);
-  if (live?.ok) return live;
+  if (live?.ok) {
+    cache.set(key, { at: Date.now(), result: live });
+    return live;
+  }
   if (live && !live.ok) return live;
   return { ok: false, error: "pool_visible_unavailable" };
 }

@@ -28,8 +28,9 @@ Misma puerta (botón «historial» → lista de meses), **contenido distinto** s
 4. Dueño de la **cifra** en pantalla: el **servidor** (`/api/ops/pool-visible-saldo` → `poolVisibleSaldo` con libro completo). El aparato **no** suma cobros locales.
 5. **Informe de un mes ya sellado:** manda el sello del servidor. El celular **no** lo recalcula.
 6. Informe semanal / correo: la misma fórmula y la misma ventana (`ROUTE_CASH_BOOK_FROM`).
-7. **Cero datos dobles:** nunca pintar un Saldo local y luego el del servidor. Hasta que llegue: «…» / «Leyendo…»; **una sola cifra**.
+7. **Cero datos dobles:** nunca pintar un Saldo **calculado en el aparato** y luego el del servidor. La última respuesta OK del servidor del **mismo `toIso`** sí se pinta al instante (sesión); soft-refresh atrás. Sin foto de ese día → «…» / «Leyendo…».
 8. **Candado de release:** libro al día del sello = Banco/Nequi del Informe sellado. Si no cuadra, no se declara listo.
+9. **Velocidad INICIO:** no borrar la foto del servidor al abrir; no `force` en cada remount. VPS: TTL corto en RAM del día vivo (≤ 45 s).
 
 Ejemplo real Octubre 2026 → Noviembre: Banco = **5.299.000**; Nequi = **4.208.000**. Home, Informe vivo, semanal y sello = la misma.
 

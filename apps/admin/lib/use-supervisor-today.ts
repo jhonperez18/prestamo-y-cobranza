@@ -221,8 +221,9 @@ export type PoolVisibleSaldoCloudState = {
 };
 
 /**
- * Saldo Banco/Nequi (rutas − gastos) desde el servidor con libro completo.
- * Hasta que conteste: «…». Cero pintar sesión/snap viejo (caso 6.766 vs 7.013).
+ * Saldo Banco/Nequi (rutas − gastos) desde el servidor.
+ * Misma `toIso` en sesión → pinta al instante; soft-refresh atrás.
+ * Día distinto / sin foto → «…» hasta la nube (cero fórmula local).
  */
 export function usePoolVisibleSaldoCloud(enabled: boolean, toIso: string): PoolVisibleSaldoCloudState {
   const [epoch, setEpoch] = useState(0);
@@ -233,14 +234,24 @@ export function usePoolVisibleSaldoCloud(enabled: boolean, toIso: string): PoolV
   useEffect(() => {
     if (!enabled || !/^\d{4}-\d{2}-\d{2}$/.test(toIso)) return;
     let alive = true;
-    setBanco(null);
-    setNequi(null);
-    setSettled(false);
     void import("@/lib/cloud-pool-visible-saldo").then(
-      ({ clearCloudPoolVisibleSaldo, refreshCloudPoolVisibleSaldo }) => {
-        clearCloudPoolVisibleSaldo();
+      ({ getCloudPoolVisibleSaldo, refreshCloudPoolVisibleSaldo }) => {
+        if (!alive) return;
+        const warm = getCloudPoolVisibleSaldo(toIso);
+        // Solo la última cifra del servidor del mismo día — no otro corte.
+        if (warm && warm.toIso === toIso) {
+          setBanco(warm.banco);
+          setNequi(warm.nequi);
+          setSettled(true);
+        } else {
+          setBanco(null);
+          setNequi(null);
+          setSettled(false);
+        }
         const pull = async (tries = 0) => {
-          const row = await refreshCloudPoolVisibleSaldo(toIso);
+          const row = await refreshCloudPoolVisibleSaldo(toIso, {
+            force: tries === 0 && !warm,
+          });
           if (!alive) return;
           if (row && row.toIso === toIso) {
             setSettled(true);
