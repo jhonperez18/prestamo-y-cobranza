@@ -22,6 +22,16 @@ Mientras baja: **«Leyendo…»**. Nunca ceros inventados ni lista local a media
 Si el total de caja/nube no cuadra con renglones locales → lista = `route-day-detail`.  
 Prohibido: cifra 100.000 y «sin préstamos» / lista vacía.
 
+## Velocidad (historial sellado)
+
+Día **pasado** = sin movimiento. Debe pintar **casi al instante** si ya se leyó.
+
+| Capa | Regla |
+| --- | --- |
+| Celular | `sessionStorage` + Map · TTL 12 h · `useDayExpenseDetail` pinta warm **antes** del fetch |
+| Hook | `force` solo en **hoy**; sellado nunca fuerza si hay foto |
+| VPS | Memoria del proceso 12 h para día sellado (no re-pegar Supabase en cada toque) |
+
 ## Obligatorio
 
 1. Pedir la puerta **solo al abrir** el detalle (un día · una ruta). No en el listado de meses.
@@ -31,6 +41,7 @@ Prohibido: cifra 100.000 y «sin préstamos» / lista vacía.
 5. Cobrador y supervisor usan el mismo hook (`useDayExpenseDetail`).
 6. **Prohibido** caer a lista local incompleta cuando el hook ya dijo que no cuadra.
 7. M/T **igual** que A/N en el botón Préstamos: mismo plan B de lista. No solo N.
+8. Día sellado con foto en sesión → pintar ya; no «Leyendo…» otra vez.
 
 ## Prohibido
 
@@ -40,6 +51,7 @@ Prohibido: cifra 100.000 y «sin préstamos» / lista vacía.
 - Parches UI «muéstralo igual» sin pasar por `route-day-detail`.
 - Bajar el libro entero “por si el detalle falta” (egress).
 - Tocar `cash_float` / Inicial / CIE desde esta puerta.
+- `force: true` en historial sellado (vuelve a esperar la nube sin necesidad).
 
 ## Saldo Banco / Nequi (home)
 

@@ -2794,6 +2794,25 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       !routeDayDetailSrc.includes("if (reason === DAY_CLOSE_SKIP || reason === LOAN_RENEWED) continue"),
     true,
   );
+  const dayExpenseHookSrc = readFileSync(
+    new URL("../lib/use-day-expense-detail.ts", import.meta.url),
+    "utf8",
+  );
+  const cloudRouteDaySrc = readFileSync(
+    new URL("../lib/cloud-route-day-detail.ts", import.meta.url),
+    "utf8",
+  );
+  expect(
+    "Historial sellado: pinta caché al instante (sin force; TTL 12 h; mem VPS)",
+    dayExpenseHookSrc.includes("sealed && warm") &&
+      dayExpenseHookSrc.includes("force: !sealed") &&
+      dayExpenseHookSrc.includes("force: false") &&
+      cloudRouteDaySrc.includes("SEALED_TTL_MS") &&
+      cloudRouteDaySrc.includes("sessionStorage") &&
+      routeDayDetailSrc.includes("SEALED_MEM_TTL_MS") &&
+      routeDayDetailSrc.includes("sealedMem"),
+    true,
+  );
   const nequiSaldoServerSrc = readFileSync(
     new URL("../lib/server-nequi-saldo.ts", import.meta.url),
     "utf8",

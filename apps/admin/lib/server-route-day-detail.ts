@@ -4,8 +4,12 @@
  * Ley: totales de gasto/préstamo y sus renglones salen JUNTOS del servidor.
  * El celular no arma detalle con copia soltada. Caja/Inicial siguen en
  * day_cash_figure / route_own_box (regla de inicio intacta).
+ *
+ * Día sellado: foto en memoria del proceso (12 h) — historial sin movimiento
+ * no vuelve a pegarle a Supabase en cada toque.
  */
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
+import { businessTodayIso } from "@/lib/business-timezone";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { rowToDayClose, rowToDayExpense } from "@/lib/supabase/ops-mirror";
 import type { CollectorDayExpenseDraft } from "@/lib/collector-day-close";
@@ -54,6 +58,14 @@ export type RouteDayDetailResult =
   | RouteDayDetailOk
   | { ok: true; ready: false; error: string }
   | { ok: false; error: string };
+
+/** Día sellado en memoria del VPS (historial sin movimiento). */
+const SEALED_MEM_TTL_MS = 12 * 60 * 60_000;
+const sealedMem = new Map<string, { at: number; row: RouteDayDetailOk }>();
+
+function sealedMemKey(collectorRef: string, date: string, route: string) {
+  return `${collectorRef}|${date}|${route}`;
+}
 
 function pesos(n: number | null | undefined) {
   return Math.trunc(Number(n) || 0);
@@ -540,6 +552,16 @@ export async function readRouteDayDetail(
     return { ok: false, error: "sin_servicio" };
   }
 
+  const today = businessTodayIso();
+  const sealed = date < today;
+  if (sealed) {
+    const key = sealedMemKey(ref, date, pin);
+    const hit = sealedMem.get(key);
+    if (hit && Date.now() - hit.at < SEALED_MEM_TTL_MS) {
+      return hit.row;
+    }
+  }
+
   try {
     const allLines = await loadDraftLines(ref, date);
     const gastoLines = allLines.filter(
@@ -578,7 +600,7 @@ export async function readRouteDayDetail(
     ]);
     const digitalPool = pin === "A" ? ("nequi" as const) : ("banco" as const);
 
-    return {
+    const row: RouteDayDetailOk = {
       ok: true,
       ready: true,
       collectorRef: ref,
@@ -596,6 +618,10 @@ export async function readRouteDayDetail(
       npRows,
       npCount: npRows.length,
     };
+    if (sealed) {
+      sealedMem.set(sealedMemKey(ref, date, pin), { at: Date.now(), row });
+    }
+    return row;
   } catch (error) {
     console.error("route-day-detail", error);
     return {

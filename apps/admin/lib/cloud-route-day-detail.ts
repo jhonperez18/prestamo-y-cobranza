@@ -1,6 +1,6 @@
 /**
  * Cliente de la puerta ruta+día (gastos / préstamos / efectivo / banco|nequi / N/P).
- * Solo pide al abrir el detalle; no baja el libro entero.
+ * Día sellado: caché de sesión + TTL largo (no se mueve). Hoy: TTL corto.
  */
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
 import type {
@@ -27,9 +27,10 @@ export type CloudRouteDayDetail = {
 };
 
 const byKey = new Map<string, CloudRouteDayDetail>();
-/** Hoy: 45 s. Día pasado: 10 min (sellado no cambia). */
+const STORAGE_PREFIX = "nexo-route-day-detail:";
+/** Hoy: 45 s. Día pasado sellado: 12 h (historial sin movimiento). */
 const LIVE_TTL_MS = 45_000;
-const SEALED_TTL_MS = 10 * 60_000;
+const SEALED_TTL_MS = 12 * 60 * 60_000;
 
 function keyOf(collectorRef: string, date: string, route: string) {
   return `${collectorRef.trim()}|${date}|${String(route || "")
@@ -38,7 +39,38 @@ function keyOf(collectorRef: string, date: string, route: string) {
 }
 
 function ttlFor(date: string, todayIso: string) {
-  return date === todayIso ? LIVE_TTL_MS : SEALED_TTL_MS;
+  return date < todayIso ? SEALED_TTL_MS : LIVE_TTL_MS;
+}
+
+function readPersisted(key: string): CloudRouteDayDetail | null {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(STORAGE_PREFIX + key);
+    if (!raw) return null;
+    const row = JSON.parse(raw) as CloudRouteDayDetail;
+    if (!row || !row.date || !row.collectorRef || !row.route) return null;
+    return row;
+  } catch {
+    return null;
+  }
+}
+
+function writePersisted(key: string, row: CloudRouteDayDetail) {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    sessionStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(row));
+  } catch {
+    /* cupo */
+  }
+}
+
+function dropPersisted(key: string) {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    sessionStorage.removeItem(STORAGE_PREFIX + key);
+  } catch {
+    /* cupo */
+  }
 }
 
 export function getCloudRouteDayDetail(
@@ -46,7 +78,15 @@ export function getCloudRouteDayDetail(
   date: string,
   route: string,
 ): CloudRouteDayDetail | null {
-  return byKey.get(keyOf(collectorRef, date, route)) ?? null;
+  const key = keyOf(collectorRef, date, route);
+  const hit = byKey.get(key);
+  if (hit) return hit;
+  const warm = readPersisted(key);
+  if (warm) {
+    byKey.set(key, warm);
+    return warm;
+  }
+  return null;
 }
 
 export function clearCloudRouteDayDetail(
@@ -56,16 +96,39 @@ export function clearCloudRouteDayDetail(
 ) {
   if (!collectorRef) {
     byKey.clear();
+    if (typeof sessionStorage !== "undefined") {
+      try {
+        const drop: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i += 1) {
+          const k = sessionStorage.key(i);
+          if (k && k.startsWith(STORAGE_PREFIX)) drop.push(k);
+        }
+        for (const k of drop) sessionStorage.removeItem(k);
+      } catch {
+        /* cupo */
+      }
+    }
     return;
   }
   if (!date || !route) {
     const prefix = `${collectorRef.trim()}|`;
     for (const key of [...byKey.keys()]) {
-      if (key.startsWith(prefix)) byKey.delete(key);
+      if (key.startsWith(prefix)) {
+        byKey.delete(key);
+        dropPersisted(key);
+      }
     }
     return;
   }
-  byKey.delete(keyOf(collectorRef, date, route));
+  const key = keyOf(collectorRef, date, route);
+  byKey.delete(key);
+  dropPersisted(key);
+}
+
+function remember(row: CloudRouteDayDetail) {
+  const key = keyOf(row.collectorRef, row.date, row.route);
+  byKey.set(key, row);
+  writePersisted(key, row);
 }
 
 export async function refreshCloudRouteDayDetail(
@@ -82,7 +145,7 @@ export async function refreshCloudRouteDayDetail(
   if (typeof window === "undefined") return null;
 
   const today = opts.todayIso || date;
-  const cached = byKey.get(keyOf(ref, date, pin));
+  const cached = getCloudRouteDayDetail(ref, date, pin);
   if (
     !opts.force &&
     cached &&
@@ -121,7 +184,7 @@ export async function refreshCloudRouteDayDetail(
       npRows: Array.isArray(body.npRows) ? body.npRows : [],
       fetchedAt: Date.now(),
     };
-    byKey.set(keyOf(ref, date, pin), row);
+    remember(row);
     return row;
   } catch (error) {
     console.error("refreshCloudRouteDayDetail", error);

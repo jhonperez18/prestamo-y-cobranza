@@ -3,13 +3,14 @@
 /**
  * Detalle ruta+día (gastos / préstamos / efectivo / banco|nequi / N/P).
  *
- * Ley: con pantalla habilitada y ruta, siempre consulta
- * `/api/ops/route-day-detail` (también si el total local es 0).
- * La nube manda la lista; lo local solo si aún no hay respuesta o cuadra.
+ * Día sellado: si hay caché de sesión → pinta al instante (historial sin movimiento).
+ * Hoy: fuerza lectura fresca. La nube manda la lista.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { businessTodayIso } from "@/lib/business-timezone";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
 import {
+  getCloudRouteDayDetail,
   refreshCloudRouteDayDetail,
   type CloudRouteDayDetail,
 } from "@/lib/cloud-route-day-detail";
@@ -83,7 +84,6 @@ export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDet
 
   const gastosOk = localMatchesTotal(input.localGastos, input.gastosTotal);
   const prestamosOk = localMatchesTotal(input.localPrestamos, input.prestamosTotal);
-  // Raíz: total local 0 no bloquea la lectura. Cobrador / supervisor / PC pedirán la nube.
   const needFetch = input.enabled && Boolean(input.route);
 
   useEffect(() => {
@@ -98,11 +98,37 @@ export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDet
     const route = String(input.route || "").trim();
     if (!collectorRef || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !route) return;
 
+    const today = businessTodayIso();
+    const sealed = date < today;
+    const warm = getCloudRouteDayDetail(collectorRef, date, route);
     const req = ++reqRef.current;
+    let cancelled = false;
+
+    // Historial sellado con foto en sesión → pintar ya (casi al instante).
+    if (sealed && warm) {
+      setCloud(warm);
+      setLoading(false);
+      setFetched(true);
+      // Soft refresh sin bloquear (respeta TTL 12 h).
+      void refreshCloudRouteDayDetail(collectorRef, date, route, {
+        force: false,
+        todayIso: today,
+      }).then((row) => {
+        if (cancelled || req !== reqRef.current || !row) return;
+        setCloud(row);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     setLoading(true);
     setFetched(false);
-    let cancelled = false;
-    void refreshCloudRouteDayDetail(collectorRef, date, route, { force: true }).then((row) => {
+    void refreshCloudRouteDayDetail(collectorRef, date, route, {
+      // Solo el día vivo fuerza; el sellado usa caché.
+      force: !sealed,
+      todayIso: today,
+    }).then((row) => {
       if (cancelled || req !== reqRef.current) return;
       setCloud(row);
       setLoading(false);
@@ -121,12 +147,9 @@ export function useDayExpenseDetail(input: DayExpenseDetailInput): DayExpenseDet
       local: RouteExpenseLine[],
       remote: RouteExpenseLine[],
     ): RouteExpenseLine[] => {
-      // Nube con filas: manda (también si el total local era 0).
       if (fetched && remote.length > 0) return remote;
       if (ok) return local;
-      // Nube contestó vacía: lista vacía real.
       if (fetched && !loading) return remote;
-      // Cargando o sin respuesta: conserva local (cola / offline).
       return local;
     };
     return {
