@@ -5028,8 +5028,36 @@ export function SupervisorMobileApp({
     clients,
     openRouteHistoryDayExpenses,
   ]);
-  /** N/P del día de esta ruta: los mismos renglones «N/P» de su planilla. */
-  const cierreNpRows = openRouteHistoryDayPlanilla.filter((row) => row.method === "np");
+  /**
+   * N/P del día de esta ruta (historial incluido).
+   * Hoy: planilla local. Día pasado sin hoja en el aparato → puerta route-day-detail
+   * (misma estructura que Efectivo/Banco del cierre). Sin mezclar rutas.
+   */
+  const cierreNpRows = useMemo(() => {
+    const local = openRouteHistoryDayPlanilla.filter((row) => row.method === "np");
+    if (local.length > 0) return local;
+    if (!openRoute || !cajaHistoryDayIso) return local;
+    if (cierreExpenseDetail.loading || !cierreExpenseDetail.cloudReady) return local;
+    return cierreExpenseDetail.npRows.map((row, index) => ({
+      key: `np-cloud:${row.clientRef}:${row.loanRef || index}`,
+      clientRef: row.clientRef,
+      route: openRoute.routeName,
+      order: null as number | null,
+      name: row.clientName,
+      amount: null as number | null,
+      time: "—",
+      evidence: [] as NonNullable<PaymentRow["evidence"]>,
+      method: "np" as const,
+      lentToday: false,
+    }));
+  }, [
+    openRouteHistoryDayPlanilla,
+    openRoute,
+    cajaHistoryDayIso,
+    cierreExpenseDetail.loading,
+    cierreExpenseDetail.cloudReady,
+    cierreExpenseDetail.npRows,
+  ]);
   /** Cobros, préstamos y N/P: la lista sale con las columnas de la planilla del día. */
   const cierrePlanillaPayments: PaymentRow[] | null =
     cierreListKind === "efectivo"
@@ -6562,7 +6590,9 @@ export function SupervisorMobileApp({
                 <div data-cierre-keep aria-label={CIERRE_LIST_TITLE[cierreListKind]}>
                   {cierrePlanillaRows.length === 0 ? (
                     <p className="collector-cierre-drop-empty">
-                      {CIERRE_LIST_EMPTY[cierreListKind]}
+                      {cierreListKind === "np" && cierreExpenseDetail.loading
+                        ? "Leyendo N/P…"
+                        : CIERRE_LIST_EMPTY[cierreListKind]}
                     </p>
                   ) : (
                     <CollectorDayCloseExtras

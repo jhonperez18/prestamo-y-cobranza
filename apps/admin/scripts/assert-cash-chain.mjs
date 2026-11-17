@@ -2773,6 +2773,13 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       histCollSrc.includes("expenses: sheetGastoLines"),
     true,
   );
+  expect(
+    "Supervisor historial N/P: día pasado usa route-day-detail (no solo planilla local)",
+    histSuperSrc.includes("np-cloud:") &&
+      histSuperSrc.includes("cierreExpenseDetail.npRows") &&
+      histSuperSrc.includes("Leyendo N/P"),
+    true,
+  );
   const nequiSaldoServerSrc = readFileSync(
     new URL("../lib/server-nequi-saldo.ts", import.meta.url),
     "utf8",

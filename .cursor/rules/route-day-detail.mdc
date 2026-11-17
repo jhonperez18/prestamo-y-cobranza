@@ -10,6 +10,7 @@
 | «Lo que gastó» / «Lo que prestó» | **`/api/ops/route-day-detail`** |
 | Botón **Préstamos** cobrador / supervisor (lista) | **La misma puerta** — M · T · A · N iguales |
 | Botón **Gastos** cobrador (sheet) | **La misma estructura** — renglones de ESTA ruta; sin mezclar M/T/A/N |
+| **N/P** cierre / historial supervisor | **La misma puerta** — día pasado sin planilla local → `npRows` de route-day-detail |
 | Efectivo · Banco/Nequi · N/P (listas del cierre/historial) | **La misma puerta** |
 | Totales de esos botones (si el aparato no tiene renglones) | Suma de los renglones de esa misma puerta |
 
