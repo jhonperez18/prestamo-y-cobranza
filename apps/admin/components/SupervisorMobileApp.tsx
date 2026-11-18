@@ -517,8 +517,11 @@ type RouteLiquidacion = {
   closed: boolean;
   newLoans: LoanRow[];
   renewals: LoanRow[];
-  /** Marcas del día en la tarjeta: renovó, banco, efectivo, nequi, prestó. */
-  dayMarks: { r: number; b: number; e: number; n: number; p: number };
+  /**
+   * Marcas del día: R renovó · B/E/N cobros · P efectivo (caja) · Pb Banco/Nequi.
+   * Dos P: no mezclar préstamo de caja con desembolso digital.
+   */
+  dayMarks: { r: number; b: number; e: number; n: number; p: number; pb: number };
   statusLabel: string;
   statusKind: StatusKind;
   /** Hora del sello de esta ruta, «21:01». Vacío si la hoja no cerró. */
@@ -741,7 +744,13 @@ function RouteBoardCard({
           </div>
           {metricsBlock}
           <div className="supervisor-route-board-marks-line" aria-hidden={
-            row.dayMarks.r + row.dayMarks.b + row.dayMarks.e + row.dayMarks.n + row.dayMarks.p <= 0
+            row.dayMarks.r +
+              row.dayMarks.b +
+              row.dayMarks.e +
+              row.dayMarks.n +
+              row.dayMarks.p +
+              row.dayMarks.pb <=
+            0
           }>
             <RouteDayMarks marks={row.dayMarks} />
           </div>
@@ -1447,16 +1456,46 @@ function isRenewalLoan(loan: LoanRow) {
 
 const ROUTE_DAY_MARKS = [
   { key: "r", letter: "R", title: "Renovó", className: "is-r" },
-  { key: "b", letter: "B", title: "Banco", className: "is-b" },
-  { key: "e", letter: "E", title: "Efectivo", className: "is-e" },
-  { key: "n", letter: "N", title: "Nequi", className: "is-n" },
-  { key: "p", letter: "P", title: "Prestó", className: "is-p" },
+  { key: "b", letter: "B", title: "Cobro Banco", className: "is-b" },
+  { key: "e", letter: "E", title: "Cobro Efectivo", className: "is-e" },
+  { key: "n", letter: "N", title: "Cobro Nequi", className: "is-n" },
+  {
+    key: "p",
+    letter: "P",
+    title: "Prestó efectivo (caja)",
+    className: "is-p",
+  },
+  {
+    key: "pb",
+    letter: "P",
+    title: "Prestó Banco / Nequi (digital)",
+    className: "is-pb",
+  },
 ] as const;
+
+type RouteDayMarksCount = {
+  r: number;
+  b: number;
+  e: number;
+  n: number;
+  p: number;
+  pb: number;
+};
+
+/** Origen del préstamo para la marca: caja vs digital. Cartera / sin origen → nada. */
+function loanDayMarkKey(
+  loan: LoanRow,
+): "p" | "pb" | null {
+  const source = loanDisbursementSource(loan);
+  if (source === "efectivo" || source === "combinado") return "p";
+  if (source === "banco" || source === "nequi") return "pb";
+  return null;
+}
 
 function RouteDayMarks({
   marks,
 }: {
-  marks: { r: number; b: number; e: number; n: number; p: number };
+  marks: RouteDayMarksCount;
 }) {
   return (
     <>
@@ -2208,6 +2247,14 @@ export function SupervisorMobileApp({
       );
       const renewals = loansToday.filter(isRenewalLoan);
       const newLoans = loansToday.filter((loan) => !isRenewalLoan(loan));
+      // Marcas P: efectivo/combinado (caja) vs Banco/Nequi (digital). Cartera no marca.
+      let prestamoCajaCount = 0;
+      let prestamoDigitalCount = 0;
+      for (const loan of newLoans) {
+        const mark = loanDayMarkKey(loan);
+        if (mark === "p") prestamoCajaCount += 1;
+        else if (mark === "pb") prestamoDigitalCount += 1;
+      }
 
       const holdLocalCie =
         Boolean(collectorRef) &&
@@ -2455,7 +2502,8 @@ export function SupervisorMobileApp({
           b: bancoCount,
           e: efectivoCount,
           n: nequiCount,
-          p: newLoans.length,
+          p: prestamoCajaCount,
+          pb: prestamoDigitalCount,
         },
         statusLabel,
         statusKind,

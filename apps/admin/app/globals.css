@@ -9501,7 +9501,10 @@
     .route-day-mark.is-b { background: #bfdbfe; color: #1e3a8a; }
     .route-day-mark.is-e { background: #bbf7d0; color: #14532d; }
     .route-day-mark.is-n { background: #ddd6fe; color: #5b21b6; }
-    .route-day-mark.is-p { background: #1e3a8a; color: #dbeafe; }
+    /* P caja = mismo azul claro del botón Préstamos + letra negra */
+    .route-day-mark.is-p { background: #8ec8f0; color: #111; }
+    /* P digital Banco/Nequi = azul oscuro + letra blanca */
+    .route-day-mark.is-pb { background: #1e3a8a; color: #fff; }
     .route-close-clock {
       font-size: 10px;
       font-weight: 500;

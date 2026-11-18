@@ -2783,6 +2783,19 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       histSuperSrc.includes("Leyendo N/P"),
     true,
   );
+  expect(
+    "INICIO marcas P: efectivo (caja) ≠ Banco/Nequi digital; B sigue siendo cobro",
+    histSuperSrc.includes("function loanDayMarkKey") &&
+      histSuperSrc.includes('source === "efectivo" || source === "combinado"') &&
+      histSuperSrc.includes('source === "banco" || source === "nequi"') &&
+      histSuperSrc.includes('className: "is-p"') &&
+      histSuperSrc.includes('className: "is-pb"') &&
+      histSuperSrc.includes("prestamoCajaCount") &&
+      histSuperSrc.includes("prestamoDigitalCount") &&
+      histSuperSrc.includes("pb: prestamoDigitalCount") &&
+      histSuperSrc.includes('title: "Cobro Banco"'),
+    true,
+  );
   const routeDayDetailSrc = readFileSync(
     new URL("../lib/server-route-day-detail.ts", import.meta.url),
     "utf8",
