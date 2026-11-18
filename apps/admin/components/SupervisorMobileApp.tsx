@@ -417,10 +417,7 @@ type RouteDetailMode =
   | "np"
   | "np-dia"
   | "nequi-historial"
-  | "nequi-dia"
-  | "marcas";
-
-type RouteDayMarkKey = "r" | "b" | "e" | "n" | "p";
+  | "nequi-dia";
 
 const SUPERVISOR_NAV_KEY = "nexo-supervisor-mobile-nav";
 const SUPERVISOR_VIEWS: SupervisorView[] = [
@@ -600,7 +597,6 @@ function RouteBoardCard({
   row,
   accent,
   onOpen,
-  onOpenMarks,
   mode = "ruta",
   tone,
   connectionLevel,
@@ -612,8 +608,6 @@ function RouteBoardCard({
   row: RouteLiquidacion;
   accent: number;
   onOpen: (routeRef: string) => void;
-  /** Abrir tablita de marcas del día (R/B/E/N/P). */
-  onOpenMarks?: (routeRef: string, mark?: RouteDayMarkKey) => void;
   /** Punto de conexión del cobrador (solo INICIO). */
   connectionLevel?: ConnectionLevel;
   onConnection?: () => void;
@@ -746,56 +740,10 @@ function RouteBoardCard({
             </div>
           </div>
           {metricsBlock}
-          <div
-            className={`supervisor-route-board-marks-line${onOpenMarks && row.dayMarks.r + row.dayMarks.b + row.dayMarks.e + row.dayMarks.n + row.dayMarks.p > 0 ? " is-tap" : ""}`}
-            aria-hidden={
-              row.dayMarks.r + row.dayMarks.b + row.dayMarks.e + row.dayMarks.n + row.dayMarks.p <= 0
-            }
-            onClick={
-              onOpenMarks &&
-              row.dayMarks.r + row.dayMarks.b + row.dayMarks.e + row.dayMarks.n + row.dayMarks.p > 0
-                ? (event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onOpenMarks(row.routeRef);
-                  }
-                : undefined
-            }
-            onKeyDown={
-              onOpenMarks &&
-              row.dayMarks.r + row.dayMarks.b + row.dayMarks.e + row.dayMarks.n + row.dayMarks.p > 0
-                ? (event) => {
-                    if (event.key !== "Enter" && event.key !== " ") return;
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onOpenMarks(row.routeRef);
-                  }
-                : undefined
-            }
-            role={
-              onOpenMarks &&
-              row.dayMarks.r + row.dayMarks.b + row.dayMarks.e + row.dayMarks.n + row.dayMarks.p > 0
-                ? "button"
-                : undefined
-            }
-            tabIndex={
-              onOpenMarks &&
-              row.dayMarks.r + row.dayMarks.b + row.dayMarks.e + row.dayMarks.n + row.dayMarks.p > 0
-                ? 0
-                : undefined
-            }
-            title="Ver marcas del día"
-          >
-            <RouteDayMarks
-              marks={row.dayMarks}
-              onMarkClick={
-                onOpenMarks
-                  ? (mark) => {
-                      onOpenMarks(row.routeRef, mark);
-                    }
-                  : undefined
-              }
-            />
+          <div className="supervisor-route-board-marks-line" aria-hidden={
+            row.dayMarks.r + row.dayMarks.b + row.dayMarks.e + row.dayMarks.n + row.dayMarks.p <= 0
+          }>
+            <RouteDayMarks marks={row.dayMarks} />
           </div>
           {progressBlock}
         </>
@@ -805,16 +753,7 @@ function RouteBoardCard({
             <div className="supervisor-route-board-id">
               <div className="supervisor-route-board-ruta-row">
                 <span className="supervisor-route-board-ruta">Ruta {row.routeName}</span>
-                <RouteDayMarks
-                  marks={row.dayMarks}
-                  onMarkClick={
-                    onOpenMarks
-                      ? (mark) => {
-                          onOpenMarks(row.routeRef, mark);
-                        }
-                      : undefined
-                  }
-                />
+                <RouteDayMarks marks={row.dayMarks} />
                 {row.statusLabel === "Cerrado" ? (
                   <Pill label={row.statusLabel} kind={row.statusKind} />
                 ) : null}
@@ -1516,29 +1455,14 @@ const ROUTE_DAY_MARKS = [
 
 function RouteDayMarks({
   marks,
-  onMarkClick,
 }: {
   marks: { r: number; b: number; e: number; n: number; p: number };
-  onMarkClick?: (mark: RouteDayMarkKey) => void;
 }) {
   return (
     <>
       {ROUTE_DAY_MARKS.map((mark) =>
         marks[mark.key] > 0 ? (
-          <span
-            key={mark.key}
-            className={`route-day-mark ${mark.className}${onMarkClick ? " is-tap" : ""}`}
-            title={mark.title}
-            onClick={
-              onMarkClick
-                ? (event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    onMarkClick(mark.key);
-                  }
-                : undefined
-            }
-          >
+          <span key={mark.key} className={`route-day-mark ${mark.className}`} title={mark.title}>
             {marks[mark.key]} {mark.letter}
           </span>
         ) : null,
@@ -1725,8 +1649,6 @@ export function SupervisorMobileApp({
   /** Panel al que vuelve al salir del detalle de ruta (inicio / caja / nequi). */
   const [routeReturnView, setRouteReturnView] = useState<SupervisorView>("inicio");
   const [detailMode, setDetailMode] = useState<RouteDetailMode>("totales");
-  /** Filtro de la tablita de marcas (R/B/E/N/P). null = todas. */
-  const [marcasFilter, setMarcasFilter] = useState<RouteDayMarkKey | null>(null);
   const [historyBookPayments, setHistoryBookPayments] = useState<PaymentRow[] | null>(null);
   const [cobrosMethodFilter, setCobrosMethodFilter] = useState<PaymentMethod | null>(null);
   /** Día ISO seleccionado en historial Nequi de una ruta. */
@@ -3809,120 +3731,6 @@ export function SupervisorMobileApp({
     monthCloses,
   ]);
 
-  /** Filas de la tablita INICIO · marcas (mismos hechos que 1E / 1P / …). */
-  const openRouteMarcasRows = useMemo(() => {
-    type MarcaRow = {
-      key: string;
-      mark: RouteDayMarkKey;
-      letter: string;
-      className: string;
-      title: string;
-      name: string;
-      amount: number;
-      meta: string;
-    };
-    if (!openRoute || detailMode !== "marcas") return [] as MarcaRow[];
-    const collector = collectors.find((row) => row.ref === openRoute.collectorRef);
-    if (!collector) return [] as MarcaRow[];
-    const src = {
-      collectorRef: collector.ref,
-      collectorName: collector.name,
-      date: today,
-      payments: paymentsWithEvidence,
-      loans,
-      clients,
-      collectors: [collector],
-      assignments: assignmentsLive,
-      dayCloses: dayClosesLive,
-      dayExpenseDrafts: expensesLive,
-      planillaCashCloses,
-      monthCloses,
-    };
-    const markMeta = Object.fromEntries(
-      ROUTE_DAY_MARKS.map((m) => [m.key, m]),
-    ) as Record<RouteDayMarkKey, (typeof ROUTE_DAY_MARKS)[number]>;
-    const rows: MarcaRow[] = [];
-    for (const loan of openRoute.renewals) {
-      const m = markMeta.r;
-      rows.push({
-        key: `r:${loan.ref}`,
-        mark: "r",
-        letter: m.letter,
-        className: m.className,
-        title: m.title,
-        name: String(loan.client || loan.ref).trim() || loan.ref,
-        amount: Math.trunc(Number(loan.capital) || 0),
-        meta: loan.ref,
-      });
-    }
-    for (const loan of openRoute.newLoans) {
-      const m = markMeta.p;
-      const origin = loanDisbursementSource(loan);
-      rows.push({
-        key: `p:${loan.ref}`,
-        mark: "p",
-        letter: m.letter,
-        className: m.className,
-        title: m.title,
-        name: String(loan.client || loan.ref).trim() || loan.ref,
-        amount: Math.trunc(Number(loan.capital) || 0),
-        meta: origin ? `${loan.ref} · ${origin}` : loan.ref,
-      });
-    }
-    for (const pay of routeCashPayments(src, openRoute.routeName)) {
-      const m = markMeta.e;
-      rows.push({
-        key: `e:${pay.ref}`,
-        mark: "e",
-        letter: m.letter,
-        className: m.className,
-        title: m.title,
-        name: String(pay.client || pay.ref).trim() || pay.ref,
-        amount: Math.trunc(Number(pay.amount) || 0),
-        meta: String(pay.paidTime || pay.ref || "").trim(),
-      });
-    }
-    const digitalMark: RouteDayMarkKey =
-      digitalLoanPoolForRoute(openRoute.routeName) === "nequi" ? "n" : "b";
-    const dm = markMeta[digitalMark];
-    for (const pay of routeDigitalPayments(src, openRoute.routeName)) {
-      rows.push({
-        key: `${digitalMark}:${pay.ref}`,
-        mark: digitalMark,
-        letter: dm.letter,
-        className: dm.className,
-        title: dm.title,
-        name: String(pay.client || pay.ref).trim() || pay.ref,
-        amount: Math.trunc(Number(pay.amount) || 0),
-        meta: String(pay.paidTime || pay.ref || "").trim(),
-      });
-    }
-    const filtered = marcasFilter
-      ? rows.filter((row) => row.mark === marcasFilter)
-      : rows;
-    const order: RouteDayMarkKey[] = ["r", "p", "e", "b", "n"];
-    return filtered.sort((a, b) => {
-      const ia = order.indexOf(a.mark);
-      const ib = order.indexOf(b.mark);
-      if (ia !== ib) return ia - ib;
-      return a.name.localeCompare(b.name, "es");
-    });
-  }, [
-    openRoute,
-    detailMode,
-    marcasFilter,
-    collectors,
-    today,
-    paymentsWithEvidence,
-    loans,
-    clients,
-    assignmentsLive,
-    dayClosesLive,
-    expensesLive,
-    planillaCashCloses,
-    monthCloses,
-  ]);
-
   const historyCloses = dayClosesLive;
   const historyExpenses = expensesLive;
   const historyAssignments = assignmentsLive;
@@ -5316,23 +5124,6 @@ export function SupervisorMobileApp({
     setDetailMode("cobros");
   }
 
-  /** INICIO · marcas del día (R/B/E/N/P) en tablita con color. Solo lectura. */
-  function openRouteMarks(ref: string, mark?: RouteDayMarkKey) {
-    const route = liquidaciones.find((row) => row.routeRef === ref);
-    if (!route) return;
-    suppressGhostClick();
-    setOpenRouteRef(ref);
-    setReloanClientRef(null);
-    setRouteReturnView("inicio");
-    setNequiDayIso(null);
-    setCajaHistoryDayIso(null);
-    foldSnHistory();
-    setCobrosMethodFilter(null);
-    setMarcasFilter(mark ?? null);
-    setDetailMode("marcas");
-    setView("inicio");
-  }
-
   /** Ficha digital del día de la ruta: bolsillo de la ruta (A → Nequi; M / T / N → Banco). */
   function openNequiDayFicha(
     dayIso: string,
@@ -5877,7 +5668,6 @@ export function SupervisorMobileApp({
     suppressGhostClick();
     setOpenRouteRef(null);
     setDetailMode("totales");
-    setMarcasFilter(null);
     setCobrosMethodFilter(null);
     setNequiDayIso(null);
     setNequiDayBackTo("nequi-historial");
@@ -6204,11 +5994,6 @@ export function SupervisorMobileApp({
                   }
                   if (detailMode === "np") {
                     setDetailMode("totales");
-                    return;
-                  }
-                  if (detailMode === "marcas") {
-                    setMarcasFilter(null);
-                    closeRouteDetail();
                     return;
                   }
                   if (detailMode !== "totales") setDetailMode("totales");
@@ -6911,79 +6696,6 @@ export function SupervisorMobileApp({
                 setDetailMode("totales");
               }}
             />
-          ) : detailMode === "marcas" ? (
-            <>
-              <p className="supervisor-mobile-detail-meta">
-                <span>Marcas del día</span>
-                <span className="supervisor-mobile-detail-sep" aria-hidden>
-                  ·
-                </span>
-                <span>{todayDisplay}</span>
-              </p>
-              <div className="supervisor-marcas-filters" role="tablist" aria-label="Filtrar marca">
-                <button
-                  type="button"
-                  className={
-                    marcasFilter == null
-                      ? "supervisor-marcas-filter on"
-                      : "supervisor-marcas-filter"
-                  }
-                  onClick={() => setMarcasFilter(null)}
-                >
-                  Todas
-                </button>
-                {ROUTE_DAY_MARKS.map((mark) =>
-                  openRoute.dayMarks[mark.key] > 0 ? (
-                    <button
-                      key={mark.key}
-                      type="button"
-                      className={`supervisor-marcas-filter route-day-mark ${mark.className}${marcasFilter === mark.key ? " on" : ""}`}
-                      onClick={() =>
-                        setMarcasFilter((prev) => (prev === mark.key ? null : mark.key))
-                      }
-                      title={mark.title}
-                    >
-                      {openRoute.dayMarks[mark.key]} {mark.letter}
-                    </button>
-                  ) : null,
-                )}
-              </div>
-              {openRouteMarcasRows.length === 0 ? (
-                <p className="ficha-empty">Sin marcas en esta ruta hoy.</p>
-              ) : (
-                <div className="supervisor-marcas-wrap">
-                  <table className="supervisor-marcas-table">
-                    <thead>
-                      <tr>
-                        <th className="is-mark"> </th>
-                        <th className="is-name">Cliente</th>
-                        <th className="is-meta">Detalle</th>
-                        <th className="is-num">Monto</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {openRouteMarcasRows.map((row) => (
-                        <tr key={row.key}>
-                          <td className="is-mark">
-                            <span
-                              className={`route-day-mark ${row.className}`}
-                              title={row.title}
-                            >
-                              {row.letter}
-                            </span>
-                          </td>
-                          <td className="is-name">{row.name}</td>
-                          <td className="is-meta">{row.meta}</td>
-                          <td className="is-num">
-                            {money(row.amount, { symbol: false })}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </>
           ) : detailMode === "totales" ? (
             <>
               <div className="supervisor-mobile-sheet" aria-label="Liquidación de caja">
@@ -9676,7 +9388,6 @@ export function SupervisorMobileApp({
                     accent={index}
                     layoutV2
                     onOpen={openRouteSummary}
-                    onOpenMarks={openRouteMarks}
                     connectionLevel={connectionByRoute[row.routeRef]?.level ?? "none"}
                     justConnected={(justConnectedUntil[row.routeRef] ?? 0) > Date.now()}
                     onConnection={() => {
