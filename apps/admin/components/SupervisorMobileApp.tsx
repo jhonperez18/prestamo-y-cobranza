@@ -3661,30 +3661,46 @@ export function SupervisorMobileApp({
   });
   /** Solo la puerta o la lista local si YA cuadra (el hook la devolvió). Nunca inventar. */
   const openRouteGastosLines = openRouteExpenseDetail.gastoLines;
-  /** Lista del botón Préstamo = misma cifra que prestamosHoy (M/T/A/N). */
+  /**
+   * Lista del botón Préstamo = misma cifra que prestamosHoy (M/T/A/N).
+   * Supervisor: cada ruta es independiente. La puerta ya filtró por ruta;
+   * prohibido rearmar con la planilla entera del cobrador (cruzaba T dentro de A).
+   */
   const openRoutePrestamoRows = useMemo(() => {
     if (!openRoute) return [];
+    const routeName = openRoute.routeName;
+    const routeClientRefs = new Set(
+      clients
+        .filter((row) => sameRoute(row.route, routeName))
+        .map((row) => row.ref),
+    );
+    const onlyThisRoute = (
+      rows: ReturnType<typeof dayLoanDisbursementRows>,
+    ) =>
+      rows.filter(
+        (row) => !row.clientRef || routeClientRefs.has(row.clientRef),
+      );
     const lines = openRouteExpenseDetail.prestamoLines;
     if (lines.length > 0) {
-      return dayLoanDisbursementRows(today, lines, loans, clients, {
-        collectorRef: openRoute.collectorRef,
-        assignments: todayAssignments,
-        liveDay: isLiveCashDay(
-          openRoute.collectorRef,
-          today,
-          dayClosesLive,
-          businessTodayIso(),
-        ),
-      });
+      // Sin collectorRef + assignments: dayLoanDisbursementRows no reconstruye M/T/A.
+      return onlyThisRoute(
+        dayLoanDisbursementRows(today, lines, loans, clients, {
+          liveDay: isLiveCashDay(
+            openRoute.collectorRef,
+            today,
+            dayClosesLive,
+            businessTodayIso(),
+          ),
+        }),
+      );
     }
-    return openRoute.cashLoansToday;
+    return onlyThisRoute(openRoute.cashLoansToday);
   }, [
     openRoute,
     openRouteExpenseDetail.prestamoLines,
     today,
     loans,
     clients,
-    todayAssignments,
     dayClosesLive,
   ]);
   const openRouteNequiDays = useMemo(() => {

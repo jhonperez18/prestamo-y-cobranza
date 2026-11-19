@@ -2769,6 +2769,20 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
     true,
   );
   expect(
+    "Supervisor Préstamos: lista de UNA ruta no rearma planilla M+T+A del cobrador",
+    histSuperSrc.includes("openRoutePrestamoRows") &&
+      histSuperSrc.includes("onlyThisRoute") &&
+      histSuperSrc.includes("routeClientRefs") &&
+      histSuperSrc.includes("Sin collectorRef + assignments") &&
+      !/openRoutePrestamoRows[\s\S]*assignments:\s*todayAssignments/.test(
+        histSuperSrc.slice(
+          histSuperSrc.indexOf("const openRoutePrestamoRows"),
+          histSuperSrc.indexOf("const openRoutePrestamoRows") + 1200,
+        ),
+      ),
+    true,
+  );
+  expect(
     "Botón Gastos M/T/A/N: misma estructura (sheet explica el total; sin mezclar rutas)",
     histCollSrc.includes("sheetGastoLines") &&
       histCollSrc.includes("Misma estructura que Préstamos") &&
