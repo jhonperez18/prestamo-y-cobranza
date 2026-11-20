@@ -6746,25 +6746,24 @@ export function SupervisorMobileApp({
                   : null;
               return (
                 <>
-                  <p className="supervisor-mobile-detail-meta">
-                    <span>{nequiDayIso ? isoToDisplay(nequiDayIso) : ""}</span>
-                    <span className="supervisor-mobile-detail-sep" aria-hidden>
-                      ·
-                    </span>
-                    <span>{poolDayCountLabel(dayPays.length, dayLoans.length)}</span>
-                  </p>
+                  {fromCobradoHoy ? (
+                    <div className="supervisor-cobros-banco-head">
+                      <p className="is-title">Cobros {openRouteDigitalLabel}</p>
+                      <p className="is-count">{dayPays.length}</p>
+                    </div>
+                  ) : (
+                    <p className="supervisor-mobile-detail-meta">
+                      <span>{nequiDayIso ? isoToDisplay(nequiDayIso) : ""}</span>
+                      <span className="supervisor-mobile-detail-sep" aria-hidden>
+                        ·
+                      </span>
+                      <span>{poolDayCountLabel(dayPays.length, dayLoans.length)}</span>
+                    </p>
+                  )}
                   {empty ? (
                     <p className="ficha-empty">{empty}</p>
                   ) : (
-                    <>
-                      {dayPays.some((pay) => !pay.evidence?.some((e) => e.previewUrl)) ? (
-                        <p className="supervisor-nequi-evidence-hint">
-                          Si ves un +, la foto está solo en el celular que cobró. Abrí ese celular
-                          (misma app) o subila acá con +.
-                        </p>
-                      ) : null}
-                      {renderNequiDayList(dayPays, dayLoans, dayTotal)}
-                    </>
+                    renderNequiDayList(dayPays, dayLoans, dayTotal)
                   )}
                 </>
               );
