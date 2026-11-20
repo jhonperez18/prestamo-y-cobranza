@@ -10495,8 +10495,14 @@
       color: #fff;
       line-height: 1.2;
     }
-    .supervisor-loans-day-head span:last-child {
+    .supervisor-loans-day-head span:first-child,
+    .supervisor-mobile-list.is-loans-palette .is-name {
+      padding-left: 28px;
+    }
+    .supervisor-loans-day-head span:last-child,
+    .supervisor-mobile-list.is-loans-palette .is-amount {
       text-align: right;
+      padding-right: 28px;
     }
     .supervisor-mobile-list.is-loans-palette {
       gap: 0;
@@ -10528,7 +10534,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 10px 12px;
+      padding: 10px 40px;
       border-top: 1px solid #c5e0cb;
       background: #eef6ef;
       color: #111;
