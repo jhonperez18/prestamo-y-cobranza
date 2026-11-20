@@ -6158,9 +6158,7 @@ export function SupervisorMobileApp({
             </>
           ) : detailMode === "historial" && cajaHistoryNav === "meses" ? (
             <>
-              <p className="supervisor-mobile-detail-meta">
-                Historial · Ruta {openRoute.routeName} · {openRoute.collectorName}
-              </p>
+              <p className="supervisor-mobile-detail-meta">Historial</p>
               {cajaHistoryMonthOptions.length === 0 ? (
                 <p className="ficha-empty">Aún no hay meses cerrados en el historial.</p>
               ) : (
