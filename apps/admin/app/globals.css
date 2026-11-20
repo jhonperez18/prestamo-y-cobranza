@@ -5645,6 +5645,18 @@
       color: #111;
       line-height: 1.2;
     }
+    .supervisor-nuevo-head-meta {
+      margin: 0;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: #111;
+      line-height: 1.2;
+    }
+    .supervisor-mobile-detail-head.is-nuevo-head-stack .supervisor-mobile-detail-actions {
+      justify-self: end;
+      align-self: start;
+    }
     .supervisor-caja-meses-list {
       list-style: none;
       margin: 0;

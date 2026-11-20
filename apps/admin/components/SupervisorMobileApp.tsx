@@ -8823,9 +8823,28 @@ export function SupervisorMobileApp({
                     }}
                   />
                   <h3 className="supervisor-nuevo-head-title">Renovar</h3>
+                  {nuevoRouteRef && nuevoRoute ? (
+                    <p className="supervisor-nuevo-head-meta">
+                      Ruta {nuevoRoute.routeName} · {nuevoRoute.collectorName}
+                    </p>
+                  ) : null}
                 </div>
                 <span className="nexo-atras-spacer" aria-hidden />
-                <span className="nexo-atras-spacer" aria-hidden />
+                <div className="supervisor-mobile-detail-actions">
+                  {nuevoRouteRef ? (
+                    <NexoAtrasBtn
+                      label="Cambiar"
+                      showIcon={false}
+                      onClick={() => {
+                        setNuevoLoanClientRef(null);
+                        setNuevoRouteRef(null);
+                        setNuevoClientSearch("");
+                      }}
+                    />
+                  ) : (
+                    <span className="nexo-atras-spacer" aria-hidden />
+                  )}
+                </div>
               </div>
               {!onRenewLoan ? (
                 <p className="ficha-empty">No hay permiso para renovar desde esta vista.</p>
@@ -8859,40 +8878,20 @@ export function SupervisorMobileApp({
                   )}
                 </>
               ) : renewSourceLoan && nuevoLoanClient && nuevoRoute ? (
-                <>
-                  <p className="supervisor-mobile-subhead">
-                    Ruta {nuevoRoute.routeName} · {nuevoRoute.collectorName}
-                  </p>
-                  <LoanRenewForm
-                    loan={renewSourceLoan}
-                    today={today}
-                    onCancel={() => setNuevoLoanClientRef(null)}
-                    onConfirm={async (terms) => {
-                      const ok = await onRenewLoan(renewSourceLoan.ref, terms);
-                      if (ok === false) return;
-                      resetNuevoFlow();
-                      setNuevoMode("menu");
-                      setNuevoMsg("Renovado. La planilla toma la fecha del primer cobro.");
-                    }}
-                  />
-                </>
+                <LoanRenewForm
+                  loan={renewSourceLoan}
+                  today={today}
+                  onCancel={() => setNuevoLoanClientRef(null)}
+                  onConfirm={async (terms) => {
+                    const ok = await onRenewLoan(renewSourceLoan.ref, terms);
+                    if (ok === false) return;
+                    resetNuevoFlow();
+                    setNuevoMode("menu");
+                    setNuevoMsg("Renovado. La planilla toma la fecha del primer cobro.");
+                  }}
+                />
               ) : (
                 <>
-                  <div className="supervisor-mobile-detail-head">
-                    <h3>
-                      Ruta {nuevoRoute?.routeName} · {nuevoRoute?.collectorName}
-                    </h3>
-                    <button
-                      type="button"
-                      className="collector-mobile-pay-link"
-                      onClick={() => {
-                        setNuevoRouteRef(null);
-                        setNuevoClientSearch("");
-                      }}
-                    >
-                      cambiar
-                    </button>
-                  </div>
                   <label className="quick-loan-field supervisor-nuevo-search">
                     <span className="sr-only">Buscar</span>
                     <input
