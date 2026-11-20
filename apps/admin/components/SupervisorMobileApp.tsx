@@ -24,9 +24,7 @@ import { routeCoverageSummaries } from "@/lib/collector-preview";
 import {
   assignmentRouteName,
   assignmentRoutePositionComparator,
-  DAY_CLOSE_SKIP_REASON,
   isNoPayListRow,
-  NO_PAY_TODAY_REASON,
 } from "@/lib/collector-dispatch-sync";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import {
@@ -1598,12 +1596,6 @@ function cajaDelDia(
   };
 }
 
-function snSkipLabel(row: DailyCollectionAssignment) {
-  if (row.skipReason === NO_PAY_TODAY_REASON) return "Hoy no tiene plata";
-  if (row.skipReason === DAY_CLOSE_SKIP_REASON) return "Quedó al cierre";
-  return "Sin pago";
-}
-
 function SnPeople({
   rows,
   empty,
@@ -1626,7 +1618,7 @@ function SnPeople({
           <li key={`${item.dispatchDate}-${item.itemId}`}>
             <span className="is-name">{item.clientName || "Cliente"}</span>
             <span className="is-date">{dateLabel}</span>
-            <span className="is-motivo">{snSkipLabel(item)}</span>
+            <span className="is-motivo">Sin dinero</span>
           </li>
         ))}
       </ul>
@@ -7097,7 +7089,9 @@ export function SupervisorMobileApp({
             </>
           ) : detailMode === "np-dia" && snDay ? (
             <>
-              <p className="supervisor-mobile-detail-meta">N/P</p>
+              <p className="supervisor-mobile-detail-meta">
+                N/P · {openRouteNpDayRows.length}
+              </p>
               <SnPeople
                 rows={openRouteNpDayRows}
                 empty="Nadie ese día en esta ruta"
