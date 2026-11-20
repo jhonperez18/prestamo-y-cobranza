@@ -420,6 +420,45 @@ type RouteDetailMode =
   | "nequi-historial"
   | "nequi-dia";
 
+/** Paleta Nombre | Valor + Total (renovar / gastos / préstamos E·B). Solo presentación. */
+type SupervisorDayPaletteRow = {
+  key: string;
+  name: string;
+  value: number;
+  title?: string;
+};
+
+function SupervisorDayPalette({
+  rows,
+  total,
+  listLabel,
+}: {
+  rows: SupervisorDayPaletteRow[];
+  total: number;
+  listLabel: string;
+}) {
+  return (
+    <div className="supervisor-day-palette">
+      <div className="supervisor-day-palette-head" aria-hidden>
+        <span>Nombre</span>
+        <span>Valor</span>
+      </div>
+      <ul className="supervisor-day-palette-list" aria-label={listLabel}>
+        {rows.map((row) => (
+          <li key={row.key} title={row.title}>
+            <strong className="is-name">{row.name}</strong>
+            <b className="is-amount">{money(row.value, { symbol: false })}</b>
+          </li>
+        ))}
+      </ul>
+      <div className="supervisor-day-palette-total">
+        <span>Total</span>
+        <b>{money(total, { symbol: false })}</b>
+      </div>
+    </div>
+  );
+}
+
 const SUPERVISOR_NAV_KEY = "nexo-supervisor-mobile-nav";
 const SUPERVISOR_VIEWS: SupervisorView[] = [
   "inicio",
@@ -1687,6 +1726,8 @@ export function SupervisorMobileApp({
   /** Panel al que vuelve al salir del detalle de ruta (inicio / caja / nequi). */
   const [routeReturnView, setRouteReturnView] = useState<SupervisorView>("inicio");
   const [detailMode, setDetailMode] = useState<RouteDetailMode>("totales");
+  /** Solo etiqueta de la lista: Prestamos E. / B. / N. */
+  const [prestamosFund, setPrestamosFund] = useState<"E" | "B">("E");
   const [historyBookPayments, setHistoryBookPayments] = useState<PaymentRow[] | null>(null);
   const [cobrosMethodFilter, setCobrosMethodFilter] = useState<PaymentMethod | null>(null);
   /** Día ISO seleccionado en historial Nequi de una ruta. */
@@ -3703,13 +3744,18 @@ export function SupervisorMobileApp({
     dayClosesLive,
   ]);
   /** Prestamos B./N. del día (no salen de caja). */
-  const openRouteDigitalPrestamosHoy = useMemo(() => {
-    if (!openRoute) return 0;
-    return dayDigitalLoanRows(today, openRoute.routeName, loans, clients).reduce(
-      (sum, row) => sum + (Number(row.capital) || 0),
-      0,
-    );
+  const openRouteDigitalPrestamoRows = useMemo(() => {
+    if (!openRoute) return [];
+    return dayDigitalLoanRows(today, openRoute.routeName, loans, clients);
   }, [openRoute, today, loans, clients]);
+  const openRouteDigitalPrestamosHoy = useMemo(
+    () =>
+      openRouteDigitalPrestamoRows.reduce(
+        (sum, row) => sum + (Number(row.capital) || 0),
+        0,
+      ),
+    [openRouteDigitalPrestamoRows],
+  );
   const openRouteNequiDays = useMemo(() => {
     if (!openRoute) return [];
     return digitalPoolRegisterDays({
@@ -6019,7 +6065,7 @@ export function SupervisorMobileApp({
 
       {openRoute ? (
         <section className="supervisor-mobile-section">
-          {detailMode !== "gastos" && detailMode !== "cobros" ? (
+          {detailMode !== "cobros" ? (
           <div className="supervisor-mobile-detail-head is-route-head">
             <NexoAtrasBtn
               onClick={() => {
@@ -6725,18 +6771,39 @@ export function SupervisorMobileApp({
               );
             })()
           ) : detailMode === "gastos" ? (
-            <CollectorClosedDayReview
-              detail="gastos"
-              dateLabel={todayDisplay}
-              visits={openAssignments}
-              expenses={openRouteGastosLines}
-              expensesHintTotal={openRoute.gastosHoy}
-              expensesLoading={openRouteExpenseDetail.loading}
-              payments={paymentsWithEvidence}
-              cobradoCount={openRoute.done}
-              visitTotal={openRoute.planilla}
-              onBack={() => setDetailMode("totales")}
-            />
+            (() => {
+              const gastoRows = operativeExpenseLines(openRouteGastosLines);
+              const gastosTotal = gastoRows.reduce(
+                (sum, row) => sum + (Number(row.amount) || 0),
+                0,
+              );
+              return (
+                <>
+                  <p className="supervisor-mobile-detail-meta">
+                    Gastos · {gastoRows.length}
+                  </p>
+                  {gastoRows.length === 0 ? (
+                    <p className="ficha-empty">
+                      {openRouteExpenseDetail.loading
+                        ? "Leyendo gastos…"
+                        : openRoute.gastosHoy > 0
+                          ? `Total ${money(openRoute.gastosHoy, { symbol: false })} · sin renglones en la nube para esta ruta.`
+                          : "Sin gastos registrados."}
+                    </p>
+                  ) : (
+                    <SupervisorDayPalette
+                      listLabel="Gastos del día"
+                      total={gastosTotal}
+                      rows={gastoRows.map((line, index) => ({
+                        key: `${line.id}:${line.label}:${index}`,
+                        name: line.label,
+                        value: Number(line.amount) || 0,
+                      }))}
+                    />
+                  )}
+                </>
+              );
+            })()
           ) : detailMode === "cobros" ? (
             <CollectorClosedDayReview
               detail="cobros"
@@ -6851,7 +6918,10 @@ export function SupervisorMobileApp({
                   <button
                     type="button"
                     className="supervisor-mov-row is-tap is-prestamo-e"
-                    onClick={() => setDetailMode("prestamos")}
+                    onClick={() => {
+                      setPrestamosFund("E");
+                      setDetailMode("prestamos");
+                    }}
                     aria-label="Ver préstamos en efectivo del día"
                   >
                     <span>Prestamos  E.</span>
@@ -6864,7 +6934,10 @@ export function SupervisorMobileApp({
                   <button
                     type="button"
                     className="supervisor-mov-row is-tap is-prestamo-b"
-                    onClick={() => setDetailMode("prestamos")}
+                    onClick={() => {
+                      setPrestamosFund("B");
+                      setDetailMode("prestamos");
+                    }}
                     aria-label={`Ver préstamos ${openRouteDigitalLabel} del día`}
                   >
                     <span>{openRouteIsA ? "Prestamos  N." : "Prestamos  B."}</span>
@@ -6948,6 +7021,7 @@ export function SupervisorMobileApp({
                   disabled={openRoute.newLoans.length + openRoute.renewals.length === 0}
                   onClick={() => {
                     foldSnHistory();
+                    setPrestamosFund("E");
                     setDetailMode("prestamos");
                   }}
                 >
@@ -7029,70 +7103,71 @@ export function SupervisorMobileApp({
           ) : detailMode === "renovados" ? (
             <>
               <p className="supervisor-mobile-detail-meta">
-                Renovados hoy · {openRoute.renewals.length} · Ruta {openRoute.routeName}
+                Renovados · {openRoute.renewals.length}
               </p>
               {openRoute.renewals.length === 0 ? (
                 <p className="ficha-empty">Sin renovados hoy en esta ruta.</p>
               ) : (
-                <ul className="supervisor-mobile-list is-loans-today is-renewals-today">
-                  {openRoute.renewals.map((loan, index) => {
+                <SupervisorDayPalette
+                  listLabel="Renovados del día"
+                  total={openRoute.renewals.reduce(
+                    (sum, loan) => sum + (Number(loan.capital) || 0),
+                    0,
+                  )}
+                  rows={openRoute.renewals.map((loan) => {
                     const client = clients.find((row) => row.ref === loan.clientRef);
                     const name = client
                       ? `${client.name} ${client.lastName}`.trim()
                       : (loan.client || "").trim() || loan.ref;
-                    return (
-                      <li
-                        key={loan.ref}
-                        title={`${loan.ref} · renovación de ${loanRenewalOf(loan) ?? "—"} · debía ${money(loan.capital)} + 20 % = ${money(loan.total ?? loan.capital)} · sin plata`}
-                      >
-                        <strong className="is-name">{name}</strong>
-                        <b className="is-amount">{money(loan.capital, { symbol: false })}</b>
-                        <span className="is-kind is-count">{index + 1}</span>
-                      </li>
-                    );
+                    return {
+                      key: loan.ref,
+                      name,
+                      value: Number(loan.capital) || 0,
+                      title: `${loan.ref} · renovación de ${loanRenewalOf(loan) ?? "—"} · debía ${money(loan.capital)} + 20 % = ${money(loan.total ?? loan.capital)} · sin plata`,
+                    };
                   })}
-                </ul>
+                />
               )}
             </>
           ) : (
-            <>
-              <p className="supervisor-mobile-detail-meta">
-                Préstamos del día · {openRoutePrestamoRows.length}
-              </p>
-              {openRoutePrestamoRows.length === 0 ? (
-                <p className="ficha-empty">
-                  {openRouteExpenseDetail.loading && openRoute.prestamosHoy > 0
-                    ? "Leyendo préstamos…"
-                    : openRoute.prestamosHoy > 0
-                      ? `Total ${money(openRoute.prestamosHoy, { symbol: false })} · sin renglones en la nube para esta ruta.`
-                      : "Sin préstamos hoy en esta ruta."}
-                </p>
-              ) : (
-                <div className="supervisor-loans-day-palette">
-                  <div className="supervisor-loans-day-head" aria-hidden>
-                    <span>Nombre</span>
-                    <span>Valor</span>
-                  </div>
-                  <ul
-                    className="supervisor-mobile-list is-loans-today is-loans-palette"
-                    aria-label="Préstamos del día"
-                  >
-                    {openRoutePrestamoRows.map((loan) => (
-                      <li key={loan.loanRef}>
-                        <strong className="is-name">{loan.clientName}</strong>
-                        <b className="is-amount">
-                          {money(loan.capital, { symbol: false })}
-                        </b>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="supervisor-loans-day-total">
-                    <span>Total</span>
-                    <b>{money(openRoute.prestamosHoy, { symbol: false })}</b>
-                  </div>
-                </div>
-              )}
-            </>
+            (() => {
+              const isDigital = prestamosFund === "B";
+              const letter = isDigital ? (openRouteIsA ? "N" : "B") : "E";
+              const rows = isDigital
+                ? openRouteDigitalPrestamoRows
+                : openRoutePrestamoRows;
+              const total = isDigital
+                ? openRouteDigitalPrestamosHoy
+                : openRoute.prestamosHoy;
+              return (
+                <>
+                  <p className="supervisor-mobile-detail-meta">
+                    Préstamos {letter} · {rows.length}
+                  </p>
+                  {rows.length === 0 ? (
+                    <p className="ficha-empty">
+                      {!isDigital &&
+                      openRouteExpenseDetail.loading &&
+                      openRoute.prestamosHoy > 0
+                        ? "Leyendo préstamos…"
+                        : total > 0
+                          ? `Total ${money(total, { symbol: false })} · sin renglones en la nube para esta ruta.`
+                          : "Sin préstamos hoy en esta ruta."}
+                    </p>
+                  ) : (
+                    <SupervisorDayPalette
+                      listLabel={`Préstamos ${letter} del día`}
+                      total={total}
+                      rows={rows.map((loan) => ({
+                        key: loan.loanRef,
+                        name: loan.clientName,
+                        value: Number(loan.capital) || 0,
+                      }))}
+                    />
+                  )}
+                </>
+              );
+            })()
           )}
         </section>
       ) : view === "planilla" ? (

@@ -10393,84 +10393,8 @@
     .supervisor-mobile-list li:last-child {
       border-bottom: 0;
     }
-    /* Préstamos generados hoy: Nombre | valor | Nu/Re */
-    .supervisor-mobile-list.is-loans-today li {
-      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto;
-      column-gap: 8px;
-      background: var(--row-b);
-    }
-    .supervisor-mobile-list.is-loans-today li:nth-child(odd) {
-      background: var(--row-a);
-    }
-    .supervisor-mobile-list.is-loans-today li > div {
-      display: contents;
-    }
-    .supervisor-mobile-list.is-loans-today .is-name {
-      display: block;
-      min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      font-size: 12px;
-      font-weight: 400;
-      color: #111;
-      text-align: left;
-    }
-    .supervisor-mobile-list.is-loans-today .is-amount {
-      display: block;
-      font-size: 12px;
-      font-weight: 400;
-      font-variant-numeric: tabular-nums;
-      color: #0f766e;
-      text-align: right;
-      white-space: nowrap;
-    }
-    .supervisor-mobile-list.is-loans-today .is-kind {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 1.6rem;
-      padding: 1px 5px;
-      border-radius: 4px;
-      font-size: 11px;
-      font-weight: 400;
-      letter-spacing: 0.02em;
-      color: #111;
-      background: #e8f5ef;
-      line-height: 1.2;
-    }
-    .supervisor-mobile-list.is-loans-today .is-kind.is-renov {
-      background: #f5f0e6;
-    }
-    .supervisor-mobile-list.is-loans-today .is-kind.is-count {
-      min-width: 1.5rem;
-      background: transparent;
-      color: #111;
-      font-variant-numeric: tabular-nums;
-      font-weight: 400;
-      padding: 0;
-    }
-    .supervisor-mobile-list.is-loans-today li.is-total {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      grid-template-columns: none;
-      margin: 0;
-      border: 0;
-      border-top: 1px dashed #c3d4cc;
-      background: #fff;
-      font-weight: 400;
-    }
-    .supervisor-mobile-list.is-loans-today li.is-total span,
-    .supervisor-mobile-list.is-loans-today li.is-total b {
-      color: #111;
-      font-size: 12px;
-      font-weight: 400;
-      font-variant-numeric: tabular-nums;
-      line-height: 1.2;
-    }
-    /* Paleta Préstamos E: Nombre | Valor + Total en negrita */
-    .supervisor-loans-day-palette {
+    /* Paleta del día (renovar / gastos / préstamos E·B): Nombre | Valor + Total */
+    .supervisor-day-palette {
       display: grid;
       gap: 0;
       border: 1px solid #c5e0cb;
@@ -10478,14 +10402,14 @@
       overflow: hidden;
       background: #fff;
     }
-    .supervisor-loans-day-head,
-    .supervisor-mobile-list.is-loans-palette > li {
+    .supervisor-day-palette-head,
+    .supervisor-day-palette-list > li {
       display: grid;
       grid-template-columns: minmax(0, 1.6fr) minmax(5.5rem, 0.9fr);
       column-gap: 8px;
       align-items: center;
     }
-    .supervisor-loans-day-head {
+    .supervisor-day-palette-head {
       padding: 8px 12px;
       background: var(--table-head-bg, #426650);
       font-size: 10px;
@@ -10495,42 +10419,58 @@
       color: #fff;
       line-height: 1.2;
     }
-    .supervisor-loans-day-head span:first-child,
-    .supervisor-mobile-list.is-loans-palette .is-name {
+    .supervisor-day-palette-head span:first-child,
+    .supervisor-day-palette-list .is-name {
       padding-left: 28px;
     }
-    .supervisor-loans-day-head span:last-child,
-    .supervisor-mobile-list.is-loans-palette .is-amount {
+    .supervisor-day-palette-head span:last-child,
+    .supervisor-day-palette-list .is-amount {
       text-align: right;
       padding-right: 28px;
     }
-    .supervisor-mobile-list.is-loans-palette {
+    .supervisor-day-palette-list {
+      display: grid;
       gap: 0;
       margin: 0;
-      border: 0;
-      border-radius: 0;
-      overflow: visible;
+      padding: 0;
+      list-style: none;
       background: transparent;
     }
-    .supervisor-mobile-list.is-loans-palette > li {
+    .supervisor-day-palette-list > li {
       margin: 0;
       padding: 10px 12px;
       border: 0;
       border-bottom: 1px solid #e2ece7;
       border-radius: 0;
       min-height: 0;
+      background: var(--row-b);
     }
-    .supervisor-mobile-list.is-loans-palette > li:last-child {
+    .supervisor-day-palette-list > li:nth-child(odd) {
+      background: var(--row-a);
+    }
+    .supervisor-day-palette-list > li:last-child {
       border-bottom: 0;
     }
-    .supervisor-mobile-list.is-loans-palette .is-name {
+    .supervisor-day-palette-list .is-name {
+      display: block;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
       font-weight: 600;
-    }
-    .supervisor-mobile-list.is-loans-palette .is-amount {
       color: #111;
-      font-weight: 600;
+      text-align: left;
     }
-    .supervisor-loans-day-total {
+    .supervisor-day-palette-list .is-amount {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: #111;
+      white-space: nowrap;
+    }
+    .supervisor-day-palette-total {
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -10542,8 +10482,8 @@
       font-weight: 800;
       font-variant-numeric: tabular-nums;
     }
-    .supervisor-loans-day-total span,
-    .supervisor-loans-day-total b {
+    .supervisor-day-palette-total span,
+    .supervisor-day-palette-total b {
       font-weight: 800;
       color: #111;
     }
