@@ -8804,32 +8804,32 @@ export function SupervisorMobileApp({
             )
           ) : nuevoMode === "renovar" ? (
             <>
-              <div className="supervisor-mobile-detail-head is-with-atras">
-                <NexoAtrasBtn
-                  onClick={() => {
-                    if (nuevoLoanClientRef) {
-                      setNuevoLoanClientRef(null);
-                      return;
-                    }
-                    if (nuevoRouteRef) {
-                      setNuevoRouteRef(null);
-                      setNuevoClientSearch("");
-                      return;
-                    }
-                    resetNuevoFlow();
-                    setNuevoMode("menu");
-                  }}
-                />
-                <h3>Renovar</h3>
+              <div className="supervisor-mobile-detail-head is-with-atras is-nuevo-head-stack">
+                <div className="supervisor-nuevo-head-stack">
+                  <NexoAtrasBtn
+                    onClick={() => {
+                      if (nuevoLoanClientRef) {
+                        setNuevoLoanClientRef(null);
+                        return;
+                      }
+                      if (nuevoRouteRef) {
+                        setNuevoRouteRef(null);
+                        setNuevoClientSearch("");
+                        return;
+                      }
+                      resetNuevoFlow();
+                      setNuevoMode("menu");
+                    }}
+                  />
+                  <h3 className="supervisor-nuevo-head-title">Renovar</h3>
+                </div>
+                <span className="nexo-atras-spacer" aria-hidden />
                 <span className="nexo-atras-spacer" aria-hidden />
               </div>
               {!onRenewLoan ? (
                 <p className="ficha-empty">No hay permiso para renovar desde esta vista.</p>
               ) : !nuevoRouteRef ? (
                 <>
-                  <p className="supervisor-mobile-subhead">
-                    Elija la ruta. Solo salen los clientes que ya pueden renovar.
-                  </p>
                   {liquidaciones.length === 0 ? (
                     <p className="ficha-empty">No hay rutas con cobrador.</p>
                   ) : (
