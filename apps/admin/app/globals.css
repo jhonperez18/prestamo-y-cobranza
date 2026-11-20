@@ -5617,36 +5617,6 @@
       border-color: #0f766e;
       background: rgba(204, 251, 241, 0.85);
     }
-    .supervisor-nuevo-head-stack {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 6px;
-      justify-self: start;
-    }
-    .supervisor-mobile-detail-head.is-nuevo-head-stack {
-      align-items: start;
-    }
-    .supervisor-nuevo-head-title {
-      margin: 0;
-      font-size: 13px;
-      font-weight: 800;
-      letter-spacing: 0.02em;
-      color: #111;
-      line-height: 1.2;
-    }
-    .supervisor-nuevo-head-meta {
-      margin: 0;
-      font-size: 12px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      color: #111;
-      line-height: 1.2;
-    }
-    .supervisor-mobile-detail-head.is-nuevo-head-stack .supervisor-mobile-detail-actions {
-      justify-self: end;
-      align-self: start;
-    }
     .supervisor-caja-meses-list {
       list-style: none;
       margin: 0;
@@ -5986,22 +5956,22 @@
       align-items: center;
       gap: 8px;
     }
-    .supervisor-renovar-meta-row {
+    .supervisor-nuevo-meta-row {
       overflow: visible;
       gap: 6px;
       margin-top: 8px;
     }
-    .supervisor-renovar-meta-row > span:first-child {
+    .supervisor-nuevo-meta-row > span:first-child {
       flex: 0 0 auto;
     }
-    .supervisor-renovar-search {
+    .supervisor-nuevo-meta-search {
       flex: 1 1 auto;
       min-width: 0;
       max-width: 11.5rem;
       margin: 0;
       display: block;
     }
-    .supervisor-renovar-search input {
+    .supervisor-nuevo-meta-search input {
       width: 100%;
       box-sizing: border-box;
       height: 24px;
@@ -7611,59 +7581,10 @@
       flex-shrink: 0;
       margin-left: auto;
     }
-    .collector-mobile-pay-link.is-pa {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      padding: 4px 8px;
-      border: 1px solid #c5d0db;
-      border-radius: 6px;
-      background: #f4f7fa;
-      color: #334155;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      text-decoration: none;
-      line-height: 1.15;
-      box-shadow: none;
-    }
-    .collector-mobile-pay-link.is-pa.on,
-    .collector-mobile-pay-link.is-pa:hover {
-      border-color: #94a3b8;
-      background: #e8eef4;
-      color: #0f172a;
-      text-decoration: none;
-    }
     .supervisor-ficha-pa-badge {
       font-size: 11px;
       font-weight: 700;
       color: #64748b;
-    }
-    .collector-mobile-pay-link.is-share {
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
-      padding: 4px 9px;
-      border: 1px solid #a7e0d4;
-      border-radius: 6px;
-      background: #ecfdf8;
-      color: #0f766e;
-      font-size: 11px;
-      font-weight: 600;
-      text-decoration: none;
-      line-height: 1.15;
-      box-shadow: none;
-    }
-    .collector-mobile-pay-link.is-share:hover,
-    .collector-mobile-pay-link.is-share:disabled {
-      color: #0b6b5f;
-      border-color: #75d0c0;
-      background: #d9f7ef;
-      text-decoration: none;
-    }
-    .collector-mobile-pay-link.is-share:disabled {
-      opacity: 0.7;
-      cursor: wait;
     }
     .supervisor-client-ficha {
       display: flex;

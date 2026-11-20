@@ -8824,7 +8824,7 @@ export function SupervisorMobileApp({
                 </div>
               </div>
               {nuevoRouteRef ? (
-                <div className="supervisor-mobile-detail-meta supervisor-renovar-meta-row">
+                <div className="supervisor-mobile-detail-meta supervisor-nuevo-meta-row">
                   <span>Renovar</span>
                   <button
                     type="button"
@@ -8858,7 +8858,7 @@ export function SupervisorMobileApp({
                     </svg>
                   </button>
                   {nuevoClientSearchOpen ? (
-                    <label className="supervisor-renovar-search">
+                    <label className="supervisor-nuevo-meta-search">
                       <span className="sr-only">Buscar</span>
                       <input
                         value={nuevoClientSearch}
@@ -8965,7 +8965,7 @@ export function SupervisorMobileApp({
                 </div>
               </div>
               {nuevoRouteRef ? (
-                <div className="supervisor-mobile-detail-meta supervisor-renovar-meta-row">
+                <div className="supervisor-mobile-detail-meta supervisor-nuevo-meta-row">
                   <span>
                     {nuevoLoanClient
                       ? `Nuevo préstamo · ${`${nuevoLoanClient.name} ${nuevoLoanClient.lastName}`.trim()}`
@@ -9005,7 +9005,7 @@ export function SupervisorMobileApp({
                         </svg>
                       </button>
                       {nuevoClientSearchOpen ? (
-                        <label className="supervisor-renovar-search">
+                        <label className="supervisor-nuevo-meta-search">
                           <span className="sr-only">Buscar</span>
                           <input
                             value={nuevoClientSearch}
