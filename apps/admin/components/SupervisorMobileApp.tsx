@@ -8831,40 +8831,36 @@ export function SupervisorMobileApp({
             </>
           ) : (
             <>
-              <div className="supervisor-mobile-detail-head is-with-atras">
-                <NexoAtrasBtn
-                  onClick={() => {
-                    if (nuevoLoanClientRef) {
-                      setNuevoLoanClientRef(null);
-                      return;
-                    }
-                    if (nuevoRouteRef) {
-                      setNuevoRouteRef(null);
-                      setNuevoClientSearch("");
-                      return;
-                    }
-                    resetNuevoFlow();
-                    setNuevoMode("menu");
-                  }}
-                />
-                <h3>Nuevo préstamo</h3>
-                <div className="supervisor-prestamos-head-actions">
-                  <button
-                    type="button"
-                    className="collector-mobile-pay-link"
+              <div className="supervisor-mobile-detail-head is-with-atras is-nuevo-prestamo-head">
+                <div className="supervisor-nuevo-head-stack">
+                  <NexoAtrasBtn
+                    onClick={() => {
+                      if (nuevoLoanClientRef) {
+                        setNuevoLoanClientRef(null);
+                        return;
+                      }
+                      if (nuevoRouteRef) {
+                        setNuevoRouteRef(null);
+                        setNuevoClientSearch("");
+                        return;
+                      }
+                      resetNuevoFlow();
+                      setNuevoMode("menu");
+                    }}
+                  />
+                  <NexoAtrasBtn
+                    label="Nuevo préstamo"
+                    showIcon={false}
                     onClick={() => goToView("prestamos")}
-                  >
-                    Ver préstamos
-                  </button>
+                  />
                 </div>
+                <span className="nexo-atras-spacer" aria-hidden />
+                <span className="nexo-atras-spacer" aria-hidden />
               </div>
               {!onCreateQuickLoan ? (
                 <p className="ficha-empty">No hay permiso para crear préstamos desde esta vista.</p>
               ) : !nuevoRouteRef ? (
                 <>
-                  <p className="supervisor-mobile-subhead">
-                    Elija la ruta del cobrador que entregará el dinero.
-                  </p>
                   {liquidaciones.length === 0 ? (
                     <p className="ficha-empty">No hay rutas con cobrador.</p>
                   ) : (
@@ -8988,30 +8984,6 @@ export function SupervisorMobileApp({
                 <NexoAtrasBtn onClick={() => goToView("nuevo")} />
                 <div className="supervisor-planilla-head-start">
                   <h3>Préstamos</h3>
-                  <button
-                    type="button"
-                    className={
-                      prestamosSearchOpen
-                        ? "collector-history-planilla-search supervisor-clientes-search on"
-                        : "collector-history-planilla-search supervisor-clientes-search"
-                    }
-                    aria-label="Buscar préstamo"
-                    aria-pressed={prestamosSearchOpen}
-                    onClick={() => {
-                      suppressGhostClick();
-                      if (prestamosSearchOpen) {
-                        setPrestamosSearchOpen(false);
-                        setPrestamosSearch("");
-                        return;
-                      }
-                      setPrestamosSearchOpen(true);
-                    }}
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
-                      <circle cx="10.5" cy="10.5" r="6.5" />
-                      <line x1="15.5" y1="15.5" x2="21" y2="21" />
-                    </svg>
-                  </button>
                 </div>
                 <div className="supervisor-prestamos-head-actions">
                   {planillaRoutePins.length > 0 ? (
@@ -9044,13 +9016,31 @@ export function SupervisorMobileApp({
                   ) : null}
                 </div>
               </div>
-              <div
-                className={
-                  prestamosSearchOpen
-                    ? "supervisor-prestamos-search-row"
-                    : "supervisor-prestamos-search-row is-saldo-only"
-                }
-              >
+              <div className="supervisor-prestamos-search-row">
+                <button
+                  type="button"
+                  className={
+                    prestamosSearchOpen
+                      ? "collector-history-planilla-search supervisor-clientes-search supervisor-prestamos-lupa on"
+                      : "collector-history-planilla-search supervisor-clientes-search supervisor-prestamos-lupa"
+                  }
+                  aria-label="Buscar préstamo"
+                  aria-pressed={prestamosSearchOpen}
+                  onClick={() => {
+                    suppressGhostClick();
+                    if (prestamosSearchOpen) {
+                      setPrestamosSearchOpen(false);
+                      setPrestamosSearch("");
+                      return;
+                    }
+                    setPrestamosSearchOpen(true);
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                    <circle cx="10.5" cy="10.5" r="6.5" />
+                    <line x1="15.5" y1="15.5" x2="21" y2="21" />
+                  </svg>
+                </button>
                 {prestamosSearchOpen ? (
                   <label className="quick-loan-field supervisor-nuevo-search supervisor-prestamos-search">
                     <span className="sr-only">Buscar préstamo</span>

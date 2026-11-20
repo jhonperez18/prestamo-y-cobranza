@@ -5609,6 +5609,19 @@
     .nexo-atras-btn:active .nexo-atras-label {
       color: #0f3d33;
     }
+    .nexo-atras-btn.is-text-only {
+      padding: 0 10px;
+    }
+    .supervisor-nuevo-head-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+      justify-self: start;
+    }
+    .supervisor-mobile-detail-head.is-nuevo-prestamo-head {
+      align-items: start;
+    }
     .supervisor-caja-historial-btn {
       appearance: none;
       margin: 0;
@@ -5756,11 +5769,12 @@
     .supervisor-prestamos-search-row {
       display: flex;
       align-items: center;
+      justify-content: flex-end;
       gap: 8px;
       margin: 0 0 8px;
     }
-    .supervisor-prestamos-search-row.is-saldo-only {
-      justify-content: flex-end;
+    .supervisor-prestamos-lupa {
+      flex: 0 0 auto;
     }
     .supervisor-prestamos-saldo-sum {
       flex: 0 0 auto;
