@@ -8920,24 +8920,56 @@ export function SupervisorMobileApp({
             </>
           ) : (
             <>
-              <div className="supervisor-mobile-detail-head is-with-atras is-route-head">
-                <NexoAtrasBtn
-                  onClick={() => {
-                    if (nuevoLoanClientRef) {
-                      setNuevoLoanClientRef(null);
-                      return;
-                    }
-                    if (nuevoRouteRef) {
-                      setNuevoRouteRef(null);
-                      setNuevoClientSearch("");
-                      return;
-                    }
-                    resetNuevoFlow();
-                    setNuevoMode("menu");
-                  }}
-                />
-                <h3 className="supervisor-mobile-detail-collector">Nuevo préstamo</h3>
+              <div className="supervisor-mobile-detail-head is-with-atras is-nuevo-head-stack">
+                <div className="supervisor-nuevo-head-stack">
+                  <NexoAtrasBtn
+                    onClick={() => {
+                      if (nuevoLoanClientRef) {
+                        setNuevoLoanClientRef(null);
+                        return;
+                      }
+                      if (nuevoRouteRef) {
+                        setNuevoRouteRef(null);
+                        setNuevoClientSearch("");
+                        return;
+                      }
+                      resetNuevoFlow();
+                      setNuevoMode("menu");
+                    }}
+                  />
+                  <h3 className="supervisor-nuevo-head-title">Nuevo préstamo</h3>
+                  {nuevoRouteRef && nuevoRoute ? (
+                    <p className="supervisor-nuevo-head-meta">
+                      {nuevoLoanClient
+                        ? `${nuevoLoanClient.name} ${nuevoLoanClient.lastName}`.trim()
+                        : `Ruta ${nuevoRoute.routeName} · ${nuevoRoute.collectorName}`}
+                    </p>
+                  ) : null}
+                  {nuevoLoanClient && nuevoRoute ? (
+                    <p className="supervisor-nuevo-head-meta">
+                      Ruta {nuevoRoute.routeName} · {nuevoRoute.collectorName}
+                    </p>
+                  ) : null}
+                </div>
                 <span className="nexo-atras-spacer" aria-hidden />
+                <div className="supervisor-mobile-detail-actions">
+                  {nuevoRouteRef ? (
+                    <NexoAtrasBtn
+                      label="Cambiar"
+                      showIcon={false}
+                      onClick={() => {
+                        if (nuevoLoanClientRef) {
+                          setNuevoLoanClientRef(null);
+                          return;
+                        }
+                        setNuevoRouteRef(null);
+                        setNuevoClientSearch("");
+                      }}
+                    />
+                  ) : (
+                    <span className="nexo-atras-spacer" aria-hidden />
+                  )}
+                </div>
               </div>
               {!onCreateQuickLoan ? (
                 <p className="ficha-empty">No hay permiso para crear préstamos desde esta vista.</p>
@@ -8971,57 +9003,25 @@ export function SupervisorMobileApp({
                   )}
                 </>
               ) : nuevoLoanClient && nuevoRoute ? (
-                <>
-                  <div className="supervisor-mobile-detail-head">
-                    <h3>
-                      {`${nuevoLoanClient.name} ${nuevoLoanClient.lastName}`.trim()}
-                    </h3>
-                    <button
-                      type="button"
-                      className="collector-mobile-pay-link"
-                      onClick={() => setNuevoLoanClientRef(null)}
-                    >
-                      cambiar
-                    </button>
-                  </div>
-                  <p className="supervisor-mobile-subhead">
-                    Ruta {nuevoRoute.routeName} · {nuevoRoute.collectorName}
-                  </p>
-                  <QuickLoanForm
-                    clientName={`${nuevoLoanClient.name} ${nuevoLoanClient.lastName}`.trim()}
-                    clientRef={nuevoLoanClient.ref}
-                    clientRoute={nuevoRoute.routeName}
-                    fundedByOptions={loanFundedByOptionsForRoute(nuevoRoute.routeName, "supervisor")}
-                    defaultFundedBy={defaultFundedByForRoute(nuevoRoute.routeName, "supervisor")}
-                    onCancel={() => setNuevoLoanClientRef(null)}
-                    onSave={(draft) => {
-                      onCreateQuickLoan({
-                        ...draft,
-                        routeName: nuevoRoute.routeName,
-                      });
-                      resetNuevoFlow();
-                      setNuevoMode("menu");
-                      setNuevoMsg("Préstamo creado y cargado a la ruta.");
-                    }}
-                  />
-                </>
+                <QuickLoanForm
+                  clientName={`${nuevoLoanClient.name} ${nuevoLoanClient.lastName}`.trim()}
+                  clientRef={nuevoLoanClient.ref}
+                  clientRoute={nuevoRoute.routeName}
+                  fundedByOptions={loanFundedByOptionsForRoute(nuevoRoute.routeName, "supervisor")}
+                  defaultFundedBy={defaultFundedByForRoute(nuevoRoute.routeName, "supervisor")}
+                  onCancel={() => setNuevoLoanClientRef(null)}
+                  onSave={(draft) => {
+                    onCreateQuickLoan({
+                      ...draft,
+                      routeName: nuevoRoute.routeName,
+                    });
+                    resetNuevoFlow();
+                    setNuevoMode("menu");
+                    setNuevoMsg("Préstamo creado y cargado a la ruta.");
+                  }}
+                />
               ) : (
                 <>
-                  <div className="supervisor-mobile-detail-head">
-                    <h3>
-                      Ruta {nuevoRoute?.routeName} · {nuevoRoute?.collectorName}
-                    </h3>
-                    <button
-                      type="button"
-                      className="collector-mobile-pay-link"
-                      onClick={() => {
-                        setNuevoRouteRef(null);
-                        setNuevoClientSearch("");
-                      }}
-                    >
-                      cambiar
-                    </button>
-                  </div>
                   <label className="quick-loan-field supervisor-nuevo-search">
                     <span className="sr-only">Buscar</span>
                     <input
