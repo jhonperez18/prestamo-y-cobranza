@@ -6882,7 +6882,7 @@ export function SupervisorMobileApp({
                         <button
                           type="button"
                           className="supervisor-mov-row is-tap is-pay-banco"
-                          onClick={() => openNequiDayFicha(today, "totales")}
+                          onClick={() => openCobrosReport("banco")}
                           aria-label="Ver cobros Banco del día"
                         >
                           <span>Banco</span>
@@ -6893,7 +6893,7 @@ export function SupervisorMobileApp({
                         <button
                           type="button"
                           className="supervisor-mov-row is-tap is-pay-nequi"
-                          onClick={() => openNequiDayFicha(today, "totales")}
+                          onClick={() => openCobrosReport("nequi")}
                           aria-label="Ver cobros Nequi del día"
                         >
                           <span>Nequi</span>
