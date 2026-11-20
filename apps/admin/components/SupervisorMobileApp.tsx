@@ -1364,37 +1364,24 @@ function SupervisorClientFicha({
         </h3>
         <div className="supervisor-ficha-head-actions">
           {onTogglePrevious ? (
-            <button
-              type="button"
-              className={
-                showingPrevious
-                  ? "collector-mobile-pay-link is-pa on"
-                  : "collector-mobile-pay-link is-pa"
-              }
-              title={
-                showingPrevious
-                  ? "Volver al préstamo actual"
-                  : "Ver préstamo anterior (solo lectura)"
-              }
-              aria-pressed={showingPrevious}
+            <NexoAtrasBtn
+              label="P.A"
+              showIcon={false}
+              className={showingPrevious ? "on" : ""}
               onClick={() => {
                 suppressGhostClick();
                 onTogglePrevious();
               }}
-            >
-              P.A
-            </button>
+            />
           ) : null}
-          <button
-            type="button"
-            className="collector-mobile-pay-link is-share"
+          <NexoAtrasBtn
+            label={sharing ? "…" : "Compartir"}
+            showIcon={false}
             disabled={sharing || !report}
             onClick={() => {
               void handleShare();
             }}
-          >
-            {sharing ? "…" : "Compartir"}
-          </button>
+          />
         </div>
       </div>
 
