@@ -1898,6 +1898,7 @@ export function SupervisorMobileApp({
   const [gastoDate, setGastoDate] = useState(() => displayToday());
   const [nuevoMsg, setNuevoMsg] = useState("");
   const [nuevoClientSearch, setNuevoClientSearch] = useState("");
+  const [nuevoClientSearchOpen, setNuevoClientSearchOpen] = useState(false);
   const [nuevoLoanClientRef, setNuevoLoanClientRef] = useState<string | null>(null);
   /** null = todas las rutas; string = nombre de ruta filtrada en planilla. */
   const [planillaRouteFilter, setPlanillaRouteFilter] = useState<string | null>(null);
@@ -5464,6 +5465,7 @@ export function SupervisorMobileApp({
     setNuevoRouteRef(null);
     setNuevoMsg("");
     setNuevoClientSearch("");
+    setNuevoClientSearchOpen(false);
     setNuevoLoanClientRef(null);
     setGastoLabel("Gasto");
     setGastoAmount("");
@@ -8815,6 +8817,7 @@ export function SupervisorMobileApp({
                     if (nuevoRouteRef) {
                       setNuevoRouteRef(null);
                       setNuevoClientSearch("");
+                      setNuevoClientSearchOpen(false);
                       return;
                     }
                     resetNuevoFlow();
@@ -8837,7 +8840,51 @@ export function SupervisorMobileApp({
                 </div>
               </div>
               {nuevoRouteRef ? (
-                <p className="supervisor-mobile-detail-meta">Renovar</p>
+                <div className="supervisor-mobile-detail-meta supervisor-renovar-meta-row">
+                  <span>Renovar</span>
+                  <button
+                    type="button"
+                    className={
+                      nuevoClientSearchOpen
+                        ? "collector-history-planilla-search supervisor-clientes-search on"
+                        : "collector-history-planilla-search supervisor-clientes-search"
+                    }
+                    aria-label="Buscar cliente"
+                    aria-pressed={nuevoClientSearchOpen}
+                    onClick={() => {
+                      suppressGhostClick();
+                      if (nuevoClientSearchOpen) {
+                        setNuevoClientSearchOpen(false);
+                        setNuevoClientSearch("");
+                        return;
+                      }
+                      setNuevoClientSearchOpen(true);
+                    }}
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.4"
+                      strokeLinecap="round"
+                    >
+                      <circle cx="10.5" cy="10.5" r="6.5" />
+                      <line x1="15.5" y1="15.5" x2="21" y2="21" />
+                    </svg>
+                  </button>
+                  {nuevoClientSearchOpen ? (
+                    <label className="supervisor-renovar-search">
+                      <span className="sr-only">Buscar</span>
+                      <input
+                        value={nuevoClientSearch}
+                        onChange={(event) => setNuevoClientSearch(event.target.value)}
+                        placeholder="Nombre, cédula…"
+                        autoFocus
+                      />
+                    </label>
+                  ) : null}
+                </div>
               ) : null}
               {!onRenewLoan ? (
                 <p className="ficha-empty">No hay permiso para renovar desde esta vista.</p>
@@ -8856,6 +8903,7 @@ export function SupervisorMobileApp({
                             setNuevoRouteRef(row.routeRef);
                             setNuevoLoanClientRef(null);
                             setNuevoClientSearch("");
+                            setNuevoClientSearchOpen(false);
                           }}
                         >
                           <div className="supervisor-caja-row">
@@ -8883,32 +8931,19 @@ export function SupervisorMobileApp({
                     setNuevoMsg("Renovado. La planilla toma la fecha del primer cobro.");
                   }}
                 />
+              ) : renewableClientRows.length === 0 ? (
+                <p className="ficha-empty">
+                  No hay clientes para renovar en esta ruta
+                  {nuevoClientSearch.trim() ? " con ese filtro" : ""}.
+                </p>
               ) : (
-                <>
-                  <label className="quick-loan-field supervisor-nuevo-search">
-                    <span className="sr-only">Buscar</span>
-                    <input
-                      value={nuevoClientSearch}
-                      onChange={(event) => setNuevoClientSearch(event.target.value)}
-                      placeholder="Nombre, cédula o celular"
-                      autoFocus
-                    />
-                  </label>
-                  {renewableClientRows.length === 0 ? (
-                    <p className="ficha-empty">
-                      No hay clientes para renovar en esta ruta
-                      {nuevoClientSearch.trim() ? " con ese filtro" : ""}.
-                    </p>
-                  ) : (
-                    <ClientesTable
-                      rows={renewableClientRows}
-                      onOpen={(ref) => {
-                        suppressGhostClick();
-                        setNuevoLoanClientRef(ref);
-                      }}
-                    />
-                  )}
-                </>
+                <ClientesTable
+                  rows={renewableClientRows}
+                  onOpen={(ref) => {
+                    suppressGhostClick();
+                    setNuevoLoanClientRef(ref);
+                  }}
+                />
               )}
             </>
           ) : (

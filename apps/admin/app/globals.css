@@ -5975,6 +5975,36 @@
       align-items: center;
       gap: 8px;
     }
+    .supervisor-renovar-meta-row {
+      overflow: visible;
+      gap: 6px;
+    }
+    .supervisor-renovar-meta-row > span:first-child {
+      flex: 0 0 auto;
+    }
+    .supervisor-renovar-search {
+      flex: 1 1 auto;
+      min-width: 0;
+      max-width: 11.5rem;
+      margin: 0;
+      display: block;
+    }
+    .supervisor-renovar-search input {
+      width: 100%;
+      box-sizing: border-box;
+      height: 24px;
+      min-height: 0;
+      margin: 0;
+      padding: 0 8px;
+      border: 1px solid #93c5fd;
+      border-radius: 6px;
+      background: #fff;
+      color: #14201b;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.2;
+    }
     .supervisor-mobile-detail-sep {
       color: #7a9187;
       font-weight: 600;
