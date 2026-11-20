@@ -7058,9 +7058,6 @@ export function SupervisorMobileApp({
             <>
               <p className="supervisor-mobile-detail-meta">
                 Préstamos del día · {openRoutePrestamoRows.length}
-                {openRoute.prestamosHoy > 0
-                  ? ` · ${money(openRoute.prestamosHoy, { symbol: false })}`
-                  : ""}
               </p>
               {openRoutePrestamoRows.length === 0 ? (
                 <p className="ficha-empty">
@@ -7071,23 +7068,29 @@ export function SupervisorMobileApp({
                       : "Sin préstamos hoy en esta ruta."}
                 </p>
               ) : (
-                <ul className="supervisor-mobile-list is-loans-today">
-                  {openRoutePrestamoRows.map((loan, index) => (
-                    <li key={loan.loanRef}>
-                      <strong className="is-name">{loan.clientName}</strong>
-                      <b className="is-amount">
-                        {money(loan.capital, { symbol: false })}
-                      </b>
-                      <span className="is-kind is-count" title="Préstamo del día">
-                        {index + 1}
-                        </span>
-                    </li>
-                  ))}
-                  <li className="is-total">
-                    <span>Saldo del día</span>
+                <div className="supervisor-loans-day-palette">
+                  <div className="supervisor-loans-day-head" aria-hidden>
+                    <span>Nombre</span>
+                    <span>Valor</span>
+                  </div>
+                  <ul
+                    className="supervisor-mobile-list is-loans-today is-loans-palette"
+                    aria-label="Préstamos del día"
+                  >
+                    {openRoutePrestamoRows.map((loan) => (
+                      <li key={loan.loanRef}>
+                        <strong className="is-name">{loan.clientName}</strong>
+                        <b className="is-amount">
+                          {money(loan.capital, { symbol: false })}
+                        </b>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="supervisor-loans-day-total">
+                    <span>Total</span>
                     <b>{money(openRoute.prestamosHoy, { symbol: false })}</b>
-                  </li>
-                </ul>
+                  </div>
+                </div>
               )}
             </>
           )}

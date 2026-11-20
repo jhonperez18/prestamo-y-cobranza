@@ -10469,6 +10469,78 @@
       font-variant-numeric: tabular-nums;
       line-height: 1.2;
     }
+    /* Paleta Préstamos E: Nombre | Valor + Total en negrita */
+    .supervisor-loans-day-palette {
+      display: grid;
+      gap: 0;
+      border: 1px solid #c5e0cb;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .supervisor-loans-day-head,
+    .supervisor-mobile-list.is-loans-palette > li {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(5.5rem, 0.9fr);
+      column-gap: 8px;
+      align-items: center;
+    }
+    .supervisor-loans-day-head {
+      padding: 8px 12px;
+      background: var(--table-head-bg, #426650);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      color: #fff;
+      line-height: 1.2;
+    }
+    .supervisor-loans-day-head span:last-child {
+      text-align: right;
+    }
+    .supervisor-mobile-list.is-loans-palette {
+      gap: 0;
+      margin: 0;
+      border: 0;
+      border-radius: 0;
+      overflow: visible;
+      background: transparent;
+    }
+    .supervisor-mobile-list.is-loans-palette > li {
+      margin: 0;
+      padding: 10px 12px;
+      border: 0;
+      border-bottom: 1px solid #e2ece7;
+      border-radius: 0;
+      min-height: 0;
+    }
+    .supervisor-mobile-list.is-loans-palette > li:last-child {
+      border-bottom: 0;
+    }
+    .supervisor-mobile-list.is-loans-palette .is-name {
+      font-weight: 600;
+    }
+    .supervisor-mobile-list.is-loans-palette .is-amount {
+      color: #111;
+      font-weight: 600;
+    }
+    .supervisor-loans-day-total {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 12px;
+      border-top: 1px solid #c5e0cb;
+      background: #eef6ef;
+      color: #111;
+      font-size: 13px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+    .supervisor-loans-day-total span,
+    .supervisor-loans-day-total b {
+      font-weight: 800;
+      color: #111;
+    }
     .supervisor-mobile-list li > div {
       min-width: 0;
       display: flex;
