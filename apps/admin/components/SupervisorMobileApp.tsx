@@ -8828,20 +8828,9 @@ export function SupervisorMobileApp({
                 </h3>
                 <div className="supervisor-mobile-detail-actions">
                   {nuevoRouteRef && nuevoRoute ? (
-                    <>
-                      <span className="supervisor-mobile-detail-route">
-                        {nuevoRoute.collectorName}
-                      </span>
-                      <NexoAtrasBtn
-                        label="Cambiar"
-                        showIcon={false}
-                        onClick={() => {
-                          setNuevoLoanClientRef(null);
-                          setNuevoRouteRef(null);
-                          setNuevoClientSearch("");
-                        }}
-                      />
-                    </>
+                    <span className="supervisor-mobile-detail-route">
+                      {nuevoRoute.collectorName}
+                    </span>
                   ) : (
                     <span className="nexo-atras-spacer" aria-hidden />
                   )}
@@ -8947,23 +8936,9 @@ export function SupervisorMobileApp({
                 </h3>
                 <div className="supervisor-mobile-detail-actions">
                   {nuevoRouteRef && nuevoRoute ? (
-                    <>
-                      <span className="supervisor-mobile-detail-route">
-                        {nuevoRoute.collectorName}
-                      </span>
-                      <NexoAtrasBtn
-                        label="Cambiar"
-                        showIcon={false}
-                        onClick={() => {
-                          if (nuevoLoanClientRef) {
-                            setNuevoLoanClientRef(null);
-                            return;
-                          }
-                          setNuevoRouteRef(null);
-                          setNuevoClientSearch("");
-                        }}
-                      />
-                    </>
+                    <span className="supervisor-mobile-detail-route">
+                      {nuevoRoute.collectorName}
+                    </span>
                   ) : (
                     <span className="nexo-atras-spacer" aria-hidden />
                   )}
