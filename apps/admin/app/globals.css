@@ -5618,6 +5618,15 @@
     .nexo-atras-btn.is-text-only {
       padding: 0 10px;
     }
+    .nexo-atras-btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.95) inset,
+        0 -1px 0 rgba(15, 61, 33, 0.12) inset,
+        0 2px 4px rgba(15, 61, 33, 0.1);
+    }
     .supervisor-nuevo-head-stack {
       display: flex;
       flex-direction: column;

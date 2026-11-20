@@ -8715,9 +8715,6 @@ export function SupervisorMobileApp({
                     submitNuevoGasto();
                     }}
                   >
-                  <p className="supervisor-mobile-subhead">
-                    Queda en Banco → Registros (mismo flujo de pagos varios).
-                  </p>
                   {nuevoMsg ? <p className="supervisor-nuevo-msg">{nuevoMsg}</p> : null}
                     <label className="quick-loan-field">
                     <span>Concepto</span>
@@ -8780,8 +8777,12 @@ export function SupervisorMobileApp({
                     </select>
                   </label>
                     <div className="quick-loan-actions">
-                      <button type="submit" className="btn" disabled={!gastoAccountRef}>
-                      Guardar gasto
+                      <button
+                        type="submit"
+                        className="nexo-atras-btn is-text-only"
+                        disabled={!gastoAccountRef}
+                      >
+                        <span className="nexo-atras-label">Guardar gasto</span>
                       </button>
                     </div>
                   </form>
