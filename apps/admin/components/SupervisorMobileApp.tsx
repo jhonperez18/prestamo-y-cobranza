@@ -8937,13 +8937,7 @@ export function SupervisorMobileApp({
                   }}
                 />
                 <h3 className="supervisor-mobile-detail-collector">Nuevo préstamo</h3>
-                <div className="supervisor-mobile-detail-actions">
-                  <NexoAtrasBtn
-                    label="Ver préstamos"
-                    showIcon={false}
-                    onClick={() => goToView("prestamos")}
-                  />
-                </div>
+                <span className="nexo-atras-spacer" aria-hidden />
               </div>
               {!onCreateQuickLoan ? (
                 <p className="ficha-empty">No hay permiso para crear préstamos desde esta vista.</p>
