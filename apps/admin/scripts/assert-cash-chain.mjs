@@ -2782,6 +2782,23 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       ),
     true,
   );
+  const cierreBancoUi = histSuperSrc.slice(
+    histSuperSrc.indexOf("{/* T: mismo montaje que Efectivo"),
+    histSuperSrc.indexOf("{/* T: mismo montaje que Efectivo") + 900,
+  );
+  expect(
+    "Cierre T: Banco M+T fijo como Efectivo M+T (no lo renombra la puerta)",
+    histSuperSrc.includes("<span>Efectivo M+T</span>") &&
+      histSuperSrc.includes("<span>Banco M+T</span>") &&
+      histSuperSrc.includes('toggleCierreList("bancoCadena")') &&
+      histSuperSrc.includes('toggleCierreList("efectivoCadena")') &&
+      histSuperSrc.includes("historyDayChainT?.digitalPayments") &&
+      histSuperSrc.includes("historyDayChainT?.ownDigitalPayments") &&
+      cierreBancoUi.includes("historyDayChainT ?") &&
+      cierreBancoUi.includes("<span>Banco M+T</span>") &&
+      !/cierreBancoRutaPayments \?[\s\S]{0,200}<span>Banco M\+T<\/span>/.test(histSuperSrc),
+    true,
+  );
   expect(
     "Botón Gastos M/T/A/N: misma estructura (sheet explica el total; sin mezclar rutas)",
     histCollSrc.includes("sheetGastoLines") &&

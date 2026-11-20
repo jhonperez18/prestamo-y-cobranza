@@ -6509,18 +6509,8 @@ export function SupervisorMobileApp({
                         <b>{money(historyDayChainT.ownDigital)}</b>
                       </button>
                     ) : null}
-                    {historyDayShowNequiValue && cierreBancoRutaPayments ? (
-                      <button
-                        type="button"
-                        className={`is-mean is-pay-banco is-tap-mean${cierreListKind === "bancoRuta" ? " on" : ""}`}
-                        data-cierre-keep
-                        aria-expanded={cierreListKind === "bancoRuta"}
-                        onClick={() => toggleCierreList("bancoRuta")}
-                      >
-                        <span>Banco</span>
-                        <b>{money(historyDayDigitalAmount)}</b>
-                      </button>
-                    ) : historyDayShowNequiValue && historyDayChainT ? (
+                    {/* T: mismo montaje que Efectivo — T propio + M+T fijos. M/N: un solo Banco. */}
+                    {historyDayChainT ? (
                       <button
                         type="button"
                         className={`is-mean is-pay-banco is-tap-mean${cierreListKind === "bancoCadena" ? " on" : ""}`}
@@ -6531,9 +6521,20 @@ export function SupervisorMobileApp({
                         <span>Banco M+T</span>
                         <b>{money(historyDayDigitalAmount)}</b>
                       </button>
+                    ) : historyDayShowNequiValue && cierreBancoRutaPayments ? (
+                      <button
+                        type="button"
+                        className={`is-mean is-pay-banco is-tap-mean${cierreListKind === "bancoRuta" ? " on" : ""}`}
+                        data-cierre-keep
+                        aria-expanded={cierreListKind === "bancoRuta"}
+                        onClick={() => toggleCierreList("bancoRuta")}
+                      >
+                        <span>Banco</span>
+                        <b>{money(historyDayDigitalAmount)}</b>
+                      </button>
                     ) : historyDayShowNequiValue ? (
                       <div className="is-mean is-pay-banco">
-                        <span>{openRouteCajaHistoryIsT ? "Banco M+T" : "Banco"}</span>
+                        <span>Banco</span>
                         <b>{money(historyDayDigitalAmount)}</b>
                       </div>
                     ) : null}
