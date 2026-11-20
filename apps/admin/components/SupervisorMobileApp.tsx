@@ -8631,14 +8631,14 @@ export function SupervisorMobileApp({
           {nuevoMode === "menu" ? (
             <>
               <div className="supervisor-mobile-detail-head">
-              <h3>Nuevo</h3>
-                <button
-                  type="button"
-                  className="collector-mobile-pay-link"
-                  onClick={() => goToView("prestamos")}
-                >
-                  Ver préstamos
-                </button>
+                <h3>Nuevo</h3>
+                <div className="supervisor-mobile-detail-actions">
+                  <NexoAtrasBtn
+                    label="Ver préstamos"
+                    showIcon={false}
+                    onClick={() => goToView("prestamos")}
+                  />
+                </div>
               </div>
               {nuevoMsg ? <p className="supervisor-nuevo-msg">{nuevoMsg}</p> : null}
               <div className="supervisor-nuevo-menu">
@@ -8936,10 +8936,10 @@ export function SupervisorMobileApp({
                     setNuevoMode("menu");
                   }}
                 />
-                <span className="nexo-atras-spacer" aria-hidden />
+                <h3 className="supervisor-mobile-detail-collector">Nuevo préstamo</h3>
                 <div className="supervisor-mobile-detail-actions">
                   <NexoAtrasBtn
-                    label="Nuevo préstamo"
+                    label="Ver préstamos"
                     showIcon={false}
                     onClick={() => goToView("prestamos")}
                   />
