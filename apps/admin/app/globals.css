@@ -5978,6 +5978,7 @@
     .supervisor-renovar-meta-row {
       overflow: visible;
       gap: 6px;
+      margin-top: 8px;
     }
     .supervisor-renovar-meta-row > span:first-child {
       flex: 0 0 auto;
