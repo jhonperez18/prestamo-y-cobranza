@@ -6134,13 +6134,11 @@ export function SupervisorMobileApp({
               </span>
               {(detailMode === "historial" || detailMode === "historial-dia") &&
               cajaHistoryNav === "detallado" ? (
-                <button
-                  type="button"
-                  className="supervisor-caja-historial-btn"
+                <NexoAtrasBtn
+                  label="Historial"
+                  showIcon={false}
                   onClick={() => openCajaHistorialMeses()}
-                >
-                  historial
-                </button>
+                />
               ) : null}
             </div>
           </div>
@@ -7440,9 +7438,9 @@ export function SupervisorMobileApp({
             </h3>
             <div className="supervisor-mobile-detail-actions">
               {nequiPoolHistNav === "home" ? (
-                <button
-                  type="button"
-                  className="supervisor-caja-historial-btn"
+                <NexoAtrasBtn
+                  label="Historial"
+                  showIcon={false}
                   onClick={() => {
                     suppressGhostClick();
                     setNequiRutaExpand(null);
@@ -7452,9 +7450,7 @@ export function SupervisorMobileApp({
                     setNequiPoolHistPeriod(null);
                     setNequiPoolHistNav("meses");
                   }}
-                >
-                  historial
-                </button>
+                />
               ) : null}
             </div>
           </div>
@@ -7944,9 +7940,9 @@ export function SupervisorMobileApp({
               !bancoRegistroRoute &&
               !bancoGastosOpen &&
               !bancoPrestadoOpen ? (
-                <button
-                  type="button"
-                  className="supervisor-caja-historial-btn"
+                <NexoAtrasBtn
+                  label="Historial"
+                  showIcon={false}
                   onClick={() => {
                     suppressGhostClick();
                     setBancoRegistroRoute(null);
@@ -7959,9 +7955,7 @@ export function SupervisorMobileApp({
                     setBancoPoolHistPeriod(null);
                     setBancoPoolHistNav("meses");
                   }}
-                >
-                  historial
-                </button>
+                />
               ) : null}
             </div>
           </div>
@@ -8926,31 +8920,30 @@ export function SupervisorMobileApp({
             </>
           ) : (
             <>
-              <div className="supervisor-mobile-detail-head is-with-atras is-nuevo-prestamo-head">
-                <div className="supervisor-nuevo-head-stack">
-                  <NexoAtrasBtn
-                    onClick={() => {
-                      if (nuevoLoanClientRef) {
-                        setNuevoLoanClientRef(null);
-                        return;
-                      }
-                      if (nuevoRouteRef) {
-                        setNuevoRouteRef(null);
-                        setNuevoClientSearch("");
-                        return;
-                      }
-                      resetNuevoFlow();
-                      setNuevoMode("menu");
-                    }}
-                  />
+              <div className="supervisor-mobile-detail-head is-with-atras is-route-head">
+                <NexoAtrasBtn
+                  onClick={() => {
+                    if (nuevoLoanClientRef) {
+                      setNuevoLoanClientRef(null);
+                      return;
+                    }
+                    if (nuevoRouteRef) {
+                      setNuevoRouteRef(null);
+                      setNuevoClientSearch("");
+                      return;
+                    }
+                    resetNuevoFlow();
+                    setNuevoMode("menu");
+                  }}
+                />
+                <span className="nexo-atras-spacer" aria-hidden />
+                <div className="supervisor-mobile-detail-actions">
                   <NexoAtrasBtn
                     label="Nuevo préstamo"
                     showIcon={false}
                     onClick={() => goToView("prestamos")}
                   />
                 </div>
-                <span className="nexo-atras-spacer" aria-hidden />
-                <span className="nexo-atras-spacer" aria-hidden />
               </div>
               {!onCreateQuickLoan ? (
                 <p className="ficha-empty">No hay permiso para crear préstamos desde esta vista.</p>

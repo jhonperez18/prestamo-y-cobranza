@@ -5618,38 +5618,6 @@
     .nexo-atras-btn.is-text-only {
       padding: 0 10px;
     }
-    .supervisor-nuevo-head-stack {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 6px;
-      justify-self: start;
-    }
-    .supervisor-mobile-detail-head.is-nuevo-prestamo-head {
-      align-items: start;
-    }
-    .supervisor-caja-historial-btn {
-      appearance: none;
-      margin: 0;
-      padding: 4px 8px;
-      border: 1px solid #8fd3c5;
-      border-radius: 6px;
-      background: #cdeee6;
-      color: #073330;
-      font: inherit;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      line-height: 1.2;
-      text-transform: lowercase;
-      white-space: nowrap;
-      cursor: pointer;
-    }
-    .supervisor-caja-historial-btn.on,
-    .supervisor-caja-historial-btn:hover {
-      background: #b7e6db;
-      border-color: #6fc4b3;
-    }
     .supervisor-caja-meses-list {
       list-style: none;
       margin: 0;
@@ -15779,6 +15747,10 @@
       min-height: 24px;
       padding: 0 10px 0 8px;
       font-size: 11px;
+    }
+    .supervisor-mobile-app .nexo-atras-btn.is-text-only,
+    .collector-mobile-app .nexo-atras-btn.is-text-only {
+      padding: 0 10px;
     }
     /* Pines de ruta (M T A N): un poco más chicos en todo el supervisor. */
     .supervisor-mobile-app .collector-mobile-route-pin {
