@@ -26,6 +26,9 @@ export type CloudDayCashFigure = {
 
 const byKey = new Map<string, CloudDayCashFigure>();
 const STORAGE_PREFIX = "nexo-day-cash-figure:";
+/** Hoy: 45 s. Remount / visible-pull reusan warm; force solo tras movimiento de caja. */
+const LIVE_TTL_MS = 45_000;
+const inFlight = new Map<string, Promise<CloudDayCashFigure | null>>();
 
 function keyOf(collectorRef: string, date: string) {
   return `${collectorRef.trim()}|${date}`;
@@ -236,17 +239,35 @@ async function fetchDayCashFigureOnce(
 export async function refreshCloudDayCashFigure(
   collectorRef: string,
   date: string,
+  opts: { force?: boolean } = {},
 ): Promise<CloudDayCashFigure | null> {
   const ref = collectorRef.trim();
   if (!ref || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-  try {
-    const first = await fetchDayCashFigureOnce(ref, date);
-    if (first) return first;
-    return await fetchDayCashFigureOnce(ref, date);
-  } catch (error) {
-    console.error("refreshCloudDayCashFigure", error);
-    return getCloudDayCashFigure(ref, date);
+  const warm = getCloudDayCashFigure(ref, date);
+  if (
+    !opts.force &&
+    warm &&
+    Date.now() - Date.parse(warm.fetchedAt || "") < LIVE_TTL_MS
+  ) {
+    return warm;
   }
+  const key = keyOf(ref, date);
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+  const job = (async () => {
+    try {
+      const first = await fetchDayCashFigureOnce(ref, date);
+      if (first) return first;
+      return await fetchDayCashFigureOnce(ref, date);
+    } catch (error) {
+      console.error("refreshCloudDayCashFigure", error);
+      return getCloudDayCashFigure(ref, date);
+    } finally {
+      inFlight.delete(key);
+    }
+  })();
+  inFlight.set(key, job);
+  return job;
 }
 
 /**
@@ -258,7 +279,7 @@ export async function resyncCloudDayCashFigureAfterCashMove(
   date: string,
 ): Promise<CloudDayCashFigure | null> {
   forgetCloudDayCashFigure(collectorRef, date);
-  return refreshCloudDayCashFigure(collectorRef, date);
+  return refreshCloudDayCashFigure(collectorRef, date, { force: true });
 }
 
 /** Cobradores con caja viva hoy (CIE o GAS): hay que refrescar aunque aún no haya CIE. */

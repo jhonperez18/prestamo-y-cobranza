@@ -565,32 +565,25 @@ export function useOperationalDemoSync(
   useEffect(() => {
     let cancel = false;
     refreshPending();
-    void (async () => {
+    /**
+     * Arranque liviano (todos los roles): pintar ya la copia del aparato.
+     * Evidence (fotos) va atrás: no bloquea saldos ni el Workspace.
+     * La nube va atrás con ?since= (completa solo vacío / reparar / cada hora).
+     */
+    const sistemaPrincipal =
+      !isCollectorLiveDevice() && !isSupervisorLiveDevice();
+    if (sistemaPrincipal && getSupabasePublicEnv().configured) {
       try {
-        await loadPaymentEvidenceStore();
+        compactCatalogBackupsOnBoot();
       } catch (error) {
-        console.error("evidence-store", error);
+        console.error("compact-catalog-bak", error);
       }
-      if (cancel) return;
-      /**
-       * Arranque liviano (todos los roles): pintar ya la copia del aparato.
-       * La nube va atrás con ?since= (completa solo vacío / reparar / cada hora).
-       * Antes el sistema principal esperaba el pull entero → minutos en blanco.
-       * Verdad operativa sigue en Supabase; el panel no bloquea el negocio al abrir.
-       */
-      const sistemaPrincipal =
-        !isCollectorLiveDevice() && !isSupervisorLiveDevice();
-      if (sistemaPrincipal && getSupabasePublicEnv().configured) {
-        try {
-          compactCatalogBackupsOnBoot();
-        } catch (error) {
-          console.error("compact-catalog-bak", error);
-        }
-      }
-      commitHydrate();
-      if (cancel) return;
-      void runHydrateWithRemotePull();
-    })();
+    }
+    commitHydrate();
+    void loadPaymentEvidenceStore().catch((error) => {
+      console.error("evidence-store", error);
+    });
+    if (!cancel) void runHydrateWithRemotePull();
     return () => {
       cancel = true;
     };

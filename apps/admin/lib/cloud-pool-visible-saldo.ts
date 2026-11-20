@@ -18,6 +18,7 @@ const STORAGE_KEY = "nexo-cloud-pool-visible-saldo";
 const LIVE_TTL_MS = 45_000;
 
 let cached: CloudPoolVisibleSaldo | null = null;
+const inFlight = new Map<string, Promise<CloudPoolVisibleSaldo | null>>();
 
 function readPersisted(): CloudPoolVisibleSaldo | null {
   if (typeof sessionStorage === "undefined") return null;
@@ -127,41 +128,50 @@ export async function refreshCloudPoolVisibleSaldo(
     return warm;
   }
 
-  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timer =
-    ctrl && typeof window !== "undefined"
-      ? window.setTimeout(() => ctrl.abort(), 30_000)
-      : 0;
-  try {
-    const qs = want ? `?to=${want}` : "";
-    const res = await fetch(`/api/ops/pool-visible-saldo${qs}`, {
-      cache: "no-store",
-      signal: ctrl?.signal,
-    });
-    const body = (await res.json()) as {
-      ok?: boolean;
-      banco?: number;
-      nequi?: number;
-      fromIso?: string;
-      toIso?: string;
-    };
-    if (!body || body.ok !== true) return warm;
-    const banco = Math.trunc(Number(body.banco));
-    const nequi = Math.trunc(Number(body.nequi));
-    if (!Number.isFinite(banco) || !Number.isFinite(nequi)) return warm;
-    const row: CloudPoolVisibleSaldo = {
-      banco,
-      nequi,
-      fromIso: String(body.fromIso || ""),
-      toIso: String(body.toIso || want || ""),
-      fetchedAt: new Date().toISOString(),
-    };
-    rememberCloudPoolVisibleSaldo(row);
-    return row;
-  } catch (error) {
-    console.error("refreshCloudPoolVisibleSaldo", error);
-    return warm;
-  } finally {
-    if (timer) window.clearTimeout(timer);
-  }
+  const flightKey = want || "*";
+  const pending = inFlight.get(flightKey);
+  if (pending) return pending;
+
+  const job = (async () => {
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer =
+      ctrl && typeof window !== "undefined"
+        ? window.setTimeout(() => ctrl.abort(), 30_000)
+        : 0;
+    try {
+      const qs = want ? `?to=${want}` : "";
+      const res = await fetch(`/api/ops/pool-visible-saldo${qs}`, {
+        cache: "no-store",
+        signal: ctrl?.signal,
+      });
+      const body = (await res.json()) as {
+        ok?: boolean;
+        banco?: number;
+        nequi?: number;
+        fromIso?: string;
+        toIso?: string;
+      };
+      if (!body || body.ok !== true) return warm;
+      const banco = Math.trunc(Number(body.banco));
+      const nequi = Math.trunc(Number(body.nequi));
+      if (!Number.isFinite(banco) || !Number.isFinite(nequi)) return warm;
+      const row: CloudPoolVisibleSaldo = {
+        banco,
+        nequi,
+        fromIso: String(body.fromIso || ""),
+        toIso: String(body.toIso || want || ""),
+        fetchedAt: new Date().toISOString(),
+      };
+      rememberCloudPoolVisibleSaldo(row);
+      return row;
+    } catch (error) {
+      console.error("refreshCloudPoolVisibleSaldo", error);
+      return warm;
+    } finally {
+      if (timer) window.clearTimeout(timer);
+      inFlight.delete(flightKey);
+    }
+  })();
+  inFlight.set(flightKey, job);
+  return job;
 }

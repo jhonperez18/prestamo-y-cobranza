@@ -30,9 +30,11 @@ type SupervisorTodayState = {
 };
 
 /**
- * El día se pide al abrir y, como mucho, una vez por minuto al volver a la app.
+ * El día se pide al abrir. Poll de respaldo = 10 min (Realtime + foco ya refrescan).
  * Cambiar de pestaña no vuelve a bajar los cierres.
  */
+const SUPERVISOR_TODAY_POLL_MS = 10 * 60_000;
+
 export function useSupervisorToday(enabled: boolean, refreshKey: string): SupervisorTodayState {
   const [state, setState] = useState<SupervisorTodayState>({
     status: enabled ? "loading" : "idle",
@@ -44,7 +46,7 @@ export function useSupervisorToday(enabled: boolean, refreshKey: string): Superv
     let alive = true;
     let lastOk = 0;
     const load = async (force: boolean) => {
-      if (!force && Date.now() - lastOk < 45_000) return;
+      if (!force && Date.now() - lastOk < SUPERVISOR_TODAY_POLL_MS) return;
       const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
       const timer =
         ctrl && typeof window !== "undefined"
@@ -74,6 +76,7 @@ export function useSupervisorToday(enabled: boolean, refreshKey: string): Superv
           },
         });
         // Misma puerta que el cobrador: day_cash_figure de la base, no cifra local vieja.
+        // Sin force: TTL 45 s evita martillar tras remount / visible-pull.
         const refs = [
           ...new Set(
             (Array.isArray(body.dayCloses) ? body.dayCloses : [])
@@ -93,16 +96,15 @@ export function useSupervisorToday(enabled: boolean, refreshKey: string): Superv
       }
     };
     void load(true);
-    // Cada 45 s: los cobros del celular entran al supervisor sin esperar cambio de pestaña.
-    const poll = window.setInterval(() => void load(false), 45_000);
+    // Respaldo 10 min: Realtime + foco ya bajan ops; el poll no martilla egress.
+    const poll = window.setInterval(() => void load(false), SUPERVISOR_TODAY_POLL_MS);
     const onVisible = () => {
-      // Al volver: pide el día (tope 45 s). Disco en servidor evita “cerrado” con hoja vieja.
+      // Al volver: pide el día si ya pasó el tope (10 min). Disco en servidor evita hoja vieja.
       if (document.visibilityState === "visible") void load(false);
     };
-    // Tras un pull ops visible, forzar una lectura fresca del día (CIE ayer+hoy).
+    // Tras pull ops visible: soft-refresh (respeta tope). Force solo si aún no hubo OK.
     const onOpsPull = () => {
-      lastOk = 0;
-      void load(true);
+      void load(lastOk === 0);
     };
     window.addEventListener("nexo-ops-visible-pull", onOpsPull);
     document.addEventListener("visibilitychange", onVisible);
@@ -249,9 +251,9 @@ export function usePoolVisibleSaldoCloud(enabled: boolean, toIso: string): PoolV
           setSettled(false);
         }
         const pull = async (tries = 0) => {
-          const row = await refreshCloudPoolVisibleSaldo(toIso, {
-            force: tries === 0 && !warm,
-          });
+          // Sin force: si hay warm fresco (TTL 45 s) no martilla el libro.
+          // Sin warm → baja; con warm viejo → soft-refresh.
+          const row = await refreshCloudPoolVisibleSaldo(toIso);
           if (!alive) return;
           if (row && row.toIso === toIso) {
             setSettled(true);

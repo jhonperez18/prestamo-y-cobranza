@@ -17,6 +17,9 @@ export type CloudRouteOwnBox = {
 
 const byKey = new Map<string, CloudRouteOwnBox>();
 const STORAGE_PREFIX = "nexo-route-own-box:";
+/** Hoy: 45 s. Remount / visible-pull reusan warm. */
+const LIVE_TTL_MS = 45_000;
+const inFlight = new Map<string, Promise<CloudRouteOwnBox | null>>();
 
 function keyOf(collectorRef: string, date: string, route: string) {
   return `${collectorRef.trim()}|${date}|${route.trim().toUpperCase()}`;
@@ -185,21 +188,39 @@ export async function refreshCloudRouteOwnBox(
   collectorRef: string,
   date: string,
   route: string,
+  opts: { force?: boolean } = {},
 ): Promise<CloudRouteOwnBox | null> {
   const ref = collectorRef.trim();
   const pin = route.trim().toUpperCase();
   if (!ref || !/^\d{4}-\d{2}-\d{2}$/.test(date) || (pin !== "A" && pin !== "N")) {
     return null;
   }
-  try {
-    const first = await fetchRouteOwnBoxOnce(ref, date, pin);
-    if (first) return first;
-    // Un reintento: bajo carga el primer intento aborta y dejaba GASTO 0.
-    return await fetchRouteOwnBoxOnce(ref, date, pin);
-  } catch (error) {
-    console.error("refreshCloudRouteOwnBox", error);
-    return getCloudRouteOwnBox(ref, date, pin);
+  const warm = getCloudRouteOwnBox(ref, date, pin);
+  if (
+    !opts.force &&
+    warm &&
+    Date.now() - Date.parse(warm.fetchedAt || "") < LIVE_TTL_MS
+  ) {
+    return warm;
   }
+  const key = keyOf(ref, date, pin);
+  const pending = inFlight.get(key);
+  if (pending) return pending;
+  const job = (async () => {
+    try {
+      const first = await fetchRouteOwnBoxOnce(ref, date, pin);
+      if (first) return first;
+      // Un reintento: bajo carga el primer intento aborta y dejaba GASTO 0.
+      return await fetchRouteOwnBoxOnce(ref, date, pin);
+    } catch (error) {
+      console.error("refreshCloudRouteOwnBox", error);
+      return getCloudRouteOwnBox(ref, date, pin);
+    } finally {
+      inFlight.delete(key);
+    }
+  })();
+  inFlight.set(key, job);
+  return job;
 }
 
 function nextIsoDay(iso: string): string {
