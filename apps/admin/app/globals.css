@@ -2586,36 +2586,17 @@
       gap: 6px 8px;
       min-width: 0;
     }
-    .collector-closed-review-title-text.is-cobros-head {
-      flex-direction: column;
-      flex-wrap: nowrap;
-      align-items: flex-end;
-      justify-self: end;
-      gap: 2px;
-      text-align: right;
-    }
     .collector-closed-review-head h2 {
       margin: 0;
       font-size: 17px;
       font-weight: 750;
       color: #0f3d34;
     }
-    .collector-closed-review-title-text.is-cobros-head h2 {
-      font-size: 15px;
-      font-weight: 700;
-      color: #111;
-    }
     .collector-closed-review-head p {
       margin: 0;
       font-size: 12px;
       font-weight: 600;
       color: #3d5349;
-    }
-    .collector-closed-review-title-text.is-cobros-head p {
-      font-size: 13px;
-      font-weight: 700;
-      color: #111;
-      font-variant-numeric: tabular-nums;
     }
     .collector-closed-review-section {
       margin: 14px 10px 8px;
@@ -2907,28 +2888,11 @@
       width: 28px;
       height: 28px;
     }
-    .supervisor-cobros-banco-head {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 2px;
-      margin: 0 0 10px;
-      text-align: right;
-    }
-    .supervisor-cobros-banco-head .is-title {
+    .collector-closed-review.is-embedded {
       margin: 0;
-      font-size: 15px;
-      font-weight: 700;
-      color: #111;
-      line-height: 1.2;
     }
-    .supervisor-cobros-banco-head .is-count {
-      margin: 0;
-      font-size: 13px;
-      font-weight: 700;
-      color: #111;
-      font-variant-numeric: tabular-nums;
-      line-height: 1.2;
+    .collector-closed-review.is-embedded .collector-closed-review-list {
+      margin-top: 0;
     }
     .supervisor-nequi-evidence-hint {
       margin: 0 0 10px;

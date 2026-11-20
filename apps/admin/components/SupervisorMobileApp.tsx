@@ -6064,10 +6064,25 @@ export function SupervisorMobileApp({
 
       {openRoute ? (
         <section className="supervisor-mobile-section">
-          {detailMode !== "cobros" ? (
           <div className="supervisor-mobile-detail-head is-route-head">
             <NexoAtrasBtn
               onClick={() => {
+                if (detailMode === "cobros") {
+                  if (routeReturnView === "nequi") {
+                    setNequiDayIso(null);
+                    setDetailMode("nequi-historial");
+                    return;
+                  }
+                  if (routeReturnView === "banco") {
+                    setCobrosMethodFilter(null);
+                    setOpenRouteRef(null);
+                    setView("banco");
+                    return;
+                  }
+                  setCobrosMethodFilter(null);
+                  setDetailMode("totales");
+                  return;
+                }
                 if (detailMode === "nequi-dia") {
                   setNequiDayIso(null);
                   setDetailMode(nequiDayBackTo);
@@ -6129,7 +6144,6 @@ export function SupervisorMobileApp({
               ) : null}
             </div>
           </div>
-          ) : null}
 
           {detailMode === "nequi-historial" ? (
             <>
@@ -6746,20 +6760,11 @@ export function SupervisorMobileApp({
                   : null;
               return (
                 <>
-                  {fromCobradoHoy ? (
-                    <div className="supervisor-cobros-banco-head">
-                      <p className="is-title">Cobros {openRouteDigitalLabel}</p>
-                      <p className="is-count">{dayPays.length}</p>
-                    </div>
-                  ) : (
-                    <p className="supervisor-mobile-detail-meta">
-                      <span>{nequiDayIso ? isoToDisplay(nequiDayIso) : ""}</span>
-                      <span className="supervisor-mobile-detail-sep" aria-hidden>
-                        ·
-                      </span>
-                      <span>{poolDayCountLabel(dayPays.length, dayLoans.length)}</span>
-                    </p>
-                  )}
+                  <p className="supervisor-mobile-detail-meta">
+                    {fromCobradoHoy
+                      ? `Cobros ${openRouteDigitalLabel} · ${dayPays.length}`
+                      : `${nequiDayIso ? isoToDisplay(nequiDayIso) : ""} · ${poolDayCountLabel(dayPays.length, dayLoans.length)}`}
+                  </p>
                   {empty ? (
                     <p className="ficha-empty">{empty}</p>
                   ) : (
@@ -6803,35 +6808,48 @@ export function SupervisorMobileApp({
               );
             })()
           ) : detailMode === "cobros" ? (
-            <CollectorClosedDayReview
-              detail="cobros"
-              dateLabel={todayDisplay}
-              visits={openAssignments}
-              expenses={openRouteGastosLines}
-              payments={paymentsWithEvidence}
-              cobroPayments={openRouteCobroPayments}
-              loans={loans}
-              clients={clients}
-              cobradoCount={openRoute.done}
-              visitTotal={openRoute.planilla}
-              methodFilter={cobrosMethodFilter ?? undefined}
-              onAttachPaymentEvidence={onAttachPaymentEvidence}
-              onBack={() => {
-                if (routeReturnView === "nequi") {
-                  setNequiDayIso(null);
-                  setDetailMode("nequi-historial");
-                  return;
-                }
-                if (routeReturnView === "banco") {
-                  setCobrosMethodFilter(null);
-                  setOpenRouteRef(null);
-                  setView("banco");
-                  return;
-                }
-                setCobrosMethodFilter(null);
-                setDetailMode("totales");
-              }}
-            />
+            (() => {
+              const cobrosTitle =
+                cobrosMethodFilter === "nequi"
+                  ? "Cobros Nequi"
+                  : cobrosMethodFilter === "banco"
+                    ? "Cobros banco"
+                    : cobrosMethodFilter === "efectivo"
+                      ? "Cobros en efectivo"
+                      : "Cobros";
+              const cobrosCount = cobrosMethodFilter
+                ? openRouteCobroPayments.filter(
+                    (pay) =>
+                      paymentDisplayMethod(pay, loans, clients) === cobrosMethodFilter,
+                  ).length
+                : openRouteCobroPayments.length;
+              return (
+                <>
+                  <p className="supervisor-mobile-detail-meta">
+                    {cobrosTitle} · {cobrosCount}
+                  </p>
+                  <CollectorClosedDayReview
+                    embedded
+                    detail="cobros"
+                    dateLabel={todayDisplay}
+                    visits={openAssignments}
+                    expenses={openRouteGastosLines}
+                    payments={paymentsWithEvidence}
+                    cobroPayments={openRouteCobroPayments}
+                    loans={loans}
+                    clients={clients}
+                    cobradoCount={openRoute.done}
+                    visitTotal={openRoute.planilla}
+                    methodFilter={cobrosMethodFilter ?? undefined}
+                    onAttachPaymentEvidence={onAttachPaymentEvidence}
+                    onBack={() => {
+                      setCobrosMethodFilter(null);
+                      setDetailMode("totales");
+                    }}
+                  />
+                </>
+              );
+            })()
           ) : detailMode === "totales" ? (
             <>
               <div className="supervisor-mov-block">

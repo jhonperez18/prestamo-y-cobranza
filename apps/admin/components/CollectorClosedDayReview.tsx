@@ -48,6 +48,8 @@ type Props = {
   /** Adjuntar comprobante (Nequi/Banco) desde el recaudo. */
   onAttachPaymentEvidence?: (paymentRef: string, evidence: PaymentEvidenceRef[]) => void;
   onBack: () => void;
+  /** Solo la lista (el padre ya pone Atras / título · cantidad). */
+  embedded?: boolean;
 };
 
 function paymentForVisit(item: DailyCollectionAssignment, payments: PaymentRow[]) {
@@ -103,6 +105,7 @@ export function CollectorClosedDayReview({
   clients = [],
   onAttachPaymentEvidence,
   onBack,
+  embedded = false,
 }: Props) {
   const useCanonList = detail === "cobros" && Array.isArray(cobroPayments);
   const canonPays = useCanonList
@@ -153,27 +156,26 @@ export function CollectorClosedDayReview({
 
   /** Raya verde entre Ruta 1 y Ruta 1.1 en la planilla cerrada. */
   const visitRouteStarts = routeBlockStarts(visits, (row) => row.clientRoute);
-  const cobrosHead = detail === "cobros";
 
   return (
-    <section className="collector-closed-review" aria-label={title}>
-      <div className="collector-closed-review-head">
-        <div className="collector-closed-review-title-row is-with-atras">
-          <NexoAtrasBtn onClick={onBack} />
-          {cobrosHead ? <span className="nexo-atras-spacer" aria-hidden /> : null}
-          <div
-            className={
-              cobrosHead
-                ? "collector-closed-review-title-text is-cobros-head"
-                : "collector-closed-review-title-text"
-            }
-          >
-            <h2>{title}</h2>
-            <p>{subtitle}</p>
+    <section
+      className={
+        embedded ? "collector-closed-review is-embedded" : "collector-closed-review"
+      }
+      aria-label={title}
+    >
+      {embedded ? null : (
+        <div className="collector-closed-review-head">
+          <div className="collector-closed-review-title-row is-with-atras">
+            <NexoAtrasBtn onClick={onBack} />
+            <div className="collector-closed-review-title-text">
+              <h2>{title}</h2>
+              <p>{subtitle}</p>
+            </div>
+            <span className="nexo-atras-spacer" aria-hidden />
           </div>
-          {cobrosHead ? null : <span className="nexo-atras-spacer" aria-hidden />}
         </div>
-      </div>
+      )}
 
       {detail === "gastos" ? (
         gastoLines.length === 0 ? (
