@@ -1,6 +1,7 @@
 "use client";
 
 import { Pill } from "@/components/ui";
+import { NexoAtrasBtn } from "@/components/NexoAtrasBtn";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import type { RouteExpenseLine } from "@/lib/collector-day-close";
@@ -156,14 +157,13 @@ export function CollectorClosedDayReview({
   return (
     <section className="collector-closed-review" aria-label={title}>
       <div className="collector-closed-review-head">
-        <div className="collector-closed-review-title-row">
+        <div className="collector-closed-review-title-row is-with-atras">
+          <NexoAtrasBtn onClick={onBack} />
           <div className="collector-closed-review-title-text">
             <h2>{title}</h2>
             <p>{subtitle}</p>
           </div>
-          <button type="button" className="collector-mobile-pay-link is-back" onClick={onBack}>
-            volver
-          </button>
+          <span className="nexo-atras-spacer" aria-hidden />
         </div>
       </div>
 

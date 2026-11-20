@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, type FormEvent } from "react";
+import { NexoAtrasBtn } from "@/components/NexoAtrasBtn";
 import { clientsOnRouteSorted } from "@/lib/client-route-order";
 import type { RouteClientDraft } from "@/lib/commit-portfolio-catalog";
 import type { ClientRow } from "@/lib/mock-data";
@@ -69,11 +70,10 @@ export function CollectorNewClientSheet({
 
   return (
     <section className="collector-new-client" role="dialog" aria-labelledby="collector-new-client-title">
-      <div className="collector-new-client-head">
+      <div className="collector-new-client-head is-with-atras">
+        <NexoAtrasBtn onClick={onCancel} />
         <h2 id="collector-new-client-title">Nuevo cliente</h2>
-        <button type="button" className="collector-mobile-pay-link is-back" onClick={onCancel}>
-          cerrar
-        </button>
+        <span className="nexo-atras-spacer" aria-hidden />
       </div>
       <form className="collector-new-client-form" onSubmit={handleSubmit}>
         <label className="collector-new-client-field">

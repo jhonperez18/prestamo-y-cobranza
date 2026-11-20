@@ -1565,10 +1565,6 @@
       color: #0f766e;
       font-weight: 700;
     }
-    .collector-close-confirm .collector-mobile-pay-link.is-back {
-      color: #14201b;
-      font-weight: 500;
-    }
     .collector-close-sheet {
       margin: 10px 10px 0;
       padding: 14px 12px 12px;
@@ -4061,33 +4057,6 @@
       line-height: 1.15;
       box-shadow: none;
     }
-    .collector-mobile-pay-link.is-back {
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
-      padding: 4px 9px 4px 7px;
-      border: 1px solid #b7d3ea;
-      border-radius: 6px;
-      background: #e8f3fb;
-      color: #14201b;
-      font-size: 11px;
-      font-weight: 500;
-      text-decoration: none;
-      line-height: 1.15;
-      box-shadow: none;
-    }
-    .collector-mobile-pay-link.is-back::before {
-      content: "<";
-      font-weight: 500;
-      line-height: 1;
-    }
-    .collector-mobile-pay-link.is-back:hover,
-    .collector-mobile-pay-link.is-back.is-open {
-      color: #14201b;
-      background: #dceef8;
-      border-color: #9ec3e0;
-      text-decoration: none;
-    }
     .collector-mobile-pay-link:hover,
     .collector-mobile-pay-link.is-open {
       color: #14201b;
@@ -5492,11 +5461,153 @@
       flex: 0 0 auto;
       gap: 6px;
     }
-    .supervisor-mobile-detail-actions .collector-mobile-pay-link.is-back.is-compact {
-      padding: 4px 8px;
+    /* Cabezal con Atras a la izquierda (sistema). */
+    .supervisor-mobile-detail-head.is-with-atras,
+    .supervisor-nequi-registro-head.is-with-atras,
+    .collector-closed-review-title-row.is-with-atras,
+    .collector-mobile-history-panel-head.is-with-atras,
+    .collector-new-client-head.is-with-atras,
+    .collector-close-confirm-head.is-with-atras,
+    .collector-connection-sheet-head.is-with-atras {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 6px;
+    }
+    .supervisor-mobile-detail-head.is-with-atras .nexo-atras-btn,
+    .supervisor-nequi-registro-head.is-with-atras .nexo-atras-btn,
+    .collector-closed-review-title-row.is-with-atras .nexo-atras-btn,
+    .collector-mobile-history-panel-head.is-with-atras .nexo-atras-btn,
+    .collector-new-client-head.is-with-atras .nexo-atras-btn,
+    .collector-close-confirm-head.is-with-atras .nexo-atras-btn,
+    .collector-connection-sheet-head.is-with-atras .nexo-atras-btn {
+      justify-self: start;
+    }
+    .supervisor-mobile-detail-head.is-route-head {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 6px;
+    }
+    .supervisor-mobile-detail-head.is-route-head .nexo-atras-btn {
+      justify-self: start;
+    }
+    .supervisor-mobile-detail-head.is-route-head .supervisor-mobile-detail-collector {
+      justify-self: center;
+      flex: 0 1 auto;
+      margin: 0;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: #111;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 46vw;
+    }
+    .supervisor-mobile-detail-head.is-route-head .supervisor-mobile-detail-actions {
+      justify-self: end;
+      min-width: 0;
+    }
+    .supervisor-mobile-detail-route {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: #111;
+      white-space: nowrap;
+    }
+    .nexo-atras-spacer {
+      width: 0;
+      height: 0;
+      overflow: hidden;
+    }
+    .nexo-atras-btn {
+      appearance: none;
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      flex: 0 0 auto;
+      margin: 0;
+      padding: 0 10px 0 8px;
+      height: 24px;
+      border: 1.5px solid rgba(15, 118, 110, 0.55);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.42);
+      color: #14201b;
+      font: inherit;
+      cursor: pointer;
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.95) inset,
+        0 -1px 0 rgba(15, 61, 33, 0.12) inset,
+        0 4px 10px rgba(15, 61, 33, 0.16),
+        0 1px 2px rgba(15, 61, 33, 0.1);
+      backdrop-filter: blur(2px);
+      -webkit-backdrop-filter: blur(2px);
+      transition:
+        background 0.15s ease,
+        border-color 0.15s ease,
+        box-shadow 0.15s ease,
+        transform 0.12s ease,
+        color 0.15s ease;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .nexo-atras-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #0f766e;
+      flex: 0 0 auto;
+      line-height: 0;
+      transition: color 0.15s ease, transform 0.12s ease;
+    }
+    .nexo-atras-icon svg {
+      display: block;
+    }
+    .nexo-atras-label {
+      color: #14201b;
       font-size: 11px;
-      line-height: 1.2;
-      min-height: 0;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      line-height: 1;
+      white-space: nowrap;
+      transition: color 0.15s ease;
+    }
+    .nexo-atras-btn:hover,
+    .nexo-atras-btn:focus-visible {
+      border-color: #0f766e;
+      background: rgba(204, 251, 241, 0.72);
+      outline: none;
+      transform: translateY(-1px);
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 1) inset,
+        0 -1px 0 rgba(15, 61, 33, 0.14) inset,
+        0 7px 14px rgba(15, 118, 110, 0.28),
+        0 2px 4px rgba(15, 61, 33, 0.14);
+    }
+    .nexo-atras-btn:hover .nexo-atras-icon,
+    .nexo-atras-btn:focus-visible .nexo-atras-icon {
+      color: #0d9488;
+    }
+    .nexo-atras-btn:active {
+      border-color: #0f5f5a;
+      background: rgba(153, 246, 228, 0.85);
+      transform: translateY(1px) scale(0.97);
+      box-shadow:
+        0 2px 4px rgba(15, 61, 33, 0.22) inset,
+        0 1px 0 rgba(255, 255, 255, 0.55) inset,
+        0 1px 2px rgba(15, 61, 33, 0.12);
+    }
+    .nexo-atras-btn:active .nexo-atras-icon {
+      color: #115e59;
+      transform: translateX(-1px);
+    }
+    .nexo-atras-btn:active .nexo-atras-label {
+      color: #0f3d33;
     }
     .supervisor-caja-historial-btn {
       appearance: none;
@@ -5895,6 +6006,285 @@
     .supervisor-mobile-totals .is-net b {
       font-size: 15px;
     }
+    /* Tableta Movimientos (detalle de ruta) — relieve como INICIO */
+    .supervisor-mov-block {
+      margin: 4px 0 8px;
+    }
+    .supervisor-mov-block + .supervisor-mov-block {
+      margin-top: 6px;
+    }
+    .supervisor-mov-title {
+      margin: 0;
+      padding: 0 0 0;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #111;
+      text-align: center;
+      line-height: 1;
+    }
+    .supervisor-mov-tablet {
+      /* Etiqueta = Prestamos  E./B.; hueco fijo para Total/Final. */
+      --mov-label-w: 6.7rem;
+      --mov-side-btn-w: 5.4rem;
+      --mov-side-gap: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      margin-top: 0;
+      padding: 10px 10px 8px;
+      border-radius: 14px;
+      border: 1px solid #9bb5ab;
+      background: linear-gradient(180deg, #f0fdfa 0%, #fff 42%);
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.95) inset,
+        0 -1px 0 rgba(15, 61, 33, 0.06) inset,
+        0 8px 20px rgba(15, 118, 110, 0.12),
+        0 2px 4px rgba(20, 32, 27, 0.08);
+      overflow: hidden;
+    }
+    .supervisor-mov-tablet.accent-0 {
+      background: linear-gradient(180deg, #f0fdfa 0%, #fff 42%);
+      border-color: #9bb5ab;
+    }
+    .supervisor-mov-tablet.accent-1 {
+      background: linear-gradient(180deg, #fff7ed 0%, #fff 42%);
+      border-color: #f0d0a8;
+    }
+    .supervisor-mov-row {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 6px;
+      width: 100%;
+      max-width: 100%;
+      margin: 0;
+      padding: 6px 4px;
+      border: 0;
+      border-bottom: 0;
+      background: transparent;
+      font: inherit;
+      text-align: left;
+      color: inherit;
+      box-sizing: border-box;
+      min-width: 0;
+    }
+    .supervisor-mov-row span {
+      flex: 0 0 var(--mov-label-w);
+      width: var(--mov-label-w);
+      max-width: var(--mov-label-w);
+      font-size: 12px;
+      font-weight: 700;
+      color: #111;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: clip;
+    }
+    .supervisor-mov-row b {
+      flex: 0 1 auto;
+      font-size: 13px;
+      font-weight: 400;
+      font-variant-numeric: tabular-nums;
+      color: #0a0f0d;
+      white-space: nowrap;
+      text-align: left;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .supervisor-mov-row.is-inicial {
+      padding-top: 2px;
+      padding-bottom: 8px;
+    }
+    .supervisor-mov-row.is-inicial span {
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .supervisor-mov-row.is-inicial b {
+      font-size: 14px;
+      font-weight: 400;
+    }
+    .supervisor-mov-row.is-pay-efectivo b {
+      color: #0f766e;
+    }
+    .supervisor-mov-row.is-pay-banco b {
+      color: #1d4ed8;
+    }
+    .supervisor-mov-row.is-pay-nequi b {
+      color: #7c3aed;
+    }
+    .supervisor-mov-row.is-renewal b {
+      color: #b45309;
+    }
+    .supervisor-mov-row.is-gastos b {
+      color: #b42318;
+    }
+    .supervisor-mov-row.is-prestamo-e b,
+    .supervisor-mov-row.is-prestamo-b b {
+      color: #1d4ed8;
+    }
+    .supervisor-mov-row.is-prestamo-b {
+      margin-top: 2px;
+    }
+    .supervisor-mov-row.is-prestamo-b span {
+      letter-spacing: 0.01em;
+    }
+    .supervisor-mov-tablet.is-cuadre {
+      padding: 8px 10px 10px;
+    }
+    .supervisor-mov-collect.is-cuadre-final {
+      padding: 0;
+    }
+    .supervisor-mov-total.is-final-side {
+      cursor: default;
+      pointer-events: none;
+      border-radius: 14px;
+      border: 1.5px solid #6f9f8c;
+      background: #d8f3e8;
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.9) inset,
+        0 4px 10px rgba(15, 118, 110, 0.14);
+    }
+    .supervisor-mov-total.is-final-side span {
+      text-transform: none;
+      letter-spacing: 0.01em;
+      font-size: 12px;
+      font-weight: 400;
+      color: #111;
+    }
+    .supervisor-mov-total.is-final-side b {
+      font-size: 13px;
+      font-weight: 400;
+      color: #111;
+    }
+    .supervisor-mov-row.is-muted {
+      border-bottom: 0;
+      padding-bottom: 2px;
+    }
+    .supervisor-mov-row.is-muted span {
+      font-weight: 400;
+      color: #5b7268;
+    }
+    button.supervisor-mov-row.is-tap {
+      cursor: pointer;
+      border-radius: 8px;
+      transition:
+        background 0.14s ease,
+        transform 0.12s ease,
+        box-shadow 0.14s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button.supervisor-mov-row.is-tap:hover,
+    button.supervisor-mov-row.is-tap:focus-visible {
+      background: rgba(15, 118, 110, 0.08);
+      outline: none;
+    }
+    button.supervisor-mov-row.is-tap:active {
+      background: rgba(15, 118, 110, 0.14);
+      transform: scale(0.99);
+    }
+    .supervisor-mov-collect {
+      display: flex;
+      flex-direction: row;
+      align-items: stretch;
+      gap: var(--mov-side-gap);
+      width: 100%;
+      box-sizing: border-box;
+      padding: 2px 0 4px;
+      min-height: 3.6rem;
+    }
+    .supervisor-mov-collect-rows {
+      flex: 1 1 0%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+      max-width: 100%;
+      gap: 0;
+      overflow: hidden;
+    }
+    .supervisor-mov-collect-rows .supervisor-mov-row {
+      border-bottom: 0;
+      padding-left: 4px;
+      padding-right: 0;
+      min-width: 0;
+      width: 100%;
+      max-width: 100%;
+    }
+    .supervisor-mov-collect-rows .supervisor-mov-row b {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .supervisor-mov-total {
+      appearance: none;
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      flex: 0 0 var(--mov-side-btn-w);
+      width: var(--mov-side-btn-w);
+      min-width: var(--mov-side-btn-w);
+      max-width: var(--mov-side-btn-w);
+      align-self: stretch;
+      margin: 0;
+      padding: 8px 4px;
+      border: 1.5px solid #6f9f8c;
+      border-radius: 14px;
+      background: #d8f3e8;
+      color: #111;
+      font: inherit;
+      cursor: pointer;
+      box-sizing: border-box;
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 0.9) inset,
+        0 3px 8px rgba(15, 118, 110, 0.14);
+      transition:
+        background 0.14s ease,
+        border-color 0.14s ease,
+        box-shadow 0.14s ease;
+      -webkit-tap-highlight-color: transparent;
+      float: none;
+    }
+    .supervisor-mov-total span {
+      font-size: 11px;
+      font-weight: 400;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #111;
+    }
+    .supervisor-mov-total b {
+      font-size: 12px;
+      font-weight: 400;
+      font-variant-numeric: tabular-nums;
+      color: #111;
+      line-height: 1.1;
+      text-align: center;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .supervisor-mov-total:hover,
+    .supervisor-mov-total:focus-visible {
+      background: rgba(167, 243, 208, 0.95);
+      border-color: #0f766e;
+      outline: none;
+      box-shadow:
+        0 1px 0 rgba(255, 255, 255, 1) inset,
+        0 6px 14px rgba(15, 118, 110, 0.22);
+    }
+    .supervisor-mov-total:active {
+      background: rgba(153, 246, 228, 0.9);
+      box-shadow:
+        0 2px 4px rgba(15, 61, 33, 0.18) inset,
+        0 1px 2px rgba(15, 61, 33, 0.1);
+    }
     .supervisor-mobile-sheet {
       margin: 6px 0 8px;
       border: 1px solid #dbe5df;
@@ -6020,20 +6410,11 @@
       font-size: 11px;
       font-weight: 500;
       letter-spacing: 0.04em;
+      color: #111;
     }
     .supervisor-route-act:disabled {
       opacity: 0.6;
       cursor: not-allowed;
-    }
-    .supervisor-route-act.is-hoja-ruta {
-      background: #c8e6d0;
-      border-color: #7fbf8f;
-      color: #0a3320;
-    }
-    .supervisor-route-act.is-planilla {
-      background: #e8efe9;
-      border-color: #b7c9bb;
-      color: #3a4f40;
     }
     .supervisor-planilla-table .is-renew {
       width: 1.6rem;
@@ -6049,30 +6430,41 @@
       min-width: 1.5rem;
       max-width: 1.7rem;
     }
+    /* Mismo tipo de tono que las paletas de INICIO (degradado suave). */
     .supervisor-route-act.is-gastos {
-      background: #fddcd7;
-      border-color: #eea398;
-      color: #6f0f2c;
+      background: linear-gradient(180deg, #fff1f2 0%, #fff 42%);
+      border-color: #f0c4c4;
+      color: #111;
     }
     .supervisor-route-act.is-cobros {
-      background: #d3e3fc;
-      border-color: #93bbf5;
-      color: #1a3fae;
+      background: linear-gradient(180deg, #dbeafe 0%, #fff 42%);
+      border-color: #93c5fd;
+      color: #111;
     }
     .supervisor-route-act.is-prestamos {
-      background: #fde4c8;
-      border-color: #e5b27a;
-      color: #7c2a0e;
+      background: linear-gradient(180deg, #e0e7ff 0%, #fff 42%);
+      border-color: #a5b4fc;
+      color: #111;
     }
     .supervisor-route-act.is-historial {
-      background: #cdeee6;
-      border-color: #8fd3c5;
-      color: #073330;
+      background: linear-gradient(180deg, #f0fdfa 0%, #fff 42%);
+      border-color: #9bb5ab;
+      color: #111;
     }
     .supervisor-route-act.is-np {
-      background: #fbe3e3;
-      border-color: #d99090;
-      color: #742d2d;
+      background: linear-gradient(180deg, #fff7ed 0%, #fff 42%);
+      border-color: #f0d0a8;
+      color: #111;
+    }
+    .supervisor-route-act.is-hoja-ruta {
+      background: linear-gradient(180deg, #f0fdfa 0%, #fff 42%);
+      border-color: #9bb5ab;
+      color: #111;
+    }
+    .supervisor-route-act.is-planilla {
+      background: linear-gradient(180deg, #fff7ed 0%, #fff 42%);
+      border-color: #f0d0a8;
+      color: #111;
     }
     .supervisor-route-act:hover:not(:disabled),
     .supervisor-route-act:active:not(:disabled) {
@@ -15226,8 +15618,7 @@
       border-radius: 4px;
       line-height: 1;
     }
-    .supervisor-mobile-app .collector-mobile-pay-link,
-    .supervisor-mobile-app .collector-mobile-pay-link.is-back {
+    .supervisor-mobile-app .collector-mobile-pay-link {
       height: 22px;
       min-height: 0;
       padding: 0 7px;
@@ -15236,8 +15627,13 @@
       border-radius: 4px;
       line-height: 1;
     }
-    .supervisor-mobile-app .collector-mobile-pay-link.is-back {
-      padding: 0 7px 0 5px;
+    /* Atras: tamaño fijo del sistema (no pisar con overrides del supervisor). */
+    .supervisor-mobile-app .nexo-atras-btn,
+    .collector-mobile-app .nexo-atras-btn {
+      height: 24px;
+      min-height: 24px;
+      padding: 0 10px 0 8px;
+      font-size: 11px;
     }
     /* Pines de ruta (M T A N): un poco más chicos en todo el supervisor. */
     .supervisor-mobile-app .collector-mobile-route-pin {

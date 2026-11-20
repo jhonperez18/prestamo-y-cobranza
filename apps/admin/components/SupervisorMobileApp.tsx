@@ -10,6 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { CloseClock, Pill } from "@/components/ui";
+import { NexoAtrasBtn } from "@/components/NexoAtrasBtn";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import { CollectorClosedDayReview } from "@/components/CollectorClosedDayReview";
 import { CollectorDayCloseExtras } from "@/components/CollectorDayCloseExtras";
@@ -1313,7 +1314,8 @@ function SupervisorClientFicha({
       }
       ref={shareRootRef}
     >
-      <div className="supervisor-mobile-detail-head supervisor-ficha-share-head">
+      <div className="supervisor-mobile-detail-head supervisor-ficha-share-head is-with-atras">
+        <NexoAtrasBtn onClick={onBack} />
         <h3 className="supervisor-ficha-client-name" title={clientTitle}>
           {clientTitle}
           {showingPrevious ? (
@@ -1355,9 +1357,6 @@ function SupervisorClientFicha({
             }}
           >
             {sharing ? "…" : "Compartir"}
-          </button>
-          <button type="button" className="collector-mobile-pay-link is-back" onClick={onBack}>
-            volver
           </button>
         </div>
       </div>
@@ -3703,6 +3702,14 @@ export function SupervisorMobileApp({
     clients,
     dayClosesLive,
   ]);
+  /** Prestamos B./N. del día (no salen de caja). */
+  const openRouteDigitalPrestamosHoy = useMemo(() => {
+    if (!openRoute) return 0;
+    return dayDigitalLoanRows(today, openRoute.routeName, loans, clients).reduce(
+      (sum, row) => sum + (Number(row.capital) || 0),
+      0,
+    );
+  }, [openRoute, today, loans, clients]);
   const openRouteNequiDays = useMemo(() => {
     if (!openRoute) return [];
     return digitalPoolRegisterDays({
@@ -6013,59 +6020,58 @@ export function SupervisorMobileApp({
       {openRoute ? (
         <section className="supervisor-mobile-section">
           {detailMode !== "gastos" && detailMode !== "cobros" ? (
-          <div className="supervisor-mobile-detail-head">
-            <h3>
-              Ruta {openRoute.routeName} · {openRoute.collectorName}
+          <div className="supervisor-mobile-detail-head is-route-head">
+            <NexoAtrasBtn
+              onClick={() => {
+                if (detailMode === "nequi-dia") {
+                  setNequiDayIso(null);
+                  setDetailMode(nequiDayBackTo);
+                  return;
+                }
+                if (detailMode === "nequi-historial") {
+                  closeRouteDetail();
+                  return;
+                }
+                if (detailMode === "historial-dia") {
+                  setCajaHistoryDayIso(null);
+                  setDetailMode("historial");
+                  return;
+                }
+                if (detailMode === "historial") {
+                  if (cajaHistoryNav === "mes") {
+                    setCajaHistoryPeriodPick(null);
+                    setCajaHistoryNav("meses");
+                    return;
+                  }
+                  if (cajaHistoryNav === "meses") {
+                    setCajaHistoryNav("detallado");
+                    return;
+                  }
+                  setCajaHistoryNav("detallado");
+                  setCajaHistoryPeriodPick(null);
+                  setDetailMode("totales");
+                  return;
+                }
+                if (detailMode === "np-dia") {
+                  setSnDay(null);
+                  setDetailMode("np");
+                  return;
+                }
+                if (detailMode === "np") {
+                  setDetailMode("totales");
+                  return;
+                }
+                if (detailMode !== "totales") setDetailMode("totales");
+                else closeRouteDetail();
+              }}
+            />
+            <h3 className="supervisor-mobile-detail-collector">
+              Ruta {openRoute.routeName}
             </h3>
             <div className="supervisor-mobile-detail-actions">
-              <button
-                type="button"
-                className="collector-mobile-pay-link is-back is-compact"
-                onClick={() => {
-                  if (detailMode === "nequi-dia") {
-                    setNequiDayIso(null);
-                    setDetailMode(nequiDayBackTo);
-                    return;
-                  }
-                  if (detailMode === "nequi-historial") {
-                    closeRouteDetail();
-                    return;
-                  }
-                  if (detailMode === "historial-dia") {
-                    setCajaHistoryDayIso(null);
-                    setDetailMode("historial");
-                    return;
-                  }
-                  if (detailMode === "historial") {
-                    if (cajaHistoryNav === "mes") {
-                      setCajaHistoryPeriodPick(null);
-                      setCajaHistoryNav("meses");
-                      return;
-                    }
-                    if (cajaHistoryNav === "meses") {
-                      setCajaHistoryNav("detallado");
-                      return;
-                    }
-                    setCajaHistoryNav("detallado");
-                    setCajaHistoryPeriodPick(null);
-                    setDetailMode("totales");
-                    return;
-                  }
-                  if (detailMode === "np-dia") {
-                    setSnDay(null);
-                    setDetailMode("np");
-                    return;
-                  }
-                  if (detailMode === "np") {
-                    setDetailMode("totales");
-                    return;
-                  }
-                  if (detailMode !== "totales") setDetailMode("totales");
-                  else closeRouteDetail();
-                }}
-              >
-                volver
-              </button>
+              <span className="supervisor-mobile-detail-route">
+                {openRoute.collectorName}
+              </span>
               {(detailMode === "historial" || detailMode === "historial-dia") &&
               cajaHistoryNav === "detallado" ? (
                 <button
@@ -6763,52 +6769,69 @@ export function SupervisorMobileApp({
             />
           ) : detailMode === "totales" ? (
             <>
-              <div className="supervisor-mobile-sheet" aria-label="Liquidación de caja">
-                <div className="supervisor-mobile-sheet-row is-primary-row">
-                  <span className="is-primary-title">Saldo inicial</span>
-                  <b>{money(openRoute.saldoInicial, { symbol: false })}</b>
-                </div>
+              <div className="supervisor-mov-block">
+                <h4 className="supervisor-mov-title">Movimientos</h4>
                 <div
-                  className="supervisor-mobile-sheet-means"
-                  aria-label="Desglose por medio de pago"
+                  className="supervisor-mov-tablet accent-0"
+                  aria-label="Movimientos del día"
                 >
-                  <div className="is-title-means">
-                    <span className="is-primary-title">Cobrado hoy</span>
-                </div>
-                  <button
-                    type="button"
-                    className="is-pay-efectivo is-tap-means"
-                    onClick={() => openCobrosReport("efectivo")}
-                    aria-label="Ver cobros en efectivo"
-                  >
-                    <span>Efectivo</span>
-                    <b>{money(openRoute.cobradoEfectivo, { symbol: false })}</b>
-                  </button>
-                  {routeMeansShowNequiValue ? (
+                  <div className="supervisor-mov-row is-inicial">
+                    <span>Saldo inicial</span>
+                    <b>
+                      {openRoute.figuresPending
+                        ? "…"
+                        : money(openRoute.saldoInicial, { symbol: false })}
+                    </b>
+                  </div>
+
+                  <div className="supervisor-mov-collect" aria-label="Cobrado hoy">
+                    <div className="supervisor-mov-collect-rows">
+                      <button
+                        type="button"
+                        className="supervisor-mov-row is-tap is-pay-efectivo"
+                        onClick={() => openCobrosReport("efectivo")}
+                        aria-label="Ver cobros en efectivo"
+                      >
+                        <span>Efectivo</span>
+                        <b>{money(openRoute.cobradoEfectivo, { symbol: false })}</b>
+                      </button>
+                      {routeMeansShowNequiValue ? (
+                        <button
+                          type="button"
+                          className="supervisor-mov-row is-tap is-pay-banco"
+                          onClick={() => openNequiDayFicha(today, "totales")}
+                          aria-label="Ver cobros Banco del día"
+                        >
+                          <span>Banco</span>
+                          <b>{money(routeDigitalAmount, { symbol: false })}</b>
+                        </button>
+                      ) : null}
+                      {routeMeansShowBancoValue ? (
+                        <button
+                          type="button"
+                          className="supervisor-mov-row is-tap is-pay-nequi"
+                          onClick={() => openNequiDayFicha(today, "totales")}
+                          aria-label="Ver cobros Nequi del día"
+                        >
+                          <span>Nequi</span>
+                          <b>{money(routeNequiBoxAmount, { symbol: false })}</b>
+                        </button>
+                      ) : null}
+                    </div>
                     <button
                       type="button"
-                      className="is-pay-banco is-tap-means"
-                      onClick={() => openNequiDayFicha(today, "totales")}
-                      aria-label="Ver cobros Banco del día"
+                      className="supervisor-mov-total"
+                      onClick={() => openCobrosReport(null)}
+                      aria-label="Ver todos los cobros"
                     >
-                      <span>Banco</span>
-                      <b>{money(routeDigitalAmount, { symbol: false })}</b>
+                      <span>Total</span>
+                      <b>{money(openRoute.cobradoHoy, { symbol: false })}</b>
                     </button>
-                  ) : null}
-                  {routeMeansShowBancoValue ? (
-                    <button
-                      type="button"
-                      className="is-pay-nequi is-tap-means"
-                      onClick={() => openNequiDayFicha(today, "totales")}
-                      aria-label="Ver cobros Nequi del día"
-                    >
-                      <span>Nequi</span>
-                      <b>{money(routeNequiBoxAmount, { symbol: false })}</b>
-                    </button>
-                  ) : null}
+                  </div>
+
                   <button
                     type="button"
-                    className="is-renewal-means is-tap-means"
+                    className="supervisor-mov-row is-tap is-renewal"
                     onClick={() => setDetailMode("renovados")}
                     aria-label="Ver renovados del día"
                     title="Renovados hoy: lo que debía + 20 % · sin plata"
@@ -6818,62 +6841,82 @@ export function SupervisorMobileApp({
                   </button>
                   <button
                     type="button"
-                    className="is-total-means is-tap-means is-final-box"
-                    onClick={() => openCobrosReport(null)}
-                    aria-label="Ver todos los cobros"
-                  >
-                    <span>Total</span>
-                    <b>{money(openRoute.cobradoHoy, { symbol: false })}</b>
-                  </button>
-                </div>
-                <div className="supervisor-mobile-sheet-pair">
-                  <button
-                    type="button"
-                    className="supervisor-mobile-sheet-row is-tap is-gastos is-primary-row"
+                    className="supervisor-mov-row is-tap is-gastos"
                     onClick={() => setDetailMode("gastos")}
                     aria-label="Ver reporte de gastos del día"
                   >
-                    <span className="is-primary-title">Gasto</span>
+                    <span>Gastos</span>
                     <b>{money(openRoute.gastosHoy, { symbol: false })}</b>
                   </button>
                   <button
                     type="button"
-                    className="supervisor-mobile-sheet-row is-tap is-prestamo-ruta is-primary-row"
+                    className="supervisor-mov-row is-tap is-prestamo-e"
                     onClick={() => setDetailMode("prestamos")}
-                    aria-label="Ver préstamos del día en esta ruta"
+                    aria-label="Ver préstamos en efectivo del día"
                   >
-                    <span className="is-primary-title">Préstamo</span>
-                    <b>{money(openRoute.prestamosHoy, { symbol: false })}</b>
+                    <span>Prestamos  E.</span>
+                    <b>
+                      {openRoute.metricsPending
+                        ? "…"
+                        : money(openRoute.prestamosCajaHoy, { symbol: false })}
+                    </b>
+                  </button>
+                  <button
+                    type="button"
+                    className="supervisor-mov-row is-tap is-prestamo-b"
+                    onClick={() => setDetailMode("prestamos")}
+                    aria-label={`Ver préstamos ${openRouteDigitalLabel} del día`}
+                  >
+                    <span>{openRouteIsA ? "Prestamos  N." : "Prestamos  B."}</span>
+                    <b>
+                      {money(openRouteDigitalPrestamosHoy, { symbol: false })}
+                    </b>
                   </button>
                 </div>
-                <div className="supervisor-mobile-cuadre is-four" aria-label="Cuadre de caja">
-                  <div className="supervisor-mobile-cuadre-title is-primary-title">Cuadre</div>
-                  <div>
-                    <span>Inicial</span>
-                    <b>{money(openRoute.saldoInicial, { symbol: false })}</b>
+              </div>
+
+              <div className="supervisor-mov-block">
+                <h4 className="supervisor-mov-title">Cuadre</h4>
+                <div
+                  className="supervisor-mov-tablet is-cuadre accent-1"
+                  aria-label="Cuadre de caja"
+                >
+                  <div className="supervisor-mov-collect is-cuadre-final">
+                    <div className="supervisor-mov-collect-rows">
+                      <div className="supervisor-mov-row is-inicial">
+                        <span>Inicial</span>
+                        <b>
+                          {openRoute.figuresPending
+                            ? "…"
+                            : money(openRoute.saldoInicial, { symbol: false })}
+                        </b>
+                      </div>
+                      <div className="supervisor-mov-row is-pay-efectivo">
+                        <span>Efectivo</span>
+                        <b>{money(openRoute.cobradoEfectivo, { symbol: false })}</b>
+                      </div>
+                      <div className="supervisor-mov-row is-gastos">
+                        <span>Gasto</span>
+                        <b>{money(openRoute.gastosHoy, { symbol: false })}</b>
+                      </div>
+                      <div className="supervisor-mov-row is-prestamo-e">
+                        <span>Préstamo</span>
+                        <b>
+                          {openRoute.metricsPending
+                            ? "…"
+                            : money(openRoute.prestamosCajaHoy, { symbol: false })}
+                        </b>
+                      </div>
+                    </div>
+                    <div className="supervisor-mov-total is-final-side" aria-label="Saldo final">
+                      <span>Final</span>
+                      <b>
+                        {openRoute.figuresPending
+                          ? "…"
+                          : money(openRoute.enCaja, { symbol: false })}
+                      </b>
+                    </div>
                   </div>
-                  <div>
-                    <span>Efectivo</span>
-                    <b>{money(openRoute.cobradoEfectivo, { symbol: false })}</b>
-                  </div>
-                  <div>
-                    <span>Gasto</span>
-                    <b>{money(openRoute.gastosHoy, { symbol: false })}</b>
-                  </div>
-                  <div className="is-cuadre-prestamo">
-                    <span>Préstamo</span>
-                    <b>{money(openRoute.prestamosCajaHoy, { symbol: false })}</b>
-                  </div>
-                  <div className="is-final">
-                    <span>Final</span>
-                  <b>{money(openRoute.enCaja, { symbol: false })}</b>
-                  </div>
-                </div>
-                <div className="supervisor-mobile-sheet-row is-muted">
-                  <span>Avance planilla</span>
-                  <b>
-                    {openRoute.done}/{openRoute.planilla || 0}
-                  </b>
                 </div>
               </div>
 
@@ -7273,7 +7316,26 @@ export function SupervisorMobileApp({
         </section>
       ) : view === "nequi" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
-          <div className="supervisor-nequi-registro-head">
+          <div className="supervisor-nequi-registro-head is-with-atras">
+            {nequiPoolHistNav !== "home" ? (
+              <NexoAtrasBtn
+                onClick={() => {
+                  if (nequiPoolHistNav === "mes") {
+                    setNequiPoolHistPeriod(null);
+                    setNequiPoolHistExpand(null);
+                    setNequiPoolHistDay(null);
+                    setNequiPoolHistNav("meses");
+                    return;
+                  }
+                  setNequiPoolHistNav("home");
+                  setNequiPoolHistPeriod(null);
+                  setNequiPoolHistExpand(null);
+                  setNequiPoolHistDay(null);
+                }}
+              />
+            ) : (
+              <span className="nexo-atras-spacer" aria-hidden />
+            )}
             <h3>
               {nequiPoolHistNav === "meses"
                 ? "Historial · Nequi"
@@ -7282,27 +7344,7 @@ export function SupervisorMobileApp({
                   : `Nequi · Ruta ${NEQUI_ROUTE_PIN}`}
             </h3>
             <div className="supervisor-mobile-detail-actions">
-              {nequiPoolHistNav !== "home" ? (
-                <button
-                  type="button"
-                  className="collector-mobile-pay-link is-back is-compact"
-                  onClick={() => {
-                    if (nequiPoolHistNav === "mes") {
-                      setNequiPoolHistPeriod(null);
-                      setNequiPoolHistExpand(null);
-                      setNequiPoolHistDay(null);
-                      setNequiPoolHistNav("meses");
-                      return;
-                    }
-                    setNequiPoolHistNav("home");
-                    setNequiPoolHistPeriod(null);
-                    setNequiPoolHistExpand(null);
-                    setNequiPoolHistDay(null);
-                  }}
-                >
-                  volver
-                </button>
-              ) : (
+              {nequiPoolHistNav === "home" ? (
                 <button
                   type="button"
                   className="supervisor-caja-historial-btn"
@@ -7318,7 +7360,7 @@ export function SupervisorMobileApp({
                 >
                   historial
                 </button>
-              )}
+              ) : null}
             </div>
           </div>
           {nequiPoolHistNav === "meses" ? (
@@ -7742,7 +7784,49 @@ export function SupervisorMobileApp({
         </section>
       ) : view === "banco" ? (
         <section className="supervisor-mobile-section supervisor-mobile-home">
-          <div className="supervisor-nequi-registro-head">
+          <div className="supervisor-nequi-registro-head is-with-atras">
+            {bancoPoolHistNav !== "home" ? (
+              <NexoAtrasBtn
+                onClick={() => {
+                  if (bancoHistPeopleOpen) {
+                    setBancoHistPeopleOpen(false);
+                    return;
+                  }
+                  if (bancoPoolHistNav === "ruta") {
+                    setBancoPoolHistRoute(null);
+                    setBancoPoolHistExpand(null);
+                    setBancoPoolHistDay(null);
+                    setBancoPoolHistNav("mes");
+                    return;
+                  }
+                  if (bancoPoolHistNav === "mes") {
+                    setBancoPoolHistPeriod(null);
+                    setBancoPoolHistRoute(null);
+                    setBancoPoolHistExpand(null);
+                    setBancoPoolHistDay(null);
+                    setBancoHistPeopleOpen(false);
+                    setBancoPoolHistNav("meses");
+                    return;
+                  }
+                  setBancoPoolHistNav("home");
+                  setBancoPoolHistPeriod(null);
+                  setBancoPoolHistRoute(null);
+                  setBancoPoolHistExpand(null);
+                  setBancoPoolHistDay(null);
+                }}
+              />
+            ) : bancoRegistroRoute || bancoGastosOpen || bancoPrestadoOpen ? (
+              <NexoAtrasBtn
+                onClick={() => {
+                  setBancoRegistroRoute(null);
+                  setBancoGastosOpen(false);
+                  setBancoPrestadoOpen(false);
+                  setBancoRegistroDay(null);
+                }}
+              />
+            ) : (
+              <span className="nexo-atras-spacer" aria-hidden />
+            )}
             <h3>
               {bancoPoolHistNav === "meses"
                 ? "Historial · Banco"
@@ -7761,54 +7845,10 @@ export function SupervisorMobileApp({
                           : "Banco"}
             </h3>
             <div className="supervisor-mobile-detail-actions">
-              {bancoPoolHistNav !== "home" ? (
-                <button
-                  type="button"
-                  className="collector-mobile-pay-link is-back is-compact"
-                  onClick={() => {
-                    if (bancoHistPeopleOpen) {
-                      setBancoHistPeopleOpen(false);
-                      return;
-                    }
-                    if (bancoPoolHistNav === "ruta") {
-                      setBancoPoolHistRoute(null);
-                      setBancoPoolHistExpand(null);
-                      setBancoPoolHistDay(null);
-                      setBancoPoolHistNav("mes");
-                      return;
-                    }
-                    if (bancoPoolHistNav === "mes") {
-                      setBancoPoolHistPeriod(null);
-                      setBancoPoolHistRoute(null);
-                      setBancoPoolHistExpand(null);
-                      setBancoPoolHistDay(null);
-                      setBancoHistPeopleOpen(false);
-                      setBancoPoolHistNav("meses");
-                      return;
-                    }
-                    setBancoPoolHistNav("home");
-                    setBancoPoolHistPeriod(null);
-                    setBancoPoolHistRoute(null);
-                    setBancoPoolHistExpand(null);
-                    setBancoPoolHistDay(null);
-                  }}
-                >
-                  volver
-                </button>
-              ) : bancoRegistroRoute || bancoGastosOpen || bancoPrestadoOpen ? (
-                <button
-                  type="button"
-                  className="collector-mobile-pay-link is-back is-compact"
-                  onClick={() => {
-                    setBancoRegistroRoute(null);
-                    setBancoGastosOpen(false);
-                    setBancoPrestadoOpen(false);
-                    setBancoRegistroDay(null);
-                  }}
-                >
-                  volver
-                </button>
-              ) : (
+              {bancoPoolHistNav === "home" &&
+              !bancoRegistroRoute &&
+              !bancoGastosOpen &&
+              !bancoPrestadoOpen ? (
                 <button
                   type="button"
                   className="supervisor-caja-historial-btn"
@@ -7827,7 +7867,7 @@ export function SupervisorMobileApp({
                 >
                   historial
                 </button>
-              )}
+              ) : null}
             </div>
           </div>
           {bancoPoolHistNav === "meses" ? (
@@ -8564,18 +8604,15 @@ export function SupervisorMobileApp({
             </>
           ) : nuevoMode === "gasto" ? (
             <>
-              <div className="supervisor-mobile-detail-head">
-                <h3>Nuevo gasto</h3>
-                <button
-                  type="button"
-                  className="collector-mobile-pay-link is-back"
+              <div className="supervisor-mobile-detail-head is-with-atras">
+                <NexoAtrasBtn
                   onClick={() => {
                     resetNuevoFlow();
                     setNuevoMode("menu");
                   }}
-                >
-                  atrás
-                </button>
+                />
+                <h3>Nuevo gasto</h3>
+                <span className="nexo-atras-spacer" aria-hidden />
               </div>
               {!onSaveMiscPayment ? (
                 <p className="ficha-empty">No hay permiso para registrar gastos.</p>
@@ -8678,11 +8715,8 @@ export function SupervisorMobileApp({
             )
           ) : nuevoMode === "renovar" ? (
             <>
-              <div className="supervisor-mobile-detail-head">
-                <h3>Renovar</h3>
-                <button
-                  type="button"
-                  className="collector-mobile-pay-link is-back"
+              <div className="supervisor-mobile-detail-head is-with-atras">
+                <NexoAtrasBtn
                   onClick={() => {
                     if (nuevoLoanClientRef) {
                       setNuevoLoanClientRef(null);
@@ -8696,9 +8730,9 @@ export function SupervisorMobileApp({
                     resetNuevoFlow();
                     setNuevoMode("menu");
                   }}
-                >
-                  atrás
-                </button>
+                />
+                <h3>Renovar</h3>
+                <span className="nexo-atras-spacer" aria-hidden />
               </div>
               {!onRenewLoan ? (
                 <p className="ficha-empty">No hay permiso para renovar desde esta vista.</p>
@@ -8797,19 +8831,8 @@ export function SupervisorMobileApp({
             </>
           ) : (
             <>
-              <div className="supervisor-mobile-detail-head">
-                <h3>Nuevo préstamo</h3>
-                <div className="supervisor-prestamos-head-actions">
-                <button
-                  type="button"
-                  className="collector-mobile-pay-link"
-                    onClick={() => goToView("prestamos")}
-                  >
-                    Ver préstamos
-                  </button>
-                  <button
-                    type="button"
-                    className="collector-mobile-pay-link is-back"
+              <div className="supervisor-mobile-detail-head is-with-atras">
+                <NexoAtrasBtn
                   onClick={() => {
                     if (nuevoLoanClientRef) {
                       setNuevoLoanClientRef(null);
@@ -8823,9 +8846,16 @@ export function SupervisorMobileApp({
                     resetNuevoFlow();
                     setNuevoMode("menu");
                   }}
-                >
-                  atrás
-                </button>
+                />
+                <h3>Nuevo préstamo</h3>
+                <div className="supervisor-prestamos-head-actions">
+                  <button
+                    type="button"
+                    className="collector-mobile-pay-link"
+                    onClick={() => goToView("prestamos")}
+                  >
+                    Ver préstamos
+                  </button>
                 </div>
               </div>
               {!onCreateQuickLoan ? (
@@ -8954,11 +8984,12 @@ export function SupervisorMobileApp({
             />
           ) : (
             <>
-              <div className="supervisor-mobile-detail-head">
+              <div className="supervisor-mobile-detail-head is-with-atras">
+                <NexoAtrasBtn onClick={() => goToView("nuevo")} />
                 <div className="supervisor-planilla-head-start">
                   <h3>Préstamos</h3>
-                          <button
-                            type="button"
+                  <button
+                    type="button"
                     className={
                       prestamosSearchOpen
                         ? "collector-history-planilla-search supervisor-clientes-search on"
@@ -8980,7 +9011,7 @@ export function SupervisorMobileApp({
                       <circle cx="10.5" cy="10.5" r="6.5" />
                       <line x1="15.5" y1="15.5" x2="21" y2="21" />
                     </svg>
-                          </button>
+                  </button>
                 </div>
                 <div className="supervisor-prestamos-head-actions">
                   {planillaRoutePins.length > 0 ? (
@@ -9011,13 +9042,6 @@ export function SupervisorMobileApp({
                       ))}
                     </div>
                   ) : null}
-                  <button
-                    type="button"
-                    className="collector-mobile-pay-link is-back"
-                    onClick={() => goToView("nuevo")}
-                  >
-                    volver
-                  </button>
                 </div>
               </div>
               <div
@@ -9133,18 +9157,15 @@ export function SupervisorMobileApp({
         <section className="supervisor-mobile-section supervisor-mobile-clientes">
           {clientesEditClient && clientesModifyMode ? (
             <>
-              <div className="supervisor-mobile-detail-head">
-                <h3>Modificar</h3>
-                <button
-                  type="button"
-                  className="collector-mobile-pay-link is-back"
+              <div className="supervisor-mobile-detail-head is-with-atras">
+                <NexoAtrasBtn
                   onClick={() => {
                     setClientesEditRef(null);
                     setEditMsg("");
                   }}
-                >
-                  volver
-                </button>
+                />
+                <h3>Modificar</h3>
+                <span className="nexo-atras-spacer" aria-hidden />
               </div>
               {!onUpdateClient ? (
                 <p className="ficha-empty">No hay permiso para modificar clientes desde esta vista.</p>

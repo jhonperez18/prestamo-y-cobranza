@@ -12,6 +12,7 @@ import {
   renewalTermsError,
   type RenewalTerms,
 } from "@/lib/loan-renew";
+import { NexoAtrasBtn } from "@/components/NexoAtrasBtn";
 import { money, type LoanRow } from "@/lib/mock-data";
 
 type Props = {
@@ -316,14 +317,18 @@ export function LoanRenewForm({ loan, today, variant = "sheet", onCancel, onConf
       ) : null}
 
       <div className={`form-actions collector-pay-actions${inline ? " is-links" : ""}`}>
-        <button
-          type="button"
-          className={inline ? "collector-mobile-pay-link" : "btn compact"}
-          disabled={isSubmitting}
-          onClick={onCancel}
-        >
-          {inline ? "volver" : "Volver"}
-        </button>
+        {inline ? (
+          <NexoAtrasBtn onClick={onCancel} disabled={isSubmitting} />
+        ) : (
+          <button
+            type="button"
+            className="btn compact"
+            disabled={isSubmitting}
+            onClick={onCancel}
+          >
+            Volver
+          </button>
+        )}
         <button
           type="submit"
           className={

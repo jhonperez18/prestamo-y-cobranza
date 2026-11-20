@@ -1,5 +1,6 @@
 "use client";
 
+import { NexoAtrasBtn } from "@/components/NexoAtrasBtn";
 import { cashFloatAfterExpenses, sumExpenseLines, type RouteExpenseLine } from "@/lib/collector-day-close";
 import { splitDayExpenses } from "@/lib/collector-history-planilla";
 import { money } from "@/lib/mock-data";
@@ -134,9 +135,7 @@ export function CollectorCloseDayConfirm({
       </p>
 
       <div className="collector-close-actions is-links">
-        <button type="button" className="collector-mobile-pay-link is-back" onClick={onCancel}>
-          volver
-        </button>
+        <NexoAtrasBtn onClick={onCancel} />
         <button type="button" className="collector-mobile-pay-link is-confirm" onClick={onConfirm}>
           confirmar
         </button>

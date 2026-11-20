@@ -25,6 +25,7 @@ import { syncCollectorLiveLoan } from "@/lib/collector-live-window";
 import { QuickLoanForm } from "@/components/QuickLoanForm";
 import type { QuickLoanDraft } from "@/lib/street-client-loan";
 import { CloseClock, Pill } from "@/components/ui";
+import { NexoAtrasBtn } from "@/components/NexoAtrasBtn";
 import { PaymentEvidenceThumb } from "@/components/PaymentEvidenceThumb";
 import { CollectorNewClientSheet } from "@/components/CollectorNewClientSheet";
 import type { RouteClientDraft } from "@/lib/commit-portfolio-catalog";
@@ -2696,7 +2697,8 @@ export function CollectorMobileApp({
           aria-modal="true"
           aria-labelledby="collector-history-title"
         >
-          <header className="collector-mobile-history-panel-head">
+          <header className="collector-mobile-history-panel-head is-with-atras">
+            <NexoAtrasBtn onClick={() => setHistoryOpen(false)} />
             <div>
               <h2 id="collector-history-title">
                 Historial
@@ -2704,13 +2706,7 @@ export function CollectorMobileApp({
               </h2>
               <span>Últimos {COLLECTOR_HISTORY_KEEP_DAYS} días</span>
             </div>
-            <button
-              type="button"
-              className="collector-mobile-pay-link is-back"
-              onClick={() => setHistoryOpen(false)}
-            >
-              volver
-            </button>
+            <span className="nexo-atras-spacer" aria-hidden />
           </header>
 
           <div

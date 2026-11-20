@@ -1,6 +1,7 @@
 "use client";
 
 import { Pill } from "@/components/ui";
+import { NexoAtrasBtn } from "@/components/NexoAtrasBtn";
 import { APP_BUILD } from "@/lib/app-build";
 import type { StatusKind } from "@/lib/mock-data";
 import {
@@ -41,13 +42,12 @@ export function CollectorConnectionSheet({
   const versionOff = Boolean(latest?.build && APP_BUILD && latest.build !== APP_BUILD);
   return (
     <div className="conn-detail">
-      <div className="supervisor-mobile-detail-head">
+      <div className="supervisor-mobile-detail-head is-with-atras">
+        <NexoAtrasBtn onClick={onBack} />
         <h3>
           Ruta {routeName} · {collectorName}
         </h3>
-        <button type="button" className="collector-mobile-pay-link is-back" onClick={onBack}>
-          volver
-        </button>
+        <span className="nexo-atras-spacer" aria-hidden />
       </div>
       <p className="supervisor-mobile-detail-meta conn-detail-meta">
         <span>Conexión del cobrador</span>
