@@ -6121,14 +6121,6 @@ export function SupervisorMobileApp({
               <span className="supervisor-mobile-detail-route">
                 {openRoute.collectorName}
               </span>
-              {(detailMode === "historial" || detailMode === "historial-dia") &&
-              cajaHistoryNav === "detallado" ? (
-                <NexoAtrasBtn
-                  label="Historial"
-                  showIcon={false}
-                  onClick={() => openCajaHistorialMeses()}
-                />
-              ) : null}
             </div>
           </div>
 
@@ -6192,11 +6184,18 @@ export function SupervisorMobileApp({
             </>
           ) : detailMode === "historial" ? (
             <>
-              <div className="supervisor-caja-mes-banner" aria-label={`Mes ${cajaHistoryMonthTitle}`}>
+              <div
+                className="supervisor-caja-mes-banner is-with-action"
+                aria-label={`Mes ${cajaHistoryMonthTitle}`}
+              >
                 <b>{cajaHistoryMonthTitle}</b>
-                <span>
-                  Ruta {openRoute.routeName} · {openRoute.collectorName}
-                </span>
+                {cajaHistoryNav === "detallado" ? (
+                  <NexoAtrasBtn
+                    label="Historial"
+                    showIcon={false}
+                    onClick={() => openCajaHistorialMeses()}
+                  />
+                ) : null}
               </div>
               {viewingHistorialMonth &&
               openRouteCajaHistory.length > 0 &&

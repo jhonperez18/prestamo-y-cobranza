@@ -5697,12 +5697,19 @@
       border-radius: 8px;
       background: linear-gradient(180deg, #eefaf6 0%, #e4f5f0 100%);
     }
+    .supervisor-caja-mes-banner.is-with-action {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
     .supervisor-caja-mes-banner b {
       font-size: 14px;
       font-weight: 800;
       letter-spacing: 0.01em;
       color: #073330;
       line-height: 1.2;
+      min-width: 0;
     }
     .supervisor-caja-mes-banner span {
       font-size: 11px;
