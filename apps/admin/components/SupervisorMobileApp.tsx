@@ -6762,7 +6762,7 @@ export function SupervisorMobileApp({
                 <>
                   <p className="supervisor-mobile-detail-meta">
                     {fromCobradoHoy
-                      ? `Cobros ${openRouteDigitalLabel} · ${dayPays.length}`
+                      ? `${openRouteIsA ? "Cobros Nequi" : "Cobros banco"} · ${dayPays.length}`
                       : `${nequiDayIso ? isoToDisplay(nequiDayIso) : ""} · ${poolDayCountLabel(dayPays.length, dayLoans.length)}`}
                   </p>
                   {empty ? (
@@ -6882,7 +6882,7 @@ export function SupervisorMobileApp({
                         <button
                           type="button"
                           className="supervisor-mov-row is-tap is-pay-banco"
-                          onClick={() => openCobrosReport("banco")}
+                          onClick={() => openNequiDayFicha(today, "totales")}
                           aria-label="Ver cobros Banco del día"
                         >
                           <span>Banco</span>
@@ -6893,7 +6893,7 @@ export function SupervisorMobileApp({
                         <button
                           type="button"
                           className="supervisor-mov-row is-tap is-pay-nequi"
-                          onClick={() => openCobrosReport("nequi")}
+                          onClick={() => openNequiDayFicha(today, "totales")}
                           aria-label="Ver cobros Nequi del día"
                         >
                           <span>Nequi</span>
