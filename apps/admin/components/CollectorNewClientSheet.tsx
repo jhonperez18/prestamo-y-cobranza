@@ -135,8 +135,14 @@ export function CollectorNewClientSheet({
           </p>
         ) : null}
         <div className="collector-new-client-actions">
-          <button type="submit" className="collector-new-client-save" disabled={saving}>
-            {saving ? "Guardando…" : "Crear cliente"}
+          <button
+            type="submit"
+            className="nexo-atras-btn is-text-only"
+            disabled={saving}
+          >
+            <span className="nexo-atras-label">
+              {saving ? "Guardando…" : "Crear cliente"}
+            </span>
           </button>
         </div>
       </form>

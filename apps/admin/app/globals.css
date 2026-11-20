@@ -1167,20 +1167,6 @@
       display: flex;
       justify-content: flex-end;
     }
-    .collector-new-client-save {
-      padding: 8px 16px;
-      border: 0;
-      border-radius: 8px;
-      background: #0f766e;
-      color: #fff;
-      font: inherit;
-      font-weight: 650;
-      cursor: pointer;
-    }
-    .collector-new-client-save:disabled {
-      opacity: 0.6;
-      cursor: default;
-    }
     .collector-mobile-stat.is-gastos.on {
       border-color: #dc2626;
       color: #991b1b;
