@@ -9741,57 +9741,74 @@
       font-variant-numeric: tabular-nums;
       font-weight: 700;
     }
-    .supervisor-sn-list {
-      list-style: none;
-      margin: 0;
-      padding: 0;
+    /* N/P día: Nombre | Fecha | Motivo (sin dinero) */
+    .supervisor-np-people-palette {
       display: grid;
       gap: 0;
+      border: 1px solid #c5e0cb;
+      border-radius: 10px;
       overflow: hidden;
-      border: 1px solid #d5e6df;
+      background: #fff;
     }
-    .supervisor-sn-list li {
+    .supervisor-np-people-head,
+    .supervisor-np-people-list > li {
       display: grid;
-      grid-template-columns: minmax(0, 1.4fr) 6.6rem minmax(0, 1.1fr);
+      grid-template-columns: minmax(0, 1.3fr) minmax(4.8rem, 0.7fr) minmax(0, 1.1fr);
+      column-gap: 6px;
       align-items: center;
-      column-gap: 8px;
-      padding: 4px 8px;
-      border-radius: 0;
+    }
+    .supervisor-np-people-head {
+      padding: 6px 10px;
+      background: var(--table-head-bg, #426650);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      color: #fff;
+      line-height: 1.2;
+    }
+    .supervisor-np-people-head span:nth-child(2),
+    .supervisor-np-people-head span:nth-child(3) {
+      text-align: center;
+    }
+    .supervisor-np-people-list {
+      display: grid;
+      gap: 0;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .supervisor-np-people-list > li {
+      margin: 0;
+      padding: 5px 10px;
       border: 0;
       border-bottom: 1px solid #e2ece7;
       background: var(--row-b);
-      font-size: 12px;
       min-width: 0;
     }
-    .supervisor-sn-list li:nth-child(odd) {
+    .supervisor-np-people-list > li:nth-child(odd) {
       background: var(--row-a);
     }
-    .supervisor-sn-list li:nth-child(even) {
-      background: var(--row-b);
-    }
-    .supervisor-sn-list li:last-child {
+    .supervisor-np-people-list > li:last-child {
       border-bottom: 0;
     }
-    .supervisor-sn-list li b {
-      text-align: left;
+    .supervisor-np-people-list .is-name,
+    .supervisor-np-people-list .is-date,
+    .supervisor-np-people-list .is-motivo {
+      display: block;
+      min-width: 0;
+      font-size: 12px;
       font-weight: 400;
-      white-space: nowrap;
+      font-style: normal;
+      color: #111;
+      line-height: 1.2;
       overflow: hidden;
       text-overflow: ellipsis;
-    }
-    .supervisor-sn-list small,
-    .supervisor-sn-list em {
-      color: #1a2a24;
-      font-size: 11px;
-      font-style: normal;
-      font-weight: 400;
       white-space: nowrap;
     }
-    .supervisor-sn-list small {
+    .supervisor-np-people-list .is-date,
+    .supervisor-np-people-list .is-motivo {
       text-align: center;
-    }
-    .supervisor-sn-list em {
-      text-align: right;
     }
     .supervisor-route-board {
       display: flex;
@@ -10392,6 +10409,96 @@
     }
     .supervisor-mobile-list li:last-child {
       border-bottom: 0;
+    }
+    /* Paleta N/P por día: Fecha | Cantidad */
+    .supervisor-np-day-palette {
+      display: grid;
+      gap: 0;
+      border: 1px solid #c5e0cb;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .supervisor-np-day-head,
+    .supervisor-np-day-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(4.5rem, 0.7fr);
+      column-gap: 8px;
+      align-items: center;
+    }
+    .supervisor-np-day-head {
+      padding: 6px 12px;
+      background: var(--table-head-bg, #426650);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      color: #fff;
+      line-height: 1.2;
+    }
+    .supervisor-np-day-head span:first-child {
+      padding-left: 28px;
+    }
+    .supervisor-np-day-head span:last-child {
+      text-align: right;
+      padding-right: 28px;
+    }
+    .supervisor-np-day-list {
+      display: grid;
+      gap: 0;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+    .supervisor-np-day-list > li {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-bottom: 1px solid #e2ece7;
+      background: var(--row-b);
+    }
+    .supervisor-np-day-list > li:nth-child(odd) {
+      background: var(--row-a);
+    }
+    .supervisor-np-day-list > li:last-child {
+      border-bottom: 0;
+    }
+    .supervisor-np-day-row {
+      appearance: none;
+      width: 100%;
+      margin: 0;
+      padding: 5px 12px;
+      border: 0;
+      background: transparent;
+      color: #111;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    .supervisor-np-day-row:active {
+      background: rgba(15, 118, 110, 0.08);
+    }
+    .supervisor-np-day-row .is-date,
+    .supervisor-np-day-row .is-qty {
+      display: block;
+      font-size: 12px;
+      font-weight: 400;
+      color: #111;
+      line-height: 1.2;
+    }
+    .supervisor-np-day-row .is-date {
+      min-width: 0;
+      padding-left: 28px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .supervisor-np-day-row .is-qty {
+      text-align: right;
+      padding-right: 28px;
+      font-variant-numeric: tabular-nums;
     }
     /* Paleta del día (renovar / gastos / préstamos E·B): Nombre | Valor + Total */
     .supervisor-day-palette {

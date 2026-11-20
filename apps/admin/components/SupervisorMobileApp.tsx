@@ -1615,15 +1615,22 @@ function SnPeople({
 }) {
   if (rows.length === 0) return <p className="ficha-empty">{empty}</p>;
   return (
-    <ul className="supervisor-sn-list" aria-label="No pagan">
-      {rows.map((item) => (
-        <li key={`${item.dispatchDate}-${item.itemId}`}>
-          <b>{item.clientName || "Cliente"}</b>
-          <small>{dateLabel}</small>
-          <em>{snSkipLabel(item)}</em>
-        </li>
-      ))}
-    </ul>
+    <div className="supervisor-np-people-palette">
+      <div className="supervisor-np-people-head" aria-hidden>
+        <span>Nombre</span>
+        <span>Fecha</span>
+        <span>Motivo</span>
+      </div>
+      <ul className="supervisor-np-people-list" aria-label="No pagan">
+        {rows.map((item) => (
+          <li key={`${item.dispatchDate}-${item.itemId}`}>
+            <span className="is-name">{item.clientName || "Cliente"}</span>
+            <span className="is-date">{dateLabel}</span>
+            <span className="is-motivo">{snSkipLabel(item)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -7049,49 +7056,48 @@ export function SupervisorMobileApp({
             </>
           ) : detailMode === "np" ? (
             <>
-              <p className="supervisor-mobile-detail-meta">
-                N/P · Ruta {openRoute.routeName} · {openRoute.collectorName}
-              </p>
+              <p className="supervisor-mobile-detail-meta">N/P</p>
               {openRouteNpByDay.todayRows.length === 0 &&
               openRouteNpByDay.past.length === 0 ? (
                 <p className="ficha-empty">Sin registro N/P en esta ruta.</p>
               ) : (
-                <ul className="supervisor-nequi-day-list" aria-label={`N/P por día · Ruta ${openRoute.routeName}`}>
-                  {(openRouteNpByDay.todayRows.length > 0
-                    ? [{ date: today, rows: openRouteNpByDay.todayRows }]
-                    : []
-                  )
-                    .concat(openRouteNpByDay.past)
-                    .map((day) => {
-                      const label =
-                        day.date === today ? "Hoy" : isoToDisplay(day.date);
-                      return (
-                        <li key={day.date}>
-                          <button
-                            type="button"
-                            className="supervisor-nequi-day-row"
-                            onClick={() => openRouteNpDay(day.date)}
-                          >
-                            <span className="is-date">{label}</span>
-                            <span className="is-count">
-                              {day.rows.length} cliente
-                              {day.rows.length === 1 ? "" : "s"}
-                            </span>
-                            <b className="is-amount">{day.rows.length}</b>
-                          </button>
-                        </li>
-                      );
-                    })}
-                </ul>
+                <div className="supervisor-np-day-palette">
+                  <div className="supervisor-np-day-head" aria-hidden>
+                    <span>Fecha</span>
+                    <span>Cantidad</span>
+                  </div>
+                  <ul
+                    className="supervisor-np-day-list"
+                    aria-label={`N/P por día · Ruta ${openRoute.routeName}`}
+                  >
+                    {(openRouteNpByDay.todayRows.length > 0
+                      ? [{ date: today, rows: openRouteNpByDay.todayRows }]
+                      : []
+                    )
+                      .concat(openRouteNpByDay.past)
+                      .map((day) => {
+                        const label =
+                          day.date === today ? "Hoy" : isoToDisplay(day.date);
+                        return (
+                          <li key={day.date}>
+                            <button
+                              type="button"
+                              className="supervisor-np-day-row"
+                              onClick={() => openRouteNpDay(day.date)}
+                            >
+                              <span className="is-date">{label}</span>
+                              <span className="is-qty">{day.rows.length}</span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                  </ul>
+                </div>
               )}
             </>
           ) : detailMode === "np-dia" && snDay ? (
             <>
-              <p className="supervisor-mobile-detail-meta">
-                N/P ·{" "}
-                {snDay === today ? "Hoy" : isoToDisplay(snDay)} · Ruta{" "}
-                {openRoute.routeName}
-              </p>
+              <p className="supervisor-mobile-detail-meta">N/P</p>
               <SnPeople
                 rows={openRouteNpDayRows}
                 empty="Nadie ese día en esta ruta"
