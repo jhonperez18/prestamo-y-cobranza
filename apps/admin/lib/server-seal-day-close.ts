@@ -1,6 +1,9 @@
 /**
  * Orden seal_day_close en la base (Fase 4.1).
  * cash_float lo fija la RPC (day_cash_figure / route_own_box), no el aparato.
+ *
+ * Yesid 21/11: route vacío + day_final de cubetas M → Inicial−gastos.
+ * Si el cobrador solo tiene A/N, resolvemos la ruta antes del RPC.
  */
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -32,6 +35,27 @@ export type SealDayCloseResult =
     }
   | { ok: false; error: string; missingDay?: string; cashFloat?: number; ref?: string };
 
+async function resolveOwnSealRoute(
+  client: NonNullable<ReturnType<typeof createSupabaseAdminClient>>,
+  collectorRef: string,
+  route: string,
+): Promise<string> {
+  const trimmed = route.trim().toUpperCase();
+  if (trimmed === "A" || trimmed === "N" || trimmed === "M" || trimmed === "T") {
+    return trimmed;
+  }
+  const { data, error } = await client
+    .from("routes")
+    .select("name")
+    .eq("collector_ref", collectorRef);
+  if (error || !data?.length) return trimmed;
+  const names = data.map((row) => String(row.name || "").trim().toUpperCase());
+  if (names.some((name) => name === "M" || name === "T")) return trimmed;
+  if (names.includes("N")) return "N";
+  if (names.includes("A")) return "A";
+  return trimmed;
+}
+
 export async function callSealDayClose(input: SealDayCloseInput): Promise<SealDayCloseResult> {
   const ref = input.collectorRef.trim();
   const key = input.key.trim();
@@ -41,10 +65,12 @@ export async function callSealDayClose(input: SealDayCloseInput): Promise<SealDa
   const client = createSupabaseAdminClient();
   if (!client) return { ok: false, error: "sin_servicio" };
 
+  const route = await resolveOwnSealRoute(client, ref, input.route || "");
+
   const { data, error } = await client.rpc("seal_day_close", {
     p_collector_ref: ref,
     p_date: input.date,
-    p_route: (input.route || "").trim().toUpperCase(),
+    p_route: route,
     p_key: key,
     p_by: input.by.trim(),
     p_write_cie: Boolean(input.writeCie),

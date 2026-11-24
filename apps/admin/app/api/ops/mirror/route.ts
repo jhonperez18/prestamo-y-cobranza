@@ -44,6 +44,45 @@ type Body = MirrorItem & {
 
 type ItemOutcome = { status: number; json: Record<string, unknown> };
 
+/** Ruta A/N del CIE para seal_day_close (mirror no debe mandar route vacío). */
+function cieMirrorRouteHint(row: CollectorDayCloseRecord): string {
+  const refs = Array.isArray(row.movementRefs) ? row.movementRefs : [];
+  for (const raw of refs) {
+    const m = /^SEAL_KEY:close\|[^|]+\|\d{4}-\d{2}-\d{2}\|([AN])$/i.exec(String(raw || ""));
+    if (m) return m[1].toUpperCase();
+  }
+  for (const line of row.expenses || []) {
+    const rt = String((line as { route?: string }).route || "")
+      .trim()
+      .toUpperCase();
+    if (rt === "A" || rt === "N") return rt;
+  }
+  return "";
+}
+
+/**
+ * Si no hay pista en el CIE, y el cobrador solo tiene A/N (sin M/T),
+ * sella por route_own_box — no por day_final de cubetas M vacías.
+ */
+async function resolveCieSealRoute(
+  collectorRef: string,
+  hint: string,
+): Promise<string> {
+  if (hint === "A" || hint === "N") return hint;
+  const client = createMirrorServerClient();
+  if (!client) return hint;
+  const { data, error } = await client
+    .from("routes")
+    .select("name")
+    .eq("collector_ref", collectorRef);
+  if (error || !data?.length) return hint;
+  const names = data.map((row) => String(row.name || "").trim().toUpperCase());
+  if (names.some((name) => name === "M" || name === "T")) return hint;
+  if (names.includes("N")) return "N";
+  if (names.includes("A")) return "A";
+  return hint;
+}
+
 const VIRGIN_LOCKED_KINDS = new Set([
   "day_close",
   "day_expense",
@@ -99,10 +138,15 @@ async function mirrorItem(item: MirrorItem): Promise<ItemOutcome> {
           result = { ok: true as const, skipped: true as const, reason: "cie_use_close_sheet" };
           break;
         }
+        // Yesid 21/11: route '' → day_final = Inicial−gastos y pisó la fórmula.
+        const routeHint = await resolveCieSealRoute(
+          closeRow.collectorRef,
+          cieMirrorRouteHint(closeRow),
+        );
         const sealed = await callSealDayClose({
           collectorRef: closeRow.collectorRef,
           date,
-          route: "",
+          route: routeHint,
           key: `mirror|${closeRef}`,
           by: closeRow.collectorName || "mirror",
           writeCie: true,
