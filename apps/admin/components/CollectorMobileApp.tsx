@@ -158,7 +158,7 @@ import {
   withRouteCobradoHistory,
   withSealedDaySaldos,
 } from "@/lib/day-cash-ledger";
-import { planillaHeaderCash } from "@/lib/planilla-header-cash";
+import { buttonTotalFromListed, planillaHeaderCash } from "@/lib/planilla-header-cash";
 import {
   getCloudDayCashFigure,
   isCompleteChainDayCashFigure,
@@ -2176,20 +2176,10 @@ export function CollectorMobileApp({
     dayExpenseDetail.cashPays,
     dayExpenseDetail.digitalPays,
   ]);
-  /**
-   * Botón «Lo que prestó» / KPI: en A·N = efectivo + Nequi/Banco (`prestamosRuta`).
-   * En M·T el botón sigue siendo caja; Banco va aparte.
-   */
-  /**
-   * Cuadre junto a Caja: solo efectivo (lo que resta). Nequi/Banco en sublínea.
-   * El KPI superior sigue pudiendo mostrar efectivo+digital vía viewPrestamos.
-   */
-  /** Solo efectivo de la ruta. Banco / Nequi viven en BANCO / NEQUI; el cobrador cobra después. */
-  const loQuePresto = ownRouteDay ? ownRouteDay.prestamos : topPrestamos;
   const cajaFormulaLabel = "Caja (inicial + efectivo − gastos − préstamos)";
   /**
    * Préstamos de la planilla = solo efectivo.
-   * Ley única M/T/A/N: la lista debe explicar el número del botón.
+   * Ley única M/T/A/N: la lista explica el número del botón.
    * Si el total (caja/nube) no cuadra con renglones locales → puerta route-day-detail.
    */
   const viewLoanRows = useMemo(() => {
@@ -2220,6 +2210,7 @@ export function CollectorMobileApp({
         loanScope,
       ).filter((row) => routeClients.has(row.clientRef));
     })();
+    // Puente de la puerta: libro/nube. El KPI final = suma de estos renglones.
     const want = Math.trunc(
       ownRouteDay
         ? ownRouteDay.prestamos
@@ -2247,17 +2238,29 @@ export function CollectorMobileApp({
     chainPlanillaDay,
     topPrestamos,
   ]);
-  const viewPrestamos = Math.max(
-    dayLoanDisbursementTotal(viewLoanRows),
-    ownRouteDay ? ownRouteDay.prestamos : 0,
-    chainPlanillaDay ? topPrestamos : 0,
-  );
-  /** KPI Préstamos de la ruta = solo efectivo (misma cifra que la lista). */
+  /**
+   * KPI Préstamos / «Lo que prestó» = suma de la lista visible.
+   * A/N: caja propia. M/T: mismos renglones del panel (nunca un total nube paralelo).
+   */
   const prestamosKpi = ownRouteDay
     ? ownRouteDay.prestamos
-    : chainPlanillaDay
-      ? topPrestamos
-      : viewPrestamos;
+    : buttonTotalFromListed({
+        listedSum: dayLoanDisbursementTotal(viewLoanRows),
+        listedCount: viewLoanRows.length,
+        bridgeTotal: topPrestamos,
+        loading: dayExpenseDetail.loading,
+      });
+  /** Solo efectivo de la ruta. Banco / Nequi viven en BANCO / NEQUI. */
+  const loQuePresto = prestamosKpi;
+  /** KPI Gastos / «Lo que gastó» = suma de la lista visible (misma ley). */
+  const gastosKpi = ownRouteDay
+    ? ownRouteDay.gastos
+    : buttonTotalFromListed({
+        listedSum: sumExpenseLines(sheetGastoLines),
+        listedCount: sheetGastoLines.length,
+        bridgeTotal: topGastos,
+        loading: dayExpenseDetail.loading,
+      });
   const headerInicial = headerCash.inicial;
   const headerInicialReady =
     Boolean(ownRouteDay) ||
@@ -2279,12 +2282,30 @@ export function CollectorMobileApp({
             ? `Momentáneo · se fija al cerrar ${PLANILLA_CASH_CHAIN_PRIMARY}`
             : "Saldo inicial fijo (= CIE de ayer)"
           : "Saldo en caja al iniciar el día (cierre del día anterior)";
-  const cajaShown = headerCash.caja;
-  const totalDiaShown = headerCash.totalDia;
+  /**
+   * Caja en pantalla = misma fórmula con los mismos totales de botón (lista).
+   * Si headerCash ya trae AJUSTE contado (caja ≠ fórmula de sus partes), se respeta.
+   */
+  const headerFormulaCaja = planillaHeaderCash({
+    inicial: headerCash.inicial,
+    efectivo: headerCash.efectivo,
+    gastos: headerCash.gastos,
+    prestamos: headerCash.prestamos,
+  }).caja;
+  const listedHeaderCash = planillaHeaderCash({
+    inicial: headerCash.inicial,
+    efectivo: headerCash.efectivo,
+    gastos: gastosKpi,
+    prestamos: prestamosKpi,
+    ajusteContado:
+      headerCash.caja !== headerFormulaCaja ? headerCash.caja : null,
+  });
+  const cajaShown = listedHeaderCash.caja;
+  const totalDiaShown = listedHeaderCash.totalDia;
   const pendingCollectShown = activePlanillaRoute
     ? routePendingCollectCount
     : queue.pendingCollectCount;
-  const planillaPrestadoEfectivo = topPrestamos;
+  const planillaPrestadoEfectivo = prestamosKpi;
 
   const openPlanillaDates = useMemo(
     () => new Set(routeOptions.filter((row) => !row.closed).map((row) => row.date)),
@@ -3025,7 +3046,7 @@ export function CollectorMobileApp({
           })}
         >
           <span>Gastos</span>
-          <b>{topGastos > 0 ? money(topGastos) : "—"}</b>
+          <b>{gastosKpi > 0 ? money(gastosKpi) : "—"}</b>
         </button>
       </div>
 
@@ -3147,7 +3168,7 @@ export function CollectorMobileApp({
               onClick={() => toggleHomeCierreList("gastos")}
               >
                 <span>Lo que gastó</span>
-              <b>{money(topGastos)}</b>
+              <b>{money(gastosKpi)}</b>
               </button>
 
             <div className="is-cobrado">
@@ -3196,11 +3217,15 @@ export function CollectorMobileApp({
           </div>
           </div>
           {homeCierreKind === "prestamos" ? (
-            homePrestamoLines.length > 0 ? (
+            viewLoanRows.length > 0 || homePrestamoLines.length > 0 ? (
               <CollectorDayCloseExtras
                 dateLabel={queue.dateLabel}
                 planillaRows={[]}
-                prestamos={homePrestamoLines}
+                prestamos={
+                  homePrestamoLines.length > 0
+                    ? homePrestamoLines
+                    : loanRowsToExpenseLines(viewLoanRows)
+                }
                 prestamosTotal={loQuePresto}
               />
             ) : dayExpenseDetail.loading ? (
@@ -3213,20 +3238,22 @@ export function CollectorMobileApp({
               <p className="collector-cierre-drop-empty">Sin préstamos ese día.</p>
             )
           ) : homeCierreKind === "gastos" ? (
-            homeGastoLines.length > 0 ? (
+            sheetGastoLines.length > 0 || homeGastoLines.length > 0 ? (
               <CollectorDayCloseExtras
                 dateLabel={queue.dateLabel}
                 planillaRows={[]}
                 prestamos={[]}
                 prestamosTotal={0}
-                otrosGastos={homeGastoLines}
-                otrosTotal={topGastos}
+                otrosGastos={
+                  sheetGastoLines.length > 0 ? sheetGastoLines : homeGastoLines
+                }
+                otrosTotal={gastosKpi}
               />
             ) : dayExpenseDetail.loading ? (
               <p className="collector-cierre-drop-empty">Leyendo gastos…</p>
-            ) : topGastos > 0 ? (
+            ) : gastosKpi > 0 ? (
               <p className="collector-cierre-drop-empty">
-                Total {money(topGastos)} · sin renglones en la nube para esta ruta.
+                Total {money(gastosKpi)} · sin renglones en la nube para esta ruta.
               </p>
             ) : (
               <p className="collector-cierre-drop-empty">Sin gastos ese día.</p>
@@ -3360,7 +3387,7 @@ export function CollectorMobileApp({
               <b>
                 {money(
                   planillaIsChain
-                    ? planillaRecaudo.efectivo - topPrestamos - topGastos
+                    ? planillaRecaudo.efectivo - prestamosKpi - gastosKpi
                     : planillaRecaudo.total,
                 )}
               </b>

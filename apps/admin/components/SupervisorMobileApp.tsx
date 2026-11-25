@@ -78,11 +78,13 @@ import {
   lastCollectionDayOfPeriod,
   lastCalendarDayOfPeriod,
   calendarDaysInPeriod,
+  sumExpenseLines,
   type CollectorDayCloseRecord,
   type CollectorDayExpenseDraft,
   type CollectorMonthCloseRecord,
   type RouteExpenseLine,
 } from "@/lib/collector-day-close";
+import { buttonTotalFromListed } from "@/lib/planilla-header-cash";
 import {
   alignIndependentDay1ToCarry,
   alignIndependentHistoryDayToDay,
@@ -4902,9 +4904,8 @@ export function SupervisorMobileApp({
     [openRouteHistoryDayExpenses],
   );
   /**
-   * A/N: mismo número que resta la Caja y la columna PRÉSTAMO del Historial
-   * (`day.prestamos` = solo efectivo). Nequi/Banco van en la sublínea (no salen de caja).
-   * M/T: total de la nube (ownPrestamos) aunque el GAS- no esté en el aparato.
+   * Puente de la puerta (nube / libro). El botón en pantalla = suma de renglones
+   * (`cierrePrestamosShown`) cuando la lista ya responde.
    */
   const cierrePrestamosTotal = historyDayChainT
     ? historyDayChainT.ownPrestamos
@@ -4991,6 +4992,29 @@ export function SupervisorMobileApp({
   });
   const cierreGastos = cierreExpenseDetail.gastoLines;
   const cierrePrestamos = cierreExpenseDetail.prestamoLines;
+  /** Botón Cierre · Préstamos = suma de la lista (no un total nube paralelo). */
+  const cierrePrestamosShown = buttonTotalFromListed({
+    listedSum: sumExpenseLines(cierrePrestamos),
+    listedCount: cierrePrestamos.length,
+    bridgeTotal: cierrePrestamosTotal,
+    loading: cierreExpenseDetail.loading,
+  });
+  /** Botón Cierre · Gastos = suma de la lista. */
+  const cierreGastosShown = buttonTotalFromListed({
+    listedSum: sumExpenseLines(cierreGastos),
+    listedCount: cierreGastos.length,
+    bridgeTotal: cierreGastosTotal,
+    loading: cierreExpenseDetail.loading,
+  });
+  /** Botón ruta hoy · Préstamos = suma de openRoutePrestamoRows. */
+  const openRoutePrestamosShown = openRoute
+    ? buttonTotalFromListed({
+        listedSum: dayLoanDisbursementTotal(openRoutePrestamoRows),
+        listedCount: openRoutePrestamoRows.length,
+        bridgeTotal: openRoute.prestamosHoy,
+        loading: openRouteExpenseDetail.loading,
+      })
+    : 0;
   /** Cobros de la puerta cuando la copia local del período está vacía. */
   const cierreCloudPaysAsPayments = useMemo(() => {
     if (!cierreExpenseDetail.cloudReady || !cajaHistoryDayIso) return null;
@@ -5199,7 +5223,7 @@ export function SupervisorMobileApp({
           : [];
   const cierrePrestamosListTotal =
     cierreListKind === "prestamos"
-      ? cierrePrestamosTotal
+      ? cierrePrestamosShown
       : cierreListKind === "prestamosCadena"
         ? openRouteHistoryDayExpenseSplit.prestamosTotal
         : cierreListKind === "prestamosBanco"
@@ -6479,7 +6503,7 @@ export function SupervisorMobileApp({
                   onClick={() => toggleCierreList("prestamos")}
                 >
                   <span>Lo que prestó</span>
-                  <b>{money(cierrePrestamosTotal)}</b>
+                  <b>{money(cierrePrestamosShown)}</b>
                   {cierrePrestamosDigital > 0 ? (
                     <em className="is-loan-split">
                       + {openRouteIsA ? "Nequi" : "Banco"}{" "}
@@ -6495,7 +6519,7 @@ export function SupervisorMobileApp({
                   onClick={() => toggleCierreList("gastos")}
                 >
                   <span>Lo que gastó</span>
-                  <b>{money(cierreGastosTotal)}</b>
+                  <b>{money(cierreGastosShown)}</b>
                 </button>
                 <div className="is-cobrado">
                   <div className="is-cobrado-head">
@@ -6661,8 +6685,8 @@ export function SupervisorMobileApp({
                       <p className="collector-cierre-drop-empty">
                         {cierreExpenseDetail.loading
                           ? "Leyendo gastos…"
-                          : cierreGastosTotal > 0
-                            ? `Total ${money(cierreGastosTotal)} · sin renglones en la nube para esta ruta.`
+                          : cierreGastosShown > 0
+                            ? `Total ${money(cierreGastosShown)} · sin renglones en la nube para esta ruta.`
                             : CIERRE_LIST_EMPTY.gastos}
                       </p>
                     ) : (
@@ -7139,7 +7163,7 @@ export function SupervisorMobileApp({
                 : openRoutePrestamoRows;
               const total = isDigital
                 ? openRouteDigitalPrestamosHoy
-                : openRoute.prestamosHoy;
+                : openRoutePrestamosShown;
               return (
                 <>
                   <p className="supervisor-mobile-detail-meta">

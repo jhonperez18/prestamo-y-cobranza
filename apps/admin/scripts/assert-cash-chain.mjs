@@ -2761,7 +2761,11 @@ expect("Banco · efectivo no crea DSB", dsbRows.some((row) => row.loanDisburseme
       histCollSrc.includes("fromDoor") &&
       histCollSrc.includes("homePrestamoLines") &&
       histCollSrc.includes("total={prestamosKpi}") &&
+      histCollSrc.includes("buttonTotalFromListed") &&
+      histCollSrc.includes("gastosKpi") &&
       histSuperSrc.includes("openRoutePrestamoRows") &&
+      histSuperSrc.includes("cierrePrestamosShown") &&
+      histSuperSrc.includes("openRoutePrestamosShown") &&
       histSuperSrc.includes('detailMode === "prestamos"') &&
       histSuperSrc.includes("prestamosTotal: openRoute?.prestamosHoy") &&
       dayLoansPanelSrc.includes("Leyendo préstamos") &&

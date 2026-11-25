@@ -569,17 +569,43 @@ export function buildDayCashLedger(src: DayCashSources): DayCashLedger {
       PLANILLA_CASH_CHAIN_SECONDARY,
       cloud.tPrestamos,
     );
+    // Botón = lista. Si hay renglones de esa ruta, el total es su suma.
+    // La cifra cruda de la nube solo puentea cuando aún no hay filas.
+    const mListedPre = pesos(dayLoanDisbursementTotal(mLoanRows));
+    const tListedPre = pesos(dayLoanDisbursementTotal(tLoanRows));
+    const mListedGas = pesos(sumExpenseLines(local.m.gastoLines));
+    const tListedGas = pesos(sumExpenseLines(local.t.gastoLines));
     const mCloud: RouteCashDay = {
       efectivo: cloud.mEfectivo != null ? pesos(cloud.mEfectivo) : local.m.efectivo,
-      prestamos: cloud.mPrestamos != null ? pesos(cloud.mPrestamos) : local.m.prestamos,
-      gastos: cloud.mGastos != null ? pesos(cloud.mGastos) : local.m.gastos,
+      prestamos:
+        mLoanRows.length > 0
+          ? mListedPre
+          : cloud.mPrestamos != null
+            ? pesos(cloud.mPrestamos)
+            : local.m.prestamos,
+      gastos:
+        local.m.gastoLines.length > 0
+          ? mListedGas
+          : cloud.mGastos != null
+            ? pesos(cloud.mGastos)
+            : local.m.gastos,
       gastoLines: local.m.gastoLines,
       loanRows: mLoanRows,
     };
     const tCloud: RouteCashDay = {
       efectivo: cloud.tEfectivo != null ? pesos(cloud.tEfectivo) : local.t.efectivo,
-      prestamos: cloud.tPrestamos != null ? pesos(cloud.tPrestamos) : local.t.prestamos,
-      gastos: cloud.tGastos != null ? pesos(cloud.tGastos) : local.t.gastos,
+      prestamos:
+        tLoanRows.length > 0
+          ? tListedPre
+          : cloud.tPrestamos != null
+            ? pesos(cloud.tPrestamos)
+            : local.t.prestamos,
+      gastos:
+        local.t.gastoLines.length > 0
+          ? tListedGas
+          : cloud.tGastos != null
+            ? pesos(cloud.tGastos)
+            : local.t.gastos,
       gastoLines: local.t.gastoLines,
       loanRows: tLoanRows,
     };

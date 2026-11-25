@@ -68,3 +68,19 @@ export function planillaHeaderCash(input: PlanillaHeaderCashInput): PlanillaHead
     totalDia: pesos(caja - inicial),
   };
 }
+
+/**
+ * Total del botón = suma de lo listado (Efectivo / Gastos / Préstamos).
+ * La nube o el libro solo hacen de puente mientras carga y aún no hay renglones.
+ * Prohibido un total paralelo que no salga de la lista visible.
+ */
+export function buttonTotalFromListed(input: {
+  listedSum: number;
+  listedCount: number;
+  bridgeTotal: number;
+  loading: boolean;
+}): number {
+  if (input.listedCount > 0) return pesos(input.listedSum);
+  if (input.loading && pesos(input.bridgeTotal) > 0) return pesos(input.bridgeTotal);
+  return pesos(input.listedSum);
+}
