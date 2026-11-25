@@ -110,6 +110,8 @@ export function HomeDashboard({
   }, [clients, routes]);
 
   const [selectedRoute, setSelectedRoute] = useState("");
+  /** Paleta derecha: abre / cierra la tabla Movimientos hoy. */
+  const [movementsOpen, setMovementsOpen] = useState(false);
 
   useEffect(() => {
     if (!routePanels.length) {
@@ -213,17 +215,39 @@ export function HomeDashboard({
               onOpenClient={onOpenClient}
             />
           </div>
-          <aside className="home-route-plantilla-side" aria-label="Espacio de trabajo" />
+          <aside className="home-route-plantilla-side" aria-label="Movimientos hoy">
+            <button
+              type="button"
+              className={
+                movementsOpen
+                  ? "home-strip-chip kpi-amber is-clickable is-active home-movements-chip"
+                  : "home-strip-chip kpi-amber is-clickable home-movements-chip"
+              }
+              aria-pressed={movementsOpen}
+              aria-expanded={movementsOpen}
+              title="Abrir movimientos de hoy"
+              onClick={() => setMovementsOpen((open) => !open)}
+            >
+              <span className="home-strip-label">Movimientos hoy</span>
+              <span className="home-strip-value">
+                {home.todayPayments.length.toLocaleString("es-CO")}
+              </span>
+            </button>
+            {movementsOpen ? (
+              <div className="home-movements-panel">
+                <TodayMovementsTable
+                  payments={home.todayPayments}
+                  loans={loans}
+                  onCreate={onGo ? () => onGo("cobranza", "hoy") : undefined}
+                  onOpenPayment={onOpenPayment}
+                />
+              </div>
+            ) : null}
+          </aside>
         </div>
       ) : null}
 
-      <div className="grid-2 home-today-split">
-        <TodayMovementsTable
-          payments={home.todayPayments}
-          loans={loans}
-          onCreate={onGo ? () => onGo("cobranza", "hoy") : undefined}
-          onOpenPayment={onOpenPayment}
-        />
+      <div className="home-today-split">
         <section className="panel home-routes-field">
           <div className="head">
             <h2>Rutas en campo</h2>

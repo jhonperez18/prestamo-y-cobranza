@@ -13404,17 +13404,30 @@
     .shell.is-phone-layout .home-route-plantilla-row {
       grid-template-columns: 1fr;
     }
-    .shell.is-phone-layout .home-route-plantilla-side {
-      display: none;
-    }
     .home-route-plantilla {
       width: 100%;
       max-width: none;
       min-width: 0;
     }
     .home-route-plantilla-side {
-      min-height: 120px;
+      min-height: 0;
       min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: stretch;
+    }
+    .home-movements-chip {
+      width: 100%;
+      max-width: 280px;
+      text-align: left;
+    }
+    .home-movements-panel {
+      min-width: 0;
+      width: 100%;
+    }
+    .home-movements-panel .panel {
+      margin: 0;
     }
     .home-route-plantilla-panel {
       width: 100%;
