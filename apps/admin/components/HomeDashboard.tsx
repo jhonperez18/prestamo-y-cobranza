@@ -7,7 +7,6 @@ import { Pill } from "@/components/ui";
 import type { DailyCollectionAssignment } from "@/lib/daily-collection-plan";
 import { todayIso } from "@/lib/daily-dispatch";
 import { buildHomeDashboard } from "@/lib/home-dashboard";
-import type { RenewalTerms } from "@/lib/loan-renew";
 import type { ModuleId } from "@/lib/navigation";
 import { clientsOnRouteSorted, compareRouteNames } from "@/lib/client-route-order";
 import {
@@ -38,7 +37,6 @@ type Props = {
   collectors?: CollectorRow[];
   activities?: ActivityRow[];
   assignments?: DailyCollectionAssignment[];
-  onRenewLoan?: (loanRef: string, terms: RenewalTerms) => void;
   onOpenLoan?: (loanRef: string) => void;
   onOpenClient?: (clientRef: string) => void;
   onOpenPayment?: (ref: string) => void;
@@ -65,7 +63,6 @@ export function HomeDashboard({
   collectors = [],
   activities = [],
   assignments = [],
-  onRenewLoan,
   onOpenLoan,
   onOpenClient,
   onOpenPayment,
@@ -200,21 +197,23 @@ export function HomeDashboard({
           <p className="ficha-empty">Aún no hay rutas creadas. Cree la primera en Rutas → Nueva ruta.</p>
         </section>
       ) : selectedRoute && selected ? (
-        <div className="home-route-plantilla">
-          <RouteClientsView
-            routeName={selectedRoute}
-            clients={clients}
-            loans={loans}
-            payments={payments}
-            assignments={assignments}
-            collectorRef={selected.collectorRef || undefined}
-            collectorName={selected.collector}
-            planillaDate={today}
-            embedded
-            onRenewLoan={onRenewLoan}
-            onOpenLoan={onOpenLoan}
-            onOpenClient={onOpenClient}
-          />
+        <div className="home-route-plantilla-row">
+          <div className="home-route-plantilla">
+            <RouteClientsView
+              routeName={selectedRoute}
+              clients={clients}
+              loans={loans}
+              payments={payments}
+              assignments={assignments}
+              collectorRef={selected.collectorRef || undefined}
+              collectorName={selected.collector}
+              planillaDate={today}
+              embedded
+              onOpenLoan={onOpenLoan}
+              onOpenClient={onOpenClient}
+            />
+          </div>
+          <aside className="home-route-plantilla-side" aria-label="Espacio de trabajo" />
         </div>
       ) : null}
 

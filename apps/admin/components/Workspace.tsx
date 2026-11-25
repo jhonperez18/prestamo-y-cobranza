@@ -405,7 +405,6 @@ export function Workspace(props: WorkspaceProps) {
           collectors={collectors}
           activities={activities}
           assignments={dailyAssignments}
-          onRenewLoan={renewLoan}
           onOpenLoan={openLoanAccount}
           onOpenClient={openFicha}
           onGo={onGo}

@@ -13393,14 +13393,40 @@
     .home-routes-field .head h2 {
       font-size: 16px;
     }
+    /* Planilla Inicio: ~58% izquierda; derecha libre para lo que pida el dueño. */
+    .home-route-plantilla-row {
+      display: grid;
+      grid-template-columns: minmax(0, 58%) minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+      width: 100%;
+    }
+    .shell.is-phone-layout .home-route-plantilla-row {
+      grid-template-columns: 1fr;
+    }
+    .shell.is-phone-layout .home-route-plantilla-side {
+      display: none;
+    }
     .home-route-plantilla {
       width: 100%;
       max-width: none;
+      min-width: 0;
+    }
+    .home-route-plantilla-side {
+      min-height: 120px;
+      min-width: 0;
     }
     .home-route-plantilla-panel {
       width: 100%;
       margin: 0;
     }
+    table.route-clients-table.is-home-slim col.rc-col-order { width: 40px; }
+    table.route-clients-table.is-home-slim col.rc-col-name { width: 28%; }
+    table.route-clients-table.is-home-slim col.rc-col-saldo { width: 14%; }
+    table.route-clients-table.is-home-slim col.rc-col-cuota { width: 12%; }
+    table.route-clients-table.is-home-slim col.rc-col-cobrado { width: 14%; }
+    table.route-clients-table.is-home-slim col.rc-col-method { width: 10%; }
+    table.route-clients-table.is-home-slim col.rc-col-hora { width: 14%; }
     .home-route-plantilla-head {
       min-height: 44px;
       align-items: center;

@@ -232,40 +232,54 @@ export function RouteClientsView({
 
       {lead && !embedded ? <p className="panel-lead route-clients-lead">{lead}</p> : null}
 
-      <div className="table-wrap route-clients-table-wrap">
-        <table className="data list-grid route-clients-table">
+      <div
+        className={
+          embedded
+            ? "table-wrap route-clients-table-wrap is-home-slim"
+            : "table-wrap route-clients-table-wrap"
+        }
+      >
+        <table
+          className={
+            embedded
+              ? "data list-grid route-clients-table is-home-slim"
+              : "data list-grid route-clients-table"
+          }
+        >
           <colgroup>
             <col className="rc-col-order" />
             <col className="rc-col-name" />
-            <col className="rc-col-nick" />
+            {embedded ? null : <col className="rc-col-nick" />}
             <col className="rc-col-saldo" />
             <col className="rc-col-cuota" />
             <col className="rc-col-cobrado" />
             <col className="rc-col-method" />
             <col className="rc-col-hora" />
-            <col className="rc-col-cuotas" />
-            <col className="rc-col-accion" />
+            {embedded ? null : <col className="rc-col-cuotas" />}
+            {embedded ? null : <col className="rc-col-accion" />}
           </colgroup>
           <thead>
             <tr className="col-titles">
               <th>#</th>
               <th className="is-nombre">Nombre</th>
-              <th>Apodo</th>
+              {embedded ? null : <th>Apodo</th>}
               <th>Saldo</th>
               <th title="Cuota pactada del préstamo (fija)">Cuota</th>
               <th title="Se actualiza cuando el cobrador registra el pago">Cobrado</th>
               <th title="Efectivo / Nequi / Banco">Método</th>
               <th title="Hora del cobro en la app">Hora</th>
-              <th title="Cuotas pagadas / esperadas a hoy (calendario lun–sáb sin festivos)">
-                Mora
-              </th>
-              <th>Acción</th>
+              {embedded ? null : (
+                <th title="Cuotas pagadas / esperadas a hoy (calendario lun–sáb sin festivos)">
+                  Mora
+                </th>
+              )}
+              {embedded ? null : <th>Acción</th>}
             </tr>
           </thead>
           <tbody key={routeName}>
             {rows.length === 0 ? (
               <tr className="empty-row">
-                <td colSpan={10}>
+                <td colSpan={embedded ? 7 : 10}>
                   {blocked
                     ? blocked
                     : !collectorRef
@@ -275,13 +289,18 @@ export function RouteClientsView({
               </tr>
             ) : (
               rows.map((row) => {
-                const canRenew = Boolean(onRenewLoan && row.renewLoan);
+                const canRenew = Boolean(!embedded && onRenewLoan && row.renewLoan);
                 const openLoan = onOpenLoan && row.loan ? () => onOpenLoan(row.loan!.ref) : undefined;
                 const openClient = onOpenClient
                   ? () => onOpenClient(row.client.ref)
                   : undefined;
                 const renewing =
-                  onRenewLoan && row.renewLoan && renewingRef === row.renewLoan.ref ? row.renewLoan : null;
+                  !embedded &&
+                  onRenewLoan &&
+                  row.renewLoan &&
+                  renewingRef === row.renewLoan.ref
+                    ? row.renewLoan
+                    : null;
                 return (
                   <Fragment key={row.rowKey}>
                   <tr>
@@ -306,7 +325,7 @@ export function RouteClientsView({
                       {[row.client.name, row.client.lastName].filter(Boolean).join(" ").trim() ||
                         "—"}
                     </td>
-                    <td>{row.client.nickname?.trim() || "—"}</td>
+                    {embedded ? null : <td>{row.client.nickname?.trim() || "—"}</td>}
                     <td className="money">{row.balance > 0 ? money(row.balance) : "—"}</td>
                     <td className="money">{row.cuotaHoy > 0 ? money(row.cuotaHoy) : "—"}</td>
                     <td>
@@ -330,31 +349,35 @@ export function RouteClientsView({
                     <td className="route-clients-hora">
                       {row.paidToday && row.paidTime ? row.paidTime : "—"}
                     </td>
-                    <td className="route-clients-cuotas">
-                      <CuotasProgressCell progress={row.cuotas} />
-                    </td>
-                    <td className="route-clients-actions">
-                      {onRenewLoan ? (
-                        <button
-                          type="button"
-                          className="collector-mobile-pay-link"
-                          disabled={!canRenew}
-                          title={
-                            canRenew
-                              ? "Lo que debe + el porcentaje que elija · sin plata"
-                              : "Disponible cuando se cumpla el plazo"
-                          }
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            if (row.renewLoan) setRenewingRef(row.renewLoan.ref);
-                          }}
-                        >
-                          renovar
-                        </button>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
+                    {embedded ? null : (
+                      <td className="route-clients-cuotas">
+                        <CuotasProgressCell progress={row.cuotas} />
+                      </td>
+                    )}
+                    {embedded ? null : (
+                      <td className="route-clients-actions">
+                        {onRenewLoan ? (
+                          <button
+                            type="button"
+                            className="collector-mobile-pay-link"
+                            disabled={!canRenew}
+                            title={
+                              canRenew
+                                ? "Lo que debe + el porcentaje que elija · sin plata"
+                                : "Disponible cuando se cumpla el plazo"
+                            }
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (row.renewLoan) setRenewingRef(row.renewLoan.ref);
+                            }}
+                          >
+                            renovar
+                          </button>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                    )}
                   </tr>
                   {renewing && onRenewLoan ? (
                     <tr className="route-clients-renew-row">
