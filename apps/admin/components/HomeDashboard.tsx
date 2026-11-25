@@ -12,7 +12,6 @@ import type { ModuleId } from "@/lib/navigation";
 import { clientsOnRouteSorted, compareRouteNames } from "@/lib/client-route-order";
 import {
   catalogRoutes,
-  money,
   routeIsActive,
   type ActivityRow,
   type ClientRow,
@@ -127,56 +126,19 @@ export function HomeDashboard({
 
   const selected = routePanels.find((row) => row.name === selectedRoute);
 
-  const stripChips: StripChip[] = useMemo(() => {
-    const day: StripChip[] = [
-      {
-        key: "clientes",
-        label: "Clientes activos",
-        value: home.activeClients.toLocaleString("es-CO"),
-        tone: "teal",
-        onClick: onGo ? () => onGo("clientes", "activos") : undefined,
-      },
-      {
-        key: "prestamos",
-        label: "Préstamos",
-        value: money(home.portfolioTotal, { symbol: false }),
-        meta: home.activeLoansCount.toLocaleString("es-CO"),
-        tone: "sage",
-        onClick: onGo ? () => onGo("prestamos", "listado") : undefined,
-      },
-      {
-        key: "cobrado",
-        label: "Cobrado hoy",
-        value: money(home.collectedToday, { symbol: false }),
-        meta:
-          home.collectedCount === 1
-            ? "1 operación"
-            : `${home.collectedCount.toLocaleString("es-CO")} operaciones`,
-        tone: "amber",
-        onClick: onGo ? () => onGo("cobranza", "pagos") : undefined,
-      },
-      {
-        key: "mora",
-        label: "Mora",
-        value: money(home.moraTotal, { symbol: false }),
-        meta:
-          home.moraCount === 1
-            ? "1 crédito"
-            : `${home.moraCount.toLocaleString("es-CO")} créditos`,
-        tone: "coral",
-        onClick: onGo ? () => onGo("cartera", "mora") : undefined,
-      },
-    ];
-    const routeChips: StripChip[] = routePanels.map((route) => ({
-      key: route.ref,
-      label: `Ruta ${route.name}`,
-      value: `${route.count} - ${route.collector}`,
-      tone: route.tone,
-      active: selectedRoute === route.name,
-      onClick: () => setSelectedRoute(route.name),
-    }));
-    return [...day, ...routeChips];
-  }, [home, onGo, routePanels, selectedRoute]);
+  /** Solo M · T · A · N. Clientes / Préstamos / Cobrado / Mora viven en sus módulos. */
+  const stripChips: StripChip[] = useMemo(
+    () =>
+      routePanels.map((route) => ({
+        key: route.ref,
+        label: `Ruta ${route.name}`,
+        value: `${route.count} - ${route.collector}`,
+        tone: route.tone,
+        active: selectedRoute === route.name,
+        onClick: () => setSelectedRoute(route.name),
+      })),
+    [routePanels, selectedRoute],
+  );
 
   const stripStyle = phoneStrip
     ? ({
