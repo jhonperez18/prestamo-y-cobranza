@@ -13420,6 +13420,7 @@
       width: 100%;
       margin: 0;
     }
+    /* # y Nombre quietos (mismos anchos); solo se acerca el contenido de Saldo. */
     table.route-clients-table.is-home-slim col.rc-col-order { width: 40px; }
     table.route-clients-table.is-home-slim col.rc-col-name { width: 28%; }
     table.route-clients-table.is-home-slim col.rc-col-saldo { width: 14%; }
@@ -13427,6 +13428,15 @@
     table.route-clients-table.is-home-slim col.rc-col-cobrado { width: 14%; }
     table.route-clients-table.is-home-slim col.rc-col-method { width: 10%; }
     table.route-clients-table.is-home-slim col.rc-col-hora { width: 14%; }
+    table.route-clients-table.is-home-slim th.is-nombre,
+    table.route-clients-table.is-home-slim td.is-nombre {
+      padding-right: 4px;
+    }
+    table.route-clients-table.is-home-slim th:nth-child(3),
+    table.route-clients-table.is-home-slim td:nth-child(3) {
+      padding-left: 2px;
+      text-align: left;
+    }
     .home-route-plantilla-head {
       min-height: 44px;
       align-items: center;
